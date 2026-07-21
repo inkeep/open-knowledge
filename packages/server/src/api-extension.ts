@@ -32,6 +32,7 @@ import { pipeline } from 'node:stream/promises';
 import { setTimeout as wait } from 'node:timers/promises';
 import type { Document, Extension, Hocuspocus } from '@hocuspocus/server';
 import {
+  type AdvisoryWarning,
   AGENT_ICON_COLORS,
   AgentActivitySuccessSchema,
   AgentBurstDiffSuccessSchema,
@@ -39,6 +40,8 @@ import {
   AgentPatchSuccessSchema,
   AgentUndoRequestSchema,
   AgentUndoSuccessSchema,
+  AgentWriteBatchRequestSchema,
+  AgentWriteBatchSuccessSchema,
   AgentWriteMdRequestSchema,
   AgentWriteMdSuccessSchema,
   AgentWriteRequestSchema,
@@ -48,6 +51,7 @@ import {
   applyPatchToFm,
   BacklinkCountsSuccessSchema,
   BacklinksSuccessSchema,
+  type BatchEntryError,
   BranchInfoResponseSchema,
   CheckoutRequestSchema,
   CheckoutResponseSchema,
@@ -335,6 +339,7 @@ import {
   type SemanticSearchService,
 } from './embeddings/index.ts';
 import {
+  classifyParseError,
   FrontmatterMalformedError,
   respondFrontmatterMalformed,
 } from './frontmatter-malformed-error.ts';
@@ -701,13 +706,13 @@ function renameAttributionCounter(): ReturnType<ReturnType<typeof getMeter>['cre
 // denominator (every gated agent write); `content_divergence_total` the
 // numerator (writes whose converged Y.Text diverged from intent). The ratio is
 // the production divergence rate. Bounded label set:
-// handler ∈ {agent-write-md, agent-patch, rollback} + bounded divergence_type.
+// handler ∈ {agent-write-md, agent-write-batch, agent-patch, rollback} + bounded divergence_type.
 let _agentWriteGateFiredCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null =
   null;
 function agentWriteGateFiredCounter(): ReturnType<ReturnType<typeof getMeter>['createCounter']> {
   _agentWriteGateFiredCounter ||= getMeter().createCounter('ok.agent_write.gate_fired_total', {
     description:
-      'Count of agent writes that ran the Site A content-divergence gate (denominator for the divergence rate). Bounded label: handler ∈ {agent-write-md, agent-patch, rollback}.',
+      'Count of agent writes that ran the Site A content-divergence gate (denominator for the divergence rate). Bounded label: handler ∈ {agent-write-md, agent-write-batch, agent-patch, rollback}.',
   });
   return _agentWriteGateFiredCounter;
 }
@@ -722,7 +727,7 @@ function agentWriteContentDivergenceCounter(): ReturnType<
     'ok.agent_write.content_divergence_total',
     {
       description:
-        'Count of agent writes whose converged Y.Text diverged from the composed intent (numerator for the divergence rate). Bounded labels: handler ∈ {agent-write-md, agent-patch, rollback}, divergence_type.',
+        'Count of agent writes whose converged Y.Text diverged from the composed intent (numerator for the divergence rate). Bounded labels: handler ∈ {agent-write-md, agent-write-batch, agent-patch, rollback}, divergence_type.',
     },
   );
   return _agentWriteContentDivergenceCounter;
@@ -759,7 +764,7 @@ function searchCorpusUpdateCounter(): ReturnType<ReturnType<typeof getMeter>['cr
 }
 
 /** Bounded handler label for the content-divergence counters. */
-type DivergenceHandler = 'agent-write-md' | 'agent-patch' | 'rollback';
+type DivergenceHandler = 'agent-write-md' | 'agent-write-batch' | 'agent-patch' | 'rollback';
 
 /**
  * Record a gated agent write: always bump the denominator; bump the numerator
@@ -5596,6 +5601,371 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       }
     },
     { handler: 'agent-write-md', method: 'POST' },
+  );
+
+  /**
+   * `POST /api/agent-write-batch` — N document writes in one HTTP call, for
+   * bulk create/import flows that would otherwise pay one round-trip plus the
+   * full per-write advisory suite per document.
+   *
+   * Semantics per entry are identical to `handleAgentWriteMd`: same
+   * `applyAgentMarkdownWrite` spine under the entry doc's per-session frozen
+   * origin (no new CRDT write path, no second undo surface — each doc's
+   * UndoManager sees the write exactly as a single-call write), same
+   * reserved-name gate re-checked per doc, same L1 reconcile-before-apply,
+   * same per-doc awaited disk store so an ENOSPC-class failure or an L3
+   * disk-divergence revert reports as that entry's error, never a false
+   * success.
+   *
+   * What a batch amortizes relative to N single calls:
+   *   - one HTTP round-trip, one identity extraction, one presence
+   *     set/idle pair and one focus broadcast instead of N;
+   *   - one `collectAdmittedDocNames()` file-index scan feeding every
+   *     entry's broken-link validation;
+   *   - one coalesced L2 shadow commit via the store path's existing commit
+   *     debounce (per-doc L1 stores arm the same timer — the batch never
+   *     forces per-doc commits, mirroring the single-write coalescing
+   *     contract pinned by `agent-write-commit-coalescing.test.ts`);
+   *   - the search corpus stays fingerprint-invalidated (mtime-keyed cache in
+   *     `getWorkspaceSearchCorpus`), so N writes cost one rebuild on the next
+   *     search, not N eager invalidations.
+   *
+   * The per-doc mermaid render validation, lint pass, and orphan hints are
+   * deliberately NOT run here — their per-write cost is what a batch exists
+   * to avoid. Callers who want those advisories use the single-write
+   * endpoint; `brokenLinks` (cheap once the admitted set is shared) is kept
+   * per entry.
+   *
+   * Outcomes are per-entry and independent (partial success by design; no
+   * atomic mode): `results[i]` answers `docs[i]`, failures carry the same
+   * closed URN vocabulary as the single-write endpoints, and the batch
+   * response is HTTP 200 whenever the request itself was well-formed.
+   */
+  const handleAgentWriteBatch = withValidation(
+    AgentWriteBatchRequestSchema,
+    async (_req, res, body) => {
+      try {
+        const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
+          extractAgentIdentity(body);
+
+        const timestamp = new Date().toISOString();
+
+        // Handler-internal result shapes; the wire contract is enforced at
+        // emit time by `successResponse`'s safeParse against
+        // `AgentWriteBatchSuccessSchema` (the `.loose()` index signatures the
+        // z.infer types carry don't unify with interface-typed helpers like
+        // `BrokenOutboundLink`).
+        interface BatchErrorResult {
+          status: 'error';
+          docName: string;
+          error: { type: BatchEntryError['type']; title: string; detail?: string };
+        }
+        interface BatchWrittenResult {
+          status: 'written';
+          docName: string;
+          summary?: SummaryResponse;
+          warnings?: AdvisoryWarning[];
+          brokenLinks: ReturnType<typeof computeBrokenOutboundLinks>;
+        }
+        type BatchResult = BatchWrittenResult | BatchErrorResult;
+
+        const entryError = (
+          docName: string,
+          type: BatchEntryError['type'],
+          title: string,
+          detail?: string,
+        ): BatchErrorResult => ({
+          status: 'error',
+          docName,
+          error: { type, title, ...(detail !== undefined ? { detail } : {}) },
+        });
+
+        /** Failure translation mirroring the single-write catch arms — same
+         *  URN per error class, demoted from a wire-level response to a
+         *  per-entry result so siblings keep processing. The conflict /
+         *  malformed-FM branches re-emit the structured refusal events whose
+         *  single-site emission normally lives in the `respond*` helpers, so
+         *  the grouped-by-handler refusal counters see batch refusals too. */
+        const classifyEntryFailure = (docName: string, e: unknown): BatchErrorResult => {
+          if (e instanceof DocInConflictError) {
+            console.warn(
+              JSON.stringify({
+                event: 'doc-in-conflict-write-refused',
+                handler: 'agent-write-batch',
+                'doc.name': docName,
+              }),
+            );
+            return entryError(
+              docName,
+              'urn:ok:error:doc-in-conflict',
+              'Document is in conflict.',
+              'The document is in a merge-conflict state. Call conflicts({ kind: "content" }) + resolve_conflict before retrying.',
+            );
+          }
+          if (e instanceof FrontmatterMalformedError) {
+            console.warn(
+              JSON.stringify({
+                event: 'frontmatter-malformed-write-refused',
+                handler: 'agent-write-batch',
+                class: classifyParseError(e.parseError),
+                'doc.name': docName,
+                parseError: e.parseError,
+              }),
+            );
+            return entryError(
+              docName,
+              'urn:ok:error:frontmatter-malformed',
+              'Frontmatter YAML is malformed.',
+              e.parseError,
+            );
+          }
+          if (e instanceof AgentSessionCapacityError) {
+            return entryError(
+              docName,
+              'urn:ok:error:too-many-agent-sessions',
+              'Too many agent sessions.',
+            );
+          }
+          log.error({ err: e, docName }, '[agent-write-batch] entry failed');
+          return entryError(
+            docName,
+            'urn:ok:error:internal-server-error',
+            'Internal server error.',
+          );
+        };
+
+        interface PendingEntry {
+          index: number;
+          docName: string;
+          session: Awaited<ReturnType<typeof sessionManager.getSession>>;
+          summaryResponse?: SummaryResponse;
+          warnings: AdvisoryWarning[];
+        }
+
+        const results: (BatchResult | undefined)[] = new Array(body.docs.length);
+        const pending: PendingEntry[] = [];
+
+        // One presence set/idle pair for the whole batch — per-entry
+        // setPresence would spam `__system__` awareness N times for one
+        // logical operation. The focus broadcast at the end navigates
+        // followers to the last written doc.
+        try {
+          const icon = iconFromClientName(clientName);
+          const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(colorSeed ?? agentId);
+          agentPresenceBroadcaster?.setPresence(agentId, {
+            displayName: agentName,
+            icon,
+            color,
+            currentDoc: resolveAlias(body.docs[0].docName),
+            mode: 'writing',
+            ts: Date.now(),
+          });
+
+          // Apply phase: entries in array order, so duplicate docNames behave
+          // like sequential writes to that doc.
+          for (let i = 0; i < body.docs.length; i++) {
+            const entry = body.docs[i];
+            const resolvedDocName = resolveAlias(entry.docName);
+
+            if (isSystemDoc(resolvedDocName) || isConfigDoc(resolvedDocName)) {
+              results[i] = entryError(
+                resolvedDocName,
+                'urn:ok:error:reserved-doc-name',
+                `'${resolvedDocName}' is a reserved document name.`,
+              );
+              continue;
+            }
+
+            try {
+              if (
+                entry.extension !== undefined &&
+                !docNameExistsWithAnySupportedExtension(contentDir, resolvedDocName)
+              ) {
+                registerDocExtension(resolvedDocName, entry.extension);
+              }
+
+              const normalizedSummary = normalizeSummary(entry.summary);
+              const { response: summaryResponse, stored: storedSummary } =
+                summaryResponseFields(normalizedSummary);
+              const session = await sessionManager.getSession(resolvedDocName, agentId, {
+                displayName: agentName,
+                colorSeed,
+                clientName,
+              });
+
+              const reconcile = reconcileDiskBeforeAgentWrite(
+                hocuspocus,
+                resolvedDocName,
+                contentDir,
+                options.resolveEmbed,
+              );
+
+              let writeDivergence: AgentWriteContentDivergence | undefined;
+              // Register one-shot observer BEFORE write transact so YTextEvent.delta is captured
+              captureEffect(session.dc.document.getText('source'), agentId, colorSeed, clientName);
+              // Use per-session origin, not shared AGENT_WRITE_ORIGIN (STOP rule)
+              session.dc.document.transact(() => {
+                const beforeBlocks = snapshotBlocks(session.dc.document);
+                writeDivergence = applyAgentMarkdownWrite(
+                  session.dc.document,
+                  entry.markdown,
+                  entry.position ?? 'append',
+                  options.resolveEmbed
+                    ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
+                    : undefined,
+                );
+
+                const changedBlocks =
+                  changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
+                const activityMap = session.dc.document.getMap('agent-flash');
+                activityMap.set(agentId, {
+                  agentId,
+                  timestamp: Date.now(),
+                  type: 'insert',
+                  description: `Added (${agentName}): ${entry.markdown.trim().slice(0, 50)}`,
+                  ...(changedBlocks !== undefined ? { changedBlocks } : {}),
+                });
+              }, session.origin);
+
+              recordContentDivergenceGate('agent-write-batch', writeDivergence);
+              recordContributor(
+                resolvedDocName,
+                agentId,
+                agentName,
+                colorSeed,
+                undefined,
+                buildAgentActor({ clientName, clientVersion, label }),
+                storedSummary,
+              );
+              incrementAgentWriteCalls();
+              countNormalizedSummary(normalizedSummary);
+
+              const reconcileWarning = buildReconcileWarning(reconcile);
+              const warnings: AdvisoryWarning[] = [
+                ...(writeDivergence !== undefined
+                  ? [toContentDivergenceWarning(writeDivergence)]
+                  : []),
+                ...(reconcileWarning ? [reconcileWarning] : []),
+              ];
+              pending.push({
+                index: i,
+                docName: resolvedDocName,
+                session,
+                summaryResponse,
+                warnings,
+              });
+            } catch (e) {
+              results[i] = classifyEntryFailure(resolvedDocName, e);
+            }
+          }
+
+          // Flush phase: one awaited L1 disk store per unique doc, after every
+          // CRDT write has applied — disk truth per entry without interleaving
+          // store cycles between writes. Each store arms the shared L2 commit
+          // debounce; the batch never forces a per-doc shadow commit.
+          const flushErrors = new Map<string, BatchErrorResult['error'] | undefined>();
+          for (const p of pending) {
+            if (flushErrors.has(p.docName)) continue;
+            const flushOutcome = await flushDiskAndDetectOutcome(p.docName);
+            if (flushOutcome?.kind === 'failure') {
+              const reason = classifyUploadErrno({
+                code: flushOutcome.failure.code,
+              } as NodeJS.ErrnoException);
+              flushErrors.set(p.docName, {
+                type: reason,
+                title: 'Write applied in memory but failed to persist to disk.',
+                detail: `${flushOutcome.failure.code ?? 'unknown error'}: ${flushOutcome.failure.message}. The content was NOT saved and will be lost if the server restarts.`,
+              });
+            } else if (flushOutcome?.kind === 'divergence') {
+              flushErrors.set(p.docName, {
+                type: 'urn:ok:error:disk-divergence',
+                title:
+                  'The document changed on disk after your edit was prepared; your edit was NOT applied. Re-read the document and retry.',
+              });
+            } else {
+              flushErrors.set(p.docName, undefined);
+            }
+          }
+
+          // Advisory phase: broken-link validation from the just-written
+          // source bytes, with the O(corpus) admitted-set scan paid once for
+          // the whole batch. Every flushed batch doc joins the admitted set
+          // first so intra-batch links (doc A -> doc B written in the same
+          // call) validate regardless of entry order.
+          const admittedForLinks = collectAdmittedDocNames();
+          for (const p of pending) {
+            if (flushErrors.get(p.docName) === undefined) admittedForLinks.add(p.docName);
+          }
+
+          let lastWrittenDoc: string | undefined;
+          for (const p of pending) {
+            const flushError = flushErrors.get(p.docName);
+            if (flushError !== undefined) {
+              results[p.index] = { status: 'error', docName: p.docName, error: flushError };
+              continue;
+            }
+            const writtenSource = p.session.dc.document.getText('source').toString();
+            registerWrittenDocInFileIndex(p.docName, writtenSource);
+            const brokenLinks = computeBrokenOutboundLinks(
+              writtenSource,
+              p.docName,
+              admittedForLinks,
+              linkedFileExists,
+            );
+            results[p.index] = {
+              status: 'written',
+              docName: p.docName,
+              ...(p.summaryResponse ? { summary: p.summaryResponse } : {}),
+              ...(p.warnings.length > 0 ? { warnings: p.warnings } : {}),
+              brokenLinks,
+            };
+            lastWrittenDoc = p.docName;
+          }
+
+          if (lastWrittenDoc !== undefined) {
+            agentFocusBroadcaster?.setFocus(agentId, {
+              agentName,
+              currentDoc: lastWrittenDoc,
+              writeKind: 'write',
+              ts: Date.now(),
+            });
+            onAgentWrite?.();
+          }
+        } finally {
+          agentPresenceBroadcaster?.touchMode(agentId, 'idle');
+        }
+
+        const finalResults: BatchResult[] = results.map(
+          (r, i) =>
+            r ??
+            entryError(
+              body.docs[i].docName,
+              'urn:ok:error:internal-server-error',
+              'Internal server error.',
+            ),
+        );
+        const written = finalResults.filter((r) => r.status === 'written').length;
+        successResponse(
+          res,
+          200,
+          AgentWriteBatchSuccessSchema,
+          {
+            timestamp,
+            results: finalResults,
+            written,
+            failed: finalResults.length - written,
+          },
+          { handler: 'agent-write-batch' },
+        );
+      } catch (e) {
+        log.error({ err: e }, '[agent-write-batch] handler failed');
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
+          handler: 'agent-write-batch',
+          cause: e,
+        });
+      }
+    },
+    { handler: 'agent-write-batch', method: 'POST' },
   );
 
   /**
@@ -19139,6 +19509,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/upload': handleUploadAsset,
     '/api/agent-write': handleAgentWrite,
     '/api/agent-write-md': handleAgentWriteMd,
+    '/api/agent-write-batch': handleAgentWriteBatch,
     '/api/frontmatter-patch': handleFrontmatterPatch,
     '/api/agent-patch': handleAgentPatch,
     '/api/agent-undo': handleAgentUndo,
@@ -19217,6 +19588,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/trash/cleanup',
     '/api/agent-write',
     '/api/agent-write-md',
+    '/api/agent-write-batch',
     '/api/frontmatter-patch',
     '/api/agent-patch',
     '/api/agent-undo',

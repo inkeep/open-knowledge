@@ -38,6 +38,11 @@ const source = readFileSync(API_EXT_PATH, 'utf8');
 const REQUIRED_HANDLERS = [
   'handleAgentWrite',
   'handleAgentWriteMd',
+  // Batch sibling of handleAgentWriteMd — every entry routes through the
+  // gated applyAgentMarkdownWrite spine; a per-entry DocInConflictError is
+  // translated to that entry's result (with the doc-in-conflict-write-refused
+  // event re-emitted) instead of a wire-level 409, so siblings keep landing.
+  'handleAgentWriteBatch',
   'handleAgentPatch',
   'handleAgentUndo',
   'handleRollback',

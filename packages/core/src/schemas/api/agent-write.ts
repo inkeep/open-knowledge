@@ -16,7 +16,13 @@ import { z } from 'zod';
 import { SUPPORTED_DOC_EXTENSIONS } from '../../constants/doc-extensions.ts';
 
 import { FRONTMATTER_TYPES, FrontmatterValueSchema } from '../../frontmatter/schema.ts';
-import { agentIdentityFields, safeDocNameField, summaryField } from './_shared.ts';
+import { ProblemTypeSchema } from './_envelope.ts';
+import {
+  agentIdentityFields,
+  requiredSafeDocNameField,
+  safeDocNameField,
+  summaryField,
+} from './_shared.ts';
 
 /**
  * Request body for `POST /api/agent-write`. Free-text content append (the
@@ -436,6 +442,112 @@ export const AgentUndoSuccessSchema = z
   })
   .loose() satisfies StandardSchemaV1;
 export type AgentUndoSuccess = z.infer<typeof AgentUndoSuccessSchema>;
+
+/**
+ * Per-call ceiling on `POST /api/agent-write-batch` entries. Sized against
+ * three independent bounds: the 1 MB request-body cap (100 docs leaves ~10 KB
+ * of markdown each), the 256-session `AgentSessionManager` cap (a batch must
+ * not be able to exhaust it in one call), and bounded per-request latency
+ * (each entry pays a CRDT transact + an awaited per-doc disk store). A larger
+ * import splits into multiple calls.
+ */
+export const AGENT_WRITE_BATCH_MAX_DOCS = 100;
+
+/**
+ * One entry of a `POST /api/agent-write-batch` request. Mirrors the
+ * `AgentWriteMdRequestSchema` per-doc fields exactly (same write semantics per
+ * entry); identity fields live once at the batch level instead.
+ */
+export const AgentWriteBatchEntrySchema = z
+  .object({
+    docName: requiredSafeDocNameField,
+    markdown: z.string(),
+    position: z.enum(['append', 'prepend', 'replace']).optional(),
+    extension: z.enum(SUPPORTED_DOC_EXTENSIONS).optional(),
+    summary: summaryField,
+  })
+  .loose() satisfies StandardSchemaV1;
+export type AgentWriteBatchEntry = z.infer<typeof AgentWriteBatchEntrySchema>;
+
+/**
+ * Request body for `POST /api/agent-write-batch`. One identity for the whole
+ * batch (every entry is attributed to the same agent); entries apply in array
+ * order, so duplicate docNames are legal and behave like sequential writes to
+ * that doc. Exceeding `AGENT_WRITE_BATCH_MAX_DOCS` rejects the whole request
+ * at the schema boundary (400 `urn:ok:error:invalid-request`).
+ */
+export const AgentWriteBatchRequestSchema = z
+  .object({
+    docs: z.array(AgentWriteBatchEntrySchema).min(1).max(AGENT_WRITE_BATCH_MAX_DOCS),
+    ...agentIdentityFields,
+  })
+  .loose() satisfies StandardSchemaV1;
+export type AgentWriteBatchRequest = z.infer<typeof AgentWriteBatchRequestSchema>;
+
+/**
+ * Per-entry error payload inside a batch response. Reuses the closed
+ * `ProblemTypeSchema` URN vocabulary so SDK consumers branch on the same
+ * tokens as the single-write endpoints, but deliberately omits the RFC 9457
+ * `status`/`instance` fields — the entry is not an HTTP response; the batch
+ * response's HTTP layer is the 200 envelope around all entries.
+ */
+export const BatchEntryErrorSchema = z
+  .object({
+    type: ProblemTypeSchema,
+    title: z.string(),
+    detail: z.string().optional(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type BatchEntryError = z.infer<typeof BatchEntryErrorSchema>;
+
+/**
+ * Per-entry outcome of a batch write, positionally aligned with the request's
+ * `docs` array (`results[i]` answers `docs[i]`). `docName` echoes the entry's
+ * alias-resolved canonical docName. Outcomes are independent — a failed entry
+ * never rolls back or blocks its siblings.
+ *
+ * `written` entries carry the same advisory channels as the single-write
+ * success body, minus the deliberately-omitted per-doc passes (mermaid render
+ * validation, lint, orphan hints) — those stay on `POST /api/agent-write-md`,
+ * whose per-write cost is exactly what a batch amortizes away.
+ */
+export const AgentWriteBatchResultSchema = z.discriminatedUnion('status', [
+  z
+    .object({
+      status: z.literal('written'),
+      docName: z.string().min(1),
+      summary: SummaryResponseFieldSchema.optional(),
+      warnings: AdvisoryWarningsSchema.optional(),
+      /** Write-time outbound-link validation. Always present, `[]` when all links resolve. */
+      brokenLinks: BrokenLinksSchema,
+    })
+    .loose(),
+  z
+    .object({
+      status: z.literal('error'),
+      docName: z.string().min(1),
+      error: BatchEntryErrorSchema,
+    })
+    .loose(),
+]);
+export type AgentWriteBatchResult = z.infer<typeof AgentWriteBatchResultSchema>;
+
+/**
+ * Success body for `POST /api/agent-write-batch`. HTTP 200 whenever the batch
+ * request itself was well-formed — per-entry failures (reserved doc name,
+ * conflict, disk failure) report inside `results`, so a partially-failed
+ * batch is still a 200 with a non-zero `failed` count. Wire-level errors are
+ * reserved for whole-request faults (schema rejection, payload cap, method).
+ */
+export const AgentWriteBatchSuccessSchema = z
+  .object({
+    timestamp: z.string().min(1),
+    results: z.array(AgentWriteBatchResultSchema),
+    written: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type AgentWriteBatchSuccess = z.infer<typeof AgentWriteBatchSuccessSchema>;
 
 /**
  * Request body for `POST /api/frontmatter-patch`. Merge-patch semantics apply

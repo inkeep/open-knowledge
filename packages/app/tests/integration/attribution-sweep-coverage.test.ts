@@ -34,6 +34,11 @@ const actorHelperSource = readFileSync(ACTOR_HELPER_PATH, 'utf8');
 const REQUIRED_HANDLERS = [
   'handleAgentWrite',
   'handleAgentWriteMd',
+  // Batch sibling of handleAgentWriteMd — one identity extraction attributes
+  // every entry in the batch; per-entry failures are response-body results,
+  // not wire-level errorResponse emits, so the ordering check sees only the
+  // post-identity catch-all.
+  'handleAgentWriteBatch',
   'handleAgentPatch',
   // Per-key frontmatter mutation via JSON Merge Patch. Writes through the same
   // session-frozen origin as the other agent-write handlers; attribution is

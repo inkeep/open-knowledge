@@ -46,6 +46,14 @@ function checkDocName(value: string, ctx: z.RefinementCtx): void {
 export const safeDocNameField = z.string().superRefine(checkDocName).optional();
 
 /**
+ * Required variant of `safeDocNameField` — same structural docName contract,
+ * but the key must be present. Batch write entries use this: a per-entry
+ * docName cannot fall back to a handler-side default the way the single-write
+ * handlers' optional field can.
+ */
+export const requiredSafeDocNameField = z.string().superRefine(checkDocName);
+
+/**
  * Identity fields shared by every mutating handler. All optional —
  * `extractAgentIdentity` in `api-extension.ts` carries the default-agent
  * fallback for missing fields. The schema only validates the wire-level
