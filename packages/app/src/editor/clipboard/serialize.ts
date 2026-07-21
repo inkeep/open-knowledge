@@ -43,6 +43,11 @@ import {
   type WalkerEnv,
   walkLiveDomToInlineStyledFragment,
 } from './clipboard-walker.ts';
+import {
+  stripClipboardOmitted,
+  stripClipboardOmittedFromFragment,
+  stripClipboardOmittedFromNode,
+} from './comment-scrub.ts';
 import { classifyError, logSerializeFail } from './instrument.ts';
 
 interface WysiwygSerializerDeps {
@@ -67,7 +72,11 @@ export interface ClipboardHtmlSerializerHandle {
  * to construct before the editor mounts.
  */
 export function createClipboardTextSerializer(deps: WysiwygSerializerDeps) {
-  return (slice: Slice, view: EditorView): string => {
+  return (rawSlice: Slice, view: EditorView): string => {
+    // Clipboard-omitted content (comment annotations) must not reach the
+    // text/plain payload; scrub once at entry so every path below —
+    // including the textBetween fallback — serializes the clean slice.
+    const slice = stripClipboardOmitted(rawSlice, view.state.schema);
     // CellSelection copies belong to the table clipboard convention, not
     // to the markdown pipeline. `\t`-separated cells / `\n`-separated
     // rows is what browsers and spreadsheets (Excel, Sheets, Numbers)
@@ -158,7 +167,8 @@ export function serializeCellSelectionAsText(selection: CellSelection): string {
  * in-cell break as a real newline.
  */
 function cellText(cell: Node): string {
-  return cell.textBetween(0, cell.content.size, '\n', (leaf) =>
+  const scrubbed = stripClipboardOmittedFromNode(cell, cell.type.schema);
+  return scrubbed.textBetween(0, scrubbed.content.size, '\n', (leaf) =>
     leaf.type.name === 'hardBreak' ? '\n' : '',
   );
 }
@@ -218,7 +228,7 @@ function selectionCoversAllTextOf($from: ResolvedPos, $to: ResolvedPos, depth: n
  * loop (fail-safe: under-peel falls back to the pre-existing full-structure
  * output).
  */
-function stripEnclosingMarkerWrappers(slice: Slice, state: EditorState): Slice {
+export function stripEnclosingMarkerWrappers(slice: Slice, state: EditorState): Slice {
   const selection = state.selection;
   if (!(selection instanceof TextSelection) || selection.empty) return slice;
   const { $from, $to } = selection;
@@ -340,7 +350,12 @@ class MdastClipboardSerializer extends DOMSerializer {
       try {
         const schema = fragment.firstChild?.type.schema ?? view.state.schema;
         const defaultSerializer = DOMSerializer.fromSchema(schema);
-        const wrapped = wrapAsTableFragment(fragment, schema);
+        // The default DOMSerializer would render comment spans (hidden but
+        // byte-carrying) into the cell payload — scrub before serializing.
+        const wrapped = wrapAsTableFragment(
+          stripClipboardOmittedFromFragment(fragment, schema),
+          schema,
+        );
         return defaultSerializer.serializeFragment(wrapped, { document }, target);
       } catch (err) {
         logSerializeFail({
@@ -405,7 +420,12 @@ class MdastClipboardSerializer extends DOMSerializer {
           slice = new SliceCtor(fragment, 0, 0);
         }
       }
-      const html = markdownToHtml(sliceToMarkdown(slice, schema, this.mdManager));
+      // Same omission semantics as the walker tier: the markdown tier is an
+      // external-facing text/html payload, so clipboard-omitted content is
+      // scrubbed before serialization.
+      const html = markdownToHtml(
+        sliceToMarkdown(stripClipboardOmitted(slice, schema), schema, this.mdManager),
+      );
       const frag = parseHtmlToDocumentFragment(html);
       if (target) {
         for (const child of Array.from(frag.childNodes)) target.appendChild(child);
@@ -588,8 +608,9 @@ function buildWalkerEnv(view: EditorView, mdManager: MarkdownManager): WalkerEnv
  * and whole-node doc slices (the walker's source-fallback) are unaffected by
  * the discard.
  *
- * Exported only for unit-test reach; the production caller is
- * `sliceToMarkdown` above.
+ * Production callers: `sliceToMarkdown` above and the copy/cut intercept
+ * (`handle-copy.ts`), which serializes the unscrubbed slice for the
+ * private OK clipboard flavor.
  */
 export function sliceToDocJson(slice: Slice, schema: Schema): JSONContent {
   let content = slice.content;

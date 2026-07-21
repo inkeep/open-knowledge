@@ -72,6 +72,7 @@ import { Fragment, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { type EditorState, TextSelection, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { PREVENT_AUTOLINK_META } from '../gfm-autolink-plugin.ts';
+import { OK_INTERNAL_CLIPBOARD_MIME } from './comment-scrub.ts';
 import { type ClipboardSource, detectSource } from './detect-source.ts';
 import {
   type ClipboardBranch,
@@ -178,6 +179,20 @@ function handleDropOrPaste(
         return true;
       }
     }
+  }
+
+  // Private OK flavor: an OK-origin copy whose slice contained
+  // clipboard-omitted content (comment annotations) carries the full
+  // slice markdown here, because every public flavor ships scrubbed (see
+  // comment-scrub.ts). Prefer it over the public flavors so OK→OK paste
+  // restores the annotation regardless of which branch shape the public
+  // payload would have taken. Runs after the shift/codeblock/lone-URL
+  // gates so those explicit gestures keep their meaning.
+  const internal = dt.getData(OK_INTERNAL_CLIPBOARD_MIME);
+  if (internal && tryBranchMarkdown(view, internal, deps, 'internal', source)) {
+    logSourceDetected({ view: 'wysiwyg', branch: 'internal', source });
+    logIfSlow(start, { op: surface, view: 'wysiwyg', branch: 'internal', source });
+    return true;
   }
 
   // Branch A: VS Code with language metadata.
@@ -372,7 +387,7 @@ function tryBranchMarkdown(
   view: EditorView,
   markdown: string,
   deps: PasteDispatcherDeps,
-  branchLabel: 'B' | 'E' | 'url',
+  branchLabel: 'B' | 'E' | 'url' | 'internal',
   source: ClipboardSource,
 ): boolean {
   let json: JSONContent;

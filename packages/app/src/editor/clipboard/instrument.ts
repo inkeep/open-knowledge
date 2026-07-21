@@ -154,6 +154,7 @@ export type ClipboardBranch =
   | 'D'
   | 'E'
   | 'url'
+  | 'internal'
   | 'shift'
   | 'codeblock'
   | 'serialize';

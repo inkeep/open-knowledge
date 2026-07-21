@@ -86,6 +86,7 @@ export const fakeClipboard = {
   html: { serializer: {}, setView: () => {} },
   paste: () => false,
   drop: () => false,
+  copy: () => false,
 } as unknown as ClipboardArg;
 
 export function seedFragmentParagraph(ydoc: Y.Doc, text: string): void {

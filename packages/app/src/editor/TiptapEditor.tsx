@@ -44,6 +44,7 @@ import { BubbleMenuBar } from './bubble-menu/BubbleMenuBar';
 import {
   createClipboardHtmlSerializer,
   createClipboardTextSerializer,
+  createCopyCutHandler,
   createHandleDrop,
   createHandlePaste,
 } from './clipboard/index.ts';
@@ -233,6 +234,11 @@ function buildClipboardState() {
     text: createClipboardTextSerializer({ mdManager }),
     html: createClipboardHtmlSerializer({ mdManager }),
     paste: createHandlePaste({ mdManager }),
+    // Copy/cut intercept: engages only when the copied slice contains
+    // clipboard-omitted content (comment annotations) — it then ships the
+    // scrubbed public flavors plus the private OK flavor that lets OK→OK
+    // paste restore the annotation. All other copies decline to PM native.
+    copy: createCopyCutHandler({ mdManager }),
     // Drop-side dispatcher mirrors paste so dragged text/HTML payloads
     // flow through the same branch tree (markdown-first tiebreak,
     // vscode-data, gfm, html, plaintext) instead of PM's default
@@ -491,6 +497,10 @@ function buildEditorOptions(args: BuildEditorOptionsArgs): Partial<EditorOptions
       clipboardSerializer: clipboard.html.serializer,
       handlePaste: (view, event) => clipboard.paste(view, event),
       handleDrop: createSidebarAwareHandleDrop(clipboard.drop, args.onSidebarDrop),
+      handleDOMEvents: {
+        copy: (view, event) => clipboard.copy(view, event as ClipboardEvent, false),
+        cut: (view, event) => clipboard.copy(view, event as ClipboardEvent, true),
+      },
     },
     // Wrap every extension's lifecycle hooks so each emits an
     // `ok/cold/ext-{name}-{hook}` span. PROD short-circuits to
