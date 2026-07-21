@@ -1,8 +1,645 @@
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 211acd6fc0923b393a9d2fa322c7690904c04ea1..52dce7a207bad14e8619faebe8f3e7b1a8cf5e1a 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -22,6 +22,11 @@ interface ViewOptions {
+     mermaidConfig?: Record<string, unknown>;
+     debounceMs?: number;
+     readOnly?: boolean;
++    /**
++     * Canvas pan/zoom: fit-to-canvas on first render, drag empty space to pan,
++     * ctrl/cmd+wheel (or trackpad pinch) to zoom, plus corner zoom controls.
++     */
++    panZoom?: boolean;
+     /** CSS color for selection/hover/ghost-edge chrome */
+     accentColor?: string;
+     /** kind of edge created by drag-to-connect */
+@@ -61,6 +66,11 @@ declare class MermaidCanvasView {
+     private plusMenu;
+     private hoveredLifeline;
+     private svg;
++    /** tracks external transforms on the svg (host pan/zoom toolbars) */
++    private svgTransformObserver;
++    private popoverFollowRaf;
++    /** which of an entity's twin elements the user clicked (popover anchor) */
++    private popoverAnchorPick;
+     private tool;
+     private readOnly;
+     private debounceMs;
+@@ -83,6 +93,17 @@ declare class MermaidCanvasView {
+     private pendingEditEntity;
+     private inPlaceSession;
+     private lastError;
++    /** a render was requested while an in-place edit was typing; applied on finish */
++    private renderHeldByEdit;
++    private panZoomEnabled;
++    private zoomScale;
++    private zoomTx;
++    private zoomTy;
++    /** the user panned/zoomed — keep their viewport across re-renders */
++    private hasUserView;
++    private svgSize;
++    private panSession;
++    private zoomControls;
+     /** per-instance staleness counter; a shared one would drop renders across instances */
+     private renderSeq;
+     constructor(options: ViewOptions);
+@@ -100,6 +121,15 @@ declare class MermaidCanvasView {
+     /** Add a node and immediately open its inline label editor. */
+     addNode(shape?: ShapeId, label?: string): void;
+     private scheduleRender;
++    private setupPanZoom;
++    /** zoom about the canvas center (used by the corner controls) */
++    zoomBy(factor: number): void;
++    private zoomAt;
++    /** scale + center the diagram to the canvas (the default view) */
++    fitView(): void;
++    private applyViewTransform;
++    /** pixel-size the fresh svg from its viewBox so the transform is the only scaling */
++    private prepareSvgForPanZoom;
+     render(): Promise<void>;
+     private bindSvg;
+     private entityFromEvent;
+@@ -108,6 +138,8 @@ declare class MermaidCanvasView {
+     /** topmost of the elements belonging to an entity (e.g. a participant's top box) */
+     private topmostEntityElement;
+     private onSvgClick;
++    /** position of `el` among all elements carrying this entity id (DOM order) */
++    private entityElementIndex;
+     private onSvgDblClick;
+     private onSvgPointerDown;
+     private entityElement;
+@@ -123,6 +155,8 @@ declare class MermaidCanvasView {
+      * restored.
+      */
+     private editInPlace;
++    /** non-narrowing accessor: render() re-reads the session after awaits */
++    private activeInPlaceSession;
+     /** re-attach a live in-place editing session after a render replaced the DOM */
+     private resumeInPlaceSession;
+     /**
+@@ -233,6 +267,7 @@ declare class Popover {
+         left: number;
+         top: number;
+         width: number;
++        height?: number;
+     }, actions: PopoverAction[]): void;
+     private togglePanel;
+     hide(): void;
 diff --git a/dist/index.js b/dist/index.js
-index 7bb142de61632addf365b5ad2416957f29a38016..516af0a3d480b0171f2bc99b5f0e28929e35f90a 100644
+index 7bb142de61632addf365b5ad2416957f29a38016..1b20b1dc1301323c5c2f23dd1ebfa2d137949ace 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -1317,13 +1317,17 @@ var MermaidCanvasView = class {
+@@ -460,6 +460,10 @@ var ICONS = {
+   ),
+   user: icon('<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
+   minus: icon('<path d="M5 12h14"/>'),
++  plus: icon('<path d="M5 12h14"/><path d="M12 5v14"/>'),
++  maximize: icon(
++    '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>'
++  ),
+   ellipsis: icon('<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>'),
+   chevronDown: icon('<path d="m6 9 6 6 6-6"/>')
+ };
+@@ -508,10 +512,22 @@ var Popover = class {
+       });
+       el.appendChild(btn);
+     }
+-    el.style.left = `${anchorRect.left + anchorRect.width / 2}px`;
+-    el.style.top = `${Math.max(anchorRect.top - 8, 34)}px`;
+     this.host.appendChild(el);
+     this.el = el;
++    const bounds = this.host.parentElement;
++    let centerX = anchorRect.left + anchorRect.width / 2;
++    const half = el.offsetWidth / 2;
++    if (bounds && bounds.clientWidth > el.offsetWidth + 8) {
++      centerX = Math.min(Math.max(centerX, half + 4 + bounds.scrollLeft), bounds.scrollLeft + bounds.clientWidth - half - 4);
++    }
++    el.style.left = `${centerX}px`;
++    const above = anchorRect.top - 8;
++    if (above - el.offsetHeight < 4) {
++      el.classList.add("mw-popover-below");
++      el.style.top = `${anchorRect.top + (anchorRect.height ?? 0) + 8}px`;
++    } else {
++      el.style.top = `${above}px`;
++    }
+   }
+   togglePanel(panel) {
+     if (this.panelEl) {
+@@ -571,6 +587,7 @@ var Popover = class {
+   }
+ };
+ var POPOVER_CSS = `
++.mw-popover.mw-popover-below { transform: translate(-50%, 0); }
+ .mw-popover {
+   position: absolute; z-index: 20; transform: translate(-50%, -100%);
+   display: flex; align-items: center; gap: 2px; padding: 4px;
+@@ -655,6 +672,16 @@ var BASE_CSS = `
+ .mw-canvas .mw-svg-host { user-select: none; -webkit-user-select: none; }
+ .mw-canvas .mw-svg-host { min-height: 100%; display: flex; align-items: flex-start; justify-content: center; padding: 16px; box-sizing: border-box; }
+ .mw-canvas svg { max-width: 100%; height: auto; }
++.mw-canvas.mw-panzoom { overflow: hidden; }
++.mw-canvas.mw-panzoom .mw-svg-host { position: absolute; inset: 0; display: block; padding: 0; min-height: 0; overflow: hidden; }
++.mw-canvas.mw-panzoom .mw-svg-host svg { position: absolute; left: 0; top: 0; max-width: none; height: auto; transform-origin: 0 0; }
++.mw-canvas.mw-panzoom .mw-svg-host { cursor: grab; }
++.mw-canvas.mw-panzoom.mw-panning .mw-svg-host { cursor: grabbing; }
++.mw-canvas.mw-panzoom [data-mw-entity] { cursor: pointer; }
++.mw-zoom-controls { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 4px; z-index: 6; }
++.mw-zoom-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border-radius: 7px; border: 1px solid var(--mw-chrome-border, rgba(128,128,128,.35)); background: var(--mw-chrome-bg, rgba(24,24,27,.92)); color: var(--mw-chrome-fg, #e4e4e7); cursor: pointer; }
++.mw-zoom-btn:hover { background: var(--mw-chrome-hover, rgba(63,63,70,.9)); }
++.mw-zoom-btn svg { width: 14px; height: 14px; }
+ .mw-canvas [data-mw-entity] { cursor: pointer; }
+ .mw-canvas.mw-readonly [data-mw-entity] { cursor: default; }
+ .mw-canvas.mw-tool-connect [data-mw-entity^="node:"] { cursor: crosshair; }
+@@ -687,6 +714,41 @@ var BASE_CSS = `
+ `;
+ var styleInjected = false;
+ var renderIdCounter = 0;
++function readLabelHtml(label) {
++  return (label.innerHTML ?? "").replace(/<br\s*\/?>/gi, "<br/>").trim();
++}
++function caretOffsetWithin(root) {
++  const sel = window.getSelection();
++  if (!sel?.anchorNode || !root.contains(sel.anchorNode)) return -1;
++  const range = document.createRange();
++  range.selectNodeContents(root);
++  range.setEnd(sel.anchorNode, sel.anchorOffset);
++  return range.toString().length;
++}
++function placeCaretAt(root, offset) {
++  const sel = window.getSelection();
++  if (!sel) return;
++  const range = document.createRange();
++  let remaining = Math.max(0, offset);
++  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
++  let node = walker.nextNode();
++  while (node) {
++    const len = node.textContent?.length ?? 0;
++    if (remaining <= len) {
++      range.setStart(node, remaining);
++      range.collapse(true);
++      sel.removeAllRanges();
++      sel.addRange(range);
++      return;
++    }
++    remaining -= len;
++    node = walker.nextNode();
++  }
++  range.selectNodeContents(root);
++  range.collapse(false);
++  sel.removeAllRanges();
++  sel.addRange(range);
++}
+ var MermaidCanvasView = class {
+   editor;
+   container;
+@@ -702,6 +764,11 @@ var MermaidCanvasView = class {
+   plusMenu = null;
+   hoveredLifeline = null;
+   svg = null;
++  /** tracks external transforms on the svg (host pan/zoom toolbars) */
++  svgTransformObserver = null;
++  popoverFollowRaf = 0;
++  /** which of an entity's twin elements the user clicked (popover anchor) */
++  popoverAnchorPick = null;
+   tool = "select";
+   readOnly;
+   debounceMs;
+@@ -724,6 +791,18 @@ var MermaidCanvasView = class {
+   pendingEditEntity = null;
+   inPlaceSession = null;
+   lastError = null;
++  /** a render was requested while an in-place edit was typing; applied on finish */
++  renderHeldByEdit = false;
++  // pan/zoom state (only used when options.panZoom is set)
++  panZoomEnabled;
++  zoomScale = 1;
++  zoomTx = 0;
++  zoomTy = 0;
++  /** the user panned/zoomed — keep their viewport across re-renders */
++  hasUserView = false;
++  svgSize = null;
++  panSession = null;
++  zoomControls = null;
+   /** per-instance staleness counter; a shared one would drop renders across instances */
+   renderSeq = 0;
+   constructor(options) {
+@@ -731,6 +810,7 @@ var MermaidCanvasView = class {
+     this.container = options.container;
+     this.mermaid = options.mermaid;
+     this.readOnly = options.readOnly ?? false;
++    this.panZoomEnabled = options.panZoom ?? false;
+     this.debounceMs = options.debounceMs ?? 200;
+     this.defaultEdge = options.defaultEdge ?? {};
+     this.hooks = options.hooks ?? {};
+@@ -762,6 +842,17 @@ var MermaidCanvasView = class {
+     const keydown = (e) => this.onKeyDown(e);
+     this.container.addEventListener("keydown", keydown);
+     this.disposers.push(() => this.container.removeEventListener("keydown", keydown));
++    const docPointerDown = (e) => {
++      const target = e.target;
++      if (!target || this.container.contains(target)) return;
++      this.inPlaceSession?.finish?.(true);
++      this.clearLifelineUi();
++      this.popover.hide();
++      if (this.editor.selection.length) this.editor.clearSelection("canvas");
++    };
++    document.addEventListener("pointerdown", docPointerDown, true);
++    this.disposers.push(() => document.removeEventListener("pointerdown", docPointerDown, true));
++    if (this.panZoomEnabled) this.setupPanZoom();
+     void this.render();
+   }
+   on(event, fn) {
+@@ -817,7 +908,168 @@ var MermaidCanvasView = class {
+     if (this.renderTimer) clearTimeout(this.renderTimer);
+     this.renderTimer = setTimeout(() => void this.render(), this.debounceMs);
+   }
++  // ----- pan / zoom -----
++  setupPanZoom() {
++    this.container.classList.add("mw-panzoom");
++    const onWheel = (e) => {
++      if (!e.ctrlKey && !e.metaKey) return;
++      e.preventDefault();
++      const delta = Math.max(-40, Math.min(40, e.deltaY));
++      this.zoomAt(e.clientX, e.clientY, Math.exp(-delta * 0.01));
++    };
++    this.container.addEventListener("wheel", onWheel, { passive: false });
++    this.disposers.push(() => this.container.removeEventListener("wheel", onWheel));
++    const onDown = (e) => {
++      if (e.button !== 0) return;
++      if (this.tool === "connect" || e.altKey) return;
++      if (this.inlineInput || this.inPlaceSession) return;
++      const target = e.target;
++      if (!target || !this.svgHost.contains(target)) return;
++      let el = target;
++      while (el && el !== this.container) {
++        if (el.getAttribute?.("data-mw-entity")) return;
++        el = el.parentElement;
++      }
++      this.panSession = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, tx: this.zoomTx, ty: this.zoomTy, moved: false };
++    };
++    const onMove = (e) => {
++      const pan = this.panSession;
++      if (!pan || e.pointerId !== pan.pointerId) return;
++      const dx = e.clientX - pan.x;
++      const dy = e.clientY - pan.y;
++      if (!pan.moved && Math.hypot(dx, dy) > 4) {
++        pan.moved = true;
++        this.container.classList.add("mw-panning");
++        try {
++          this.container.setPointerCapture(e.pointerId);
++        } catch {
++        }
++        this.popover.hide();
++      }
++      if (pan.moved) {
++        this.zoomTx = pan.tx + dx;
++        this.zoomTy = pan.ty + dy;
++        this.hasUserView = true;
++        this.applyViewTransform();
++      }
++    };
++    const onUp = (e) => {
++      const pan = this.panSession;
++      if (!pan || e.pointerId !== pan.pointerId) return;
++      this.panSession = null;
++      this.container.classList.remove("mw-panning");
++      if (pan.moved) {
++        this.suppressNextClick = true;
++        this.updatePopover();
++      }
++    };
++    this.container.addEventListener("pointerdown", onDown);
++    this.container.addEventListener("pointermove", onMove);
++    this.container.addEventListener("pointerup", onUp);
++    this.container.addEventListener("pointercancel", onUp);
++    this.disposers.push(() => {
++      this.container.removeEventListener("pointerdown", onDown);
++      this.container.removeEventListener("pointermove", onMove);
++      this.container.removeEventListener("pointerup", onUp);
++      this.container.removeEventListener("pointercancel", onUp);
++    });
++    const controls = document.createElement("div");
++    controls.className = "mw-zoom-controls";
++    const btn = (title, iconMarkup, fn) => {
++      const b = document.createElement("button");
++      b.type = "button";
++      b.className = "mw-zoom-btn";
++      b.title = title;
++      b.innerHTML = iconMarkup;
++      b.addEventListener("pointerdown", (e) => e.stopPropagation());
++      b.addEventListener("click", (e) => {
++        e.stopPropagation();
++        fn();
++      });
++      controls.appendChild(b);
++    };
++    btn("Zoom out", ICONS.minus, () => this.zoomBy(1 / 1.25));
++    btn("Zoom in", ICONS.plus, () => this.zoomBy(1.25));
++    btn("Fit diagram", ICONS.maximize, () => this.fitView());
++    this.container.appendChild(controls);
++    this.zoomControls = controls;
++    if (typeof ResizeObserver !== "undefined") {
++      const ro = new ResizeObserver(() => {
++        if (!this.hasUserView) this.fitView();
++      });
++      ro.observe(this.container);
++      this.disposers.push(() => ro.disconnect());
++    }
++  }
++  /** zoom about the canvas center (used by the corner controls) */
++  zoomBy(factor) {
++    const rect = this.container.getBoundingClientRect();
++    this.zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
++  }
++  zoomAt(clientX, clientY, factor) {
++    if (!this.panZoomEnabled) return;
++    const rect = this.container.getBoundingClientRect();
++    const px = clientX - rect.left;
++    const py = clientY - rect.top;
++    const next = Math.min(Math.max(this.zoomScale * factor, 0.1), 4);
++    const k = next / this.zoomScale;
++    if (k === 1) return;
++    this.zoomTx = px - (px - this.zoomTx) * k;
++    this.zoomTy = py - (py - this.zoomTy) * k;
++    this.zoomScale = next;
++    this.hasUserView = true;
++    this.applyViewTransform();
++    this.updatePopover();
++  }
++  /** scale + center the diagram to the canvas (the default view) */
++  fitView() {
++    if (!this.panZoomEnabled || !this.svg || !this.svgSize) return;
++    const cw = this.container.clientWidth;
++    const ch = this.container.clientHeight;
++    if (!cw || !ch) return;
++    const pad = 28;
++    const { width, height } = this.svgSize;
++    const s = Math.min((cw - pad * 2) / width, (ch - pad * 2) / height);
++    this.zoomScale = Math.min(Math.max(s, 0.1), 2);
++    this.zoomTx = (cw - width * this.zoomScale) / 2;
++    this.zoomTy = (ch - height * this.zoomScale) / 2;
++    this.hasUserView = false;
++    this.applyViewTransform();
++    this.updatePopover();
++  }
++  applyViewTransform() {
++    if (!this.svg) return;
++    this.svg.style.transform = `translate(${this.zoomTx}px, ${this.zoomTy}px) scale(${this.zoomScale})`;
++  }
++  /** pixel-size the fresh svg from its viewBox so the transform is the only scaling */
++  prepareSvgForPanZoom() {
++    const svg = this.svg;
++    if (!svg) return;
++    let width = 0;
++    let height = 0;
++    const vb = svg.viewBox?.baseVal;
++    if (vb && vb.width && vb.height) {
++      width = vb.width;
++      height = vb.height;
++    } else {
++      const bb = svg.getBBox?.();
++      width = bb?.width || 800;
++      height = bb?.height || 600;
++    }
++    this.svgSize = { width, height };
++    svg.removeAttribute("width");
++    svg.removeAttribute("height");
++    svg.style.width = `${width}px`;
++    svg.style.height = `${height}px`;
++    svg.style.maxWidth = "none";
++    if (this.hasUserView) this.applyViewTransform();
++    else this.fitView();
++  }
+   async render() {
++    if (this.inPlaceSession) {
++      this.renderHeldByEdit = true;
++      return;
++    }
+     const code = this.editor.code;
+     if (code === this.lastRenderedCode) {
+       if (this.lastError) {
+@@ -833,19 +1085,30 @@ var MermaidCanvasView = class {
+     try {
+       const { svg } = await this.mermaid.render(id, code);
+       if (seq !== this.renderSeq) return;
++      let liveEdit = null;
++      const midFlightSession = this.activeInPlaceSession();
++      const editingLabel = midFlightSession?.label;
++      if (midFlightSession && editingLabel?.isConnected) {
++        liveEdit = { value: readLabelHtml(editingLabel), caret: caretOffsetWithin(editingLabel) };
++        if (midFlightSession.liveTimer) {
++          clearTimeout(midFlightSession.liveTimer);
++          midFlightSession.liveTimer = null;
++        }
++      }
+       this.lastRenderedCode = code;
+       this.lastError = null;
+       this.errorBadge.style.display = "none";
+       this.svgHost.innerHTML = svg;
+       this.svg = this.svgHost.querySelector("svg");
+       if (this.svg) {
+-        this.svg.style.maxWidth = "100%";
++        if (this.panZoomEnabled) this.prepareSvgForPanZoom();
++        else this.svg.style.maxWidth = "100%";
+         this.bindSvg();
+       }
+       this.editor.setDiagnostics([]);
+       this.emit("render", { ok: true });
+-      if (this.inPlaceSession) {
+-        this.resumeInPlaceSession();
++      if (this.activeInPlaceSession()) {
++        this.resumeInPlaceSession(liveEdit);
+       } else if (this.pendingEditEntity) {
+         const entity = this.pendingEditEntity;
+         this.pendingEditEntity = null;
+@@ -880,6 +1143,22 @@ var MermaidCanvasView = class {
+       svg.addEventListener("pointermove", (e) => this.onLifelineHover(e));
+       svg.addEventListener("pointerleave", () => this.scheduleLifelineClear());
+     }
++    this.svgTransformObserver?.disconnect();
++    if (typeof MutationObserver !== "undefined") {
++      this.svgTransformObserver = new MutationObserver(() => {
++        if (this.popoverFollowRaf || !this.popover.isOpen) return;
++        const schedule = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
++        this.popoverFollowRaf = schedule(() => {
++          this.popoverFollowRaf = 0;
++          this.updatePopover();
++        });
++      });
++      this.svgTransformObserver.observe(svg, {
++        attributes: true,
++        attributeFilter: ["style", "transform"],
++        subtree: true
++      });
++    }
+     this.applySelectionStyles();
+   }
+   entityFromEvent(e) {
+@@ -914,20 +1193,30 @@ var MermaidCanvasView = class {
+       return;
+     }
+     if (this.inlineInput || this.inPlaceSession) return;
+-    const entity = this.entityFromEvent(e);
+-    if (entity) {
++    const hit = this.entityHitFromEvent(e);
++    if (hit) {
++      const entity = hit.id;
+       this.hooks.onEntityClick?.(entity, e);
++      this.popoverAnchorPick = { entityId: entity, index: this.entityElementIndex(entity, hit.el) };
+       if (e.shiftKey || e.metaKey || e.ctrlKey) {
+         const sel = this.editor.selection.includes(entity) ? this.editor.selection.filter((s) => s !== entity) : [...this.editor.selection, entity];
+         this.editor.setSelection(sel, "canvas");
+       } else {
+         this.editor.setSelection([entity], "canvas");
++        this.updatePopover();
+       }
+       this.container.focus({ preventScroll: true });
+     } else {
+       this.editor.clearSelection("canvas");
+     }
+   }
++  /** position of `el` among all elements carrying this entity id (DOM order) */
++  entityElementIndex(entityId, el) {
++    if (!this.svg) return 0;
++    const els = [...this.svg.querySelectorAll(`[data-mw-entity="${CSS.escape(entityId)}"]`)];
++    const index = els.indexOf(el);
++    return index >= 0 ? index : 0;
++  }
+   onSvgDblClick(e) {
+     if (this.readOnly) return;
+     const memberEl = e.target.closest?.("[data-mw-member-line]");
+@@ -1098,6 +1387,9 @@ var MermaidCanvasView = class {
+     if (this.readOnly) return;
+     const { flowchart, sequence } = this.editor.result;
+     this.closeInlineEditor(false);
++    if (this.inPlaceSession && this.inPlaceSession.entityId !== entityId) {
++      this.inPlaceSession.finish?.(true);
++    }
+     this.popover.hide();
+     const hint = anchorHint && anchorHint.getAttribute("data-mw-entity") === entityId ? anchorHint : null;
+     let anchor = null;
+@@ -1210,6 +1502,10 @@ var MermaidCanvasView = class {
+     const label = anchor.matches?.(labelSelector) ? anchor.querySelector("p") ?? anchor : anchor.querySelector(`${labelSelector} p`) ?? anchor.querySelector(labelSelector);
+     if (!label || !(label instanceof HTMLElement)) return false;
+     const resuming = this.inPlaceSession?.entityId === entityId;
++    if (resuming && this.inPlaceSession.label === label && label.isConnected) {
++      label.focus();
++      return true;
++    }
+     if (!resuming) {
+       this.inPlaceSession = {
+         entityId,
+@@ -1218,31 +1514,36 @@ var MermaidCanvasView = class {
+         lastCommitted: current,
+         caretOffset: -1,
+         commitValue,
+-        liveTimer: null
++        liveTimer: null,
++        label: null,
++        finish: null
+       };
+     }
+     const session = this.inPlaceSession;
++    session.label = label;
+     label.setAttribute("contenteditable", "true");
++    const clipHost = label.closest("foreignObject");
++    const prevWhiteSpace = label.style.whiteSpace;
++    const prevClipOverflow = clipHost?.style.overflow ?? "";
++    label.style.whiteSpace = "nowrap";
++    if (clipHost) clipHost.style.overflow = "visible";
+     label.focus();
+-    const selection = window.getSelection();
+-    const range = document.createRange();
+-    if (resuming && session.caretOffset >= 0 && label.firstChild) {
+-      const textNode = label.firstChild;
+-      const len = textNode.textContent?.length ?? 0;
+-      range.setStart(textNode, Math.min(session.caretOffset, len));
+-      range.collapse(true);
++    if (resuming && session.caretOffset >= 0) {
++      placeCaretAt(label, session.caretOffset);
+     } else {
++      const selection = window.getSelection();
++      const range = document.createRange();
+       range.selectNodeContents(label);
++      selection?.removeAllRanges();
++      selection?.addRange(range);
+     }
+-    selection?.removeAllRanges();
+-    selection?.addRange(range);
+     const rememberCaret = () => {
+-      const sel = window.getSelection();
+-      if (sel && sel.anchorNode && label.contains(sel.anchorNode)) session.caretOffset = sel.anchorOffset;
++      const offset = caretOffsetWithin(label);
++      if (offset >= 0) session.caretOffset = offset;
+     };
+     const liveCommit = () => {
+       if (this.inPlaceSession !== session) return;
+-      const value = (label.textContent ?? "").trim();
++      const value = readLabelHtml(label);
+       if (!value || value === session.lastCommitted) return;
+       rememberCaret();
+       session.lastCommitted = value;
+@@ -1253,16 +1554,22 @@ var MermaidCanvasView = class {
+       this.inPlaceSession = null;
+       if (session.liveTimer) clearTimeout(session.liveTimer);
+       label.removeAttribute("contenteditable");
++      label.style.whiteSpace = prevWhiteSpace;
++      if (clipHost) clipHost.style.overflow = prevClipOverflow;
+       label.removeEventListener("keydown", onKey);
+       label.removeEventListener("blur", onBlur);
+       label.removeEventListener("input", onInput);
+-      const value = (label.textContent ?? "").trim();
++      const value = readLabelHtml(label);
+       if (commit) {
+         if (value && value !== session.lastCommitted) session.commitValue(value);
+         else if (!value) label.textContent = session.lastCommitted;
+       } else {
++        label.innerHTML = session.original;
+         if (session.lastCommitted !== session.original) session.commitValue(session.original);
+-        else label.textContent = session.original;
++      }
++      if (this.renderHeldByEdit) {
++        this.renderHeldByEdit = false;
++        this.scheduleRender();
+       }
+       this.updatePopover();
+     };
+@@ -1287,13 +1594,18 @@ var MermaidCanvasView = class {
+         }
+       }, 60);
+     };
++    session.finish = finish;
+     label.addEventListener("keydown", onKey);
+     label.addEventListener("blur", onBlur);
+     label.addEventListener("input", onInput);
+     return true;
+   }
++  /** non-narrowing accessor: render() re-reads the session after awaits */
++  activeInPlaceSession() {
++    return this.inPlaceSession;
++  }
+   /** re-attach a live in-place editing session after a render replaced the DOM */
+-  resumeInPlaceSession() {
++  resumeInPlaceSession(liveEdit) {
+     const session = this.inPlaceSession;
+     if (!session) return;
+     if (!this.editor.entityExists(session.entityId)) {
+@@ -1306,6 +1618,13 @@ var MermaidCanvasView = class {
+       return;
+     }
+     this.editInPlace(session.entityId, anchor, session.labelSelector, session.lastCommitted, session.commitValue);
++    const label = this.inPlaceSession === session ? session.label : null;
++    if (!label || !liveEdit) return;
++    if (liveEdit.value && liveEdit.value !== session.lastCommitted && liveEdit.value !== readLabelHtml(label)) {
++      label.innerHTML = liveEdit.value;
++      label.dispatchEvent(new Event("input"));
++    }
++    if (liveEdit.caret >= 0) placeCaretAt(label, liveEdit.caret);
+   }
+   /**
+    * Seamless in-place editing for targets that can't be contenteditable
+@@ -1317,13 +1636,17 @@ var MermaidCanvasView = class {
    findTextTarget(anchor, current) {
      const isLeafText = (el) => (el.tagName === "text" || el.tagName === "SPAN" || el.tagName === "P" || el.tagName === "DIV" || el.tagName === "tspan") && (el.children.length === 0 || el.tagName === "text") && (el.textContent?.trim().length ?? 0) > 0;
      if (isLeafText(anchor)) return anchor;
@@ -22,12 +659,68 @@ index 7bb142de61632addf365b5ad2416957f29a38016..516af0a3d480b0171f2bc99b5f0e2892
      const div = document.createElement("div");
      div.className = "mw-inplace-editor";
      div.contentEditable = "true";
-@@ -1339,7 +1343,7 @@ var MermaidCanvasView = class {
+@@ -1337,9 +1660,11 @@ var MermaidCanvasView = class {
+     div.style.lineHeight = `${Math.max(box.height, 12)}px`;
+     div.style.fontStyle = cs.fontStyle;
      div.style.fontWeight = cs.fontWeight;
-     div.style.fontSize = cs.fontSize;
+-    div.style.fontSize = cs.fontSize;
++    const zoom = this.panZoomEnabled ? this.zoomScale : 1;
++    const basePx = Number.parseFloat(cs.fontSize);
++    div.style.fontSize = Number.isFinite(basePx) ? `${basePx * zoom}px` : cs.fontSize;
      div.style.fontFamily = cs.fontFamily;
 -    const fill = cs.fill && cs.fill !== "none" && anchor instanceof SVGElement ? cs.fill : cs.color;
 +    const fill = cs.fill && cs.fill !== "none" && paintSource instanceof SVGElement ? cs.fill : cs.color;
      div.style.color = fill || "inherit";
      this.overlayHost.appendChild(div);
      this.inlineInput = div;
+@@ -1435,15 +1760,21 @@ var MermaidCanvasView = class {
+     const sel = this.editor.selection;
+     if (sel.length !== 1 || !this.svg) return;
+     const id = sel[0];
++    const els = [...this.svg.querySelectorAll(`[data-mw-entity="${CSS.escape(id)}"]`)];
+     let anchor = null;
+-    let anchorTop = Infinity;
+-    this.svg.querySelectorAll(`[data-mw-entity="${CSS.escape(id)}"]`).forEach((el) => {
+-      const top = el.getBoundingClientRect().top;
+-      if (top < anchorTop) {
+-        anchorTop = top;
+-        anchor = el;
++    const pick = this.popoverAnchorPick;
++    if (pick && pick.entityId === id && els[pick.index]) {
++      anchor = els[pick.index];
++    } else {
++      let anchorTop = Infinity;
++      for (const el of els) {
++        const top = el.getBoundingClientRect().top;
++        if (top < anchorTop) {
++          anchorTop = top;
++          anchor = el;
++        }
+       }
+-    });
++    }
+     if (!anchor) return;
+     const actions = this.actionsFor(id);
+     if (!actions.length) return;
+@@ -2088,15 +2419,20 @@ var MermaidCanvasView = class {
+   destroy() {
+     if (this.renderTimer) clearTimeout(this.renderTimer);
+     if (this.lifelineClearTimer) clearTimeout(this.lifelineClearTimer);
++    if (this.inPlaceSession?.liveTimer) clearTimeout(this.inPlaceSession.liveTimer);
++    this.inPlaceSession = null;
++    this.svgTransformObserver?.disconnect();
++    this.svgTransformObserver = null;
+     this.disposers.forEach((d) => d());
+     this.closeInlineEditor(false);
+     this.cancelConnect();
+     this.clearLifelineUi();
+     this.popover.hide();
+-    this.container.classList.remove("mw-canvas", "mw-tool-connect", "mw-readonly");
++    this.container.classList.remove("mw-canvas", "mw-tool-connect", "mw-readonly", "mw-panzoom", "mw-panning");
+     this.svgHost.remove();
+     this.overlayHost.remove();
+     this.errorBadge.remove();
++    this.zoomControls?.remove();
+   }
+ };
+ export {

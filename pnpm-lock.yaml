@@ -123,7 +123,7 @@ patchedDependencies:
     hash: a6b60cc8640e04973be2c8123e0dbd73156b54388a57cd2b76191c2fd8ac2865
     path: patches/@handlewithcare%2Fremark-prosemirror@0.1.5.patch
   '@inkeep/mermaid-wysiwyg-dom@0.1.0':
-    hash: b7fe12323abf5b250573f5440f1abf7cf81e34359213d41c21388a4474ab451a
+    hash: e1e3cd09ba940870d38765f74f33c1d0d582004731630c8bb807201d38ee81c9
     path: patches/@inkeep%2Fmermaid-wysiwyg-dom@0.1.0.patch
   '@pierre/trees@1.0.0-beta.4':
     hash: 86ac804ac75d9f365ee9ef918460463a211ac5201ebc3cf04fc0534c5b3adf88
@@ -388,7 +388,7 @@ importers:
         version: 0.1.0
       '@inkeep/mermaid-wysiwyg-dom':
         specifier: ^0.1.0
-        version: 0.1.0(patch_hash=b7fe12323abf5b250573f5440f1abf7cf81e34359213d41c21388a4474ab451a)
+        version: 0.1.0(patch_hash=e1e3cd09ba940870d38765f74f33c1d0d582004731630c8bb807201d38ee81c9)
       '@inkeep/open-knowledge-core':
         specifier: workspace:*
         version: link:../core
@@ -12804,7 +12804,7 @@ snapshots:
 
   '@inkeep/mermaid-wysiwyg-core@0.1.0': {}
 
-  '@inkeep/mermaid-wysiwyg-dom@0.1.0(patch_hash=b7fe12323abf5b250573f5440f1abf7cf81e34359213d41c21388a4474ab451a)':
+  '@inkeep/mermaid-wysiwyg-dom@0.1.0(patch_hash=e1e3cd09ba940870d38765f74f33c1d0d582004731630c8bb807201d38ee81c9)':
     dependencies:
       '@inkeep/mermaid-wysiwyg-core': 0.1.0
 

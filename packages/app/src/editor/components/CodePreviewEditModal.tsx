@@ -130,11 +130,13 @@ export interface CodePreviewEditModalProps {
   /** Optional one-line subtitle under the title (e.g. "Cmd+Enter saves"). */
   description?: string;
   /**
-   * Live preview slot — receives the debounced draft. Omit for nodes
+   * Live preview slot — receives the debounced draft plus a writer for
+   * preview-originated edits (e.g. Mermaid WYSIWYG gestures on the
+   * rendered diagram commit back into the source draft). Omit for nodes
    * that don't have a meaningful preview-while-editing surface; the
    * modal then renders as a single-pane source editor.
    */
-  renderPreview?: (debouncedValue: string) => ReactNode;
+  renderPreview?: (debouncedValue: string, setValue: (value: string) => void) => ReactNode;
   /**
    * Debounce ms before the preview receives the latest draft. Default
    * 300 — fast enough to feel live, slow enough to not thrash an
@@ -320,6 +322,33 @@ export function CodePreviewEditModal({
     onOpenChange(false);
   };
 
+  // Preview-originated edits (Mermaid WYSIWYG gestures) write back into the
+  // source draft. The preview reflects immediately — a committed gesture is
+  // already "settled", so it skips the keystroke debounce — and an effect
+  // replaces the CodeMirror doc as a single history step so Cmd/Ctrl+Z in the
+  // source pane walks canvas edits too. The effect indirection keeps the
+  // `viewRef` read out of anything callable during render (React Compiler
+  // rejects ref access reachable from the render path).
+  const [previewEdit, setPreviewEdit] = useState<{ value: string } | null>(null);
+  useEffect(() => {
+    if (!previewEdit) return;
+    const view = viewRef.current;
+    if (view && view.state.doc.toString() !== previewEdit.value) {
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: previewEdit.value },
+      });
+    }
+  }, [previewEdit]);
+  const applyPreviewEdit = (next: string) => {
+    // no-op on same value locally, rather than leaning on the canvas not
+    // re-emitting an unchanged chart — keeps redundant CodeMirror history
+    // steps out of the pipeline regardless of caller behavior
+    if (next === draft) return;
+    setDraft(next);
+    setDebouncedDraft(next);
+    setPreviewEdit({ value: next });
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -364,7 +393,7 @@ export function CodePreviewEditModal({
               className="min-h-[260px] flex-1 overflow-auto rounded-md border border-border bg-muted/30 md:min-h-0"
               data-testid="ok-code-preview-edit-modal-preview"
             >
-              {renderPreview(debouncedDraft)}
+              {renderPreview(debouncedDraft, applyPreviewEdit)}
             </div>
           ) : null}
         </div>

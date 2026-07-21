@@ -16,10 +16,10 @@
  * handler, a path jsdom's synthetic event doesn't drive.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { EditorView } from '@codemirror/view';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
+import { afterEach, describe, expect, test } from 'vitest';
 import { CodePreviewEditModal } from './CodePreviewEditModal';
 
 // jsdom preload exposes Element / MutationObserver but not NodeFilter; Radix's
@@ -56,7 +56,7 @@ afterEach(() => {
  */
 function Harness(props: {
   initialValue?: string;
-  renderPreview?: (value: string) => React.ReactNode;
+  renderPreview?: (value: string, setValue: (value: string) => void) => React.ReactNode;
   onSave: (value: string) => void;
   initialOpen?: boolean;
 }) {
@@ -150,6 +150,68 @@ describe('CodePreviewEditModal', () => {
     // the debounce timer having to fire.
     const preview = await screen.findByTestId('ok-code-preview-edit-modal-preview');
     expect(preview.textContent ?? '').toContain('<p>hello</p>');
+    expect(saved).toBeNull();
+  });
+
+  test('preview-originated edits write back into the draft and commit on Save', async () => {
+    // The Mermaid WYSIWYG canvas in the preview slot commits gestures
+    // through the `setValue` argument; the modal must fold those into the
+    // same draft that Save persists. Assert via the Save round-trip (jsdom
+    // doesn't render CodeMirror's virtual lines into queryable DOM text).
+    let saved: string | null = null;
+    render(
+      <Harness
+        onSave={(v) => {
+          saved = v;
+        }}
+        renderPreview={(value, setValue) => (
+          <div>
+            <div data-testid="preview-value">{value}</div>
+            <button type="button" onClick={() => setValue('<p>from-canvas</p>')}>
+              preview-edit
+            </button>
+          </div>
+        )}
+      />,
+    );
+    const btn = await screen.findByRole('button', { name: 'preview-edit' });
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+    // The preview re-renders with the committed value immediately — a
+    // settled gesture skips the keystroke debounce.
+    await waitFor(() => {
+      expect(screen.getByTestId('preview-value').textContent).toBe('<p>from-canvas</p>');
+    });
+    const save = screen.getByRole('button', { name: /save/i });
+    fireEvent.click(save);
+    await waitFor(() => {
+      expect(saved).toBe('<p>from-canvas</p>');
+    });
+  });
+
+  test('Cancel after a preview-originated edit still discards (onSave not called)', async () => {
+    let saved: string | null = null;
+    render(
+      <Harness
+        onSave={(v) => {
+          saved = v;
+        }}
+        renderPreview={(_value, setValue) => (
+          <button type="button" onClick={() => setValue('<p>canvas-edit</p>')}>
+            preview-edit
+          </button>
+        )}
+      />,
+    );
+    const btn = await screen.findByRole('button', { name: 'preview-edit' });
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    await waitFor(() => {
+      expect(screen.queryByTestId('ok-code-preview-edit-modal-body')).toBeNull();
+    });
     expect(saved).toBeNull();
   });
 

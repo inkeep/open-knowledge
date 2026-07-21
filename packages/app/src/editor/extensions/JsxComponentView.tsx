@@ -1435,7 +1435,7 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
           }
           language={editableSource.language}
           title={t`Edit ${descriptor.displayName ?? descriptor.name} source`}
-          renderPreview={(value) => {
+          renderPreview={(value, setValue) => {
             const Component = descriptor.Component;
             // Spread the *sanitized* `renderProps` (post
             // `extractPrimitiveProps` → `sanitizeComponentProps` →
@@ -1452,8 +1452,14 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
             const previewProps = {
               ...renderProps,
               [editableSource.propName]: value,
+              // The modal preview mounts outside any JsxComponentHost, so
+              // MermaidView's host-derived editability is unavailable — an
+              // explicit binding keeps the diagram fully WYSIWYG here, with
+              // gestures committing into the modal draft (Save persists,
+              // Cancel discards, same as typed edits).
               ...(descriptor.name === 'MermaidFence' && {
                 className: 'border-0 bg-transparent rounded-none',
+                editBinding: { canEdit: editor.isEditable, commitChart: setValue },
               }),
             };
 
