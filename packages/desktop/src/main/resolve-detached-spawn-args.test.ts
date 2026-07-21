@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   type ResolveDetachedSpawnArgsInput,
   resolveDetachedSpawnArgs,
@@ -150,6 +150,7 @@ describe('resolveDetachedSpawnArgs', () => {
   test('args invoke the bundled CLI with start + content-asset serving + the react shell dist dir', () => {
     const { args } = resolveDetachedSpawnArgs(makeInput());
     expect(args).toEqual([
+      '--max-old-space-size=16384',
       `${PARENT_APP}/Contents/Resources/app.asar.unpacked/dist/cli.mjs`,
       'start',
       '--serve-content-assets',
@@ -170,6 +171,7 @@ describe('resolveDetachedSpawnArgs', () => {
       }),
     );
     expect(args).toEqual([
+      '--max-old-space-size=16384',
       `${PARENT_APP}/Contents/Resources/app.asar.unpacked/dist/cli.mjs`,
       'start',
       '--serve-content-assets',

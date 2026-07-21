@@ -167,6 +167,9 @@ export function resolveDetachedSpawnArgs(
   // for the normal project-open spawn (no `projectDir` passed).
   const projectRoot = projectDir ?? contentDir;
   const args = [
+    // This must precede the CLI entrypoint so Electron-as-Node parses it as a
+    // V8 option instead of forwarding it to Commander as an application flag.
+    '--max-old-space-size=16384',
     bundleCliMjsPath,
     'start',
     '--serve-content-assets',
