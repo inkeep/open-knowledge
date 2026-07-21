@@ -23,6 +23,7 @@ import { isLinkIndexExcludedDoc } from './cc1-broadcast.ts';
 import { getLocalDir } from './config/paths.ts';
 import type { ContentFilter } from './content-filter.ts';
 import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
+import { instrumentIndexRebuild } from './index-telemetry.ts';
 import { readMarkdownLinkAt, readWikiLinkAt } from './link-syntax.ts';
 import { getLogger } from './logger.ts';
 import { toPosix } from './path-utils.ts';
@@ -1626,6 +1627,10 @@ export class BacklinkIndex {
    * `reconcileWithDisk` path takes the same shape.
    */
   async rebuildFromDisk(branch = this.activeBranch): Promise<void> {
+    return instrumentIndexRebuild('backlink', 'full', () => this.rebuildFromDiskUnspanned(branch));
+  }
+
+  private async rebuildFromDiskUnspanned(branch: string): Promise<void> {
     const state = createEmptyState();
     const mtimes = new Map<string, number>();
     const rawDocs: Array<{ docName: string; filePath: string }> = [];
@@ -1763,6 +1768,24 @@ export class BacklinkIndex {
      * snapshot entry. Feeds the boot-time deleted-while-down tombstoning,
      * which applies its own doc-kind filters at the populate site.
      */
+    deletedDocNames: string[];
+  }> {
+    return instrumentIndexRebuild(
+      'backlink',
+      'reconcile',
+      () => this.reconcileWithDiskUnspanned(branch),
+      (diff) => ({
+        'index.added': diff.added,
+        'index.updated': diff.updated,
+        'index.deleted': diff.deleted,
+      }),
+    );
+  }
+
+  private async reconcileWithDiskUnspanned(branch: string): Promise<{
+    added: number;
+    updated: number;
+    deleted: number;
     deletedDocNames: string[];
   }> {
     if (!existsSync(this.contentDir))

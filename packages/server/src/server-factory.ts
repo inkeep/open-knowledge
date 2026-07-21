@@ -966,7 +966,9 @@ export function createServer(options: ServerOptions): ServerInstance {
   // Debounced saveToDisk for watcher-event paths. Collapses bursts (e.g. a git
   // clone landing many files) into a single write. Startup and branch-switch
   // paths call backlinkIndex.saveToDisk() directly — those are deliberate
-  // full-state transitions that should not be deferred.
+  // full-state transitions that should not be deferred. The tag snapshot
+  // rides the same debounce: every scheduleSaveToDisk call site pairs with a
+  // tagIndex mutation on the same disk event.
   const BACKLINK_SAVE_DEBOUNCE_MS = 2000;
   let backlinkSaveTimer: ReturnType<typeof setTimeout> | null = null;
   function scheduleSaveToDisk(): void {
@@ -975,6 +977,9 @@ export function createServer(options: ServerOptions): ServerInstance {
       backlinkSaveTimer = null;
       void backlinkIndex.saveToDisk().catch((err) => {
         getLogger('backlinks').warn({ err }, 'Failed to persist debounced cache');
+      });
+      void tagIndex.saveToDisk().catch((err) => {
+        getLogger('tag-index').warn({ err }, 'Failed to persist debounced tag snapshot');
       });
     }, BACKLINK_SAVE_DEBOUNCE_MS);
   }
@@ -1149,15 +1154,23 @@ export function createServer(options: ServerOptions): ServerInstance {
       },
     });
     backlinkIndex = new BacklinkIndex({ projectDir, contentDir, contentFilter });
-    tagIndex = new TagIndex({ contentDir, contentFilter });
+    tagIndex = new TagIndex({ projectDir, contentDir, contentFilter });
     // Boot-time scan, fire-and-forget: the factory itself is synchronous.
-    // `initAsync` awaits a second `init()` after the watcher starts; TagIndex
-    // serializes the two internally, so by the time `ready` resolves the
+    // Warm start restores the persisted snapshot and mtime-reconciles offline
+    // changes; cold start (no/corrupt snapshot) falls back to the full scan.
+    // `initAsync` awaits a reconcile after the watcher starts; TagIndex
+    // serializes the passes internally, so by the time `ready` resolves the
     // index reflects disk.
-    void tagIndex.init().catch((err) => {
+    void (async () => {
+      if (await tagIndex.loadFromDisk()) {
+        await tagIndex.reconcileWithDisk();
+      } else {
+        await tagIndex.init();
+      }
+    })().catch((err) => {
       getLogger('server-factory').warn(
         { err },
-        '[server-factory] tag-index init failed; continuing with empty index',
+        '[server-factory] tag-index warm boot failed; continuing with empty index',
       );
     });
 
@@ -2609,6 +2622,17 @@ export function createServer(options: ServerOptions): ServerInstance {
         backlinkSaveTimer = null;
       }
 
+      // Close tag-index persistence: queued scans/saves become no-ops from
+      // here, so a fire-and-forget snapshot save from the boot path can't
+      // recreate files under `.ok/` while a caller tears the state dir down.
+      // Deliberately NOT awaited: this whole destroy runs under boot.ts's 5s
+      // per-step budget (destroyHocuspocus), and draining a boot-busy chain
+      // here stacks on top of the ready-wait below and blows that budget on
+      // slow machines. The synchronous flag flip is the load-bearing part;
+      // an already-in-flight write finishes long before callers reach their
+      // post-destroy cleanup.
+      void tagIndex.close();
+
       // Flush the removal journal synchronously — a tombstone recorded just
       // before shutdown must survive the restart or a reconnecting stale
       // client resurrects the doc. Failure feeds `phaseErrors`: this flush is
@@ -3583,19 +3607,27 @@ export function createServer(options: ServerOptions): ServerInstance {
             );
           }
         }
-        // Re-init tagIndex once the watcher has settled. The earlier `init()`
-        // in the synchronous boot path covers the cold-start case; this second
-        // pass picks up any disk content that landed between constructor time
-        // and watcher startup (rare, but cheap to cover). Isolated in its own
-        // try/catch so a failed tag scan degrades tag search only — letting it
-        // reach the outer catch would skip the basename-index seed below and
-        // misreport a healthy watcher as `file-watcher` in `degraded[]`.
+        // Reconcile tagIndex once the watcher has settled. The warm-boot pass
+        // in the synchronous boot path covers the snapshot restore / cold
+        // scan; this second pass is a cheap stat-only sweep that picks up any
+        // disk content that landed between constructor time and watcher
+        // startup (rare, but cheap to cover), then persists the snapshot for
+        // the next boot. Isolated in its own try/catch so a failed tag scan
+        // degrades tag search only — letting it reach the outer catch would
+        // skip the basename-index seed below and misreport a healthy watcher
+        // as `file-watcher` in `degraded[]`.
         try {
-          await tagIndex.init();
+          const tagDiff = await tagIndex.reconcileWithDisk();
+          if (tagDiff.added > 0 || tagDiff.updated > 0 || tagDiff.deleted > 0) {
+            log.info(tagDiff, '[tag-index] startup reconcile: offline changes applied');
+          }
+          void tagIndex.saveToDisk().catch((err) => {
+            getLogger('tag-index').warn({ err }, 'Failed to persist startup tag snapshot');
+          });
         } catch (err) {
           log.error(
             { err },
-            '[tag-index] startup re-init failed; tag index updates incrementally via watcher events',
+            '[tag-index] startup reconcile failed; tag index updates incrementally via watcher events',
           );
           degraded.push('tag-index');
         }
@@ -3980,9 +4012,29 @@ export function createServer(options: ServerOptions): ServerInstance {
               );
             }
             // TagIndex is branch-agnostic but its source-of-truth is the
-            // contentDir that just changed underneath it. Re-scanning here
-            // is the only way the index reflects the new branch's tags.
-            await tagIndex.init();
+            // contentDir that just changed underneath it. The checkout
+            // rewrote changed files' mtimes, so a reconcile re-parses exactly
+            // the docs that differ between branches instead of the whole
+            // corpus; a failed reconcile falls back to the full scan so the
+            // index never silently keeps the old branch's tags.
+            try {
+              const tagDiff = await tagIndex.reconcileWithDisk();
+              if (tagDiff.added > 0 || tagDiff.updated > 0 || tagDiff.deleted > 0) {
+                log.info(tagDiff, `[tag-index] branch-switch reconcile for ${newBranch}`);
+              }
+            } catch (err) {
+              log.warn(
+                { err, branch: newBranch },
+                '[tag-index] branch-switch reconcile failed; falling back to full rebuild',
+              );
+              await tagIndex.init();
+            }
+            void tagIndex.saveToDisk().catch((err) => {
+              getLogger('tag-index').warn(
+                { branch: newBranch, err },
+                'Failed to persist tag snapshot after branch switch',
+              );
+            });
 
             // Restore parked WIP if exists (three-way merge parked state against current disk)
             if (shadowRef.current && info.batchKind === 'cross-branch') {

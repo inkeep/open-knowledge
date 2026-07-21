@@ -13,23 +13,25 @@
  *     `extractFrontmatterTags` so the inline + YAML surfaces share one
  *     regex and one drop-on-invalid policy.
  *
- * Persistence is intentionally NOT implemented. Tag extraction is cheap
- * (single regex scan + YAML parse), `init()` walks the content dir on boot,
- * and the live-derived-index extension feeds incremental updates. Mirrors
- * the boot-time rebuild path that backlinks have for cold caches without
- * the on-disk cache cost.
+ * Persistence mirrors the backlink cache: a JSON snapshot of each doc's
+ * literal authored tags plus per-file mtime+size, at
+ * `<projectDir>/.ok/local/cache/tags.json`. Warm boots load the snapshot and
+ * `reconcileWithDisk()` re-parses only files whose mtime or size changed;
+ * cold boots (or a corrupt snapshot) fall back to the full `init()` scan.
+ * Only the literal tag sets are persisted — hierarchy expansion is
+ * re-derived on load, so the snapshot can never disagree with the
+ * expansion rules.
  *
- * Similar surface to BacklinkIndex (contentDir + contentFilter only; no
- * projectDir since TagIndex has no on-disk persistence cache). Same
- * `updateDocumentFromMarkdown` / `deleteDocument` method names. Branch-
- * agnostic single-state simplification (tag rollup is not branch-aware
- * today; multi-branch derivation can layer on later via the same
- * `BranchGraphState` shape backlinks use).
+ * Similar surface to BacklinkIndex. Same `updateDocumentFromMarkdown` /
+ * `deleteDocument` method names. Branch-agnostic single-state
+ * simplification (tag rollup is not branch-aware today), so the snapshot is
+ * a single file rather than per-branch: a branch switch rewrites changed
+ * files' mtimes, which the same reconcile pass picks up.
  */
 
 import { type Dirent, existsSync } from 'node:fs';
-import { readdir, readFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { readdir, readFile, stat } from 'node:fs/promises';
+import { dirname, join, relative, resolve } from 'node:path';
 import {
   createTagInTextRegex,
   expandTagToHierarchy,
@@ -39,8 +41,11 @@ import {
   unwrapFrontmatterFences,
 } from '@inkeep/open-knowledge-core';
 import { isLinkIndexExcludedDoc } from './cc1-broadcast.ts';
+import { getLocalDir } from './config/paths.ts';
 import type { ContentFilter } from './content-filter.ts';
 import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
+import { tracedMkdir, tracedWriteFile } from './fs-traced.ts';
+import { instrumentIndexRebuild } from './index-telemetry.ts';
 import { getLogger } from './logger.ts';
 import { toPosix } from './path-utils.ts';
 
@@ -66,6 +71,54 @@ export interface TagSummaryEntry {
 export interface TagIndexOptions {
   contentDir: string;
   contentFilter?: ContentFilter;
+  /**
+   * Project root (where `.ok/` lives). Enables the on-disk snapshot at
+   * `<projectDir>/.ok/local/cache/tags.json`. When omitted (in-memory-only
+   * usage, most unit tests), `saveToDisk` is a no-op and `loadFromDisk`
+   * reports a cache miss so callers fall back to the full scan.
+   */
+  projectDir?: string;
+}
+
+/** Per-file freshness witness captured at rebuild/reconcile time. */
+interface FileMeta {
+  mtimeMs: number;
+  size: number;
+}
+
+interface SerializedTagIndexSnapshot {
+  version: 1;
+  /** docName → sorted literal authored tags (hierarchy re-expanded on load). */
+  docs: Record<string, string[]>;
+  /** docName → mtime+size at the last rebuild/reconcile; the boot short-circuit witness. */
+  files: Record<string, FileMeta>;
+}
+
+const SNAPSHOT_VERSION = 1;
+
+/**
+ * Structural validation of a parsed snapshot. Anything off-shape (wrong
+ * version, non-string tags, non-numeric file meta) reports corrupt so the
+ * caller falls back to a full rebuild — a partial restore from a bad
+ * snapshot would surface stale or garbage tags to the user.
+ */
+function isValidSnapshot(data: unknown): data is SerializedTagIndexSnapshot {
+  if (typeof data !== 'object' || data === null) return false;
+  const snapshot = data as Record<string, unknown>;
+  if (snapshot.version !== SNAPSHOT_VERSION) return false;
+  const { docs, files } = snapshot;
+  if (typeof docs !== 'object' || docs === null || Array.isArray(docs)) return false;
+  if (typeof files !== 'object' || files === null || Array.isArray(files)) return false;
+  for (const tags of Object.values(docs)) {
+    if (!Array.isArray(tags)) return false;
+    if (!tags.every((tag) => typeof tag === 'string' && tag.length > 0)) return false;
+  }
+  for (const meta of Object.values(files)) {
+    if (typeof meta !== 'object' || meta === null) return false;
+    const { mtimeMs, size } = meta as Record<string, unknown>;
+    if (typeof mtimeMs !== 'number' || typeof size !== 'number') return false;
+  }
+  return true;
 }
 
 interface TagIndexState {
@@ -177,12 +230,60 @@ function extractInlineTagsFromBody(body: string): string[] {
 export class TagIndex {
   private readonly contentDir: string;
   private readonly contentFilter?: ContentFilter;
+  private readonly projectDir?: string;
   private state: TagIndexState = createEmptyState();
+  /**
+   * Per-doc freshness witnesses from the last full scan or reconcile.
+   * Persisted in the snapshot; runtime incremental updates deliberately do
+   * NOT refresh entries here, so the next boot's reconcile re-parses any
+   * file whose bytes moved under a stale witness (same contract as
+   * BacklinkIndex's mtime map).
+   */
+  private fileMeta = new Map<string, FileMeta>();
   private initChain: Promise<void> = Promise.resolve();
+  private closed = false;
 
   constructor(options: TagIndexOptions) {
     this.contentDir = options.contentDir;
     this.contentFilter = options.contentFilter;
+    this.projectDir = options.projectDir;
+  }
+
+  private snapshotPath(): string | null {
+    if (!this.projectDir) return null;
+    return resolve(getLocalDir(this.projectDir), 'cache', 'tags.json');
+  }
+
+  /**
+   * Serialize a task onto the internal chain shared with `init()`. Every
+   * operation that reads or replaces whole-index state (full scan,
+   * reconcile, snapshot load/save) runs here so a snapshot save can never
+   * observe a half-populated rebuild and two scans can never interleave
+   * their per-doc updates. Failures clear the chain link (same shape as
+   * `init()`'s original chaining) so one failed task doesn't poison the
+   * next.
+   */
+  private enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.initChain.then(fn);
+    this.initChain = run.then(
+      () => undefined,
+      (err) => {
+        log.warn({ err }, 'queued tag-index task failed (chain cleared for next task)');
+      },
+    );
+    return run;
+  }
+
+  /**
+   * Stop all future queued work (scans, reconciles, snapshot saves become
+   * no-ops) and resolve once in-flight chain tasks have drained. Server
+   * destroy calls this so a fire-and-forget snapshot save can never land
+   * inside `.ok/` after teardown starts — test rigs `rm -rf` the state dir
+   * right after destroy, and a late write turns that into ENOTEMPTY.
+   */
+  close(): Promise<void> {
+    this.closed = true;
+    return this.initChain;
   }
 
   /**
@@ -319,10 +420,11 @@ export class TagIndex {
   }
 
   /**
-   * Boot-time scan. Walks `contentDir` (respecting `contentFilter`) and
-   * indexes every supported markdown file. Mirrors
+   * Full cold-start scan. Walks `contentDir` (respecting `contentFilter`),
+   * indexes every supported markdown file, and collects the freshness
+   * witnesses a later `saveToDisk` persists. Mirrors
    * `BacklinkIndex.rebuildFromDisk` — same recursion shape, same exclusion
-   * gates, no on-disk cache.
+   * gates.
    *
    * Reads files via the absolute path discovered during the walk rather than
    * `getDocExtension(docName)` so the indexer doesn't have to mutate the
@@ -331,21 +433,13 @@ export class TagIndex {
    * test order across surfaces).
    */
   init(): Promise<void> {
-    // Serialize concurrent init calls. The boot path fires one init from the
-    // synchronous constructor phase and another after the watcher starts; with
-    // an async scan those would otherwise interleave their per-doc updates.
-    const run = this.initChain.then(() => this.initOnce());
-    // Catch on the chain link (not the returned promise) so one failed scan
-    // doesn't poison every subsequent init() call. The breadcrumb keeps a
-    // trace when a caller drops the returned promise without handling it.
-    this.initChain = run.catch((err) => {
-      log.warn({ err }, 'init failed (chain cleared for next init)');
-    });
-    return run;
+    return this.enqueue(() => instrumentIndexRebuild('tag', 'full', () => this.initOnce()));
   }
 
   private async initOnce(): Promise<void> {
+    if (this.closed) return;
     this.state = createEmptyState();
+    this.fileMeta = new Map();
     if (!existsSync(this.contentDir)) return;
     const entries = await this.listDocsWithPaths();
     // Bounded read batches keep the event loop responsive on large content
@@ -356,7 +450,11 @@ export class TagIndex {
       const results = await Promise.all(
         batch.map(async ({ docName, filePath }) => {
           try {
-            return { docName, markdown: await readFile(filePath, 'utf-8') };
+            const [fileStat, markdown] = await Promise.all([
+              stat(filePath),
+              readFile(filePath, 'utf-8'),
+            ]);
+            return { docName, markdown, mtimeMs: fileStat.mtimeMs, size: fileStat.size };
           } catch (err) {
             log.warn({ docName, err }, `Failed to read ${docName} during init`);
             return null;
@@ -367,6 +465,7 @@ export class TagIndex {
         if (!result) continue;
         try {
           this.updateDocumentFromMarkdown(result.docName, result.markdown);
+          this.fileMeta.set(result.docName, { mtimeMs: result.mtimeMs, size: result.size });
         } catch (err) {
           log.warn(
             { docName: result.docName, err },
@@ -375,6 +474,170 @@ export class TagIndex {
         }
       }
     }
+  }
+
+  /**
+   * Restore the persisted snapshot into memory. Returns `false` on cache
+   * miss, disabled persistence (no `projectDir`), or ANY corruption —
+   * callers must treat `false` as "run the full `init()` scan". A `true`
+   * return means the in-memory state now reflects the snapshot; follow with
+   * `reconcileWithDisk()` to fold in offline changes.
+   */
+  loadFromDisk(): Promise<boolean> {
+    return this.enqueue(() => this.loadOnce());
+  }
+
+  private async loadOnce(): Promise<boolean> {
+    if (this.closed) return false;
+    const filePath = this.snapshotPath();
+    if (!filePath || !existsSync(filePath)) return false;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await readFile(filePath, 'utf-8'));
+    } catch (err) {
+      log.warn({ err }, 'Failed to load tag snapshot; falling back to full rebuild');
+      return false;
+    }
+    if (!isValidSnapshot(parsed)) {
+      log.warn({}, 'Tag snapshot failed validation; falling back to full rebuild');
+      return false;
+    }
+    this.state = createEmptyState();
+    this.fileMeta = new Map(Object.entries(parsed.files));
+    for (const [docName, tags] of Object.entries(parsed.docs)) {
+      // Same synthetic-doc gate as the live update path — a hand-edited or
+      // poisoned snapshot must not smuggle system docs into the index.
+      if (isLinkIndexExcludedDoc(docName)) continue;
+      const authoredTags = new Set(tags);
+      const expanded = new Set<string>();
+      for (const tag of authoredTags) {
+        for (const prefix of expandTagToHierarchy(tag)) {
+          expanded.add(prefix);
+        }
+      }
+      this.applyDocSnapshot(docName, authoredTags, expanded);
+    }
+    return true;
+  }
+
+  /**
+   * Persist the current literal tag sets + freshness witnesses. No-op when
+   * persistence is disabled. Enqueued on the internal chain so a save never
+   * captures a half-populated rebuild.
+   */
+  saveToDisk(): Promise<void> {
+    return this.enqueue(() => this.saveOnce());
+  }
+
+  private async saveOnce(): Promise<void> {
+    if (this.closed) return;
+    const filePath = this.snapshotPath();
+    if (!filePath) return;
+    const snapshot: SerializedTagIndexSnapshot = {
+      version: SNAPSHOT_VERSION,
+      docs: Object.fromEntries(
+        [...this.state.byDocLiteral.entries()].map(([docName, tags]) => [
+          docName,
+          [...tags].sort((a, b) => a.localeCompare(b)),
+        ]),
+      ),
+      files: Object.fromEntries(this.fileMeta),
+    };
+    await tracedMkdir(dirname(filePath), { recursive: true });
+    await tracedWriteFile(filePath, JSON.stringify(snapshot, null, 2), 'utf-8');
+  }
+
+  /**
+   * Incremental startup / branch-switch reconcile. Walks the content dir,
+   * short-circuits files whose mtime AND size match the stored witness, and
+   * re-parses only changed or new files (bounded 50-file read batches).
+   * Docs whose file vanished are dropped. Requires `loadFromDisk()` (or a
+   * prior `init()`) to have populated the witnesses — with none stored,
+   * every file classifies as new and the pass degrades gracefully to a full
+   * scan that also prunes stale in-memory entries.
+   */
+  reconcileWithDisk(): Promise<{ added: number; updated: number; deleted: number }> {
+    return this.enqueue(() =>
+      instrumentIndexRebuild(
+        'tag',
+        'reconcile',
+        () => this.reconcileOnce(),
+        (diff) => ({
+          'index.added': diff.added,
+          'index.updated': diff.updated,
+          'index.deleted': diff.deleted,
+        }),
+      ),
+    );
+  }
+
+  private async reconcileOnce(): Promise<{ added: number; updated: number; deleted: number }> {
+    if (this.closed || !existsSync(this.contentDir)) return { added: 0, updated: 0, deleted: 0 };
+    const docs = await this.listDocsWithPaths();
+    const currentDocSet = new Set(docs.map((d) => d.docName));
+    const newMeta = new Map<string, FileMeta>();
+    let added = 0;
+    let updated = 0;
+
+    // Phase 1: stat all files concurrently to find changed/new ones.
+    const toProcess: Array<{ docName: string; filePath: string; meta: FileMeta; isNew: boolean }> =
+      [];
+    const statResults = await Promise.allSettled(
+      docs.map(async ({ docName, filePath }) => {
+        const fileStat = await stat(filePath);
+        return { docName, filePath, meta: { mtimeMs: fileStat.mtimeMs, size: fileStat.size } };
+      }),
+    );
+    for (const result of statResults) {
+      if (result.status === 'rejected') continue; // inaccessible; skip
+      const { docName, filePath, meta } = result.value;
+      const stored = this.fileMeta.get(docName);
+      if (stored !== undefined && stored.mtimeMs === meta.mtimeMs && stored.size === meta.size) {
+        newMeta.set(docName, meta);
+        continue;
+      }
+      toProcess.push({ docName, filePath, meta, isNew: stored === undefined });
+    }
+
+    // Phase 2: read + parse changed/new files in bounded batches.
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < toProcess.length; i += BATCH_SIZE) {
+      const batch = toProcess.slice(i, i + BATCH_SIZE);
+      const settled = await Promise.allSettled(
+        batch.map(async ({ docName, meta, isNew, filePath }) => ({
+          docName,
+          meta,
+          isNew,
+          markdown: await readFile(filePath, 'utf-8'),
+        })),
+      );
+      for (const result of settled) {
+        if (result.status === 'rejected') {
+          log.warn({ err: result.reason }, 'Failed to reconcile file');
+          continue;
+        }
+        const { docName, meta, isNew, markdown } = result.value;
+        this.updateDocumentFromMarkdown(docName, markdown);
+        newMeta.set(docName, meta);
+        if (isNew) added++;
+        else updated++;
+      }
+    }
+
+    // Phase 3: drop docs whose file is gone. Union of stored witnesses and
+    // live doc keys covers docs indexed at runtime (live-derived updates)
+    // that never got a witness entry.
+    let deleted = 0;
+    const allKnownDocs = new Set([...this.fileMeta.keys(), ...this.state.byDoc.keys()]);
+    for (const docName of allKnownDocs) {
+      if (!currentDocSet.has(docName)) {
+        this.deleteDocument(docName);
+        deleted++;
+      }
+    }
+
+    this.fileMeta = newMeta;
+    return { added, updated, deleted };
   }
 
   private applyDocSnapshot(
