@@ -2,10 +2,10 @@
 // shape + exit code the wrapper emits when the bundled CLI or
 // Electron binary is missing (drag-to-Trash lifecycle).
 
-import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { accessSync, constants } from 'node:fs';
+import { accessSync, constants, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 const WRAPPER = join(import.meta.dir, '..', '..', 'resources', 'cli', 'bin', 'ok.sh');
 
@@ -91,7 +91,6 @@ describe('ok.sh wrapper', () => {
     // rescope verbatim. Without quoting, bash re-splits on whitespace
     // and only `--require` is captured; everything after is evaluated
     // as an extra command in the script's environment.
-    const { readFileSync } = require('node:fs') as typeof import('node:fs');
     const script = readFileSync(WRAPPER, 'utf8');
     expect(script).toContain('export OK_NODE_OPTIONS="$NODE_OPTIONS"');
     expect(script).toContain('unset NODE_OPTIONS');

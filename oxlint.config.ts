@@ -1,5 +1,37 @@
 import { defineConfig } from 'oxlint';
 
+// Applied in the base config AND re-declared in the *.test.* override below
+// (oxlint replaces, rather than merges, a rule's options per override) so the
+// require() ban can be added for test files without silently dropping these.
+const restrictedSyntax = [
+  {
+    selector:
+      "CallExpression[callee.name='useEffect'] UnaryExpression[operator='typeof'] > Identifier[name='window']",
+    message:
+      "Do not use `typeof window !== 'undefined'` inside useEffect; useEffect already runs client-side.",
+  },
+  {
+    selector:
+      "CallExpression[callee.name='useLayoutEffect'] UnaryExpression[operator='typeof'] > Identifier[name='window']",
+    message:
+      "Do not use `typeof window !== 'undefined'` inside useLayoutEffect; useLayoutEffect already runs client-side.",
+  },
+];
+
+// Test files execute as ES modules, where a CommonJS `require()` is not
+// defined. Calls like `require('./foo.ts')` or `require('node:fs')` break (or
+// resolve inconsistently) at runtime. Use a static `import`, `await import()`,
+// or `createRequire(import.meta.url)` for a native/CJS addon. The second
+// selector also catches member calls like `require.resolve(...)`. Since both
+// selectors key on the literal name `require`, binding a `createRequire` result
+// to any other name (e.g. `require_`) keeps the escape hatch available without
+// re-tripping either pattern.
+const noRequireInTests = {
+  selector: "CallExpression[callee.name='require'], CallExpression[callee.object.name='require']",
+  message:
+    'require() is not available in an ESM test module. Use a static import or await import(); for a native/CJS addon use createRequire(import.meta.url) bound to a name other than "require" (e.g. require_).',
+};
+
 export default defineConfig({
   // The .agents/skills, .codex/skills entries under
   // public/open-knowledge/ are real directories of per-skill symlinks back
@@ -28,21 +60,7 @@ export default defineConfig({
         enforceForIfStatements: true,
       },
     ],
-    'eslint-js/no-restricted-syntax': [
-      'error',
-      {
-        selector:
-          "CallExpression[callee.name='useEffect'] UnaryExpression[operator='typeof'] > Identifier[name='window']",
-        message:
-          "Do not use `typeof window !== 'undefined'` inside useEffect; useEffect already runs client-side.",
-      },
-      {
-        selector:
-          "CallExpression[callee.name='useLayoutEffect'] UnaryExpression[operator='typeof'] > Identifier[name='window']",
-        message:
-          "Do not use `typeof window !== 'undefined'` inside useLayoutEffect; useLayoutEffect already runs client-side.",
-      },
-    ],
+    'eslint-js/no-restricted-syntax': ['error', ...restrictedSyntax],
     // TODO(oxlint): enable in priority order as each backlog is audited.
     // Correctness rules catch async/control-flow bugs; graduate these first.
     'typescript/no-floating-promises': 'off',
@@ -75,6 +93,12 @@ export default defineConfig({
       files: ['**/*.{ts,tsx}'],
       rules: {
         'typescript/no-deprecated': 'error',
+      },
+    },
+    {
+      files: ['**/*.test.{ts,tsx,cts,mts,mjs}'],
+      rules: {
+        'eslint-js/no-restricted-syntax': ['error', ...restrictedSyntax, noRequireInTests],
       },
     },
   ],

@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { getMachineId } from './machine-id';
 import {
   acquireProcessLock,
@@ -647,7 +647,7 @@ describe('readProcessLockDetailed', () => {
       worktreeRoot: '/legacy',
       // No protocolVersion, no runtimeVersion — simulates a v0.x lock.
     };
-    require('node:fs').mkdirSync(lockDir, { recursive: true });
+    mkdirSync(lockDir, { recursive: true });
     writeFileSync(lockPath, JSON.stringify(versionless), 'utf-8');
 
     const result = readProcessLockDetailed({ lockName: LOCK_NAME, lockDir });
@@ -666,7 +666,7 @@ describe('readProcessLockDetailed', () => {
       protocolVersion: 1,
       // No runtimeVersion.
     };
-    require('node:fs').mkdirSync(lockDir, { recursive: true });
+    mkdirSync(lockDir, { recursive: true });
     writeFileSync(lockPath, JSON.stringify(partial), 'utf-8');
 
     const result = readProcessLockDetailed({ lockName: LOCK_NAME, lockDir });
@@ -674,7 +674,7 @@ describe('readProcessLockDetailed', () => {
   });
 
   test('returns incompatible.corrupt for unparseable JSON', () => {
-    require('node:fs').mkdirSync(lockDir, { recursive: true });
+    mkdirSync(lockDir, { recursive: true });
     writeFileSync(lockPath, '{not json', 'utf-8');
     const result = readProcessLockDetailed({ lockName: LOCK_NAME, lockDir });
     expect(result.status).toBe('incompatible');
@@ -683,7 +683,7 @@ describe('readProcessLockDetailed', () => {
   });
 
   test('returns incompatible.corrupt for shape violation (missing pid)', () => {
-    require('node:fs').mkdirSync(lockDir, { recursive: true });
+    mkdirSync(lockDir, { recursive: true });
     writeFileSync(lockPath, JSON.stringify({ port: 1234 }), 'utf-8');
     const result = readProcessLockDetailed({ lockName: LOCK_NAME, lockDir });
     expect(result.status).toBe('incompatible');
@@ -701,7 +701,7 @@ describe('readProcessLockDetailed', () => {
       protocolVersion: 1,
       runtimeVersion: '0.1.0',
     };
-    require('node:fs').mkdirSync(lockDir, { recursive: true });
+    mkdirSync(lockDir, { recursive: true });
     writeFileSync(lockPath, JSON.stringify(stale), 'utf-8');
 
     const result = readProcessLockDetailed({ lockName: LOCK_NAME, lockDir });
@@ -721,7 +721,7 @@ describe('readProcessLockDetailed', () => {
       protocolVersion: 1,
       runtimeVersion: '0.1.0',
     };
-    require('node:fs').mkdirSync(lockDir, { recursive: true });
+    mkdirSync(lockDir, { recursive: true });
     writeFileSync(lockPath, JSON.stringify(remote), 'utf-8');
 
     const result = readProcessLockDetailed({ lockName: LOCK_NAME, lockDir });
@@ -785,7 +785,7 @@ describe('lock-pid security validation', () => {
         startedAt: new Date().toISOString(),
         worktreeRoot: '/attacker',
       };
-      require('node:fs').mkdirSync(lockDir, { recursive: true });
+      mkdirSync(lockDir, { recursive: true });
       writeFileSync(lockPath, JSON.stringify(hostile), 'utf-8');
 
       expect(readProcessLock({ lockName: LOCK_NAME, lockDir })).toBeNull();
@@ -801,7 +801,7 @@ describe('lock-pid security validation', () => {
         protocolVersion: 1,
         runtimeVersion: '1.0.0',
       };
-      require('node:fs').mkdirSync(lockDir, { recursive: true });
+      mkdirSync(lockDir, { recursive: true });
       writeFileSync(lockPath, JSON.stringify(hostile), 'utf-8');
 
       const result = readProcessLockDetailed({ lockName: LOCK_NAME, lockDir });

@@ -1,7 +1,7 @@
-import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import {
   assertGitAvailable,
   buildGuidance,
@@ -481,7 +481,7 @@ VERSION_ID="12"`,
       'utf-8',
     );
     // The fixture is fed in directly; we don't rely on /etc/os-release replacement.
-    const contents = require('node:fs').readFileSync(path, 'utf-8');
+    const contents = readFileSync(path, 'utf-8');
     expect(detectLinuxFamily(contents)).toBe('debian');
   });
 });

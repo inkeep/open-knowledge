@@ -1,23 +1,22 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import * as nativeConfig from '@inkeep/open-knowledge-native-config';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { resolveHarnessWritePaths, type SymlinkWritePaths } from './symlink-resolve.ts';
 
 // One contract suite run against BOTH backends — the pure-JS mirror and the
 // native (conformance-tested) resolver loaded from the built `.node` — so the
 // two implementations cannot drift: any divergence in chain-following or
 // cycle-breaking fails the same assertions for one backend but not the other.
-// The native binding is hard-required (not skipped when absent) so a gate that
-// failed to build the addon fails loudly, matching the sibling binding tests.
+// The native binding is statically imported (not skipped when absent) so a gate
+// that failed to build the addon fails loudly.
 
 interface NativeSymlinkBinding {
   resolveSymlinkWritePath(path: string): { readPath?: string | null; writePath: string };
 }
 
-const require = createRequire(import.meta.url);
-const nativeBinding = require('@inkeep/open-knowledge-native-config') as NativeSymlinkBinding;
+const nativeBinding: NativeSymlinkBinding = nativeConfig;
 
 const unix = process.platform !== 'win32';
 

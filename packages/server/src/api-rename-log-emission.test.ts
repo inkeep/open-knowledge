@@ -6,13 +6,23 @@
  *   writer's L2 commit.
  * - Folder rename of N docs produces N entries with shared `groupId`.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createApiExtension } from './api-extension.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { recordContributor, swapContributors } from './contributor-tracker.ts';
@@ -52,8 +62,7 @@ function makeRes(): { res: ServerResponse; captured: CapturedResponse } {
 function buildFileIndex(contentDir: string): ReadonlyMap<string, FileIndexEntry> {
   const index = new Map<string, FileIndexEntry>();
   function walk(dir: string) {
-    const fs = require('node:fs') as typeof import('node:fs');
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const fullPath = resolve(dir, entry.name);
       if (entry.isDirectory()) {
         if (entry.name === '.ok' || entry.name === '.git') continue;
@@ -61,7 +70,7 @@ function buildFileIndex(contentDir: string): ReadonlyMap<string, FileIndexEntry>
         continue;
       }
       if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
-      const stat = fs.statSync(fullPath);
+      const stat = statSync(fullPath);
       const docName = fullPath.slice(contentDir.length + 1).replace(/\.md$/, '');
       index.set(docName, { size: stat.size, modified: stat.mtime.toISOString() });
     }

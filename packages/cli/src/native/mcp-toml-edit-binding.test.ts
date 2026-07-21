@@ -1,18 +1,17 @@
-import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import * as nativeConfig from '@inkeep/open-knowledge-native-config';
+import { describe, expect, test } from 'vitest';
 
 // Exercise the insert-only upsert/remove + symlink-resolution across the real
 // JS<->Rust boundary by loading the built `.node` directly. The Rust unit tests
 // cover the engine's document + path semantics exhaustively; this guards the
 // napi marshalling the Rust tests cannot reach — the `McpEditResult` /
 // `SymlinkWritePaths` struct return shapes (including `Option<String>` ->
-// `undefined`), string in/out, and the throw on malformed input. It
-// hard-requires the addon (rather than skipping when absent) so a gate that
-// failed to build the binding fails loudly instead of vacuously passing,
-// matching `toml-config-engine.test.ts`.
+// `undefined`), string in/out, and the throw on malformed input. It statically
+// imports the addon (rather than skipping when absent) so a gate that failed to
+// build the binding fails loudly instead of vacuously passing.
 
 interface McpEditResult {
   text: string;
@@ -31,8 +30,7 @@ interface NativeMcpEditBinding {
   resolveSymlinkWritePath(path: string): SymlinkWritePaths;
 }
 
-const require = createRequire(import.meta.url);
-const binding = require('@inkeep/open-knowledge-native-config') as NativeMcpEditBinding;
+const binding: NativeMcpEditBinding = nativeConfig;
 
 const SERVER = 'open-knowledge';
 const ENTRY = JSON.stringify({ command: '/bin/sh', args: ['-l', '-c', 'run-ok'] });

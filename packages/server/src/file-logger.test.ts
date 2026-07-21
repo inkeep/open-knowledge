@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import pino from 'pino';
-import { flushFileLogger, MAX_FILE_SIZE } from './file-logger.ts';
+import { afterEach, describe, expect, test } from 'vitest';
+import { createFileLogger, flushFileLogger, MAX_FILE_SIZE } from './file-logger.ts';
 
 const TEST_DIR = join(tmpdir(), `ok-file-logger-test-${process.pid}`);
 
@@ -69,7 +69,6 @@ describe('file logger', () => {
     expect(statSync(filePath).size).toBeGreaterThan(MAX_FILE_SIZE);
 
     // Import and test rotateIfNeeded via createFileLogger side effect
-    const { createFileLogger } = require('./file-logger.ts');
     createFileLogger({ name: 'big', filePath });
 
     const files = readdirSync(TEST_DIR).filter((f: string) => f.startsWith('big.log'));
@@ -80,7 +79,6 @@ describe('file logger', () => {
   test('opens the destination synchronously so same-tick process.exit cannot race the open', () => {
     mkdirSync(TEST_DIR, { recursive: true });
     const filePath = join(TEST_DIR, 'sync-open.log');
-    const { createFileLogger } = require('./file-logger.ts');
     const logger = createFileLogger({ name: 'sync-open', filePath });
     // pino registers an exit hook that calls flushSync() on the destination.
     // With an async open (sync: false), the fs.open callback that assigns the
@@ -98,7 +96,6 @@ describe('file logger', () => {
 
   test('createFileLogger unrefs the deferred prune timer so it never blocks process exit', () => {
     mkdirSync(TEST_DIR, { recursive: true });
-    const { createFileLogger } = require('./file-logger.ts');
     let unrefCalls = 0;
     let scheduledMs: number | undefined;
     // Fake scheduler: records the unref() call (the load-bearing contract) and
@@ -131,7 +128,6 @@ describe('file logger', () => {
     const prev = process.env.OK_LOG_LEVEL;
     process.env.OK_LOG_LEVEL = 'info';
     try {
-      const { createFileLogger } = require('./file-logger.ts');
       const logger = createFileLogger({ name: 'flush', filePath });
       logger.warn({ outcome: 'absent', host: 'github.com' }, '[auth] git-credential get');
       await flushFileLogger(logger);

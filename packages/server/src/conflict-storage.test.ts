@@ -2,10 +2,11 @@
  * Unit tests for ConflictStore — CRUD and resolve strategies.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { type ConflictEntry, ConflictStore } from './conflict-storage.ts';
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
@@ -16,8 +17,6 @@ let storePath = '';
 
 beforeEach(() => {
   // Create unique temp dirs per test
-  const { mkdtempSync } = require('node:fs');
-  const { tmpdir } = require('node:os');
   tmpDir = mkdtempSync(join(tmpdir(), 'conflict-store-test-'));
   projectDir = join(tmpDir, 'project');
   storePath = join(projectDir, '.ok', LOCAL_DIR, 'conflicts.json');

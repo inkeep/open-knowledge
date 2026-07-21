@@ -24,9 +24,9 @@
  * HTTP conflicts.json) and that the lifecycle transitions are
  * observable end to end through the integration harness.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import {
@@ -36,6 +36,7 @@ import {
   getLogger,
   restoreLifecycleFromConflictsJson,
 } from '@inkeep/open-knowledge-server';
+import { describe, expect, test } from 'vitest';
 import { createTestClient, createTestServer, pollUntil, type TestServer } from './test-harness';
 
 const execFileAsync = promisify(execFile);
@@ -376,7 +377,6 @@ describe('FR12: /api/sync/conflicts + /api/sync/status count parity', () => {
       const { tmpdir } = await import('node:os');
       const tmpDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-fr12-')));
       cleanups.push(() => {
-        const { rmSync } = require('node:fs') as typeof import('node:fs');
         rmSync(tmpDir, { recursive: true, force: true });
       });
 

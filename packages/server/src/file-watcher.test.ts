@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createContentFilter } from './content-filter.ts';
 import type { DiskEvent } from './file-watcher';
 import {
@@ -16,6 +16,7 @@ import {
   reconcileFileIndexAfterFilterRebuild,
   registerWrite,
   startWatcher,
+  updateFileIndex,
   updateLastKnownHash,
   writeTracker,
 } from './file-watcher';
@@ -502,7 +503,6 @@ describe('startWatcher file index', () => {
   });
 
   test('file index updates on create event', () => {
-    const { updateFileIndex } = require('./file-watcher.ts');
     const index = new Map();
     const event = {
       kind: 'create' as const,
@@ -517,7 +517,6 @@ describe('startWatcher file index', () => {
   });
 
   test('file index removes entry on delete event', () => {
-    const { updateFileIndex } = require('./file-watcher.ts');
     const index = new Map([['existing', { size: 10, modified: new Date().toISOString() }]]);
     const event = {
       kind: 'delete' as const,
@@ -529,7 +528,6 @@ describe('startWatcher file index', () => {
   });
 
   test('file index updates size/modified on update event', () => {
-    const { updateFileIndex } = require('./file-watcher.ts');
     const oldModified = '2020-01-01T00:00:00.000Z';
     const index = new Map([['doc', { size: 5, modified: oldModified }]]);
     const event = {
@@ -546,7 +544,6 @@ describe('startWatcher file index', () => {
   });
 
   test('file index handles rename event', () => {
-    const { updateFileIndex } = require('./file-watcher.ts');
     const index = new Map([['old-name', { size: 10, modified: new Date().toISOString() }]]);
     const event = {
       kind: 'rename' as const,
@@ -563,7 +560,6 @@ describe('startWatcher file index', () => {
   });
 
   test('file index caches title + icon on create/update/rename/conflict events', () => {
-    const { updateFileIndex } = require('./file-watcher.ts');
     const index = new Map();
 
     updateFileIndex(
