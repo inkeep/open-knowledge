@@ -92,15 +92,16 @@ export type PushPermissionStatus =
   | { checkStatus: 'allowed' }
   | {
       checkStatus: 'denied';
-      deniedReason:
-        | 'no-collaborator'
-        | 'private-no-access'
-        | 'repo-not-found'
-        | 'not-authenticated';
+      // Both payload unions derive structurally from the source-of-truth
+      // `PushPermission` in github-permissions.ts so a code added there can't
+      // silently drift from this wire shape. The Zod enum in core's
+      // sync-seed.ts still needs a manual matching update; its round-trip
+      // test is the runtime net for that half.
+      deniedReason: Extract<PushPermission, { kind: 'denied' }>['reason'];
     }
   | {
       checkStatus: 'unknown';
-      unknownError?: 'network' | 'timeout' | 'rate-limit' | 'token-invalid' | 'malformed-response';
+      unknownError?: Extract<PushPermission, { kind: 'unknown' }>['error'];
     };
 
 /** Flatten the tagged `PushPermission` from `github-permissions.ts` to wire shape. */
@@ -875,6 +876,7 @@ export class SyncEngine {
         owner: origin.owner,
         repo: origin.repo,
         host: origin.host,
+        transport: origin.transport,
         detectGh: this.detectGh,
         tokenStore: this.tokenStore,
       });

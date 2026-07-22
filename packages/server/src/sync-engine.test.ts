@@ -1597,6 +1597,39 @@ describe('SyncEngine push-permission probe', () => {
     expect(persisted).toBe(false);
   });
 
+  test('passes the origin transport through to the probe (ssh origin)', async () => {
+    await initGitWithOrigin('git@git.example.com:acme/kb.git');
+    const probe = fakeProbe({ kind: 'unknown', error: 'ssh-unverified' });
+    const engine = makeProbeEngine({ syncEnabled: false, fakeProbe: probe.fn });
+    await engine.start();
+    await waitForPushPermissionResolved(engine);
+    expect(probe.opts[0]).toMatchObject({
+      owner: 'acme',
+      repo: 'kb',
+      host: 'git.example.com',
+      transport: 'ssh',
+    });
+  });
+
+  test('ssh-unverified probe result does NOT pause the engine (self-hosted forge over SSH)', async () => {
+    // The regression behind the forge sync pause: an SSH-origin user with no
+    // gh/OK token used to land in denied/not-authenticated → pausedReason=
+    // 'no-push-permission' → disabled, with a GitHub Sign-in button that can
+    // never help. The abstaining probe result must leave sync running.
+    await initGitWithOrigin('git@git.example.com:acme/kb.git');
+    const probe = fakeProbe({ kind: 'unknown', error: 'ssh-unverified' });
+    const engine = makeProbeEngine({ syncEnabled: true, fakeProbe: probe.fn });
+    await engine.start();
+    await waitForPushPermissionResolved(engine);
+    const status = engine.getStatus();
+    expect(status.pushPermission).toEqual({
+      checkStatus: 'unknown',
+      unknownError: 'ssh-unverified',
+    });
+    expect(status.state).toBe('idle');
+    expect(status.pausedReason).not.toBe('no-push-permission');
+  });
+
   test('records `unknown` without changing state', async () => {
     await initGitWithOrigin();
     const probe = fakeProbe({ kind: 'unknown', error: 'network' });

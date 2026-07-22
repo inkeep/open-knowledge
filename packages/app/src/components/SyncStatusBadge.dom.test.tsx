@@ -174,6 +174,13 @@ describe('SyncStatusBadge helper behavior', () => {
     );
     expect(shouldOfferSignInAgain({ checkStatus: 'denied' })).toBe(false);
     expect(shouldOfferSignInAgain({ checkStatus: 'unknown', unknownError: 'network' })).toBe(false);
+    // ssh-unverified is the abstaining probe result for SSH-origin repos with
+    // no GitHub credential. Signing in can never help there (push auths with
+    // SSH keys), so broadening this predicate to match it would resurrect the
+    // misleading sign-in affordance the transport-keyed probe fix removed.
+    expect(shouldOfferSignInAgain({ checkStatus: 'unknown', unknownError: 'ssh-unverified' })).toBe(
+      false,
+    );
     expect(shouldOfferSignInAgain(undefined)).toBe(false);
   });
 });

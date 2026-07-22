@@ -3,6 +3,7 @@ import {
   ConflictEntrySchema,
   InstallSkillSuccessSchema,
   ProblemTypeSchema,
+  PushPermissionSchema,
   SeedApplyRequestSchema,
   SeedApplySuccessSchema,
   SeedPlanSuccessSchema,
@@ -120,6 +121,32 @@ describe('SyncStatusSchema', () => {
         remote: { label: 'gitlab.com/team/notes', webUrl: null },
       }).success,
     ).toBe(true);
+  });
+});
+
+describe('PushPermissionSchema', () => {
+  test('parses every unknown variant including ssh-unverified', () => {
+    for (const unknownError of [
+      'network',
+      'timeout',
+      'rate-limit',
+      'token-invalid',
+      'malformed-response',
+      'ssh-unverified',
+    ]) {
+      const parsed = PushPermissionSchema.safeParse({ checkStatus: 'unknown', unknownError });
+      expect(parsed.success).toBe(true);
+    }
+  });
+  test('round-trips the ssh-unverified member', () => {
+    const wire = { checkStatus: 'unknown' as const, unknownError: 'ssh-unverified' as const };
+    const parsed = PushPermissionSchema.parse(wire);
+    expect(parsed).toEqual(wire);
+  });
+  test('rejects an unlisted unknownError code', () => {
+    expect(
+      PushPermissionSchema.safeParse({ checkStatus: 'unknown', unknownError: 'bogus' }).success,
+    ).toBe(false);
   });
 });
 

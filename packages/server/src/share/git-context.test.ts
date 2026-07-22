@@ -119,6 +119,7 @@ describe('readOriginGitHubRepo', () => {
       host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
+      transport: 'https',
     });
   });
 
@@ -131,6 +132,7 @@ describe('readOriginGitHubRepo', () => {
       host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
+      transport: 'ssh',
     });
   });
 
@@ -143,6 +145,7 @@ describe('readOriginGitHubRepo', () => {
       host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
+      transport: 'ssh',
     });
   });
 
@@ -155,6 +158,7 @@ describe('readOriginGitHubRepo', () => {
       host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
+      transport: 'https',
     });
   });
 
@@ -178,6 +182,7 @@ describe('readOriginGitHubRepo', () => {
       host: 'ghes.acme.test',
       owner: 'inkeep',
       repo: 'open-knowledge',
+      transport: 'https',
     });
   });
 
@@ -190,6 +195,7 @@ describe('readOriginGitHubRepo', () => {
       host: 'github.corp.example.com',
       owner: 'team',
       repo: 'kb',
+      transport: 'ssh',
     });
   });
 
@@ -204,6 +210,7 @@ describe('readOriginGitHubRepo', () => {
       host: 'ghes.acme.test',
       owner: 'acme',
       repo: 'kb',
+      transport: 'https',
     });
   });
 
@@ -216,6 +223,7 @@ describe('readOriginGitHubRepo', () => {
       host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
+      transport: 'git',
     });
   });
 
@@ -228,6 +236,23 @@ describe('readOriginGitHubRepo', () => {
       host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
+      transport: 'https',
+    });
+  });
+
+  test('ssh:// origin with a port carries transport ssh and a port-stripped host', () => {
+    // The exact shape of the local-forge repro: `ssh://git@localhost:2222/...`
+    // against a self-hosted Gitea. Must classify as ssh so the anonymous
+    // probe abstains instead of pausing sync.
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = ssh://git@git.acme.test:2222/acme/kb.git\n',
+    });
+    expect(readOriginGitHubRepo(dir)).toEqual({
+      kind: 'ok',
+      host: 'git.acme.test',
+      owner: 'acme',
+      repo: 'kb',
+      transport: 'ssh',
     });
   });
 
@@ -276,6 +301,7 @@ describe('readOriginGitHubRepo', () => {
       host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
+      transport: 'https',
     });
   });
 
@@ -289,6 +315,7 @@ describe('readOriginGitHubRepo', () => {
       host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
+      transport: 'https',
     });
   });
 });
@@ -502,6 +529,7 @@ describe('linked-worktree common-dir resolution', () => {
       host: 'github.com',
       owner: 'inkeep',
       repo: 'open-knowledge',
+      transport: 'https',
     });
   });
 

@@ -33,9 +33,18 @@ import { getLogger } from '../logger.ts';
 
 const log = getLogger('git-context');
 
+/**
+ * Which URL form the origin was written in. Determines how a push would
+ * authenticate: `https` pushes auth with tokens; `ssh` (both `ssh://` and
+ * scp-style) auths with SSH keys; `git://` is unauthenticated. The
+ * push-permission probe keys leniency off this — token absence proves nothing
+ * about push ability for a non-token transport.
+ */
+export type OriginTransport = 'https' | 'ssh' | 'git';
+
 /** Outcome of `readOriginGitHubRepo`. */
 export type OriginResult =
-  | { kind: 'ok'; host: string; owner: string; repo: string }
+  | { kind: 'ok'; host: string; owner: string; repo: string; transport: OriginTransport }
   | { kind: 'no-remote' }
   | { kind: 'non-github' };
 
@@ -58,6 +67,7 @@ interface ParsedOriginRepo {
   host: string;
   owner: string;
   repo: string;
+  transport: OriginTransport;
 }
 
 /**
@@ -82,30 +92,35 @@ function parseGitHubOriginUrl(originUrl: string): ParsedOriginRepo | null {
   const raw = originUrl.trim();
   if (!raw) return null;
 
-  const classify = (host: string, owner: string, repo: string): ParsedOriginRepo | null => {
+  const classify = (
+    host: string,
+    owner: string,
+    repo: string,
+    transport: OriginTransport,
+  ): ParsedOriginRepo | null => {
     const normalized = normalizeGitHost(host);
     if (KNOWN_NON_GITHUB_GIT_HOSTS.has(normalized)) return null;
-    return { host: normalized, owner, repo };
+    return { host: normalized, owner, repo, transport };
   };
 
   // https://<host>[:port]/<owner>/<repo>(.git)?
   let m = /^https?:\/\/([\w.-]+(?::\d+)?)\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(raw);
-  if (m) return classify(m[1], m[2], m[3]);
+  if (m) return classify(m[1], m[2], m[3], 'https');
 
   // ssh://[user@]<host>[:port]/<owner>/<repo>(.git)?
   m = /^ssh:\/\/(?:[\w.-]+@)?([\w.-]+)(?::\d+)?\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(
     raw,
   );
-  if (m) return classify(m[1], m[2], m[3]);
+  if (m) return classify(m[1], m[2], m[3], 'ssh');
 
   // <user>@<host>:<owner>/<repo>(.git)?  (scp-style; `@` is required, so
   // Windows drive paths like `C:\x` can never match)
   m = /^[\w.-]+@([\w.-]+):([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?$/.exec(raw);
-  if (m) return classify(m[1], m[2], m[3]);
+  if (m) return classify(m[1], m[2], m[3], 'ssh');
 
   // git://<host>[:port]/<owner>/<repo>(.git)?
   m = /^git:\/\/([\w.-]+(?::\d+)?)\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(raw);
-  if (m) return classify(m[1], m[2], m[3]);
+  if (m) return classify(m[1], m[2], m[3], 'git');
 
   return null;
 }
@@ -131,8 +146,8 @@ export function readOriginGitHubRepo(projectDir: string): OriginResult {
   const parsed = readParsedOrigin(projectDir);
   if (!parsed) return { kind: 'no-remote' };
   if (parsed.github) {
-    const { host, owner, repo } = parsed.github;
-    return { kind: 'ok', host, owner, repo };
+    const { host, owner, repo, transport } = parsed.github;
+    return { kind: 'ok', host, owner, repo, transport };
   }
   // Origin URL present but a known non-GitHub forge or unparseable — surface
   // as `non-github` so the caller renders the matching toast.
