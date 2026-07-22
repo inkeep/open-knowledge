@@ -111,7 +111,7 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
         const activeLog = getCurrentMcpLogger() ?? log;
         activeLog?.warn('tool call failed', {
           tool,
-          error: err instanceof Error ? err.message : String(err),
+          err,
           ...(explicit ? { explicit } : {}),
         });
         throw err;

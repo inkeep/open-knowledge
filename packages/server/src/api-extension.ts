@@ -532,7 +532,12 @@ import {
 } from './http/error-response.ts';
 import { errnoCode, parseQuery } from './http/handler-utils.ts';
 import { methodRouter } from './http/method-router.ts';
-import { REQUEST_ID_HEADER, rememberRequestId, resolveRequestId } from './http/request-id.ts';
+import {
+  getRequestId,
+  REQUEST_ID_HEADER,
+  rememberRequestId,
+  resolveRequestId,
+} from './http/request-id.ts';
 import { validateBody, withValidation } from './http/request-validation.ts';
 import { successResponse } from './http/success-response.ts';
 import { initContent } from './init-project.ts';
@@ -5302,7 +5307,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           );
           return;
         }
-        log.error({ err: e }, '[agent-write] handler failed');
+        log.error({ err: e, requestId: getRequestId(_req) }, '[agent-write] handler failed');
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
           handler: 'agent-write',
           cause: e,
@@ -5593,7 +5598,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           );
           return;
         }
-        log.error({ err: e }, '[agent-write-md] handler failed');
+        log.error({ err: e, requestId: getRequestId(_req) }, '[agent-write-md] handler failed');
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
           handler: 'agent-write-md',
           cause: e,
@@ -5726,7 +5731,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               'Too many agent sessions.',
             );
           }
-          log.error({ err: e, docName }, '[agent-write-batch] entry failed');
+          log.error(
+            { err: e, docName, requestId: getRequestId(_req) },
+            '[agent-write-batch] entry failed',
+          );
           return entryError(
             docName,
             'urn:ok:error:internal-server-error',
@@ -5958,7 +5966,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           { handler: 'agent-write-batch' },
         );
       } catch (e) {
-        log.error({ err: e }, '[agent-write-batch] handler failed');
+        log.error({ err: e, requestId: getRequestId(_req) }, '[agent-write-batch] handler failed');
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
           handler: 'agent-write-batch',
           cause: e,
@@ -6271,7 +6279,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           );
           return;
         }
-        log.error({ err: e }, '[frontmatter-patch] handler failed');
+        log.error({ err: e, requestId: getRequestId(_req) }, '[frontmatter-patch] handler failed');
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
           handler: 'frontmatter-patch',
           cause: e,
@@ -7760,7 +7768,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           );
           return;
         }
-        log.error({ err: e }, '[agent-patch] handler failed');
+        log.error({ err: e, requestId: getRequestId(_req) }, '[agent-patch] handler failed');
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
           handler: 'agent-patch',
           cause: e,
@@ -7924,7 +7932,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           respondDocInConflict(res, e, 'agent-undo');
           return;
         }
-        log.error({ err: e }, '[agent-undo] handler failed');
+        log.error({ err: e, requestId: getRequestId(_req) }, '[agent-undo] handler failed');
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
           handler: 'agent-undo',
           cause: e,
@@ -7963,7 +7971,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           handler: 'agent-activity',
         });
       } catch (e) {
-        log.error({ err: e }, '[agent-activity] handler failed');
+        log.error({ err: e, requestId: getRequestId(req) }, '[agent-activity] handler failed');
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
           handler: 'agent-activity',
           cause: e,
@@ -8089,7 +8097,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           { handler: 'agent-burst-diff' },
         );
       } catch (e) {
-        log.error({ err: e }, '[agent-burst-diff] handler failed');
+        log.error({ err: e, requestId: getRequestId(req) }, '[agent-burst-diff] handler failed');
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
           handler: 'agent-burst-diff',
           cause: e,
@@ -8120,7 +8128,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         await flushGitCommit?.();
         successResponse(res, 200, TestFlushGitSuccessSchema, {}, { handler: 'test-flush-git' });
       } catch (e) {
-        log.error({ err: e }, '[test-flush-git] flush failed');
+        log.error({ err: e, requestId: getRequestId(_req) }, '[test-flush-git] flush failed');
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
           handler: 'test-flush-git',
           cause: e,
@@ -8489,7 +8497,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           { handler: 'save-version' },
         );
       } catch (e) {
-        log.error({ err: e }, '[save-version] handler failed');
+        log.error({ err: e, requestId: getRequestId(_req) }, '[save-version] handler failed');
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
           handler: 'save-version',
           cause: e,
@@ -9068,7 +9076,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           handler: 'metrics-reconciliation',
         });
       } catch (e) {
-        log.error({ err: e }, '[metrics-reconciliation] handler failed');
+        log.error(
+          { err: e, requestId: getRequestId(_req) },
+          '[metrics-reconciliation] handler failed',
+        );
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
           handler: 'metrics-reconciliation',
           cause: e,
@@ -9086,7 +9097,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           handler: 'metrics-parse-health',
         });
       } catch (e) {
-        log.error({ err: e }, '[metrics-parse-health] handler failed');
+        log.error(
+          { err: e, requestId: getRequestId(_req) },
+          '[metrics-parse-health] handler failed',
+        );
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
           handler: 'metrics-parse-health',
           cause: e,
@@ -9395,7 +9409,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         { handler: 'metrics-agent-presence' },
       );
     } catch (e) {
-      log.error({ err: e }, '[metrics-agent-presence] handler failed');
+      log.error(
+        { err: e, requestId: getRequestId(req) },
+        '[metrics-agent-presence] handler failed',
+      );
       errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
         handler: 'metrics-agent-presence',
         cause: e,
@@ -9539,7 +9556,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         { handler: 'metrics-watcher-recent' },
       );
     } catch (e) {
-      log.error({ err: e }, '[metrics-watcher-recent] handler failed');
+      log.error(
+        { err: e, requestId: getRequestId(req) },
+        '[metrics-watcher-recent] handler failed',
+      );
       errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
         handler: 'metrics-watcher-recent',
         cause: e,
@@ -11895,6 +11915,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         {
           event: 'upload',
           endpoint: req.url ?? '/api/upload',
+          requestId: getRequestId(req),
           agentId,
           agentName,
           filename: finalFilename,
@@ -12242,10 +12263,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       child.on('error', (err) => {
         spawnErrorMessage = err.message;
         earlyExitCode = -1;
-        log.error(
-          { cwd: absDir, cliCmd, err: err.message },
-          '[local-op/clone] failed to spawn child',
-        );
+        log.error({ cwd: absDir, cliCmd, err }, '[local-op/clone] failed to spawn child');
       });
 
       // `unref` so the child survives past the parent. Do it after attaching
@@ -13932,7 +13950,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       // throwing before its internal try/catch). Guard `headersSent` so we
       // don't double-emit if the inner handler already wrote a response.
       if (!res.headersSent) {
-        log.error({ err: e }, '[installed-agents] route wrapper failed');
+        log.error(
+          { err: e, requestId: getRequestId(req) },
+          '[installed-agents] route wrapper failed',
+        );
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
           handler: 'installed-agents',
           cause: e,
@@ -17825,7 +17846,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       });
     } catch (e) {
       if (!res.headersSent) {
-        log.error({ err: e }, '[handoff] route wrapper failed');
+        log.error({ err: e, requestId: getRequestId(req) }, '[handoff] route wrapper failed');
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
           handler: 'handoff',
           cause: e,
@@ -17855,7 +17876,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       // synchronously) so the client still receives a typed contract
       // response instead of a hung connection. Mirrors `handleInstalledAgentsRoute`.
       if (!res.headersSent) {
-        log.error({ err: e }, '[spawn-cursor] route wrapper failed');
+        log.error({ err: e, requestId: getRequestId(req) }, '[spawn-cursor] route wrapper failed');
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
           handler: 'spawn-cursor',
           cause: e,

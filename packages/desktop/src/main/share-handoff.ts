@@ -261,10 +261,7 @@ export function startFirstRunHandshake(deps: FirstRunHandshakeDeps): void {
       try {
         deps.routeShareUrl(decision.shareUrl);
       } catch (err) {
-        deps.log?.warn(
-          { err: err instanceof Error ? err.message : String(err) },
-          '[receive] source=deferred routeShareUrl threw',
-        );
+        deps.log?.warn({ err }, '[receive] source=deferred routeShareUrl threw');
       }
     } else {
       res.statusCode = 400;

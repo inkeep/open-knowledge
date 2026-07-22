@@ -163,10 +163,7 @@ export function gitCredentialCommand(
         // A throw from getTokenStore / a callback / handleCredentialGet must
         // not skip the flush — that's the exact failure (a vanished credential)
         // we need persisted. Log and flush before exiting non-zero.
-        log?.error(
-          { error: err instanceof Error ? err.message : String(err) },
-          '[auth] git-credential get: unexpected error',
-        );
+        log?.error({ err }, '[auth] git-credential get: unexpected error');
         await flushFileLogger(log);
         process.exit(1);
       }

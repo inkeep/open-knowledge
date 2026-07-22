@@ -28,6 +28,7 @@ import {
   stripDocExtension,
 } from './doc-extensions.ts';
 import { classifyFsPath, normalizeFsPath } from './fs-traced.ts';
+import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 import { extractPageIcon, extractPageTitle } from './page-identity.ts';
 import { toPosix } from './path-utils.ts';
@@ -463,7 +464,7 @@ function eventEscapesContentDir(rawPath: string, contentDir: string): boolean {
   try {
     lst = lstatSync(rawPath);
   } catch (e) {
-    const code = (e as NodeJS.ErrnoException).code;
+    const code = errnoCode(e);
     if (code === 'ENOENT') return false; // deleted between event and check
     log.warn(
       { path: rawPath, code },
@@ -476,7 +477,7 @@ function eventEscapesContentDir(rawPath: string, contentDir: string): boolean {
   try {
     canonical = realpathSync(rawPath);
   } catch (e) {
-    const code = (e as NodeJS.ErrnoException).code;
+    const code = errnoCode(e);
     if (code !== 'ENOENT' && code !== 'ELOOP') {
       log.warn(
         { path: rawPath, code },
@@ -635,7 +636,7 @@ export async function classifyEvents(
       // read (delete race) — the event is silently dropped downstream, so the
       // ring is the only record it ever existed.
       recordWatcherDecision('drop-read-failed', event.type, event.path);
-      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
+      if (errnoCode(e) !== 'ENOENT') {
         log.warn({ path: event.path, err: e }, `Failed to read ${event.path}`);
       }
     }
@@ -645,7 +646,7 @@ export async function classifyEvents(
       updateContents.set(event.path, await readFile(event.path, 'utf-8'));
     } catch (e) {
       recordWatcherDecision('drop-read-failed', event.type, event.path);
-      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
+      if (errnoCode(e) !== 'ENOENT') {
         log.warn({ path: event.path, err: e }, `Failed to read ${event.path}`);
       }
     }
@@ -661,7 +662,7 @@ export async function classifyEvents(
     try {
       lst = lstatSync(rawPath);
     } catch (e) {
-      const code = (e as NodeJS.ErrnoException).code;
+      const code = errnoCode(e);
       if (code !== 'ENOENT') {
         log.warn({ path: rawPath, err: e }, `resolveDocName lstat failed for ${rawPath}`);
       }
@@ -683,7 +684,7 @@ export async function classifyEvents(
     try {
       canonical = realpathSync(rawPath);
     } catch (e) {
-      const code = (e as NodeJS.ErrnoException).code;
+      const code = errnoCode(e);
       if (code !== 'ENOENT' && code !== 'ELOOP') {
         log.warn({ path: rawPath, err: e }, `resolveDocName realpath failed for ${rawPath}`);
       }
@@ -845,7 +846,7 @@ async function seedLastKnownHashes(
       try {
         lst = await lstat(fullPath);
       } catch (e) {
-        const code = (e as NodeJS.ErrnoException).code;
+        const code = errnoCode(e);
         if (code !== 'ENOENT') {
           log.warn({ path: fullPath, err: e }, `Failed to lstat ${fullPath}, skipping`);
         }
@@ -857,7 +858,7 @@ async function seedLastKnownHashes(
         try {
           canonical = await realpath(fullPath);
         } catch (e) {
-          const code = (e as NodeJS.ErrnoException).code;
+          const code = errnoCode(e);
           if (code === 'ENOENT' || code === 'ELOOP') {
             log.warn({ path: fullPath, code }, `Broken/cyclic symlink at ${fullPath}, skipping`);
           } else {
@@ -959,7 +960,7 @@ async function seedLastKnownHashes(
                 ...derivePageMeta(content, canonicalDocName),
               });
             } catch (err) {
-              const code = (err as NodeJS.ErrnoException).code;
+              const code = errnoCode(err);
               if (code !== 'ENOENT') {
                 log.warn({ path: canonical, err }, `Failed to seed hash for ${canonical}`);
               }
@@ -1045,7 +1046,7 @@ async function seedLastKnownHashes(
             ...derivePageMeta(content, docName),
           });
         } catch (err) {
-          const code = (err as NodeJS.ErrnoException).code;
+          const code = errnoCode(err);
           if (code === 'EACCES') {
             log.warn(
               { path: fullPath, code },
@@ -1081,7 +1082,7 @@ async function seedLastKnownHashes(
       }
     }
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
+    const code = errnoCode(err);
     if (code !== 'ENOENT') {
       log.warn({ dir, err }, `Failed to read directory ${dir}`);
     }
@@ -1225,7 +1226,7 @@ function updateFolderIndexFromRawEvents(
     try {
       lst = lstatSync(raw.path);
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
+      const code = errnoCode(err);
       if (code !== 'ENOENT') {
         log.warn({ path: raw.path, code }, `folder lstat failed for ${raw.path} (${code})`);
       }
@@ -1243,7 +1244,7 @@ function updateFolderIndexFromRawEvents(
         const stat = statSync(canonicalPath);
         if (stat.isDirectory()) folderStat = stat;
       } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code;
+        const code = errnoCode(err);
         if (code !== 'ENOENT') {
           log.warn(
             { path: raw.path, code },
@@ -1303,7 +1304,7 @@ function scanForUntrackedSubfolders(
     try {
       entries = readdirSync(dir, { withFileTypes: true });
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
+      const code = errnoCode(err);
       if (code !== 'ENOENT') {
         log.warn({ dir, code }, `folder rescan readdir failed for ${dir} (${code})`);
       }
@@ -1334,7 +1335,7 @@ function scanForUntrackedSubfolders(
       try {
         stat = lstatSync(fullPath);
       } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code;
+        const code = errnoCode(err);
         if (code !== 'ENOENT') {
           log.warn(
             { path: fullPath, code },
@@ -1479,7 +1480,7 @@ export async function handleRawEvents(
       try {
         checkPath = realpathSync(event.path);
       } catch (e) {
-        const code = (e as NodeJS.ErrnoException).code;
+        const code = errnoCode(e);
         if (code !== 'ENOENT') {
           log.warn(
             { path: event.path, code },
@@ -1494,7 +1495,7 @@ export async function handleRawEvents(
       try {
         checkPath = realpathSync(event.newPath);
       } catch (e) {
-        const code = (e as NodeJS.ErrnoException).code;
+        const code = errnoCode(e);
         if (code !== 'ENOENT') {
           log.warn(
             { path: event.newPath, code },
@@ -1659,7 +1660,7 @@ export async function handleRawEvents(
       st = lstatSync(raw.path);
       if (st.isSymbolicLink()) st = statSync(raw.path);
     } catch (e) {
-      const code = (e as NodeJS.ErrnoException).code;
+      const code = errnoCode(e);
       recordWatcherDecision('drop-stat-failed', raw.type, raw.path);
       if (code !== 'ENOENT') {
         log.warn({ path: raw.path, code }, `file-event lstat failed for ${raw.path} (${code})`);

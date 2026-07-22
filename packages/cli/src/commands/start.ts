@@ -594,24 +594,15 @@ export function buildIdleShutdownHandler(
                 'idle-shutdown: SIGTERM grace expired — escalated to SIGKILL',
               );
             } catch (err) {
-              input.log?.error(
-                { pid: lock.pid, err: err instanceof Error ? err.message : String(err) },
-                'idle-shutdown: SIGKILL failed',
-              );
+              input.log?.error({ pid: lock.pid, err }, 'idle-shutdown: SIGKILL failed');
             }
           }
         } catch (err) {
-          input.log?.warn(
-            { pid: lock.pid, err: err instanceof Error ? err.message : String(err) },
-            'idle-shutdown: failed to SIGTERM UI sibling',
-          );
+          input.log?.warn({ pid: lock.pid, err }, 'idle-shutdown: failed to SIGTERM UI sibling');
         }
       }
     } catch (err) {
-      input.log?.warn(
-        { err: err instanceof Error ? err.message : String(err) },
-        'idle-shutdown: UI lookup failed; proceeding with destroy',
-      );
+      input.log?.warn({ err }, 'idle-shutdown: UI lookup failed; proceeding with destroy');
     }
     await input.destroy();
   };

@@ -23,6 +23,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { parseTemplateFile } from '@inkeep/open-knowledge-core';
+import { errnoCode } from '../http/handler-utils.ts';
 import { getLogger } from '../logger.ts';
 
 type TemplateScope = 'local' | 'inherited';
@@ -159,7 +160,7 @@ export function resolveProjectTemplates(projectDir: string): ProjectTemplatesRes
       // a folder existed when we queued it but was removed before we
       // walked into it (file watcher race). Mirrors the `readTemplateMeta`
       // pattern below, sharing its `templateMetaWarnedPaths` dedupe set.
-      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      const code = errnoCode(err);
       if (code !== 'ENOENT' && !templateMetaWarnedPaths.has(absDir)) {
         templateMetaWarnedPaths.add(absDir);
         const reason = err instanceof Error ? err.message : String(err);
@@ -281,7 +282,7 @@ function readTemplateMeta(absPath: string): TemplateMeta {
   try {
     content = readFileSync(absPath, 'utf-8');
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    const code = errnoCode(err);
     if (code !== 'ENOENT' && !templateMetaWarnedPaths.has(absPath)) {
       templateMetaWarnedPaths.add(absPath);
       const reason = err instanceof Error ? err.message : String(err);

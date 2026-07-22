@@ -109,7 +109,7 @@ export function resolveProjectSlug(cwd: string, logger?: BundleLogger): string |
       // (or null), but log it so a missing/wrong project slug in the bundle is
       // diagnosable rather than silent — same rationale as resolveContentDir.
       logger?.warn(
-        { configPath, err: err instanceof Error ? err.message : String(err) },
+        { configPath, err },
         'bug-report: failed to read .ok/config.yml for project slug; using path-hash fallback',
       );
     }
@@ -248,10 +248,7 @@ function addContentFiles(args: {
       // A file we listed but can't read is dropped rather than aborting the
       // whole report; log it so the omission is diagnosable — the bundled
       // MANIFEST lists only what was written, never what was skipped.
-      args.logger?.warn(
-        { file, prefix: args.prefix, err: err instanceof Error ? err.message : String(err) },
-        'bug-report: skipped unreadable file',
-      );
+      args.logger?.warn({ file, prefix: args.prefix, err }, 'bug-report: skipped unreadable file');
     }
   }
 }

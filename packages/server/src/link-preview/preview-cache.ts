@@ -160,10 +160,7 @@ export class LinkPreviewCache {
         manifest = JSON.parse(await readFile(this.manifestPath, 'utf-8')) as ManifestFile;
       }
     } catch (err) {
-      log.warn(
-        { err: err instanceof Error ? err.message : String(err) },
-        '[link-preview] unreadable cache manifest — starting empty',
-      );
+      log.warn({ err }, '[link-preview] unreadable cache manifest — starting empty');
       return;
     }
     if (!manifest || manifest.schemaVersion !== MANIFEST_SCHEMA_VERSION || !manifest.entries) {
@@ -338,10 +335,7 @@ export class LinkPreviewCache {
     } catch (err) {
       // Persistence is best-effort: an unwritable cache degrades to a recompute
       // next boot, it must never fail a preview request.
-      log.warn(
-        { err: err instanceof Error ? err.message : String(err) },
-        '[link-preview] failed to persist cache',
-      );
+      log.warn({ err }, '[link-preview] failed to persist cache');
     }
   }
 
@@ -361,10 +355,7 @@ export class LinkPreviewCache {
     try {
       tracedRmSync(this.cacheDir, { recursive: true, force: true });
     } catch (err) {
-      log.warn(
-        { err: err instanceof Error ? err.message : String(err) },
-        '[link-preview] failed to wipe cache',
-      );
+      log.warn({ err }, '[link-preview] failed to wipe cache');
     }
   }
 
@@ -390,10 +381,7 @@ export class LinkPreviewCache {
     } catch (err) {
       // Mirror the manifest-level warn: a corrupt/unreadable blob is a miss, not
       // a throw. Reason only — never the URL/host/content (topology-leak hygiene).
-      log.warn(
-        { err: err instanceof Error ? err.message : String(err) },
-        '[link-preview] unreadable cache blob — treating as miss',
-      );
+      log.warn({ err }, '[link-preview] unreadable cache blob — treating as miss');
       return null;
     }
   }

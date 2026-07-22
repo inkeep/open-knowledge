@@ -12,7 +12,6 @@
  * becomes a load-order-dependent failure in another suite.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { execFileSync, execSync } from 'node:child_process';
 import {
   existsSync,
@@ -29,6 +28,7 @@ import {
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createCrashDetection } from '../crash-detection.ts';
 import { handleShellOpenExternal } from '../shell-allowlist.ts';
 import {
@@ -1222,7 +1222,7 @@ describe('handleBugReportCaptureScreenshot', () => {
     expect(await handleBugReportCaptureScreenshot(deps)).toBeNull();
     expect(store.has(7)).toBe(false);
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]?.payload.err).toContain('offscreen surface');
+    expect((warnings[0]?.payload.err as Error).message).toContain('offscreen surface');
   });
 });
 

@@ -29,6 +29,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { tracedMkdirSync } from './fs-traced.ts';
+import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 
 /** Cleanup function returned by `startConfigFileWatcher`. Idempotent. */
@@ -73,7 +74,7 @@ export async function startConfigFileWatcher(
   try {
     tracedMkdirSync(watchDir, { recursive: true });
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
+    const code = errnoCode(err);
     if (code !== 'EEXIST') {
       log.warn({ err, watchDir }, 'failed to create watch directory; watcher may be inert');
     }
@@ -122,7 +123,7 @@ export async function startConfigFileWatcher(
     try {
       content = readFileSync(path, 'utf-8');
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
+      const code = errnoCode(err);
       if (code === 'ENOENT') {
         if (logMissing)
           log.debug({ path }, 'config file disappeared between event and read; dropping');
@@ -211,7 +212,7 @@ export async function startMultiPathConfigFileWatcher(
     try {
       tracedMkdirSync(dir, { recursive: true });
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
+      const code = errnoCode(err);
       if (code !== 'EEXIST') {
         log.warn({ err, dir }, 'failed to create watch directory; watcher may be inert');
       }
@@ -246,7 +247,7 @@ export async function startMultiPathConfigFileWatcher(
     try {
       content = readFileSync(path, 'utf-8');
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
+      const code = errnoCode(err);
       if (code === 'ENOENT') {
         if (logMissing)
           log.debug({ path }, 'config file disappeared between event and read; dropping');

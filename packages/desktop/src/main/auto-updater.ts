@@ -670,7 +670,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       // consistent (fallback-attempted, no re-check) state instead.
       logger.error('proxy-feed fallback setFeedURL threw', {
         cause,
-        message: err instanceof Error ? err.message : String(err),
+        err,
       });
       return;
     }
@@ -680,7 +680,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       // right after the proxy one is operationally relevant, not debug noise.
       const ctx = {
         code: err?.code,
-        message: err instanceof Error ? err.message : String(err),
+        err,
       };
       if (isClassifiedUpdaterError(err)) {
         logger.warn('post-fallback checkForUpdates rejected', ctx);
@@ -754,7 +754,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     } catch (err) {
       logger.error('writeState failed — state gate not armed', {
         ctx,
-        message: err instanceof Error ? err.message : String(err),
+        err,
       });
       return false;
     }
@@ -937,7 +937,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       const logFn = isClassifiedUpdaterError(err) ? logger.warn : logger.debug;
       logFn('check-now checkForUpdates rejected', {
         code,
-        message: err instanceof Error ? err.message : String(err),
+        err,
         timestamp: now().toISOString(),
       });
       // The synchronous-reject path is rare (electron-updater normally emits
@@ -1013,8 +1013,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       const logFn = isClassifiedUpdaterError(err) ? logger.warn : logger.debug;
       logFn('downloadUpdate rejected', {
         code,
-        message: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
+        err,
         timestamp: now().toISOString(),
       });
     });
@@ -1130,14 +1129,13 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     if (isClassifiedUpdaterError(err)) {
       logger.warn('error (classified)', {
         code: err.code,
-        message: err.message,
+        err,
         timestamp: now().toISOString(),
       });
       onDispatch?.('error-classified');
     } else {
       logger.error('error (unclassified)', {
-        message: err.message,
-        stack: err.stack,
+        err,
         timestamp: now().toISOString(),
       });
       onDispatch?.('error-unclassified');
@@ -1268,7 +1266,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         await opts.prepareForRelaunch();
       } catch (err) {
         logger.warn('prepareForRelaunch threw — proceeding to quitAndInstall anyway', {
-          message: err instanceof Error ? err.message : String(err),
+          err,
         });
       }
     }
@@ -1581,7 +1579,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         // also emits `error` for these, so the catch here is just a defensive
         // log. Event handlers run either way.
         logger.debug('checkForUpdates rejected', {
-          message: err instanceof Error ? err.message : String(err),
+          err,
         });
       });
       scheduleNextCheck();
@@ -1604,7 +1602,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       })
       .catch((err: unknown) => {
         logger.debug('first-launch checkForUpdates rejected', {
-          message: err instanceof Error ? err.message : String(err),
+          err,
         });
         // If the proxy feed caused it, revert to GitHub and re-check once.
         revertToGithubFeed('first-check-rejected');
@@ -1661,7 +1659,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         } catch (err) {
           logger.warn('updater.off failed during destroy', {
             event,
-            message: err instanceof Error ? err.message : String(err),
+            err,
           });
         }
       };
@@ -1678,7 +1676,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         } catch (err) {
           logger.warn('ipcMain.removeHandler failed during destroy', {
             channel,
-            message: err instanceof Error ? err.message : String(err),
+            err,
           });
         }
       };
@@ -1747,8 +1745,7 @@ export async function bootAutoUpdater(
     return startAutoUpdater({ updater: autoUpdater, ...opts });
   } catch (err) {
     logger.error('auto-updater boot failed — app will run without updates this session', {
-      message: err instanceof Error ? err.message : String(err),
-      stack: err instanceof Error ? err.stack : undefined,
+      err,
     });
     return null;
   }

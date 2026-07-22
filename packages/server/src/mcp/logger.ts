@@ -28,6 +28,18 @@ interface McpLogEntry {
 
 const loggerContext = new AsyncLocalStorage<McpLogger>();
 
+/**
+ * Raw Errors stringify to `{}` under JSON.stringify — flatten top-level Error
+ * values to a plain `{name, message, stack}` record so the JSONL line keeps
+ * the stack. Nested structures stay caller-shaped.
+ */
+function toSerializableError(value: unknown): unknown {
+  if (value instanceof Error) {
+    return { name: value.name, message: value.message, stack: value.stack };
+  }
+  return value;
+}
+
 export class McpLogger {
   readonly sessionId: string;
   private corrId: string;
@@ -53,7 +65,7 @@ export class McpLogger {
   }
 
   error(msg: string, err?: unknown, ctx: Record<string, unknown> = {}): void {
-    const errCtx = err ? { error: err instanceof Error ? err.message : String(err), ...ctx } : ctx;
+    const errCtx = err !== undefined ? { error: err, ...ctx } : ctx;
     this.emit('error', msg, errCtx);
   }
 
@@ -84,6 +96,10 @@ export class McpLogger {
     msg: string,
     ctx: Record<string, unknown>,
   ): void {
+    const serializedCtx: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(ctx)) {
+      serializedCtx[key] = toSerializableError(value);
+    }
     const entry: McpLogEntry = {
       ts: new Date().toISOString(),
       level,
@@ -91,7 +107,7 @@ export class McpLogger {
       corrId: this.corrId,
       component: this.component,
       msg,
-      ...ctx,
+      ...serializedCtx,
     };
     const line = `${JSON.stringify(entry)}\n`;
     process.stderr.write(line);

@@ -760,10 +760,7 @@ function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
     },
     openExternal: (url) => {
       void openExternalSafely(url).catch((err: unknown) => {
-        getLogger('spellcheck-menu').warn(
-          { err: err instanceof Error ? err.message : String(err), url },
-          'context-menu search openExternal failed',
-        );
+        getLogger('spellcheck-menu').warn({ err, url }, 'context-menu search openExternal failed');
       });
     },
     popMenu: (input) => {
@@ -2197,7 +2194,7 @@ async function openEphemeralFile(filePath: string): Promise<void> {
     refreshApplicationMenu();
   } catch (err) {
     getLogger('project').error(
-      { file: plan.canonicalFilePath, err: err instanceof Error ? err.message : String(err) },
+      { file: plan.canonicalFilePath, err },
       'ephemeral single-file open failed',
     );
     dialog.showErrorBox(
@@ -2346,10 +2343,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
     onUninstall: desktopSelfUninstallAvailable()
       ? () =>
           void startDesktopSelfUninstallFlow().catch((err) => {
-            getLogger('lifecycle').error(
-              { err: err instanceof Error ? err.message : String(err) },
-              'desktop self-uninstall flow failed',
-            );
+            getLogger('lifecycle').error({ err }, 'desktop self-uninstall flow failed');
           })
       : undefined,
     // File menu state-aware items. activeTarget drives enable/disable;
@@ -2467,10 +2461,7 @@ async function showDesktopUninstallNotice(
         `data:text/html;charset=utf-8,${encodeURIComponent(buildDesktopUninstallNoticeHtml(spec))}`,
       )
       .catch((err) => {
-        getLogger('lifecycle').warn(
-          { err: err instanceof Error ? err.message : String(err) },
-          'desktop uninstall notice failed to load',
-        );
+        getLogger('lifecycle').warn({ err }, 'desktop uninstall notice failed to load');
         finish(closeMeansConfirm);
       });
   });
@@ -2567,10 +2558,7 @@ async function showDesktopUninstallProjectPicker(
         )}`,
       )
       .catch((err) => {
-        getLogger('lifecycle').warn(
-          { err: err instanceof Error ? err.message : String(err) },
-          'desktop uninstall project picker failed to load',
-        );
+        getLogger('lifecycle').warn({ err }, 'desktop uninstall project picker failed to load');
         finish({ action: 'cancel' });
       });
   });
@@ -2603,10 +2591,7 @@ async function withDesktopUninstallProgress<T>(work: () => Promise<T>): Promise<
         `data:text/html;charset=utf-8,${encodeURIComponent(buildDesktopUninstallProgressHtml())}`,
       );
     } catch (err) {
-      getLogger('lifecycle').warn(
-        { err: err instanceof Error ? err.message : String(err) },
-        'desktop uninstall progress window failed to load',
-      );
+      getLogger('lifecycle').warn({ err }, 'desktop uninstall progress window failed to load');
     }
     return await work();
   } finally {
@@ -2634,7 +2619,7 @@ async function startDesktopSelfUninstallFlow(): Promise<void> {
     lockDirs = await discoverLockDirs();
   } catch (err) {
     getLogger('lifecycle').warn(
-      { err: err instanceof Error ? err.message : String(err) },
+      { err },
       'desktop self-uninstall could not discover running project locks',
     );
   }
@@ -4423,7 +4408,7 @@ function registerIpcHandlers() {
         );
       } catch (err) {
         getLogger('project').warn(
-          { gitRoot, err: err instanceof Error ? err.message : String(err) },
+          { gitRoot, err },
           'remove-git-folder: worktree server stop failed',
         );
       }
@@ -5073,7 +5058,7 @@ const safetyNetLogger = getLogger('process-safety-net');
 installStdioBrokenPipeGuard(process, {
   onNonBenignError: (stream, err) => {
     safetyNetLogger.error(
-      { stream, code: (err as NodeJS.ErrnoException).code, message: err.message },
+      { stream, code: (err as NodeJS.ErrnoException).code, err },
       'unexpected stdio stream error',
     );
   },

@@ -405,7 +405,7 @@ export async function readAllTargets(
       {
         event: 'skill-state.read-error',
         path: skillStateYamlPath(home),
-        error: String(err),
+        err,
       },
       'non-ENOENT error reading skill-state.yml; treating as absent',
     );

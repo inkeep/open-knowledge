@@ -163,7 +163,7 @@ export async function proxyFetchBranchInfo(
     raw = await res.json();
   } catch (err) {
     deps.log?.warn('[branch-info-proxy] branch-info fetch failed', {
-      err: err instanceof Error ? err.message : String(err),
+      err,
     });
     return null;
   }
@@ -247,7 +247,7 @@ export async function proxyAwaitBranchSwitched(
       }
     } catch (err) {
       deps.log?.warn('[branch-info-proxy] server-info poll failed (will retry)', {
-        err: err instanceof Error ? err.message : String(err),
+        err,
       });
     }
     if (raw !== undefined) {
@@ -302,7 +302,7 @@ export async function proxyRunCheckout(
     raw = await res.json();
   } catch (err) {
     deps.log?.warn('[branch-info-proxy] checkout fetch failed', {
-      err: err instanceof Error ? err.message : String(err),
+      err,
     });
     return null;
   }
@@ -364,7 +364,7 @@ export async function proxyShareTargetStatus(
     raw = await res.json();
   } catch (err) {
     deps.log?.warn('[branch-info-proxy] target-status fetch failed', {
-      err: err instanceof Error ? err.message : String(err),
+      err,
     });
     return null;
   }

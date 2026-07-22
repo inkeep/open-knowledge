@@ -48,6 +48,7 @@ import {
 import type { Counter } from '@opentelemetry/api';
 import { getLogger } from '../logger.ts';
 import { getMeter, setActiveSpanAttributes } from '../telemetry.ts';
+import { getRequestId } from './request-id.ts';
 
 // Lazy logger accessor — `loggerFactory.configure()` (used by capture-logger
 // tests in `server-factory.test.ts` and `logger.test.ts`) clears the
@@ -184,6 +185,7 @@ export function errorResponse(
       {
         event: 'api.error.double-write',
         instance,
+        requestId: getRequestId(res.req),
         type,
         status,
         handler: options.handler,
@@ -228,6 +230,7 @@ export function errorResponse(
     log().error(
       {
         event: 'api.error.malformed-envelope',
+        requestId: getRequestId(res.req),
         issues: validated.error.issues,
         body,
         handler: options.handler,
@@ -301,6 +304,7 @@ export function errorResponse(
     {
       event: 'api.error',
       instance,
+      requestId: getRequestId(res.req),
       type,
       status,
       handler: options.handler,
@@ -330,6 +334,7 @@ export function errorResponse(
     log().error(
       {
         event: 'api.error.unserializable-body',
+        requestId: getRequestId(res.req),
         bodyKeys: Object.keys(wireBody),
         handler: options.handler,
         originalStatus: status,
@@ -520,6 +525,7 @@ export function createStreamingErrorWriter(
       log().error(
         {
           event: 'api.streaming.error.suppressed',
+          requestId: getRequestId(res.req),
           type,
           status,
           handler,
@@ -545,6 +551,7 @@ export function createStreamingErrorWriter(
       log().error(
         {
           event: 'api.streaming.error.write-failed',
+          requestId: getRequestId(res.req),
           type,
           status,
           handler,

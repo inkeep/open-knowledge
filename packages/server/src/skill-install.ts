@@ -326,7 +326,7 @@ export async function installUserSkill(
     currentVersion = await readServerPackageVersion();
   } catch (err) {
     logger.warn(
-      { event: 'skill-install.failed', reason: 'version-read-failed', error: String(err) },
+      { event: 'skill-install.failed', reason: 'version-read-failed', err },
       'Skill install aborted — could not read @inkeep/open-knowledge-server version.',
     );
     await report('failed', undefined, 'version-read-failed');
@@ -339,7 +339,7 @@ export async function installUserSkill(
     // don't go invisible. Parse / schema-violation cases fire structured
     // warnings from inside `readSkillStateFile` via the threaded logger.
     logger.warn(
-      { event: 'skill-install.gate.read-failed', error: String(err) },
+      { event: 'skill-install.gate.read-failed', err },
       'Could not read cli-hosts install-state; proceeding with fresh install.',
     );
     return null;
@@ -373,7 +373,7 @@ export async function installUserSkill(
       {
         event: 'skill-install.failed',
         reason: 'bundled-asset-missing',
-        error: String(err),
+        err,
       },
       'Skill install aborted — bundled SKILL.md asset not found.',
     );
@@ -395,7 +395,7 @@ export async function installUserSkill(
       await writeTargetVersion(home, 'cli-hosts', currentVersion, surfaceAttribution, logger);
     } catch (err) {
       logger.warn(
-        { event: 'skill-install.failed', reason: 'sidecar-write-failed', error: String(err) },
+        { event: 'skill-install.failed', reason: 'sidecar-write-failed', err },
         'Skill install succeeded but sidecar write failed.',
       );
       await report('failed', currentVersion, 'sidecar-write-failed');
@@ -424,7 +424,7 @@ export async function installUserSkill(
       {
         event: 'skill-install.failed',
         reason: 'spawn-error',
-        error: String(outcome.error),
+        err: outcome.error,
         stderr: outcome.stderr,
       },
       'Skill install failed — `npx` unavailable or spawn errored. Run manually: npx ' +
@@ -601,7 +601,7 @@ export async function buildAndOpenSkill(
       currentVersion = await readServerPackageVersion();
     } catch (err) {
       logger?.warn?.(
-        { event: 'skill-install.gate.version-read-failed', error: String(err) },
+        { event: 'skill-install.gate.version-read-failed', err },
         'Could not read @inkeep/open-knowledge-server version for gate check; rebuilding.',
       );
     }
@@ -616,7 +616,7 @@ export async function buildAndOpenSkill(
         ]);
       } catch (err) {
         logger?.warn?.(
-          { event: 'skill-install.gate.read-failed', error: String(err) },
+          { event: 'skill-install.gate.read-failed', err },
           'Could not read claude-cowork install-state; rebuilding.',
         );
       }
@@ -694,7 +694,7 @@ export async function buildAndOpenSkill(
           event: 'skill-install.state-write-failed',
           target: 'claude-cowork',
           version: build.skillVersion,
-          error: String(err),
+          err,
         },
         'Skill bundle built but install-state write failed; gate will re-trigger build on next click.',
       );

@@ -501,10 +501,7 @@ export async function bootServer(opts: BootServerOptions): Promise<BootedServer>
         // no-env-var path does. Warn so that disconnect is diagnosable: the
         // server's `ok.boot` would otherwise become a detached root in Tempo with
         // nothing in the logs to correlate against the missing join.
-        getLogger('boot').warn(
-          { err: err instanceof Error ? err.message : String(err) },
-          'ok.boot trace-join failed — starting unparented boot',
-        );
+        getLogger('boot').warn({ err }, 'ok.boot trace-join failed — starting unparented boot');
       }
     }
     return bootSpan();
@@ -1123,7 +1120,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     }
   } catch (err) {
     log.warn?.(
-      { event: 'installed-skills-reconcile-failed', error: String(err) },
+      { event: 'installed-skills-reconcile-failed', err },
       'Installed-skills reconcile failed (non-fatal).',
     );
   }

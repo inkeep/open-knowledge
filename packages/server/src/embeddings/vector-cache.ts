@@ -150,10 +150,7 @@ export class VectorCache {
         manifest = JSON.parse(await readFile(this.manifestPath, 'utf-8')) as ManifestFile;
       }
     } catch (err) {
-      log.warn(
-        { err: err instanceof Error ? err.message : String(err) },
-        '[embeddings] unreadable cache manifest — rebuilding',
-      );
+      log.warn({ err }, '[embeddings] unreadable cache manifest — rebuilding');
       manifest = null;
     }
 
@@ -191,7 +188,7 @@ export class VectorCache {
         } catch (err) {
           // Corrupt blob → drop the in-memory vectors so the doc re-embeds.
           log.warn(
-            { hash: entry.contentHash, err: err instanceof Error ? err.message : String(err) },
+            { hash: entry.contentHash, err },
             '[embeddings] corrupt vector blob — will re-embed',
           );
         }
@@ -312,10 +309,7 @@ export class VectorCache {
     } catch (err) {
       // Persistence is best-effort: an unwritable cache degrades to recompute
       // next boot, it must never fail a search or an embed pass.
-      log.warn(
-        { err: err instanceof Error ? err.message : String(err) },
-        '[embeddings] failed to persist vector cache',
-      );
+      log.warn({ err }, '[embeddings] failed to persist vector cache');
     }
   }
 
@@ -324,10 +318,7 @@ export class VectorCache {
     try {
       tracedRmSync(this.cacheDir, { recursive: true, force: true });
     } catch (err) {
-      log.warn(
-        { err: err instanceof Error ? err.message : String(err) },
-        '[embeddings] failed to wipe stale cache',
-      );
+      log.warn({ err }, '[embeddings] failed to wipe stale cache');
     }
   }
 }

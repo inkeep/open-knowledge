@@ -17,9 +17,9 @@
  *   - Dev-mode guard skips first-launch check but keeps handlers wired
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import type { OutgoingHttpHeaders } from 'node:http';
+import { describe, expect, test, vi } from 'vitest';
 import {
   bootAutoUpdater,
   buildCheckNowResultFromError,
@@ -63,7 +63,7 @@ class FakeUpdater extends EventEmitter implements UpdaterLike {
   allowDowngrade = true;
   forceDevUpdateConfig = false;
   requestHeaders: OutgoingHttpHeaders | null = null;
-  setFeedURL = mock(
+  setFeedURL = vi.fn(
     (
       _urlOrOptions:
         | string
@@ -71,9 +71,9 @@ class FakeUpdater extends EventEmitter implements UpdaterLike {
         | { provider: 'github'; owner: string; repo: string },
     ) => {},
   );
-  checkForUpdates = mock(() => Promise.resolve(undefined));
-  downloadUpdate = mock(() => Promise.resolve([] as unknown[]));
-  quitAndInstall = mock(() => {});
+  checkForUpdates = vi.fn(() => Promise.resolve(undefined));
+  downloadUpdate = vi.fn(() => Promise.resolve([] as unknown[]));
+  quitAndInstall = vi.fn(() => {});
   override on(event: string, listener: (...args: unknown[]) => void): this {
     return super.on(event, listener as (...args: unknown[]) => void);
   }
@@ -121,8 +121,8 @@ function makeFakeWindow(captured: CapturedSend[]): SendTarget {
 }
 
 interface FakeClock {
-  setTimeout: ReturnType<typeof mock>;
-  clearTimeout: ReturnType<typeof mock>;
+  setTimeout: ReturnType<typeof vi.fn>;
+  clearTimeout: ReturnType<typeof vi.fn>;
   /** Most recently registered timer callback — fire it to simulate a tick. */
   lastCallback: (() => void) | null;
   /** Most recently returned timer handle. */
@@ -133,20 +133,20 @@ interface FakeClock {
 
 function makeFakeClock(): FakeClock {
   const clock: FakeClock = {
-    setTimeout: mock(() => Symbol('timer-handle')),
-    clearTimeout: mock(() => {}),
+    setTimeout: vi.fn(() => Symbol('timer-handle')),
+    clearTimeout: vi.fn(() => {}),
     lastCallback: null,
     lastHandle: null,
     lastMs: null,
   };
-  clock.setTimeout = mock((cb: () => void, ms: number) => {
+  clock.setTimeout = vi.fn((cb: () => void, ms: number) => {
     clock.lastCallback = cb;
     clock.lastMs = ms;
     const handle = Symbol('timer-handle');
     clock.lastHandle = handle;
     return handle as unknown as ReturnType<typeof setTimeout>;
   });
-  clock.clearTimeout = mock((h: unknown) => {
+  clock.clearTimeout = vi.fn((h: unknown) => {
     if (h === clock.lastHandle) {
       clock.lastCallback = null;
       clock.lastHandle = null;
@@ -171,10 +171,10 @@ interface TestRig {
   dispatches: DispatchKind[];
   now: Date;
   logger: {
-    info: ReturnType<typeof mock>;
-    warn: ReturnType<typeof mock>;
-    error: ReturnType<typeof mock>;
-    debug: ReturnType<typeof mock>;
+    info: ReturnType<typeof vi.fn>;
+    warn: ReturnType<typeof vi.fn>;
+    error: ReturnType<typeof vi.fn>;
+    debug: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -248,10 +248,10 @@ function makeRig(
     dispatches: [],
     now: new Date('2026-04-21T12:00:00.000Z'),
     logger: {
-      info: mock(() => {}),
-      warn: mock(() => {}),
-      error: mock(() => {}),
-      debug: mock(() => {}),
+      info: vi.fn(() => {}),
+      warn: vi.fn(() => {}),
+      error: vi.fn(() => {}),
+      debug: vi.fn(() => {}),
     },
   };
   const primaryWindow = makeFakeWindow(primaryCaptured);
@@ -460,7 +460,7 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
       proxyFeed: { base: PROXY_BASE, channels: new Set(['beta']) },
       updaterSetup: (u) => {
         let firstCall = true;
-        u.checkForUpdates = mock(() => {
+        u.checkForUpdates = vi.fn(() => {
           if (firstCall) {
             firstCall = false;
             return Promise.reject(new Error('proxy 503'));
@@ -542,7 +542,7 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
       proxyFeed: { base: PROXY_BASE, channels: new Set(['beta']) },
       updaterSetup: (u) => {
         const original = u.setFeedURL;
-        u.setFeedURL = mock((arg) => {
+        u.setFeedURL = vi.fn((arg) => {
           if (typeof arg === 'object' && arg?.provider === 'github') {
             throw new Error('setFeedURL boom');
           }
@@ -653,7 +653,7 @@ describe('cross-channel veto on update-available', () => {
   });
 
   test('menu-driven check: cross-channel offer remaps to not-available + does not download', () => {
-    const showCheckNowResult = mock(() => {});
+    const showCheckNowResult = vi.fn(() => {});
     const { rig } = makeRig({ appVersion: '0.5.0-beta.5', showCheckNowResult });
     rig.ipc.invoke('ok:update:check-now');
     rig.updater.emit('update-available', { version: '0.5.0' });
@@ -733,10 +733,10 @@ describe('persist-before-emit ordering (Finding #2)', () => {
     const state: AppState = emptyState();
     const dispatches: DispatchKind[] = [];
     const logger = {
-      info: mock(() => {}),
-      warn: mock(() => {}),
-      error: mock(() => {}),
-      debug: mock(() => {}),
+      info: vi.fn(() => {}),
+      warn: vi.fn(() => {}),
+      error: vi.fn(() => {}),
+      debug: vi.fn(() => {}),
     };
     startAutoUpdater({
       updater,
@@ -789,10 +789,10 @@ describe('persist-before-emit ordering (Finding #2)', () => {
       now: () => new Date(),
       onDispatch: (k) => dispatches.push(k),
       logger: {
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        debug: mock(() => {}),
+        info: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
       },
     });
 
@@ -1132,10 +1132,10 @@ describe('boot-time stale versionPendingInstall reconciliation', () => {
       now: () => new Date(),
       onDispatch: (k) => dispatches.push(k),
       logger: {
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        debug: mock(() => {}),
+        info: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
       },
     });
     expect(state.versionPendingInstall).toBe('0.4.0');
@@ -1201,10 +1201,10 @@ describe('boot-time failed-install detection', () => {
         now: () => new Date(),
         onDispatch: (k) => dispatches.push(k),
         logger: {
-          info: mock(() => {}),
-          warn: mock(() => {}),
-          error: mock(() => {}),
-          debug: mock(() => {}),
+          info: vi.fn(() => {}),
+          warn: vi.fn(() => {}),
+          error: vi.fn(() => {}),
+          debug: vi.fn(() => {}),
         },
       });
       return { captured, dispatches };
@@ -1352,10 +1352,10 @@ describe('boot-time failed-install detection', () => {
         now: () => new Date(),
         onDispatch: (k) => dispatches.push(k),
         logger: {
-          info: mock(() => {}),
-          warn: mock(() => {}),
-          error: mock(() => {}),
-          debug: mock(() => {}),
+          info: vi.fn(() => {}),
+          warn: vi.fn(() => {}),
+          error: vi.fn(() => {}),
+          debug: vi.fn(() => {}),
         },
       });
       return { captured, dispatches };
@@ -1435,10 +1435,10 @@ describe('boot-time failed-install detection', () => {
       now: () => new Date(),
       onDispatch: (k) => dispatches.push(k),
       logger: {
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        debug: mock(() => {}),
+        info: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
       },
     });
     expect(dispatches).not.toContain('attempted-install-cross-channel' as DispatchKind);
@@ -1468,10 +1468,10 @@ describe('boot-time failed-install detection', () => {
       now: () => new Date(),
       onDispatch: (k) => dispatches.push(k),
       logger: {
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        debug: mock(() => {}),
+        info: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
       },
     });
     expect(dispatches).not.toContain('install-failed-giveup' as DispatchKind);
@@ -1505,10 +1505,10 @@ describe('boot-time failed-install detection', () => {
       now: () => new Date(),
       onDispatch: (k) => dispatches.push(k),
       logger: {
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        debug: mock(() => {}),
+        info: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
       },
     });
     expect(captured.filter((c) => c.channel === 'ok:update:relaunch-failed')).toHaveLength(0);
@@ -1541,10 +1541,10 @@ describe('boot-time failed-install detection', () => {
       now: () => new Date(),
       onDispatch: (k) => dispatches.push(k),
       logger: {
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        debug: mock(() => {}),
+        info: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
       },
     });
     expect(state.attemptedInstall).toBe('0.16.0-beta.3');
@@ -1853,15 +1853,15 @@ describe('periodic check singleton + jitter (AC10, D10)', () => {
     const clock = makeFakeClock();
     const captured: CapturedSend[] = [];
     let state: AppState = emptyState();
-    updater.checkForUpdates = mock(() =>
+    updater.checkForUpdates = vi.fn(() =>
       Promise.reject(new Error('net::ERR_INTERNET_DISCONNECTED')),
     );
     const primaryWindow = makeFakeWindow(captured);
     const logger = {
-      info: mock(() => {}),
-      warn: mock(() => {}),
-      error: mock(() => {}),
-      debug: mock(() => {}),
+      info: vi.fn(() => {}),
+      warn: vi.fn(() => {}),
+      error: vi.fn(() => {}),
+      debug: vi.fn(() => {}),
     };
     startAutoUpdater({
       updater,
@@ -1938,7 +1938,7 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
     // re-broadcast the downloaded banner (same notice id replaces the stuck
     // card in place), then rethrow for the clicked window's error notice.
     const { rig } = makeRig({ versionPendingInstall: '0.3.2', extraWindowCount: 2 });
-    rig.updater.quitAndInstall = mock(() => {
+    rig.updater.quitAndInstall = vi.fn(() => {
       throw new Error('SQRLInstallerErrorDomain Code=-9');
     });
     await expect(Promise.resolve(rig.ipc.invoke('ok:update:relaunch-now'))).rejects.toThrow(
@@ -1959,7 +1959,7 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
     }
     expect(rig.dispatches).toContain('relaunch-failed-rearm' as DispatchKind);
     // The restored gate makes a retry click work end-to-end.
-    rig.updater.quitAndInstall = mock(() => {});
+    rig.updater.quitAndInstall = vi.fn(() => {});
     await rig.ipc.invoke('ok:update:relaunch-now');
     expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
   });
@@ -2002,10 +2002,10 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
       clock: makeFakeClock(),
       now: () => new Date(),
       logger: {
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        debug: mock(() => {}),
+        info: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
       },
     });
     await ipc.invoke('ok:update:relaunch-now');
@@ -2021,7 +2021,7 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
   test('prepareForRelaunch fires BEFORE quitAndInstall — utility kill ordering', async () => {
     const calls: string[] = [];
     const updater = new FakeUpdater();
-    updater.quitAndInstall = mock(() => {
+    updater.quitAndInstall = vi.fn(() => {
       calls.push('quitAndInstall');
     });
     const ipc = makeFakeIpc();
@@ -2047,10 +2047,10 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
       clock: makeFakeClock(),
       now: () => new Date(),
       logger: {
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        debug: mock(() => {}),
+        info: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
       },
     });
     await ipc.invoke('ok:update:relaunch-now');
@@ -2058,7 +2058,7 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
   });
 
   test('prepareForRelaunch does NOT fire when versionPendingInstall is null', () => {
-    const prepareForRelaunch = mock(() => {});
+    const prepareForRelaunch = vi.fn(() => {});
     const { rig } = makeRig({ versionPendingInstall: null, prepareForRelaunch });
     rig.ipc.invoke('ok:update:relaunch-now');
     expect(prepareForRelaunch).not.toHaveBeenCalled();
@@ -2066,7 +2066,7 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
   });
 
   test('prepareForRelaunch throw does NOT block quitAndInstall', () => {
-    const prepareForRelaunch = mock(() => {
+    const prepareForRelaunch = vi.fn(() => {
       throw new Error('teardown bug');
     });
     const { rig } = makeRig({ versionPendingInstall: '0.3.2', prepareForRelaunch });
@@ -2232,10 +2232,10 @@ describe('async relaunch failure — error event + no-quit watchdog', () => {
       clock,
       now: () => new Date(),
       logger: {
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        debug: mock(() => {}),
+        info: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
       },
     });
     await Promise.resolve();
@@ -2312,7 +2312,7 @@ describe('ok:update:check-now IPC handler', () => {
 
   test('rejection from updater.checkForUpdates is swallowed in IPC path', () => {
     const { rig } = makeRig();
-    rig.updater.checkForUpdates = mock(() => Promise.reject(new Error('network down')));
+    rig.updater.checkForUpdates = vi.fn(() => Promise.reject(new Error('network down')));
     expect(() => rig.ipc.invoke('ok:update:check-now')).not.toThrow();
   });
 
@@ -2325,7 +2325,7 @@ describe('ok:update:check-now IPC handler', () => {
 
 describe('check-now → showCheckNowResult feedback dispatch', () => {
   test('update-not-available after menu-check fires not-available result', () => {
-    const showCheckNowResult = mock(() => {});
+    const showCheckNowResult = vi.fn(() => {});
     const { rig } = makeRig({ appVersion: '0.4.0-beta.13', showCheckNowResult });
     rig.ipc.invoke('ok:update:check-now');
     rig.updater.emit('update-not-available', { version: '0.4.0-beta.13' });
@@ -2337,7 +2337,7 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
   });
 
   test('update-available after menu-check fires available result with versions', () => {
-    const showCheckNowResult = mock(() => {});
+    const showCheckNowResult = vi.fn(() => {});
     const { rig } = makeRig({
       appVersion: '0.4.0-beta.13',
       showCheckNowResult,
@@ -2353,7 +2353,7 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
   });
 
   test('error after menu-check fires error result with the message', () => {
-    const showCheckNowResult = mock(() => {});
+    const showCheckNowResult = vi.fn(() => {});
     const { rig } = makeRig({ showCheckNowResult });
     rig.ipc.invoke('ok:update:check-now');
     rig.updater.emit('error', new Error('network timeout'));
@@ -2376,7 +2376,7 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
     // so the final 404 names `latest-mac.yml` even on the beta channel.
     // Functionally: there is no installable update right now → surface the
     // friendly "up to date" dialog instead of a scary HTTP-404 dump.
-    const showCheckNowResult = mock(() => {});
+    const showCheckNowResult = vi.fn(() => {});
     const { rig } = makeRig({ appVersion: '0.5.0-beta.21', showCheckNowResult });
     rig.ipc.invoke('ok:update:check-now');
     const err = Object.assign(
@@ -2398,7 +2398,7 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
     // remapped. Other classified codes (HTTP_ERROR_500, ZIP_FILE_NOT_FOUND,
     // CHECKSUM_MISMATCH, …) still surface as error dialogs — they describe
     // real failures, not a transient empty-release state.
-    const showCheckNowResult = mock(() => {});
+    const showCheckNowResult = vi.fn(() => {});
     const { rig } = makeRig({ showCheckNowResult });
     rig.ipc.invoke('ok:update:check-now');
     const err = Object.assign(new Error('zip missing'), {
@@ -2412,14 +2412,14 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
   });
 
   test('periodic check (NO menu-check) does NOT fire showCheckNowResult', () => {
-    const showCheckNowResult = mock(() => {});
+    const showCheckNowResult = vi.fn(() => {});
     const { rig } = makeRig({ showCheckNowResult });
     rig.updater.emit('update-not-available', { version: '0.4.0-beta.13' });
     expect(showCheckNowResult).not.toHaveBeenCalled();
   });
 
   test('subsequent events after dispatch do NOT re-fire (single-shot per check-now)', () => {
-    const showCheckNowResult = mock(() => {});
+    const showCheckNowResult = vi.fn(() => {});
     const { rig } = makeRig({ showCheckNowResult });
     rig.ipc.invoke('ok:update:check-now');
     rig.updater.emit('update-not-available', { version: '0.4.0-beta.13' });
@@ -2429,9 +2429,9 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
   });
 
   test('checkForUpdates synchronous reject fires error result', async () => {
-    const showCheckNowResult = mock(() => {});
+    const showCheckNowResult = vi.fn(() => {});
     const { rig } = makeRig({ showCheckNowResult });
-    rig.updater.checkForUpdates = mock(() => Promise.reject(new Error('feed not reachable')));
+    rig.updater.checkForUpdates = vi.fn(() => Promise.reject(new Error('feed not reachable')));
     rig.ipc.invoke('ok:update:check-now');
     // Wait for the .catch handler in runMenuDrivenCheck to settle.
     await new Promise((r) => setTimeout(r, 0));
@@ -2448,12 +2448,12 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
     // both paths aligned. Today this path is rare (the error normally lands
     // on the event bus), but the unit test pins the contract so a refactor
     // that drops the helper's special-case fails loud.
-    const showCheckNowResult = mock(() => {});
+    const showCheckNowResult = vi.fn(() => {});
     const { rig } = makeRig({ appVersion: '0.5.0-beta.21', showCheckNowResult });
     const err = Object.assign(new Error('Cannot find latest-mac.yml ...: HttpError: 404'), {
       code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND',
     });
-    rig.updater.checkForUpdates = mock(() => Promise.reject(err));
+    rig.updater.checkForUpdates = vi.fn(() => Promise.reject(err));
     rig.ipc.invoke('ok:update:check-now');
     await new Promise((r) => setTimeout(r, 0));
     expect(showCheckNowResult).toHaveBeenCalledWith({
@@ -2519,7 +2519,7 @@ describe('buildCheckNowResultFromError', () => {
 // invariant unique to the menu seam is "it routes through that same path".
 describe('handle.checkForUpdatesNow() routes the menu through runMenuDrivenCheck', () => {
   test('a menu click arms menuCheckPending so the result reaches showCheckNowResult', () => {
-    const showCheckNowResult = mock(() => {});
+    const showCheckNowResult = vi.fn(() => {});
     const { rig, handle } = makeRig({ appVersion: '0.4.0-beta.27', showCheckNowResult });
     void handle.checkForUpdatesNow();
     rig.updater.emit('update-not-available', { version: '0.4.0-beta.27' });
@@ -2564,10 +2564,10 @@ describe('dev-mode guard (isPackaged=false)', () => {
       clock,
       now: () => new Date(),
       logger: {
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        debug: mock(() => {}),
+        info: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
       },
     });
     await Promise.resolve();
@@ -2769,10 +2769,10 @@ describe('markCheckSucceeded routes through persistSafely (Critical #1)', () => 
     const primaryWindow = makeFakeWindow(captured);
     const state: AppState = emptyState();
     const logger = {
-      info: mock(() => {}),
-      warn: mock(() => {}),
-      error: mock(() => {}),
-      debug: mock(() => {}),
+      info: vi.fn(() => {}),
+      warn: vi.fn(() => {}),
+      error: vi.fn(() => {}),
+      debug: vi.fn(() => {}),
     };
     startAutoUpdater({
       updater,
@@ -2818,10 +2818,10 @@ describe('markCheckSucceeded routes through persistSafely (Critical #1)', () => 
       clock,
       now: () => new Date(),
       logger: {
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        debug: mock(() => {}),
+        info: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
       },
     });
     expect(() => updater.emit('update-not-available', { version: '0.3.1' })).not.toThrow();
@@ -2854,10 +2854,10 @@ describe('Toast B persist-before-emit + whenRendererReady (Major #1)', () => {
       clock,
       now: () => new Date(),
       logger: {
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        debug: mock(() => {}),
+        info: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
       },
     });
     // Persist failed → no Toast B.
@@ -2963,10 +2963,10 @@ describe('relaunch-now idempotency (Major #2)', () => {
       clock,
       now: () => new Date(),
       logger: {
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        debug: mock(() => {}),
+        info: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
       },
     });
     ipc.invoke('ok:update:relaunch-now');
@@ -2983,10 +2983,10 @@ describe('relaunch-now idempotency (Major #2)', () => {
 describe('bootAutoUpdater catch-path (Major #5)', () => {
   test('dynamic-import failure → returns null + logs error, no throw', async () => {
     const logger = {
-      info: mock(() => {}),
-      warn: mock(() => {}),
-      error: mock(() => {}),
-      debug: mock(() => {}),
+      info: vi.fn(() => {}),
+      warn: vi.fn(() => {}),
+      error: vi.fn(() => {}),
+      debug: vi.fn(() => {}),
     };
     const captured: CapturedSend[] = [];
     const primaryWindow = makeFakeWindow(captured);
@@ -3010,9 +3010,7 @@ describe('bootAutoUpdater catch-path (Major #5)', () => {
     expect(logger.error).toHaveBeenCalled();
     // Error log includes the failure message for triage.
     const errorCall = logger.error.mock.calls[0];
-    expect(errorCall?.[1]).toMatchObject({
-      message: expect.stringContaining('Cannot find module'),
-    });
+    expect((errorCall?.[1] as { err?: Error })?.err?.message).toContain('Cannot find module');
   });
 
   test('successful import → returns a real handle with destroy', async () => {
@@ -3043,10 +3041,10 @@ describe('bootAutoUpdater catch-path (Major #5)', () => {
 
   test('startAutoUpdater synchronous throw during wire-up is caught', async () => {
     const logger = {
-      info: mock(() => {}),
-      warn: mock(() => {}),
-      error: mock(() => {}),
-      debug: mock(() => {}),
+      info: vi.fn(() => {}),
+      warn: vi.fn(() => {}),
+      error: vi.fn(() => {}),
+      debug: vi.fn(() => {}),
     };
     // A fake updater whose `.on(...)` throws simulates an API-shape drift
     // inside startAutoUpdater's wire-up (future electron-updater major
@@ -3134,10 +3132,10 @@ describe('bootAutoUpdater catch-path (Major #5)', () => {
 
   test('module exposes neither top-level nor .default.autoUpdater → logs + returns null', async () => {
     const logger = {
-      info: mock(() => {}),
-      warn: mock(() => {}),
-      error: mock(() => {}),
-      debug: mock(() => {}),
+      info: vi.fn(() => {}),
+      warn: vi.fn(() => {}),
+      error: vi.fn(() => {}),
+      debug: vi.fn(() => {}),
     };
     const handle = await bootAutoUpdater(
       // A degenerate module that has neither shape — simulates a future
@@ -3158,8 +3156,8 @@ describe('bootAutoUpdater catch-path (Major #5)', () => {
     expect(handle).toBeNull();
     expect(logger.error).toHaveBeenCalled();
     const errorCall = logger.error.mock.calls[0];
-    expect(errorCall?.[1]).toMatchObject({
-      message: expect.stringContaining('electron-updater did not expose'),
-    });
+    expect((errorCall?.[1] as { err?: Error })?.err?.message).toContain(
+      'electron-updater did not expose',
+    );
   });
 });

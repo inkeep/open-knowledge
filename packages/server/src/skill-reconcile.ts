@@ -300,10 +300,7 @@ export function countImportableEditorSkills(opts: {
       // A host root we can see but not read (EACCES/corruption) is skipped —
       // log it so a permissions issue doesn't silently masquerade as "nothing
       // to reconcile" (no heal/adopt/orphan-removal, no evidence why).
-      logger.warn(
-        { hostRoot, err: (err as Error).message },
-        'reconcile: skipped unreadable host skills root',
-      );
+      logger.warn({ hostRoot, err }, 'reconcile: skipped unreadable host skills root');
       continue;
     }
     for (const name of entries) {
@@ -380,10 +377,7 @@ export async function reconcileSkillInstalls(opts: {
       // A host root we can see but not read (EACCES/corruption) is skipped —
       // log it so a permissions issue doesn't silently masquerade as "nothing
       // to reconcile" (no heal/adopt/orphan-removal, no evidence why).
-      logger.warn(
-        { hostRoot, err: (err as Error).message },
-        'reconcile: skipped unreadable host skills root',
-      );
+      logger.warn({ hostRoot, err }, 'reconcile: skipped unreadable host skills root');
       continue;
     }
 

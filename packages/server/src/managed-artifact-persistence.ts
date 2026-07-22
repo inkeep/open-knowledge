@@ -308,7 +308,7 @@ export function loadManagedArtifactDoc(
   try {
     raw = readFileSync(filePath, 'utf-8');
   } catch (e) {
-    log.warn({ documentName, err: (e as Error).message }, 'load: could not read; seeding empty');
+    log.warn({ documentName, err: e }, 'load: could not read; seeding empty');
     return;
   }
 
@@ -380,7 +380,7 @@ export async function storeManagedArtifactDoc(
           // returns 'write-failed' with no hint a READ preceded it. Log it.
           if ((readErr as NodeJS.ErrnoException).code !== 'ENOENT') {
             log.warn(
-              { documentName, err: (readErr as Error).message },
+              { documentName, err: readErr },
               'store: pre-write disk read failed (non-ENOENT); proceeding to write',
             );
           }
@@ -405,7 +405,7 @@ export async function storeManagedArtifactDoc(
       log.warn({ documentName }, 'store: file lock timeout; skipping write');
       return 'write-failed';
     }
-    log.warn({ documentName, err: (e as Error).message }, 'store: write failed');
+    log.warn({ documentName, err: e }, 'store: write failed');
     return 'write-failed';
   }
 }

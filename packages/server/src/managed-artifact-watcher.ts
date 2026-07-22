@@ -27,6 +27,7 @@
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { tracedMkdirSync } from './fs-traced.ts';
+import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 
 /** Cleanup function returned by `startManagedArtifactWatcher`. Idempotent. */
@@ -84,7 +85,7 @@ export async function startManagedArtifactWatcher(
     try {
       tracedMkdirSync(dir, { recursive: true });
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
+      const code = errnoCode(err);
       if (code !== 'EEXIST') {
         log.warn({ err, dir }, 'failed to create watch root; watcher may be inert');
       }
@@ -113,7 +114,7 @@ export async function startManagedArtifactWatcher(
     try {
       content = readFileSync(path, 'utf-8');
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
+      const code = errnoCode(err);
       if (code === 'ENOENT') {
         log.debug({ path }, 'managed-artifact leaf disappeared between event and read; dropping');
         return;

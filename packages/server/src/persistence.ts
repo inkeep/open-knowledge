@@ -67,6 +67,7 @@ import { docNameToRelativePath } from './doc-extensions.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './external-change.ts';
 import { contentHash, registerWrite } from './file-watcher.ts';
 import { tracedMkdir, tracedRename, tracedUnlinkSync, tracedWriteFile } from './fs-traced.ts';
+import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 import {
   loadManagedArtifactDoc,
@@ -901,7 +902,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           );
           if (consecutiveGitFailures >= 3) {
             log.error(
-              { attempt: consecutiveGitFailures },
+              { err: e, attempt: consecutiveGitFailures },
               '[persistence] CRITICAL: Git auto-save has failed 3+ times. Version history is NOT being recorded.',
             );
           }
@@ -1085,7 +1086,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       );
       if (consecutiveGitFailures >= 3) {
         log.error(
-          { attempt: consecutiveGitFailures },
+          { err: e, attempt: consecutiveGitFailures },
           '[persistence] CRITICAL: Git auto-save has failed 3+ times. Version history is NOT being recorded.',
         );
       }
@@ -1737,13 +1738,13 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         try {
           canonicalPath = await realpath(requestedPath);
         } catch (e) {
-          const code = (e as NodeJS.ErrnoException).code;
+          const code = errnoCode(e);
           if (code === 'ENOENT') {
             let isBrokenSymlink = false;
             try {
               isBrokenSymlink = lstatSync(requestedPath).isSymbolicLink();
             } catch (lstatErr) {
-              if ((lstatErr as NodeJS.ErrnoException).code !== 'ENOENT') {
+              if (errnoCode(lstatErr) !== 'ENOENT') {
                 log.warn(
                   { err: lstatErr, path: requestedPath },
                   '[persistence] lstat failed during broken-symlink check',
@@ -1758,7 +1759,10 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             }
             canonicalPath = requestedPath;
           } else if (code === 'ELOOP') {
-            log.error({ path: requestedPath }, `[persistence] Symlink cycle at ${requestedPath}`);
+            log.error(
+              { path: requestedPath, err: e },
+              `[persistence] Symlink cycle at ${requestedPath}`,
+            );
             throw new Error(`Symlink cycle detected at ${requestedPath}`);
           } else {
             throw e;
@@ -2149,7 +2153,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             }
             canonical = resolvedCanonical;
           } catch (e) {
-            const code = (e as NodeJS.ErrnoException).code;
+            const code = errnoCode(e);
             if (code === 'ELOOP') {
               log.warn(
                 { path: filePath },

@@ -129,7 +129,7 @@ export function createShowGateRegistry(deps: ShowGateRegistryDeps): ShowGateRegi
           {
             event: 'show-gate-on-shown-failed',
             windowKind: state.kind,
-            error: cbErr instanceof Error ? cbErr.message : String(cbErr),
+            err: cbErr,
           },
           'show-gate onShown callback threw',
         );
@@ -139,7 +139,7 @@ export function createShowGateRegistry(deps: ShowGateRegistryDeps): ShowGateRegi
         {
           event: 'show-gate-show-failed',
           windowKind: state.kind,
-          error: err instanceof Error ? err.message : String(err),
+          err,
         },
         'window.show() threw past the destroyed-window guard',
       );

@@ -277,7 +277,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         {
           event: 'crash-detection.sentinel-write-failed',
           context,
-          cause: err instanceof Error ? err.message : String(err),
+          err,
         },
         context === 'arm'
           ? 'could not arm the dirty-shutdown sentinel'
@@ -315,7 +315,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       deps.logger.warn(
         {
           event: 'crash-detection.store-write-failed',
-          cause: err instanceof Error ? err.message : String(err),
+          err,
         },
         'could not persist crash acknowledgment state',
       );
@@ -546,7 +546,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         deps.logger.warn(
           {
             event: 'crash-detection.sentinel-clear-failed',
-            cause: err instanceof Error ? err.message : String(err),
+            err,
           },
           'could not clear the dirty-shutdown sentinel — next boot may prompt spuriously',
         );

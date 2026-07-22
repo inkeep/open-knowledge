@@ -182,10 +182,7 @@ export class SemanticSearchService {
     } catch (err) {
       this.capable = false;
       this.ready = true;
-      log.warn(
-        { err: err instanceof Error ? err.message : String(err) },
-        '[embeddings] warm failed',
-      );
+      log.warn({ err }, '[embeddings] warm failed');
     }
   }
 
@@ -204,10 +201,7 @@ export class SemanticSearchService {
       try {
         await this.runEmbedPass(next);
       } catch (err) {
-        log.warn(
-          { err: err instanceof Error ? err.message : String(err) },
-          '[embeddings] embed pass failed',
-        );
+        log.warn({ err }, '[embeddings] embed pass failed');
       }
     });
     return this.embedChain;
@@ -338,10 +332,7 @@ export class SemanticSearchService {
       [queryVec] = await this.embedder.embed([trimmed], { role: 'query' });
     } catch (err) {
       // Provider error / timeout on the query path is non-fatal: degrade to BM25.
-      log.warn(
-        { err: err instanceof Error ? err.message : String(err) },
-        '[embeddings] query embed failed — degrading to lexical',
-      );
+      log.warn({ err }, '[embeddings] query embed failed — degrading to lexical');
       return null;
     }
     if (!queryVec) return null;

@@ -115,7 +115,7 @@ async function showUnknownErrorDialog(deps: EnsureGitDeps, err: Error): Promise<
     });
   } catch (dialogErr) {
     deps.log?.warn('ensureGitAvailable: unknown-error dialog failed', {
-      err: dialogErr instanceof Error ? dialogErr.message : String(dialogErr),
+      err: dialogErr,
     });
   }
 }
@@ -201,7 +201,7 @@ export async function ensureGitAvailable(deps: EnsureGitDeps): Promise<EnsureGit
       } catch (err) {
         deps.log?.warn('ensureGitAvailable: openExternal failed', {
           url: currentErr.guidance.url,
-          err: err instanceof Error ? err.message : String(err),
+          err,
         });
         failedInstallUrl = currentErr.guidance.url;
       }

@@ -526,7 +526,7 @@ export function saveAppStateToDir(
       return true;
     } catch (err) {
       logger.error('[main] saveAppState failed', {
-        err: (err as Error).message,
+        err,
         statePath,
       });
       try {
@@ -538,7 +538,7 @@ export function saveAppStateToDir(
     }
   } catch (err) {
     logger.error('[main] saveAppState userData setup failed', {
-      err: (err as Error).message,
+      err,
       userDataDir,
     });
     return false;

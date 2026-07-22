@@ -746,7 +746,7 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error('detection failed — wiring inert for this boot', { message });
+    logger.error('detection failed — wiring inert for this boot', { err });
     logger.event({ event: 'mcp-wiring-detect-failed', error: message });
     return inertHandle;
   }
@@ -761,7 +761,7 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
     pathDescriptor = pathInstall.computeDescriptor();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error('path-install descriptor failed — PATH row hidden for this boot', { message });
+    logger.error('path-install descriptor failed — PATH row hidden for this boot', { err });
     logger.event({ event: 'mcp-wiring-path-descriptor-failed', error: message });
     pathDescriptor = { shellDetected: false, rcFilesToTouch: [], alreadyInstalled: false };
   }
@@ -774,7 +774,7 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
     skillDescriptors = skills.computeDescriptors();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error('skill descriptors failed — skill rows hidden for this boot', { message });
+    logger.error('skill descriptors failed — skill rows hidden for this boot', { err });
     logger.event({ event: 'mcp-wiring-skill-descriptors-failed', error: message });
     skillDescriptors = [];
   }
@@ -840,7 +840,7 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('writeUserMcpConfigs threw — marker not written', { message });
+      logger.error('writeUserMcpConfigs threw — marker not written', { err });
       logIpcError({
         event: 'ipc.error',
         channel: 'ok:mcp-wiring:confirm',
@@ -1018,7 +1018,7 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('marker write failed', { message });
+      logger.error('marker write failed', { err });
       logIpcError({
         event: 'ipc.error',
         channel: 'ok:mcp-wiring:confirm',
@@ -1071,7 +1071,7 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
       // dialog re-fires next boot with no explanation. Reset `handled` so
       // the user can retry Skip from the still-mounted dialog.
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('skip-marker write failed', { message });
+      logger.error('skip-marker write failed', { err });
       logIpcError({
         event: 'ipc.error',
         channel: 'ok:mcp-wiring:skip',
@@ -1134,9 +1134,8 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
         senderId: target.id,
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
       logger.error('show dispatch failed — handler remains armed for next renderer', {
-        message,
+        err,
       });
       return false;
     }
@@ -1195,21 +1194,21 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
         ipcMain.removeHandler('ok:mcp-wiring:confirm');
       } catch (err) {
         logger.warn('removeHandler(confirm) threw', {
-          message: err instanceof Error ? err.message : String(err),
+          err,
         });
       }
       try {
         ipcMain.removeHandler('ok:mcp-wiring:skip');
       } catch (err) {
         logger.warn('removeHandler(skip) threw', {
-          message: err instanceof Error ? err.message : String(err),
+          err,
         });
       }
       try {
         ipcMain.removeHandler('ok:mcp-wiring:renderer-ready');
       } catch (err) {
         logger.warn('removeHandler(renderer-ready) threw', {
-          message: err instanceof Error ? err.message : String(err),
+          err,
         });
       }
     },

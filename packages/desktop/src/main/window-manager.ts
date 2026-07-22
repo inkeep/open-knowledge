@@ -775,7 +775,7 @@ export function signalDetachedServerStop(
       log?.warn(
         {
           event: 'update-install-server-stop-failed',
-          err: (err as Error).message,
+          err,
           code,
           pid,
           projectPath,
@@ -805,7 +805,7 @@ export function signalStopOwnedUtilityForks(
       ctx.utility.kill('SIGKILL');
     } catch (err) {
       log?.warn(
-        { err: (err as Error).message, projectPath: ctx.projectPath },
+        { err, projectPath: ctx.projectPath },
         'utility SIGKILL failed during owned-server teardown',
       );
     }
@@ -1031,10 +1031,7 @@ export class WindowManager {
         if ((err as NodeJS.ErrnoException).code === 'ESRCH') {
           return;
         }
-        this.deps.log?.warn(
-          { err: (err as Error).message, pid, projectPath },
-          'SIGTERM failed during stopAllOwnedServers',
-        );
+        this.deps.log?.warn({ err, pid, projectPath }, 'SIGTERM failed during stopAllOwnedServers');
       }
       // Poll for PROCESS death, not lock release. The lock disappears while
       // the process is still flushing telemetry/logs (and historically,
@@ -1072,7 +1069,7 @@ export class WindowManager {
         this.deps.log?.warn(
           {
             event: 'auto-update-server-stop-sigkill-failed',
-            err: (err as Error).message,
+            err,
             code,
             pid,
             projectPath,
@@ -1554,10 +1551,7 @@ export class WindowManager {
       try {
         await this.deps.runClean({ lockDir });
       } catch (err) {
-        this.deps.log?.warn(
-          { err: (err as Error).message, lockDir },
-          'runClean failed; proceeding to spawn server',
-        );
+        this.deps.log?.warn({ err, lockDir }, 'runClean failed; proceeding to spawn server');
       }
     }
 
@@ -1595,7 +1589,7 @@ export class WindowManager {
             this.deps.log?.warn(
               {
                 event: 'desktop-spawn-orphan-sigterm-failed',
-                err: (signalErr as Error).message,
+                err: signalErr,
                 code,
                 pid: handle.pid,
                 projectPath,
@@ -1901,7 +1895,7 @@ export class WindowManager {
         utility.postMessage({ type: 'shutdown' });
       } catch (err) {
         this.deps.log?.warn(
-          { err: (err as Error).message, projectPath },
+          { err, projectPath },
           'utility shutdown IPC failed on window close (likely already exited)',
         );
       }
@@ -2053,7 +2047,7 @@ export class WindowManager {
           this.deps.log?.warn(
             {
               event: 'desktop-ephemeral-spawn-orphan-sigterm-failed',
-              err: (signalErr as Error).message,
+              err: signalErr,
               code,
               pid: handle.pid,
             },
@@ -2215,7 +2209,7 @@ export class WindowManager {
       this.deps.log?.warn(
         {
           event: 'desktop-ephemeral-teardown',
-          err: err instanceof Error ? err.message : String(err),
+          err,
           projectDir: session.projectDir,
         },
         '[window-manager] failed to remove ephemeral temp dir',
@@ -2239,7 +2233,7 @@ export class WindowManager {
       ctx.utility.postMessage({ type: 'shutdown' });
     } catch (err) {
       this.deps.log?.warn(
-        { err: (err as Error).message, projectPath },
+        { err, projectPath },
         'utility shutdown IPC failed in closeProjectWindow (likely already exited)',
       );
     }

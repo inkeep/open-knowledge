@@ -21,6 +21,7 @@ import {
 } from 'node:fs';
 import { hostname } from 'node:os';
 import { resolve } from 'node:path';
+import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 import { getMachineId } from './machine-id.ts';
 import { isProcessAlive, isValidLockPid } from './process-alive.ts';
@@ -325,7 +326,7 @@ export function acquireProcessLock(opts: {
         registerExitUnlink(lockPath);
         return buildHandle({ lockName, lockDir, lockPath });
       } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+        if (errnoCode(err) !== 'EEXIST') throw err;
         // EEXIST — another acquire raced us; fall through to re-inspect.
       }
     }
@@ -489,7 +490,7 @@ export function markProcessLockDraining(opts: { lockName: LockName; lockDir: str
     // Anything else (unreadable, corrupt JSON) has the same consequence as a
     // failed WRITE (server keeps looking live during teardown), so it must be
     // as attributable as the write-failure warn below.
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+    if (errnoCode(err) !== 'ENOENT') {
       log.warn(
         { lockPath, err },
         `${logPrefix} Unreadable lock at ${lockPath} during draining mark — skipping: ${err instanceof Error ? err.message : String(err)}`,

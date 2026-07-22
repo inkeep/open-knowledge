@@ -885,17 +885,14 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
             deps.app.removeAsDefaultProtocolClient('openknowledge');
           } catch (err) {
             deps.log?.warn(
-              { err: (err as Error).message },
+              { err },
               '[url-scheme] removeAsDefaultProtocolClient failed on before-quit',
             );
           }
         });
       }
     } catch (err) {
-      deps.log?.warn(
-        { err: (err as Error).message },
-        '[url-scheme] setAsDefaultProtocolClient failed',
-      );
+      deps.log?.warn({ err }, '[url-scheme] setAsDefaultProtocolClient failed');
     }
   }
 
@@ -1189,10 +1186,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
           }
         },
         (err) => {
-          deps.log?.warn(
-            { err: err instanceof Error ? err.message : String(err), url },
-            '[receive] foreign-host gate rejected — share dropped',
-          );
+          deps.log?.warn({ err, url }, '[receive] foreign-host gate rejected — share dropped');
         },
       );
       return;
@@ -1206,7 +1200,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
         // gets a forward path (clone / locate manually) rather than a silent
         // drop, uniform with how resolution itself handles failure.
         deps.log?.warn(
-          { err: err instanceof Error ? err.message : String(err), url },
+          { err, url },
           '[receive] resolveShareTarget rejected — degrading to Navigator (miss)',
         );
         dispatchResolvedShare(url, result.payload, { kind: 'miss' });
@@ -1260,10 +1254,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
         return;
       }
       void open(fileOpen.file).catch((err) => {
-        deps.log?.warn(
-          { err: (err as Error).message, file: fileOpen.file },
-          '[url-scheme] openEphemeralFile failed',
-        );
+        deps.log?.warn({ err, file: fileOpen.file }, '[url-scheme] openEphemeralFile failed');
       });
       return;
     }
@@ -1299,10 +1290,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
         pendingDeepLinkTarget: { kind: parsed.kind, path: parsed.doc },
       })
       .catch((err) => {
-        deps.log?.warn(
-          { err: (err as Error).message, project: parsed.project },
-          '[url-scheme] openProject failed',
-        );
+        deps.log?.warn({ err, project: parsed.project }, '[url-scheme] openProject failed');
       });
   };
 

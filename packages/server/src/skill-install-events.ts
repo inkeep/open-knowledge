@@ -107,7 +107,7 @@ export async function recordSkillInstallEvent(
     await tracedMkdir(dirname(file), { recursive: true });
   } catch (err) {
     warn(
-      { event: 'skill-install-events.mkdir-failed', error: String(err) },
+      { event: 'skill-install-events.mkdir-failed', err },
       '[skill-install-events] mkdir failed; telemetry skipped',
     );
     return;
@@ -121,7 +121,7 @@ export async function recordSkillInstallEvent(
     await tracedWriteFile(file, json, { flag: 'a', encoding: 'utf-8' });
   } catch (err) {
     warn(
-      { event: 'skill-install-events.append-failed', error: String(err) },
+      { event: 'skill-install-events.append-failed', err },
       '[skill-install-events] append failed; telemetry skipped',
     );
   }

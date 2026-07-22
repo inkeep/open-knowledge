@@ -111,6 +111,7 @@ import type {
   PushPermission,
 } from './github-permissions.ts';
 import { type HeadWatcherHandle, readProjectHeadState, startHeadWatcher } from './head-watcher.ts';
+import { errnoCode } from './http/handler-utils.ts';
 import { createLiveDerivedIndexExtension } from './live-derived-index.ts';
 import { getLogger } from './logger.ts';
 import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
@@ -1335,7 +1336,7 @@ export function createServer(options: ServerOptions): ServerInstance {
             canonical = realpathSync(requestedPath);
             size = statSync(canonical).size;
           } catch (err) {
-            const code = (err as NodeJS.ErrnoException).code;
+            const code = errnoCode(err);
             if (code === 'ENOENT') return null;
             if (code === 'ELOOP') {
               // A symlink cycle is structurally permanent, matching the
@@ -1357,7 +1358,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           try {
             return readFileSync(canonical, 'utf-8');
           } catch (err) {
-            if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+            if (errnoCode(err) === 'ENOENT') return null;
             throw err;
           }
         },

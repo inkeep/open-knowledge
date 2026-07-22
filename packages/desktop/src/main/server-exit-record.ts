@@ -87,7 +87,7 @@ export function createServerExitRecorder(deps: ServerExitRecorderDeps): ServerEx
       deps.logger.warn(
         {
           event: 'server-exit-record.write-failed',
-          cause: err instanceof Error ? err.message : String(err),
+          err,
         },
         'could not record server exit',
       );

@@ -16,6 +16,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { errorResponse } from './http/error-response.ts';
+import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 
 const log = getLogger('local-op-security');
@@ -75,7 +76,7 @@ function ancestorChainHasSymlink(start: string, root: string): boolean {
     try {
       stats = lstatSync(cursor);
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
+      const code = errnoCode(err);
       log.warn(
         { path: cursor, code: code ?? 'unknown' },
         `ancestorChainHasSymlink: lstat failed on ${cursor} (${code ?? 'unknown'}); treating as symlink (fail-closed)`,
@@ -103,7 +104,7 @@ export function isPathWithinHome(dirPath: string, home: string): boolean {
   try {
     realHome = realpathSync(home);
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
+    const code = errnoCode(err);
     log.warn(
       { path: home, code: code ?? 'unknown' },
       `realpath failed on home dir ${home} (${code ?? 'unknown'}); rejecting all paths`,
@@ -120,7 +121,7 @@ export function isPathWithinHome(dirPath: string, home: string): boolean {
     try {
       stats = lstatSync(current);
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
+      const code = errnoCode(err);
       if (code !== 'ENOENT') {
         log.warn(
           { path: current, code: code ?? 'unknown' },
@@ -145,7 +146,7 @@ export function isPathWithinHome(dirPath: string, home: string): boolean {
       try {
         resolvedCurrent = realpathSync(current);
       } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code;
+        const code = errnoCode(err);
         if (stats.isSymbolicLink()) {
           log.warn(
             { path: current, code: code ?? 'unknown' },

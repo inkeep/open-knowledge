@@ -236,7 +236,7 @@ export async function handleBugReportCreate(
       // change the create outcome.
       await unlink(screenshotTmpPath).catch((err: unknown) => {
         deps.logger?.warn(
-          { screenshotTmpPath, err: err instanceof Error ? err.message : String(err) },
+          { screenshotTmpPath, err },
           'bug-report: failed to remove temp screenshot file',
         );
       });
@@ -323,7 +323,7 @@ export async function handleBugReportCaptureScreenshot(
   } catch (err) {
     dropExisting();
     deps.logger?.warn(
-      { err: err instanceof Error ? err.message : String(err) },
+      { err },
       'bug-report: screenshot capture failed; dialog will omit the screenshot option',
     );
     return null;

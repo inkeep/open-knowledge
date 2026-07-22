@@ -164,28 +164,28 @@ export function requestUserConsent(
         ipcMain.removeHandler('ok:onboarding:confirm');
       } catch (err) {
         logger.warn('removeHandler(confirm) threw', {
-          message: err instanceof Error ? err.message : String(err),
+          err,
         });
       }
       try {
         ipcMain.removeHandler('ok:onboarding:cancel');
       } catch (err) {
         logger.warn('removeHandler(cancel) threw', {
-          message: err instanceof Error ? err.message : String(err),
+          err,
         });
       }
       try {
         ipcMain.removeHandler('ok:onboarding:probe-content');
       } catch (err) {
         logger.warn('removeHandler(probe-content) threw', {
-          message: err instanceof Error ? err.message : String(err),
+          err,
         });
       }
       try {
         ipcMain.removeHandler('ok:onboarding:renderer-ready');
       } catch (err) {
         logger.warn('removeHandler(renderer-ready) threw', {
-          message: err instanceof Error ? err.message : String(err),
+          err,
         });
       }
     }
@@ -317,7 +317,7 @@ export function requestUserConsent(
         sendToRenderer(event.sender, 'ok:onboarding:show', payload);
       } catch (err) {
         logger.error('show dispatch failed — handler stays armed for retry', {
-          message: err instanceof Error ? err.message : String(err),
+          err,
         });
         return undefined;
       }
@@ -351,7 +351,7 @@ export function requestUserConsent(
         capturedSenderId = navigator.id;
       } catch (err) {
         logger.error('proactive show dispatch failed — falling back to renderer-ready', {
-          message: err instanceof Error ? err.message : String(err),
+          err,
         });
       }
     }

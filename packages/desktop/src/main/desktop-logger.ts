@@ -104,6 +104,10 @@ function getRootLogger(): pino.Logger {
       level: resolveLogLevel(),
       name: loggerName,
       redact: { paths: REDACT_PATHS, censor: '[REDACTED]' },
+      // Raw Errors land under `err` (convention) — serialize name/message/stack
+      // explicitly on BOTH keys so a stray `error:` field never flattens an
+      // Error to `{}` in the JSONL file. Mirrors the server logger's setup.
+      serializers: { err: pino.stdSerializers.err, error: pino.stdSerializers.err },
       base: { pid: process.pid, hostname: undefined, runtime: 'desktop' },
       timestamp: pino.stdTimeFunctions.isoTime,
     },

@@ -169,7 +169,7 @@ export function registerIntegrationsSettings(
         // not take the whole section down — surface the row as unmanageable.
         logger.warn('editor classify failed', {
           id,
-          error: err instanceof Error ? err.message : String(err),
+          err,
         });
         state = 'unmanageable';
       }
@@ -190,7 +190,7 @@ export function registerIntegrationsSettings(
       pathStatus = path.computeStatus();
     } catch (err) {
       logger.warn('path status failed', {
-        error: err instanceof Error ? err.message : String(err),
+        err,
       });
       pathStatus = { shellDetected: false, rcFilesToTouch: [], installed: false };
     }
@@ -199,7 +199,7 @@ export function registerIntegrationsSettings(
       skillStatuses = skills.computeStatuses();
     } catch (err) {
       logger.warn('skill statuses failed', {
-        error: err instanceof Error ? err.message : String(err),
+        err,
       });
       skillStatuses = [];
     }
@@ -230,7 +230,7 @@ export function registerIntegrationsSettings(
       // Bookkeeping only — the entry write itself already succeeded, and the
       // startup repair scans configs directly rather than trusting the list.
       logger.warn('marker refresh failed', {
-        error: err instanceof Error ? err.message : String(err),
+        err,
       });
     }
   }
@@ -360,7 +360,7 @@ export function registerIntegrationsSettings(
         ipcMain.removeHandler('ok:integrations:dispatch');
       } catch (err) {
         logger.warn('removeHandler(ok:integrations:dispatch) threw', {
-          message: err instanceof Error ? err.message : String(err),
+          err,
         });
       }
     },

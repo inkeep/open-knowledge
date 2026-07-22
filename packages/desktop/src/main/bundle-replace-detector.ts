@@ -193,7 +193,7 @@ export function startBundleReplaceWatcher(
       });
     } catch (err) {
       logger.warn('detector threw', {
-        err: err instanceof Error ? err.message : String(err),
+        err,
       });
       return;
     }
@@ -242,7 +242,7 @@ export function startBundleReplaceWatcher(
         // log accumulates one entry per interval — bounded by intervalMs.
         if (!stopped) armed = true;
         logger.warn('dialog failed, re-armed for next tick', {
-          err: err instanceof Error ? err.message : String(err),
+          err,
         });
       });
   };

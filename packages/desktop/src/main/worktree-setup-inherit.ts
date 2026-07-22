@@ -158,10 +158,7 @@ export function seedWorktreeProjectSetup(worktreePath: string, mainRoot: string)
   try {
     initContent(worktreePath, { contentDir: readRootContentDir(mainRoot) });
   } catch (err) {
-    logger.warn(
-      { worktreePath, err: err instanceof Error ? err.message : String(err) },
-      'failed to seed inherited .ok/ scaffold',
-    );
+    logger.warn({ worktreePath, err }, 'failed to seed inherited .ok/ scaffold');
   }
 
   // 2. Editor/MCP wiring, mirroring exactly the editors the root has wired.
@@ -183,9 +180,6 @@ export function seedWorktreeProjectSetup(worktreePath: string, mainRoot: string)
   } catch (err) {
     // Defensive: the orchestrator is contract-bound not to throw, but a future
     // change must never let a wiring error abort the worktree open.
-    logger.warn(
-      { worktreePath, err: err instanceof Error ? err.message : String(err) },
-      'failed to seed inherited editor integrations',
-    );
+    logger.warn({ worktreePath, err }, 'failed to seed inherited editor integrations');
   }
 }

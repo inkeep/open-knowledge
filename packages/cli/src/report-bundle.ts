@@ -94,7 +94,7 @@ function resolveContentDir(projectDir: string, logger?: BundleLogger): string {
       // root (the bundle should still succeed), but log it so a wrong
       // content-dir in the resulting bundle is diagnosable, not silent.
       logger?.warn(
-        { configPath, err: err instanceof Error ? err.message : String(err) },
+        { configPath, err },
         'bug-report: failed to read .ok/config.yml; falling back to project root as content dir',
       );
     }

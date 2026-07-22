@@ -132,7 +132,7 @@ export async function ensureProjectGit(projectRoot: string): Promise<EnsureProje
       log.warn(
         {
           event: 'git_preflight_unexpected_error',
-          message: err instanceof Error ? err.message : String(err),
+          err,
         },
         'unexpected error during git preflight',
       );

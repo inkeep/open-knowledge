@@ -177,7 +177,7 @@ export function registerProjectIntegrationsSettings(
         logger.warn('project editor classify failed', {
           projectDir,
           id,
-          error: err instanceof Error ? err.message : String(err),
+          err,
         });
         state = 'unmanageable';
       }
@@ -203,7 +203,7 @@ export function registerProjectIntegrationsSettings(
     } catch (err) {
       logger.warn('project editor statuses failed', {
         projectDir,
-        error: err instanceof Error ? err.message : String(err),
+        err,
       });
       editors = [];
     }
@@ -219,7 +219,7 @@ export function registerProjectIntegrationsSettings(
       } catch (err) {
         logger.warn('project skill status failed', {
           projectDir,
-          error: err instanceof Error ? err.message : String(err),
+          err,
         });
       }
       skill = { installed, paths: skillPaths };
@@ -389,7 +389,7 @@ export function registerProjectIntegrationsSettings(
       projectDir = resolveProjectDir(event);
     } catch (err) {
       logger.warn('resolveProjectDir threw', {
-        error: err instanceof Error ? err.message : String(err),
+        err,
       });
       projectDir = null;
     }
@@ -406,7 +406,7 @@ export function registerProjectIntegrationsSettings(
         ipcMain.removeHandler('ok:project-integrations:dispatch');
       } catch (err) {
         logger.warn('removeHandler(ok:project-integrations:dispatch) threw', {
-          message: err instanceof Error ? err.message : String(err),
+          err,
         });
       }
     },

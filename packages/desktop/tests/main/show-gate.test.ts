@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   type BrowserWindowLike,
   createShowGateRegistry,
@@ -25,7 +25,7 @@ interface CapturedTimer {
 }
 
 interface MockWindow extends BrowserWindowLike {
-  show: ReturnType<typeof mock>;
+  show: ReturnType<typeof vi.fn>;
   fireReadyToShow: () => void;
   markDestroyed: () => void;
   markVisible: () => void;
@@ -35,28 +35,28 @@ function makeWindow(): MockWindow {
   let readyToShowCb: (() => void) | null = null;
   let destroyed = false;
   let visible = false;
-  const show = mock(() => {
+  const show = vi.fn(() => {
     visible = true;
   });
   return {
     show,
-    isDestroyed: mock(() => destroyed),
-    isVisible: mock(() => visible),
-    on: mock(() => {}) as BrowserWindowLike['on'],
-    once: mock((event: 'ready-to-show', cb: () => void) => {
+    isDestroyed: vi.fn(() => destroyed),
+    isVisible: vi.fn(() => visible),
+    on: vi.fn(() => {}) as BrowserWindowLike['on'],
+    once: vi.fn((event: 'ready-to-show', cb: () => void) => {
       if (event === 'ready-to-show') readyToShowCb = cb;
     }) as BrowserWindowLike['once'],
-    focus: mock(() => {}),
-    isMinimized: mock(() => false),
-    restore: mock(() => {}),
+    focus: vi.fn(() => {}),
+    isMinimized: vi.fn(() => false),
+    restore: vi.fn(() => {}),
     webContents: {
-      send: mock(() => {}),
-      once: mock(() => {}),
-      setWindowOpenHandler: mock(() => {}),
-      on: mock(() => {}) as BrowserWindowLike['webContents']['on'],
+      send: vi.fn(() => {}),
+      once: vi.fn(() => {}),
+      setWindowOpenHandler: vi.fn(() => {}),
+      on: vi.fn(() => {}) as BrowserWindowLike['webContents']['on'],
     },
-    loadFile: mock(() => Promise.resolve()),
-    loadURL: mock(() => Promise.resolve()),
+    loadFile: vi.fn(() => Promise.resolve()),
+    loadURL: vi.fn(() => Promise.resolve()),
     fireReadyToShow: () => readyToShowCb?.(),
     markDestroyed: () => {
       destroyed = true;
@@ -116,7 +116,7 @@ describe('createShowGateRegistry — dual-signal show contract', () => {
   });
 
   test('onShown fires once with the window kind after a successful show', () => {
-    const onShown = mock((_kind: 'editor' | 'navigator') => {});
+    const onShown = vi.fn((_kind: 'editor' | 'navigator') => {});
     const registry = createShowGateRegistry({
       log: { warn: () => {} },
       setTimeout: (cb, ms) => ({ cb, ms }),
@@ -424,7 +424,7 @@ describe('createShowGateRegistry — show() throws past the destroyed-window gua
 
   function makeThrowingWindow(): MockWindow {
     const win = makeWindow();
-    win.show = mock(() => {
+    win.show = vi.fn(() => {
       throw new Error('Object has been destroyed');
     });
     return win;
@@ -442,8 +442,8 @@ describe('createShowGateRegistry — show() throws past the destroyed-window gua
     expect(failure?.obj).toMatchObject({
       event: 'show-gate-show-failed',
       windowKind: 'editor',
-      error: 'Object has been destroyed',
     });
+    expect((failure?.obj as { err?: Error }).err?.message).toBe('Object has been destroyed');
   });
 
   test('happy-path show throws → states Map entry is released (no leak)', () => {
@@ -457,7 +457,7 @@ describe('createShowGateRegistry — show() throws past the destroyed-window gua
     win.fireReadyToShow();
     env.registry.fireThemeApplied(win);
     // Re-firing must be a no-op — entry is gone, show is not invoked again.
-    win.show = mock(() => {});
+    win.show = vi.fn(() => {});
     env.registry.fireThemeApplied(win);
     expect(win.show).not.toHaveBeenCalled();
   });
@@ -476,8 +476,8 @@ describe('createShowGateRegistry — show() throws past the destroyed-window gua
     expect(failure?.obj).toMatchObject({
       event: 'show-gate-show-failed',
       windowKind: 'navigator',
-      error: 'Object has been destroyed',
     });
+    expect((failure?.obj as { err?: Error }).err?.message).toBe('Object has been destroyed');
     // The timeout warn (`show-gate-timeout`) still fires — the failure warn
     // is additive, not a replacement.
     const timeout = env.warns.find(
