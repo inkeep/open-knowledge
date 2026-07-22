@@ -326,6 +326,10 @@ function makeOkDesktopStub(
       for (const cb of menuHandlers) cb(action);
     },
     stub: {
+      // The terminal affordances gate on the host's pty capability
+      // (`config.ptyAvailable`, false on win/linux where node-pty isn't
+      // bundled) — these tests model the capable macOS host.
+      config: { ptyAvailable: true },
       onMenuAction(cb: (action: string) => void) {
         menuHandlers.push(cb);
         return () => {
@@ -509,6 +513,7 @@ describe('EditorPane terminal dock wiring', () => {
     // collapsed (the whole feature dead).
     let retainedDockVisible = true;
     (window as { okDesktop?: unknown }).okDesktop = {
+      config: { ptyAvailable: true },
       onMenuAction: () => () => {},
       editor: {
         notifyViewMenuStateChanged(state: { terminalVisible?: boolean }) {

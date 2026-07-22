@@ -1,7 +1,8 @@
 import { parseManagedArtifactName } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Search } from 'lucide-react';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
+import { shouldShowAppMenubar } from '@/components/app-menubar-gate';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
@@ -24,6 +25,12 @@ import { PublishToGitHubDialog } from './PublishToGitHubDialog';
 import { SettingsButton } from './SettingsButton';
 import { ShareButton } from './ShareButton';
 import { SyncStatusBadge } from './SyncStatusBadge';
+
+// Lazy: win/linux-only chrome — the chunk (component + radix Menubar
+// primitive) must not ship in the eager bundle web + macOS load.
+const AppMenubar = lazy(() =>
+  import('@/components/AppMenubar').then((m) => ({ default: m.AppMenubar })),
+);
 
 interface EditorHeaderProps {
   onSignIn?: () => void;
@@ -117,6 +124,14 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
           empty in single-file mode. The flex-1 container stays so the right
           zone keeps its position and the window-drag spacer is preserved. */}
       <div className="flex min-w-0 flex-1 items-center gap-1 px-3">
+        {/* Windows/Linux custom menubar (windows-linux-port renderer menubar) — heads the chrome row, VS Code
+            style. Renders on every window kind (incl. single-file: Window /
+            Help / Exit stay reachable); null on darwin + web. */}
+        {shouldShowAppMenubar() && (
+          <Suspense fallback={null}>
+            <AppMenubar />
+          </Suspense>
+        )}
         {!singleFile && (
           <>
             <Tooltip>
@@ -177,6 +192,11 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
           // of initiating a window drag. Each consumer uses Radix asChild so
           // the rendered DOM root is a single direct child of this zone.
           isElectronHost && '[&>*]:[-webkit-app-region:no-drag]',
+          // Windows/Linux: the OS window controls float over the top-right
+          // of this row (titleBarOverlay). --ok-titlebar-reserve-right is
+          // non-zero only under electron-platform-win32/linux (see
+          // globals.css); the 0px fallback keeps darwin + web unchanged.
+          isElectronHost && 'mr-[var(--ok-titlebar-reserve-right,0px)]',
         )}
       >
         {/* Share is a project surface: single-file `ok <file>` runs agents/MCP

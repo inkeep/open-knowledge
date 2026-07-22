@@ -1,10 +1,10 @@
-import { describe, expect, test } from 'bun:test';
 import {
   buildManagedServerEntry,
   type EditorMcpTarget,
   type McpDeclineReason,
   type McpEntryClassification,
 } from '@inkeep/open-knowledge';
+import { describe, expect, test } from 'vitest';
 import type { McpWiringEditorId } from '../shared/ipc-channels.ts';
 import {
   checkAndRepairProjectMcpOnProjectOpen,
@@ -71,17 +71,18 @@ function buildCli(
 }
 
 describe('checkAndRepairProjectMcpOnProjectOpen', () => {
-  test('skipped on non-darwin', async () => {
+  test('skipped on AppImage launches (ephemeral mount path)', async () => {
     const { cli } = buildCli({});
     const r = await checkAndRepairProjectMcpOnProjectOpen({
       projectDir: '/p',
-      executablePath: EXE,
+      executablePath: '/tmp/.mount_okXYZ/openknowledge',
       isPackaged: true,
       platform: 'linux',
+      env: { APPIMAGE: '/home/u/OK.AppImage' },
       cli,
     });
     expect(r.status).toBe('skipped');
-    if (r.status === 'skipped') expect(r.reason).toBe('platform');
+    if (r.status === 'skipped') expect(r.reason).toBe('appimage-ephemeral');
   });
 
   test('skipped when reclaim disabled', async () => {
@@ -96,6 +97,31 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
     });
     expect(r.status).toBe('skipped');
   });
+
+  for (const [platform, exe] of [
+    ['linux', '/opt/OpenKnowledge/openknowledge'],
+    ['win32', 'C:\\Users\\u\\AppData\\Local\\Programs\\OpenKnowledge\\OpenKnowledge.exe'],
+  ] as const) {
+    test(`${platform} packaged install runs the repair cycle to done`, async () => {
+      // The classifier admits the NSIS / deb layouts (windows-linux-port
+      // Tier B) — the repair cycle itself is platform-parameterized via the
+      // CLI's editors.ts, so 'done' here proves the gate, not new logic.
+      const { cli } = buildCli({
+        claude: {
+          target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
+          classification: { kind: 'absent' },
+        },
+      });
+      const r = await checkAndRepairProjectMcpOnProjectOpen({
+        projectDir: '/p',
+        executablePath: exe,
+        isPackaged: true,
+        platform,
+        cli,
+      });
+      expect(r.status).toBe('done');
+    });
+  }
 
   test('editors without projectConfigPath report unsupported', async () => {
     const { cli, writes } = buildCli({

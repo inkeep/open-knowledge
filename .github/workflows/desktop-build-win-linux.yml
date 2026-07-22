@@ -1,0 +1,285 @@
+name: Desktop build (manual, Windows/Linux)
+
+# Manual, artifact-only Windows + Linux desktop builds (spec
+# 2026-07-16-desktop-windows-linux-port, D6): nothing here publishes,
+# tags, or touches the release cadence — the operator downloads the
+# installers from the run's artifacts for VM/hardware QA. Cadence wiring
+# (desktop-release.yml jobs, updates-proxy widening, download surfaces)
+# is deferred to P4 after QA sign-off.
+#
+# Topology: one `prepare` job on ubuntu builds the workspace (the CLI
+# build chain uses `cp -r`/`mkdir -p` bash-isms that don't survive a
+# Windows runner's default shell, and this also keeps the two packaging
+# jobs from redundantly rebuilding identical platform-neutral JS), then
+# per-OS jobs do only the platform-specific half: electron-vite build +
+# electron-builder against the prebuilt cli/dist.
+#
+# Windows signing (D3, Azure Artifact Signing): OPTIONAL here. When the
+# three AZURE_* secrets + three AZURE_SIGNING_* repo variables are
+# configured, the Windows job passes win.azureSignOptions to
+# electron-builder; when absent it builds unsigned (acceptable for
+# internal QA only — unsigned Windows builds are never published, and
+# this workflow cannot publish by construction).
+#
+# afterPack/afterSign flip + verify the Electron fuses on every platform
+# (D9) — RunAsNode must be enabled or the bundled `ok` CLI wrappers and
+# the detached-server spawn silently break in packaged builds.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Which platforms to build"
+        required: true
+        type: choice
+        default: both
+        options: [both, windows, linux]
+
+permissions:
+  contents: read
+  # `gh run download` of the native-config prebuild artifact.
+  actions: read
+
+concurrency:
+  group: desktop-build-win-linux-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-ok-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-ok-pnpm-store-
+
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-desktop-manual-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-desktop-manual-
+            ${{ runner.os }}-turbo-desktop-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Best-effort staging of the 8-target native-config prebuilt set
+      # (mirrors release.yml's step in spirit, but always degrades instead
+      # of failing: these are QA artifacts, not published releases, and the
+      # smol-toml fallback keeps the CLI functional without the addon —
+      # only the Codex TOML write degrades to a decline). The host `napi
+      # build` below still produces the linux-x64 binary either way.
+      - name: Stage native-config prebuilt binaries (best-effort)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          run_id=$(gh run list --workflow=native-config-prebuild.yml --branch main --event push \
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
+          if [ -z "$run_id" ]; then
+            echo "::warning::no successful native-config-prebuild run found; win/arm64 targets ship without the toml_edit addon (smol-toml fallback)"
+            exit 0
+          fi
+          if ! gh run download "$run_id" --name native-config-bindings-all --dir /tmp/nc-bindings; then
+            echo "::warning::could not download native-config-bindings-all from run $run_id; continuing with host binary only"
+            exit 0
+          fi
+          find /tmp/nc-bindings -name '*.node' -exec cp -f {} packages/native-config/ \;
+          count=$(find packages/native-config -maxdepth 1 -name '*.node' | wc -l | tr -d ' ')
+          echo "staged $count native-config prebuilt binaries from run $run_id"
+
+      # The workspace build produces native-config's host `.node` via `napi
+      # build` (turbo dep of the cli build), which needs a Rust toolchain —
+      # mirror release.yml's explicit pin.
+      - name: Setup Rust toolchain for the native-config build
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+
+      # Same two-filter sequencing as desktop-release.yml: app must build
+      # before cli's build:assets copies app/dist into cli/dist/public.
+      - name: Build workspace (produces packages/cli/dist for extraResources)
+        run: |
+          pnpm exec turbo run build --filter=@inkeep/open-knowledge-app
+          pnpm exec turbo run build --filter=@inkeep/open-knowledge
+
+      # Hand the platform-neutral build products to the packaging jobs:
+      # the full bundled CLI tree + the native-config addon dir the
+      # electron-builder `../native-config` extraResources rule reads
+      # (index.js loader + package.json + every staged .node).
+      - name: Upload workspace bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: workspace-bundle
+          path: |
+            packages/cli/dist/
+            packages/native-config/index.js
+            packages/native-config/index.d.ts
+            packages/native-config/*.node
+          retention-days: 3
+          if-no-files-found: error
+
+  build-windows:
+    if: inputs.platforms == 'both' || inputs.platforms == 'windows'
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-ok-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-ok-pnpm-store-
+
+      - name: Install dependencies
+        env:
+          # Rebuild native modules against Electron's Node ABI — mirrors
+          # desktop-release.yml.
+          ELECTRON_SKIP_REBUILD: "0"
+        run: pnpm install --frozen-lockfile
+
+      - name: Download workspace bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v5.0.0
+        with:
+          name: workspace-bundle
+          path: packages/
+
+      # Both keyring arch prebuilds (x64 + arm64) must be present in the
+      # hoisted node_modules before electron-builder copies them into
+      # cli/node_modules (win.extraResources) — pnpm installed only the
+      # host-matching one.
+      - name: Prepare cross-arch keyring prebuilds
+        working-directory: packages/desktop
+        run: node scripts/prepare-platform-natives.mjs
+
+      - name: Build desktop main/preload/renderer
+        working-directory: packages/desktop
+        run: pnpm run build:desktop
+
+      # Signing is optional (see header). Secrets: AZURE_TENANT_ID /
+      # AZURE_CLIENT_ID / AZURE_CLIENT_SECRET; repo variables:
+      # AZURE_SIGNING_ENDPOINT / AZURE_SIGNING_ACCOUNT / AZURE_SIGNING_PROFILE
+      # (Azure Artifact Signing endpoint URL, code-signing account name,
+      # certificate profile name — procurement outputs).
+      - name: Package NSIS installers (x64 + arm64)
+        working-directory: packages/desktop
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+        run: |
+          set -euo pipefail
+          extra=()
+          if [[ -n "${AZURE_CLIENT_SECRET:-}" && -n "${AZURE_SIGNING_ENDPOINT:-}" ]]; then
+            echo "::notice::Azure Artifact Signing credentials present — building SIGNED installers."
+            extra+=(
+              "--config.win.azureSignOptions.endpoint=${AZURE_SIGNING_ENDPOINT}"
+              "--config.win.azureSignOptions.codeSigningAccountName=${AZURE_SIGNING_ACCOUNT}"
+              "--config.win.azureSignOptions.certificateProfileName=${AZURE_SIGNING_PROFILE}"
+            )
+          else
+            echo "::warning::No Azure signing credentials — building UNSIGNED installers (internal QA only; never distribute)."
+          fi
+          pnpm exec electron-builder --win --publish never "${extra[@]}"
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: open-knowledge-windows-${{ github.run_number }}
+          path: |
+            packages/desktop/dist-desktop/*.exe
+            packages/desktop/dist-desktop/*.exe.blockmap
+            packages/desktop/dist-desktop/latest.yml
+          retention-days: 14
+          if-no-files-found: error
+
+  build-linux:
+    if: inputs.platforms == 'both' || inputs.platforms == 'linux'
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-ok-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-ok-pnpm-store-
+
+      - name: Install dependencies
+        env:
+          # Rebuild native modules against Electron's Node ABI — mirrors
+          # desktop-release.yml.
+          ELECTRON_SKIP_REBUILD: "0"
+        run: pnpm install --frozen-lockfile
+
+      - name: Download workspace bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v5.0.0
+        with:
+          name: workspace-bundle
+          path: packages/
+
+      - name: Prepare cross-arch keyring prebuilds
+        working-directory: packages/desktop
+        run: node scripts/prepare-platform-natives.mjs
+
+      - name: Build desktop main/preload/renderer
+        working-directory: packages/desktop
+        run: pnpm run build:desktop
+
+      - name: Package AppImage + deb (x64 + arm64)
+        working-directory: packages/desktop
+        run: pnpm exec electron-builder --linux --publish never
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: open-knowledge-linux-${{ github.run_number }}
+          path: |
+            packages/desktop/dist-desktop/*.AppImage
+            packages/desktop/dist-desktop/*.deb
+            packages/desktop/dist-desktop/latest-linux.yml
+          retention-days: 14
+          if-no-files-found: error

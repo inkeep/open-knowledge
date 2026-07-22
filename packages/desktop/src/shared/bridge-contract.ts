@@ -174,6 +174,16 @@ export interface OkDesktopConfig {
    * the desktop + app copies (the core mirror keeps the minimal config shape).
    */
   readonly startupTraceparent?: string;
+  /**
+   * Whether an interactive PTY can be spawned in this install — the terminal
+   * dock's plain-terminal-tab capability gate. `false` on Windows/Linux
+   * (node-pty is not bundled there; the terminal dock is dark off-mac), so
+   * the renderer hides the terminal affordances instead of surfacing a spawn
+   * failure. Gates only the pty-tab surface — future non-pty dock content
+   * (e.g. ACP threads) must not key off this. Lockstep with the app-side
+   * `OkDesktopConfig`.
+   */
+  readonly ptyAvailable: boolean;
 }
 
 /** Menu-action IDs fired by main → renderer on user menu selection. */
@@ -831,6 +841,64 @@ export interface OkEditorViewMenuStateSnapshot {
   // terminal reads `terminalLive: true, terminalVisible: false`. Drives the
   // Terminal menu's "Kill Terminal" enablement.
   readonly terminalLive?: boolean;
+}
+
+/**
+ * Windows/Linux renderer-menubar dispatch payloads (the windows-linux-port
+ * renderer-menubar decision). macOS keeps the native menu bar; win/linux draw it in the
+ * renderer and route every click through main via `menu.dispatch` so menu
+ * semantics stay single-sourced: `menu-action` relays through the same
+ * dispatch path the native menu items use, `role` maps onto Electron's
+ * built-in menu roles, `command` covers the main-side click handlers
+ * (navigator, folder picker, settings, updater…), and `query` returns the
+ * aggregated state the native menu renders from. Same shapes as
+ * `MenuDispatch*` in `ipc-channels.ts` — duplicated for the
+ * module-resolution reason the wider `OkDesktopBridge` is duplicated.
+ */
+export type OkMenuDispatchRole =
+  | 'undo'
+  | 'redo'
+  | 'cut'
+  | 'copy'
+  | 'paste'
+  | 'selectAll'
+  | 'reload'
+  | 'forceReload'
+  | 'toggleDevTools'
+  | 'resetZoom'
+  | 'zoomIn'
+  | 'zoomOut'
+  | 'toggleFullScreen'
+  | 'minimize'
+  | 'close'
+  | 'quit';
+
+export type OkMenuDispatchCommand =
+  | 'open-navigator'
+  | 'open-folder-dialog'
+  | 'clear-recent-projects'
+  | 'open-settings'
+  | 'check-for-updates'
+  | 'reconfigure-mcp-wiring'
+  | 'open-github'
+  | 'toggle-spell-check';
+
+export type OkMenuDispatchRequest =
+  | { readonly kind: 'query' }
+  | { readonly kind: 'menu-action'; readonly action: OkMenuAction }
+  | { readonly kind: 'command'; readonly command: OkMenuDispatchCommand }
+  | { readonly kind: 'open-recent-project'; readonly path: string }
+  | { readonly kind: 'role'; readonly role: OkMenuDispatchRole };
+
+/** `query` result — the same aggregated state the native menu renders from. */
+export interface OkMenuRendererSnapshot {
+  readonly recentProjects: ReadonlyArray<{ readonly path: string; readonly name: string }>;
+  readonly spellCheckEnabled: boolean;
+  readonly showDevToolsMenu: boolean;
+  readonly canCheckForUpdates: boolean;
+  readonly canReconfigureMcpWiring: boolean;
+  readonly activeTarget: OkEditorActiveTargetSnapshot;
+  readonly viewMenuState: OkEditorViewMenuStateSnapshot;
 }
 
 /**
@@ -1894,6 +1962,18 @@ export interface OkDesktopBridge {
      * windows — matches the active-target singleton model.
      */
     notifyViewMenuStateChanged(state: Partial<OkEditorViewMenuStateSnapshot>): void;
+  };
+
+  /**
+   * Windows/Linux renderer-menubar dispatch surface (windows-linux-port
+   * renderer-menubar decision). macOS keeps the native menu bar and never calls this; on
+   * win/linux the renderer-drawn menu bar routes every click through main
+   * so menu semantics live in one place. `query` resolves the aggregated
+   * `OkMenuRendererSnapshot`; every other kind performs the action
+   * main-side and resolves undefined.
+   */
+  menu: {
+    dispatch(request: OkMenuDispatchRequest): Promise<OkMenuRendererSnapshot | undefined>;
   };
 
   /**

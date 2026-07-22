@@ -26,7 +26,7 @@ import {
   pathInstallMarkerPath,
 } from '@inkeep/open-knowledge';
 import type { McpWiringPathInstallDescriptor } from '../shared/ipc-channels.ts';
-import { wrapperPathInBundle } from './bundle-paths.ts';
+import { classifyInstallShape } from './install-shape.ts';
 
 // Re-exported so existing desktop importers (`main/index.ts`, tests) keep their
 // `from './path-install.ts'` path even though the definition now lives in cli.
@@ -206,10 +206,27 @@ function rcTargets(
   home: string,
   shell: string | undefined,
   fs: PathInstallFsOps,
+  // ensureCliOnPath passes its injected opts.platform (tests exercise both
+  // OSes from any host); the Settings/descriptor helpers run in-process on
+  // the real host, where process.platform is the right answer.
+  platform: string = process.platform,
 ): Array<{ path: string; create: boolean; content: string }> {
   const base = [
     { path: join(home, '.zshrc'), create: shell?.endsWith('/zsh') ?? false, content: block() },
     { path: join(home, '.bash_profile'), create: false, content: block() },
+    // Linux interactive non-login bash reads ~/.bashrc, not ~/.bash_profile
+    // (which most distros source only on login shells). Kept off macOS so
+    // the shipping darwin behavior — never touching a mac user's .bashrc —
+    // is unchanged.
+    ...(platform === 'linux'
+      ? [
+          {
+            path: join(home, '.bashrc'),
+            create: shell?.endsWith('/bash') ?? false,
+            content: block(),
+          },
+        ]
+      : []),
     {
       path: join(home, '.config', 'fish', 'conf.d', 'open-knowledge.fish'),
       create: true,
@@ -362,7 +379,10 @@ async function discoverRealInteractivePath(
   opts: EnsureCliOnPathOpts,
 ): Promise<PathDiscovery | null> {
   const env = opts.env ?? process.env;
-  const shell = env.SHELL ?? '/bin/zsh';
+  // $SHELL is set by every login environment we care about; the fallback is
+  // only for stripped launch contexts — zsh has been the macOS default since
+  // Catalina, bash is the near-universal Linux default.
+  const shell = env.SHELL ?? (opts.platform === 'linux' ? '/bin/bash' : '/bin/zsh');
   const spawn = opts.spawn ?? defaultSpawn;
   const logger = opts.logger ?? DEFAULT_LOGGER;
   try {
@@ -460,12 +480,22 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
     logger = DEFAULT_LOGGER,
   } = opts;
   if (reclaimDisableEnv === '1') return { status: 'skipped', reason: 'reclaim-disabled' };
-  if (platform !== 'darwin') return { status: 'skipped', reason: 'platform' };
+  // Windows PATH is the installer's job (installer-owned Windows PATH): the NSIS include appends the
+  // wrapper dir to the HKCU user PATH at install and removes it at
+  // uninstall. The rc-file + ~/.ok/bin symlink machinery below is
+  // POSIX-only, so this module never runs there.
+  if (platform === 'win32') return { status: 'skipped', reason: 'installer-managed' };
+  if (platform !== 'darwin' && platform !== 'linux')
+    return { status: 'skipped', reason: 'platform' };
   if (!isPackaged && forceEnv !== '1') return { status: 'skipped', reason: 'dev-mode' };
-  if (!/\.app\/Contents\/MacOS\/[^/]+$/.test(executablePath))
-    return { status: 'skipped', reason: 'bad-executable-path' };
+  const shape = classifyInstallShape(platform, executablePath, opts.env ?? process.env);
+  // AppImage mounts relocate every launch — a ~/.ok/bin symlink into the
+  // mount would be dead by next boot. deb (and unpacked-dir) installs are
+  // the Linux PATH-install surface; AppImage users get the npm CLI hint.
+  if (shape.kind === 'appimage') return { status: 'skipped', reason: 'appimage-ephemeral' };
+  if (shape.kind === 'unsupported') return { status: 'skipped', reason: 'bad-executable-path' };
 
-  const wrapper = wrapperPathInBundle(executablePath);
+  const wrapper = shape.wrapperPath;
   const prior = readMarker(home, fs, logger);
   // ANY caller-supplied decision must reach the full install path. The
   // fast-path below would otherwise swallow a grant on a marker that is
@@ -549,7 +579,7 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
     for (const file of newOptOuts) {
       logger.event({ event: 'path-install-rc-opt-out', path: file });
     }
-    const targets = rcTargets(home, (opts.env ?? process.env).SHELL, fs).filter(
+    const targets = rcTargets(home, (opts.env ?? process.env).SHELL, fs, platform).filter(
       (target) => !rcOptOuts.includes(target.path),
     );
     const activePriorRcFiles = (prior?.rcFiles ?? []).filter((file) => !rcOptOuts.includes(file));
@@ -668,13 +698,15 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
 export function computePathInstallDescriptor(opts: {
   home: string;
   env?: Record<string, string | undefined>;
+  /** Rc-target platform. Defaults to the real host; tests pin it. */
+  platform?: string;
   fs?: PathInstallFsOps;
   logger?: PathInstallLogger;
 }): McpWiringPathInstallDescriptor {
   const { home, fs = defaultFsOps, logger = DEFAULT_LOGGER } = opts;
   const marker = readMarker(home, fs, logger);
   const rcOptOuts = marker?.rcOptOuts ?? [];
-  const targets = rcTargets(home, (opts.env ?? process.env).SHELL, fs).filter(
+  const targets = rcTargets(home, (opts.env ?? process.env).SHELL, fs, opts.platform).filter(
     (target) => !rcOptOuts.includes(target.path),
   );
   const candidates = new Set<string>([
@@ -699,13 +731,17 @@ export function computePathInstallDescriptor(opts: {
 export function isPathShimInstalled(opts: {
   home: string;
   env?: Record<string, string | undefined>;
+  /** Rc-target platform. Defaults to the real host; tests pin it. */
+  platform?: string;
   fs?: PathInstallFsOps;
   logger?: PathInstallLogger;
 }): boolean {
   const { home, fs = defaultFsOps, logger = DEFAULT_LOGGER } = opts;
   const marker = readMarker(home, fs, logger);
   const candidates = new Set<string>([
-    ...rcTargets(home, (opts.env ?? process.env).SHELL, fs).map((target) => target.path),
+    ...rcTargets(home, (opts.env ?? process.env).SHELL, fs, opts.platform).map(
+      (target) => target.path,
+    ),
     ...(marker?.rcFiles ?? []),
   ]);
   return [...candidates].some((path) => rcBlockHealthy(path, fs));
@@ -735,6 +771,8 @@ export type RemovePathShimResult =
 export function removePathShimFromRcFiles(opts: {
   home: string;
   env?: Record<string, string | undefined>;
+  /** Rc-target platform. Defaults to the real host; tests pin it. */
+  platform?: string;
   fs?: PathInstallFsOps;
   logger?: PathInstallLogger;
   now?: () => Date;
@@ -742,7 +780,9 @@ export function removePathShimFromRcFiles(opts: {
   const { home, fs = defaultFsOps, logger = DEFAULT_LOGGER } = opts;
   const marker = readMarker(home, fs, logger);
   const candidates = new Set<string>([
-    ...rcTargets(home, (opts.env ?? process.env).SHELL, fs).map((target) => target.path),
+    ...rcTargets(home, (opts.env ?? process.env).SHELL, fs, opts.platform).map(
+      (target) => target.path,
+    ),
     ...(marker?.rcFiles ?? []),
   ]);
   const okOwnedFishConf = join(home, '.config', 'fish', 'conf.d', 'open-knowledge.fish');

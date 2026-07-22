@@ -233,7 +233,7 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       // to every byte of the chain text. Byte-exact verification lives in the
       // CLI unit tests (`editors.test.ts`).
       expect(typeof okEntry?.args?.[2]).toBe('string');
-      expect(okEntry?.args?.[2]).toContain('# ok-mcp-v1');
+      expect(okEntry?.args?.[2]).toContain('# ok-mcp-v2');
     } finally {
       forceRemove([], tmpHome);
     }

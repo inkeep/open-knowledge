@@ -3,6 +3,11 @@
   "productName": "OpenKnowledge",
   "version": "0.35.6",
   "license": "GPL-3.0-or-later",
+  "homepage": "https://openknowledge.ai",
+  "author": {
+    "name": "Inkeep",
+    "email": "support@inkeep.com"
+  },
   "private": true,
   "type": "module",
   "main": "out/main/index.js",
@@ -16,7 +21,10 @@
     "build:dir": "pnpm run build:desktop && electron-builder --dir --publish never",
     "build:mac": "pnpm run build:desktop && node scripts/prepare-universal.mjs && electron-builder --mac --publish never",
     "build:mac:unsigned": "pnpm run build:desktop && node scripts/prepare-universal.mjs && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --publish never -c.mac.identity=null",
+    "build:win": "pnpm run build:desktop && node scripts/prepare-platform-natives.mjs && electron-builder --win --publish never",
+    "build:linux": "pnpm run build:desktop && node scripts/prepare-platform-natives.mjs && electron-builder --linux --publish never",
     "prepare:universal": "node scripts/prepare-universal.mjs",
+    "prepare:platform-natives": "node scripts/prepare-platform-natives.mjs",
     "postinstall": "node scripts/postinstall.mjs",
     "rebuild:native": "electron-builder install-app-deps",
     "smoke:mock-update": "OK_UPDATER_FORCE_DEV=1 node scripts/smoke-mock-update.mjs",

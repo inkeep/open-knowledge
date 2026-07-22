@@ -839,6 +839,10 @@ msgstr ""
 msgid "Activity"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Actual Size"
+msgstr ""
+
 #: src/components/FrontmatterRow.tsx
 #: src/components/ObjectWidget.tsx
 #: src/components/PropertyPanel.tsx
@@ -1515,6 +1519,10 @@ msgstr ""
 msgid "Check for updates"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Check for updates…"
+msgstr ""
+
 #: src/components/NewWorktreeDialog.tsx
 msgid "Check out remote branch"
 msgstr ""
@@ -1523,6 +1531,7 @@ msgstr ""
 msgid "Check out worktree"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Check spelling while typing"
 msgstr ""
@@ -1615,6 +1624,10 @@ msgstr ""
 
 #: src/components/PageHeaderWidgets.tsx
 msgid "Clear {keyName}"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Clear menu"
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
@@ -1743,6 +1756,10 @@ msgstr ""
 msgid "Close terminal"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Close Window"
+msgstr ""
+
 #: src/components/GraphLegend.tsx
 msgid "Clusters"
 msgstr ""
@@ -1792,6 +1809,7 @@ msgstr ""
 msgid "Collapse {keyName}"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -2104,6 +2122,7 @@ msgstr ""
 msgid "Copied!"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/CopyButton.tsx
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -2144,6 +2163,7 @@ msgstr ""
 msgid "Copy full path, No workspace"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/FileTree.tsx
 msgid "Copy path"
 msgstr ""
@@ -2747,6 +2767,10 @@ msgstr ""
 msgid "Customize how the editor looks and behaves."
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Cut"
+msgstr ""
+
 #: src/components/settings/ColorThemePicker.tsx
 msgid "Dark"
 msgstr ""
@@ -3145,6 +3169,7 @@ msgstr ""
 msgid "Drag item {0} to reorder"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileTree.tsx
 #: src/components/skill-actions.tsx
@@ -3200,6 +3225,7 @@ msgstr ""
 msgid "Each selected tool gets an OpenKnowledge MCP entry."
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/skill-actions.tsx
 #: src/components/TemplateForm.tsx
 #: src/components/TemplateRow.tsx
@@ -3443,6 +3469,10 @@ msgstr ""
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Exit"
+msgstr ""
+
 #. placeholder {0}: exit.exitCode ?? 0
 #: src/components/acp/ThreadView.tsx
 msgid "exit {0}"
@@ -3457,6 +3487,7 @@ msgstr ""
 msgid "Expand {keyName}"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -3789,6 +3820,7 @@ msgstr ""
 msgid "Fetching"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -4000,6 +4032,10 @@ msgstr ""
 msgid "Footnote"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Force Reload"
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "Force stop"
 msgstr ""
@@ -4032,6 +4068,7 @@ msgstr ""
 msgid "Full guide"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/FileTree.tsx
 msgid "Full path"
 msgstr ""
@@ -4210,6 +4247,10 @@ msgstr ""
 msgid "Hello, world!"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Help"
+msgstr ""
+
 #. Subtext for the open-knowledge-discovery skill row
 #. Subtext for the open-knowledge-discovery skill row
 #: src/components/McpConsentDialogBody.tsx
@@ -4238,6 +4279,7 @@ msgstr ""
 msgid "Hide advanced"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide document panel"
 msgstr ""
@@ -4291,6 +4333,7 @@ msgstr ""
 msgid "Hide selection preview"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide sidebar"
 msgstr ""
@@ -5079,6 +5122,10 @@ msgstr ""
 msgid "Message not sent: {0}"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Minimize"
+msgstr ""
+
 #: src/editor/components/Mirror.tsx
 msgid "Mirror loading <0>{mirrorRef}</0>"
 msgstr ""
@@ -5185,6 +5232,7 @@ msgstr ""
 msgid "Move to the previous visual-editor find result."
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Move to Trash"
 msgstr ""
@@ -5318,6 +5366,7 @@ msgstr ""
 msgid "New branch <0>{trimmed}</0> will be created from the current commit, in its own worktree under <1>.ok/worktrees/</1>."
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -5334,6 +5383,7 @@ msgstr ""
 msgid "New file from template \"{displayTitle}\" ({fileName}) in the project root"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -5348,6 +5398,10 @@ msgstr ""
 msgid "New from template"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "New from Template…"
+msgstr ""
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "New ignore pattern"
 msgstr ""
@@ -5355,6 +5409,10 @@ msgstr ""
 #: src/components/command-palette-commands.ts
 #: src/components/ProjectSwitcher.tsx
 msgid "New project"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "New project…"
 msgstr ""
 
 #: src/components/FrontmatterRow.tsx
@@ -5399,6 +5457,10 @@ msgstr ""
 #: src/components/NewWorktreeDialog.tsx
 #: src/components/ProjectSwitcher.tsx
 msgid "New worktree"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "New worktree…"
 msgstr ""
 
 #: src/components/TimelineDiffPane.tsx
@@ -5624,6 +5686,10 @@ msgstr ""
 
 #: src/components/settings/ProjectTemplatesSection.tsx
 msgid "No project templates yet. Create one to make it available everywhere in this project. Folder-scoped templates live on each folder's overview page."
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "No recent projects"
 msgstr ""
 
 #: src/components/ProjectSwitcher.tsx
@@ -5989,6 +6055,10 @@ msgstr ""
 msgid "Open folder on disk"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Open folder…"
+msgstr ""
+
 #: src/components/command-palette-commands.ts
 msgid "Open graph"
 msgstr ""
@@ -6088,6 +6158,7 @@ msgstr ""
 msgid "Open visual-editor find with replace controls expanded."
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
@@ -6148,6 +6219,7 @@ msgstr ""
 msgid "OpenKnowledge is using this GitHub account."
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "OpenKnowledge on GitHub"
 msgstr ""
@@ -6314,6 +6386,10 @@ msgstr ""
 
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
 msgid "Parse failed"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Paste"
 msgstr ""
 
 #: src/components/AuthModal.tsx
@@ -6734,6 +6810,10 @@ msgstr ""
 msgid "Recent"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Recent project"
+msgstr ""
+
 #: src/components/CommandPalette.tsx
 msgid "Recently opened"
 msgstr ""
@@ -6758,6 +6838,10 @@ msgstr ""
 msgid "Reconnecting…"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Redo"
+msgstr ""
+
 #: src/components/ProblemsPanel.tsx
 msgid "Refresh audit"
 msgstr ""
@@ -6780,6 +6864,7 @@ msgstr ""
 msgid "Reject"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/FileTree.tsx
 msgid "Relative path"
 msgstr ""
@@ -6797,6 +6882,7 @@ msgstr ""
 msgid "Release notes"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
@@ -6891,6 +6977,7 @@ msgstr ""
 msgid "Removing"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileTree.tsx
 #: src/components/skill-actions.tsx
@@ -6999,6 +7086,10 @@ msgstr ""
 #: src/components/HelpPopover.tsx
 #: src/components/ReportBugDialogBody.tsx
 msgid "Report a bug"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Report a Bug…"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
@@ -7458,6 +7549,10 @@ msgstr ""
 msgid "See the full install guide"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Select All"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select all files and folders"
 msgstr ""
@@ -7600,6 +7695,10 @@ msgstr ""
 msgid "Set up OpenKnowledge integrations"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Set up OpenKnowledge integrations…"
+msgstr ""
+
 #: src/components/settings/SyncSection.tsx
 msgid "Set up syncing"
 msgstr ""
@@ -7630,6 +7729,10 @@ msgstr ""
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings sections"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Settings…"
 msgstr ""
 
 #. Primary button — begins scaffolding the project
@@ -7709,6 +7812,7 @@ msgstr ""
 msgid "Show"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Show .ok folders"
@@ -7740,6 +7844,7 @@ msgstr ""
 msgid "Show diagram"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Show document panel"
 msgstr ""
@@ -7764,6 +7869,7 @@ msgstr ""
 msgid "Show Files ({sidebarShortcutLabel})"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/NotInSidebarIndicator.tsx
@@ -7774,11 +7880,20 @@ msgstr ""
 msgid "Show HTML preview"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Show in Explorer"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Show in File Manager"
+msgstr ""
+
 #: src/components/PackCardGrid.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "Show less"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Show only markdown files"
@@ -7817,10 +7932,12 @@ msgstr ""
 msgid "Show selection preview"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Show sidebar"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Show skills section"
@@ -8184,12 +8301,20 @@ msgstr ""
 msgid "Switch project"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Switch project…"
+msgstr ""
+
 #: src/components/settings/SharingSection.tsx
 msgid "Switch to local-only refused"
 msgstr ""
 
 #: src/components/command-palette-commands.ts
 msgid "Switch worktree"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Switch worktree…"
 msgstr ""
 
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -8881,6 +9006,14 @@ msgstr ""
 msgid "Toggle bold formatting."
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Toggle Developer Tools"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Toggle Full Screen"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle heading levels 1 through 6."
 msgstr ""
@@ -9024,6 +9157,7 @@ msgid "Undid the last edit on {docName}"
 msgstr ""
 
 #: src/components/ActivityPanelBurstRow.tsx
+#: src/components/AppMenubar.tsx
 #: src/components/settings/SharingSection.tsx
 msgid "Undo"
 msgstr ""
@@ -9268,6 +9402,7 @@ msgstr ""
 msgid "via {viaTags}"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
 msgid "View"
 msgstr ""
@@ -9472,6 +9607,10 @@ msgstr ""
 msgid "Will replace existing OpenKnowledge entry"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Window"
+msgstr ""
+
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"
 msgstr ""
@@ -9669,7 +9808,15 @@ msgstr ""
 msgid "Zoom in"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Zoom In"
+msgstr ""
+
 #: src/editor/components/Mermaid.tsx
 #: src/editor/components/Pdf.tsx
 msgid "Zoom out"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Zoom Out"
 msgstr ""

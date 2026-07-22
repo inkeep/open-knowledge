@@ -135,6 +135,7 @@
     "2AIVbm": ["Review your report"],
     "2B6eYX": ["What this checkbox changes"],
     "2BBAbc": ["List"],
+    "2CHoQv": ["Force Reload"],
     "2FYpfJ": ["More"],
     "2FnYUD": [
       "App & system info, recent app logs, and project server logs: the essentials we need to reproduce the issue."
@@ -192,7 +193,9 @@
     "3SDfZl": [
       "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
     ],
+    "3SZrdj": ["Check for updates…"],
     "3TCafD": ["Stored on this machine."],
+    "3TSz9S": ["Minimize"],
     "3VbwPp": ["Open ", ["keyName"], " in browser"],
     "3VsNTI": ["Loading document"],
     "3YWddZ": ["No content changes in this version"],
@@ -685,6 +688,7 @@
     ],
     "Dvwa0U": ["Create a worktree from this branch"],
     "Dw1T_W": ["Rename ", ["label"]],
+    "Dz7fsq": ["Zoom In"],
     "E1Da_b": [
       "This permanently removes ",
       ["0"],
@@ -775,6 +779,7 @@
       "Run a real terminal docked inside OpenKnowledge, starting in this project's folder."
     ],
     "FCxvG5": ["First item"],
+    "FDBwmS": ["Open folder…"],
     "FEK4oC": [
       "OpenKnowledge will be initialized at <0>",
       ["gitRoot"],
@@ -782,6 +787,7 @@
     ],
     "FEqWFL": ["Guides your AI agents on how to work here."],
     "FEr96N": ["Theme"],
+    "FF7V5K": ["Actual Size"],
     "FNTx6u": ["Search \"", ["semanticSubmitQuery"], "\" by meaning"],
     "FOGD7m": ["Create something great."],
     "FRYB1Q": ["/api/config returned a malformed body"],
@@ -870,6 +876,8 @@
     "H-vDm3": ["Relaunching to install the update…"],
     "H08D2X": ["Open a single markdown file in a temporary session, without project setup."],
     "H0WlWQ": ["Grid of rows and columns with a header row."],
+    "H3oH0g": ["Redo"],
+    "H6nKok": ["Show in File Manager"],
     "H86f9p": ["Collapse"],
     "HAvRAI": [["skillCount", "plural", { "one": ["skill"], "other": ["skills"] }]],
     "HCn0Ay": ["Toggle strikethrough formatting."],
@@ -903,6 +911,7 @@
     ],
     "Hrz9NY": ["Wiki link"],
     "HyvSqq": ["Project Skill"],
+    "HzVv6g": ["Paste"],
     "I-xnra": [["0"], " hex value"],
     "I1gRhX": ["Failed to rename"],
     "I5685_": ["Try a prompt"],
@@ -1050,6 +1059,7 @@
     "LNum6A": [["minutes"], " min ago"],
     "LPAv9E": [["days"], "d ago"],
     "LRgZAt": [["owner"], "/", ["name"], " already exists"],
+    "LTeJuX": ["Toggle Full Screen"],
     "LXdWeS": ["Medium section heading."],
     "LXfNU-": ["Navigation and suggestions"],
     "LYufDw": ["Failed to enable semantic search — ", ["detail"]],
@@ -1168,6 +1178,7 @@
     "NSnIUP": ["Two-page (even)"],
     "NUr4kz": ["A reusable starting point for new documents in this folder."],
     "NYUhy5": ["Subfolder name"],
+    "NYu2Pt": ["New project…"],
     "N_7kkF": [
       "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
     ],
@@ -1408,8 +1419,10 @@
     "Skr_7L": ["Search worktrees"],
     "Sq8lf2": ["Editors to install skills into"],
     "SrOuyg": ["Document panels"],
+    "SvBFYA": ["No recent projects"],
     "T-654M": ["Loading PDF"],
     "T0OVm7": ["The default branch is protected — pushes need a pull request."],
+    "T3Mld1": ["Window"],
     "T3j-7o": ["e.g. Switching projects while a sync was running"],
     "T67A0Y": [
       "Auto-sync pushes/pulls commits to your git remote on intervals and on save. Toggling on requires confirmation."
@@ -1419,6 +1432,7 @@
     "TKQ7K-": ["Install"],
     "TLIO3j": ["Toggle italic formatting."],
     "TQJCR6": [["0", "plural", { "one": ["#", " result"], "other": ["#", " results"] }]],
+    "TTDXD8": ["New worktree…"],
     "TUzThQ": ["Share skills"],
     "T_R-Qz": ["Primary"],
     "T_wG4n": ["We couldn't check your GitHub connection."],
@@ -1798,6 +1812,7 @@
     "aHPdYV": ["Go to line ", ["displayLine"]],
     "aM23Wr": ["page-name"],
     "aOp3hw": ["Couldn't move to Trash"],
+    "aRI3Om": ["Close Window"],
     "aWlJai": ["Starting sign-in flow"],
     "a_u4ck": ["Loading tags"],
     "aaE55D": ["Clear ", ["keyName"]],
@@ -1809,6 +1824,7 @@
     "adsMWO": ["Resolving deltas"],
     "aiArms": ["We couldn't clone this repository."],
     "ajz9F8": ["Couldn't load conflict content for ", ["filePath"], ". Try reloading the page."],
+    "ak4LLg": ["Clear menu"],
     "anmUZq": ["Missing a feature"],
     "aoa6xA": ["network error (is `ok ui` running?)"],
     "arUUsK": ["Product updates"],
@@ -1835,6 +1851,7 @@
     "bV6DJA": ["Who you are, so the agent has your context."],
     "bWLmRK": ["Could not fetch branch. Check your connection."],
     "ba3vIW": [["templateCount", "plural", { "one": ["template"], "other": ["templates"] }]],
+    "bbJ-VR": ["Zoom Out"],
     "bcDHUM": [["descriptorLabel"], " — render error, source editable below"],
     "bcjYUA": ["Fold or unfold source"],
     "bkQRMh": ["Paragraph"],
@@ -1846,6 +1863,7 @@
     ],
     "bwil08": ["Building <0>openknowledge.skill</0> and opening the Claude Desktop App"],
     "c1LZZH": ["Link copied."],
+    "c3XJ18": ["Help"],
     "c4fVUV": ["Fix"],
     "c5PTFE": ["Dev instance: ", ["label"], " (isolated from other worktrees)"],
     "c5f7sm": ["Code block language: ", ["currentLabel"], ". Click to change."],
@@ -1853,6 +1871,7 @@
     "c863eW": ["Could not switch to ", ["shareBranch"], ". Try switching manually."],
     "c8iK2Y": ["No templates found."],
     "c8jBgX": ["Checking for updates on GitHub"],
+    "cCd8Bs": ["Cut"],
     "cEoyWz": ["Add item to ", ["keyName"]],
     "cF9DyA": ["Reconnecting after server restart"],
     "cFCKYZ": ["Deny"],
@@ -1991,6 +2010,7 @@
     "fNr-MX": ["Disable semantic search"],
     "fR-Kdc": ["(project-level only)"],
     "fSRzLo": ["Show document panel"],
+    "fTtfPS": ["Report a Bug…"],
     "fVcm9t": [["0", "plural", { "one": ["#", " doc"], "other": ["#", " docs"] }]],
     "fWi7pn": ["Initialize starter pack"],
     "fWsBTs": ["Something went wrong. Please try again."],
@@ -2156,6 +2176,7 @@
     "iilQXA": ["Folder duplicated"],
     "ijLc3m": ["Bullet list"],
     "ilodsp": ["Let agents use OpenKnowledge without asking"],
+    "ioMn4Z": ["New from Template…"],
     "ipn17C": [
       "The <0>type</0> every document created from this template gets (e.g. <1>research-note</1>). Keeps new docs Open Knowledge Format–conformant."
     ],
@@ -2332,6 +2353,7 @@
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m6YGpY": ["Active panel content for the selected tab shows here."],
     "mBltnd": ["Path suggestions"],
+    "mCB6Je": ["Select All"],
     "mGaZwZ": ["See the full install guide"],
     "mHVPm5": ["Reconnect required"],
     "mLAjyL": [
@@ -2375,6 +2397,7 @@
       " editor skill(s) for this project. Import moves them into .ok/skills and replaces the .claude, .codex, etc. copies with symlinks — one place to edit, in sync everywhere. If those folders are committed to git, review the change first; symlinks can behave differently on some editors and on Windows."
     ],
     "mwMF9u": ["Open CodeMirror search in source editor mode."],
+    "mxGJVE": ["Switch worktree…"],
     "mxY24F": ["Duplicate the focused file-tree item when focus is in the Files sidebar."],
     "n2lRue": ["Commit or stash changes to switch:"],
     "n3wx1q": ["Restore to this version?"],
@@ -2524,6 +2547,7 @@
     "pbwTg6": [["seconds"], "s ago"],
     "pckX1A": [["0", "plural", { "one": ["#", " use"], "other": ["#", " uses"] }]],
     "pcqlQu": [["0", "plural", { "one": ["Folder"], "other": ["Folders"] }]],
+    "pgDlbM": ["Toggle Developer Tools"],
     "pgq_xf": [["0"], "/", ["1"], " ", ["2"]],
     "phM8Kh": ["Found the repo but could not open the project. Please try again."],
     "pha01Y": ["Project-level pages with no incoming graph edges."],
@@ -2595,6 +2619,7 @@
       "Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until you've reviewed it."
     ],
     "rDOuNw": ["Failed to import template"],
+    "rFTdVq": ["Show in Explorer"],
     "rFmBG3": ["Color theme"],
     "rFw02Q": ["Uploading ", ["keyName"]],
     "rJVoVX": ["Source find results"],
@@ -2695,6 +2720,7 @@
     "tUvUfp": ["Use a folder you already have."],
     "t_YqKh": ["Remove"],
     "teD0H9": ["Couldn't open a worktree for that branch."],
+    "ten9en": ["Recent project"],
     "tfDRzk": ["Save"],
     "tfi40B": ["Failed to create page"],
     "tgWuMB": ["Modified"],
@@ -2735,6 +2761,7 @@
     "uQewpR": [
       "Couldn't restart the server — it's running under a different account. Restart your computer to clear it, then reopen this project."
     ],
+    "uVbUP8": ["Settings…"],
     "uWtdQR": [
       "No templates yet. Add one in this folder's Templates section, or in Settings → Templates."
     ],
@@ -2780,6 +2807,7 @@
     "vPKX2i": ["In app (beta)"],
     "vQIVHc": ["Folder properties"],
     "vWc9a0": ["Type to edit; <0>⌘ Enter</0> saves, <1>Esc</1> cancels."],
+    "vYPvPB": ["Switch project…"],
     "vZVeFG": ["Upload failed — please try again"],
     "vbK_ZG": ["Files sidebar"],
     "ve8vEM": ["Code expired — please try again"],
@@ -2914,6 +2942,7 @@
     "y_K0Dz": ["What happened?"],
     "yaPGPa": ["Open a project to manage its AI tool connections."],
     "ycIX5i": ["You're signed out — sign in to resume syncing."],
+    "ydzS9x": ["Exit"],
     "yf5auF": ["Search rules by id, alias, or name"],
     "yf5r22": [
       ["keyName"],
@@ -2952,6 +2981,7 @@
     ],
     "zAJzIg": ["Problems in ", ["0"]],
     "zAsDLY": ["Graph visualization of document links"],
+    "zBUqvf": ["Set up OpenKnowledge integrations…"],
     "zKxoPm": ["Couldn't rename \"", ["0"], "\": ", ["1"]],
     "zL0LPh": ["Global outside text fields"],
     "zLGXna": ["No starter packs available."],

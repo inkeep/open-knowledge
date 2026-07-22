@@ -10,13 +10,13 @@
  * with no network calls.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { execSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Octokit } from '@octokit/rest';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { classifyOctokitError, runPublishFlow } from './publish.ts';
 
 // ─── Octokit fake factory ─────────────────────────────────────────────────────
@@ -249,12 +249,10 @@ describe('runPublishFlow (error branches)', () => {
     // to addRemote + commit + push instead of returning name-conflict.
     const bareRepo = mkdtempSync(join(tmpdir(), 'ok-share-publish-retry-bare-'));
     execSync('git init --bare', { cwd: bareRepo, stdio: 'ignore' });
-    // Pre-init the project repo + set local gitconfig identity. simple-git's
-    // `.env({GIT_TERMINAL_PROMPT: '0'})` REPLACES the subprocess env (does
-    // not merge) so process.env-based GIT_AUTHOR_* don't propagate. Repo-
-    // local config is the only reliable cross-environment identity source —
-    // dev machines have global config; CI runners don't, and the env-var
-    // pattern silently drops with simple-git's replace semantics.
+    // Pre-init the project repo + set local gitconfig identity so this test
+    // is deterministic regardless of the host's global config. (The child
+    // env now merges process.env via `buildCloneEnv`, so env-based identity
+    // also works — the dedicated env-identity regression test covers that.)
     execSync('git init', { cwd: tmpDir, stdio: 'ignore' });
     execSync('git config user.name Test', { cwd: tmpDir });
     execSync('git config user.email test@example.com', { cwd: tmpDir });
@@ -341,15 +339,12 @@ describe('runPublishFlow (e2e against bare repo)', () => {
     // Seed the project with a single markdown file so the initial commit
     // has real content (matches the real Publish flow's expectations).
     writeFileSync(join(projectDir, 'README.md'), '# Hello\n', 'utf-8');
-    // Pre-init the project repo + set local gitconfig identity. simple-git's
-    // `.env({GIT_TERMINAL_PROMPT: '0'})` REPLACES the subprocess env (does
-    // not merge), so process.env-based `GIT_AUTHOR_*` vars never propagate
-    // to the spawned git process. Repo-local config is the only reliable
-    // cross-environment identity source — dev machines have global config
-    // (so the previous env-var approach silently worked locally), but CI
-    // runners don't and the commit step fails with "Please tell me who
-    // you are." The publish flow's `existsSync('.git')` check skips its
-    // own `git init` when we've already initialised the repo.
+    // Pre-init the project repo + set local gitconfig identity so these
+    // tests are deterministic regardless of the host's global config. (The
+    // child env now merges process.env via `buildCloneEnv`; the dedicated
+    // env-identity regression test proves env-only identity works.) The
+    // publish flow's `existsSync('.git')` check skips its own `git init`
+    // when we've already initialised the repo.
     execSync('git init', { cwd: projectDir, stdio: 'ignore' });
     execSync('git config user.name Test', { cwd: projectDir });
     execSync('git config user.email test@example.com', { cwd: projectDir });
@@ -431,5 +426,68 @@ describe('runPublishFlow (e2e against bare repo)', () => {
       encoding: 'utf-8',
     }).trim();
     expect(remoteRefSha).toBe(headSha);
+  });
+
+  test('identity from process.env GIT_AUTHOR_* alone reaches the commit child', async () => {
+    // Regression for the Windows half-publish: `makeGit` used to pass
+    // `.env({ GIT_TERMINAL_PROMPT: '0' })`, which REPLACES the child env —
+    // stripping the GIT_AUTHOR_*/GIT_COMMITTER_* fallback the command sets
+    // for machines with no git identity configured. The initial commit then
+    // died with "Please tell me who you are" AFTER the GitHub repo was
+    // created, leaving a half-published project. This test removes every
+    // config-file identity source (HOME/XDG redirected to an empty dir; no
+    // repo-local config) and provides identity ONLY via process.env — it
+    // fails with `init-failed` under the old replace semantics.
+    const emptyHome = join(workspace, 'empty-home');
+    mkdirSync(emptyHome, { recursive: true });
+    // beforeEach seeds repo-local identity for the other e2e tests — remove
+    // it so process.env is provably the ONLY identity source here.
+    execSync('git config --unset user.name', { cwd: projectDir });
+    execSync('git config --unset user.email', { cwd: projectDir });
+    const saved: Record<string, string | undefined> = {};
+    // HOME/USERPROFILE/XDG redirection isolates the user-global config
+    // (identity must come from the env vars alone). GIT_CONFIG_GLOBAL is
+    // deliberately NOT used — simple-git gates it behind
+    // `allowUnsafeConfigPaths`, which the production options (shared with
+    // `ok clone`) do not enable.
+    const overrides: Record<string, string> = {
+      HOME: emptyHome,
+      USERPROFILE: emptyHome,
+      XDG_CONFIG_HOME: join(emptyHome, '.config'),
+      GIT_AUTHOR_NAME: 'EnvOnly',
+      GIT_AUTHOR_EMAIL: 'env-only@example.com',
+      GIT_COMMITTER_NAME: 'EnvOnly',
+      GIT_COMMITTER_EMAIL: 'env-only@example.com',
+    };
+    for (const [key, value] of Object.entries(overrides)) {
+      saved[key] = process.env[key];
+      process.env[key] = value;
+    }
+    try {
+      const bareUrl = `file://${bareRepo}`;
+      const result = await runPublishFlow({
+        octokit: makeFakeOctokit({
+          authLogin: 'alice',
+          createUserRepo: { clone_url: bareUrl, default_branch: 'main' },
+        }),
+        token: 'irrelevant',
+        projectDir,
+        body: { owner: 'alice', name: 'demo', visibility: 'private' },
+        ownerKind: 'user',
+        deps: { ensureOkScaffold: () => {} },
+      });
+      expect(result.kind).toBe('ok');
+      const log = execSync('git log --format="%an <%ae>"', {
+        cwd: projectDir,
+        encoding: 'utf-8',
+        env: { ...process.env },
+      });
+      expect(log).toContain('EnvOnly <env-only@example.com>');
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 });

@@ -112,9 +112,15 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   const desktopBridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
   // The terminal feature (dock + header New chat / toggle) needs not just a
   // desktop bridge but one that actually exposes the `terminal` surface — a
-  // session-only bridge (some E2E hosts) has none. Gate every terminal
-  // affordance on this so a control that can't launch never renders.
-  const terminalAvailable = desktopBridge != null && desktopBridge.terminal != null;
+  // session-only bridge (some E2E hosts) has none — AND a host that can
+  // actually spawn a PTY: `config.ptyAvailable` is false on Windows/Linux
+  // (node-pty is not bundled there; terminal dock dark off-mac), where a
+  // rendered affordance would only surface a spawn failure. Gate every
+  // terminal affordance on both so a control that can't launch never renders.
+  const terminalAvailable =
+    desktopBridge != null &&
+    desktopBridge.terminal != null &&
+    desktopBridge.config.ptyAvailable === true;
   const [terminalVisible, setTerminalVisible] = useState(false);
   // Which launchable CLIs are on PATH (desktop probe, cached ~60s in main).
   // Feeds the New-chat default-CLI auto-pick. Starts empty, so resolveDefaultCli
@@ -499,7 +505,9 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
           (terminals + agent threads) docks WITHIN EditorArea — bottom, or its own
           right column past the doc panels; EditorArea owns that layout. The live
           session host is mounted below (above EditorArea) so a dock move never
-          remounts it. */}
+          remounts it. `terminalAvailable` folds in `ptyAvailable`, so on
+          Windows/Linux (no bundled node-pty) the bridge passes as null and the
+          dock behaves web-like — thread tabs only, no terminal-kind affordances. */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-w-0 flex-1 flex-col">
           <EditorArea
@@ -507,7 +515,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
             onModeChange={handleModeChange}
             activeTab={activeTab}
             onActiveTabChange={setActiveTab}
-            terminalBridge={desktopBridge}
+            terminalBridge={terminalAvailable ? desktopBridge : null}
             terminalVisible={terminalVisible}
             onTerminalVisibleChange={setTerminalVisible}
             terminalDock={terminalDock}
@@ -519,11 +527,11 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
       </div>
       {/* The sessions dock host mounts UNCONDITIONALLY — a shell and an agent are
           just tabs of a different kind, and agents are server-hosted, so the dock
-          is host-agnostic (web = thread tabs only). Terminal-kind affordances gate
-          on the bridge inside the host. */}
+          is host-agnostic (web = thread tabs only, as is win/linux where pty is
+          unavailable). Terminal-kind affordances gate on the bridge inside the host. */}
       <Suspense fallback={null}>
         <TerminalSessionsHost
-          bridge={desktopBridge}
+          bridge={terminalAvailable ? desktopBridge : null}
           visible={terminalVisible}
           onVisibleChange={setTerminalVisible}
           launch={terminalLaunch}

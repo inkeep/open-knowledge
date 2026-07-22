@@ -1566,7 +1566,7 @@ export function startCommand(getConfig: () => Config): Command {
         const decision = detectDesktop(createRealDetectDeps());
 
         if (decision.available) {
-          launchDesktop({ spawn: nativeSpawn });
+          launchDesktop({ spawn: nativeSpawn }, decision);
           return;
         }
 

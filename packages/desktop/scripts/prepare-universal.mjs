@@ -41,7 +41,7 @@ const hostPkgJson = join(NAPI_DIR, `keyring-${hostArch}`, 'package.json');
 if (!existsSync(hostPkgJson)) {
   console.error(
     `[prepare-universal] @napi-rs/keyring-${hostArch} not present at ${hostPkgJson}. ` +
-      `Run \`bun install\` first.`,
+      `Run \`pnpm install\` first.`,
   );
   process.exit(1);
 }

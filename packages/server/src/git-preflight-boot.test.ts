@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -10,6 +9,7 @@ import {
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { bootServer } from './boot.ts';
 import { ConfigSchema } from './config/schema.ts';
 import {
@@ -35,7 +35,14 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await rm(tmpDir, { recursive: true, force: true });
+  // `booted.destroy()` is awaited before this runs, but the server's async
+  // sinks (persistence debounce, telemetry export, pino logger flush) can land
+  // a final write into the state dir a beat after destroy resolves. On a loaded
+  // macOS CI runner that write can race the recursive removal — a file appears
+  // between readdir and rmdir, so the plain `rm` bails with ENOTEMPTY. Retry
+  // with linear backoff (~5.5s total) so the removal outlasts any trailing
+  // write instead of flaking the whole preflight job.
+  await rm(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 /**

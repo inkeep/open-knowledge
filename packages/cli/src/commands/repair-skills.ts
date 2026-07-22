@@ -46,13 +46,7 @@ import {
 import { Command } from 'commander';
 import { removeUserGlobalSkillBundle } from '../integrations/skill-teardown.ts';
 import { assertProjectPathSafe } from '../integrations/write-project-skill.ts';
-import {
-  CHAIN_VERSION_SENTINEL,
-  CHAIN_WIN_VERSION_SENTINEL,
-  EDITOR_TARGETS,
-  type EditorId,
-  HOSTS_WITH_USER_SKILL_DIR,
-} from './editors.ts';
+import { EDITOR_TARGETS, type EditorId, HOSTS_WITH_USER_SKILL_DIR } from './editors.ts';
 
 // `HOSTS_WITH_USER_SKILL_DIR` is the canonical core constant (derived from
 // PROJECT_SKILL_EDITOR_IDS + EDITOR_PROJECT_SKILL_ROOT), shared with the desktop
@@ -362,22 +356,27 @@ function installUserBundleToHostDirs(
 }
 
 /**
- * True iff `configPath` exists and its bytes contain either platform's chain
- * sentinel (`# ok-mcp-v1` / `# ok-mcp-win-v1`) — proof the editor is wired
- * for this OK project. The sentinel is the first line of every managed MCP
+ * True iff `configPath` exists and its bytes contain the version-independent
+ * chain-sentinel family prefix (`# ok-mcp-`) — proof the editor is wired for
+ * this OK project. The sentinel is the first line of every managed MCP
  * entry's resilient-chain body and is substring-present in both the JSON and
- * TOML on-disk forms, so a plain `includes` check is format-agnostic. Both
- * sentinels are accepted on every platform — a shared project config written
- * on the other OS still proves the editor is wired. A read error (torn /
- * unreadable config) classifies as "not wired" rather than throwing, so one
- * bad config never blocks the other hosts.
+ * TOML on-disk forms, so a plain `includes` check is format-agnostic. The
+ * prefix covers both platforms' sentinels and every version: "wired at all"
+ * must survive a sentinel bump (a project wired under `# ok-mcp-v1` is still
+ * wired after the chain moves to `v2` — the entry upgrades lazily via the
+ * repair sweep). Same shape as `OK_MCP_MARKER_PREFIX` in the desktop's
+ * `worktree-setup-inherit.ts`. A read error (torn / unreadable config)
+ * classifies as "not wired" rather than throwing, so one bad config never
+ * blocks the other hosts.
  */
+const OK_MCP_MARKER_PREFIX = '# ok-mcp-';
+
 function editorWiredForOk(configPath: string | undefined, fs: RepairSkillsFsOps): boolean {
   if (!configPath) return false;
   try {
     if (!fs.existsSync(configPath)) return false;
     const bytes = fs.readFileSync(configPath).toString('utf8');
-    return bytes.includes(CHAIN_VERSION_SENTINEL) || bytes.includes(CHAIN_WIN_VERSION_SENTINEL);
+    return bytes.includes(OK_MCP_MARKER_PREFIX);
   } catch {
     return false;
   }

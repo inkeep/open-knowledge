@@ -58,6 +58,7 @@ import {
   HOSTS_WITH_USER_SKILL_DIR,
 } from '@inkeep/open-knowledge';
 import { resolveBundleEnabled } from '@inkeep/open-knowledge-core';
+import { classifyInstallShape } from './install-shape.ts';
 
 interface SkillReclaimLogger {
   event(payload: { event: string; [key: string]: unknown }): void;
@@ -82,20 +83,18 @@ const DEFAULT_LOGGER: SkillReclaimLogger = {
  * in both the JSON (`.mcp.json`, `.cursor/mcp.json`) and TOML
  * (`.codex/config.toml`) on-disk forms. The `createIfWired` gate treats its
  * presence in an editor's project config as proof the editor is wired for this
- * OK project. Same string as `CHAIN_VERSION_SENTINEL` in the CLI's `editors.ts`,
- * kept as a local copy because that sentinel is `@internal` and deliberately
- * not re-exported from `@inkeep/open-knowledge`; if it ever bumps (`v2`, …),
- * update this copy in the same change.
+ * OK project.
+ *
+ * Version-INDEPENDENT family prefix of the CLI's `CHAIN_VERSION_SENTINEL` /
+ * `CHAIN_WIN_VERSION_SENTINEL` (both in `editors.ts`, `@internal` and
+ * deliberately not re-exported — hence this local copy). "Wired at all" must
+ * survive a sentinel bump: a project wired under `# ok-mcp-v1` is still wired
+ * after the chain moves to `v2` (the entry upgrades lazily via the repair
+ * sweep), and `# ok-mcp-win-…` shares the prefix, so one marker covers both
+ * platforms and every version. Same shape as `OK_MCP_MARKER_PREFIX` in
+ * `worktree-setup-inherit.ts`.
  */
-const OK_MCP_MARKER = '# ok-mcp-v1';
-
-/**
- * Windows sibling of `OK_MCP_MARKER` (`CHAIN_WIN_VERSION_SENTINEL` in the
- * CLI's `editors.ts`) — same local-copy rule as above. A shared project
- * config written by a Windows teammate carries this sentinel instead; both
- * count as "wired for OK".
- */
-const OK_MCP_WIN_MARKER = '# ok-mcp-win-v1';
+const OK_MCP_MARKER = '# ok-mcp-';
 
 /**
  * Project-local install dir name. The rich `project` bundle keeps
@@ -235,8 +234,10 @@ interface ReclaimUserSkillsOpts {
   home: string;
   isPackaged: boolean;
   platform: 'darwin' | 'win32' | 'linux' | string;
-  /** `app.getPath('exe')` — must match `.app/Contents/MacOS/<name>` in production. */
+  /** `app.getPath('exe')` — must match a supported packaged layout (`install-shape.ts`). */
   executablePath: string;
+  /** Env for install-shape classification (AppImage detection). Defaults to `process.env`. */
+  env?: Record<string, string | undefined>;
   forceEnv?: string | null | undefined;
   reclaimDisableEnv?: string | null | undefined;
   /** DI for cross-package primitives so unit tests can substitute. */
@@ -398,9 +399,15 @@ export async function reclaimUserSkillsOnLaunch(
   const nowDate = (): Date => (now ? now() : new Date());
 
   if (reclaimDisableEnv === '1') return { status: 'skipped', reason: 'reclaim-disabled' };
-  if (platform !== 'darwin') return { status: 'skipped', reason: 'platform' };
   if (!isPackaged && forceEnv !== '1') return { status: 'skipped', reason: 'dev-mode' };
-  if (!/\.app\/Contents\/MacOS\/[^/]+$/.test(executablePath)) {
+  // Supported packaged layouts only (darwin bundle / NSIS / linux dir —
+  // install-shape.ts). AppImage declines: its ephemeral mount path must
+  // never be persisted into user or project config.
+  const installShape = classifyInstallShape(platform, executablePath, opts.env ?? process.env);
+  if (installShape.kind === 'appimage') {
+    return { status: 'skipped', reason: 'appimage-ephemeral' };
+  }
+  if (installShape.kind === 'unsupported') {
     return { status: 'skipped', reason: 'bad-executable-path' };
   }
 
@@ -585,6 +592,8 @@ interface ReclaimProjectSkillsOpts {
   executablePath: string;
   isPackaged: boolean;
   platform: 'darwin' | 'win32' | 'linux' | string;
+  /** Env for install-shape classification (AppImage detection). Defaults to `process.env`. */
+  env?: Record<string, string | undefined>;
   forceEnv?: string | null | undefined;
   reclaimDisableEnv?: string | null | undefined;
   /**
@@ -622,7 +631,7 @@ function editorWiredForOk(configPath: string | undefined, fs: SkillFsOps): boole
   try {
     if (!fs.existsSync(configPath)) return false;
     const bytes = fs.readFileSync(configPath).toString('utf8');
-    return bytes.includes(OK_MCP_MARKER) || bytes.includes(OK_MCP_WIN_MARKER);
+    return bytes.includes(OK_MCP_MARKER);
   } catch {
     return false;
   }
@@ -653,9 +662,15 @@ export async function reclaimProjectSkillsOnProjectOpen(
   } = opts;
 
   if (reclaimDisableEnv === '1') return { status: 'skipped', reason: 'reclaim-disabled' };
-  if (platform !== 'darwin') return { status: 'skipped', reason: 'platform' };
   if (!isPackaged && forceEnv !== '1') return { status: 'skipped', reason: 'dev-mode' };
-  if (!/\.app\/Contents\/MacOS\/[^/]+$/.test(executablePath)) {
+  // Supported packaged layouts only (darwin bundle / NSIS / linux dir —
+  // install-shape.ts). AppImage declines: its ephemeral mount path must
+  // never be persisted into user or project config.
+  const installShape = classifyInstallShape(platform, executablePath, opts.env ?? process.env);
+  if (installShape.kind === 'appimage') {
+    return { status: 'skipped', reason: 'appimage-ephemeral' };
+  }
+  if (installShape.kind === 'unsupported') {
     return { status: 'skipped', reason: 'bad-executable-path' };
   }
 

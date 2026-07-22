@@ -167,6 +167,11 @@ export function SettingsDialogShell({
   // The docked terminal is desktop-only (the real shell has no web host), so
   // its per-project revoke toggle only appears under the Electron preload.
   const isOkDesktopHost = typeof window !== 'undefined' && window.okDesktop != null;
+  // The Terminal settings section configures the pty-backed dock, which is
+  // dark on hosts that can't spawn a PTY (Windows/Linux — node-pty is not
+  // bundled there). Same capability gate as the dock affordances themselves.
+  const terminalSettingsAvailable =
+    isOkDesktopHost && window.okDesktop?.config.ptyAvailable === true;
 
   // One sidebar item per ENABLED project-scope plugin. These populate the
   // "Project plugins" sidebar group; the manage page (which toggles membership)
@@ -218,7 +223,7 @@ export function SettingsDialogShell({
         { id: 'search', label: t`Search` },
         { id: 'plugins-manage', label: t`Plugins` },
         ...(isFileProtocolRenderer ? [] : [{ id: 'link-previews', label: t`Link previews` }]),
-        ...(isOkDesktopHost ? [{ id: 'terminal', label: t`Terminal` }] : []),
+        ...(terminalSettingsAvailable ? [{ id: 'terminal', label: t`Terminal` }] : []),
         // Per-project MCP wiring + runtime skill — desktop-only because the
         // install actors live in the Electron main process (like Terminal).
         ...(isOkDesktopHost ? [{ id: 'project-ai-tools', label: t`AI tools` }] : []),

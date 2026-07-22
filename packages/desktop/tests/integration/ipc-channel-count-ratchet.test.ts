@@ -350,8 +350,20 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  * delegating to the existing main-side picker + `openEphemeralFile` (the
  * desktop side of `ok <file>`). Single member; the typed-ipc migration remains
  * the committed end state, with the `ipc-channels.ts` header in lock-step.
+ *
+ * Bumped from 87 to 88 merging the Windows/Linux desktop port: the win/linux
+ * renderer menubar (`ok:menu:dispatch`, the windows-linux-port renderer-menubar
+ * decision): macOS keeps the native menu bar, but win/linux draw it in the
+ * renderer, and every click routes back through main so menu semantics stay
+ * single-sourced. Follows the `ok:sharing:dispatch` discriminated-union
+ * precedent — query / menu-action relay / role / command all share ONE channel,
+ * so the whole custom-menubar surface costs one slot forever. Could not fold
+ * into an existing channel: `ok:menu-action` is an EventChannel (main→renderer
+ * push, wrong direction) and no renderer→main menu surface exists. The typed-ipc
+ * migration remains the committed end state, with the `ipc-channels.ts` header
+ * updated in lock-step.
  */
-const REQUEST_CHANNEL_CAP = 87;
+const REQUEST_CHANNEL_CAP = 88;
 
 /**
  * Extract the body of an interface block by name. Returns the substring

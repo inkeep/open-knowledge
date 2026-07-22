@@ -131,6 +131,8 @@ import type {
   EditorActiveTargetSnapshot,
   EditorViewMenuStateSnapshot,
   McpWiringEditorId,
+  MenuDispatchCommand,
+  MenuDispatchRole,
   OnboardingShowPayload,
   RecentProject,
 } from '../shared/ipc-channels.ts';
@@ -139,6 +141,7 @@ import { registerPendingDelivery, sendToRenderer } from '../shared/ipc-send.ts';
 import { resolveShell } from '../utility/pty-host.ts';
 import { buildAboutPanelOptions } from './about-panel.ts';
 import { appendOkIgnoreSync } from './append-okignore.ts';
+import { registerAppImageDeepLinks } from './appimage-integration.ts';
 import { openAssetSafely, revealAssetSafely } from './asset-allowlist.ts';
 import { popAssetMenu } from './asset-menu.ts';
 import { resolveEffectiveInstanceName } from './auto-instance.ts';
@@ -219,6 +222,7 @@ import { EMBED_HOST_PATTERNS, rewriteEmbedRequestHeaders } from './embed-referer
 import { discoverProject, validateFolderPick } from './folder-admission.ts';
 import { ensureGitAvailable } from './git-preflight-handler.ts';
 import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
+import { classifyInstallShape } from './install-shape.ts';
 import { formatInstanceAppName, resolveInstanceLabel } from './instance-identity.ts';
 import { deriveInstanceUserDataDir } from './instance-isolation.ts';
 import { registerIntegrationsSettings } from './integrations-settings.ts';
@@ -377,6 +381,7 @@ import {
   createDefaultEditorViewMenuState,
   mergeViewMenuState,
 } from './view-menu-state.ts';
+import { applyThemeToWindow, buildNonDarwinChromeOpts } from './window-chrome.ts';
 import {
   type BrowserWindowLike,
   setWindowInstanceLabel,
@@ -425,17 +430,24 @@ import {
 // future Electron upgrade.
 const VIBRANCY_DEFAULT: VibrancyMaterial = 'sidebar';
 
-// Chrome stack scoped to darwin; other platforms deferred. Electron applies
-// `titleBarStyle: 'hiddenInset'` / `vibrancy` / `visualEffectState` /
-// `transparent` / `trafficLightPosition` on every platform that supports
-// them — un-gated, a Linux/Windows developer running the desktop dev
-// command today gets a frameless transparent window with no usable chrome.
-// Conditional spread keeps the fields off non-darwin runners. `resizable`
+// Chrome stack is per-platform. Electron applies `titleBarStyle:
+// 'hiddenInset'` / `vibrancy` / `visualEffectState` / `transparent` /
+// `trafficLightPosition` on every platform that supports them — un-gated, a
+// Linux/Windows window would be a frameless transparent surface with no
+// usable chrome. The darwin spread keeps the mac vibrancy stack; non-darwin
+// gets `titleBarStyle: 'hidden'` + `titleBarOverlay` (OS-drawn min/max/close
+// over the renderer chrome row) + a solid theme-matched background from
+// `window-chrome.ts` (windows-linux-port chrome). `resizable`
 // stays at Electron's default true: the editor needs drag-resize, and the
 // transparent-windows-not-resizable note in Electron's
 // custom-window-styles tutorial has not surfaced on Electron 41.x macOS in
 // dogfooding (verified via the smoke matrix). If a future Electron upgrade
 // regresses this, the smoke job will catch it before users do.
+//
+// Non-darwin theme note: `nativeTheme.shouldUseDarkColors` is read at
+// module load for the initial chrome; a `nativeTheme.on('updated')`
+// listener (registered in bootstrap below) re-applies via
+// `applyThemeToWindow`, and covers windows created after a theme flip.
 const DEFAULT_WIN_OPTS: BrowserWindowConstructorOptions = {
   width: 1280,
   height: 800,
@@ -450,7 +462,7 @@ const DEFAULT_WIN_OPTS: BrowserWindowConstructorOptions = {
         visualEffectState: 'followWindow',
         transparent: true,
       }
-    : {}),
+    : buildNonDarwinChromeOpts(nativeTheme.shouldUseDarkColors)),
   webPreferences: {
     contextIsolation: true,
     nodeIntegration: false,
@@ -2249,6 +2261,134 @@ function refreshApplicationMenu(): void {
     });
 }
 
+/**
+ * Menubar `command` dispatch (the windows-linux-port renderer-menubar decision). Each case
+ * reuses the exact behavior the native menu deps wire in
+ * `runApplicationMenuRefresh` — a divergence here would make the same menu
+ * item act differently per platform.
+ */
+async function runMenuDispatchCommand(
+  command: MenuDispatchCommand,
+  sender: Electron.WebContents,
+): Promise<void> {
+  switch (command) {
+    case 'open-navigator':
+      openNavigator();
+      return;
+    case 'open-folder-dialog': {
+      const picked = await promptForExistingFolder(dialog);
+      if (picked) await openProjectOrFallbackToNavigator(picked, 'pick-existing');
+      return;
+    }
+    case 'clear-recent-projects':
+      appState = { ...appState, recentProjects: [] };
+      saveAppState(appState);
+      refreshApplicationMenu();
+      return;
+    case 'open-settings': {
+      // Same hash-routed mount path as the native Settings… item; prefer the
+      // dispatching window (the menubar lives in it) over the focus query.
+      const target =
+        BrowserWindow.fromWebContents(sender) ??
+        BrowserWindow.getFocusedWindow() ??
+        BrowserWindow.getAllWindows()[0];
+      if (!target) return;
+      target.webContents
+        .executeJavaScript("window.location.hash = '#settings'; undefined")
+        .catch(() => {
+          // Window torn down mid-dispatch — the click degrades to a no-op.
+        });
+      return;
+    }
+    case 'check-for-updates':
+      void autoUpdaterHandle?.checkForUpdatesNow().catch((err) => {
+        console.warn('[main] checkForUpdatesNow rejected', {
+          message: err instanceof Error ? err.message : String(err),
+        });
+      });
+      return;
+    case 'reconfigure-mcp-wiring':
+      // Gate lives inside reconfigureMcpWiringNow (returns false when the
+      // surface is unavailable) — same body the Cmd+K invoke channel runs.
+      reconfigureMcpWiringNow();
+      return;
+    case 'open-github':
+      // Hardcoded https URL — same build-time-trusted rationale as the
+      // native Help-menu items (see openExternalUrl in the menu deps).
+      void shell.openExternal('https://github.com/inkeep/open-knowledge');
+      return;
+    case 'toggle-spell-check':
+      setSpellCheckEnabledAppWide(!appState.spellCheckEnabled);
+      return;
+  }
+}
+
+/**
+ * Menubar `role` dispatch — the hand-rolled equivalents of the Electron
+ * menu roles the native template gets for free. Applied to the dispatching
+ * window (the menubar that fired lives in it).
+ */
+function applyMenuDispatchRole(role: MenuDispatchRole, sender: Electron.WebContents): void {
+  if (role === 'quit') {
+    app.quit();
+    return;
+  }
+  const win = BrowserWindow.fromWebContents(sender) ?? BrowserWindow.getFocusedWindow();
+  if (!win || win.isDestroyed()) return;
+  const wc = win.webContents;
+  switch (role) {
+    case 'undo':
+      wc.undo();
+      return;
+    case 'redo':
+      wc.redo();
+      return;
+    case 'cut':
+      wc.cut();
+      return;
+    case 'copy':
+      wc.copy();
+      return;
+    case 'paste':
+      wc.paste();
+      return;
+    case 'selectAll':
+      wc.selectAll();
+      return;
+    case 'reload':
+      wc.reload();
+      return;
+    case 'forceReload':
+      wc.reloadIgnoringCache();
+      return;
+    case 'toggleDevTools':
+      // Channel-gated like the native View menu: stable builds don't expose
+      // the inspector even if a stale renderer sends the role.
+      if (!app.isPackaged || channelFromVersion(app.getVersion()) === 'beta') {
+        wc.toggleDevTools();
+      }
+      return;
+    case 'resetZoom':
+      wc.setZoomLevel(0);
+      return;
+    case 'zoomIn':
+      wc.setZoomLevel(wc.getZoomLevel() + 0.5);
+      return;
+    case 'zoomOut':
+      wc.setZoomLevel(wc.getZoomLevel() - 0.5);
+      return;
+    case 'toggleFullScreen':
+      win.setFullScreen(!win.isFullScreen());
+      return;
+    case 'minimize':
+      win.minimize();
+      return;
+    case 'close':
+      win.close();
+      return;
+  }
+}
+
 async function runApplicationMenuRefresh(): Promise<void> {
   // installApplicationMenu is async because it dynamically imports
   // `electron.Menu` (see menu.ts header — keeps `buildMenuTemplate`
@@ -2294,7 +2434,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
     // windows the armed mount-ack fallback delivers the dialog to the next
     // window that opens.
     reconfigureMcpWiring:
-      process.platform === 'darwin' && app.isPackaged
+      app.isPackaged && supportedPackagedInstall()
         ? () => {
             reconfigureMcpWiringNow();
           }
@@ -2321,7 +2461,11 @@ async function runApplicationMenuRefresh(): Promise<void> {
     openSettings: () => {
       const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
       if (!target) return;
-      target.webContents.executeJavaScript("window.location.hash = '#settings'; undefined");
+      target.webContents
+        .executeJavaScript("window.location.hash = '#settings'; undefined")
+        .catch(() => {
+          // Window torn down mid-dispatch — the click degrades to a no-op.
+        });
     },
     onReportBug: () => sendMenuActionToFocused('report-bug'),
     // App-menu / Help-menu "Check for Updates…" entries fire this. Returns
@@ -2381,7 +2525,18 @@ async function runApplicationMenuRefresh(): Promise<void> {
     // resulting CRDT mutation triggers a sibling push back so the checkmark
     // snaps.
     ...buildViewMenuStateDeps(editorViewMenuState, sendMenuActionToFocused),
-    onNewTerminalWindow: () => openTerminalWindow(),
+    // Terminal dock is dark off-mac (windows-linux-port terminal posture): node-pty
+    // is not bundled on win/linux, so strip every terminal handler there —
+    // the menu items render disabled instead of surfacing a spawn failure.
+    // Overrides the three handlers `buildViewMenuStateDeps` just spread in.
+    ...(process.platform === 'darwin'
+      ? { onNewTerminalWindow: () => openTerminalWindow() }
+      : {
+          onToggleTerminal: undefined,
+          onNewTerminal: undefined,
+          onKillTerminal: undefined,
+          onNewTerminalWindow: undefined,
+        }),
     // Edit -> "Check Spelling While Typing": the checkbox reflects the
     // persisted app-wide flag; the click flips it through the shared toggle
     // (session + persist + menu rebuild) so this and the in-editor
@@ -2389,6 +2544,18 @@ async function runApplicationMenuRefresh(): Promise<void> {
     spellCheckEnabled: appState.spellCheckEnabled,
     onToggleSpellCheck: () => setSpellCheckEnabledAppWide(!appState.spellCheckEnabled),
   });
+}
+
+/**
+ * Shared predicate for the machine-integration surfaces (MCP wiring
+ * re-arm, integrations settings): the running executable is one of the
+ * supported packaged layouts from `install-shape.ts`. AppImage and dev
+ * shells are excluded — matching the reclaim modules' own gates, so a
+ * surface never arms a flow its module would refuse.
+ */
+function supportedPackagedInstall(): boolean {
+  const kind = classifyInstallShape(process.platform, app.getPath('exe'), process.env).kind;
+  return kind !== 'appimage' && kind !== 'unsupported';
 }
 
 function desktopSelfUninstallAvailable(): boolean {
@@ -2981,12 +3148,14 @@ function armMcpWiring(opts: ArmMcpWiringOpts = {}): RunMcpWiringHandle {
  * `ok:mcp-wiring:reconfigure` invoke. Tears down any prior handle then arms a
  * fresh one with `forceShow: true` so the marker-present gate is bypassed, and
  * hands it an already-loaded window so the dialog opens immediately. Returns
- * `false` when the surface is unavailable (non-darwin / unpackaged — same gate
- * that hides the menu leaf) or when arming threw, so the palette can toast
- * rather than silently no-op.
+ * `false` when the surface is unavailable (unpackaged, or an install shape
+ * with no persistent MCP wiring — same gate that hides the menu leaf) or
+ * when arming threw, so the palette can toast rather than silently no-op.
+ * Shared by the native File menu dep, the renderer menubar's
+ * `reconfigure-mcp-wiring` dispatch, and the Cmd+K invoke channel.
  */
 function reconfigureMcpWiringNow(): boolean {
-  if (!(process.platform === 'darwin' && app.isPackaged)) return false;
+  if (!(app.isPackaged && supportedPackagedInstall())) return false;
   mcpWiringHandle?.destroy();
   mcpWiringHandle = null;
   try {
@@ -3417,7 +3586,7 @@ function registerIpcHandlers() {
   });
   handle('ok:terminal:claude-assist', async (event, req) => {
     let rewireError: string | undefined;
-    if (req.action === 'rewire' && process.platform === 'darwin' && app.isPackaged) {
+    if (req.action === 'rewire' && app.isPackaged && supportedPackagedInstall()) {
       // Re-arm MCP wiring: the same forceShow consent path as
       // File -> Set up OpenKnowledge integrations, so the user can wire
       // `open-knowledge` into Claude Code. Fires ONLY from the renderer's
@@ -3902,6 +4071,44 @@ function registerIpcHandlers() {
     return undefined;
   });
 
+  // Windows/Linux renderer-menubar dispatch (the windows-linux-port renderer-menubar decision).
+  // The renderer-drawn menu bar routes every click here so menu semantics
+  // stay single-sourced with the native template: `menu-action` relays
+  // through the exact `sendMenuActionToFocused` path the native items use,
+  // `role` maps onto what Electron menu roles do, `command` reuses the
+  // same click handlers the native deps wire, and `query` returns the
+  // aggregated state (`activeTarget` + view-menu snapshot + recents +
+  // capability flags) that drives the native menu's enable/check rendering.
+  // macOS renderers never call this (they keep the native menu bar).
+  handle('ok:menu:dispatch', async (event, request) => {
+    switch (request.kind) {
+      case 'query':
+        return {
+          recentProjects: appState.recentProjects.map((r) => ({ path: r.path, name: r.name })),
+          spellCheckEnabled: appState.spellCheckEnabled,
+          // Same channel discriminator as the native menu (see
+          // runApplicationMenuRefresh's showDevToolsMenu rationale).
+          showDevToolsMenu: !app.isPackaged || channelFromVersion(app.getVersion()) === 'beta',
+          canCheckForUpdates: autoUpdaterHandle != null,
+          canReconfigureMcpWiring: app.isPackaged && supportedPackagedInstall(),
+          activeTarget: editorActiveTarget ?? { kind: null },
+          viewMenuState: editorViewMenuState,
+        };
+      case 'menu-action':
+        sendMenuActionToFocused(request.action);
+        return undefined;
+      case 'open-recent-project':
+        await openProjectOrFallbackToNavigator(request.path, 'recents');
+        return undefined;
+      case 'command':
+        await runMenuDispatchCommand(request.command, event.sender);
+        return undefined;
+      case 'role':
+        applyMenuDispatchRole(request.role, event.sender);
+        return undefined;
+    }
+  });
+
   handle('ok:startup:renderer-marks', async (_event, marks) => {
     // Fold the renderer's two launch checkpoints into the waterfall. Fire-and-
     // forget from the renderer; we never reject (the renderer swallows anyway).
@@ -3933,6 +4140,10 @@ function registerIpcHandlers() {
       // Ephemeral single-file windows carry teardown state on `ctx.ephemeral`;
       // its presence IS the single-file signal for the renderer's chrome gate.
       singleFile: ctx.ephemeral !== undefined,
+      // Mirrors the preload's cold-start config: pty capability is a
+      // platform fact (node-pty ships on macOS only), identical for a
+      // re-queried live window.
+      ptyAvailable: process.platform === 'darwin',
       // `initialDoc` is a cold-start-only hash seed (consumed once at renderer
       // boot from the preload-injected bridge config). A live window queried via
       // get-info has already navigated, so there is nothing to re-seed → null.
@@ -4667,11 +4878,15 @@ function registerIpcHandlers() {
  */
 function registerIntegrationsSettingsIpc(): void {
   const integrationsLogger = getLogger('integrations-settings');
+  // Mirrors the mcp-wiring/skill-reclaim gates via the shared classifier:
+  // any supported packaged layout (darwin bundle / NSIS / linux dir) is
+  // available; AppImage + dev shells render the section read-only.
   const available =
     process.env.OK_RECLAIM_DISABLE !== '1' &&
-    process.platform === 'darwin' &&
     (app.isPackaged || process.env.OK_M6B_FORCE === '1') &&
-    /\.app\/Contents\/MacOS\/[^/]+$/.test(app.getPath('exe'));
+    !['appimage', 'unsupported'].includes(
+      classifyInstallShape(process.platform, app.getPath('exe'), process.env).kind,
+    );
   const tildifyHomePath = (path: string): string => {
     const home = osHomedir();
     return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
@@ -4837,11 +5052,12 @@ function registerIntegrationsSettingsIpc(): void {
  */
 function registerProjectIntegrationsSettingsIpc(): void {
   const projectLogger = getLogger('project-integrations-settings');
+  // Same shape gate as the user-scope section — see
+  // registerIntegrationsSettingsIpc.
   const available =
     process.env.OK_RECLAIM_DISABLE !== '1' &&
-    process.platform === 'darwin' &&
     (app.isPackaged || process.env.OK_M6B_FORCE === '1') &&
-    /\.app\/Contents\/MacOS\/[^/]+$/.test(app.getPath('exe'));
+    supportedPackagedInstall();
   const tildifyHomePath = (path: string): string => {
     const home = osHomedir();
     return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
@@ -5500,6 +5716,37 @@ function bootPrimaryInstance(): void {
         maxSupportedSchemaVersion: MAX_SUPPORTED_SCHEMA_VERSION,
       });
       appState = result.appState;
+
+      // Windows/Linux chrome theme-reactivity (windows-linux-port chrome): construction options are
+      // read once per window, so a theme flip after creation must re-apply
+      // the solid background (+ overlay colors on win32) to every live
+      // window. macOS is untouched — vibrancy tracks nativeTheme natively.
+      if (process.platform !== 'darwin') {
+        nativeTheme.on('updated', () => {
+          for (const win of BrowserWindow.getAllWindows()) {
+            applyThemeToWindow(win, process.platform, nativeTheme.shouldUseDarkColors);
+          }
+        });
+      }
+
+      // AppImage deep-link self-registration (windows-linux-port deep-link posture): fire-and-forget — a
+      // failure means openknowledge:// links stay unregistered on this
+      // box, which is exactly the pre-existing state. Skips itself
+      // everywhere but packaged Linux AppImage launches.
+      void registerAppImageDeepLinks({
+        platform: process.platform,
+        isPackaged: app.isPackaged,
+        env: process.env,
+        homeDir: osHomedir(),
+        log: {
+          info: (obj, msg) => getLogger('lifecycle').info(obj as Record<string, unknown>, msg),
+          warn: (obj, msg) => getLogger('lifecycle').warn(obj as Record<string, unknown>, msg),
+        },
+      }).then((result) => {
+        if (result.status === 'failed') {
+          getLogger('lifecycle').warn(result, '[appimage-integration] registration failed');
+        }
+      });
       pendingSchemaIncompatibility = result.pendingSchemaIncompatibility;
       // Snapshot the post-upgrade signal BEFORE step 6 (`bootAutoUpdater`)
       // advances `lastSeenVersion` — this bootstrap runs at step 2, the first

@@ -53,11 +53,14 @@
  * added the two Cmd+K / native-menu command invokes: `ok:mcp-wiring:reconfigure`
  * (File → "Set up OpenKnowledge integrations…") and `ok:spellcheck:toggle`
  * (Edit → "Check spelling while typing"), each delegating to an existing
- * main-side function. The 85→86 bump added File → "Open file…"
- * (`ok:project:open-file-picker`): the palette / Navigator entry point to the
+ * main-side function. The 85→87 bumps added File → "Open file…"
+ * (`ok:project:open-file-picker`, the palette / Navigator entry point to the
  * temporary single-file session, delegating to the existing main-side picker +
- * `openEphemeralFile` (the desktop side of `ok <file>`). Full rationale in the
- * ratchet test header.
+ * `openEphemeralFile`) and the ACP unified terminal+thread dock order
+ * (`ok:terminal:set-dock-state`). The 87→88 bump reconciled the Windows/Linux
+ * desktop port: the win/linux renderer menubar (`ok:menu:dispatch`, a
+ * discriminated fold per the sharing-dispatch precedent — the custom-drawn menu
+ * bar's whole surface in one slot). Full rationale in the ratchet test header.
  */
 
 import type {
@@ -95,6 +98,7 @@ import type {
   OkDesktopConfig,
   OkLocalOpAuthReposResponse,
   OkLocalOpAuthStatusResponse,
+  OkMenuAction,
   OkPtyAdoptResult,
   OkPtyCreateResult,
   OkPtyListEntry,
@@ -649,6 +653,73 @@ export interface EditorViewMenuStateSnapshot {
   readonly docPanelVisible?: boolean;
   readonly terminalVisible?: boolean;
   readonly terminalLive?: boolean;
+}
+
+/**
+ * Renderer-menubar → main dispatch payloads (the windows-linux-port renderer-menubar decision).
+ * On Windows/Linux the menu bar is custom-drawn in the renderer (macOS
+ * keeps the native one); every click routes through the single
+ * `ok:menu:dispatch` channel so main stays the authority on menu
+ * semantics — `menu-action` relays through the exact `sendMenuActionToFocused`
+ * path the native menu items use, `role` maps to the Electron menu roles
+ * the native template gets for free, `command` covers the main-side click
+ * handlers (navigator, folder picker, settings, updater…), and `query`
+ * returns the same aggregated state that drives the native menu's
+ * enable/check rendering.
+ *
+ * **DRIFT WARNING — mirrored in four places** (same lockstep contract as
+ * `EditorViewMenuStateSnapshot` above; the ipc-channels copy is the one the
+ * call-site check misses):
+ *
+ *   1. `packages/desktop/src/shared/ipc-channels.ts` — this copy
+ *   2. `packages/desktop/src/shared/bridge-contract.ts` — `OkMenuDispatch*`
+ *   3. `packages/core/src/desktop-bridge.ts` — canonical `OkMenuDispatch*`
+ *   4. `packages/app/src/lib/desktop-bridge-types.ts` — renderer-side copy
+ */
+export type MenuDispatchRole =
+  | 'undo'
+  | 'redo'
+  | 'cut'
+  | 'copy'
+  | 'paste'
+  | 'selectAll'
+  | 'reload'
+  | 'forceReload'
+  | 'toggleDevTools'
+  | 'resetZoom'
+  | 'zoomIn'
+  | 'zoomOut'
+  | 'toggleFullScreen'
+  | 'minimize'
+  | 'close'
+  | 'quit';
+
+export type MenuDispatchCommand =
+  | 'open-navigator'
+  | 'open-folder-dialog'
+  | 'clear-recent-projects'
+  | 'open-settings'
+  | 'check-for-updates'
+  | 'reconfigure-mcp-wiring'
+  | 'open-github'
+  | 'toggle-spell-check';
+
+export type MenuDispatchRequest =
+  | { readonly kind: 'query' }
+  | { readonly kind: 'menu-action'; readonly action: OkMenuAction }
+  | { readonly kind: 'command'; readonly command: MenuDispatchCommand }
+  | { readonly kind: 'open-recent-project'; readonly path: string }
+  | { readonly kind: 'role'; readonly role: MenuDispatchRole };
+
+/** `query` result — the same aggregated state the native menu renders from. */
+export interface MenuRendererSnapshot {
+  readonly recentProjects: ReadonlyArray<{ readonly path: string; readonly name: string }>;
+  readonly spellCheckEnabled: boolean;
+  readonly showDevToolsMenu: boolean;
+  readonly canCheckForUpdates: boolean;
+  readonly canReconfigureMcpWiring: boolean;
+  readonly activeTarget: EditorActiveTargetSnapshot;
+  readonly viewMenuState: EditorViewMenuStateSnapshot;
 }
 
 export interface RequestChannels {
@@ -1468,6 +1539,18 @@ export interface RequestChannels {
   'ok:editor:view-menu-state-changed': {
     args: [state: Partial<EditorViewMenuStateSnapshot>];
     result: undefined;
+  };
+  /**
+   * Renderer-menubar dispatch (the windows-linux-port renderer-menubar decision). One
+   * discriminated channel (the `ok:sharing:dispatch` precedent) for the
+   * custom-drawn Windows/Linux menu bar: `query` returns the aggregated
+   * `MenuRendererSnapshot`; every other kind performs the menu semantics
+   * main-side and resolves `undefined`. Never registered as multiple
+   * channels — the menubar is one surface.
+   */
+  'ok:menu:dispatch': {
+    args: [request: MenuDispatchRequest];
+    result: MenuRendererSnapshot | undefined;
   };
 
   /**

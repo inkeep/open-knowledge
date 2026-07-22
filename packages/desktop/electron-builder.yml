@@ -54,8 +54,11 @@ extraResources:
       - "!**/*.d.mts.map"
       - "!**/*.d.ts"
       - "!**/*.d.ts.map"
-  - from: "resources/cli/bin/ok.sh"
-    to: "cli/bin/ok.sh"
+  # The `ok` CLI wrapper ships per-platform (each platform block's
+  # extraResources below): the darwin/.app-layout bash wrapper under `mac`,
+  # the linux-layout bash wrapper under `linux`, and the `.cmd`/`.ps1` pair
+  # under `win`. All land in `<resources>/cli/bin/` so path-install + the
+  # NSIS include agree on one location.
   # `@inkeep/open-knowledge-server`'s `version-constants.ts` reads its
   # neighbouring `package.json` at module load to populate `RUNTIME_VERSION`
   # (the value written into `server.lock`'s `runtimeVersion`). The CLI bundles
@@ -85,19 +88,18 @@ extraResources:
   # NEVER reaches `app.asar.unpacked/node_modules/`, where the app's copy lives.
   # Without a copy on the CLI's path, `import('@napi-rs/keyring')` in
   # `createTokenStore` throws ERR_MODULE_NOT_FOUND and auth silently downgrades
-  # to the plaintext `~/.ok/auth.yml` file backend. Ship the wrapper + the arm64
-  # platform binary into `cli/node_modules/` so the CLI resolves the keychain.
-  # Sourced from the workspace-root `node_modules` — pnpm isolates packages
-  # under `.pnpm/` by default, so `.npmrc` surgically hoists `@napi-rs/keyring*`
-  # to the public root (`public-hoist-pattern`) to keep this copy source
-  # resolvable. arm64 only: matches the arm64-only DMG (`mac.target`) and avoids
-  # the @electron/universal lipo-merge collision documented under `mac:`.
+  # to the plaintext `~/.ok/auth.yml` file backend. Ship the wrapper here (it is
+  # platform-neutral JS) + the per-platform binary packages under each platform
+  # block's extraResources so the CLI resolves the keychain. Sourced from the
+  # workspace-root `node_modules` — pnpm isolates packages under `.pnpm/` by
+  # default, so `.npmrc` surgically hoists `@napi-rs/keyring*` to the public
+  # root (`public-hoist-pattern`) to keep these copy sources resolvable. pnpm
+  # installs only the host-matching binary package, so cross-arch builds run
+  # `scripts/prepare-platform-natives.mjs` (or `prepare-universal.mjs` on mac)
+  # first to force-install the missing arch prebuilds.
   # Coverage: tests/unit/electron-builder-cli-native-deps.test.ts.
   - from: "../../node_modules/@napi-rs/keyring"
     to: "cli/node_modules/@napi-rs/keyring"
-    filter: ["**/*"]
-  - from: "../../node_modules/@napi-rs/keyring-darwin-arm64"
-    to: "cli/node_modules/@napi-rs/keyring-darwin-arm64"
     filter: ["**/*"]
   # The bundled CLI AND the desktop main process both load
   # `@inkeep/open-knowledge-native-config` at runtime — the Codex TOML
@@ -159,6 +161,18 @@ asarUnpack:
 
 mac:
   category: public.app-category.productivity
+  # Platform-specific extraResources merge with the top-level list. The
+  # darwin/.app-layout `ok.sh` wrapper + the darwin-arm64 keyring binary
+  # package ship only into the mac bundle; win/linux carry their own wrapper
+  # + binary rules in their blocks below. arm64-only keyring: matches the
+  # arm64-only DMG (`mac.target`) and avoids the @electron/universal
+  # lipo-merge collision documented under `target:`.
+  extraResources:
+    - from: "resources/cli/bin/ok.sh"
+      to: "cli/bin/ok.sh"
+    - from: "../../node_modules/@napi-rs/keyring-darwin-arm64"
+      to: "cli/node_modules/@napi-rs/keyring-darwin-arm64"
+      filter: ["**/*"]
   # Icon Composer bundle — packages the appearance variants (Default, Dark,
   # Clear/Tinted light+dark) into a single source. electron-builder compiles
   # this via `actool` into an `Assets.car` asset catalog at package time and
@@ -314,9 +328,156 @@ dmg:
       path: /Applications
   iconSize: 100
 
-# Flip fuses (D17 LOCKED, spec §8.9) on the packed .app before code signing.
+win:
+  # electron-builder converts the 1024px PNG to the multi-size .ico via
+  # app-builder at package time — no committed .ico needed.
+  icon: build/icon.png
+  # Per-arch NSIS installers (see `nsis.buildUniversalInstaller: false`).
+  # electron-updater on Windows supports NSIS only; MSI is Future Work.
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+  # Azure Artifact Signing (win.azureSignOptions) is wired by the manual
+  # build workflow via --config flags once the signing account exists —
+  # endpoint/account/profile names are procurement outputs and don't
+  # belong hardcoded here while unknown. Unsigned Windows artifacts are
+  # never published (internal QA only).
+  #
+  # The terminal dock is dark off-mac: node-pty and its
+  # prebuilds must not ship in the Windows package. `files` merges with the
+  # top-level list.
+  #
+  # native-config's cargo `target/` tree is darwin build intermediates that
+  # the blanket asarUnpack rule would otherwise drag in. Beyond dead weight,
+  # its `.fingerprint` paths nest past MAX_PATH under the install dir and
+  # the x86 NSIS uninstaller cannot delete them (VM-verified residue).
+  files:
+    - "!**/node_modules/node-pty/**"
+    - "!**/node_modules/@inkeep/open-knowledge-native-config/target/**"
+  extraResources:
+    - from: "resources/cli/bin/ok.cmd"
+      to: "cli/bin/ok.cmd"
+    - from: "resources/cli/bin/ok.ps1"
+      to: "cli/bin/ok.ps1"
+    # Both arch binaries ship in each per-arch installer: extraResources
+    # rules are static across arches, and the napi wrapper picks the
+    # matching binary at runtime. ~1 MB of dead weight on the wrong arch,
+    # accepted (mirrors the mac arm64-only rationale, not its mechanism).
+    # `scripts/prepare-platform-natives.mjs` force-installs both before
+    # electron-builder runs (pnpm installs only the host-matching one).
+    - from: "../../node_modules/@napi-rs/keyring-win32-x64-msvc"
+      to: "cli/node_modules/@napi-rs/keyring-win32-x64-msvc"
+      filter: ["**/*"]
+    - from: "../../node_modules/@napi-rs/keyring-win32-arm64-msvc"
+      to: "cli/node_modules/@napi-rs/keyring-win32-arm64-msvc"
+      filter: ["**/*"]
+
+nsis:
+  # One-click, per-user (no UAC), per D1. Per-user install =
+  # %LOCALAPPDATA%\Programs\@inkeepopen-knowledge-desktop (electron-builder
+  # uses the sanitized package name for one-click per-user installs) =
+  # silent UAC-free auto-updates.
+  oneClick: true
+  perMachine: false
+  # zip payload instead of the default solid 7z. On Windows-on-ARM the x86
+  # NSIS stub runs emulated, and Nsis7z there silently drops the archive
+  # tail holding the exe + dlls (VM-verified half-install with every PE
+  # file missing — the staged payload was byte-identical to the built one,
+  # so this is extraction, not corruption); nsisunz handles a real zip.
+  # differentialPackage must be off for useZip to take effect: NsisTarget
+  # only builds a zip when the build is not differential-aware, yet the
+  # NSIS script unconditionally follows useZip — leaving the default on
+  # ships 7z bytes under a .zip name and the installer dies with "Error
+  # opening ZIP file". Costs: no differential auto-update downloads on
+  # Windows (no Windows release channel exists yet to regress), and the
+  # installer grows ~37% (deflate vs solid LZMA; 169 MB → 232 MB arm64).
+  useZip: true
+  differentialPackage: false
+  # Separate per-arch installers (the default single universal installer
+  # would double the download for every user). Version-less artifact names
+  # keep `releases/latest/download/…` URLs stable across releases — the
+  # same contract as `dmg.artifactName` (OpenKnowledge-arm64.dmg).
+  buildUniversalInstaller: false
+  artifactName: ${productName}-Setup-${arch}.${ext}
+  # Custom include: HKCU user-PATH append for the bundled `ok` CLI +
+  # HKCU\Software\Classes openknowledge:// protocol registration (electron-
+  # builder's `protocols` key is macOS-Info.plist-only; NSIS gets registry
+  # keys here, and the app self-heals via setAsDefaultProtocolClient at
+  # startup).
+  include: build/installer.nsh
+
+linux:
+  icon: build/icon.png
+  # Pinned (matches electron-builder's default lowercase-sanitized product
+  # name) because three other artifacts embed it: resources/cli/bin/
+  # ok-linux.sh ($ROOT_DIR/openknowledge), the deb maintainer scripts'
+  # ${executable} macro, and the .desktop Exec/Icon lines.
+  executableName: openknowledge
+  # productivity → no direct freedesktop mapping; Office is the
+  # conventional slot for knowledge/editor tools.
+  category: Office
+  synopsis: Collaborative markdown knowledge base
+  # AppImage (primary, auto-updating) + deb (integration-grade: .desktop
+  # protocol registration + /usr/bin/ok symlink via postinst), per D2.
+  # electron-builder appends MimeType=x-scheme-handler/openknowledge to the
+  # generated .desktop from the top-level `protocols` key — effective for
+  # deb installs; AppImages self-register a .desktop at runtime instead.
+  #
+  # AppImage is x64-only for now: the aarch64 AppImage runtime won't launch
+  # on a stock Debian 13 arm64 install — it needs libfuse.so.2 (FUSE 2) and
+  # libz.so.1, neither present by default (verified in Linux VM QA). arm64
+  # Linux users get the deb, which pulls its deps via apt. Restore arm64 to
+  # the AppImage arch list once we ship a runtime that bundles FUSE/zlib or
+  # falls back to --appimage-extract-and-run.
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64, arm64]
+  artifactName: ${productName}-${arch}.${ext}
+  # Terminal dock dark off-mac — keep node-pty out, and keep native-config's
+  # darwin cargo `target/` tree out (see win.files for the rationale).
+  files:
+    - "!**/node_modules/node-pty/**"
+    - "!**/node_modules/@inkeep/open-knowledge-native-config/target/**"
+  extraResources:
+    # Linux-layout wrapper ships under the same canonical destination as
+    # the mac one so path-install + the deb postinst agree on one path.
+    - from: "resources/cli/bin/ok-linux.sh"
+      to: "cli/bin/ok.sh"
+    - from: "../../node_modules/@napi-rs/keyring-linux-x64-gnu"
+      to: "cli/node_modules/@napi-rs/keyring-linux-x64-gnu"
+      filter: ["**/*"]
+    - from: "../../node_modules/@napi-rs/keyring-linux-arm64-gnu"
+      to: "cli/node_modules/@napi-rs/keyring-linux-arm64-gnu"
+      filter: ["**/*"]
+
+deb:
+  # /usr/bin/ok symlink + AppArmor userns profile (Ubuntu 24.04+) live in
+  # the maintainer scripts; removal is symmetric.
+  afterInstall: build/deb-postinst.sh
+  afterRemove: build/deb-postrm.sh
+  # Chromium sandbox needs unprivileged userns; Ubuntu 24.04 restricts it
+  # via AppArmor. The postinst ships a profile permitting it for our
+  # binary (the AppImage path relies on electron-builder's AppRun
+  # userns-probe --no-sandbox fallback instead).
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+
+# Flip fuses (D17 LOCKED, spec §8.9) on the packed app before code signing —
+# all platforms (D9): off-darwin builds without the fuse flip would ship
+# without RunAsNode, silently breaking the bundled-CLI/detached-spawn path.
 afterPack: scripts/afterPack.mjs
-# Post-sign: @electron/notarize → stapler validate → @electron/fuses read verify.
+# Post-sign: fuse verify on all platforms; @electron/notarize → stapler
+# validate on darwin only.
 afterSign: scripts/afterSign.mjs
 
 protocols:

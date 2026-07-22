@@ -19,7 +19,7 @@
  *   - `configPath`      — absolute path of the config file being rewritten.
  *   - `priorCommand`    — truncated to 200 chars or `null` if absent.
  *   - `priorArgs`       — first 10 entries, each string truncated to 200
- *                         chars (CHAIN_V1's `args[2]` shell body is ~700
+ *                         chars (CHAIN_V2's `args[2]` shell body is ~700
  *                         chars; without truncation the event payload
  *                         blows up Tempo/Prometheus label storage and
  *                         every aggregation downstream).
@@ -67,7 +67,7 @@ export function buildMcpConfigMigrateEvent(input: McpConfigMigrateInput): McpCon
 
 /**
  * Bound the payload of `priorCommand` / `priorArgs` before structured-event
- * sinks index them. `CHAIN_V1`'s `args[2]` is a ~700-char shell script;
+ * sinks index them. `CHAIN_V2`'s `args[2]` is a ~700-char shell script;
  * unbounded inclusion in a high-volume metric label explodes downstream
  * storage.
  *

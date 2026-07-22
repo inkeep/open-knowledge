@@ -42,6 +42,7 @@ import type {
   OkLocalOpStream,
   OkMcpWiringShowPayload,
   OkMenuAction,
+  OkMenuDispatchRequest,
   OkOnboardingShowPayload,
   OkPtyData,
   OkPtyExit,
@@ -234,6 +235,12 @@ function readConfigFromArgv(): OkDesktopConfig {
   // when OTel is enabled in main; the renderer extracts it to parent its startup
   // span into the launch trace. Absent → renderer skips the startup span.
   const startupTraceparent = parseArg('startup-traceparent');
+  // Terminal-dock pty capability (windows-linux-port terminal posture): node-pty is
+  // bundled on macOS only, so off-mac the renderer must hide the terminal
+  // affordances rather than let a spawn fail. Platform is the whole signal —
+  // a mac install with a broken node-pty still surfaces the existing
+  // spawn-error UX, which is the correct diagnostic there.
+  const ptyAvailable = process.platform === 'darwin';
   return Object.freeze({
     collabUrl,
     apiOrigin,
@@ -244,6 +251,7 @@ function readConfigFromArgv(): OkDesktopConfig {
     singleFile,
     initialDoc,
     freshlyCreated,
+    ptyAvailable,
     ...(startupTraceparent !== undefined ? { startupTraceparent } : {}),
   });
 }
@@ -708,6 +716,13 @@ const bridge: OkDesktopBridge = {
       // state. Same swallow-rejection contract as the active-target push.
       invoke('ok:editor:view-menu-state-changed', state).catch(() => {});
     },
+  },
+
+  menu: {
+    // Windows/Linux renderer-menubar dispatch (windows-linux-port renderer menubar). One discriminated
+    // channel; rejections propagate — the menubar surfaces a failed query
+    // as its unwired default state rather than swallowing silently.
+    dispatch: (request: OkMenuDispatchRequest) => invoke('ok:menu:dispatch', request),
   },
 
   startup: {

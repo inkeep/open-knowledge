@@ -362,6 +362,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           singleFile: false,
           initialDoc: null,
           freshlyCreated: false,
+          ptyAvailable: true,
         },
         onProjectSwitched: () => () => {},
         onMenuAction: () => () => {},
@@ -623,6 +624,10 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
             hermes: true,
           }),
           rewireClaudeMcp: async () => ({ claude: 'present' as const, mcp: 'wired' as const }),
+        },
+        menu: {
+          // The renderer menubar only mounts off-darwin; fixture is darwin.
+          dispatch: async () => undefined,
         },
         platform: 'darwin' as const,
         appVersion: 'test-0.0.0',

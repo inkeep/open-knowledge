@@ -2931,6 +2931,27 @@ html.electron-mode {
   --ok-titlebar-reserve-left: 78px;
 }
 
+/*
+  Windows/Linux chrome (electron-platform-* classes come from the FOUC
+  script alongside electron-mode, read off `window.okDesktop.platform`).
+  No traffic lights on these platforms — collapse the left reserve back to
+  the 1rem base padding. The OS window controls instead float top-RIGHT via
+  Electron's titleBarOverlay (Window Controls Overlay), so reserve the right
+  edge of the chrome row for them. The `titlebar-area-*` env() vars are live
+  exactly when WCO is enabled; the fallbacks make the reserve 0 on darwin,
+  web, and any WCO-less window. Consumers use the precedent-#49 fallback
+  form `mr-[var(--ok-titlebar-reserve-right,0px)]`.
+*/
+html.electron-mode.electron-platform-win32,
+html.electron-mode.electron-platform-linux {
+  --ok-titlebar-reserve-left: 1rem;
+  --ok-titlebar-reserve-right: calc(
+    100vw -
+    env(titlebar-area-x, 0px) -
+    env(titlebar-area-width, 100vw)
+  );
+}
+
 html.electron-mode body {
   background-color: oklch(from var(--sidebar) l c h / 0.85);
 }

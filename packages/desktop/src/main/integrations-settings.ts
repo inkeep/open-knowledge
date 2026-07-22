@@ -114,9 +114,10 @@ interface IpcMainLike extends Pick<IpcMain, 'handle' | 'removeHandler'> {}
 
 export interface RegisterIntegrationsSettingsOpts {
   home: string;
-  /** Same gate set as the consent dialog / startup reclaim (darwin, packaged
-   *  or OK_M6B_FORCE, `.app` executable shape). False renders the section
-   *  read-only: status still computes, mutations refuse. */
+  /** Same gate set as the consent dialog / startup reclaim (a supported
+   *  packaged install layout per install-shape.ts, packaged or
+   *  OK_M6B_FORCE). False renders the section read-only: status still
+   *  computes, mutations refuse. */
   available: boolean;
   ipcMain: IpcMainLike;
   cli: IntegrationsCliSurface;

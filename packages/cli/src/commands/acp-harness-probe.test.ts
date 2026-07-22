@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { probeOwnManagedEditorMcpEntry } from './acp-harness-probe.ts';
 import {
   buildManagedServerEntry,
-  CHAIN_V1,
+  CHAIN_V2,
   entryRunsOwnManagedServer,
   openCodeEntryRunsOwnManagedServer,
 } from './editors.ts';
@@ -32,7 +32,7 @@ const publishedEntry = () => buildManagedServerEntry({ mode: 'published' });
 const openCodePublished = () => ({
   type: 'local',
   enabled: true,
-  command: ['/bin/sh', '-l', '-c', CHAIN_V1],
+  command: ['/bin/sh', '-l', '-c', CHAIN_V2],
 });
 
 describe('probeOwnManagedEditorMcpEntry', () => {

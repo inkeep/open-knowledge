@@ -477,20 +477,26 @@ function AppBody() {
   // the "Open the OK editor in web view." trailer the web deep-link handoff
   // carries: the terminal launches next to an already-open editor, so that
   // directive would point the agent at a surface the user is already viewing.
-  // Null on the web host (no real OS shell) so the menu rows that consume it
-  // render nothing.
+  // Null on the web host (no real OS shell) AND on desktop hosts where the PTY
+  // is unavailable (`config.ptyAvailable` is false on Windows/Linux — node-pty
+  // is excluded from those packages), so the menu rows that consume it render
+  // nothing rather than a silent no-op: the docked terminal in EditorPane is
+  // gated on the same `ptyAvailable` flag, so a Terminal row here would launch
+  // into a surface that never mounts. Mirrors the gate in EditorPane / Settings
+  // / AppMenubar.
   // Which launchable CLIs are on PATH — each launch surface gates its rows from
   // this map via `isTerminalCliEnabled` so a CLI that isn't installed (e.g.
   // Antigravity, or Claude) doesn't clutter the menu once the probe confirms it absent.
   const installedClis = useInstalledClis();
-  const terminalLaunch: TerminalLaunchContextValue | null = desktopBridge
-    ? {
-        launchInTerminal: (input, cli) => {
-          requestTerminalLaunch(composeTerminalLaunchPrompt(input, cli), cli);
-        },
-        installedClis,
-      }
-    : null;
+  const terminalLaunch: TerminalLaunchContextValue | null =
+    desktopBridge && desktopBridge.config.ptyAvailable === true
+      ? {
+          launchInTerminal: (input, cli) => {
+            requestTerminalLaunch(composeTerminalLaunchPrompt(input, cli), cli);
+          },
+          installedClis,
+        }
+      : null;
 
   return (
     <>

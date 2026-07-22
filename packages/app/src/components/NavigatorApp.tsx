@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { type ComponentType, lazy, Suspense, useEffect, useState } from 'react';
+import { shouldShowAppMenubar } from '@/components/app-menubar-gate';
 import { useThemeBridge } from '@/hooks/use-theme-bridge';
 import type {
   OkDesktopBridge,
@@ -68,6 +69,10 @@ import { Button } from './ui/button';
 const ShareReceiveDialog = lazy(() =>
   import('./ShareReceiveDialog').then((m) => ({ default: m.ShareReceiveDialog })),
 );
+
+// Lazy: win/linux-only chrome — keeps the menubar (and its radix primitive)
+// out of the eager bundle on web + macOS.
+const AppMenubar = lazy(() => import('./AppMenubar').then((m) => ({ default: m.AppMenubar })));
 
 // Re-exports for tests — keeping the surface here avoids churn in existing
 // test files that import directly from NavigatorApp.tsx and keeps the
@@ -335,7 +340,21 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
         }`}
         data-electron-drag={isElectronHost ? '' : undefined}
         data-testid="nav-chrome-row"
-      />
+      >
+        {/* Windows/Linux custom menubar (windows-linux-port renderer menubar): the Navigator has no
+            EditorHeader row, so without this a first-launch window would
+            have zero menu access there. `pointer-events-auto` re-enables
+            clicks inside the strip's pointer-events-none overlay; the
+            menubar's own no-drag opt-out keeps its triggers clickable
+            within the drag region. Null on darwin + web. */}
+        {shouldShowAppMenubar() && (
+          <div className="pointer-events-auto flex h-full items-center px-2">
+            <Suspense fallback={null}>
+              <AppMenubar />
+            </Suspense>
+          </div>
+        )}
+      </div>
       {openingLabel !== null ? (
         <div
           className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-primary-foreground/85 dark:bg-background/85 backdrop-blur-sm"

@@ -1,4 +1,3 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
   mkdirSync,
@@ -10,6 +9,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import { reclaimProjectSkillsOnProjectOpen, reclaimUserSkillsOnLaunch } from './skill-reclaim.ts';
 
 const EXE = '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge';
@@ -166,17 +166,38 @@ function makeDeps(opts: {
 }
 
 describe('reclaimUserSkillsOnLaunch', () => {
-  test('skipped on non-darwin', async () => {
+  test('skipped on AppImage launches (ephemeral mount path)', async () => {
     const home = makeHome();
     const deps = makeDeps({ bundle: setupBundle() });
+    // AppImage launches decline every persistent-path integration — the
+    // squashfs mount in executablePath is dead by next boot.
     const r = await reclaimUserSkillsOnLaunch({
       home,
       isPackaged: true,
       platform: 'linux',
-      executablePath: EXE,
+      executablePath: '/tmp/.mount_okXYZ/openknowledge',
+      env: { APPIMAGE: '/home/u/OK.AppImage' },
       deps,
     });
     expect(r.status).toBe('skipped');
+    if (r.status === 'skipped') expect(r.reason).toBe('appimage-ephemeral');
+  });
+
+  test('linux deb install reaches done through the install-shape gate', async () => {
+    const home = makeHome();
+    const bundle = setupBundle();
+    const deps = makeDeps({ bundle, version: '1.0.0' });
+    const r = await reclaimUserSkillsOnLaunch({
+      home,
+      isPackaged: true,
+      platform: 'linux',
+      executablePath: '/opt/OpenKnowledge/openknowledge',
+      deps,
+    });
+    expect(r.status).toBe('done');
+    expect(
+      existsSync(join(home, '.agents', 'skills', 'open-knowledge-discovery', 'SKILL.md')),
+    ).toBe(true);
   });
 
   test('central store always force-written even when nothing existed', async () => {
@@ -569,17 +590,19 @@ describe('reclaimUserSkillsOnLaunch — per-bundle opt-in gate', () => {
 });
 
 describe('reclaimProjectSkillsOnProjectOpen', () => {
-  test('skipped on non-darwin', async () => {
+  test('skipped on AppImage launches (ephemeral mount path)', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
     cleanupPaths.push(projectDir);
     const r = await reclaimProjectSkillsOnProjectOpen({
       projectDir,
-      executablePath: EXE,
+      executablePath: '/tmp/.mount_okXYZ/openknowledge',
       isPackaged: true,
       platform: 'linux',
+      env: { APPIMAGE: '/home/u/OK.AppImage' },
       deps: { resolveBundledSkillDir: () => setupBundle() },
     });
     expect(r.status).toBe('skipped');
+    if (r.status === 'skipped') expect(r.reason).toBe('appimage-ephemeral');
   });
 
   test('no SKILL.md on disk → no-token, no creation', async () => {

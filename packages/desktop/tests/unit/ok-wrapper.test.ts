@@ -106,3 +106,34 @@ describe('ok.sh wrapper', () => {
     expect(script).not.toContain('export OK_NODE_OPTIONS=$NODE_OPTIONS\n');
   });
 });
+
+// Linux sibling wrapper (shipped to cli/bin/ok.sh by the
+// linux.extraResources rule; /usr/bin/ok symlinks to it from the deb
+// postinst). Same self-diagnosing contract as ok.sh, different install
+// layout (flat electron-builder Linux tree, no .app bundle) — so the
+// missing-bundle branch is exercised by simply running the committed file
+// from the repo, where no sibling `openknowledge` binary exists.
+describe('ok-linux.sh wrapper', () => {
+  const LINUX_WRAPPER = join(import.meta.dir, '..', '..', 'resources', 'cli', 'bin', 'ok-linux.sh');
+
+  test('is committed with executable bit set', () => {
+    expect(() => accessSync(LINUX_WRAPPER, constants.X_OK)).not.toThrow();
+  });
+
+  test('missing install emits two-line stderr and exits 69', () => {
+    const result = spawnSync(LINUX_WRAPPER, [], { encoding: 'utf8' });
+    expect(result.status).toBe(69);
+    const lines = result.stderr.trimEnd().split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toBe('OpenKnowledge has been removed. Reinstall the OpenKnowledge package.');
+    const parsed = JSON.parse(lines[1] ?? '');
+    expect(parsed.error).toBe('ok-bundle-missing');
+  });
+
+  test('NODE_OPTIONS is rescoped to OK_NODE_OPTIONS before exec (quoted)', () => {
+    const script = readFileSync(LINUX_WRAPPER, 'utf8');
+    expect(script).toContain('export OK_NODE_OPTIONS="$NODE_OPTIONS"');
+    expect(script).toContain('unset NODE_OPTIONS');
+    expect(script).not.toContain('export OK_NODE_OPTIONS=$NODE_OPTIONS\n');
+  });
+});

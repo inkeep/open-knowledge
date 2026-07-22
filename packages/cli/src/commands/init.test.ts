@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import {
   existsSync,
@@ -14,6 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { readBundleDecision } from '@inkeep/open-knowledge-server';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import { loadConfig } from '../config/loader.ts';
 import { OK_DIR } from '../constants.ts';
@@ -21,7 +21,7 @@ import { previewContent } from '../content/preview.ts';
 import { buildPiExtensionSource } from '../integrations/pi-extension.ts';
 import {
   ALL_EDITOR_IDS,
-  CHAIN_V1,
+  CHAIN_V2,
   EDITOR_TARGETS,
   resolveClaudeCodeConfigPath,
   resolveClaudeDesktopConfigPath,
@@ -31,7 +31,7 @@ import {
   resolveOpenCodeConfigPath,
 } from './editors.ts';
 
-const PUBLISHED_CHAIN_ENTRY = { command: '/bin/sh', args: ['-l', '-c', CHAIN_V1] } as const;
+const PUBLISHED_CHAIN_ENTRY = { command: '/bin/sh', args: ['-l', '-c', CHAIN_V2] } as const;
 
 import {
   createTomlConfigEngine,
@@ -440,11 +440,11 @@ describe('runInit', () => {
   describe('OpenCode', () => {
     // OpenCode keys MCP servers under `mcp` (not `mcpServers`) and wraps each
     // server in a `{ type: 'local', enabled, command }` object whose `command`
-    // is a single argv array — the same CHAIN_V1 bootstrap, different envelope.
+    // is a single argv array — the same CHAIN_V2 bootstrap, different envelope.
     const PUBLISHED_OPENCODE_ENTRY = {
       type: 'local',
       enabled: true,
-      command: ['/bin/sh', '-l', '-c', CHAIN_V1],
+      command: ['/bin/sh', '-l', '-c', CHAIN_V2],
     } as const;
 
     it('writes ~/.config/opencode/opencode.json under the mcp key', async () => {

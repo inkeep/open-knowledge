@@ -1,4 +1,3 @@
-import { describe, expect, test } from 'bun:test';
 import {
   existsSync,
   lstatSync,
@@ -12,6 +11,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import {
   computePathInstallDescriptor,
   computePathLeg,
@@ -337,7 +337,7 @@ describe('ensureCliOnPath', () => {
     expect(events.some((e) => e.event === 'path-install-extra-symlink-removed')).toBe(true);
   });
 
-  test('skips outside packaged darwin bundle contexts', async () => {
+  test('skips outside supported packaged contexts', async () => {
     const h = home();
     const base = baseOpts(h, {
       spawn: async () => ({ code: 0, stdout: '', stderr: '' }),
@@ -346,7 +346,26 @@ describe('ensureCliOnPath', () => {
       status: 'skipped',
       reason: 'reclaim-disabled',
     });
-    expect(await ensureCliOnPath({ ...base, platform: 'linux' })).toEqual({
+    // Windows PATH belongs to the NSIS installer (installer-owned Windows PATH) — the POSIX rc/symlink
+    // machinery never runs there.
+    expect(await ensureCliOnPath({ ...base, platform: 'win32' })).toEqual({
+      status: 'skipped',
+      reason: 'installer-managed',
+    });
+    // AppImage mounts are ephemeral — persisting symlinks into the mount
+    // would leave dead paths after quit.
+    expect(
+      await ensureCliOnPath({
+        ...base,
+        platform: 'linux',
+        executablePath: '/tmp/.mount_okXYZ/openknowledge',
+        env: { HOME: h, SHELL: '/bin/bash', APPIMAGE: '/home/u/OK.AppImage' },
+      }),
+    ).toEqual({
+      status: 'skipped',
+      reason: 'appimage-ephemeral',
+    });
+    expect(await ensureCliOnPath({ ...base, platform: 'freebsd' })).toEqual({
       status: 'skipped',
       reason: 'platform',
     });
@@ -358,6 +377,26 @@ describe('ensureCliOnPath', () => {
       status: 'skipped',
       reason: 'bad-executable-path',
     });
+  });
+
+  test('linux deb install: symlinks target the flat-layout wrapper and bash gets .bashrc', async () => {
+    const h = home();
+    const result = await ensureCliOnPath(
+      baseOpts(h, {
+        platform: 'linux',
+        executablePath: '/opt/OpenKnowledge/openknowledge',
+        env: { HOME: h, SHELL: '/bin/bash' },
+        consentDecision: GRANTED,
+      }),
+    );
+    expect(result.status).toBe('installed');
+    expect(readlinkSync(join(h, '.ok', 'bin', 'ok'))).toBe(
+      '/opt/OpenKnowledge/resources/cli/bin/ok.sh',
+    );
+    // Interactive non-login bash on Linux reads ~/.bashrc — the block must
+    // land there (not just .bash_profile, which distros source on login
+    // shells only).
+    expect(readFileSync(join(h, '.bashrc'), 'utf8')).toContain('.ok/env.sh');
   });
 
   test('returns failed-all instead of throwing when an fs operation fails', async () => {
@@ -417,7 +456,11 @@ describe('ensureCliOnPath', () => {
 describe('computePathInstallDescriptor', () => {
   test('fresh zsh machine: touchable rc files listed tildified, nothing installed yet', () => {
     const h = home();
-    const descriptor = computePathInstallDescriptor({ home: h, env: { SHELL: '/bin/zsh' } });
+    const descriptor = computePathInstallDescriptor({
+      home: h,
+      platform: 'darwin',
+      env: { SHELL: '/bin/zsh' },
+    });
     expect(descriptor).toEqual({
       shellDetected: true,
       rcFilesToTouch: ['~/.zshrc', '~/.config/fish/conf.d/open-knowledge.fish'],
@@ -428,7 +471,11 @@ describe('computePathInstallDescriptor', () => {
   test('an existing .bash_profile joins the touch list; a non-zsh shell skips .zshrc creation', () => {
     const h = home();
     writeFileSync(join(h, '.bash_profile'), 'export BAR=1\n');
-    const descriptor = computePathInstallDescriptor({ home: h, env: { SHELL: '/bin/bash' } });
+    const descriptor = computePathInstallDescriptor({
+      home: h,
+      platform: 'darwin',
+      env: { SHELL: '/bin/bash' },
+    });
     expect(descriptor.rcFilesToTouch).toEqual([
       '~/.bash_profile',
       '~/.config/fish/conf.d/open-knowledge.fish',
@@ -438,7 +485,11 @@ describe('computePathInstallDescriptor', () => {
   test('a healthy managed block flips alreadyInstalled', async () => {
     const h = home();
     await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
-    const descriptor = computePathInstallDescriptor({ home: h, env: { SHELL: '/bin/zsh' } });
+    const descriptor = computePathInstallDescriptor({
+      home: h,
+      platform: 'darwin',
+      env: { SHELL: '/bin/zsh' },
+    });
     expect(descriptor.alreadyInstalled).toBe(true);
     expect(descriptor.shellDetected).toBe(true);
   });
@@ -457,7 +508,11 @@ describe('computePathInstallDescriptor', () => {
       }),
     );
     expect(readFileSync(join(h, '.zshrc'), 'utf8')).toContain('# >>> open-knowledge cli >>>');
-    const descriptor = computePathInstallDescriptor({ home: h, env: { SHELL: '/bin/zsh' } });
+    const descriptor = computePathInstallDescriptor({
+      home: h,
+      platform: 'darwin',
+      env: { SHELL: '/bin/zsh' },
+    });
     expect(descriptor.alreadyInstalled).toBe(true);
   });
 
@@ -468,7 +523,11 @@ describe('computePathInstallDescriptor', () => {
     writeFileSync(join(h, '.zshrc'), 'export FOO=1\n');
     unlinkSync(join(h, '.config', 'fish', 'conf.d', 'open-knowledge.fish'));
     await ensureCliOnPath(baseOpts(h));
-    const descriptor = computePathInstallDescriptor({ home: h, env: { SHELL: '/bin/zsh' } });
+    const descriptor = computePathInstallDescriptor({
+      home: h,
+      platform: 'darwin',
+      env: { SHELL: '/bin/zsh' },
+    });
     expect(descriptor.rcFilesToTouch).not.toContain('~/.zshrc');
     expect(descriptor.rcFilesToTouch).not.toContain('~/.config/fish/conf.d/open-knowledge.fish');
     expect(descriptor.shellDetected).toBe(false);
@@ -529,7 +588,7 @@ describe('isPathShimInstalled / removePathShimFromRcFiles — the Settings → A
     const h = home();
     writeFileSync(join(h, '.zshrc'), 'export FOO=1\n');
     await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
-    removePathShimFromRcFiles({ home: h, env: { SHELL: '/bin/zsh' } });
+    removePathShimFromRcFiles({ home: h, platform: 'darwin', env: { SHELL: '/bin/zsh' } });
 
     // Undecided startup run: recorded decline wins — rc files stay clean.
     await ensureCliOnPath(baseOpts(h));
@@ -539,7 +598,9 @@ describe('isPathShimInstalled / removePathShimFromRcFiles — the Settings → A
     const regrant = await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
     expect(regrant.status).toBe('installed');
     expect(readFileSync(join(h, '.zshrc'), 'utf8')).toContain('# >>> open-knowledge cli >>>');
-    expect(isPathShimInstalled({ home: h, env: { SHELL: '/bin/zsh' } })).toBe(true);
+    expect(isPathShimInstalled({ home: h, platform: 'darwin', env: { SHELL: '/bin/zsh' } })).toBe(
+      true,
+    );
   });
 
   test('re-grant works even when the probe shell inherits a stale PATH containing ~/.ok/bin', async () => {
@@ -554,14 +615,16 @@ describe('isPathShimInstalled / removePathShimFromRcFiles — the Settings → A
       stderr: '',
     });
     await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED, spawn: stalePathSpawn }));
-    removePathShimFromRcFiles({ home: h, env: { SHELL: '/bin/zsh' } });
+    removePathShimFromRcFiles({ home: h, platform: 'darwin', env: { SHELL: '/bin/zsh' } });
 
     const regrant = await ensureCliOnPath(
       baseOpts(h, { consentDecision: GRANTED, spawn: stalePathSpawn }),
     );
     expect(regrant.status).toBe('installed');
     expect(readFileSync(join(h, '.zshrc'), 'utf8')).toContain('# >>> open-knowledge cli >>>');
-    expect(isPathShimInstalled({ home: h, env: { SHELL: '/bin/zsh' } })).toBe(true);
+    expect(isPathShimInstalled({ home: h, platform: 'darwin', env: { SHELL: '/bin/zsh' } })).toBe(
+      true,
+    );
   });
 
   test('a wedged granted-but-blockless marker heals on the next explicit grant', async () => {
@@ -571,7 +634,7 @@ describe('isPathShimInstalled / removePathShimFromRcFiles — the Settings → A
     const h = home();
     writeFileSync(join(h, '.zshrc'), 'export FOO=1\n');
     await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
-    removePathShimFromRcFiles({ home: h, env: { SHELL: '/bin/zsh' } });
+    removePathShimFromRcFiles({ home: h, platform: 'darwin', env: { SHELL: '/bin/zsh' } });
     const marker = readMarkerFile(h);
     writeFileSync(
       pathInstallMarkerPath(h),
@@ -585,7 +648,11 @@ describe('isPathShimInstalled / removePathShimFromRcFiles — the Settings → A
 
   test('nothing installed and no marker → not-installed no-op', () => {
     const h = home();
-    const result = removePathShimFromRcFiles({ home: h, env: { SHELL: '/bin/zsh' } });
+    const result = removePathShimFromRcFiles({
+      home: h,
+      platform: 'darwin',
+      env: { SHELL: '/bin/zsh' },
+    });
     expect(result.status).toBe('not-installed');
     expect(existsSync(pathInstallMarkerPath(h))).toBe(false);
   });
@@ -600,7 +667,11 @@ describe('isPathShimInstalled / removePathShimFromRcFiles — the Settings → A
       withBlock.indexOf('# <<< open-knowledge cli <<<') + '# <<< open-knowledge cli <<<\n'.length,
     );
     writeFileSync(zshrc, `${withBlock}\n${block}`);
-    const result = removePathShimFromRcFiles({ home: h, env: { SHELL: '/bin/zsh' } });
+    const result = removePathShimFromRcFiles({
+      home: h,
+      platform: 'darwin',
+      env: { SHELL: '/bin/zsh' },
+    });
     expect(result.status).toBe('removed');
     expect(readFileSync(zshrc, 'utf8')).not.toContain('open-knowledge cli');
   });

@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  CHAIN_V1,
+  CHAIN_V2,
   CHAIN_WIN_V1,
   isEntryUpToDate,
   PI_EXTENSION_OWNERSHIP_MARKER,
@@ -32,7 +32,7 @@ describe('buildPiExtensionSource', () => {
     const source = buildPiExtensionSource();
     // The chains ride inside JSON.stringify'd launcher entries, so their
     // newlines appear as the two-character escape.
-    expect(source).toContain(JSON.stringify(CHAIN_V1));
+    expect(source).toContain(JSON.stringify(CHAIN_V2));
     expect(source).toContain(JSON.stringify(CHAIN_WIN_V1));
     expect(source).toContain('process.platform === "win32"');
   });
@@ -109,7 +109,7 @@ describe('pi extension recognizers', () => {
       isOwnPiManagedFileEntry(makePiManagedFileEntry(`${PI_EXTENSION_OWNERSHIP_MARKER}-v0\nx`)),
     ).toBe(true);
     expect(isOwnPiManagedFileEntry(makePiManagedFileEntry('// foreign file'))).toBe(false);
-    expect(isOwnPiManagedFileEntry({ command: '/bin/sh', args: ['-l', '-c', CHAIN_V1] })).toBe(
+    expect(isOwnPiManagedFileEntry({ command: '/bin/sh', args: ['-l', '-c', CHAIN_V2] })).toBe(
       false,
     );
     expect(isOwnPiManagedFileEntry(null)).toBe(false);

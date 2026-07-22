@@ -181,7 +181,7 @@ program.action(async () => {
   const decision = detectDesktop(createRealDetectDeps());
 
   if (decision.available) {
-    launchDesktop({ spawn });
+    launchDesktop({ spawn }, decision);
     return;
   }
 
