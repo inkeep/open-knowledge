@@ -42,11 +42,13 @@ import type { Node as PmNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { LINT_NAV_EVENT, type LintNavDetail } from '@/components/ProblemsPanel';
+import { buttonVariants } from '@/components/ui/button';
 import { collectFixes, LINT_SOURCE_FIXED_EVENT } from '@/editor/apply-lint-fix';
 import {
   clearPendingSourceNavigation,
   peekPendingSourceNavigation,
 } from '@/editor/source-editor-navigation';
+import { cn } from '@/lib/utils';
 import { fetchEffectiveLintConfig, subscribeToLintConfigChanged } from '../lint-config-client';
 
 const markdownLintDecorationKey = new PluginKey<DecorationSet>('markdownLintDecorations');
@@ -212,7 +214,14 @@ function createLintTooltip(
   tooltip.appendChild(message);
   const fixButton = document.createElement('button');
   fixButton.type = 'button';
-  fixButton.className = 'ok-lint-tooltip-fix';
+  // Styled by the shared shadcn button recipe so the imperative tooltip matches
+  // React surfaces; `ok-lint-tooltip-fix` is a bare selector hook (tests +
+  // the [hidden] guard in globals.css), not a styling class.
+  fixButton.className = cn(
+    'ok-lint-tooltip-fix',
+    buttonVariants({ variant: 'default', size: 'xs' }),
+    'mt-1 self-start',
+  );
   fixButton.hidden = true;
   tooltip.appendChild(fixButton);
   // Body-appended, viewport-fixed: positioned by floating-ui against a virtual

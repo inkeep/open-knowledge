@@ -5276,18 +5276,11 @@ html.electron-mode [data-slot="sidebar-inner"] {
 .ok-lint-tooltip-message {
   white-space: pre-line;
 }
-.ok-lint-tooltip-fix {
-  align-self: flex-start;
-  margin-top: 0.25rem;
-  padding: 0.125rem 0.5rem;
-  border-radius: 0.25rem;
-  font-weight: 600;
-  cursor: pointer;
-  color: var(--color-fd-primary-foreground, #fff);
-  background: var(--color-fd-primary, oklch(55% 0.2 255));
-}
-.ok-lint-tooltip-fix:hover {
-  filter: brightness(1.08);
+/* Fix button styling comes from the shadcn buttonVariants recipe applied in
+   markdown-lint-decorations.ts; this guard keeps the recipe's inline-flex from
+   overriding the `hidden` attribute on the imperative DOM element. */
+.ok-lint-tooltip-fix[hidden] {
+  display: none;
 }
 .ok-lint-tooltip[hidden] {
   display: none;

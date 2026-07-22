@@ -366,16 +366,20 @@ function SettingsSidebar({
       {/* cmdk surface wraps ONLY the search input + results — its roving focus
           never touches the plain-button group nav below (which keeps its
           aria-current + disabled-group semantics). The popover-styled base
-          classes are reset so it sits flush as a plain sidebar search box. */}
+          classes are reset; the input wrapper is boxed like a shadcn Input
+          (its stock border-b divider only ever bordered the box bottom here)
+          and the results render flush on the sidebar background, like the
+          group nav they replace while searching. */}
       <Command
         shouldFilter={false}
-        className="h-auto w-full shrink-0 rounded-md border bg-transparent sm:mb-3"
+        className="h-auto w-full shrink-0 bg-transparent sm:mb-3 [&_[data-slot=command-input-wrapper]]:h-9 [&_[data-slot=command-input-wrapper]]:rounded-lg [&_[data-slot=command-input-wrapper]]:border [&_[data-slot=command-input-wrapper]]:border-input"
         data-testid="settings-search"
       >
         <CommandInput
           value={searchQuery}
           onValueChange={onSearchChange}
           placeholder={t`Search settings`}
+          className="py-0"
           data-testid="settings-search-input"
         />
         {/* Polite result-count announcement — cmdk's listbox semantics don't
@@ -385,7 +389,7 @@ function SettingsSidebar({
           {query !== '' ? <Plural value={results.length} one="# result" other="# results" /> : null}
         </span>
         {query !== '' ? (
-          <CommandList data-testid="settings-search-results">
+          <CommandList data-testid="settings-search-results" className="mt-1.5">
             <CommandEmpty data-testid="settings-search-empty">
               <Trans>No settings found</Trans>
             </CommandEmpty>
