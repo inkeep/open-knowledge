@@ -427,24 +427,6 @@ const DEFAULT_SIGTERM_GRACE_MS = SHARED_DEFAULT_SIGTERM_GRACE_MS;
 const DEFAULT_SIGTERM_POLL_MS = SHARED_DEFAULT_SIGTERM_POLL_MS;
 
 /**
- * Build the idle-shutdown `onShutdown` closure. On fire:
- *   (1) look up `ui.lock`; SIGTERM the sibling if it's still alive AND it is
- *       the pid this process spawned (`spawnedUiPid`) — a live holder we did
- *       not spawn is left alone (see the field's docstring for the incident
- *       class this prevents);
- *   (2) poll its liveness up to `sigtermGraceMs` (default 10s);
- *   (3) if still alive after the grace window, escalate to SIGKILL;
- *   (4) await `destroy()`, which releases `server.lock` as its final step.
- *
- * Escalation matters because a hung `ok ui` (stuck in a GC pause or a
- * downstream fetch in `/api/config`) would otherwise block idle-shutdown
- * indefinitely. Escalation is logged at WARN so the operator sees that a
- * non-standard path ran.
- *
- * Extracted so tests can exercise each branch (no UI, live UI, stale UI,
- * SIGTERM-takes, SIGKILL-escalation) without standing up Hocuspocus.
- */
-/**
  * Wrap an idle-shutdown handler so that, after the server is destroyed, the
  * ephemeral session's throwaway temp projectDir is removed. Without this an
  * agent- or tab-closed single-file session leaks its temp dir — boot's destroy
@@ -555,56 +537,81 @@ export function withIdleShutdownProcessExit(
   };
 }
 
-export function buildIdleShutdownHandler(
-  input: BuildIdleShutdownHandlerInput,
-): () => Promise<void> {
+/**
+ * Signal the auto-spawned `ok ui` sibling to exit: SIGTERM, poll its liveness
+ * up to `sigtermGraceMs`, then escalate to SIGKILL if it's wedged. Shared by
+ * idle-shutdown and the signal-driven `ok start` teardown so BOTH honor the
+ * same ownership guard — a live lock holder whose pid is not `spawnedUiPid()`
+ * is left alone (see that field's docstring for the incident class this
+ * prevents). `reason` prefixes the log lines to identify the calling path
+ * (`idle-shutdown` | `shutdown`; defaults to `teardown` when omitted).
+ * Best-effort throughout: a failed lookup/kill is logged, never thrown, so the
+ * caller's own teardown (destroy / server.lock release) always proceeds.
+ */
+export async function teardownUiSibling(
+  input: Omit<BuildIdleShutdownHandlerInput, 'destroy'> & { reason?: string },
+): Promise<void> {
   const graceMs = input.sigtermGraceMs ?? DEFAULT_SIGTERM_GRACE_MS;
   const pollMs = input.sigtermPollIntervalMs ?? DEFAULT_SIGTERM_POLL_MS;
   const sleep = input.sleep ?? ((ms: number) => wait(ms));
+  const reason = input.reason ?? 'teardown';
 
-  return async () => {
-    try {
-      const lock = input.readUiLock();
-      const ownPid = input.spawnedUiPid();
-      if (lock && input.isAlive(lock.pid) && lock.pid !== ownPid) {
-        // The lock holder is alive but is NOT the sibling we spawned — a
-        // desktop-spawned server advertising its shell, or another session's
-        // UI. It is not ours to kill; it has its own lifecycle (idle-shutdown
-        // or the `ok ui` 12h safety net).
-        input.log?.info(
-          { pid: lock.pid, port: lock.port, spawnedUiPid: ownPid },
-          'idle-shutdown: ui.lock holder is not our spawned sibling — leaving it alone',
-        );
-      } else if (lock && input.isAlive(lock.pid)) {
-        try {
-          input.killPid(lock.pid, 'SIGTERM');
-          input.log?.info({ pid: lock.pid, port: lock.port }, 'idle-shutdown: SIGTERM UI sibling');
-          // Wait up to graceMs for the UI process to exit under SIGTERM.
-          const deadline = Date.now() + graceMs;
-          while (Date.now() < deadline) {
-            if (!input.isAlive(lock.pid)) break;
-            await sleep(pollMs);
-          }
-          if (input.isAlive(lock.pid)) {
-            // Grace expired — escalate to SIGKILL. Operators see this at WARN.
-            try {
-              input.killPid(lock.pid, 'SIGKILL');
-              input.log?.warn(
-                { pid: lock.pid, graceMs },
-                'idle-shutdown: SIGTERM grace expired — escalated to SIGKILL',
-              );
-            } catch (err) {
-              input.log?.error({ pid: lock.pid, err }, 'idle-shutdown: SIGKILL failed');
-            }
-          }
-        } catch (err) {
-          input.log?.warn({ pid: lock.pid, err }, 'idle-shutdown: failed to SIGTERM UI sibling');
+  try {
+    const lock = input.readUiLock();
+    const ownPid = input.spawnedUiPid();
+    if (lock && input.isAlive(lock.pid) && lock.pid !== ownPid) {
+      // The lock holder is alive but is NOT the sibling we spawned — a
+      // desktop-spawned server advertising its shell, or another session's
+      // UI. It is not ours to kill; it has its own lifecycle (idle-shutdown
+      // or the `ok ui` 12h safety net).
+      input.log?.info(
+        { pid: lock.pid, port: lock.port, spawnedUiPid: ownPid },
+        `${reason}: ui.lock holder is not our spawned sibling — leaving it alone`,
+      );
+    } else if (lock && input.isAlive(lock.pid)) {
+      try {
+        input.killPid(lock.pid, 'SIGTERM');
+        input.log?.info({ pid: lock.pid, port: lock.port }, `${reason}: SIGTERM UI sibling`);
+        // Wait up to graceMs for the UI process to exit under SIGTERM.
+        const deadline = Date.now() + graceMs;
+        while (Date.now() < deadline) {
+          if (!input.isAlive(lock.pid)) break;
+          await sleep(pollMs);
         }
+        if (input.isAlive(lock.pid)) {
+          // Grace expired — escalate to SIGKILL. Operators see this at WARN.
+          try {
+            input.killPid(lock.pid, 'SIGKILL');
+            input.log?.warn(
+              { pid: lock.pid, graceMs },
+              `${reason}: SIGTERM grace expired — escalated to SIGKILL`,
+            );
+          } catch (err) {
+            input.log?.error({ pid: lock.pid, err }, `${reason}: SIGKILL failed`);
+          }
+        }
+      } catch (err) {
+        input.log?.warn({ pid: lock.pid, err }, `${reason}: failed to SIGTERM UI sibling`);
       }
-    } catch (err) {
-      input.log?.warn({ err }, 'idle-shutdown: UI lookup failed; proceeding with destroy');
     }
-    await input.destroy();
+  } catch (err) {
+    input.log?.warn({ err }, `${reason}: UI lookup failed; proceeding`);
+  }
+}
+
+/**
+ * The idle-shutdown `onShutdown` closure: tear down the UI sibling (guarded by
+ * `spawnedUiPid`), then `destroy()` — which releases `server.lock` as its final
+ * step. A thin adapter over `teardownUiSibling`; the escalation logic lives
+ * there.
+ */
+export function buildIdleShutdownHandler(
+  input: BuildIdleShutdownHandlerInput,
+): () => Promise<void> {
+  const { destroy, ...teardown } = input;
+  return async () => {
+    await teardownUiSibling({ ...teardown, reason: 'idle-shutdown' });
+    await destroy();
   };
 }
 
@@ -768,6 +775,14 @@ export interface BootedStartServer {
   degraded: readonly string[];
   /** What we decided about the UI sibling at boot — for tests + status output. */
   uiSpawnDecision: UiSpawnDecision;
+  /**
+   * Pid of the `ok ui` child THIS process spawned, or null when none was
+   * spawned (sibling reused, auto-spawn skipped, or desktop single-origin).
+   * The signal-driven teardown in `runStartCommand` passes this to
+   * `teardownUiSibling` so it only signals the sibling we own — the same
+   * ownership guard the idle-shutdown closure applies via `spawnedUiPid`.
+   */
+  spawnedUiPid: number | null;
   /**
    * The port `ok ui` is actually serving on, resolved end-to-end:
    *   - `action: 'skip'` (sibling already alive) → `uiSpawnDecision.port`
@@ -1126,6 +1141,7 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     ready: booted.ready,
     degraded: booted.degraded,
     uiSpawnDecision,
+    spawnedUiPid,
     resolvedUiPort,
   };
 }
@@ -1378,6 +1394,34 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
     console.log(accent(`\n${headline}`));
     for (const line of details) {
       console.log(dim(`  ${line}`));
+    }
+    // Tear down the detached `ok ui` sibling BEFORE destroy releases
+    // server.lock — same order as idle-shutdown. Without this, Ctrl+C left the
+    // UI child running until its 12h safety timer, holding its port. Two
+    // distinct guards: the outer `!== null` skips the whole block (and its
+    // import) when we spawned no sibling; `teardownUiSibling`'s internal
+    // `spawnedUiPid` comparison confirms the CURRENT lock holder is still the
+    // pid we spawned, so a holder we didn't spawn (desktop shell, another
+    // session) is left alone. Wrapped so a failure here never bypasses
+    // destroy() — the best-effort teardown contract idle-shutdown also honors.
+    if (booted.spawnedUiPid !== null) {
+      try {
+        const { getLogger, isProcessAlive, readUiLock } = await import(
+          '@inkeep/open-knowledge-server'
+        );
+        await teardownUiSibling({
+          readUiLock: () => readUiLock(booted.lockDir),
+          spawnedUiPid: () => booted.spawnedUiPid,
+          isAlive: isProcessAlive,
+          killPid: (pid, sig) => process.kill(pid, sig),
+          log: getLogger('start'),
+          reason: 'shutdown',
+        });
+      } catch (err) {
+        console.error(
+          `${error('ui sibling teardown failed:')} ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
+        );
+      }
     }
     try {
       await booted.destroy();
