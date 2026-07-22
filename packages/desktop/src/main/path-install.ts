@@ -326,7 +326,7 @@ function installCanonical(home: string, wrapper: string, fs: PathInstallFsOps): 
   }
 }
 
-async function defaultSpawn(
+export async function defaultSpawn(
   command: string,
   args: string[],
   opts: { timeoutMs: number; env: Record<string, string | undefined> },

@@ -168,6 +168,7 @@ export function parseRecursive(
   }
 }
 
+
 interface VFilePlace {
   offset?: number;
   start?: { offset?: number };
@@ -185,6 +186,7 @@ function extractErrorOffset(err: unknown): number | undefined {
 
   return undefined;
 }
+
 
 interface Region {
   start: number;
@@ -208,6 +210,7 @@ function nearestBlankLineAfter(src: string, offset: number): number | null {
   }
   return null;
 }
+
 
 export interface TagEvent {
   kind: 'open' | 'close' | 'self-close';
@@ -355,6 +358,7 @@ function findFallbackRegion(src: string, errorOffset: number): Region {
   return { start: blockStart, end: blockEnd };
 }
 
+
 interface SourceBlock {
   src: string;
   start: number;
@@ -451,6 +455,7 @@ function tryPerBlockFallback(
     content: merged.length > 0 ? merged : [{ type: 'paragraph', content: [] }],
   };
 }
+
 
 function wholeDocRawText(source: string): JSONContent {
   return {

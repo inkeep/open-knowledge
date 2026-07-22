@@ -1,3 +1,4 @@
+
 const FENCE_RE = /^(`{3,}|~{3,})/gm;
 
 export function findFencedRegions(src: string): Array<[number, number]> {

@@ -314,6 +314,7 @@ import { handleRevealExternal } from './reveal-external.ts';
 import { createServerExitRecorder, type ServerExitRecorder } from './server-exit-record.ts';
 import { startFirstRunHandshake } from './share-handoff.ts';
 import { checkOutboundUrl, handleShellOpenExternal } from './shell-allowlist.ts';
+import { applyHarvestedAuthSock, harvestShellAuthSock } from './shell-env.ts';
 import { createShowGateRegistry, type ShowGateRegistry } from './show-gate.ts';
 import { reclaimProjectSkillsOnProjectOpen, reclaimUserSkillsOnLaunch } from './skill-reclaim.ts';
 import { attachSpellcheckContextMenu } from './spellcheck-context-menu.ts';
@@ -5672,6 +5673,18 @@ function bootPrimaryInstance(): void {
       // its return tells the waterfall whether main spans are live.
       startupWaterfall.mark('appReady');
       startupWaterfall.otelEnabled = beginRoot();
+      // Login-shell SSH_AUTH_SOCK harvest — started here so its (2s-bounded)
+      // shell spawn overlaps the bootstrap I/O below; awaited + applied just
+      // before the window-open branch, ahead of the git preflight and both
+      // server-spawn paths (utility fork + detached spawn). Desktop-main git
+      // spawns pick the corrected value up automatically: gitSpawnEnv()
+      // rebuilds from live process.env per call and must never be frozen
+      // into a module-level constant (see git-spawn-env.ts).
+      const shellEnvLogger = {
+        event: (payload: Record<string, unknown> & { event: string }) =>
+          getLogger('shell-env').info(payload, payload.event),
+      };
+      const authSockHarvest = harvestShellAuthSock({ logger: shellEnvLogger });
       // One-time userData migration for the "Open Knowledge" → "OpenKnowledge"
       // rename. Dormant until the packaged productName flips the userData
       // basename to "OpenKnowledge"; then it relocates a verified-ours legacy
@@ -5843,6 +5856,14 @@ function bootPrimaryInstance(): void {
             error: formatUnknownError(err),
           });
         });
+
+      // Apply the harvested login-shell SSH_AUTH_SOCK before the window-open
+      // branch. A Finder launch inherits launchd's default-agent socket, which
+      // holds no keys for external-agent users (1Password, Proton Pass) —
+      // patching process.env here lets every downstream git spawn inherit the
+      // agent the user's terminal actually uses. Failure or an empty value
+      // leaves the inherited socket untouched.
+      applyHarvestedAuthSock(process.env, await authSockHarvest, shellEnvLogger);
 
       // Every project open spawns a NEW editor window. Boot restore order:
       //   1. An update relaunch left a `pendingWindowRestore` snapshot — open
