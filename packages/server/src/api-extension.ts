@@ -287,6 +287,8 @@ import {
   applyAgentMarkdownWrite,
   applyAgentUndo,
   iconFromClientName,
+  prepareAgentMarkdownParse,
+  prepareFrontmatterPatchParse,
   snapshotBlocks,
 } from './agent-sessions.ts';
 import { type NormalizedSummary, normalizeSummary } from './agent-write-summary.ts';
@@ -471,7 +473,7 @@ import {
   isOrphanMode,
 } from './backlink-index.ts';
 import { getBootTimings } from './boot-timings.ts';
-import { composeAndWriteRawBody, replaceRawBody } from './bridge-intake.ts';
+import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from './bridge-intake.ts';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import type { ResolveStrategy } from './conflict-storage.ts';
@@ -580,6 +582,7 @@ import {
   incrementSummariesProvided,
   incrementSummariesTruncated,
 } from './metrics.ts';
+import { precomputeParse } from './parse-pool.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
 import {
   deleteReconciledBase,
@@ -5375,6 +5378,21 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           options.resolveEmbed,
         );
 
+        // Off-thread parse precompute (parse-pool): parse the projected
+        // post-write bytes on a worker BEFORE entering the transact so a
+        // large-doc parse does not block concurrent requests. Advisory —
+        // the byte-identity guard in bridge-intake discards it if the doc
+        // moved during this await.
+        const writeMdEmbedResolver = options.resolveEmbed
+          ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
+          : undefined;
+        const writeMdPrecomputed = await prepareAgentMarkdownParse(
+          session.dc.document,
+          body.markdown,
+          position,
+          writeMdEmbedResolver,
+        );
+
         const timestamp = new Date().toISOString();
 
         // Site A content-divergence captured from the in-transact gate.
@@ -5406,9 +5424,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               session.dc.document,
               body.markdown,
               position,
-              options.resolveEmbed
-                ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
-                : undefined,
+              writeMdEmbedResolver,
+              writeMdPrecomputed,
             );
 
             const changedBlocks =
@@ -5808,6 +5825,18 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                 options.resolveEmbed,
               );
 
+              // Off-thread parse precompute — same advisory pattern as the
+              // single-write handler (byte-identity guard in bridge-intake).
+              const entryEmbedResolver = options.resolveEmbed
+                ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
+                : undefined;
+              const entryPrecomputed = await prepareAgentMarkdownParse(
+                session.dc.document,
+                entry.markdown,
+                entry.position ?? 'append',
+                entryEmbedResolver,
+              );
+
               let writeDivergence: AgentWriteContentDivergence | undefined;
               // Register one-shot observer BEFORE write transact so YTextEvent.delta is captured
               captureEffect(session.dc.document.getText('source'), agentId, colorSeed, clientName);
@@ -5818,9 +5847,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                   session.dc.document,
                   entry.markdown,
                   entry.position ?? 'append',
-                  options.resolveEmbed
-                    ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
-                    : undefined,
+                  entryEmbedResolver,
+                  entryPrecomputed,
                 );
 
                 const changedBlocks =
@@ -6039,6 +6067,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           options.resolveEmbed,
         );
 
+        // Optimistic off-thread parse precompute (parse-pool): apply the FM
+        // patch to a PRE-transact snapshot and parse the guessed full bytes
+        // on a worker. The in-transact applyPatchToFm below stays
+        // authoritative; the byte-identity guard in bridge-intake discards
+        // a stale guess. No embed resolver here, mirroring the inline call
+        // below.
+        const fmPatchPrecomputed = await prepareFrontmatterPatchParse(session.dc.document, patch);
+
         const timestamp = new Date().toISOString();
 
         // `applyPatchToFm` is a total function returning FmEditResult — its
@@ -6112,7 +6148,13 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                     currentFenced === '' && currentBody !== '' && !currentBody.startsWith('\n');
                   const newFull =
                     result.nextFenced + (needsFenceSeparator ? '\n' : '') + currentBody;
-                  composeAndWriteRawBody(session.dc.document, newFull, 'agent');
+                  composeAndWriteRawBody(
+                    session.dc.document,
+                    newFull,
+                    'agent',
+                    undefined,
+                    fmPatchPrecomputed,
+                  );
                   recordFrontmatterEditSurface('mcp-write');
                   bodyMutated = true;
                 }
@@ -7464,6 +7506,38 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           options.resolveEmbed,
         );
 
+        // Optimistic off-thread parse precompute (parse-pool): splice the
+        // find/replace against a PRE-transact snapshot and parse the guessed
+        // post-patch bytes on a worker. The in-transact splice below stays
+        // the single authoritative compose — if the doc moved during this
+        // await the recomposed bytes differ and the byte-identity guard in
+        // bridge-intake discards the guess (inline parse, prior behavior).
+        const patchEmbedResolver = options.resolveEmbed
+          ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
+          : undefined;
+        let patchPrecomputed: PrecomputedParse | undefined;
+        {
+          const preSnapshot = session.dc.document.getText('source').toString();
+          const { frontmatter: preFm, body: preBody } = stripFrontmatter(preSnapshot);
+          const preFull = prependFrontmatter(preFm, preBody);
+          const prePos =
+            offset == null
+              ? preFull.indexOf(find)
+              : preFull.slice(offset, offset + find.length) === find
+                ? offset
+                : -1;
+          if (prePos !== -1 && prePos >= preFm.length) {
+            const guessFull =
+              preFull.slice(0, prePos) + replace + preFull.slice(prePos + find.length);
+            patchPrecomputed = await prepareAgentMarkdownParse(
+              session.dc.document,
+              stripFrontmatter(guessFull).body,
+              'patch',
+              patchEmbedResolver,
+            );
+          }
+        }
+
         const timestamp = new Date().toISOString();
 
         let notFound = false;
@@ -7563,9 +7637,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               session.dc.document,
               newBody,
               'patch',
-              options.resolveEmbed
-                ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
-                : undefined,
+              patchEmbedResolver,
+              patchPrecomputed,
             );
 
             const changedBlocks =
@@ -8886,6 +8959,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         const rollbackEmbedResolver = options.resolveEmbed
           ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
           : undefined;
+        // Off-thread parse precompute: `markdown` (the target-version bytes)
+        // is fixed before this point, so unlike the compose-based writes the
+        // precompute can never go stale — the byte-identity guard always
+        // matches. A failed precompute degrades to the inline parse.
+        const rollbackPrecomputed = await precomputeParse(markdown, rollbackEmbedResolver);
         // Site A content-divergence gate for rollback — computed INSIDE the
         // transact, matching the write/patch gate. `ytext.toString()` here sees
         // `replaceRawBody`'s atomic post-state before observer settlement fires
@@ -8896,7 +8974,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // `currentState` so the agent recovers without a re-read.
         let rollbackDivergence: AgentWriteContentDivergence | undefined;
         document.transact(() => {
-          replaceRawBody(document, markdown, rollbackEmbedResolver);
+          replaceRawBody(document, markdown, rollbackEmbedResolver, rollbackPrecomputed);
           rollbackDivergence = evaluateContentDivergence(
             document.getText('source').toString(),
             markdown,

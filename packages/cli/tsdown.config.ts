@@ -28,7 +28,10 @@ console.warn = (...args: unknown[]) => {
 };
 
 export default defineConfig({
-  entry: { cli: 'src/cli.ts', index: 'src/index.ts' },
+  // `parse-worker` ships as its own entry so the server's parse pool can
+  // spawn `./parse-worker.mjs` next to dist/cli.mjs at runtime (the
+  // published install has no node_modules to resolve through).
+  entry: { cli: 'src/cli.ts', index: 'src/index.ts', 'parse-worker': 'src/parse-worker.ts' },
   unbundle: false,
   format: 'esm',
   dts: true,

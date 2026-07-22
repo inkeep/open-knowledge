@@ -9,6 +9,11 @@
       "development": "./src/index.ts",
       "types": "./src/index.ts",
       "default": "./dist/index.mjs"
+    },
+    "./parse-worker": {
+      "development": "./src/parse-worker.ts",
+      "types": "./src/parse-worker.ts",
+      "default": "./dist/parse-worker.mjs"
     }
   },
   "files": [

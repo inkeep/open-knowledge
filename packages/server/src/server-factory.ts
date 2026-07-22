@@ -138,6 +138,7 @@ import {
   incrementUpstreamImport,
   setRecentlyRemovedDocsSize,
 } from './metrics.ts';
+import { destroyParsePool } from './parse-pool.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
 import {
   createPersistenceExtension,
@@ -2763,6 +2764,22 @@ export function createServer(options: ServerOptions): ServerInstance {
               error: err instanceof Error ? err.message : String(err),
             });
             log.error({ err }, '[server] shutdown phase-2 agent session drain failed');
+          }
+
+          // Phase 2b: parse-pool teardown rides the session drain — with
+          // sessions closed no new precompute dispatches from this server.
+          // destroyParsePool is reset-not-shutdown: another live server in
+          // the same process (test rigs, dev restarts) respawns workers
+          // lazily on its next write, and any in-flight task it loses falls
+          // back to the inline parse.
+          try {
+            await destroyParsePool();
+          } catch (err) {
+            phaseErrors.push({
+              phase: 'parse-pool-teardown',
+              error: err instanceof Error ? err.message : String(err),
+            });
+            log.error({ err }, '[server] shutdown phase-2b parse pool teardown failed');
           }
 
           // Phase 3: drain L1 (Y.Doc → markdown → disk) via afterUnloadDocument hook
