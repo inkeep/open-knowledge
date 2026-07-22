@@ -122,9 +122,6 @@ patchedDependencies:
   '@handlewithcare/remark-prosemirror@0.1.5':
     hash: a6b60cc8640e04973be2c8123e0dbd73156b54388a57cd2b76191c2fd8ac2865
     path: patches/@handlewithcare%2Fremark-prosemirror@0.1.5.patch
-  '@inkeep/mermaid-wysiwyg-dom@0.1.0':
-    hash: e1e3cd09ba940870d38765f74f33c1d0d582004731630c8bb807201d38ee81c9
-    path: patches/@inkeep%2Fmermaid-wysiwyg-dom@0.1.0.patch
   '@pierre/trees@1.0.0-beta.4':
     hash: 86ac804ac75d9f365ee9ef918460463a211ac5201ebc3cf04fc0534c5b3adf88
     path: patches/@pierre%2Ftrees@1.0.0-beta.4.patch
@@ -383,12 +380,6 @@ importers:
       '@hookform/resolvers':
         specifier: ^5.0.0
         version: 5.4.0(react-hook-form@7.81.0(react@19.2.5))
-      '@inkeep/mermaid-wysiwyg-core':
-        specifier: ^0.1.0
-        version: 0.1.0
-      '@inkeep/mermaid-wysiwyg-dom':
-        specifier: ^0.1.0
-        version: 0.1.0(patch_hash=e1e3cd09ba940870d38765f74f33c1d0d582004731630c8bb807201d38ee81c9)
       '@inkeep/open-knowledge-core':
         specifier: workspace:*
         version: link:../core
@@ -479,6 +470,12 @@ importers:
       '@uiw/codemirror-theme-basic':
         specifier: ^4.25.9
         version: 4.25.11(@codemirror/language@6.12.4)(@codemirror/state@6.6.0)(@codemirror/view@6.43.3)
+      '@visimer/core':
+        specifier: ^0.1.0
+        version: 0.1.0
+      '@visimer/dom':
+        specifier: ^0.1.0
+        version: 0.1.0
       '@xterm/addon-fit':
         specifier: 0.11.0
         version: 0.11.0
@@ -2556,12 +2553,6 @@ packages:
 
   '@inkeep/cxkit-types@0.5.119':
     resolution: {integrity: sha512-knp2rnA8hPw+eH6TUu5KM1Y824Vm8Pie0E/vEQZb3tZ0XI3ioXyEj8ym8ovcICuHsuDIGtiATtK35QVjeabQlw==}
-
-  '@inkeep/mermaid-wysiwyg-core@0.1.0':
-    resolution: {integrity: sha512-h0NjJzoyYBTP41+ERIOSU1U682UbY1AGF2cFICFg0SAskTaa+Ih4wv2ihVoAhavsGBGESL2TXLVX446tuJtT3Q==}
-
-  '@inkeep/mermaid-wysiwyg-dom@0.1.0':
-    resolution: {integrity: sha512-/kyARspcCz/Nz12Urp8U44MXMKp7SuY8ns7odkEvXVlgDsS40DgRlpjkB0qg3XQnwlwoqo2MDT5VJjtpJUTptg==}
 
   '@inquirer/ansi@2.0.7':
     resolution: {integrity: sha512-3eTuUO1vH2cZm2ZKHeQxnOqlTi9EfZDGgIe3BL3I4u+rJHocr9Fz86M4fjYABPvFnQG/gGK551HqDiIcETwU6Q==}
@@ -6066,6 +6057,12 @@ packages:
 
   '@vimeo/player@2.30.4':
     resolution: {integrity: sha512-M8m1UAhJSb+KCWuXDLWHViwj+3YY/0ogwFquRfMHs9e9LYjXT9iB7n+sOCKwUusbiXuU2HKmXx+FEGHtYZfUSg==}
+
+  '@visimer/core@0.1.0':
+    resolution: {integrity: sha512-PIvkhrWtsRq/a/i88Yb0shvKC1oaZPA5UBLMs9/MjYZ4JMZVXKtvgqjAw3hg7hNN9lyos3qTlNGnmFuMOUJ1Eg==}
+
+  '@visimer/dom@0.1.0':
+    resolution: {integrity: sha512-hvBtIma0hZDIKhqMtIqEjueX4nVq353RdULBxykjj/d7OO+QoVzDIUxD3nG3732MLpjfVoLtpHbT07lWDx2Qmw==}
 
   '@vitejs/plugin-react@6.0.1':
     resolution: {integrity: sha512-l9X/E3cDb+xY3SWzlG1MOGt2usfEHGMNIaegaUGFsLkb3RCn/k8/TOXBcab+OndDI4TBtktT8/9BwwW8Vi9KUQ==}
@@ -12802,12 +12799,6 @@ snapshots:
 
   '@inkeep/cxkit-types@0.5.119': {}
 
-  '@inkeep/mermaid-wysiwyg-core@0.1.0': {}
-
-  '@inkeep/mermaid-wysiwyg-dom@0.1.0(patch_hash=e1e3cd09ba940870d38765f74f33c1d0d582004731630c8bb807201d38ee81c9)':
-    dependencies:
-      '@inkeep/mermaid-wysiwyg-core': 0.1.0
-
   '@inquirer/ansi@2.0.7': {}
 
   '@inquirer/checkbox@5.2.1(@types/node@24.13.3)':
@@ -16192,6 +16183,12 @@ snapshots:
     dependencies:
       native-promise-only: 0.8.1
       weakmap-polyfill: 2.0.4
+
+  '@visimer/core@0.1.0': {}
+
+  '@visimer/dom@0.1.0':
+    dependencies:
+      '@visimer/core': 0.1.0
 
   '@vitejs/plugin-react@6.0.1(@rolldown/plugin-babel@0.2.2(@babel/core@7.29.0)(@babel/runtime@7.29.7)(rolldown@1.1.5)(vite@8.0.8(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.0)(yaml@2.9.0)))(babel-plugin-react-compiler@0.0.0-experimental-a8e64ef-20260402)(vite@8.0.8(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.0)(yaml@2.9.0))':
     dependencies:

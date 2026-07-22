@@ -3,11 +3,11 @@
  *
  * Same testing-library-free convention as Math.test.tsx: `renderToString`
  * from `react-dom/server` is the substrate. Mermaid renders via `useEffect`
- * + an async lazy import + the mermaid-wysiwyg canvas view, so under
+ * + an async lazy import + the visimer canvas view, so under
  * `renderToString` the component lands in its initial placeholder state
  * (the effect fires only on real mount). Live SVG output is exercised via
  * the Playwright visual-regression suite; canvas behavior (selection,
- * popovers, in-place edits) is owned by the `mermaid-wysiwyg` package's
+ * popovers, in-place edits) is owned by the `visimer` package's
  * own test suite.
  */
 

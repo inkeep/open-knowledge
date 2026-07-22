@@ -7,8 +7,8 @@
  * for documents without diagrams; cost at first diagram is ~150 KB
  * gzipped (entry ~11 KB + lazy diagram-type chunks 24-45 KB each).
  *
- * Rendering + editing are delegated to `mermaid-wysiwyg`
- * (`@inkeep/mermaid-wysiwyg-core` + `@inkeep/mermaid-wysiwyg-dom`): the canvas view
+ * Rendering + editing are delegated to `visimer`
+ * (`@visimer/core` + `@visimer/dom`): the canvas view
  * renders through our own lazy `mermaid` instance (full fidelity, same
  * theming as before), correlates the SVG back to source entities, and
  * overlays interaction — click-select with a per-entity action popover
@@ -38,10 +38,10 @@
  * container below.
  */
 
-import type { MermaidWysiwygEditor } from '@inkeep/mermaid-wysiwyg-core';
-import type { MermaidCanvasView } from '@inkeep/mermaid-wysiwyg-dom';
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { default as PanZoomNS, PanzoomObject } from '@panzoom/panzoom';
+import type { MermaidWysiwygEditor } from '@visimer/core';
+import type { MermaidCanvasView } from '@visimer/dom';
 import {
   AlertTriangle,
   ArrowDown,
@@ -125,13 +125,10 @@ function loadMermaid() {
 }
 
 let wysiwygPromise: Promise<
-  [typeof import('@inkeep/mermaid-wysiwyg-core'), typeof import('@inkeep/mermaid-wysiwyg-dom')]
+  [typeof import('@visimer/core'), typeof import('@visimer/dom')]
 > | null = null;
 function loadWysiwyg() {
-  wysiwygPromise ||= Promise.all([
-    import('@inkeep/mermaid-wysiwyg-core'),
-    import('@inkeep/mermaid-wysiwyg-dom'),
-  ]).catch((err) => {
+  wysiwygPromise ||= Promise.all([import('@visimer/core'), import('@visimer/dom')]).catch((err) => {
     wysiwygPromise = null;
     throw err;
   });
