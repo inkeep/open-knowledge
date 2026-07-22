@@ -316,6 +316,7 @@ import { startFirstRunHandshake } from './share-handoff.ts';
 import { checkOutboundUrl, handleShellOpenExternal } from './shell-allowlist.ts';
 import { applyHarvestedAuthSock, harvestShellAuthSock } from './shell-env.ts';
 import { createShowGateRegistry, type ShowGateRegistry } from './show-gate.ts';
+import { installSignalCleanQuit } from './signal-clean-quit.ts';
 import { reclaimProjectSkillsOnProjectOpen, reclaimUserSkillsOnLaunch } from './skill-reclaim.ts';
 import { attachSpellcheckContextMenu } from './spellcheck-context-menu.ts';
 import { popSpellcheckMenu } from './spellcheck-menu.ts';
@@ -5436,6 +5437,17 @@ function bootPrimaryInstance(): void {
   powerMonitor.on('shutdown', () => crashDetection?.noteOsShutdown());
   powerMonitor.on('suspend', () => crashDetection?.noteSuspend());
   powerMonitor.on('resume', () => crashDetection?.noteResume());
+  // Clean-quit on catchable termination signals (SIGTERM/SIGINT/SIGHUP) so an
+  // orderly stop (logout, `killall`, Activity Monitor's "Quit") isn't misread
+  // as a crash next boot. Installed after crashDetection is wired so
+  // `markCleanQuit` is live. Full rationale + SIGKILL-race handling live in
+  // `signal-clean-quit.ts`.
+  installSignalCleanQuit({
+    process,
+    markCleanQuit: () => crashDetection?.markCleanQuit(),
+    quit: () => app.quit(),
+    logger: getLogger('signal-clean-quit'),
+  });
   app.on('child-process-gone', (_event, details) => {
     // Feed the server-exit recorder every Utility death (not just the crash
     // reasons the invitation pipeline acts on) so the bundle can distinguish a
