@@ -48,7 +48,7 @@ export function SkillMarkdownViewer({ fileName, text }: { fileName: string; text
         attributes: {
           // Same content-surface padding as the real editor (TiptapEditor's
           // `editorProps.attributes.class`) so spacing matches.
-          class: 'pt-4 pb-4',
+          class: 'pt-4',
         },
       },
     },

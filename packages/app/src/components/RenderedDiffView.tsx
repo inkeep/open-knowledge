@@ -78,7 +78,7 @@ export function RenderedDiffView({ diff }: { diff: RenderedDiff }) {
       content: diff.afterDoc.toJSON(),
       editorProps: {
         // Same content-surface padding as the real editor so spacing matches.
-        attributes: { class: 'pt-4 pb-4' },
+        attributes: { class: 'pt-4' },
       },
     },
     [diff],

@@ -40,6 +40,7 @@ import {
 import { useProperties } from '@/components/PropertyContext';
 import { PropertyDisclosure } from '@/components/PropertyDisclosure';
 import { coerceValue, DEFAULT_VALUE_FOR_TYPE } from '@/components/PropertyWidgets';
+import { usePropertiesCollapsed } from '@/components/properties-collapsed-store';
 import { Button } from '@/components/ui/button';
 import { usePublishFrontmatterSelection } from '@/hooks/use-selection-context';
 
@@ -91,7 +92,13 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
   const orderedKeys = snapshot.keys;
   const parseError = snapshot.parseError;
 
-  const [collapsed, setCollapsed] = useState(false);
+  // Collapsed state is a persisted, user-global preference shared LIVE across all
+  // mounted panels (see properties-collapsed-store): collapsing on one file
+  // collapses the section everywhere, immediately, and survives reload. The live
+  // resize of a hidden, scrolled doc is kept scroll-safe by
+  // ScrollPreservingContainer's body-top anchor restore. The `setCollapsed(false)`
+  // force-expands below (add-property intent) also persist "open"; that's intended.
+  const [collapsed, setCollapsed] = usePropertiesCollapsed();
   const [overrides, setOverrides] = useState<Record<string, FrontmatterType>>({});
   const [adding, setAdding] = useState<AddDraft | null>(null);
   const [renaming, setRenaming] = useState<RenameDraft | null>(null);
@@ -256,7 +263,7 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
       setAdding({ name: '', type: 'text', value: '', error: null });
       setCollapsed(false);
     }
-  }, [addSignal]);
+  }, [addSignal, setCollapsed]);
   useEffect(() => {
     return () => clearAddProperty(docName);
   }, [docName, clearAddProperty]);
@@ -384,21 +391,39 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
 
   if (renderKeys.length === 0 && !adding && !parseError) return null;
 
+  // Flush-left alignment. Sortable rows carry a drag-handle gutter (FrontmatterRow:
+  // a `w-4` handle + `gap-1` = 1.25rem) that pushes the type-icon column right of
+  // the document content edge. We pull the whole collapsible content left via
+  // `--prop-drag-gutter` so the type icons sit flush under the disclosure chevron;
+  // the in-flow drag handle overhangs into the page margin — it stays visible
+  // because the shift moves the whole `overflow-hidden` box (an inner child would
+  // be clipped). The value is tuned slightly ABOVE the raw 1.25rem gutter so the
+  // icons land under the chevron GLYPH, which itself sits `px-1` in from the panel
+  // edge — hence 1.375rem, not the bare gutter width. Framed children with no
+  // gutter (the YAML-error banner, the add-property form) cancel the pull with
+  // `PROP_GUTTER_COMPENSATE`.
+  const PROP_CONTENT_SHIFT = '[--prop-drag-gutter:1.375rem] -ml-(--prop-drag-gutter)';
+  const PROP_GUTTER_COMPENSATE = 'ml-(--prop-drag-gutter)';
+
   return (
     <FrontmatterBindingProvider binding={binding}>
       <PropertyDisclosure
         ref={panelRef}
         title={<Trans>Properties</Trans>}
+        count={renderKeys.length}
         testId="property-panel"
-        className="pt-4 pb-4"
+        className="pt-4"
+        contentClassName={PROP_CONTENT_SHIFT}
         open={!collapsed}
         onOpenChange={(open) => setCollapsed(!open)}
       >
         {parseError ? (
+          // No drag-handle gutter — cancel the content shift so the banner sits
+          // flush instead of hanging into the page margin (see PROP_CONTENT_SHIFT).
           <div
             role="alert"
             data-testid="property-panel-yaml-error"
-            className="mb-1 flex items-start gap-1.5 rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-[11px] text-destructive"
+            className={`mb-1 ${PROP_GUTTER_COMPENSATE} flex items-start gap-1.5 rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-[11px] text-destructive`}
           >
             <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
             <div>
@@ -487,14 +512,18 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
           />
         ) : null}
         {adding ? (
-          <AddPropertyRow
-            draft={adding}
-            onChangeName={changeAddName}
-            onChangeType={changeAddType}
-            onChangeValue={changeAddValue}
-            onCommit={commitAdd}
-            onCancel={cancelAdd}
-          />
+          // No drag-handle gutter — cancel the content shift so the add form
+          // sits flush with the rows (see PROP_CONTENT_SHIFT).
+          <div className={PROP_GUTTER_COMPENSATE}>
+            <AddPropertyRow
+              draft={adding}
+              onChangeName={changeAddName}
+              onChangeType={changeAddType}
+              onChangeValue={changeAddValue}
+              onCommit={commitAdd}
+              onCancel={cancelAdd}
+            />
+          </div>
         ) : (
           // Wrapper mirrors FrontmatterRow's flex layout above: an
           // aria-hidden `w-4` spacer occupies the drag-handle column,

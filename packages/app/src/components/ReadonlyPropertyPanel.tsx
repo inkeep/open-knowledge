@@ -40,8 +40,9 @@ export function ReadonlyPropertyPanel({ text }: { text: string }) {
   return (
     <PropertyDisclosure
       title={<Trans>Properties</Trans>}
+      count={renderKeys.length}
       testId="readonly-property-panel"
-      className="pt-4 pb-4"
+      className="pt-4"
     >
       {renderKeys.map((key, idx) => {
         const value = map[key];
