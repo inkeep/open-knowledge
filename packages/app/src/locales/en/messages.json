@@ -599,7 +599,6 @@
     "By-7Pn": ["Toggle a bullet list."],
     "BymzO4": ["Document outline"],
     "C0hoX6": ["Always included"],
-    "C37Zkt": ["Send to"],
     "C62P6b": ["Editor selection"],
     "C7XjNB": ["Global Skill"],
     "C9TBvF": ["No Outgoing"],
@@ -718,7 +717,6 @@
     "EOjU5V": ["Inline Math Properties"],
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " tokens used"],
     "ETyvvg": ["No language match."],
-    "EVnzPs": ["Edit with AI"],
     "EWPtMO": ["Code"],
     "EWX92Z": ["Collapse Ask AI"],
     "EZVxVz": ["Replace the active match from the replace field."],
@@ -735,7 +733,6 @@
     "EbZT7P": ["Toggle the left file sidebar."],
     "EbjWsS": ["Current commit"],
     "EcM3k7": ["Failed to clean up pending ", ["kind"]],
-    "EcR0fl": ["Checking for installed agents"],
     "EdQY6l": ["None"],
     "EeUucb": ["Rule editing is available for the project's root markdownlint config"],
     "Ef7StM": ["Unknown"],
@@ -1772,7 +1769,6 @@
     "_SDGzH": ["Continue in browser"],
     "_TDESN": ["Network error - ", ["kind"], " \"", ["createdPath"], "\" still exists on disk"],
     "_TF8ep": ["Failed to render PDF"],
-    "_VRtd7": ["Couldn't send the selection — please try again."],
     "_W-elG": ["(inline)"],
     "_WPP7e": [
       "Read-only copy of a MirrorSource block from another doc. Edit at the source and it updates live."
@@ -2296,7 +2292,6 @@
     "l3s5ri": ["Import"],
     "l3zD7w": ["Starting the agent…"],
     "l46MqT": ["Next tab"],
-    "l6OXqI": ["No installed agents found"],
     "l6kpzR": [
       "This ",
       ["targetNoun"],

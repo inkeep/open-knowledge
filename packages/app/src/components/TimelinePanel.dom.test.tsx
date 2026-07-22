@@ -4,17 +4,21 @@
  * Pins two user-visible contracts from the "timeline shows only auto-commits"
  * change: (1) checkpoint rows are filtered out of the panel — they are
  * background-cleanup artifacts now, not user history; and (2) there is no
- * Save Version control in the panel header. The expand/diff/restore flow is
- * exercised by the Playwright suite (timeline-diff-sidepane.e2e.ts); this
- * mount test locks the filtering + header contract without a browser (and
- * without a shadow repo, which the e2e fixture requires).
+ * Save Version control in the panel header. This mount test locks the
+ * filtering + header contract without a browser (and without a shadow repo).
+ * The diff/restore flow (redesigned into the TimelineDiffPane overlay in #2607)
+ * has no browser-tier coverage yet.
  *
- * Invocation: `bun run test:dom` from `packages/app/`.
+ * Invocation: `pnpm run test:dom` from `packages/app/`.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
 
-mock.module('next-themes', () => ({
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
+// `vi.mock` is hoisted above every import, so `next-themes` resolves to this
+// stub before the SUT (imported dynamically below) pulls in its transitive
+// `useTheme`.
+vi.mock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'light' }),
 }));
 
@@ -76,7 +80,7 @@ afterEach(() => {
 });
 
 function mockHistory(entries: TimelineEntry[]) {
-  globalThis.fetch = mock((input: RequestInfo | URL) => {
+  globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input.toString();
     if (url.includes('/api/history')) {
       return Promise.resolve(

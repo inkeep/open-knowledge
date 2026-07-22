@@ -318,8 +318,8 @@ export function OpenInAgentMenu({ input, open, onOpenChange }: OpenInAgentMenuPr
   // programmatic open both bypass Radix's own onOpenChange). `useEffectEvent`
   // keeps `refresh` out of the dependency array so the effect fires on the open
   // edge only. The probe coordinator handles throttle + dedup, so re-firing is
-  // safe. Mirrors `EditWithAiPopover`. Declared before the embedded early-return
-  // so the hook order stays stable across renders (rules of hooks).
+  // safe. Declared before the embedded early-return so the hook order stays
+  // stable across renders (rules of hooks).
   const refreshOnOpen = useEffectEvent(() => {
     void refresh();
   });

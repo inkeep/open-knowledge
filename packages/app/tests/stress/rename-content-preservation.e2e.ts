@@ -91,7 +91,6 @@ test.describe('FileTree sidebar rename — content preservation', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          ok: true,
           pages: [
             {
               docName: 'foo/index',
@@ -106,9 +105,20 @@ test.describe('FileTree sidebar rename — content preservation', () => {
     });
 
     await page.route('**/api/rename-path', async (route) => {
-      const body = route.request().postDataJSON() as { fromPath?: string; toPath?: string } | null;
+      const body = route.request().postDataJSON() as {
+        kind?: string;
+        fromPath?: string;
+        toPath?: string;
+      } | null;
       const response = await route.fetch();
-      if (body?.fromPath === 'bar/hello' && body?.toPath === 'bar/something') {
+      // The file-tree rename payload is kind-bearing and carries the
+      // destination tree path with its extension: fromPath is the extension-
+      // less docName, toPath keeps the `.md` suffix (normalizeTreePathForKind).
+      if (
+        body?.kind === 'file' &&
+        body?.fromPath === 'bar/hello' &&
+        body?.toPath === 'bar/something.md'
+      ) {
         serveLaggingPages = true;
       }
       await route.fulfill({ response });

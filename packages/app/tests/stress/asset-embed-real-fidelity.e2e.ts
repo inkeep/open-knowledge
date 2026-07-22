@@ -186,7 +186,7 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
     expect(sha256(onDisk)).toBe(expectedSha);
   });
 
-  test('QA-004: real ZIP → [archive.zip](archive.zip) markdown-link (opaque)', async ({
+  test('QA-004: real ZIP → ![[archive.zip]] wiki-embed (File row) + byte-exact on-disk', async ({
     page,
     workerServer,
   }) => {
@@ -197,9 +197,11 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
       .poll(async () => await getSourceText(page), { timeout: 10_000 })
       .toContain('archive.zip');
     const text = await getSourceText(page);
-    // Opaque-emit rule: NOT wiki-embed shape for zip.
-    expect(text).not.toContain('![[archive.zip]]');
-    expect(text).toContain('[archive.zip](archive.zip)');
+    // zip is a FILE_ATTACHMENT_EXTENSIONS member: drops route through
+    // pickInsertShape 'jsx-file' -> WikiEmbedFile, whose serialize emits the
+    // wiki-embed source bytes so the file persists as a File row, not an
+    // opaque markdown link.
+    expect(text).toContain('![[archive.zip]]');
     const onDisk = await waitForDiskFile(workerServer.contentDir, 'archive.zip');
     expect(sha256(onDisk)).toBe(expectedSha);
   });
@@ -256,7 +258,7 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
     await expect.poll(() => alertFired, { timeout: 500 }).toBe(false);
   });
 
-  test('QA-006: real CSV → [data.csv](data.csv) markdown-link (D-M accept-all)', async ({
+  test('QA-006: real CSV → ![[data.csv]] wiki-embed (File row) + byte-exact on-disk', async ({
     page,
     workerServer,
   }) => {
@@ -267,7 +269,9 @@ test.describe('asset-embed — real-fidelity byte-identity (QA-001/002/003/004/0
       .poll(async () => await getSourceText(page), { timeout: 10_000 })
       .toContain('data.csv');
     const text = await getSourceText(page);
-    expect(text).not.toContain('![[data.csv]]');
+    // csv is a FILE_ATTACHMENT_EXTENSIONS member, so the drop serializes to the
+    // wiki-embed source bytes rather than a fall-through markdown link.
+    expect(text).toContain('![[data.csv]]');
     const onDisk = await waitForDiskFile(workerServer.contentDir, 'data.csv');
     expect(sha256(onDisk)).toBe(expectedSha);
     expect(onDisk.toString('utf-8')).toBe('name,age,city\nAlice,30,NYC\nBob,25,LA\n');

@@ -265,7 +265,10 @@ test.describe('Settings — Ignore patterns section (US-007 / US-008 / US-009 / 
   test('US-010: Show advanced toggle reveals a textarea bound to the same Y.Text', async ({
     page,
   }) => {
-    await page.goto('/#settings');
+    // Deep-link to the section so the later page.reload() reopens here — a bare
+    // `#settings` hash reopens on the default Preferences section (the active
+    // section is not persisted across reopen).
+    await page.goto('/#settings/okignore');
     await page.getByTestId('settings-sidebar-item-okignore').click();
     await expect(page.getByTestId('settings-okignore-section')).toBeVisible({ timeout: 10_000 });
 
@@ -312,7 +315,9 @@ test.describe('Settings — Ignore patterns section (US-007 / US-008 / US-009 / 
   test('US-010: editing in textarea persists and the list view reflects the new patterns', async ({
     page,
   }) => {
-    await page.goto('/#settings');
+    // Deep-link to the section so the later page.reload() reopens here (a bare
+    // `#settings` hash reopens on the default Preferences section).
+    await page.goto('/#settings/okignore');
     await page.getByTestId('settings-sidebar-item-okignore').click();
     await expect(page.getByTestId('settings-okignore-section')).toBeVisible({ timeout: 10_000 });
 
@@ -358,7 +363,9 @@ test.describe('Settings — Ignore patterns section (US-007 / US-008 / US-009 / 
   });
 
   test('US-010: round-trip preserves comments and blank lines byte-for-byte', async ({ page }) => {
-    await page.goto('/#settings');
+    // Deep-link to the section so the later page.reload() reopens here (a bare
+    // `#settings` hash reopens on the default Preferences section).
+    await page.goto('/#settings/okignore');
     await page.getByTestId('settings-sidebar-item-okignore').click();
     await expect(page.getByTestId('settings-okignore-section')).toBeVisible({ timeout: 10_000 });
 
@@ -393,7 +400,9 @@ test.describe('Settings — Ignore patterns section (US-007 / US-008 / US-009 / 
   });
 
   test('US-010: toggle state persists in localStorage across page reloads', async ({ page }) => {
-    await page.goto('/#settings');
+    // Deep-link to the section so the page.reload() below reopens here (a bare
+    // `#settings` hash reopens on the default Preferences section).
+    await page.goto('/#settings/okignore');
     await page.getByTestId('settings-sidebar-item-okignore').click();
     await expect(page.getByTestId('settings-okignore-section')).toBeVisible({ timeout: 10_000 });
 

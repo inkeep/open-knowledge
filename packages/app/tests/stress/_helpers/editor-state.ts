@@ -11,7 +11,7 @@
  * touch the server URL.
  */
 
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 /**
  * Press the platform select-all chord in the focused editor view and yield
@@ -226,4 +226,53 @@ export async function waitForPmSelectionInNode(
     nodeType,
     { timeout: timeoutMs },
   );
+}
+
+/**
+ * Force-render the full doc, then reset scroll to the top. ProseMirror skips
+ * layout work for off-screen content; without this prime step, the smooth-
+ * scroll fired by an outline click computes its destination against an
+ * incomplete layout, then content materializes mid-animation and the target
+ * overshoots off-viewport. Scrolling to the end first materializes every
+ * paragraph, after which the scroll math is stable. Keyed on
+ * `[data-testid="editor-scroll-container"]`.
+ */
+export async function primeFullLayout(page: Page): Promise<void> {
+  // Scroll to the bottom and poll until `scrollHeight` stops growing — each
+  // ProseMirror lazy-render pass extends it, and two consecutive equal reads
+  // (separated by the poll interval, i.e. ≥1 layout cycle) means the full doc
+  // has materialized. Condition-based wait per the E2E STOP rule (no
+  // `page.waitForTimeout`).
+  let lastHeight = -1;
+  await expect
+    .poll(
+      async () => {
+        const h = await page.evaluate(() => {
+          const s = document.querySelector('[data-testid="editor-scroll-container"]');
+          if (!(s instanceof HTMLElement)) return -1;
+          s.scrollTop = s.scrollHeight;
+          return s.scrollHeight;
+        });
+        const stable = h > 0 && h === lastHeight;
+        lastHeight = h;
+        return stable;
+      },
+      { timeout: 6_000, intervals: [150, 250, 350] },
+    )
+    .toBe(true);
+
+  // Reset to the top and poll until `scrollTop` is parked at 0 — scroll
+  // anchoring can re-nudge it after the large content materialization above.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const s = document.querySelector('[data-testid="editor-scroll-container"]');
+          if (!(s instanceof HTMLElement)) return -1;
+          if (s.scrollTop !== 0) s.scrollTop = 0;
+          return s.scrollTop;
+        }),
+      { timeout: 3_000, intervals: [100, 200] },
+    )
+    .toBe(0);
 }

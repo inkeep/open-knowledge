@@ -1544,10 +1544,6 @@ msgstr ""
 msgid "Checking for agents"
 msgstr ""
 
-#: src/components/handoff/EditWithAiPopover.tsx
-msgid "Checking for installed agents"
-msgstr ""
-
 #: src/components/share-receive-miss-content.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Checking for updates on GitHub"
@@ -2539,10 +2535,6 @@ msgstr ""
 msgid "Couldn't send the report"
 msgstr ""
 
-#: src/components/handoff/EditWithAiPopover.tsx
-msgid "Couldn't send the selection — please try again."
-msgstr ""
-
 #: src/components/BottomComposer.tsx
 msgid "Couldn't send your prompt — please try again."
 msgstr ""
@@ -3261,10 +3253,6 @@ msgstr ""
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Edit wiki link"
-msgstr ""
-
-#: src/components/handoff/EditWithAiPopover.tsx
-msgid "Edit with AI"
 msgstr ""
 
 #: src/components/TimelinePanel.tsx
@@ -4673,7 +4661,6 @@ msgstr ""
 msgid "Installing {agentName}…"
 msgstr ""
 
-#: src/components/handoff/EditWithAiPopover.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Instruction for the AI"
 msgstr ""
@@ -5590,10 +5577,6 @@ msgstr ""
 
 #: src/components/GraphPanel.tsx
 msgid "No Incoming"
-msgstr ""
-
-#: src/components/handoff/EditWithAiPopover.tsx
-msgid "No installed agents found"
 msgstr ""
 
 #: src/editor/extensions/CodeBlockView.tsx
@@ -7622,10 +7605,6 @@ msgstr ""
 msgid "Send report"
 msgstr ""
 
-#: src/components/handoff/EditWithAiPopover.tsx
-msgid "Send to"
-msgstr ""
-
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send your report by email"
 msgstr ""
@@ -9516,7 +9495,6 @@ msgstr ""
 msgid "What is this knowledge base for?"
 msgstr ""
 
-#: src/components/handoff/EditWithAiPopover.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "What should the AI do? (optional)"
 msgstr ""

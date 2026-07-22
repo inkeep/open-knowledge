@@ -1548,10 +1548,6 @@ msgstr "Checkbox"
 msgid "Checking for agents"
 msgstr "Checking for agents"
 
-#: src/components/handoff/EditWithAiPopover.tsx
-msgid "Checking for installed agents"
-msgstr "Checking for installed agents"
-
 #: src/components/share-receive-miss-content.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Checking for updates on GitHub"
@@ -2543,10 +2539,6 @@ msgstr "Couldn't save the resolution for {filePath}."
 msgid "Couldn't send the report"
 msgstr "Couldn't send the report"
 
-#: src/components/handoff/EditWithAiPopover.tsx
-msgid "Couldn't send the selection — please try again."
-msgstr "Couldn't send the selection — please try again."
-
 #: src/components/BottomComposer.tsx
 msgid "Couldn't send your prompt — please try again."
 msgstr "Couldn't send your prompt — please try again."
@@ -3266,10 +3258,6 @@ msgstr "Edit this HTML — the preview updates live."
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Edit wiki link"
 msgstr "Edit wiki link"
-
-#: src/components/handoff/EditWithAiPopover.tsx
-msgid "Edit with AI"
-msgstr "Edit with AI"
 
 #: src/components/TimelinePanel.tsx
 msgid "Edited"
@@ -4677,7 +4665,6 @@ msgstr "Installing"
 msgid "Installing {agentName}…"
 msgstr "Installing {agentName}…"
 
-#: src/components/handoff/EditWithAiPopover.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Instruction for the AI"
 msgstr "Instruction for the AI"
@@ -5595,10 +5582,6 @@ msgstr "No hub pages yet. Hubs appear once pages accumulate inbound graph links.
 #: src/components/GraphPanel.tsx
 msgid "No Incoming"
 msgstr "No Incoming"
-
-#: src/components/handoff/EditWithAiPopover.tsx
-msgid "No installed agents found"
-msgstr "No installed agents found"
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "No language match."
@@ -7626,10 +7609,6 @@ msgstr "Send"
 msgid "Send report"
 msgstr "Send report"
 
-#: src/components/handoff/EditWithAiPopover.tsx
-msgid "Send to"
-msgstr "Send to"
-
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send your report by email"
 msgstr "Send your report by email"
@@ -9520,7 +9499,6 @@ msgstr "What is a starter pack?"
 msgid "What is this knowledge base for?"
 msgstr "What is this knowledge base for?"
 
-#: src/components/handoff/EditWithAiPopover.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "What should the AI do? (optional)"
 msgstr "What should the AI do? (optional)"
