@@ -46,6 +46,7 @@ import type {
   OkOnboardingShowPayload,
   OkPtyData,
   OkPtyExit,
+  OkRecentRemovedMissingInfo,
   OkServerRestartedInfo,
   OkServerVersionDriftInfo,
   OkShareReceivedPayload,
@@ -371,6 +372,13 @@ const bridge: OkDesktopBridge = {
     // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:server-restarted', listener);
     return () => ipcRenderer.removeListener('ok:server-restarted', listener);
+  },
+
+  onRecentRemovedMissing(cb: (info: OkRecentRemovedMissingInfo) => void) {
+    const listener = (_event: IpcRendererEvent, info: OkRecentRemovedMissingInfo) => cb(info);
+    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    ipcRenderer.on('ok:project:recent-removed-missing', listener);
+    return () => ipcRenderer.removeListener('ok:project:recent-removed-missing', listener);
   },
 
   restartServer: (projectPath: string) => invoke('ok:project:restart-server', projectPath),

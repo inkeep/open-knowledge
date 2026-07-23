@@ -1523,7 +1523,6 @@
     "VM7H66": ["This file is binary and can't be shown as text."],
     "VNgKZz": ["Advanced settings"],
     "VTulZj": ["Open in worktree"],
-    "VU3Nrn": ["Missing"],
     "VUijjF": ["Embed an image with optional alt text."],
     "VYd_YA": ["Open an existing project folder from disk."],
     "VZGh8G": ["Fold, unfold, fold all, or unfold all source ranges."],
@@ -1651,6 +1650,7 @@
       "</1> because it contains a <2>.git</2> folder (one .ok/ per git repo). <3>Content directory</3> defaults to <4>.</4> (the whole repo); type a sub-folder to narrow it."
     ],
     "Y2tU6I": ["Delete ", ["0"]],
+    "Y6PKd1": ["Remove ", ["name"], " from recent projects"],
     "Y6SK9K": ["Show source"],
     "Y8ViJx": ["A newer version may have been deployed since this tab opened."],
     "YBt9YP": ["Beta"],
@@ -2341,7 +2341,6 @@
     ],
     "lond3p": ["Shows above the code body. Round-trips as `title=\"...\"` in markdown."],
     "lrhetp": ["+ ", ["overflow"], " more"],
-    "ls1N1w": ["(missing)"],
     "lyWa43": ["Project-level disconnected pages"],
     "lzmtKp": ["Failed to load folder properties: ", ["message"]],
     "lzwo7p": ["Could not open GitHub sign-in. Please try again."],
@@ -2834,6 +2833,11 @@
     "wTcjov": ["No workspace"],
     "wVa83H": ["Couldn't create the report"],
     "wXO4Tg": [["hrs"], "h ago"],
+    "wXw19Y": [
+      "Removed \"",
+      ["projectName"],
+      "\" from recent projects. Its folder no longer exists."
+    ],
     "w_Sphq": ["Attachments"],
     "waFx9W": ["Managed"],
     "wbv9xO": ["Create new project"],

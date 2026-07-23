@@ -82,10 +82,6 @@ msgstr ""
 msgid "(inline)"
 msgstr ""
 
-#: src/components/CommandPalette.tsx
-msgid "(missing)"
-msgstr ""
-
 #: src/editor/components/MirrorSource.tsx
 msgid "(no id)"
 msgstr ""
@@ -3724,7 +3720,9 @@ msgstr ""
 msgid "Failed to parse forward-links error response (HTTP {status})"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
 #: src/components/NavigatorApp.tsx
+#: src/components/ProjectSwitcher.tsx
 msgid "Failed to remove project."
 msgstr ""
 
@@ -5131,10 +5129,6 @@ msgstr ""
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Mirror source <0>api-spec</0>"
-msgstr ""
-
-#: src/components/NavigatorApp.tsx
-msgid "Missing"
 msgstr ""
 
 #: src/components/FeedbackForm.tsx
@@ -6906,6 +6900,10 @@ msgstr ""
 msgid "Remove {label} from context"
 msgstr ""
 
+#: src/components/recent-remove-controls.tsx
+msgid "Remove {name} from recent projects"
+msgstr ""
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "Remove {patternText}"
 msgstr ""
@@ -6923,6 +6921,7 @@ msgid "Remove failed: {error}"
 msgstr ""
 
 #: src/components/NavigatorApp.tsx
+#: src/components/recent-remove-controls.tsx
 msgid "Remove from recent projects"
 msgstr ""
 
@@ -6945,6 +6944,10 @@ msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Remove the parent <0>.git</0> folder"
+msgstr ""
+
+#: src/lib/install-recent-removed-listener.ts
+msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr ""
 
 #. Warning shown when the user unchecks an already-installed skill

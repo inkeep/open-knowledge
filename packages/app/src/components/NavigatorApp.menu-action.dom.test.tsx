@@ -90,6 +90,7 @@ function makeNavigatorBridge(): NavigatorBridgeStub {
       mode: 'navigator',
     },
     onMenuAction: () => () => {},
+    onRecentRemovedMissing: () => () => {},
     project: {
       listRecent: async () => [],
       removeRecent: async () => undefined,

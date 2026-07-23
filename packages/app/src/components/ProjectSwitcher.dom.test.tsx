@@ -338,6 +338,26 @@ describe('ProjectSwitcher dropdown behavior', () => {
     expect(createDialogProps.at(-1)?.bridge).toBe(bridge);
   });
 
+  test('the per-row × removes a recent from the list without opening it', async () => {
+    const bridge = createBridge();
+    bridge.project.removeRecent = mock(() => Promise.resolve());
+    render(<ProjectSwitcher bridge={bridge as never} />);
+    await openMenu();
+
+    // Project 1 has no opened worktrees, so it renders as a flat recent row that
+    // carries the trailing "×". Clicking it must prune the entry, NOT open it —
+    // the × is a sibling of the menu item, so the item's open `onSelect` never
+    // fires (VS Code Open Recent per-row remove).
+    fireEvent.click(screen.getByTestId('project-switcher-recent-remove-/projects/project-1'));
+    await waitFor(() => {
+      expect(bridge.project.removeRecent).toHaveBeenCalledWith('/projects/project-1');
+    });
+    expect(bridge.project.open).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.queryByTestId('project-switcher-recent-/projects/project-1')).toBeNull();
+    });
+  });
+
   test('search matches projects only (not worktrees/branches), announces empty results, stops typeahead bubbling, and clears on close', async () => {
     const bridge = createBridge();
     render(<ProjectSwitcher bridge={bridge as never} />);

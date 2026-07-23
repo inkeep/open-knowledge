@@ -3,7 +3,11 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync }
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { checkTargetExists, computeShareTargetMissing } from './check-target-exists.ts';
+import {
+  checkProjectDirExists,
+  checkTargetExists,
+  computeShareTargetMissing,
+} from './check-target-exists.ts';
 
 describe('checkTargetExists', () => {
   function makeProject(): string {
@@ -383,5 +387,74 @@ describe('computeShareTargetMissing', () => {
         path: 'README.md',
       }),
     ).toBe(false);
+  });
+});
+
+describe('checkProjectDirExists', () => {
+  function makeTmp(): string {
+    return mkdtempSync(join(tmpdir(), 'ok-check-project-dir-'));
+  }
+  function cleanup(path: string): void {
+    // Restore permissions first so a chmod'd parent can be removed.
+    try {
+      chmodSync(path, 0o755);
+    } catch {
+      // best-effort
+    }
+    rmSync(path, { recursive: true, force: true });
+  }
+  const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+
+  test('returns exists for a present directory', () => {
+    const dir = makeTmp();
+    try {
+      expect(checkProjectDirExists(dir)).toEqual('exists');
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test('returns missing for a genuinely absent path (ENOENT)', () => {
+    const parent = makeTmp();
+    try {
+      // Never created — the deleted/moved-folder case the lazy prune targets.
+      expect(checkProjectDirExists(join(parent, 'gone'))).toEqual('missing');
+    } finally {
+      cleanup(parent);
+    }
+  });
+
+  test('returns missing when the path is a file, not a directory', () => {
+    const parent = makeTmp();
+    try {
+      const filePath = join(parent, 'proj');
+      writeFileSync(filePath, 'not a dir\n');
+      expect(checkProjectDirExists(filePath)).toEqual('missing');
+    } finally {
+      cleanup(parent);
+    }
+  });
+
+  // An EACCES / unreadable folder (unmounted volume, permission-restricted
+  // parent) must classify as `'unreadable'`, NOT `'missing'` — otherwise the
+  // recents lazy-prune would drop a project that is still present. `existsSync`
+  // (the pre-fix gate) collapses EACCES to `false` and would misclassify it as a
+  // miss; this is the case the fix guards.
+  test('returns unreadable when a present folder has an unreadable parent (EACCES)', () => {
+    if (isRoot) return; // root bypasses the permission check
+    const parent = makeTmp();
+    const child = join(parent, 'proj');
+    mkdirSync(child);
+    try {
+      chmodSync(parent, 0o000);
+      expect(checkProjectDirExists(child)).toEqual('unreadable');
+    } finally {
+      chmodSync(parent, 0o755);
+      cleanup(parent);
+    }
+  });
+
+  test('returns unreadable for an unsafe (non-absolute) project path', () => {
+    expect(checkProjectDirExists('relative/project')).toEqual('unreadable');
   });
 });

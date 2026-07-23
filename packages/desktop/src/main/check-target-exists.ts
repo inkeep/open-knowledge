@@ -177,6 +177,38 @@ export function checkTargetExists(
 }
 
 /**
+ * Classify a bare project directory's on-disk state for the recents
+ * lazy-remove-on-open gate. Distinguishes a genuine `ENOENT` miss
+ * (`'missing'` — the folder was deleted/moved, safe to drop the stale recent)
+ * from an `EACCES` / I-O failure or an unsafe path (`'unreadable'` — a
+ * temporarily-unmounted volume or a permission-restricted parent, which must
+ * NOT be pruned). Mirrors {@link checkTargetExists}'s errno split, but probes
+ * the project root itself rather than a contained sub-target — `existsSync`
+ * cannot make this distinction because it collapses every error, including
+ * `EACCES`, to `false`. A path that exists but is not a directory (the folder
+ * was replaced by a file) is `'missing'`, matching the wrong-kind semantics
+ * above.
+ */
+export function checkProjectDirExists(projectPath: string): CheckTargetExistsResult {
+  if (!isSafeProjectPath(projectPath)) return 'unreadable';
+  let stat: ReturnType<typeof statSync>;
+  try {
+    stat = statSync(projectPath);
+  } catch (err) {
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code?: unknown }).code === 'ENOENT'
+    ) {
+      return 'missing';
+    }
+    return 'unreadable';
+  }
+  return stat.isDirectory() ? 'exists' : 'missing';
+}
+
+/**
  * Decide whether a share-receive deep-link target is absent on the receiver's
  * checked-out working tree, so the caller can flag the window it is about to
  * open. Renderer-initiated opens — a fresh clone, or a pivot into another

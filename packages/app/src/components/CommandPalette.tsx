@@ -91,6 +91,7 @@ import { refreshWorktrees } from '@/lib/worktree-store';
 import { buildHandoffInput, useHandoffDispatch } from './handoff/useHandoffDispatch';
 import { useInstalledAgents } from './handoff/useInstalledAgents';
 import { basenameOf } from './project-switcher-recents';
+import { RecentItemContextMenu, RecentRemoveButton } from './recent-remove-controls';
 
 const COMMAND_PALETTE_SEARCH_TIMEOUT_MS = 3000;
 // Re-poll cadence while the server reports the search index is still warming
@@ -725,6 +726,18 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     void runWithToast(async () => {
       await fn();
     }, fallback);
+  };
+
+  // Remove a single recent (VS Code Open Recent per-row remove). Unlike
+  // `runAction`, this keeps the palette OPEN so the user can prune several in a
+  // row; the bridge call also clears the entry's session / window-bounds /
+  // last-opened keys, and we optimistically drop the row here.
+  const onRemoveRecent = (path: string) => {
+    if (!bridge) return;
+    void runWithToast(async () => {
+      await bridge.project.removeRecent(path);
+      setProjectRecents((cur) => cur.filter((r) => r.path !== path));
+    }, t`Failed to remove project.`);
   };
 
   // Open a worktree from the palette. An existing
@@ -1465,43 +1478,50 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                   const worktreeOf =
                     isWorktree && row.mainRoot !== undefined ? basenameOf(row.mainRoot) : null;
                   return (
-                    <CommandItem
+                    <RecentItemContextMenu
                       key={row.path}
-                      value={`${row.name} ${row.path} recent project`}
-                      disabled={row.missing}
-                      onSelect={() =>
-                        runAction(
-                          () =>
-                            bridge.project.open({
-                              path: row.path,
-                              target: 'new-window',
-                              entryPoint: 'recents',
-                            }),
-                          t`Failed to open project.`,
-                        )
-                      }
-                      data-testid={`command-palette-recent-${row.path}`}
-                      className="items-start"
+                      path={row.path}
+                      onRemoveRecent={onRemoveRecent}
+                      testIdPrefix="command-palette-recent"
                     >
-                      <RowIcon className="mt-0.5" />
-                      <div className="flex min-w-0 flex-col gap-1">
-                        <span className="truncate font-medium">{row.name}</span>
-                        {worktreeOf !== null ? (
-                          <span className="truncate text-muted-foreground text-xs">
-                            <Trans>worktree of {worktreeOf}</Trans>
-                          </span>
-                        ) : null}
-                        <span className="truncate text-muted-foreground text-xs">
-                          {row.path}
-                          {row.missing ? (
-                            <>
-                              {'  '}
-                              <Trans>(missing)</Trans>
-                            </>
-                          ) : null}
-                        </span>
+                      <div className="group/recent relative flex items-center">
+                        <CommandItem
+                          value={`${row.name} ${row.path} recent project`}
+                          onSelect={() =>
+                            runAction(
+                              () =>
+                                bridge.project.open({
+                                  path: row.path,
+                                  target: 'new-window',
+                                  entryPoint: 'recents',
+                                }),
+                              t`Failed to open project.`,
+                            )
+                          }
+                          data-testid={`command-palette-recent-${row.path}`}
+                          className="flex-1 items-start pr-8"
+                        >
+                          <RowIcon className="mt-0.5" />
+                          <div className="flex min-w-0 flex-col gap-1">
+                            <span className="truncate font-medium">{row.name}</span>
+                            {worktreeOf !== null ? (
+                              <span className="truncate text-muted-foreground text-xs">
+                                <Trans>worktree of {worktreeOf}</Trans>
+                              </span>
+                            ) : null}
+                            <span className="truncate text-muted-foreground text-xs">
+                              {row.path}
+                            </span>
+                          </div>
+                        </CommandItem>
+                        <RecentRemoveButton
+                          path={row.path}
+                          name={row.name}
+                          onRemoveRecent={onRemoveRecent}
+                          testIdPrefix="command-palette-recent"
+                        />
                       </div>
-                    </CommandItem>
+                    </RecentItemContextMenu>
                   );
                 })}
             </CommandGroup>

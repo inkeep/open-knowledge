@@ -88,6 +88,9 @@ function createBridge() {
   return {
     appVersion: '0.4.0-beta.1',
     onMenuAction: mock(() => () => {}),
+    onRecentRemovedMissing: mock(
+      (_cb: (info: { path: string; projectName: string }) => void) => () => {},
+    ),
     config: {
       collabUrl: '',
       apiOrigin: '',
@@ -310,5 +313,29 @@ describe('NavigatorApp launcher runtime behavior', () => {
     expect(plainRow.textContent).toContain('Plain Notes');
     expect(plainRow.textContent).toContain('/Users/x/plain-notes');
     expect(plainRow.textContent).not.toContain('worktree');
+  });
+
+  test('drops only the matching row when main pushes recent-removed-missing', async () => {
+    const bridge = createBridge();
+    bridge.project.listRecent = mock(() =>
+      Promise.resolve([
+        { path: '/projects/keep', name: 'Keep Project' },
+        { path: '/projects/gone', name: 'Gone Project' },
+      ]),
+    );
+    await renderNavigator(bridge);
+    await screen.findByText('Keep Project');
+    await screen.findByText('Gone Project');
+
+    // The lazy-remove-on-open push is a one-way main→renderer event; grab the
+    // callback the effect registered and fire it as main would for the pruned
+    // window. The module-init listener owns the toast; this effect owns the row.
+    expect(bridge.onRecentRemovedMissing).toHaveBeenCalledTimes(1);
+    const onRemovedMissing = bridge.onRecentRemovedMissing.mock.calls[0]?.[0];
+    expect(onRemovedMissing).toBeDefined();
+    act(() => onRemovedMissing?.({ path: '/projects/gone', projectName: 'Gone Project' }));
+
+    await waitFor(() => expect(screen.queryByText('Gone Project')).toBeNull());
+    expect(screen.getByText('Keep Project')).not.toBeNull();
   });
 });

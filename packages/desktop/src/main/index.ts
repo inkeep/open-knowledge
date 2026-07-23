@@ -168,6 +168,7 @@ import {
 } from './bundle-replace-detector.ts';
 import { cascadePosition } from './cascade-position.ts';
 import {
+  checkProjectDirExists,
   checkTargetExists as checkTargetExistsImpl,
   computeShareTargetMissing,
 } from './check-target-exists.ts';
@@ -2057,6 +2058,50 @@ async function openProject(
   refreshApplicationMenu();
 }
 
+/**
+ * Strict VS Code "Open Recent" parity: when a recents entry's folder no longer
+ * exists on disk, drop it from the single canonical recents list (and its
+ * associated session / window-bounds / last-opened keys, via
+ * `removeRecentProject`) and refresh the File → Open Recent menu. Returns
+ * whether an entry was actually removed plus the display name for the notice.
+ * A no-op (`removed: false`) when the path is present, was never a recent, or is
+ * only `'unreadable'` (an EACCES / I-O error where the folder may still exist),
+ * so a plain pick-existing of a vanished folder is left to the normal error path.
+ */
+function pruneRecentIfMissing(projectPath: string): { removed: boolean; name: string } {
+  const entry = appState.recentProjects.find((p) => p.path === projectPath);
+  if (entry === undefined) return { removed: false, name: basename(projectPath) };
+  // Strict VS Code parity: prune only on a genuine not-exist miss. `existsSync`
+  // collapses EACCES / I-O errors to `false`, so gating on it would wrongly drop
+  // a recent whose folder is still present but momentarily unreadable (a
+  // permission-restricted parent, a transient I/O error). Classify via the
+  // errno-aware probe so only a definitive `'missing'` prunes; `'exists'` and
+  // `'unreadable'` fall through to the normal open path.
+  const dirState = checkProjectDirExists(projectPath);
+  if (dirState !== 'missing') {
+    // A folder that exists but can't be read (EACCES / I-O) never self-cleans on
+    // open, so leave a breadcrumb — otherwise a "this dead recent won't go away"
+    // report is indistinguishable from an intentional keep.
+    if (dirState === 'unreadable') {
+      console.warn('[main] recents entry left intact: project folder is unreadable', {
+        projectPath,
+      });
+    }
+    return { removed: false, name: entry.name };
+  }
+  appState = removeRecentProject(appState, projectPath);
+  saveAppState(appState);
+  refreshApplicationMenu();
+  // This deletes persisted state (recents row + saved session + window bounds +
+  // lastOpenedProject); leave a trace so a "my project vanished from recents"
+  // report has a main-process signal, as the sibling openProject-catch fallback
+  // does for its failure.
+  console.warn('[main] pruned stale recents entry: project folder no longer exists', {
+    projectPath,
+  });
+  return { removed: true, name: entry.name };
+}
+
 async function openProjectOrFallbackToNavigator(
   projectPath: string,
   entryPoint: EntryPoint,
@@ -2066,6 +2111,23 @@ async function openProjectOrFallbackToNavigator(
   pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload,
   pendingTargetMissing?: boolean,
 ) {
+  // Prune-and-fall-back for internal callers that have no originating renderer
+  // to notify (native File → Open Recent, boot restore of a vanished
+  // lastOpenedProject): drop the stale recent and land on the Navigator rather
+  // than spawning a server for a gone path. Renderer opens instead prune (and
+  // toast) up front in the `ok:project:open` handler and return there on a
+  // genuine miss, so any renderer open that reaches here has a present folder —
+  // making this an extra, harmless existence probe for that path. Share opens
+  // carry a deep-link / branch-switch target and render their own honest verdict
+  // panel, so they skip this prune and proceed to `openProject` below.
+  if (
+    pendingDeepLinkTarget === undefined &&
+    pendingShareBranchSwitch === undefined &&
+    pruneRecentIfMissing(projectPath).removed
+  ) {
+    openNavigator();
+    return;
+  }
   try {
     await openProject(
       projectPath,
@@ -4556,7 +4618,7 @@ function registerIpcHandlers() {
     return undefined;
   });
 
-  handle('ok:project:open', async (_event, request) => {
+  handle('ok:project:open', async (event, request) => {
     // Route through the wrapper so boot failures (lock collision, git-init
     // error, generic crash) surface as the standard Electron error dialog
     // + Navigator fall-back instead of escaping to the renderer as a raw
@@ -4565,6 +4627,25 @@ function registerIpcHandlers() {
       throw new Error(
         `ok:project:open rejected: invalid entryPoint '${String(request.entryPoint)}'`,
       );
+    }
+    // Strict VS Code "Open Recent" parity for renderer-initiated opens: a plain
+    // (non-share) open of a recents entry whose folder is gone prunes the stale
+    // entry from the single recents list and notifies the originating window
+    // with a lightweight toast — instead of spawning a broken window or bouncing
+    // to the Navigator. The user stays where they are. Share opens (which carry
+    // a deep-link / branch-switch target) are handled by the probe below.
+    if (
+      request.pendingDeepLinkTarget === undefined &&
+      request.pendingShareBranchSwitch === undefined
+    ) {
+      const pruned = pruneRecentIfMissing(request.path);
+      if (pruned.removed) {
+        sendToRenderer(event.sender, 'ok:project:recent-removed-missing', {
+          path: request.path,
+          projectName: pruned.name,
+        });
+        return undefined;
+      }
     }
     // Renderer-initiated share-receive opens (fresh clone, multi-worktree pivot)
     // reach window-open here instead of through the URL-scheme dispatcher, which

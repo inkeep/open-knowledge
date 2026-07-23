@@ -195,6 +195,16 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
     void runWithToast(() => bridge.navigator.open(), t`Failed to open Project Navigator.`);
   };
 
+  // Remove a single recent (VS Code "Open Recent" per-row remove). Prunes the
+  // one canonical recents list via the bridge (which also clears the entry's
+  // session / window-bounds / last-opened keys) and optimistically drops the
+  // row here; the menu stays open so the user can remove several in a row.
+  const onRemoveRecent = (path: string) =>
+    runWithToast(async () => {
+      await bridge.project.removeRecent(path);
+      setRecents((cur) => (cur === null ? cur : cur.filter((r) => r.path !== path)));
+    }, t`Failed to remove project.`);
+
   // Close the dropdown before opening the dialog — two stacked Radix overlays
   // (menu + dialog) would otherwise fight over focus return on dismiss. The
   // dialog drives the full scaffold + open-in-new-window flow itself.
@@ -359,6 +369,7 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
                   worktreeModel={menuWorktreeModel}
                   closeMenu={() => handleOpenChange(false)}
                   guardStaleSelect={guardStaleSelect}
+                  onRemoveRecent={onRemoveRecent}
                   flyoutPath={flyoutPath}
                   setFlyoutPath={setFlyoutPath}
                   openNewWorktreeWith={openNewWorktreeWith}

@@ -126,6 +126,7 @@ function createBridge(recents: unknown[]) {
   return {
     appVersion: '0.4.0-beta.1',
     onMenuAction: mock(() => () => {}),
+    onRecentRemovedMissing: mock(() => () => {}),
     config: { mode: 'navigator' },
     project: {
       listRecent: mock(() => Promise.resolve(recents)),

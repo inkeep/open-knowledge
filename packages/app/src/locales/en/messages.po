@@ -82,10 +82,6 @@ msgstr "(detached)"
 msgid "(inline)"
 msgstr "(inline)"
 
-#: src/components/CommandPalette.tsx
-msgid "(missing)"
-msgstr "(missing)"
-
 #: src/editor/components/MirrorSource.tsx
 msgid "(no id)"
 msgstr "(no id)"
@@ -3728,7 +3724,9 @@ msgstr "Failed to parse backlinks error response (HTTP {status})"
 msgid "Failed to parse forward-links error response (HTTP {status})"
 msgstr "Failed to parse forward-links error response (HTTP {status})"
 
+#: src/components/CommandPalette.tsx
 #: src/components/NavigatorApp.tsx
+#: src/components/ProjectSwitcher.tsx
 msgid "Failed to remove project."
 msgstr "Failed to remove project."
 
@@ -5136,10 +5134,6 @@ msgstr "Mirror source <0>{label}</0>"
 #: src/editor/slash-command/component-items.tsx
 msgid "Mirror source <0>api-spec</0>"
 msgstr "Mirror source <0>api-spec</0>"
-
-#: src/components/NavigatorApp.tsx
-msgid "Missing"
-msgstr "Missing"
 
 #: src/components/FeedbackForm.tsx
 msgid "Missing a feature"
@@ -6910,6 +6904,10 @@ msgstr "Remove {keyName}"
 msgid "Remove {label} from context"
 msgstr "Remove {label} from context"
 
+#: src/components/recent-remove-controls.tsx
+msgid "Remove {name} from recent projects"
+msgstr "Remove {name} from recent projects"
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "Remove {patternText}"
 msgstr "Remove {patternText}"
@@ -6927,6 +6925,7 @@ msgid "Remove failed: {error}"
 msgstr "Remove failed: {error}"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/recent-remove-controls.tsx
 msgid "Remove from recent projects"
 msgstr "Remove from recent projects"
 
@@ -6950,6 +6949,10 @@ msgstr "Remove selection"
 #: src/components/CreateProjectDialog.tsx
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "Remove the parent <0>.git</0> folder"
+
+#: src/lib/install-recent-removed-listener.ts
+msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
+msgstr "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 
 #. Warning shown when the user unchecks an already-installed skill
 #: src/components/McpConsentDialogBody.tsx

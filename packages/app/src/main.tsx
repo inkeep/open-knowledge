@@ -42,6 +42,7 @@ import { i18n } from '@/lib/i18n';
 import { installClientLogForwarder } from '@/lib/install-client-log-forwarder';
 import { installDeepLinkListener } from '@/lib/install-deep-link-listener';
 import { installOnboardingToastListener } from '@/lib/install-onboarding-toast';
+import { installRecentRemovedListener } from '@/lib/install-recent-removed-listener';
 import { installServerDriftListener } from '@/lib/install-server-drift-listener';
 import { installMcpConsentListener } from '@/lib/mcp-consent-store';
 import { installOnboardingCardStore } from '@/lib/onboarding-card-store';
@@ -143,6 +144,13 @@ if (typeof window !== 'undefined') {
 // listener-before-event reason as the deep-link wiring above.
 if (typeof window !== 'undefined') {
   installServerDriftListener({ bridge: window.okDesktop });
+}
+
+// Desktop-only: `ok:project:recent-removed-missing` — main prunes a recents
+// entry whose folder vanished on open and notifies the originating window.
+// Module-init so the toast isn't dropped if the event beats React's mount.
+if (typeof window !== 'undefined') {
+  installRecentRemovedListener({ bridge: window.okDesktop });
 }
 
 // Desktop-only: subscribe to the first-launch MCP consent bridge event

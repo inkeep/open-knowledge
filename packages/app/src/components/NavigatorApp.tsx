@@ -48,7 +48,6 @@ import { createCloneController } from '@/lib/share/clone-controller';
 import { ipcAuthQueryTransport } from '@/lib/transports/auth-query-transport';
 import { ipcAuthTransport } from '@/lib/transports/auth-transport';
 import { ipcCloneTransport } from '@/lib/transports/clone-transport';
-import { cn } from '@/lib/utils';
 import { AuthModal } from './AuthModal';
 import { BetaBadge } from './BetaBadge';
 import { CloneDialog } from './CloneDialog';
@@ -61,6 +60,7 @@ import { McpConsentDialog } from './McpConsentDialog';
 import { PackCardGrid } from './PackCardGrid';
 import { basenameOf } from './project-switcher-recents';
 import { ReportBugDialog } from './ReportBugDialog';
+import { RecentItemContextMenu } from './recent-remove-controls';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 
@@ -230,6 +230,21 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
       if (action === 'close-active-tab-or-window') window.close();
     });
   }, []);
+
+  // Main prunes a recents entry whose folder vanished when the user opens it
+  // (VS Code "Open Recent" parity). Drop the row from our list so it doesn't
+  // linger; the module-init listener shows the toast, so we don't re-notify.
+  useEffect(() => {
+    return bridge.onRecentRemovedMissing(({ path }) => {
+      setRecents((current) => removeRecentFromList(current, path));
+      setRecentBranches((current) => {
+        if (!current.has(path)) return current;
+        const next = new Map(current);
+        next.delete(path);
+        return next;
+      });
+    });
+  }, [bridge]);
 
   /**
    * Wrap any bridge call in a visible error state. Without this the IPC
@@ -763,71 +778,65 @@ function RecentRow({
   // Branch chip shows the worktree's own branch, else the project's current branch.
   const rowBranch = isWorktree ? (project.branch ?? branch) : branch;
   return (
-    <li className="group flex items-center justify-between rounded-lg hover:bg-accent">
-      <Button
-        type="button"
-        variant="ghost"
-        onClick={onOpen}
-        disabled={project.missing}
-        className={cn(
-          'h-auto min-w-0 flex-1 justify-between gap-3 py-3.5 pl-4 pr-2 text-left hover:bg-transparent',
-          project.missing && 'opacity-50',
-        )}
-      >
-        <div className="flex min-w-0 items-center gap-3">
-          {/* Uniform folder icon for every row — worktree vs project is conveyed
+    <RecentItemContextMenu path={project.path} onRemoveRecent={onRemove} testIdPrefix="nav-recent">
+      <li className="group flex items-center justify-between rounded-lg hover:bg-accent">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={onOpen}
+          className="h-auto min-w-0 flex-1 justify-between gap-3 py-3.5 pl-4 pr-2 text-left hover:bg-transparent"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            {/* Uniform folder icon for every row — worktree vs project is conveyed
             by the worktree pill + the branch chip, not by the icon. */}
-          <Folder aria-hidden="true" className="size-[18px] shrink-0 text-muted-foreground" />
-          <div className="flex min-w-0 flex-col gap-1 truncate">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="truncate font-medium text-sm text-gray-700 dark:text-foreground">
-                {project.name}
+            <Folder aria-hidden="true" className="size-[18px] shrink-0 text-muted-foreground" />
+            <div className="flex min-w-0 flex-col gap-1 truncate">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-medium text-sm text-gray-700 dark:text-foreground">
+                  {project.name}
+                </span>
+                {isWorktree ? (
+                  <Badge
+                    variant="secondary"
+                    className="shrink-0 gap-1 rounded-full border-transparent bg-green-600/10 px-2 py-0 font-medium text-2xs text-green-800 dark:bg-green-400/10 dark:text-green-400"
+                  >
+                    <GitBranch aria-hidden="true" className="size-2.5" />
+                    <Trans>worktree</Trans>
+                  </Badge>
+                ) : null}
+              </div>
+              <span
+                className="truncate w-full text-muted-foreground text-xs"
+                title={isWorktree ? (project.mainRoot ?? '') : project.path}
+              >
+                {isWorktree ? <Trans>of {basenameOf(project.mainRoot ?? '')}</Trans> : project.path}
               </span>
-              {isWorktree ? (
-                <Badge
-                  variant="secondary"
-                  className="shrink-0 gap-1 rounded-full border-transparent bg-green-600/10 px-2 py-0 font-medium text-2xs text-green-800 dark:bg-green-400/10 dark:text-green-400"
-                >
-                  <GitBranch aria-hidden="true" className="size-2.5" />
-                  <Trans>worktree</Trans>
-                </Badge>
-              ) : null}
             </div>
-            <span
-              className="truncate w-full text-muted-foreground text-xs"
-              title={isWorktree ? (project.mainRoot ?? '') : project.path}
-            >
-              {isWorktree ? <Trans>of {basenameOf(project.mainRoot ?? '')}</Trans> : project.path}
-            </span>
           </div>
-        </div>
-        {project.missing ? (
-          <Badge className="text-2xs rounded-sm" variant="warning">
-            <Trans>Missing</Trans>
-          </Badge>
-        ) : rowBranch != null ? (
-          <span
-            className="flex max-w-[40%] items-center gap-1 text-muted-foreground text-xs"
-            data-testid={`nav-recent-branch-${project.path}`}
-          >
-            <GitBranch aria-hidden="true" className="size-3 shrink-0" />
-            <span className="truncate font-mono">{rowBranch}</span>
-          </span>
-        ) : null}
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        onClick={onRemove}
-        aria-label={t`Remove ${projectName} from recent projects`}
-        title={t`Remove from recent projects`}
-        className="pointer-events-none mr-2 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-        data-testid={`nav-recent-remove-${project.path}`}
-      >
-        <XIcon aria-hidden="true" />
-      </Button>
-    </li>
+          {rowBranch != null ? (
+            <span
+              className="flex max-w-[40%] items-center gap-1 text-muted-foreground text-xs"
+              data-testid={`nav-recent-branch-${project.path}`}
+            >
+              <GitBranch aria-hidden="true" className="size-3 shrink-0" />
+              <span className="truncate font-mono">{rowBranch}</span>
+            </span>
+          ) : null}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={onRemove}
+          aria-label={t`Remove ${projectName} from recent projects`}
+          title={t`Remove from recent projects`}
+          className="pointer-events-none mr-2 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+          data-testid={`nav-recent-remove-${project.path}`}
+        >
+          <XIcon aria-hidden="true" />
+        </Button>
+      </li>
+    </RecentItemContextMenu>
   );
 }
 

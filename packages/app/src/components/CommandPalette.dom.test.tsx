@@ -250,6 +250,7 @@ function createBridge() {
       ),
       open: mock(() => Promise.resolve()),
       openFile: mock(() => Promise.resolve()),
+      removeRecent: mock(() => Promise.resolve()),
     },
     dialog: {
       openFolder: mock(() => Promise.resolve('/chosen/folder')),
@@ -395,6 +396,29 @@ describe('CommandPalette DOM behavior', () => {
 
     await setQuery('manage');
     expect(screen.queryByTestId('command-palette-switch-project')).toBeNull();
+  });
+
+  test('the per-row × prunes a recent, keeps the palette open, and does not open it', async () => {
+    const bridge = createBridge();
+    const { onOpenChange } = await renderPalette({ bridge });
+    await waitFor(() => expect(bridge.project.listRecent).toHaveBeenCalledTimes(1));
+
+    // The × is a sibling of the recent's option row. Clicking it must prune via
+    // removeRecent and NOT fall through to the row's open onSelect (the
+    // stopPropagation contract) — unlike clicking the row, which opens + closes.
+    fireEvent.click(screen.getByTestId('command-palette-recent-remove-/projects/alpha'));
+    await waitFor(() =>
+      expect(bridge.project.removeRecent).toHaveBeenCalledWith('/projects/alpha'),
+    );
+    expect(bridge.project.open).not.toHaveBeenCalled();
+
+    // Optimistic drop of that row, and the palette stays open (runWithToast, not
+    // runAction) so the user can prune several in a row.
+    await waitFor(() =>
+      expect(screen.queryByTestId('command-palette-recent-/projects/alpha')).toBeNull(),
+    );
+    expect(screen.queryByTestId('command-palette-recent-/archive/omega-project')).not.toBeNull();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 
   test('new-folder shortcut is desktop-only while new-file shortcut is always visible', async () => {

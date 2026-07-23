@@ -926,6 +926,15 @@ export interface OkServerRestartedInfo {
 }
 
 /**
+ * Payload for `onRecentRemovedMissing` — fired on the window that initiated a
+ * recents open when the target folder was gone and its stale entry was pruned.
+ */
+export interface OkRecentRemovedMissingInfo {
+  readonly path: string;
+  readonly projectName: string;
+}
+
+/**
  * Result of `restartServer`. Only the failure case reaches the originating
  * renderer — on success the window is recreated, so its invoke promise never
  * resolves (by design); the success toast fires on the new window instead.
@@ -1132,6 +1141,13 @@ export interface OkDesktopBridge {
    * server now matches the app.
    */
   onServerRestarted(cb: (info: OkServerRestartedInfo) => void): OkUnsubscribe;
+  /**
+   * Subscribe to `ok:project:recent-removed-missing` — fired on the window that
+   * initiated a recents open of a folder that no longer exists. The stale entry
+   * has already been pruned from the recents list; the renderer surfaces a
+   * lightweight toast (and, in the Navigator, drops the row from its list).
+   */
+  onRecentRemovedMissing(cb: (info: OkRecentRemovedMissingInfo) => void): OkUnsubscribe;
   /**
    * Restart the project's server to match this app's version: terminate the
    * attached (not-owned) server and recreate the window against a fresh
