@@ -75,6 +75,7 @@ import {
   SPAWN_ERROR_LOG,
   TERMINAL_CLIS,
   type TerminalCli,
+  type UninstallFeedbackAnswers,
 } from '@inkeep/open-knowledge-core';
 import {
   assertGitAvailable,
@@ -193,24 +194,32 @@ import {
 import { createDebugIpc, type DebugIpcHandle } from './debug-ipc.ts';
 import { flushDesktopLogger, getLogger, getRootDesktopLogger } from './desktop-logger.ts';
 import {
+  buildDesktopUninstallFeedbackHtml,
   buildDesktopUninstallNoticeHtml,
   buildDesktopUninstallProgressHtml,
   buildDesktopUninstallProjectPickerHtml,
   collectDesktopUninstallProjectCandidates,
+  confirmDesktopUninstall,
   type DesktopUninstallNoticeSpec,
   type DesktopUninstallProjectCandidate,
+  type DesktopUninstallUiPreviewMode,
   defaultDesktopUninstallLogPath,
   desktopUninstallCompletionNotice,
   desktopUninstallConfirmNotice,
   desktopUninstallFailureNotice,
   desktopUninstallFinalStepNotice,
   isSupportedApplicationsBundle,
+  parseDesktopUninstallFeedbackUrl,
   parseDesktopUninstallNoticeUrl,
   parseDesktopUninstallProjectPickerUrl,
+  type RunDesktopUninstallCleanupResult,
   readDesktopUninstallLogForDisplay,
   resolveAppBundleFromExecPath,
   resolveDesktopUninstallProjectSelection,
+  resolveDesktopUninstallUiPreviewMode,
   runDesktopUninstallCleanup,
+  runDesktopUninstallFeedbackStep,
+  runDesktopUninstallOutcomeStep,
 } from './desktop-uninstall.ts';
 import { promptForExistingFolder, promptForExistingMarkdownFile } from './dialog-helpers.ts';
 import {
@@ -2579,7 +2588,13 @@ async function showMessageBoxAttached(options: MessageBoxOptions) {
  */
 async function showDesktopUninstallNotice(
   spec: DesktopUninstallNoticeSpec,
-  options: { width?: number; height?: number; resizable?: boolean } = {},
+  options: {
+    width?: number;
+    height?: number;
+    resizable?: boolean;
+    /** Reveal the cleanup log in Finder when the notice's log link is clicked. */
+    onRevealLog?: () => void;
+  } = {},
 ): Promise<boolean> {
   const parent = BrowserWindow.getFocusedWindow();
   const closeMeansConfirm = spec.cancelLabel === undefined;
@@ -2603,6 +2618,12 @@ async function showDesktopUninstallNotice(
 
     win.webContents.on('will-navigate', (event, url) => {
       const action = parseDesktopUninstallNoticeUrl(url);
+      if (action === 'reveal-log') {
+        // Non-terminal: reveal the log in Finder and leave the notice open.
+        event.preventDefault();
+        options.onRevealLog?.();
+        return;
+      }
       if (action !== null) {
         event.preventDefault();
         finish(action === 'confirm');
@@ -2733,6 +2754,94 @@ async function showDesktopUninstallProjectPicker(
   });
 }
 
+/**
+ * Show the churn survey and resolve with whatever the user left behind. Every
+ * non-answer exit — closing the window, a renderer that fails to load —
+ * resolves empty and lets the uninstall continue: the decision was already made
+ * on the confirm surface before this, so an optional question must not become a
+ * second, hidden cancel gate. That is why this deliberately does NOT reuse the
+ * project picker's close-means-cancel mapping.
+ */
+async function showDesktopUninstallFeedbackWindow(): Promise<UninstallFeedbackAnswers> {
+  const parent = BrowserWindow.getFocusedWindow();
+  const workArea = (
+    parent ? screen.getDisplayMatching(parent.getBounds()) : screen.getPrimaryDisplay()
+  ).workArea;
+  const width = Math.max(520, Math.min(620, workArea.width - 80));
+  const height = Math.max(520, Math.min(640, workArea.height - 80));
+
+  return new Promise((resolveAnswers) => {
+    const win = createDesktopUninstallUtilityWindow({
+      parent,
+      width,
+      height,
+      minWidth: 480,
+      minHeight: 420,
+      title: 'Before you go',
+    });
+
+    let settled = false;
+    const finish = (answers: UninstallFeedbackAnswers) => {
+      if (settled) return;
+      settled = true;
+      resolveAnswers(answers);
+      if (!win.isDestroyed()) win.destroy();
+    };
+
+    win.webContents.on('will-navigate', (event, url) => {
+      const answers = parseDesktopUninstallFeedbackUrl(url);
+      if (answers !== null) {
+        event.preventDefault();
+        finish(answers);
+        return;
+      }
+      if (!url.startsWith('data:text/html')) event.preventDefault();
+    });
+
+    win.on('close', (event) => {
+      if (settled) return;
+      event.preventDefault();
+      finish({});
+    });
+    win.on('closed', () => {
+      if (settled) return;
+      settled = true;
+      resolveAnswers({});
+    });
+    win.once('ready-to-show', () => {
+      if (!win.isDestroyed()) win.show();
+    });
+
+    void win
+      .loadURL(
+        `data:text/html;charset=utf-8,${encodeURIComponent(buildDesktopUninstallFeedbackHtml())}`,
+      )
+      .catch((err) => {
+        getLogger('lifecycle').warn({ err }, 'desktop uninstall feedback window failed to load');
+        finish({});
+      });
+  });
+}
+
+async function collectDesktopUninstallFeedback(): Promise<void> {
+  const outcome = await runDesktopUninstallFeedbackStep({
+    collect: showDesktopUninstallFeedbackWindow,
+    appVersion: app.getVersion(),
+  });
+  if (outcome.status === 'failed') {
+    getLogger('lifecycle').warn({ err: outcome.error }, 'desktop uninstall feedback step failed');
+  } else if (outcome.status === 'submitted' && !outcome.result.ok) {
+    // Offline, a hung intake, or feedback switched off server-side are all
+    // expected conditions. A rejected payload is not — it means our body and
+    // the intake's schema have drifted, and the only other symptom would be
+    // churn tickets quietly going to zero.
+    const log = getLogger('lifecycle');
+    const line = 'desktop uninstall feedback was not delivered';
+    if (outcome.result.reason === 'invalid') log.warn({ reason: outcome.result.reason }, line);
+    else log.info({ reason: outcome.result.reason }, line);
+  }
+}
+
 async function withDesktopUninstallProgress<T>(work: () => Promise<T>): Promise<T> {
   const parent = BrowserWindow.getFocusedWindow();
   const win = createDesktopUninstallUtilityWindow({
@@ -2798,18 +2907,15 @@ async function startDesktopSelfUninstallFlow(): Promise<void> {
     openProjectPaths: wm?.getOpenProjectPaths() ?? [],
     lockDirs,
   });
-  let projectPaths: string[] = [];
-  if (projectCandidates.length > 0) {
-    const selectedProjects = await showDesktopUninstallProjectPicker(projectCandidates);
-    if (selectedProjects === null) return;
-    projectPaths = selectedProjects.map((candidate) => candidate.path);
-  } else {
-    const confirmed = await showDesktopUninstallNotice(desktopUninstallConfirmNotice(), {
-      height: 280,
-    });
-    if (!confirmed) return;
-  }
+  const confirmation = await confirmDesktopUninstall({
+    candidates: projectCandidates,
+    showProjectPicker: showDesktopUninstallProjectPicker,
+    showConfirmNotice: () =>
+      showDesktopUninstallNotice(desktopUninstallConfirmNotice(), { height: 280 }),
+  });
+  if (!confirmation.proceed) return;
 
+  const projectPaths = confirmation.projectPaths;
   const includeProjects = projectPaths.length > 0;
   const logPath = defaultDesktopUninstallLogPath(osHomedir());
   const cleanup = await withDesktopUninstallProgress(() =>
@@ -2819,38 +2925,166 @@ async function startDesktopSelfUninstallFlow(): Promise<void> {
       logPath,
     }),
   );
-  if (!cleanup.ok) {
-    // Cleanup ran but reported problems (a refused path, a failed deinit…).
-    // Surface the log inline so the user doesn't have to hunt for the file,
-    // then continue to the remove-the-app step — the user asked to uninstall,
-    // and the log spells out anything that needs manual follow-up.
-    getLogger('lifecycle').warn(
-      { includeProjects, projectCount: projectPaths.length, logPath, error: cleanup.error },
-      'desktop self-uninstall cleanup reported failures',
-    );
-    await showDesktopUninstallNotice(
-      desktopUninstallFailureNotice({
-        error: cleanup.error,
-        logPath,
-        logText: readDesktopUninstallLogForDisplay(logPath),
-      }),
-      { width: 560, height: 520, resizable: true },
-    );
-    await showDesktopUninstallNotice(desktopUninstallFinalStepNotice(), { height: 240 });
-  } else {
-    getLogger('lifecycle').info(
-      { includeProjects, projectCount: projectPaths.length, logPath },
-      'desktop self-uninstall cleanup finished',
-    );
-    await showDesktopUninstallNotice(
-      desktopUninstallCompletionNotice({ projectCount: projectPaths.length, logPath }),
-      { height: 320 },
-    );
-  }
+  await runDesktopUninstallOutcomeStep({
+    cleanup,
+    // Ask why only after a successful removal, before the finish screen.
+    runFeedbackStep: collectDesktopUninstallFeedback,
+    showCompletion: async () => {
+      getLogger('lifecycle').info(
+        { includeProjects, projectCount: projectPaths.length, logPath },
+        'desktop self-uninstall cleanup finished',
+      );
+      await showDesktopUninstallNotice(
+        desktopUninstallCompletionNotice({ projectCount: projectPaths.length }),
+        { height: 440, onRevealLog: () => shell.showItemInFolder(logPath) },
+      );
+    },
+    showFailure: async ({ error }) => {
+      // Cleanup ran but reported problems (a refused path, a failed deinit…).
+      // Surface the log inline so the user doesn't have to hunt for the file,
+      // then continue to the remove-the-app step — the user asked to uninstall,
+      // and the log spells out anything that needs manual follow-up. No survey
+      // here: a failed uninstall isn't a departure worth asking about.
+      getLogger('lifecycle').warn(
+        { includeProjects, projectCount: projectPaths.length, logPath, error },
+        'desktop self-uninstall cleanup reported failures',
+      );
+      await showDesktopUninstallNotice(
+        desktopUninstallFailureNotice({
+          error,
+          logPath,
+          logText: readDesktopUninstallLogForDisplay(logPath),
+        }),
+        { width: 560, height: 520, resizable: true },
+      );
+      await showDesktopUninstallNotice(desktopUninstallFinalStepNotice(), { height: 240 });
+    },
+  });
 
   shell.showItemInFolder(appBundlePath);
   autoUpdaterHandle?.suppressAutoInstallOnQuit();
   app.quit();
+}
+
+/**
+ * Dev-only walkthrough of the uninstall UI. Reuses the exact windows the real
+ * flow shows — project picker, progress, feedback survey, and the
+ * completion/failure notices — but stubs out the destructive cleanup: nothing is
+ * removed, and the app is never trashed or quit. Gated on `!app.isPackaged` via
+ * `resolveDesktopUninstallUiPreviewMode`, so it can never fire in a shipped app.
+ *
+ * `OK_UNINSTALL_UI_PREVIEW=success` walks the happy path (feedback → completion);
+ * `=failure` walks the failure notices. See `runDesktopUninstallUiPreview`.
+ */
+function maybeRunDesktopUninstallUiPreview(): void {
+  const mode = resolveDesktopUninstallUiPreviewMode(
+    process.env.OK_UNINSTALL_UI_PREVIEW,
+    app.isPackaged,
+  );
+  if (mode === null) return;
+  void runDesktopUninstallUiPreview(mode).catch((err) => {
+    getLogger('lifecycle').error({ err }, 'desktop uninstall UI preview failed');
+  });
+}
+
+/**
+ * Show the feedback survey during a preview without ever reaching production
+ * intake. Submits only when a non-production `OK_FEEDBACK_INTAKE_ORIGIN` is set;
+ * otherwise the survey is shown but nothing is POSTed, so a preview can never
+ * file a real churn ticket.
+ */
+async function collectDesktopUninstallFeedbackPreview(): Promise<void> {
+  const origin = process.env.OK_FEEDBACK_INTAKE_ORIGIN;
+  const hasLocalIntake =
+    typeof origin === 'string' && origin.length > 0 && !/openknowledge\.ai/i.test(origin);
+  if (hasLocalIntake) {
+    // A local intake is configured — exercise the real submit path against it.
+    await collectDesktopUninstallFeedback();
+    return;
+  }
+  // No local intake: show the real survey but never POST. Point
+  // OK_FEEDBACK_INTAKE_ORIGIN at a local ok-marketing origin to exercise
+  // end-to-end delivery.
+  await showDesktopUninstallFeedbackWindow();
+  getLogger('lifecycle').warn(
+    { submitted: false },
+    'uninstall UI preview: feedback survey shown but not submitted — set OK_FEEDBACK_INTAKE_ORIGIN to a local ok-marketing origin to exercise delivery',
+  );
+}
+
+async function runDesktopUninstallUiPreview(mode: DesktopUninstallUiPreviewMode): Promise<void> {
+  const log = getLogger('lifecycle');
+  log.warn(
+    { mode },
+    'desktop uninstall UI preview started — non-destructive; no files are removed and the app is not trashed',
+  );
+
+  const home = osHomedir();
+  // Illustrative candidates so the picker has rows. These paths are never
+  // touched — the cleanup step below is stubbed out.
+  const candidates: DesktopUninstallProjectCandidate[] = [
+    { path: `${home}/Notes`, open: true, recent: true, running: true },
+    { path: `${home}/Work/Team Handbook`, open: false, recent: true, running: false },
+    { path: `${home}/Personal/Journal`, open: false, recent: true, running: false },
+  ];
+
+  const confirmation = await confirmDesktopUninstall({
+    candidates,
+    showProjectPicker: showDesktopUninstallProjectPicker,
+    showConfirmNotice: () =>
+      showDesktopUninstallNotice(desktopUninstallConfirmNotice(), { height: 280 }),
+  });
+  if (!confirmation.proceed) {
+    log.info({ mode }, 'desktop uninstall UI preview cancelled at the confirm surface');
+    return;
+  }
+
+  const projectPaths = confirmation.projectPaths;
+  const logPath = defaultDesktopUninstallLogPath(home);
+  // Write a placeholder log so the completion screen's "reveal in Finder" link
+  // opens a real file during the preview — a single throwaway note in the
+  // standard uninstall-log location, nothing else on disk changes.
+  try {
+    writeFileSync(
+      logPath,
+      'OpenKnowledge uninstall UI preview — this is a simulated log. Nothing was removed.\n',
+    );
+  } catch (err) {
+    log.warn({ err, logPath }, 'uninstall UI preview: could not write placeholder log');
+  }
+
+  // Stubbed cleanup: pause on the progress window like a real removal would,
+  // then report the requested outcome. Nothing is deleted.
+  const cleanup: RunDesktopUninstallCleanupResult = await withDesktopUninstallProgress(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+    return mode === 'failure'
+      ? { ok: false, error: 'Simulated cleanup failure (preview) — nothing was removed.' }
+      : { ok: true };
+  });
+
+  await runDesktopUninstallOutcomeStep({
+    cleanup,
+    runFeedbackStep: collectDesktopUninstallFeedbackPreview,
+    showCompletion: async () => {
+      await showDesktopUninstallNotice(
+        desktopUninstallCompletionNotice({ projectCount: projectPaths.length }),
+        { height: 440, onRevealLog: () => shell.showItemInFolder(logPath) },
+      );
+    },
+    showFailure: async ({ error }) => {
+      await showDesktopUninstallNotice(
+        desktopUninstallFailureNotice({
+          error,
+          logPath,
+          logText: readDesktopUninstallLogForDisplay(logPath),
+        }),
+        { width: 560, height: 520, resizable: true },
+      );
+      await showDesktopUninstallNotice(desktopUninstallFinalStepNotice(), { height: 240 });
+    },
+  });
+
+  log.warn({ mode }, 'desktop uninstall UI preview finished — OpenKnowledge is still installed');
 }
 
 /**
@@ -6051,6 +6285,11 @@ function bootPrimaryInstance(): void {
           err: err instanceof Error ? err.message : String(err),
         });
       });
+
+      // Dev-only: when OK_UNINSTALL_UI_PREVIEW is set (never in a packaged
+      // build), walk the uninstall windows non-destructively so the real UI can
+      // be exercised without removing anything. No-op otherwise.
+      maybeRunDesktopUninstallUiPreview();
 
       // Auto-updater — wired as the LAST step in whenReady, after the window-
       // open branch (either openProjectOrFallbackToNavigator OR openNavigator).

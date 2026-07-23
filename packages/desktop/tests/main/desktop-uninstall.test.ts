@@ -226,14 +226,26 @@ describe('desktop self-uninstall helpers', () => {
     expect(confirm.danger).toBe(true);
     expect(confirm.paragraphs.join(' ')).not.toContain('Trash');
 
-    const done = desktopUninstallCompletionNotice({ projectCount: 0, logPath: '/log' });
-    expect(done.paragraphs.join(' ')).toContain('move OpenKnowledge.app to the Trash');
-    // Projects were off by default — silence beats "No projects were deinitialized."
-    expect(done.paragraphs.join(' ')).not.toContain('project');
-    expect(done.footnote).toBe('Cleanup log: /log');
-    expect(
-      desktopUninstallCompletionNotice({ projectCount: 2, logPath: '/log' }).paragraphs.join(' '),
-    ).toContain('removed from 2 projects');
+    const done = desktopUninstallCompletionNotice({ projectCount: 0 });
+    // A scannable checklist — two done items plus the one remaining action.
+    expect((done.checklist ?? []).map((item) => item.label)).toEqual([
+      'Kept your content',
+      'Removed OpenKnowledge files',
+      'Move OpenKnowledge.app to the Trash',
+    ]);
+    expect(done.checklist?.[0]?.done).toBe(true);
+    expect(done.checklist?.[1]?.done).toBe(true);
+    expect(done.checklist?.[2]?.done).toBe(false); // the one pending action
+    expect(done.confirmLabel).toBe('Reveal in Finder');
+    // The log is a link, not a raw path; the path never enters the spec/HTML.
+    expect(done.logRevealLabel).toBe('Cleanup log');
+    expect(done.footnote).toBeUndefined();
+    expect(done.paragraphs).toEqual([]);
+    // Projects were off by default — no project count in the removed-item detail.
+    expect(done.checklist?.[1]?.detail).not.toContain('project');
+    expect(desktopUninstallCompletionNotice({ projectCount: 2 }).checklist?.[1]?.detail).toContain(
+      '2 projects',
+    );
 
     expect(desktopUninstallFinalStepNotice().paragraphs.join(' ')).toContain('Trash');
   });
@@ -258,9 +270,27 @@ describe('desktop self-uninstall helpers', () => {
     expect(twoButton).toContain('class="danger"');
   });
 
+  test('completion notice renders a checklist plus a Finder-reveal log link', () => {
+    const html = buildDesktopUninstallNoticeHtml(
+      desktopUninstallCompletionNotice({ projectCount: 1 }),
+    );
+    expect(html).toContain('class="checklist"');
+    expect(html).toContain('Move OpenKnowledge.app to the Trash');
+    // The log is a subtle link that reveals it, carrying only the action.
+    expect(html).toContain('class="loglink" href="ok-desktop-uninstall://notice-reveal-log"');
+    // Completion state is not colour-only: a visually-hidden word carries it too.
+    expect(html).toContain('Done. ');
+    expect(html).toContain('To do. ');
+    // No raw log path leaks into the markup.
+    expect(html).not.toContain('Library/Logs');
+  });
+
   test('parses notice URLs, rejecting foreign schemes and hosts', () => {
     expect(parseDesktopUninstallNoticeUrl('ok-desktop-uninstall://notice-confirm')).toBe('confirm');
     expect(parseDesktopUninstallNoticeUrl('ok-desktop-uninstall://notice-cancel')).toBe('cancel');
+    expect(parseDesktopUninstallNoticeUrl('ok-desktop-uninstall://notice-reveal-log')).toBe(
+      'reveal-log',
+    );
     expect(parseDesktopUninstallNoticeUrl('ok-desktop-uninstall://confirm?indexes=0')).toBeNull();
     expect(parseDesktopUninstallNoticeUrl('https://example.test/notice-confirm')).toBeNull();
   });

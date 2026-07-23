@@ -264,6 +264,11 @@ export {
 export { PRODUCT_NAME } from './constants/product.ts';
 export { DEFAULT_SERVER_HOST } from './constants/server.ts';
 export {
+  isUninstallFeedbackReason,
+  UNINSTALL_FEEDBACK_REASONS,
+  type UninstallFeedbackReason,
+} from './constants/uninstall-feedback.ts';
+export {
   ALLOWED_AUDIO_MIME_TYPES,
   ALLOWED_IMAGE_MIME_TYPES,
   ALLOWED_PDF_MIME_TYPES,
@@ -1080,6 +1085,15 @@ export {
   parseLoomUrl,
 } from './utils/loom-embed.ts';
 export { type PdfAnchorParts, parsePdfAnchor } from './utils/pdf-anchor.ts';
+export {
+  hasUninstallFeedbackContent,
+  type PostUninstallFeedbackOptions,
+  postUninstallFeedback,
+  type UninstallFeedbackAnswers,
+  type UninstallFeedbackResult,
+  type UninstallFeedbackSource,
+  type UninstallFeedbackSubmission,
+} from './utils/uninstall-feedback-submit.ts';
 export { isVimeoUrl } from './utils/vimeo-embed.ts';
 export {
   type ParsedYouTubeUrl,

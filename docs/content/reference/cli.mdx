@@ -134,6 +134,6 @@ The rest of the CLI exists mostly for tooling and automation. Your AI editor spa
 
 `ok uninstall` removes OpenKnowledge from the whole machine — running servers, credentials, the PATH shim, its own editor MCP entries, skill bundles, app data, and `~/.ok`. Your markdown content stays, and skills you authored under `~/.ok/skills` are kept unless you pass `--purge-content`. It never deletes the CLI binary itself; it ends by printing the removal command (`npm uninstall -g @inkeep/open-knowledge` for the install above).
 
-Both commands print their plan and ask before acting; `--dry-run` previews without changing anything.
+Both commands print their plan and ask before acting; `--dry-run` previews without changing anything. Once `ok uninstall` has finished successfully, an interactive run also asks one optional question about why you're leaving — you can skip it, and `--yes`, `--json`, and non-interactive runs never ask. Anything you do answer is [sent to us](/docs/reference/what-open-knowledge-writes#what-leaves-your-machine).
 
-On the macOS desktop app, **App menu → Uninstall OpenKnowledge…** covers both steps from one flow: it optionally deinitializes your projects, removes the global footprint, and then guides you through dragging the app to the Trash.
+On the macOS desktop app, **App menu → Uninstall OpenKnowledge…** covers both steps from one flow: it optionally deinitializes your projects, removes the global footprint, shows the same optional "why are you leaving?" screen once removal succeeds, and then guides you through dragging the app to the Trash.
