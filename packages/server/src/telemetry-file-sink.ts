@@ -41,10 +41,49 @@ export interface RotatingAppenderOpts {
   maxBytes: number;
 }
 
+/** Per-target-path serialization state, shared across every appender instance. */
+interface PathWriteState {
+  chain: Promise<unknown>;
+  parentDirEnsured: boolean;
+}
+
 /**
- * Serialized append-with-rotation primitive. Two writers calling
- * `append()` concurrently are serialized through an internal promise
- * chain so the file is never touched from two contexts at once.
+ * Serialization state keyed by `currentPath`. Rotation must be serialized per
+ * TARGET FILE, not per appender instance: in production every `getLogger(name)`
+ * allocates its own `PinoFileSink` → its own `RotatingAppender` on the shared
+ * log path, so an instance-private chain let N loggers race the check-then-act
+ * (`statSync` size → `rename`) — the first rename wins and the rest get ENOENT
+ * because `currentPath` no longer exists. Keying the chain by path makes "the
+ * file is never touched from two contexts at once" structural regardless of how
+ * many instances point at it. Entries are process-lifetime but bounded — one
+ * per distinct sink path in the process (a log path, a spans path, and, when
+ * tolerance telemetry is enabled, a tolerance path per project); the map holds
+ * a handful of entries, never grows unboundedly.
+ *
+ * Invariant: all appenders sharing a `currentPath` must also agree on
+ * `previousPath` and `maxBytes` — the shared chain only serializes; each queued
+ * append still applies its own instance's fields, so divergent fields on one
+ * path would make rotation destination/threshold depend on which instance ran.
+ * Every real consumer holds this (one consumer per path, consistent opts). The
+ * key is the raw path string, so callers must also pass a consistent form
+ * (the `logs*Path`/`spans*Path` helpers already produce canonical absolute paths).
+ */
+const pathWriteState = new Map<string, PathWriteState>();
+
+function getPathWriteState(currentPath: string): PathWriteState {
+  let state = pathWriteState.get(currentPath);
+  if (!state) {
+    state = { chain: Promise.resolve(), parentDirEnsured: false };
+    pathWriteState.set(currentPath, state);
+  }
+  return state;
+}
+
+/**
+ * Serialized append-with-rotation primitive. Every appender writing to a given
+ * `currentPath` — across all instances — is serialized through one shared
+ * promise chain (keyed by path, see {@link pathWriteState}) so the file is
+ * never touched from two contexts at once.
  *
  * SIGKILL between an append and its rotation can leave at most one
  * partial trailing line in `currentPath`; readers should tolerate it
@@ -55,13 +94,13 @@ export class RotatingAppender {
   readonly #currentPath: string;
   readonly #previousPath: string;
   readonly #maxBytes: number;
-  #writeChain: Promise<unknown> = Promise.resolve();
-  #parentDirEnsured = false;
+  readonly #state: PathWriteState;
 
   constructor(opts: RotatingAppenderOpts) {
     this.#currentPath = opts.currentPath;
     this.#previousPath = opts.previousPath;
     this.#maxBytes = opts.maxBytes;
+    this.#state = getPathWriteState(opts.currentPath);
   }
 
   /**
@@ -70,19 +109,19 @@ export class RotatingAppender {
    * underlying fs error if either step fails.
    */
   append(data: string | Uint8Array): Promise<void> {
-    const next = this.#writeChain
+    const next = this.#state.chain
       // Swallow prior errors so one bad write doesn't deadlock the chain;
       // the rejection still surfaced to that call's awaiter via its own
       // returned promise.
       .catch(() => undefined)
       .then(() => this.#doAppend(data));
-    this.#writeChain = next;
+    this.#state.chain = next;
     return next;
   }
 
   /** Resolve once the most recent enqueued append finishes (success or failure). */
   async drain(): Promise<void> {
-    await this.#writeChain.catch(() => undefined);
+    await this.#state.chain.catch(() => undefined);
   }
 
   async #doAppend(data: string | Uint8Array): Promise<void> {
@@ -96,9 +135,9 @@ export class RotatingAppender {
     // step/tick). Raw fs also spares the log sink a span per line. No
     // application disk writes flow through here, so the fs-traced STOP rule
     // (which governs application-level writes) is not in scope.
-    if (!this.#parentDirEnsured) {
+    if (!this.#state.parentDirEnsured) {
       await mkdir(dirname(this.#currentPath), { recursive: true });
-      this.#parentDirEnsured = true;
+      this.#state.parentDirEnsured = true;
     }
     await writeFile(this.#currentPath, data, { flag: 'a' });
     // Post-write rotation: if current now exceeds the cap, rename to prev.
@@ -110,11 +149,21 @@ export class RotatingAppender {
     } catch {
       // The file was removed externally (e.g., manual cleanup). Drop the
       // ensured flag so the next call recreates the dir tree.
-      this.#parentDirEnsured = false;
+      this.#state.parentDirEnsured = false;
       return;
     }
     if (size > this.#maxBytes) {
-      await rename(this.#currentPath, this.#previousPath);
+      try {
+        await rename(this.#currentPath, this.#previousPath);
+      } catch (err) {
+        // Benign lost-race: `currentPath` was already rotated or removed
+        // out from under us (ENOENT) — there is nothing left to move, so the
+        // rotation is effectively done. The per-path chain makes this
+        // unreachable between our own appenders; this guard covers only
+        // external removal. Re-throw anything else so real faults still
+        // surface to the caller (FileSpanExporter reports them as failures).
+        if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') throw err;
+      }
     }
   }
 }
@@ -411,6 +460,8 @@ export interface PinoFileSinkOpts {
  */
 export class PinoFileSink extends Writable {
   readonly #appender: RotatingAppender;
+  #lastFailureLogAt = 0;
+  #suppressedFailures = 0;
 
   constructor(opts: PinoFileSinkOpts) {
     // Pino chunks arrive as either Buffer or string depending on internal
@@ -432,12 +483,53 @@ export class PinoFileSink extends Writable {
   ): void {
     this.#appender.append(chunk).then(
       () => callback(),
-      (err: unknown) => callback(err instanceof Error ? err : new Error(String(err))),
+      (err: unknown) => {
+        // Contain the failure: a rejected append MUST NOT propagate to the
+        // Writable as an 'error' event. `pino.multistream` attaches no
+        // 'error' listener, so a surfaced error escalates to
+        // uncaughtException and takes the whole server down — the log sink
+        // must never be able to do that. Report out-of-band, then ack the
+        // write as handled (callback with no error).
+        this.#reportWriteFailure(err);
+        callback();
+      },
     );
+  }
+
+  /**
+   * Report a dropped log record, throttled to at most one emission per 5s per
+   * sink INSTANCE (a persistently-failing rotation would otherwise emit one
+   * line per log record). The throttle state is per-instance, not per-path, so
+   * N sinks on the same path can each emit within a window — up to N lines per
+   * 5s per path under a shared failure. That is acceptable for a rare failure
+   * signal. Uses the structured telemetry-event console channel — NOT the pino
+   * logger: this sink IS a pino destination, so routing its own failure
+   * through pino would re-enter the broken sink.
+   */
+  #reportWriteFailure(err: unknown): void {
+    const now = Date.now();
+    if (now - this.#lastFailureLogAt < 5_000) {
+      this.#suppressedFailures++;
+      return;
+    }
+    this.#emitWriteFailure(err instanceof Error ? err.message : String(err), now);
+  }
+
+  #emitWriteFailure(error: string, now: number): void {
+    const suppressed = this.#suppressedFailures;
+    this.#suppressedFailures = 0;
+    this.#lastFailureLogAt = now;
+    console.error(JSON.stringify({ event: 'pino-file-sink-write-dropped', error, suppressed }));
   }
 
   /** Resolve once any enqueued writes have settled — for tests + shutdown. */
   async drain(): Promise<void> {
     await this.#appender.drain();
+    // Flush any failures suppressed inside the last throttle window so a
+    // graceful shutdown (flushAllFileSinks) doesn't lose the final dropped
+    // count — an operator inspecting stderr should see how bad it got.
+    if (this.#suppressedFailures > 0) {
+      this.#emitWriteFailure('flushed at drain', Date.now());
+    }
   }
 }

@@ -1,12 +1,23 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { context, trace } from '@opentelemetry/api';
 import { BasicTracerProvider, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   DEFAULT_MAX_VALUE_BYTES,
   FileSpanExporter,
+  logsCurrentPath,
+  logsPreviousPath,
+  PinoFileSink,
   REDACTED_SENTINEL,
   RotatingAppender,
   ScrubbingSpanProcessor,
@@ -338,6 +349,119 @@ describe('RotatingAppender (shared rotation primitive)', () => {
     void appender.append('3\n');
     await appender.drain();
     expect(readFileSync(currentPath, 'utf-8')).toBe('1\n2\n3\n');
+  });
+
+  // Invariant A: rotation is safe across EVERY writer to a path, not just
+  // within one appender instance. In production each getLogger(name) allocates
+  // its own PinoFileSink → its own RotatingAppender on the shared log path, so
+  // N loggers = N rotators on one file. The bug this guards against: if
+  // rotation were serialized only per instance, two appenders could both see
+  // "over cap", the first rename would win, and the second would get ENOENT
+  // because current no longer exists — that rejection is what killed the
+  // server. This test drives several appenders on one path across the cap and
+  // asserts NO append rejects (the shared per-path chain makes it atomic).
+  test('serializes rotation across independent appenders sharing one path (no ENOENT race)', async () => {
+    const currentPath = join(tmp, 'shared', 'shared-current.jsonl');
+    const previousPath = join(tmp, 'shared', 'shared-prev.jsonl');
+    const maxBytes = 512;
+    const appenders = Array.from(
+      { length: 6 },
+      () => new RotatingAppender({ currentPath, previousPath, maxBytes }),
+    );
+
+    // Each line is ~200 bytes so a handful of concurrent appends crosses the
+    // 512-byte cap and forces rotation while other appends are in flight.
+    const line = `${JSON.stringify({ level: 30, msg: 'x'.repeat(180) })}\n`;
+    const results = await Promise.allSettled(
+      appenders.flatMap((appender) => Array.from({ length: 40 }, () => appender.append(line))),
+    );
+
+    const rejected = results.filter((r) => r.status === 'rejected');
+    const reasons = rejected.map((r) => String((r as PromiseRejectedResult).reason));
+    expect({ rejectedCount: rejected.length, reasons }).toEqual({
+      rejectedCount: 0,
+      reasons: [],
+    });
+  });
+
+  // Invariant B: a log-sink write failure must NEVER become an unhandled
+  // 'error' on the PinoFileSink stream — pino.multistream attaches no 'error'
+  // listener, so any propagated error escalates to uncaughtException and kills
+  // the whole server. The sink must contain its own I/O failures: _write must
+  // resolve successfully (reporting the failure out-of-band), so the Writable
+  // never emits 'error'. Here we force the rotation rename to fail by planting
+  // a non-empty directory at the previous-generation path, then write past the
+  // cap. A contained sink drains cleanly with no error surfaced to either the
+  // per-write callback or an 'error' event.
+  test('contains sink write failures instead of crashing the process (no unhandled error)', async () => {
+    const projectDir = join(tmp, 'sink-fail');
+    const currentPath = logsCurrentPath(projectDir);
+    const previousPath = logsPreviousPath(projectDir);
+
+    // Plant a non-empty directory where rotation will try to rename current →
+    // prev, guaranteeing the rename rejects (ENOTEMPTY / EISDIR).
+    mkdirSync(dirname(previousPath), { recursive: true });
+    mkdirSync(previousPath);
+    writeFileSync(join(previousPath, 'occupied'), 'x');
+
+    const sink = new PinoFileSink({ projectDir, maxBytes: 64 });
+
+    let emittedError: unknown;
+    sink.on('error', (err) => {
+      emittedError = err;
+    });
+
+    const line = `${JSON.stringify({ level: 30, msg: 'y'.repeat(200) })}\n`;
+    const writeCallbackError = await new Promise<unknown>((resolve) => {
+      sink.write(line, (err) => resolve(err ?? null));
+    });
+    await sink.drain();
+
+    expect({
+      writeCallbackError: writeCallbackError ? String(writeCallbackError) : null,
+      emittedError: emittedError ? String(emittedError) : null,
+    }).toEqual({ writeCallbackError: null, emittedError: null });
+    // The write failed silently but the current file still exists — the sink
+    // must not have taken the process down or lost its file handle.
+    expect(existsSync(currentPath)).toBe(true);
+  });
+
+  // drain() (called from flushAllFileSinks at graceful shutdown) must flush any
+  // dropped-record count suppressed inside the final throttle window, so the
+  // "how bad was it" diagnostic isn't lost when the server exits mid-window.
+  test('drain flushes the suppressed-failure count at shutdown', async () => {
+    const projectDir = join(tmp, 'sink-drain-flush');
+
+    mkdirSync(dirname(logsPreviousPath(projectDir)), { recursive: true });
+    mkdirSync(logsPreviousPath(projectDir));
+    writeFileSync(join(logsPreviousPath(projectDir), 'occupied'), 'x');
+
+    const emissions: Array<{ event: string; suppressed: number }> = [];
+    const originalError = console.error;
+    console.error = (arg: unknown) => {
+      try {
+        emissions.push(JSON.parse(String(arg)));
+      } catch {
+        /* ignore non-JSON console.error */
+      }
+    };
+    try {
+      const sink = new PinoFileSink({ projectDir, maxBytes: 64 });
+      const line = `${JSON.stringify({ level: 30, msg: 'z'.repeat(200) })}\n`;
+      // Two failing writes in the same throttle window: the first emits
+      // (suppressed: 0), the second is suppressed (counter → 1).
+      await new Promise<void>((resolve) => sink.write(line, () => resolve()));
+      await new Promise<void>((resolve) => sink.write(line, () => resolve()));
+      await sink.drain();
+
+      const dropped = emissions.filter((e) => e.event === 'pino-file-sink-write-dropped');
+      // First window emission + the drain flush.
+      expect(dropped.length).toBe(2);
+      expect(dropped[0]?.suppressed).toBe(0);
+      expect(dropped[1]?.suppressed).toBe(1);
+    } finally {
+      console.error = originalError;
+    }
   });
 });
 
