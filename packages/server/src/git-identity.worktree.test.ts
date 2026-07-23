@@ -100,10 +100,9 @@ describe('writeGitIdentity in a linked worktree', () => {
 
   test('resolveGitIdentity in a linked worktree without the extension enabled falls through to the main identity', async () => {
     // Pre-condition: a fresh worktree where no `writeGitIdentity` call has
-    // flipped `extensions.worktreeConfig`. `git config --worktree` exits 128
-    // (fatal) on this state; `defaultGitConfigReader` must map that to null
-    // so the chain falls through to `--local`. This is the correctness
-    // guarantee that lets us prepend the worktree-tier read unconditionally.
+    // flipped `extensions.worktreeConfig`. Without the extension git's merged
+    // read (`git config --get`) ignores `config.worktree` entirely, so the
+    // shared identity from the common `.git/config` must win here.
     const resolved = await resolveGitIdentity(env.linked);
     expect(resolved).toEqual({ name: 'Main Test', email: 'main@test.local' });
   });

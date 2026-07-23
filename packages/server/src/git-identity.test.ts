@@ -2,7 +2,12 @@
  * Unit tests for resolveGitIdentity() — chain order + fallback logic.
  * Uses injected GitConfigReader so no actual git or simple-git calls are made.
  *
- * Chain: per-worktree → repo-local → global → tokenStore → null
+ * Chain: effective merged git config → tokenStore → null
+ *
+ * Scope precedence (system < global < local < worktree) and include / includeIf
+ * resolution are delegated to git's own merged read; that behavior is covered by
+ * the real-git integration tests in git-identity.worktree.test.ts and
+ * git-identity.includes.test.ts.
  */
 
 import { describe, expect, test } from 'vitest';
@@ -14,11 +19,9 @@ import {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Build a mock GitConfigReader that returns pre-defined values per (key, scope). */
-function mockReader(
-  values: Partial<Record<string, Partial<Record<'worktree' | 'local' | 'global', string | null>>>>,
-): GitConfigReader {
-  return (_dir, key, scope) => values[key]?.[scope] ?? null;
+/** Build a mock GitConfigReader that returns pre-defined effective values per key. */
+function mockReader(values: Partial<Record<string, string | null>>): GitConfigReader {
+  return (_dir, key) => values[key] ?? null;
 }
 
 /** A minimal TokenStore stub. */
@@ -32,78 +35,39 @@ function makeTokenStore(entry: { login: string; name?: string; email?: string } 
 // ─── Chain order tests ────────────────────────────────────────────────────────
 
 describe('resolveGitIdentity chain order', () => {
-  test('Step 1 (worktree): per-worktree identity wins over local + global', async () => {
+  test('Step 1: returns the effective git config identity when name + email are both set', async () => {
     const reader = mockReader({
-      'user.name': { worktree: 'WT Dev', local: 'Local Dev', global: 'Global Dev' },
-      'user.email': {
-        worktree: 'wt@example.com',
-        local: 'local@example.com',
-        global: 'global@example.com',
-      },
+      'user.name': 'Config Dev',
+      'user.email': 'config@example.com',
     });
     const result = await resolveGitIdentity('/fake/repo', null, null, reader);
-    expect(result).toEqual({ name: 'WT Dev', email: 'wt@example.com' });
+    expect(result).toEqual({ name: 'Config Dev', email: 'config@example.com' });
   });
 
-  test('Step 1 partial: worktree name only — falls through to local pair', async () => {
-    const reader = mockReader({
-      'user.name': { worktree: 'WT Dev', local: 'Local Dev', global: 'Global Dev' },
-      'user.email': { worktree: null, local: 'local@example.com', global: 'global@example.com' },
+  test('Step 1 partial: name only — falls through to token store', async () => {
+    const reader = mockReader({ 'user.name': 'Config Dev' });
+    const store = makeTokenStore({
+      login: 'octocat',
+      name: 'The Octocat',
+      email: 'cat@github.com',
     });
-    const result = await resolveGitIdentity('/fake/repo', null, null, reader);
-    expect(result).toEqual({ name: 'Local Dev', email: 'local@example.com' });
+    const result = await resolveGitIdentity('/fake/repo', store, 'github.com', reader);
+    expect(result).toEqual({ name: 'The Octocat', email: 'cat@github.com' });
   });
 
-  test('Step 1 partial: worktree email only — falls through to local pair', async () => {
-    const reader = mockReader({
-      'user.name': { worktree: null, local: 'Local Dev', global: 'Global Dev' },
-      'user.email': {
-        worktree: 'wt@example.com',
-        local: 'local@example.com',
-        global: 'global@example.com',
-      },
-    });
+  test('Step 1 partial: email only — falls through to null when no token store', async () => {
+    const reader = mockReader({ 'user.email': 'config@example.com' });
     const result = await resolveGitIdentity('/fake/repo', null, null, reader);
-    expect(result).toEqual({ name: 'Local Dev', email: 'local@example.com' });
+    expect(result).toBeNull();
   });
 
-  test('Step 1 absent: empty worktree scope falls through to local (extension off / non-worktree)', async () => {
-    const reader = mockReader({
-      'user.name': { local: 'Local Dev' },
-      'user.email': { local: 'local@example.com' },
-    });
+  test('Step 1 partial: name only — falls through to null when no token store', async () => {
+    const reader = mockReader({ 'user.name': 'Config Dev' });
     const result = await resolveGitIdentity('/fake/repo', null, null, reader);
-    expect(result).toEqual({ name: 'Local Dev', email: 'local@example.com' });
+    expect(result).toBeNull();
   });
 
-  test('Step 2: returns repo-local identity when both name + email are set locally', async () => {
-    const reader = mockReader({
-      'user.name': { local: 'Local Dev', global: 'Global Dev' },
-      'user.email': { local: 'local@example.com', global: 'global@example.com' },
-    });
-    const result = await resolveGitIdentity('/fake/repo', null, null, reader);
-    expect(result).toEqual({ name: 'Local Dev', email: 'local@example.com' });
-  });
-
-  test('Step 2 partial: local name only — falls through to global', async () => {
-    const reader = mockReader({
-      'user.name': { local: 'Local Dev', global: 'Global Dev' },
-      'user.email': { local: null, global: 'global@example.com' },
-    });
-    const result = await resolveGitIdentity('/fake/repo', null, null, reader);
-    expect(result).toEqual({ name: 'Global Dev', email: 'global@example.com' });
-  });
-
-  test('Step 3: returns global identity when local is empty', async () => {
-    const reader = mockReader({
-      'user.name': { local: null, global: 'Global Dev' },
-      'user.email': { local: null, global: 'global@example.com' },
-    });
-    const result = await resolveGitIdentity('/fake/repo', null, null, reader);
-    expect(result).toEqual({ name: 'Global Dev', email: 'global@example.com' });
-  });
-
-  test('Step 4: uses tokenStore when both git configs are empty', async () => {
+  test('Step 2: uses tokenStore when git config is empty', async () => {
     const reader = mockReader({});
     const store = makeTokenStore({
       login: 'octocat',
@@ -114,14 +78,14 @@ describe('resolveGitIdentity chain order', () => {
     expect(result).toEqual({ name: 'The Octocat', email: 'cat@github.com' });
   });
 
-  test('Step 4: uses login as name fallback when entry.name is absent', async () => {
+  test('Step 2: uses login as name fallback when entry.name is absent', async () => {
     const reader = mockReader({});
     const store = makeTokenStore({ login: 'octocat', email: 'cat@github.com' });
     const result = await resolveGitIdentity('/fake/repo', store, 'github.com', reader);
     expect(result).toEqual({ name: 'octocat', email: 'cat@github.com' });
   });
 
-  test('Step 4: synthesizes noreply email when entry.email is absent', async () => {
+  test('Step 2: synthesizes noreply email when entry.email is absent', async () => {
     const reader = mockReader({});
     const store = makeTokenStore({ login: 'octocat' }); // no email
     const result = await resolveGitIdentity('/fake/repo', store, 'github.com', reader);
@@ -131,41 +95,41 @@ describe('resolveGitIdentity chain order', () => {
     });
   });
 
-  test('Step 5: returns null when all sources are empty', async () => {
+  test('Step 3: returns null when all sources are empty', async () => {
     const reader = mockReader({});
     const result = await resolveGitIdentity('/fake/repo', null, null, reader);
     expect(result).toBeNull();
   });
 
-  test('Step 5: returns null when tokenStore.get returns null', async () => {
+  test('Step 3: returns null when tokenStore.get returns null', async () => {
     const reader = mockReader({});
     const store = makeTokenStore(null);
     const result = await resolveGitIdentity('/fake/repo', store, 'github.com', reader);
     expect(result).toBeNull();
   });
 
-  test('Step 4 skipped: no host provided — falls through to null', async () => {
+  test('Step 2 skipped: no host provided — falls through to null', async () => {
     const reader = mockReader({});
     const store = makeTokenStore({
       login: 'octocat',
       name: 'The Octocat',
       email: 'cat@github.com',
     });
-    // host not provided — step 3 skipped even with a valid store
+    // host not provided — token step skipped even with a valid store
     const result = await resolveGitIdentity('/fake/repo', store, null, reader);
     expect(result).toBeNull();
   });
 
-  test('Step 4 skipped: no tokenStore — falls through to null', async () => {
+  test('Step 2 skipped: no tokenStore — falls through to null', async () => {
     const reader = mockReader({});
     const result = await resolveGitIdentity('/fake/repo', null, 'github.com', reader);
     expect(result).toBeNull();
   });
 
-  test('Local (Step 2) wins over global + tokenStore when set', async () => {
+  test('Git config (Step 1) wins over tokenStore when set', async () => {
     const reader = mockReader({
-      'user.name': { local: 'Repo Dev', global: 'Global Dev' },
-      'user.email': { local: 'repo@example.com', global: 'global@example.com' },
+      'user.name': 'Repo Dev',
+      'user.email': 'repo@example.com',
     });
     const store = makeTokenStore({
       login: 'octocat',

@@ -1474,7 +1474,7 @@ export class SyncEngine {
         const message = this.buildCommitMessage(changedContentRelPaths);
 
         // ── 9. Author identity (resolveGitIdentity chain, soft fallback) ─
-        // Chain: repo-local → global → (OAuth profile, when tokenStore plumbed) →
+        // Chain: effective merged git config → (OAuth profile, when tokenStore plumbed) →
         // hard-coded "OpenKnowledge" default. We never error on unresolved
         // identity — attribution silently degrades to the default and the UI
         // surfaces a non-blocking nudge via `status.identityUnresolved`.

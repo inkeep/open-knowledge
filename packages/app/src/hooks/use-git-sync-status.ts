@@ -44,7 +44,7 @@ export interface GitSyncStatus {
   /** User's sync toggle preference (false by default — disabled for safety). */
   syncEnabled: boolean;
   /**
-   * Soft signal: the git identity chain (local → global → OAuth)
+   * Soft signal: the git identity chain (merged git config → OAuth)
    * returned null on the last probe. Commits still succeed under a default
    * identity — the UI surfaces a non-blocking nudge to set a real one.
    */
