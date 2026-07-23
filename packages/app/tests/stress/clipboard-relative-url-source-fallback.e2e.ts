@@ -143,6 +143,47 @@ test.describe('FR-2 walker URL classifier — WYSIWYG cross-app source-fallback'
     expect(captured.html).not.toContain('src="./x.jpg"');
   });
 
+  test('QA-005b inline image adjacent to marks resolves the image range and keeps the marks', async ({
+    page,
+    baseURL,
+  }) => {
+    // Behavioral pin for the direct-path resolution when the image sits
+    // inside marked text. The mark-interaction semantics of the direct
+    // `posAtDOM(<img>, 0)` path (vs the descriptor-parent path's -1 bias)
+    // only matter when marks surround the image, so this seed puts the
+    // image inside a strong run with prose on both sides.
+    await fetch(`${baseURL}/api/agent-write-md`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        docName,
+        markdown: 'Lead **bold ![alt](./y.png) tail** end.\n',
+        position: 'replace',
+      }),
+    });
+    await expect(async () => {
+      expect(await getYText(page)).toContain('![alt](./y.png)');
+    }).toPass({ timeout: 5_000 });
+    await page.click('.ProseMirror:not(.composer-prosemirror)');
+
+    const captured = await simulateCopyAndRead(page, 'wysiwyg');
+
+    // text/plain is canonical markdown; the serializer splits the strong
+    // run around the image atom, so assert the pieces rather than exact
+    // bytes (that emission path is untouched here).
+    expect(captured.plain).toContain('![alt](./y.png)');
+    expect(captured.plain).toContain('bold');
+    expect(captured.plain).toContain('tail');
+    // The fallback span carries the image's own markdown, not a duplicate
+    // of the surrounding text run.
+    expect(captured.html).toContain('<span class="mdx-inline">');
+    expect(captured.html).toContain('![alt](./y.png)');
+    expect(captured.html).not.toMatch(/<span class="mdx-inline">[^<]*bold/);
+    // The strong mark survives around the swap.
+    expect(captured.html).toMatch(/<(strong|b)[\s>]/);
+    expect(captured.html).not.toContain('src="./y.png"');
+  });
+
   test('QA-009 all-portable selection: walker passes through unchanged (regression check)', async ({
     page,
     baseURL,

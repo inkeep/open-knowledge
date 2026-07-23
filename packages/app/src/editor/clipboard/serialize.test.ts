@@ -336,14 +336,23 @@ function chainDescriptorEls(...els: FakeDescriptorElement[]): FakeDescriptorElem
   return els[els.length - 1];
 }
 
+// Memoized so repeated `parentElement` walks return the SAME wrapper
+// object — real DOM elements have stable identity, and the climb's
+// same-node-view containment check compares by identity.
+const descriptorWrappers = new WeakMap<FakeDescriptorElement, Element>();
+
 function wrapDescriptor(el: FakeDescriptorElement): Element {
-  return {
+  const existing = descriptorWrappers.get(el);
+  if (existing) return existing;
+  const wrapper = {
     classList: { contains: (c: string) => el.classes.has(c) },
     hasAttribute: (a: string) => el.attrs.has(a),
     get parentElement() {
       return el.parentElement === null ? null : wrapDescriptor(el.parentElement);
     },
   } as unknown as Element;
+  descriptorWrappers.set(el, wrapper);
+  return wrapper;
 }
 
 describe('findDescriptorRoot — outermost-wrapper selection', () => {
@@ -421,45 +430,63 @@ describe('findDescriptorRoot — outermost-wrapper selection', () => {
     expect(root).toBeNull();
   });
 
-  test('(f) wrappers carrying `data-clipboard-inline-leaf` are skipped (ImageInlineZoom opt-out)', () => {
+  test("(f) wrappers carrying `data-clipboard-inline-leaf` are skipped, including the same node view's outer .react-renderer (ImageInlineZoom opt-out)", () => {
     // `ImageInlineZoom` wraps inline `<img>` in `<NodeViewWrapper as="span"
     // data-image-inline-zoom data-clipboard-inline-leaf="image">` so
-    // click-to-enlarge works mid-prose. The wrapper carries
-    // `data-node-view-wrapper` (tiptap stamps it on every NodeViewWrapper)
-    // — without the opt-out, `findDescriptorRoot` would match the wrapper
-    // and route clipboard serialization through the descriptor-parent
-    // codepath (`posAtDOM(<p>, idx, -1)`), which has different mark-
-    // interaction semantics than the direct `posAtDOM(<img>, 0)` path the
-    // bare PM image node used. The opt-out preserves the pre-
-    // existing clipboard behavior with zero risk surface. A regression
-    // that drops the skip would silently re-introduce the routing change.
+    // click-to-enlarge works mid-prose. tiptap renders the node view as
+    // `.react-renderer.node-image > [data-node-view-wrapper ...]` — the
+    // opt-out must neutralize the WHOLE wrapper stack of that node view,
+    // not just the annotated wrapper: the outer `.react-renderer` belongs
+    // to the same node view and matching it would route clipboard
+    // serialization through the descriptor-parent codepath
+    // (`posAtDOM(<p>, idx, -1)`) instead of the direct
+    // `posAtDOM(<img>, 0)` path the bare PM image node uses. This models
+    // the real production topology.
     const proseMirror = makeDescriptorEl({ classes: ['ProseMirror'] });
     const para = makeDescriptorEl();
+    const outerReactRenderer = makeDescriptorEl({ classes: ['react-renderer', 'node-image'] });
     const inlineLeafWrapper = makeDescriptorEl({
       attrs: ['data-node-view-wrapper', 'data-clipboard-inline-leaf'],
     });
     const img = makeDescriptorEl();
-    const live = chainDescriptorEls(proseMirror, para, inlineLeafWrapper, img);
+    const live = chainDescriptorEls(proseMirror, para, outerReactRenderer, inlineLeafWrapper, img);
 
     expect(findDescriptorRoot(wrapDescriptor(live))).toBeNull();
   });
 
-  test('(g) opt-out is wrapper-local — a real descriptor BEYOND the inline-leaf wrapper still matches (defense against accidental no-op for nested cases)', () => {
-    // Pin that `data-clipboard-inline-leaf` only skips THAT wrapper, not
-    // the rest of the climb. If a future schema nests `ImageInlineZoom`
-    // inside a block descriptor (hypothetical, but the walker shouldn't
-    // care), the outer block descriptor must still be found.
+  test("(g) opt-out neutralizes only the same node view's stack — a genuine descriptor ABOVE it still matches", () => {
+    // Pin that the opt-out skips exactly the inline-leaf node view's own
+    // wrapper pair (`.react-renderer` + annotated NodeViewWrapper), not
+    // the rest of the climb. A genuine enclosing descriptor always
+    // interposes its OWN NodeViewWrapper between its `.react-renderer`
+    // and nested content, so if a future schema nests `ImageInlineZoom`
+    // inside a block descriptor, the outer descriptor must still be found.
     const proseMirror = makeDescriptorEl({ classes: ['ProseMirror'] });
     const outerReactRenderer = makeDescriptorEl({ classes: ['react-renderer'] });
+    const outerWrapper = makeDescriptorEl({
+      attrs: ['data-node-view-wrapper', 'data-jsx-component'],
+    });
+    const innerReactRenderer = makeDescriptorEl({ classes: ['react-renderer', 'node-image'] });
     const inlineLeafWrapper = makeDescriptorEl({
       attrs: ['data-node-view-wrapper', 'data-clipboard-inline-leaf'],
     });
     const img = makeDescriptorEl();
-    const live = chainDescriptorEls(proseMirror, outerReactRenderer, inlineLeafWrapper, img);
+    const live = chainDescriptorEls(
+      proseMirror,
+      outerReactRenderer,
+      outerWrapper,
+      innerReactRenderer,
+      inlineLeafWrapper,
+      img,
+    );
 
     const root = findDescriptorRoot(wrapDescriptor(live));
     expect(root).not.toBeNull();
-    expect(root?.classList.contains('react-renderer')).toBe(true);
+    // Positive: the OUTERMOST genuine descriptor root is returned.
+    expect(root).toBe(wrapDescriptor(outerReactRenderer));
+    // Negative: the inline node view's own wrapper stack was neutralized.
+    expect(root).not.toBe(wrapDescriptor(innerReactRenderer));
+    expect(root).not.toBe(wrapDescriptor(inlineLeafWrapper));
   });
 });
 
