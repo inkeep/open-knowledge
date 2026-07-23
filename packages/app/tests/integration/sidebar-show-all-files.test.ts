@@ -3,7 +3,7 @@
  *
  * Verifies the runtime-bypass path through ContentFilter:
  *   - `.gitignored` files surface
- *   - `.okignored` files surface
+ *   - `.okignored` files stay hidden (`.okignore` remains authoritative)
  *   - content-bearing `BUILTIN_SKIP_DIRS` (dist/, build/, coverage/) surface
  *   - the always-skip floor (.git/, node_modules/, .ok/) stays PRUNED even
  *     under bypass — these never hold user markdown and walking them on a
@@ -106,7 +106,7 @@ describe('/api/documents?showAll=true', () => {
     expect(docNames).not.toContain('node_modules/pkg/README');
   });
 
-  test('?showAll=true surfaces .gitignored / .okignored / content-bearing skip-dir markdown but prunes the always-skip floor', async () => {
+  test('?showAll=true surfaces .gitignored / content-bearing skip-dir markdown, honors .okignore, and prunes the always-skip floor', async () => {
     const res = await fetch(`http://127.0.0.1:${server.port}/api/documents?showAll=true`);
     expect(res.ok).toBe(true);
     const body = DocumentListSuccessSchema.parse(await res.json());
@@ -121,8 +121,8 @@ describe('/api/documents?showAll=true', () => {
     expect(docNames).toContain('secrets/api-key');
     expect(docNames).toContain('build/compiled');
 
-    // .okignored markdown surfaces.
-    expect(docNames).toContain('drafts/wip');
+    // The user's explicit .okignore hide list remains authoritative.
+    expect(docNames).not.toContain('drafts/wip');
 
     // `build/` is .gitignored AND in BUILTIN_SKIP_DIRS yet still surfaces
     // (asserted above) — proving the floor is a strict subset, not all of
@@ -179,12 +179,12 @@ describe('/api/documents?showAll=true', () => {
 
     const folderPaths = body.documents.filter((e) => e.kind === 'folder').map((e) => e.path);
 
-    // Content-bearing dirs — including .gitignored (secrets/, build/) and
-    // .okignored (drafts/) ones — still surface under Show All Files.
+    // Content-bearing dirs — including .gitignored (secrets/, build/) ones —
+    // still surface under Show All Files. Explicitly .okignored dirs do not.
     expect(folderPaths).toContain('docs');
     expect(folderPaths).toContain('secrets');
     expect(folderPaths).toContain('build');
-    expect(folderPaths).toContain('drafts');
+    expect(folderPaths).not.toContain('drafts');
     expect(folderPaths).toContain('src');
 
     // Always-skip floor: pruned even under bypass. Descending into these on a

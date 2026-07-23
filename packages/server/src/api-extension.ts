@@ -1503,8 +1503,9 @@ export interface WalkShowAllOpts extends StreamShowAllOpts {
  * cap covers the shallow levels.
  *
  * Uses `ContentFilter.{isExcluded,isDirExcluded}` with `bypassFilters:true` so
- * `.gitignored` / `.okignored` / content-bearing `BUILTIN_SKIP_DIRS` (`dist/`,
- * `build/`, `coverage/`, …) surface. The `ALWAYS_SKIP_DIRS` floor still prunes
+ * `.gitignored` and content-bearing `BUILTIN_SKIP_DIRS` (`dist/`, `build/`,
+ * `coverage/`, …) surface. `.okignore` remains authoritative because it is the
+ * user's explicit hide list. The `ALWAYS_SKIP_DIRS` floor still prunes
  * `.git/` / `node_modules/` / `.ok/` even under bypass (those trees are
  * unbounded and never hold user markdown — pruning them is the Show All Files
  * OOM guard); `showOk` re-admits `.ok` minus `worktrees`/`local`, the two
@@ -1532,7 +1533,7 @@ export async function* streamShowAllEntries(
   // One opts object for every filter consultation: the dir gates, the
   // `hasChildren` probe, and the file backstop must agree on admission, or a
   // revealed folder probes childless / yields rows its own dir gate pruned.
-  const filterOpts = { bypassFilters: true, showOk } as const;
+  const filterOpts = { bypassFilters: true, respectOkignore: true, showOk } as const;
   showAllWalkInvocations += 1;
   // Running count of yielded entries — the streaming analogue of the buffered
   // `documents.length` cap probe. Shared across the whole traversal so the
@@ -1589,7 +1590,7 @@ export async function* streamShowAllEntries(
       const relPath = relDir ? `${relDir}/${entry.name}` : entry.name;
       const docName = stripDocExtension(relPath);
       if (!collidingDocNames.has(docName)) continue;
-      if (contentFilter.isExcluded(relPath, { bypassFilters: true })) continue;
+      if (contentFilter.isExcluded(relPath, filterOpts)) continue;
       if (!passesDirFilter(relPath)) continue;
 
       if (entry.isSymbolicLink()) {
@@ -1735,8 +1736,9 @@ export async function* streamShowAllEntries(
 
         if (entry.isDirectory()) {
           // bypassFilters:true admits gitignored + content-bearing skip-dirs
-          // (dist/, build/), but the ALWAYS_SKIP_DIRS floor still prunes
-          // .git/, node_modules/, .ok/ here — the Show All Files OOM guard.
+          // (dist/, build/), while respectOkignore:true keeps .okignore
+          // authoritative. The ALWAYS_SKIP_DIRS floor still prunes .git/,
+          // node_modules/, .ok/ here — the Show All Files OOM guard.
           // showOk re-admits .ok minus worktrees/local for the tree reveal.
           if (contentFilter.isDirExcluded(relPath, filterOpts)) continue;
 
@@ -6573,12 +6575,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
         // Show All Files mode — fresh on-demand disk walk via
         // `ContentFilter.{isExcluded,isDirExcluded}` with `bypassFilters:true`.
-        // Returns .gitignored / .okignored / content-bearing `BUILTIN_SKIP_DIRS`
-        // files (`dist/`, `build/`, …), EXCEPT the `ALWAYS_SKIP_DIRS` floor
-        // (`.git/` / `node_modules/` / `.ok/`, pruned even under bypass — the
-        // OOM guard) and synthetic system + config doc names (unbypassable
-        // STOP-rule gate inside ContentFilter). Per-request only — fileIndex
-        // stays populated with the non-bypass set, so the next
+        // Returns .gitignored / content-bearing `BUILTIN_SKIP_DIRS` files
+        // (`dist/`, `build/`, …), while `.okignore` remains authoritative.
+        // The `ALWAYS_SKIP_DIRS` floor (`.git/` / `node_modules/` / `.ok/`) and
+        // synthetic system + config doc names remain unbypassable. Per-request
+        // only — fileIndex stays populated with the non-bypass set, so the next
         // non-`?showAll=true` call serves today's filtered view unchanged.
         if (showAll && contentFilter) {
           // Single-flight: coalesce concurrent identical walks into one. Key by
