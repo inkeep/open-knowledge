@@ -6693,10 +6693,6 @@ msgstr ""
 msgid "Protected branch — cannot push"
 msgstr ""
 
-#: src/components/HelpPopover.tsx
-msgid "Provide feedback"
-msgstr ""
-
 #: src/components/TemplateForm.tsx
 msgid "provisional"
 msgstr ""
@@ -7072,7 +7068,7 @@ msgid "Report a bug"
 msgstr ""
 
 #: src/components/AppMenubar.tsx
-msgid "Report a Bug…"
+msgid "Report a bug…"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
@@ -7599,6 +7595,15 @@ msgstr ""
 #: src/components/acp/ThreadView.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Send"
+msgstr ""
+
+#: src/components/command-palette-commands.ts
+#: src/components/HelpPopover.tsx
+msgid "Send feedback"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Send feedback…"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx

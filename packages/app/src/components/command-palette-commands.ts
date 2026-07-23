@@ -22,6 +22,7 @@ import {
   FoldVertical,
   GitBranch,
   LayoutGrid,
+  MessageSquare,
   Network,
   Package,
   PanelLeft,
@@ -117,6 +118,7 @@ export interface PaletteCommandContext {
   openSeedDialog(): void;
   openCreateProjectDialog(): void;
   openReportBugDialog(): void;
+  openFeedbackDialog(): void;
 }
 
 /** Render-order buckets; the palette renders each group under its own heading. */
@@ -171,6 +173,7 @@ const PALETTE_COMMAND_LABELS = {
   settings: msg`Settings`,
   installClaudeDesktop: msg`Install for Claude Chat & Cowork (Desktop App)`,
   reportBug: msg`Report a bug`,
+  sendFeedback: msg`Send feedback`,
   newFromTemplate: msg`New from template`,
   rename: msg`Rename`,
   duplicate: msg`Duplicate`,
@@ -220,6 +223,7 @@ const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   settings: Settings,
   'install-claude-desktop': Download,
   'report-bug': Bug,
+  'send-feedback': MessageSquare,
   'new-from-template': FilePlus2,
   rename: Pencil,
   duplicate: Copy,
@@ -308,6 +312,10 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
   'report-bug': (ctx) => {
     ctx.closePalette();
     ctx.openReportBugDialog();
+  },
+  'send-feedback': (ctx) => {
+    ctx.closePalette();
+    ctx.openFeedbackDialog();
   },
   'check-for-updates': (ctx) =>
     ctx.runAction(async () => {

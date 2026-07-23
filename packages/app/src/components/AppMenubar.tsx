@@ -359,7 +359,10 @@ export function AppMenubar() {
             {t`OpenKnowledge on GitHub`}
           </MenubarItem>
           <MenubarItem onSelect={() => dispatch({ kind: 'menu-action', action: 'report-bug' })}>
-            {t`Report a Bug…`}
+            {t`Report a bug…`}
+          </MenubarItem>
+          <MenubarItem onSelect={() => dispatch({ kind: 'menu-action', action: 'send-feedback' })}>
+            {t`Send feedback…`}
           </MenubarItem>
           {snapshot?.canCheckForUpdates === true && (
             <>

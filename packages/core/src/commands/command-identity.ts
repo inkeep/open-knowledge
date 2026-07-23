@@ -156,9 +156,8 @@ export interface CommandMenuPlacement {
   /**
    * Literal native-menu label, for the handful of menu strings that are NOT in
    * the shared `MENU_LABELS` parity contract: menu-only leaves (Uninstall, New
-   * Terminal Window) and two leaves whose native label predates the app's
-   * sentence-case convention and stays byte-identical here (Report a Bug,
-   * Install…(desktop app)). Takes precedence over `menuLabelKey`.
+   * Terminal Window) and the install leaf, whose native label renders
+   * "…(desktop app)" lowercase. Takes precedence over `menuLabelKey`.
    */
   readonly menuLabelText?: string;
 }
@@ -361,7 +360,19 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     keywords: ['bug report issue feedback problem'],
     availability: { host: 'desktop' },
     palette: { group: 'project', visibility: 'always' },
-    menu: [{ section: 'help-links', order: 1, ellipsis: true, menuLabelText: 'Report a Bug' }],
+    menu: [{ section: 'help-links', order: 1, ellipsis: true }],
+  },
+  {
+    // Sibling of report-bug, but host-agnostic: the feedback form POSTs to the
+    // hosted intake route, so it works in the web host too (unlike the bug
+    // report, whose bundle create + upload lives behind the Electron bridge).
+    id: 'send-feedback',
+    menuActionId: 'send-feedback',
+    labelKey: 'sendFeedback',
+    keywords: ['feedback', 'suggestion', 'idea', 'rate', 'survey', 'contact'],
+    availability: {},
+    palette: { group: 'project', visibility: 'always' },
+    menu: [{ section: 'help-links', order: 2, ellipsis: true }],
   },
   // ── File group (palette) / File-item + worktree (menu) ──────────────────────
   {

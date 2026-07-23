@@ -1,6 +1,6 @@
 /**
  * Mounts `ReportBugDialog` and opens it when main fires the `report-bug`
- * menu action (Help → Report a Bug…). App-root mount so the Help-menu entry
+ * menu action (Help → Report a bug…). App-root mount so the Help-menu entry
  * works regardless of sidebar/editor state — mirroring the self-contained
  * trigger pattern of `CreateProjectMenuTrigger`.
  *

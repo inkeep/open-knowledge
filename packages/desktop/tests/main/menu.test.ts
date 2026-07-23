@@ -386,7 +386,7 @@ describe('buildMenuTemplate', () => {
     });
   });
 
-  describe('Report a Bug… menu item', () => {
+  describe('Report a bug… menu item', () => {
     test('always renders in the Help menu, even without the dep wired', () => {
       // Unlike Check for updates… (capability-gated on the updater handle),
       // the report flow is always available — the item renders with default
@@ -395,17 +395,45 @@ describe('buildMenuTemplate', () => {
       const helpMenu = template.find((t) => t.label === 'Help');
       const sub = helpMenu?.submenu as MenuItemConstructorOptions[] | undefined;
       if (!sub) throw new Error('Help submenu missing');
-      expect(sub.find((i) => i.label === 'Report a Bug…')).toBeDefined();
+      expect(sub.find((i) => i.label === 'Report a bug…')).toBeDefined();
     });
 
     test('click dispatches deps.onReportBug()', () => {
       const onReportBug = mock(() => {});
       const deps = makeDeps({ onReportBug });
       const template = buildMenuTemplate(deps);
-      const item = findByLabel(template, 'Report a Bug…');
-      if (!item || typeof item.click !== 'function') throw new Error('Report a Bug… click missing');
+      const item = findByLabel(template, 'Report a bug…');
+      if (!item || typeof item.click !== 'function') throw new Error('Report a bug… click missing');
       (item.click as () => void)();
       expect(onReportBug).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Send feedback… menu item', () => {
+    test('always renders in the Help menu, even without the dep wired', () => {
+      // Host-agnostic sibling of Report a bug…: the form posts to the hosted
+      // intake route, so nothing gates the item and an unwired click no-ops.
+      const template = buildMenuTemplate(makeDeps());
+      const helpMenu = template.find((t) => t.label === 'Help');
+      const sub = helpMenu?.submenu as MenuItemConstructorOptions[] | undefined;
+      if (!sub) throw new Error('Help submenu missing');
+      expect(sub.find((i) => i.label === 'Send feedback…')).toBeDefined();
+    });
+
+    test('click dispatches deps.onSendFeedback()', () => {
+      // The parity ratchet asserts the binding EXISTS; only this pins that it
+      // calls the right dep — a copy-paste to onReportBug would pass the ratchet.
+      const onSendFeedback = mock(() => {});
+      const onReportBug = mock(() => {});
+      const deps = makeDeps({ onSendFeedback, onReportBug });
+      const template = buildMenuTemplate(deps);
+      const item = findByLabel(template, 'Send feedback…');
+      if (!item || typeof item.click !== 'function') {
+        throw new Error('Send feedback… click missing');
+      }
+      (item.click as () => void)();
+      expect(onSendFeedback).toHaveBeenCalledTimes(1);
+      expect(onReportBug).not.toHaveBeenCalled();
     });
   });
 

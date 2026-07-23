@@ -39,6 +39,7 @@ let seedDialogProps: Array<{ open: boolean }> = [];
 let newItemDialogProps: Array<{ open: boolean; kind: string; initialDir: string }> = [];
 let createProjectDialogProps: Array<{ open: boolean; bridge: unknown }> = [];
 let reportBugDialogProps: Array<{ open: boolean }> = [];
+let feedbackDialogProps: Array<{ open: boolean; source?: string }> = [];
 let commandDialogProps: CommandDialogProps[] = [];
 let refreshInstallStatesCalls = 0;
 const refreshInstallStates = () => {
@@ -158,6 +159,19 @@ mock.module('@/components/ReportBugDialog', () => ({
   ReportBugDialog: (props: { open: boolean }) => {
     reportBugDialogProps.push(props);
     return <div data-open={String(props.open)} data-testid="report-bug-dialog" />;
+  },
+}));
+
+mock.module('@/components/FeedbackFormDialog', () => ({
+  FeedbackFormDialog: (props: { open: boolean; source?: string }) => {
+    feedbackDialogProps.push(props);
+    return (
+      <div
+        data-open={String(props.open)}
+        data-source={props.source}
+        data-testid="feedback-form-dialog"
+      />
+    );
   },
 }));
 
@@ -302,6 +316,7 @@ describe('CommandPalette DOM behavior', () => {
     newItemDialogProps = [];
     createProjectDialogProps = [];
     reportBugDialogProps = [];
+    feedbackDialogProps = [];
     commandDialogProps = [];
     refreshInstallStatesCalls = 0;
     worktreeModelMock = null;
@@ -480,6 +495,31 @@ describe('CommandPalette DOM behavior', () => {
       expect(screen.getByTestId('report-bug-dialog').getAttribute('data-open')).toBe('true');
     });
     expect(reportBugDialogProps.at(-1)?.open).toBe(true);
+  });
+
+  test('send-feedback command renders on both hosts and opens FeedbackFormDialog', async () => {
+    // Host-agnostic, unlike report-a-bug: the form POSTs to the hosted intake
+    // route, so the row is present with no bridge.
+    const web = await renderPalette({ bridge: null });
+
+    await setQuery('feedback');
+    const webRow = screen.getByTestId('command-palette-send-feedback');
+    expect(webRow.textContent).toContain('Send feedback');
+
+    fireEvent.click(webRow);
+
+    expect(web.onOpenChange).toHaveBeenCalledWith(false);
+    await waitFor(() => {
+      expect(screen.getByTestId('feedback-form-dialog').getAttribute('data-open')).toBe('true');
+    });
+    // Attribution: the palette identifies itself so intake can tell which
+    // surface the feedback came from.
+    expect(feedbackDialogProps.at(-1)?.source).toBe('command_palette');
+
+    cleanup();
+    await renderPalette({ bridge: createBridge() });
+    await setQuery('suggestion');
+    expect(screen.getByTestId('command-palette-send-feedback')).not.toBeNull();
   });
 
   test('starter-pack command is searchable, participates in empty-state aggregation, and opens SeedDialog after closing', async () => {

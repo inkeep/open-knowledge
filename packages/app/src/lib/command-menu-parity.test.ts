@@ -107,7 +107,8 @@ const PALETTE_COMMAND_LABELS = new Set<string>([
   'New Terminal',
   'Kill Terminal',
   'OpenKnowledge on GitHub',
-  'Report a Bug',
+  'Report a bug',
+  'Send feedback',
   // Present already; not a single registry command but reachable from the palette
   // as its own surface (Install for Claude, gated behind SHOW_INSTALL_SKILL).
   'Install for Claude Chat & Cowork (desktop app)',
@@ -136,6 +137,7 @@ function makeFullDeps(): MenuDeps {
     openInstallSkillDialog: noop,
     openSettings: noop,
     onReportBug: noop,
+    onSendFeedback: noop,
     onCheckForUpdates: noop,
     onUninstall: noop,
     activeTarget: { kind: 'doc', target: 'doc.md' } as MenuDeps['activeTarget'],
@@ -378,6 +380,7 @@ describe('command-menu parity ratchet', () => {
       'components/ProjectSwitcher.tsx',
       'components/CreateProjectMenuTrigger.tsx',
       'components/ReportBugMenuTrigger.tsx',
+      'components/FeedbackMenuTrigger.tsx',
       'components/NavigatorApp.tsx',
       'editor/DocumentContext.tsx',
     ];
@@ -453,6 +456,7 @@ describe('command identity registry (Phase 2b)', () => {
       'settings',
       'install-claude-desktop',
       'report-bug',
+      'send-feedback',
       'check-for-updates',
       'set-up-integrations',
       'toggle-spell-check',

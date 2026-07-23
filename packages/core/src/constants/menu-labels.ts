@@ -63,6 +63,8 @@ export const MENU_LABELS = {
   killTerminal: 'Kill Terminal',
   checkSpelling: 'Check spelling while typing',
   openOnGithub: 'OpenKnowledge on GitHub',
+  reportBug: 'Report a bug',
+  sendFeedback: 'Send feedback',
   // Additional shared command labels the registry references. Each string is
   // rendered identically by the palette, so the parity test stays green. The
   // native menu appends the … ellipsis at its call site where the command opens
@@ -89,11 +91,10 @@ export const MENU_LABELS = {
   docPanelHide: 'Hide document panel',
   terminalShow: 'Show Terminal',
   terminalHide: 'Hide Terminal',
-  // Palette forms for the two commands whose native-menu leaf renders a
-  // different literal via the placement's `menuLabelText` ("Report a Bug" keeps
-  // its capital B; the install leaf renders "…(desktop app)" lowercase), so only
-  // these palette strings participate in the shared-label parity contract.
-  reportBug: 'Report a bug',
+  // Palette form for the install command, whose native-menu leaf renders a
+  // different literal via the placement's `menuLabelText` ("…(desktop app)"
+  // lowercase), so only this palette string participates in the shared-label
+  // parity contract.
   installClaudeDesktop: 'Install for Claude Chat & Cowork (Desktop App)',
 } as const satisfies Record<string, string>;
 

@@ -160,6 +160,10 @@ vi.doMock('@/components/ReportBugMenuTrigger', () => ({
   ReportBugMenuTrigger: () => <div data-testid="report-bug-menu-trigger" />,
 }));
 
+vi.doMock('@/components/FeedbackMenuTrigger', () => ({
+  FeedbackMenuTrigger: () => <div data-testid="feedback-menu-trigger" />,
+}));
+
 vi.doMock('@/components/ShareBranchSwitchDialog', () => ({
   ShareBranchSwitchDialog: () => <div data-testid="share-branch-switch-dialog" />,
 }));

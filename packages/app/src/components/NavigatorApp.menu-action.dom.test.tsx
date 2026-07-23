@@ -66,7 +66,8 @@ type MenuActionLike =
   | 'new-doc'
   | 'toggle-sidebar'
   | 'close-active-tab-or-window'
-  | 'report-bug';
+  | 'report-bug'
+  | 'send-feedback';
 
 interface NavigatorBridgeStub {
   bridge: OkDesktopBridge;
@@ -208,6 +209,28 @@ describe('NavigatorApp new-project menu-action subscription', () => {
     // The Navigator has no project, so the compose summary must carry the
     // system-wide labeling rather than the project-scoped line.
     expect(screen.getByText(/No project is open/)).not.toBeNull();
+  });
+
+  test('send-feedback menu action opens the feedback form', async () => {
+    // The Help menu fires to whichever window is focused, so the Navigator
+    // owns this path whenever it is the focused window — the editor-window
+    // FeedbackMenuTrigger never runs here.
+    const stub = makeNavigatorBridge();
+    render(<NavigatorApp bridge={stub.bridge} />);
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    stub.fire('send-feedback');
+
+    await waitFor(
+      () => {
+        expect(
+          screen.queryByRole('dialog', { name: 'How do you like OpenKnowledge?' }),
+        ).not.toBeNull();
+      },
+      { timeout: ASYNC_TIMEOUT_MS },
+    );
   });
 
   test('close-active-tab-or-window menu action closes the navigator window', async () => {

@@ -599,10 +599,11 @@ describe('M1 smoke', () => {
     expect(coreMembers.size).toBeGreaterThan(0);
     expect(appMembers.size).toBeGreaterThan(0);
     // 26 + 2 worktree actions (`new-worktree`, `switch-worktree`) for the
-    // worktree selector (worktree = window) + `report-bug` (Help menu) + 3
-    // sidebar visibility toggles (`toggle-show-ok-folders`,
-    // `toggle-show-only-markdown-files`, `toggle-show-skills-section`).
-    expect(desktopMembers.size).toBe(32);
+    // worktree selector (worktree = window) + `report-bug` and
+    // `send-feedback` (Help menu) + 3 sidebar visibility toggles
+    // (`toggle-show-ok-folders`, `toggle-show-only-markdown-files`,
+    // `toggle-show-skills-section`).
+    expect(desktopMembers.size).toBe(33);
     expect(desktopMembers).toEqual(coreMembers);
     expect(desktopMembers).toEqual(appMembers);
     // Pin the visibility toggles explicitly: a bare count check wouldn't

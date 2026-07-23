@@ -124,7 +124,7 @@ On each launch and project open, the app also runs **repair sweeps**: it rewrite
 | `~/.ok/skills/<name>/` | Your global-scope authored skills (kept by `ok uninstall` unless `--purge-content`) | No |
 | `~/.ok/stats.jsonl` | Local "open with AI" handoff stats — local-only, no phone-home | No |
 | `~/.ok/mcp-status.json` | First-launch MCP consent record | No |
-| `~/.ok/logs/`, `~/.ok/bug-reports/` | Desktop and CLI logs, and bug-report bundles from `ok bug-report` and the app's **Help → Report a Bug…** dialog (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`) | No |
+| `~/.ok/logs/`, `~/.ok/bug-reports/` | Desktop and CLI logs, and bug-report bundles from `ok bug-report` and the app's **Help → Report a bug…** dialog (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`) | No |
 | `~/.ok/bin/`, `~/.ok/env.sh` | `PATH` shim (see [Shell and `PATH`](#shell-and-path) above) | No |
 
 **Auth tokens** (for GitHub sync, sharing, and cloning) are stored in the macOS **Keychain** under the service name `open-knowledge`. The `~/.ok/auth.yml` file is only a fallback for headless environments where the Keychain isn't reachable; when the Keychain becomes available, the token is migrated into it and the file copy is removed.
@@ -239,7 +239,7 @@ Disable all three with `OK_RECLAIM_DISABLE=1`.
 | `~/.ok/skills/<name>/` | Your global-scope authored skills (kept by `ok uninstall` unless `--purge-content`) | No |
 | `~/.ok/stats.jsonl` | Local "open with AI" handoff stats — local-only, no phone-home | No |
 | `~/.ok/logs/` | CLI logs (`cli.<date>.log`), size- and age-capped | No |
-| `~/.ok/bug-reports/` | Bug-report bundles from `ok bug-report` — the desktop app's **Help → Report a Bug…** dialog writes here too (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`) | No |
+| `~/.ok/bug-reports/` | Bug-report bundles from `ok bug-report` — the desktop app's **Help → Report a bug…** dialog writes here too (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`) | No |
 
 **Auth tokens** (for GitHub sync, sharing, and cloning) are stored in your operating system's secure credential store when one is available — the macOS **Keychain** (service `open-knowledge`), or the platform equivalent (Windows Credential Manager, Linux Secret Service) — falling back to a `0600` `~/.ok/auth.yml` file on headless systems (a Linux server, CI) where none is reachable.
 
@@ -271,7 +271,7 @@ By default, **nothing.** Everything above is written to your own disk. The only 
 | What | When | Where it goes |
 | --- | --- | --- |
 | Diagnostic bundle | Only when you run `ok diagnose bundle` (you can inspect it first) | Wherever you send it |
-| In-app bug report | Only when you click **Send** in the desktop app's **Help → Report a Bug…** dialog — it builds a secret-redacted zip you can reveal and inspect first, and nothing is sent without that explicit click. After a crash, the same dialog adds an **off-by-default** "Include crash dump" checkbox: a crash dump is a memory snapshot that can contain document content and can't be redacted, and it is only ever attached when you check that box | By default, Send makes no network request — it opens a prefilled email draft to support@inkeep.com that you send yourself, naming the zip to attach. Only when an operator has configured a bug-report intake endpoint ([`OK_BUG_REPORT_INTAKE_URL`](/docs/reference/configuration#environment-variables)) does Send upload the zip there, falling back to the same email draft if the upload fails |
+| In-app bug report | Only when you click **Send** in the desktop app's **Help → Report a bug…** dialog — it builds a secret-redacted zip you can reveal and inspect first, and nothing is sent without that explicit click. After a crash, the same dialog adds an **off-by-default** "Include crash dump" checkbox: a crash dump is a memory snapshot that can contain document content and can't be redacted, and it is only ever attached when you check that box | By default, Send makes no network request — it opens a prefilled email draft to support@inkeep.com that you send yourself, naming the zip to attach. Only when an operator has configured a bug-report intake endpoint ([`OK_BUG_REPORT_INTAKE_URL`](/docs/reference/configuration#environment-variables)) does Send upload the zip there, falling back to the same email draft if the upload fails |
 | Uninstall feedback | Only after an uninstall has already succeeded, and only if you pick a reason, type a note, or give an email address on the optional "Before you go" screen (desktop app) or prompt (`ok uninstall`). Skipping it, `--yes`, `--json`, and any non-interactive run send nothing | `openknowledge.ai/api/feedback` — the reason you picked, your note, your email address if you gave one, plus the app version and platform. It files one ticket for the team; nothing from your notes is included |
 | Semantic search embeddings | Only when you enable [semantic search](/docs/reference/configuration#semantic-search) **and** set a key — off by default | Your configured embeddings provider (OpenAI by default) |
 | GitHub sync / share | When you sync, clone, publish, or share | GitHub |

@@ -1,12 +1,13 @@
 /**
- * DOM mount test for ReportBugMenuTrigger — the App-root surface that opens
- * ReportBugDialog when the `report-bug` menu action fires (Help → Report a bug…).
+ * DOM mount test for FeedbackMenuTrigger — the App-root surface that opens
+ * FeedbackFormDialog when the `send-feedback` menu action fires
+ * (Help → Send feedback…).
  *
  * Pins the user-visible contract: the dialog is closed until the menu action
- * fires, opens on `report-bug`, and ignores unrelated menu actions. The trigger
- * now subscribes to the renderer-local menu-action bus (a real menu click
- * reaches it via main → `ok:menu-action` → the bus forwarder), so this test
- * drives it with `emitLocalMenuAction` — the same fan-out a menu click hits.
+ * fires, opens on `send-feedback`, and ignores unrelated menu actions. Driven
+ * through `emitLocalMenuAction` — the same fan-out a real menu click hits via
+ * main → `ok:menu-action` → the bus forwarder. Sibling of
+ * ReportBugMenuTrigger.dom.test.tsx.
  *
  * Invocation: `bun run test:dom` from `packages/app/`.
  */
@@ -16,13 +17,10 @@ import {
   __resetLocalMenuActionBusForTests,
   emitLocalMenuAction,
 } from '@/lib/local-menu-action-bus';
-import { ReportBugMenuTrigger } from './ReportBugMenuTrigger';
+import { FeedbackMenuTrigger } from './FeedbackMenuTrigger';
 
-// Radix UI primitives (shadcn Dialog) reach for DOM globals at mount. The
-// broadly-needed constructors (MutationObserver) live in the shared
-// tests/dom/jsdom-preload.ts; NodeFilter (react-focus-scope) and
-// ResizeObserver (react-use-size) are hoisted locally per the sibling
-// CreateProjectMenuTrigger.dom.test.tsx.
+// Radix UI primitives (shadcn Dialog) reach for DOM globals at mount. Hoisted
+// locally per the sibling ReportBugMenuTrigger.dom.test.tsx.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -50,22 +48,22 @@ function fireMenuAction(action: Parameters<typeof emitLocalMenuAction>[0]): void
   act(() => emitLocalMenuAction(action));
 }
 
-describe('ReportBugMenuTrigger', () => {
+describe('FeedbackMenuTrigger', () => {
   afterEach(() => {
     cleanup();
     __resetLocalMenuActionBusForTests();
   });
 
-  test('dialog is closed until the report-bug menu action fires', () => {
-    render(<ReportBugMenuTrigger />);
+  test('dialog is closed until the send-feedback menu action fires', () => {
+    render(<FeedbackMenuTrigger />);
     // Radix Dialog renders nothing when closed — no portal, no dialog role.
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  test('report-bug menu action opens ReportBugDialog', async () => {
-    render(<ReportBugMenuTrigger />);
+  test('send-feedback menu action opens FeedbackFormDialog', async () => {
+    render(<FeedbackMenuTrigger />);
 
-    fireMenuAction('report-bug');
+    fireMenuAction('send-feedback');
 
     await waitFor(
       () => {
@@ -73,15 +71,15 @@ describe('ReportBugMenuTrigger', () => {
       },
       { timeout: ASYNC_TIMEOUT_MS },
     );
-    // The dialog title confirms it's the report-a-bug surface.
-    expect(screen.getByRole('dialog', { name: 'Report a bug' })).not.toBeNull();
+    // The dialog title confirms it's the feedback surface.
+    expect(screen.getByRole('dialog', { name: 'How do you like OpenKnowledge?' })).not.toBeNull();
   });
 
   test('unrelated menu actions do not open the dialog', async () => {
-    render(<ReportBugMenuTrigger />);
+    render(<FeedbackMenuTrigger />);
 
     fireMenuAction('new-doc');
-    fireMenuAction('toggle-sidebar');
+    fireMenuAction('report-bug');
 
     // Give any erroneous open a chance to render before asserting absence.
     await new Promise((r) => setTimeout(r, 50));
@@ -89,11 +87,11 @@ describe('ReportBugMenuTrigger', () => {
   });
 
   test('unsubscribes from the bus on unmount', async () => {
-    const { unmount } = render(<ReportBugMenuTrigger />);
+    const { unmount } = render(<FeedbackMenuTrigger />);
     unmount();
 
     // After unmount the subscription is gone, so a later emit must not reopen.
-    fireMenuAction('report-bug');
+    fireMenuAction('send-feedback');
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByRole('dialog')).toBeNull();
   });

@@ -5,6 +5,7 @@ import { ConnectingBanner } from '@/components/ConnectingBanner';
 import { CreateProjectMenuTrigger } from '@/components/CreateProjectMenuTrigger';
 import { DesktopAgentMigration } from '@/components/DesktopAgentMigration';
 import { EditorPane } from '@/components/EditorPane';
+import { FeedbackMenuTrigger } from '@/components/FeedbackMenuTrigger';
 import { FileSidebar } from '@/components/FileSidebar';
 import { defaultInitialDir } from '@/components/file-tree-utils';
 import {
@@ -517,9 +518,13 @@ function AppBody() {
         {/* One-time upgrade migration: carry an existing user's installed desktop
             apps over into the new opt-in Desktop model. Desktop-only. */}
         {desktopBridge ? <DesktopAgentMigration /> : null}
-        {/* Help → Report a Bug… opens ReportBugDialog here — same
+        {/* Help → Report a bug… opens ReportBugDialog here — same
             desktop-only App-root trigger pattern as CreateProjectMenuTrigger. */}
         {desktopBridge ? <ReportBugMenuTrigger /> : null}
+        {/* Help → Send feedback… opens the same FeedbackFormDialog the
+            Resources menu and Cmd+K open. Desktop-only for the same reason as
+            the sibling above: the menu action never fires in the web host. */}
+        {desktopBridge ? <FeedbackMenuTrigger /> : null}
         {/* First-launch consent dialog — host-agnostic. Self-gates on
             the shared `mcpConsentStore` snapshot; renders nothing until
             main fires `ok:mcp-wiring:show`. Mounted identically in

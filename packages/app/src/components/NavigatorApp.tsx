@@ -54,6 +54,7 @@ import { BetaBadge } from './BetaBadge';
 import { CloneDialog } from './CloneDialog';
 import { ConsentDialog } from './ConsentDialog';
 import { CreateProjectDialog } from './CreateProjectDialog';
+import { FeedbackFormDialog } from './FeedbackFormDialog';
 import { GithubIcon } from './icons/github';
 import { OkIcon } from './icons/ok';
 import { McpConsentDialog } from './McpConsentDialog';
@@ -112,6 +113,7 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [reportBugOpen, setReportBugOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   // Starter pack chosen on the packs-forward first-run grid, plus the pack
   // list. Threaded into CreateProjectDialog so it can name the pack as
   // read-only context in its description and seed the fresh project with it;
@@ -217,12 +219,14 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   // CreateProjectDialog the "Create new project" card opens. The application
   // menu fires to whichever window is focused, so the Navigator must react to
   // it too — not just the editor window's App-root trigger. Same story for
-  // Help → Report a Bug…, which here opens the report dialog scoped
-  // system-wide (the Navigator has no project).
+  // Help → Report a bug…, which here opens the report dialog scoped
+  // system-wide (the Navigator has no project), and Help → Send feedback…,
+  // which opens the same feedback form the editor window opens.
   useEffect(() => {
     return subscribeLocalMenuAction((action) => {
       if (action === 'new-project') setCreateDialogOpen(true);
       if (action === 'report-bug') setReportBugOpen(true);
+      if (action === 'send-feedback') setFeedbackOpen(true);
       if (action === 'close-active-tab-or-window') window.close();
     });
   }, []);
@@ -493,6 +497,8 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
       />
 
       <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} systemWide />
+
+      <FeedbackFormDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} source="help_menu" />
 
       <AuthModal
         open={authModalOpen}

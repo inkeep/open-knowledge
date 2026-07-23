@@ -169,17 +169,17 @@ describe('HelpPopover with the desktop bridge present', () => {
     (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
   });
 
-  test('adds Report a bug and Provide feedback actions after the Docs link', async () => {
+  test('adds Report a bug and Send feedback actions after the Docs link', async () => {
     await renderOpenHelpPopover();
 
     const nav = screen.getByRole('navigation', { name: 'Resources' });
     const docs = within(nav).getByRole('link', { name: 'Docs' });
     const reportBug = within(nav).getByRole('button', { name: 'Report a bug' });
-    const provideFeedback = within(nav).getByRole('button', { name: 'Provide feedback' });
+    const sendFeedback = within(nav).getByRole('button', { name: 'Send feedback' });
 
     // Both in-app actions follow the Docs link (DOCUMENT_POSITION_FOLLOWING === 4);
     // report-bug is desktop-only, so it only appears with the bridge present.
     expect(docs.compareDocumentPosition(reportBug)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(docs.compareDocumentPosition(provideFeedback)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(docs.compareDocumentPosition(sendFeedback)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 });

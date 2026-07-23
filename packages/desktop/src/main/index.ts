@@ -2479,6 +2479,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
         });
     },
     onReportBug: () => sendMenuActionToFocused('report-bug'),
+    onSendFeedback: () => sendMenuActionToFocused('send-feedback'),
     // App-menu / Help-menu "Check for Updates…" entries fire this. Returns
     // void: the menu doesn't surface in-flight progress; the existing
     // `update-available` / `update-not-available` electron-updater events

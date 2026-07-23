@@ -44,6 +44,7 @@ export const OK_MENU_ACTIONS = [
   'new-worktree',
   'switch-worktree',
   'report-bug',
+  'send-feedback',
 ] as const satisfies readonly OkMenuAction[];
 
 // Compile-time completeness: any OkMenuAction member missing from the array

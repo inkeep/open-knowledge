@@ -6697,10 +6697,6 @@ msgstr "Property value"
 msgid "Protected branch — cannot push"
 msgstr "Protected branch — cannot push"
 
-#: src/components/HelpPopover.tsx
-msgid "Provide feedback"
-msgstr "Provide feedback"
-
 #: src/components/TemplateForm.tsx
 msgid "provisional"
 msgstr "provisional"
@@ -7076,8 +7072,8 @@ msgid "Report a bug"
 msgstr "Report a bug"
 
 #: src/components/AppMenubar.tsx
-msgid "Report a Bug…"
-msgstr "Report a Bug…"
+msgid "Report a bug…"
+msgstr "Report a bug…"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Report reference"
@@ -7604,6 +7600,15 @@ msgstr "Semantic search is on, but no API key is set — search falls back to ke
 #: src/components/FeedbackForm.tsx
 msgid "Send"
 msgstr "Send"
+
+#: src/components/command-palette-commands.ts
+#: src/components/HelpPopover.tsx
+msgid "Send feedback"
+msgstr "Send feedback"
+
+#: src/components/AppMenubar.tsx
+msgid "Send feedback…"
+msgstr "Send feedback…"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"

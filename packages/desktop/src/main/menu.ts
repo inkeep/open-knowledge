@@ -117,13 +117,20 @@ export interface MenuDeps {
    */
   openSettings?(): void;
   /**
-   * Help → Report a Bug… click handler — fires the `report-bug` menu action
+   * Help → Report a bug… click handler — fires the `report-bug` menu action
    * to the focused renderer, which opens the in-app report dialog (editor
    * windows and the Navigator both subscribe). Optional for the same reason
    * as `openInstallSkillDialog` — unit tests build the menu without wiring
    * it; the item itself always renders.
    */
   onReportBug?(): void;
+  /**
+   * Help → Send feedback… click handler — fires the `send-feedback` menu
+   * action to the focused renderer, which opens the same in-app feedback form
+   * the Resources menu and Cmd+K open (editor windows and the Navigator both
+   * subscribe). Optional for the same reason as `onReportBug`.
+   */
+  onSendFeedback?(): void;
   /**
    * "Check for updates…" click handler — fires an out-of-cadence
    * `autoUpdater.checkForUpdates()` via the `ok:update:check-now` IPC.
@@ -516,8 +523,9 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
     enabled: (d) => d.onCollapseAll !== undefined,
   },
   'open-github': { click: (d) => () => d.openExternalUrl(OPEN_KNOWLEDGE_GITHUB_URL) },
-  // Report a Bug always renders + is enabled; the click no-ops when unwired.
+  // Report a bug always renders + is enabled; the click no-ops when unwired.
   'report-bug': { click: (d) => () => d.onReportBug?.() },
+  'send-feedback': { click: (d) => () => d.onSendFeedback?.() },
   'install-claude-desktop': {
     click: (d) => () => d.openInstallSkillDialog?.(),
     present: () => SHOW_INSTALL_SKILL,

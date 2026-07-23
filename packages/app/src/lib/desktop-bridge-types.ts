@@ -246,10 +246,13 @@ export type OkMenuAction =
   // create dialog; `switch-worktree` opens the sidebar worktree switcher.
   | 'new-worktree'
   | 'switch-worktree'
-  // Help → Report a Bug… — opens the in-app bug-report dialog. Both window
+  // Help → Report a bug… — opens the in-app bug-report dialog. Both window
   // types subscribe: editor windows report project-scoped, the Navigator
   // reports system-wide.
-  | 'report-bug';
+  | 'report-bug'
+  // Help → Send feedback… — opens the in-app feedback form, the same one
+  // the Resources menu and the Cmd+K palette open. Both window types subscribe.
+  | 'send-feedback';
 
 type OkUnsubscribe = () => void;
 

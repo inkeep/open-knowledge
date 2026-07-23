@@ -55,6 +55,7 @@ import {
   TAG_QUERY_PREFIX,
   type TagDocEntry,
 } from '@/components/command-palette-tag-search';
+import { FeedbackFormDialog } from '@/components/FeedbackFormDialog';
 import { FileEntryIcon } from '@/components/file-entry-icon';
 import { defaultInitialDir } from '@/components/file-tree-utils';
 import { NewItemDialog } from '@/components/NewItemDialog';
@@ -340,6 +341,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const [seedDialogOpen, setSeedDialogOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [reportBugOpen, setReportBugOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   // Tag-mode state. Loaded lazily on first `tag:` keystroke; cached for
   // the lifetime of the palette session (cleared on close in the open-
   // toggle effect). Loading flag drives the `tag-list` placeholder UI;
@@ -872,6 +874,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     openSeedDialog: () => setSeedDialogOpen(true),
     openCreateProjectDialog: () => setCreateProjectOpen(true),
     openReportBugDialog: () => setReportBugOpen(true),
+    openFeedbackDialog: () => setFeedbackOpen(true),
   };
   const visibleFixedCommands = inExclusiveMode
     ? []
@@ -1588,6 +1591,13 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
       {/* Desktop-only — the registry gates the launching "Report a bug" command
           on `bridge !== null`, so the dialog only mounts when the bridge exists. */}
       {bridge ? <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} /> : null}
+      {/* Host-agnostic — the feedback form POSTs to the hosted intake route, so
+          the "Send feedback" command (and this dialog) exist on web too. */}
+      <FeedbackFormDialog
+        open={feedbackOpen}
+        onOpenChange={setFeedbackOpen}
+        source="command_palette"
+      />
     </>
   );
 }

@@ -124,13 +124,13 @@ test.describe('Report-a-bug entry points', () => {
     await app.evaluate(({ Menu }) => {
       const appMenu = Menu.getApplicationMenu();
       for (const top of appMenu?.items ?? []) {
-        const item = top.submenu?.items.find((candidate) => candidate.label === 'Report a Bug…');
+        const item = top.submenu?.items.find((candidate) => candidate.label === 'Report a bug…');
         if (item) {
           item.click();
           return;
         }
       }
-      throw new Error('Report a Bug… menu item not found in any submenu');
+      throw new Error('Report a bug… menu item not found in any submenu');
     });
     const composeDialog = page.getByRole('dialog', { name: 'Report a bug' });
     await expect(composeDialog).toBeVisible({ timeout: 10_000 });

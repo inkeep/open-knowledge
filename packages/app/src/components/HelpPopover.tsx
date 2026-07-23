@@ -221,7 +221,7 @@ export const HelpPopover: FC = () => {
                           setFeedbackOpen(true);
                         }}
                       >
-                        <Trans>Provide feedback</Trans>
+                        <Trans>Send feedback</Trans>
                       </ActionRow>
                     </>
                   )}
