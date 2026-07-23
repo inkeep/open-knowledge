@@ -1696,6 +1696,7 @@ msgid "Cloning..."
 msgstr ""
 
 #: src/components/EditorTabs.tsx
+#: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
@@ -6743,6 +6744,10 @@ msgstr ""
 msgid "Quote"
 msgstr ""
 
+#: src/components/FeedbackForm.tsx
+msgid "Rate your experience"
+msgstr ""
+
 #: src/components/AuthModal.tsx
 msgid "Re-authenticate with GitHub"
 msgstr ""
@@ -7745,6 +7750,10 @@ msgstr ""
 msgid "Share doc"
 msgstr ""
 
+#: src/components/FeedbackCard.tsx
+msgid "Share feedback"
+msgstr ""
+
 #: src/components/ShareButton.tsx
 msgid "Share folder"
 msgstr ""
@@ -8466,6 +8475,10 @@ msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Team Wiki"
+msgstr ""
+
+#: src/components/FeedbackCard.tsx
+msgid "Tell us how it's going"
 msgstr ""
 
 #: src/components/FeedbackForm.tsx

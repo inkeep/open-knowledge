@@ -37,6 +37,7 @@ import { useHydrateRegisteredAgentMeta } from '@/lib/acp/catalog';
 import { installClientFetchWrapper } from '@/lib/client-fetch';
 import { installConsentListener } from '@/lib/consent-store';
 import { installCrashInviteListener } from '@/lib/crash-invite-store';
+import { installFeedbackNudgeStore } from '@/lib/feedback-nudge-store';
 // Side-effect import: loads + activates the i18n catalog before first render.
 import { i18n } from '@/lib/i18n';
 import { installClientLogForwarder } from '@/lib/install-client-log-forwarder';
@@ -120,6 +121,11 @@ installOnboardingCardStore();
 // persisted subscribe / dismiss / shown-versions budget in place before first
 // paint. Device-local; no-op in web/CLI and SSR where localStorage is absent.
 installSubscribeCardStore();
+
+// Hydrate the proactive-feedback nudge store, same rationale again. The
+// `firstSeenAt` clock this carries is the two-week gate on the feedback toast,
+// so it must be readable before the controller mounts and stamps it.
+installFeedbackNudgeStore();
 
 // Desktop-only: track whether an auto-update relaunch is in flight (the same
 // `ok:update:relaunching` / `ok:update:relaunch-failed` events the notice

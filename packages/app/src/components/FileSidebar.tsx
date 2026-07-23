@@ -23,6 +23,7 @@ import {
 import { ErrorBoundary } from 'react-error-boundary';
 import { toast } from 'sonner';
 import { ConflictsSection } from '@/components/ConflictsSection';
+import { FeedbackCardMount } from '@/components/FeedbackCard';
 import { FileTree, type FileTreeHandle } from '@/components/FileTree';
 import { defaultInitialDir, hasOkPathSegment } from '@/components/file-tree-utils';
 import { OpenInAgentEmptySpaceSubmenu } from '@/components/handoff/OpenInAgentEmptySpaceSubmenu';
@@ -1123,6 +1124,10 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
             <SidebarFooter className="px-0">
               <OnboardingCardMount />
               <UpdateNotices />
+              {/* Self-gates on device-local state (two weeks since first boot,
+                  enough documents) and on the two surfaces above, so it never
+                  stacks a third ask into this footer. */}
+              <FeedbackCardMount />
               {typeof window !== 'undefined' && window.okDesktop ? (
                 <SidebarMenu>
                   <SidebarMenuItem>

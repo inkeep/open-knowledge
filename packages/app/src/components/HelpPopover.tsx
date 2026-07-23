@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
+import { feedbackNudgeStore } from '@/lib/feedback-nudge-store';
 import { DISCORD_INVITE_URL, GITHUB_REPO_URL, X_PROFILE_URL } from '@/lib/social-links';
 import { subscribeCardStore } from '@/lib/subscribe-card-store';
 import { cn } from '@/lib/utils';
@@ -275,7 +276,14 @@ export const HelpPopover: FC = () => {
           select. Report-a-bug is desktop-only — gated on the same bridge as
           its trigger row. */}
       {hasDesktopBridge && <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} />}
-      <FeedbackFormDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
+      <FeedbackFormDialog
+        open={feedbackOpen}
+        onOpenChange={setFeedbackOpen}
+        // Feedback given here also satisfies the proactive card's suppression
+        // flag — one round of feedback, from any surface, stops the nudge.
+        // Same contract as the subscribe card above.
+        onSuccess={() => feedbackNudgeStore.dismiss()}
+      />
     </>
   );
 };

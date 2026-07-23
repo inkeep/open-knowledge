@@ -1700,6 +1700,7 @@ msgid "Cloning..."
 msgstr "Cloning..."
 
 #: src/components/EditorTabs.tsx
+#: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
@@ -6747,6 +6748,10 @@ msgstr "Pushing"
 msgid "Quote"
 msgstr "Quote"
 
+#: src/components/FeedbackForm.tsx
+msgid "Rate your experience"
+msgstr "Rate your experience"
+
 #: src/components/AuthModal.tsx
 msgid "Re-authenticate with GitHub"
 msgstr "Re-authenticate with GitHub"
@@ -7749,6 +7754,10 @@ msgstr "Share"
 msgid "Share doc"
 msgstr "Share doc"
 
+#: src/components/FeedbackCard.tsx
+msgid "Share feedback"
+msgstr "Share feedback"
+
 #: src/components/ShareButton.tsx
 msgid "Share folder"
 msgstr "Share folder"
@@ -8471,6 +8480,10 @@ msgstr "Teaches coding agents in this project to read and write through OpenKnow
 #: src/components/CreateProjectDialog.tsx
 msgid "Team Wiki"
 msgstr "Team Wiki"
+
+#: src/components/FeedbackCard.tsx
+msgid "Tell us how it's going"
+msgstr "Tell us how it's going"
 
 #: src/components/FeedbackForm.tsx
 msgid "Tell us more (optional)"

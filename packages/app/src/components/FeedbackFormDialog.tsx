@@ -14,11 +14,18 @@ export const FeedbackFormDialog = ({
   open,
   onOpenChange,
   source,
+  onSuccess,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Which in-app surface opened the form; forwarded for analytics attribution. */
   source?: string;
+  /**
+   * Fired after a confirmed submit, in addition to closing the dialog. Lets a
+   * caller record that feedback was given from this surface — see the
+   * proactive card's suppression in HelpPopover.
+   */
+  onSuccess?: () => void;
 }) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -29,7 +36,13 @@ export const FeedbackFormDialog = ({
           </DialogTitle>
         </DialogHeader>
         <Suspense fallback={null}>
-          <FeedbackForm source={source} onSuccess={() => onOpenChange(false)} />
+          <FeedbackForm
+            source={source}
+            onSuccess={() => {
+              onOpenChange(false);
+              onSuccess?.();
+            }}
+          />
         </Suspense>
       </DialogContent>
     </Dialog>
