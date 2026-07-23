@@ -5,6 +5,7 @@ import { Hocuspocus } from '@hocuspocus/server';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type * as Y from 'yjs';
 import { AGENT_WRITE_ORIGIN, applyAgentMarkdownWrite } from './agent-sessions.ts';
+import { DocumentDurabilityState } from './document-durability-state.ts';
 import { applyExternalChange } from './external-change.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 import { installTestLoggers, loggerFactory } from './logger.ts';
@@ -250,6 +251,7 @@ describe('suggestLinks', () => {
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     const hocuspocus = new Hocuspocus({ quiet: true });
+    const durabilityState = new DocumentDurabilityState();
     let conn: Conn | null = null;
 
     try {
@@ -261,7 +263,12 @@ describe('suggestLinks', () => {
       // verbatim and fragment derives via parse.
       conn = await hocuspocus.openDirectConnection('notes');
       const doc = getDoc(conn);
-      applyExternalChange(hocuspocus, 'notes', '---\n# Notes\n\nProject Alpha discussion.\n');
+      applyExternalChange(
+        durabilityState,
+        hocuspocus,
+        'notes',
+        '---\n# Notes\n\nProject Alpha discussion.\n',
+      );
 
       // ytext byte-equal: user form preserved.
       const yText = doc.getText('source').toString();

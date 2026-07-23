@@ -22,7 +22,10 @@ import {
   PeriodicExportingMetricReader,
 } from '@opentelemetry/sdk-metrics';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
-import { __resetRenameTelemetryForTesting, createApiExtension } from './api-extension.ts';
+import {
+  __resetRenameTelemetryForTesting,
+  createApiExtension,
+} from './api-extension.test-helper.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { swapContributors } from './contributor-tracker.ts';
 import type { FileIndexEntry } from './file-watcher.ts';

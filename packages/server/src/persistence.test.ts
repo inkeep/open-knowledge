@@ -14,13 +14,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
+import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import { contentHash, isSelfWrite, registerWrite } from './file-watcher';
-import {
-  captureDocSnapshotForPersistence,
-  isWithinContentDir,
-  resolveWriterFromOrigin,
-  safeContentPath,
-} from './persistence';
+import { captureDocSnapshotForPersistence, resolveWriterFromOrigin } from './persistence';
 import { FILE_SYSTEM_WRITER, GIT_UPSTREAM_WRITER, SERVICE_WRITER } from './shadow-repo';
 
 describe('safeContentPath', () => {

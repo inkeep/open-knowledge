@@ -92,7 +92,12 @@ async function runInterleave(clientId: number): Promise<string> {
     // External wholesale replace lands on the server and reaches the live
     // client only.
     writeFileSync(join(server.contentDir, `${docName}.md`), REPLACED_CONTENT, 'utf-8');
-    applyExternalChange(server.instance.hocuspocus, docName, REPLACED_CONTENT);
+    applyExternalChange(
+      server.instance.durabilityState,
+      server.instance.hocuspocus,
+      docName,
+      REPLACED_CONTENT,
+    );
     await pollUntil(() => live.ytext.toString().includes('M6-'), 5000);
 
     // Concurrent stale-anchored insert: the paused client still sees the

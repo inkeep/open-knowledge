@@ -442,7 +442,7 @@ describe('startWatcher file index', () => {
     const handle = await startWatcher(contentDir, async () => {});
     try {
       const { getDocExtension } = await import('./doc-extensions.ts');
-      const { safeContentPath } = await import('./persistence.ts');
+      const { safeContentPath } = await import('./content-path.ts');
 
       expect(getDocExtension('Upper')).toBe('.MD');
       expect(getDocExtension('Mixed')).toBe('.MdX');

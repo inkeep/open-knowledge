@@ -23,7 +23,7 @@ import { getSchema } from '@tiptap/core';
 import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { AGENT_WRITE_ORIGIN, AgentSessionManager } from './agent-sessions.ts';
-import { createApiExtension } from './api-extension.ts';
+import { createApiExtension } from './api-extension.test-helper.ts';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
 import { createServerObserverExtension } from './server-observer-extension.ts';
 

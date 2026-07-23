@@ -17,7 +17,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { SymlinkEscapeError } from '../apply-managed-rename.ts';
 import { createContentFilter } from '../content-filter.ts';
-import { isWithinContentDir } from '../persistence.ts';
+import { isWithinContentDir } from '../content-path.ts';
 import { resolveEffectiveLinterConfig } from './resolve-config.ts';
 
 export interface FileLintResult {

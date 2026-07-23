@@ -75,9 +75,12 @@ import { isDocInConflict } from './conflict-errors.ts';
 import { createConflictLifecycleSeedExtension } from './conflict-lifecycle-seed.ts';
 import { resolveProjectTemplates } from './content/templates-resolver.ts';
 import { type ContentFilter, createContentFilter } from './content-filter.ts';
+import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import { dropPendingDocs, recordContributor } from './contributor-tracker.ts';
+import { applyDiskContentToDoc } from './disk-content-intake.ts';
 import { docNameToRelativePath, getDocExtension, stripDocExtension } from './doc-extensions.ts';
 import { runDocLineageGuard } from './doc-lineage-guard.ts';
+import { DocumentDurabilityState } from './document-durability-state.ts';
 import {
   DEFAULT_EMBEDDINGS_DIMENSIONS,
   type Embedder,
@@ -90,7 +93,6 @@ import {
   secretsFilePath,
 } from './embeddings/index.ts';
 import {
-  applyDiskContentToDoc,
   applyExternalChange,
   FILE_WATCHER_ORIGIN,
   serializeYDocSource,
@@ -140,19 +142,7 @@ import {
 } from './metrics.ts';
 import { destroyParsePool } from './parse-pool.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
-import {
-  createPersistenceExtension,
-  deleteReconciledBase,
-  getActiveBranch,
-  getReconciledBase,
-  isBatchInProgress,
-  isWithinContentDir,
-  type PersistenceOptions,
-  safeContentPath,
-  setBatchInProgress,
-  setReconciledBase,
-  switchReconciledBaseScope,
-} from './persistence.ts';
+import { createPersistenceExtension, type PersistenceOptions } from './persistence.ts';
 import {
   createPersistenceStalenessWatchdog,
   type StalenessWatchdogHandle,
@@ -381,6 +371,7 @@ export interface ServerInstance {
    * server Y.Doc. Part of the CRDT server-restart recovery defense.
    */
   readonly serverInstanceId: string;
+  readonly durabilityState: DocumentDurabilityState;
   destroy: () => Promise<void>;
   /** Resolves when async init (shadow repo, file watcher subscription) is complete. */
   ready: Promise<void>;
@@ -588,6 +579,16 @@ export function createServer(options: ServerOptions): ServerInstance {
   } = options;
 
   const log = getLogger('server');
+  const durabilityState = new DocumentDurabilityState();
+  const getActiveBranch = () => durabilityState.getActiveBranch();
+  const getReconciledBase = (docName: string) => durabilityState.getReconciledBase(docName);
+  const setReconciledBase = (docName: string, content: string) =>
+    durabilityState.setReconciledBase(docName, content);
+  const deleteReconciledBase = (docName: string) => durabilityState.deleteReconciledBase(docName);
+  const switchReconciledBaseScope = (branch: string) =>
+    durabilityState.switchReconciledBaseScope(branch);
+  const setBatchInProgress = (value: boolean) => durabilityState.setBatchInProgress(value);
+  const isBatchInProgress = () => durabilityState.isBatchInProgress();
 
   function readProjectAttachmentFolderPath(): string {
     const project = readConfigSafely({
@@ -1269,7 +1270,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       mdManager: options.mdManager,
     };
 
-    persistence = createPersistenceExtension(persistenceOpts);
+    persistence = createPersistenceExtension({ ...persistenceOpts, durabilityState });
 
     hocuspocus = new Hocuspocus({
       quiet,
@@ -1318,6 +1319,9 @@ export function createServer(options: ServerOptions): ServerInstance {
       stalenessWatchdog = createPersistenceStalenessWatchdog({
         getLoadedDocuments: () => hp.documents,
         forceStore: (document, documentName) => persistence.forceStore(document, documentName),
+        getBase: (documentName) => durabilityState.getReconciledBase(documentName),
+        isBatchActive: () => durabilityState.isBatchInProgress(),
+        peekInFlight: (documentName) => durabilityState.peekInFlightFlush(documentName),
         // Realpath symlink-escape gate + open-byte-limit cap, matching the
         // load-path read discipline. Not atomic — three syscalls — but
         // ENOENT from any of them maps to `null` (out-of-band delete)
@@ -1746,6 +1750,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
     const apiExtension = createApiExtension({
       hocuspocus,
+      durabilityState,
       sessionManager,
       contentDir,
       contentFilter,
@@ -1763,9 +1768,6 @@ export function createServer(options: ServerOptions): ServerInstance {
       shadowRef,
       flushGitCommit: () => persistence.flushPendingGitCommit(),
       flushContributors: () => persistence.flushContributors(),
-      takeStoreFailure: (docName: string) => persistence.takeStoreFailure(docName),
-      takeStoreDivergence: (docName: string) => persistence.takeStoreDivergence(docName),
-      markAgentWriteStore: (docName: string) => persistence.markAgentWriteStore(docName),
       getCurrentBranch: () => headWatcher?.getLastKnownBranch() ?? null,
       // CC1 broadcaster is initialized after persistence but captured by
       // closure reference (same pattern as `onAgentCommit` + `onDiskFlush`
@@ -1920,7 +1922,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   /** Apply markdown content to Y.Doc — delegates to the shared throwing helper. */
   const applyToDoc = (docName: string, content: string): void =>
-    applyExternalChange(hocuspocus, docName, content, resolveEmbed, resolveSize);
+    applyExternalChange(durabilityState, hocuspocus, docName, content, resolveEmbed, resolveSize);
 
   /**
    * Clear the conflict status set by `case 'conflict'` once a subsequent
@@ -3482,13 +3484,8 @@ export function createServer(options: ServerOptions): ServerInstance {
       degraded.push('ignore-files-watcher');
     }
 
-    // Reset branch-scoped state to match THIS project's current HEAD before
-    // anything reads/writes it. `persistence.activeBranch` and the
-    // `BacklinkIndex.activeBranch` are mutable state; in single-process test
-    // runners these leak across test files, so a prior test that
-    // triggered `switchReconciledBaseScope` leaves state at the wrong branch
-    // for the next server's reads. Detecting the actual HEAD here and
-    // normalizing both scopes in lock-step closes the leak.
+    // Align this server's branch-scoped durability state and backlink index
+    // with the project's current HEAD before either is read or written.
     const startupBranch = readProjectHeadState(projectDir).branch ?? 'main';
     switchReconciledBaseScope(startupBranch);
     backlinkIndex.switchBranch(startupBranch);
@@ -4331,6 +4328,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   return {
     hocuspocus,
+    durabilityState,
     sessionManager,
     cc1Broadcaster,
     agentFocusBroadcaster,

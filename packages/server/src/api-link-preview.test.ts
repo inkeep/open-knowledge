@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, type Mock, test, vi } from 'vitest';
-import { createApiExtension } from './api-extension.ts';
+import { createApiExtension } from './api-extension.test-helper.ts';
 import type { GuardRejectReason } from './link-preview/guarded-fetch.ts';
 import type { GuardedFetch } from './link-preview/metadata.ts';
 import { PinoLogger } from './logger.ts';

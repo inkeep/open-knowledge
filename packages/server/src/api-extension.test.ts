@@ -3,7 +3,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { resumeSyncOnAuthEvent, safeSubdir, sanitizeFilename } from './api-extension.ts';
+import {
+  resumeSyncOnAuthEvent,
+  safeSubdir,
+  sanitizeFilename,
+} from './api-extension.test-helper.ts';
 import type { AuthEvent } from './local-ops/types.ts';
 import { listenOnLoopback } from './loopback-rig-test-helpers.ts';
 import type { SyncEngine } from './sync-engine.ts';
@@ -186,7 +190,7 @@ describe('handleUploadAsset', () => {
 
     const { Hocuspocus } = await import('@hocuspocus/server');
     const { AgentSessionManager } = await import('./agent-sessions.ts');
-    const { createApiExtension } = await import('./api-extension.ts');
+    const { createApiExtension } = await import('./api-extension.test-helper.ts');
 
     const hocuspocus = new Hocuspocus({ quiet: true });
     const sessionManager = new AgentSessionManager(hocuspocus);
@@ -538,7 +542,7 @@ describe('handleUploadAsset — same-dir sha256 dedup (FR-2)', () => {
 
     const { Hocuspocus } = await import('@hocuspocus/server');
     const { AgentSessionManager } = await import('./agent-sessions.ts');
-    const { createApiExtension } = await import('./api-extension.ts');
+    const { createApiExtension } = await import('./api-extension.test-helper.ts');
 
     const hocuspocus = new Hocuspocus({ quiet: true });
     const sessionManager = new AgentSessionManager(hocuspocus);

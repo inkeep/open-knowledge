@@ -33,10 +33,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import simpleGit from 'simple-git';
-import { describe as _bunDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { describe as _vitestDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { __resetQuiescenceForTests } from './bridge-quiescence.ts';
 import { resetMetrics } from './metrics.ts';
-import { getReconciledBase } from './persistence.ts';
 import { createServer } from './server-factory.ts';
 
 // Skip-on-CI gate (oven-sh/bun#11892 — child-process reaping bug). Same
@@ -56,10 +55,10 @@ import { createServer } from './server-factory.ts';
 // Re-enable condition: drop this gate when oven-sh/bun#11892 is closed AND
 // a full canonical-gate run on ubuntu-latest GHA is green for ≥5 consecutive
 // runs.
-const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
+const describe = process.env.CI ? _vitestDescribe.skip : _vitestDescribe;
 
 // File-watcher startup + reconcile fire is parcel-watcher latency-bound;
-// 5s Bun default isn't enough headroom under suite contention. Tests
+// Vitest's default timeout isn't enough headroom under suite contention. Tests
 // inside still bound their own waits via `waitForCondition`.
 vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 });
 
@@ -136,8 +135,8 @@ describe('FR-34: serializeDoc returns ytext bytes verbatim', () => {
       await server.ready;
       const conn = await server.hocuspocus.openDirectConnection(docName);
       // Cold-load completed; reconciledBase is raw disk bytes.
-      await waitForCondition(() => getReconciledBase(docName) !== undefined);
-      expect(getReconciledBase(docName)).toBe(initialContent);
+      await waitForCondition(() => server.durabilityState.getReconciledBase(docName) !== undefined);
+      expect(server.durabilityState.getReconciledBase(docName)).toBe(initialContent);
 
       // External change: write new bytes to disk. The file-watcher fires
       // a within-branch update event → reconcile case 'update' →
@@ -147,10 +146,13 @@ describe('FR-34: serializeDoc returns ytext bytes verbatim', () => {
       writeFileSync(docPath, updatedContent, 'utf-8');
 
       // Wait for reconcile to fire and advance the reconciledBase.
-      await waitForCondition(() => getReconciledBase(docName) === updatedContent, {
-        timeoutMs: 8_000,
-      });
-      expect(getReconciledBase(docName)).toBe(updatedContent);
+      await waitForCondition(
+        () => server.durabilityState.getReconciledBase(docName) === updatedContent,
+        {
+          timeoutMs: 8_000,
+        },
+      );
+      expect(server.durabilityState.getReconciledBase(docName)).toBe(updatedContent);
 
       // The doc-start `---\n` survived the full chain: cold-load → ytext
       // → composeAndWriteRawBody → fragment derives via parse → file-
@@ -159,14 +161,14 @@ describe('FR-34: serializeDoc returns ytext bytes verbatim', () => {
       // chain would have canonicalized `---` to `***` somewhere along
       // the way (specifically: serializeDoc returning serialize(fragment)
       // bytes for `ours`).
-      expect(getReconciledBase(docName)).toContain('---\n');
-      expect(getReconciledBase(docName)).not.toContain('***\n');
+      expect(server.durabilityState.getReconciledBase(docName)).toContain('---\n');
+      expect(server.durabilityState.getReconciledBase(docName)).not.toContain('***\n');
 
       conn.disconnect();
     } finally {
       await server.destroy();
     }
-  });
+  }, 20_000);
 
   // The in-flight ytext-edit visibility case isn't covered here: a
   // non-paired user-origin Y.Text mutation triggers Observer B Phase 1
@@ -222,22 +224,27 @@ describe('FR-35: setReconciledBase stores raw bytes uniformly across all paths',
     try {
       await server.ready;
       const conn = await server.hocuspocus.openDirectConnection(docName);
-      await waitForCondition(() => getReconciledBase(docName) === initialContent);
+      await waitForCondition(
+        () => server.durabilityState.getReconciledBase(docName) === initialContent,
+      );
 
       // Trigger reconcile via external change.
       const updatedContent = '---\n# Title\n\nA __strong__ paragraph.\n\nNew block.\n';
       writeFileSync(docPath, updatedContent, 'utf-8');
 
-      await waitForCondition(() => getReconciledBase(docName) === updatedContent, {
-        timeoutMs: 8_000,
-      });
+      await waitForCondition(
+        () => server.durabilityState.getReconciledBase(docName) === updatedContent,
+        {
+          timeoutMs: 8_000,
+        },
+      );
 
       // After reconcile, reconciledBase advances to the merge output.
       // Both `__strong__` (source-form) and `---\n` (
       // doc-start) survived the full cycle.
       // these would have been replaced with canonical-form bytes
       // somewhere along the way.
-      const finalBase = getReconciledBase(docName);
+      const finalBase = server.durabilityState.getReconciledBase(docName);
       expect(finalBase).toBe(updatedContent);
       expect(finalBase).toContain('---\n');
       expect(finalBase).toContain('__strong__');
@@ -253,5 +260,5 @@ describe('FR-35: setReconciledBase stores raw bytes uniformly across all paths',
     } finally {
       await server.destroy();
     }
-  });
+  }, 20_000);
 });

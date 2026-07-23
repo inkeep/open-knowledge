@@ -38,17 +38,12 @@ import { normalizeBridge } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { isDocInConflict } from './conflict-errors.ts';
+import { DocumentDurabilityState } from './document-durability-state.ts';
 import {
   type ReconcileBeforeWriteResult,
   reconcileDiskBeforeAgentWrite,
 } from './external-change.ts';
-import {
-  createPersistenceExtension,
-  getReconciledBase,
-  peekInFlightFlush,
-  setBatchInProgress,
-  switchReconciledBaseScope,
-} from './persistence.ts';
+import { createPersistenceExtension } from './persistence.ts';
 
 const BROWSER_ORIGIN = {
   source: 'connection',
@@ -137,6 +132,7 @@ async function drivePhantomDivergence(
   tmpDir: string,
   docName: string,
   document: Y.Doc,
+  durabilityState: DocumentDurabilityState,
   options: { diskContentInWindow?: string } = {},
 ): Promise<WindowProbe> {
   const docPath = join(tmpDir, `${docName}.md`);
@@ -154,18 +150,19 @@ async function drivePhantomDivergence(
     contentDir: tmpDir,
     projectDir: tmpDir,
     gitEnabled: false,
+    durabilityState,
     onDiskFlush: (name) => {
       if (name !== docName || windowFired) return;
       windowFired = true;
       // Live doc moves past the flush snapshot while the commit is mid-flight
       // (in production: further agent/user edits landing during the flush).
       document.transact(() => replaceDocParagraphs(document, LIVE_PARAGRAPHS), BROWSER_ORIGIN);
-      probe.baseSeenInWindow = getReconciledBase(docName);
+      probe.baseSeenInWindow = durabilityState.getReconciledBase(docName);
       // Pins set-before-window ordering: the signal must already be set when
       // a guard read can first observe the renamed bytes. Without this, a
       // reorder moving the set after the rename would silently disable the
       // own-flush discrimination while the suite stays green.
-      probe.inFlightSeenInWindow = peekInFlightFlush(docName);
+      probe.inFlightSeenInWindow = durabilityState.peekInFlightFlush(docName);
       // A FOREIGN writer landing inside the same window (bytes ≠ the
       // in-flight snapshot).
       if (options.diskContentInWindow !== undefined) {
@@ -174,6 +171,7 @@ async function drivePhantomDivergence(
       // The agent write's guard reads disk inside the server's own
       // flush-commit window — the production race, hit deterministically.
       probe.windowResult = reconcileDiskBeforeAgentWrite(
+        durabilityState,
         fakeHocuspocusWith(docName, document),
         docName,
         tmpDir,
@@ -196,6 +194,7 @@ async function drivePhantomDivergence(
 describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign divergence', () => {
   let tmpDir: string;
   let document: Y.Doc;
+  let durabilityState: DocumentDurabilityState;
 
   beforeEach(() => {
     // realpathSync: macOS /var → /private/var; without it the guard's
@@ -203,21 +202,18 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
     // and the test would pass vacuously.
     tmpDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-own-flush-window-')));
     mkdirSync(tmpDir, { recursive: true });
-    setBatchInProgress(false);
-    switchReconciledBaseScope('main');
+    durabilityState = new DocumentDurabilityState();
     document = new Y.Doc();
   });
 
   afterEach(() => {
     document.destroy();
-    setBatchInProgress(false);
-    switchReconciledBaseScope('main');
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
   test("an agent write inside the server's own flush-commit window is not refused and does not latch lifecycle conflict", async () => {
     const docName = 'own-flush-window';
-    const probe = await drivePhantomDivergence(tmpDir, docName, document);
+    const probe = await drivePhantomDivergence(tmpDir, docName, document, durabilityState);
 
     // The disk bytes the guard read were the server's OWN in-flight flush —
     // not an out-of-band edit. Latching `lifecycle.status = 'conflict'` here
@@ -244,7 +240,7 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
     // normalization), the foreign edit is misclassified as own-write, the
     // guard skips, and this test fails on reconciled === false.
     const FOREIGN_CONTENT = 'alpha FOREIGN EDIT\n\nbeta\n';
-    const probe = await drivePhantomDivergence(tmpDir, docName, document, {
+    const probe = await drivePhantomDivergence(tmpDir, docName, document, durabilityState, {
       diskContentInWindow: FOREIGN_CONTENT,
     });
 
@@ -261,14 +257,15 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
 
   test('no permanent 409 wedge: after the flush settles, subsequent agent writes are not refused', async () => {
     const docName = 'own-flush-wedge';
-    await drivePhantomDivergence(tmpDir, docName, document);
+    await drivePhantomDivergence(tmpDir, docName, document, durabilityState);
 
     // The flush has fully committed: disk == base == the flushed bytes; the
     // only possible residue of the phantom divergence is the lifecycle latch.
-    expect(getReconciledBase(docName)).toBe(FLUSHED_CONTENT);
+    expect(durabilityState.getReconciledBase(docName)).toBe(FLUSHED_CONTENT);
 
     // A later agent write runs the same guard first…
     const laterGuard = reconcileDiskBeforeAgentWrite(
+      durabilityState,
       fakeHocuspocusWith(docName, document),
       docName,
       tmpDir,
@@ -294,6 +291,7 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
       contentDir: tmpDir,
       projectDir: tmpDir,
       gitEnabled: false,
+      durabilityState,
     });
     await loadDocument(persistence, document, docName);
     document.transact(() => replaceDocParagraphs(document, FLUSHED_PARAGRAPHS), BROWSER_ORIGIN);
@@ -314,13 +312,13 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
 
     // A stuck signal would make the guard treat any FUTURE foreign disk edit
     // that happens to match the failed flush's bytes as the server's own.
-    expect(peekInFlightFlush(docName)).toBeUndefined();
+    expect(durabilityState.peekInFlightFlush(docName)).toBeUndefined();
     // Symmetric invariant: the base must NOT have advanced to the never-landed
     // flush. setReconciledBase runs only after a successful rename, so the
     // faulted store leaves the base at the last good content. A spuriously
     // advanced base would make the next real disk edit look in-sync and skip
     // reconcile.
-    expect(getReconciledBase(docName)).toBe(BASE_CONTENT);
+    expect(durabilityState.getReconciledBase(docName)).toBe(BASE_CONTENT);
   });
 
   test("an earlier overlapping flush settling does not clear a later flush's in-flight signal", async () => {
@@ -338,6 +336,7 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
       contentDir: tmpDir,
       projectDir: tmpDir,
       gitEnabled: false,
+      durabilityState,
       onDiskFlush: (name) => {
         if (name !== docName || windowFired) return;
         windowFired = true;
@@ -346,7 +345,7 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
         // it in storeDocumentNow), overwriting A's entry.
         document.transact(() => replaceDocParagraphs(document, OVERLAP_PARAGRAPHS), BROWSER_ORIGIN);
         laterFlush = storeDocument(persistence, document, docName);
-        peekAfterLaterStart = peekInFlightFlush(docName);
+        peekAfterLaterStart = durabilityState.peekInFlightFlush(docName);
       },
     });
 
@@ -361,10 +360,10 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
     // must NOT have cleared B's still-live signal: the clear is guarded on
     // the entry still being A's own. Dropping that guard in a "simplify"
     // refactor reintroduces the unguarded-window wedge this suite pins.
-    expect(peekInFlightFlush(docName)).toBe(normalizeBridge(OVERLAP_CONTENT));
+    expect(durabilityState.peekInFlightFlush(docName)).toBe(normalizeBridge(OVERLAP_CONTENT));
 
     await laterFlush;
     // B's own settle clears its entry — no stuck signal.
-    expect(peekInFlightFlush(docName)).toBeUndefined();
+    expect(durabilityState.peekInFlightFlush(docName)).toBeUndefined();
   });
 });

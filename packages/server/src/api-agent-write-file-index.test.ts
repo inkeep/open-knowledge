@@ -21,7 +21,7 @@ import {
   AgentSessionManager,
   applyAgentMarkdownWrite,
 } from './agent-sessions.ts';
-import { createApiExtension } from './api-extension.ts';
+import { createApiExtension } from './api-extension.test-helper.ts';
 import { createContentFilter } from './content-filter.ts';
 import type { DiskEvent, FileIndexEntry } from './file-watcher.ts';
 

@@ -54,6 +54,7 @@ import {
 } from './cc1-broadcast.ts';
 import { type ConfigPersistenceCtx, loadConfigDoc, storeConfigDoc } from './config-persistence.ts';
 import { frozenDocLifecycleStatus } from './conflict-errors.ts';
+import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import type { ContributorEntry } from './contributor-tracker.ts';
 import {
   contributorCount,
@@ -63,8 +64,8 @@ import {
   restoreContributors,
   swapContributors,
 } from './contributor-tracker.ts';
-import { docNameToRelativePath } from './doc-extensions.ts';
-import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './external-change.ts';
+import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
+import { DocumentDurabilityState, type StoreFailure } from './document-durability-state.ts';
 import { contentHash, registerWrite } from './file-watcher.ts';
 import { tracedMkdir, tracedRename, tracedUnlinkSync, tracedWriteFile } from './fs-traced.ts';
 import { errnoCode } from './http/handler-utils.ts';
@@ -92,7 +93,7 @@ import {
   incrementPersistenceSkipNonQuiescent,
   incrementPersistenceStoreRemovedDoc,
 } from './metrics.ts';
-import { isWithinDir, toPosix } from './path-utils.ts';
+import { toPosix } from './path-utils.ts';
 import { classifyDuplication } from './persistence-tripwire.ts';
 import { backfillRenameLogCommitSha, getOrLoadRenameLogIndex } from './rename-log.ts';
 import { OBSERVER_SYNC_ORIGIN } from './server-observers.ts';
@@ -276,6 +277,12 @@ export function classifyDeferredStoreError(err: unknown): DeferredStoreErrorClas
 export interface PersistenceOptions {
   contentDir: string;
   projectDir: string;
+  /**
+   * Durability registry shared with other server extensions. Standalone
+   * persistence callers may omit it; composition callers must give every
+   * durability consumer the same instance exposed on `PersistenceHandle`.
+   */
+  durabilityState?: DocumentDurabilityState;
   gitEnabled?: boolean;
   commitDebounceMs?: number;
   wipRef?: string;
@@ -453,128 +460,6 @@ export function normalizedSourceForm(rawYText: string): string {
   const { frontmatter, body } = stripFrontmatter(rawYText);
   return normalizeBridge(prependFrontmatter(frontmatter, body));
 }
-
-export function safeContentPath(documentName: string, contentDir: string): string {
-  if (documentName.includes('\x00')) {
-    throw new Error(`Invalid document name: ${documentName}`);
-  }
-  const relativePath = docNameToRelativePath(documentName);
-  const filePath = resolve(contentDir, relativePath);
-  if (!isWithinDir(filePath, contentDir)) {
-    throw new Error(`Invalid document name: ${documentName}`);
-  }
-  return filePath;
-}
-
-export function isWithinContentDir(p: string, contentDir: string): boolean {
-  return isWithinDir(p, contentDir);
-}
-
-/**
- * Reconciled base: last known-good markdown for each document, scoped by branch.
- * Updated on load, store, and reconciliation. Used as the merge base
- * for three-way reconciliation.
- *
- * Outer key = branch name (e.g. "main", "feature/xyz", "detached-abc123def456")
- * Inner key = docName, value = last-synced markdown content
- */
-const reconciledBaseByBranch = new Map<string, Map<string, string>>();
-
-/** Active branch scope for reconciledBase lookups. Defaults to 'main'. */
-let activeBranch = 'main';
-
-/** Switch the active branch scope. Creates a fresh scope if first visit. */
-export function switchReconciledBaseScope(branch: string): void {
-  activeBranch = branch;
-  if (!reconciledBaseByBranch.has(branch)) {
-    reconciledBaseByBranch.set(branch, new Map());
-  }
-}
-
-/** Get the active branch name for reconciledBase. */
-export function getActiveBranch(): string {
-  return activeBranch;
-}
-
-/** Get the reconciledBase value for a doc in the active branch scope. */
-export function getReconciledBase(docName: string): string | undefined {
-  return reconciledBaseByBranch.get(activeBranch)?.get(docName);
-}
-
-/** Set the reconciledBase value for a doc in the active branch scope. */
-export function setReconciledBase(docName: string, content: string): void {
-  if (!reconciledBaseByBranch.has(activeBranch)) {
-    reconciledBaseByBranch.set(activeBranch, new Map());
-  }
-  reconciledBaseByBranch.get(activeBranch)?.set(docName, content);
-}
-
-/** Delete the reconciledBase entry for a doc in the active branch scope. */
-export function deleteReconciledBase(docName: string): void {
-  reconciledBaseByBranch.get(activeBranch)?.delete(docName);
-}
-
-/**
- * In-flight flush snapshots, keyed by docName, value = `normalizeBridge`d
- * markdown of the flush currently committing to disk. The disk commit in
- * `storeDocumentNow` is non-atomic w.r.t. concurrent readers: the rename
- * lands first, `setReconciledBase` runs later in the promise continuation.
- * A reader comparing disk against the base inside that gap sees the
- * server's OWN just-flushed bytes against a stale base — phantom foreign
- * divergence. This map is the producer-owned discriminator: set before the
- * commit's first await, cleared (only if still ours — overlapping flushes
- * for one doc overwrite the entry) after the base advances. On the L3
- * divergence-abort path the snapshot briefly advertises bytes that never
- * reached disk — benign: disk holds non-matching foreign content there, so
- * no false own-write match is possible; the .finally clears it.
- *
- * Not branch-scoped, unlike `reconciledBaseByBranch`: entries live for the
- * milliseconds of one disk commit. A cross-branch switch does not drain a
- * flush already mid-commit (onBatchEnd only defers NEW stores via
- * `isBatchInProgress` → `deferStore`), but a stale entry outliving the
- * switch only suppresses a reconcile when the NEW branch's disk bytes are
- * byte-identical to the old flush snapshot — identical content, where the
- * skip is a no-op and the next flush advances the base anyway.
- */
-const inFlightFlushByDoc = new Map<string, string>();
-
-/**
- * Read-only peek at the in-flight flush snapshot for a doc (normalized
- * markdown), or undefined when no flush is mid-commit. Consumers compare
- * `normalizeBridge(disk)` against it to recognize the server's own bytes;
- * they must never mutate the entry — persistence alone owns its lifecycle.
- */
-export function peekInFlightFlush(docName: string): string | undefined {
-  return inFlightFlushByDoc.get(docName);
-}
-
-/** Batch-in-progress flag — gates L1 writes and L2 commits during coordinated git operations. */
-let batchInProgress = false;
-
-export function setBatchInProgress(value: boolean): void {
-  batchInProgress = value;
-}
-
-export function isBatchInProgress(): boolean {
-  return batchInProgress;
-}
-
-/**
- * A disk-store failure captured out-of-band. `storeDocumentNow` records one
- * when its atomic write throws (ENOSPC / EDQUOT / EACCES / EROFS / read-only
- * FS, etc.) and rethrows — Hocuspocus's `storeDocumentHooks` then catches the
- * rethrow, logs "stays in memory to avoid data loss", and resolves WITHOUT
- * signaling the write that triggered the flush. A handler that force-flushes
- * the store (`executeNow`) and then calls `takeStoreFailure` is the only way to
- * learn the bytes never reached disk and report disk truth rather than a false
- * "Written successfully".
- */
-export interface StoreFailure {
-  /** Node errno code when available (e.g. `ENOSPC`, `EACCES`, `EROFS`). */
-  code?: string;
-  message: string;
-}
-
 /**
  * Extract a {@link StoreFailure} from a thrown value without touching it in a
  * way that can itself throw. Disk-write rejections are normally
@@ -616,37 +501,9 @@ export interface PersistenceQueueDepths {
 
 export interface PersistenceHandle {
   extension: Extension;
+  readonly durabilityState: DocumentDurabilityState;
   flushDeferredStores: (mode?: 'within-branch' | 'discard-stale') => Promise<void>;
   flushPendingGitCommit: () => Promise<void>;
-  /**
-   * Read-and-clear the last recorded disk-store failure for `documentName`,
-   * or null if the most recent store reached disk.
-   *
-   * Precondition: call this ONLY immediately after force-flushing THIS doc's
-   * `onStoreDocument` debounce (`debouncer.executeNow('onStoreDocument-<doc>')`).
-   * The flush records the failure (or clears it on success) synchronously, so
-   * the read reflects that store. Calling it without a preceding force-flush of
-   * the same doc risks reading a stale cross-write residue.
-   */
-  takeStoreFailure: (documentName: string) => StoreFailure | null;
-  /**
-   * Read-and-clear whether `documentName`'s most recent agent-triggered store
-   * was REVERTED by the L3 disk-divergence backstop — disk diverged
-   * from the reconciled base, so the overwrite was aborted and disk won.
-   *
-   * Same precondition as {@link takeStoreFailure}: call ONLY immediately after
-   * force-flushing THIS doc's `onStoreDocument` debounce. Mutually exclusive with
-   * a store failure for the same flush (L3 returns before the atomic write).
-   */
-  takeStoreDivergence: (documentName: string) => boolean;
-  /**
-   * Mark `documentName`'s next store as agent-write-triggered (L3
-   * gate). Call IMMEDIATELY before force-flushing this doc's `onStoreDocument`
-   * debounce from an agent write handler. `storeDocumentNow` read-and-clears it;
-   * only a marked store can disk-wins-revert on divergence, so human-editor
-   * stores (which never route through a handler's force-flush) are excluded.
-   */
-  markAgentWriteStore: (documentName: string) => void;
   /**
    * Force a drain of the contributor map regardless of timer state. Used by
    * write surfaces that mutate `pendingContributors` outside any Y.Doc transact
@@ -693,6 +550,7 @@ export interface PersistenceHandle {
 }
 
 export function createPersistenceExtension(options?: PersistenceOptions): PersistenceHandle {
+  const durabilityState = options?.durabilityState ?? new DocumentDurabilityState();
   const contentDirRaw = options?.contentDir ?? process.cwd();
   let contentDir: string;
   try {
@@ -742,8 +600,8 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     projectDir,
     homedirOverride: options?.configHomedirOverride,
     lkgCache: managedArtifactLkgCache,
-    setReconciledBase,
-    getReconciledBase,
+    setReconciledBase: (docName, content) => durabilityState.setReconciledBase(docName, content),
+    getReconciledBase: (docName) => durabilityState.getReconciledBase(docName),
   };
 
   // Mermaid (`.mmd`/`.mermaid`) persistence ctx. Y.Text-only, content-dir paths,
@@ -781,40 +639,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
    */
   const QUIESCENCE_MAX_DEFER = 8;
   const persistenceDeferCounts = new Map<string, number>();
-
-  // Last disk-store failure per docName. Set when `storeDocumentNow`'s atomic
-  // write throws (before it rethrows for Hocuspocus to keep the doc in memory);
-  // cleared on the next successful store and read-and-cleared via
-  // `takeStoreFailure`. See `StoreFailure` for why this out-of-band channel is
-  // necessary — Hocuspocus swallows the rethrow without signaling the caller.
-  const storeFailures = new Map<string, StoreFailure>();
-
-  // Docs whose most recent agent-triggered store was REVERTED by the L3
-  // disk-divergence backstop instead of written: the store detected
-  // that disk diverged from the reconciled base since L1's check (the residual
-  // TOCTOU), aborted the overwrite, and ingested disk (disk-wins). The agent's
-  // edit was discarded. Out-of-band like `storeFailures` because Hocuspocus's
-  // store hook gives the triggering handler no return channel; the handler
-  // force-flushes then read-clears via `takeStoreDivergence` and returns
-  // `urn:ok:error:disk-divergence`. Mutually exclusive with `storeFailures` for
-  // the same flush — L3 returns before the write, so no atomic-write throw can
-  // also record a failure for that store.
-  const storeDivergences = new Set<string>();
-
-  // Docs whose pending store was forced by an agent write handler's awaited
-  // flush (L3 gate). Set by `markAgentWriteStore` immediately before
-  // the handler calls `executeNow`, consumed (deleted) at the top of
-  // `storeDocumentNow`. This is the agent-triggered signal: Hocuspocus passes
-  // `lastTransactionOrigin: null` for agent DirectConnection writes, so the
-  // origin can't gate L3 — but the handler KNOWS it's an agent write. Human-
-  // editor (browser) stores fire via the natural debounce and never route
-  // through a handler's `executeNow`, so they never get marked → L3 never
-  // disk-wins-reverts a human's in-progress typing.
-  const agentWriteStores = new Set<string>();
-
-  // reconciledBase and batchInProgress use the module-level systems
-  // (reconciledBaseByBranch via get/setReconciledBase, and isBatchInProgress)
-  // so that server-factory.ts and persistence stay in sync.
 
   const gitEnabled = options?.gitEnabled ?? true;
   const commitDebounceMs = options?.commitDebounceMs ?? 15_000;
@@ -1120,7 +944,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
   function scheduleGitCommit(): void {
     if (!gitEnabled) return;
-    if (isBatchInProgress()) return;
+    if (durabilityState.isBatchInProgress()) return;
     if (gitCommitTimer) clearTimeout(gitCommitTimer);
     gitCommitTimer = setTimeout(() => {
       gitCommitTimer = null;
@@ -1307,7 +1131,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         // store forced by an agent write handler's awaited flush? Read-and-clear
         // here so it can't leak to a later human-editor store of the same doc
         // (e.g. if this store no-ops at the unchanged-base skip below).
-        const agentTriggeredStore = agentWriteStores.delete(documentName);
+        const agentTriggeredStore = durabilityState.consumeAgentWriteStore(documentName);
 
         // Lifecycle guard: when the file watcher saw an external delete or
         // rename, the disk-event handler in standalone.ts sets the doc's
@@ -1523,7 +1347,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         // class as a no-op skips both the disk write AND the principal
         // safety-net below, preventing phantom commits attributed to the
         // browser's principal when a later agent write triggers the L2 fan-out.
-        const currentBase = getReconciledBase(documentName);
+        const currentBase = durabilityState.getReconciledBase(documentName);
         // Routed through the shared helper so this compare and the
         // staleness watchdog's divergence predicate stay one derivation.
         const normalizedMarkdown = normalizedSourceForm(ytextSnapshot);
@@ -1729,7 +1553,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         // lifecycle synchronous from the hook's entry, which the overlap
         // test relies on to deterministically pin clear-only-if-still-ours.
         inFlightFlushValue = normalizeBridge(markdown);
-        inFlightFlushByDoc.set(documentName, inFlightFlushValue);
+        durabilityState.beginInFlightFlush(documentName, inFlightFlushValue);
 
         const requestedPath = safeContentPath(documentName, contentDir);
         await tracedMkdir(dirname(requestedPath), { recursive: true });
@@ -1854,12 +1678,12 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                 applyDiskContent(document, diskContent);
               }, FILE_WATCHER_ORIGIN);
             } catch (err) {
-              storeFailures.set(documentName, toStoreFailure(err));
+              durabilityState.recordStoreFailure(documentName, toStoreFailure(err));
               persistenceDeferCounts.delete(documentName);
               throw err;
             }
-            setReconciledBase(documentName, diskContent);
-            storeDivergences.add(documentName);
+            durabilityState.setReconciledBase(documentName, diskContent);
+            durabilityState.recordStoreDivergence(documentName);
             persistenceDeferCounts.delete(documentName);
             return;
           }
@@ -1896,7 +1720,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           registerWrite(canonicalPath, contentHash(markdown));
           // The bytes reached disk — clear any prior recorded failure so a
           // later force-flush + `takeStoreFailure` reflects the success.
-          storeFailures.delete(documentName);
+          durabilityState.clearStoreFailure(documentName);
           // Increment disk-write counter after the atomic rename succeeds.
           // Regression gate: if OBSERVER_SYNC_ORIGIN drops skipStoreHooks,
           // observer writes trigger onStoreDocument and produce amplified
@@ -1946,7 +1770,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           // `toStoreFailure` reads `e` defensively so a throwing-getter error
           // shape can't replace `e` here and rob the deferred-store classifier
           // downstream of the original throw.
-          storeFailures.set(documentName, toStoreFailure(e));
+          durabilityState.recordStoreFailure(documentName, toStoreFailure(e));
           log.error({ err: e, documentName }, `[persistence] Failed to save ${documentName}`);
           throw e;
         }
@@ -1956,7 +1780,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         );
 
         // Update reconciled base after successful store
-        setReconciledBase(documentName, markdown);
+        durabilityState.setReconciledBase(documentName, markdown);
         tripwireResetFailedDocs.delete(documentName);
         persistenceDeferCounts.delete(documentName);
 
@@ -1979,11 +1803,8 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       // (possibly failed) flush must not delete that newer signal. On a
       // commit throw the entry clears here too, so the signal can never
       // stay stuck set past the flush that owns it.
-      if (
-        inFlightFlushValue !== undefined &&
-        inFlightFlushByDoc.get(documentName) === inFlightFlushValue
-      ) {
-        inFlightFlushByDoc.delete(documentName);
+      if (inFlightFlushValue !== undefined) {
+        durabilityState.finishInFlightFlush(documentName, inFlightFlushValue);
       }
       // doc.name deliberately NOT recorded on the histogram — per-doc cardinality
       // would blow up Prometheus label storage at scale. The span carries it.
@@ -2001,7 +1822,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     lastTransactionOrigin: unknown;
   }): void {
     deferredStores.set(documentName, {
-      branch: getActiveBranch(),
+      branch: durabilityState.getActiveBranch(),
       document,
       lastTransactionOrigin,
     });
@@ -2024,7 +1845,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
         if (drainMode !== 'discard-stale') {
           for (const [documentName, entry] of entries) {
-            if (entry.branch !== getActiveBranch()) continue;
+            if (entry.branch !== durabilityState.getActiveBranch()) continue;
             try {
               await storeDocumentNow({
                 document: entry.document,
@@ -2264,7 +2085,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           // and the bridge invariant comparator (`assertBridgeInvariant`
           // and `attachBridgeInvariantWatcher`) tolerates the same classes,
           // so no false-positive write fires on mere file open.
-          setReconciledBase(documentName, raw);
+          durabilityState.setReconciledBase(documentName, raw);
         },
       ).finally(() => {
         // doc.name deliberately NOT recorded on the histogram — per-doc cardinality
@@ -2354,7 +2175,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         await storeMermaidDoc(document, documentName, lastTransactionOrigin, mermaidPersistenceCtx);
         return;
       }
-      if (isBatchInProgress()) {
+      if (durabilityState.isBatchInProgress()) {
         deferStore({ document, documentName, lastTransactionOrigin });
         return;
       }
@@ -2403,22 +2224,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     await commitInFlight;
   }
 
-  function takeStoreFailure(documentName: string): StoreFailure | null {
-    const failure = storeFailures.get(documentName);
-    if (failure) storeFailures.delete(documentName);
-    return failure ?? null;
-  }
-
-  function takeStoreDivergence(documentName: string): boolean {
-    if (!storeDivergences.has(documentName)) return false;
-    storeDivergences.delete(documentName);
-    return true;
-  }
-
-  function markAgentWriteStore(documentName: string): void {
-    agentWriteStores.add(documentName);
-  }
-
   function getQueueDepths(): PersistenceQueueDepths {
     return {
       branchDeferred: deferredStores.size,
@@ -2430,7 +2235,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     if (isPersistenceExcludedDoc(documentName)) {
       return;
     }
-    if (isBatchInProgress()) {
+    if (durabilityState.isBatchInProgress()) {
       // Same parking the debounced hook applies; the batch's own
       // `flushDeferredStores` replays it when the coordinated operation ends.
       deferStore({ document, documentName, lastTransactionOrigin: null });
@@ -2444,13 +2249,11 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
   return {
     extension,
+    durabilityState,
     flushDeferredStores,
     flushPendingGitCommit,
     flushContributors,
     waitForPendingCommits,
-    takeStoreFailure,
-    takeStoreDivergence,
-    markAgentWriteStore,
     getQueueDepths,
     forceStore,
     configPersistenceCtx,

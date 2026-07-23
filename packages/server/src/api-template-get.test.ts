@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { describe, expect, test } from 'vitest';
-import { createApiExtension } from './api-extension.ts';
+import { createApiExtension } from './api-extension.test-helper.ts';
 
 function makeReq(url: string): IncomingMessage {
   const readable = Readable.from(Buffer.from('')) as unknown as IncomingMessage;

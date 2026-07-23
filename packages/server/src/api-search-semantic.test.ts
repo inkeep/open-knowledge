@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { createWorkspaceSearchDocument } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
-import { createApiExtension } from './api-extension.ts';
+import { createApiExtension } from './api-extension.test-helper.ts';
 import { createConceptEmbedder, type Embedder, SemanticSearchService } from './embeddings/index.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 

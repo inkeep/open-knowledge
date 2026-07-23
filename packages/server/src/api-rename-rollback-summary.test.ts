@@ -24,7 +24,7 @@ import { Readable } from 'node:stream';
 import { setImmediate } from 'node:timers/promises';
 import type { Principal } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { createApiExtension } from './api-extension.ts';
+import { createApiExtension } from './api-extension.test-helper.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import {
   __formatContributorsForTests as formatContributorsForTest,

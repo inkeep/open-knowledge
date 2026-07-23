@@ -6,7 +6,7 @@ import { Readable } from 'node:stream';
 import { Hocuspocus } from '@hocuspocus/server';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { AgentSessionManager, applyAgentMarkdownWrite } from './agent-sessions.ts';
-import { createApiExtension } from './api-extension.ts';
+import { createApiExtension } from './api-extension.test-helper.ts';
 import {
   __formatContributorsForTests as formatContributorsForTest,
   __resetContributorsForTests as resetContributorsForTest,

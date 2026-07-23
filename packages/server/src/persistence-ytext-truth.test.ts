@@ -23,7 +23,7 @@
  *      structurally avoided).
  */
 
-import { describe as _bunDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { describe as _vitestDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 // Skip-on-CI gate (oven-sh/bun#11892 — child-process reaping bug). The full
 // contract surface lives in this file: every test boots a real
@@ -44,7 +44,7 @@ import { describe as _bunDescribe, afterEach, beforeEach, expect, test, vi } fro
 // a full canonical-gate run on ubuntu-latest GHA is green for ≥5 consecutive
 // runs of this file. Track via the shared CI-skip pattern across server tests
 // (~49 files).
-const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
+const describe = process.env.CI ? _vitestDescribe.skip : _vitestDescribe;
 
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -54,7 +54,6 @@ import simpleGit from 'simple-git';
 import { __resetQuiescenceForTests, __setQuiescentOverrideForTests } from './bridge-quiescence.ts';
 import { __resetBridgeWatchdogForTests } from './bridge-watchdog.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
-import { getReconciledBase } from './persistence.ts';
 import { createServer } from './server-factory.ts';
 
 interface Fixture {
@@ -256,9 +255,9 @@ describe('FR-35: cold-load setReconciledBase stores raw disk bytes', () => {
       const conn = await server.hocuspocus.openDirectConnection(docName);
 
       // Wait for onLoadDocument to populate the doc + set reconciledBase.
-      await waitForCondition(() => getReconciledBase(docName) !== undefined);
+      await waitForCondition(() => server.durabilityState.getReconciledBase(docName) !== undefined);
       // reconciledBase is the raw disk content verbatim.
-      expect(getReconciledBase(docName)).toBe(rawDiskContent);
+      expect(server.durabilityState.getReconciledBase(docName)).toBe(rawDiskContent);
 
       conn.disconnect();
     } finally {
@@ -291,7 +290,7 @@ describe('FR-35: cold-load setReconciledBase stores raw disk bytes', () => {
       await server.ready;
       const conn = await server.hocuspocus.openDirectConnection(docName);
       // Wait for cold-load to settle.
-      await waitForCondition(() => getReconciledBase(docName) !== undefined);
+      await waitForCondition(() => server.durabilityState.getReconciledBase(docName) !== undefined);
 
       // Wait briefly to give the debounce a chance to fire if it would.
       await new Promise((r) => setTimeout(r, 250));
@@ -338,7 +337,7 @@ describe('FR-33: full round-trip preserves user-form bytes', () => {
       const serverDoc = server.hocuspocus.documents.get(docName);
       if (!serverDoc) return;
 
-      await waitForCondition(() => getReconciledBase(docName) !== undefined);
+      await waitForCondition(() => server.durabilityState.getReconciledBase(docName) !== undefined);
       const ytextAfterLoad = serverDoc.getText('source').toString();
       // ytext should hold the disk content verbatim post-cold-load.
       expect(ytextAfterLoad).toBe(initialContent);
@@ -424,7 +423,7 @@ describe('Quiescence gate via direct counter manipulation', () => {
       const serverDoc = server.hocuspocus.documents.get(docName);
       if (!serverDoc) return;
 
-      await waitForCondition(() => getReconciledBase(docName) !== undefined);
+      await waitForCondition(() => server.durabilityState.getReconciledBase(docName) !== undefined);
 
       // Pin the predicate to non-quiescent for this doc. Yjs's
       // afterAllTransactions fires synchronously after every drain, so
@@ -499,7 +498,7 @@ describe('Quiescence gate via direct counter manipulation', () => {
       const conn = await server.hocuspocus.openDirectConnection(docName);
       const serverDoc = server.hocuspocus.documents.get(docName);
       if (!serverDoc) return;
-      await waitForCondition(() => getReconciledBase(docName) !== undefined);
+      await waitForCondition(() => server.durabilityState.getReconciledBase(docName) !== undefined);
 
       __setQuiescentOverrideForTests(serverDoc, false);
 
@@ -572,7 +571,7 @@ describe('Quiescence gate via direct counter manipulation', () => {
       const conn = await server.hocuspocus.openDirectConnection(docName);
       const serverDoc = server.hocuspocus.documents.get(docName);
       if (!serverDoc) return;
-      await waitForCondition(() => getReconciledBase(docName) !== undefined);
+      await waitForCondition(() => server.durabilityState.getReconciledBase(docName) !== undefined);
 
       const userOrigin = {
         source: 'connection' as const,

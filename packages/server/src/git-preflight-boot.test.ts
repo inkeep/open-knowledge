@@ -354,6 +354,9 @@ describe('bootServer git-preflight', () => {
         },
       });
       expect(booted.port).toBeGreaterThan(0);
+      // This test covers preflight gating, not shutdown during initialization.
+      // Let async initialization settle before exercising the teardown path.
+      await booted.ready;
     } finally {
       process.stderr.write = originalStderrWrite;
       if (booted) await booted.destroy();

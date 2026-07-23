@@ -414,7 +414,12 @@ describe('CC1 broadcast — L1 integration', () => {
     const beforeTextLen = systemDoc?.getText('source').length ?? 0;
 
     expect(() =>
-      applyExternalChange(server.instance.hocuspocus, SYSTEM_DOC_NAME, '# should be ignored'),
+      applyExternalChange(
+        server.instance.durabilityState,
+        server.instance.hocuspocus,
+        SYSTEM_DOC_NAME,
+        '# should be ignored',
+      ),
     ).not.toThrow();
 
     const afterXmlLen = systemDoc?.getXmlFragment('default').length ?? 0;

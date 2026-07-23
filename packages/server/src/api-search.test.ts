@@ -8,7 +8,7 @@ import {
   createApiExtension,
   DEFAULT_SEARCH_MAX_ENTRIES,
   getSearchMaxEntries,
-} from './api-extension.ts';
+} from './api-extension.test-helper.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 
 interface CapturedResponse {

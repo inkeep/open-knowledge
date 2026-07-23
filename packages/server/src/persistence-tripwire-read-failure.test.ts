@@ -29,12 +29,9 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
+import { DocumentDurabilityState } from './document-durability-state.ts';
 import { getLogger } from './logger.ts';
-import {
-  createPersistenceExtension,
-  setReconciledBase,
-  switchReconciledBaseScope,
-} from './persistence.ts';
+import { createPersistenceExtension } from './persistence.ts';
 
 const BROWSER_ORIGIN = {
   source: 'connection',
@@ -62,14 +59,14 @@ async function storeDocument(
 
 describe('tripwire reset readFileSync failure', () => {
   let contentDir: string;
+  let durabilityState: DocumentDurabilityState;
 
   beforeEach(() => {
     contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-tripwire-readfail-')));
-    switchReconciledBaseScope('main');
+    durabilityState = new DocumentDurabilityState();
   });
 
   afterEach(() => {
-    switchReconciledBaseScope('main');
     rmSync(contentDir, { recursive: true, force: true });
   });
 
@@ -86,11 +83,12 @@ describe('tripwire reset readFileSync failure', () => {
       contentDir,
       projectDir: contentDir,
       gitEnabled: false,
+      durabilityState,
     });
 
     const document = new Y.Doc();
     composeAndWriteRawBody(document, doubledMarkdown, 'agent');
-    setReconciledBase(docName, baseMarkdown);
+    durabilityState.setReconciledBase(docName, baseMarkdown);
 
     const warnSpy = vi.spyOn(getLogger('persistence'), 'warn');
     try {

@@ -55,12 +55,7 @@ import {
   incrementPersistenceStalenessForcedStores,
   incrementPersistenceStalenessStoodDown,
 } from './metrics.ts';
-import {
-  getReconciledBase,
-  isBatchInProgress,
-  normalizedSourceForm,
-  peekInFlightFlush,
-} from './persistence.ts';
+import { normalizedSourceForm } from './persistence.ts';
 
 const log = getLogger('persistence-staleness');
 
@@ -113,10 +108,11 @@ export interface StalenessWatchdogOptions {
   sweepIntervalMs?: number;
   /** Test seam for deterministic clocks. */
   now?: () => number;
-  /** Test seams — default to the real persistence/quiescence surfaces. */
-  getBase?: (documentName: string) => string | undefined;
-  isBatchActive?: () => boolean;
-  peekInFlight?: (documentName: string) => string | undefined;
+  /** Per-server durability state readers, passed by the composition root. */
+  getBase: (documentName: string) => string | undefined;
+  isBatchActive: () => boolean;
+  peekInFlight: (documentName: string) => string | undefined;
+  /** Test seam — defaults to the real quiescence surface. */
   msSinceLastUserTx?: (doc: Y.Doc, nowMs: number) => number | null;
 }
 
@@ -161,9 +157,7 @@ export function createPersistenceStalenessWatchdog(
   const graceMs = options.graceMs ?? DEFAULT_STALENESS_GRACE_MS;
   const sweepIntervalMs = options.sweepIntervalMs ?? DEFAULT_STALENESS_SWEEP_INTERVAL_MS;
   const now = options.now ?? Date.now;
-  const getBase = options.getBase ?? getReconciledBase;
-  const isBatchActive = options.isBatchActive ?? isBatchInProgress;
-  const peekInFlight = options.peekInFlight ?? peekInFlightFlush;
+  const { getBase, isBatchActive, peekInFlight } = options;
   const msSinceLastUserTx = options.msSinceLastUserTx ?? getMsSinceLastUserTx;
 
   const attempts = new Map<string, AttemptRecord>();

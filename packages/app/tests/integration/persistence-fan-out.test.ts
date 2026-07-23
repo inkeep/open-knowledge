@@ -150,7 +150,12 @@ describe('persistence L2 fan-out integration (US-014, FR-7)', () => {
     });
 
     // Simulate a file-watcher external change — registers file-system contributor
-    applyExternalChange(server.hocuspocus, 'fs-writer-doc', '# Updated from disk\n');
+    applyExternalChange(
+      server.durabilityState,
+      server.hocuspocus,
+      'fs-writer-doc',
+      '# Updated from disk\n',
+    );
 
     const doc = server.hocuspocus.documents.get('fs-writer-doc');
     doc?.removeDirectConnection();
@@ -195,7 +200,12 @@ describe('persistence L2 fan-out integration (US-014, FR-7)', () => {
     recordContributor('concurrent-doc', 'agent-s1', 'Session 1', 'agent-s1');
 
     // File-watcher contributor (simulating an external disk change)
-    applyExternalChange(server.hocuspocus, 'concurrent-doc', '# Updated concurrently\n');
+    applyExternalChange(
+      server.durabilityState,
+      server.hocuspocus,
+      'concurrent-doc',
+      '# Updated concurrently\n',
+    );
 
     const doc = server.hocuspocus.documents.get('concurrent-doc');
     doc?.removeDirectConnection();

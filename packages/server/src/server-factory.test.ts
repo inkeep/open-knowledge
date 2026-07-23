@@ -7,6 +7,7 @@ import shellQuote from 'shell-quote';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
+import { applyExternalChange } from './external-change.ts';
 import type {
   CheckPushPermissionOptions,
   DetectGhFn,
@@ -108,6 +109,78 @@ function captureAllLoggers(): {
 }
 
 // ─── Test suite ─────────────────────────────────────────────────────────────
+
+describe('createServer() — document durability state isolation', () => {
+  test('keeps same-named documents, branch scope, batch state, and disk intake per server', async () => {
+    const projectA = await mkdtemp(join(tmpdir(), 'ok-durability-a-'));
+    const projectB = await mkdtemp(join(tmpdir(), 'ok-durability-b-'));
+    const docName = 'same-doc';
+    const diskA = '# Disk A\n';
+    const diskB = '# Disk B\n';
+    let serverA: ServerInstance | null = null;
+    let serverB: ServerInstance | null = null;
+
+    try {
+      writeFileSync(join(projectA, `${docName}.md`), diskA, 'utf-8');
+      writeFileSync(join(projectB, `${docName}.md`), diskB, 'utf-8');
+      serverA = createServer({
+        contentDir: projectA,
+        projectDir: projectA,
+        gitEnabled: false,
+        quiet: true,
+      });
+      serverB = createServer({
+        contentDir: projectB,
+        projectDir: projectB,
+        gitEnabled: false,
+        quiet: true,
+      });
+      await Promise.all([serverA.ready, serverB.ready]);
+
+      const [connectionA, connectionB] = await Promise.all([
+        serverA.hocuspocus.openDirectConnection(docName),
+        serverB.hocuspocus.openDirectConnection(docName),
+      ]);
+
+      expect(serverA.durabilityState).not.toBe(serverB.durabilityState);
+      expect(serverA.durabilityState.getReconciledBase(docName)).toBe(diskA);
+      expect(serverB.durabilityState.getReconciledBase(docName)).toBe(diskB);
+      expect(serverA.hocuspocus.documents.get(docName)?.getText('source').toString()).toBe(diskA);
+      expect(serverB.hocuspocus.documents.get(docName)?.getText('source').toString()).toBe(diskB);
+
+      serverA.durabilityState.switchReconciledBaseScope('feature-a');
+      serverA.durabilityState.setReconciledBase(docName, 'A feature');
+      serverA.durabilityState.setBatchInProgress(true);
+      serverA.durabilityState.beginInFlightFlush(docName, 'A flush');
+
+      expect(serverA.durabilityState.getReconciledBase(docName)).toBe('A feature');
+      expect(serverB.durabilityState.getActiveBranch()).toBe('main');
+      expect(serverB.durabilityState.getReconciledBase(docName)).toBe(diskB);
+      expect(serverA.durabilityState.isBatchInProgress()).toBe(true);
+      expect(serverB.durabilityState.isBatchInProgress()).toBe(false);
+      expect(serverB.durabilityState.peekInFlightFlush(docName)).toBeUndefined();
+
+      const externalA = '# External A\n';
+      applyExternalChange(serverA.durabilityState, serverA.hocuspocus, docName, externalA);
+
+      expect(serverA.hocuspocus.documents.get(docName)?.getText('source').toString()).toBe(
+        externalA,
+      );
+      expect(serverA.durabilityState.getReconciledBase(docName)).toBe(externalA);
+      expect(serverB.hocuspocus.documents.get(docName)?.getText('source').toString()).toBe(diskB);
+      expect(serverB.durabilityState.getReconciledBase(docName)).toBe(diskB);
+
+      await Promise.all([connectionA.disconnect(), connectionB.disconnect()]);
+    } finally {
+      await serverA?.destroy();
+      await serverB?.destroy();
+      await Promise.all([
+        rm(projectA, { recursive: true, force: true }),
+        rm(projectB, { recursive: true, force: true }),
+      ]);
+    }
+  });
+});
 
 describe('createServer().destroy() — graceful shutdown flush', () => {
   let tmpDir: string;

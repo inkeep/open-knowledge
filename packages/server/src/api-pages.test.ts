@@ -10,7 +10,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { describe, expect, test } from 'vitest';
-import { createApiExtension, extractHeadings, extractPageTitle } from './api-extension.ts';
+import {
+  createApiExtension,
+  extractHeadings,
+  extractPageTitle,
+} from './api-extension.test-helper.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 
 describe('extractPageTitle', () => {

@@ -31,12 +31,9 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
+import { DocumentDurabilityState } from './document-durability-state.ts';
 import { getLogger } from './logger.ts';
-import {
-  createPersistenceExtension,
-  setReconciledBase,
-  switchReconciledBaseScope,
-} from './persistence.ts';
+import { createPersistenceExtension } from './persistence.ts';
 
 const BROWSER_ORIGIN = {
   source: 'connection',
@@ -64,6 +61,7 @@ async function storeDocument(
 
 describe('tripwire reset symlink-escape', () => {
   let contentDir: string;
+  let durabilityState: DocumentDurabilityState;
   let outsideDir: string;
   let secretPath: string;
   const secretContent = '# SECRET\n\nThis content lives outside the content root.\n';
@@ -73,11 +71,10 @@ describe('tripwire reset symlink-escape', () => {
     outsideDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-tripwire-outside-')));
     secretPath = join(outsideDir, 'secret.md');
     writeFileSync(secretPath, secretContent, 'utf-8');
-    switchReconciledBaseScope('main');
+    durabilityState = new DocumentDurabilityState();
   });
 
   afterEach(() => {
-    switchReconciledBaseScope('main');
     rmSync(contentDir, { recursive: true, force: true });
     rmSync(outsideDir, { recursive: true, force: true });
   });
@@ -98,6 +95,7 @@ describe('tripwire reset symlink-escape', () => {
       contentDir,
       projectDir: contentDir,
       gitEnabled: false,
+      durabilityState,
     });
 
     // Hand-construct the Y.Doc state the tripwire path expects: XmlFragment
@@ -106,7 +104,7 @@ describe('tripwire reset symlink-escape', () => {
     // route into the reset disk-read.
     const document = new Y.Doc();
     composeAndWriteRawBody(document, doubledMarkdown, 'agent');
-    setReconciledBase(docName, baseMarkdown);
+    durabilityState.setReconciledBase(docName, baseMarkdown);
 
     const warnSpy = vi.spyOn(getLogger('persistence'), 'warn');
     try {

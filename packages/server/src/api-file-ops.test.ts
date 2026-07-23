@@ -17,7 +17,7 @@ import { Hocuspocus } from '@hocuspocus/server';
 import simpleGit from 'simple-git';
 import { afterEach, describe, expect, test } from 'vitest';
 import type * as Y from 'yjs';
-import { createApiExtension } from './api-extension.ts';
+import { createApiExtension } from './api-extension.test-helper.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { type ContentFilter, createContentFilter } from './content-filter.ts';
 import { _resetDocExtensionsForTests, getDocExtension } from './doc-extensions.ts';

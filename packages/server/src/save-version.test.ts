@@ -16,7 +16,7 @@ import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { AgentSessionManager } from './agent-sessions.ts';
-import { createApiExtension } from './api-extension.ts';
+import { createApiExtension } from './api-extension.test-helper.ts';
 import {
   commitWip,
   initShadowRepo,

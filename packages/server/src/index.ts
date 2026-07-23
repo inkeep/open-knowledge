@@ -105,6 +105,7 @@ export {
   createContentFilterAsync,
   type RebuildResult as ContentFilterRebuildResult,
 } from './content-filter.ts';
+export { safeContentPath } from './content-path.ts';
 export {
   // Back-compat public export; new code should use swapContributors().
   // oxlint-disable-next-line typescript/no-deprecated
@@ -122,6 +123,8 @@ export {
   type DetectClaudeDesktopOptions,
   detectClaudeDesktopPresence,
 } from './detect-claude-desktop.ts';
+export { FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
+export { DocumentDurabilityState, type StoreFailure } from './document-durability-state.ts';
 export {
   clearEmbeddingsKeyFromAllBackends,
   createEmbeddingsSecretStore,
@@ -139,7 +142,6 @@ export {
 export {
   applyExternalChange,
   createExternalChangeHandler,
-  FILE_WATCHER_ORIGIN,
 } from './external-change.ts';
 export { createFileLogger, flushFileLogger, getLogFilePath, getLogsDir } from './file-logger.ts';
 export {
@@ -345,7 +347,6 @@ export {
   createPersistenceExtension,
   type PersistenceHandle,
   type PersistenceOptions,
-  safeContentPath,
 } from './persistence.ts';
 export { loadPrincipal } from './principal.ts';
 export { isProcessAlive, isValidLockPid } from './process-alive.ts';

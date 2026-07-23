@@ -478,6 +478,7 @@ import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import type { ResolveStrategy } from './conflict-storage.ts';
 import type { ContentFilter } from './content-filter.ts';
+import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import {
   docNameToRelativePath,
   forgetDocExtension,
@@ -488,6 +489,7 @@ import {
   SUPPORTED_DOC_EXTENSIONS,
   stripDocExtension,
 } from './doc-extensions.ts';
+import type { DocumentDurabilityState, StoreFailure } from './document-durability-state.ts';
 import {
   type ReconcileBeforeWriteResult,
   reconcileDiskBeforeAgentWrite,
@@ -584,14 +586,6 @@ import {
 } from './metrics.ts';
 import { precomputeParse } from './parse-pool.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
-import {
-  deleteReconciledBase,
-  getActiveBranch,
-  isWithinContentDir,
-  type StoreFailure,
-  safeContentPath,
-  setReconciledBase,
-} from './persistence.ts';
 import {
   appendRenameLogEntry,
   createAncestorShaSetCache,
@@ -2607,6 +2601,7 @@ async function renameTrackedPathInGit(
 
 export interface ApiExtensionOptions {
   hocuspocus: Hocuspocus;
+  durabilityState: DocumentDurabilityState;
   sessionManager: AgentSessionManager;
   contentDir: string;
   /**
@@ -2703,28 +2698,6 @@ export interface ApiExtensionOptions {
    * is NOT yet ported from origin/main.
    */
   flushContributors?: () => Promise<void>;
-  /**
-   * Read-and-clear the last disk-store failure for a docName. Wired to
-   * `persistence.takeStoreFailure`. A write handler force-flushes the store
-   * then calls this to report disk truth instead of a false success when the
-   * persistence step threw (ENOSPC / EACCES / EROFS, etc.).
-   */
-  takeStoreFailure?: (docName: string) => StoreFailure | null;
-  /**
-   * Read-and-clear whether a docName's most recent agent-triggered store was
-   * reverted by the L3 disk-divergence backstop. Wired to
-   * `persistence.takeStoreDivergence`. A write handler force-flushes the store
-   * then calls this to return `urn:ok:error:disk-divergence` instead of a false
-   * success when disk diverged and the overwrite was aborted (disk won).
-   */
-  takeStoreDivergence?: (docName: string) => boolean;
-  /**
-   * Mark a docName's next store as agent-write-triggered (L3
-   * gate). Wired to `persistence.markAgentWriteStore`. `flushDiskAndDetectOutcome`
-   * calls it immediately before force-flushing, so only agent-handler-forced
-   * stores can disk-wins-revert on divergence (human-editor stores are excluded).
-   */
-  markAgentWriteStore?: (docName: string) => void;
   /** Accessor for the current branch from the HEAD watcher. Returns null when unknown. */
   getCurrentBranch?: () => string | null;
   /**
@@ -2991,6 +2964,7 @@ function applyDiskEventToLiveAllFilesIndex(
 }
 
 export function createApiExtension(options: ApiExtensionOptions): Extension {
+  const { durabilityState } = options;
   const {
     hocuspocus,
     sessionManager,
@@ -3017,9 +2991,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     shadowRef,
     flushGitCommit,
     flushContributors,
-    takeStoreFailure,
-    takeStoreDivergence,
-    markAgentWriteStore,
     getCurrentBranch,
     getDiskAckSVs,
     contentRoot,
@@ -3419,12 +3390,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       // fires (Hocuspocus passes a null transaction origin for agent
       // DirectConnection writes, so the origin can't gate it). `storeDocumentNow`
       // read-and-clears the marker.
-      markAgentWriteStore?.(docName);
+      durabilityState.markAgentWriteStore(docName);
       await hocuspocus.debouncer.executeNow(debounceId);
     }
-    const failure = takeStoreFailure?.(docName) ?? null;
+    const failure = durabilityState.takeStoreFailure(docName);
     if (failure) return { kind: 'failure', failure };
-    if (takeStoreDivergence?.(docName)) return { kind: 'divergence' };
+    if (durabilityState.takeStoreDivergence(docName)) return { kind: 'divergence' };
     return null;
   }
 
@@ -3731,7 +3702,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
     for (const docName of docNames) {
       const document = hocuspocus.documents.get(docName);
-      deleteReconciledBase(docName);
+      durabilityState.deleteReconciledBase(docName);
       // Forget the managed-artifact LKG too (no-op for ordinary docs). The LKG
       // is the verbatim bytes last persisted; leaving it set lets an identical-
       // content re-create after a delete be classed a no-op and never re-land on
@@ -3810,7 +3781,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     tracedMkdirSync(dirname(filePath), { recursive: true });
     writeFileIfContentDiffers(filePath, markdown);
     registerWrite(filePath, contentHash(markdown));
-    setReconciledBase(docName, markdown);
+    durabilityState.setReconciledBase(docName, markdown);
 
     mutateFileIndex?.({ kind: 'update', path: filePath, docName, content: markdown });
   }
@@ -4247,7 +4218,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           span.setAttribute('rename.rewrite_candidates', pendingRewrites.length);
           assertRewriteTargetsNotConflicted(pendingRewrites.map((entry) => entry.docName));
 
-          reconcileDiskBeforeAgentWrite(hocuspocus, sourceDocName, contentDir);
+          reconcileDiskBeforeAgentWrite(durabilityState, hocuspocus, sourceDocName, contentDir);
           if (recentlyRemovedDocs && !isSystemDoc(sourceDocName) && !isConfigDoc(sourceDocName)) {
             recentlyRemovedDocs.setDeleted(sourceDocName);
           }
@@ -4508,7 +4479,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             // losslessly through the rename re-serialize and re-resolves on the
             // next normal load/reconcile. The extension-level resolveEmbed is
             // also shadowed by this function's own options param.
-            reconcileDiskBeforeAgentWrite(hocuspocus, docName, contentDir);
+            reconcileDiskBeforeAgentWrite(durabilityState, hocuspocus, docName, contentDir);
             const content = readCurrentDocumentContent(docName);
             if (typeof content === 'string') {
               snapshotContents.set(docName, content);
@@ -4808,7 +4779,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                 [{ fromDocName, toDocName }],
                 new Map([[fromDocName, renamedSource.markdown]]),
               );
-              setReconciledBase(toDocName, renamedSource.markdown);
+              durabilityState.setReconciledBase(toDocName, renamedSource.markdown);
 
               mutateFileIndex?.({
                 kind: 'rename',
@@ -5178,6 +5149,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // content handlers. Separate FILE_WATCHER_ORIGIN transact before the
         // agent's session.origin transact below.
         const agentWriteReconcile = reconcileDiskBeforeAgentWrite(
+          durabilityState,
           hocuspocus,
           docName,
           contentDir,
@@ -5372,6 +5344,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // can't clobber it. Runs its own FILE_WATCHER_ORIGIN transact BEFORE
         // the agent's session.origin transact below — never nested.
         const writeMdReconcile = reconcileDiskBeforeAgentWrite(
+          durabilityState,
           hocuspocus,
           resolvedDocName,
           contentDir,
@@ -5819,6 +5792,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               });
 
               const reconcile = reconcileDiskBeforeAgentWrite(
+                durabilityState,
                 hocuspocus,
                 resolvedDocName,
                 contentDir,
@@ -6061,6 +6035,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // live (disk-reflecting) frontmatter, not a stale loaded copy. Separate
         // FILE_WATCHER_ORIGIN transact BEFORE the agent's session.origin transact.
         const fmReconcile = reconcileDiskBeforeAgentWrite(
+          durabilityState,
           hocuspocus,
           resolvedDocName,
           contentDir,
@@ -7500,6 +7475,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // result). Separate FILE_WATCHER_ORIGIN transact BEFORE the agent's
         // session.origin transact below.
         const patchReconcile = reconcileDiskBeforeAgentWrite(
+          durabilityState,
           hocuspocus,
           docName,
           contentDir,
@@ -9208,7 +9184,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
    * Gated on `ready` for the same reason `handleDocumentList` is: the
    * boot-time `switchReconciledBaseScope(startupBranch)` lives inside
    * `initAsync` (server-factory.ts), and a renderer that fetches before
-   * it runs would observe the module-level `'main'` default instead of
+   * it runs would observe this server's initial `'main'` default instead of
    * the actual HEAD branch. The renderer's `current-branch-store` is
    * fire-once and only updates from CC1 `branch-switched`, so a stale
    * cold-start fetch sticks until a real cross-branch checkout.
@@ -9238,7 +9214,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       try {
         // Park until `initAsync` has called `switchReconciledBaseScope` with
         // the resolved HEAD branch. Without this gate, a renderer that fetches
-        // during the boot window reads the persistence module's `'main'`
+        // during the boot window reads this server's initial `'main'`
         // default and caches it in `current-branch-store` for the lifetime of
         // the session. Mirrors the `handleDocumentList` gate; `.catch()` keeps
         // the handler responsive on a degraded boot.
@@ -9250,7 +9226,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             );
           });
         }
-        const currentBranch = getActiveBranch();
+        const currentBranch = durabilityState.getActiveBranch();
         // `getDiskAckSVs` is wired by standalone boot; plugin mode (dev
         // server) doesn't have a CC1Broadcaster and omits the field. The
         // schema's `.optional()` keeps the response shape valid in both

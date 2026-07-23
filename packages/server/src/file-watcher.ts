@@ -20,6 +20,7 @@ import { dirname, extname, join, relative } from 'node:path';
 import { LINKABLE_ASSET_EXTENSIONS } from '@inkeep/open-knowledge-core';
 import { isConfigDoc, isReservedForUserTree, isSystemDoc } from './cc1-broadcast.ts';
 import type { ContentFilter } from './content-filter.ts';
+import { isWithinContentDir } from './content-path.ts';
 import {
   forgetDocExtension,
   isSupportedAssetFile,
@@ -32,7 +33,6 @@ import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 import { extractPageIcon, extractPageTitle } from './page-identity.ts';
 import { toPosix } from './path-utils.ts';
-import { isWithinContentDir } from './persistence.ts';
 import { containsConflictMarkers } from './reconciliation.ts';
 import { getMeter, withSpan } from './telemetry.ts';
 

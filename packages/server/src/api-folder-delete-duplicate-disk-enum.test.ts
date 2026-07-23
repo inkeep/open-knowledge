@@ -25,7 +25,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { createApiExtension } from './api-extension.ts';
+import { createApiExtension } from './api-extension.test-helper.ts';
 import { _resetDocExtensionsForTests } from './doc-extensions.ts';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';
 

@@ -427,7 +427,12 @@ async function applyOp(
       // doc.
       writeFileSync(join(server.contentDir, `${docName}.md`), op.newContent, 'utf-8');
       try {
-        applyExternalChange(server.instance.hocuspocus, docName, op.newContent);
+        applyExternalChange(
+          server.instance.durabilityState,
+          server.instance.hocuspocus,
+          docName,
+          op.newContent,
+        );
       } catch {
         // Non-fatal — no-op early-returns when the doc is unloaded; the
         // bridge-merge transact race re-throw is survivable for the fuzz.
