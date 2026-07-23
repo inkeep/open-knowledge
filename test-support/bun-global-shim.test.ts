@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -89,12 +90,25 @@ describe('Bun global facade', () => {
 
   test('Bun.Transpiler compiles TypeScript and throws on a syntax error', () => {
     const transpiler = new bunFacade.Transpiler({ loader: 'ts' });
-    const out = transpiler.transformSync('const x: number = 1;\nenum E { A, B }\n');
-    // Type annotation erased; the enum lowered to real JavaScript.
+    const out = transpiler.transformSync('const x: number = 1;\n');
+    // Type annotation erased.
     expect(out).not.toContain(': number');
-    expect(out).toContain('E');
-    expect(out).toContain('const x = 1');
+    expect(out).toContain('const x');
     expect(() => transpiler.transformSync('const = ;')).toThrow();
+    // Enum lowering needs `transform` mode; on strip-only runtimes (Node 26)
+    // the facade falls back and TS-only constructs throw instead of compiling.
+    let transformAvailable = true;
+    try {
+      stripTypeScriptTypes('0', { mode: 'transform' });
+    } catch {
+      transformAvailable = false;
+    }
+    const enumSource = 'enum E { A, B }\n';
+    if (transformAvailable) {
+      expect(transpiler.transformSync(enumSource)).toContain('E');
+    } else {
+      expect(() => transpiler.transformSync(enumSource)).toThrow();
+    }
   });
 
   test('which/sleep/spawnSync/gc behave on Node', async () => {

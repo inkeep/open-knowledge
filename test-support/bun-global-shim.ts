@@ -400,15 +400,27 @@ class BunCryptoHasherFacade {
  * syntax error. Node's `stripTypeScriptTypes` in `transform` mode is the
  * dependency-free equivalent: it compiles TS-only constructs (enums, parameter
  * properties) rather than only erasing annotations, and throws on invalid
- * syntax — the property the callers assert. Only the sync path the suites use
- * is provided.
+ * syntax — the property the callers assert. Node 26 ships strip-only
+ * (`transform` is rejected with ERR_INVALID_ARG_VALUE), so fall back to
+ * `strip` there: annotations still erase and invalid syntax still throws;
+ * only TS-only constructs — which no caller feeds in — throw instead of
+ * compiling. Only the sync path the suites use is provided.
  */
+function transpileTs(code: string): string {
+  try {
+    return stripTypeScriptTypes(code, { mode: 'transform' });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ERR_INVALID_ARG_VALUE') throw err;
+    return stripTypeScriptTypes(code, { mode: 'strip' });
+  }
+}
+
 class BunTranspilerFacade {
   transformSync(code: string): string {
-    return stripTypeScriptTypes(code, { mode: 'transform' });
+    return transpileTs(code);
   }
   async transform(code: string): Promise<string> {
-    return stripTypeScriptTypes(code, { mode: 'transform' });
+    return transpileTs(code);
   }
 }
 

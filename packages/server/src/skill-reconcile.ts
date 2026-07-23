@@ -12,8 +12,9 @@
  * |-------------------------------------------------|----------------|------------------------------|
  * | symlink → `.ok/skills/<name>`                   | managed        | none                         |
  * | absent                                          | not installed  | none                         |
- * | symlink, broken / wrong target, source present  | drifted link   | heal → re-point              |
- * | symlink, no `.ok/skills/<name>` source          | orphan link    | remove the dangling link     |
+ * | symlink → existing path outside `.ok/skills`    | foreign link   | leave untouched              |
+ * | symlink dangling or into `.ok/skills`, source present | drifted link | heal → re-point          |
+ * | symlink dangling or into `.ok/skills`, no source | orphan link   | remove the dangling link     |
  * | real dir, `.ok/skills/<name>` absent            | foreign/legacy | adopt → move in + symlink *(only if project OK-managed; else leave untouched)* |
  * | real dir, source present, same content          | redundant copy | replace with a symlink       |
  * | real dir, same skill (frontmatter-only diff)     | redundant copy | replace with a symlink       |
@@ -25,6 +26,10 @@
  * `skill-management.ts`). Off ⇒ the foreign editor entry is left untouched
  * (`result.skipped`). Membership in `.ok/skills` is the ownership boundary: every
  * other row manages a skill OK already owns and runs regardless of the gate.
+ * The same boundary governs symlinks: a link whose target resolves to a real
+ * path OUTSIDE `.ok/skills` (e.g. a repo that checks editor-dir links into its
+ * own shared skill store) is foreign and is never healed or removed — only
+ * dangling links and links into `.ok/skills` are reconcile-managed.
  *
  * "Same content" is byte-equality; "same skill" additionally treats two copies
  * as one when their SKILL.md differs only in frontmatter serialization (folded
@@ -96,10 +101,12 @@ export interface ReconcileResult {
   collided: ReconcileAction[];
   orphansRemoved: ReconcileAction[];
   /**
-   * Foreign editor-dir skills (no `.ok/skills/<name>` source, or a colliding
-   * different skill) left UNTOUCHED because the project is not OK-managed
-   * (`manageEditorSkills` off). These would have been adopted/suffix-adopted only
-   * after an explicit import opt-in — see `skill-management.ts`.
+   * Foreign editor-dir skills left UNTOUCHED: real dirs (no `.ok/skills/<name>`
+   * source, or a colliding different skill) skipped because the project is not
+   * OK-managed (`manageEditorSkills` off — these would have been adopted/
+   * suffix-adopted only after an explicit import opt-in, see
+   * `skill-management.ts`), and symlinks resolving to a real path outside
+   * `.ok/skills` (skipped unconditionally — OK does not own them).
    */
   skipped: ReconcileAction[];
 }
@@ -275,6 +282,32 @@ function pointsAtSource(linkPath: string, sourceDir: string): boolean {
 }
 
 /**
+ * Is this symlink a FOREIGN install — a link whose target resolves to a real
+ * path outside `.ok/skills`? Such links are user/repo-managed (e.g. a monorepo
+ * checks editor-dir links into its own shared skill store); reconcile must
+ * neither remove them as orphans nor re-point them at a same-named `.ok`
+ * source. Dangling links and links into `.ok/skills` return false and stay
+ * reconcile-managed.
+ */
+function isForeignSymlink(linkPath: string, skillsRoot: string): boolean {
+  try {
+    const raw = readlinkSync(linkPath);
+    const target = isAbsolute(raw) ? resolve(raw) : resolve(dirname(linkPath), raw);
+    if (!existsSync(target)) return false; // dangling — reconcile-managed
+    const rel = relative(resolve(skillsRoot), target);
+    return rel !== '' && (rel.startsWith('..') || isAbsolute(rel));
+  } catch (err) {
+    // Unreadable link (EACCES/EIO) falls through to the heal/orphan path,
+    // which may delete it — log so that outcome is traceable to its cause.
+    logger.warn(
+      { linkPath, err },
+      'isForeignSymlink: could not resolve symlink; treating as reconcile-managed',
+    );
+    return false;
+  }
+}
+
+/**
  * Count the distinct editor-dir skills that an import would ADOPT — real-dir
  * skills (valid name, not OK's shipped bundle) that are NOT already a managed /
  * redundant copy of an existing `.ok/skills/<name>`. These are exactly the
@@ -312,8 +345,8 @@ export function countImportableEditorSkills(opts: {
       } catch {
         continue;
       }
-      // Only real dirs are import candidates — symlinks are already managed
-      // (or orphan links handled by reconcile), never adopted.
+      // Only real dirs are import candidates — symlinks are either managed,
+      // foreign (left untouched), or orphans handled by reconcile; never adopted.
       if (stat.isSymbolicLink() || !stat.isDirectory()) continue;
       const sourceDir = resolve(skillsRoot, name);
       if (
@@ -390,6 +423,10 @@ export async function reconcileSkillInstalls(opts: {
         const stat = lstatSync(entryPath);
         if (stat.isSymbolicLink()) {
           if (pointsAtSource(entryPath, sourceDir) && sourceExists) continue; // managed, OK
+          if (isForeignSymlink(entryPath, skillsRoot)) {
+            result.skipped.push({ name, editor }); // foreign link — not OK's to manage
+            continue;
+          }
           if (sourceExists) {
             linkInto(hostRoot, entryPath, sourceDir); // heal drifted link
             result.healed.push({ name, editor });

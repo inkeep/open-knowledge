@@ -93,6 +93,38 @@ describe('reconcileSkillInstalls', () => {
     expect(existsSync(link)).toBe(false);
   });
 
+  test('leaves a symlink resolving outside .ok/skills untouched, even unmanaged', async () => {
+    delete process.env.OK_SKILL_MANAGE; // the field failure needs no managed opt-in
+    const shared = join(root, 'shared-skills', 'toolbox');
+    mkdirSync(shared, { recursive: true });
+    writeFileSync(join(shared, 'SKILL.md'), '---\nname: toolbox\n---\n# External');
+    mkdirSync(join(root, '.agents', 'skills'), { recursive: true });
+    const link = join(root, '.agents', 'skills', 'toolbox');
+    symlinkSync(relative(join(root, '.agents', 'skills'), shared), link, 'dir');
+
+    const r = await reconcileSkillInstalls({ projectDir: root, skillsRoot });
+    expect(r.orphansRemoved).toEqual([]);
+    expect(r.healed).toEqual([]);
+    expect(r.skipped).toContainEqual({ name: 'toolbox', editor: null });
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(readFileSync(join(link, 'SKILL.md'), 'utf-8')).toContain('# External');
+  });
+
+  test('does not re-point a foreign resolving symlink at a same-named .ok source', async () => {
+    makeSource('toolbox', '# Managed');
+    const shared = join(root, 'shared-skills', 'toolbox');
+    mkdirSync(shared, { recursive: true });
+    writeFileSync(join(shared, 'SKILL.md'), '---\nname: toolbox\n---\n# External');
+    mkdirSync(join(root, '.codex', 'skills'), { recursive: true });
+    const link = join(root, '.codex', 'skills', 'toolbox');
+    symlinkSync(shared, link, 'dir');
+
+    const r = await reconcileSkillInstalls({ projectDir: root, skillsRoot });
+    expect(r.healed).toEqual([]);
+    expect(r.skipped).toContainEqual({ name: 'toolbox', editor: 'codex' });
+    expect(readFileSync(join(link, 'SKILL.md'), 'utf-8')).toContain('# External');
+  });
+
   test('adopts a foreign real-dir skill into .ok/skills and symlinks it + marks installed', async () => {
     makeEditorCopy('.codex/skills', 'recipe', '# Foreign body');
 
