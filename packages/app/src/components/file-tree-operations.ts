@@ -256,27 +256,6 @@ export function remapActiveDocName(
 }
 
 /**
- * Decide which docNames need `closeAndClearForRename` after a successful
- * `/api/rename-path`. Rename cleanup can also arrive through the server-push
- * redirect path, so the client response must not clear a destination provider
- * that has already been reopened. It also skips never-opened destinations:
- * the IDB delete would be a no-op, but the temporary `pendingClears` entry can
- * race the subsequent `pool.open(toDocName)` for a brand-new inline rename.
- */
-export function planRenameCleanupCalls(
-  renamed: readonly RenamedDocMapping[],
-  poolActiveDocName: string | null,
-  poolHas: (docName: string) => boolean,
-): string[] {
-  return renamed.flatMap((entry) => {
-    const serverPushHandledTo = poolActiveDocName === entry.toDocName;
-    if (serverPushHandledTo) return [entry.fromDocName];
-    if (!poolHas(entry.toDocName)) return [entry.fromDocName];
-    return [entry.fromDocName, entry.toDocName];
-  });
-}
-
-/**
  * Build the OS-trash-bound absolute path for a tree target. Files reconstruct
  * the on-disk extension via `target.docExt`; folders and assets pass
  * `target.path` through unchanged.

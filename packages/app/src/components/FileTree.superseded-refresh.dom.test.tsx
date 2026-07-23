@@ -231,15 +231,11 @@ vi.doMock('@/editor/DocumentContext', () => ({
     activeTarget: null,
     closeTabs: vi.fn(() => {}),
     closeDocument: vi.fn(() => {}),
-    closeAndClearDocument: vi.fn(async () => {}),
-    closeAndClearForDelete: vi.fn(async () => {}),
-    closeAndClearForRename: vi.fn(async () => {}),
-    getPoolActiveDocName: () => null,
-    poolHas: () => false,
     isNewTabActive: false,
     openTarget: vi.fn(() => {}),
     prewarm: () => {},
-    remapTabsForRename: vi.fn(() => {}),
+    reconcileLocalRemoval: vi.fn(async () => {}),
+    reconcileLocalRename: vi.fn(async () => {}),
   }),
 }));
 vi.doMock('@/components/PageListContext', () => ({

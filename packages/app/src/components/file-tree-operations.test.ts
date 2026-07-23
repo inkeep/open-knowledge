@@ -9,7 +9,6 @@ import {
   type FileTreeTarget,
   isValidNodeName,
   normalizeRenameValue,
-  planRenameCleanupCalls,
   remapActiveDocName,
 } from './file-tree-operations';
 import type { FileEntry } from './file-tree-utils';
@@ -310,94 +309,6 @@ describe('file-tree-operations', () => {
     expect(
       remapActiveDocName('README', [{ fromDocName: 'docs/notes', toDocName: 'docs/renamed' }]),
     ).toBe('README');
-  });
-
-  describe('planRenameCleanupCalls', () => {
-    const poolHasAll = () => true;
-
-    test('skips destination cleanup when redirect already reopened it', () => {
-      expect(
-        planRenameCleanupCalls(
-          [{ fromDocName: 'docs/notes', toDocName: 'docs/renamed' }],
-          'docs/renamed',
-          poolHasAll,
-        ),
-      ).toEqual(['docs/notes']);
-    });
-
-    test('clears both ends when redirect has not run yet', () => {
-      expect(
-        planRenameCleanupCalls(
-          [{ fromDocName: 'docs/notes', toDocName: 'docs/renamed' }],
-          'docs/notes',
-          poolHasAll,
-        ),
-      ).toEqual(['docs/notes', 'docs/renamed']);
-    });
-
-    test('clears both ends when the active doc is unrelated', () => {
-      expect(
-        planRenameCleanupCalls(
-          [{ fromDocName: 'docs/notes', toDocName: 'docs/renamed' }],
-          'README',
-          poolHasAll,
-        ),
-      ).toEqual(['docs/notes', 'docs/renamed']);
-    });
-
-    test('clears both ends when active doc is unknown', () => {
-      expect(
-        planRenameCleanupCalls(
-          [{ fromDocName: 'docs/notes', toDocName: 'docs/renamed' }],
-          null,
-          poolHasAll,
-        ),
-      ).toEqual(['docs/notes', 'docs/renamed']);
-    });
-
-    test('applies redirect guard per rename entry', () => {
-      expect(
-        planRenameCleanupCalls(
-          [
-            { fromDocName: 'docs/a', toDocName: 'archive/a' },
-            { fromDocName: 'docs/b', toDocName: 'archive/b' },
-            { fromDocName: 'docs/c', toDocName: 'archive/c' },
-          ],
-          'archive/a',
-          poolHasAll,
-        ),
-      ).toEqual(['docs/a', 'docs/b', 'archive/b', 'docs/c', 'archive/c']);
-    });
-
-    test('empty rename batch — empty result', () => {
-      expect(planRenameCleanupCalls([], null, poolHasAll)).toEqual([]);
-      expect(planRenameCleanupCalls([], 'anything', poolHasAll)).toEqual([]);
-    });
-
-    test('skips destination cleanup when the pool never opened it', () => {
-      expect(
-        planRenameCleanupCalls(
-          [{ fromDocName: 'Untitled', toDocName: 'dhx' }],
-          'Untitled',
-          () => false,
-        ),
-      ).toEqual(['Untitled']);
-    });
-
-    test('applies pool presence guard per rename entry', () => {
-      const poolHas = (docName: string) => docName === 'archive/a' || docName === 'archive/c';
-      expect(
-        planRenameCleanupCalls(
-          [
-            { fromDocName: 'docs/a', toDocName: 'archive/a' },
-            { fromDocName: 'docs/b', toDocName: 'archive/b' },
-            { fromDocName: 'docs/c', toDocName: 'archive/c' },
-          ],
-          'README',
-          poolHas,
-        ),
-      ).toEqual(['docs/a', 'archive/a', 'docs/b', 'docs/c', 'archive/c']);
-    });
   });
 
   // `target.path` is extension-stripped for `.md` / `.mdx` files (see

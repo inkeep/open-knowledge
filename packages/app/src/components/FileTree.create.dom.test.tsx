@@ -55,8 +55,8 @@ const openTargetMock = vi.fn(() => {});
 const notifySidebarFileSelectedMock = vi.fn(() => {});
 const closeTabsMock = vi.fn(() => {});
 const closeDocumentMock = vi.fn(() => {});
-const closeAndClearForRenameMock = vi.fn(async () => {});
-const remapTabsForRenameMock = vi.fn(() => {});
+const reconcileLocalRenameMock = vi.fn(async () => {});
+const reconcileLocalRemovalMock = vi.fn(async () => {});
 const dispatchHandoffMock = vi.fn(async () => ({ ok: true as const }));
 
 const DOCUMENTS: FileEntry[] = [
@@ -261,15 +261,11 @@ vi.doMock('@/editor/DocumentContext', () => ({
     activeTarget: { kind: 'doc', target: 'notes/source', docName: 'notes/source' },
     closeTabs: closeTabsMock,
     closeDocument: closeDocumentMock,
-    closeAndClearDocument: closeAndClearForRenameMock,
-    closeAndClearForDelete: closeAndClearForRenameMock,
-    closeAndClearForRename: closeAndClearForRenameMock,
-    getPoolActiveDocName: () => 'notes/source',
-    poolHas: () => false,
     isNewTabActive: false,
     openTarget: openTargetMock,
     prewarm: () => {},
-    remapTabsForRename: remapTabsForRenameMock,
+    reconcileLocalRemoval: reconcileLocalRemovalMock,
+    reconcileLocalRename: reconcileLocalRenameMock,
   }),
 }));
 

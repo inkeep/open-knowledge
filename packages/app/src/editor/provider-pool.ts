@@ -515,8 +515,8 @@ export class ProviderPool {
    *
    * Map entries are deleted via a `.then`/`.catch` epilogue when the work
    * settles; the public `closeAndClearPersistence` still swallows the
-   * rejection so legacy callers (FileTree bulk rename, EditorTabs
-   * cleanup) don't need to handle per-docName failures inside Promise.all
+   * rejection so the DocumentContext reconciliation adapter can preserve
+   * the existing best-effort cleanup behavior inside Promise.all
    * batches. The deferred-attach scheduler subscribes to this promise
    * directly (see `open`) and observes both resolve and reject, attaching
    * persistence on success and skipping on failure (entry runs without
@@ -527,8 +527,8 @@ export class ProviderPool {
   /**
    * Per-docName retention of `closeAndClearPersistence` failures across the
    * pendingClears finalize window. The public wrapper swallows clear
-   * failures so legacy batch callers (FileTree bulk rename, EditorTabs
-   * cleanup) don't see partial-failure rejections, and the in-flight
+   * failures so the DocumentContext reconciliation adapter does not see
+   * partial-failure rejections, and the in-flight
    * Promise drops out of `pendingClears` once its .then/.catch finalize
    * epilogue runs. Without this set, a non-concurrent reopen of the same
    * docName afterwards (delete → time passes → recreate) observes no
@@ -1441,10 +1441,10 @@ export class ProviderPool {
    * Auth-rejection cleanup callbacks for the rename-redirect / doc-deleted
    * arms of `onAuthenticationFailed`. Pool computes `hadOpenProvider` from
    * its own entry map (the only state it can observe synchronously); the
-   * React layer owns the React-state-aware cleanup (closeAndClearForRename,
-   * remapTabsForRename, active-tab navigation) and emits the structured
-   * `removal.cleanup` event after the awaited cleanup settles. Mirrors the
-   * `setOnBranchMismatch` shape — pool stays free of React/UI knowledge.
+   * React layer owns the React-state-aware reconciliation (snapshot capture,
+   * persistence cleanup, tab remapping, active-tab navigation) and emits the
+   * structured `removal.cleanup` event after the awaited cleanup settles.
+   * Mirrors the `setOnBranchMismatch` shape — pool stays free of React/UI knowledge.
    */
   private onRenameRedirect: RenameRedirectHandler | null = null;
   private onDocDeleted: ((args: { docName: string; hadOpenProvider: boolean }) => void) | null =
@@ -2649,7 +2649,7 @@ export class ProviderPool {
    */
   async closeAndClearPersistence(docName: string): Promise<void> {
     // Public API: always resolves, even if the underlying clear failed.
-    // FileTree's bulk-rename + EditorTabs cleanup batch many calls via
+    // The DocumentContext reconciliation adapter batches many calls via
     // `Promise.all(...)`; propagating a per-docName clear failure would
     // abort the batch and leave partial-rename state in the React tree.
     // The pendingClears tracking exposes the internal status to the
@@ -2674,8 +2674,8 @@ export class ProviderPool {
     const inFlight = this.pendingClears.get(docName);
     if (inFlight !== undefined) {
       // Concurrent callers share the same in-flight work — preserves
-      // the idempotent semantics existing callers (FileTree, EditorTabs)
-      // already rely on when batching close-and-clears for renames.
+      // the idempotent semantics the DocumentContext reconciliation adapter
+      // relies on when batching close-and-clears for renames.
       return inFlight;
     }
     // Register the pendingClear via a deferred promise BEFORE invoking

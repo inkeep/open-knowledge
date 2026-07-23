@@ -24,15 +24,13 @@ let toastErrors: string[] = [];
 
 const activateTab = vi.fn(() => {});
 const activateNewTab = vi.fn(() => {});
-const closeAndClearForRename = vi.fn(() => Promise.resolve());
 const closeNewTab = vi.fn(() => {});
 const closeTab = vi.fn(() => {});
 const closeTabs = vi.fn(() => {});
-const getPoolActiveDocName = vi.fn(() => null as string | null);
 const openNewTab = vi.fn(() => {});
 const pinTab = vi.fn(() => {});
 const reopenClosedTab = vi.fn(() => {});
-const remapTabsForRename = vi.fn(() => {});
+const reconcileLocalRename = vi.fn(() => Promise.resolve());
 const reorderTabs = vi.fn(() => {});
 const unpinTab = vi.fn(() => {});
 
@@ -186,11 +184,9 @@ vi.doMock('@/editor/DocumentContext', () => ({
     activeTarget,
     activateNewTab,
     activateTab,
-    closeAndClearForRename,
     closeNewTab,
     closeTab,
     closeTabs,
-    getPoolActiveDocName,
     isNewTabActive,
     newTabIds,
     openNewTab,
@@ -198,7 +194,7 @@ vi.doMock('@/editor/DocumentContext', () => ({
     pinTab,
     pinnedTabIds,
     reopenClosedTab,
-    remapTabsForRename,
+    reconcileLocalRename,
     reorderTabs,
     unpinTab,
     visibleTabIds,
@@ -261,23 +257,19 @@ function resetState() {
   for (const fn of [
     activateTab,
     activateNewTab,
-    closeAndClearForRename,
     closeNewTab,
     closeTab,
     closeTabs,
-    getPoolActiveDocName,
     openNewTab,
     pinTab,
     reopenClosedTab,
-    remapTabsForRename,
+    reconcileLocalRename,
     reorderTabs,
     unpinTab,
   ]) {
     fn.mockClear();
   }
-  closeAndClearForRename.mockImplementation(() => Promise.resolve());
-  getPoolActiveDocName.mockImplementation(() => null);
-  remapTabsForRename.mockImplementation(() => {});
+  reconcileLocalRename.mockImplementation(() => Promise.resolve());
   Object.defineProperty(window, 'okDesktop', {
     configurable: true,
     value: undefined,
@@ -621,12 +613,44 @@ describe('EditorTabs runtime behavior', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
+  test('passes the successful response mapping to reconciliation before navigating', async () => {
+    activeDocName = 'docs/team/readme';
+    activeTabId = 'docs/team/readme';
+    reconcileLocalRename.mockImplementation((input) => {
+      expect(input).toEqual({
+        renamed: [{ fromDocName: 'docs/team/readme', toDocName: 'docs/team/renamed' }],
+      });
+      expect(window.location.hash).toBe('');
+      return Promise.resolve();
+    });
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            renamed: [{ fromDocName: 'docs/team/readme', toDocName: 'docs/team/renamed' }],
+            renamedAssets: [],
+          }),
+          { headers: { 'Content-Type': 'application/json' }, status: 200 },
+        ),
+      ),
+    ) as never;
+
+    await renderEditorTabs();
+    fireEvent.doubleClick(tabButton('docs/team/readme.txt'));
+    const input = screen.getByTestId('editor-tab-rename-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'renamed.txt' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(reconcileLocalRename).toHaveBeenCalledTimes(1);
+      expect(window.location.hash).toBe('#/docs/team/renamed');
+    });
+  });
+
   test('rename post-commit reconciliation failures surface the refresh toast and skip navigation', async () => {
     activeDocName = 'docs/team/readme';
     activeTabId = 'docs/team/readme';
-    remapTabsForRename.mockImplementation(() => {
-      throw new Error('idb clear failed');
-    });
+    reconcileLocalRename.mockImplementation(() => Promise.reject(new Error('idb clear failed')));
     globalThis.fetch = vi.fn(() =>
       Promise.resolve(
         new Response(

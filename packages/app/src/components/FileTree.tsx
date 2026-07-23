@@ -110,7 +110,6 @@ import {
   buildTrashAbsPath,
   canonicalizeAssetTargetForDelete,
   type FileTreeTarget,
-  planRenameCleanupCalls,
   type RenamedAssetMapping,
   type RenamedDocExtensionMapping,
   type RenamedDocMapping,
@@ -192,7 +191,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { asDirectoryHandle, useSelectionMirror } from '@/components/use-selection-mirror';
 import { getEditorForDoc } from '@/editor/active-editor';
 import { useDocumentContext } from '@/editor/DocumentContext';
-import { captureRenameSnapshots } from '@/editor/editor-cache';
 import { assetTabId, docTabId, folderTabId, remapPathForFolderRenames } from '@/editor/editor-tabs';
 import { useConflicts } from '@/hooks/use-conflicts';
 import { useFolderConfig } from '@/hooks/use-folder-config';
@@ -1170,13 +1168,11 @@ export function FileTree({
     activeTarget,
     closeTabs,
     closeDocument,
-    closeAndClearForRename,
-    getPoolActiveDocName,
-    poolHas,
     isNewTabActive,
     openTarget,
     prewarm,
-    remapTabsForRename,
+    reconcileLocalRemoval,
+    reconcileLocalRename,
   } = useDocumentContext();
   const { notifySidebarFileSelected } = useSidebar();
   const { resolvedTheme } = useTheme();
@@ -2600,24 +2596,18 @@ export function FileTree({
             remapPathForFolderRenames(currentActiveAssetPath, renamedFolders))
         : null);
 
-    captureRenameSnapshots(renamed);
-    // Wipe IDB for ends that need it. `planRenameCleanupCalls` gates the
-    // `to` clear behind whether the server-push `onRenameRedirect` path has
-    // already done the close+clear+reopen. The full rationale (race shape,
-    // why the `from` clear stays) is documented at the helper's site in
-    // `file-tree-operations.ts`.
-    const cleanupDocNames = [
-      ...planRenameCleanupCalls(renamed, getPoolActiveDocName(), poolHas),
-      ...docToAssetRenames.keys(),
-    ];
-    await Promise.all(cleanupDocNames.map((docName) => closeAndClearForRename(docName)));
+    await reconcileLocalRename({
+      renamed,
+      renamedFolders,
+      renamedAssets,
+      additionalRemovedDocNames: [...docToAssetRenames.keys()],
+    });
     for (const entry of renamed) {
       addPage(entry.toDocName);
     }
     for (const entry of assetToDocRenames.values()) {
       addPage(entry);
     }
-    remapTabsForRename(renamed, renamedFolders, renamedAssets);
 
     let nextDocumentsForRename: FileEntry[] | null = null;
     setDocuments((current) => {
@@ -3584,18 +3574,14 @@ export function FileTree({
       ...tabsToClose.assetPaths,
       ...successfulTargets.filter((target) => target.kind === 'asset').map((target) => target.path),
     ]);
-    closeTabs(
-      [
+    await reconcileLocalRemoval({
+      tabIdsToClose: [
         ...[...deleted].map((docName) => docTabId(docName)),
         ...[...deletedFolders].map((folderPath) => folderTabId(folderPath)),
         ...[...deletedAssets].map((assetPath) => assetTabId(assetPath)),
       ],
-      { force: true },
-    );
-    // Clear IDB for each deleted docName so a same-browser delete-then-recreate
-    // (or a sibling rename that lands on this docName) cannot resurrect content
-    // from stale IndexedDB rows.
-    await Promise.all([...deleted].map((docName) => closeAndClearForRename(docName)));
+      docNamesToClear: [...deleted],
+    });
 
     for (const target of successfulTargets) {
       const treePath =

@@ -24,6 +24,12 @@ import { refreshServerInfo } from '@/lib/server-info-refresh';
 import { useCollabUrl } from '@/lib/use-collab-url';
 import { getEditorForDoc } from './active-editor';
 import { handleBranchSwitched } from './branch-invalidation';
+import {
+  type ClientRemovalReconciler,
+  createClientRemovalReconciler,
+  type LocalRemovalReconciliation,
+  type LocalRenameReconciliation,
+} from './client-removal-reconciliation';
 import { captureRenameSnapshots, subscribePoolEviction } from './editor-cache';
 import {
   addOpenTab,
@@ -196,49 +202,10 @@ interface DocumentContextValue {
     assetPaths: ReadonlySet<string>;
     filePaths?: ReadonlySet<string>;
   }) => void;
-  /** Rename visible tabs after a file/folder/asset rename without changing their order. */
-  remapTabsForRename: (
-    renamed: readonly { fromDocName: string; toDocName: string }[],
-    renamedFolders?: readonly { fromPath: string; toPath: string }[],
-    renamedAssets?: readonly { fromPath: string; toPath: string }[],
-  ) => void;
-  /**
-   * Close `docName` and synchronously delete its client-side IndexedDB.
-   * Used by rename flows so a future open at this name starts from a
-   * clean persistence. Without this, moving a doc back to a folder it
-   * once occupied would hydrate the new Y.Doc from the leftover IDB
-   * rows of the prior session at that name and then append-merge with
-   * the server's freshly-loaded content (no shared ancestor → CRDT
-   * union-merge), producing visible content duplication. Returns a
-   * promise so callers can await IDB deletion before triggering the
-   * navigation that opens the new provider.
-   */
-  closeAndClearForRename: (docName: string) => Promise<void>;
-  /**
-   * Live read of the pool's currently active doc. Distinct from the
-   * React-state `activeDocName` (and its `activeDocNameRef` snapshot in
-   * `FileTree`/`EditorTabs`): those reflect committed React state, which
-   * lags the pool when an auth-rejection-driven `onRenameRedirect` runs
-   * inside an awaited HTTP response — the pool is already re-pointed at
-   * `toDocName` before React batches the matching `setActiveTarget`. Used
-   * by the post-`/api/rename-path` cleanup in `FileTree.applyRenamedDocuments`
-   * and `EditorTabs` to detect that the server-push path already did the
-   * close+clear+reopen and to skip a second destructive
-   * `closeAndClearForRename(toDocName)` that would tear down the live
-   * provider `onRenameRedirect` just opened.
-   */
-  getPoolActiveDocName: () => string | null;
-  /**
-   * Live read of whether the pool currently has an entry for `docName`.
-   * Parallel to `getPoolActiveDocName` (same access path, same React-state
-   * lag concern). Used by `applyRenamedDocuments` to skip the post-rename
-   * `closeAndClearForRename(toDocName)` when the destination name was never
-   * opened in the pool — the IDB-by-name delete would be a no-op that
-   * still registers a transient `pendingClears` entry which races against
-   * the subsequent `pool.open(toDocName)` and forces `persistence: null` +
-   * deferred attach on the freshly-opened provider.
-   */
-  poolHas: (docName: string) => boolean;
+  /** Reconcile provider, persistence, and tab state for a local rename. The caller navigates. */
+  reconcileLocalRename: (input: LocalRenameReconciliation) => Promise<void>;
+  /** Reconcile forced tab closure and persistence removal after a local delete. */
+  reconcileLocalRemoval: (input: LocalRemovalReconciliation) => Promise<void>;
   /**
    * Destroy and recreate the pool entry for `docName` while preserving
    * `activeDocName`. Used by the "Try again" path in `DocumentErrorBoundary`
@@ -502,6 +469,17 @@ function hashFromTabId(tabId: string): string {
   }
 }
 
+function setLocationHash(hash: string) {
+  if (typeof window !== 'undefined') window.location.hash = hash;
+}
+
+function requireRemovalReconciler(
+  reconciler: ClientRemovalReconciler | null,
+): ClientRemovalReconciler {
+  if (!reconciler) throw new Error('removal reconciler is not initialized');
+  return reconciler;
+}
+
 function tabIdFromHash(hash: string): string | null {
   const assetPath = assetPathFromHash(hash);
   if (assetPath) return assetTabId(assetPath);
@@ -623,6 +601,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const [visibleTabIds, setVisibleTabIds] = useState<string[]>(openTabs);
   const [activeNewTabId, setActiveNewTabId] = useState<string | null>(null);
   const [tabSessionLoaded, setTabSessionLoaded] = useState(false);
+  const activeTargetRef = useRef<ResolvedNavigationTarget | null>(activeTarget);
   const activeTabIdRef = useRef<string | null>(activeTabId);
   const openTabsRef = useRef<string[]>(openTabs);
   const pinnedTabIdsRef = useRef(pinnedTabIds);
@@ -631,15 +610,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const visibleTabIdsRef = useRef<string[]>(visibleTabIds);
   const nextNewTabOrdinalRef = useRef(1);
   const recentlyClosedTabsRef = useRef<string[]>([]);
-  // Set true when the user explicitly CLOSES (or unpins/replaces) a tab during
-  // the async session-restore window. Bails the restore merge so a freshly-
-  // closed tab cannot resurrect from the about-to-arrive restored snapshot.
-  //
-  // OPENS (hash-nav, sidebar clicks, agent links) intentionally do NOT set this
-  // ref — the restore merge below is additive (state.openTabs ∪ openTabsRef.current),
-  // so an opened-during-restore tab coexists with the restored set without
-  // collision. Earlier code bailed on every mutation, which dropped the entire
-  // restore on any open and broke hash-nav-while-restore-pending paths.
   const tabSessionUserClosedRef = useRef(false);
   const [tabIdentityResolved, setTabIdentityResolved] = useState(false);
   const [principal, setPrincipal] = useState<Principal | null>(null);
@@ -699,6 +669,178 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     commitOpenTabs(updater(openTabsRef.current));
   }
 
+  // Set true when the user explicitly CLOSES (or unpins/replaces) a tab during
+  // the async session-restore window. Bails the restore merge so a freshly-
+  // closed tab cannot resurrect from the about-to-arrive restored snapshot.
+  //
+  // OPENS (hash-nav, sidebar clicks, agent links) intentionally do NOT set this
+  // ref — the restore merge below is additive (state.openTabs ∪ openTabsRef.current),
+  // so an opened-during-restore tab coexists with the restored set without
+  // collision. Earlier code bailed on every mutation, which dropped the entire
+  // restore on any open and broke hash-nav-while-restore-pending paths.
+  //
+  // Closes (and close-like replace-active) during the restore window bail the
+  // restore merge. Other mutations (open, pin, activate) remain additive.
+  const markTabSessionClosedDuringRestore = () => {
+    if (!tabSessionLoaded) tabSessionUserClosedRef.current = true;
+  };
+
+  function remapTabsForRename(
+    renamed: readonly { fromDocName: string; toDocName: string }[],
+    renamedFolders: readonly { fromPath: string; toPath: string }[] = [],
+    renamedAssets: readonly { fromPath: string; toPath: string }[] = [],
+  ) {
+    markTabSessionClosedDuringRestore();
+    const next = remapOpenTabs(
+      openTabsRef.current,
+      renamed,
+      MAX_POOL,
+      renamedFolders,
+      pinnedTabIdsRef.current,
+      renamedAssets,
+    );
+    const nextPinnedTabIds = normalizePinnedTabIds(
+      remapOpenTabs(
+        pinnedTabIdsRef.current,
+        renamed,
+        Number.MAX_SAFE_INTEGER,
+        renamedFolders,
+        [],
+        renamedAssets,
+      ),
+      next,
+    );
+    if (collabUrl !== null) {
+      const p = getPool(collabUrl);
+      for (const tabId of next) {
+        const docName = docNameForTabId(tabId);
+        if (docName) p.open(docName);
+      }
+    }
+    commitVisibleTabIds(
+      remapVisibleTabsForRename(visibleTabIdsRef.current, renamed, renamedFolders, renamedAssets),
+    );
+    commitTabState(next, nextPinnedTabIds);
+    const currentActiveTabId = activeTabIdRef.current;
+    if (!currentActiveTabId) return;
+    const remappedActiveTabId = remapOpenTabs(
+      [currentActiveTabId],
+      renamed,
+      1,
+      renamedFolders,
+      [],
+      renamedAssets,
+    )[0];
+    if (remappedActiveTabId && next.includes(remappedActiveTabId)) {
+      commitActiveTabId(remappedActiveTabId);
+    }
+  }
+
+  function pushRecentlyClosedTabs(tabIds: readonly string[]) {
+    if (tabIds.length === 0) return;
+    recentlyClosedTabsRef.current = [...recentlyClosedTabsRef.current, ...tabIds].slice(-50);
+  }
+
+  function closeTabIds(
+    tabIds: readonly string[],
+    { rememberRecentlyClosed = false }: { rememberRecentlyClosed?: boolean } = {},
+  ) {
+    const closingTabIds = new Set(tabIds.filter((tabId) => tabId.length > 0));
+    if (closingTabIds.size === 0) return;
+    markTabSessionClosedDuringRestore();
+    if (rememberRecentlyClosed) {
+      pushRecentlyClosedTabs(openTabsRef.current.filter((tabId) => closingTabIds.has(tabId)));
+    }
+    if (collabUrl !== null) {
+      const p = getPool(collabUrl);
+      const closingByDocName = new Map<string, Set<string>>();
+      for (const tabId of closingTabIds) {
+        const docName = docNameForTabId(tabId);
+        if (!docName) continue;
+        const tabsForDoc = closingByDocName.get(docName) ?? new Set<string>();
+        tabsForDoc.add(tabId);
+        closingByDocName.set(docName, tabsForDoc);
+      }
+      for (const [docName, tabsForDoc] of closingByDocName) {
+        if (!hasOpenDocTab(openTabsRef.current, docName, tabsForDoc)) p.close(docName);
+      }
+    }
+    let nextActiveTabId: string | null = null;
+    const currentActiveTabId =
+      activeTabId ?? activeTabIdForTarget(activeTarget, snapshot.activeDocName);
+    updateOpenTabs((current) => {
+      nextActiveTabId = nextActiveTabAfterCloseMany(current, currentActiveTabId, closingTabIds);
+      return current.filter((tabId) => !closingTabIds.has(tabId));
+    });
+    if (!currentActiveTabId || !closingTabIds.has(currentActiveTabId)) {
+      if (!currentActiveTabId) {
+        setActiveTarget((current) => {
+          if (!current) return current;
+          const targetTabId = tabIdForNavigationTarget(current);
+          return targetTabId && closingTabIds.has(targetTabId) ? null : current;
+        });
+      }
+      return;
+    }
+    if (nextActiveTabId) {
+      commitActiveTabId(nextActiveTabId);
+      setLocationHash(hashFromTabId(nextActiveTabId));
+      return;
+    }
+    if (collabUrl !== null) getPool(collabUrl).clearActive();
+    setActiveTarget(null);
+    commitActiveTabId(null);
+    setLocationHash('');
+  }
+
+  function createRemovalReconciler() {
+    return createClientRemovalReconciler({
+      captureRenameSnapshots,
+      getActivePoolDocName: () =>
+        collabUrl === null ? null : getPool(collabUrl).getActiveDocName(),
+      hasPooledDocument: (docName) => collabUrl !== null && getPool(collabUrl).has(docName),
+      closeAndClear: async (docName) => {
+        if (collabUrl !== null) await getPool(collabUrl).closeAndClearPersistence(docName);
+      },
+      openAndActivate: (docName) => {
+        if (collabUrl === null) return;
+        const p = getPool(collabUrl);
+        p.open(docName);
+        p.setActive(docName);
+      },
+      remapTabs: ({ renamed, renamedFolders, renamedAssets }) =>
+        remapTabsForRename(renamed, renamedFolders, renamedAssets),
+      closeTabs: closeTabIds,
+      removeDocumentTab: (docName) =>
+        commitTabState(removeOpenTab(openTabsRef.current, docName), pinnedTabIdsRef.current),
+      remapActiveTargetForRename: (fromDocName, toDocName) => {
+        const current = activeTargetRef.current;
+        const remapped = current !== null && docNameForNavigationTarget(current) === fromDocName;
+        if (!remapped) return false;
+        const next = { kind: 'doc' as const, target: toDocName, docName: toDocName };
+        activeTargetRef.current = next;
+        setActiveTarget((current) => {
+          if (!current || docNameForNavigationTarget(current) !== fromDocName) return current;
+          return next;
+        });
+        return true;
+      },
+      clearActiveTargetForRemoval: (docName) => {
+        setActiveTarget((current) =>
+          current && docNameForNavigationTarget(current) === docName ? null : current,
+        );
+      },
+      navigateToDocument: (docName) => {
+        setLocationHash(hashFromDocName(docName));
+      },
+      navigateHome: () => {
+        setLocationHash('');
+      },
+    });
+  }
+
+  const removalReconcilerRef = useRef<ClientRemovalReconciler | null>(null);
+
   function commitNewTabIds(nextNewTabIds: string[]) {
     newTabIdsRef.current = nextNewTabIds;
     setNewTabIds((current) => (sameTabIds(current, nextNewTabIds) ? current : nextNewTabIds));
@@ -727,6 +869,16 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       reconcileVisibleTabOrder(orderWithReplacement, openTabsRef.current, nextNewTabIds),
     );
   }
+
+  useEffect(() => {
+    activeTargetRef.current = activeTarget;
+  }, [activeTarget]);
+
+  // No dependency array: auth callbacks need a reconciler with the latest
+  // collab URL and locally-scoped state helpers after every render.
+  useEffect(() => {
+    removalReconcilerRef.current = createRemovalReconciler();
+  });
 
   useEffect(() => {
     activeTabIdRef.current = activeTabId;
@@ -864,14 +1016,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     writeLocalTabSessionState(storage, localKey, state);
   }, [activeTabId, activeTarget, openTabs, pinnedTabIds, snapshot.activeDocName, tabSessionLoaded]);
 
-  // Closes (and close-like replace-active) during the restore window bail the
-  // restore merge. Other mutations (open, pin, activate) are no-ops here because
-  // the restore merge is additive — see tabSessionUserClosedRef declaration for
-  // the full rationale.
-  function markTabSessionClosedDuringRestore() {
-    if (!tabSessionLoaded) tabSessionUserClosedRef.current = true;
-  }
-
   useEffect(() => {
     if (collabUrl === null) return;
     let cancelled = false;
@@ -880,28 +1024,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
 
     // Sync initial state
     setSnapshot(takeSnapshot(p));
-
-    function commitTabsFromPoolCallback(
-      nextOpenTabs: string[],
-      nextPinnedTabIds: readonly string[],
-    ) {
-      const normalizedPinnedTabIds = normalizePinnedTabIds(nextPinnedTabIds, nextOpenTabs);
-      openTabsRef.current = nextOpenTabs;
-      pinnedTabIdsRef.current = normalizedPinnedTabIds;
-      setOpenTabs((current) => (sameTabIds(current, nextOpenTabs) ? current : nextOpenTabs));
-      setPinnedTabIds((current) =>
-        sameTabIds(current, normalizedPinnedTabIds) ? current : normalizedPinnedTabIds,
-      );
-      const nextVisibleTabIds = reconcileVisibleTabOrder(
-        visibleTabIdsRef.current,
-        nextOpenTabs,
-        newTabIdsRef.current,
-      );
-      visibleTabIdsRef.current = nextVisibleTabIds;
-      setVisibleTabIds((current) =>
-        sameTabIds(current, nextVisibleTabIds) ? current : nextVisibleTabIds,
-      );
-    }
 
     // Late-join branch backstop. Auth-token `expectedBranch` claim
     // mismatch (server is on branch B, client claims branch A) routes
@@ -933,53 +1055,11 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       // is unsupported by `BuildHIR::lowerStatement`.
       void (async () => {
         let cleanupError: unknown;
-        // Capture before close — closeAndClearPersistence clears the pool's
-        // active slot when its argument is the active doc, so we can't read
-        // this signal after the fact.
-        const wasActive = p.getActiveDocName() === fromDocName;
-        captureRenameSnapshots([{ fromDocName, toDocName }]);
         try {
-          await Promise.all([
-            p.closeAndClearPersistence(fromDocName),
-            p.closeAndClearPersistence(toDocName),
-          ]);
-          // Open a fresh provider so the editor hydrates the new doc.
-          // The hash below already points at toDocName, so a file-tree
-          // re-click can't recover via `hashchange` if we skip this.
-          if (wasActive) {
-            p.open(toDocName);
-            p.setActive(toDocName);
-          }
-          const nextOpenTabs = remapOpenTabs(
-            openTabsRef.current,
-            [{ fromDocName, toDocName }],
-            MAX_POOL,
-            [],
-            pinnedTabIdsRef.current,
-          );
-          const nextPinnedTabIds = normalizePinnedTabIds(
-            remapOpenTabs(
-              pinnedTabIdsRef.current,
-              [{ fromDocName, toDocName }],
-              Number.MAX_SAFE_INTEGER,
-            ),
-            nextOpenTabs,
-          );
-          visibleTabIdsRef.current = remapVisibleTabsForRename(visibleTabIdsRef.current, [
-            { fromDocName, toDocName },
-          ]);
-          commitTabsFromPoolCallback(nextOpenTabs, nextPinnedTabIds);
-          setActiveTarget((current) => {
-            if (!current) return current;
-            const currentDocName = docNameForNavigationTarget(current);
-            if (currentDocName === fromDocName) {
-              return { kind: 'doc', target: toDocName, docName: toDocName };
-            }
-            return current;
+          await requireRemovalReconciler(removalReconcilerRef.current).reconcileAuthRename({
+            fromDocName,
+            toDocName,
           });
-          if (wasActive) {
-            window.location.hash = hashFromDocName(toDocName);
-          }
         } catch (err) {
           cleanupError = err;
           console.warn(
@@ -1011,16 +1091,9 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       void (async () => {
         let cleanupError: unknown;
         try {
-          await p.closeAndClearPersistence(docName);
-          const nextOpenTabs = removeOpenTab(openTabsRef.current, docName);
-          commitTabsFromPoolCallback(nextOpenTabs, pinnedTabIdsRef.current);
-          setActiveTarget((current) => {
-            if (!current) return current;
-            return docNameForNavigationTarget(current) === docName ? null : current;
+          await requireRemovalReconciler(removalReconcilerRef.current).reconcileAuthRemoval({
+            docName,
           });
-          if (p.getActiveDocName() === docName) {
-            window.location.hash = '';
-          }
         } catch (err) {
           cleanupError = err;
           console.warn(
@@ -1259,11 +1332,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     mark('ok/nav/open-target', { docName, kind: target.kind, transition: false });
     openTargetWithOptions(target, options);
   };
-
-  function pushRecentlyClosedTabs(tabIds: readonly string[]) {
-    if (tabIds.length === 0) return;
-    recentlyClosedTabsRef.current = [...recentlyClosedTabsRef.current, ...tabIds].slice(-50);
-  }
 
   const activateTabById = (tabId: string) => {
     const tab = parseEditorTabId(tabId);
@@ -1615,61 +1683,13 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     },
     closeTabs: (tabIds: readonly string[], options: CloseTabsOptions = {}) => {
       const requestedTabIds = tabIds.filter((tabId) => tabId.length > 0);
-      const closingTabIds = new Set(
-        options.force
-          ? requestedTabIds
-          : filterClosableTabIds(requestedTabIds, pinnedTabIdsRef.current),
-      );
-      if (closingTabIds.size === 0) return;
-      markTabSessionClosedDuringRestore();
-      if (!options.force) {
-        pushRecentlyClosedTabs(openTabsRef.current.filter((tabId) => closingTabIds.has(tabId)));
+      if (options.force) {
+        closeTabIds(requestedTabIds);
+        return;
       }
-      if (collabUrl !== null) {
-        const p = getPool(collabUrl);
-        const closingByDocName = new Map<string, Set<string>>();
-        for (const tabId of closingTabIds) {
-          const docName = docNameForTabId(tabId);
-          if (!docName) continue;
-          const tabsForDoc = closingByDocName.get(docName) ?? new Set<string>();
-          tabsForDoc.add(tabId);
-          closingByDocName.set(docName, tabsForDoc);
-        }
-        for (const [docName, tabsForDoc] of closingByDocName) {
-          if (!hasOpenDocTab(openTabsRef.current, docName, tabsForDoc)) p.close(docName);
-        }
-      }
-
-      let nextActiveTabId: string | null = null;
-      const currentActiveTabId =
-        activeTabId ?? activeTabIdForTarget(activeTarget, snapshot.activeDocName);
-      updateOpenTabs((current) => {
-        nextActiveTabId = nextActiveTabAfterCloseMany(current, currentActiveTabId, closingTabIds);
-        return current.filter((tabId) => !closingTabIds.has(tabId));
+      closeTabIds(filterClosableTabIds(requestedTabIds, pinnedTabIdsRef.current), {
+        rememberRecentlyClosed: true,
       });
-
-      if (!currentActiveTabId || !closingTabIds.has(currentActiveTabId)) {
-        if (!currentActiveTabId) {
-          setActiveTarget((current) => {
-            if (!current) return current;
-            const targetTabId = tabIdForNavigationTarget(current);
-            return targetTabId && closingTabIds.has(targetTabId) ? null : current;
-          });
-        }
-        return;
-      }
-      if (nextActiveTabId) {
-        commitActiveTabId(nextActiveTabId);
-        window.location.hash = hashFromTabId(nextActiveTabId);
-        return;
-      }
-      if (collabUrl !== null) {
-        const p = getPool(collabUrl);
-        p.clearActive();
-      }
-      setActiveTarget(null);
-      commitActiveTabId(null);
-      window.location.hash = '';
     },
     syncOpenTabsWithKnownTargets: ({ pages, folderPaths, assetPaths, filePaths }) => {
       const keepMissingDocName = activeTarget?.kind === 'missing' ? activeTarget.target : null;
@@ -1739,75 +1759,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       commitActiveTabId(null);
       window.location.hash = '';
     },
-    remapTabsForRename: (renamed, renamedFolders = [], renamedAssets = []) => {
-      // Rename changes tab identity (old name closed, new name opened) — must
-      // mark so the restore merge doesn't resurrect the old identity.
-      markTabSessionClosedDuringRestore();
-      const next = remapOpenTabs(
-        openTabsRef.current,
-        renamed,
-        MAX_POOL,
-        renamedFolders,
-        pinnedTabIdsRef.current,
-        renamedAssets,
-      );
-      const nextPinnedTabIds = normalizePinnedTabIds(
-        remapOpenTabs(
-          pinnedTabIdsRef.current,
-          renamed,
-          Number.MAX_SAFE_INTEGER,
-          renamedFolders,
-          [],
-          renamedAssets,
-        ),
-        next,
-      );
-      if (collabUrl !== null) {
-        const p = getPool(collabUrl);
-        for (const tabId of next) {
-          const docName = docNameForTabId(tabId);
-          if (docName) p.open(docName);
-        }
-      }
-      visibleTabIdsRef.current = remapVisibleTabsForRename(
-        visibleTabIdsRef.current,
-        renamed,
-        renamedFolders,
-        renamedAssets,
-      );
-      commitTabState(next, nextPinnedTabIds);
-      const currentActiveTabId = activeTabIdRef.current;
-      if (currentActiveTabId) {
-        const remappedActiveTabId = remapOpenTabs(
-          [currentActiveTabId],
-          renamed,
-          1,
-          renamedFolders,
-          [],
-          renamedAssets,
-        )[0];
-        if (remappedActiveTabId && next.includes(remappedActiveTabId)) {
-          commitActiveTabId(remappedActiveTabId);
-        }
-      }
-    },
-    closeAndClearForRename: async (docName: string) => {
-      if (collabUrl === null) return;
-      const p = getPool(collabUrl);
-      await p.closeAndClearPersistence(docName);
-      setActiveTarget((current) => {
-        if (!current) return current;
-        return docNameForNavigationTarget(current) === docName ? null : current;
-      });
-    },
-    getPoolActiveDocName: () => {
-      if (collabUrl === null) return null;
-      return getPool(collabUrl).getActiveDocName();
-    },
-    poolHas: (docName: string) => {
-      if (collabUrl === null) return false;
-      return getPool(collabUrl).has(docName);
-    },
+    reconcileLocalRename: (input) => createRemovalReconciler().reconcileLocalRename(input),
+    reconcileLocalRemoval: (input) => createRemovalReconciler().reconcileLocalRemoval(input),
     recycleDocument: (docName: string) => {
       if (collabUrl === null) return;
       const p = getPool(collabUrl);

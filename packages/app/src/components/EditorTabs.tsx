@@ -32,7 +32,6 @@ import {
   buildRenamedNodePath,
   isValidNodeName,
   normalizeRenameValue,
-  planRenameCleanupCalls,
   remapActiveDocName,
 } from '@/components/file-tree-operations';
 import { Button } from '@/components/ui/button';
@@ -51,7 +50,6 @@ import {
 } from '@/components/ui/input-group';
 import { Kbd } from '@/components/ui/kbd';
 import { useDocumentContext } from '@/editor/DocumentContext';
-import { captureRenameSnapshots } from '@/editor/editor-cache';
 import {
   docTabId,
   filterClosableTabIds,
@@ -451,12 +449,9 @@ export function EditorTabs() {
     activeTarget,
     activateTab,
     activateNewTab,
-    closeAndClearForRename,
     closeNewTab,
     closeTab,
     closeTabs,
-    getPoolActiveDocName,
-    poolHas,
     isNewTabActive,
     newTabIds,
     openNewTab,
@@ -464,7 +459,7 @@ export function EditorTabs() {
     pinTab,
     pinnedTabIds,
     reopenClosedTab,
-    remapTabsForRename,
+    reconcileLocalRename,
     reorderTabs,
     unpinTab,
     visibleTabIds,
@@ -630,20 +625,15 @@ export function EditorTabs() {
 
       // Split try/catch: server-side rename already committed
       // (`parsed.ok === true`). A failure inside the post-commit work
-      // (IDB clear via closeAndClearForRename, tab remap, event dispatch)
+      // (persistence cleanup, tab remap, event dispatch)
       // is a client-side reconciliation failure, NOT a network error.
       // Labeling it "Network error — please try again" would misdirect
       // the user toward a retry that POSTs against a now-nonexistent
       // source path and fails differently. The correct recovery is to
       // refresh and resync with disk truth.
-      captureRenameSnapshots(renamed);
       let reconcileOk = true;
       try {
-        // Same gate as FileTree.applyRenamedDocuments — rationale documented
-        // at `planRenameCleanupCalls` in file-tree-operations.ts.
-        const cleanupDocNames = planRenameCleanupCalls(renamed, getPoolActiveDocName(), poolHas);
-        await Promise.all(cleanupDocNames.map((name) => closeAndClearForRename(name)));
-        remapTabsForRename(renamed);
+        await reconcileLocalRename({ renamed });
         emitDocumentsChanged(['files', 'backlinks', 'graph']);
       } catch (reconcileErr) {
         reconcileOk = false;
@@ -664,8 +654,8 @@ export function EditorTabs() {
       commitInProgressRef.current = false;
       lastFailedValueRef.current = null;
 
-      // Skip navigation when reconciliation failed: remapTabsForRename never
-      // ran, so no tab is keyed to nextActiveDocName. Calling navigateToDoc
+      // Skip navigation when reconciliation failed: tab identities remain stale,
+      // so no tab is keyed to nextActiveDocName. Calling navigateToDoc
       // would silently open a new tab and contradict the "refresh to resync"
       // toast. Refresh recovers consistent state.
       if (reconcileOk && nextActiveDocName && nextActiveDocName !== currentActiveDocName) {

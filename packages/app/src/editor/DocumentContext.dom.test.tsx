@@ -823,14 +823,29 @@ function RenameHarness({ fromDocName, toDocName }: { fromDocName: string; toDocN
       <span data-testid="open-tabs">{ctx.openTabs.join('|')}</span>
       <span data-testid="visible-tabs">{ctx.visibleTabIds.join('|')}</span>
       <span data-testid="active-tab">{ctx.activeTabId ?? ''}</span>
-      <button type="button" onClick={() => ctx.remapTabsForRename([{ fromDocName, toDocName }])}>
+      <button
+        type="button"
+        onClick={() => void ctx.reconcileLocalRename({ renamed: [{ fromDocName, toDocName }] })}
+      >
         Rename
       </button>
     </>
   );
 }
 
-describe('DocumentContext remapTabsForRename — preserves tab position', () => {
+function AuthRenameHarness() {
+  const ctx = useDocumentContext();
+  return (
+    <button
+      type="button"
+      onClick={() => ctx.openTarget({ kind: 'doc', target: 'from.md', docName: 'from.md' })}
+    >
+      Select source
+    </button>
+  );
+}
+
+describe('DocumentContext local rename reconciliation — preserves tab position', () => {
   afterEach(() => {
     cleanup();
     window.localStorage.clear();
@@ -879,7 +894,7 @@ describe('DocumentContext remapTabsForRename — preserves tab position', () => 
   test('renaming a non-active tab leaves activeTabId untouched', async () => {
     // Seed: [foo, bar], active = foo. Rename `bar` → `bazz`. Active stays foo —
     // the `if (remappedActiveTabId && next.includes(remappedActiveTabId))` guard
-    // in remapTabsForRename only commits when the remapped active actually lands
+    // in local rename reconciliation only commits when the remapped active actually lands
     // in the next tab set; an unrelated rename must not perturb the active tab.
     seedRenameSession();
     render(<RenameHarness fromDocName="bar.md" toDocName="bazz.md" />, {
@@ -892,5 +907,43 @@ describe('DocumentContext remapTabsForRename — preserves tab position', () => 
     await user.click(screen.getByRole('button', { name: 'Rename' }));
 
     expect(screen.getByTestId('active-tab').textContent).toBe(RENAME_FOO);
+  });
+
+  test('auth rename navigates when the current target matches even if another pool doc is active', async () => {
+    mockCollabUrl = 'ws://localhost:1/collab';
+    globalThis.fetch = vi.fn(() => Promise.reject(new Error('unexpected fetch'))) as never;
+    render(<AuthRenameHarness />, { wrapper: ProviderHarness });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Select source' }));
+
+    const pool = (
+      window as unknown as {
+        __providerPool?: {
+          open(docName: string): void;
+          setActive(docName: string): void;
+          onRenameRedirect?: (input: {
+            fromDocName: string;
+            toDocName: string;
+            hadOpenProvider: boolean;
+          }) => void;
+        };
+      }
+    ).__providerPool;
+    expect(pool).toBeDefined();
+    pool?.open('other.md');
+    pool?.setActive('other.md');
+
+    act(() => {
+      pool?.onRenameRedirect?.({
+        fromDocName: 'from.md',
+        toDocName: 'to.md',
+        hadOpenProvider: true,
+      });
+    });
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe('#/to.md');
+    });
   });
 });

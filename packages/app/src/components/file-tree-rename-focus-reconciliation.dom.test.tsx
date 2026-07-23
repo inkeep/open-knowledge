@@ -59,9 +59,17 @@ const openTargetMock = vi.fn(() => {});
 const notifySidebarFileSelectedMock = vi.fn(() => {});
 const closeTabsMock = vi.fn(() => {});
 const closeDocumentMock = vi.fn(() => {});
-const closeAndClearForRenameMock = vi.fn(async () => {});
-const remapTabsForRenameMock = vi.fn(() => {});
+const reconcileLocalRenameMock = vi.fn(async () => {});
+const reconcileLocalRemovalMock = vi.fn(async () => {});
 const dispatchHandoffMock = vi.fn(async () => ({ ok: true as const }));
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
 
 // Three documents alphabetically. `foo.md` (index 1) is the rename target.
 // After rename: ['aaa.md', 'bar.md', 'zzz.md']. The index-0 row (`aaa.md`)
@@ -313,15 +321,11 @@ vi.doMock('@/editor/DocumentContext', () => ({
     activeTarget: { kind: 'doc', target: 'foo', docName: 'foo' },
     closeTabs: closeTabsMock,
     closeDocument: closeDocumentMock,
-    closeAndClearDocument: closeAndClearForRenameMock,
-    closeAndClearForDelete: closeAndClearForRenameMock,
-    closeAndClearForRename: closeAndClearForRenameMock,
-    getPoolActiveDocName: () => 'foo',
-    poolHas: () => true,
     isNewTabActive: false,
     openTarget: openTargetMock,
     prewarm: () => {},
-    remapTabsForRename: remapTabsForRenameMock,
+    reconcileLocalRename: reconcileLocalRenameMock,
+    reconcileLocalRemoval: reconcileLocalRemovalMock,
   }),
 }));
 
@@ -487,8 +491,8 @@ describe('FileTree post-rename Pierre/React store reconciliation', () => {
     addPageMock.mockClear();
     openTargetMock.mockClear();
     notifySidebarFileSelectedMock.mockClear();
-    closeAndClearForRenameMock.mockClear();
-    remapTabsForRenameMock.mockClear();
+    reconcileLocalRenameMock.mockClear();
+    reconcileLocalRemovalMock.mockClear();
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
@@ -572,6 +576,37 @@ describe('FileTree post-rename Pierre/React store reconciliation', () => {
 
     expect(model.getFocusedPath()).toBe('bar.md');
     expect(model.getFocusedIndex()).toBe(1);
+  });
+
+  test('waits for local rename reconciliation before adding the destination page or resetting the tree', async () => {
+    const reconciliation = deferred();
+    reconcileLocalRenameMock.mockImplementation(() => reconciliation.promise);
+    render(<FileTree />);
+
+    await waitFor(() => {
+      expect(capturedOptions).not.toBeNull();
+      expect(model.getItem('foo.md')).not.toBeNull();
+    });
+
+    simulatePierreCommitRename('foo.md', 'bar', false);
+
+    await waitFor(() => {
+      expect(reconcileLocalRenameMock).toHaveBeenCalledWith({
+        renamed: [{ fromDocName: 'foo', toDocName: 'bar' }],
+        renamedFolders: [],
+        renamedAssets: [],
+        additionalRemovedDocNames: [],
+      });
+    });
+    expect(addPageMock).not.toHaveBeenCalled();
+    expect(model.getItem('bar.md')).toBeNull();
+
+    reconciliation.resolve();
+
+    await waitFor(() => {
+      expect(addPageMock).toHaveBeenCalledWith('bar');
+      expect(model.getItem('bar.md')).not.toBeNull();
+    });
   });
 
   test('DRAG_DROP — Pierre store already canonical post-drop; reconciliation guard short-circuits without throwing', async () => {

@@ -20,7 +20,7 @@ interface EditorTabSessionState {
   updatedAt: string | null;
 }
 
-interface RenamedFolderMapping {
+export interface RenamedFolderMapping {
   fromPath: string;
   toPath: string;
 }
@@ -538,8 +538,8 @@ export function remapOpenTabs(
 // subsequent `reconcileVisibleTabOrder` does not drop the stale (pre-rename)
 // tabIds at the membership check and re-append the new tabIds at the end,
 // shifting the renamed tab's slot. Both rename-adjacent commit
-// paths in DocumentContext — server-driven `onRenameRedirect` and
-// sidebar-driven `remapTabsForRename` — MUST seed the ref through this
+// paths in DocumentContext's client-removal reconciler — server-driven and
+// local-response rename flows — MUST seed the ref through this
 // helper so the invariant is structural rather than caller-enforced.
 export function remapVisibleTabsForRename(
   currentOrder: readonly string[],

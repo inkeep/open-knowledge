@@ -115,12 +115,11 @@ vi.doMock('@/editor/DocumentContext', () => ({
     activeTarget: { kind: 'doc', target: 'notes/source', docName: 'notes/source' },
     closeTabs: () => {},
     closeDocument: () => {},
-    closeAndClearForRename: async () => {},
-    getPoolActiveDocName: () => 'notes/source',
     isNewTabActive: false,
     openTarget: () => {},
     prewarm: () => {},
-    remapTabsForRename: () => {},
+    reconcileLocalRemoval: async () => {},
+    reconcileLocalRename: async () => {},
   }),
 }));
 
