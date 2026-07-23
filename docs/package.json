@@ -52,7 +52,7 @@
     "next-validate-link": "^1.6.6",
     "remark-mdx-snippets": "^0.3.3",
     "schema-dts": "^2.0.0",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.3",
     "tailwind-scrollbar": "^4.0.2",
     "tailwindcss": "^4",
     "typescript": "^5.7"
