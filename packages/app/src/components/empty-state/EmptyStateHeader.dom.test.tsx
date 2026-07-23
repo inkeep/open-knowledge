@@ -1,11 +1,11 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   expectVisualClassTokens,
   expectVisualClassTokensAbsent,
 } from '@/test-utils/visual-contract';
 
-mock.module('@/components/OkBlob', () => ({
+vi.doMock('@/components/OkBlob', () => ({
   OkBlob: ({ celebrateSignal, size }: { celebrateSignal: number; size: number }) => (
     <div
       data-testid="ok-blob-probe"

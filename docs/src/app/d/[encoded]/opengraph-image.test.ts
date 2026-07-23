@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 
 /**
  * The OG image route uses `next/og`'s `ImageResponse` which spins up satori
@@ -15,7 +15,7 @@ const recordedCalls: Array<{
   options: { fonts?: unknown; headers?: Record<string, string>; width?: number; height?: number };
 }> = [];
 
-mock.module('next/og', () => ({
+vi.doMock('next/og', () => ({
   ImageResponse: class MockImageResponse extends Response {
     constructor(
       body: unknown,

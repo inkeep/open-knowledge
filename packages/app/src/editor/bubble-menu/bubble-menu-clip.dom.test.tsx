@@ -16,9 +16,9 @@
  * Invocation: `bun run test:dom` from `packages/app/`.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { cleanup, render } from '@testing-library/react';
 import type { Editor } from '@tiptap/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import { TOOLBAR_HEIGHT } from '../extensions/frozen-table-headers';
 import { deriveEditorClipOptions } from './bubble-menu-clip';
 

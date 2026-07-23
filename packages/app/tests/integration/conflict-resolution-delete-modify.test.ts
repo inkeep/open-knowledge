@@ -48,13 +48,14 @@
  * to remove the redundant guard (TS narrows via the earlier throw) —
  * assertions below confirm the misleading message no longer fires.
  */
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+
 import { execFile } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestServer, pollUntil, type TestServer } from './test-harness';
 

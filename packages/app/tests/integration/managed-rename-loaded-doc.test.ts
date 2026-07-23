@@ -12,10 +12,11 @@
  *  - bridge invariant holds (Y.Text and XmlFragment converge through the
  *    server-authoritative observer A path; precedent #14)
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterEach, describe, expect, test } from 'vitest';
 import { createMultiClientContext, createRestartableServer, pollUntil } from './test-harness';
 
 const cleanups: Array<() => Promise<void> | void> = [];

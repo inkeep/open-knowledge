@@ -5,8 +5,8 @@
  * tests stay self-contained (no dependence on the project CLI being on PATH).
  */
 
-import { describe, expect, test } from 'bun:test';
 import { delimiter as PATH_DELIMITER } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { runSubprocess } from './subprocess.ts';
 
 const fixtureCli = (script: string): readonly string[] => [process.execPath, '-e', script];

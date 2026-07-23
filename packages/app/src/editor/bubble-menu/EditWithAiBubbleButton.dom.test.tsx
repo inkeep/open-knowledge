@@ -15,17 +15,17 @@
  * Invocation: `bun run test:dom` from `packages/app/`.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Schema } from '@tiptap/pm/model';
 import type { Editor } from '@tiptap/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { subscribeToOpenAskAiComposer } from '@/components/ask-ai-composer-events';
 import { subscribeToActiveTerminalInput } from '@/components/handoff/terminal-input-events';
 import { setEditorDocName } from '../extensions/doc-context.ts';
 
-mock.module('sonner', () => ({ toast: { error: () => {}, success: () => {} } }));
+vi.doMock('sonner', () => ({ toast: { error: () => {}, success: () => {} } }));
 
 // The click handler defers its action to the next animation frame; jsdom under
 // bun does not always define rAF, so polyfill it to a microtask and flush via

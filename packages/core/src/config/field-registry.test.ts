@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
 import { fieldRegistry, getFieldMeta } from './field-registry.ts';
 import { ConfigSchema } from './schema.ts';

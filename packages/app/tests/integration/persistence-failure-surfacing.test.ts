@@ -12,8 +12,9 @@
  * separate validation concern), exercising the real persistence → flush →
  * surfacing path through the production server boot.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { randomUUID } from 'node:crypto';
+import { afterEach, describe, expect, test } from 'vitest';
 import { createTestServer, type TestServer } from './test-harness.ts';
 
 let server: TestServer | undefined;

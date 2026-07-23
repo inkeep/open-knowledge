@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   CODE_FILE_BARE_NAMES_TO_LANGUAGE,
   CODE_FILE_EXTENSIONS,

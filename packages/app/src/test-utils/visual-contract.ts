@@ -1,4 +1,4 @@
-import { expect } from 'bun:test';
+import { expect } from 'vitest';
 
 // Visual contract guard: jsdom exposes Tailwind tokens only as class strings,
 // so use this helper only for CSS behavior jsdom cannot execute directly.

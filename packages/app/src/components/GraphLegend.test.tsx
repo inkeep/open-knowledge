@@ -1,10 +1,10 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import * as actualNextThemes from 'next-themes';
 import type { ReactElement, ReactNode } from 'react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const useThemeMock = mock(() => ({ resolvedTheme: 'light' as const }));
+const useThemeMock = vi.fn(() => ({ resolvedTheme: 'light' as const }));
 
-mock.module('next-themes', () => ({
+vi.doMock('next-themes', () => ({
   ...actualNextThemes,
   useTheme: useThemeMock,
 }));

@@ -13,9 +13,10 @@
  *    path is gone from the new set (Pierre's `resolveFocusedIndex` →
  *    index-0 fallback — the user-visible bug mechanism).
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+
 import { cleanup, render, waitFor } from '@testing-library/react';
 import type { MouseEventHandler, ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { FileEntry } from './file-tree-utils';
 
 type MenuItemProps = {
@@ -51,16 +52,16 @@ function MenuSeparator() {
   return <hr />;
 }
 
-const toastSuccessMock = mock(() => {});
-const toastErrorMock = mock(() => {});
-const addPageMock = mock(() => {});
-const openTargetMock = mock(() => {});
-const notifySidebarFileSelectedMock = mock(() => {});
-const closeTabsMock = mock(() => {});
-const closeDocumentMock = mock(() => {});
-const closeAndClearForRenameMock = mock(async () => {});
-const remapTabsForRenameMock = mock(() => {});
-const dispatchHandoffMock = mock(async () => ({ ok: true as const }));
+const toastSuccessMock = vi.fn(() => {});
+const toastErrorMock = vi.fn(() => {});
+const addPageMock = vi.fn(() => {});
+const openTargetMock = vi.fn(() => {});
+const notifySidebarFileSelectedMock = vi.fn(() => {});
+const closeTabsMock = vi.fn(() => {});
+const closeDocumentMock = vi.fn(() => {});
+const closeAndClearForRenameMock = vi.fn(async () => {});
+const remapTabsForRenameMock = vi.fn(() => {});
+const dispatchHandoffMock = vi.fn(async () => ({ ok: true as const }));
 
 // Three documents alphabetically. `foo.md` (index 1) is the rename target.
 // After rename: ['aaa.md', 'bar.md', 'zzz.md']. The index-0 row (`aaa.md`)
@@ -157,7 +158,7 @@ class StubModel {
   focusedPath: string | null = null;
   selectedPaths: string[] = [];
   items = new Map<string, StubItem>();
-  startRenaming = mock(() => {});
+  startRenaming = vi.fn(() => {});
 
   getFocusedPath() {
     return this.focusedPath;
@@ -275,7 +276,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function makeFetchMock() {
-  return mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     fetchCalls.push({ url, init });
     if (url.startsWith('/api/documents')) {
@@ -295,18 +296,18 @@ function makeFetchMock() {
   });
 }
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: {
     success: toastSuccessMock,
     error: toastErrorMock,
   },
 }));
 
-mock.module('next-themes', () => ({
+vi.doMock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'light' }),
 }));
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName: 'foo',
     activeTarget: { kind: 'doc', target: 'foo', docName: 'foo' },
@@ -324,15 +325,15 @@ mock.module('@/editor/DocumentContext', () => ({
   }),
 }));
 
-mock.module('@/components/PageListContext', () => ({
+vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => ({ addPage: addPageMock, pageMeta: new Map() }),
 }));
 
-mock.module('./ui/sidebar', () => ({
+vi.doMock('./ui/sidebar', () => ({
   useSidebar: () => ({ notifySidebarFileSelected: notifySidebarFileSelectedMock }),
 }));
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     okignoreBinding: null,
     projectLocalBinding: null,
@@ -340,26 +341,26 @@ mock.module('@/lib/config-provider', () => ({
   }),
 }));
 
-mock.module('./handoff/useInstalledAgents', () => ({
+vi.doMock('./handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states: {} }),
 }));
 
-mock.module('./handoff/useHandoffDispatch', () => ({
+vi.doMock('./handoff/useHandoffDispatch', () => ({
   buildFolderHandoffInput: () => null,
   buildHandoffInput: () => null,
   useHandoffDispatch: () => ({ dispatch: dispatchHandoffMock }),
 }));
 
-mock.module('./handoff/OpenInAgentContextSubmenu', () => ({
+vi.doMock('./handoff/OpenInAgentContextSubmenu', () => ({
   OpenInAgentContextSubmenu: () => null,
 }));
 
-mock.module('./sidebar-hover-prewarm', () => ({
+vi.doMock('./sidebar-hover-prewarm', () => ({
   cancelHoverPrewarm: () => {},
   scheduleHoverPrewarm: () => {},
 }));
 
-mock.module('@/components/ui/button', () => ({
+vi.doMock('@/components/ui/button', () => ({
   Button: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
     <button type="button" {...props}>
       {children}
@@ -367,11 +368,11 @@ mock.module('@/components/ui/button', () => ({
   ),
 }));
 
-mock.module('@/components/ui/dialog', () => ({
+vi.doMock('@/components/ui/dialog', () => ({
   Dialog: PassThrough,
 }));
 
-mock.module('@/components/ui/dropdown-menu', () => ({
+vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: PassThrough,
   DropdownMenuCheckboxItem: MenuItem,
   DropdownMenuContent: MenuContent,
@@ -383,34 +384,34 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuTrigger: PassThrough,
 }));
 
-mock.module('@/components/ui/skeleton', () => ({
+vi.doMock('@/components/ui/skeleton', () => ({
   Skeleton: ({ className }: { className?: string }) => <span className={className} />,
 }));
 
-mock.module('@/components/DeleteConfirmationDialog', () => ({
+vi.doMock('@/components/DeleteConfirmationDialog', () => ({
   DeleteConfirmationDialog: () => null,
 }));
 
-mock.module('@/components/NewItemDialog', () => ({
+vi.doMock('@/components/NewItemDialog', () => ({
   NewItemDialog: () => null,
 }));
 
-mock.module('@/components/TrashFailureModal', () => ({
+vi.doMock('@/components/TrashFailureModal', () => ({
   TrashFailureModal: () => null,
   coerceTrashFailureReason: (reason: string) => reason,
 }));
 
-mock.module('@/components/use-selection-mirror', () => ({
+vi.doMock('@/components/use-selection-mirror', () => ({
   asDirectoryHandle: (item: StubItem | null) => (item?.isDirectory() ? item : null),
   useSelectionMirror: () => {},
 }));
 
-mock.module('@pierre/trees', () => ({
+vi.doMock('@pierre/trees', () => ({
   FILE_TREE_TAG_NAME: 'ok-file-tree',
   themeToTreeStyles: () => ({}),
 }));
 
-mock.module('@pierre/trees/react', () => ({
+vi.doMock('@pierre/trees/react', () => ({
   useFileTree: (options: unknown) => {
     capturedOptions = options;
     return { model };
@@ -464,7 +465,7 @@ function simulatePierreCommitRename(
 }
 
 describe('FileTree post-rename Pierre/React store reconciliation', () => {
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     model = new StubModel();
@@ -488,7 +489,7 @@ describe('FileTree post-rename Pierre/React store reconciliation', () => {
     notifySidebarFileSelectedMock.mockClear();
     closeAndClearForRenameMock.mockClear();
     remapTabsForRenameMock.mockClear();
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {

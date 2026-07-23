@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { Schema } from '@tiptap/pm/model';
+import { describe, expect, test } from 'vitest';
 import { findLiteralMatchesInDoc, findLiteralMatchesInText } from './literal-matcher';
 
 const schema = new Schema({

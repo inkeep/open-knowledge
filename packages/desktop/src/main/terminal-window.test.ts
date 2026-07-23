@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { ShowGateRegistry } from './show-gate.ts';
 import type { TerminalReaper } from './terminal-lifecycle.ts';
 import {
@@ -26,8 +26,8 @@ function makeFakeWindow(id: number) {
       if (event === 'closed') closedHandlers.push(cb);
     },
     once: () => {},
-    loadFile: mock(async () => {}),
-    loadURL: mock(async () => {}),
+    loadFile: vi.fn(async () => {}),
+    loadURL: vi.fn(async () => {}),
     webContents: { send: () => {}, once: () => {} },
   } as unknown as TerminalBrowserWindow;
   return {
@@ -44,11 +44,11 @@ function makeDeps(opts: {
   rendererDevUrl?: string | null;
 }) {
   const fake = makeFakeWindow(opts.id);
-  const createWindow = mock((_o: { additionalArguments: string[]; title: string }) => fake.window);
-  const disposeShowGate = mock(() => {});
-  const register = mock((_window: unknown, _opts?: { kind?: string }) => disposeShowGate);
+  const createWindow = vi.fn((_o: { additionalArguments: string[]; title: string }) => fake.window);
+  const disposeShowGate = vi.fn(() => {});
+  const register = vi.fn((_window: unknown, _opts?: { kind?: string }) => disposeShowGate);
   const showGate = { register, fireThemeApplied: () => {} } as unknown as ShowGateRegistry;
-  const killForWindow = mock((_id: number) => {});
+  const killForWindow = vi.fn((_id: number) => {});
   const terminalReaper = { killForWindow, killAll: () => {} } as unknown as TerminalReaper;
   return {
     fake,
@@ -170,13 +170,13 @@ describe('createTerminalWindow', () => {
 
   test('a renderer load rejection surfaces a structured terminal-load-failed warn (not an unhandled rejection)', async () => {
     const h = makeDeps({ id: 70_001, project: PROJECT, rendererDevUrl: 'http://localhost:5173' });
-    const failing = mock(async () => {
+    const failing = vi.fn(async () => {
       throw new Error('renderer boom');
     });
     // Override the happy-path loadURL with one that rejects, exercising the
     // factory's `.catch` handler rather than the resolve path the tests above hit.
     (h.fake.window as unknown as { loadURL: typeof failing }).loadURL = failing;
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     createTerminalWindow(h.deps);
     // The factory attaches its `.catch` synchronously; the rejected promise queues

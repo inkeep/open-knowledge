@@ -1,10 +1,10 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import {
   createServer as createHttpServer,
   type Server as HttpServer,
   request as httpRequest,
   type IncomingMessage,
 } from 'node:http';
+import { afterEach, describe, expect, test } from 'vitest';
 import { type ProxyServerHandle, startProxyServer } from './ui-proxy.ts';
 
 /** Send a request with arbitrary Host / Origin headers. We can't use `fetch`

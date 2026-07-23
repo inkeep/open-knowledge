@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { resolveOkDesktopMode } from './ok-desktop-mode.ts';
 
 describe('resolveOkDesktopMode', () => {

@@ -3,8 +3,8 @@
  * decision tree without spawning Octokit or hitting GitHub.
  */
 
-import { describe, expect, test } from 'bun:test';
 import type { Octokit } from '@octokit/rest';
+import { describe, expect, test } from 'vitest';
 import { checkSharePublishName } from './name-check.ts';
 
 function makeFakeOctokit(behavior: { status?: number; message?: string; ok?: boolean }): Octokit {

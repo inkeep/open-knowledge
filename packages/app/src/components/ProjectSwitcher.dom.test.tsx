@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createContext, type ReactNode, use } from 'react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   __resetLocalMenuActionBusForTests,
   emitLocalMenuAction,
@@ -30,7 +30,7 @@ const SubStateContext = createContext<{ open: boolean; onOpenChange: (o: boolean
   open: false,
   onOpenChange: () => {},
 });
-mock.module('@/components/ui/dropdown-menu', () => ({
+vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children, onOpenChange }: MenuProps) => {
     lastDropdownOpenChange = onOpenChange ?? null;
     return <div>{children}</div>;
@@ -104,7 +104,7 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   },
 }));
 
-mock.module('@/components/ui/input-group', () => ({
+vi.doMock('@/components/ui/input-group', () => ({
   InputGroup: ({ children, ...props }: ItemProps) => (
     <fieldset
       {...props}
@@ -119,7 +119,7 @@ mock.module('@/components/ui/input-group', () => ({
   InputGroupInput: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
 }));
 
-mock.module('@/components/ui/sidebar', () => ({
+vi.doMock('@/components/ui/sidebar', () => ({
   SidebarMenuButton: ({ children, ...props }: ItemProps) => (
     <button type="button" {...props}>
       {children}
@@ -127,7 +127,7 @@ mock.module('@/components/ui/sidebar', () => ({
   ),
 }));
 
-mock.module('./CreateProjectDialog', () => ({
+vi.doMock('./CreateProjectDialog', () => ({
   CreateProjectDialog: (props: { open: boolean; bridge: unknown }) => {
     createDialogProps.push(props);
     return <div data-testid="create-project-dialog" data-open={String(props.open)} />;
@@ -142,7 +142,7 @@ let newWorktreeProps: Array<{
   behindByBranch?: ReadonlyMap<string, number>;
   initialBranchName?: string;
 }> = [];
-mock.module('./NewWorktreeDialog', () => ({
+vi.doMock('./NewWorktreeDialog', () => ({
   NewWorktreeDialog: (props: {
     open: boolean;
     branches?: readonly string[];
@@ -164,7 +164,7 @@ mock.module('./NewWorktreeDialog', () => ({
 
 // The current window's project is a git repo on `main` — drives the trigger's
 // branch line and the gate on the top-level "New worktree…" item.
-mock.module('@/hooks/use-current-branch', () => ({
+vi.doMock('@/hooks/use-current-branch', () => ({
   useCurrentBranch: () => 'main',
 }));
 // The switcher's cached worktree model feeds RecentProjectsMenu's grouped-view
@@ -172,7 +172,7 @@ mock.module('@/hooks/use-current-branch', () => ({
 // row in a projects-AND-worktrees search — the projects-only search must gate
 // it out. Grouping/branch-search behavior is covered in
 // RecentProjectsMenu.dom.test.tsx.
-mock.module('@/hooks/use-worktrees', () => ({
+vi.doMock('@/hooks/use-worktrees', () => ({
   useWorktrees: () => ({
     mainRoot: '/projects/current',
     currentBranch: 'main',
@@ -217,7 +217,7 @@ function createBridge() {
       projectPath: '/projects/current',
     },
     project: {
-      listRecent: mock(() =>
+      listRecent: vi.fn(() =>
         Promise.resolve([
           recent('Current', '/projects/current'),
           ...Array.from({ length: 10 }, (_, index) => recent(`Project ${index + 1}`)),
@@ -234,20 +234,20 @@ function createBridge() {
           },
         ]),
       ),
-      open: mock(() => Promise.resolve()),
-      openFile: mock(() => Promise.resolve()),
+      open: vi.fn(() => Promise.resolve()),
+      openFile: vi.fn(() => Promise.resolve()),
     },
     dialog: {
-      openFolder: mock(() => Promise.resolve('/chosen/folder')),
+      openFolder: vi.fn(() => Promise.resolve('/chosen/folder')),
     },
     navigator: {
-      open: mock(() => Promise.resolve()),
+      open: vi.fn(() => Promise.resolve()),
     },
     worktree: {
-      list: mock(() => Promise.resolve({ ok: false as const, reason: 'no-git' as const })),
-      create: mock(() => Promise.resolve({ ok: false as const, reason: 'no-git' as const })),
+      list: vi.fn(() => Promise.resolve({ ok: false as const, reason: 'no-git' as const })),
+      create: vi.fn(() => Promise.resolve({ ok: false as const, reason: 'no-git' as const })),
     },
-    onMenuAction: mock(() => () => {}),
+    onMenuAction: vi.fn(() => () => {}),
   };
 }
 
@@ -340,7 +340,7 @@ describe('ProjectSwitcher dropdown behavior', () => {
 
   test('the per-row × removes a recent from the list without opening it', async () => {
     const bridge = createBridge();
-    bridge.project.removeRecent = mock(() => Promise.resolve());
+    bridge.project.removeRecent = vi.fn(() => Promise.resolve());
     render(<ProjectSwitcher bridge={bridge as never} />);
     await openMenu();
 
@@ -421,7 +421,7 @@ describe('ProjectSwitcher dropdown behavior', () => {
     // project). The cached model (mocked useWorktrees) has no branch matching
     // the query, so the flyout's no-match create option appears.
     const bridge = createBridge();
-    bridge.project.listRecent = mock(() =>
+    bridge.project.listRecent = vi.fn(() =>
       Promise.resolve([
         {
           name: 'current',
@@ -471,7 +471,7 @@ describe('ProjectSwitcher dropdown behavior', () => {
   test('scrolling the recents list closes an open worktree flyout (submenu does not follow the row off-screen)', async () => {
     // Same git-enriched current project with a worktree so its submenu renders.
     const bridge = createBridge();
-    bridge.project.listRecent = mock(() =>
+    bridge.project.listRecent = vi.fn(() =>
       Promise.resolve([
         {
           name: 'current',
@@ -579,7 +579,7 @@ describe('ProjectSwitcher dropdown behavior', () => {
       resolveList = resolve;
     });
     const bridge = createBridge();
-    bridge.project.listRecent = mock(() => pending);
+    bridge.project.listRecent = vi.fn(() => pending);
     render(<ProjectSwitcher bridge={bridge as never} />);
 
     // Open the menu but do NOT wait for the search box (it can't appear until
@@ -609,7 +609,7 @@ describe('ProjectSwitcher dropdown behavior', () => {
 
   test('shows "No recent projects." only once loaded AND genuinely empty', async () => {
     const bridge = createBridge();
-    bridge.project.listRecent = mock(() => Promise.resolve([]));
+    bridge.project.listRecent = vi.fn(() => Promise.resolve([]));
     render(<ProjectSwitcher bridge={bridge as never} />);
 
     fireEvent.click(screen.getByTestId('project-switcher-trigger'));

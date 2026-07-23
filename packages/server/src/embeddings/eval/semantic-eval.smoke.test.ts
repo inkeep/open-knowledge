@@ -16,8 +16,8 @@
  * dark). The flag-flip decision reads this number from the run output.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { searchWorkspaceCorpus } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { loadEvalEmbedder, loadEvalSet, prepareEval, runHeldOutEval } from './semantic-eval.ts';
 
 const ENABLED = process.env.OK_EMBED_SMOKE === '1';

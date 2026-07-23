@@ -14,9 +14,9 @@
  * Iron Law: NO production code modified.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { describe, expect, test } from 'vitest';
 import {
   agentWriteMd,
   createTestClient,

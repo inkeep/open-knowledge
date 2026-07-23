@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { FileText, Film, FolderOpen, Image, Volume2 } from 'lucide-react';
+import { describe, expect, test } from 'vitest';
 import { getFileIcon, mentionPathToDescriptor } from './file-icons.ts';
 
 /**

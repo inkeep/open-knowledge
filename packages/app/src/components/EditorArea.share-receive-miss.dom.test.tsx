@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ConfigProvider } from '@/lib/config-provider';
 import { pendingReceiveNavStore } from '@/lib/share/pending-receive-nav-store';
 
@@ -18,47 +18,47 @@ const MISSING_DOC_CTX = {
 };
 let docCtx: typeof MISSING_DOC_CTX = MISSING_DOC_CTX;
 
-mock.module('@/lib/perf', () => ({
+vi.doMock('@/lib/perf', () => ({
   mark: () => {},
   ProfilerBoundary: ({ children }: { children: ReactNode }) => children,
 }));
-mock.module('@/components/PropertyContext', () => ({
+vi.doMock('@/components/PropertyContext', () => ({
   PropertyProvider: ({ children }: { children: ReactNode }) => children,
   useProperties: () => ({ requestAddProperty: () => {} }),
 }));
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => docCtx,
   useDocumentTransition: () => ({ openDocumentTransition: null }),
 }));
-mock.module('@/hooks/use-document-stats', () => ({ useDocumentStats: () => null }));
-mock.module('@/hooks/use-selection-stats', () => ({ useSelectionStats: () => null }));
-mock.module('@/hooks/use-lifecycle-status', () => ({ useLifecycleStatus: () => 'ready' }));
-mock.module('@/presence/use-sync-status', () => ({ useSyncStatus: () => 'synced' }));
-mock.module('@/lib/use-settings-route', () => ({
+vi.doMock('@/hooks/use-document-stats', () => ({ useDocumentStats: () => null }));
+vi.doMock('@/hooks/use-selection-stats', () => ({ useSelectionStats: () => null }));
+vi.doMock('@/hooks/use-lifecycle-status', () => ({ useLifecycleStatus: () => 'ready' }));
+vi.doMock('@/presence/use-sync-status', () => ({ useSyncStatus: () => 'synced' }));
+vi.doMock('@/lib/use-settings-route', () => ({
   useSettingsRoute: () => ({ open: false, close: () => {} }),
   SETTINGS_OPEN_HASH: '#settings',
   isSettingsShortcut: () => false,
 }));
-mock.module('@/components/settings/SettingsDialogShell', () => ({
+vi.doMock('@/components/settings/SettingsDialogShell', () => ({
   SettingsDialogShell: () => <div data-testid="settings-shell" />,
 }));
-mock.module('@/components/EditorSkeleton', () => ({
+vi.doMock('@/components/EditorSkeleton', () => ({
   EditorSkeleton: () => <div data-testid="editor-skeleton" />,
 }));
-mock.module('@/components/EmptyEditorState', () => ({
+vi.doMock('@/components/EmptyEditorState', () => ({
   EmptyEditorState: () => <div data-testid="empty-editor-state" />,
 }));
-mock.module('./TerminalDock', () => ({
+vi.doMock('./TerminalDock', () => ({
   TerminalDock: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
-mock.module('react-resizable-panels', () => ({
+vi.doMock('react-resizable-panels', () => ({
   usePanelRef: () => ({ current: { collapse: () => {}, expand: () => {} } }),
   // EditorArea imports `useGroupRef` alongside `usePanelRef`; the mock must
   // carry BOTH named exports or the `import { useGroupRef }` binding fails to
   // resolve and the whole file errors on load.
   useGroupRef: () => ({ current: { getLayout: () => [], setLayout: () => {} } }),
 }));
-mock.module('@/components/ui/resizable', () => ({
+vi.doMock('@/components/ui/resizable', () => ({
   ResizablePanelGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   ResizablePanel: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   ResizableHandle: () => <div />,
@@ -66,7 +66,7 @@ mock.module('@/components/ui/resizable', () => ({
 // The share-receive miss panel — stubbed so this test observes only which
 // branch EditorArea takes, not the panel's own fetch/verdict behavior (its own
 // dom test owns that).
-mock.module('@/components/ShareReceiveMissPanel', () => ({
+vi.doMock('@/components/ShareReceiveMissPanel', () => ({
   ShareReceiveMissPanel: ({ nav }: { nav: { path: string } }) => (
     <div data-testid="miss-panel" data-path={nav.path} />
   ),
@@ -74,29 +74,29 @@ mock.module('@/components/ShareReceiveMissPanel', () => ({
 // Editor-branch children — stubbed to a marker that surfaces the create-mode
 // placeholder, so "fell through to create-mode" is observable without the real
 // TipTap/CodeMirror stack.
-mock.module('./EditorActivityPool', () => ({
+vi.doMock('./EditorActivityPool', () => ({
   EditorActivityPool: ({ editorPlaceholder }: { editorPlaceholder?: string }) => (
     <div data-testid="editor-pool" data-placeholder={editorPlaceholder} />
   ),
 }));
-mock.module('@/editor/find-replace/FindReplaceController', () => ({
+vi.doMock('@/editor/find-replace/FindReplaceController', () => ({
   FindReplaceController: () => null,
 }));
-mock.module('./EditorToolbar', () => ({
+vi.doMock('./EditorToolbar', () => ({
   EditorToolbar: () => <div data-testid="editor-toolbar" />,
 }));
-mock.module('./EditorFooter', () => ({ EditorFooter: () => <div data-testid="editor-footer" /> }));
+vi.doMock('./EditorFooter', () => ({ EditorFooter: () => <div data-testid="editor-footer" /> }));
 // The create-mode branch mounts BottomComposer, which reaches useConfigContext
 // via useHandoffDispatch — stub it out (this test only asserts which primary
 // view renders, not the ask-composer, and pulling in the real config context
 // is out of scope).
-mock.module('./BottomComposer', () => ({
+vi.doMock('./BottomComposer', () => ({
   BottomComposer: () => <div data-testid="bottom-composer" />,
 }));
-mock.module('./editor-area-overlay', () => ({ shouldPaintOverlay: () => false }));
+vi.doMock('./editor-area-overlay', () => ({ shouldPaintOverlay: () => false }));
 // The editor `else` branch mounts DocPanel as its right panel; it reads
 // usePageList, so stub it out — this test only cares which primary view renders.
-mock.module('@/components/DocPanel', () => ({ DocPanel: () => <div data-testid="doc-panel" /> }));
+vi.doMock('@/components/DocPanel', () => ({ DocPanel: () => <div data-testid="doc-panel" /> }));
 
 const { EditorArea } = await import('./EditorArea');
 

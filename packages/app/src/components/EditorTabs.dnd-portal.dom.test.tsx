@@ -16,10 +16,11 @@
  * `:first-child` slot, leaving `+` 6px below where the icon-row sits
  * (cy=37 instead of cy=32 in a 48px header).
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { DndContext } from '@dnd-kit/core';
 import { SortableContext } from '@dnd-kit/sortable';
 import { cleanup, render } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 
 function StripFixture({ items, withPortal }: { items: string[]; withPortal: boolean }) {
   return (

@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type ViteUserConfig } from 'vitest/config';
-import { bunGlobalShimPath, bunTestShimPath, okVitestBase } from '../../test-support/vitest.base';
+import { bunGlobalShimPath, okVitestBase } from '../../test-support/vitest.base';
 import { RENDERER_DEDUPE } from './vite.dedupe';
 
 // `@lingui/{react,core}/macro` only run under the build's Babel macro pass; a
@@ -29,7 +29,6 @@ export const appVitestConfig = {
   resolve: {
     ...okVitestBase.resolve,
     alias: [
-      { find: 'bun:test', replacement: bunTestShimPath },
       { find: '@lingui/react/macro', replacement: linguiMacroShim },
       { find: '@lingui/core/macro', replacement: linguiMacroShim },
       { find: /^@\//, replacement: srcDir },

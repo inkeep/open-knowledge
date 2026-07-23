@@ -4,8 +4,8 @@
  * the published schema and the form's introspection surfaces here.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { ConfigSchema } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import {
   buildPatch,
   getEnumOptions,

@@ -16,18 +16,18 @@
  * strip×glue fix that ships separately).
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { Editor, type JSONContent } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
 import * as actualSonner from 'sonner';
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { installDomGlobals } from '../walk-currency-test-harness';
 import { createClipboardTextSerializer } from './serialize';
 
 // The dispatcher pulls the degrade-path toast (sonner) into its import graph;
 // stub it so module load stays inert. The splice path never degrades.
-mock.module('sonner', () => ({ ...actualSonner, toast: { error: mock(() => {}) } }));
+vi.doMock('sonner', () => ({ ...actualSonner, toast: { error: vi.fn(() => {}) } }));
 
 const mdManager = new MarkdownManager({ extensions: sharedExtensions });
 

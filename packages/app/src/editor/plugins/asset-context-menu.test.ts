@@ -4,7 +4,7 @@
  * without mounting an editor.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { classifyContextMenuTarget } from './asset-context-menu';
 
 function makeEl(tag: string, attrs: Record<string, string> = {}): Element {

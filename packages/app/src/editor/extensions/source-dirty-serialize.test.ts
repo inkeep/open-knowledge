@@ -11,9 +11,10 @@
  * - Dirty (sourceDirty:true) → reconstruction path emitted
  * - effectiveDirty (descendant dirty) → parent reconstructs
  */
-import { describe, expect, test } from 'bun:test';
+
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import type { JSONContent } from '@tiptap/core';
+import { describe, expect, test } from 'vitest';
 
 const mdManager = new MarkdownManager({ extensions: sharedExtensions });
 

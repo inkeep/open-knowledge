@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 let mockVisible = false;
-mock.module('@/hooks/use-onboarding-card-visible', () => ({
+vi.doMock('@/hooks/use-onboarding-card-visible', () => ({
   useOnboardingCardVisible: () => mockVisible,
 }));
 
@@ -13,7 +13,7 @@ const { OnboardingCardMount } = await import('./OnboardingCard');
 let originalFetch: typeof globalThis.fetch;
 beforeEach(() => {
   originalFetch = globalThis.fetch;
-  globalThis.fetch = mock(() =>
+  globalThis.fetch = vi.fn(() =>
     Promise.resolve(new Response(JSON.stringify({ documents: [] }), { status: 200 })),
   ) as never;
 });

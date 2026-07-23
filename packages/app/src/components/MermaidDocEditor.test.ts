@@ -7,7 +7,7 @@
  * manifesting as corrupted diagram labels after a click-edit.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { replaceYText } from './MermaidDocEditor.tsx';
 

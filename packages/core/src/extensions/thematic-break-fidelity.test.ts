@@ -10,9 +10,9 @@
  * match.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { getSchema } from '@tiptap/core';
 import { EditorState } from '@tiptap/pm/state';
+import { describe, expect, test } from 'vitest';
 import { sharedExtensions } from './shared.ts';
 import {
   THEMATIC_BREAK_INPUT_RE,

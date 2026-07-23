@@ -7,10 +7,10 @@
  * exactly the kind of pure logic that regresses silently on a refactor.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
+import { describe, expect, test } from 'vitest';
 
 import { computeDragTarget, tableWithMovedColumn, tableWithMovedRow } from './useTableDragReorder';
 

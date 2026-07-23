@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import ignore from 'ignore';
+import { describe, expect, test } from 'vitest';
 import { buildOkignorePatternFromTarget } from './file-tree-okignore';
 
 describe('buildOkignorePatternFromTarget — file leaves', () => {

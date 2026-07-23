@@ -9,7 +9,7 @@
  * with the live LGTM stack running — Docker is
  * not running in this environment.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   parseTempoTimings,
   queryTempoByMountId,

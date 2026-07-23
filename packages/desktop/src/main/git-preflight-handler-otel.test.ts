@@ -2,7 +2,7 @@
  * OTEL emission tests for the Electron preflight handler.
  *
  * The desktop package has no direct `@opentelemetry/*` deps and cannot
- * mount an `InMemorySpanExporter`. We use bun's `mock.module` to intercept
+ * mount an `InMemorySpanExporter`. We use bun's `vi.doMock` to intercept
  * `emitPreflightFailureSpan` at the `@inkeep/open-knowledge-server`
  * boundary — capturing every call without touching the real OTel SDK.
  * Mirrors the precedent set by `onboarding-telemetry.test.ts`.
@@ -13,7 +13,7 @@
  * two typed git-preflight error classes).
  */
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 // Pull the real server module first so we can re-export everything except
 // `emitPreflightFailureSpan`. Top-level await is supported in bun ESM.
@@ -27,7 +27,7 @@ interface EmittedError {
 
 const emissions: EmittedError[] = [];
 
-mock.module('@inkeep/open-knowledge-server', () => ({
+vi.doMock('@inkeep/open-knowledge-server', () => ({
   ...actual,
   emitPreflightFailureSpan: (err: unknown) => {
     const e = err as Error & { platform?: string; detected?: string };
@@ -57,7 +57,7 @@ interface MessageBoxOptionsLite {
 
 function showMessageBoxSequence(responses: readonly number[]) {
   const remaining = [...responses];
-  return mock(async () => {
+  return vi.fn(async () => {
     const next = remaining.shift();
     if (next === undefined) {
       throw new Error('showMessageBox called more times than queued');
@@ -79,11 +79,11 @@ describe('ensureGitAvailable — FR8 emission per typed-error observation', () =
       source: 'PATH' as const,
     });
     const showMessageBox = showMessageBoxSequence([]);
-    const openExternal = mock(async () => {});
+    const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
-      // biome-ignore lint/suspicious/noExplicitAny: mock.module returns the spy
+      // biome-ignore lint/suspicious/noExplicitAny: vi.doMock returns the spy
       showMessageBox: showMessageBox as any,
       openExternal,
     });
@@ -97,11 +97,11 @@ describe('ensureGitAvailable — FR8 emission per typed-error observation', () =
       throw new GitNotAvailableError('linux', LINUX_GUIDANCE);
     };
     const showMessageBox = showMessageBoxSequence([2]); // BUTTON_QUIT
-    const openExternal = mock(async () => {});
+    const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
-      // biome-ignore lint/suspicious/noExplicitAny: mock.module returns the spy
+      // biome-ignore lint/suspicious/noExplicitAny: vi.doMock returns the spy
       showMessageBox: showMessageBox as any,
       openExternal,
     });
@@ -121,11 +121,11 @@ describe('ensureGitAvailable — FR8 emission per typed-error observation', () =
       1, // BUTTON_RETRY
       2, // BUTTON_QUIT
     ]);
-    const openExternal = mock(async () => {});
+    const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
-      // biome-ignore lint/suspicious/noExplicitAny: mock.module returns the spy
+      // biome-ignore lint/suspicious/noExplicitAny: vi.doMock returns the spy
       showMessageBox: showMessageBox as any,
       openExternal,
     });
@@ -151,11 +151,11 @@ describe('ensureGitAvailable — FR8 emission per typed-error observation', () =
       };
     };
     const showMessageBox = showMessageBoxSequence([1]); // BUTTON_RETRY
-    const openExternal = mock(async () => {});
+    const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
-      // biome-ignore lint/suspicious/noExplicitAny: mock.module returns the spy
+      // biome-ignore lint/suspicious/noExplicitAny: vi.doMock returns the spy
       showMessageBox: showMessageBox as any,
       openExternal,
     });
@@ -169,11 +169,11 @@ describe('ensureGitAvailable — FR8 emission per typed-error observation', () =
       throw new GitTooOldError('darwin', '2.20.0', '2.31.0', '/usr/bin/git', LINUX_GUIDANCE);
     };
     const showMessageBox = showMessageBoxSequence([2]); // BUTTON_QUIT
-    const openExternal = mock(async () => {});
+    const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
-      // biome-ignore lint/suspicious/noExplicitAny: mock.module returns the spy
+      // biome-ignore lint/suspicious/noExplicitAny: vi.doMock returns the spy
       showMessageBox: showMessageBox as any,
       openExternal,
     });
@@ -190,12 +190,12 @@ describe('ensureGitAvailable — FR8 emission per typed-error observation', () =
       throw new Error('something completely different');
     };
     const showMessageBox = showMessageBoxSequence([]);
-    const openExternal = mock(async () => {});
-    const warn = mock(() => {});
+    const openExternal = vi.fn(async () => {});
+    const warn = vi.fn(() => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
-      // biome-ignore lint/suspicious/noExplicitAny: mock.module returns the spy
+      // biome-ignore lint/suspicious/noExplicitAny: vi.doMock returns the spy
       showMessageBox: showMessageBox as any,
       openExternal,
       log: { warn },
@@ -215,11 +215,11 @@ describe('ensureGitAvailable — FR8 emission per typed-error observation', () =
       0, // BUTTON_OPEN_INSTALL_PAGE
       2, // BUTTON_QUIT
     ]);
-    const openExternal = mock(async () => {});
+    const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
-      // biome-ignore lint/suspicious/noExplicitAny: mock.module returns the spy
+      // biome-ignore lint/suspicious/noExplicitAny: vi.doMock returns the spy
       showMessageBox: showMessageBox as any,
       openExternal,
     });

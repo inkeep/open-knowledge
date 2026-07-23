@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test';
 import type { McpEntryClassification } from '@inkeep/open-knowledge';
 import type { IpcMainInvokeEvent } from 'electron';
+import { describe, expect, test } from 'vitest';
 import type {
   McpWiringEditorId,
   ProjectIntegrationsSetRequest,

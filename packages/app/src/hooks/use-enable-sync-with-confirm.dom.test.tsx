@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   useLingui: () => ({
     t: (strings: TemplateStringsArray, ...values: unknown[]) =>
@@ -12,7 +12,7 @@ mock.module('@lingui/react/macro', () => ({
 }));
 
 const toastErrors: string[] = [];
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: {
     error: (message: string) => toastErrors.push(message),
   },
@@ -25,7 +25,7 @@ let projectBinding: null | {
   patch: (patch: unknown) => { ok: true } | { ok: false; error: unknown };
 } = null;
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({ projectBinding, projectLocalBinding }),
 }));
 
@@ -70,7 +70,7 @@ function DefaultWriterProbe() {
 }
 
 describe('useEnableSyncWithConfirm runtime behavior', () => {
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   afterEach(() => {
     cleanup();
@@ -131,7 +131,7 @@ describe('useEnableSyncWithConfirm runtime behavior', () => {
 
   test('confirm keeps the dialog open when enabling fails', async () => {
     await loadHooks();
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const writer: Writer = () => ({ ok: false, error: 'branch is protected' });
     render(<ConfirmProbe writer={writer} />);
 
@@ -163,7 +163,7 @@ describe('useEnableSyncWithConfirm runtime behavior', () => {
 
   test('does not fire opts.onEnabled when the enable write fails', async () => {
     await loadHooks();
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     let enabledCalls = 0;
     const writer: Writer = () => ({ ok: false, error: 'branch is protected' });
     render(<ConfirmProbe writer={writer} onEnabled={() => enabledCalls++} />);

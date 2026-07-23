@@ -24,9 +24,9 @@
  * shims around).
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { ALLOWED_IMAGE_MIME_TYPES } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 // Radix Popover focus-trap reaches for these jsdom-missing pieces.
 type GlobalShims = typeof globalThis & {
@@ -73,7 +73,7 @@ const stubPageListValue = {
   refetch: () => {},
   addPage: () => {},
 };
-mock.module('@/components/PageListContext', () => ({
+vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => stubPageListValue,
   useOptionalPageList: () => stubPageListValue,
 }));
@@ -167,7 +167,7 @@ describe('SrcAutocomplete — open behavior', () => {
 describe('SrcAutocomplete — selection contract', () => {
   test('clicking a suggestion emits onChange with leading-slash server-absolute path', () => {
     stubAssetPaths.add('assets/photo.png');
-    const onChange = mock((_v: string) => {});
+    const onChange = vi.fn((_v: string) => {});
 
     render(
       <SrcAutocomplete
@@ -193,7 +193,7 @@ describe('SrcAutocomplete — selection contract', () => {
   test('typing then Enter on the highlighted item emits onChange with the path', () => {
     stubAssetPaths.add('assets/photo.png');
     stubAssetPaths.add('assets/banner.png');
-    const onChange = mock((_v: string) => {});
+    const onChange = vi.fn((_v: string) => {});
 
     render(
       <SrcAutocomplete
@@ -244,7 +244,7 @@ describe('SrcAutocomplete — keyboard handling', () => {
 
   test('Enter with no matching suggestions does NOT call onChange (no phantom selection)', () => {
     // No assets — popover stays closed; Enter must not invoke selectSuggestion.
-    const onChange = mock((_v: string) => {});
+    const onChange = vi.fn((_v: string) => {});
 
     render(
       <SrcAutocomplete
@@ -267,7 +267,7 @@ describe('SrcAutocomplete — keyboard handling', () => {
     // wiring, Enter is a silent no-op for any user who typed a fresh
     // value and pressed Enter expecting "I'm done" acknowledgment —
     // the rename gesture.
-    const onSubmit = mock(() => {});
+    const onSubmit = vi.fn(() => {});
     render(
       <SrcAutocomplete
         id="prop-src"
@@ -288,8 +288,8 @@ describe('SrcAutocomplete — keyboard handling', () => {
     // confirming the autocomplete pill they highlighted, not asking
     // the popover to close.
     stubAssetPaths.add('assets/photo.png');
-    const onChange = mock((_v: string) => {});
-    const onSubmit = mock(() => {});
+    const onChange = vi.fn((_v: string) => {});
+    const onSubmit = vi.fn(() => {});
     render(
       <SrcAutocomplete
         id="prop-src"

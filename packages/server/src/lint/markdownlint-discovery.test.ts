@@ -6,7 +6,6 @@
  * (markdownlint-cli2 semantics: nearest file governs wholesale).
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   chmodSync,
   mkdirSync,
@@ -18,6 +17,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   discoverMarkdownlintConfig,
   readOwnNativeRules,
@@ -275,7 +275,7 @@ describe('readOwnNativeRules', () => {
 
   // Root reads any file regardless of mode, so the permission probe only
   // proves the rethrow when the process isn't privileged.
-  test.if(process.getuid?.() !== 0)(
+  test.runIf(process.getuid?.() !== 0)(
     'THROWS on a filesystem read failure — an unreadable file is not "no rules"',
     () => {
       write('.markdownlint.json', JSON.stringify({ MD013: false }));

@@ -11,14 +11,15 @@
  * factories surface a `resolve` hook so the test can hold each "subprocess"
  * mid-flight while it asserts coalescing behavior.
  */
-import { describe, expect, mock, test } from 'bun:test';
+
 import type { AuthReposResponse, AuthStatusResponse } from '@inkeep/open-knowledge-server';
+import { describe, expect, test, vi } from 'vitest';
 
 const statusCalls: Array<{ host: string | undefined; resolve: (r: AuthStatusResponse) => void }> =
   [];
 const reposCalls: Array<{ host: string | undefined; resolve: (r: AuthReposResponse) => void }> = [];
 
-mock.module('@inkeep/open-knowledge-server', () => ({
+vi.doMock('@inkeep/open-knowledge-server', () => ({
   runAuthStatusSubprocess: ({ host }: { host?: string }) =>
     new Promise<AuthStatusResponse>((resolve) => {
       statusCalls.push({ host, resolve });

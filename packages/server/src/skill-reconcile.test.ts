@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
   lstatSync,
@@ -11,6 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { readInstalledSkills } from './installed-skills-marker.ts';
 import { countImportableEditorSkills, reconcileSkillInstalls } from './skill-reconcile.ts';
 

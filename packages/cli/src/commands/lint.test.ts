@@ -4,8 +4,8 @@
  * shaping against a synthetic result (no fs).
  */
 
-import { describe, expect, test } from 'bun:test';
 import { isAbsolute } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import type { LintRunResult } from '../content/lint-runner.ts';
 import { formatLintReport, resolveTarget } from './lint.ts';
 

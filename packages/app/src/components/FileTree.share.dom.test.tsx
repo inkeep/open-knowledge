@@ -1,14 +1,14 @@
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MouseEventHandler, ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { FileEntry } from './file-tree-utils';
 
 // Controls the mocked git-sync hook's hasRemote signal per test.
 let hasRemote = true;
 // Captures the input runShareAction receives.
 let lastShareInput: unknown;
-const runShareActionMock = mock(async (input: unknown) => {
+const runShareActionMock = vi.fn(async (input: unknown) => {
   lastShareInput = input;
   return { kind: 'copied' as const, shareUrl: 'https://example.test/x', branch: 'main' };
 });
@@ -68,8 +68,8 @@ function MenuSeparator() {
   return <hr />;
 }
 
-const toastSuccessMock = mock(() => {});
-const toastErrorMock = mock(() => {});
+const toastSuccessMock = vi.fn(() => {});
+const toastErrorMock = vi.fn(() => {});
 
 const DOCUMENTS: FileEntry[] = [
   { kind: 'folder', path: 'notes', size: 0, modified: '2026-05-18T00:00:00.000Z' },
@@ -129,7 +129,7 @@ class StubModel {
   focusedPath: string | null = null;
   selectedPaths: string[] = [];
   items = new Map<string, StubItem>();
-  startRenaming = mock(() => {});
+  startRenaming = vi.fn(() => {});
   getFocusedPath() {
     return this.focusedPath;
   }
@@ -169,7 +169,7 @@ class StubModel {
 
 let model = new StubModel();
 let menuItem: { kind: 'file' | 'directory'; path: string };
-let closeMenuMock = mock(() => {});
+let closeMenuMock = vi.fn(() => {});
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -179,7 +179,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function makeFetchMock() {
-  return mock(async (input: RequestInfo | URL) => {
+  return vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     if (url.startsWith('/api/documents')) return jsonResponse({ documents: DOCUMENTS });
     if (url === '/api/workspace') {
@@ -194,15 +194,15 @@ function makeFetchMock() {
   });
 }
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: { success: toastSuccessMock, error: toastErrorMock },
 }));
 
-mock.module('next-themes', () => ({
+vi.doMock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'light' }),
 }));
 
-mock.module('@/hooks/use-git-sync-status', () => ({
+vi.doMock('@/hooks/use-git-sync-status', () => ({
   useGitSyncStatusDetailed: () => ({
     status: { hasRemote, syncEnabled: hasRemote, behind: 0, ahead: 0 },
     fetchError: null,
@@ -210,17 +210,17 @@ mock.module('@/hooks/use-git-sync-status', () => ({
   useGitSyncStatus: () => ({ hasRemote, syncEnabled: hasRemote, behind: 0, ahead: 0 }),
 }));
 
-mock.module('@/lib/share/clipboard-adapter', () => ({
+vi.doMock('@/lib/share/clipboard-adapter', () => ({
   scheduleClipboardWrite: async () => {},
 }));
 
-mock.module('@/lib/share/run-share-action', () => ({
+vi.doMock('@/lib/share/run-share-action', () => ({
   buildDocShareInput: (docName: string) => ({ kind: 'doc', docName }),
   buildFolderShareInput: (folderRelativePath: string) => ({ kind: 'folder', folderRelativePath }),
   runShareAction: runShareActionMock,
 }));
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName: 'notes/source',
     activeTarget: { kind: 'doc', target: 'notes/source', docName: 'notes/source' },
@@ -238,29 +238,29 @@ mock.module('@/editor/DocumentContext', () => ({
   }),
 }));
 
-mock.module('@/components/PageListContext', () => ({
+vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => ({ addPage: () => {}, pageMeta: new Map() }),
 }));
 
-mock.module('./ui/sidebar', () => ({
+vi.doMock('./ui/sidebar', () => ({
   useSidebar: () => ({ notifySidebarFileSelected: () => {} }),
 }));
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({ okignoreBinding: null, projectLocalBinding: null, merged: null }),
 }));
 
-mock.module('./handoff/useInstalledAgents', () => ({
+vi.doMock('./handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states: {} }),
 }));
 
-mock.module('./handoff/useHandoffDispatch', () => ({
+vi.doMock('./handoff/useHandoffDispatch', () => ({
   buildFolderHandoffInput: () => null,
   buildHandoffInput: () => null,
   useHandoffDispatch: () => ({ dispatch: async () => ({ ok: true as const }) }),
 }));
 
-mock.module('./handoff/OpenInAgentContextSubmenu', () => ({
+vi.doMock('./handoff/OpenInAgentContextSubmenu', () => ({
   OpenInAgentContextSubmenu: () => (
     <button type="button" role="menuitem" data-testid="file-tree-menu-open-in-agent">
       Open with AI
@@ -268,12 +268,12 @@ mock.module('./handoff/OpenInAgentContextSubmenu', () => ({
   ),
 }));
 
-mock.module('./sidebar-hover-prewarm', () => ({
+vi.doMock('./sidebar-hover-prewarm', () => ({
   cancelHoverPrewarm: () => {},
   scheduleHoverPrewarm: () => {},
 }));
 
-mock.module('@/components/ui/button', () => ({
+vi.doMock('@/components/ui/button', () => ({
   Button: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
     <button type="button" {...props}>
       {children}
@@ -281,9 +281,9 @@ mock.module('@/components/ui/button', () => ({
   ),
 }));
 
-mock.module('@/components/ui/dialog', () => ({ Dialog: PassThrough }));
+vi.doMock('@/components/ui/dialog', () => ({ Dialog: PassThrough }));
 
-mock.module('@/components/ui/dropdown-menu', () => ({
+vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: PassThrough,
   DropdownMenuCheckboxItem: MenuItem,
   DropdownMenuContent: MenuContent,
@@ -295,32 +295,32 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuTrigger: PassThrough,
 }));
 
-mock.module('@/components/ui/skeleton', () => ({
+vi.doMock('@/components/ui/skeleton', () => ({
   Skeleton: ({ className }: { className?: string }) => <span className={className} />,
 }));
 
-mock.module('@/components/DeleteConfirmationDialog', () => ({
+vi.doMock('@/components/DeleteConfirmationDialog', () => ({
   DeleteConfirmationDialog: () => null,
 }));
 
-mock.module('@/components/NewItemDialog', () => ({ NewItemDialog: () => null }));
+vi.doMock('@/components/NewItemDialog', () => ({ NewItemDialog: () => null }));
 
-mock.module('@/components/TrashFailureModal', () => ({
+vi.doMock('@/components/TrashFailureModal', () => ({
   TrashFailureModal: () => null,
   coerceTrashFailureReason: (reason: string) => reason,
 }));
 
-mock.module('@/components/use-selection-mirror', () => ({
+vi.doMock('@/components/use-selection-mirror', () => ({
   asDirectoryHandle: (item: StubItem | null) => (item?.isDirectory() ? item : null),
   useSelectionMirror: () => {},
 }));
 
-mock.module('@pierre/trees', () => ({
+vi.doMock('@pierre/trees', () => ({
   FILE_TREE_TAG_NAME: 'ok-file-tree',
   themeToTreeStyles: () => ({}),
 }));
 
-mock.module('@pierre/trees/react', () => ({
+vi.doMock('@pierre/trees/react', () => ({
   useFileTree: () => ({ model }),
   FileTree: ({
     renderContextMenu,
@@ -355,19 +355,19 @@ function renderFileTree() {
 }
 
 describe('FileTree context-menu Share action', () => {
-  let consoleLogSpy: ReturnType<typeof spyOn>;
+  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     model = new StubModel();
     menuItem = { kind: 'file', path: 'notes/source.mdx' };
-    closeMenuMock = mock(() => {});
+    closeMenuMock = vi.fn(() => {});
     hasRemote = true;
     lastShareInput = undefined;
     globalThis.fetch = makeFetchMock() as unknown as typeof fetch;
     runShareActionMock.mockClear();
     toastSuccessMock.mockClear();
     toastErrorMock.mockClear();
-    consoleLogSpy = spyOn(console, 'log').mockImplementation(() => {});
+    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
   afterEach(() => {

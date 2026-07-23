@@ -5,7 +5,7 @@
  * hygiene, input caps, error classification, and failure containment.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   extractMermaidFences,
   setMermaidImporterForTests,

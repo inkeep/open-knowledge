@@ -4,9 +4,9 @@
  * `validateCloneInputs` URL/path allowlists.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { type RawCloneEvent, runCloneSubprocess, validateCloneInputs } from './clone-flow.ts';
 
 // `validateCloneInputs` confines the target to the user's home directory.

@@ -20,11 +20,12 @@
  *   - Persistence's debounce window is bounded by `maxDebounce: 500` so the
  *     test can wait deterministically.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterEach, describe, expect, test } from 'vitest';
 import { createTestClient, createTestServer, pollUntil, type TestServer } from './test-harness';
 
 const BASE_CONTENT = '# Base\n\nBase paragraph.\n';

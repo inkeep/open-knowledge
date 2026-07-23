@@ -9,7 +9,7 @@
  * MUST NOT bump userTx — counting them would re-flip the gate every drain.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import {
   __resetQuiescenceForTests,

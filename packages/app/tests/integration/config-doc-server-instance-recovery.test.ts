@@ -23,12 +23,12 @@
  *     simply never merged.)
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { CONFIG_DOC_NAME_OKIGNORE } from '@inkeep/open-knowledge-core';
+import { afterEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { buildAuthToken } from '../../src/lib/auth-token';
 import { createRestartableServer, pollUntil, waitForSync } from './test-harness';

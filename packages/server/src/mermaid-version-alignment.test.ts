@@ -6,9 +6,9 @@
  * together.
  */
 
-import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { expect, test } from 'vitest';
 
 test('server and app declare the identical mermaid range', () => {
   const serverPkg = JSON.parse(readFileSync(join(import.meta.dir, '../package.json'), 'utf8')) as {

@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { BUNDLE_SKILL_NAME, USER_GLOBAL_BUNDLE_IDS } from '@inkeep/open-knowledge-server';
+import { describe, expect, test } from 'vitest';
 import { HOSTS_WITH_USER_SKILL_DIR } from '../commands/editors.ts';
 import { userGlobalSkillBundleTargets } from './skill-teardown.ts';
 

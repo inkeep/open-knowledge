@@ -1,6 +1,6 @@
-import { describe, expect, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test, vi } from 'vitest';
 import { createInvoker } from '../../src/shared/ipc-invoke.ts';
 
 /**
@@ -18,7 +18,7 @@ import { createInvoker } from '../../src/shared/ipc-invoke.ts';
 
 describe('createInvoker (typed IPC factory)', () => {
   test('forwards channel + args to ipcRenderer.invoke verbatim', async () => {
-    const invoke = mock((channel: string, ...args: unknown[]) =>
+    const invoke = vi.fn((channel: string, ...args: unknown[]) =>
       Promise.resolve({ channel, args }),
     );
     // biome-ignore lint/suspicious/noExplicitAny: minimal IpcRenderer-compatible mock
@@ -30,7 +30,7 @@ describe('createInvoker (typed IPC factory)', () => {
   });
 
   test('passes positional args through (e.g., shell.openExternal URL)', async () => {
-    const invoke = mock((channel: string, ...args: unknown[]) =>
+    const invoke = vi.fn((channel: string, ...args: unknown[]) =>
       Promise.resolve({ channel, args }),
     );
     // biome-ignore lint/suspicious/noExplicitAny: minimal IpcRenderer-compatible mock
@@ -41,7 +41,7 @@ describe('createInvoker (typed IPC factory)', () => {
   });
 
   test('return type is awaited from invoke', async () => {
-    const invoke = mock(() => Promise.resolve('/Users/test/picked-folder'));
+    const invoke = vi.fn(() => Promise.resolve('/Users/test/picked-folder'));
     // biome-ignore lint/suspicious/noExplicitAny: minimal IpcRenderer-compatible mock
     const fakeIpc = { invoke } as any;
     const typedInvoker = createInvoker(fakeIpc);

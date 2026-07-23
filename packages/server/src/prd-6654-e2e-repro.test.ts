@@ -11,7 +11,7 @@
  * handler) and asserts the second find SUCCEEDS (200) — a byte round-trip
  * for the byte-requiring consumer, not tolerance-equivalence.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -20,6 +20,7 @@ import { Readable } from 'node:stream';
 import { Hocuspocus } from '@hocuspocus/server';
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { AGENT_WRITE_ORIGIN, AgentSessionManager } from './agent-sessions.ts';
 import { createApiExtension } from './api-extension.ts';

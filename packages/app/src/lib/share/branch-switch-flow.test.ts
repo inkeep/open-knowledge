@@ -1,6 +1,5 @@
-import { describe, expect, test } from 'bun:test';
-
 import { type BranchInfoResponse, BranchInfoResponseSchema } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 
 import {
   applyBranchInfo,

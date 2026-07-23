@@ -8,8 +8,8 @@
  * path where the `finally` matters — a try/catch refactor would break it).
  */
 
-import { afterAll, beforeAll, expect, test } from 'bun:test';
 import type { EditorView } from '@tiptap/pm/view';
+import { afterAll, beforeAll, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { mountCollabEditor, readUndoManager } from './editor-rig.test-helper';
 import { dispatchAsOwnUndoStep } from './undo-isolation';

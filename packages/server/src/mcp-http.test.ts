@@ -12,12 +12,13 @@
  * Co-located with `mcp-http.ts`; the `packages/app/tests/integration/mcp-http.test.ts`
  * sibling covers the basic init+tools/list flow.
  */
-import { afterEach, beforeEach, expect, test } from 'bun:test';
+
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterEach, beforeEach, expect, test } from 'vitest';
 import { type Config, ConfigSchema } from './config/schema.ts';
 import { getFreeLoopbackPort } from './loopback-rig-test-helpers.ts';
 import { MCP_CONNECTION_ID_HEADER } from './mcp/agent-identity.ts';

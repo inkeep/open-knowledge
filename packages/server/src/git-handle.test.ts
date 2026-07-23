@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { execSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { applyGitEnv, buildGitEnv, createGitInstance, type GitHandle } from './git-handle.ts';
 import { withParentLock } from './git-mutex.ts';
 

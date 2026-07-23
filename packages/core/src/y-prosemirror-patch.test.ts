@@ -72,10 +72,10 @@
  * at https://github.com/yjs/y-prosemirror and https://github.com/ueberdosis/y-tiptap.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, test } from 'vitest';
 
 function findRepoRoot(): string {
   // this file lives at packages/core/src/ — repo root is two dirs up from package.json

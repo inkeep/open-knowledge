@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { formatPackRationale, PACK_INSPIRATION_NOTE } from './rationale.ts';
 import { STARTER_PACK_IDS, STARTER_PACKS } from './starter.ts';
 

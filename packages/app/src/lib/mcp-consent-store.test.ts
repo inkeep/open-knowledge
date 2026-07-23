@@ -3,7 +3,7 @@
  * Repo convention is no @testing-library/react; tests exercise the store via
  * the module API directly and assert bridge-call counters + snapshot deltas.
  */
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import type {
   OkDesktopBridge,
   OkMcpWiringEditorId,
@@ -13,10 +13,10 @@ import { createMcpConsentStore } from './mcp-consent-store';
 
 interface MockBridgeShape {
   mcpWiring: {
-    onShow: ReturnType<typeof mock>;
-    signalReady: ReturnType<typeof mock>;
-    confirm: ReturnType<typeof mock>;
-    skip: ReturnType<typeof mock>;
+    onShow: ReturnType<typeof vi.fn>;
+    signalReady: ReturnType<typeof vi.fn>;
+    confirm: ReturnType<typeof vi.fn>;
+    skip: ReturnType<typeof vi.fn>;
   };
   fireShow: (payload: OkMcpWiringShowPayload) => void;
   unsubscribeCalls: number;
@@ -34,19 +34,19 @@ function makeBridge(
     handler: null as ((payload: OkMcpWiringShowPayload) => void) | null,
     unsubscribeCalls: 0,
   };
-  const onShow = mock((cb: (payload: OkMcpWiringShowPayload) => void) => {
+  const onShow = vi.fn((cb: (payload: OkMcpWiringShowPayload) => void) => {
     state.handler = cb;
-    return mock(() => {
+    return vi.fn(() => {
       state.handler = null;
       state.unsubscribeCalls += 1;
     });
   });
-  const signalReady = mock(() => {});
-  const confirm = mock(() => {
+  const signalReady = vi.fn(() => {});
+  const confirm = vi.fn(() => {
     if (opts.confirmThrows) return Promise.reject(new Error('confirm-boom'));
     return Promise.resolve(opts.confirmResult ?? { ok: true });
   });
-  const skip = mock(() => {
+  const skip = vi.fn(() => {
     if (opts.skipThrows) return Promise.reject(new Error('skip-boom'));
     return Promise.resolve(opts.skipResult ?? { ok: true });
   });
@@ -119,7 +119,7 @@ describe('createMcpConsentStore — onShow propagation', () => {
     const store = createMcpConsentStore();
     const bridge = makeBridge();
     store.install({ bridge });
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     store.subscribe(listener);
 
     bridge.fireShow(sampleShowPayload);
@@ -131,7 +131,7 @@ describe('createMcpConsentStore — onShow propagation', () => {
     const store = createMcpConsentStore();
     const bridge = makeBridge();
     store.install({ bridge });
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     const unsub = store.subscribe(listener);
     unsub();
     bridge.fireShow(sampleShowPayload);
@@ -257,7 +257,7 @@ describe('createMcpConsentStore — dismiss', () => {
     const store = createMcpConsentStore();
     const bridge = makeBridge();
     store.install({ bridge });
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     store.subscribe(listener);
 
     store.dismiss();

@@ -166,7 +166,7 @@ vi.doMock('@/lib/terminal-height-store', () => ({
 
 const { TerminalDock } = await import('./TerminalDock');
 const { TerminalSessionsHost } = await import('./TerminalSessionsHost');
-// After the mock.module block (a static import would load the real xterm).
+// After the vi.doMock block (a static import would load the real xterm).
 const { STAGE_PASTE_SETTLE_MS } = await import('./TerminalPanel');
 
 function makeBridge() {

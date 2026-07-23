@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ReactNode, useLayoutEffect, useState } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { hashFromAssetPath } from '@/lib/doc-hash';
 import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
@@ -9,7 +9,7 @@ import { assetTabId, docTabId, localTabSessionStorageKey } from './editor-tabs';
 
 let mockCollabUrl: string | null = null;
 
-mock.module('@/lib/use-collab-url', () => ({
+vi.doMock('@/lib/use-collab-url', () => ({
   useCollabUrl: () => ({
     collabUrl: mockCollabUrl,
     attempts: 0,
@@ -306,7 +306,7 @@ describe('DocumentContext tab close force contract', () => {
 
   test('reopenClosedTab skips already-open entries and continues to the next closed tab', async () => {
     mockCollabUrl = 'ws://localhost:1/collab';
-    globalThis.fetch = mock(() => Promise.reject(new Error('unexpected fetch'))) as never;
+    globalThis.fetch = vi.fn(() => Promise.reject(new Error('unexpected fetch'))) as never;
     seedThreeTabSession();
     render(<CloseActiveHarness />, { wrapper: ProviderHarness });
 
@@ -401,7 +401,7 @@ describe('DocumentContext tab close force contract', () => {
 
   test('desktop close-active-tab-or-window action closes tabs before closing the editor window', async () => {
     seedActiveOtherTabSession();
-    const closeSpy = spyOn(window, 'close').mockImplementation(() => {});
+    const closeSpy = vi.spyOn(window, 'close').mockImplementation(() => {});
     const stub = makeEditorBridgeStub();
 
     render(<BridgeCloseActiveHarness bridge={stub.bridge} />, { wrapper: ProviderHarness });
@@ -717,7 +717,7 @@ describe('DocumentContext syncOpenTabsWithKnownTargets — cold-start hash prese
 
   test('same-stem md and mdx tabs survive canonical extensionless page sync', async () => {
     mockCollabUrl = 'ws://localhost:1/collab';
-    globalThis.fetch = mock(() => Promise.reject(new Error('unexpected fetch'))) as never;
+    globalThis.fetch = vi.fn(() => Promise.reject(new Error('unexpected fetch'))) as never;
     seedSameStemActiveMdxSession();
     window.location.hash = '#/foo.mdx';
     render(<SameStemSyncHarness />, { wrapper: ProviderHarness });
@@ -752,7 +752,7 @@ describe('DocumentContext tab restore', () => {
 
   test('restores an extension-qualified mdx tab over an ambiguous extensionless hash', async () => {
     mockCollabUrl = 'ws://localhost:1/collab';
-    globalThis.fetch = mock(() => Promise.reject(new Error('unexpected fetch'))) as never;
+    globalThis.fetch = vi.fn(() => Promise.reject(new Error('unexpected fetch'))) as never;
     seedSameStemActiveMdxSession();
     window.location.hash = '#/foo';
 
@@ -766,7 +766,7 @@ describe('DocumentContext tab restore', () => {
 
   test('keeps saved tab order when an active asset hash opens before session restore resolves', async () => {
     mockCollabUrl = 'ws://localhost:1/collab';
-    globalThis.fetch = mock(() => Promise.reject(new Error('unexpected fetch'))) as never;
+    globalThis.fetch = vi.fn(() => Promise.reject(new Error('unexpected fetch'))) as never;
     const stub = makeDeferredSessionBridgeStub({
       openTabs: [OTHER_TAB_ID, LICENSE_TAB_ID],
       pinnedTabIds: [],

@@ -10,7 +10,6 @@
  *    missing-dir no-op, per-entry error containment
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
@@ -18,8 +17,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { UploadWriteError } from './upload-errors.ts';
 import {
   cleanupOrphanUploadTempfiles,

@@ -1,4 +1,4 @@
-import { describe as _bunDescribe, afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
+import { describe as _bunDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 // Skip-on-CI gate (oven-sh/bun#11892): simple-git fixture pattern in MCP
 // test setup spawns git children that Bun fails to reap on ubuntu-latest
@@ -13,11 +13,13 @@ import { textPlusStructured } from './tools/shared.ts';
 
 describe('tool logging wrapper', () => {
   let stderrLines: string[];
-  let stderrSpy: ReturnType<typeof spyOn>;
+  let stderrSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     stderrLines = [];
-    stderrSpy = spyOn(process.stderr, 'write').mockImplementation(((chunk: string | Uint8Array) => {
+    stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(((
+      chunk: string | Uint8Array,
+    ) => {
       stderrLines.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf-8'));
       return true;
     }) as never);

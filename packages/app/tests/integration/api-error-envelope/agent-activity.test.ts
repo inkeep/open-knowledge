@@ -10,8 +10,8 @@
  *   - method-not-allowed on POST → 405 `urn:ok:error:method-not-allowed`.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { AgentActivitySuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
 import { createTestServer, type TestServer } from '../test-harness';
 

@@ -17,11 +17,11 @@
  *     side matching `dir`.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { EditorState, TextSelection } from '@tiptap/pm/state';
+import { describe, expect, test } from 'vitest';
 import { computeArrowIntoTargetAtBoundary } from './raw-mdx-fallback';
 
 const schema = getSchema(sharedExtensions);

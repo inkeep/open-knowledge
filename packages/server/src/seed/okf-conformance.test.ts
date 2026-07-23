@@ -23,7 +23,6 @@
  *     conformance is asserted on the instantiated doc-frontmatter.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -34,6 +33,7 @@ import {
   stripFrontmatter,
   unwrapFrontmatterFences,
 } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import { applySubstitution } from '../content/substitution.ts';
 import { applySeed } from './apply.ts';

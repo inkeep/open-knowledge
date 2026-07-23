@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import type { LockState } from './lock-state.ts';
 import { buildStopPlan, runStop } from './stop.ts';
 

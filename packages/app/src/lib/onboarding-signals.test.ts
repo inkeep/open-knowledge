@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   createOnboardingCardStore,
   type OnboardingCardStorage,
@@ -18,7 +18,7 @@ function freshStore(): OnboardingCardStore {
 }
 
 function mockDocuments(documents: unknown[], status = 200): void {
-  globalThis.fetch = mock(() =>
+  globalThis.fetch = vi.fn(() =>
     Promise.resolve(new Response(JSON.stringify({ documents }), { status })),
   ) as never;
 }
@@ -91,7 +91,7 @@ describe('recordOnboardingFileStep', () => {
   });
 
   test('no-op when onboarding is not active (file created by an established user)', async () => {
-    const fetchSpy = mock(() => Promise.resolve(new Response('{}', { status: 200 })));
+    const fetchSpy = vi.fn(() => Promise.resolve(new Response('{}', { status: 200 })));
     globalThis.fetch = fetchSpy as never;
     const store = freshStore();
     await recordOnboardingFileStep(store);
@@ -100,7 +100,7 @@ describe('recordOnboardingFileStep', () => {
   });
 
   test('is a no-op (no fetch) when the step is already complete', async () => {
-    const fetchSpy = mock(() => Promise.resolve(new Response('{}', { status: 200 })));
+    const fetchSpy = vi.fn(() => Promise.resolve(new Response('{}', { status: 200 })));
     globalThis.fetch = fetchSpy as never;
     const store = freshStore();
     // activate() first so `initialized` is true — otherwise the guard's

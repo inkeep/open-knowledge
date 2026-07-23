@@ -20,7 +20,6 @@
  * Client lifecycle in try/finally (not afterEach).
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import {
   bindFrontmatterDoc,
@@ -31,6 +30,7 @@ import {
   readFmMap,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {

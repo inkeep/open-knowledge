@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import type { FileEntry } from '@/components/file-tree-utils';
 import { sidebarDragPayloadForTreePath } from './sidebar-drag-payload';
 

@@ -7,7 +7,6 @@
  * gate, the disable-is-immediate path, and the coverage / needs-a-key panel.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import {
   type Config,
   type ConfigBinding,
@@ -16,6 +15,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 // Radix Dialog mounts a focus-trap that reaches for DOM globals the jsdom
 // preload doesn't expose. Hoist the same shims the sibling settings DOM tests
@@ -43,7 +43,7 @@ let mockProjectLocalConfig: Config | null = null;
 let mockProjectLocalSynced = true;
 let mockProjectLocalBinding: ConfigBinding | null = null;
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     userBinding: null,
     userSynced: false,

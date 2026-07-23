@@ -14,10 +14,10 @@
  * manual verification.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, test } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
 const SCRIPT_PATH = join(dirname(__filename), '..', '..', 'scripts', 'smoke-mock-update.mjs');

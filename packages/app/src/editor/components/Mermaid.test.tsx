@@ -11,12 +11,12 @@
  * own test suite.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import { renderToString } from 'react-dom/server';
+import { describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import * as actualLinguiReactMacro from '../../../tests/lingui-macro-shim';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiReactMacro,
   Trans: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),

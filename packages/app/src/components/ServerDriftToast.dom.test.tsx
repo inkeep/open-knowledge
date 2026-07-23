@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ServerDriftToast } from '@/components/ServerDriftToast';
 
 afterEach(cleanup);
@@ -24,14 +24,14 @@ describe('ServerDriftToast', () => {
   });
 
   test('the restart button calls onRestart', () => {
-    const onRestart = mock(() => {});
+    const onRestart = vi.fn(() => {});
     render(<ServerDriftToast {...baseProps} onRestart={onRestart} onDismiss={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: baseProps.restartLabel }));
     expect(onRestart).toHaveBeenCalledTimes(1);
   });
 
   test('the cancel button calls onDismiss', () => {
-    const onDismiss = mock(() => {});
+    const onDismiss = vi.fn(() => {});
     render(<ServerDriftToast {...baseProps} onRestart={() => {}} onDismiss={onDismiss} />);
     fireEvent.click(screen.getByRole('button', { name: baseProps.cancelLabel }));
     expect(onDismiss).toHaveBeenCalledTimes(1);

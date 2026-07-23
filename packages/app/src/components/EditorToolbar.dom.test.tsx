@@ -1,18 +1,18 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-mock.module('./EditorBreadcrumb', () => ({
+vi.doMock('./EditorBreadcrumb', () => ({
   EditorBreadcrumb: ({ docName }: { docName: string | null }) => (
     <span data-testid="editor-breadcrumb-probe">{docName}</span>
   ),
@@ -21,7 +21,7 @@ mock.module('./EditorBreadcrumb', () => ({
 // The breadcrumb cell's NotInSidebarIndicator reads merged config through the
 // context hook, which throws without a provider — stub the app-default view
 // (no toggles set, binding absent) so the toolbar mounts standalone.
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     merged: null,
     projectLocalBinding: null,

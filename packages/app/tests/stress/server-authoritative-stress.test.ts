@@ -28,8 +28,8 @@
  * measurement that races with in-flight ops).
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import {
   assertBridgeInvariant,

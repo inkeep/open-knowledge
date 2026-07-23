@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { renderBanner } from './banner.ts';
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: intentional ANSI escape code detection

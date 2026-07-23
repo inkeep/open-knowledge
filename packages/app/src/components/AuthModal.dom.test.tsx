@@ -11,8 +11,8 @@
  * device-flow panel renders without touching the network in jsdom.
  */
 
-import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { act, cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { OkLocalOpAuthEvent, OkLocalOpAuthStatusResponse } from '@/lib/desktop-bridge-types';
 import type { AuthQueryTransport } from '@/lib/transports/auth-query-transport';
 import type { AuthTransport } from '@/lib/transports/auth-transport';
@@ -171,7 +171,7 @@ describe('AuthModal identityPrompt (set-identity) path', () => {
       repos: async () => ({ ok: true, host: 'github.com', repos: [] }),
     };
 
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     try {
       renderModal({ identityPrompt: true, queryTransport: hungQuery });
 
@@ -181,14 +181,14 @@ describe('AuthModal identityPrompt (set-identity) path', () => {
 
       // Advance past the probe timeout — the latch falls back to 'auth'.
       act(() => {
-        jest.advanceTimersByTime(10_000);
+        vi.advanceTimersByTime(10_000);
       });
 
       expect(screen.getByText('Starting sign-in flow')).toBeDefined();
       expect(screen.getByText('Connect GitHub')).toBeDefined();
       expect(screen.queryByLabelText('Name')).toBeNull();
     } finally {
-      jest.useRealTimers();
+      vi.useRealTimers();
     }
   });
 

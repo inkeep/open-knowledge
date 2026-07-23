@@ -15,10 +15,11 @@
  * Exercises `render` + `userEvent` under the jsdom substrate (precedent #43);
  * invocation via `bun run test:dom`.
  */
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRef, useState } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { useSelectionMirror } from './use-selection-mirror';
 
 interface StubItem {
@@ -106,10 +107,10 @@ function Harness({ initialPath, model }: { initialPath: string | null; model: St
 }
 
 describe('FileTree selection-mirror (Tier-3 mount)', () => {
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {

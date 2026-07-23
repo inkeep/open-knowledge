@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { installClientFetchWrapper } from './client-fetch';
 
 /**
@@ -38,7 +38,7 @@ type Recorded = { input: RequestInfo | URL; init?: RequestInit };
 
 function stubWindowFetch() {
   const calls: Array<Recorded> = [];
-  const fetchStub = mock((input: RequestInfo | URL, init?: RequestInit) => {
+  const fetchStub = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     calls.push({ input, init });
     return Promise.resolve(new Response('{"ok":true}', { status: 200 }));
   });

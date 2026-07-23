@@ -10,11 +10,12 @@
  * storage contract has been broken somewhere between the accumulator and the
  * read path.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   formatContributorsFrom,
   recordContributor,

@@ -3,7 +3,7 @@
  *
  * PresenceBar's top-level component needs DocumentContext + a real
  * HocuspocusProvider to exercise, so we target AgentAvatar indirectly by
- * rendering PresenceBar with stubbed hooks via `mock.module`. Static
+ * rendering PresenceBar with stubbed hooks via `vi.doMock`. Static
  * markup inspection verifies the aria-label + data attributes + the click
  * event wires through to the mocked openActivityPanel.
  *
@@ -11,9 +11,9 @@
  * lives in Playwright.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { AgentPresenceEntry } from '@inkeep/open-knowledge-core';
 import { renderToString } from 'react-dom/server';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import * as actualDocumentContext from '@/editor/DocumentContext';
 import type { AgentParticipant } from './use-presence';
@@ -32,7 +32,7 @@ let crossDocAgents: AgentParticipant[] = [];
 // `interactive` OR — a sentinel agent must stay clickable when a doc is open.
 let mockActiveDocName: string | null = null;
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   ...actualDocumentContext,
   useDocumentContext: () => ({
     activeProvider: null,
@@ -52,17 +52,17 @@ mock.module('@/editor/DocumentContext', () => ({
 // DocumentContext factory here detonated EditorArea.test.ts's module-load
 // smoke on order-unlucky CI runners; see
 // tests/integration/mock-module-completeness.test.ts).
-mock.module('./use-presence', () => ({
+vi.doMock('./use-presence', () => ({
   ...actualUsePresence,
   usePresence: () => ({ current: currentAgents, crossDoc: crossDocAgents }),
 }));
 
-mock.module('./use-sync-status', () => ({
+vi.doMock('./use-sync-status', () => ({
   ...actualUseSyncStatus,
   useSyncStatus: () => ({ state: 'clean' }),
 }));
 
-mock.module('./use-sync-toasts', () => ({
+vi.doMock('./use-sync-toasts', () => ({
   ...actualUseSyncToasts,
   useSyncToasts: () => {},
 }));

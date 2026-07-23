@@ -21,7 +21,7 @@
  * (paired-write intake first, observer attach second) — the same rig as
  * `server-observers.test.ts`.
  */
-import { beforeEach, describe, expect, test } from 'bun:test';
+
 import {
   MarkdownManager,
   normalizeBridge,
@@ -31,6 +31,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
 import { __resetBridgeWatchdogForTests } from './bridge-watchdog.ts';

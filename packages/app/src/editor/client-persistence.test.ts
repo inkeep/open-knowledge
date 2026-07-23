@@ -12,8 +12,8 @@
  * across a `bun test` process.
  */
 
-import { describe, expect, spyOn, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
+import { describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import {
   type ClientPersistenceProvider,
@@ -314,7 +314,7 @@ describe('createClientPersistence', () => {
       req.onerror = () => reject(req.error);
     });
 
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
       // Kick off clearData without awaiting. The internal deleteDatabase
       // request is blocked by `blocker` — onblocked fires, the request stays

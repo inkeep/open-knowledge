@@ -16,7 +16,6 @@
  * core mechanics without a Y.Doc.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   BridgeInvariantViolationError,
   MarkdownManager,
@@ -25,6 +24,7 @@ import {
   sharedExtensions,
   type ToleranceFireRecord,
 } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   __getSplitBrainRateTupleCountForTests,
   __getViolationRateTupleCountForTests,

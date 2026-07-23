@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { flushDesktopLogger, getLogger } from './desktop-logger.ts';
 
 // `flushDesktopLogger` runs on the shutdown path (`will-quit`, before

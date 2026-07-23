@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { getParseHealth, resetParseHealth } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { onPillRenderError } from './SidebarSearchBar';
 
 describe('SidebarSearchBar module', () => {
@@ -31,11 +31,11 @@ describe('onPillRenderError — Pattern C runtime observability emission', () =>
   // a future refactor that swaps `incrementJsxRenderFailure` for an
   // equivalent counter path without changing observable behavior.
 
-  let warnSpy: ReturnType<typeof spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     resetParseHealth();
-    warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {

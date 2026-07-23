@@ -21,9 +21,10 @@
  * parseHTML (array of tag-matcher rules with getAttrs). Avoids
  * requiring a DOM runtime (Bun's test env has no `window`).
  */
-import { describe, expect, test } from 'bun:test';
+
 import { getSchema } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
+import { describe, expect, test } from 'vitest';
 import { sharedExtensions } from './shared';
 
 const schema = getSchema(sharedExtensions);

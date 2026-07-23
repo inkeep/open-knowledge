@@ -10,10 +10,11 @@
  * `localStorage`; the preload only puts it on `window`, so each test exposes it
  * globally to exercise the cross-window channel faithfully.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { act, cleanup, render } from '@testing-library/react';
 import { ThemeProvider } from 'next-themes';
 import type { ReactElement } from 'react';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { useApplyConfigTheme } from './use-apply-config-theme';
 
 function ConfigThemeHarness({ themeValue }: { themeValue: string | undefined }) {

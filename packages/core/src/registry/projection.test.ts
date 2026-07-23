@@ -8,10 +8,10 @@
  *  - per-entry / per-param projection shape
  */
 
-import { describe, expect, test } from 'bun:test';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { mdxFromMarkdown } from 'mdast-util-mdx';
 import { mdx } from 'micromark-extension-mdx';
+import { describe, expect, test } from 'vitest';
 import {
   getAgentCanonicalDescriptors,
   getCanonicalDescriptors,

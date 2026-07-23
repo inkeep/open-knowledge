@@ -17,8 +17,8 @@
  * promise — both pre- and post-resolution).
  */
 
-import { describe, expect, test } from 'bun:test';
 import type { ComponentType } from 'react';
+import { describe, expect, test } from 'vitest';
 import { lazyWithPreload } from './lazy-with-preload';
 
 // The component is never mounted — these tests exercise the preload

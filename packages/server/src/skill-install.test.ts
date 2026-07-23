@@ -5,7 +5,7 @@
  * Each test uses a fresh `mkdtempSync`-backed HOME so the sidecar write path
  * touches only the tmpdir — never the real `~/`.
  */
-import { beforeEach, describe, expect, test } from 'bun:test';
+
 import type { SpawnOptions } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -13,6 +13,7 @@ import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
+import { beforeEach, describe, expect, test } from 'vitest';
 
 import {
   buildAndOpenSkill,

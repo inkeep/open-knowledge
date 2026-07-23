@@ -30,7 +30,7 @@
  * mergeThreeWay the same edits with all three inputs in one boundary
  * byte-space merges cleanly with both edits landing verbatim.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import {
   BridgeMergeContentLossError,
   MarkdownManager,
@@ -41,6 +41,7 @@ import {
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
 import { __resetBridgeWatchdogForTests } from './bridge-watchdog.ts';

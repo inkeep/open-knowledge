@@ -5,7 +5,7 @@
  * Chain: per-worktree → repo-local → global → tokenStore → null
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   type GitConfigReader,
   type GitIdentityTokenStore,

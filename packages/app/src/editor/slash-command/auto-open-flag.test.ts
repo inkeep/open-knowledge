@@ -15,7 +15,7 @@
  * double-consume a single flag.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   _resetPendingAutoOpenForTest,
   consumeAutoOpen,

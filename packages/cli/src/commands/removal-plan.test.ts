@@ -1,4 +1,3 @@
-import { describe, expect, test } from 'bun:test';
 import {
   chmodSync,
   existsSync,
@@ -13,6 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { MCP_SERVER_NAME } from '@inkeep/open-knowledge-server';
+import { describe, expect, test } from 'vitest';
 import { readPathInstallMarker } from '../integrations/path-shim.ts';
 import { buildManagedServerEntry } from './editors.ts';
 import {

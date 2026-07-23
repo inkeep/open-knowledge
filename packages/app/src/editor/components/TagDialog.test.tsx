@@ -4,8 +4,9 @@
  * exercised in Playwright E2E (the wiring at app scope mounts during
  * editor bootstrap and only fires post-click).
  */
-import { describe, expect, test } from 'bun:test';
+
 import { renderToString } from 'react-dom/server';
+import { describe, expect, test } from 'vitest';
 import { TagDialogBody } from './TagDialog.tsx';
 
 describe('TagDialogBody', () => {

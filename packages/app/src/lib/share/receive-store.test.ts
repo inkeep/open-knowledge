@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 
 import type { OkDesktopBridge, OkShareReceivedPayload } from '@/lib/desktop-bridge-types';
 
@@ -66,7 +66,7 @@ describe('createShareReceiveStore — payload delivery', () => {
     const fb = fakeBridge();
     const store = createShareReceiveStore();
     store.install({ bridge: fb.bridge });
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     store.subscribe(listener);
     fb.emit(sharePayload);
     expect(store.getSnapshot()).toEqual(sharePayload);
@@ -86,8 +86,8 @@ describe('createShareReceiveStore — payload delivery', () => {
     const fb = fakeBridge();
     const store = createShareReceiveStore();
     store.install({ bridge: fb.bridge });
-    const a = mock(() => {});
-    const b = mock(() => {});
+    const a = vi.fn(() => {});
+    const b = vi.fn(() => {});
     store.subscribe(a);
     store.subscribe(b);
     fb.emit(sharePayload);
@@ -99,7 +99,7 @@ describe('createShareReceiveStore — payload delivery', () => {
     const fb = fakeBridge();
     const store = createShareReceiveStore();
     store.install({ bridge: fb.bridge });
-    const a = mock(() => {});
+    const a = vi.fn(() => {});
     const unsub = store.subscribe(a);
     unsub();
     fb.emit(sharePayload);
@@ -113,7 +113,7 @@ describe('createShareReceiveStore — dismiss', () => {
     const store = createShareReceiveStore();
     store.install({ bridge: fb.bridge });
     fb.emit(sharePayload);
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     store.subscribe(listener);
     store.dismiss();
     expect(store.getSnapshot()).toBeNull();
@@ -124,7 +124,7 @@ describe('createShareReceiveStore — dismiss', () => {
     const fb = fakeBridge();
     const store = createShareReceiveStore();
     store.install({ bridge: fb.bridge });
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     store.subscribe(listener);
     store.dismiss();
     expect(listener).toHaveBeenCalledTimes(0);

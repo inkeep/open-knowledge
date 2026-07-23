@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import {
   CC1_CHANNEL_BRANCH_SWITCHED,
   CC1_CHANNEL_CONFIG_IGNORE_NESTED_ERROR,
@@ -409,7 +409,7 @@ describe('parseCC1ConfigValidationRejected', () => {
   });
 
   test('dispatchCC1Stateless routes config-validation-rejected to its handler', () => {
-    const handler = mock(() => {});
+    const handler = vi.fn(() => {});
     dispatchCC1Stateless(
       JSON.stringify({
         v: CC1_CONTRACT_VERSION,
@@ -533,7 +533,7 @@ describe('parseCC1ConfigIgnoreNestedError', () => {
   });
 
   test('dispatchCC1Stateless routes config-ignore-nested-error to its handler', () => {
-    const handler = mock(() => {});
+    const handler = vi.fn(() => {});
     dispatchCC1Stateless(
       JSON.stringify({
         v: CC1_CONTRACT_VERSION,
@@ -548,8 +548,8 @@ describe('parseCC1ConfigIgnoreNestedError', () => {
   });
 
   test('config-ignore-nested-error is mutually exclusive with config-validation-rejected', () => {
-    const nested = mock(() => {});
-    const rejected = mock(() => {});
+    const nested = vi.fn(() => {});
+    const rejected = vi.fn(() => {});
     dispatchCC1Stateless(
       JSON.stringify({
         v: CC1_CONTRACT_VERSION,

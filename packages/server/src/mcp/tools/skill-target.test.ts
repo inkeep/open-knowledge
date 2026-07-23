@@ -13,7 +13,7 @@
  * runs in CI too.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 import { HOCUSPOCUS_NOT_RUNNING_ERROR } from './shared.ts';
 import { deleteSkill, moveSkill, moveSkillCrossScope, writeSkill } from './skill-target.ts';
 

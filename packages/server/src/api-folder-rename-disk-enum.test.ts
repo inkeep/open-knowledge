@@ -12,12 +12,13 @@
  * the `.mdx` snapshot read resolves to a non-existent `.md` path and the spine
  * throws `ManagedRenameMissingDocumentError`).
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createApiExtension } from './api-extension.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { _resetDocExtensionsForTests } from './doc-extensions.ts';

@@ -1,4 +1,3 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server as HttpServer, request as httpRequest } from 'node:http';
 import { connect as createNetConnection } from 'node:net';
@@ -11,6 +10,7 @@ import {
   INLINE_RENDERABLE_EXTENSIONS,
 } from '@inkeep/open-knowledge-core';
 import sirv from 'sirv';
+import { afterEach, describe, expect, test } from 'vitest';
 import { WebSocket } from 'ws';
 import { createAssetServeMiddleware } from './asset-serve-middleware.ts';
 import { getFreeLoopbackPort } from './loopback-rig-test-helpers.ts';

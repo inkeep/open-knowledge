@@ -21,22 +21,23 @@
  *
  * Runs under `bun run test:dom` (jsdom substrate per precedent #43).
  */
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+
 import { cleanup, fireEvent, render } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 // Stub dispatchAssetClick so the button's onClick does not attempt a
 // real shell.openAsset IPC or window.open in jsdom. The no-anchor
 // assertion is the load-bearing proof; the stub keeps the test
 // self-contained and prevents unhandled-promise noise in jsdom.
-const dispatchAssetClickStub = mock(async () => {});
-mock.module('@/editor/asset-dispatch', () => ({
+const dispatchAssetClickStub = vi.fn(async () => {});
+vi.doMock('@/editor/asset-dispatch', () => ({
   dispatchAssetClick: dispatchAssetClickStub,
 }));
 
 // The asset view hosts the NotInSidebarIndicator, whose config hook throws
 // without a provider — stub the app-default view (all fixtures here use
 // visible paths, so the indicator stays unmounted).
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     merged: null,
     projectLocalBinding: null,

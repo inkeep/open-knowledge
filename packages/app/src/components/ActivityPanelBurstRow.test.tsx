@@ -3,8 +3,9 @@
  * Click-to-open (row → full-pane AgentDiffPane) and the Restore confirm flow
  * are exercised in Playwright.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { renderToString } from 'react-dom/server';
+import { describe, expect, test } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ActivityPanelBurstRow } from './ActivityPanelBurstRow';
 

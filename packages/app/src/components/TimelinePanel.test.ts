@@ -5,8 +5,9 @@
  * test focuses on the summary-flattening helper so refactors survive without
  * a browser.
  */
-import { describe, expect, test } from 'bun:test';
+
 import type { TimelineEntry } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { allSummariesFor } from './TimelinePanel.tsx';
 
 function baseEntry(overrides: Partial<TimelineEntry>): TimelineEntry {

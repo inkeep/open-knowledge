@@ -12,10 +12,10 @@
  * stubbed verdict. Lingui macros resolve to the English-passthrough shim.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { InternalDocPreview } from '../link-preview/internal-doc-preview.ts';
 
@@ -36,18 +36,18 @@ const previewHarness: { value: InternalDocPreview } = {
   },
 };
 
-mock.module('../link-preview/use-internal-doc-preview.ts', () => ({
+vi.doMock('../link-preview/use-internal-doc-preview.ts', () => ({
   useInternalDocPreview: ({ docName }: { docName: string | null }) =>
     docName ? previewHarness.value : null,
 }));
 
-mock.module('../../components/InteractionPropPanel', () => ({
+vi.doMock('../../components/InteractionPropPanel', () => ({
   InteractionPropPanel: ({ children }: { children: ReactNode }) => (
     <div data-testid="prop-panel">{children}</div>
   ),
 }));
 
-mock.module('../../components/PageListContext', () => ({
+vi.doMock('../../components/PageListContext', () => ({
   usePageList: () => ({
     addPage: () => {},
     assetPaths: new Set<string>(),

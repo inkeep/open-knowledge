@@ -31,9 +31,9 @@
  * migrate.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { createServer, type RequestListener, type Server } from 'node:http';
+import { afterEach, describe, expect, test } from 'vitest';
 import { listenOnLoopback } from './loopback-rig-test-helpers.ts';
 
 interface RigSeam {

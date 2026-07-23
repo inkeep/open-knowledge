@@ -43,10 +43,10 @@
  * `walk-currency-test-harness.ts` for the install/restore contract.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { Editor } from '@tiptap/core';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import type { Awareness } from 'y-protocols/awareness';
 import type * as Y from 'yjs';
 import { __resetCacheForTests, evictTiptapEditor } from './editor-cache';

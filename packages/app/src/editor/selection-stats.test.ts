@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test';
 import type { EditorView } from '@codemirror/view';
 import type { Editor } from '@tiptap/core';
+import { describe, expect, test } from 'vitest';
 import {
   getSelectionStats,
   publishSelectionStats,

@@ -7,7 +7,7 @@
  * round-trip (a project `.md` ref joining the link graph, a script round-trip
  * read) lives in the integration suite.
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { BUNDLE_SKILL_NAME } from '../../skill-bundles.ts';
 import { HOCUSPOCUS_NOT_RUNNING_ERROR, type ServerInstance } from './shared.ts';

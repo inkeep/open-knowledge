@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { SharePublishOwner } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { act } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { PublishErrorPresentation } from '@/lib/share/publish-wizard';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
@@ -60,37 +60,37 @@ function sanitizeRepoName(value: string) {
     .replace(/^-|-$/g, '');
 }
 
-const fetchPublishOwnersMock = mock(
+const fetchPublishOwnersMock = vi.fn(
   async () => ownersQueue.shift() ?? { ok: true, owners: defaultOwners },
 );
-const fetchPublishNameCheckMock = mock(async () => ({ ok: true }));
-const submitPublishRequestMock = mock(async (payload: SubmitPayload) => {
+const fetchPublishNameCheckMock = vi.fn(async () => ({ ok: true }));
+const submitPublishRequestMock = vi.fn(async (payload: SubmitPayload) => {
   submitCalls.push(payload);
   return submitResult;
 });
-const requestShareConstructUrlMock = mock(async () => shareConstructUrlResponse);
-const mapShareErrorToToastMock = mock((error: string, branch?: string) =>
+const requestShareConstructUrlMock = vi.fn(async () => shareConstructUrlResponse);
+const mapShareErrorToToastMock = vi.fn((error: string, branch?: string) =>
   branch ? `mapped ${error} on ${branch}` : `mapped ${error}`,
 );
-const scheduleClipboardWriteMock = mock(async (text: string) => {
+const scheduleClipboardWriteMock = vi.fn(async (text: string) => {
   clipboardCalls.push(text);
   if (clipboardError) throw clipboardError;
 });
-const isPermissionsPolicyRefusalMock = mock(() => permissionsPolicyRefusal);
+const isPermissionsPolicyRefusalMock = vi.fn(() => permissionsPolicyRefusal);
 const toastMock = {
-  error: mock(() => {}),
-  success: mock(() => {}),
+  error: vi.fn(() => {}),
+  success: vi.fn(() => {}),
 };
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-mock.module('@/components/AuthModal', () => ({
+vi.doMock('@/components/AuthModal', () => ({
   AuthModal: ({ onSuccess, open }: { onSuccess: () => void; open: boolean }) =>
     open ? (
       <button data-testid="auth-modal" type="button" onClick={onSuccess}>
@@ -99,25 +99,25 @@ mock.module('@/components/AuthModal', () => ({
     ) : null,
 }));
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({ activeDocName }),
 }));
 
-mock.module('@/lib/use-workspace', () => ({
+vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => ({ contentDir: workspaceContentDir }),
 }));
 
-mock.module('@/lib/share/run-share-action', () => ({
+vi.doMock('@/lib/share/run-share-action', () => ({
   mapShareErrorToToast: mapShareErrorToToastMock,
   requestShareConstructUrl: requestShareConstructUrlMock,
 }));
 
-mock.module('@/lib/share/clipboard-adapter', () => ({
+vi.doMock('@/lib/share/clipboard-adapter', () => ({
   isPermissionsPolicyRefusal: isPermissionsPolicyRefusalMock,
   scheduleClipboardWrite: scheduleClipboardWriteMock,
 }));
 
-mock.module('@/lib/share/publish-wizard', () => ({
+vi.doMock('@/lib/share/publish-wizard', () => ({
   canSubmitPublish: ({
     nameCheck,
     owner,
@@ -144,7 +144,7 @@ mock.module('@/lib/share/publish-wizard', () => ({
   submitPublishRequest: submitPublishRequestMock,
 }));
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: toastMock,
 }));
 
@@ -158,7 +158,7 @@ function setDesktopBridge(bridge: unknown) {
 
 async function renderDialog() {
   const { PublishToGitHubDialog } = await import('./PublishToGitHubDialog');
-  const onOpenChange = mock((_open: boolean) => {});
+  const onOpenChange = vi.fn((_open: boolean) => {});
   await act(async () => {
     render(<PublishToGitHubDialog open={true} onOpenChange={onOpenChange} />);
     await Promise.resolve();

@@ -4,7 +4,7 @@
  * in the move/delete cases, so the fetch inside `computeShareTargetStatus` is
  * what reveals the change (a stale local ref would otherwise misclassify it).
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 import { createGitTriangle, type GitTriangle } from './git-fixture.test-helper.ts';
 import { computeShareTargetStatus } from './target-status.ts';
 

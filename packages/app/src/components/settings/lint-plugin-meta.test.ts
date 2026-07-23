@@ -8,8 +8,8 @@
  * this covers the remaining array.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { LINT_PLUGINS } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { LINT_PLUGIN_META } from './lint-plugin-meta.ts';
 
 describe('LINT_PLUGIN_META ⟷ plugin registry', () => {

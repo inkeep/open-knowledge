@@ -18,9 +18,9 @@
  * helpers — assert through queries on the rendered DOM after `render`.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { cleanup, render } from '@testing-library/react';
 import type { Editor } from '@tiptap/react';
+import { describe, expect, test } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { FootnoteBubbleButton } from './FootnoteBubbleButton';
 

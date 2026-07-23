@@ -1,4 +1,4 @@
-import { expect } from 'bun:test';
+import { expect } from 'vitest';
 
 export function assertByteStable(roundTrip: (s: string) => string, source: string): void {
   const once = roundTrip(source);

@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import * as fc from 'fast-check';
+import { describe, expect, test } from 'vitest';
 import {
   applyPatchToDocument,
   getDocumentKeys,

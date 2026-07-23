@@ -7,8 +7,8 @@
  * sites.
  */
 
-import { describe, expect, spyOn, test } from 'bun:test';
 import type { ServerResponse } from 'node:http';
+import { describe, expect, test, vi } from 'vitest';
 import { z } from 'zod';
 import { loggerFactory } from '../logger.ts';
 import { successResponse } from './success-response.ts';
@@ -116,7 +116,7 @@ describe('successResponse — defense-in-depth branches', () => {
     // `api.success.double-write` observability event so a refactor that
     // drops the `log.error()` call would fail this test.
     const log = loggerFactory.getLogger('http');
-    const errorSpy = spyOn(log, 'error');
+    const errorSpy = vi.spyOn(log, 'error');
     errorSpy.mockClear();
 
     const Schema = z.object({ x: z.number() });
@@ -234,7 +234,7 @@ describe('successResponse — defense-in-depth branches', () => {
     // Asymmetric with errorResponse's malformed-envelope log: that body is
     // the small fixed-shape ProblemDetails envelope, not unbounded user data.
     const log = loggerFactory.getLogger('http');
-    const errorSpy = spyOn(log, 'error');
+    const errorSpy = vi.spyOn(log, 'error');
     errorSpy.mockClear();
 
     const Schema = z.object({ x: z.number() });
@@ -280,7 +280,7 @@ describe('successResponse — defense-in-depth branches', () => {
     // guard in `errorResponse` for symmetric defense across both wire-emit
     // helpers.
     const log = loggerFactory.getLogger('http');
-    const errorSpy = spyOn(log, 'error');
+    const errorSpy = vi.spyOn(log, 'error');
     errorSpy.mockClear();
 
     const Schema = z.object({ checkpoint: z.unknown().nullable() });
@@ -321,7 +321,7 @@ describe('successResponse — defense-in-depth branches', () => {
     // for any input — no crash on `Object.keys(null)`, no leak through
     // stringification of the primitive.
     const log = loggerFactory.getLogger('http');
-    const errorSpy = spyOn(log, 'error');
+    const errorSpy = vi.spyOn(log, 'error');
     errorSpy.mockClear();
 
     const Schema = z.object({ x: z.number() });

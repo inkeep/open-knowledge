@@ -10,8 +10,9 @@
  *
  * Invocation: `bun run test:dom` from `packages/app/`.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   __resetLocalMenuActionBusForTests,
   emitLocalMenuAction,

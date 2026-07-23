@@ -14,10 +14,10 @@
  * boundary, mirroring `TerminalPanel.dom.test.tsx`.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { buildStartupInjectionBytes, type TerminalCli } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { ReactElement } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import type {
   ClaudeReadiness,
@@ -27,7 +27,7 @@ import type {
 } from '@/lib/desktop-bridge-types';
 
 class MockFitAddon {
-  fit = mock(() => {});
+  fit = vi.fn(() => {});
 }
 class MockWebglAddon {}
 class MockWebLinksAddon {}
@@ -40,30 +40,30 @@ class MockTerminal {
   onDataCb: ((d: string) => void) | null = null;
   keyHandler: ((e: KeyboardEvent) => boolean) | null = null;
   options: Record<string, unknown>;
-  open = mock(() => {});
-  focus = mock(() => {});
-  dispose = mock(() => {});
-  write = mock((_data: string, cb?: () => void) => {
+  open = vi.fn(() => {});
+  focus = vi.fn(() => {});
+  dispose = vi.fn(() => {});
+  write = vi.fn((_data: string, cb?: () => void) => {
     cb?.();
   });
-  loadAddon = mock(() => {});
-  onData = mock((cb: (d: string) => void) => {
+  loadAddon = vi.fn(() => {});
+  onData = vi.fn((cb: (d: string) => void) => {
     this.onDataCb = cb;
     return { dispose() {} };
   });
   // The panel subscribes to OSC 0/2 title changes at mount; this stub only needs
   // to return a disposable (the launch tests don't exercise title forwarding).
-  onTitleChange = mock((_cb: (title: string) => void) => ({ dispose() {} }));
-  attachCustomKeyEventHandler = mock((h: (e: KeyboardEvent) => boolean) => {
+  onTitleChange = vi.fn((_cb: (title: string) => void) => ({ dispose() {} }));
+  attachCustomKeyEventHandler = vi.fn((h: (e: KeyboardEvent) => boolean) => {
     this.keyHandler = h;
   });
   // Production attaches a wheel handler at mount; these launch tests never fire
   // wheel events, so the no-op presence is all that's needed to avoid throwing.
-  attachCustomWheelEventHandler = mock(() => {});
+  attachCustomWheelEventHandler = vi.fn(() => {});
   // The panel registers a file-path link provider at mount; these launch tests
   // never hover a link, so a disposable-returning stub (plus an empty buffer for
   // the provider's readLine) is all that's needed to avoid throwing on mount.
-  registerLinkProvider = mock(() => ({ dispose() {} }));
+  registerLinkProvider = vi.fn(() => ({ dispose() {} }));
   get buffer() {
     return { active: { getLine: () => ({ translateToString: () => '' }) } };
   }
@@ -73,17 +73,17 @@ class MockTerminal {
 }
 
 class MockResizeObserver {
-  observe = mock(() => {});
-  unobserve = mock(() => {});
-  disconnect = mock(() => {});
+  observe = vi.fn(() => {});
+  unobserve = vi.fn(() => {});
+  disconnect = vi.fn(() => {});
 }
 
-mock.module('@xterm/xterm', () => ({ Terminal: MockTerminal }));
-mock.module('@xterm/addon-fit', () => ({ FitAddon: MockFitAddon }));
-mock.module('@xterm/addon-webgl', () => ({ WebglAddon: MockWebglAddon }));
-mock.module('@xterm/addon-web-links', () => ({ WebLinksAddon: MockWebLinksAddon }));
-mock.module('@xterm/addon-unicode11', () => ({ Unicode11Addon: MockUnicode11Addon }));
-mock.module('@xterm/xterm/css/xterm.css', () => ({}));
+vi.doMock('@xterm/xterm', () => ({ Terminal: MockTerminal }));
+vi.doMock('@xterm/addon-fit', () => ({ FitAddon: MockFitAddon }));
+vi.doMock('@xterm/addon-webgl', () => ({ WebglAddon: MockWebglAddon }));
+vi.doMock('@xterm/addon-web-links', () => ({ WebLinksAddon: MockWebLinksAddon }));
+vi.doMock('@xterm/addon-unicode11', () => ({ Unicode11Addon: MockUnicode11Addon }));
+vi.doMock('@xterm/xterm/css/xterm.css', () => ({}));
 
 /** Fully ready: claude on PATH, OK tools wired, AND the project's own
  *  `open-knowledge` entry verified as OK's canonical server (mcpPreApprovable),
@@ -104,33 +104,33 @@ const CODEX_OK_CONFIGURED: CliReadiness = { onPath: 'present', okServerConfigure
 function makeBridge(preflight: ClaudeReadiness = WIRED, cliReadiness: CliReadiness = ON_PATH) {
   const dataSubs: Array<(m: OkPtyData) => void> = [];
   const terminal = {
-    create: mock(async (_opts: { cols: number; rows: number; launchCommand?: string }) => ({
+    create: vi.fn(async (_opts: { cols: number; rows: number; launchCommand?: string }) => ({
       ok: true as const,
       ptyId: 'pty-1',
     })),
-    input: mock((_id: string, _d: string) => {}),
-    resize: mock(() => {}),
-    kill: mock(async () => {}),
-    drain: mock(() => {}),
-    adopt: mock(
+    input: vi.fn((_id: string, _d: string) => {}),
+    resize: vi.fn(() => {}),
+    kill: vi.fn(async () => {}),
+    drain: vi.fn(() => {}),
+    adopt: vi.fn(
       async (): Promise<{ ok: true; replay: string } | { ok: false; reason: string }> => ({
         ok: true,
         replay: '',
       }),
     ),
-    onData: mock((cb: (m: OkPtyData) => void) => {
+    onData: vi.fn((cb: (m: OkPtyData) => void) => {
       dataSubs.push(cb);
-      return mock(() => {});
+      return vi.fn(() => {});
     }),
-    onExit: mock(() => mock(() => {})),
-    claudePreflight: mock(async () => preflight),
-    cliPreflight: mock(async (_cli: TerminalCli) => cliReadiness),
-    rewireClaudeMcp: mock(async () => preflight),
+    onExit: vi.fn(() => vi.fn(() => {})),
+    claudePreflight: vi.fn(async () => preflight),
+    cliPreflight: vi.fn(async (_cli: TerminalCli) => cliReadiness),
+    rewireClaudeMcp: vi.fn(async () => preflight),
   };
   return {
     bridge: {
       terminal,
-      shell: { openExternal: mock(async () => {}) },
+      shell: { openExternal: vi.fn(async () => {}) },
       config: { e2eSmoke: false },
     } as unknown as OkDesktopBridge,
     terminal,
@@ -144,7 +144,7 @@ const { TerminalPanel, STAGE_PASTE_SETTLE_MS } = await import('./TerminalPanel')
 
 /** The `launchCommand` baked into the (single) `create` call, or undefined when
  *  none was passed (plain shell). The launch's only sanctioned transport. */
-function bakedLaunch(createMock: ReturnType<typeof mock>): string | undefined {
+function bakedLaunch(createMock: ReturnType<typeof vi.fn>): string | undefined {
   const calls = createMock.mock.calls;
   const last = calls.at(-1)?.[0] as { launchCommand?: string } | undefined;
   return last?.launchCommand;
@@ -152,7 +152,7 @@ function bakedLaunch(createMock: ReturnType<typeof mock>): string | undefined {
 
 /** Any `terminal.input` write that looks like a baked launch command — must stay
  *  empty: the launch rides `create`, never the line editor (the whole fix). */
-function launchInputWrites(inputMock: ReturnType<typeof mock>): string[] {
+function launchInputWrites(inputMock: ReturnType<typeof vi.fn>): string[] {
   return inputMock.mock.calls
     .map((c) => c[1] as string)
     .filter((d) => typeof d === 'string' && /^(claude|codex|cursor-agent|opencode) /.test(d));
@@ -367,7 +367,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     // the bake so the terminal can't show a raw `command not found`, and surface
     // the readiness banner so the user gets feedback rather than a silent no-op.
     const { bridge, terminal } = makeBridge();
-    terminal.claudePreflight = mock(async () => {
+    terminal.claudePreflight = vi.fn(async () => {
       throw new Error('ipc boom');
     });
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />);
@@ -492,7 +492,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   test('cursor probe UNKNOWN then PRESENT on re-probe: bakes the preserved prompt', async () => {
     let calls = 0;
     const { bridge, terminal } = makeBridge(WIRED);
-    terminal.cliPreflight = mock(async () => {
+    terminal.cliPreflight = vi.fn(async () => {
       calls += 1;
       return calls === 1 ? { onPath: 'unknown' as const } : { onPath: 'present' as const };
     });
@@ -505,7 +505,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
 
   test('cliPreflight IPC rejection spawns plain + surfaces the banner (no raw command-not-found)', async () => {
     const { bridge, terminal } = makeBridge(WIRED);
-    terminal.cliPreflight = mock(async () => {
+    terminal.cliPreflight = vi.fn(async () => {
       throw new Error('ipc channel closed');
     });
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'codex', nonce: 1 }} />);
@@ -545,7 +545,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     // not be silently re-issued on a reconnect attempt. So create spawns a plain
     // shell (no launchCommand) and nothing is baked.
     const { bridge, terminal } = makeBridge(WIRED);
-    terminal.adopt = mock(
+    terminal.adopt = vi.fn(
       async (): Promise<{ ok: true; replay: string } | { ok: false; reason: string }> => ({
         ok: false,
         reason: 'unknown-session',

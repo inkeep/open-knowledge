@@ -10,7 +10,7 @@
  * `doc: Pick<Document, 'createElement'>` for exactly this purpose; we feed a
  * stub element that records `setAttribute` calls.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 import { buildWikiLinkEmbedImageDom } from './wiki-link-embed.ts';
 
 interface RecordingElement {

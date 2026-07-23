@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { skillLiveDocName } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { computeSkillTabReconcile, parseSkillTabDocName } from './use-reconcile-skill-tabs';
 
 /**

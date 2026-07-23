@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { cleanup, render } from '@testing-library/react';
 import type { MouseEventHandler, ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 type DocumentsChangedListener = (channels: string[]) => void;
 type TemplatesChangedListener = () => void;
@@ -75,15 +75,15 @@ class StubModel {
 let model = new StubModel();
 let documentsChangedListener: DocumentsChangedListener | null = null;
 let templatesChangedListener: TemplatesChangedListener | null = null;
-let unsubscribeDocumentsChangedMock = mock(() => {});
-let unsubscribeTemplatesChangedMock = mock(() => {});
-let schedulerRequestMock = mock(() => {});
-let schedulerDisposeMock = mock(() => {});
-const createRefreshSchedulerMock = mock(() => ({
+let unsubscribeDocumentsChangedMock = vi.fn(() => {});
+let unsubscribeTemplatesChangedMock = vi.fn(() => {});
+let schedulerRequestMock = vi.fn(() => {});
+let schedulerDisposeMock = vi.fn(() => {});
+const createRefreshSchedulerMock = vi.fn(() => ({
   request: schedulerRequestMock,
   dispose: schedulerDisposeMock,
 }));
-const fetchMock = mock(async (input: RequestInfo | URL) => {
+const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   if (url === '/api/workspace') {
     return new Response(
@@ -98,18 +98,18 @@ const fetchMock = mock(async (input: RequestInfo | URL) => {
   throw new Error(`unexpected fetch: ${url}`);
 });
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: {
     success: () => {},
     error: () => {},
   },
 }));
 
-mock.module('next-themes', () => ({
+vi.doMock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'light' }),
 }));
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName: 'notes/source',
     activeTarget: { kind: 'doc', target: 'notes/source', docName: 'notes/source' },
@@ -124,15 +124,15 @@ mock.module('@/editor/DocumentContext', () => ({
   }),
 }));
 
-mock.module('@/components/PageListContext', () => ({
+vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => ({ addPage: () => {} }),
 }));
 
-mock.module('./ui/sidebar', () => ({
+vi.doMock('./ui/sidebar', () => ({
   useSidebar: () => ({ notifySidebarFileSelected: () => {} }),
 }));
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     okignoreBinding: null,
     projectLocalBinding: null,
@@ -140,30 +140,30 @@ mock.module('@/lib/config-provider', () => ({
   }),
 }));
 
-mock.module('@/hooks/use-conflicts', () => ({
+vi.doMock('@/hooks/use-conflicts', () => ({
   useConflicts: () => ({ conflicts: [], loading: false, error: null }),
 }));
 
-mock.module('./handoff/useInstalledAgents', () => ({
+vi.doMock('./handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states: {} }),
 }));
 
-mock.module('./handoff/useHandoffDispatch', () => ({
+vi.doMock('./handoff/useHandoffDispatch', () => ({
   buildFolderHandoffInput: () => null,
   buildHandoffInput: () => null,
   useHandoffDispatch: () => ({ dispatch: async () => ({ ok: true as const }) }),
 }));
 
-mock.module('./handoff/OpenInAgentContextSubmenu', () => ({
+vi.doMock('./handoff/OpenInAgentContextSubmenu', () => ({
   OpenInAgentContextSubmenu: () => null,
 }));
 
-mock.module('./sidebar-hover-prewarm', () => ({
+vi.doMock('./sidebar-hover-prewarm', () => ({
   cancelHoverPrewarm: () => {},
   scheduleHoverPrewarm: () => {},
 }));
 
-mock.module('@/components/ui/button', () => ({
+vi.doMock('@/components/ui/button', () => ({
   Button: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
     <button type="button" {...props}>
       {children}
@@ -171,11 +171,11 @@ mock.module('@/components/ui/button', () => ({
   ),
 }));
 
-mock.module('@/components/ui/dialog', () => ({
+vi.doMock('@/components/ui/dialog', () => ({
   Dialog: PassThrough,
 }));
 
-mock.module('@/components/ui/dropdown-menu', () => ({
+vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: PassThrough,
   DropdownMenuCheckboxItem: MenuItem,
   DropdownMenuContent: ({ children }: { children?: ReactNode }) => (
@@ -189,34 +189,34 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuTrigger: PassThrough,
 }));
 
-mock.module('@/components/ui/skeleton', () => ({
+vi.doMock('@/components/ui/skeleton', () => ({
   Skeleton: ({ className }: { className?: string }) => <span className={className} />,
 }));
 
-mock.module('@/components/DeleteConfirmationDialog', () => ({
+vi.doMock('@/components/DeleteConfirmationDialog', () => ({
   DeleteConfirmationDialog: () => null,
 }));
 
-mock.module('@/components/NewItemDialog', () => ({
+vi.doMock('@/components/NewItemDialog', () => ({
   NewItemDialog: () => null,
 }));
 
-mock.module('@/components/TrashFailureModal', () => ({
+vi.doMock('@/components/TrashFailureModal', () => ({
   TrashFailureModal: () => null,
   coerceTrashFailureReason: (reason: string) => reason,
 }));
 
-mock.module('@/components/use-selection-mirror', () => ({
+vi.doMock('@/components/use-selection-mirror', () => ({
   asDirectoryHandle: () => null,
   useSelectionMirror: () => {},
 }));
 
-mock.module('@pierre/trees', () => ({
+vi.doMock('@pierre/trees', () => ({
   FILE_TREE_TAG_NAME: 'ok-file-tree',
   themeToTreeStyles: () => ({}),
 }));
 
-mock.module('@pierre/trees/react', () => ({
+vi.doMock('@pierre/trees/react', () => ({
   useFileTree: () => ({ model }),
   FileTree: ({
     onClickCapture,
@@ -237,7 +237,7 @@ mock.module('@pierre/trees/react', () => ({
   ),
 }));
 
-mock.module('@/lib/documents-events', () => ({
+vi.doMock('@/lib/documents-events', () => ({
   emitDocumentsChanged: () => {},
   emitTemplatesChanged: () => {},
   subscribeToDocumentsChanged: (listener: DocumentsChangedListener) => {
@@ -260,29 +260,29 @@ mock.module('@/lib/documents-events', () => ({
   },
 }));
 
-mock.module('@/lib/refresh-scheduler', () => ({
+vi.doMock('@/lib/refresh-scheduler', () => ({
   createRefreshScheduler: createRefreshSchedulerMock,
 }));
 
 const { FileTree } = await import('./FileTree');
 
 describe('FileTree document-list refresh scheduling', () => {
-  let setIntervalSpy: ReturnType<typeof spyOn>;
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let setIntervalSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     model = new StubModel();
     documentsChangedListener = null;
     templatesChangedListener = null;
-    unsubscribeDocumentsChangedMock = mock(() => {});
-    unsubscribeTemplatesChangedMock = mock(() => {});
-    schedulerRequestMock = mock(() => {});
-    schedulerDisposeMock = mock(() => {});
+    unsubscribeDocumentsChangedMock = vi.fn(() => {});
+    unsubscribeTemplatesChangedMock = vi.fn(() => {});
+    schedulerRequestMock = vi.fn(() => {});
+    schedulerDisposeMock = vi.fn(() => {});
     createRefreshSchedulerMock.mockClear();
     fetchMock.mockClear();
     globalThis.fetch = fetchMock as unknown as typeof fetch;
-    setIntervalSpy = spyOn(globalThis, 'setInterval');
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { parseBranchList } from './branch-list-parser.ts';
 
 describe('parseBranchList', () => {

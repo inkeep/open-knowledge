@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 
 let themeBridgeCalls: Array<[unknown, string]> = [];
@@ -10,21 +10,21 @@ let cloneDialogProps: Array<{
   onCloneComplete: (payload: { dir: string }) => void;
 }> = [];
 
-mock.module('next-themes', () => ({
+vi.doMock('next-themes', () => ({
   useTheme: () => ({ theme: undefined }),
 }));
 
-mock.module('@/hooks/use-theme-bridge', () => ({
+vi.doMock('@/hooks/use-theme-bridge', () => ({
   useThemeBridge: (bridge: unknown, theme: string) => {
     themeBridgeCalls.push([bridge, theme]);
   },
 }));
 
-mock.module('./BetaBadge', () => ({
+vi.doMock('./BetaBadge', () => ({
   BetaBadge: () => <span data-testid="beta-badge">Beta</span>,
 }));
 
-mock.module('./ui/button', () => ({
+vi.doMock('./ui/button', () => ({
   Button: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
     <button type="button" {...props}>
       {children}
@@ -32,63 +32,63 @@ mock.module('./ui/button', () => ({
   ),
 }));
 
-mock.module('./ui/badge', () => ({
+vi.doMock('./ui/badge', () => ({
   Badge: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
     <span {...props}>{children}</span>
   ),
 }));
 
-mock.module('./CreateProjectDialog', () => ({
+vi.doMock('./CreateProjectDialog', () => ({
   CreateProjectDialog: (props: { open: boolean; bridge: unknown }) => {
     createDialogProps.push(props);
     return <div data-testid="create-project-dialog" data-open={String(props.open)} />;
   },
 }));
 
-mock.module('./CloneDialog', () => ({
+vi.doMock('./CloneDialog', () => ({
   CloneDialog: (props: { open: boolean; onCloneComplete: (payload: { dir: string }) => void }) => {
     cloneDialogProps.push(props);
     return <div data-testid="clone-dialog" data-open={String(props.open)} />;
   },
 }));
 
-mock.module('./AuthModal', () => ({
+vi.doMock('./AuthModal', () => ({
   AuthModal: () => null,
 }));
 
-mock.module('./ConsentDialog', () => ({
+vi.doMock('./ConsentDialog', () => ({
   ConsentDialog: () => null,
 }));
 
-mock.module('./McpConsentDialog', () => ({
+vi.doMock('./McpConsentDialog', () => ({
   McpConsentDialog: () => null,
 }));
 
-mock.module('./ShareReceiveDialog', () => ({
+vi.doMock('./ShareReceiveDialog', () => ({
   ShareReceiveDialog: () => null,
 }));
 
-mock.module('@/lib/share/clone-controller', () => ({
+vi.doMock('@/lib/share/clone-controller', () => ({
   createCloneController: () => ({}),
 }));
 
-mock.module('@/lib/transports/auth-query-transport', () => ({
+vi.doMock('@/lib/transports/auth-query-transport', () => ({
   ipcAuthQueryTransport: () => ({}),
 }));
 
-mock.module('@/lib/transports/auth-transport', () => ({
+vi.doMock('@/lib/transports/auth-transport', () => ({
   ipcAuthTransport: () => ({}),
 }));
 
-mock.module('@/lib/transports/clone-transport', () => ({
+vi.doMock('@/lib/transports/clone-transport', () => ({
   ipcCloneTransport: () => ({}),
 }));
 
 function createBridge() {
   return {
     appVersion: '0.4.0-beta.1',
-    onMenuAction: mock(() => () => {}),
-    onRecentRemovedMissing: mock(
+    onMenuAction: vi.fn(() => () => {}),
+    onRecentRemovedMissing: vi.fn(
       (_cb: (info: { path: string; projectName: string }) => void) => () => {},
     ),
     config: {
@@ -99,20 +99,20 @@ function createBridge() {
       mode: 'navigator',
     },
     project: {
-      listRecent: mock(() =>
+      listRecent: vi.fn(() =>
         Promise.resolve([{ path: '/projects/recent', name: 'Recent Project' }]),
       ),
-      removeRecent: mock(() => Promise.resolve()),
-      getSessionState: mock(() => Promise.resolve({})),
-      setSessionState: mock(() => Promise.resolve()),
-      open: mock(() => Promise.resolve()),
-      openFile: mock(() => Promise.resolve()),
-      createNew: mock(() => Promise.resolve()),
-      recordCreateNewBannerShown: mock(() => Promise.resolve()),
-      close: mock(() => Promise.resolve()),
+      removeRecent: vi.fn(() => Promise.resolve()),
+      getSessionState: vi.fn(() => Promise.resolve({})),
+      setSessionState: vi.fn(() => Promise.resolve()),
+      open: vi.fn(() => Promise.resolve()),
+      openFile: vi.fn(() => Promise.resolve()),
+      createNew: vi.fn(() => Promise.resolve()),
+      recordCreateNewBannerShown: vi.fn(() => Promise.resolve()),
+      close: vi.fn(() => Promise.resolve()),
     },
     dialog: {
-      openFolder: mock(() => Promise.resolve('/picked/folder')),
+      openFolder: vi.fn(() => Promise.resolve('/picked/folder')),
     },
   };
 }
@@ -219,7 +219,7 @@ describe('NavigatorApp launcher runtime behavior', () => {
     // production, where `project.open` stays pending through the whole
     // main-side spawn + lock-poll (and the Stop-Server-Retry path).
     let resolveOpen: (() => void) | undefined;
-    bridge.project.open = mock(
+    bridge.project.open = vi.fn(
       () =>
         new Promise<void>((resolve) => {
           resolveOpen = resolve;
@@ -248,7 +248,7 @@ describe('NavigatorApp launcher runtime behavior', () => {
 
   test('labels a linked-worktree recent with its branch over its base project, leaving plain projects unchanged', async () => {
     const bridge = createBridge();
-    bridge.project.listRecent = mock(() =>
+    bridge.project.listRecent = vi.fn(() =>
       Promise.resolve([
         {
           path: '/Users/x/pnw-fishing/.ok/worktrees/dev',
@@ -273,7 +273,7 @@ describe('NavigatorApp launcher runtime behavior', () => {
 
   test('flags worktrees with a badge + branch chip; projects show their path', async () => {
     const bridge = createBridge();
-    bridge.project.listRecent = mock(() =>
+    bridge.project.listRecent = vi.fn(() =>
       Promise.resolve([
         {
           path: '/Users/x/pnw-fishing/.ok/worktrees/dev',
@@ -317,7 +317,7 @@ describe('NavigatorApp launcher runtime behavior', () => {
 
   test('drops only the matching row when main pushes recent-removed-missing', async () => {
     const bridge = createBridge();
-    bridge.project.listRecent = mock(() =>
+    bridge.project.listRecent = vi.fn(() =>
       Promise.resolve([
         { path: '/projects/keep', name: 'Keep Project' },
         { path: '/projects/gone', name: 'Gone Project' },

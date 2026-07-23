@@ -1,4 +1,3 @@
-import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,6 +5,7 @@ import {
   createWorkspaceSearchDocument,
   type WorkspaceSearchDocument,
 } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { CHUNK_CONFIG_ID } from './chunking.ts';
 import { createConceptEmbedder } from './concept-embedder.ts';
 import type { Embedder } from './embedder.ts';

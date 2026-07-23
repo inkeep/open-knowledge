@@ -3,7 +3,7 @@
  * isolate the cache + listener machinery from the production singleton's
  * window-scoped event channel.
  */
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import { createBranchStore } from './current-branch-store';
 
 function makeEventStub(): {
@@ -34,10 +34,10 @@ describe('createBranchStore', () => {
 
   test('first subscribe triggers exactly one bootstrap fetch', async () => {
     const events = makeEventStub();
-    const fetchBranch = mock(() => Promise.resolve('main'));
+    const fetchBranch = vi.fn(() => Promise.resolve('main'));
     const store = createBranchStore({ fetchBranch, subscribeToEvent: events.subscribeToEvent });
 
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     store.subscribe(listener);
     store.subscribe(listener);
     store.subscribe(listener);
@@ -54,7 +54,7 @@ describe('createBranchStore', () => {
       fetchBranch: () => Promise.resolve(null),
       subscribeToEvent: events.subscribeToEvent,
     });
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     store.subscribe(listener);
 
     events.emit('feature-x');
@@ -68,7 +68,7 @@ describe('createBranchStore', () => {
       fetchBranch: () => Promise.resolve(null),
       subscribeToEvent: events.subscribeToEvent,
     });
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     store.subscribe(listener);
 
     events.emit('main');
@@ -83,7 +83,7 @@ describe('createBranchStore', () => {
       fetchBranch: () => Promise.resolve(null),
       subscribeToEvent: events.subscribeToEvent,
     });
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     const unsub = store.subscribe(listener);
 
     events.emit('first');

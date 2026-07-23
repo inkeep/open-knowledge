@@ -7,9 +7,9 @@
  * names, so the real serialize pipeline handles the synthetic slice.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { Schema } from '@tiptap/pm/model';
 import type { Editor } from '@tiptap/react';
+import { describe, expect, test } from 'vitest';
 import { serializeWysiwygSelection } from './edit-with-ai-selection.ts';
 
 const schema = new Schema({

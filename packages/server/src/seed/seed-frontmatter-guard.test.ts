@@ -10,12 +10,12 @@
  * loud in CI rather than relying on review to catch the next one.
  */
 
-import { describe, expect, test } from 'bun:test';
 import {
   parseTemplateFile,
   stripFrontmatter,
   unwrapFrontmatterFences,
 } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import { STARTER_PACKS } from './starter.ts';
 

@@ -14,10 +14,10 @@
  * `window.open`).
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { getInteractionLayer } from '../interaction-layer-host';
 import { installDomGlobals } from '../walk-currency-test-harness';
 import { WikiLink } from './wiki-link';
@@ -94,8 +94,8 @@ function mountWithExternalWikiLink(url: string): {
 describe('WYSIWYG wiki-link external activation — desktop (bridge present)', () => {
   test('bare click routes to the OS browser via okDesktop.shell.openExternal, NOT window.open', () => {
     const url = 'https://youtube.com/watch?v=abc';
-    const openExternal = mock(async (_url: string) => {});
-    const openWindow = mock(() => null);
+    const openExternal = vi.fn(async (_url: string) => {});
+    const openWindow = vi.fn(() => null);
     const w = testWindow();
     w.okDesktop = { shell: { openExternal } };
     w.open = openWindow as unknown as OpenExternalWindow['open'];
@@ -113,7 +113,7 @@ describe('WYSIWYG wiki-link external activation — desktop (bridge present)', (
 describe('WYSIWYG wiki-link external activation — web (no bridge)', () => {
   test('bare click falls back to window.open with the new-tab + noopener features', () => {
     const url = 'https://example.com/web';
-    const openWindow = mock(() => null);
+    const openWindow = vi.fn(() => null);
     const w = testWindow();
     delete w.okDesktop;
     w.open = openWindow as unknown as OpenExternalWindow['open'];

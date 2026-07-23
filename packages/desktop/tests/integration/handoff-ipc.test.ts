@@ -24,8 +24,8 @@
  * unit tests, extended so both ends see the same in-memory surface.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import type { IpcMain, IpcMainInvokeEvent, IpcRenderer } from 'electron';
+import { describe, expect, test, vi } from 'vitest';
 import {
   detectProtocol as detectProtocolImpl,
   recordHandoff as recordHandoffImpl,
@@ -109,7 +109,7 @@ describe("'ok:shell:open-external' routes v0 schemes through the allowlist", () 
   for (const [label, url] of ALLOWED_PAYLOADS) {
     test(`passes ${label} URL through to shell.openExternal`, async () => {
       const { handle, invoke } = setupRig();
-      const openExternal = mock((_url: string) => Promise.resolve());
+      const openExternal = vi.fn((_url: string) => Promise.resolve());
       handle('ok:shell:open-external', async (_event, requested) => {
         const check = checkOutboundUrl(requested);
         if (!check.ok) {
@@ -135,7 +135,7 @@ describe("'ok:shell:open-external' routes v0 schemes through the allowlist", () 
   for (const [label, url] of BLOCKED_PAYLOADS) {
     test(`rejects ${label} — allowlist gate runs before shell.openExternal`, async () => {
       const { handle, invoke } = setupRig();
-      const openExternal = mock((_url: string) => Promise.resolve());
+      const openExternal = vi.fn((_url: string) => Promise.resolve());
       handle('ok:shell:open-external', async (_event, requested) => {
         const check = checkOutboundUrl(requested);
         if (!check.ok) {

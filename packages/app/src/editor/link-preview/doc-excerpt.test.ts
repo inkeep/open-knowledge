@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { extractDocExcerpt } from './doc-excerpt.ts';
 
 describe('extractDocExcerpt', () => {

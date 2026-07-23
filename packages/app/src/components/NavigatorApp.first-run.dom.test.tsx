@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 let createDialogProps: Array<{
   open: boolean;
@@ -22,19 +22,19 @@ let listPacksImpl: () => Promise<unknown> = () =>
     ],
   });
 
-mock.module('next-themes', () => ({
+vi.doMock('next-themes', () => ({
   useTheme: () => ({ theme: undefined }),
 }));
 
-mock.module('@/hooks/use-theme-bridge', () => ({
+vi.doMock('@/hooks/use-theme-bridge', () => ({
   useThemeBridge: () => {},
 }));
 
-mock.module('./BetaBadge', () => ({
+vi.doMock('./BetaBadge', () => ({
   BetaBadge: () => <span data-testid="beta-badge">Beta</span>,
 }));
 
-mock.module('./ui/button', () => ({
+vi.doMock('./ui/button', () => ({
   Button: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
     <button type="button" {...props}>
       {children}
@@ -42,7 +42,7 @@ mock.module('./ui/button', () => ({
   ),
 }));
 
-mock.module('./ui/badge', () => ({
+vi.doMock('./ui/badge', () => ({
   Badge: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
     <span {...props}>{children}</span>
   ),
@@ -54,7 +54,7 @@ mock.module('./ui/badge', () => ({
 // shows skeletons while null) — so `findByTestId(card)` waits for the launcher's
 // listPacks fetch to settle before a click, and the resolved pack name is
 // available by then (avoids racing the async fetch under full-suite timing).
-mock.module('./PackCardGrid', () => ({
+vi.doMock('./PackCardGrid', () => ({
   PackCardGrid: ({
     onPackSelect,
     packs,
@@ -75,11 +75,11 @@ mock.module('./PackCardGrid', () => ({
     ),
 }));
 
-mock.module('@/lib/seed-client', () => ({
+vi.doMock('@/lib/seed-client', () => ({
   seedClient: () => ({ listPacks: () => listPacksImpl() }),
 }));
 
-mock.module('./CreateProjectDialog', () => ({
+vi.doMock('./CreateProjectDialog', () => ({
   CreateProjectDialog: (props: {
     open: boolean;
     initialPackId?: string;
@@ -107,37 +107,37 @@ mock.module('./CreateProjectDialog', () => ({
   },
 }));
 
-mock.module('./CloneDialog', () => ({
+vi.doMock('./CloneDialog', () => ({
   CloneDialog: (props: { open: boolean }) => (
     <div data-testid="clone-dialog" data-open={String(props.open)} />
   ),
 }));
 
-mock.module('./AuthModal', () => ({ AuthModal: () => null }));
-mock.module('./ConsentDialog', () => ({ ConsentDialog: () => null }));
-mock.module('./McpConsentDialog', () => ({ McpConsentDialog: () => null }));
-mock.module('./ShareReceiveDialog', () => ({ ShareReceiveDialog: () => null }));
-mock.module('@/lib/share/clone-controller', () => ({ createCloneController: () => ({}) }));
-mock.module('@/lib/transports/auth-query-transport', () => ({ ipcAuthQueryTransport: () => ({}) }));
-mock.module('@/lib/transports/auth-transport', () => ({ ipcAuthTransport: () => ({}) }));
-mock.module('@/lib/transports/clone-transport', () => ({ ipcCloneTransport: () => ({}) }));
+vi.doMock('./AuthModal', () => ({ AuthModal: () => null }));
+vi.doMock('./ConsentDialog', () => ({ ConsentDialog: () => null }));
+vi.doMock('./McpConsentDialog', () => ({ McpConsentDialog: () => null }));
+vi.doMock('./ShareReceiveDialog', () => ({ ShareReceiveDialog: () => null }));
+vi.doMock('@/lib/share/clone-controller', () => ({ createCloneController: () => ({}) }));
+vi.doMock('@/lib/transports/auth-query-transport', () => ({ ipcAuthQueryTransport: () => ({}) }));
+vi.doMock('@/lib/transports/auth-transport', () => ({ ipcAuthTransport: () => ({}) }));
+vi.doMock('@/lib/transports/clone-transport', () => ({ ipcCloneTransport: () => ({}) }));
 
 function createBridge(recents: unknown[]) {
   return {
     appVersion: '0.4.0-beta.1',
-    onMenuAction: mock(() => () => {}),
-    onRecentRemovedMissing: mock(() => () => {}),
+    onMenuAction: vi.fn(() => () => {}),
+    onRecentRemovedMissing: vi.fn(() => () => {}),
     config: { mode: 'navigator' },
     project: {
-      listRecent: mock(() => Promise.resolve(recents)),
-      removeRecent: mock(() => Promise.resolve()),
-      open: mock(() => Promise.resolve()),
-      createNew: mock(() => Promise.resolve()),
-      recordCreateNewBannerShown: mock(() => Promise.resolve()),
-      readHeadBranch: mock(() => Promise.resolve({ currentBranch: null })),
+      listRecent: vi.fn(() => Promise.resolve(recents)),
+      removeRecent: vi.fn(() => Promise.resolve()),
+      open: vi.fn(() => Promise.resolve()),
+      createNew: vi.fn(() => Promise.resolve()),
+      recordCreateNewBannerShown: vi.fn(() => Promise.resolve()),
+      readHeadBranch: vi.fn(() => Promise.resolve({ currentBranch: null })),
     },
     dialog: {
-      openFolder: mock(() => Promise.resolve('/picked/folder')),
+      openFolder: vi.fn(() => Promise.resolve('/picked/folder')),
     },
   };
 }
@@ -294,7 +294,7 @@ describe('NavigatorApp first-run packs-forward launcher', () => {
     // fetch must NOT read as "brand-new user" and show the first-run packs
     // onboarding. It falls back to the returning-user three-card launcher.
     const bridge = createBridge([]);
-    bridge.project.listRecent = mock(() => Promise.reject(new Error('boom')));
+    bridge.project.listRecent = vi.fn(() => Promise.reject(new Error('boom')));
     await renderNavigator(bridge);
 
     expect(await screen.findByTestId('nav-create-new')).not.toBeNull();

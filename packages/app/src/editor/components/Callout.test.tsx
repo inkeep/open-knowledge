@@ -10,8 +10,8 @@
  * `renderToString`.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { renderToString } from 'react-dom/server';
+import { describe, expect, test } from 'vitest';
 import { Callout } from './Callout.tsx';
 
 describe('Callout — chevron refactor (collapsible mode)', () => {

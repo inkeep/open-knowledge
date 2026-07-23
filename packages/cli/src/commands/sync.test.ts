@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Config } from '@inkeep/open-knowledge-server';
 import { RUNTIME_VERSION } from '@inkeep/open-knowledge-server';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { runSync } from './sync.ts';
 
 // runSync delegates to a running server via `POST /api/sync/trigger` when a live

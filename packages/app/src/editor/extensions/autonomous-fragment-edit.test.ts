@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import type { Editor } from '@tiptap/core';
+import { describe, expect, test } from 'vitest';
 import { autonomousFragmentEditAllowed } from './autonomous-fragment-edit.ts';
 import { setEditorSourceMode } from './editor-mode-context.ts';
 

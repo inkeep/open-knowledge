@@ -5,7 +5,7 @@
  * hook gets a surface-only smoke test.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   createDefaultFetchSnapshot,
   type ProbeDeps,
@@ -147,8 +147,8 @@ describe('probeClaudeDesktopIntegration — failure modes', () => {
 
 describe('runIntegrationProbe — cache + subscriber coalescing', () => {
   test('every subscriber fires when the probe resolves (useSyncExternalStore contract: no-args)', async () => {
-    const a = mock();
-    const b = mock();
+    const a = vi.fn();
+    const b = vi.fn();
     const unsubA = subscribeClaudeDesktopIntegration(a);
     const unsubB = subscribeClaudeDesktopIntegration(b);
     try {
@@ -198,7 +198,7 @@ describe('runIntegrationProbe — cache + subscriber coalescing', () => {
   });
 
   test('subscriber unsubscribe stops further notifications', async () => {
-    const a = mock();
+    const a = vi.fn();
     const unsub = subscribeClaudeDesktopIntegration(a);
     await runIntegrationProbe(deps({ fetchSnapshot: async () => okSnapshot('6.0.0') }));
     expect(a).toHaveBeenCalledTimes(1);

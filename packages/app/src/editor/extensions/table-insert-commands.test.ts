@@ -1,9 +1,9 @@
-import { describe, expect, test } from 'bun:test';
 import { sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { EditorState } from '@tiptap/pm/state';
 import { TableMap } from '@tiptap/pm/tables';
+import { describe, expect, test } from 'vitest';
 import { appendTableColumn, appendTableRow } from './table-insert-commands';
 
 // Build the schema from core's shared extensions (an app dependency) rather

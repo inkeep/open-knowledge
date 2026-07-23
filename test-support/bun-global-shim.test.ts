@@ -1,8 +1,8 @@
-import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, test } from 'vitest';
 import { bunFacade, installBunGlobal } from './bun-global-shim';
 
 const selfPath = fileURLToPath(import.meta.url);
@@ -47,7 +47,7 @@ describe('Bun global facade', () => {
 
     const scanned = [...new bunFacade.Glob('*.test.ts').scanSync({ cwd: selfDir })];
     expect(scanned).toContain('bun-global-shim.test.ts');
-    expect(scanned).not.toContain('fixtures/mockable.ts');
+    expect(scanned).not.toContain('bun-global-shim.ts');
   });
 
   test('Bun.Glob skips dotfiles and dot-directories (default dot:false parity)', () => {

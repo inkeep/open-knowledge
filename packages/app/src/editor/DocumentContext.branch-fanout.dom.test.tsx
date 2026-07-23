@@ -1,12 +1,12 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { subscribeToDocumentsChanged } from '@/lib/documents-events';
 
 // Use a dummy ws URL: pool constructs but providers never reach the wire,
 // matching `branch-invalidation.test.ts`'s established pattern.
-mock.module('@/lib/use-collab-url', () => ({
+vi.doMock('@/lib/use-collab-url', () => ({
   useCollabUrl: () => ({
     collabUrl: 'ws://localhost:1/collab',
     attempts: 0,

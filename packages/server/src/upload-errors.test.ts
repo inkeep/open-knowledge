@@ -10,7 +10,7 @@
  * SDK consumers branching on the URN to display wrong retry guidance.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { classifyUploadErrno, uploadStatusFor, uploadTitleFor } from './upload-errors.ts';
 
 function withCode(code: string): NodeJS.ErrnoException {

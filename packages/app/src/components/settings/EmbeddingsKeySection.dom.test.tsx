@@ -7,10 +7,10 @@
  * (no-key / file-key / env), and that Save/Clear call the transport.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { SemanticIndexStatus } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { EmbeddingsKeyTransport } from '@/lib/transports/embeddings-key-transport';
 import { EmbeddingsKeySection } from './EmbeddingsKeySection';
 

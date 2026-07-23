@@ -9,10 +9,10 @@
  * `srcdoc`.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { Config } from '@inkeep/open-knowledge-core';
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import type { NodeViewProps } from '@tiptap/core';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { subscribeToOpenAskAiComposer } from '@/components/ask-ai-composer-events';
 import { subscribeToActiveTerminalInput } from '@/components/handoff/terminal-input-events';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
@@ -21,7 +21,7 @@ import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 // runs the full markdown pipeline against the selected slice. Testing that
 // pipeline end-to-end is the fidelity suite's job; this file tests the
 // click→dispatch contract, so stub the serializer to a fixed fenced body.
-mock.module('../edit-with-ai-selection', () => ({
+vi.doMock('../edit-with-ai-selection', () => ({
   serializeWysiwygSelection: () => '```json\n{ "name": "sample" }\n```',
 }));
 

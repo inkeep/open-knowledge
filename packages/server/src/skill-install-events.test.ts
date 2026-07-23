@@ -4,11 +4,11 @@
  * collapses to a logged warning + resolved void.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, expect, test, vi } from 'vitest';
 import {
   recordSkillInstallEvent,
   SKILL_INSTALL_EVENTS_FILE_REL,
@@ -83,7 +83,7 @@ describe('recordSkillInstallEvent — fail-soft contract', () => {
   test('no HOME → warns + resolves; never throws', async () => {
     const warnRecorder: ((data: unknown, message: string) => void) & {
       mock: { calls: ReadonlyArray<readonly [unknown, string]> };
-    } = mock((_data: unknown, _message: string) => {}) as unknown as typeof warnRecorder;
+    } = vi.fn((_data: unknown, _message: string) => {}) as unknown as typeof warnRecorder;
     await expect(
       recordSkillInstallEvent(makeEvent(), {
         homedir: () => '',
@@ -106,7 +106,7 @@ describe('recordSkillInstallEvent — fail-soft contract', () => {
 
       const warnRecorder: ((data: unknown, message: string) => void) & {
         mock: { calls: ReadonlyArray<readonly [unknown, string]> };
-      } = mock((_data: unknown, _message: string) => {}) as unknown as typeof warnRecorder;
+      } = vi.fn((_data: unknown, _message: string) => {}) as unknown as typeof warnRecorder;
       await expect(
         recordSkillInstallEvent(makeEvent(), {
           homedir: () => blocker,
@@ -130,7 +130,7 @@ describe('recordSkillInstallEvent — fail-soft contract', () => {
 
       const warnRecorder: ((data: unknown, message: string) => void) & {
         mock: { calls: ReadonlyArray<readonly [unknown, string]> };
-      } = mock((_data: unknown, _message: string) => {}) as unknown as typeof warnRecorder;
+      } = vi.fn((_data: unknown, _message: string) => {}) as unknown as typeof warnRecorder;
       await expect(
         recordSkillInstallEvent(makeEvent(), {
           homedir: () => home,

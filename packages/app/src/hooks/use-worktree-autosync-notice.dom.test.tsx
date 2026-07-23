@@ -1,15 +1,15 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const toast = mock((_node: unknown) => {});
-mock.module('sonner', () => ({ toast }));
+const toast = vi.fn((_node: unknown) => {});
+vi.doMock('sonner', () => ({ toast }));
 
 let ctx: {
   projectLocalConfig: unknown;
   projectLocalSynced: boolean;
-  projectLocalBinding: { patch: ReturnType<typeof mock> } | null;
+  projectLocalBinding: { patch: ReturnType<typeof vi.fn> } | null;
 };
-mock.module('@/lib/config-provider', () => ({ useConfigContext: () => ctx }));
+vi.doMock('@/lib/config-provider', () => ({ useConfigContext: () => ctx }));
 
 // Import the hook AFTER the mocks register so it binds to the mocked
 // config-provider / sonner rather than the real modules.
@@ -20,7 +20,7 @@ function Probe() {
   return null;
 }
 
-const patch = mock(() => ({ ok: true }));
+const patch = vi.fn(() => ({ ok: true }));
 
 beforeEach(() => {
   cleanup();

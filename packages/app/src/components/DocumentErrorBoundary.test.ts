@@ -8,7 +8,7 @@
  * helpers — no DOM, no React renderer, no @testing-library dependency added.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { MountAbortError } from '@/editor/mount-promise';
 import {
   BridgeSetupError,

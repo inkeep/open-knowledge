@@ -10,8 +10,8 @@
  * rendering + a real PTY are the browser/packaged rung.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type {
   ClaudeReadiness,
   OkDesktopBridge,
@@ -21,7 +21,7 @@ import type {
 
 // --- xterm mocks (3rd-party system boundary) ---
 class MockFitAddon {
-  fit = mock(() => {});
+  fit = vi.fn(() => {});
   constructor() {
     lastFit = this;
   }
@@ -52,8 +52,8 @@ class MockTerminal {
   // Captures the synchronous render-debouncer flush the resize path invokes to
   // repaint in the same frame (the WebGL canvas is cleared on resize; without
   // the flush the glyphs land one frame late — a visible blank flash).
-  renderFlush = mock(() => {});
-  refresh = mock((_start: number, _end: number) => {});
+  renderFlush = vi.fn(() => {});
+  refresh = vi.fn((_start: number, _end: number) => {});
   get _core() {
     return {
       coreMouseService: { activeEncoding: this.mouseEncoding },
@@ -91,8 +91,8 @@ class MockTerminal {
   linkProvider: {
     provideLinks(line: number, cb: (links: unknown[] | undefined) => void): void;
   } | null = null;
-  linkProviderDispose = mock(() => {});
-  registerLinkProvider = mock(
+  linkProviderDispose = vi.fn(() => {});
+  registerLinkProvider = vi.fn(
     (provider: {
       provideLinks(line: number, cb: (links: unknown[] | undefined) => void): void;
     }) => {
@@ -107,28 +107,28 @@ class MockTerminal {
   // Builds the minimal WebGL-renderer DOM (.xterm-screen > canvas) so the
   // panel's device-pixel canvas observer — the second-clear repaint hook —
   // has a canvas to find, matching real xterm's structure.
-  open = mock((container: HTMLElement) => {
+  open = vi.fn((container: HTMLElement) => {
     const screen = document.createElement('div');
     screen.className = 'xterm-screen';
     screen.appendChild(document.createElement('canvas'));
     container.appendChild(screen);
   });
-  focus = mock(() => {});
-  dispose = mock(() => {});
-  write = mock((_data: string, cb?: () => void) => {
+  focus = vi.fn(() => {});
+  dispose = vi.fn(() => {});
+  write = vi.fn((_data: string, cb?: () => void) => {
     cb?.();
   });
-  loadAddon = mock((addon: unknown) => {
+  loadAddon = vi.fn((addon: unknown) => {
     if (webglThrows && addon instanceof MockWebglAddon) throw new Error('no webgl2 context');
   });
-  onData = mock((cb: (d: string) => void) => {
+  onData = vi.fn((cb: (d: string) => void) => {
     this.onDataCb = cb;
     return { dispose() {} };
   });
   // Captures the OSC 0/2 title listener; firing onTitleChangeCb mimics the PTY
   // program setting the window title. Returns a disposable like real xterm.
   onTitleChangeCb: ((title: string) => void) | null = null;
-  onTitleChange = mock((cb: (title: string) => void) => {
+  onTitleChange = vi.fn((cb: (title: string) => void) => {
     this.onTitleChangeCb = cb;
     return { dispose() {} };
   });
@@ -137,13 +137,13 @@ class MockTerminal {
   // default so it reaches the PTY instead of escaping focus) and Shift+Enter
   // (send LF instead of xterm's default CR so the CLI inserts a newline). Every
   // other key returns true, so xterm processes it and Escape reaches the PTY.
-  attachCustomKeyEventHandler = mock((h: (e: KeyboardEvent) => boolean) => {
+  attachCustomKeyEventHandler = vi.fn((h: (e: KeyboardEvent) => boolean) => {
     this.keyHandler = h;
   });
   // Production attaches a wheel handler that, in mouse-tracking mode, replaces
   // xterm's flooding one-report-per-event behavior with an accumulated,
   // frequency-independent stream (see terminal-wheel.ts).
-  attachCustomWheelEventHandler = mock((h: (e: WheelEvent) => boolean) => {
+  attachCustomWheelEventHandler = vi.fn((h: (e: WheelEvent) => boolean) => {
     this.wheelHandler = h;
   });
   constructor(options: Record<string, unknown>) {
@@ -169,11 +169,11 @@ let allROs: MockResizeObserver[] = [];
 class MockResizeObserver {
   cb: () => void;
   observed: Array<{ el: Element; opts?: ResizeObserverOptions }> = [];
-  observe = mock((el: Element, opts?: ResizeObserverOptions) => {
+  observe = vi.fn((el: Element, opts?: ResizeObserverOptions) => {
     this.observed.push({ el, opts });
   });
-  unobserve = mock(() => {});
-  disconnect = mock(() => {});
+  unobserve = vi.fn(() => {});
+  disconnect = vi.fn(() => {});
   constructor(cb: () => void) {
     this.cb = cb;
     roCallback = cb;
@@ -181,13 +181,13 @@ class MockResizeObserver {
   }
 }
 
-mock.module('@xterm/xterm', () => ({ Terminal: MockTerminal }));
-mock.module('@xterm/addon-fit', () => ({ FitAddon: MockFitAddon }));
-mock.module('@xterm/addon-webgl', () => ({ WebglAddon: MockWebglAddon }));
-mock.module('@xterm/addon-web-links', () => ({ WebLinksAddon: MockWebLinksAddon }));
-mock.module('@xterm/addon-unicode11', () => ({ Unicode11Addon: MockUnicode11Addon }));
-mock.module('@xterm/xterm/css/xterm.css', () => ({}));
-mock.module('next-themes', () => ({
+vi.doMock('@xterm/xterm', () => ({ Terminal: MockTerminal }));
+vi.doMock('@xterm/addon-fit', () => ({ FitAddon: MockFitAddon }));
+vi.doMock('@xterm/addon-webgl', () => ({ WebglAddon: MockWebglAddon }));
+vi.doMock('@xterm/addon-web-links', () => ({ WebLinksAddon: MockWebLinksAddon }));
+vi.doMock('@xterm/addon-unicode11', () => ({ Unicode11Addon: MockUnicode11Addon }));
+vi.doMock('@xterm/xterm/css/xterm.css', () => ({}));
+vi.doMock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: mockResolvedTheme }),
 }));
 
@@ -209,41 +209,41 @@ function makeBridge(
 ) {
   const dataSubs: Array<(m: OkPtyData) => void> = [];
   const exitSubs: Array<(m: OkPtyExit) => void> = [];
-  const unsubData = mock(() => {});
-  const unsubExit = mock(() => {});
-  const openExternal = mock(async (_url: string) => {});
-  const openAsset = mock(
+  const unsubData = vi.fn(() => {});
+  const unsubExit = vi.fn(() => {});
+  const openExternal = vi.fn(async (_url: string) => {});
+  const openAsset = vi.fn(
     async (_relPath: string): Promise<{ ok: true } | { ok: false; reason: string }> => ({
       ok: true,
     }),
   );
-  const revealAsset = mock(async (_relPath: string) => ({ ok: true }) as { ok: true });
-  const revealExternal = mock(
+  const revealAsset = vi.fn(async (_relPath: string) => ({ ok: true }) as { ok: true });
+  const revealExternal = vi.fn(
     async (_absPath: string) =>
       ({ ok: true, outcome: 'revealed' }) as { ok: true; outcome: 'revealed' },
   );
-  const checkTargetExists = mock(
+  const checkTargetExists = vi.fn(
     async (_req: { projectPath: string; kind: 'doc' | 'folder'; path: string }) =>
       'exists' as const,
   );
-  const rewireClaudeMcp = mock(async () => preflight);
+  const rewireClaudeMcp = vi.fn(async () => preflight);
   const terminal = {
-    create: mock(async () => createResult),
-    adopt: mock(adopt),
-    input: mock((_id: string, _d: string) => {}),
-    resize: mock((_id: string, _c: number, _r: number) => {}),
-    kill: mock(async (_id: string) => {}),
-    drain: mock((_id: string, _bytes: number) => {}),
-    onData: mock((cb: (m: OkPtyData) => void) => {
+    create: vi.fn(async () => createResult),
+    adopt: vi.fn(adopt),
+    input: vi.fn((_id: string, _d: string) => {}),
+    resize: vi.fn((_id: string, _c: number, _r: number) => {}),
+    kill: vi.fn(async (_id: string) => {}),
+    drain: vi.fn((_id: string, _bytes: number) => {}),
+    onData: vi.fn((cb: (m: OkPtyData) => void) => {
       dataSubs.push(cb);
       return unsubData;
     }),
-    onExit: mock((cb: (m: OkPtyExit) => void) => {
+    onExit: vi.fn((cb: (m: OkPtyExit) => void) => {
       exitSubs.push(cb);
       return unsubExit;
     }),
-    claudePreflight: mock(async () => preflight),
-    cliPreflight: mock(async () => ({ onPath: 'present' as const })),
+    claudePreflight: vi.fn(async () => preflight),
+    cliPreflight: vi.fn(async () => ({ onPath: 'present' as const })),
     rewireClaudeMcp,
   };
   return {
@@ -317,7 +317,7 @@ describe('TerminalPanel', () => {
   test('screen-reader mode follows the assistive-tech signal: off when inactive, live-toggled on attach', async () => {
     const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-1' });
     const a11ySubs: Array<(active: boolean) => void> = [];
-    const a11yUnsub = mock(() => {});
+    const a11yUnsub = vi.fn(() => {});
     const withA11y = {
       ...(bridge as unknown as Record<string, unknown>),
       accessibility: {
@@ -460,7 +460,7 @@ describe('TerminalPanel', () => {
 
   test('forwards xterm OSC 0/2 title changes to onTitleChange', async () => {
     const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
-    const onTitleChange = mock((_title: string) => {});
+    const onTitleChange = vi.fn((_title: string) => {});
     render(<TerminalPanel bridge={bridge} onTitleChange={onTitleChange} />);
 
     // xterm registers the title listener synchronously at mount (before the PTY
@@ -477,7 +477,7 @@ describe('TerminalPanel', () => {
 
   test('disposes the title listener on unmount', async () => {
     const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
-    const onTitleChange = mock((_title: string) => {});
+    const onTitleChange = vi.fn((_title: string) => {});
     const { unmount } = render(<TerminalPanel bridge={bridge} onTitleChange={onTitleChange} />);
     await waitFor(() => expect(lastTerm?.onTitleChangeCb).toBeTruthy());
 
@@ -721,7 +721,7 @@ describe('TerminalPanel', () => {
 
     // Shift+Tab keydown: browser default cancelled, but still handed to xterm
     // (returns true) so the reverse-tab sequence reaches the PTY / Claude TUI.
-    const shiftTabPreventDefault = mock(() => {});
+    const shiftTabPreventDefault = vi.fn(() => {});
     const shiftTab = {
       type: 'keydown',
       key: 'Tab',
@@ -732,7 +732,7 @@ describe('TerminalPanel', () => {
     expect(shiftTabPreventDefault).toHaveBeenCalledTimes(1);
 
     // Plain Tab is left to xterm, which already cancels that one itself.
-    const plainTabPreventDefault = mock(() => {});
+    const plainTabPreventDefault = vi.fn(() => {});
     const plainTab = {
       type: 'keydown',
       key: 'Tab',
@@ -744,7 +744,7 @@ describe('TerminalPanel', () => {
 
     // Escape is never intercepted (no preventDefault) so terminal apps (vim, the
     // `claude` TUI) receive it — and it reaches the PTY via the data callback.
-    const escapePreventDefault = mock(() => {});
+    const escapePreventDefault = vi.fn(() => {});
     const escapeKey = {
       type: 'keydown',
       key: 'Escape',
@@ -767,7 +767,7 @@ describe('TerminalPanel', () => {
 
     // Shift+Enter: send LF ourselves and return false so xterm does NOT also
     // emit its default CR — the CLI inserts a newline rather than submitting.
-    const shiftEnterPreventDefault = mock(() => {});
+    const shiftEnterPreventDefault = vi.fn(() => {});
     const shiftEnter = {
       type: 'keydown',
       key: 'Enter',
@@ -779,7 +779,7 @@ describe('TerminalPanel', () => {
     expect(terminal.input).toHaveBeenCalledWith('pty-1', '\n');
 
     // Plain Enter is left to xterm, which sends its default CR (submit).
-    const plainEnterPreventDefault = mock(() => {});
+    const plainEnterPreventDefault = vi.fn(() => {});
     const plainEnter = {
       type: 'keydown',
       key: 'Enter',
@@ -1009,7 +1009,7 @@ describe('TerminalPanel', () => {
   });
 
   test('renders a refusal notice (not a blank canvas) when main refuses with not-consented', async () => {
-    const onClose = mock(() => {});
+    const onClose = vi.fn(() => {});
     const { bridge, terminal } = makeBridge({ ok: false, reason: 'not-consented' });
     render(<TerminalPanel bridge={bridge} onClose={onClose} />);
 
@@ -1044,15 +1044,15 @@ describe('TerminalPanel', () => {
     const createPromise = new Promise<CreateResult>((res) => {
       resolveCreate = res;
     });
-    const kill = mock(async (_id: string) => {});
+    const kill = vi.fn(async (_id: string) => {});
     const terminal = {
-      create: mock(() => createPromise),
-      input: mock(() => {}),
-      resize: mock(() => {}),
+      create: vi.fn(() => createPromise),
+      input: vi.fn(() => {}),
+      resize: vi.fn(() => {}),
       kill,
-      drain: mock(() => {}),
-      onData: mock(() => mock(() => {})),
-      onExit: mock(() => mock(() => {})),
+      drain: vi.fn(() => {}),
+      onData: vi.fn(() => vi.fn(() => {})),
+      onExit: vi.fn(() => vi.fn(() => {})),
     };
     const bridge = { terminal, config: { e2eSmoke: false } } as unknown as OkDesktopBridge;
 
@@ -1133,26 +1133,26 @@ describe('TerminalPanel', () => {
       resolveCreate = res;
     });
     const terminal = {
-      create: mock(async () => {
+      create: vi.fn(async () => {
         createCalls += 1;
         if (createCalls === 1) throw new Error('fork EMFILE');
         // After restart, succeed so we can prove the restart path works.
         await createGate;
         return { ok: true, ptyId: 'pty-restarted' } as const;
       }),
-      input: mock(() => {}),
-      resize: mock(() => {}),
-      kill: mock(async () => {}),
-      drain: mock(() => {}),
-      onData: mock(() => mock(() => {})),
-      onExit: mock(() => mock(() => {})),
-      claudePreflight: mock(async () => WIRED),
-      cliPreflight: mock(async () => ({ onPath: 'present' as const })),
-      rewireClaudeMcp: mock(async () => WIRED),
+      input: vi.fn(() => {}),
+      resize: vi.fn(() => {}),
+      kill: vi.fn(async () => {}),
+      drain: vi.fn(() => {}),
+      onData: vi.fn(() => vi.fn(() => {})),
+      onExit: vi.fn(() => vi.fn(() => {})),
+      claudePreflight: vi.fn(async () => WIRED),
+      cliPreflight: vi.fn(async () => ({ onPath: 'present' as const })),
+      rewireClaudeMcp: vi.fn(async () => WIRED),
     };
     const bridge = {
       terminal,
-      shell: { openExternal: mock(async () => {}) },
+      shell: { openExternal: vi.fn(async () => {}) },
       config: { e2eSmoke: false },
     } as unknown as OkDesktopBridge;
 
@@ -1259,28 +1259,28 @@ describe('TerminalPanel', () => {
     // session's PTY and leave the sibling's PTY untouched.
     const exitSubs: Array<(m: OkPtyExit) => void> = [];
     let created = 0;
-    const create = mock(async () => {
+    const create = vi.fn(async () => {
       created += 1;
       return { ok: true as const, ptyId: `pty-${created}` };
     });
-    const kill = mock(async (_id: string) => {});
+    const kill = vi.fn(async (_id: string) => {});
     const terminal = {
       create,
-      input: mock(() => {}),
-      resize: mock(() => {}),
+      input: vi.fn(() => {}),
+      resize: vi.fn(() => {}),
       kill,
-      drain: mock(() => {}),
-      onData: mock(() => mock(() => {})),
-      onExit: mock((cb: (m: OkPtyExit) => void) => {
+      drain: vi.fn(() => {}),
+      onData: vi.fn(() => vi.fn(() => {})),
+      onExit: vi.fn((cb: (m: OkPtyExit) => void) => {
         exitSubs.push(cb);
-        return mock(() => {});
+        return vi.fn(() => {});
       }),
-      claudePreflight: mock(async () => WIRED),
-      rewireClaudeMcp: mock(async () => WIRED),
+      claudePreflight: vi.fn(async () => WIRED),
+      rewireClaudeMcp: vi.fn(async () => WIRED),
     };
     const bridge = {
       terminal,
-      shell: { openExternal: mock(async () => {}) },
+      shell: { openExternal: vi.fn(async () => {}) },
       config: { e2eSmoke: false },
     } as unknown as OkDesktopBridge;
     const pushExit = (m: OkPtyExit) => {

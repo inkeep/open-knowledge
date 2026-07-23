@@ -5,10 +5,11 @@
  * `bun run test:dom`. Throw injection follows the MaybeThrow Pattern C
  * documented in precedent #43(d).
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+
 import type { OkBugReportCreateResult } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as syncPromiseModule from '@/editor/sync-promise';
 import { DocumentErrorBoundary, errorCopy } from './DocumentErrorBoundary';
 
@@ -90,13 +91,13 @@ function clearBugReportBridge() {
 }
 
 describe('DocumentErrorBoundary (Tier-3 mount)', () => {
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     shouldThrow = false;
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -107,7 +108,7 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
   });
 
   test('renders children when no throw', () => {
-    const onRecycle = mock(() => {});
+    const onRecycle = vi.fn(() => {});
     render(
       <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={onRecycle}>
         <MaybeThrow label="hello" />
@@ -120,7 +121,7 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
 
   test('renders fallback UI with role=alert + heading + try-again button on child throw', () => {
     shouldThrow = true;
-    const onRecycle = mock(() => {});
+    const onRecycle = vi.fn(() => {});
     const error = new Error('MaybeThrow boom: alpha');
     const { title } = errorCopy(error);
 
@@ -145,7 +146,7 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
   test('Try again invokes onRecycle BEFORE the bracket-prefix retry log fires', async () => {
     shouldThrow = true;
     const callOrder: string[] = [];
-    const onRecycle = mock((docName: string) => {
+    const onRecycle = vi.fn((docName: string) => {
       callOrder.push(`recycle:${docName}`);
     });
     consoleWarnSpy.mockImplementation((message: unknown) => {
@@ -174,8 +175,8 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
 
   test('renders Go back button when previousDocName + onNavigateBack are both set', () => {
     shouldThrow = true;
-    const onRecycle = mock(() => {});
-    const onNavigateBack = mock(() => {});
+    const onRecycle = vi.fn(() => {});
+    const onNavigateBack = vi.fn(() => {});
 
     render(
       <DocumentErrorBoundary
@@ -194,16 +195,16 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
 
   test('Go back click navigates with previousDocName, invalidates sync promise, and does NOT call onRecycle', async () => {
     shouldThrow = true;
-    const onRecycle = mock((_docName: string) => {});
-    const onNavigateBack = mock((_previousDocName: string) => {});
+    const onRecycle = vi.fn((_docName: string) => {});
+    const onNavigateBack = vi.fn((_previousDocName: string) => {});
     // Spy on the named export — ES module live binding lets DocumentErrorBoundary's
     // captured `invalidateSyncPromise` reference see the spy's mockImplementation.
     // This pins the load-bearing "back-nav clears the cached rejected sync
     // promise so re-visiting the errored doc later gets a fresh attempt"
     // contract at DocumentErrorBoundary.tsx.
-    const invalidateSpy = spyOn(syncPromiseModule, 'invalidateSyncPromise').mockImplementation(
-      () => {},
-    );
+    const invalidateSpy = vi
+      .spyOn(syncPromiseModule, 'invalidateSyncPromise')
+      .mockImplementation(() => {});
 
     render(
       <DocumentErrorBoundary
@@ -239,7 +240,7 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
     shouldThrow = true;
     const createCalls = installBugReportBridge();
     render(
-      <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={mock(() => {})}>
+      <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={vi.fn(() => {})}>
         <MaybeThrow label="alpha" />
       </DocumentErrorBoundary>,
     );
@@ -269,7 +270,7 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
     shouldThrow = true;
     clearBugReportBridge();
     render(
-      <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={mock(() => {})}>
+      <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={vi.fn(() => {})}>
         <MaybeThrow label="alpha" />
       </DocumentErrorBoundary>,
     );
@@ -280,7 +281,7 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
 
   test('onError logs bracket-prefix console.error including the doc name and error title', () => {
     shouldThrow = true;
-    const onRecycle = mock(() => {});
+    const onRecycle = vi.fn(() => {});
     const error = new Error('MaybeThrow boom: alpha');
     const { title } = errorCopy(error);
 

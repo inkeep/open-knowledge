@@ -10,8 +10,8 @@
  * exactly like the editable-props popover path.
  */
 
-import { afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import type { Editor } from '@tiptap/react';
+import { afterEach, beforeAll, describe, expect, test } from 'vitest';
 import type { JsxComponentDescriptor } from '../registry/types';
 import {
   _resetPendingAutoOpenForTest,

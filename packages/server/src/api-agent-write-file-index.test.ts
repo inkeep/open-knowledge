@@ -8,13 +8,14 @@
  * (no persistence extension, no watcher) and spy on `mutateFileIndex`, so what
  * they observe is the handler's own registration, not the watcher's.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { Hocuspocus } from '@hocuspocus/server';
+import { describe, expect, test } from 'vitest';
 import {
   AGENT_WRITE_ORIGIN,
   AgentSessionManager,

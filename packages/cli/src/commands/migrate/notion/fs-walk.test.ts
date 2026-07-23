@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test';
 import { symlinkSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { walkFiles } from './fs-walk.ts';
 import { makeTree } from './mktree.test-helper.ts';
 

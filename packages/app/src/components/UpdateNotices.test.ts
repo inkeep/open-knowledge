@@ -12,7 +12,7 @@
  * Playwright's job.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import {
   addSchemaIncompatibilityNotice,
@@ -45,21 +45,21 @@ type WhatsNewDismissedCb = (info: { version: string }) => void;
 type StuckHintCb = (info: { downloadUrl: string }) => void;
 
 interface FakeBridge {
-  onUpdateDownloaded: ReturnType<typeof mock>;
-  onUpdateRelaunching: ReturnType<typeof mock>;
-  onUpdateRelaunchFailed: ReturnType<typeof mock>;
-  onWhatsNew: ReturnType<typeof mock>;
-  onWhatsNewDismissed: ReturnType<typeof mock>;
-  onUpdateStuckHint: ReturnType<typeof mock>;
+  onUpdateDownloaded: ReturnType<typeof vi.fn>;
+  onUpdateRelaunching: ReturnType<typeof vi.fn>;
+  onUpdateRelaunchFailed: ReturnType<typeof vi.fn>;
+  onWhatsNew: ReturnType<typeof vi.fn>;
+  onWhatsNewDismissed: ReturnType<typeof vi.fn>;
+  onUpdateStuckHint: ReturnType<typeof vi.fn>;
   update: {
-    relaunchNow: ReturnType<typeof mock>;
-    dismissWhatsNew: ReturnType<typeof mock>;
+    relaunchNow: ReturnType<typeof vi.fn>;
+    dismissWhatsNew: ReturnType<typeof vi.fn>;
   };
   state: {
-    query: ReturnType<typeof mock>;
-    resetIncompatible: ReturnType<typeof mock>;
+    query: ReturnType<typeof vi.fn>;
+    resetIncompatible: ReturnType<typeof vi.fn>;
   };
-  shell: { openExternal: ReturnType<typeof mock> };
+  shell: { openExternal: ReturnType<typeof vi.fn> };
   /** Test-side handles — set by the `on*` mocks so tests can drive dispatches. */
   _downloaded?: UpdateDownloadedCb;
   _relaunching?: RelaunchingCb;
@@ -67,59 +67,59 @@ interface FakeBridge {
   _whatsNew?: WhatsNewCb;
   _whatsNewDismissed?: WhatsNewDismissedCb;
   _stuckHint?: StuckHintCb;
-  _downloadedUnsub: ReturnType<typeof mock>;
-  _relaunchingUnsub: ReturnType<typeof mock>;
-  _relaunchFailedUnsub: ReturnType<typeof mock>;
-  _whatsNewUnsub: ReturnType<typeof mock>;
-  _whatsNewDismissedUnsub: ReturnType<typeof mock>;
-  _stuckHintUnsub: ReturnType<typeof mock>;
+  _downloadedUnsub: ReturnType<typeof vi.fn>;
+  _relaunchingUnsub: ReturnType<typeof vi.fn>;
+  _relaunchFailedUnsub: ReturnType<typeof vi.fn>;
+  _whatsNewUnsub: ReturnType<typeof vi.fn>;
+  _whatsNewDismissedUnsub: ReturnType<typeof vi.fn>;
+  _stuckHintUnsub: ReturnType<typeof vi.fn>;
 }
 
 function makeFakeBridge(): FakeBridge {
   const b: FakeBridge = {
-    _downloadedUnsub: mock(() => {}),
-    _relaunchingUnsub: mock(() => {}),
-    _relaunchFailedUnsub: mock(() => {}),
-    _whatsNewUnsub: mock(() => {}),
-    _whatsNewDismissedUnsub: mock(() => {}),
-    _stuckHintUnsub: mock(() => {}),
-    onUpdateDownloaded: mock(() => {}),
-    onUpdateRelaunching: mock(() => {}),
-    onUpdateRelaunchFailed: mock(() => {}),
-    onWhatsNew: mock(() => {}),
-    onWhatsNewDismissed: mock(() => {}),
-    onUpdateStuckHint: mock(() => {}),
+    _downloadedUnsub: vi.fn(() => {}),
+    _relaunchingUnsub: vi.fn(() => {}),
+    _relaunchFailedUnsub: vi.fn(() => {}),
+    _whatsNewUnsub: vi.fn(() => {}),
+    _whatsNewDismissedUnsub: vi.fn(() => {}),
+    _stuckHintUnsub: vi.fn(() => {}),
+    onUpdateDownloaded: vi.fn(() => {}),
+    onUpdateRelaunching: vi.fn(() => {}),
+    onUpdateRelaunchFailed: vi.fn(() => {}),
+    onWhatsNew: vi.fn(() => {}),
+    onWhatsNewDismissed: vi.fn(() => {}),
+    onUpdateStuckHint: vi.fn(() => {}),
     update: {
-      relaunchNow: mock(() => Promise.resolve(undefined)),
-      dismissWhatsNew: mock(() => Promise.resolve(undefined)),
+      relaunchNow: vi.fn(() => Promise.resolve(undefined)),
+      dismissWhatsNew: vi.fn(() => Promise.resolve(undefined)),
     },
     state: {
-      query: mock(() => Promise.resolve({ channel: 'latest', schemaIncompatibility: null })),
-      resetIncompatible: mock(() => Promise.resolve(undefined)),
+      query: vi.fn(() => Promise.resolve({ channel: 'latest', schemaIncompatibility: null })),
+      resetIncompatible: vi.fn(() => Promise.resolve(undefined)),
     },
-    shell: { openExternal: mock(() => Promise.resolve(undefined)) },
+    shell: { openExternal: vi.fn(() => Promise.resolve(undefined)) },
   };
-  b.onUpdateDownloaded = mock((cb: UpdateDownloadedCb) => {
+  b.onUpdateDownloaded = vi.fn((cb: UpdateDownloadedCb) => {
     b._downloaded = cb;
     return b._downloadedUnsub;
   });
-  b.onUpdateRelaunching = mock((cb: RelaunchingCb) => {
+  b.onUpdateRelaunching = vi.fn((cb: RelaunchingCb) => {
     b._relaunching = cb;
     return b._relaunchingUnsub;
   });
-  b.onUpdateRelaunchFailed = mock((cb: RelaunchFailedCb) => {
+  b.onUpdateRelaunchFailed = vi.fn((cb: RelaunchFailedCb) => {
     b._relaunchFailed = cb;
     return b._relaunchFailedUnsub;
   });
-  b.onWhatsNew = mock((cb: WhatsNewCb) => {
+  b.onWhatsNew = vi.fn((cb: WhatsNewCb) => {
     b._whatsNew = cb;
     return b._whatsNewUnsub;
   });
-  b.onWhatsNewDismissed = mock((cb: WhatsNewDismissedCb) => {
+  b.onWhatsNewDismissed = vi.fn((cb: WhatsNewDismissedCb) => {
     b._whatsNewDismissed = cb;
     return b._whatsNewDismissedUnsub;
   });
-  b.onUpdateStuckHint = mock((cb: StuckHintCb) => {
+  b.onUpdateStuckHint = vi.fn((cb: StuckHintCb) => {
     b._stuckHint = cb;
     return b._stuckHintUnsub;
   });
@@ -205,7 +205,7 @@ describe('appendErrorDetail', () => {
 describe('attachUpdateSubscribers — registration', () => {
   test('subscribes to all six update channels on the bridge', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     expect(bridge.onUpdateDownloaded).toHaveBeenCalledTimes(1);
     expect(bridge.onUpdateRelaunching).toHaveBeenCalledTimes(1);
@@ -217,7 +217,7 @@ describe('attachUpdateSubscribers — registration', () => {
 
   test('returns a single unsubscribe closure that detaches ALL six listeners', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     const unsubscribe = attachUpdateSubscribers(castBridge(bridge), addNotice);
     unsubscribe();
     expect(bridge._downloadedUnsub).toHaveBeenCalledTimes(1);
@@ -241,7 +241,7 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
     // card the clicked window shows — same stable id (in-place replace), no
     // action button (blocks a redundant relaunch), no dismiss X.
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
 
     bridge._relaunching?.({ version: '0.1.1' });
@@ -256,7 +256,7 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
 
   test('does NOT invoke relaunchNow — it is the echo, not the trigger (no loop)', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     bridge._relaunching?.({ version: '0.1.1' });
     expect(bridge.update.relaunchNow).not.toHaveBeenCalled();
@@ -264,7 +264,7 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
 
   test('onUpdateRelaunchFailed → error notice with detail, same id as the rejection path', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     bridge._relaunchFailed?.({ version: '0.1.1', message: 'App Still Running Error' });
     const errorNotice = addNotice.mock.calls.at(-1)?.[0] as UpdateNotice;
@@ -277,7 +277,7 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
 
   test('onUpdateRelaunchFailed without message → canonical body, no trailing colon', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     bridge._relaunchFailed?.({ version: '0.1.1' });
     const errorNotice = addNotice.mock.calls.at(-1)?.[0] as UpdateNotice;
@@ -286,7 +286,7 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
 
   test('boot-detected failed install (downloadUrl present) → richer two-action card', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     bridge._relaunchFailed?.({
       version: '0.16.0-beta.3',
@@ -302,7 +302,7 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
 
   test('failed-install Retry invokes relaunchNow; Download manually opens the URL', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     const url = 'https://github.com/inkeep/open-knowledge/releases';
     bridge._relaunchFailed?.({ version: '0.16.0-beta.3', downloadUrl: url });
@@ -315,7 +315,7 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
 
   test('relaunch-failed WITHOUT downloadUrl keeps the plain error notice (no actions)', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     bridge._relaunchFailed?.({ version: '0.16.0-beta.3' });
     const notice = addNotice.mock.calls.at(-1)?.[0] as UpdateNotice;
@@ -330,7 +330,7 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
     // Relaunch action and dismiss X) replaces the button-less in-progress
     // card — the non-clicked window is never stranded on a dead-end card.
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     bridge._relaunching?.({ version: '0.1.1' });
     bridge._downloaded?.({ version: '0.1.1' });
@@ -349,7 +349,7 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
 describe('Notice A — ok:update:downloaded', () => {
   test('emits notice with canonical copy + relaunch action on dispatch', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
 
     bridge._downloaded?.({ version: '0.1.1' });
@@ -367,7 +367,7 @@ describe('Notice A — ok:update:downloaded', () => {
 
   test('action onClick invokes bridge.update.relaunchNow', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     bridge._downloaded?.({ version: '0.1.1' });
     const notice = addNotice.mock.calls[0]?.[0] as UpdateNotice;
@@ -384,7 +384,7 @@ describe('Notice A — ok:update:downloaded', () => {
     // `dismissible: false` also drops the X — this terminal state has nothing
     // to dismiss; the card disappears when the app restarts.
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     bridge._downloaded?.({ version: '0.1.1' });
     const armed = addNotice.mock.calls[0]?.[0] as UpdateNotice;
@@ -399,8 +399,8 @@ describe('Notice A — ok:update:downloaded', () => {
 
   test('relaunchNow rejection → error notice with appended detail + armed card restored for retry', async () => {
     const bridge = makeFakeBridge();
-    bridge.update.relaunchNow = mock(() => Promise.reject(new Error('quitAndInstall failed')));
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    bridge.update.relaunchNow = vi.fn(() => Promise.reject(new Error('quitAndInstall failed')));
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     bridge._downloaded?.({ version: '0.1.1' });
     const noticeA = addNotice.mock.calls[0]?.[0] as UpdateNotice;
@@ -423,8 +423,8 @@ describe('Notice A — ok:update:downloaded', () => {
 
   test('relaunchNow non-Error rejection (string throw) → error notice without trailing colon', async () => {
     const bridge = makeFakeBridge();
-    bridge.update.relaunchNow = mock(() => Promise.reject('not-an-error'));
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    bridge.update.relaunchNow = vi.fn(() => Promise.reject('not-an-error'));
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     bridge._downloaded?.({ version: '0.1.1' });
     const noticeA = addNotice.mock.calls[0]?.[0] as UpdateNotice;
@@ -437,7 +437,7 @@ describe('Notice A — ok:update:downloaded', () => {
 
   test('relaunchNow success → no error notice (armed card + in-progress swap only)', async () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     bridge._downloaded?.({ version: '0.1.1' });
     const notice = addNotice.mock.calls[0]?.[0] as UpdateNotice;
@@ -453,8 +453,8 @@ describe('Notice A — ok:update:downloaded', () => {
 
   test('relaunchNow success → dismissNotice fires with the Toast A id (dev-mode feedback)', async () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
-    const dismissNotice = mock<(id: string) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice, dismissNotice);
     bridge._downloaded?.({ version: '0.1.1' });
     const notice = addNotice.mock.calls[0]?.[0] as UpdateNotice;
@@ -467,9 +467,9 @@ describe('Notice A — ok:update:downloaded', () => {
 
   test('relaunchNow rejection → dismissNotice does NOT fire (error notice takes over)', async () => {
     const bridge = makeFakeBridge();
-    bridge.update.relaunchNow = mock(() => Promise.reject(new Error('quitAndInstall failed')));
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
-    const dismissNotice = mock<(id: string) => void>(() => {});
+    bridge.update.relaunchNow = vi.fn(() => Promise.reject(new Error('quitAndInstall failed')));
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice, dismissNotice);
     bridge._downloaded?.({ version: '0.1.1' });
     const notice = addNotice.mock.calls[0]?.[0] as UpdateNotice;
@@ -491,7 +491,7 @@ describe('Notice A — ok:update:downloaded', () => {
     // install advanced to the newer version — the user saw "Version
     // beta.18 ready to install" but relaunched onto beta.19.
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     bridge._downloaded?.({ version: '0.1.1' });
     bridge._downloaded?.({ version: '0.1.2' });
@@ -508,8 +508,8 @@ describe('Notice A — ok:update:downloaded', () => {
     // (`relaunch-error-${version}`). If the stale beta.18 closure fired,
     // the error id would be `relaunch-error-0.1.1`.
     const bridge = makeFakeBridge();
-    bridge.update.relaunchNow = mock(() => Promise.reject(new Error('quitAndInstall failed')));
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    bridge.update.relaunchNow = vi.fn(() => Promise.reject(new Error('quitAndInstall failed')));
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     bridge._downloaded?.({ version: '0.1.1' });
     bridge._downloaded?.({ version: '0.1.2' });
@@ -523,7 +523,7 @@ describe('Notice A — ok:update:downloaded', () => {
 
   test('same version dispatched twice keeps the same id (in-place dedup at the store)', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     bridge._downloaded?.({ version: '0.1.1' });
     bridge._downloaded?.({ version: '0.1.1' });
@@ -539,7 +539,7 @@ describe('Notice A — ok:update:downloaded', () => {
 describe('Notice B — ok:update:whats-new', () => {
   test('emits notice with version-specific copy + release URL action', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     const releaseUrl = 'https://github.com/inkeep/open-knowledge/releases/tag/v0.3.1';
     bridge._whatsNew?.({ version: '0.3.1', releaseUrl });
@@ -560,8 +560,8 @@ describe('Notice B — ok:update:whats-new', () => {
 
   test('notice self-dismisses after the auto-dismiss window', async () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
-    const dismissNotice = mock<(id: string) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice, dismissNotice, 15);
     bridge._whatsNew?.({ version: '0.3.1', releaseUrl: 'https://example.com/r' });
     expect(dismissNotice).not.toHaveBeenCalled();
@@ -571,8 +571,8 @@ describe('Notice B — ok:update:whats-new', () => {
 
   test('unsubscribe clears the pending auto-dismiss timer', async () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
-    const dismissNotice = mock<(id: string) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
     const unsubscribe = attachUpdateSubscribers(castBridge(bridge), addNotice, dismissNotice, 15);
     bridge._whatsNew?.({ version: '0.3.1', releaseUrl: 'https://example.com/r' });
     unsubscribe();
@@ -584,8 +584,8 @@ describe('Notice B — ok:update:whats-new', () => {
     // The timer-tracking Set exists to hold multiple concurrent timers; a
     // regression to a single variable would silently drop the first one.
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
-    const dismissNotice = mock<(id: string) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice, dismissNotice, 15);
     bridge._whatsNew?.({ version: '0.3.0', releaseUrl: 'https://example.com/r0' });
     bridge._whatsNew?.({ version: '0.3.1', releaseUrl: 'https://example.com/r1' });
@@ -597,7 +597,7 @@ describe('Notice B — ok:update:whats-new', () => {
 
   test('dismissing the notice (X) notifies main so every window can clear', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     bridge._whatsNew?.({ version: '0.3.1', releaseUrl: 'https://example.com/r' });
     const notice = addNotice.mock.calls[0]?.[0] as UpdateNotice;
@@ -607,8 +607,8 @@ describe('Notice B — ok:update:whats-new', () => {
 
   test('auto-dismiss also notifies main so the other windows clear in lockstep', async () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
-    const dismissNotice = mock<(id: string) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice, dismissNotice, 15);
     bridge._whatsNew?.({ version: '0.3.1', releaseUrl: 'https://example.com/r' });
     await new Promise((resolve) => setTimeout(resolve, 45));
@@ -617,8 +617,8 @@ describe('Notice B — ok:update:whats-new', () => {
 
   test('onWhatsNewDismissed echo clears the card by id without re-notifying main (no loop)', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
-    const dismissNotice = mock<(id: string) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice, dismissNotice);
     bridge._whatsNewDismissed?.({ version: '0.3.1' });
     expect(dismissNotice).toHaveBeenCalledWith('whats-new-0.3.1');
@@ -634,9 +634,9 @@ describe('Notice B — ok:update:whats-new', () => {
 describe('Notice B — combined subscribe path', () => {
   test('eligible → combined notice: distinct id, whatsNew data, onShown + dismissWhatsNew at creation, no auto-dismiss', async () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
-    const dismissNotice = mock<(id: string) => void>(() => {});
-    const onShown = mock<(version: string) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
+    const onShown = vi.fn<(version: string) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice, dismissNotice, 15, {
       isEligible: () => true,
       onShown,
@@ -658,9 +658,9 @@ describe('Notice B — combined subscribe path', () => {
 
   test('ineligible → plain notice with auto-dismiss (combined branch skipped, onShown not called)', async () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
-    const dismissNotice = mock<(id: string) => void>(() => {});
-    const onShown = mock<(version: string) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
+    const onShown = vi.fn<(version: string) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice, dismissNotice, 15, {
       isEligible: () => false,
       onShown,
@@ -677,8 +677,8 @@ describe('Notice B — combined subscribe path', () => {
 
   test('onWhatsNewDismissed echo does not remove the combined card (distinct id is load-bearing)', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
-    const dismissNotice = mock<(id: string) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice, dismissNotice, 60_000, {
       isEligible: () => true,
       onShown: () => {},
@@ -699,7 +699,7 @@ describe('Notice B — combined subscribe path', () => {
 describe('Notice C — ok:update:stuck-hint', () => {
   test('emits notice with D12 copy + download URL action', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     const downloadUrl = 'https://github.com/inkeep/open-knowledge/releases';
     bridge._stuckHint?.({ downloadUrl });
@@ -715,7 +715,7 @@ describe('Notice C — ok:update:stuck-hint', () => {
 
   test('stuck-hint uses a fixed id — second dispatch from main hits the list-level dedup', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     bridge._stuckHint?.({ downloadUrl: 'https://x/y' });
     bridge._stuckHint?.({ downloadUrl: 'https://x/y' });
@@ -737,7 +737,7 @@ describe('Notice E — schema-incompatibility refuse-downgrade', () => {
 
   test('emits notice with spec body, a single Reset action, and priority 0', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     addSchemaIncompatibilityNotice(castBridge(bridge), diagnostic, addNotice);
     expect(addNotice).toHaveBeenCalledTimes(1);
     const notice = addNotice.mock.calls[0]?.[0] as UpdateNotice;
@@ -750,7 +750,7 @@ describe('Notice E — schema-incompatibility refuse-downgrade', () => {
 
   test('Reset action invokes bridge.state.resetIncompatible', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     addSchemaIncompatibilityNotice(castBridge(bridge), diagnostic, addNotice);
     const notice = addNotice.mock.calls[0]?.[0] as UpdateNotice;
     notice.action?.onClick();
@@ -759,8 +759,8 @@ describe('Notice E — schema-incompatibility refuse-downgrade', () => {
 
   test('Reset success → dismissNotice fires for the active id', async () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
-    const dismissNotice = mock<(id: string) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
     addSchemaIncompatibilityNotice(castBridge(bridge), diagnostic, addNotice, dismissNotice);
     const notice = addNotice.mock.calls[0]?.[0] as UpdateNotice;
     notice.action?.onClick();
@@ -771,9 +771,9 @@ describe('Notice E — schema-incompatibility refuse-downgrade', () => {
 
   test('Reset rejection → parent dismissed + error notice with spec shape and appended detail', async () => {
     const bridge = makeFakeBridge();
-    bridge.state.resetIncompatible = mock(() => Promise.reject(new Error('disk fail')));
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
-    const dismissNotice = mock<(id: string) => void>(() => {});
+    bridge.state.resetIncompatible = vi.fn(() => Promise.reject(new Error('disk fail')));
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
     addSchemaIncompatibilityNotice(castBridge(bridge), diagnostic, addNotice, dismissNotice);
     const initial = addNotice.mock.calls[0]?.[0] as UpdateNotice;
     initial.action?.onClick();
@@ -791,7 +791,7 @@ describe('Notice E — schema-incompatibility refuse-downgrade', () => {
 
   test('different persistedSchemaVersion produces distinct notice ids', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     addSchemaIncompatibilityNotice(castBridge(bridge), diagnostic, addNotice);
     addSchemaIncompatibilityNotice(
       castBridge(bridge),
@@ -804,7 +804,7 @@ describe('Notice E — schema-incompatibility refuse-downgrade', () => {
 
   test('repeat call with same diagnostic reuses the same id (list-level dedup)', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     addSchemaIncompatibilityNotice(castBridge(bridge), diagnostic, addNotice);
     addSchemaIncompatibilityNotice(castBridge(bridge), diagnostic, addNotice);
     const ids = addNotice.mock.calls.map((c) => (c[0] as UpdateNotice).id);
@@ -847,7 +847,7 @@ describe('pickActiveNotice', () => {
 describe('unsubscribe semantics', () => {
   test('after unsubscribe, all six per-channel unsub closures fire', () => {
     const bridge = makeFakeBridge();
-    const addNotice = mock<(notice: UpdateNotice) => void>(() => {});
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     const unsubscribe = attachUpdateSubscribers(castBridge(bridge), addNotice);
     unsubscribe();
     expect(bridge._downloadedUnsub).toHaveBeenCalledTimes(1);

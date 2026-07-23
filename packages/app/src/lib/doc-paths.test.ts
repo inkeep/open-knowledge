@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { docNameToDialogSeed, docNameToMarkdownPath, normalizeDocNameInput } from './doc-paths';
 
 describe('normalizeDocNameInput', () => {

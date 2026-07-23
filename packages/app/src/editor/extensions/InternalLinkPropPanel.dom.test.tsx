@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { LinkPreviewMetadata } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 if (typeof globalThis.DOMRect === 'undefined') {
@@ -37,7 +37,7 @@ let currentMarkInfo: CurrentMarkInfo | null = {
   to: 4,
 };
 
-mock.module('../../components/PageListContext', () => ({
+vi.doMock('../../components/PageListContext', () => ({
   usePageList: () => ({
     addPage: () => {},
     folderPaths: new Set<string>(),
@@ -46,11 +46,11 @@ mock.module('../../components/PageListContext', () => ({
   }),
 }));
 
-mock.module('./mark-interaction-bridge', () => ({
+vi.doMock('./mark-interaction-bridge', () => ({
   getCurrentMarkInfo: () => currentMarkInfo,
 }));
 
-mock.module('./use-headings', () => ({
+vi.doMock('./use-headings', () => ({
   useHeadings: () => [],
 }));
 
@@ -65,20 +65,20 @@ const loadHarness: { calls: number; result: LinkPreviewMetadata | null } = {
 };
 const configHarness = { enabled: false };
 
-mock.module('../link-preview/external-link-preview.ts', () => ({
+vi.doMock('../link-preview/external-link-preview.ts', () => ({
   loadLinkPreview: (_url: string, _signal?: AbortSignal) => {
     loadHarness.calls += 1;
     return Promise.resolve(loadHarness.result);
   },
 }));
 
-mock.module('../../lib/config-provider', () => ({
+vi.doMock('../../lib/config-provider', () => ({
   useConfigContext: () => ({
     projectLocalConfig: { linkPreviews: { enabled: configHarness.enabled } },
   }),
 }));
 
-mock.module('../../components/InteractionPropPanel', () => ({
+vi.doMock('../../components/InteractionPropPanel', () => ({
   InteractionPropPanel: ({ children }: { children: ReactNode }) => (
     <div data-testid="prop-panel">{children}</div>
   ),
@@ -172,8 +172,8 @@ describe('InternalLinkPropPanel', () => {
   });
 
   test('deletes the pending empty-href placeholder when the edit dialog is canceled', async () => {
-    const deleteRange = mock((_range: { from: number; to: number }) => {});
-    const onClose = mock(() => {});
+    const deleteRange = vi.fn((_range: { from: number; to: number }) => {});
+    const onClose = vi.fn(() => {});
     setPendingLinkEdit('m1');
 
     render(
@@ -199,9 +199,9 @@ describe('InternalLinkPropPanel', () => {
   });
 
   test('does not delete the pending mark when the edit dialog saves a URL', async () => {
-    const deleteRange = mock((_range: { from: number; to: number }) => {});
-    const onClose = mock(() => {});
-    const updateAttributes = mock((_markType: string, attrs: Record<string, unknown>) => {
+    const deleteRange = vi.fn((_range: { from: number; to: number }) => {});
+    const onClose = vi.fn(() => {});
+    const updateAttributes = vi.fn((_markType: string, attrs: Record<string, unknown>) => {
       if (!currentMarkInfo) return;
       currentMarkInfo = {
         ...currentMarkInfo,
@@ -239,8 +239,8 @@ describe('InternalLinkPropPanel', () => {
   });
 
   test('closes without deleting when the pending mark was already removed remotely', async () => {
-    const deleteRange = mock((_range: { from: number; to: number }) => {});
-    const onClose = mock(() => {});
+    const deleteRange = vi.fn((_range: { from: number; to: number }) => {});
+    const onClose = vi.fn(() => {});
     setPendingLinkEdit('m1');
 
     render(

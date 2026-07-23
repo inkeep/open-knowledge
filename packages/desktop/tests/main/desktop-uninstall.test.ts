@@ -1,5 +1,5 @@
-import { describe, expect, mock, test } from 'bun:test';
 import { join } from 'node:path';
+import { describe, expect, test, vi } from 'vitest';
 import {
   buildDesktopUninstallCleanupScript,
   buildDesktopUninstallNoticeHtml,
@@ -298,11 +298,11 @@ describe('desktop self-uninstall helpers', () => {
   test('runDesktopUninstallCleanup spawns an attached shell and resolves on close', async () => {
     const listeners = new Map<string, (...args: unknown[]) => void>();
     const child = {
-      once: mock((event: string, listener: (...args: unknown[]) => void) => {
+      once: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
         listeners.set(event, listener);
       }),
     };
-    const spawn = mock(() => child);
+    const spawn = vi.fn(() => child);
     const resultPromise = runDesktopUninstallCleanup(
       {
         cliPath: '/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh',

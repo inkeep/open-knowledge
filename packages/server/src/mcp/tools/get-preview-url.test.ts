@@ -10,10 +10,10 @@
  *     recovery hint (`ok start` vs `ok ui` by `server.lock` liveness).
  */
 
-import { describe, expect, test } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { AutoStartDisabledError } from '../../autostart.ts';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import type { OffCwdResolverDeps } from '../../off-cwd-resolver.ts';

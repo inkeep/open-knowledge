@@ -17,12 +17,13 @@
  *
  * Invocation: `bun run test:dom` from `packages/app/`.
  */
-import { afterEach, beforeEach, describe, expect, jest, mock, test } from 'bun:test';
+
 import { act, cleanup, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-const setPageListCacheMock = mock((_payload: unknown) => {});
+const setPageListCacheMock = vi.fn((_payload: unknown) => {});
 
-mock.module('@/editor/page-list-cache', () => ({
+vi.doMock('@/editor/page-list-cache', () => ({
   buildPageIconsIndex: () => new Map<string, string>(),
   buildPagesBySlugIndex: (pages: ReadonlySet<string>, toSlug: (docName: string) => string) => {
     const index = new Map<string, string>();
@@ -82,7 +83,7 @@ beforeEach(() => {
   docResolvers = [];
   setPageListCacheMock.mockClear();
   __resetDocumentListInflightForTests();
-  jest.useFakeTimers();
+  vi.useFakeTimers();
   originalFetch = globalThis.fetch;
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url = String(input);
@@ -102,7 +103,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  jest.useRealTimers();
+  vi.useRealTimers();
   globalThis.fetch = originalFetch;
 });
 
@@ -155,13 +156,13 @@ describe('PageListContext push coalescing', () => {
     // Nothing fires inside the window.
     expect(pageResolvers.length).toBe(0);
     act(() => {
-      jest.advanceTimersByTime(PUSH_REFRESH_COALESCE_MS - 1);
+      vi.advanceTimersByTime(PUSH_REFRESH_COALESCE_MS - 1);
     });
     expect(pageResolvers.length).toBe(0);
 
     // The trailing edge flushes exactly one fetch pair for the whole burst.
     act(() => {
-      jest.advanceTimersByTime(1);
+      vi.advanceTimersByTime(1);
     });
     expect(pageResolvers.length).toBe(1);
     expect(docResolvers.length).toBe(1);
@@ -172,7 +173,7 @@ describe('PageListContext push coalescing', () => {
     // A push after the flush arms a fresh window and fetches again.
     emitFilesPush();
     act(() => {
-      jest.advanceTimersByTime(PUSH_REFRESH_COALESCE_MS);
+      vi.advanceTimersByTime(PUSH_REFRESH_COALESCE_MS);
     });
     expect(pageResolvers.length).toBe(1);
   });
@@ -187,11 +188,11 @@ describe('PageListContext push coalescing', () => {
 
     emitFilesPush();
     act(() => {
-      jest.advanceTimersByTime(PUSH_REFRESH_COALESCE_MS / 2);
+      vi.advanceTimersByTime(PUSH_REFRESH_COALESCE_MS / 2);
     });
     emitFilesPush();
     act(() => {
-      jest.advanceTimersByTime(PUSH_REFRESH_COALESCE_MS / 2);
+      vi.advanceTimersByTime(PUSH_REFRESH_COALESCE_MS / 2);
     });
 
     // The flush fired at the ORIGINAL deadline even though the second push
@@ -211,7 +212,7 @@ describe('PageListContext push coalescing', () => {
       emitDocumentsChanged(['backlinks', 'graph']);
     });
     act(() => {
-      jest.advanceTimersByTime(PUSH_REFRESH_COALESCE_MS * 2);
+      vi.advanceTimersByTime(PUSH_REFRESH_COALESCE_MS * 2);
     });
     expect(pageResolvers.length).toBe(0);
   });
@@ -230,7 +231,7 @@ describe('PageListContext push coalescing', () => {
 
     unmount();
     act(() => {
-      jest.advanceTimersByTime(PUSH_REFRESH_COALESCE_MS * 2);
+      vi.advanceTimersByTime(PUSH_REFRESH_COALESCE_MS * 2);
     });
 
     // Cleanup cleared the armed timer and disposed the scheduler, so the

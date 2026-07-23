@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import {
   OK_SIDEBAR_DRAG_MIME,
   type SidebarDragPayload,
@@ -23,9 +23,9 @@ function dataTransfer(data: Record<string, string>): Pick<DataTransfer, 'types' 
 
 function dropEvent(data: Record<string, string>): {
   event: DropEvent;
-  preventDefault: ReturnType<typeof mock>;
+  preventDefault: ReturnType<typeof vi.fn>;
 } {
-  const preventDefault = mock(() => {});
+  const preventDefault = vi.fn(() => {});
   return {
     event: {
       dataTransfer: dataTransfer(data),
@@ -38,8 +38,8 @@ function dropEvent(data: Record<string, string>): {
 describe('createSidebarAwareHandleDrop', () => {
   test('claims sidebar drags before generic clipboard drop handling', () => {
     const payload: SidebarDragPayload = { v: 1, kind: 'doc', docName: 'notes/Intro', size: null };
-    const clipboardDrop = mock((_view: DropView, _event: DragEvent) => false);
-    const onSidebarDrop = mock((_payload: SidebarDragPayload) => {});
+    const clipboardDrop = vi.fn((_view: DropView, _event: DragEvent) => false);
+    const onSidebarDrop = vi.fn((_payload: SidebarDragPayload) => {});
     const handleDrop = createSidebarAwareHandleDrop(clipboardDrop, onSidebarDrop);
     const { event, preventDefault } = dropEvent({
       [OK_SIDEBAR_DRAG_MIME]: serializeSidebarDragPayload(payload),
@@ -54,8 +54,8 @@ describe('createSidebarAwareHandleDrop', () => {
 
   test('falls through to clipboard drop for non-sidebar drags', () => {
     const view = {} as DropView;
-    const clipboardDrop = mock((_view: DropView, _event: DragEvent) => false);
-    const onSidebarDrop = mock((_payload: SidebarDragPayload) => {});
+    const clipboardDrop = vi.fn((_view: DropView, _event: DragEvent) => false);
+    const onSidebarDrop = vi.fn((_payload: SidebarDragPayload) => {});
     const handleDrop = createSidebarAwareHandleDrop(clipboardDrop, onSidebarDrop);
     const { event, preventDefault } = dropEvent({ 'text/plain': 'notes/Intro.md' });
 
@@ -73,7 +73,7 @@ describe('openSidebarDropPayload', () => {
       pathname: '/app',
       search: '?workspace=ok',
     });
-    const openTarget = mock(
+    const openTarget = vi.fn(
       (_target: Parameters<SidebarOpenTarget>[0], _options: Parameters<SidebarOpenTarget>[1]) => {},
     );
     try {
@@ -90,14 +90,14 @@ describe('openSidebarDropPayload', () => {
   });
 });
 
-let fakeReplaceState = mock((_state: unknown, _unused: string, _url: string) => {});
+let fakeReplaceState = vi.fn((_state: unknown, _unused: string, _url: string) => {});
 
 function installFakeWindow(location: {
   hash: string;
   pathname: string;
   search: string;
 }): () => void {
-  fakeReplaceState = mock((_state: unknown, _unused: string, _url: string) => {});
+  fakeReplaceState = vi.fn((_state: unknown, _unused: string, _url: string) => {});
   const global = globalThis as { window?: unknown };
   const previous = global.window;
   Object.defineProperty(globalThis, 'window', {

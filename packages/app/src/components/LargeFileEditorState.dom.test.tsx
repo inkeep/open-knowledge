@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { DOCUMENT_OPEN_BYTE_LIMIT } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { LargeFileEditorState } from './LargeFileEditorState';
 
 describe('LargeFileEditorState', () => {
@@ -26,7 +26,7 @@ describe('LargeFileEditorState', () => {
   });
 
   test('go back action routes to the previous document', async () => {
-    const onNavigateBack = mock(() => {});
+    const onNavigateBack = vi.fn(() => {});
     render(
       <LargeFileEditorState
         docName="big-note"

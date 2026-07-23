@@ -9,8 +9,8 @@
  * the title, change the URN) and break every agent's 409-class branching.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { ServerResponse } from 'node:http';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { DocInConflictError, respondDocInConflict } from './conflict-errors.ts';
 
 const originalWarn = console.warn;

@@ -9,12 +9,13 @@
  * the document-list fetch are mocked at the module boundary so the assertions
  * pin exactly the branch this component owns.
  */
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
@@ -25,35 +26,35 @@ mock.module('@lingui/react/macro', () => ({
   }),
 }));
 
-mock.module('@/components/empty-state/EmptyStateHeader', () => ({
+vi.doMock('@/components/empty-state/EmptyStateHeader', () => ({
   EmptyStateHeader: () => <div data-testid="empty-state-header" />,
 }));
-mock.module('@/components/empty-state/empty-state-copy', () => ({
+vi.doMock('@/components/empty-state/empty-state-copy', () => ({
   getEmptyStateCopy: () => ({ title: 'title', subtitle: 'subtitle' }),
 }));
-mock.module('@/components/empty-state/CreateView', () => ({
+vi.doMock('@/components/empty-state/CreateView', () => ({
   CreateView: () => <div data-testid="create-view" />,
 }));
-mock.module('@/components/empty-state/CreatePromptComposer', () => ({
+vi.doMock('@/components/empty-state/CreatePromptComposer', () => ({
   CreatePromptComposer: () => <div data-testid="create-prompt-composer" />,
 }));
-mock.module('@/components/empty-state/CopyablePromptList', () => ({
+vi.doMock('@/components/empty-state/CopyablePromptList', () => ({
   CopyablePromptList: () => <div data-testid="copyable-prompt-list" />,
 }));
-mock.module('@/components/PackCardGrid', () => ({
+vi.doMock('@/components/PackCardGrid', () => ({
   PackCardGrid: () => <div data-testid="pack-card-grid" />,
 }));
-mock.module('@/components/SeedDialog', () => ({
+vi.doMock('@/components/SeedDialog', () => ({
   SeedDialog: () => null,
 }));
-mock.module('@/hooks/use-is-embedded', () => ({
+vi.doMock('@/hooks/use-is-embedded', () => ({
   useIsEmbedded: () => false,
 }));
-mock.module('@/lib/documents-events', () => ({
+vi.doMock('@/lib/documents-events', () => ({
   subscribeToDocumentsChanged: () => () => {},
 }));
 // One existing document → the non-onboarding (CreateView) branch of the full view.
-mock.module('@/lib/documents-fetch', () => ({
+vi.doMock('@/lib/documents-fetch', () => ({
   fetchDocumentListShared: async () => ({
     ok: true,
     body: { documents: [{ kind: 'document', docName: 'welcome' }] },

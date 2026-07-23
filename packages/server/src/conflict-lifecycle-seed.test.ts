@@ -7,8 +7,9 @@
  * the previously-uncovered race: conflict landed on disk while the doc was
  * NOT loaded, and the client now connects to it for the first time.
  */
-import { describe, expect, test } from 'bun:test';
+
 import type { Document, Extension } from '@hocuspocus/server';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { createConflictLifecycleSeedExtension } from './conflict-lifecycle-seed.ts';
 import type { ConflictEntry } from './conflict-storage.ts';

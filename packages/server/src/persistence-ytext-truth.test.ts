@@ -23,7 +23,7 @@
  *      structurally avoided).
  */
 
-import { describe as _bunDescribe, afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
+import { describe as _bunDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 // Skip-on-CI gate (oven-sh/bun#11892 — child-process reaping bug). The full
 // contract surface lives in this file: every test boots a real
@@ -409,7 +409,7 @@ describe('Quiescence gate via direct counter manipulation', () => {
     writeFileSync(docPath, 'initial\n', 'utf-8');
     const initialMtime = (await Bun.file(docPath).stat()).mtimeMs;
 
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const server = createServer({
       contentDir: fixture.contentDir,
       projectDir: fixture.tmpDir,
@@ -484,7 +484,7 @@ describe('Quiescence gate via direct counter manipulation', () => {
     const docPath = join(fixture.contentDir, `${docName}.md`);
     writeFileSync(docPath, 'initial\n', 'utf-8');
 
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const server = createServer({
       contentDir: fixture.contentDir,
       projectDir: fixture.tmpDir,
@@ -655,7 +655,7 @@ describe('Pre-write sanity check: divergence at persistence-fire time', () => {
     // persistence reaches via `options.mdManager`. Other call sites keep
     // using the production `mdManager` singleton.
     const testMdManager = new MarkdownManager({ extensions: sharedExtensions });
-    spyOn(testMdManager, 'serialize').mockImplementation(() => 'INJECTED-DIVERGENT-CANONICAL\n');
+    vi.spyOn(testMdManager, 'serialize').mockImplementation(() => 'INJECTED-DIVERGENT-CANONICAL\n');
 
     const server = createServer({
       contentDir: fixture.contentDir,
@@ -753,7 +753,7 @@ describe('Pre-write sanity check: divergence at persistence-fire time', () => {
     // hits this. Observer A baseline init, Observer B watchdog, and
     // reconcile use the real production singleton.
     const testMdManager = new MarkdownManager({ extensions: sharedExtensions });
-    spyOn(testMdManager, 'serialize').mockImplementation(() => {
+    vi.spyOn(testMdManager, 'serialize').mockImplementation(() => {
       throw new Error('synthetic schema-rejection: invalid Y.XmlElement type');
     });
 

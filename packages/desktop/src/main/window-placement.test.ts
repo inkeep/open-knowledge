@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import type { PersistedWindowBounds } from './state-store.ts';
 import {
   MIN_VISIBLE_WIDTH_PX,

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { pickInsertShape } from './index';
 
 // Emit-dispatch matrix: zero user-facing upload config. Dispatch reads

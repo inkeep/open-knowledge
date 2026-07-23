@@ -13,7 +13,7 @@
  * Bounded-enum + pre-validated string attributes only (STOP
  * rule: no raw paths, no doc content, no free-form user strings).
  */
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+
 import { context, metrics, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import {
@@ -22,6 +22,7 @@ import {
   type ReadableSpan,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { composeAndWriteRawBody } from './bridge-intake';
 import { mdManager, schema } from './md-manager';

@@ -4,8 +4,9 @@
  * The old code-fence form (```jsx-component) is replaced by native MDX via remark-mdx.
  * These tests verify the jsxComponent PM node works correctly with the new pipeline.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { type Extension, getSchema, type Mark, type Node } from '@tiptap/core';
+import { describe, expect, test } from 'vitest';
 import { MarkdownManager } from '../markdown/index.ts';
 import { sharedExtensions } from './shared';
 

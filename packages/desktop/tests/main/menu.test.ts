@@ -12,8 +12,9 @@
  * regression detection on the template shape: if a future edit breaks the
  * top-10 clamp or the isMac branch, these tests fail with a precise diff.
  */
-import { describe, expect, mock, test } from 'bun:test';
+
 import type { MenuItemConstructorOptions } from 'electron';
+import { describe, expect, test, vi } from 'vitest';
 import { buildMenuTemplate, type MenuDeps } from '../../src/main/menu.ts';
 
 type RecentRow = { path: string; name: string };
@@ -23,11 +24,11 @@ function makeDeps(overrides: Partial<MenuDeps> = {}): MenuDeps {
     appName: 'OpenKnowledge',
     showDevToolsMenu: true,
     dialog: {} as MenuDeps['dialog'],
-    openNavigator: mock(() => {}),
-    openProject: mock(() => Promise.resolve()),
-    getRecentProjects: mock(() => []),
-    clearRecentProjects: mock(() => {}),
-    openExternalUrl: mock(() => {}),
+    openNavigator: vi.fn(() => {}),
+    openProject: vi.fn(() => Promise.resolve()),
+    getRecentProjects: vi.fn(() => []),
+    clearRecentProjects: vi.fn(() => {}),
+    openExternalUrl: vi.fn(() => {}),
     ...overrides,
   };
 }
@@ -98,7 +99,7 @@ describe('buildMenuTemplate', () => {
   });
 
   test('recent-row click dispatches deps.openProject(path, "recents")', () => {
-    const openProject = mock(() => Promise.resolve());
+    const openProject = vi.fn(() => Promise.resolve());
     const deps = makeDeps({
       getRecentProjects: () => [{ path: '/tmp/foo', name: 'foo' }],
       openProject,
@@ -113,8 +114,8 @@ describe('buildMenuTemplate', () => {
   });
 
   test('File → Open folder click dispatches deps.openProject(path, "pick-existing")', async () => {
-    const openProject = mock(() => Promise.resolve());
-    const showOpenDialog = mock(() =>
+    const openProject = vi.fn(() => Promise.resolve());
+    const showOpenDialog = vi.fn(() =>
       Promise.resolve({ canceled: false, filePaths: ['/tmp/picked'] }),
     );
     const deps = makeDeps({
@@ -129,7 +130,7 @@ describe('buildMenuTemplate', () => {
   });
 
   test('Clear menu click dispatches deps.clearRecentProjects()', () => {
-    const clearRecentProjects = mock(() => {});
+    const clearRecentProjects = vi.fn(() => {});
     const deps = makeDeps({
       getRecentProjects: () => [{ path: '/tmp/foo', name: 'foo' }],
       clearRecentProjects,
@@ -142,7 +143,7 @@ describe('buildMenuTemplate', () => {
   });
 
   test('Switch project click dispatches deps.openNavigator()', () => {
-    const openNavigator = mock(() => {});
+    const openNavigator = vi.fn(() => {});
     const deps = makeDeps({ openNavigator });
     const template = buildMenuTemplate(deps);
     const switchProject = findByLabel(template, 'Switch project…');
@@ -174,7 +175,7 @@ describe('buildMenuTemplate', () => {
     });
 
     test('New worktree… click dispatches deps.onNewWorktree()', () => {
-      const onNewWorktree = mock(() => {});
+      const onNewWorktree = vi.fn(() => {});
       const template = buildMenuTemplate(makeDeps({ onNewWorktree }));
       const item = findByLabel(template, 'New worktree…');
       expect(item?.enabled).toBe(true);
@@ -183,7 +184,7 @@ describe('buildMenuTemplate', () => {
     });
 
     test('Switch worktree… click dispatches deps.onSwitchWorktree()', () => {
-      const onSwitchWorktree = mock(() => {});
+      const onSwitchWorktree = vi.fn(() => {});
       const template = buildMenuTemplate(makeDeps({ onSwitchWorktree }));
       const item = findByLabel(template, 'Switch worktree…');
       expect(item?.enabled).toBe(true);
@@ -251,7 +252,7 @@ describe('buildMenuTemplate', () => {
     const isMac = process.platform === 'darwin';
 
     test('Settings… is rendered with the CmdOrCtrl+, accelerator', () => {
-      const deps = makeDeps({ openSettings: mock(() => {}) });
+      const deps = makeDeps({ openSettings: vi.fn(() => {}) });
       const template = buildMenuTemplate(deps);
       const settings = findByLabel(template, 'Settings…');
       expect(settings).toBeDefined();
@@ -259,7 +260,7 @@ describe('buildMenuTemplate', () => {
     });
 
     test('Settings… click dispatches deps.openSettings()', () => {
-      const openSettings = mock(() => {});
+      const openSettings = vi.fn(() => {});
       const deps = makeDeps({ openSettings });
       const template = buildMenuTemplate(deps);
       const settings = findByLabel(template, 'Settings…');
@@ -278,7 +279,7 @@ describe('buildMenuTemplate', () => {
 
     if (isMac) {
       test('macOS: Settings… lives in the App menu, between About and the services separator', () => {
-        const deps = makeDeps({ openSettings: mock(() => {}) });
+        const deps = makeDeps({ openSettings: vi.fn(() => {}) });
         const template = buildMenuTemplate(deps);
         // The first top-level submenu on macOS is the App menu (label === appName).
         const appMenu = template.find((t) => t.label === deps.appName);
@@ -296,7 +297,7 @@ describe('buildMenuTemplate', () => {
       });
 
       test('macOS: Settings… does NOT appear in the File submenu', () => {
-        const deps = makeDeps({ openSettings: mock(() => {}) });
+        const deps = makeDeps({ openSettings: vi.fn(() => {}) });
         const template = buildMenuTemplate(deps);
         const fileMenu = template.find((t) => t.label === 'File');
         const sub = fileMenu?.submenu as MenuItemConstructorOptions[] | undefined;
@@ -308,7 +309,7 @@ describe('buildMenuTemplate', () => {
       });
     } else {
       test('Windows/Linux: Settings… lives in the File submenu, above the trailing close/quit row', () => {
-        const deps = makeDeps({ openSettings: mock(() => {}) });
+        const deps = makeDeps({ openSettings: vi.fn(() => {}) });
         const template = buildMenuTemplate(deps);
         const fileMenu = template.find((t) => t.label === 'File');
         const sub = fileMenu?.submenu as MenuItemConstructorOptions[] | undefined;
@@ -332,8 +333,8 @@ describe('buildMenuTemplate', () => {
 
     if (isMac) {
       test('macOS: appears in App menu between About and Settings…', () => {
-        const onCheckForUpdates = mock(() => {});
-        const deps = makeDeps({ onCheckForUpdates, openSettings: mock(() => {}) });
+        const onCheckForUpdates = vi.fn(() => {});
+        const deps = makeDeps({ onCheckForUpdates, openSettings: vi.fn(() => {}) });
         const template = buildMenuTemplate(deps);
         const appMenu = template.find((t) => t.label === deps.appName);
         const sub = appMenu?.submenu as MenuItemConstructorOptions[] | undefined;
@@ -350,7 +351,7 @@ describe('buildMenuTemplate', () => {
         // De-duplicated: the Apple-HIG App-menu placement is the single macOS
         // entry (mirroring the Settings platform-XOR). The Help entry is
         // non-macOS only, so macOS must not render it twice.
-        const onCheckForUpdates = mock(() => {});
+        const onCheckForUpdates = vi.fn(() => {});
         const deps = makeDeps({ onCheckForUpdates });
         const template = buildMenuTemplate(deps);
         const helpMenu = template.find((t) => t.label === 'Help');
@@ -360,7 +361,7 @@ describe('buildMenuTemplate', () => {
       });
     } else {
       test('non-mac: appears in Help menu only (no App menu on these platforms)', () => {
-        const onCheckForUpdates = mock(() => {});
+        const onCheckForUpdates = vi.fn(() => {});
         const deps = makeDeps({ onCheckForUpdates });
         const template = buildMenuTemplate(deps);
         const helpMenu = template.find((t) => t.label === 'Help');
@@ -371,7 +372,7 @@ describe('buildMenuTemplate', () => {
     }
 
     test('click dispatches deps.onCheckForUpdates()', () => {
-      const onCheckForUpdates = mock(() => {});
+      const onCheckForUpdates = vi.fn(() => {});
       const deps = makeDeps({ onCheckForUpdates });
       const template = buildMenuTemplate(deps);
       const item = findByLabel(template, 'Check for updates…');
@@ -399,7 +400,7 @@ describe('buildMenuTemplate', () => {
     });
 
     test('click dispatches deps.onReportBug()', () => {
-      const onReportBug = mock(() => {});
+      const onReportBug = vi.fn(() => {});
       const deps = makeDeps({ onReportBug });
       const template = buildMenuTemplate(deps);
       const item = findByLabel(template, 'Report a bug…');
@@ -423,8 +424,8 @@ describe('buildMenuTemplate', () => {
     test('click dispatches deps.onSendFeedback()', () => {
       // The parity ratchet asserts the binding EXISTS; only this pins that it
       // calls the right dep — a copy-paste to onReportBug would pass the ratchet.
-      const onSendFeedback = mock(() => {});
-      const onReportBug = mock(() => {});
+      const onSendFeedback = vi.fn(() => {});
+      const onReportBug = vi.fn(() => {});
       const deps = makeDeps({ onSendFeedback, onReportBug });
       const template = buildMenuTemplate(deps);
       const item = findByLabel(template, 'Send feedback…');
@@ -445,7 +446,7 @@ describe('buildMenuTemplate', () => {
 
     if (process.platform === 'darwin') {
       test('macOS: appears in the App menu before Quit when wired', () => {
-        const onUninstall = mock(() => {});
+        const onUninstall = vi.fn(() => {});
         const deps = makeDeps({ onUninstall });
         const template = buildMenuTemplate(deps);
         const appMenu = template.find((t) => t.label === deps.appName);
@@ -459,7 +460,7 @@ describe('buildMenuTemplate', () => {
     }
 
     test('click dispatches deps.onUninstall()', () => {
-      const onUninstall = mock(() => {});
+      const onUninstall = vi.fn(() => {});
       const item = findByLabel(
         buildMenuTemplate(makeDeps({ onUninstall })),
         'Uninstall OpenKnowledge…',
@@ -510,7 +511,7 @@ describe('buildMenuTemplate', () => {
 
   test('Close tab click dispatches deps.onCloseActiveTabOrWindow on macOS', () => {
     if (process.platform !== 'darwin') return;
-    const onCloseActiveTabOrWindow = mock(() => {});
+    const onCloseActiveTabOrWindow = vi.fn(() => {});
     const template = buildMenuTemplate(makeDeps({ onCloseActiveTabOrWindow }));
     const closeTab = findByLabel(template, 'Close tab');
     expect(closeTab?.enabled).toBe(true);
@@ -521,28 +522,28 @@ describe('buildMenuTemplate', () => {
 
 describe('buildMenuTemplate — File menu state-aware items (US-020 / FR16 + FR19)', () => {
   test('New file renders with Cmd+N accelerator (FR19 — was unbound today)', () => {
-    const template = buildMenuTemplate(makeDeps({ onNewFile: mock(() => {}) }));
+    const template = buildMenuTemplate(makeDeps({ onNewFile: vi.fn(() => {}) }));
     const newFile = findByLabel(template, 'New file');
     expect(newFile).toBeDefined();
     expect(newFile?.accelerator).toBe('CmdOrCtrl+N');
   });
 
   test('New folder renders with Cmd+Shift+N accelerator (FR19 — rebound from Switch project)', () => {
-    const template = buildMenuTemplate(makeDeps({ onNewFolder: mock(() => {}) }));
+    const template = buildMenuTemplate(makeDeps({ onNewFolder: vi.fn(() => {}) }));
     const newFolder = findByLabel(template, 'New folder');
     expect(newFolder).toBeDefined();
     expect(newFolder?.accelerator).toBe('CmdOrCtrl+Shift+N');
   });
 
   test('Move to Trash renders with Cmd+Delete accelerator (FR19 — matches Finder + VSCode)', () => {
-    const template = buildMenuTemplate(makeDeps({ onMoveToTrash: mock(() => {}) }));
+    const template = buildMenuTemplate(makeDeps({ onMoveToTrash: vi.fn(() => {}) }));
     const moveToTrash = findByLabel(template, 'Move to Trash');
     expect(moveToTrash).toBeDefined();
     expect(moveToTrash?.accelerator).toBe('CmdOrCtrl+Delete');
   });
 
   test('Duplicate renders with Cmd+D accelerator', () => {
-    const template = buildMenuTemplate(makeDeps({ onDuplicate: mock(() => {}) }));
+    const template = buildMenuTemplate(makeDeps({ onDuplicate: vi.fn(() => {}) }));
     const duplicate = findByLabel(template, 'Duplicate');
     expect(duplicate).toBeDefined();
     expect(duplicate?.accelerator).toBe('CmdOrCtrl+D');
@@ -552,9 +553,9 @@ describe('buildMenuTemplate — File menu state-aware items (US-020 / FR16 + FR1
     const template = buildMenuTemplate(
       makeDeps({
         activeTarget: { kind: null },
-        onRename: mock(() => {}),
-        onDuplicate: mock(() => {}),
-        onMoveToTrash: mock(() => {}),
+        onRename: vi.fn(() => {}),
+        onDuplicate: vi.fn(() => {}),
+        onMoveToTrash: vi.fn(() => {}),
       }),
     );
     expect(findByLabel(template, 'Rename')?.enabled).toBe(false);
@@ -566,9 +567,9 @@ describe('buildMenuTemplate — File menu state-aware items (US-020 / FR16 + FR1
     const template = buildMenuTemplate(
       makeDeps({
         activeTarget: { kind: 'doc', identifier: 'notes/today' },
-        onRename: mock(() => {}),
-        onDuplicate: mock(() => {}),
-        onMoveToTrash: mock(() => {}),
+        onRename: vi.fn(() => {}),
+        onDuplicate: vi.fn(() => {}),
+        onMoveToTrash: vi.fn(() => {}),
       }),
     );
     expect(findByLabel(template, 'Rename')?.enabled).toBe(true);
@@ -580,9 +581,9 @@ describe('buildMenuTemplate — File menu state-aware items (US-020 / FR16 + FR1
     const template = buildMenuTemplate(
       makeDeps({
         activeTarget: { kind: 'folder', identifier: 'specs/2026' },
-        onRename: mock(() => {}),
-        onDuplicate: mock(() => {}),
-        onMoveToTrash: mock(() => {}),
+        onRename: vi.fn(() => {}),
+        onDuplicate: vi.fn(() => {}),
+        onMoveToTrash: vi.fn(() => {}),
       }),
     );
     expect(findByLabel(template, 'Rename')?.enabled).toBe(true);
@@ -594,10 +595,10 @@ describe('buildMenuTemplate — File menu state-aware items (US-020 / FR16 + FR1
     const template = buildMenuTemplate(
       makeDeps({
         activeTarget: { kind: 'asset', identifier: 'media/diagram.png' },
-        onRename: mock(() => {}),
-        onDuplicate: mock(() => {}),
-        onMoveToTrash: mock(() => {}),
-        onSendToAi: mock(() => {}),
+        onRename: vi.fn(() => {}),
+        onDuplicate: vi.fn(() => {}),
+        onMoveToTrash: vi.fn(() => {}),
+        onSendToAi: vi.fn(() => {}),
       }),
     );
     expect(findByLabel(template, 'Rename')?.enabled).toBe(true);
@@ -607,7 +608,7 @@ describe('buildMenuTemplate — File menu state-aware items (US-020 / FR16 + FR1
   });
 
   test('Rename DISABLED when activeTarget is undefined (deps missing — unit-test default)', () => {
-    const template = buildMenuTemplate(makeDeps({ onRename: mock(() => {}) }));
+    const template = buildMenuTemplate(makeDeps({ onRename: vi.fn(() => {}) }));
     expect(findByLabel(template, 'Rename')?.enabled).toBe(false);
   });
 
@@ -617,13 +618,13 @@ describe('buildMenuTemplate — File menu state-aware items (US-020 / FR16 + FR1
     const template = buildMenuTemplate(
       makeDeps({
         activeTarget: { kind: null },
-        onNewFile: mock(() => {}),
-        onNewFolder: mock(() => {}),
-        onNewFromTemplate: mock(() => {}),
-        onRevealInFinder: mock(() => {}),
-        onSendToAi: mock(() => {}),
-        onCopyFullPath: mock(() => {}),
-        onCopyRelativePath: mock(() => {}),
+        onNewFile: vi.fn(() => {}),
+        onNewFolder: vi.fn(() => {}),
+        onNewFromTemplate: vi.fn(() => {}),
+        onRevealInFinder: vi.fn(() => {}),
+        onSendToAi: vi.fn(() => {}),
+        onCopyFullPath: vi.fn(() => {}),
+        onCopyRelativePath: vi.fn(() => {}),
       }),
     );
     expect(findByLabel(template, 'New file')?.enabled).toBe(true);
@@ -651,8 +652,8 @@ describe('buildMenuTemplate — File menu state-aware items (US-020 / FR16 + FR1
   test('Copy path submenu renders Full path + Relative path (FR9 parity with sidebar)', () => {
     const template = buildMenuTemplate(
       makeDeps({
-        onCopyFullPath: mock(() => {}),
-        onCopyRelativePath: mock(() => {}),
+        onCopyFullPath: vi.fn(() => {}),
+        onCopyRelativePath: vi.fn(() => {}),
       }),
     );
     const copyPath = findByLabel(template, 'Copy path');
@@ -663,10 +664,10 @@ describe('buildMenuTemplate — File menu state-aware items (US-020 / FR16 + FR1
   });
 
   test('click handlers dispatch to deps (e.g. New file → onNewFile)', () => {
-    const onNewFile = mock(() => {});
-    const onDuplicate = mock(() => {});
-    const onMoveToTrash = mock(() => {});
-    const onCopyFullPath = mock(() => {});
+    const onNewFile = vi.fn(() => {});
+    const onDuplicate = vi.fn(() => {});
+    const onMoveToTrash = vi.fn(() => {});
+    const onCopyFullPath = vi.fn(() => {});
     const template = buildMenuTemplate(
       makeDeps({
         activeTarget: { kind: 'doc', identifier: 'a' },
@@ -699,7 +700,7 @@ describe('buildMenuTemplate — File menu state-aware items (US-020 / FR16 + FR1
 
 describe('buildMenuTemplate — New project… menu item', () => {
   test('renders enabled when onNewProject dep is provided', () => {
-    const template = buildMenuTemplate(makeDeps({ onNewProject: mock(() => {}) }));
+    const template = buildMenuTemplate(makeDeps({ onNewProject: vi.fn(() => {}) }));
     const item = findByLabel(template, 'New project…');
     expect(item).toBeDefined();
     expect(item?.enabled).toBe(true);
@@ -714,13 +715,13 @@ describe('buildMenuTemplate — New project… menu item', () => {
     // Unlike Rename / Duplicate / Move to Trash, creating a project does not
     // depend on the current target — it must stay enabled in project scope.
     const template = buildMenuTemplate(
-      makeDeps({ activeTarget: { kind: null }, onNewProject: mock(() => {}) }),
+      makeDeps({ activeTarget: { kind: null }, onNewProject: vi.fn(() => {}) }),
     );
     expect(findByLabel(template, 'New project…')?.enabled).toBe(true);
   });
 
   test('click dispatches deps.onNewProject()', () => {
-    const onNewProject = mock(() => {});
+    const onNewProject = vi.fn(() => {});
     const template = buildMenuTemplate(makeDeps({ onNewProject }));
     const item = findByLabel(template, 'New project…');
     (item?.click as (() => void) | undefined)?.();
@@ -738,7 +739,7 @@ describe('buildMenuTemplate — New project… menu item', () => {
     // actions in the same order: Recent project, New project, Switch project,
     // Open folder — placed directly under the New… items, above the
     // item-management actions (Duplicate / Rename / Move to Trash).
-    const template = buildMenuTemplate(makeDeps({ onNewProject: mock(() => {}) }));
+    const template = buildMenuTemplate(makeDeps({ onNewProject: vi.fn(() => {}) }));
     const fileMenu = template.find((t) => t.label === 'File');
     const sub = fileMenu?.submenu as MenuItemConstructorOptions[] | undefined;
     if (!sub) throw new Error('File submenu missing');
@@ -768,7 +769,7 @@ describe('buildMenuTemplate — New project… menu item', () => {
     // The Navigator opener was once mislabeled "New Project…" (title case)
     // before it became "Switch project…". The create action is now "New
     // project…" (sentence case); this guards against the retired title-case label.
-    const template = buildMenuTemplate(makeDeps({ onNewProject: mock(() => {}) }));
+    const template = buildMenuTemplate(makeDeps({ onNewProject: vi.fn(() => {}) }));
     expect(findByLabel(template, 'New Project…')).toBeUndefined();
     expect(findByLabel(template, 'New project…')).toBeDefined();
   });
@@ -777,7 +778,7 @@ describe('buildMenuTemplate — New project… menu item', () => {
 describe('buildMenuTemplate — View menu visibility toggles + tree-scoped expand/collapse', () => {
   test('Show hidden files renders as a checkbox-type item', () => {
     const template = buildMenuTemplate(
-      makeDeps({ onToggleShowHiddenFiles: mock(() => {}), showHiddenFilesChecked: false }),
+      makeDeps({ onToggleShowHiddenFiles: vi.fn(() => {}), showHiddenFilesChecked: false }),
     );
     const item = findByLabel(template, 'Show hidden files');
     expect(item).toBeDefined();
@@ -792,7 +793,7 @@ describe('buildMenuTemplate — View menu visibility toggles + tree-scoped expan
     // toggle for hidden files. A future refactor that drops the accelerator
     // would silently break that affordance — no other surface would catch it.
     const template = buildMenuTemplate(
-      makeDeps({ onToggleShowHiddenFiles: mock(() => {}), showHiddenFilesChecked: false }),
+      makeDeps({ onToggleShowHiddenFiles: vi.fn(() => {}), showHiddenFilesChecked: false }),
     );
     expect(findByLabel(template, 'Show hidden files')?.accelerator).toBe('CmdOrCtrl+Shift+.');
   });
@@ -804,7 +805,7 @@ describe('buildMenuTemplate — View menu visibility toggles + tree-scoped expan
 
   test('Expand all / Collapse all render with visible=true by default', () => {
     const template = buildMenuTemplate(
-      makeDeps({ onExpandAll: mock(() => {}), onCollapseAll: mock(() => {}) }),
+      makeDeps({ onExpandAll: vi.fn(() => {}), onCollapseAll: vi.fn(() => {}) }),
     );
     expect(findByLabel(template, 'Expand all')?.visible).toBe(true);
     expect(findByLabel(template, 'Collapse all')?.visible).toBe(true);
@@ -812,22 +813,22 @@ describe('buildMenuTemplate — View menu visibility toggles + tree-scoped expan
 
   test('Expand all HIDDEN when canExpandAll === false (smart-hide per D15)', () => {
     const template = buildMenuTemplate(
-      makeDeps({ onExpandAll: mock(() => {}), canExpandAll: false }),
+      makeDeps({ onExpandAll: vi.fn(() => {}), canExpandAll: false }),
     );
     expect(findByLabel(template, 'Expand all')?.visible).toBe(false);
   });
 
   test('Collapse all HIDDEN when canCollapseAll === false', () => {
     const template = buildMenuTemplate(
-      makeDeps({ onCollapseAll: mock(() => {}), canCollapseAll: false }),
+      makeDeps({ onCollapseAll: vi.fn(() => {}), canCollapseAll: false }),
     );
     expect(findByLabel(template, 'Collapse all')?.visible).toBe(false);
   });
 
   test('View menu click handlers dispatch to deps', () => {
-    const onToggleShowHiddenFiles = mock(() => {});
-    const onExpandAll = mock(() => {});
-    const onCollapseAll = mock(() => {});
+    const onToggleShowHiddenFiles = vi.fn(() => {});
+    const onExpandAll = vi.fn(() => {});
+    const onCollapseAll = vi.fn(() => {});
     const template = buildMenuTemplate(
       makeDeps({
         onToggleShowHiddenFiles,
@@ -858,8 +859,8 @@ describe('buildMenuTemplate — View menu visibility toggles + tree-scoped expan
   test('New View menu items appear BEFORE Zoom items (FR17 / D38 placement)', () => {
     const template = buildMenuTemplate(
       makeDeps({
-        onToggleShowHiddenFiles: mock(() => {}),
-        onExpandAll: mock(() => {}),
+        onToggleShowHiddenFiles: vi.fn(() => {}),
+        onExpandAll: vi.fn(() => {}),
       }),
     );
     const view = findByLabel(template, 'View');
@@ -877,7 +878,7 @@ describe('buildMenuTemplate — View menu visibility toggles + tree-scoped expan
 
 describe('buildMenuTemplate — View → Show .ok folders', () => {
   test('renders as a checkbox, unchecked by default', () => {
-    const template = buildMenuTemplate(makeDeps({ onToggleShowOkFolders: mock(() => {}) }));
+    const template = buildMenuTemplate(makeDeps({ onToggleShowOkFolders: vi.fn(() => {}) }));
     const item = findByLabel(template, 'Show .ok folders');
     expect(item).toBeDefined();
     expect(item?.type).toBe('checkbox');
@@ -887,7 +888,7 @@ describe('buildMenuTemplate — View → Show .ok folders', () => {
 
   test('reflects showOkFoldersChecked', () => {
     const template = buildMenuTemplate(
-      makeDeps({ onToggleShowOkFolders: mock(() => {}), showOkFoldersChecked: true }),
+      makeDeps({ onToggleShowOkFolders: vi.fn(() => {}), showOkFoldersChecked: true }),
     );
     expect(findByLabel(template, 'Show .ok folders')?.checked).toBe(true);
   });
@@ -911,7 +912,7 @@ describe('buildMenuTemplate — View → Show .ok folders', () => {
   });
 
   test('binds no keyboard accelerator and click dispatches the toggle dep', () => {
-    const onToggleShowOkFolders = mock(() => {});
+    const onToggleShowOkFolders = vi.fn(() => {});
     const template = buildMenuTemplate(makeDeps({ onToggleShowOkFolders }));
     const item = findByLabel(template, 'Show .ok folders');
     expect(item?.accelerator).toBeUndefined();
@@ -929,7 +930,9 @@ describe('buildMenuTemplate — View → Show .ok folders', () => {
 
 describe('buildMenuTemplate — View → Show only markdown files / Show skills section', () => {
   test('Show only markdown files renders as a checkbox, unchecked by default', () => {
-    const template = buildMenuTemplate(makeDeps({ onToggleShowOnlyMarkdownFiles: mock(() => {}) }));
+    const template = buildMenuTemplate(
+      makeDeps({ onToggleShowOnlyMarkdownFiles: vi.fn(() => {}) }),
+    );
     const item = findByLabel(template, 'Show only markdown files');
     expect(item).toBeDefined();
     expect(item?.type).toBe('checkbox');
@@ -940,7 +943,7 @@ describe('buildMenuTemplate — View → Show only markdown files / Show skills 
   test('Show only markdown files reflects showOnlyMarkdownFilesChecked', () => {
     const template = buildMenuTemplate(
       makeDeps({
-        onToggleShowOnlyMarkdownFiles: mock(() => {}),
+        onToggleShowOnlyMarkdownFiles: vi.fn(() => {}),
         showOnlyMarkdownFilesChecked: true,
       }),
     );
@@ -951,7 +954,7 @@ describe('buildMenuTemplate — View → Show only markdown files / Show skills 
     // The unwired-checked default must match the renderer's resolved config
     // default (showSkillsSection ?? true) so the menu reads correctly before
     // the first renderer push lands — the inverse of Show hidden files.
-    const template = buildMenuTemplate(makeDeps({ onToggleShowSkillsSection: mock(() => {}) }));
+    const template = buildMenuTemplate(makeDeps({ onToggleShowSkillsSection: vi.fn(() => {}) }));
     const item = findByLabel(template, 'Show skills section');
     expect(item).toBeDefined();
     expect(item?.type).toBe('checkbox');
@@ -961,7 +964,7 @@ describe('buildMenuTemplate — View → Show only markdown files / Show skills 
 
   test('Show skills section reflects showSkillsSectionChecked', () => {
     const template = buildMenuTemplate(
-      makeDeps({ onToggleShowSkillsSection: mock(() => {}), showSkillsSectionChecked: false }),
+      makeDeps({ onToggleShowSkillsSection: vi.fn(() => {}), showSkillsSectionChecked: false }),
     );
     expect(findByLabel(template, 'Show skills section')?.checked).toBe(false);
   });
@@ -975,8 +978,8 @@ describe('buildMenuTemplate — View → Show only markdown files / Show skills 
   test('neither binds a keyboard accelerator (only Show hidden files carries Cmd+Shift+.)', () => {
     const template = buildMenuTemplate(
       makeDeps({
-        onToggleShowOnlyMarkdownFiles: mock(() => {}),
-        onToggleShowSkillsSection: mock(() => {}),
+        onToggleShowOnlyMarkdownFiles: vi.fn(() => {}),
+        onToggleShowSkillsSection: vi.fn(() => {}),
       }),
     );
     expect(findByLabel(template, 'Show only markdown files')?.accelerator).toBeUndefined();
@@ -984,8 +987,8 @@ describe('buildMenuTemplate — View → Show only markdown files / Show skills 
   });
 
   test('clicks dispatch their toggle deps', () => {
-    const onToggleShowOnlyMarkdownFiles = mock(() => {});
-    const onToggleShowSkillsSection = mock(() => {});
+    const onToggleShowOnlyMarkdownFiles = vi.fn(() => {});
+    const onToggleShowSkillsSection = vi.fn(() => {});
     const template = buildMenuTemplate(
       makeDeps({ onToggleShowOnlyMarkdownFiles, onToggleShowSkillsSection }),
     );
@@ -1010,11 +1013,11 @@ describe('buildMenuTemplate — View → Show only markdown files / Show skills 
     // presents the visibility toggles identically.
     const template = buildMenuTemplate(
       makeDeps({
-        onToggleShowHiddenFiles: mock(() => {}),
-        onToggleShowOkFolders: mock(() => {}),
-        onToggleShowOnlyMarkdownFiles: mock(() => {}),
-        onToggleShowSkillsSection: mock(() => {}),
-        onExpandAll: mock(() => {}),
+        onToggleShowHiddenFiles: vi.fn(() => {}),
+        onToggleShowOkFolders: vi.fn(() => {}),
+        onToggleShowOnlyMarkdownFiles: vi.fn(() => {}),
+        onToggleShowSkillsSection: vi.fn(() => {}),
+        onExpandAll: vi.fn(() => {}),
       }),
     );
     const view = findByLabel(template, 'View');
@@ -1045,21 +1048,21 @@ describe('buildMenuTemplate — View → Show/Hide sidebar', () => {
 
   test('renders "Hide sidebar" when sidebarVisible is true (or undefined default)', () => {
     const expanded = buildMenuTemplate(
-      makeDeps({ onToggleSidebar: mock(() => {}), sidebarVisible: true }),
+      makeDeps({ onToggleSidebar: vi.fn(() => {}), sidebarVisible: true }),
     );
     expect(findByLabel(expanded, 'Hide sidebar')).toBeDefined();
     expect(findByLabel(expanded, 'Show sidebar')).toBeUndefined();
 
     // `undefined` defaults to "visible" so the menu reads correctly before
     // the first renderer-pushed view-menu-state snapshot lands.
-    const defaultDeps = buildMenuTemplate(makeDeps({ onToggleSidebar: mock(() => {}) }));
+    const defaultDeps = buildMenuTemplate(makeDeps({ onToggleSidebar: vi.fn(() => {}) }));
     expect(findByLabel(defaultDeps, 'Hide sidebar')).toBeDefined();
     expect(findByLabel(defaultDeps, 'Show sidebar')).toBeUndefined();
   });
 
   test('renders "Show sidebar" when sidebarVisible is false', () => {
     const collapsed = buildMenuTemplate(
-      makeDeps({ onToggleSidebar: mock(() => {}), sidebarVisible: false }),
+      makeDeps({ onToggleSidebar: vi.fn(() => {}), sidebarVisible: false }),
     );
     expect(findByLabel(collapsed, 'Show sidebar')).toBeDefined();
     expect(findByLabel(collapsed, 'Hide sidebar')).toBeUndefined();
@@ -1074,11 +1077,11 @@ describe('buildMenuTemplate — View → Show/Hide sidebar', () => {
     // sibling accelerators use): Electron renders it as ⌥⌘S on macOS. A future
     // refactor that drops or changes the accelerator would silently break that
     // affordance.
-    const template = buildMenuTemplate(makeDeps({ onToggleSidebar: mock(() => {}) }));
+    const template = buildMenuTemplate(makeDeps({ onToggleSidebar: vi.fn(() => {}) }));
     expect(findByLabel(template, 'Hide sidebar')?.accelerator).toBe('CmdOrCtrl+Alt+S');
 
     const collapsed = buildMenuTemplate(
-      makeDeps({ onToggleSidebar: mock(() => {}), sidebarVisible: false }),
+      makeDeps({ onToggleSidebar: vi.fn(() => {}), sidebarVisible: false }),
     );
     expect(findByLabel(collapsed, 'Show sidebar')?.accelerator).toBe('CmdOrCtrl+Alt+S');
   });
@@ -1089,12 +1092,12 @@ describe('buildMenuTemplate — View → Show/Hide sidebar', () => {
   });
 
   test('click dispatches deps.onToggleSidebar', () => {
-    const onToggleSidebar = mock(() => {});
+    const onToggleSidebar = vi.fn(() => {});
     const template = buildMenuTemplate(makeDeps({ onToggleSidebar, sidebarVisible: true }));
     (findByLabel(template, 'Hide sidebar')?.click as (() => void) | undefined)?.();
     expect(onToggleSidebar).toHaveBeenCalledTimes(1);
 
-    const onToggleSidebar2 = mock(() => {});
+    const onToggleSidebar2 = vi.fn(() => {});
     const collapsed = buildMenuTemplate(
       makeDeps({ onToggleSidebar: onToggleSidebar2, sidebarVisible: false }),
     );
@@ -1105,8 +1108,8 @@ describe('buildMenuTemplate — View → Show/Hide sidebar', () => {
   test('Show/Hide sidebar precedes Show hidden files in the View submenu', () => {
     const template = buildMenuTemplate(
       makeDeps({
-        onToggleSidebar: mock(() => {}),
-        onToggleShowHiddenFiles: mock(() => {}),
+        onToggleSidebar: vi.fn(() => {}),
+        onToggleShowHiddenFiles: vi.fn(() => {}),
       }),
     );
     const view = findByLabel(template, 'View');
@@ -1123,12 +1126,12 @@ describe('buildMenuTemplate — View → Show/Hide sidebar', () => {
   // Structural tests mirror the ⌥⌘S cluster above so accelerator drift, label
   // drift on `docPanelVisible`, and unwired-deps disabling all fail loudly.
   test('renders "Hide document panel" when docPanelVisible is unset or true', () => {
-    const unsetDeps = buildMenuTemplate(makeDeps({ onToggleDocPanel: mock(() => {}) }));
+    const unsetDeps = buildMenuTemplate(makeDeps({ onToggleDocPanel: vi.fn(() => {}) }));
     expect(findByLabel(unsetDeps, 'Hide document panel')).toBeDefined();
     expect(findByLabel(unsetDeps, 'Show document panel')).toBeUndefined();
 
     const visible = buildMenuTemplate(
-      makeDeps({ onToggleDocPanel: mock(() => {}), docPanelVisible: true }),
+      makeDeps({ onToggleDocPanel: vi.fn(() => {}), docPanelVisible: true }),
     );
     expect(findByLabel(visible, 'Hide document panel')).toBeDefined();
     expect(findByLabel(visible, 'Show document panel')).toBeUndefined();
@@ -1136,7 +1139,7 @@ describe('buildMenuTemplate — View → Show/Hide sidebar', () => {
 
   test('renders "Show document panel" when docPanelVisible is false', () => {
     const collapsed = buildMenuTemplate(
-      makeDeps({ onToggleDocPanel: mock(() => {}), docPanelVisible: false }),
+      makeDeps({ onToggleDocPanel: vi.fn(() => {}), docPanelVisible: false }),
     );
     expect(findByLabel(collapsed, 'Show document panel')).toBeDefined();
     expect(findByLabel(collapsed, 'Hide document panel')).toBeUndefined();
@@ -1151,11 +1154,11 @@ describe('buildMenuTemplate — View → Show/Hide sidebar', () => {
     // clears all four collision surfaces (macOS / browser / Electron DevTools
     // / TipTap-CodeMirror). Spelled `CmdOrCtrl+Alt+B` (cross-platform-safe;
     // Electron renders as ⌥⌘B on macOS).
-    const visible = buildMenuTemplate(makeDeps({ onToggleDocPanel: mock(() => {}) }));
+    const visible = buildMenuTemplate(makeDeps({ onToggleDocPanel: vi.fn(() => {}) }));
     expect(findByLabel(visible, 'Hide document panel')?.accelerator).toBe('CmdOrCtrl+Alt+B');
 
     const collapsed = buildMenuTemplate(
-      makeDeps({ onToggleDocPanel: mock(() => {}), docPanelVisible: false }),
+      makeDeps({ onToggleDocPanel: vi.fn(() => {}), docPanelVisible: false }),
     );
     expect(findByLabel(collapsed, 'Show document panel')?.accelerator).toBe('CmdOrCtrl+Alt+B');
   });
@@ -1166,12 +1169,12 @@ describe('buildMenuTemplate — View → Show/Hide sidebar', () => {
   });
 
   test('Document panel click dispatches deps.onToggleDocPanel', () => {
-    const onToggleDocPanel = mock(() => {});
+    const onToggleDocPanel = vi.fn(() => {});
     const template = buildMenuTemplate(makeDeps({ onToggleDocPanel, docPanelVisible: true }));
     (findByLabel(template, 'Hide document panel')?.click as (() => void) | undefined)?.();
     expect(onToggleDocPanel).toHaveBeenCalledTimes(1);
 
-    const onToggleDocPanel2 = mock(() => {});
+    const onToggleDocPanel2 = vi.fn(() => {});
     const collapsed = buildMenuTemplate(
       makeDeps({ onToggleDocPanel: onToggleDocPanel2, docPanelVisible: false }),
     );
@@ -1188,12 +1191,12 @@ describe('buildMenuTemplate — View → Show/Hide Terminal', () => {
   // sidebar item's accelerator model.
 
   test('renders "Show Terminal" when terminalVisible is unset or false', () => {
-    const unsetDeps = buildMenuTemplate(makeDeps({ onToggleTerminal: mock(() => {}) }));
+    const unsetDeps = buildMenuTemplate(makeDeps({ onToggleTerminal: vi.fn(() => {}) }));
     expect(findByLabel(unsetDeps, 'Show Terminal')).toBeDefined();
     expect(findByLabel(unsetDeps, 'Hide Terminal')).toBeUndefined();
 
     const hidden = buildMenuTemplate(
-      makeDeps({ onToggleTerminal: mock(() => {}), terminalVisible: false }),
+      makeDeps({ onToggleTerminal: vi.fn(() => {}), terminalVisible: false }),
     );
     expect(findByLabel(hidden, 'Show Terminal')).toBeDefined();
     expect(findByLabel(hidden, 'Hide Terminal')).toBeUndefined();
@@ -1201,7 +1204,7 @@ describe('buildMenuTemplate — View → Show/Hide Terminal', () => {
 
   test('renders "Hide Terminal" when terminalVisible is true', () => {
     const visible = buildMenuTemplate(
-      makeDeps({ onToggleTerminal: mock(() => {}), terminalVisible: true }),
+      makeDeps({ onToggleTerminal: vi.fn(() => {}), terminalVisible: true }),
     );
     expect(findByLabel(visible, 'Hide Terminal')).toBeDefined();
     expect(findByLabel(visible, 'Show Terminal')).toBeUndefined();
@@ -1211,11 +1214,11 @@ describe('buildMenuTemplate — View → Show/Hide Terminal', () => {
     // Pinned because ⌘J / Ctrl+J is the muscle-memory affordance for the bottom
     // panel (VS Code parity); ⌘` is macOS window-cycling. A refactor that drops
     // or rebinds the accelerator silently breaks that affordance.
-    const hidden = buildMenuTemplate(makeDeps({ onToggleTerminal: mock(() => {}) }));
+    const hidden = buildMenuTemplate(makeDeps({ onToggleTerminal: vi.fn(() => {}) }));
     expect(findByLabel(hidden, 'Show Terminal')?.accelerator).toBe('CmdOrCtrl+J');
 
     const visible = buildMenuTemplate(
-      makeDeps({ onToggleTerminal: mock(() => {}), terminalVisible: true }),
+      makeDeps({ onToggleTerminal: vi.fn(() => {}), terminalVisible: true }),
     );
     expect(findByLabel(visible, 'Hide Terminal')?.accelerator).toBe('CmdOrCtrl+J');
   });
@@ -1226,12 +1229,12 @@ describe('buildMenuTemplate — View → Show/Hide Terminal', () => {
   });
 
   test('Terminal click dispatches deps.onToggleTerminal', () => {
-    const onToggleTerminal = mock(() => {});
+    const onToggleTerminal = vi.fn(() => {});
     const template = buildMenuTemplate(makeDeps({ onToggleTerminal }));
     (findByLabel(template, 'Show Terminal')?.click as (() => void) | undefined)?.();
     expect(onToggleTerminal).toHaveBeenCalledTimes(1);
 
-    const onToggleTerminal2 = mock(() => {});
+    const onToggleTerminal2 = vi.fn(() => {});
     const visible = buildMenuTemplate(
       makeDeps({ onToggleTerminal: onToggleTerminal2, terminalVisible: true }),
     );
@@ -1241,7 +1244,7 @@ describe('buildMenuTemplate — View → Show/Hide Terminal', () => {
 
   test('Terminal follows the Document Panel toggle and precedes the Zoom cluster', () => {
     const template = buildMenuTemplate(
-      makeDeps({ onToggleDocPanel: mock(() => {}), onToggleTerminal: mock(() => {}) }),
+      makeDeps({ onToggleDocPanel: vi.fn(() => {}), onToggleTerminal: vi.fn(() => {}) }),
     );
     const view = findByLabel(template, 'View');
     const sub = view?.submenu as MenuItemConstructorOptions[] | undefined;
@@ -1272,9 +1275,9 @@ describe('buildMenuTemplate — top-level Terminal menu (New / Kill)', () => {
   test('contains New Terminal, New Terminal Window, then Kill Terminal; New Terminal is click-only (no ⌘J)', () => {
     const template = buildMenuTemplate(
       makeDeps({
-        onNewTerminal: mock(() => {}),
-        onNewTerminalWindow: mock(() => {}),
-        onKillTerminal: mock(() => {}),
+        onNewTerminal: vi.fn(() => {}),
+        onNewTerminalWindow: vi.fn(() => {}),
+        onKillTerminal: vi.fn(() => {}),
       }),
     );
     const sub = findByLabel(template, 'Terminal')?.submenu as
@@ -1291,7 +1294,7 @@ describe('buildMenuTemplate — top-level Terminal menu (New / Kill)', () => {
   });
 
   test('New Terminal dispatches onNewTerminal; disabled when the handler is unwired', () => {
-    const onNewTerminal = mock(() => {});
+    const onNewTerminal = vi.fn(() => {});
     const item = findByLabel(buildMenuTemplate(makeDeps({ onNewTerminal })), 'New Terminal');
     expect(item?.enabled).toBe(true);
     (item?.click as (() => void) | undefined)?.();
@@ -1302,7 +1305,7 @@ describe('buildMenuTemplate — top-level Terminal menu (New / Kill)', () => {
 
   test('Kill Terminal is disabled with no live session, enabled + kills when one is live', () => {
     // Wired handler but no live session → disabled (spec: disable when no session).
-    const offline = buildMenuTemplate(makeDeps({ onKillTerminal: mock(() => {}) }));
+    const offline = buildMenuTemplate(makeDeps({ onKillTerminal: vi.fn(() => {}) }));
     expect(findByLabel(offline, 'Kill Terminal')?.enabled).toBe(false);
 
     // A live session but no wired handler (unit-test default) → still disabled.
@@ -1310,7 +1313,7 @@ describe('buildMenuTemplate — top-level Terminal menu (New / Kill)', () => {
     expect(findByLabel(unwired, 'Kill Terminal')?.enabled).toBe(false);
 
     // Live + wired → enabled; clicking runs the kill path.
-    const onKillTerminal = mock(() => {});
+    const onKillTerminal = vi.fn(() => {});
     const live = buildMenuTemplate(makeDeps({ onKillTerminal, terminalLive: true }));
     const killItem = findByLabel(live, 'Kill Terminal');
     expect(killItem?.enabled).toBe(true);
@@ -1319,7 +1322,7 @@ describe('buildMenuTemplate — top-level Terminal menu (New / Kill)', () => {
   });
 
   test('the View → Show/Hide Terminal toggle is preserved alongside the Terminal menu', () => {
-    const template = buildMenuTemplate(makeDeps({ onToggleTerminal: mock(() => {}) }));
+    const template = buildMenuTemplate(makeDeps({ onToggleTerminal: vi.fn(() => {}) }));
     expect(findByLabel(template, 'Show Terminal')).toBeDefined();
     expect(findByLabel(template, 'Terminal')).toBeDefined();
   });
@@ -1335,7 +1338,7 @@ describe('buildMenuTemplate — Edit → Check spelling while typing', () => {
 
   test('renders as a checkbox-type item, checked when spellCheckEnabled is true', () => {
     const item = findByLabel(
-      buildMenuTemplate(makeDeps({ spellCheckEnabled: true, onToggleSpellCheck: mock(() => {}) })),
+      buildMenuTemplate(makeDeps({ spellCheckEnabled: true, onToggleSpellCheck: vi.fn(() => {}) })),
       'Check spelling while typing',
     );
     expect(item).toBeDefined();
@@ -1345,7 +1348,9 @@ describe('buildMenuTemplate — Edit → Check spelling while typing', () => {
 
   test('renders unchecked when spellCheckEnabled is false', () => {
     const item = findByLabel(
-      buildMenuTemplate(makeDeps({ spellCheckEnabled: false, onToggleSpellCheck: mock(() => {}) })),
+      buildMenuTemplate(
+        makeDeps({ spellCheckEnabled: false, onToggleSpellCheck: vi.fn(() => {}) }),
+      ),
       'Check spelling while typing',
     );
     expect(item?.checked).toBe(false);
@@ -1353,7 +1358,7 @@ describe('buildMenuTemplate — Edit → Check spelling while typing', () => {
 
   test('defaults to checked when spellCheckEnabled dep is omitted (matches the on-by-default persistence default)', () => {
     const item = findByLabel(
-      buildMenuTemplate(makeDeps({ onToggleSpellCheck: mock(() => {}) })),
+      buildMenuTemplate(makeDeps({ onToggleSpellCheck: vi.fn(() => {}) })),
       'Check spelling while typing',
     );
     expect(item?.checked).toBe(true);
@@ -1361,7 +1366,7 @@ describe('buildMenuTemplate — Edit → Check spelling while typing', () => {
 
   test('ENABLED when onToggleSpellCheck handler is provided', () => {
     const item = findByLabel(
-      buildMenuTemplate(makeDeps({ onToggleSpellCheck: mock(() => {}) })),
+      buildMenuTemplate(makeDeps({ onToggleSpellCheck: vi.fn(() => {}) })),
       'Check spelling while typing',
     );
     expect(item?.enabled).toBe(true);
@@ -1373,7 +1378,7 @@ describe('buildMenuTemplate — Edit → Check spelling while typing', () => {
   });
 
   test('click dispatches deps.onToggleSpellCheck', () => {
-    const onToggleSpellCheck = mock(() => {});
+    const onToggleSpellCheck = vi.fn(() => {});
     const item = findByLabel(
       buildMenuTemplate(makeDeps({ onToggleSpellCheck })),
       'Check spelling while typing',
@@ -1388,7 +1393,7 @@ describe('buildMenuTemplate — Edit → Check spelling while typing', () => {
   });
 
   test('lives in the Edit submenu after the Select All role', () => {
-    const sub = editSubmenu(makeDeps({ onToggleSpellCheck: mock(() => {}) }));
+    const sub = editSubmenu(makeDeps({ onToggleSpellCheck: vi.fn(() => {}) }));
     const selectAllIdx = sub.findIndex((i) => i.role === 'selectAll');
     const spellIdx = sub.findIndex((i) => i.label === 'Check spelling while typing');
     expect(selectAllIdx).toBeGreaterThanOrEqual(0);
@@ -1398,7 +1403,7 @@ describe('buildMenuTemplate — Edit → Check spelling while typing', () => {
 
 describe('Terminal menu — New Terminal Window', () => {
   test('appears in the Terminal submenu beside New Terminal', () => {
-    const template = buildMenuTemplate(makeDeps({ onNewTerminalWindow: mock(() => {}) }));
+    const template = buildMenuTemplate(makeDeps({ onNewTerminalWindow: vi.fn(() => {}) }));
     const terminalMenu = template.find((i) => i.label === 'Terminal');
     const sub = terminalMenu?.submenu as MenuItemConstructorOptions[] | undefined;
     if (!sub) throw new Error('Terminal submenu missing');
@@ -1409,7 +1414,7 @@ describe('Terminal menu — New Terminal Window', () => {
 
   test('renders with no keyboard accelerator', () => {
     const item = findByLabel(
-      buildMenuTemplate(makeDeps({ onNewTerminalWindow: mock(() => {}) })),
+      buildMenuTemplate(makeDeps({ onNewTerminalWindow: vi.fn(() => {}) })),
       'New Terminal Window',
     );
     expect(item).toBeDefined();
@@ -1417,7 +1422,7 @@ describe('Terminal menu — New Terminal Window', () => {
   });
 
   test('click invokes onNewTerminalWindow', () => {
-    const onNewTerminalWindow = mock(() => {});
+    const onNewTerminalWindow = vi.fn(() => {});
     const item = findByLabel(
       buildMenuTemplate(makeDeps({ onNewTerminalWindow })),
       'New Terminal Window',
@@ -1429,7 +1434,7 @@ describe('Terminal menu — New Terminal Window', () => {
   test('disabled when the dep is omitted, enabled when wired', () => {
     expect(findByLabel(buildMenuTemplate(makeDeps()), 'New Terminal Window')?.enabled).toBe(false);
     const wired = findByLabel(
-      buildMenuTemplate(makeDeps({ onNewTerminalWindow: mock(() => {}) })),
+      buildMenuTemplate(makeDeps({ onNewTerminalWindow: vi.fn(() => {}) })),
       'New Terminal Window',
     );
     expect(wired?.enabled).toBe(true);

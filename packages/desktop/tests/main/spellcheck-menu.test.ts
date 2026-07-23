@@ -6,8 +6,8 @@
  * without mounting Electron's Menu.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import type { BrowserWindow, Menu, MenuItemConstructorOptions } from 'electron';
+import { describe, expect, test, vi } from 'vitest';
 import {
   type BuildSpellcheckMenuTemplateParams,
   buildSpellcheckMenuTemplate,
@@ -17,11 +17,11 @@ import {
 
 function makeActions() {
   return {
-    replaceMisspelling: mock((_: string) => {}),
-    addToDictionary: mock((_: string) => {}),
-    setSpellCheckEnabled: mock((_: boolean) => {}),
-    lookUp: mock(() => {}),
-    search: mock((_: string) => {}),
+    replaceMisspelling: vi.fn((_: string) => {}),
+    addToDictionary: vi.fn((_: string) => {}),
+    setSpellCheckEnabled: vi.fn((_: boolean) => {}),
+    lookUp: vi.fn(() => {}),
+    search: vi.fn((_: string) => {}),
   };
 }
 
@@ -287,9 +287,9 @@ describe('buildSpellcheckMenuTemplate — callback dispatch', () => {
 
 describe('popSpellcheckMenu', () => {
   function makeMenuFakes() {
-    const popup = mock((_: unknown) => {});
+    const popup = vi.fn((_: unknown) => {});
     const menuInstance = { popup } as unknown as ReturnType<typeof Menu.buildFromTemplate>;
-    const buildFromTemplate = mock((_: MenuItemConstructorOptions[]) => menuInstance);
+    const buildFromTemplate = vi.fn((_: MenuItemConstructorOptions[]) => menuInstance);
     return { popup, buildFromTemplate };
   }
 

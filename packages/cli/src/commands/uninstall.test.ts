@@ -1,8 +1,8 @@
-import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
+import { describe, expect, test } from 'vitest';
 import { detectInstallMethods, resolveRecentDeinitProjects, runUninstall } from './uninstall.ts';
 
 function write(path: string, content: string): void {

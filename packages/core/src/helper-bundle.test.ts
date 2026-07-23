@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   HELPER_BUNDLE_NAME,
   HELPER_EXECUTABLE_NAME,

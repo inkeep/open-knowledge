@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { asideToCallout } from './aside-callout.ts';
 
 describe('asideToCallout', () => {

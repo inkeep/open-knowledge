@@ -1,7 +1,7 @@
-import { describe, expect, test } from 'bun:test';
 import type { ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import type { ElectronApplication } from '@playwright/test';
+import { describe, expect, test } from 'vitest';
 import { captureAppProcess, closeAppBounded } from '../smoke/_helpers/electron-cleanup';
 
 /**

@@ -1,8 +1,8 @@
 import './idb-preload';
-import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import * as clientPersistence from '../../src/editor/client-persistence';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import {
@@ -85,12 +85,12 @@ describe('Cross-document stale cache (epoch-scoped IDB)', () => {
       typeof clientPersistence.createClientPersistence
     >[0][] = [];
     const originalCreate = clientPersistence.createClientPersistence.bind(clientPersistence);
-    const createSpy = spyOn(clientPersistence, 'createClientPersistence').mockImplementation(
-      (args) => {
+    const createSpy = vi
+      .spyOn(clientPersistence, 'createClientPersistence')
+      .mockImplementation((args) => {
         persistenceCreateCalls.push(args);
         return originalCreate(args);
-      },
-    );
+      });
     cleanups.push(() => createSpy.mockRestore());
 
     const secondPool = new ProviderPool(3, `ws://127.0.0.1:${server.port}/collab`);

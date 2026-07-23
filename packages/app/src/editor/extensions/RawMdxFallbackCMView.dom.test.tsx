@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { Config } from '@inkeep/open-knowledge-core';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import type { NodeViewProps } from '@tiptap/core';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { RawMdxFallbackView } from './RawMdxFallbackCMView';
 
@@ -86,7 +86,7 @@ async function findCmContent(container: HTMLElement): Promise<HTMLElement> {
 
 describe('RawMdxFallbackView word-wrap preference wiring', () => {
   beforeEach(() => {
-    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/pages') {
         return Response.json({ pages: [] });

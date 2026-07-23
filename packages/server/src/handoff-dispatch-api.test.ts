@@ -14,9 +14,9 @@
  * URN body) back to the in-process `HandoffOutcome` discriminated union.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
+import { describe, expect, test, vi } from 'vitest';
 import {
   type HandleHandoffDispatchDeps,
   handleHandoffDispatch,
@@ -137,12 +137,12 @@ describe('resolveUrlOpenInvocation — per-platform protocol-URL opener', () => 
 describe('handleHandoffDispatch — app-bundle cross-platform (Windows / Linux)', () => {
   test('Windows claude-cowork, scheme registered → single rundll32 URL fire; no osascript/open -a', async () => {
     const calls: Array<{ exec: string; args: ReadonlyArray<string> }> = [];
-    const spawnDetached = mock(async (exec: string, args: ReadonlyArray<string>) => {
+    const spawnDetached = vi.fn(async (exec: string, args: ReadonlyArray<string>) => {
       calls.push({ exec, args: [...args] });
       return { ok: true } as SpawnOutcome;
     });
-    const isSchemeRegistered = mock(async () => true);
-    const sleep = mock(async (_ms: number) => undefined);
+    const isSchemeRegistered = vi.fn(async () => true);
+    const sleep = vi.fn(async (_ms: number) => undefined);
     const { res, captured } = makeRes();
     await handleHandoffDispatch(
       makeReq('POST', { target: 'claude-cowork', url: CLAUDE_URL }),
@@ -163,11 +163,11 @@ describe('handleHandoffDispatch — app-bundle cross-platform (Windows / Linux)'
 
   test('Windows codex, scheme registered → rundll32 URL fire; quitFirst does NOT spawn osascript off-darwin', async () => {
     const calls: Array<{ exec: string; args: ReadonlyArray<string> }> = [];
-    const spawnDetached = mock(async (exec: string, args: ReadonlyArray<string>) => {
+    const spawnDetached = vi.fn(async (exec: string, args: ReadonlyArray<string>) => {
       calls.push({ exec, args: [...args] });
       return { ok: true } as SpawnOutcome;
     });
-    const isSchemeRegistered = mock(async () => true);
+    const isSchemeRegistered = vi.fn(async () => true);
     const { res, captured } = makeRes();
     await handleHandoffDispatch(
       makeReq('POST', { target: 'codex', url: CODEX_URL }),
@@ -183,7 +183,7 @@ describe('handleHandoffDispatch — app-bundle cross-platform (Windows / Linux)'
 
   test('Linux claude-code, scheme registered → single xdg-open URL fire', async () => {
     const calls: Array<{ exec: string; args: ReadonlyArray<string> }> = [];
-    const spawnDetached = mock(async (exec: string, args: ReadonlyArray<string>) => {
+    const spawnDetached = vi.fn(async (exec: string, args: ReadonlyArray<string>) => {
       calls.push({ exec, args: [...args] });
       return { ok: true } as SpawnOutcome;
     });
@@ -198,7 +198,7 @@ describe('handleHandoffDispatch — app-bundle cross-platform (Windows / Linux)'
   });
 
   test('Windows claude-cowork, scheme NOT registered → 422 handoff-target-not-installed; no spawn', async () => {
-    const spawnDetached = mock(async () => ({ ok: true }) as SpawnOutcome);
+    const spawnDetached = vi.fn(async () => ({ ok: true }) as SpawnOutcome);
     const { res, captured } = makeRes();
     await handleHandoffDispatch(
       makeReq('POST', { target: 'claude-cowork', url: CLAUDE_URL }),
@@ -211,7 +211,7 @@ describe('handleHandoffDispatch — app-bundle cross-platform (Windows / Linux)'
   });
 
   test('Linux codex, scheme NOT registered → 422 handoff-target-not-installed; no spawn', async () => {
-    const spawnDetached = mock(async () => ({ ok: true }) as SpawnOutcome);
+    const spawnDetached = vi.fn(async () => ({ ok: true }) as SpawnOutcome);
     const { res, captured } = makeRes();
     await handleHandoffDispatch(
       makeReq('POST', { target: 'codex', url: CODEX_URL }),
@@ -224,7 +224,7 @@ describe('handleHandoffDispatch — app-bundle cross-platform (Windows / Linux)'
   });
 
   test('Windows app-bundle URL-spawn failure (spawn-error) → 502 handoff-spawn-failed', async () => {
-    const spawnDetached = mock(async () => ({ ok: false, reason: 'spawn-error' }) as SpawnOutcome);
+    const spawnDetached = vi.fn(async () => ({ ok: false, reason: 'spawn-error' }) as SpawnOutcome);
     const { res, captured } = makeRes();
     await handleHandoffDispatch(
       makeReq('POST', { target: 'claude-cowork', url: CLAUDE_URL }),
@@ -243,11 +243,11 @@ describe('handleHandoffDispatch — cursor cross-platform (cli-binary)', () => {
     const cmdPath =
       'C:\\Users\\who\\AppData\\Local\\Programs\\cursor\\resources\\app\\bin\\cursor.cmd';
     const calls: Array<{ exec: string; args: ReadonlyArray<string> }> = [];
-    const spawnDetached = mock(async (exec: string, args: ReadonlyArray<string>) => {
+    const spawnDetached = vi.fn(async (exec: string, args: ReadonlyArray<string>) => {
       calls.push({ exec, args: [...args] });
       return { ok: true } as SpawnOutcome;
     });
-    const sleep = mock(async (_ms: number) => undefined);
+    const sleep = vi.fn(async (_ms: number) => undefined);
     const { res, captured } = makeRes();
     await handleHandoffDispatch(
       makeReq('POST', { target: 'cursor', url: CURSOR_URL, workspacePath: winWorkspace }),
@@ -277,7 +277,7 @@ describe('handleHandoffDispatch — cursor cross-platform (cli-binary)', () => {
     const linuxContentDir = '/home/who/dragons';
     const linuxWorkspace = '/home/who/dragons/specs';
     const calls: Array<{ exec: string; args: ReadonlyArray<string> }> = [];
-    const spawnDetached = mock(async (exec: string, args: ReadonlyArray<string>) => {
+    const spawnDetached = vi.fn(async (exec: string, args: ReadonlyArray<string>) => {
       calls.push({ exec, args: [...args] });
       return { ok: true } as SpawnOutcome;
     });
@@ -363,11 +363,11 @@ describe('handleHandoffDispatch — body validation', () => {
 describe('handleHandoffDispatch — claude-cowork recipe (app-bundle, quitFirst=false)', () => {
   test('happy path: open -a Claude → sleep → open URL; no osascript quit', async () => {
     const calls: Array<{ exec: string; args: ReadonlyArray<string> }> = [];
-    const spawnDetached = mock(async (exec: string, args: ReadonlyArray<string>) => {
+    const spawnDetached = vi.fn(async (exec: string, args: ReadonlyArray<string>) => {
       calls.push({ exec, args: [...args] });
       return { ok: true } as SpawnOutcome;
     });
-    const sleep = mock(async (_ms: number) => undefined);
+    const sleep = vi.fn(async (_ms: number) => undefined);
     const { res, captured } = makeRes();
     await handleHandoffDispatch(
       makeReq('POST', { target: 'claude-cowork', url: CLAUDE_URL }),
@@ -388,7 +388,7 @@ describe('handleHandoffDispatch — claude-cowork recipe (app-bundle, quitFirst=
 
   test('claude-code uses the same recipe as claude-cowork', async () => {
     const calls: Array<{ exec: string; args: ReadonlyArray<string> }> = [];
-    const spawnDetached = mock(async (exec: string, args: ReadonlyArray<string>) => {
+    const spawnDetached = vi.fn(async (exec: string, args: ReadonlyArray<string>) => {
       calls.push({ exec, args: [...args] });
       return { ok: true } as SpawnOutcome;
     });
@@ -407,7 +407,7 @@ describe('handleHandoffDispatch — claude-cowork recipe (app-bundle, quitFirst=
 
   test('activate failure (not-installed) → 422 handoff-target-not-installed; URL spawn skipped', async () => {
     let firstCall = true;
-    const spawnDetached = mock(async () => {
+    const spawnDetached = vi.fn(async () => {
       if (firstCall) {
         firstCall = false;
         return { ok: false, reason: 'not-installed' } as SpawnOutcome;
@@ -427,7 +427,7 @@ describe('handleHandoffDispatch — claude-cowork recipe (app-bundle, quitFirst=
 
   test('URL spawn failure (timeout) → 504 handoff-spawn-timeout', async () => {
     let callCount = 0;
-    const spawnDetached = mock(async () => {
+    const spawnDetached = vi.fn(async () => {
       callCount += 1;
       if (callCount === 1) return { ok: true } as SpawnOutcome;
       return { ok: false, reason: 'timeout' } as SpawnOutcome;
@@ -445,7 +445,7 @@ describe('handleHandoffDispatch — claude-cowork recipe (app-bundle, quitFirst=
 
   test('URL spawn failure (spawn-error) → 502 handoff-spawn-failed', async () => {
     let callCount = 0;
-    const spawnDetached = mock(async () => {
+    const spawnDetached = vi.fn(async () => {
       callCount += 1;
       if (callCount === 1) return { ok: true } as SpawnOutcome;
       return { ok: false, reason: 'spawn-error' } as SpawnOutcome;
@@ -464,11 +464,11 @@ describe('handleHandoffDispatch — claude-cowork recipe (app-bundle, quitFirst=
 describe('handleHandoffDispatch — codex recipe (app-bundle, quitFirst=true)', () => {
   test('happy path: osascript quit → sleep → open -a Codex → sleep → open URL', async () => {
     const calls: Array<{ exec: string; args: ReadonlyArray<string> }> = [];
-    const spawnDetached = mock(async (exec: string, args: ReadonlyArray<string>) => {
+    const spawnDetached = vi.fn(async (exec: string, args: ReadonlyArray<string>) => {
       calls.push({ exec, args: [...args] });
       return { ok: true } as SpawnOutcome;
     });
-    const sleep = mock(async (_ms: number) => undefined);
+    const sleep = vi.fn(async (_ms: number) => undefined);
     const { res, captured } = makeRes();
     await handleHandoffDispatch(
       makeReq('POST', { target: 'codex', url: CODEX_URL }),
@@ -493,7 +493,7 @@ describe('handleHandoffDispatch — codex recipe (app-bundle, quitFirst=true)', 
   test('quit-step failure is swallowed; recipe still proceeds with activate + URL', async () => {
     let callCount = 0;
     const calls: Array<{ exec: string; args: ReadonlyArray<string> }> = [];
-    const spawnDetached = mock(async (exec: string, args: ReadonlyArray<string>) => {
+    const spawnDetached = vi.fn(async (exec: string, args: ReadonlyArray<string>) => {
       callCount += 1;
       calls.push({ exec, args: [...args] });
       // First call is the quit step — return spawn-error to verify it's not a recipe-killer.
@@ -516,7 +516,7 @@ describe('handleHandoffDispatch — codex recipe (app-bundle, quitFirst=true)', 
 
   test('activate failure on codex → 422 handoff-target-not-installed with target=codex', async () => {
     let callCount = 0;
-    const spawnDetached = mock(async () => {
+    const spawnDetached = vi.fn(async () => {
       callCount += 1;
       // quit passes, activate fails.
       if (callCount === 1) return { ok: true } as SpawnOutcome;
@@ -536,11 +536,11 @@ describe('handleHandoffDispatch — codex recipe (app-bundle, quitFirst=true)', 
 describe('handleHandoffDispatch — cursor recipe (cli-binary)', () => {
   test('happy path: cursor <path> → sleep → open URL', async () => {
     const calls: Array<{ exec: string; args: ReadonlyArray<string> }> = [];
-    const spawnDetached = mock(async (exec: string, args: ReadonlyArray<string>) => {
+    const spawnDetached = vi.fn(async (exec: string, args: ReadonlyArray<string>) => {
       calls.push({ exec, args: [...args] });
       return { ok: true } as SpawnOutcome;
     });
-    const sleep = mock(async (_ms: number) => undefined);
+    const sleep = vi.fn(async (_ms: number) => undefined);
     const { res, captured } = makeRes();
     await handleHandoffDispatch(
       makeReq('POST', {
@@ -565,7 +565,7 @@ describe('handleHandoffDispatch — cursor recipe (cli-binary)', () => {
   });
 
   test('missing workspacePath → 400 invalid-request; no spawn', async () => {
-    const spawnDetached = mock(async () => ({ ok: true }) as SpawnOutcome);
+    const spawnDetached = vi.fn(async () => ({ ok: true }) as SpawnOutcome);
     const { res, captured } = makeRes();
     await handleHandoffDispatch(
       makeReq('POST', { target: 'cursor', url: CURSOR_URL }),
@@ -577,7 +577,7 @@ describe('handleHandoffDispatch — cursor recipe (cli-binary)', () => {
   });
 
   test('workspacePath outside contentDir → 403 path-escape; no spawn', async () => {
-    const spawnDetached = mock(async () => ({ ok: true }) as SpawnOutcome);
+    const spawnDetached = vi.fn(async () => ({ ok: true }) as SpawnOutcome);
     const { res, captured } = makeRes();
     await handleHandoffDispatch(
       makeReq('POST', { target: 'cursor', url: CURSOR_URL, workspacePath: '/etc/passwd' }),
@@ -589,7 +589,7 @@ describe('handleHandoffDispatch — cursor recipe (cli-binary)', () => {
   });
 
   test('cursor binary not found → 422 handoff-target-not-installed; no spawn', async () => {
-    const spawnDetached = mock(async () => ({ ok: true }) as SpawnOutcome);
+    const spawnDetached = vi.fn(async () => ({ ok: true }) as SpawnOutcome);
     const { res, captured } = makeRes();
     await handleHandoffDispatch(
       makeReq('POST', {
@@ -606,7 +606,7 @@ describe('handleHandoffDispatch — cursor recipe (cli-binary)', () => {
   });
 
   test('cursor spawn failure (timeout) → 504 handoff-spawn-timeout; URL spawn skipped', async () => {
-    const spawnDetached = mock(async () => ({ ok: false, reason: 'timeout' }) as SpawnOutcome);
+    const spawnDetached = vi.fn(async () => ({ ok: false, reason: 'timeout' }) as SpawnOutcome);
     const { res, captured } = makeRes();
     await handleHandoffDispatch(
       makeReq('POST', {
@@ -624,7 +624,7 @@ describe('handleHandoffDispatch — cursor recipe (cli-binary)', () => {
 
   test('URL spawn failure after cursor → 502 handoff-spawn-failed', async () => {
     let callCount = 0;
-    const spawnDetached = mock(async () => {
+    const spawnDetached = vi.fn(async () => {
       callCount += 1;
       if (callCount === 1) return { ok: true } as SpawnOutcome;
       return { ok: false, reason: 'spawn-error' } as SpawnOutcome;

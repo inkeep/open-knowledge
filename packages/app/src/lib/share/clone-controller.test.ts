@@ -7,47 +7,44 @@
  * the raw git message as `detail` for the dialog to render.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualSonner from 'sonner';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { OkLocalOpCloneEvent } from '@/lib/desktop-bridge-types';
 
 const toast = {
-  loading: mock((_message: string, _opts?: unknown) => 'toast-id'),
-  success: mock((_message: string, _opts?: unknown) => {}),
-  error: mock((_message: string, _opts?: unknown) => {}),
-  info: mock((_message: string, _opts?: unknown) => {}),
-  dismiss: mock((_id?: unknown) => {}),
+  loading: vi.fn((_message: string, _opts?: unknown) => 'toast-id'),
+  success: vi.fn((_message: string, _opts?: unknown) => {}),
+  error: vi.fn((_message: string, _opts?: unknown) => {}),
+  info: vi.fn((_message: string, _opts?: unknown) => {}),
+  dismiss: vi.fn((_id?: unknown) => {}),
 };
 
-// Spread the real module so unmocked sonner exports stay bound for any test
-// file that loads after this one in the shared bun-test process.
-mock.module('sonner', () => ({ ...actualSonner, toast }));
+// Spread the real module so unmocked sonner exports remain available in this
+// test's module graph.
+vi.doMock('sonner', () => ({ ...actualSonner, toast }));
 
-// NOTE: do not mock.module('@lingui/core/macro') here. bunfig's `[test] preload`
-// (tests/lingui-macro-preload.ts) already shims the macro to an English
-// passthrough for the whole process. A per-file mock.module override leaks into
-// every test file that runs after this one in the shared `bun test` process and
-// breaks their `t`-derived assertions (e.g. component-items.test.ts).
+// The Vitest config already aliases Lingui macros to the English passthrough;
+// keep this test on that shared resolver contract.
 
 type CloneEvent = OkLocalOpCloneEvent | { type: 'complete'; port: number; dir: string };
 
 function makeDeps(events: CloneEvent[]) {
   return {
     bridge: {
-      dialog: { openFolder: mock(() => Promise.resolve('/parent')) },
+      dialog: { openFolder: vi.fn(() => Promise.resolve('/parent')) },
     },
     authQueryTransport: {
-      status: mock(() => Promise.resolve({ authenticated: false, host: 'github.com' })),
+      status: vi.fn(() => Promise.resolve({ authenticated: false, host: 'github.com' })),
     },
     cloneTransport: {
-      start: mock(() => ({
+      start: vi.fn(() => ({
         events: (async function* () {
           for (const event of events) yield event;
         })(),
         cancel: () => {},
       })),
     },
-    openSignIn: mock(() => Promise.resolve(null)),
+    openSignIn: vi.fn(() => Promise.resolve(null)),
   };
 }
 
@@ -74,7 +71,7 @@ describe('createCloneController().runClone failure handling', () => {
   test('cancelled folder picker returns cancelled without starting a clone', async () => {
     const { createCloneController } = await import('./clone-controller');
     const deps = makeDeps([]);
-    deps.bridge.dialog.openFolder = mock(() => Promise.resolve(null));
+    deps.bridge.dialog.openFolder = vi.fn(() => Promise.resolve(null));
     const controller = createCloneController(deps as never);
 
     const result = await controller.runClone({ url: 'https://github.com/o/r.git' });
@@ -110,7 +107,7 @@ describe('createCloneController().runClone failure handling', () => {
     const deps = {
       ...makeDeps([]),
       cloneTransport: {
-        start: mock(() => ({
+        start: vi.fn(() => ({
           // Async iterable whose first .next() rejects — models a transport
           // whose stream throws instead of emitting a typed error event. (Not a
           // generator: a generator with only a throw trips biome's useYield.)
@@ -137,7 +134,7 @@ describe('createCloneController().runClone failure handling', () => {
     const deps = {
       ...makeDeps([]),
       cloneTransport: {
-        start: mock(() => {
+        start: vi.fn(() => {
           throw new Error('clone IPC handler not registered');
         }),
       },

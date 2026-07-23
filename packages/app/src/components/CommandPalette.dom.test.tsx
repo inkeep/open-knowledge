@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   __resetLocalMenuActionBusForTests,
   subscribeLocalMenuAction,
@@ -58,7 +58,7 @@ const COMMAND_PALETTE_POLL_GRACE_MS = 1400;
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children?: ReactNode }) => <>{children}</>,
   Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
@@ -67,7 +67,7 @@ mock.module('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-mock.module('@/components/ui/command', () => ({
+vi.doMock('@/components/ui/command', () => ({
   CommandDialog: (props: CommandDialogProps) => {
     commandDialogProps.push(props);
     return props.open ? (
@@ -120,13 +120,13 @@ mock.module('@/components/ui/command', () => ({
   ),
 }));
 
-mock.module('@/components/doc-panel-events', () => ({
+vi.doMock('@/components/doc-panel-events', () => ({
   requestDocPanelTab: (tab: string) => {
     requestDocPanelTabCalls.push(tab);
   },
 }));
 
-mock.module('@/components/NewItemDialog', () => ({
+vi.doMock('@/components/NewItemDialog', () => ({
   NewItemDialog: (props: { open: boolean; kind: string; initialDir: string }) => {
     newItemDialogProps.push(props);
     return (
@@ -135,14 +135,14 @@ mock.module('@/components/NewItemDialog', () => ({
   },
 }));
 
-mock.module('@/components/SeedDialog', () => ({
+vi.doMock('@/components/SeedDialog', () => ({
   SeedDialog: (props: { open: boolean }) => {
     seedDialogProps.push(props);
     return <div data-open={String(props.open)} data-testid="seed-dialog" />;
   },
 }));
 
-mock.module('@/components/CreateProjectDialog', () => ({
+vi.doMock('@/components/CreateProjectDialog', () => ({
   CreateProjectDialog: (props: { open: boolean; bridge: unknown }) => {
     createProjectDialogProps.push(props);
     return (
@@ -155,14 +155,14 @@ mock.module('@/components/CreateProjectDialog', () => ({
   },
 }));
 
-mock.module('@/components/ReportBugDialog', () => ({
+vi.doMock('@/components/ReportBugDialog', () => ({
   ReportBugDialog: (props: { open: boolean }) => {
     reportBugDialogProps.push(props);
     return <div data-open={String(props.open)} data-testid="report-bug-dialog" />;
   },
 }));
 
-mock.module('@/components/FeedbackFormDialog', () => ({
+vi.doMock('@/components/FeedbackFormDialog', () => ({
   FeedbackFormDialog: (props: { open: boolean; source?: string }) => {
     feedbackDialogProps.push(props);
     return (
@@ -175,7 +175,7 @@ mock.module('@/components/FeedbackFormDialog', () => ({
   },
 }));
 
-mock.module('@/components/PageListContext', () => ({
+vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => ({
     pages: new Set<string>(),
     pageTitles: new Map<string, string>(),
@@ -186,49 +186,49 @@ mock.module('@/components/PageListContext', () => ({
   }),
 }));
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName,
     activeTarget,
   }),
 }));
 
-mock.module('@/lib/use-workspace', () => ({
+vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => workspaceValue,
 }));
 
-mock.module('./handoff/useInstalledAgents', () => ({
+vi.doMock('./handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({
     states: installedAgentStates,
     refresh: refreshInstallStates,
   }),
 }));
 
-mock.module('./handoff/useHandoffDispatch', () => ({
+vi.doMock('./handoff/useHandoffDispatch', () => ({
   buildHandoffInput: ({ docName, workspace }: { docName: string | null; workspace: unknown }) =>
     docName && workspace ? { docName, workspace } : null,
   useHandoffDispatch: () => ({
-    dispatch: mock(() => Promise.resolve()),
+    dispatch: vi.fn(() => Promise.resolve()),
   }),
 }));
 
-mock.module('@/components/command-palette-tag-search', () => ({
+vi.doMock('@/components/command-palette-tag-search', () => ({
   TAG_QUERY_PREFIX: 'tag:',
   parseTagPaletteQuery: () => ({ kind: 'normal' }),
   filterTagList: () => [],
-  fetchTagsList: mock(() => Promise.resolve([])),
-  fetchDocsForTag: mock(() => Promise.resolve([])),
+  fetchTagsList: vi.fn(() => Promise.resolve([])),
+  fetchDocsForTag: vi.fn(() => Promise.resolve([])),
 }));
 
 // The cached worktree model is read via useWorktrees (backed by window.okDesktop,
 // not the bridge prop). Default null so the existing suite sees no Worktrees
 // group; the dedicated test sets a model.
 let worktreeModelMock: import('@inkeep/open-knowledge-core').WorktreeSelectorModel | null = null;
-mock.module('@/hooks/use-worktrees', () => ({
+vi.doMock('@/hooks/use-worktrees', () => ({
   useWorktrees: () => worktreeModelMock,
 }));
-const refreshWorktreesMock = mock(() => {});
-mock.module('@/lib/worktree-store', () => ({ refreshWorktrees: refreshWorktreesMock }));
+const refreshWorktreesMock = vi.fn(() => {});
+vi.doMock('@/lib/worktree-store', () => ({ refreshWorktrees: refreshWorktreesMock }));
 
 function recent(name: string, path = `/projects/${name.toLowerCase()}`) {
   return { name, path: path.replaceAll(' ', '-') };
@@ -241,25 +241,25 @@ function createBridge() {
       projectPath: '/projects/current',
     },
     project: {
-      listRecent: mock(() =>
+      listRecent: vi.fn(() =>
         Promise.resolve([
           recent('Current', '/projects/current'),
           recent('Alpha', '/projects/alpha'),
           recent('Omega', '/archive/omega-project'),
         ]),
       ),
-      open: mock(() => Promise.resolve()),
-      openFile: mock(() => Promise.resolve()),
-      removeRecent: mock(() => Promise.resolve()),
+      open: vi.fn(() => Promise.resolve()),
+      openFile: vi.fn(() => Promise.resolve()),
+      removeRecent: vi.fn(() => Promise.resolve()),
     },
     dialog: {
-      openFolder: mock(() => Promise.resolve('/chosen/folder')),
+      openFolder: vi.fn(() => Promise.resolve('/chosen/folder')),
     },
     navigator: {
-      open: mock(() => Promise.resolve()),
+      open: vi.fn(() => Promise.resolve()),
     },
     worktree: {
-      create: mock(() =>
+      create: vi.fn(() =>
         Promise.resolve({
           ok: true as const,
           path: '/projects/current/.ok/worktrees/feature-x',
@@ -269,16 +269,16 @@ function createBridge() {
     },
     // Surfaces the backfilled bridge-invoke commands reach.
     update: {
-      checkNow: mock(() => Promise.resolve()),
+      checkNow: vi.fn(() => Promise.resolve()),
     },
     mcpWiring: {
-      reconfigure: mock(() => Promise.resolve(true)),
+      reconfigure: vi.fn(() => Promise.resolve(true)),
     },
     spellcheck: {
-      toggle: mock(() => Promise.resolve(true)),
+      toggle: vi.fn(() => Promise.resolve(true)),
     },
     shell: {
-      openExternal: mock(() => Promise.resolve()),
+      openExternal: vi.fn(() => Promise.resolve()),
     },
   };
 }
@@ -292,7 +292,7 @@ async function renderPalette({
 } = {}) {
   activeDocName = docName;
   activeTarget = docName ? { kind: 'doc', docName } : null;
-  const onOpenChange = mock(() => {});
+  const onOpenChange = vi.fn(() => {});
   const { CommandPalette } = await import('./CommandPalette');
   render(<CommandPalette bridge={bridge as never} open={true} onOpenChange={onOpenChange} />);
   await waitFor(() => expect(screen.getByRole('dialog')).not.toBeNull());
@@ -323,7 +323,7 @@ describe('CommandPalette DOM behavior', () => {
     worktreeModelMock = null;
     refreshWorktreesMock.mockClear();
     window.location.hash = '';
-    globalThis.fetch = mock(() =>
+    globalThis.fetch = vi.fn(() =>
       Promise.resolve(new Response(JSON.stringify({ results: [] }), { status: 200 })),
     ) as never;
   });
@@ -603,7 +603,7 @@ describe('CommandPalette DOM behavior', () => {
   test('a query typed during cold load auto-fires the body search once the page list loads', async () => {
     pageListLoading = true;
     const { CommandPalette } = await import('./CommandPalette');
-    const onOpenChange = mock(() => {});
+    const onOpenChange = vi.fn(() => {});
     const { rerender } = render(
       <CommandPalette bridge={null} open={true} onOpenChange={onOpenChange} />,
     );
@@ -632,7 +632,7 @@ describe('CommandPalette DOM behavior', () => {
     // First /api/search answers warming; later answers ready with a hit. Any
     // non-search fetch (e.g. the semantic-capability probe) stays the default.
     let searchCalls = 0;
-    globalThis.fetch = mock((input: unknown) => {
+    globalThis.fetch = vi.fn((input: unknown) => {
       if (input === '/api/search') {
         searchCalls += 1;
         const body =
@@ -662,7 +662,7 @@ describe('CommandPalette DOM behavior', () => {
   });
 
   test('closing the palette mid-warming stops the poll (no further /api/search calls)', async () => {
-    globalThis.fetch = mock((input: unknown) => {
+    globalThis.fetch = vi.fn((input: unknown) => {
       if (input === '/api/search') {
         return Promise.resolve(
           new Response(JSON.stringify({ results: [], ready: false }), { status: 200 }),
@@ -672,7 +672,7 @@ describe('CommandPalette DOM behavior', () => {
     }) as never;
 
     const { CommandPalette } = await import('./CommandPalette');
-    const onOpenChange = mock(() => {});
+    const onOpenChange = vi.fn(() => {});
     const { rerender } = render(
       <CommandPalette bridge={null} open={true} onOpenChange={onOpenChange} />,
     );
@@ -697,7 +697,7 @@ describe('CommandPalette DOM behavior', () => {
 
   test('a transient error while warming keeps polling and recovers, never showing "Search failed."', async () => {
     let call = 0;
-    globalThis.fetch = mock((input: unknown) => {
+    globalThis.fetch = vi.fn((input: unknown) => {
       if (input === '/api/search') {
         call += 1;
         if (call === 1) {
@@ -955,7 +955,7 @@ describe('Cmd+K menu-parity backfill', () => {
     activeTarget = { kind: 'doc', docName: 'docs/active' };
     pageListLoading = false;
     window.location.hash = '';
-    globalThis.fetch = mock(() =>
+    globalThis.fetch = vi.fn(() =>
       Promise.resolve(new Response(JSON.stringify({ results: [] }), { status: 200 })),
     ) as never;
     // Panels visible + a live terminal so the state-aware View toggles render
@@ -1050,7 +1050,7 @@ describe('Cmd+K menu-parity backfill', () => {
   // unreachable" gap that the id ratchets alone cannot see.
   test('Ratchet C: every classified palette-command id renders a row or is a pre-existing surface', async () => {
     // Imported dynamically: the helper pulls in the command registry, and a
-    // static import would evaluate the registry before the `mock.module`
+    // static import would evaluate the registry before the `vi.doMock`
     // calls above register — freezing real module bindings (e.g.
     // doc-panel-events) into it for every test in this file.
     const { PALETTE_COMMAND_IDS, PRE_EXISTING_PALETTE_IDS } = await import(
@@ -1094,7 +1094,7 @@ describe('Cmd+K menu-parity backfill', () => {
   });
 
   test('AC1: OpenKnowledge on GitHub falls back to window.open on the web host', async () => {
-    const openSpy = mock(() => null);
+    const openSpy = vi.fn(() => null);
     const originalOpen = window.open;
     window.open = openSpy as unknown as typeof window.open;
     try {
@@ -1116,8 +1116,8 @@ describe('Cmd+K menu-parity backfill', () => {
     // a null prop bridge must take the web `window.open` path and must not
     // reach through to an ambient `window.okDesktop` global. Guards the
     // injected-bridge seam the shared opener relies on.
-    const openSpy = mock(() => null);
-    const ambientOpenExternal = mock(() => Promise.resolve());
+    const openSpy = vi.fn(() => null);
+    const ambientOpenExternal = vi.fn(() => Promise.resolve());
     const originalOpen = window.open;
     window.open = openSpy as unknown as typeof window.open;
     (window as { okDesktop?: unknown }).okDesktop = {

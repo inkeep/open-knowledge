@@ -1,4 +1,3 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { metrics } from '@opentelemetry/api';
 import {
   AggregationTemporality,
@@ -7,6 +6,7 @@ import {
   MeterProvider,
   PeriodicExportingMetricReader,
 } from '@opentelemetry/sdk-metrics';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
   __resetServerRuntimeTelemetryForTests,
   installServerMemoryGauge,

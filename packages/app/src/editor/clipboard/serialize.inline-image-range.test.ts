@@ -20,25 +20,21 @@
  * nodes included), never an element-only index.
  *
  * `buildWalkerEnv` is intentionally private; the env is captured by
- * stubbing the walker entry point via `mock.module` and driving
+ * stubbing the walker entry point via `vi.doMock` and driving
  * `serializeFragment` — the same public wiring production uses.
  *
  * The registered mock DELEGATES to the real implementation except inside
  * an explicit capture window, so it stays behavior-transparent to every
- * other test file in the process. Bun's `mock.module` registry is
- * process-global and never truly un-mocks (oven-sh/bun#12823), and an
- * `afterAll` re-register's factory can observe the already-mocked
- * namespace — a restore built from a namespace spread leaked the stub to
- * later files on some runner file orders. Delegation avoids restore
- * semantics entirely; `realWalkLiveDom` is captured before the mock so it
- * is immune to in-place namespace mutation.
+ * other test file in the worker. Delegation avoids restore semantics
+ * entirely; `realWalkLiveDom` is captured before the mock so it remains
+ * independent from the mocked namespace.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { JSONContent } from '@tiptap/core';
 import type { Fragment } from '@tiptap/pm/model';
 import { Schema } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { SerializeResult, WalkerEnv } from './clipboard-walker.ts';
 
 const actualWalker = await import('./clipboard-walker.ts');
@@ -47,7 +43,7 @@ const realWalkLiveDom = actualWalker.walkLiveDomToInlineStyledFragment;
 let capturedEnv: WalkerEnv | null = null;
 let captureActive = false;
 
-mock.module('./clipboard-walker.ts', () => ({
+vi.doMock('./clipboard-walker.ts', () => ({
   ...actualWalker,
   walkLiveDomToInlineStyledFragment: (slice: unknown, view: unknown, env: WalkerEnv) => {
     if (captureActive) {
@@ -64,7 +60,7 @@ mock.module('./clipboard-walker.ts', () => ({
 const { createClipboardHtmlSerializer, findDescriptorRoot } = await import('./serialize.ts');
 
 // ---------------------------------------------------------------------------
-// Fake live-DOM elements. bun-test has no DOM; these cover exactly the
+// Fake live-DOM elements. This test runs without a DOM; these cover exactly the
 // surface the code under test touches (`classList.contains`,
 // `hasAttribute`, `parentElement`, `childNodes`) with STABLE
 // object identity so `parentElement ===` and `childNodes.indexOf(...)` work.

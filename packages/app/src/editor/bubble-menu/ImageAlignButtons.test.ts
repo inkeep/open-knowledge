@@ -22,8 +22,8 @@
  * landed).
  */
 
-import { describe, expect, test } from 'bun:test';
 import type { Editor } from '@tiptap/react';
+import { describe, expect, test } from 'vitest';
 import { isImageNodeSelected } from './ImageAlignButtons';
 
 /**

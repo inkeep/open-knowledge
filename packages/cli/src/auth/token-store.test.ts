@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 // Mutable mock state shared with the mocked `@napi-rs/keyring`. Each test
 // resets this via `resetKeyringMockState()` in beforeEach. The mock's `Entry`
@@ -75,7 +75,7 @@ class MockKeyringEntry {
   }
 }
 
-mock.module('@napi-rs/keyring', () => ({ Entry: MockKeyringEntry }));
+vi.doMock('@napi-rs/keyring', () => ({ Entry: MockKeyringEntry }));
 
 import { FileBackend } from './token-store.ts';
 
@@ -343,7 +343,7 @@ describe('createTokenStore diagnostics', () => {
 // ---------------------------------------------------------------------------
 // KeyringBackend upsert semantics
 //
-// Reachability-tested via `createTokenStore` + mock.module rather than
+// Reachability-tested via `createTokenStore` + vi.doMock rather than
 // importing KeyringBackend directly, to avoid widening token-store.ts's
 // public surface.
 //

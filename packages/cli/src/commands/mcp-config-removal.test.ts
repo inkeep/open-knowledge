@@ -1,8 +1,8 @@
-import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MCP_SERVER_NAME } from '@inkeep/open-knowledge-server';
+import { describe, expect, test } from 'vitest';
 import { buildPiExtensionSource } from '../integrations/pi-extension.ts';
 import {
   createTomlConfigEngine,

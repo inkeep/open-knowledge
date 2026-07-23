@@ -14,7 +14,7 @@
  * visible fix, so test assertions use `toBe` not `toMatch`.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { classifyCloneError } from './clone-error-classify.ts';
 
 // Pin copy at the test level — if these change, the title-mapping

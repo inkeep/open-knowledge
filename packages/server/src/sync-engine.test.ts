@@ -9,7 +9,7 @@
  * detection) belong in a future integration test that spins up a bare git repo.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 // This suite runs in CI despite oven-sh/bun#11892 (Bun fails to kill/reap
 // spawned child processes on GitHub Actions runners; still open upstream).

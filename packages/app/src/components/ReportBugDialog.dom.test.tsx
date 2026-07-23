@@ -7,7 +7,7 @@
  *
  * Substrate: jsdom via `bun run test:dom`.
  */
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+
 import type {
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
@@ -19,10 +19,11 @@ import type {
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
     <>{(value === 1 ? one : other).replace('#', String(value))}</>

@@ -40,7 +40,7 @@
  * resume the server fragment holds two copies of the Step subtree and the
  * authoritative Y.Text duplicates the typed body line.
  */
-import { afterAll, beforeAll, expect, test } from 'bun:test';
+import { afterAll, beforeAll, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {

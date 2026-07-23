@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 const CLI_PACKAGE_ROOT = import.meta.dir.replace(/\/src$/, '');
 

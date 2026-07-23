@@ -19,14 +19,15 @@
  *     (the banner shows only the title).
  *
  * Same harness as FileTree.showall-lazy.dom.test.tsx (recording Pierre stub;
- * `mock.module` is safe per-file under the runner's `--isolate`), plus a
+ * `vi.doMock` is safe per-file under the runner's `--isolate`), plus a
  * mutable `activeDocName` so the drill-down test can mount with a deep link
  * active.
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+
 import { i18n } from '@lingui/core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { emitDocumentsChanged } from '@/lib/documents-events';
 
 i18n.load('en', {});
@@ -78,7 +79,7 @@ function folderEntry(path: string, hasChildren: boolean) {
 }
 
 function makeFetchMock() {
-  return mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     fetchUrls.push(url);
     const override = responseByUrl.get(url);
@@ -134,7 +135,7 @@ class StubModel {
   selectedPaths: string[] = [];
   items = new Map<string, StubItem>();
   listeners = new Set<() => void>();
-  startRenaming = mock(() => {});
+  startRenaming = vi.fn(() => {});
   notify() {
     for (const listener of this.listeners) listener();
   }
@@ -185,60 +186,60 @@ class StubModel {
 
 const model = new StubModel();
 
-mock.module('sonner', () => ({ toast: { success: mock(() => {}), error: mock(() => {}) } }));
-mock.module('next-themes', () => ({ useTheme: () => ({ resolvedTheme: 'light' }) }));
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('sonner', () => ({ toast: { success: vi.fn(() => {}), error: vi.fn(() => {}) } }));
+vi.doMock('next-themes', () => ({ useTheme: () => ({ resolvedTheme: 'light' }) }));
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName: activeDocNameForTest,
     activeTarget: null,
-    closeTabs: mock(() => {}),
-    closeDocument: mock(() => {}),
-    closeAndClearDocument: mock(async () => {}),
-    closeAndClearForDelete: mock(async () => {}),
-    closeAndClearForRename: mock(async () => {}),
+    closeTabs: vi.fn(() => {}),
+    closeDocument: vi.fn(() => {}),
+    closeAndClearDocument: vi.fn(async () => {}),
+    closeAndClearForDelete: vi.fn(async () => {}),
+    closeAndClearForRename: vi.fn(async () => {}),
     getPoolActiveDocName: () => null,
     poolHas: () => false,
     isNewTabActive: false,
-    openTarget: mock(() => {}),
+    openTarget: vi.fn(() => {}),
     prewarm: () => {},
-    remapTabsForRename: mock(() => {}),
+    remapTabsForRename: vi.fn(() => {}),
   }),
 }));
-mock.module('@/components/PageListContext', () => ({
-  usePageList: () => ({ addPage: mock(() => {}) }),
+vi.doMock('@/components/PageListContext', () => ({
+  usePageList: () => ({ addPage: vi.fn(() => {}) }),
 }));
-mock.module('./ui/sidebar', () => ({
-  useSidebar: () => ({ notifySidebarFileSelected: mock(() => {}) }),
+vi.doMock('./ui/sidebar', () => ({
+  useSidebar: () => ({ notifySidebarFileSelected: vi.fn(() => {}) }),
 }));
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     okignoreBinding: null,
     projectLocalBinding: null,
     merged: mergedConfig,
   }),
 }));
-mock.module('./handoff/useInstalledAgents', () => ({ useInstalledAgents: () => ({ states: {} }) }));
-mock.module('./handoff/useHandoffDispatch', () => ({
+vi.doMock('./handoff/useInstalledAgents', () => ({ useInstalledAgents: () => ({ states: {} }) }));
+vi.doMock('./handoff/useHandoffDispatch', () => ({
   buildFolderHandoffInput: () => null,
   buildHandoffInput: () => null,
-  useHandoffDispatch: () => ({ dispatch: mock(async () => ({ ok: true as const })) }),
+  useHandoffDispatch: () => ({ dispatch: vi.fn(async () => ({ ok: true as const })) }),
 }));
-mock.module('./handoff/OpenInAgentContextSubmenu', () => ({
+vi.doMock('./handoff/OpenInAgentContextSubmenu', () => ({
   OpenInAgentContextSubmenu: () => null,
 }));
-mock.module('./sidebar-hover-prewarm', () => ({
+vi.doMock('./sidebar-hover-prewarm', () => ({
   cancelHoverPrewarm: () => {},
   scheduleHoverPrewarm: () => {},
 }));
-mock.module('@/components/ui/button', () => ({
+vi.doMock('@/components/ui/button', () => ({
   Button: ({ children, ...props }: { children?: ReactNode; [k: string]: unknown }) => (
     <button type="button" {...props}>
       {children}
     </button>
   ),
 }));
-mock.module('@/components/ui/dialog', () => ({ Dialog: PassThrough }));
-mock.module('@/components/ui/dropdown-menu', () => ({
+vi.doMock('@/components/ui/dialog', () => ({ Dialog: PassThrough }));
+vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: PassThrough,
   DropdownMenuCheckboxItem: PassThrough,
   DropdownMenuContent: PassThrough,
@@ -249,26 +250,26 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuSubTrigger: PassThrough,
   DropdownMenuTrigger: PassThrough,
 }));
-mock.module('@/components/ui/skeleton', () => ({
+vi.doMock('@/components/ui/skeleton', () => ({
   Skeleton: ({ className }: { className?: string }) => <span className={className} />,
 }));
-mock.module('@/components/DeleteConfirmationDialog', () => ({
+vi.doMock('@/components/DeleteConfirmationDialog', () => ({
   DeleteConfirmationDialog: () => null,
 }));
-mock.module('@/components/NewItemDialog', () => ({ NewItemDialog: () => null }));
-mock.module('@/components/TrashFailureModal', () => ({
+vi.doMock('@/components/NewItemDialog', () => ({ NewItemDialog: () => null }));
+vi.doMock('@/components/TrashFailureModal', () => ({
   TrashFailureModal: () => null,
   coerceTrashFailureReason: (reason: string) => reason,
 }));
-mock.module('@/components/use-selection-mirror', () => ({
+vi.doMock('@/components/use-selection-mirror', () => ({
   asDirectoryHandle: (item: StubItem | null) => (item?.isDirectory() ? item : null),
   useSelectionMirror: () => {},
 }));
-mock.module('@pierre/trees', () => ({
+vi.doMock('@pierre/trees', () => ({
   FILE_TREE_TAG_NAME: 'ok-file-tree',
   themeToTreeStyles: () => ({}),
 }));
-mock.module('@pierre/trees/react', () => ({
+vi.doMock('@pierre/trees/react', () => ({
   useFileTree: () => ({ model }),
   FileTree: ({ header }: { header?: ReactNode }) => (
     <div data-testid="fake-pierre-tree" role="tree">
@@ -280,7 +281,7 @@ mock.module('@pierre/trees/react', () => ({
 const { FileTree } = await import('./FileTree');
 
 describe('FileTree showAll notice lifecycle', () => {
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     mergedConfig = { appearance: { sidebar: {} } };
@@ -297,7 +298,7 @@ describe('FileTree showAll notice lifecycle', () => {
     model.focusedPath = null;
     model.selectedPaths = [];
     globalThis.fetch = makeFetchMock() as unknown as typeof fetch;
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -409,7 +410,7 @@ describe('FileTree showAll notice lifecycle', () => {
 });
 
 describe('FileTree showAll interrupted NDJSON seed', () => {
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     mergedConfig = { appearance: { sidebar: {} } };
@@ -422,7 +423,7 @@ describe('FileTree showAll interrupted NDJSON seed', () => {
     model.focusedPath = null;
     model.selectedPaths = [];
     globalThis.fetch = makeFetchMock() as unknown as typeof fetch;
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -508,7 +509,7 @@ describe('FileTree showAll interrupted NDJSON seed', () => {
 });
 
 describe('FileTree showAll deep-link progressive drill-down', () => {
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     mergedConfig = { appearance: { sidebar: {} } };
@@ -522,7 +523,7 @@ describe('FileTree showAll deep-link progressive drill-down', () => {
     model.focusedPath = null;
     model.selectedPaths = [];
     globalThis.fetch = makeFetchMock() as unknown as typeof fetch;
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {

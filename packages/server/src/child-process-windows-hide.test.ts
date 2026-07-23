@@ -1,4 +1,3 @@
-import { describe, expect, test } from 'bun:test';
 import { readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
@@ -9,6 +8,7 @@ import {
   Project,
   type SourceFile,
 } from 'ts-morph';
+import { describe, expect, test } from 'vitest';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 
 const SERVER_SRC_DIR = import.meta.dir;

@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import type { TestInfo } from '@playwright/test';
+import { describe, expect, test } from 'vitest';
 import { shouldAttachStderr } from '../smoke/_helpers/electron-stderr';
 
 /**

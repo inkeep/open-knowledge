@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { getCollector } from '../lib/perf/collector';
 import { __peekPrewarmRecord, __resetPrewarmCorrelation } from './prewarm-correlation';
 import {
@@ -20,7 +20,7 @@ afterEach(() => {
 
 describe('sidebar-hover-prewarm (review Major #7 + V2 FR12 Option G)', () => {
   test('hover → prewarm fires after 80ms intent window', async () => {
-    const prewarm = mock((docName: string): string | null => {
+    const prewarm = vi.fn((docName: string): string | null => {
       expect(docName).toBe('doc-a');
       return null;
     });
@@ -31,7 +31,7 @@ describe('sidebar-hover-prewarm (review Major #7 + V2 FR12 Option G)', () => {
   });
 
   test('quick mouse trail (dismiss before 80ms) fires no prewarm', async () => {
-    const prewarm = mock((): string | null => null);
+    const prewarm = vi.fn((): string | null => null);
     scheduleHoverPrewarm('doc-a', prewarm);
     // Mouse leaves after 30ms, well before the 80ms intent threshold.
     await wait(30);
@@ -41,7 +41,7 @@ describe('sidebar-hover-prewarm (review Major #7 + V2 FR12 Option G)', () => {
   });
 
   test('system docs are refused (__system__)', () => {
-    const prewarm = mock((): string | null => null);
+    const prewarm = vi.fn((): string | null => null);
     scheduleHoverPrewarm('__system__', prewarm);
     // No timer scheduled — cancel is a no-op.
     cancelHoverPrewarm('__system__');
@@ -50,7 +50,7 @@ describe('sidebar-hover-prewarm (review Major #7 + V2 FR12 Option G)', () => {
   });
 
   test('already-prewarmed doc does not re-fire', async () => {
-    const prewarm = mock(() => null);
+    const prewarm = vi.fn(() => null);
     scheduleHoverPrewarm('doc-b', prewarm);
     await wait(120);
     expect(prewarm).toHaveBeenCalledTimes(1);
@@ -61,7 +61,7 @@ describe('sidebar-hover-prewarm (review Major #7 + V2 FR12 Option G)', () => {
   });
 
   test('successful prewarm emits ok/sidebar/prewarm-success and records the correlation seed', async () => {
-    const prewarm = mock(() => 'pool-event-x');
+    const prewarm = vi.fn(() => 'pool-event-x');
     scheduleHoverPrewarm('doc-c', prewarm);
     await wait(120);
     expect(prewarm).toHaveBeenCalledTimes(1);
@@ -76,7 +76,7 @@ describe('sidebar-hover-prewarm (review Major #7 + V2 FR12 Option G)', () => {
   });
 
   test('null poolEventId from prewarm callback is treated as failure (no success mark)', async () => {
-    const prewarm = mock(() => null);
+    const prewarm = vi.fn(() => null);
     scheduleHoverPrewarm('doc-d', prewarm);
     await wait(120);
     expect(prewarm).toHaveBeenCalledTimes(1);
@@ -99,7 +99,7 @@ describe('sidebar-hover-prewarm (review Major #7 + V2 FR12 Option G)', () => {
     // notifications. Pattern B test — real failure-inducing input
     // through the public interface.
     const failureMessage = 'synthetic ProviderPool ctor failure';
-    const prewarm = mock(() => {
+    const prewarm = vi.fn(() => {
       throw new Error(failureMessage);
     });
     let uncaughtCount = 0;

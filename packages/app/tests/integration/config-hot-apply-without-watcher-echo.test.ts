@@ -23,10 +23,10 @@
  * not on how the notification is delivered.
  */
 
-import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 
 // Register BEFORE the server's dynamic `await import('chokidar')` runs. The
 // watcher fires `ready` (chokidar's post-initial-scan signal) then swallows
@@ -45,24 +45,18 @@ class SwallowingWatcher extends EventEmitter {
   }
   async close(): Promise<void> {}
 }
-// `mock.module` replaces chokidar for the WHOLE bun-test process, not just this
-// file — sibling test files in the same shard would inherit the swallowed
-// watcher and silently starve on filesystem events (observed: managed-artifact
-// reconcile timing out in the same shard). Confine the fault injection to this
-// file: swallow only while this file's suites run, then delegate to the real
-// implementation.
+// Keep the fault injection bounded to this suite: swallow events while its
+// cases run, then delegate any late imports to the real implementation.
 //
 // The delegation target MUST be a destructured function reference captured
-// BEFORE mock.module runs: when the module was already imported earlier in the
-// process, bun patches the existing namespace's live bindings, so delegating
-// through a captured namespace object would call the mock itself (infinite
-// recursion). A destructured const keeps pointing at the real function.
+// BEFORE vi.doMock runs so the factory can delegate through a stable function
+// reference without recursing through its own mocked namespace.
 const { watch: realChokidarWatch } = await import('chokidar');
 let swallowChokidarEvents = true;
 afterAll(() => {
   swallowChokidarEvents = false;
 });
-mock.module('chokidar', () => ({
+vi.doMock('chokidar', () => ({
   watch: (...args: Parameters<typeof realChokidarWatch>) =>
     swallowChokidarEvents
       ? (new SwallowingWatcher() as unknown as ReturnType<typeof realChokidarWatch>)

@@ -3,7 +3,7 @@
  * the host PATH.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { makeBunCheck } from './bun.ts';
 
 const ctx = { cwd: '/tmp/bun-check-test' };

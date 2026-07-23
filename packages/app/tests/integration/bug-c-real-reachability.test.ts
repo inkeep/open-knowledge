@@ -16,10 +16,10 @@
  * Iron Law: NO production code modified.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import {
   createTestClient,

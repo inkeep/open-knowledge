@@ -18,8 +18,8 @@
  * map without removing the original.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { ProblemTypeSchema, URN_HTTP_ONLY, URN_IPC_REGISTRY } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 
 describe('URN → IPC registry coverage', () => {
   test('every URN in ProblemTypeSchema is either mapped to ≥1 channel or in URN_HTTP_ONLY', () => {

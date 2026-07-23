@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { ASYMMETRIC_CYCLE_DURATION_MS, asymmetricFixture } from './asymmetric.ts';
 import { BROAD_CYCLE_DURATION_MS, broadFixture } from './broad.ts';
 import { TIGHT_CYCLE_DURATION_MS, tightFixture } from './tight.ts';

@@ -10,7 +10,7 @@
  * loud failure instead of a silent shape mismatch.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   LINT_PLUGINS,
   LinterConfigSchema,

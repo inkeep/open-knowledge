@@ -3,13 +3,13 @@
  * the runner-host's actual git binary.
  */
 
-import { describe, expect, test } from 'bun:test';
 import {
   type GitDetected,
   GitNotAvailableError,
   GitTooOldError,
   type InstallGuidance,
 } from '@inkeep/open-knowledge-server';
+import { describe, expect, test } from 'vitest';
 import { makeGitCheck } from './git.ts';
 
 const ctx = { cwd: '/tmp/git-check-test' };

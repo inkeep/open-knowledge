@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 
 interface MockBridge {
   config: {
@@ -9,18 +9,18 @@ interface MockBridge {
     mode: 'navigator' | 'editor';
   };
   project: {
-    listRecent: ReturnType<typeof mock>;
-    removeRecent: ReturnType<typeof mock>;
-    getSessionState: ReturnType<typeof mock>;
-    setSessionState: ReturnType<typeof mock>;
-    open: ReturnType<typeof mock>;
-    createNew: ReturnType<typeof mock>;
-    recordCreateNewBannerShown: ReturnType<typeof mock>;
-    readHeadBranch: ReturnType<typeof mock>;
-    close: ReturnType<typeof mock>;
+    listRecent: ReturnType<typeof vi.fn>;
+    removeRecent: ReturnType<typeof vi.fn>;
+    getSessionState: ReturnType<typeof vi.fn>;
+    setSessionState: ReturnType<typeof vi.fn>;
+    open: ReturnType<typeof vi.fn>;
+    createNew: ReturnType<typeof vi.fn>;
+    recordCreateNewBannerShown: ReturnType<typeof vi.fn>;
+    readHeadBranch: ReturnType<typeof vi.fn>;
+    close: ReturnType<typeof vi.fn>;
   };
   dialog: {
-    openFolder: ReturnType<typeof mock>;
+    openFolder: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -34,9 +34,9 @@ function makeBridge(overrides: Partial<MockBridge> = {}): MockBridge {
       mode: 'navigator',
     },
     project: {
-      listRecent: mock(() => Promise.resolve([])),
-      removeRecent: mock(() => Promise.resolve()),
-      getSessionState: mock(() =>
+      listRecent: vi.fn(() => Promise.resolve([])),
+      removeRecent: vi.fn(() => Promise.resolve()),
+      getSessionState: vi.fn(() =>
         Promise.resolve({
           openTabs: [],
           pinnedTabIds: [],
@@ -45,17 +45,17 @@ function makeBridge(overrides: Partial<MockBridge> = {}): MockBridge {
           updatedAt: null,
         }),
       ),
-      setSessionState: mock(() => Promise.resolve()),
-      open: mock(() => Promise.resolve()),
-      createNew: mock(() => Promise.resolve()),
-      recordCreateNewBannerShown: mock(() => Promise.resolve()),
-      readHeadBranch: mock(() =>
+      setSessionState: vi.fn(() => Promise.resolve()),
+      open: vi.fn(() => Promise.resolve()),
+      createNew: vi.fn(() => Promise.resolve()),
+      recordCreateNewBannerShown: vi.fn(() => Promise.resolve()),
+      readHeadBranch: vi.fn(() =>
         Promise.resolve({ currentBranch: null, headSha: null, detached: false }),
       ),
-      close: mock(() => Promise.resolve()),
+      close: vi.fn(() => Promise.resolve()),
     },
     dialog: {
-      openFolder: mock(() => Promise.resolve(null)),
+      openFolder: vi.fn(() => Promise.resolve(null)),
     },
     ...overrides,
   };
@@ -72,14 +72,14 @@ describe('NavigatorApp bridge contract', () => {
   test('bridge.project.listRecent returns RecentProjectEntry[] shape', async () => {
     const bridge = makeBridge({
       project: {
-        listRecent: mock(() =>
+        listRecent: vi.fn(() =>
           Promise.resolve([
             { path: '/tmp/a', name: 'a', lastOpenedAt: '2026-04-20T00:00:00Z' },
             { path: '/tmp/b', name: 'b', lastOpenedAt: '2026-04-19T00:00:00Z', missing: true },
           ]),
         ),
-        removeRecent: mock(() => Promise.resolve()),
-        getSessionState: mock(() =>
+        removeRecent: vi.fn(() => Promise.resolve()),
+        getSessionState: vi.fn(() =>
           Promise.resolve({
             openTabs: [],
             pinnedTabIds: [],
@@ -88,11 +88,11 @@ describe('NavigatorApp bridge contract', () => {
             updatedAt: null,
           }),
         ),
-        setSessionState: mock(() => Promise.resolve()),
-        open: mock(() => Promise.resolve()),
-        createNew: mock(() => Promise.resolve()),
-        recordCreateNewBannerShown: mock(() => Promise.resolve()),
-        close: mock(() => Promise.resolve()),
+        setSessionState: vi.fn(() => Promise.resolve()),
+        open: vi.fn(() => Promise.resolve()),
+        createNew: vi.fn(() => Promise.resolve()),
+        recordCreateNewBannerShown: vi.fn(() => Promise.resolve()),
+        close: vi.fn(() => Promise.resolve()),
       },
     });
     const list = await bridge.project.listRecent();
@@ -124,7 +124,7 @@ describe('NavigatorApp bridge contract', () => {
   test('bridge.dialog.openFolder returns string | null', async () => {
     const bridge = makeBridge({
       dialog: {
-        openFolder: mock(() => Promise.resolve('/tmp/picked')),
+        openFolder: vi.fn(() => Promise.resolve('/tmp/picked')),
       },
     });
     const result = await bridge.dialog.openFolder();
@@ -134,9 +134,9 @@ describe('NavigatorApp bridge contract', () => {
   test('bridge.project.readHeadBranch resolves to a HeadBranchInfo shape', async () => {
     const bridge = makeBridge({
       project: {
-        listRecent: mock(() => Promise.resolve([])),
-        removeRecent: mock(() => Promise.resolve()),
-        getSessionState: mock(() =>
+        listRecent: vi.fn(() => Promise.resolve([])),
+        removeRecent: vi.fn(() => Promise.resolve()),
+        getSessionState: vi.fn(() =>
           Promise.resolve({
             openTabs: [],
             pinnedTabIds: [],
@@ -145,14 +145,14 @@ describe('NavigatorApp bridge contract', () => {
             updatedAt: null,
           }),
         ),
-        setSessionState: mock(() => Promise.resolve()),
-        open: mock(() => Promise.resolve()),
-        createNew: mock(() => Promise.resolve()),
-        recordCreateNewBannerShown: mock(() => Promise.resolve()),
-        readHeadBranch: mock(() =>
+        setSessionState: vi.fn(() => Promise.resolve()),
+        open: vi.fn(() => Promise.resolve()),
+        createNew: vi.fn(() => Promise.resolve()),
+        recordCreateNewBannerShown: vi.fn(() => Promise.resolve()),
+        readHeadBranch: vi.fn(() =>
           Promise.resolve({ currentBranch: 'feat/test', headSha: null, detached: false }),
         ),
-        close: mock(() => Promise.resolve()),
+        close: vi.fn(() => Promise.resolve()),
       },
     });
     const info = await bridge.project.readHeadBranch('/tmp/proj');
@@ -211,8 +211,8 @@ describe('NavigatorApp error-state helpers', () => {
 
   test('runWithErrorStatePure clears error state then awaits the wrapped fn', async () => {
     const { runWithErrorStatePure } = await import('./NavigatorApp');
-    const setError = mock(() => {});
-    const fn = mock(() => Promise.resolve());
+    const setError = vi.fn(() => {});
+    const fn = vi.fn(() => Promise.resolve());
     await runWithErrorStatePure(fn, 'fallback', setError);
     expect(setError).toHaveBeenCalledWith(null);
     expect(fn).toHaveBeenCalled();

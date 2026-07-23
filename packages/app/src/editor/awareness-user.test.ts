@@ -1,10 +1,10 @@
-import { describe, expect, test } from 'bun:test';
 import {
   colorFromSeed,
   HUMAN_COLORS,
   type Identity,
   type Principal,
 } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { buildAwarenessUser } from './awareness-user';
 
 const identity: Identity = {

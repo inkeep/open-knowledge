@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import {
   expectVisualClassTokens,
@@ -93,16 +93,16 @@ let pillRenderErrors: unknown[][] = [];
 const treeListeners = new Set<() => void>();
 
 const treeCalls = {
-  collapseAll: mock(() => {}),
-  createFromTemplate: mock((_parentDir: string, _templateName: string) => {}),
-  expandAll: mock(() => {}),
-  startCreating: mock((_kind: 'file' | 'folder', _parentDir: string) => {}),
-  startCreatingFromTemplate: mock((_parentDir: string) => {}),
+  collapseAll: vi.fn(() => {}),
+  createFromTemplate: vi.fn((_parentDir: string, _templateName: string) => {}),
+  expandAll: vi.fn(() => {}),
+  startCreating: vi.fn((_kind: 'file' | 'folder', _parentDir: string) => {}),
+  startCreatingFromTemplate: vi.fn((_parentDir: string) => {}),
 };
-const projectLocalPatch = mock((_patch: unknown) => projectPatchResult);
-const showItemInFolderMock = mock((_path: string) => Promise.resolve());
-const notifyViewMenuStateChangedMock = mock((_snapshot: unknown) => {});
-const onOpenSearch = mock(() => {});
+const projectLocalPatch = vi.fn((_patch: unknown) => projectPatchResult);
+const showItemInFolderMock = vi.fn((_path: string) => Promise.resolve());
+const notifyViewMenuStateChangedMock = vi.fn((_snapshot: unknown) => {});
+const onOpenSearch = vi.fn(() => {});
 
 function setFolderState(next: FolderState) {
   folderState = next;
@@ -127,17 +127,17 @@ function installBridge() {
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children?: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-mock.module('@/lib/perf', () => ({
+vi.doMock('@/lib/perf', () => ({
   ProfilerBoundary: PassThrough,
 }));
 
-mock.module('@/components/FileTree', () => ({
+vi.doMock('@/components/FileTree', () => ({
   FileTree: ({ ref }: { ref?: (handle: unknown) => void }) => {
     useEffect(() => {
       const handle = {
@@ -160,22 +160,22 @@ mock.module('@/components/FileTree', () => ({
   },
 }));
 
-mock.module('@/components/ConflictsSection', () => ({
+vi.doMock('@/components/ConflictsSection', () => ({
   ConflictsSection: () => <div data-testid="conflicts-section" />,
 }));
 
 // Heavy sidebar child (pulls in skill-actions → dropdown submenu + handoff
 // builders). Not under test here; stubbed like FileTree/ConflictsSection so the
 // sidebar's own behavior tests don't depend on the skills subtree's deep graph.
-mock.module('@/components/SkillsSidebarSection', () => ({
+vi.doMock('@/components/SkillsSidebarSection', () => ({
   SkillsSidebarSection: () => <div data-testid="skills-sidebar-section" />,
 }));
 
-mock.module('@/components/ProjectSwitcher', () => ({
+vi.doMock('@/components/ProjectSwitcher', () => ({
   ProjectSwitcher: () => <button type="button">Project switcher</button>,
 }));
 
-mock.module('@/components/SidebarSearchBar', () => ({
+vi.doMock('@/components/SidebarSearchBar', () => ({
   SidebarSearchBar: ({ onClick }: { onClick: () => void }) => {
     if (sidebarSearchThrows) throw new Error('search pill render failed');
     return (
@@ -189,18 +189,18 @@ mock.module('@/components/SidebarSearchBar', () => ({
   },
 }));
 
-mock.module('@/components/UpdateNotices', () => ({
+vi.doMock('@/components/UpdateNotices', () => ({
   UpdateNotices: () => <div data-testid="update-notices" />,
 }));
 
-mock.module('@/components/handoff/OpenInAgentEmptySpaceSubmenu', () => ({
+vi.doMock('@/components/handoff/OpenInAgentEmptySpaceSubmenu', () => ({
   OpenInAgentEmptySpaceSubmenu: (props: { input: unknown }) => {
     openInAgentSubmenuProps.push(props);
     return <div data-testid="open-in-agent-empty-space-submenu" />;
   },
 }));
 
-mock.module('@/components/handoff/useHandoffDispatch', () => ({
+vi.doMock('@/components/handoff/useHandoffDispatch', () => ({
   buildFolderHandoffInput: () => ({ docContext: null, docPath: '', folderRelativePath: 'docs' }),
   buildHandoffInput: () => ({
     docContext: { docName: 'docs/current' },
@@ -208,18 +208,18 @@ mock.module('@/components/handoff/useHandoffDispatch', () => ({
   }),
   buildProjectScopedHandoffInput: ({ workspace: inputWorkspace }: { workspace: unknown }) =>
     inputWorkspace ? { docContext: null, docPath: '', projectDir: '/tmp/open-knowledge' } : null,
-  useHandoffDispatch: () => ({ dispatch: mock(() => Promise.resolve({ ok: true })) }),
+  useHandoffDispatch: () => ({ dispatch: vi.fn(() => Promise.resolve({ ok: true })) }),
 }));
 
-mock.module('@/components/handoff/useInstalledAgents', () => ({
+vi.doMock('@/components/handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states: { codex: { installed: true } } }),
 }));
 
-mock.module('@/components/ui/button', () => ({
+vi.doMock('@/components/ui/button', () => ({
   Button,
 }));
 
-mock.module('@/components/ui/context-menu', () => ({
+vi.doMock('@/components/ui/context-menu', () => ({
   ContextMenu: PassThrough,
   ContextMenuContent: ({ children }: { children?: ReactNode }) => <div role="menu">{children}</div>,
   ContextMenuItem: ({
@@ -278,7 +278,7 @@ mock.module('@/components/ui/context-menu', () => ({
   ContextMenuTrigger: PassThrough,
 }));
 
-mock.module('@/components/ui/dropdown-menu', () => ({
+vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: PassThrough,
   DropdownMenuCheckboxItem: ({
     checked,
@@ -323,7 +323,7 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuTrigger: PassThrough,
 }));
 
-mock.module('@/components/ui/sidebar', () => ({
+vi.doMock('@/components/ui/sidebar', () => ({
   Sidebar: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
     <aside data-testid="sidebar" {...props}>
       {children}
@@ -355,13 +355,13 @@ mock.module('@/components/ui/sidebar', () => ({
   useSidebar: () => ({ state: sidebarState }),
 }));
 
-mock.module('@/components/ui/tooltip', () => ({
+vi.doMock('@/components/ui/tooltip', () => ({
   Tooltip: PassThrough,
   TooltipContent: ({ children }: { children?: ReactNode }) => <div role="tooltip">{children}</div>,
   TooltipTrigger: PassThrough,
 }));
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName,
     activeTarget,
@@ -392,7 +392,7 @@ function templateEntries(folderPath: string | null) {
   ];
 }
 
-mock.module('@/hooks/use-folder-config', () => ({
+vi.doMock('@/hooks/use-folder-config', () => ({
   useFolderConfig: (folderPath: string | null) => ({
     state: {
       status: 'ready',
@@ -401,7 +401,7 @@ mock.module('@/hooks/use-folder-config', () => ({
   }),
 }));
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     merged: mergedConfig,
     projectLocalBinding: projectLocalBindingNull
@@ -412,11 +412,11 @@ mock.module('@/lib/config-provider', () => ({
   }),
 }));
 
-mock.module('@/lib/use-workspace', () => ({
+vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => workspace,
 }));
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: {
     error: (...args: unknown[]) => toastErrors.push(args),
     success: (...args: unknown[]) => toastSuccesses.push(args),
@@ -466,7 +466,7 @@ describe('FileSidebar runtime behavior', () => {
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: {
-        writeText: mock(() => Promise.resolve()),
+        writeText: vi.fn(() => Promise.resolve()),
       },
     });
   });
@@ -906,7 +906,7 @@ describe('FileSidebar runtime behavior', () => {
 
   test('search pill render failures are contained to the pill row and reset when sidebar state changes', async () => {
     const originalConsoleError = console.error;
-    console.error = mock(() => {}) as never;
+    console.error = vi.fn(() => {}) as never;
     try {
       sidebarSearchThrows = true;
       const rendered = await renderSidebar();

@@ -18,9 +18,9 @@
  *   destroys new user XmlFragment keystroke.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { prependFrontmatter, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 
 import { mdManager, schema } from './test-harness';

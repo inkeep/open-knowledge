@@ -12,7 +12,7 @@
  * the existing boot.test.ts skip gate.
  */
 
-import { describe as _bunDescribe, afterEach, beforeEach, expect, test } from 'bun:test';
+import { describe as _bunDescribe, afterEach, beforeEach, expect, test } from 'vitest';
 
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 

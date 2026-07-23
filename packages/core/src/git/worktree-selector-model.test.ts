@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import type { BridgeWorktreeEntry } from './worktree-list-parser.ts';
 import { buildWorktreeSelectorModel } from './worktree-selector-model.ts';
 

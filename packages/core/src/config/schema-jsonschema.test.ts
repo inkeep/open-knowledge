@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
+import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
 import { fieldRegistry } from './field-registry.ts';
 import { ConfigSchema } from './schema.ts';

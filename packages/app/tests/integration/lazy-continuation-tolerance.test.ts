@@ -13,8 +13,9 @@
  * split-brain telemetry; the fuzz harness classified it `stalled`; a
  * cross-generation merge could even DUPLICATE the residual block).
  */
-import { describe, expect, test } from 'bun:test';
+
 import { setTimeout as wait } from 'node:timers/promises';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import {
   agentWriteMd,

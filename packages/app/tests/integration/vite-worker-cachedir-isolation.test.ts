@@ -59,10 +59,10 @@
  * the `RENDERER_DEDUPE` cross-config invariant the same way.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { resolve } from 'node:path';
 import { type Node, Project, SyntaxKind } from 'ts-morph';
 import { loadConfigFromFile } from 'vite';
+import { describe, expect, test } from 'vitest';
 
 const APP_PACKAGE_ROOT = resolve(import.meta.dirname, '../..');
 const APP_VITE_CONFIG = resolve(APP_PACKAGE_ROOT, 'vite.config.ts');

@@ -17,10 +17,11 @@
  * If this test FAILS, the hypothesis that structural-diff paths are safe is
  * wrong, and the fix scope expands to cover ROLLBACK_ORIGIN + MANAGED_RENAME_ORIGIN.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   agentWriteMd,
   clientIdsInDoc,

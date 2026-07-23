@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, spyOn, test } from 'bun:test';
 import {
   HELPER_BUNDLE_NAME,
   HELPER_EXECUTABLE_NAME,
   resolveHelperBundleBinary,
 } from '@inkeep/open-knowledge-core/helper-bundle';
+import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest';
 import { maybeRedirectToHelperBundle, resolveSelfSpawn } from './self-spawn.ts';
 
 const PACKAGED_APP = '/Applications/OpenKnowledge.app';
@@ -72,13 +72,13 @@ describe('maybeRedirectToHelperBundle', () => {
 });
 
 describe('resolveSelfSpawn', () => {
-  let warnSpy: ReturnType<typeof spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     // Squelch + capture the fallback's console.warn so the test output stays
     // clean AND we can assert the warning fired (the warning is the only
     // operator-visible signal that we hit the rare fallback path).
-    warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {

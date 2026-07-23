@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   AGENT_ID_MAX_LEN,
   AGENT_ID_RE,

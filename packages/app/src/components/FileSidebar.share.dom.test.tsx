@@ -1,13 +1,13 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 // Controls the mocked git-sync hook's hasRemote signal per test.
 let hasRemote = true;
 // Captures the input runShareAction receives.
 let lastShareInput: unknown;
-const runShareActionMock = mock(async (input: unknown) => {
+const runShareActionMock = vi.fn(async (input: unknown) => {
   lastShareInput = input;
   return { kind: 'copied' as const, shareUrl: 'https://example.test/x', branch: 'main' };
 });
@@ -62,15 +62,15 @@ function Button({
   );
 }
 
-mock.module('@/lib/perf', () => ({ ProfilerBoundary: PassThrough }));
+vi.doMock('@/lib/perf', () => ({ ProfilerBoundary: PassThrough }));
 
-mock.module('@/components/FileTree', () => ({
+vi.doMock('@/components/FileTree', () => ({
   FileTree: () => <div data-testid="file-tree-stub" />,
 }));
 
-mock.module('@/components/ConflictsSection', () => ({ ConflictsSection: () => null }));
+vi.doMock('@/components/ConflictsSection', () => ({ ConflictsSection: () => null }));
 
-mock.module('@/hooks/use-git-sync-status', () => ({
+vi.doMock('@/hooks/use-git-sync-status', () => ({
   useGitSyncStatusDetailed: () => ({
     status: { hasRemote, syncEnabled: hasRemote, behind: 0, ahead: 0 },
     fetchError: null,
@@ -78,18 +78,18 @@ mock.module('@/hooks/use-git-sync-status', () => ({
   useGitSyncStatus: () => ({ hasRemote, syncEnabled: hasRemote, behind: 0, ahead: 0 }),
 }));
 
-mock.module('@/lib/share/clipboard-adapter', () => ({
+vi.doMock('@/lib/share/clipboard-adapter', () => ({
   scheduleClipboardWrite: async () => {},
 }));
 
-mock.module('@/lib/share/run-share-action', () => ({
+vi.doMock('@/lib/share/run-share-action', () => ({
   buildFolderShareInput: (folderRelativePath: string) => ({ kind: 'folder', folderRelativePath }),
   runShareAction: runShareActionMock,
 }));
 
-mock.module('@/components/ui/button', () => ({ Button }));
+vi.doMock('@/components/ui/button', () => ({ Button }));
 
-mock.module('@/components/ui/collapsible', () => ({
+vi.doMock('@/components/ui/collapsible', () => ({
   Collapsible: ({ children, defaultOpen: _defaultOpen, ...props }: Record<string, unknown>) => (
     <div {...props}>{children as ReactNode}</div>
   ),
@@ -97,7 +97,7 @@ mock.module('@/components/ui/collapsible', () => ({
   CollapsibleTrigger: Button,
 }));
 
-mock.module('@/components/ui/sidebar', () => ({
+vi.doMock('@/components/ui/sidebar', () => ({
   Sidebar: ElementPassThrough,
   SidebarContent: ElementPassThrough,
   SidebarFooter: ElementPassThrough,
@@ -111,11 +111,11 @@ mock.module('@/components/ui/sidebar', () => ({
   useSidebar: () => ({ state: 'expanded', toggleSidebar: () => {} }),
 }));
 
-mock.module('@/components/SkillsSidebarSection', () => ({
+vi.doMock('@/components/SkillsSidebarSection', () => ({
   SkillsSidebarSection: () => null,
 }));
 
-mock.module('@/components/ui/context-menu', () => ({
+vi.doMock('@/components/ui/context-menu', () => ({
   ContextMenu: PassThrough,
   ContextMenuCheckboxItem: Button,
   ContextMenuContent: ElementPassThrough,
@@ -127,7 +127,7 @@ mock.module('@/components/ui/context-menu', () => ({
   ContextMenuTrigger: PassThrough,
 }));
 
-mock.module('@/components/ui/dropdown-menu', () => ({
+vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: PassThrough,
   DropdownMenuCheckboxItem: ({
     checked,
@@ -157,62 +157,62 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuTrigger: PassThrough,
 }));
 
-mock.module('@/components/ui/tooltip', () => ({
+vi.doMock('@/components/ui/tooltip', () => ({
   Tooltip: PassThrough,
   TooltipContent: ElementPassThrough,
   TooltipTrigger: PassThrough,
 }));
 
-mock.module('@/components/handoff/OpenInAgentEmptySpaceSubmenu', () => ({
+vi.doMock('@/components/handoff/OpenInAgentEmptySpaceSubmenu', () => ({
   OpenInAgentEmptySpaceSubmenu: () => null,
 }));
 
-mock.module('@/components/handoff/useHandoffDispatch', () => ({
+vi.doMock('@/components/handoff/useHandoffDispatch', () => ({
   buildFolderHandoffInput: () => null,
   buildHandoffInput: () => null,
   buildProjectScopedHandoffInput: () => ({ docContext: null, docPath: '', projectDir: '/tmp/ok' }),
   useHandoffDispatch: () => ({ dispatch: async () => ({ ok: true as const }) }),
 }));
 
-mock.module('@/components/handoff/useInstalledAgents', () => ({
+vi.doMock('@/components/handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states: {} }),
 }));
 
-mock.module('@/components/ProjectSwitcher', () => ({ ProjectSwitcher: () => null }));
+vi.doMock('@/components/ProjectSwitcher', () => ({ ProjectSwitcher: () => null }));
 
-mock.module('@/components/SidebarSearchBar', () => ({
+vi.doMock('@/components/SidebarSearchBar', () => ({
   SidebarSearchBar: () => <button type="button">Search</button>,
   onPillRenderError: () => {},
 }));
 
-mock.module('@/components/UpdateNotices', () => ({ UpdateNotices: () => null }));
+vi.doMock('@/components/UpdateNotices', () => ({ UpdateNotices: () => null }));
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName: 'notes/source',
     activeTarget: { kind: 'doc', target: 'notes/source', docName: 'notes/source' },
   }),
 }));
 
-mock.module('@/hooks/use-folder-config', () => ({
+vi.doMock('@/hooks/use-folder-config', () => ({
   useFolderConfig: () => ({
     state: { status: 'ready', data: { folder: { templates_available: [] } } },
   }),
 }));
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     projectLocalBinding: { patch: () => ({ ok: true as const }) },
     merged: { appearance: { sidebar: { showHiddenFiles: false } } },
   }),
 }));
 
-mock.module('@/lib/use-workspace', () => ({
+vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => ({ contentDir: '/tmp/open-knowledge', pathSeparator: '/' }),
 }));
 
-mock.module('sonner', () => ({
-  toast: { error: mock(() => {}), success: mock(() => {}) },
+vi.doMock('sonner', () => ({
+  toast: { error: vi.fn(() => {}), success: vi.fn(() => {}) },
 }));
 
 const { FileSidebar } = await import('./FileSidebar');

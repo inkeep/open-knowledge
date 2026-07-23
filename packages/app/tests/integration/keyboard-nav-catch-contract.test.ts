@@ -33,9 +33,9 @@
  * canonical home for block-level keyboard contract).
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 const KEYBOARD_NAV_PATH = resolve(import.meta.dirname, '../../src/editor/block-ux/keyboard-nav.ts');
 

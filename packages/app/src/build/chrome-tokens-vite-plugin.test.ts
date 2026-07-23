@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, test } from 'vitest';
 import { CHROME_BG_DARK, CHROME_BG_LIGHT } from '../../../core/src/constants/chrome.ts';
 import { chromeTokensVitePlugin } from './chrome-tokens-vite-plugin.ts';
 

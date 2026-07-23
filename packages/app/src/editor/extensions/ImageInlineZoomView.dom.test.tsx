@@ -5,7 +5,7 @@
  * `Image.dom.test.tsx` pins the loading-skeleton contract for the
  * descriptor renderer.
  *
- * `@tiptap/react` is intentionally NOT module-mocked: `mock.module`
+ * `@tiptap/react` is intentionally NOT module-mocked: `vi.doMock`
  * replaces the whole module and the patch survives Bun's `--isolate`
  * across files in the same `bun test` invocation (oven-sh/bun#12823-class
  * leakage). Sibling files lazily import `./image-inline-zoom` →
@@ -13,10 +13,11 @@
  * The real `NodeViewWrapper` works fine in jsdom for standalone
  * `render()` — the inline-`<span>` choice IS the assertion.
  */
-import { afterEach, describe, expect, mock, test } from 'bun:test';
-import { cleanup, render } from '@testing-library/react';
 
-mock.module('react-medium-image-zoom', () => ({
+import { cleanup, render } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+
+vi.doMock('react-medium-image-zoom', () => ({
   default: ({
     children,
     wrapElement,

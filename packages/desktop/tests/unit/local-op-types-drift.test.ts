@@ -21,13 +21,14 @@
  * Failures surface during `turbo run typecheck` at the literal `true`
  * assignment, not just at `bun test` execution time.
  */
-import { describe, expect, test } from 'bun:test';
+
 import type {
   AuthEvent,
   AuthReposResponse,
   AuthStatusResponse,
   RawCloneEvent,
 } from '@inkeep/open-knowledge-server';
+import { describe, expect, test } from 'vitest';
 import type {
   OkLocalOpAuthEvent,
   OkLocalOpAuthReposResponse,

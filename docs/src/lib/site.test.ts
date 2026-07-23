@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { metaDescription, SITE_DESCRIPTION } from './site.ts';
 
 const MAX = 160;

@@ -8,8 +8,9 @@
  * so the user can immediately type to replace it, and the selection is
  * idempotent across multiple calls within the same rename session.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { cleanup } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   __resetRenameInputAffordanceForTesting,
   applyRenameInputAffordance,

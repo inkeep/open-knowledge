@@ -7,11 +7,11 @@
  * Spec: (two write sites).
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readTargetVersion, writeTargetVersion } from '@inkeep/open-knowledge-server';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { handleBuildAndOpen } from '../../src/main/ipc/install-skill.ts';
 
 interface FakeApp {
@@ -19,7 +19,7 @@ interface FakeApp {
 }
 
 interface FakeShell {
-  openPath: ReturnType<typeof mock>;
+  openPath: ReturnType<typeof vi.fn>;
 }
 
 function makeFakeApp(downloadsDir: string): FakeApp {
@@ -35,7 +35,7 @@ function makeFakeApp(downloadsDir: string): FakeApp {
 
 function makeFakeShell(openResult: string | Error = ''): FakeShell {
   return {
-    openPath: mock(async () => {
+    openPath: vi.fn(async () => {
       if (openResult instanceof Error) throw openResult;
       return openResult;
     }),

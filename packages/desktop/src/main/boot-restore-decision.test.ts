@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { bootRestoreDecision } from './boot-restore-decision.ts';
 
 function existsIn(paths: string[]): (p: string) => boolean {

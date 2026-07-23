@@ -21,10 +21,10 @@
  * window; the slow-die child makes the defect deterministic.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import { createTestServer, pollUntil, type TestServer, wait } from './test-harness';
 
 // Fake device-flow CLI: ignores the appended `auth login --json --host ...`

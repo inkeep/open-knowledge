@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 
 const SPLASH_URL =
   'https://github.com/inkeep/open-knowledge/releases/latest/download/OpenKnowledge-arm64.dmg';
@@ -10,7 +10,7 @@ type CaptureOpts = {
 };
 let _lastCapture: CaptureOpts | null = null;
 let _isPrefetch = false;
-mock.module('../../../../lib/track.ts', () => ({
+vi.doMock('../../../../lib/track.ts', () => ({
   captureServerEvent: (opts: CaptureOpts) => {
     _lastCapture = opts;
   },
@@ -21,12 +21,12 @@ mock.module('../../../../lib/track.ts', () => ({
 
 // Flip the decoded-share outcome per test.
 let _viewKind: 'ok' | 'invalid' | 'unsupported-version' = 'ok';
-mock.module('../../../../lib/share-splash.ts', () => ({
+vi.doMock('../../../../lib/share-splash.ts', () => ({
   buildSplashViewModel: () => ({ kind: _viewKind }),
   SPLASH_DOWNLOAD_URL: SPLASH_URL,
 }));
 
-mock.module('../../../../lib/deferred-share.ts', () => ({
+vi.doMock('../../../../lib/deferred-share.ts', () => ({
   buildPendingShareCookie: (encoded: string) => ({ name: 'ok-pending-share', value: encoded }),
 }));
 

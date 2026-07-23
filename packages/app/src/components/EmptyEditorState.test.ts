@@ -9,7 +9,7 @@
  * folders fill the empty state with infrastructure.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { countEntries } from './EmptyEditorState';
 
 describe('countEntries() — onboarding gate', () => {

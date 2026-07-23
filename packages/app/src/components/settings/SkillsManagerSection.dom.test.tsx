@@ -11,13 +11,13 @@
  * renderers, same as the sibling .dom.test.tsx files.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { SkillsListSuccess } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => children,
   useLingui: () => ({
@@ -33,18 +33,18 @@ mock.module('@lingui/react/macro', () => ({
   }),
 }));
 
-mock.module('sonner', () => ({
-  toast: { error: mock(() => {}), info: mock(() => {}), success: mock(() => {}) },
+vi.doMock('sonner', () => ({
+  toast: { error: vi.fn(() => {}), info: vi.fn(() => {}), success: vi.fn(() => {}) },
 }));
 // The row's "Open with AI" menu pulls config / workspace / install-detection
 // context this section test doesn't provide; stub it (handoff is covered by
 // its own tests + useHandoffDispatch.test.ts).
-mock.module('@/components/handoff/OpenInAgentMenu', () => ({
+vi.doMock('@/components/handoff/OpenInAgentMenu', () => ({
   OpenInAgentMenu: () => null,
 }));
 // The section opens skills as editor tabs via DocumentContext; this list test
 // renders the section standalone (no provider), so stub the open hook.
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({ openDocument: () => {} }),
 }));
 
@@ -66,7 +66,7 @@ const EMPTY_TARGETS = { targets: [], configured: false };
 function routeFetch(
   skillsResponse: () => { ok: boolean; status: number; json: () => Promise<unknown> },
 ) {
-  global.fetch = mock(async (input: RequestInfo | URL) => {
+  global.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input.toString();
     if (url.includes('/api/skill-targets')) {
       return { ok: true, status: 200, json: async () => EMPTY_TARGETS };

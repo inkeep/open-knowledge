@@ -14,7 +14,7 @@
  * prove the derivation rather than a duplicated literal.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   ALL_EDITOR_IDS,
   EDITOR_PROJECT_SKILL_ROOT,

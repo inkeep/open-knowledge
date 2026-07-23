@@ -1,4 +1,4 @@
-import { describe as _bunDescribe, afterEach, beforeEach, expect, spyOn, test } from 'bun:test';
+import { describe as _bunDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 // Skip-on-CI gate (oven-sh/bun#11892): simple-git fixture pattern in MCP
 // test setup spawns git children that Bun fails to reap on ubuntu-latest
@@ -14,8 +14,8 @@ import { getCurrentMcpLogger, McpLogger, runWithMcpLogger } from './logger.ts';
 
 describe('McpLogger', () => {
   let stderrLines: string[];
-  let stderrSpy: ReturnType<typeof spyOn>;
-  let warnSpy: ReturnType<typeof spyOn> | undefined;
+  let stderrSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn> | undefined;
   let tmpLogDir: string | undefined;
   let originalMcpDebug: string | undefined;
   let originalDebug: string | undefined;
@@ -23,7 +23,9 @@ describe('McpLogger', () => {
 
   beforeEach(() => {
     stderrLines = [];
-    stderrSpy = spyOn(process.stderr, 'write').mockImplementation(((chunk: string | Uint8Array) => {
+    stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(((
+      chunk: string | Uint8Array,
+    ) => {
       stderrLines.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf-8'));
       return true;
     }) as never);
@@ -89,7 +91,7 @@ describe('McpLogger', () => {
   test('warns when OK_LOG_FILE cannot be written', () => {
     tmpLogDir = mkdtempSync(resolve(tmpdir(), 'ok-mcp-logger-'));
     process.env.OK_LOG_FILE = tmpLogDir;
-    warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const logger = new McpLogger();
     logger.info('persist this');

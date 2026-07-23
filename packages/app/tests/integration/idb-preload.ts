@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { afterEach } from 'bun:test';
+import { afterEach } from 'vitest';
 
 // Global afterEach hook: wipe every `ok-ydoc:` IDB database after each
 // test. fake-indexeddb persists state across tests within a single bun

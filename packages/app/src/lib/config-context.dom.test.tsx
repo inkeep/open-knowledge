@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import type { Config } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ConfigContext, type ConfigContextValue, useConfigContext } from './config-context';
 
 function makeContextValue(): ConfigContextValue {
@@ -26,10 +26,10 @@ function Consumer() {
 }
 
 describe('useConfigContext runtime guard', () => {
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {

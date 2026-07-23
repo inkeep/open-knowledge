@@ -15,8 +15,8 @@
  * Both are fully testable in bun-test without a real DOM.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { ChunkedInsertError, HtmlPayloadTooLargeError } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 import {
   classifyError,

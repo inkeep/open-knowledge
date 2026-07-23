@@ -18,9 +18,9 @@
  * a per-entry comment explaining intent. The list is bounded by review.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync, type Stats, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { getRegisteredDescriptors } from '../../src/editor/registry/index.ts';
 
 // Resolve paths against this file's location, not cwd. Matches the

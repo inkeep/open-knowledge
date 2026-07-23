@@ -8,9 +8,9 @@
  * is testable here because it's tr-meta-based.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { Schema } from '@tiptap/pm/model';
 import { EditorState, NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
+import { describe, expect, test } from 'vitest';
 import { bridgeIdPluginKey } from './bridge-id-plugin.ts';
 import {
   type BlockSelection,

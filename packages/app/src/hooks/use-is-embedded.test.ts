@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 describe('use-is-embedded module', () => {
   test('exports useIsEmbedded as a function', async () => {

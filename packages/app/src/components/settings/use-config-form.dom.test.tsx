@@ -1,13 +1,13 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { Config, ConfigBinding, ConfigPatch } from '@inkeep/open-knowledge-core';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { useConfigForm } from './use-config-form';
 
 type ConfigListener = (next: Config) => void;
 
 let subscribeListener: ConfigListener | null = null;
-let unsubscribeMock = mock(() => {});
-let patchMock = mock((_patch: ConfigPatch) => ({
+let unsubscribeMock = vi.fn(() => {});
+let patchMock = vi.fn((_patch: ConfigPatch) => ({
   ok: true as const,
   effective: {} as Config,
   appliedPaths: ['appearance.theme'],
@@ -49,8 +49,8 @@ function Harness({ binding }: { binding: ConfigBinding }) {
 describe('useConfigForm runtime wiring', () => {
   beforeEach(() => {
     subscribeListener = null;
-    unsubscribeMock = mock(() => {});
-    patchMock = mock((_patch: ConfigPatch) => ({
+    unsubscribeMock = vi.fn(() => {});
+    patchMock = vi.fn((_patch: ConfigPatch) => ({
       ok: true as const,
       effective: {} as Config,
       appliedPaths: ['appearance.theme'],

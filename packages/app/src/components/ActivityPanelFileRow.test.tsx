@@ -3,8 +3,9 @@
  * static HTML shape. Interactive behavior (row click → diff, per-edit Restore
  * confirm, onNavigate firing) is exercised in Playwright E2E.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { renderToString } from 'react-dom/server';
+import { describe, expect, test } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { FileData } from '@/lib/use-activity-panel';
 import { ActivityPanelFileRow } from './ActivityPanelFileRow';

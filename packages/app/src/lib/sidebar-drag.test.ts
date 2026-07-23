@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { DOCUMENT_OPEN_BYTE_LIMIT } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import {
   navigationForSidebarDragPayload,
   OK_SIDEBAR_DRAG_MIME,

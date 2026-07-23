@@ -27,13 +27,14 @@
  *      structurally — but 5s keeps CI fast while still demonstrating the
  *      grandchild is genuinely independent of the parent's lifecycle.
  */
-import { describe as _describe, afterEach, beforeEach, expect, it } from 'bun:test';
+
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { describe as _describe, afterEach, beforeEach, expect, it } from 'vitest';
 
 // Skip-on-CI gate: a detached grandchild plus SIGTERM cleanup can strand
 // processes on Linux GHA runners. Tests run locally; a follow-up will narrow

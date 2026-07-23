@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 type SyncWriter = (enabled: boolean) => { ok: true } | { ok: false; error: string };
 
@@ -10,7 +10,7 @@ const toastErrors: string[] = [];
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
@@ -19,7 +19,7 @@ mock.module('@lingui/react/macro', () => ({
   }),
 }));
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: {
     error: (message: string) => {
       toastErrors.push(message);
@@ -27,7 +27,7 @@ mock.module('sonner', () => ({
   },
 }));
 
-mock.module('@/hooks/use-enable-sync-with-confirm', () => ({
+vi.doMock('@/hooks/use-enable-sync-with-confirm', () => ({
   useSyncEnabledWriter: () => writer,
 }));
 

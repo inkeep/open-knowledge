@@ -1,11 +1,11 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import type { KeyringSmokeResult } from '../utility/keyring-smoke.ts';
 import { createDebugIpc } from './debug-ipc.ts';
 
 function fakeUtility() {
   const posted: Array<{ type: string; correlationId?: string }> = [];
   return {
-    postMessage: mock((m: unknown) => {
+    postMessage: vi.fn((m: unknown) => {
       posted.push(m as { type: string; correlationId?: string });
     }),
     get posted() {
@@ -142,7 +142,7 @@ describe('createDebugIpc', () => {
 
   test('postMessage throw is caught and surfaced as rejection', async () => {
     const utility = {
-      postMessage: mock(() => {
+      postMessage: vi.fn(() => {
         throw new Error('IPC port closed');
       }),
     };

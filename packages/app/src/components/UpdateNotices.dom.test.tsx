@@ -11,8 +11,9 @@
  * `tests/lingui-macro-preload.ts`, so `t`Dismiss notice`` is the X's
  * accessible name. Substrate: jsdom via `bun run test:dom`.
  */
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { NoticeCard } from './UpdateNotices';
 import { TOAST_A_PROGRESS_BODY, type UpdateNotice } from './UpdateNotices.shared';
 
@@ -30,7 +31,7 @@ describe('NoticeCard — dismiss X visibility', () => {
       priority: 2,
       action: { label: 'Relaunch', onClick: () => {} },
     };
-    const onDismiss = mock(() => {});
+    const onDismiss = vi.fn(() => {});
     render(<NoticeCard notice={notice} onDismiss={onDismiss} />);
 
     const x = screen.getByRole('button', { name: DISMISS_NAME });

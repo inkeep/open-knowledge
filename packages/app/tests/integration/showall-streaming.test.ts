@@ -7,11 +7,12 @@
  * single-flight JSON response unchanged (back-compatible coexistence). The cap
  * propagates as `truncated` on the terminal line.
  */
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DocumentListSuccessSchema } from '@inkeep/open-knowledge-core';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { consumeShowAllStream, isNdjsonResponse } from '../../src/lib/show-all-stream';
 import { createTestServer, type TestServer } from './test-harness';
 

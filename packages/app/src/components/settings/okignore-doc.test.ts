@@ -6,7 +6,7 @@
  * and the no-edit path must be a no-op.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   appendPattern,
   editPatternAt,

@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import type { Editor } from '@tiptap/core';
+import { afterEach, describe, expect, test } from 'vitest';
 import { getEditorForDoc, registerEditor, unregisterEditor } from './active-editor';
 
 const fakeEditor = (id: string): Editor => ({ __id: id }) as unknown as Editor;

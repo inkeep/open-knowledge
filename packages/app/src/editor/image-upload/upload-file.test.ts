@@ -6,7 +6,7 @@
  * docName directly. No `globalThis.fetch =` mutation — the prior pattern
  * proved flaky on Linux Bun. DI tests are platform-stable.
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { uploadFile } from './upload-file.ts';
 
 interface FetchCall {

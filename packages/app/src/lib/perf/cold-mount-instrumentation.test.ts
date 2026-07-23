@@ -7,8 +7,8 @@
  * `tests/perf/scenarios/g4-profile-decomposition.ts`.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Extension } from '@tiptap/core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   shouldInstallColdMountInstrumentation,
   wrapExtensionsWithTiming,

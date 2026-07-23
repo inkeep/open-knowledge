@@ -41,7 +41,6 @@
  * Future IPC DU additions extend the REGISTRY here.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import {
@@ -53,6 +52,7 @@ import {
   type SwitchStatement,
   SyntaxKind,
 } from 'ts-morph';
+import { describe, expect, test } from 'vitest';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../..');
 const SCAN_ROOTS = [join(REPO_ROOT, 'packages/core/src'), join(REPO_ROOT, 'packages/app/src')];

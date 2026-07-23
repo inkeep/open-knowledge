@@ -11,8 +11,9 @@
  *
  * Runs under `bun run test:dom` (jsdom substrate).
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { cleanup, render, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 
 const { TextViewer } = await import('./TextViewer.tsx');
 

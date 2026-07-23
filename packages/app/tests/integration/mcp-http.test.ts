@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, test } from 'vitest';
 import { createTestServer } from './test-harness';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { filterItems, getSlashCommandItems, type SlashCommandItem } from './items';
 
 describe('filterItems', () => {

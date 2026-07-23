@@ -19,7 +19,7 @@
  * - `TYPE_TO_TONE` shape pins the supported callout type set.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { classifyUrlPortability } from './clipboard-sanitize.ts';
 import {
   PALETTE_DESCRIPTOR_NAMES,

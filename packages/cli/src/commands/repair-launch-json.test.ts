@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type LaunchJsonRepairLogEvent, repairLaunchJson } from './repair-launch-json.ts';
 
 // OK no longer scaffolds `.claude/launch.json`; the `ok start` repair sweep now

@@ -7,10 +7,10 @@
  * commits correctly.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { recordContributor, swapContributors } from './contributor-tracker.ts';
 import { applyExternalChange } from './external-change.ts';

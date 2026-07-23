@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { NextRequest } from 'next/server';
+import { describe, expect, test } from 'vitest';
 import { proxy } from './proxy.ts';
 
 /**

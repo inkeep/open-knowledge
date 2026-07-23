@@ -8,8 +8,8 @@
  * `renderToString`.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { renderToString } from 'react-dom/server';
+import { describe, expect, test } from 'vitest';
 import { Accordion } from './Accordion.tsx';
 
 describe('Accordion — chevron refactor', () => {

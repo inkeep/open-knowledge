@@ -40,13 +40,13 @@
  * gate provides before tests run.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { afterEach, describe, expect, test } from 'vitest';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // packages/cli/src/mcp -> packages/cli/dist/cli.mjs. The built entry (required

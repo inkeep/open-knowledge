@@ -26,7 +26,7 @@
  * property of the plugin itself — the multi-client integration harness
  * would add orders of magnitude of wall time without adding signal.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { getSchema } from '@tiptap/core';
 import { EditorState, type Plugin, type Transaction } from '@tiptap/pm/state';
 // Same source as source-dirty-observer.ts (and bridge-id-plugin.ts +
@@ -36,6 +36,7 @@ import { EditorState, type Plugin, type Transaction } from '@tiptap/pm/state';
 // never tag, causing the origin-guard test to assert the wrong behavior.
 // Pinned by y-prosemirror-import-coverage.test.ts.
 import { ySyncPluginKey } from '@tiptap/y-tiptap';
+import { describe, expect, test } from 'vitest';
 import { sharedExtensions } from './shared';
 import { SourceDirtyObserver, sourceDirtyPluginKey } from './source-dirty-observer';
 

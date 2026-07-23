@@ -1,4 +1,3 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import { execSync } from 'node:child_process';
 import {
   existsSync,
@@ -12,6 +11,7 @@ import {
 import type { Server } from 'node:http';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import { listenOnLoopback } from './loopback-rig-test-helpers.ts';
 
 /**

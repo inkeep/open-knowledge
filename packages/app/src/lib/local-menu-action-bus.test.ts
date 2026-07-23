@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { OkMenuAction } from './desktop-bridge-types';
 import {
   __resetLocalMenuActionBusForTests,
@@ -12,8 +12,8 @@ describe('local menu-action bus', () => {
   });
 
   test('emit reaches every subscriber exactly once (no double-fire)', () => {
-    const a = mock(() => {});
-    const b = mock(() => {});
+    const a = vi.fn(() => {});
+    const b = vi.fn(() => {});
     subscribeLocalMenuAction(a);
     subscribeLocalMenuAction(b);
 
@@ -26,7 +26,7 @@ describe('local menu-action bus', () => {
   });
 
   test('the same handler subscribed once fires once per emit', () => {
-    const handler = mock(() => {});
+    const handler = vi.fn(() => {});
     subscribeLocalMenuAction(handler);
 
     emitLocalMenuAction('new-terminal');
@@ -36,8 +36,8 @@ describe('local menu-action bus', () => {
   });
 
   test('unsubscribe stops delivery to that handler only', () => {
-    const kept = mock(() => {});
-    const dropped = mock(() => {});
+    const kept = vi.fn(() => {});
+    const dropped = vi.fn(() => {});
     subscribeLocalMenuAction(kept);
     const unsubscribe = subscribeLocalMenuAction(dropped);
 
@@ -51,11 +51,11 @@ describe('local menu-action bus', () => {
   test('a handler that unsubscribes itself mid-dispatch still lets siblings run', () => {
     const order: string[] = [];
     let unsub: (() => void) | null = null;
-    const first = mock(() => {
+    const first = vi.fn(() => {
       order.push('first');
       unsub?.();
     });
-    const second = mock(() => {
+    const second = vi.fn(() => {
       order.push('second');
     });
     unsub = subscribeLocalMenuAction(first);
@@ -69,7 +69,7 @@ describe('local menu-action bus', () => {
 
   test('a throwing subscriber does not block delivery to later subscribers', () => {
     const originalConsoleError = console.error;
-    const errorSpy = mock(() => {});
+    const errorSpy = vi.fn(() => {});
     console.error = errorSpy;
     try {
       const order: string[] = [];
@@ -122,7 +122,7 @@ describe('local menu-action bus — bridge forwarder', () => {
       },
     });
 
-    const handler = mock(() => {});
+    const handler = vi.fn(() => {});
     subscribeLocalMenuAction(handler);
     // The forwarder installed exactly one bridge listener.
     expect(inbound).not.toBeNull();
@@ -134,7 +134,7 @@ describe('local menu-action bus — bridge forwarder', () => {
 
   test('the forwarder installs once (ref-counted) and tears down when the last subscriber leaves', () => {
     let installs = 0;
-    const unsubscribe = mock(() => {});
+    const unsubscribe = vi.fn(() => {});
     setDesktop({
       onMenuAction: () => {
         installs += 1;
@@ -154,7 +154,7 @@ describe('local menu-action bus — bridge forwarder', () => {
 
   test('a partial bridge without onMenuAction never throws; direct emits still deliver', () => {
     setDesktop({}); // truthy-but-thin host (session-only / test stub)
-    const handler = mock(() => {});
+    const handler = vi.fn(() => {});
     expect(() => subscribeLocalMenuAction(handler)).not.toThrow();
     emitLocalMenuAction('rename');
     expect(handler).toHaveBeenCalledTimes(1);

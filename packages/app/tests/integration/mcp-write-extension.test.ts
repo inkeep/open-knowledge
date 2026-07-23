@@ -9,10 +9,11 @@
  * declared `extension` field reaches disk, and that it wins over a suffix typed
  * into `path`.
  */
-import { afterAll, beforeAll, expect, test } from 'bun:test';
+
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { afterAll, beforeAll, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestServer, pollUntil, type TestServer } from './test-harness.ts';
 

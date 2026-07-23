@@ -20,8 +20,9 @@
  *
  * Substrate: jsdom via `bun run test:dom`.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { cleanup, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import { ShareMetadataRows } from '@/components/share-metadata-rows';
 
 describe('ShareMetadataRows', () => {

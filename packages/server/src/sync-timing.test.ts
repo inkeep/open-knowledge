@@ -2,7 +2,7 @@
  * Unit tests for sync-timing helpers (restart recovery).
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { computeRemainingMs } from './sync-timing.ts';
 
 const SECOND = 1000;

@@ -23,9 +23,9 @@
  * (the file missing from the override) fails CI.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { readBiomeConfig } from '../../../test-support/read-biome-config.test-helper';
 
 const REPO_ROOT = join(__dirname, '..', '..', '..');

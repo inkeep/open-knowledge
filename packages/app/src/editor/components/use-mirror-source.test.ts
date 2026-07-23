@@ -7,7 +7,7 @@
  * synthesis can't silently regress.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { findMirrorSource, renderMirrorSubtree } from './use-mirror-source.ts';
 
 // Build a structurally-correct mdast subset for the tests. The hook's local

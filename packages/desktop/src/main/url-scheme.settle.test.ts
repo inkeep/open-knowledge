@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 // `waitForUrlLaunchSettled` is the REAL settle SOURCE the boot coordinator
 // (`resolveBootRestoreDecision`) awaits before reading the launch flag. It lives
 // on the `ProtocolHandlerControl` returned by `registerProtocolHandler` — the

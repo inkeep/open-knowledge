@@ -1,9 +1,9 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import { createSameFrameRepaint, type RepaintableTerminal } from './terminal-render-flush';
 
 function makeTerm(withDebouncer: boolean) {
-  const refresh = mock((_start: number, _end: number) => {});
-  const innerRefresh = mock(() => {});
+  const refresh = vi.fn((_start: number, _end: number) => {});
+  const innerRefresh = vi.fn(() => {});
   const term = {
     rows: 24,
     refresh,
@@ -17,7 +17,7 @@ function makeTerm(withDebouncer: boolean) {
 describe('createSameFrameRepaint', () => {
   test('queues a full-viewport refresh then flushes the render debouncer synchronously', () => {
     const { term, refresh, innerRefresh } = makeTerm(true);
-    const warn = mock((_m: string) => {});
+    const warn = vi.fn((_m: string) => {});
     const repaint = createSameFrameRepaint(term, warn);
     repaint();
     expect(refresh).toHaveBeenCalledWith(0, 23);
@@ -27,7 +27,7 @@ describe('createSameFrameRepaint', () => {
 
   test('warns once (not per call) when an xterm bump moves the debouncer internal', () => {
     const { term, refresh } = makeTerm(false);
-    const warn = mock((_m: string) => {});
+    const warn = vi.fn((_m: string) => {});
     const repaint = createSameFrameRepaint(term, warn);
     repaint();
     repaint();

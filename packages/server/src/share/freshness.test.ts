@@ -4,10 +4,11 @@
  * that can't run returns `undefined` (the share still ships) rather than a
  * wrong verdict or a throw.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import { computeShareFreshness } from './freshness.ts';
 import { createGitTriangle, type GitTriangle } from './git-fixture.test-helper.ts';
 

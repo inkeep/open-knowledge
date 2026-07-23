@@ -10,7 +10,6 @@
  * compiled artifact surface at integration tier (not just server unit tier).
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -23,6 +22,7 @@ import {
   shadowGit,
   swapContributors,
 } from '@inkeep/open-knowledge-server';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 
 describe('persistence L2 fan-out integration (US-014, FR-7)', () => {

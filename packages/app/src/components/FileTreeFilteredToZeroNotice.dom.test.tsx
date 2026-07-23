@@ -7,12 +7,13 @@
  *
  * Runs under `bun run test:dom` (jsdom substrate per precedent #43).
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
@@ -22,7 +23,7 @@ let patchResultOk = true;
 const patchCalls: unknown[] = [];
 const toastErrors: unknown[][] = [];
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     merged: null,
     projectLocalBinding: projectLocalBindingNull
@@ -38,7 +39,7 @@ mock.module('@/lib/config-provider', () => ({
   }),
 }));
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: {
     error: (...args: unknown[]) => toastErrors.push(args),
     success: () => {},

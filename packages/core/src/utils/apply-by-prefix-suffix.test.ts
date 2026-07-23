@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { applyByPrefixSuffix } from './apply-by-prefix-suffix.ts';
 

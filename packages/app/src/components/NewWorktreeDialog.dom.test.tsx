@@ -1,13 +1,13 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const refreshWorktrees = mock(() => {});
-mock.module('@/lib/worktree-store', () => ({ refreshWorktrees }));
+const refreshWorktrees = vi.fn(() => {});
+vi.doMock('@/lib/worktree-store', () => ({ refreshWorktrees }));
 
 function createBridge(createResult: unknown) {
   return {
-    worktree: { create: mock(() => Promise.resolve(createResult)) },
-    project: { open: mock(() => Promise.resolve()) },
+    worktree: { create: vi.fn(() => Promise.resolve(createResult)) },
+    project: { open: vi.fn(() => Promise.resolve()) },
   };
 }
 
@@ -478,7 +478,7 @@ describe('NewWorktreeDialog', () => {
   });
 
   test('opening an existing-worktree branch still calls create (createBranch false, no base) and opens its path', async () => {
-    const onOpenChange = mock(() => {});
+    const onOpenChange = vi.fn(() => {});
     const bridge = createBridge({ ok: true, path: '/repo/.ok/worktrees/dev', created: false });
     render(
       <NewWorktreeDialog

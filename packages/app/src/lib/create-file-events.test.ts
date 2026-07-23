@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 import { emitCreateTopLevelFile, subscribeToCreateTopLevelFile } from './create-file-events';
 
 const originalWindow = globalThis.window;

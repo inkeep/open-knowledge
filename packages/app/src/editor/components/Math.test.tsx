@@ -9,8 +9,8 @@
  * exercised via the Playwright visual-regression suite.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { renderToString } from 'react-dom/server';
+import { describe, expect, test } from 'vitest';
 import { MathView } from './Math.tsx';
 
 describe('MathView — placeholder branch', () => {

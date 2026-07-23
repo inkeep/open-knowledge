@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 describe('useUpdateChannel module', () => {
   test('exports the hook + the UpdateChannel union', async () => {

@@ -25,8 +25,8 @@
  * fixture style.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { cleanup } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import { findNthTabGearButton, readTabSlots } from './Tabs.tsx';
 
 // `cleanup` satisfies the *.dom.test.tsx -> @testing-library/react value-import

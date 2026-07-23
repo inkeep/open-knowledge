@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { buildShiftKeyframes, computeFreezeRange } from './frozen-table-headers.ts';
 
 describe('computeFreezeRange (scroll-driven animation ranges)', () => {

@@ -1,4 +1,3 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import { execFile } from 'node:child_process';
 import {
   chmodSync,
@@ -12,6 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { afterEach, describe, expect, test } from 'vitest';
 import { readGitDirKind } from './read-git-dir-kind.ts';
 
 const execFileAsync = promisify(execFile);

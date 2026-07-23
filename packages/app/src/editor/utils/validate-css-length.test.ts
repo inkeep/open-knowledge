@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { cssLengthValidationMessage, validateCssLength } from './validate-css-length.ts';
 
 describe('validateCssLength', () => {

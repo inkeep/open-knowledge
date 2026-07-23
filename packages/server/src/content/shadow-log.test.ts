@@ -1,4 +1,4 @@
-import { describe as _bunDescribe, afterEach, beforeEach, expect, test } from 'bun:test';
+import { describe as _bunDescribe, afterEach, beforeEach, expect, test } from 'vitest';
 
 // Skip-on-CI gate (oven-sh/bun#11892): simple-git fixture pattern in this
 // test setup spawns git children that Bun fails to reap on ubuntu-latest

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 import { toDesktopAssetHref } from './asset-href.ts';
 
 const g = globalThis as { window?: unknown };

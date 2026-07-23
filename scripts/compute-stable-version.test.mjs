@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { computeStablePromotion } from './compute-stable-version.mjs';
 
 // Injected git boundary so tests need no repo. Defaults: unknown changeset bump

@@ -13,8 +13,9 @@
  *
  * Invocation: `bun run test:dom` from `packages/app/`.
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import {
   __resetLocalMenuActionBusForTests,
@@ -23,14 +24,14 @@ import {
 
 // `next-themes` is consumed at the top of NavigatorApp; provide a stable
 // stub so the test mount doesn't require a ThemeProvider.
-mock.module('next-themes', () => ({
+vi.doMock('next-themes', () => ({
   useTheme: () => ({ theme: 'system' }),
 }));
 
 // `useThemeBridge` drives the cold-launch show-gate via real IPC calls
 // (setThemeSource / signalThemeApplied). Stub to a no-op so the bridge stub
 // doesn't need those methods.
-mock.module('@/hooks/use-theme-bridge', () => ({
+vi.doMock('@/hooks/use-theme-bridge', () => ({
   useThemeBridge: () => {},
 }));
 
@@ -131,15 +132,15 @@ function makeNavigatorBridge(): NavigatorBridgeStub {
 }
 
 describe('NavigatorApp new-project menu-action subscription', () => {
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     // CreateProjectDialog's defaultProjectsRoot catch arm logs via
     // console.warn on unhappy paths; NavigatorApp's listRecent catch logs
     // via console.error. Suppress both to keep output clean.
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -235,7 +236,7 @@ describe('NavigatorApp new-project menu-action subscription', () => {
   });
 
   test('close-active-tab-or-window menu action closes the navigator window', async () => {
-    const closeSpy = spyOn(window, 'close').mockImplementation(() => {});
+    const closeSpy = vi.spyOn(window, 'close').mockImplementation(() => {});
     const stub = makeNavigatorBridge();
     render(<NavigatorApp bridge={stub.bridge} />);
 

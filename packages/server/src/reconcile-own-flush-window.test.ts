@@ -29,12 +29,13 @@
  * every run. `isDocInConflict` is asserted because it is the exact predicate
  * every mutating write surface uses to throw `DocInConflictError` (HTTP 409).
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hocuspocus } from '@hocuspocus/server';
 import { normalizeBridge } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { isDocInConflict } from './conflict-errors.ts';
 import {

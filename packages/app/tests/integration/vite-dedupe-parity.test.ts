@@ -24,9 +24,9 @@
  * only the renderer's source imports.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { resolve } from 'node:path';
 import { Project, SyntaxKind } from 'ts-morph';
+import { describe, expect, test } from 'vitest';
 import { RENDERER_DEDUPE } from '../../vite.dedupe';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../..');

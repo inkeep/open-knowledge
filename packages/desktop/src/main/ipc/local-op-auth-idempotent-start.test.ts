@@ -16,8 +16,9 @@
  * happy path and the streamId-mismatch guard in handleAuthCancel /
  * handleCloneCancel.
  */
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+
 import type { AuthEvent, CloneEvent } from '@inkeep/open-knowledge-server';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 interface DeviceFlowEntry {
   resolve: () => void;
@@ -33,7 +34,7 @@ interface CloneEntry {
 const deviceFlowControllers: DeviceFlowEntry[] = [];
 const cloneControllers: CloneEntry[] = [];
 
-mock.module('@inkeep/open-knowledge-server', () => ({
+vi.doMock('@inkeep/open-knowledge-server', () => ({
   runAuthStatusSubprocess: () => Promise.resolve({ authenticated: false, host: 'github.com' }),
   runAuthReposSubprocess: () => Promise.resolve({ ok: false, error: 'unused' }),
   runDeviceFlowSubprocess: ({ onEvent }: { onEvent: (event: AuthEvent) => void }) => {

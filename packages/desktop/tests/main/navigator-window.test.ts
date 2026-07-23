@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import { createNavigatorWindow, tryCloseNavigator } from '../../src/main/navigator-window.ts';
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
 import type { ShareNavigatorPayload } from '../../src/main/url-scheme.ts';
@@ -12,28 +12,28 @@ import type { BrowserWindowLike } from '../../src/main/window-manager.ts';
  */
 
 interface MockNav extends BrowserWindowLike {
-  closeMock: ReturnType<typeof mock>;
+  closeMock: ReturnType<typeof vi.fn>;
   setDestroyed: (v: boolean) => void;
 }
 
 function makeNav(opts?: { destroyed?: boolean; closeImpl?: () => void }): MockNav {
   let destroyed = opts?.destroyed ?? false;
-  const closeMock = mock(() => {
+  const closeMock = vi.fn(() => {
     if (opts?.closeImpl) opts.closeImpl();
   });
   return {
-    focus: mock(() => {}),
-    isDestroyed: mock(() => destroyed),
-    on: mock(() => {}) as BrowserWindowLike['on'],
-    once: mock(() => {}) as BrowserWindowLike['once'],
+    focus: vi.fn(() => {}),
+    isDestroyed: vi.fn(() => destroyed),
+    on: vi.fn(() => {}) as BrowserWindowLike['on'],
+    once: vi.fn(() => {}) as BrowserWindowLike['once'],
     webContents: {
-      send: mock(() => {}),
-      once: mock(() => {}),
-      setWindowOpenHandler: mock(() => {}),
-      on: mock(() => {}),
+      send: vi.fn(() => {}),
+      once: vi.fn(() => {}),
+      setWindowOpenHandler: vi.fn(() => {}),
+      on: vi.fn(() => {}),
     },
-    loadFile: mock(() => Promise.resolve()),
-    loadURL: mock(() => Promise.resolve()),
+    loadFile: vi.fn(() => Promise.resolve()),
+    loadURL: vi.fn(() => Promise.resolve()),
     close: closeMock,
     closeMock,
     setDestroyed: (v) => {
@@ -44,7 +44,7 @@ function makeNav(opts?: { destroyed?: boolean; closeImpl?: () => void }): MockNa
 
 describe('tryCloseNavigator', () => {
   test('no-op when navigator is null', () => {
-    const log = mock(() => {});
+    const log = vi.fn(() => {});
     // null branch — caller never opened the Navigator (cold launch with
     // lastOpenedProject set). Must not throw and must not log.
     tryCloseNavigator(null, { projectPath: '/p' }, log);
@@ -53,7 +53,7 @@ describe('tryCloseNavigator', () => {
 
   test('no-op when window is destroyed', () => {
     const nav = makeNav({ destroyed: true });
-    const log = mock(() => {});
+    const log = vi.fn(() => {});
     // Race: the close listener nulls navigatorWindow on user-initiated
     // close, but in a renderer-crash window between createProjectWindow
     // resolving and reaching the close call the variable could still
@@ -66,7 +66,7 @@ describe('tryCloseNavigator', () => {
 
   test('calls close() when window is alive', () => {
     const nav = makeNav();
-    const log = mock(() => {});
+    const log = vi.fn(() => {});
     tryCloseNavigator(nav, { projectPath: '/p' }, log);
     expect(nav.closeMock).toHaveBeenCalledTimes(1);
     expect(log).not.toHaveBeenCalled();
@@ -78,7 +78,7 @@ describe('tryCloseNavigator', () => {
         throw new Error('Object has been destroyed');
       },
     });
-    const log = mock(() => {});
+    const log = vi.fn(() => {});
     // The throw must NOT propagate — propagation would land in
     // openProjectOrFallbackToNavigator's catch and surface "Unable to open
     // project" to the user even though the project did open. The log
@@ -102,7 +102,7 @@ describe('tryCloseNavigator', () => {
         throw 'native-string-throw';
       },
     });
-    const log = mock(() => {});
+    const log = vi.fn(() => {});
     tryCloseNavigator(nav, { projectPath: '/p' }, log);
     expect(log).toHaveBeenCalledWith(
       'failed to close Navigator after project open',
@@ -131,15 +131,15 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
     const loadCallOrder: string[] = [];
     let onceCalledBeforeLoad = false;
     return {
-      focus: mock(() => {}),
-      isDestroyed: mock(() => false),
-      on: mock((_event: 'closed', cb: () => void) => {
+      focus: vi.fn(() => {}),
+      isDestroyed: vi.fn(() => false),
+      on: vi.fn((_event: 'closed', cb: () => void) => {
         closeHandlers.push(cb);
       }) as BrowserWindowLike['on'],
-      once: mock(() => {}) as BrowserWindowLike['once'],
+      once: vi.fn(() => {}) as BrowserWindowLike['once'],
       webContents: {
-        send: mock(() => {}),
-        once: mock((event: 'dom-ready' | 'did-finish-load', cb: () => void) => {
+        send: vi.fn(() => {}),
+        once: vi.fn((event: 'dom-ready' | 'did-finish-load', cb: () => void) => {
           if (event === 'dom-ready') {
             domReadyHandler = cb;
             loadCallOrder.push('once-dom-ready');
@@ -148,21 +148,21 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
             loadCallOrder.push('once-did-finish-load');
           }
         }),
-        executeJavaScript: mock(() => Promise.resolve()),
-        setWindowOpenHandler: mock(() => {}),
-        on: mock(() => {}),
+        executeJavaScript: vi.fn(() => Promise.resolve()),
+        setWindowOpenHandler: vi.fn(() => {}),
+        on: vi.fn(() => {}),
       },
-      loadFile: mock(() => {
+      loadFile: vi.fn(() => {
         loadCallOrder.push('loadFile');
         if (loadCallOrder.includes('once-dom-ready')) onceCalledBeforeLoad = true;
         return Promise.resolve();
       }),
-      loadURL: mock(() => {
+      loadURL: vi.fn(() => {
         loadCallOrder.push('loadURL');
         if (loadCallOrder.includes('once-dom-ready')) onceCalledBeforeLoad = true;
         return Promise.resolve();
       }),
-      close: mock(() => {
+      close: vi.fn(() => {
         for (const h of closeHandlers) h();
       }),
       fireDomReady: () => domReadyHandler?.(),
@@ -211,14 +211,14 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
 
     // Payload has NOT fired yet.
     expect(
-      (win.webContents.send as ReturnType<typeof mock>).mock.calls.find(
+      (win.webContents.send as ReturnType<typeof vi.fn>).mock.calls.find(
         (c) => c[0] === 'ok:share:received',
       ),
     ).toBeUndefined();
 
     // Firing dom-ready triggers the send.
     win.fireDomReady();
-    const shareCall = (win.webContents.send as ReturnType<typeof mock>).mock.calls.find(
+    const shareCall = (win.webContents.send as ReturnType<typeof vi.fn>).mock.calls.find(
       (c) => c[0] === 'ok:share:received',
     );
     expect(shareCall).toBeDefined();
@@ -248,7 +248,7 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
     });
 
     win.fireDomReady();
-    const sendCalls = (win.webContents.send as ReturnType<typeof mock>).mock.calls;
+    const sendCalls = (win.webContents.send as ReturnType<typeof vi.fn>).mock.calls;
     expect(sendCalls.find((c) => c[0] === 'ok:share:received')).toBeUndefined();
   });
 
@@ -274,7 +274,7 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
     });
 
     win.fireDomReady();
-    const shareCall = (win.webContents.send as ReturnType<typeof mock>).mock.calls.find(
+    const shareCall = (win.webContents.send as ReturnType<typeof vi.fn>).mock.calls.find(
       (c) => c[0] === 'ok:share:received',
     );
     expect(shareCall?.[1]).toEqual(payload);

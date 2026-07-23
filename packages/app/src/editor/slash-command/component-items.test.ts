@@ -22,12 +22,12 @@
  * auto-focused placeholder input handles the rest, no popover plumbing).
  */
 
-import { describe, expect, spyOn, test } from 'bun:test';
 import {
   builtInComponents,
   getAgentCanonicalDescriptors,
   getCanonicalDescriptors,
 } from '@inkeep/open-knowledge-core';
+import { describe, expect, test, vi } from 'vitest';
 import {
   _resetPendingLinkEditForTest,
   consumePendingLinkEdit,
@@ -365,7 +365,7 @@ describe('getInlineComponentItems — inline-atom slash entries', () => {
     // Stub the mark-identity plugin state so findLinkMarkIdAt resolves the
     // freshly inserted link mark (spanning the insert position) to a stable
     // id — exercising the production happy path without a live PM view.
-    const getStateSpy = spyOn(markIdentityKey, 'getState').mockReturnValue({
+    const getStateSpy = vi.spyOn(markIdentityKey, 'getState').mockReturnValue({
       byId: new Map([['m7', { id: 'm7', markType: 'link', from: 1, to: 5, attrs: { href: '' } }]]),
       counter: 7,
     } as never);

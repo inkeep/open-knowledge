@@ -6,7 +6,7 @@
  * these tests pin that invariant alongside the behavior
  * where an absent `agentId` falls back to the server-loaded principal.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import {
   existsSync,
   mkdirSync,
@@ -23,6 +23,7 @@ import { join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { setImmediate } from 'node:timers/promises';
 import type { Principal } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createApiExtension } from './api-extension.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import {

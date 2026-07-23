@@ -14,12 +14,13 @@
  *  defeats `.mdx`-specific exclusion patterns when both extensions are
  *  present on disk.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createApiExtension } from './api-extension.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { swapContributors } from './contributor-tracker.ts';

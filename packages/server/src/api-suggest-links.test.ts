@@ -1,10 +1,10 @@
-import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { Hocuspocus } from '@hocuspocus/server';
+import { describe, expect, test } from 'vitest';
 import { createApiExtension } from './api-extension.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 

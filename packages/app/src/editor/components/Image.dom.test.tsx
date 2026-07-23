@@ -29,23 +29,24 @@
  * defeats the infrastructure noise without changing what the Image component
  * promises its callers.
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 
-mock.module('react-medium-image-zoom', () => ({
+vi.doMock('react-medium-image-zoom', () => ({
   default: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 const { Image } = await import('./Image');
 
 describe('Image — loading-state placeholder (PRD-6638)', () => {
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {

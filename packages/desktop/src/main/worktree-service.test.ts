@@ -1,4 +1,3 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import { execFile, execFileSync } from 'node:child_process';
 import {
   existsSync,
@@ -14,6 +13,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { addOkPathsToGitExclude, getOkArtifactPaths } from '@inkeep/open-knowledge';
 import { initContent } from '@inkeep/open-knowledge-server';
+import { afterEach, describe, expect, test } from 'vitest';
 import { discoverProject } from './folder-admission.ts';
 import { clearRecentGitCache } from './worktree-recents.ts';
 import {

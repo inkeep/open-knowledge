@@ -23,11 +23,12 @@
  * making `listItem` accept a non-paragraph first child reddens (2).
  *
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { cleanup } from '@testing-library/react';
 import { Editor, type JSONContent } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
+import { afterEach, describe, expect, test } from 'vitest';
 import { sharedExtensions } from '../../src/editor/extensions/shared';
 
 type TextInputHandler = (view: EditorView, from: number, to: number, text: string) => boolean;

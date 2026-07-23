@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import type { OkMcpWiringEditorId, OkMcpWiringShowPayload } from '@/lib/desktop-bridge-types';
 import { McpConsentDialog } from './McpConsentDialog';
 import {
@@ -164,7 +164,7 @@ describe('McpConsentDialog module shape', () => {
   test('mock module-level usage check: toast.error is invocable from a Set-like context', () => {
     // Smoke that the ToastImpl shape composes through `mock()` for callers
     // that want to inject a spy.
-    const spy = mock((_msg: string) => {});
+    const spy = vi.fn((_msg: string) => {});
     const toast: ToastImpl = { error: spy };
     toast.error('hello');
     expect(spy.mock.calls.length).toBe(1);

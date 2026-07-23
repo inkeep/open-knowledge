@@ -5,7 +5,7 @@
  * argument — no actual processes or lock files needed.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { extractOkBinaryPath } from '../utils/process-scan.ts';
 import type { LockState } from './lock-state.ts';
 import { isDesktopCommand, renderTable, runPs, timeAgo } from './ps.ts';

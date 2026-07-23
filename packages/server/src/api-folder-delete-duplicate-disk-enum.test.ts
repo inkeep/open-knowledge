@@ -18,12 +18,13 @@
  * docs. Asserting enumeration alone would pass even if the cleanup / gate were
  * skipped; the bug is precisely those skipped side effects.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createApiExtension } from './api-extension.ts';
 import { _resetDocExtensionsForTests } from './doc-extensions.ts';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';

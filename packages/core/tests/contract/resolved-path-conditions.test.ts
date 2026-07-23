@@ -13,8 +13,9 @@
  * import and the direct source import share their bindings. A flip to `dist/`
  * loads a second, distinct module and the identity breaks loud.
  */
-import { expect, test } from 'bun:test';
+
 import * as viaPackageName from '@inkeep/open-knowledge-core';
+import { expect, test } from 'vitest';
 import * as viaSource from '../../src/index.ts';
 
 test('the package-name import resolves to src/ (development condition), not dist/', () => {

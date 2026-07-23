@@ -18,12 +18,12 @@
  *     pre-existing gap where the simple handler did not populate presence
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 // toBroadcasterKey is the canonical raw-id → map-key transform; importing
 // from the server package rather than re-declaring it locally keeps this
 // test aligned with the production `extractAgentIdentity` contract. If
 // the server ever changes the prefix, this test follows automatically.
 import { toBroadcasterKey } from '@inkeep/open-knowledge-server';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { fetchWithHostHeader } from './host-header-request.test-helper';
 import { agentWriteMd, createTestServer, type TestServer } from './test-harness';

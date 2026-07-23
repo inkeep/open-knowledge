@@ -19,10 +19,11 @@
  * partial-failure recovery), specialized to the rename call site whose write
  * sequence is open-coded inside the api-extension closure.
  */
-import { beforeEach, describe, expect, test } from 'bun:test';
+
 import { applyFastDiff, sharedExtensions, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { MANAGED_RENAME_ORIGIN } from './api-extension.ts';
 import { mdManager } from './md-manager.ts';

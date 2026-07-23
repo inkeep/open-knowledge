@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
 import { parseContributors } from '@inkeep/open-knowledge-core/shadow-repo-layout';
+import { beforeEach, describe, expect, test } from 'vitest';
 import {
   contributorCount,
   __formatContributorsForTests as formatContributorsForTest,

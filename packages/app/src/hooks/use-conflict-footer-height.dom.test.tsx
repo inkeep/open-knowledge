@@ -8,8 +8,9 @@
  * every published value is '0px' — these are lifecycle/ownership pins, not
  * geometry assertions (real heights are covered by the browser).
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { cleanup, render } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import { useConflictFooterHeightVar } from './use-conflict-footer-height';
 
 function Footer({ enabled = true }: { enabled?: boolean }) {

@@ -9,8 +9,8 @@
  * (`tests/lingui-macro-preload.ts`), so assertions read source-locale text.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import { InternalDocPreviewCard } from './InternalDocPreviewCard';
 import type { InternalDocPreview } from './internal-doc-preview.ts';
 

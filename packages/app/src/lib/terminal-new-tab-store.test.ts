@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   readPreferBareTerminal,
   TERMINAL_NEW_TAB_BARE_KEY,

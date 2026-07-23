@@ -6,7 +6,6 @@
  * seeded minidump mtimes are all comparable without wall-clock races.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
   mkdirSync,
@@ -19,6 +18,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   type CrashDetectionDeps,
   createCrashDetection,

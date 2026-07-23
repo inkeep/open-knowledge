@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -13,6 +12,7 @@ import {
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
 import ignore from 'ignore';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   type ContentFilter,
   createContentFilter,
@@ -1406,7 +1406,7 @@ describe('ContentFilter', () => {
       // process — but mockImplementationOnce ensures only the next call
       // throws. We trigger that call by entering rebuildIgnorePatterns.
       const sampleProto = Object.getPrototypeOf(ignore());
-      const addSpy = spyOn(sampleProto, 'add').mockImplementationOnce(() => {
+      const addSpy = vi.spyOn(sampleProto, 'add').mockImplementationOnce(() => {
         throw new Error('forced ignore.add failure');
       });
 
@@ -1438,7 +1438,7 @@ describe('ContentFilter', () => {
 
       // Force the rebuild to fail.
       const sampleProto = Object.getPrototypeOf(ignore());
-      const addSpy = spyOn(sampleProto, 'add').mockImplementationOnce(() => {
+      const addSpy = vi.spyOn(sampleProto, 'add').mockImplementationOnce(() => {
         throw new Error('boom');
       });
 
@@ -1539,7 +1539,7 @@ describe('ContentFilter', () => {
       const filter = createContentFilter({ projectDir, contentDir: projectDir });
 
       const sampleProto = Object.getPrototypeOf(ignore());
-      const addSpy = spyOn(sampleProto, 'add').mockImplementationOnce(() => {
+      const addSpy = vi.spyOn(sampleProto, 'add').mockImplementationOnce(() => {
         throw new Error('boom');
       });
 

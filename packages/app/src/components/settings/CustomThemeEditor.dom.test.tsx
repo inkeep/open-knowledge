@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { DEFAULT_CUSTOM_SEED } from '@/lib/color-themes';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
@@ -8,15 +8,15 @@ let mergedConfig: { appearance?: { colorTheme?: string; customTheme?: Record<str
   {};
 const patchCalls: unknown[] = [];
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
-mock.module('next-themes', () => ({ useTheme: () => ({ setTheme: () => {} }) }));
-mock.module('@/lib/config-context', () => ({
+vi.doMock('next-themes', () => ({ useTheme: () => ({ setTheme: () => {} }) }));
+vi.doMock('@/lib/config-context', () => ({
   useConfigContextOptional: () => ({ merged: mergedConfig }),
 }));
-mock.module('@/lib/use-apply-config-color-theme', () => ({
+vi.doMock('@/lib/use-apply-config-color-theme', () => ({
   applyColorThemeToDom: () => {},
 }));
 

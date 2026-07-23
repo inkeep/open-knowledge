@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { SkillInstallEvent } from '@inkeep/open-knowledge-server';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { EDITOR_TARGETS } from './editors.ts';
 import {
   __testing,

@@ -12,7 +12,7 @@
  * i19.test.ts` (HTML5 details ↔ Accordion structural equivalence).
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { builtInComponents, createRegistry } from './index.ts';
 import type { CompatMeta, JsxComponentMeta } from './types.ts';
 

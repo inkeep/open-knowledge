@@ -14,10 +14,10 @@
  * diffs) is already covered by mark-identity.test.ts.
  */
 
-import { describe, expect, test } from 'bun:test';
 import type { Editor } from '@tiptap/core';
 import { type Mark, Schema } from '@tiptap/pm/model';
 import { EditorState } from '@tiptap/pm/state';
+import { describe, expect, test } from 'vitest';
 import {
   type InteractionContext,
   type InteractionLayerHandle,

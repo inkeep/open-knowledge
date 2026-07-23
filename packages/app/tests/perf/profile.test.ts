@@ -11,7 +11,7 @@
  * opts back in for paint/GPU diagnosis on a single-scenario run.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { parseArgs } from './profile.ts';
 
 describe('parseArgs — launch-mode defaults', () => {

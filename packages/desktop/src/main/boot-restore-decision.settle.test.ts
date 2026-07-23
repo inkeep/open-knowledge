@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 // `resolveBootRestoreDecision` is the boot-orchestration seam: an async
 // coordinator that withholds the boot-restore decision until cold-start URL
 // delivery has SETTLED, then reads the launch flag, then delegates to the pure

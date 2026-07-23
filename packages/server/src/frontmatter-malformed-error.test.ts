@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { classifyParseError } from './frontmatter-malformed-error.ts';
 
 describe('classifyParseError — bounded-cardinality refusal class', () => {

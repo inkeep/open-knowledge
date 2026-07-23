@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, type Mock, spyOn, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, type Mock, test, vi } from 'vitest';
 import { createApiExtension } from './api-extension.ts';
 import type { GuardRejectReason } from './link-preview/guarded-fetch.ts';
 import type { GuardedFetch } from './link-preview/metadata.ts';
@@ -405,7 +405,7 @@ describe('POST /api/link-preview outcome instrumentation', () => {
   let debugSpy: Mock<PinoLogger['debug']>;
 
   beforeEach(() => {
-    debugSpy = spyOn(PinoLogger.prototype, 'debug');
+    debugSpy = vi.spyOn(PinoLogger.prototype, 'debug');
   });
 
   afterEach(() => {

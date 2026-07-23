@@ -4,7 +4,6 @@
  * matching the source-polish convention of testing the pure builder directly.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { lintGutter } from '@codemirror/lint';
 import { EditorState } from '@codemirror/state';
 import {
@@ -12,6 +11,7 @@ import {
   type LintDiagnostic,
   type LintRange,
 } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { createMarkdownLintExtension, mapLintDiagnostics } from './markdown-lint-source.ts';
 
 const docOf = (text: string) => EditorState.create({ doc: text }).doc;

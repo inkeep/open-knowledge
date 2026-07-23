@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { mergeLayered } from './merge-layered.ts';
 import type { Config } from './schema.ts';
 import { ConfigSchema } from './schema.ts';

@@ -39,10 +39,10 @@
  *
  */
 
-import { describe, expect, test } from 'bun:test';
 import { type Dirent, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import ts from 'typescript';
+import { describe, expect, test } from 'vitest';
 
 const REPO_ROOT = join(import.meta.dirname, '..', '..', '..', '..');
 const SCANNED_DIRS = [import.meta.dirname, join(import.meta.dirname, '..', 'conversion')];

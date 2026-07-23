@@ -1,11 +1,11 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import { AssetViewerRegistry } from './registry.ts';
 
 function makeViewer(exts: readonly string[]): {
   exts: readonly string[];
-  render: ReturnType<typeof mock>;
+  render: ReturnType<typeof vi.fn>;
 } {
-  return { exts, render: mock(() => {}) };
+  return { exts, render: vi.fn(() => {}) };
 }
 
 describe('AssetViewerRegistry', () => {
@@ -89,7 +89,7 @@ describe('AssetViewerRegistry', () => {
     test('re-registering the same viewer instance is silent', () => {
       const r = new AssetViewerRegistry();
       const viewer = makeViewer(['pdf']);
-      const consoleWarn = mock((..._args: unknown[]) => {});
+      const consoleWarn = vi.fn((..._args: unknown[]) => {});
       const origWarn = console.warn;
       console.warn = consoleWarn as unknown as typeof console.warn;
       try {
@@ -117,7 +117,7 @@ describe('AssetViewerRegistry', () => {
       const r = new AssetViewerRegistry();
       const first = makeViewer(['pdf']);
       const second = makeViewer(['pdf']);
-      const consoleWarn = mock((..._args: unknown[]) => {});
+      const consoleWarn = vi.fn((..._args: unknown[]) => {});
       const origWarn = console.warn;
       console.warn = consoleWarn as unknown as typeof console.warn;
       try {

@@ -1,8 +1,8 @@
-import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RESERVED_PROJECT_SKILL_NAME } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { BUNDLE_IDS, BUNDLE_SKILL_NAME, bundleSkillMdPath } from './skill-bundles.ts';
 
 // Repo root = three levels up from this file (packages/server/src → root).

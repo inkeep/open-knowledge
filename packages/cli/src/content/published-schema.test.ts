@@ -17,12 +17,13 @@
  * the published artifact is current + ajv-compilable. If it goes stale,
  * `bun run --filter=@inkeep/open-knowledge build:schema` regenerates it.
  */
-import { beforeEach, describe, expect, test, vi } from 'bun:test';
+
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(here, '..', '..', 'dist');

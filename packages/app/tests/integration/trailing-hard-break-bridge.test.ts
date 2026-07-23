@@ -8,8 +8,9 @@
  * hardBreak node in the fragment and the next Observer A drain re-emitted it,
  * masked from the watchdog by parse-equivalence tolerance.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { updateYFragment } from '@tiptap/y-tiptap';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   awaitDocQuiescence,
   createTestClient,

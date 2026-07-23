@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { APP_VERSION_ENV_VAR, injectAppVersionEnv, resolveAppVersion } from './app-version.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));

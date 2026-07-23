@@ -1,13 +1,13 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import * as React from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const realStartTransition = React.startTransition;
-const startTransitionMock = mock((callback: React.TransitionFunction) => {
+const startTransitionMock = vi.fn((callback: React.TransitionFunction) => {
   realStartTransition(callback);
 });
 
-mock.module('react', () => ({
+vi.doMock('react', () => ({
   ...React,
   startTransition: startTransitionMock,
 }));

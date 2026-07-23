@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import type { ExecFileSyncFn } from './gh-detect.ts';
 import { detectGh } from './gh-detect.ts';
 

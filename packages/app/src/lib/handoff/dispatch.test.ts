@@ -10,8 +10,8 @@
  *   (e) exhaustiveness guard fires for unknown targets at runtime
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import type { HandoffPayload, HandoffTarget } from '@inkeep/open-knowledge-core';
+import { describe, expect, test, vi } from 'vitest';
 import { dispatchHandoff } from './dispatch.ts';
 
 const BASE_PAYLOAD = {
@@ -21,7 +21,7 @@ const BASE_PAYLOAD = {
 } as const;
 
 function makeFetch(status: number, bodyJson?: unknown) {
-  const fetchImpl = mock(async (..._args: Parameters<typeof globalThis.fetch>) => {
+  const fetchImpl = vi.fn(async (..._args: Parameters<typeof globalThis.fetch>) => {
     return new Response(JSON.stringify(bodyJson ?? {}), {
       status,
       headers: { 'Content-Type': 'application/json' },
@@ -153,7 +153,7 @@ describe('dispatchHandoff — HTTP failure mapping', () => {
   });
 
   test('network error (fetch throws) → dispatch-error with detail', async () => {
-    const fetchImpl = mock(async () => {
+    const fetchImpl = vi.fn(async () => {
       throw new Error('NetworkError when attempting to fetch resource.');
     }) as unknown as typeof globalThis.fetch;
     const payload: HandoffPayload = { ...BASE_PAYLOAD, target: 'codex' };

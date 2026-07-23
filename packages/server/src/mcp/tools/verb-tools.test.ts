@@ -6,7 +6,7 @@
  * suite), and the migration meta-test that fails if the shipped skill
  * surface still teaches a retired tool name.
  */
-import { describe, expect, test } from 'bun:test';
+
 import {
   existsSync,
   mkdirSync,
@@ -19,6 +19,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, test } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { register as registerDelete } from './delete.ts';
 import { register as registerEdit } from './edit.ts';

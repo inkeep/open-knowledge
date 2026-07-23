@@ -8,12 +8,12 @@
  *   - The internal reset helper clears the throttle.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import * as actualSonner from 'sonner';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-type ToastFn = { error: ReturnType<typeof mock> };
-const toastMock: ToastFn = { error: mock(() => {}) };
-mock.module('sonner', () => ({ ...actualSonner, toast: toastMock }));
+type ToastFn = { error: ReturnType<typeof vi.fn> };
+const toastMock: ToastFn = { error: vi.fn(() => {}) };
+vi.doMock('sonner', () => ({ ...actualSonner, toast: toastMock }));
 
 // biome-ignore lint/suspicious/noExplicitAny: test-scoped dynamic import
 let mod: any;

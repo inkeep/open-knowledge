@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { readInstalledSkills, recordSkillInstall } from './installed-skills-marker.ts';
 import { projectSkill } from './skill-projection.ts';
 import { reprojectAllManagedSkills } from './skill-reproject.ts';

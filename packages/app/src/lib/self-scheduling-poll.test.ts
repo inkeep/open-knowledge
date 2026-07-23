@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { createSelfSchedulingPoll, type PollOutcome } from './self-scheduling-poll.ts';
 
 // Injectable fake timer — records scheduled callbacks; `runPending` fires the

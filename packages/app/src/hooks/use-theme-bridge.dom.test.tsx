@@ -5,26 +5,12 @@
  * (precedent #43); invocation via `bun run test:dom`. Pairs with the
  * verbatim user-intent contract documented in precedent #40(a).
  *
- * # Root cause of the prior Linux-CI failure (resolved)
- *
- * Bun's `mock.module(...)` patches a module in-place for the lifetime of
- * the `bun test` invocation — the mock persists across sibling test files
- * (oven-sh/bun#12823). Sibling `src/lib/config-provider.dom.test.tsx`
- * declares `mock.module('@/hooks/use-theme-bridge', () => ({
- * useThemeBridge: () => {} }))` at module level. On Linux CI, filesystem
- * iteration ordered `src/lib/...` before `src/hooks/...`, so by the time
- * this file ran the hook had already been replaced with a no-op; the
- * `<HookProbe>` rendered, the (no-op) effect "fired", but nothing pushed
- * onto `setThemeSourceCalls` — exactly the `Received: 0` mode. On macOS
- * inode iteration happened to order this file before `config-provider`,
- * so the leak couldn't surface locally.
- *
- * The fix is one line in `scripts/run-test-dom.sh`: pass `--isolate` so
- * each test file gets a fresh global object and `mock.module` patches
- * don't bleed across files. Documented in the script's preamble.
+ * The DOM Vitest project keeps `isolate: true` so the module mock in the
+ * sibling config-provider suite cannot replace this hook's real implementation.
  */
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+
 import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { useThemeBridge } from './use-theme-bridge';
 
@@ -140,12 +126,12 @@ function installControllableMatchMedia(initialMatches: boolean) {
 }
 
 describe('useThemeBridge (Tier-3 mount)', () => {
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {

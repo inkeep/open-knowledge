@@ -6,11 +6,12 @@
  * the subtree. This is the server half of collapsing the FileTree retained set
  * from the whole tree to the on-screen working set.
  */
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DocumentListSuccessSchema } from '@inkeep/open-knowledge-core';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { awaitFileWatcherIndexed, createTestServer, type TestServer } from './test-harness';
 
 let server: TestServer;

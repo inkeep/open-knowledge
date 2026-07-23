@@ -4,12 +4,13 @@
  * (folded by the 30-day TTL, not the fast auto path), excludes park/non-session
  * refs, and honors the staleness cutoff — all without the live keepalive map.
  */
-import { beforeEach, describe, expect, test } from 'bun:test';
+
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import simpleGit from 'simple-git';
+import { beforeEach, describe, expect, test } from 'vitest';
 import { initShadowRepo, type ShadowHandle, shadowGit } from './shadow-repo.ts';
 import { countStaleAgentWipRefs } from './shadow-repo-stats.ts';
 

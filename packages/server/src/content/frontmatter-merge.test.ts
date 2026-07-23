@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { mergePatch } from './frontmatter-merge.ts';
 
 describe('mergePatch — write path (scalars + arrays REPLACE; empties drop)', () => {

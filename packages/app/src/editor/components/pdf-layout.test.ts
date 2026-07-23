@@ -7,7 +7,7 @@
  * these base scales.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { computeBaseScale, type PdfPageInfo } from './pdf-layout.ts';
 
 const A4: PdfPageInfo = { naturalWidth: 612, naturalHeight: 792 };

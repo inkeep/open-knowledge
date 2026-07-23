@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { ConfigSchema } from './schema.ts';
 import { getLeafFieldMeta, resolveLeafSchema } from './schema-leaf.ts';
 

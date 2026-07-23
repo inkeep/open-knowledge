@@ -1,4 +1,3 @@
-import { describe, expect, test } from 'bun:test';
 import {
   File,
   FileText,
@@ -12,6 +11,7 @@ import {
 } from 'lucide-react';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, test } from 'vitest';
 import { lucideIconToSvgString } from './lucide-svg.ts';
 
 /**

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { buildIndex, normalizeKey, resolveKey } from './normalized-index.ts';
 
 const ID = '30545f35b5ad80a38049d283dae66763';

@@ -9,8 +9,8 @@
  * (Level-2: real component, no DOM — TipTap's Editor requires `window`).
  */
 
-import { describe, expect, test } from 'bun:test';
 import { Minus } from 'lucide-react';
+import { describe, expect, test } from 'vitest';
 import { SlashCommand, type SlashCommandOptions } from '../../src/editor/extensions/slash-command';
 import {
   filterItems,

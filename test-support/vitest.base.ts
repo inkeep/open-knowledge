@@ -11,7 +11,6 @@
  *    instead of `src/` — tests would then run against stale build output. The
  *    SSR resolver is the operative one for inlined workspace symlinks; the
  *    client-side `resolve.conditions` is set too for safety.
- *  - `resolve.alias['bun:test']` routes every `bun:test` import to the shim.
  *  - `test.setupFiles` installs the `Bun` global facade before any test runs.
  *
  * `import.meta.dir` (bun-only, no trailing slash) is rewritten at transform time
@@ -48,18 +47,19 @@ export const importMetaDirPlugin: Plugin = {
     // transform), and a `.dir`-literal guard would rewrite itself.
     if (!code.includes('import.meta')) return null;
     IMPORT_META_DIR.lastIndex = 0;
-    const out = code.replace(IMPORT_META_DIR, '(new URL(".", import.meta.url).pathname.slice(0, -1))');
+    const out = code.replace(
+      IMPORT_META_DIR,
+      '(new URL(".", import.meta.url).pathname.slice(0, -1))',
+    );
     return out === code ? null : { code: out, map: null };
   },
 };
 
-export const bunTestShimPath = fileURLToPath(new URL('./bun-test-shim.ts', import.meta.url));
 export const bunGlobalShimPath = fileURLToPath(new URL('./bun-global-shim.ts', import.meta.url));
 
 export const okVitestBase = {
   plugins: [importMetaDirPlugin],
   resolve: {
-    alias: { 'bun:test': bunTestShimPath },
     conditions: ['development'],
   },
   ssr: {

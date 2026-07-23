@@ -28,9 +28,10 @@
  *     (replaceRawBody = full overwrite; deriveFragmentFromYtext = zero
  *     ytext writes)
  */
-import { beforeEach, describe, expect, test } from 'bun:test';
+
 import { normalizeBridge, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { ROLLBACK_ORIGIN } from './api-extension.ts';
 import {

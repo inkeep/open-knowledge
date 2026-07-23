@@ -6,7 +6,7 @@
  * - `SettingsDialogBody.sections.dom.test.tsx` for section dispatch, Sync, Okignore, and Integrations wiring.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 describe('SettingsDialogBody module', () => {
   test('exports SettingsDialogBody component', async () => {

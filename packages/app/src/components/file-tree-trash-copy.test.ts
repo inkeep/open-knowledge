@@ -7,7 +7,7 @@
  * VSCode source: `microsoft/vscode/blob/main/src/vs/workbench/contrib/files/browser/fileActions.ts`
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import type { FileTreeTarget } from '@/components/file-tree-operations';
 import {
   buildTrashConfirmCopyElectron,

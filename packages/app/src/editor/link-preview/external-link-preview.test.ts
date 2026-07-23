@@ -9,8 +9,8 @@
  * across cases.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { LinkPreviewMetadata } from '@inkeep/open-knowledge-core';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { loadLinkPreview, SUCCESS_CACHE_MAX_ENTRIES } from './external-link-preview.ts';
 
 const originalFetch = globalThis.fetch;
@@ -48,7 +48,7 @@ function uniqueUrl(): string {
 describe('loadLinkPreview — success + cache', () => {
   test('POSTs the URL as JSON and returns the parsed metadata', async () => {
     const url = uniqueUrl();
-    const fetchMock = mock((_input: RequestInfo | URL, _init?: RequestInit) =>
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
       Promise.resolve(okResponse(META)),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -65,7 +65,7 @@ describe('loadLinkPreview — success + cache', () => {
 
   test('a re-hover of a previewed URL is served from cache without re-fetching', async () => {
     const url = uniqueUrl();
-    const fetchMock = mock((_input: RequestInfo | URL, _init?: RequestInit) =>
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
       Promise.resolve(okResponse(META)),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -80,7 +80,7 @@ describe('loadLinkPreview — failures fall back to null and are not cached', ()
   test('a guard-rejection envelope returns null and a later hover retries', async () => {
     const url = uniqueUrl();
     let call = 0;
-    const fetchMock = mock((_input: RequestInfo | URL, _init?: RequestInit) => {
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => {
       call += 1;
       return Promise.resolve(call === 1 ? failResponse('blocked') : okResponse(META));
     });
@@ -94,7 +94,7 @@ describe('loadLinkPreview — failures fall back to null and are not cached', ()
 
   test('a non-2xx response (gate/body rejection) returns null', async () => {
     const url = uniqueUrl();
-    globalThis.fetch = mock(() =>
+    globalThis.fetch = vi.fn(() =>
       Promise.resolve(new Response('{}', { status: 403 })),
     ) as unknown as typeof fetch;
     expect(await loadLinkPreview(url)).toBeNull();
@@ -102,7 +102,7 @@ describe('loadLinkPreview — failures fall back to null and are not cached', ()
 
   test('a thrown request (network/offline) returns null', async () => {
     const url = uniqueUrl();
-    globalThis.fetch = mock(() => Promise.reject(new Error('offline'))) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn(() => Promise.reject(new Error('offline'))) as unknown as typeof fetch;
     expect(await loadLinkPreview(url)).toBeNull();
   });
 });
@@ -111,7 +111,7 @@ describe('loadLinkPreview — bounded LRU success cache', () => {
   /** Fetch stub that succeeds for every URL and records which URL each call was for. */
   function countingFetch(): { calls: string[] } {
     const calls: string[] = [];
-    globalThis.fetch = mock((_input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
       calls.push((JSON.parse(String(init?.body)) as { url: string }).url);
       return Promise.resolve(okResponse(META));
     }) as unknown as typeof fetch;
@@ -153,7 +153,7 @@ describe('loadLinkPreview — single-flight + abort', () => {
   test('concurrent identical hovers coalesce to a single request', async () => {
     const url = uniqueUrl();
     let resolveFetch!: (r: Response) => void;
-    const fetchMock = mock(
+    const fetchMock = vi.fn(
       () =>
         new Promise<Response>((resolve) => {
           resolveFetch = resolve;
@@ -173,7 +173,7 @@ describe('loadLinkPreview — single-flight + abort', () => {
   test('aborting the caller signal resolves to null and caches nothing', async () => {
     const url = uniqueUrl();
     const controller = new AbortController();
-    const abortingFetch = mock(
+    const abortingFetch = vi.fn(
       (_input: RequestInfo | URL, init?: RequestInit) =>
         new Promise<Response>((_resolve, reject) => {
           init?.signal?.addEventListener('abort', () =>
@@ -188,7 +188,7 @@ describe('loadLinkPreview — single-flight + abort', () => {
     expect(await pending).toBeNull();
 
     // Nothing cached from the aborted attempt: a fresh hover re-requests.
-    globalThis.fetch = mock(() => Promise.resolve(okResponse(META))) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn(() => Promise.resolve(okResponse(META))) as unknown as typeof fetch;
     expect(await loadLinkPreview(url)).toEqual(META);
   });
 });

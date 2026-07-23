@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { classifyGitError, deriveUserFacingCode } from './error-classification.ts';
 
 function mkErr(message: string, stderr?: string): Error {

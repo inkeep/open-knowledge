@@ -404,7 +404,6 @@ class BunCryptoHasherFacade {
  * is provided.
  */
 class BunTranspilerFacade {
-  constructor(_options?: { loader?: string }) {}
   transformSync(code: string): string {
     return stripTypeScriptTypes(code, { mode: 'transform' });
   }

@@ -3,10 +3,10 @@
  * fail (missing dir), fail (not-a-directory), fail (not writable).
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import { makeContentDirCheck } from './content-dir.ts';
 
 let tmpDirs: string[] = [];

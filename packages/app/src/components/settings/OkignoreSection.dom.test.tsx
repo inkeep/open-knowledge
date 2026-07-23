@@ -1,12 +1,12 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { emitConfigIgnoreNestedError } from '@/lib/config-ignore-nested-error-events';
 import { emitConfigValidationRejected } from '@/lib/config-validation-events';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 const toast = {
-  error: mock((_message: string, _opts?: unknown) => {}),
+  error: vi.fn((_message: string, _opts?: unknown) => {}),
 };
 
 type DragEndHandler = (event: { active: { id: string }; over: { id: string } | null }) => void;
@@ -40,7 +40,7 @@ function installLocalStorage() {
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
     <>{(value === 1 ? one : other).replace('#', String(value))}</>
@@ -49,11 +49,11 @@ mock.module('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast,
 }));
 
-mock.module('@dnd-kit/core', () => ({
+vi.doMock('@dnd-kit/core', () => ({
   closestCenter: { name: 'closestCenter' },
   DndContext: ({ children, onDragEnd }: { children?: ReactNode; onDragEnd?: DragEndHandler }) => {
     latestDragEnd = onDragEnd ?? null;
@@ -65,7 +65,7 @@ mock.module('@dnd-kit/core', () => ({
   useSensors: (...sensors: unknown[]) => sensors,
 }));
 
-mock.module('@dnd-kit/sortable', () => ({
+vi.doMock('@dnd-kit/sortable', () => ({
   SortableContext: ({
     children,
     items,
@@ -95,7 +95,7 @@ mock.module('@dnd-kit/sortable', () => ({
   verticalListSortingStrategy: verticalListSortingStrategyToken,
 }));
 
-mock.module('@dnd-kit/utilities', () => ({
+vi.doMock('@dnd-kit/utilities', () => ({
   CSS: {
     Transform: {
       toString: () => undefined,
@@ -103,7 +103,7 @@ mock.module('@dnd-kit/utilities', () => ({
   },
 }));
 
-mock.module('@/components/ui/button', () => ({
+vi.doMock('@/components/ui/button', () => ({
   Button: ({
     children,
     size: _size,
@@ -121,23 +121,23 @@ mock.module('@/components/ui/button', () => ({
   ),
 }));
 
-mock.module('@/components/ui/input', () => ({
+vi.doMock('@/components/ui/input', () => ({
   Input: (props: Record<string, unknown>) => <input {...props} />,
 }));
 
-mock.module('@/components/ui/skeleton', () => ({
+vi.doMock('@/components/ui/skeleton', () => ({
   Skeleton: ({ className }: { className?: string }) => (
     <div className={className} data-testid="skeleton" />
   ),
 }));
 
-mock.module('@/components/ui/tooltip', () => ({
+vi.doMock('@/components/ui/tooltip', () => ({
   Tooltip: ({ children }: { children?: ReactNode }) => <>{children}</>,
   TooltipContent: ({ children }: { children?: ReactNode }) => <div role="tooltip">{children}</div>,
   TooltipTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }));
 
-mock.module('@/components/PageListContext', () => ({
+vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => ({
     assetPaths: new Set(['assets/logo.png']),
     pageMeta: new Map([
@@ -157,7 +157,7 @@ function createBinding(initialText: string) {
     notifyRejection: (error: unknown) => {
       for (const listener of rejectionListeners) listener({ error });
     },
-    patch: mock((next: string) => {
+    patch: vi.fn((next: string) => {
       currentText = next;
       for (const listener of textListeners) listener(next);
       return { ok: true };

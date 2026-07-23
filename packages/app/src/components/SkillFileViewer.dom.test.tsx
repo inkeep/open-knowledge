@@ -18,17 +18,18 @@
  *
  * Runs under `bun run test:dom` (jsdom substrate).
  */
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+
 import { cleanup, render, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 // Mock the shared loader both render branches call. Capturing its args is the
 // load-bearing proof the read routes through the scope-aware endpoint (not the
 // content-dir asset path).
-const loadSkillFileTextMock = mock(
+const loadSkillFileTextMock = vi.fn(
   async (_input: { scope: string; name: string; path: string }) =>
     ({ ok: true, text: '' }) as { ok: true; text: string } | { ok: false; status?: number },
 );
-mock.module('@/lib/skills-api', () => ({
+vi.doMock('@/lib/skills-api', () => ({
   loadSkillFileText: loadSkillFileTextMock,
 }));
 

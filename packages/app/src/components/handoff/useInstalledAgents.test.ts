@@ -18,7 +18,7 @@
  * tooltip) lands under Playwright coverage.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 describe('useInstalledAgents module surface', () => {
   test('exports the hook + classifier + deps factory', async () => {

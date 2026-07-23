@@ -42,13 +42,13 @@
  * short-circuits); do not remove the restore.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { getSchema } from '@tiptap/core';
 import { EditorState, Plugin, type PluginKey, Selection } from '@tiptap/pm/state';
 import { EditorView } from '@tiptap/pm/view';
 import { ySyncPluginKey, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import { JSDOM } from 'jsdom';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import {
   bindingStalenessGuardPlugin,

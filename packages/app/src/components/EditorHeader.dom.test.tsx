@@ -1,14 +1,14 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
   expectVisualClassTokens,
   expectVisualClassTokensAbsent,
 } from '@/test-utils/visual-contract';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
@@ -24,11 +24,11 @@ let isDraggingRail = false;
 // Captures the `input` prop EditorHeader hands to ShareButton.
 let lastShareInput: unknown;
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({ activeDocName, activeTarget }),
 }));
 
-mock.module('@/components/ui/sidebar', () => ({
+vi.doMock('@/components/ui/sidebar', () => ({
   useSidebar: () => ({ state: sidebarState, isDraggingRail }),
   SidebarTrigger: ({ className }: { className?: string }) => (
     <button type="button" data-testid="sidebar-trigger" className={className}>
@@ -37,11 +37,11 @@ mock.module('@/components/ui/sidebar', () => ({
   ),
 }));
 
-mock.module('./EditorTabs', () => ({
+vi.doMock('./EditorTabs', () => ({
   EditorTabs: () => <div data-testid="editor-tabs" />,
 }));
 
-mock.module('./ShareButton', () => ({
+vi.doMock('./ShareButton', () => ({
   ShareButton: ({ input }: { input: unknown }) => {
     lastShareInput = input;
     return (
@@ -52,29 +52,29 @@ mock.module('./ShareButton', () => ({
   },
 }));
 
-mock.module('./PublishToGitHubDialog', () => ({
+vi.doMock('./PublishToGitHubDialog', () => ({
   PublishToGitHubDialog: ({ open }: { open: boolean }) => (
     <div data-testid="publish-dialog" data-open={String(open)} />
   ),
 }));
 
-mock.module('./SyncStatusBadge', () => ({
+vi.doMock('./SyncStatusBadge', () => ({
   SyncStatusBadge: () => <div data-testid="sync-status-badge" />,
 }));
 
-mock.module('@/presence/PresenceBar', () => ({
+vi.doMock('@/presence/PresenceBar', () => ({
   PresenceBar: () => <div data-testid="presence-bar" />,
 }));
 
-mock.module('./BetaBadge', () => ({
+vi.doMock('./BetaBadge', () => ({
   BetaBadge: () => <div data-testid="beta-badge" />,
 }));
 
-mock.module('./SettingsButton', () => ({
+vi.doMock('./SettingsButton', () => ({
   SettingsButton: () => <button type="button">Settings</button>,
 }));
 
-mock.module('./HelpPopover', () => ({
+vi.doMock('./HelpPopover', () => ({
   HelpPopover: () => <button type="button">Resources</button>,
 }));
 

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 describe('useThemeBridge — module surface', () => {
   test('exports the useThemeBridge hook', async () => {

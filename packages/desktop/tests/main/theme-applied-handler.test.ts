@@ -27,7 +27,7 @@
  * public interface.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { applyThemeApplied } from '../../src/main/theme-applied-handler.ts';
 
 interface TraceEvent {

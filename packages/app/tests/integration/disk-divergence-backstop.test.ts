@@ -18,8 +18,9 @@
  * client/browser store path reaches — so the exclusion is structural, and the
  * exclusion test pins it behaviorally.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { randomUUID } from 'node:crypto';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   agentWriteMd,
   awaitDocQuiescence,

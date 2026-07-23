@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { getLocalDir } from '@inkeep/open-knowledge-server';
+import { describe, expect, test } from 'vitest';
 import { resolveContentDir, resolveLockDir } from './paths.ts';
 import type { Config } from './schema.ts';
 

@@ -7,9 +7,10 @@
  *
  * Runs under `bun run test:dom` (jsdom substrate per precedent #43).
  */
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { useEffect, useRef } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 // `@u-wave/react-vimeo` wraps `@vimeo/player`, which fires an XHR oEmbed
 // lookup on `componentDidMount`. jsdom's XHR surface is partial enough
@@ -23,7 +24,7 @@ import { useEffect, useRef } from 'react';
 // `onReady` with a fake player whose `.element` points at that iframe,
 // mirroring the real lib's lifecycle closely enough to exercise the
 // VimeoEmbed component's title-sync effect.
-mock.module('@u-wave/react-vimeo', () => {
+vi.doMock('@u-wave/react-vimeo', () => {
   type MockProps = Record<string, unknown> & {
     onReady?: (player: { element: HTMLIFrameElement | null }) => void;
   };

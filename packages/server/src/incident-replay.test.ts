@@ -9,7 +9,7 @@
  *      reconstructable from emitted telemetry + the diagnose repo-fact readers
  *      ALONE — no forensic bundle.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -23,6 +23,7 @@ import {
   PeriodicExportingMetricReader,
 } from '@opentelemetry/sdk-metrics';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createMaintenanceCoordinator } from './maintenance-coordinator.ts';
 import {
   __resetMaintenanceTelemetryForTesting,

@@ -11,8 +11,8 @@
  * `renderToString`.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { renderToString } from 'react-dom/server';
+import { describe, expect, test } from 'vitest';
 import { Tab } from './Tab.tsx';
 
 describe('Tab — strip-label contract', () => {

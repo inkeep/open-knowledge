@@ -10,9 +10,9 @@
  * `asset-serve-middleware.integration.test.ts`.
  */
 
-import { describe, expect, test } from 'bun:test';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
+import { describe, expect, test } from 'vitest';
 import {
   type AssetServeFilter,
   createAssetServeMiddleware,

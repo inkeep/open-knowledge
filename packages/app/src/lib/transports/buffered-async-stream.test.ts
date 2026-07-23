@@ -4,7 +4,7 @@
  * producer (waiter), terminal-event-aborts-signal, external-cancel-aborts-
  * signal, and idempotent cancel.
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { createBufferedAsyncStream } from './buffered-async-stream';
 
 type TestEvent =

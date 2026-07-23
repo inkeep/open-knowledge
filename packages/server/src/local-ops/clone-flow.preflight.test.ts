@@ -15,10 +15,11 @@
  * surfaces it (sync throw, rejected `done`, or an error event) — see
  * git-unusable-setup.test-helper.ts.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, isAbsolute, join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import {
   __resetResolveOnPathCacheForTests,
   __seedResolveOnPathCacheForTests,

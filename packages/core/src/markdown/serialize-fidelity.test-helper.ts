@@ -1,6 +1,6 @@
-import { expect } from 'bun:test';
 import type { JSONContent } from '@tiptap/core';
 import type { Nodes } from 'mdast';
+import { expect } from 'vitest';
 import { sharedExtensions } from '../extensions/shared.ts';
 import { MarkdownManager } from './index.ts';
 import { isInlineWhitespaceNumericCharRef } from './whitespace-char-ref.ts';

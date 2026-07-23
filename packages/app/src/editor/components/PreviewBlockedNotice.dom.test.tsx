@@ -11,8 +11,9 @@
  * Lingui macros resolve through the English-passthrough shim; substrate is
  * jsdom via `bun run test:dom`.
  */
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PreviewBlockedNotice } from './PreviewBlockedNotice';
 
 const DISMISS_NAME = 'Dismiss notice';
@@ -111,7 +112,7 @@ describe('PreviewBlockedNotice', () => {
   });
 
   test('the dismiss control is wired to onDismiss', () => {
-    const onDismiss = mock(() => {});
+    const onDismiss = vi.fn(() => {});
     render(
       <PreviewBlockedNotice
         blocked={[{ directive: 'img-src', uri: 'http://a/1.png' }]}

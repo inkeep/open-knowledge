@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   createWorkspaceSearchDocument,
   DEFAULT_FILE_RESULT_CAP,

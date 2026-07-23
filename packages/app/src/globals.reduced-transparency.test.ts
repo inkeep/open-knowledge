@@ -18,9 +18,9 @@
  *     opaque always; the @media query has no business there.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 const CSS_PATH = join(__dirname, 'globals.css');
 const CSS = readFileSync(CSS_PATH, 'utf-8');

@@ -29,9 +29,9 @@
  * developer can find the existing tests via this index.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 describe('M1 smoke', () => {
   test('Test 1 — dev loop: Playwright _electron.launch (DEFERRED to M2)', () => {

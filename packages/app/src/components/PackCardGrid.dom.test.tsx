@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps, ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { OkPackId, OkSeedListPacksResult, OkSeedPackInfo } from '@/lib/desktop-bridge-types';
 
 let listPacksImpl: () => Promise<OkSeedListPacksResult> = async () => ({
@@ -12,7 +12,7 @@ const listPacksCalls: string[] = [];
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/core/macro', () => ({
+vi.doMock('@lingui/core/macro', () => ({
   ...actualLinguiMacro,
   plural: (count: number, forms: { one: string; other: string }) =>
     (count === 1 ? forms.one : forms.other).replace('#', String(count)),
@@ -20,7 +20,7 @@ mock.module('@lingui/core/macro', () => ({
     strings.reduce((out, part, index) => `${out}${part}${values[index] ?? ''}`, ''),
 }));
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
@@ -29,7 +29,7 @@ mock.module('@lingui/react/macro', () => ({
   }),
 }));
 
-mock.module('@/lib/seed-client', () => ({
+vi.doMock('@/lib/seed-client', () => ({
   seedClient: () => ({
     listPacks: () => {
       listPacksCalls.push('listPacks');
@@ -104,7 +104,7 @@ describe('PackCardGrid runtime behavior', () => {
   });
 
   test('renders a create-a-new-file footer button and fires the callback on click', async () => {
-    const onCreateBlankFile = mock(() => {});
+    const onCreateBlankFile = vi.fn(() => {});
     await renderPackCardGrid({ packs: allPacks, onCreateBlankFile });
 
     const buttons = screen.getAllByRole('button');

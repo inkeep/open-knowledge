@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { isLoomUrl, parseLoomUrl } from './loom-embed.ts';
 
 describe('parseLoomUrl', () => {

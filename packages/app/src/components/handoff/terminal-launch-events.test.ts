@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { requestTerminalLaunch, subscribeToTerminalLaunchRequests } from './terminal-launch-events';
 
 describe('terminal-launch-events', () => {

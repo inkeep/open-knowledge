@@ -18,7 +18,7 @@
  * injectable `now()` drives the clock; `probe` is a test-harness function.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   createProbeCoordinator,
   DEFAULT_THROTTLE_MS,

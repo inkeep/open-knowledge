@@ -11,7 +11,7 @@
  * from `lingui extract` (see `lingui.config.ts`), so the macro-looking calls
  * below never reach the real catalog.
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { msg, Plural, plural, Select, select, Trans, t, useLingui } from '../lingui-macro-shim';
 
 describe('lingui-macro-shim — @lingui/core/macro', () => {

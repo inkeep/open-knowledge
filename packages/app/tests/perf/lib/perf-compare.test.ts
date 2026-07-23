@@ -15,10 +15,10 @@
  *   - Filters: --scenario / --doc narrow the table to matching rows.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 const SCRIPT = resolve(import.meta.dir, '..', '..', '..', 'scripts', 'perf-compare.sh');
 

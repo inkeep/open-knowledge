@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { getLLMText } from './get-llm-text.ts';
 
 type Page = Parameters<typeof getLLMText>[0];

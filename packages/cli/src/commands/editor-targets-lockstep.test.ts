@@ -9,8 +9,8 @@
  * `projectSkillPath`. If the CLI map drifts from the core root, this fails.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { ALL_EDITOR_IDS, EDITOR_PROJECT_SKILL_ROOT } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { EDITOR_TARGETS } from './editors.ts';
 
 describe('EDITOR_TARGETS project-skill path lockstep with core root', () => {

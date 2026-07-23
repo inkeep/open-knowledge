@@ -12,7 +12,7 @@
  *      configuration that exercises the live-foreign-pid collision path:
  *      5 concurrent spawns across 5 content dirs.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+
 import { type ChildProcess, spawn as nativeSpawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -24,6 +24,7 @@ import {
   type ProcessLockHandle,
   readProcessLock,
 } from '@inkeep/open-knowledge-server';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 interface ProjectHandles {
   lockDir: string;

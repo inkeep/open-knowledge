@@ -14,10 +14,11 @@
  * (no prop change) so the pin isolates the `contentChanged` term specifically:
  * reverting only that term turns this test red.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { sharedExtensions as coreExtensions, MarkdownManager } from '@inkeep/open-knowledge-core';
 import { cleanup } from '@testing-library/react';
 import { Editor, type JSONContent } from '@tiptap/core';
+import { afterEach, describe, expect, test } from 'vitest';
 // The app extensions carry the SourceDirtyObserver plugin + jsxComponent
 // NodeView; the mounted editor must use these, not core's (which omit the
 // observer). Serialization still goes through core's MarkdownManager — the

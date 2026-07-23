@@ -1,14 +1,4 @@
-import {
-  describe as _bunDescribe,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  expect,
-  it,
-  mock,
-  spyOn,
-  vi,
-} from 'bun:test';
+import { describe as _bunDescribe, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 
 // Skip-on-CI gate (oven-sh/bun#11892): subprocess or git child spawns; Bun fails to reap children on ubuntu-latest GHA runners (oven-sh/bun#11892).
 // Tests run normally locally; follow-up will narrow the leak surface.
@@ -21,7 +11,7 @@ const execFileMock = vi.fn();
 let openBrowser: typeof import('./open-browser.ts')['openBrowser'];
 
 beforeAll(async () => {
-  await mock.module('node:child_process', async () => {
+  await vi.doMock('node:child_process', async () => {
     const actual = await vi.importActual<typeof import('node:child_process')>('node:child_process');
     return { ...actual, execFile: (...args: unknown[]) => execFileMock(...args) };
   });
@@ -71,7 +61,7 @@ describe('openBrowser', () => {
 
   it('prints fallback message when launcher fails', () => {
     Object.defineProperty(process, 'platform', { value: 'linux' });
-    const consoleSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     execFileMock.mockImplementation(((
       _cmd: string,
@@ -131,7 +121,7 @@ _bunDescribe('openBrowser URL validation', () => {
   for (const url of malicious) {
     it(`rejects ${JSON.stringify(url)} without spawning a launcher`, () => {
       Object.defineProperty(process, 'platform', { value: 'win32' });
-      const consoleSpy = spyOn(console, 'warn').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       openBrowser(url);
 
@@ -146,7 +136,7 @@ _bunDescribe('openBrowser URL validation', () => {
 
   it('rejects non-http(s) schemes', () => {
     Object.defineProperty(process, 'platform', { value: 'darwin' });
-    const consoleSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     openBrowser('javascript:alert(1)');
     openBrowser('file:///etc/passwd');
@@ -163,7 +153,7 @@ _bunDescribe('openBrowser URL validation', () => {
 
   it('rejects malformed URLs', () => {
     Object.defineProperty(process, 'platform', { value: 'darwin' });
-    const consoleSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     openBrowser('not a url');
 

@@ -3,7 +3,7 @@
  * contracts in isolation from any check implementation.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { type CheckDefinition, DEFAULT_CHECK_TIMEOUT_MS, runCheck } from './index.ts';
 
 const fakeCtx = { cwd: '/tmp/runner-test' };

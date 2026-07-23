@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { ShareTargetStatusResponse } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
 import { pendingReceiveNavStore } from '@/lib/share/pending-receive-nav-store';
 
@@ -9,7 +9,7 @@ import { pendingReceiveNavStore } from '@/lib/share/pending-receive-nav-store';
 // writes so the guarded off → on flow is assertable without a live binding.
 // Mocked at the module boundary so the dynamic import below picks it up.
 let autoSyncWrites: boolean[] = [];
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     projectLocalBinding: {
       patch: (value: { autoSync?: { enabled?: boolean } }) => {
@@ -23,7 +23,7 @@ mock.module('@/lib/config-provider', () => ({
 // The changed-locally cell picks its CTA off the live sync status: Enable
 // auto-sync when the toggle is off, Sync now when it is already on.
 let syncStatus: GitSyncStatus | null = null;
-mock.module('@/hooks/use-git-sync-status', () => ({
+vi.doMock('@/hooks/use-git-sync-status', () => ({
   useGitSyncStatus: () => syncStatus,
   useGitSyncStatusDetailed: () => ({ status: syncStatus, fetchError: null }),
 }));

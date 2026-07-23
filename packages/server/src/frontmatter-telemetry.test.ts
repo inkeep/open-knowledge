@@ -9,7 +9,7 @@
  * caches so the helpers rebind, runs the operation, asserts the recorded
  * data.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { metrics, trace } from '@opentelemetry/api';
 import {
   AggregationTemporality,
@@ -22,6 +22,7 @@ import {
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   __resetFrontmatterTelemetryForTests,
   recordFrontmatterEditSurface,

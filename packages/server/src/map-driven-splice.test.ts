@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test';
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import type { JSONContent } from '@tiptap/core';
+import { describe, expect, test } from 'vitest';
 import { computeMapDrivenBodySplice } from './map-driven-splice.ts';
 
 const mdManager = new MarkdownManager({ extensions: sharedExtensions });

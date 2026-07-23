@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { describe, expect, test } from 'vitest';
 import { walkFiles } from './fs-walk.ts';
 import { makeTree, read } from './mktree.test-helper.ts';
 import { applyPlan, buildPlan } from './plan.ts';

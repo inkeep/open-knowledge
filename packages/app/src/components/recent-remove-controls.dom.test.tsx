@@ -1,12 +1,12 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { RecentItemContextMenu, RecentRemoveButton } from './recent-remove-controls';
 
 afterEach(cleanup);
 
 describe('RecentRemoveButton', () => {
   test('clicking the × removes exactly that path', () => {
-    const onRemoveRecent = mock((_path: string) => {});
+    const onRemoveRecent = vi.fn((_path: string) => {});
     render(
       <RecentRemoveButton
         path="/projects/one"
@@ -27,7 +27,7 @@ describe('RecentRemoveButton', () => {
 
 describe('RecentItemContextMenu', () => {
   test('right-click surfaces a Remove item that removes that path', () => {
-    const onRemoveRecent = mock((_path: string) => {});
+    const onRemoveRecent = vi.fn((_path: string) => {});
     render(
       <RecentItemContextMenu
         path="/projects/two"

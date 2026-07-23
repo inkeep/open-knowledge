@@ -15,8 +15,9 @@
  * attachments. The pdfjs canvas viewer stays available via the explicit
  * `<Pdf src="..." />` JSX form.
  */
-import { describe, expect, test } from 'bun:test';
+
 import type { Node as PmNode } from '@tiptap/pm/model';
+import { describe, expect, test } from 'vitest';
 import { builtInComponents } from './index.ts';
 import type { CompatMeta } from './types.ts';
 

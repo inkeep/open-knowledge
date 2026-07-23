@@ -9,9 +9,10 @@
  * categorical `--chart-*` palette against WCAG-AA non-text contrast in both
  * themes.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, test } from 'vitest';
 import {
   PREVIEW_TOKEN_NAMES,
   renderPreviewThemeTokensModule,

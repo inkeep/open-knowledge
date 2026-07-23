@@ -1,7 +1,7 @@
-import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';
 import {
   loadRemovedDocsJournal,

@@ -1,9 +1,9 @@
-import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { MCP_SERVER_NAME } from '@inkeep/open-knowledge-server';
+import { describe, expect, test } from 'vitest';
 import { runDeinit } from './deinit.ts';
 import { buildManagedServerEntry } from './editors.ts';
 

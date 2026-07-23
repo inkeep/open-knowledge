@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type {
   OkIntegrationsSetRequest,
   OkIntegrationsSetResult,
@@ -10,16 +10,16 @@ import type {
 } from '@/lib/desktop-bridge-types';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
 // Sonner is loaded by the SUT — stub to mute its real toaster.
-const toastError = mock(() => {});
-mock.module('sonner', () => ({
-  toast: { error: toastError, info: mock(() => {}), success: mock(() => {}) },
+const toastError = vi.fn(() => {});
+vi.doMock('sonner', () => ({
+  toast: { error: toastError, info: vi.fn(() => {}), success: vi.fn(() => {}) },
 }));
 
 const { AiToolsSection } = await import('./AiToolsSection');

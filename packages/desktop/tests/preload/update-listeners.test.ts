@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 
 /**
  * update-listener preload-pattern test.
@@ -24,18 +24,18 @@ import { describe, expect, mock, test } from 'bun:test';
 type FakeListener = (_event: unknown, payload: unknown) => void;
 
 interface FakeIpcRenderer {
-  on: ReturnType<typeof mock>;
-  removeListener: ReturnType<typeof mock>;
+  on: ReturnType<typeof vi.fn>;
+  removeListener: ReturnType<typeof vi.fn>;
 }
 
 function makeFakeIpc(): FakeIpcRenderer {
   const listeners = new Map<string, Set<FakeListener>>();
   return {
-    on: mock((channel: string, listener: FakeListener) => {
+    on: vi.fn((channel: string, listener: FakeListener) => {
       if (!listeners.has(channel)) listeners.set(channel, new Set());
       listeners.get(channel)?.add(listener);
     }),
-    removeListener: mock((channel: string, listener: FakeListener) => {
+    removeListener: vi.fn((channel: string, listener: FakeListener) => {
       listeners.get(channel)?.delete(listener);
     }),
   };
@@ -61,7 +61,7 @@ function createUpdateSubscription<T>(
 describe('M3 update-listener subscribe/unsubscribe pattern', () => {
   test('onUpdateDownloaded subscription registers on correct channel', () => {
     const ipc = makeFakeIpc();
-    const cb = mock(() => {});
+    const cb = vi.fn(() => {});
     createUpdateSubscription(ipc, 'ok:update:downloaded', cb);
     expect(ipc.on).toHaveBeenCalledTimes(1);
     expect(ipc.on.mock.calls[0]?.[0]).toBe('ok:update:downloaded');
@@ -69,7 +69,7 @@ describe('M3 update-listener subscribe/unsubscribe pattern', () => {
 
   test('unsubscribe closure detaches the listener by reference identity', () => {
     const ipc = makeFakeIpc();
-    const cb = mock(() => {});
+    const cb = vi.fn(() => {});
     const unsubscribe = createUpdateSubscription(ipc, 'ok:update:downloaded', cb);
 
     // Capture the wrapper that was registered.
@@ -86,7 +86,7 @@ describe('M3 update-listener subscribe/unsubscribe pattern', () => {
 
   test('unsubscribe prevents callback from firing on subsequent events', () => {
     const ipc = makeFakeIpc();
-    const cb = mock(() => {});
+    const cb = vi.fn(() => {});
     const unsubscribe = createUpdateSubscription<{ version: string }>(
       ipc,
       'ok:update:downloaded',
@@ -120,7 +120,7 @@ describe('M3 update-listener subscribe/unsubscribe pattern', () => {
     ] as const;
     for (const channel of channels) {
       const ipc = makeFakeIpc();
-      const cb = mock(() => {});
+      const cb = vi.fn(() => {});
       const unsubscribe = createUpdateSubscription(ipc, channel, cb);
       expect(ipc.on.mock.calls[0]?.[0]).toBe(channel);
       unsubscribe();

@@ -1,7 +1,7 @@
-import { describe, expect, mock, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, test, vi } from 'vitest';
 import {
   classifyInputPath,
   loadAndRoundTrip,
@@ -44,14 +44,14 @@ describe('classifyInputPath', () => {
 
 describe('resolveBundledNativeDirInDir', () => {
   test('finds the loader at <dir>/dist/native', () => {
-    const existsSyncMock = mock((p) => p === '/proj/dist/native/index.js');
+    const existsSyncMock = vi.fn((p) => p === '/proj/dist/native/index.js');
     expect(resolveBundledNativeDirInDir('/proj', { existsSync: existsSyncMock })).toBe(
       '/proj/dist/native',
     );
   });
 
   test('finds the loader when <dir> is itself the native dir', () => {
-    const existsSyncMock = mock((p) => p === '/proj/native/index.js');
+    const existsSyncMock = vi.fn((p) => p === '/proj/native/index.js');
     // The first candidate '.' checks /proj/index.js (absent), then 'native'.
     expect(resolveBundledNativeDirInDir('/proj', { existsSync: existsSyncMock })).toBe(
       '/proj/native',
@@ -157,14 +157,14 @@ describe('runDriver (full orchestration)', () => {
   });
 
   test('.dmg input mounts, copies the .app, and detaches', async () => {
-    const runCommand = mock(async () => {});
-    const cpMock = mock(async () => {});
+    const runCommand = vi.fn(async () => {});
+    const cpMock = vi.fn(async () => {});
     const deps = fakeDeps({
       runCommand,
       cp: cpMock,
-      mkdtemp: mock(async () => '/tmp/ok-nc-fake'),
-      rm: mock(async () => {}),
-      listAppsInMount: mock(async () => ['OpenKnowledge.app']),
+      mkdtemp: vi.fn(async () => '/tmp/ok-nc-fake'),
+      rm: vi.fn(async () => {}),
+      listAppsInMount: vi.fn(async () => ['OpenKnowledge.app']),
       existsSync: () => true,
     });
     expect(await runDriver(['node', 'script', '/tmp/build.dmg'], deps)).toBe(0);

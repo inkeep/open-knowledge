@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ResolvedNavigationTarget } from './navigation-targets';
 
 type MenuAction =
@@ -55,19 +55,19 @@ const ACTIVE_TARGET = {
 } satisfies ResolvedNavigationTarget;
 let activeTarget: ResolvedNavigationTarget | null = ACTIVE_TARGET;
 
-const notifyViewMenuStateChangedMock = mock(() => {});
-const toggleSidebarMock = mock(() => {});
-const showItemInFolderMock = mock((_path: string) => Promise.resolve());
-const handoffDispatchMock = mock((_target: string, _input: unknown) =>
+const notifyViewMenuStateChangedMock = vi.fn(() => {});
+const toggleSidebarMock = vi.fn(() => {});
+const showItemInFolderMock = vi.fn((_path: string) => Promise.resolve());
+const handoffDispatchMock = vi.fn((_target: string, _input: unknown) =>
   Promise.resolve({ ok: true }),
 );
 const treeCalls = {
-  collapseAll: mock(() => {}),
-  expandAll: mock(() => {}),
-  startCreating: mock((_kind: 'file' | 'folder', _parentDir: string) => {}),
-  startCreatingFromTemplate: mock((_parentDir: string) => {}),
+  collapseAll: vi.fn(() => {}),
+  expandAll: vi.fn(() => {}),
+  startCreating: vi.fn((_kind: 'file' | 'folder', _parentDir: string) => {}),
+  startCreatingFromTemplate: vi.fn((_parentDir: string) => {}),
 };
-const projectLocalPatch = mock((_patch: unknown) => ({ ok: true as const }));
+const projectLocalPatch = vi.fn((_patch: unknown) => ({ ok: true as const }));
 // Production `projectLocalBinding` keeps its identity across config-value
 // changes (the provider swaps only `config` on binding updates), so the
 // menu-action effect re-binds on a visibility flip ONLY when the flipped
@@ -80,11 +80,11 @@ const DEFAULT_MERGED_CONFIG = { appearance: { sidebar: { showHiddenFiles: false 
 let mergedConfig: { appearance?: { sidebar?: Record<string, boolean> } } = DEFAULT_MERGED_CONFIG;
 let menuActionCallback: ((action: MenuAction) => void) | null = null;
 
-mock.module('@/lib/perf', () => ({
+vi.doMock('@/lib/perf', () => ({
   ProfilerBoundary: PassThrough,
 }));
 
-mock.module('@/components/FileTree', () => ({
+vi.doMock('@/components/FileTree', () => ({
   FileTree: ({ ref }: { ref?: (handle: unknown) => void }) => {
     useEffect(() => {
       const handle = {
@@ -103,15 +103,15 @@ mock.module('@/components/FileTree', () => ({
   },
 }));
 
-mock.module('@/components/ConflictsSection', () => ({
+vi.doMock('@/components/ConflictsSection', () => ({
   ConflictsSection: () => null,
 }));
 
-mock.module('@/components/ui/button', () => ({
+vi.doMock('@/components/ui/button', () => ({
   Button,
 }));
 
-mock.module('@/components/ui/sidebar', () => ({
+vi.doMock('@/components/ui/sidebar', () => ({
   Sidebar: ElementPassThrough,
   SidebarContent: ElementPassThrough,
   SidebarFooter: ElementPassThrough,
@@ -129,11 +129,11 @@ mock.module('@/components/ui/sidebar', () => ({
 // primitive set (SidebarMenuButton, SidebarGroup*) plus useSkills. This
 // menu-action test is about the file tree's context menu, not skills — stub the
 // section so its imports don't need mocking here.
-mock.module('@/components/SkillsSidebarSection', () => ({
+vi.doMock('@/components/SkillsSidebarSection', () => ({
   SkillsSidebarSection: () => null,
 }));
 
-mock.module('@/components/ui/context-menu', () => ({
+vi.doMock('@/components/ui/context-menu', () => ({
   ContextMenu: PassThrough,
   ContextMenuCheckboxItem: Button,
   ContextMenuContent: ElementPassThrough,
@@ -145,7 +145,7 @@ mock.module('@/components/ui/context-menu', () => ({
   ContextMenuTrigger: PassThrough,
 }));
 
-mock.module('@/components/ui/dropdown-menu', () => ({
+vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: PassThrough,
   DropdownMenuCheckboxItem: ({
     checked,
@@ -175,17 +175,17 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuTrigger: PassThrough,
 }));
 
-mock.module('@/components/ui/tooltip', () => ({
+vi.doMock('@/components/ui/tooltip', () => ({
   Tooltip: PassThrough,
   TooltipContent: ElementPassThrough,
   TooltipTrigger: PassThrough,
 }));
 
-mock.module('@/components/handoff/OpenInAgentEmptySpaceSubmenu', () => ({
+vi.doMock('@/components/handoff/OpenInAgentEmptySpaceSubmenu', () => ({
   OpenInAgentEmptySpaceSubmenu: () => null,
 }));
 
-mock.module('@/components/handoff/useHandoffDispatch', () => ({
+vi.doMock('@/components/handoff/useHandoffDispatch', () => ({
   buildFolderHandoffInput: () => ({ docContext: null, docPath: '', folderRelativePath: 'notes' }),
   buildHandoffInput: () => ({
     docContext: { docName: 'notes/source' },
@@ -204,31 +204,31 @@ mock.module('@/components/handoff/useHandoffDispatch', () => ({
 // a fresh object per render would churn the menu-action effect's
 // `handoffInstallStates` dep and re-subscribe on every render.
 const installedAgentStates = { codex: { installed: true } };
-mock.module('@/components/handoff/useInstalledAgents', () => ({
+vi.doMock('@/components/handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states: installedAgentStates }),
 }));
 
-mock.module('@/components/ProjectSwitcher', () => ({
+vi.doMock('@/components/ProjectSwitcher', () => ({
   ProjectSwitcher: () => null,
 }));
 
-mock.module('@/components/SidebarSearchBar', () => ({
+vi.doMock('@/components/SidebarSearchBar', () => ({
   SidebarSearchBar: () => <button type="button">Search</button>,
   onPillRenderError: () => {},
 }));
 
-mock.module('@/components/UpdateNotices', () => ({
+vi.doMock('@/components/UpdateNotices', () => ({
   UpdateNotices: () => null,
 }));
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName: 'notes/source',
     activeTarget,
   }),
 }));
 
-mock.module('@/hooks/use-folder-config', () => ({
+vi.doMock('@/hooks/use-folder-config', () => ({
   useFolderConfig: () => ({
     state: {
       status: 'ready',
@@ -237,7 +237,7 @@ mock.module('@/hooks/use-folder-config', () => ({
   }),
 }));
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     projectLocalBinding: projectLocalBindingStub,
     merged: mergedConfig,
@@ -250,14 +250,14 @@ const workspaceStub = {
   contentDir: '/tmp/open-knowledge',
   pathSeparator: '/',
 };
-mock.module('@/lib/use-workspace', () => ({
+vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => workspaceStub,
 }));
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: {
-    error: mock(() => {}),
-    success: mock(() => {}),
+    error: vi.fn(() => {}),
+    success: vi.fn(() => {}),
   },
 }));
 
@@ -289,7 +289,7 @@ describe('FileSidebar menu-action runtime routing', () => {
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: {
-        writeText: mock(() => Promise.resolve()),
+        writeText: vi.fn(() => Promise.resolve()),
       },
     });
     Object.defineProperty(window, 'okDesktop', {

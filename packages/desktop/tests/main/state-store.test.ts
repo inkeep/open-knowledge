@@ -1,7 +1,7 @@
-import { describe, expect, mock, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, expect, test, vi } from 'vitest';
 import {
   addRecentProject,
   annotateMissing,
@@ -308,15 +308,15 @@ describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
     // crash-safety property.
     const calls: Array<{ op: string; path: string }> = [];
     const fs: SaveAppStateFs = {
-      existsSync: mock(() => true),
-      mkdirSync: mock(() => undefined),
-      writeFileSync: mock((p: string) => {
+      existsSync: vi.fn(() => true),
+      mkdirSync: vi.fn(() => undefined),
+      writeFileSync: vi.fn((p: string) => {
         calls.push({ op: 'write', path: p });
       }) as unknown as SaveAppStateFs['writeFileSync'],
-      renameSync: mock((from: string, to: string) => {
+      renameSync: vi.fn((from: string, to: string) => {
         calls.push({ op: 'rename', path: `${from}->${to}` });
       }) as unknown as SaveAppStateFs['renameSync'],
-      unlinkSync: mock(() => undefined) as unknown as SaveAppStateFs['unlinkSync'],
+      unlinkSync: vi.fn(() => undefined) as unknown as SaveAppStateFs['unlinkSync'],
     };
     saveAppStateToDir('/fake/userdata', emptyState(), fs, {
       error: () => {},
@@ -329,13 +329,13 @@ describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
   });
 
   test('renameSync failure → cleanup attempt + error log (does NOT throw)', () => {
-    const errorLog = mock(() => {});
-    const unlinkSpy = mock(() => {});
+    const errorLog = vi.fn(() => {});
+    const unlinkSpy = vi.fn(() => {});
     const fs: SaveAppStateFs = {
-      existsSync: mock(() => true),
-      mkdirSync: mock(() => undefined),
-      writeFileSync: mock(() => {}) as unknown as SaveAppStateFs['writeFileSync'],
-      renameSync: mock(() => {
+      existsSync: vi.fn(() => true),
+      mkdirSync: vi.fn(() => undefined),
+      writeFileSync: vi.fn(() => {}) as unknown as SaveAppStateFs['writeFileSync'],
+      renameSync: vi.fn(() => {
         throw new Error('EACCES: permission denied');
       }) as unknown as SaveAppStateFs['renameSync'],
       unlinkSync: unlinkSpy as unknown as SaveAppStateFs['unlinkSync'],
@@ -351,13 +351,13 @@ describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
   test('mkdirSync failure → outer catch logs "userData setup failed"', () => {
     const errorMessages: string[] = [];
     const fs: SaveAppStateFs = {
-      existsSync: mock(() => false),
-      mkdirSync: mock(() => {
+      existsSync: vi.fn(() => false),
+      mkdirSync: vi.fn(() => {
         throw new Error('EROFS: read-only fs');
       }),
-      writeFileSync: mock(() => {}) as unknown as SaveAppStateFs['writeFileSync'],
-      renameSync: mock(() => {}) as unknown as SaveAppStateFs['renameSync'],
-      unlinkSync: mock(() => {}) as unknown as SaveAppStateFs['unlinkSync'],
+      writeFileSync: vi.fn(() => {}) as unknown as SaveAppStateFs['writeFileSync'],
+      renameSync: vi.fn(() => {}) as unknown as SaveAppStateFs['renameSync'],
+      unlinkSync: vi.fn(() => {}) as unknown as SaveAppStateFs['unlinkSync'],
     };
     saveAppStateToDir('/fake/userdata', emptyState(), fs, {
       error: (msg: string) => {
@@ -368,13 +368,13 @@ describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
   });
 
   test('creates userDataDir when absent', () => {
-    const mkdirSpy = mock(() => undefined);
+    const mkdirSpy = vi.fn(() => undefined);
     const fs: SaveAppStateFs = {
-      existsSync: mock(() => false),
+      existsSync: vi.fn(() => false),
       mkdirSync: mkdirSpy,
-      writeFileSync: mock(() => {}) as unknown as SaveAppStateFs['writeFileSync'],
-      renameSync: mock(() => {}) as unknown as SaveAppStateFs['renameSync'],
-      unlinkSync: mock(() => {}) as unknown as SaveAppStateFs['unlinkSync'],
+      writeFileSync: vi.fn(() => {}) as unknown as SaveAppStateFs['writeFileSync'],
+      renameSync: vi.fn(() => {}) as unknown as SaveAppStateFs['renameSync'],
+      unlinkSync: vi.fn(() => {}) as unknown as SaveAppStateFs['unlinkSync'],
     };
     saveAppStateToDir('/fake/userdata', emptyState(), fs, { error: () => {} });
     expect(mkdirSpy).toHaveBeenCalledWith('/fake/userdata', { recursive: true });
@@ -384,11 +384,11 @@ describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
   // detect disk-failure and roll back in-memory state.
   test('returns true on successful persist', () => {
     const fs: SaveAppStateFs = {
-      existsSync: mock(() => true),
-      mkdirSync: mock(() => undefined),
-      writeFileSync: mock(() => {}) as unknown as SaveAppStateFs['writeFileSync'],
-      renameSync: mock(() => {}) as unknown as SaveAppStateFs['renameSync'],
-      unlinkSync: mock(() => {}) as unknown as SaveAppStateFs['unlinkSync'],
+      existsSync: vi.fn(() => true),
+      mkdirSync: vi.fn(() => undefined),
+      writeFileSync: vi.fn(() => {}) as unknown as SaveAppStateFs['writeFileSync'],
+      renameSync: vi.fn(() => {}) as unknown as SaveAppStateFs['renameSync'],
+      unlinkSync: vi.fn(() => {}) as unknown as SaveAppStateFs['unlinkSync'],
     };
     const result = saveAppStateToDir('/fake/userdata', emptyState(), fs, { error: () => {} });
     expect(result).toBe(true);
@@ -396,13 +396,13 @@ describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
 
   test('returns false when renameSync throws', () => {
     const fs: SaveAppStateFs = {
-      existsSync: mock(() => true),
-      mkdirSync: mock(() => undefined),
-      writeFileSync: mock(() => {}) as unknown as SaveAppStateFs['writeFileSync'],
-      renameSync: mock(() => {
+      existsSync: vi.fn(() => true),
+      mkdirSync: vi.fn(() => undefined),
+      writeFileSync: vi.fn(() => {}) as unknown as SaveAppStateFs['writeFileSync'],
+      renameSync: vi.fn(() => {
         throw new Error('EACCES');
       }) as unknown as SaveAppStateFs['renameSync'],
-      unlinkSync: mock(() => undefined) as unknown as SaveAppStateFs['unlinkSync'],
+      unlinkSync: vi.fn(() => undefined) as unknown as SaveAppStateFs['unlinkSync'],
     };
     const result = saveAppStateToDir('/fake/userdata', emptyState(), fs, { error: () => {} });
     expect(result).toBe(false);
@@ -440,13 +440,13 @@ describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
 
   test('returns false when userData mkdir throws', () => {
     const fs: SaveAppStateFs = {
-      existsSync: mock(() => false),
-      mkdirSync: mock(() => {
+      existsSync: vi.fn(() => false),
+      mkdirSync: vi.fn(() => {
         throw new Error('EROFS');
       }),
-      writeFileSync: mock(() => {}) as unknown as SaveAppStateFs['writeFileSync'],
-      renameSync: mock(() => {}) as unknown as SaveAppStateFs['renameSync'],
-      unlinkSync: mock(() => {}) as unknown as SaveAppStateFs['unlinkSync'],
+      writeFileSync: vi.fn(() => {}) as unknown as SaveAppStateFs['writeFileSync'],
+      renameSync: vi.fn(() => {}) as unknown as SaveAppStateFs['renameSync'],
+      unlinkSync: vi.fn(() => {}) as unknown as SaveAppStateFs['unlinkSync'],
     };
     const result = saveAppStateToDir('/fake/userdata', emptyState(), fs, { error: () => {} });
     expect(result).toBe(false);

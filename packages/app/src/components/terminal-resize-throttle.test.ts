@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { createResizeThrottle, type ResizeThrottleTimers } from './terminal-resize-throttle';
 
 function makeHarness(intervalMs = 100) {

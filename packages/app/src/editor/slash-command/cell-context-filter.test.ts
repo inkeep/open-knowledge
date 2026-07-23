@@ -11,10 +11,10 @@
  * production code, not re-implementations.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { sharedExtensions as coreExtensions, MarkdownManager } from '@inkeep/open-knowledge-core';
 import { Editor, type JSONContent } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { CellInsertionGate } from '../extensions/cell-insertion-gate';
 import { SLASH_ITEM_SOURCES } from '../extensions/shared';
 import { buildSlashMenuItems } from '../extensions/slash-command';

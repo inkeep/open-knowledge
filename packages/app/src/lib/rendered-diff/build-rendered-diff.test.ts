@@ -5,9 +5,9 @@
  * asserts the resulting block/mark ranges.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
+import { describe, expect, test } from 'vitest';
 import {
   buildRenderedDiff,
   RENDERED_DIFF_SIZE_CEILING,

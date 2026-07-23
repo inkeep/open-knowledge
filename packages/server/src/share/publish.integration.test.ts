@@ -10,12 +10,12 @@
  * so tests don't depend on a built CLI on PATH.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import { listenOnLoopback } from '../loopback-rig-test-helpers.ts';
 import type { SyncEngine } from '../sync-engine.ts';
 

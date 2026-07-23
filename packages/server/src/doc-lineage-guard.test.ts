@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { HocuspocusAuthRejection, LINEAGE_EPOCH_KEY } from './auth-token-schema.ts';
 import { type DocLineageGuardDeps, runDocLineageGuard } from './doc-lineage-guard.ts';

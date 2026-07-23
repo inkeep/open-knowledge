@@ -12,8 +12,9 @@
  * fallback ladder: descriptor.placeholder.label || `Add ${displayName.toLowerCase()}`,
  * and descriptor.placeholder.icon || descriptor.icon || Box.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { Box, Image } from 'lucide-react';
+import { describe, expect, test } from 'vitest';
 import { getDescriptor } from './index.ts';
 import {
   resolveDescriptorPlaceholder,

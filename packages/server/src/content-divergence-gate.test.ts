@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { ContentDivergenceWarningSchema } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import {
   CONTENT_DIVERGENCE_CAP_BYTES,
   capContent,

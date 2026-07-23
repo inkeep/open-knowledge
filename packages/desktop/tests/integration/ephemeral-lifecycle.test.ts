@@ -22,7 +22,6 @@
  * teardown wiring is unit-tested; this pins the REAL server behavior it relies on.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -31,6 +30,7 @@ import { dirname, join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { createEphemeralProjectDir, isProcessAlive } from '@inkeep/open-knowledge-server';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI_MJS_PATH = resolve(HERE, '../../../cli/dist/cli.mjs');

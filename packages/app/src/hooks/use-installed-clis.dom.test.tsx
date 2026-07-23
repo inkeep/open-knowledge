@@ -6,8 +6,9 @@
  * (resolved map surfaces), and the `.catch` degradation (a rejected probe leaves
  * the map empty and warns, so the resolver falls back to the claude default).
  */
-import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+
 import { act, cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { useInstalledClis } from './use-installed-clis';
 
 function Probe() {
@@ -60,7 +61,7 @@ describe('useInstalledClis', () => {
   });
 
   test('degradation: a rejected probe leaves the map empty and warns', async () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     setBridge({
       terminal: {
         cliInstalledMap: async () => {

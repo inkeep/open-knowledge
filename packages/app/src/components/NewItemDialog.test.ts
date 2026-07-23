@@ -6,7 +6,7 @@
  * Cmd/Ctrl+Alt+N keydown predicate used by App.tsx's NewItemShortcutHandler.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 import {
   composeNewItemPath,

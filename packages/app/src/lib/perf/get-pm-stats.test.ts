@@ -7,10 +7,10 @@
  * unit tests don't need a live `Editor` mount with DOM.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { type Mark, Schema } from '@tiptap/pm/model';
 import { EditorState, Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { describe, expect, test } from 'vitest';
 import { getPmStats, type PmStats } from './get-pm-stats';
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { consumeAuthEventStream } from './auth-event-stream';
 
 function streamFromChunks(chunks: string[]): ReadableStream<Uint8Array> {

@@ -5,11 +5,12 @@
  * ContentFilter-passing extension) and (the seed walk performs no
  * content read for `kind:'file'` entries).
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createContentFilter } from './content-filter.ts';
 import { handleRawEvents, lastKnownHash, startWatcher } from './file-watcher.ts';
 

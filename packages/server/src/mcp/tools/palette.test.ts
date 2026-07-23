@@ -5,12 +5,12 @@
  * every registry-backed authoring form must name a live canonical descriptor.
  */
 
-import { describe, expect, test } from 'bun:test';
 import {
   getAgentCanonicalDescriptors,
   PREVIEW_EMBED_STARTERS,
   PREVIEW_THEME_TOKENS,
 } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { register } from './palette.ts';
 import type { ServerInstance } from './shared.ts';

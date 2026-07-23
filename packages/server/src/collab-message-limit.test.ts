@@ -1,4 +1,3 @@
-import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,6 +5,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { MessageType } from '@hocuspocus/server';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
 import * as encoding from 'lib0/encoding';
+import { afterAll, describe, expect, test } from 'vitest';
 import { WebSocket as WsClient } from 'ws';
 import { messageYjsUpdate } from 'y-protocols/sync';
 import { type BootedServer, bootServer } from './boot.ts';

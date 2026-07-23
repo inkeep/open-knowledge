@@ -26,13 +26,13 @@
  * has nothing to detect, so we exercise the asset-event path in isolation.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { ensureProjectGit } from '@inkeep/open-knowledge-server';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { afterEach, describe, expect, test } from 'vitest';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import { createRestartableServer, getServerState, pollUntil, schema } from './test-harness';
 

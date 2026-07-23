@@ -1,8 +1,8 @@
-import { describe, expect, test } from 'bun:test';
 import { spawn as nodeSpawn } from 'node:child_process';
 import { once } from 'node:events';
 import { Readable } from 'node:stream';
 import { isProcessAlive } from '@inkeep/open-knowledge-server';
+import { describe, expect, test } from 'vitest';
 
 /**
  * No-orphan OUTCOME seam. Verifies the system property the feature requires:

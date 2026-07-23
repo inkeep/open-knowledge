@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { getLocalDir, resolveContentDir, resolveLockDir } from './paths.ts';
 import type { Config } from './schema.ts';
 

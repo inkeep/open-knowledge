@@ -13,8 +13,9 @@
  * shadow-repo git commit.  The CC1 sub-test creates its own server with
  * gitEnabled: true + commitDebounceMs: 200 so the commit fires quickly.
  */
-import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test';
+
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { listAgentActivity } from '../../../../packages/server/src/agent-activity.ts';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import type { TestServer } from './test-harness';
@@ -174,7 +175,7 @@ describe('C11 — Activity Panel undo isolation + CC1 signal', () => {
     try {
       const broadcaster = ccServer.instance.cc1Broadcaster;
       if (!broadcaster) throw new Error('cc1Broadcaster unexpectedly null');
-      const spy = spyOn(broadcaster, 'signal');
+      const spy = vi.spyOn(broadcaster, 'signal');
 
       const docName = `test-c11-cc1-${crypto.randomUUID()}`;
       const agentSuffix = `cc1-${crypto.randomUUID().slice(0, 8)}`;

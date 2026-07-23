@@ -1,12 +1,12 @@
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { toast } from 'sonner';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { restartServerFailureMessage } from '@/lib/restart-collab-server';
 import { runDisconnectRestart } from './use-sync-toasts';
 
-// spyOn (not mock.module) so the sonner mock can't leak into sibling test
+// spyOn (not vi.doMock) so the sonner mock can't leak into sibling test
 // files in the same `bun test` run.
-const errorSpy = spyOn(toast, 'error').mockImplementation((() => 'err-id') as never);
+const errorSpy = vi.spyOn(toast, 'error').mockImplementation((() => 'err-id') as never);
 
 afterEach(() => {
   errorSpy.mockClear();
@@ -14,9 +14,9 @@ afterEach(() => {
 
 function makeBridge(outcome: Awaited<ReturnType<OkDesktopBridge['restartServer']>>): {
   bridge: Pick<OkDesktopBridge, 'restartServer' | 'config'>;
-  restartServer: ReturnType<typeof mock>;
+  restartServer: ReturnType<typeof vi.fn>;
 } {
-  const restartServer = mock(async () => outcome);
+  const restartServer = vi.fn(async () => outcome);
   return {
     bridge: {
       restartServer,
@@ -49,7 +49,7 @@ describe('runDisconnectRestart', () => {
   });
 
   test('swallows a thrown invoke (window torn down mid-restart) — no error toast', async () => {
-    const restartServer = mock(async () => {
+    const restartServer = vi.fn(async () => {
       throw new Error('channel closed');
     });
     const bridge = {

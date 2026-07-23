@@ -1,10 +1,10 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { parseCheckpoint } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
+import { beforeEach, describe, expect, test } from 'vitest';
 import { createMaintenanceCoordinator } from './maintenance-coordinator.ts';
 import { commitWip, initShadowRepo, type ShadowHandle, shadowGit } from './shadow-repo.ts';
 import { getDocumentHistory } from './timeline-query.ts';

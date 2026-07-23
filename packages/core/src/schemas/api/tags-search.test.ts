@@ -3,7 +3,7 @@
  * `TemplateGetSuccessSchema` frontmatter shape.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { TemplateGetSuccessSchema, TemplatePayloadSchema } from './tags-search.ts';
 
 const validPayload = (scope: 'local' | 'inherited') => ({

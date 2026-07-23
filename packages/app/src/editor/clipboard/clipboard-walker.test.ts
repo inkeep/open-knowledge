@@ -12,8 +12,8 @@
  * in `clipboard-sanitize.ts` and are tested in `clipboard-sanitize.test.ts`.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { Schema } from '@tiptap/pm/model';
+import { describe, expect, test } from 'vitest';
 import {
   ATTR_BLOCKLIST,
   applyUrlClassifierPostPass,

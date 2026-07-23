@@ -7,11 +7,12 @@
  * over the edge), leaving the off-by-one (exactly-cap vs cap+1) unverified.
  * Also pins the env-parser fallback for hostile `OK_SHOWALL_MAX_ENTRIES` input.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DocumentListEntry } from '@inkeep/open-knowledge-core';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   __getShowAllWalkStatsForTesting,
   __resetShowAllWalkStatsForTesting,

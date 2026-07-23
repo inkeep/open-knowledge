@@ -61,6 +61,17 @@ export default defineConfig({
       },
     ],
     'eslint-js/no-restricted-syntax': ['error', ...restrictedSyntax],
+    'no-restricted-imports': [
+      'error',
+      {
+        paths: [
+          {
+            name: 'bun:test',
+            message: 'Import test APIs directly from vitest.',
+          },
+        ],
+      },
+    ],
     // TODO(oxlint): enable in priority order as each backlog is audited.
     // Correctness rules catch async/control-flow bugs; graduate these first.
     'typescript/no-floating-promises': 'off',

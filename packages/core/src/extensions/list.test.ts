@@ -1,8 +1,8 @@
-import { describe, expect, test } from 'bun:test';
 import { getSchema } from '@tiptap/core';
 import Document from '@tiptap/extension-document';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
+import { describe, expect, test } from 'vitest';
 import { MarkdownManager } from '../markdown/index.ts';
 import { ListItemNode, ListNode } from './list.ts';
 

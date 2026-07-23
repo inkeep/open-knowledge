@@ -1,9 +1,9 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import { handleRevealExternal, type RevealExternalDeps } from './reveal-external.ts';
 
 function makeDeps(overrides: Partial<RevealExternalDeps> = {}) {
-  const showItemInFolder = mock((_p: string) => {});
-  const confirmReveal = mock(async (_p: string) => true);
+  const showItemInFolder = vi.fn((_p: string) => {});
+  const confirmReveal = vi.fn(async (_p: string) => true);
   const deps: RevealExternalDeps = {
     probe: () => 'exists',
     confirmReveal,

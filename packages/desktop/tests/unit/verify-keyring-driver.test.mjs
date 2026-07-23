@@ -1,6 +1,6 @@
-import { describe, expect, mock, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import { setImmediate } from 'node:timers/promises';
+import { describe, expect, test, vi } from 'vitest';
 import {
   classifyInputPath,
   parseArgs,
@@ -41,7 +41,7 @@ describe('classifyInputPath', () => {
 
 describe('readSmokeResult', () => {
   test('returns parsed JSON on success', async () => {
-    const readFile = mock(() =>
+    const readFile = vi.fn(() =>
       Promise.resolve('{"ok":true,"backend":"keyring","timestamp":"2026-04-21T00:00:00Z"}'),
     );
     const result = await readSmokeResult('/tmp/smoke.json', { readFile });
@@ -54,13 +54,13 @@ describe('readSmokeResult', () => {
 
   test('returns null on ENOENT', async () => {
     const err = Object.assign(new Error('file missing'), { code: 'ENOENT' });
-    const readFile = mock(() => Promise.reject(err));
+    const readFile = vi.fn(() => Promise.reject(err));
     const result = await readSmokeResult('/tmp/never-written.json', { readFile });
     expect(result).toBeNull();
   });
 
   test('propagates non-ENOENT errors', async () => {
-    const readFile = mock(() => Promise.reject(new Error('EACCES')));
+    const readFile = vi.fn(() => Promise.reject(new Error('EACCES')));
     await expect(readSmokeResult('/tmp/x.json', { readFile })).rejects.toThrow('EACCES');
   });
 });
@@ -75,7 +75,7 @@ function fakeSpawn({ exitCode = 0, stderr = '', delayMs = 0 } = {}) {
     const child = new EventEmitter();
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
-    child.kill = mock(() => {});
+    child.kill = vi.fn(() => {});
     setTimeout(() => {
       if (stderr) child.stderr.emit('data', Buffer.from(stderr, 'utf-8'));
       if (exitCode !== null) child.emit('exit', exitCode);
@@ -90,13 +90,13 @@ describe('runDriver (full orchestration)', () => {
     return {
       writeStream: (s) => messages.stdout.push(s),
       errStream: (s) => messages.stderr.push(s),
-      mkdtemp: mock(async () => '/tmp/ok-fake'),
-      rm: mock(async () => {}),
-      runCommand: mock(async () => {}),
-      cp: mock(async () => {}),
-      stat: mock(async () => ({})),
-      listAppsInMount: mock(async () => ['OpenKnowledge.app']),
-      readFile: mock(() =>
+      mkdtemp: vi.fn(async () => '/tmp/ok-fake'),
+      rm: vi.fn(async () => {}),
+      runCommand: vi.fn(async () => {}),
+      cp: vi.fn(async () => {}),
+      stat: vi.fn(async () => ({})),
+      listAppsInMount: vi.fn(async () => ['OpenKnowledge.app']),
+      readFile: vi.fn(() =>
         Promise.resolve('{"ok":true,"backend":"keyring","durationMs":5,"timestamp":"t"}'),
       ),
       spawn: fakeSpawn({ exitCode: 0 }),
@@ -117,7 +117,7 @@ describe('runDriver (full orchestration)', () => {
 
   test('exit 1: ok:false result prints error + stderr tail', async () => {
     const deps = fakeDeps({
-      readFile: mock(() =>
+      readFile: vi.fn(() =>
         Promise.resolve('{"ok":false,"error":"module not found","timestamp":"t"}'),
       ),
       spawn: fakeSpawn({ exitCode: 1, stderr: 'fatal: dlopen failed\n' }),
@@ -143,7 +143,7 @@ describe('runDriver (full orchestration)', () => {
   test('exit 3: app exits without writing OUT file', async () => {
     const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
     const deps = fakeDeps({
-      readFile: mock(() => Promise.reject(err)),
+      readFile: vi.fn(() => Promise.reject(err)),
       spawn: fakeSpawn({ exitCode: 0, stderr: 'dying early\n' }),
     });
     const code = await runDriver(['node', 'script', '/tmp/app.app'], deps);
@@ -172,12 +172,12 @@ describe('runDriver (full orchestration)', () => {
   });
 
   test('.dmg input: runs hdiutil attach/detach + copies .app to tmp', async () => {
-    const runCommand = mock(async () => {});
-    const cp = mock(async () => {});
+    const runCommand = vi.fn(async () => {});
+    const cp = vi.fn(async () => {});
     const deps = fakeDeps({
       runCommand,
       cp,
-      listAppsInMount: mock(async () => ['OpenKnowledge.app']),
+      listAppsInMount: vi.fn(async () => ['OpenKnowledge.app']),
     });
     const code = await runDriver(['node', 'script', '/tmp/foo.dmg'], deps);
     expect(code).toBe(0);
@@ -188,7 +188,7 @@ describe('runDriver (full orchestration)', () => {
 
   test('.dmg input with empty mount rejects with driver error', async () => {
     const deps = fakeDeps({
-      listAppsInMount: mock(async () => []),
+      listAppsInMount: vi.fn(async () => []),
     });
     const code = await runDriver(['node', 'script', '/tmp/empty.dmg'], deps);
     expect(code).toBe(1);
@@ -229,13 +229,13 @@ describe('runDriver (full orchestration)', () => {
       exit: (code) => exits.push(code),
     };
     let runCommandCalls = 0;
-    const runCommand = mock(async (cmd) => {
+    const runCommand = vi.fn(async (cmd) => {
       runCommandCalls += 1;
       // Simulate .dmg path so resolvedApp.cleanup has work to do (detach)
       if (cmd === 'hdiutil' && runCommandCalls === 1) return; // attach
       if (cmd === 'hdiutil' && runCommandCalls === 2) return; // detach (normal finally)
     });
-    const rm = mock(async () => {});
+    const rm = vi.fn(async () => {});
     const deps = fakeDeps({
       process: proc,
       runCommand,

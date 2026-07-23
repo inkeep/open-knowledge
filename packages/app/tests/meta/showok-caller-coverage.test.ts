@@ -15,9 +15,10 @@
  * flag legitimately appears in nested helpers and local consts whose names
  * are incidental.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 const SERVER_SRC_ROOT = join(import.meta.dirname, '../../../server/src');
 const CLI_SRC_ROOT = join(import.meta.dirname, '../../../cli/src');

@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import fc from 'fast-check';
+import { describe, expect, test } from 'vitest';
 import { createBasenameIndex } from './path-resolve';
 
 describe('createBasenameIndex — single-match lookup', () => {

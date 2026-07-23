@@ -8,12 +8,13 @@
  * (`intentional-faq-repeated-section`) does NOT trigger the tripwire and
  * the corresponding disk write proceeds.
  */
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { updateYFragment } from '@tiptap/y-tiptap';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
 import { mdManager, schema } from './md-manager.ts';
 import { createServer } from './server-factory.ts';
@@ -109,7 +110,7 @@ describe('persistence onStoreDocument tripwire', () => {
     writeFileSync(docPath, baseMarkdown, 'utf-8');
     const baselineBytes = readFileSync(docPath, 'utf-8');
 
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const server = createServer({
       contentDir: fixture.contentDir,
       projectDir: fixture.tmpDir,
@@ -198,7 +199,7 @@ describe('persistence onStoreDocument tripwire', () => {
     const candidateMarkdown = loadFixture('intentional-faq-repeated-section.candidate.md');
     writeFileSync(docPath, baseMarkdown, 'utf-8');
 
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const server = createServer({
       contentDir: fixture.contentDir,
       projectDir: fixture.tmpDir,

@@ -16,10 +16,11 @@
  *     under a non-paired origin; in production TipTap fires the same
  *     XmlFragment YEvent through its prosemirror-binding).
  */
-import { describe, expect, test } from 'bun:test';
+
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { AGENT_WRITE_ORIGIN } from './agent-sessions.ts';
 import { composeAndWriteRawBody } from './bridge-intake.ts';

@@ -29,18 +29,11 @@
  *      after each path fires.
  */
 
-import {
-  describe as _bunDescribe,
-  afterEach,
-  beforeEach,
-  expect,
-  setDefaultTimeout,
-  test,
-} from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import simpleGit from 'simple-git';
+import { describe as _bunDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { __resetQuiescenceForTests } from './bridge-quiescence.ts';
 import { resetMetrics } from './metrics.ts';
 import { getReconciledBase } from './persistence.ts';
@@ -68,7 +61,7 @@ const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 // File-watcher startup + reconcile fire is parcel-watcher latency-bound;
 // 5s Bun default isn't enough headroom under suite contention. Tests
 // inside still bound their own waits via `waitForCondition`.
-setDefaultTimeout(20_000);
+vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 });
 
 interface Fixture {
   tmpDir: string;

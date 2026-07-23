@@ -10,8 +10,8 @@
  * @see packages/server/src/agent-sessions.ts applyAgentUndo
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import type { TestServer } from './test-harness';
 import { assertBridgeInvariant, createTestClient, createTestServer } from './test-harness';

@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import type { ContextMenuItem, FileTreeDropTarget } from '@pierre/trees';
+import { describe, expect, test } from 'vitest';
 import { OK_SIDEBAR_DRAG_MIME } from '@/lib/sidebar-drag';
 import {
   appendSidebarUploadFields,

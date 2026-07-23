@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { buildVersionNotice } from './version-notice.ts';
 
 describe('buildVersionNotice', () => {

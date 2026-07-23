@@ -11,7 +11,7 @@
  *   5. body-only agent-patch continues to work.
  *   6. agent-undo reverts the FM region in lock-step with body changes.
  */
-import { describe, expect, spyOn, test } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -19,6 +19,7 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { Hocuspocus } from '@hocuspocus/server';
 import { readFmMap, stripFrontmatter } from '@inkeep/open-knowledge-core';
+import { describe, expect, test, vi } from 'vitest';
 import {
   AGENT_WRITE_ORIGIN,
   AgentSessionManager,
@@ -1136,7 +1137,7 @@ describe('POST /api/agent-write-md — telemetry refusal-class split (PRD-6947, 
   // change to either the event shape or the classifier surfaces a regression.
 
   function collectRefusalEvents(
-    spy: ReturnType<typeof spyOn<typeof console, 'warn'>>,
+    spy: ReturnType<typeof vi.spyOn<typeof console, 'warn'>>,
   ): Array<Record<string, unknown>> {
     return spy.mock.calls
       .map((call) => call[0])
@@ -1155,7 +1156,7 @@ describe('POST /api/agent-write-md — telemetry refusal-class split (PRD-6947, 
   }
 
   test('yaml@2 parse error (PRD-6781 unquoted-colon) classifies as `yaml-parse-error`', async () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
     try {
       await sessionManager.getSession('test-doc');
@@ -1184,7 +1185,7 @@ describe('POST /api/agent-write-md — telemetry refusal-class split (PRD-6947, 
   });
 
   test('top-level array FM classifies as `non-mapping-top-level`', async () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
     try {
       await sessionManager.getSession('test-doc');
@@ -1212,7 +1213,7 @@ describe('POST /api/agent-write-md — telemetry refusal-class split (PRD-6947, 
   });
 
   test('nested-but-valid frontmatter does NOT fire the refusal event (retired bucket)', async () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { contentDir, hocuspocus, sessionManager, cleanup } = setup();
     try {
       await sessionManager.getSession('test-doc');

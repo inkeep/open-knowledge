@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { expandTagToHierarchy, tagsMatchingPrefix } from './tag-rollup.ts';
 
 describe('expandTagToHierarchy', () => {

@@ -14,8 +14,8 @@
  *   3. Edge cases — empty / missing / non-string props
  */
 
-import { describe, expect, test } from 'bun:test';
 import type { Node as PmNode } from '@tiptap/pm/model';
+import { describe, expect, test } from 'vitest';
 import { sourceFallbackFormFor } from './non-portable-render-source-fallback.ts';
 
 /**

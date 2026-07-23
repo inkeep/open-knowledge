@@ -15,12 +15,13 @@
  *      handler).
  *   3. Method gate — non-POST methods return 405.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
+import { describe, expect, test } from 'vitest';
 import { createApiExtension } from './api-extension.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 

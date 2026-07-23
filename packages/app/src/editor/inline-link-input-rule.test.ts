@@ -9,8 +9,8 @@
  * never triggers a rule.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { Editor } from '@tiptap/core';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import {
   firstLinkAttrs,

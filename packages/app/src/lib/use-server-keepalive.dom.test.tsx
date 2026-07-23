@@ -6,9 +6,10 @@
  * discipline: we assert what the hook does (start/skip/close, resolver output),
  * never its source text.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import type { KeepaliveHandle, KeepaliveOptions } from '@inkeep/open-knowledge-core/keepalive';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import { type UseServerKeepaliveOptions, useServerKeepalive } from './use-server-keepalive';
 
 const ASYNC_EFFECT_TIMEOUT_MS = 1000;

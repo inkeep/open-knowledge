@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { sep } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { classifyFsPath } from './fs-traced.ts';
 
 /**

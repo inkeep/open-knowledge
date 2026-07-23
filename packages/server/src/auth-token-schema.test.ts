@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import {
   formatAuthRejectionWire,
   HOCUSPOCUS_AUTH_REJECTION_REASONS,

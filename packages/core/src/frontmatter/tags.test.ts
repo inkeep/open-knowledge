@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   extractFrontmatterTags,
   FRONTMATTER_TAG_GRAMMAR_HINT,

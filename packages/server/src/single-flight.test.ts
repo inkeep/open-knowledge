@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { createSingleFlight } from './single-flight.ts';
 
 describe('createSingleFlight (PRD-6972 FR2)', () => {

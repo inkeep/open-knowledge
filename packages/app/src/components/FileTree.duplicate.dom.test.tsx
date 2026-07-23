@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MouseEventHandler, ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { FileEntry } from './file-tree-utils';
 import type { ResolvedNavigationTarget } from './navigation-targets';
 
@@ -60,16 +60,16 @@ function MenuSeparator() {
   return <hr />;
 }
 
-const toastSuccessMock = mock(() => {});
-const toastErrorMock = mock(() => {});
-const addPageMock = mock(() => {});
-const openTargetMock = mock(() => {});
-const notifySidebarFileSelectedMock = mock(() => {});
-const closeTabsMock = mock(() => {});
-const closeDocumentMock = mock(() => {});
-const closeAndClearForRenameMock = mock(async () => {});
-const remapTabsForRenameMock = mock(() => {});
-const dispatchHandoffMock = mock(async () => ({ ok: true as const }));
+const toastSuccessMock = vi.fn(() => {});
+const toastErrorMock = vi.fn(() => {});
+const addPageMock = vi.fn(() => {});
+const openTargetMock = vi.fn(() => {});
+const notifySidebarFileSelectedMock = vi.fn(() => {});
+const closeTabsMock = vi.fn(() => {});
+const closeDocumentMock = vi.fn(() => {});
+const closeAndClearForRenameMock = vi.fn(async () => {});
+const remapTabsForRenameMock = vi.fn(() => {});
+const dispatchHandoffMock = vi.fn(async () => ({ ok: true as const }));
 
 const DOCUMENTS: FileEntry[] = [
   {
@@ -149,7 +149,7 @@ class StubModel {
   focusedPath: string | null = null;
   selectedPaths: string[] = [];
   items = new Map<string, StubItem>();
-  startRenaming = mock(() => {});
+  startRenaming = vi.fn(() => {});
 
   getFocusedPath() {
     return this.focusedPath;
@@ -201,7 +201,7 @@ class StubModel {
 
 let model = new StubModel();
 let menuItem: { kind: 'file' | 'directory'; path: string };
-let closeMenuMock = mock(() => {});
+let closeMenuMock = vi.fn(() => {});
 let duplicateResponse: unknown;
 let duplicateStatus = 200;
 let duplicateGate: Promise<void> | null = null;
@@ -215,9 +215,9 @@ let fetchCalls: FetchCall[] = [];
 let extraDocuments: FileEntry[] = [];
 let okignoreBindingMock: {
   current: () => string;
-  patch: ReturnType<typeof mock>;
+  patch: ReturnType<typeof vi.fn>;
 } | null = null;
-let projectLocalBindingMock: { patch: ReturnType<typeof mock> } | null = null;
+let projectLocalBindingMock: { patch: ReturnType<typeof vi.fn> } | null = null;
 let mergedConfigMock: {
   appearance?: { sidebar?: { showHiddenFiles?: boolean } };
 } | null = null;
@@ -258,7 +258,7 @@ function expectMenuOrder(labels: readonly RegExp[]) {
 }
 
 function makeFetchMock() {
-  return mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     fetchCalls.push({ url, init });
     if (url.startsWith('/api/documents'))
@@ -290,18 +290,18 @@ function makeFetchMock() {
   });
 }
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: {
     success: toastSuccessMock,
     error: toastErrorMock,
   },
 }));
 
-mock.module('next-themes', () => ({
+vi.doMock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'light' }),
 }));
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName: 'notes/source',
     activeTarget: { kind: 'doc', target: 'notes/source', docName: 'notes/source' },
@@ -319,15 +319,15 @@ mock.module('@/editor/DocumentContext', () => ({
   }),
 }));
 
-mock.module('@/components/PageListContext', () => ({
+vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => ({ addPage: addPageMock, pageMeta: new Map() }),
 }));
 
-mock.module('./ui/sidebar', () => ({
+vi.doMock('./ui/sidebar', () => ({
   useSidebar: () => ({ notifySidebarFileSelected: notifySidebarFileSelectedMock }),
 }));
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     okignoreBinding: okignoreBindingMock,
     projectLocalBinding: projectLocalBindingMock,
@@ -335,17 +335,17 @@ mock.module('@/lib/config-provider', () => ({
   }),
 }));
 
-mock.module('./handoff/useInstalledAgents', () => ({
+vi.doMock('./handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states: {} }),
 }));
 
-mock.module('./handoff/useHandoffDispatch', () => ({
+vi.doMock('./handoff/useHandoffDispatch', () => ({
   buildFolderHandoffInput: () => null,
   buildHandoffInput: () => null,
   useHandoffDispatch: () => ({ dispatch: dispatchHandoffMock }),
 }));
 
-mock.module('./handoff/OpenInAgentContextSubmenu', () => ({
+vi.doMock('./handoff/OpenInAgentContextSubmenu', () => ({
   OpenInAgentContextSubmenu: () => (
     <button type="button" role="menuitem" data-testid="file-tree-menu-open-in-agent">
       Open with AI
@@ -353,12 +353,12 @@ mock.module('./handoff/OpenInAgentContextSubmenu', () => ({
   ),
 }));
 
-mock.module('./sidebar-hover-prewarm', () => ({
+vi.doMock('./sidebar-hover-prewarm', () => ({
   cancelHoverPrewarm: () => {},
   scheduleHoverPrewarm: () => {},
 }));
 
-mock.module('@/components/ui/button', () => ({
+vi.doMock('@/components/ui/button', () => ({
   Button: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
     <button type="button" {...props}>
       {children}
@@ -366,11 +366,11 @@ mock.module('@/components/ui/button', () => ({
   ),
 }));
 
-mock.module('@/components/ui/dialog', () => ({
+vi.doMock('@/components/ui/dialog', () => ({
   Dialog: PassThrough,
 }));
 
-mock.module('@/components/ui/dropdown-menu', () => ({
+vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: PassThrough,
   DropdownMenuCheckboxItem: MenuItem,
   DropdownMenuContent: MenuContent,
@@ -382,11 +382,11 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuTrigger: PassThrough,
 }));
 
-mock.module('@/components/ui/skeleton', () => ({
+vi.doMock('@/components/ui/skeleton', () => ({
   Skeleton: ({ className }: { className?: string }) => <span className={className} />,
 }));
 
-mock.module('@/components/DeleteConfirmationDialog', () => ({
+vi.doMock('@/components/DeleteConfirmationDialog', () => ({
   DeleteConfirmationDialog: (props: {
     itemName?: string;
     customTitle?: string;
@@ -398,26 +398,26 @@ mock.module('@/components/DeleteConfirmationDialog', () => ({
   },
 }));
 
-mock.module('@/components/NewItemDialog', () => ({
+vi.doMock('@/components/NewItemDialog', () => ({
   NewItemDialog: () => null,
 }));
 
-mock.module('@/components/TrashFailureModal', () => ({
+vi.doMock('@/components/TrashFailureModal', () => ({
   TrashFailureModal: () => null,
   coerceTrashFailureReason: (reason: string) => reason,
 }));
 
-mock.module('@/components/use-selection-mirror', () => ({
+vi.doMock('@/components/use-selection-mirror', () => ({
   asDirectoryHandle: (item: StubItem | null) => (item?.isDirectory() ? item : null),
   useSelectionMirror: () => {},
 }));
 
-mock.module('@pierre/trees', () => ({
+vi.doMock('@pierre/trees', () => ({
   FILE_TREE_TAG_NAME: 'ok-file-tree',
   themeToTreeStyles: () => ({}),
 }));
 
-mock.module('@pierre/trees/react', () => ({
+vi.doMock('@pierre/trees/react', () => ({
   useFileTree: () => ({ model }),
   FileTree: ({
     renderContextMenu,
@@ -458,12 +458,12 @@ function renderFileTree() {
 }
 
 describe('FileTree duplicate action runtime behavior', () => {
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     model = new StubModel();
     menuItem = { kind: 'file', path: 'notes/source.mdx' };
-    closeMenuMock = mock(() => {});
+    closeMenuMock = vi.fn(() => {});
     duplicateResponse = {
       kind: 'file',
       path: 'notes/source copy',
@@ -486,7 +486,7 @@ describe('FileTree duplicate action runtime behavior', () => {
     addPageMock.mockClear();
     openTargetMock.mockClear();
     notifySidebarFileSelectedMock.mockClear();
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -528,7 +528,7 @@ describe('FileTree duplicate action runtime behavior', () => {
   test('file context-menu Hide appends an anchored okignore pattern and shows reversible copy', async () => {
     okignoreBindingMock = {
       current: () => '',
-      patch: mock(() => ({ ok: true })),
+      patch: vi.fn(() => ({ ok: true })),
     };
     const user = userEvent.setup();
     renderFileTree();
@@ -556,7 +556,7 @@ describe('FileTree duplicate action runtime behavior', () => {
 
     okignoreBindingMock = {
       current: () => '/notes/source.mdx\n',
-      patch: mock(() => ({ ok: true })),
+      patch: vi.fn(() => ({ ok: true })),
     };
     const user = userEvent.setup();
     renderFileTree();
@@ -606,7 +606,7 @@ describe('FileTree duplicate action runtime behavior', () => {
     menuItem = { kind: 'directory', path: 'notes/' };
     okignoreBindingMock = {
       current: () => '',
-      patch: mock(() => ({ ok: true })),
+      patch: vi.fn(() => ({ ok: true })),
     };
     const user = userEvent.setup();
     renderFileTree();
@@ -660,7 +660,7 @@ describe('FileTree duplicate action runtime behavior', () => {
     menuItem = { kind: 'file', path: '.ok/templates/greeting.md' };
     okignoreBindingMock = {
       current: () => '',
-      patch: mock(() => ({ ok: true })),
+      patch: vi.fn(() => ({ ok: true })),
     };
     renderFileTree();
 
@@ -680,7 +680,7 @@ describe('FileTree duplicate action runtime behavior', () => {
     menuItem = { kind: 'directory', path: '.ok/' };
     okignoreBindingMock = {
       current: () => '',
-      patch: mock(() => ({ ok: true })),
+      patch: vi.fn(() => ({ ok: true })),
     };
     renderFileTree();
 

@@ -19,7 +19,7 @@
  *      return shape that retriable-consent dialogs depend on.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { logIpcError } from './ipc-log.ts';
 
 interface CapturedWarn {

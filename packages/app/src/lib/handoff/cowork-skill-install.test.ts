@@ -7,7 +7,7 @@
  * `skill-installer.test.ts`. This file covers the guard policy.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import {
   buildCoworkSkillGuardKey,
   type EnsureCoworkSkillDeps,
@@ -34,7 +34,7 @@ function memoryStorage(initial: Record<string, string> = {}): SkillInstallStorag
 }
 
 function fakeInstaller(result: SkillInstallResult): SkillInstaller {
-  return { install: mock(async () => result) };
+  return { install: vi.fn(async () => result) };
 }
 
 function deps(overrides: Partial<EnsureCoworkSkillDeps> = {}): EnsureCoworkSkillDeps {

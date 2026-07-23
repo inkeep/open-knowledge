@@ -4,7 +4,7 @@
  * `settings/use-config-form.test.ts` and `settings/SettingsDialog.test.ts`.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 describe('ui/form module', () => {
   test('exports the shadcn Form primitives as functions', async () => {

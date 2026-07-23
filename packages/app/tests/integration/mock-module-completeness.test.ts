@@ -1,22 +1,17 @@
 /**
- * Meta-test: every `mock.module` factory in a plain (non-.dom) app test file
+ * Meta-test: every `vi.doMock` factory in a plain (non-.dom) app test file
  * must spread the real module (`...actual`) or carry an explicit allowlist
  * entry below.
  *
- * Bun's `mock.module` registry is process-global and never restored between
- * test files (oven-sh/bun#12823 closed-as-intended). When a factory registers
- * BEFORE the real module loads, the registry entry's export table contains
- * ONLY the factory's keys — any later file importing an omitted export hits a
- * link error naming the REAL file path. Failure order follows the runner
- * filesystem's readdir order: deterministic per job (defeating fresh-process
- * flake retries), re-rolled per runner. Detonation case: a partial
+ * When a factory registers before the real module loads, its export table
+ * contains only the factory's keys. A later import of an omitted export within
+ * the same test module graph then fails during linking. Detonation case: a partial
  * `@/editor/DocumentContext` mock (1 of its exports) broke
  * `EditorArea.test.ts`'s module-load smoke on two PR runs while passing
  * everywhere else.
  *
- * The spread-real pattern fixes both halves: the static import pre-loads the
- * real module (so bun mutates the namespace in place instead of synthesizing
- * a partial one), and the spread keeps every unmocked export bound.
+ * The spread-real pattern keeps every unmocked export bound while preserving
+ * the targeted override.
  *
  * Scope: plain `*.test.ts(x)` under src/ — the files sharing the unit-task
  * process. `*.dom.test.tsx` files run in the separate test:dom process and
@@ -24,9 +19,9 @@
  * tracked (App.dom.test.tsx alone holds ~23 factories).
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 const APP_ROOT = join(import.meta.dir, '..', '..');
 
@@ -43,13 +38,13 @@ const ALLOWLIST: Record<string, string> = {
     'value export consumed by plain tests in this process.',
 };
 
-function extractMockModuleCalls(src: string): Array<{ specifier: string; factory: string }> {
+function extractDoMockCalls(src: string): Array<{ specifier: string; factory: string }> {
   const calls: Array<{ specifier: string; factory: string }> = [];
-  const re = /mock\.module\(\s*(['"])([^'"]+)\1\s*,/g;
+  const re = /vi\.doMock\(\s*(['"])([^'"]+)\1\s*,/g;
   let m: RegExpExecArray | null = re.exec(src);
   while (m !== null) {
     // Capture the factory body: scan forward to the matching close of the
-    // mock.module(...) call by paren depth. Good enough for the repo's
+    // vi.doMock(...) call by paren depth. Good enough for the repo's
     // factory shapes (object-literal arrow functions).
     let depth = 1;
     let i = re.lastIndex;
@@ -75,7 +70,7 @@ function factoryHasActualSpread(factory: string): boolean {
   return /\.\.\.\s*actual[A-Za-z_$]?[\w$]*/.test(factory);
 }
 
-describe('mock.module factory completeness (process-global leak guard)', () => {
+describe('vi.doMock factory completeness', () => {
   test('every plain-test factory spreads the real module or is allowlisted', async () => {
     const glob = new Bun.Glob('src/**/*.test.{ts,tsx}');
     const violations: string[] = [];
@@ -84,8 +79,8 @@ describe('mock.module factory completeness (process-global leak guard)', () => {
       const abs = join(APP_ROOT, file);
       const rel = relative(APP_ROOT, abs);
       const src = readFileSync(abs, 'utf-8');
-      if (!src.includes('mock.module(')) continue;
-      for (const call of extractMockModuleCalls(src)) {
+      if (!src.includes('vi.doMock(')) continue;
+      for (const call of extractDoMockCalls(src)) {
         const hasSpread = factoryHasActualSpread(call.factory);
         const allowKey = `${rel}::${call.specifier}`;
         if (!hasSpread && !(allowKey in ALLOWLIST)) {
@@ -108,16 +103,16 @@ describe('guard self-test (bidirectional + planted-positive)', () => {
   // over-fire (adjacent negatives), exercising the SAME functions the guard
   // uses so the two cannot drift apart.
 
-  test('extractMockModuleCalls: finds every call (planted-positive), nothing in clean source', () => {
+  test('extractDoMockCalls: finds every call (planted-positive), nothing in clean source', () => {
     const twoCalls = [
-      "mock.module('sonner', () => ({ toast }));",
-      "mock.module('@/editor/DocumentContext', () => ({ useDocumentContext: () => ({}) }));",
+      "vi.doMock('sonner', () => ({ toast }));",
+      "vi.doMock('@/editor/DocumentContext', () => ({ useDocumentContext: () => ({}) }));",
     ].join('\n');
-    expect(extractMockModuleCalls(twoCalls).map((c) => c.specifier)).toEqual([
+    expect(extractDoMockCalls(twoCalls).map((c) => c.specifier)).toEqual([
       'sonner',
       '@/editor/DocumentContext',
     ]);
-    expect(extractMockModuleCalls('const x = 1; await import("./y");')).toEqual([]);
+    expect(extractDoMockCalls('const x = 1; await import("./y");')).toEqual([]);
   });
 
   test('factoryHasActualSpread: accepts ...actual* spreads (must-fire-true)', () => {
@@ -141,10 +136,10 @@ describe('guard self-test (bidirectional + planted-positive)', () => {
 
   test('end-to-end: a partial factory is flagged, an ...actual factory is not', () => {
     const flagged = (src: string) =>
-      extractMockModuleCalls(src).filter((c) => !factoryHasActualSpread(c.factory)).length;
-    expect(flagged("mock.module('sonner', () => ({ toast: { error() {} } }));")).toBe(1);
+      extractDoMockCalls(src).filter((c) => !factoryHasActualSpread(c.factory)).length;
+    expect(flagged("vi.doMock('sonner', () => ({ toast: { error() {} } }));")).toBe(1);
     expect(
-      flagged("mock.module('sonner', () => ({ ...actualSonner, toast: { error() {} } }));"),
+      flagged("vi.doMock('sonner', () => ({ ...actualSonner, toast: { error() {} } }));"),
     ).toBe(0);
   });
 });

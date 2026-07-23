@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { extractBase64Images } from './base64-images.ts';
 
 // 1x1 transparent PNG.

@@ -22,8 +22,9 @@
  *
  * Substrate: jsdom via `bun run test:dom`.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ShareTargetInput } from '@/lib/share/run-share-action';
 
 // ShareButton mounts a Radix Tooltip + Popover (focus-scope) which reach for
@@ -51,7 +52,7 @@ if (globalWithDomShims.ResizeObserver === undefined) {
 // Stub the sync-status hook so the button reads a remote without mounting the
 // CC1 subscription / fetch path. `hasRemote: true` routes a click through the
 // construct-url branch instead of `onClickWhenNoRemote`.
-mock.module('@/hooks/use-git-sync-status', () => ({
+vi.doMock('@/hooks/use-git-sync-status', () => ({
   useGitSyncStatusDetailed: () => ({
     status: { hasRemote: true },
     fetchError: null,
@@ -61,7 +62,7 @@ mock.module('@/hooks/use-git-sync-status', () => ({
 // The freshness warning row inside the popover reads the project-local config
 // binding (for its "Enable auto-sync" gate). Stub the context so mounting the
 // popover doesn't require a full <ConfigProvider>.
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({ projectLocalBinding: { patch: () => ({ ok: true }) } }),
 }));
 
@@ -84,7 +85,7 @@ describe('ShareButton', () => {
       configurable: true,
       value: undefined,
     });
-    globalThis.fetch = mock(() =>
+    globalThis.fetch = vi.fn(() =>
       Promise.resolve(
         new Response(
           JSON.stringify({
@@ -133,7 +134,7 @@ describe('ShareButton', () => {
     // popover opens in success mode rather than the manual-copy fallback.
     Object.defineProperty(globalThis.navigator, 'clipboard', {
       configurable: true,
-      value: { writeText: mock(() => Promise.resolve()) },
+      value: { writeText: vi.fn(() => Promise.resolve()) },
     });
     renderShareButton({ kind: 'doc', docName: 'docs/readme' });
 
@@ -172,7 +173,7 @@ describe('ShareButton', () => {
   });
 
   test('threads an absent freshness from the response into a warning row', async () => {
-    globalThis.fetch = mock(() =>
+    globalThis.fetch = vi.fn(() =>
       Promise.resolve(
         new Response(
           JSON.stringify({
@@ -201,7 +202,7 @@ describe('ShareButton', () => {
   });
 
   test('renders no warning row when the response reports current freshness', async () => {
-    globalThis.fetch = mock(() =>
+    globalThis.fetch = vi.fn(() =>
       Promise.resolve(
         new Response(
           JSON.stringify({

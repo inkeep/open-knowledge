@@ -8,9 +8,9 @@
  * entries and the shared `PREVIEW_EMBED_STARTERS` set.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { PREVIEW_EMBED_STARTERS } from '@inkeep/open-knowledge-core';
 import type { Editor } from '@tiptap/react';
+import { describe, expect, test } from 'vitest';
 import { getEmbedStarterItems } from './embed-starter-items';
 
 interface InsertedNode {

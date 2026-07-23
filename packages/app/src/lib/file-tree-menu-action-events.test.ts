@@ -7,7 +7,7 @@
  * breaks either side from silently making File → Move to Trash a no-op.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
 import {
   emitFileTreeMenuActionDelete,

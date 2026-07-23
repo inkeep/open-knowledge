@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { parseYouTubeUrl, youtubeEmbedUrl } from './youtube-embed.ts';
 
 describe('youtubeEmbedUrl', () => {

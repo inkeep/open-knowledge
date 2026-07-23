@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { TERMINAL_CLI_IDS, type TerminalCli } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import {
   CLAUDE_PROBE_ARGS,
   cliProbeArgs,

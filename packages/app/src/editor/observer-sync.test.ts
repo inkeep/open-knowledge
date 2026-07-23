@@ -5,11 +5,12 @@
  * live in server-observers.test.ts and C1-C10 integration tests (server-authoritative
  * architecture, precedent #14). This file covers client-side shimmer prevention only.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { setTimeout as wait } from 'node:timers/promises';
 import { MarkdownManager } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import { updateYFragment } from '@tiptap/y-tiptap';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { sharedExtensions } from './extensions/shared';
 import { ORIGIN_TEXT_TO_TREE, ORIGIN_TREE_TO_TEXT, setupObservers } from './observers';

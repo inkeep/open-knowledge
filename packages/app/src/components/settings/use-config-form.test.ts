@@ -16,13 +16,13 @@
  * contract.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import type {
   Config,
   ConfigBindingPatchResult,
   ConfigPatch,
   ConfigValidationError,
 } from '@inkeep/open-knowledge-core';
+import { describe, expect, test, vi } from 'vitest';
 import {
   type ApplyExternalUpdateForm,
   applyExternalUpdate,
@@ -38,7 +38,7 @@ import {
 
 describe('applyExternalUpdate', () => {
   test('calls form.reset with keepDirtyValues + keepDirty + keepTouched', () => {
-    const reset = mock();
+    const reset = vi.fn();
     const form: ApplyExternalUpdateForm<Config> = {
       reset: reset as unknown as ApplyExternalUpdateForm<Config>['reset'],
     };
@@ -67,15 +67,15 @@ interface MockedRunCommitForm extends RunCommitForm<Config> {
 
 function createMockForm(getValuesImpl: (name: string) => unknown): {
   form: MockedRunCommitForm;
-  setError: ReturnType<typeof mock>;
-  clearErrors: ReturnType<typeof mock>;
-  resetField: ReturnType<typeof mock>;
-  getValues: ReturnType<typeof mock>;
+  setError: ReturnType<typeof vi.fn>;
+  clearErrors: ReturnType<typeof vi.fn>;
+  resetField: ReturnType<typeof vi.fn>;
+  getValues: ReturnType<typeof vi.fn>;
 } {
-  const setError = mock();
-  const clearErrors = mock();
-  const resetField = mock();
-  const getValues = mock(getValuesImpl);
+  const setError = vi.fn();
+  const clearErrors = vi.fn();
+  const resetField = vi.fn();
+  const getValues = vi.fn(getValuesImpl);
   const form: MockedRunCommitForm = {
     getValues: getValues as unknown as MockedRunCommitForm['getValues'],
     setError: setError as unknown as MockedRunCommitForm['setError'],
@@ -87,9 +87,9 @@ function createMockForm(getValuesImpl: (name: string) => unknown): {
 
 function createMockBinding(patchImpl: (patch: ConfigPatch) => ConfigBindingPatchResult): {
   binding: RunCommitBinding;
-  patch: ReturnType<typeof mock>;
+  patch: ReturnType<typeof vi.fn>;
 } {
-  const patch = mock(patchImpl);
+  const patch = vi.fn(patchImpl);
   const binding: RunCommitBinding = {
     patch: patch as unknown as RunCommitBinding['patch'],
   };

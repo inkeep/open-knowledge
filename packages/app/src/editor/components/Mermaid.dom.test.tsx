@@ -5,8 +5,9 @@
  * These tests mock them at the module boundary so the contract under test is
  * the mounted toolbar behavior, filling preview layout, and Panzoom lifecycle.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
@@ -28,33 +29,33 @@ if (globalWithDomShims.ResizeObserver === undefined) {
   globalWithDomShims.ResizeObserver = NoopResizeObserver;
 }
 
-const renderMermaid = mock(async (_id: string, _chart: string) => ({
+const renderMermaid = vi.fn(async (_id: string, _chart: string) => ({
   svg: '<svg viewBox="0 0 100 100"><g><text>Graph</text></g></svg>',
 }));
-const initializeMermaid = mock(() => {});
+const initializeMermaid = vi.fn(() => {});
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('mermaid', () => ({
+vi.doMock('mermaid', () => ({
   default: {
     initialize: initializeMermaid,
     render: renderMermaid,
   },
 }));
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
 type MockPanzoomInstance = {
-  zoomIn: ReturnType<typeof mock>;
-  zoomOut: ReturnType<typeof mock>;
-  pan: ReturnType<typeof mock>;
-  reset: ReturnType<typeof mock>;
-  destroy: ReturnType<typeof mock>;
-  zoomWithWheel: ReturnType<typeof mock>;
+  zoomIn: ReturnType<typeof vi.fn>;
+  zoomOut: ReturnType<typeof vi.fn>;
+  pan: ReturnType<typeof vi.fn>;
+  reset: ReturnType<typeof vi.fn>;
+  destroy: ReturnType<typeof vi.fn>;
+  zoomWithWheel: ReturnType<typeof vi.fn>;
 };
 type MockPanzoomOptions = {
   cursor?: string;
@@ -64,21 +65,21 @@ type MockPanzoomOptions = {
 
 const panzoomInstances: MockPanzoomInstance[] = [];
 const panzoomOptions: MockPanzoomOptions[] = [];
-const createPanzoom = mock((_element: SVGElement, options?: MockPanzoomOptions) => {
+const createPanzoom = vi.fn((_element: SVGElement, options?: MockPanzoomOptions) => {
   const instance: MockPanzoomInstance = {
-    zoomIn: mock(() => ({ scale: 1.25 })),
-    zoomOut: mock(() => ({ scale: 0.75 })),
-    pan: mock(() => ({ x: 0, y: 0, scale: 1 })),
-    reset: mock(() => ({ x: 0, y: 0, scale: 1 })),
-    destroy: mock(() => {}),
-    zoomWithWheel: mock(() => ({ scale: 1 })),
+    zoomIn: vi.fn(() => ({ scale: 1.25 })),
+    zoomOut: vi.fn(() => ({ scale: 0.75 })),
+    pan: vi.fn(() => ({ x: 0, y: 0, scale: 1 })),
+    reset: vi.fn(() => ({ x: 0, y: 0, scale: 1 })),
+    destroy: vi.fn(() => {}),
+    zoomWithWheel: vi.fn(() => ({ scale: 1 })),
   };
   panzoomInstances.push(instance);
   panzoomOptions.push(options ?? {});
   return instance;
 });
 
-mock.module('@panzoom/panzoom', () => ({
+vi.doMock('@panzoom/panzoom', () => ({
   default: createPanzoom,
 }));
 
@@ -196,7 +197,7 @@ describe('MermaidView controls', () => {
 
   test('logs when Panzoom setup fails', async () => {
     const originalWarn = console.warn;
-    const warn = mock(() => {});
+    const warn = vi.fn(() => {});
     console.warn = warn;
     createPanzoom.mockImplementationOnce(() => {
       throw new Error('panzoom unavailable');

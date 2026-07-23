@@ -17,13 +17,14 @@
  *
  * Substrate: jsdom via `bun run test:dom`.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children?: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
@@ -48,7 +49,7 @@ describe('CopyablePromptList', () => {
   });
 
   test('flips a row to "Copied" when the clipboard write resolves', async () => {
-    const writeText = mock(() => Promise.resolve());
+    const writeText = vi.fn(() => Promise.resolve());
     Object.defineProperty(globalThis.navigator, 'clipboard', {
       configurable: true,
       value: { writeText },
@@ -70,7 +71,7 @@ describe('CopyablePromptList', () => {
   test('falls back to execCommand and still copies when embedded-iframe policy refuses the async write', async () => {
     // Reproduce Claude's embedded iframe: navigator.clipboard exists but the
     // Permissions-Policy refusal surfaces as a rejected writeText.
-    const writeText = mock(() =>
+    const writeText = vi.fn(() =>
       Promise.reject(
         Object.assign(new Error('blocked because of a permissions policy'), {
           name: 'NotAllowedError',
@@ -81,7 +82,7 @@ describe('CopyablePromptList', () => {
       configurable: true,
       value: { writeText },
     });
-    const execCommand = mock(() => true);
+    const execCommand = vi.fn(() => true);
     Object.defineProperty(globalThis.document, 'execCommand', {
       configurable: true,
       value: execCommand,
@@ -105,14 +106,14 @@ describe('CopyablePromptList', () => {
     // execCommand fallback returns false (no Electron bridge either), the row
     // must stay on "Copy" — never show a false success. Guards the trivial
     // `.catch()` in handleCopy against silent removal.
-    const writeText = mock(() =>
+    const writeText = vi.fn(() =>
       Promise.reject(Object.assign(new Error('blocked'), { name: 'NotAllowedError' })),
     );
     Object.defineProperty(globalThis.navigator, 'clipboard', {
       configurable: true,
       value: { writeText },
     });
-    const execCommand = mock(() => false);
+    const execCommand = vi.fn(() => false);
     Object.defineProperty(globalThis.document, 'execCommand', {
       configurable: true,
       value: execCommand,

@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { setImmediate as runMicrotasks } from 'node:timers/promises';
+import { describe, expect, test } from 'vitest';
 import type { KeepaliveScheduler, MinimalWebSocket } from './keepalive.ts';
 import { startKeepalive } from './keepalive.ts';
 

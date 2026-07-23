@@ -15,7 +15,7 @@
  *   - `installShiftTracker()` is idempotent.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 
 interface Listener {
   type: string;

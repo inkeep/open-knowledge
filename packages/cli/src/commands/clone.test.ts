@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { Config } from '@inkeep/open-knowledge-server';
 import simpleGit, { type SimpleGitOptions } from 'simple-git';
+import { afterEach, beforeEach, describe, expect, it, test } from 'vitest';
 import type { TokenStore } from '../auth/token-store.ts';
 import { OK_DIR } from '../constants.ts';
 import {

@@ -3,7 +3,7 @@
  * flows. Mirrors `mcp-consent-store.test.ts` shape — no @testing-library/react,
  * exercises the store via the module API directly.
  */
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import { createConsentStore } from './consent-store';
 import type {
   OkDesktopBridge,
@@ -13,11 +13,11 @@ import type {
 
 interface MockBridgeShape {
   onboarding: {
-    onShow: ReturnType<typeof mock>;
-    signalReady: ReturnType<typeof mock>;
-    confirm: ReturnType<typeof mock>;
-    cancel: ReturnType<typeof mock>;
-    probeContent: ReturnType<typeof mock>;
+    onShow: ReturnType<typeof vi.fn>;
+    signalReady: ReturnType<typeof vi.fn>;
+    confirm: ReturnType<typeof vi.fn>;
+    cancel: ReturnType<typeof vi.fn>;
+    probeContent: ReturnType<typeof vi.fn>;
   };
   fireShow: (payload: OkOnboardingShowPayload) => void;
   unsubscribeCalls: number;
@@ -35,23 +35,23 @@ function makeBridge(
     handler: null as ((payload: OkOnboardingShowPayload) => void) | null,
     unsubscribeCalls: 0,
   };
-  const onShow = mock((cb: (payload: OkOnboardingShowPayload) => void) => {
+  const onShow = vi.fn((cb: (payload: OkOnboardingShowPayload) => void) => {
     state.handler = cb;
-    return mock(() => {
+    return vi.fn(() => {
       state.handler = null;
       state.unsubscribeCalls += 1;
     });
   });
-  const signalReady = mock(() => {});
-  const confirm = mock(() => {
+  const signalReady = vi.fn(() => {});
+  const confirm = vi.fn(() => {
     if (opts.confirmThrows) return Promise.reject(new Error('confirm-boom'));
     return Promise.resolve(opts.confirmResult ?? { ok: true });
   });
-  const cancel = mock(() => {
+  const cancel = vi.fn(() => {
     if (opts.cancelThrows) return Promise.reject(new Error('cancel-boom'));
     return Promise.resolve(opts.cancelResult ?? { ok: true });
   });
-  const probeContent = mock(() =>
+  const probeContent = vi.fn(() =>
     Promise.resolve({ ok: true, count: 0, sample: [], truncated: false }),
   );
 

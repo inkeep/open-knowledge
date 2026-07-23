@@ -13,8 +13,8 @@
  * hand-built doc literals in that shape.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { JSONContent } from '@tiptap/core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   __resetComposerDraftForTests,
   clearComposerDraft,

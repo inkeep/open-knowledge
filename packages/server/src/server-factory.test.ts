@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -6,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import shellQuote from 'shell-quote';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import type {
   CheckPushPermissionOptions,
@@ -521,7 +521,7 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
  *     invalid paths) and startHeadWatcher returns a no-op handle on missing
  *     .git. The degraded.push wiring for these subsystems is verified by
  *     the shadow-repo test (same push pattern) + code-level assertions.
- *     mock.module was attempted but leaks across all test files in the same
+ *     vi.doMock was attempted but leaks across all test files in the same
  *     `bun test` process, breaking file-watcher.test.ts.
  */
 
@@ -580,7 +580,7 @@ describe('createServer() degraded signal', () => {
   test('degraded push wiring exists for all three subsystems', () => {
     // Verify at the source level that the degraded.push calls exist in
     // initAsync for file-watcher and head-watcher. This is a code-level
-    // assertion — not as strong as a runtime test, but mock.module leaks
+    // assertion — not as strong as a runtime test, but vi.doMock leaks
     // make runtime testing impractical without process isolation.
     const dir = import.meta.dirname ?? new URL('.', import.meta.url).pathname;
     const src = readFileSync(resolve(dir, 'server-factory.ts'), 'utf-8');

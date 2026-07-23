@@ -1,8 +1,8 @@
-import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterAll, afterEach, describe, expect, test } from 'vitest';
 import { getInvocationCwd, recordInvocationCwd, resolveProjectAnchor } from './project-anchor.ts';
 
 const CLI_PACKAGE_ROOT = import.meta.dir.replace(/\/src$/, '');

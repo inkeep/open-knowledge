@@ -1,8 +1,8 @@
-import { describe, expect, mock, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { Scheduler } from '@inkeep/open-knowledge-core';
+import { describe, expect, test, vi } from 'vitest';
 import { attachIdleShutdown } from './idle-shutdown';
 
 // ─────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ function emitUpgrade(server: HttpServer, url: string, socket: Duplex): void {
 describe('attachIdleShutdown', () => {
   test('fires onShutdown after thresholdMs when zero WebSocket clients', () => {
     const scheduler = createManualScheduler();
-    const onShutdown = mock(() => Promise.resolve());
+    const onShutdown = vi.fn(() => Promise.resolve());
     const server = createFakeHttpServer();
 
     attachIdleShutdown({
@@ -88,7 +88,7 @@ describe('attachIdleShutdown', () => {
 
   test('incrementing WebSocket client count clears the shutdown timer', () => {
     const scheduler = createManualScheduler();
-    const onShutdown = mock(() => Promise.resolve());
+    const onShutdown = vi.fn(() => Promise.resolve());
     const server = createFakeHttpServer();
 
     attachIdleShutdown({
@@ -109,7 +109,7 @@ describe('attachIdleShutdown', () => {
 
   test('decrementing WebSocket client count to zero restarts the timer', () => {
     const scheduler = createManualScheduler();
-    const onShutdown = mock(() => Promise.resolve());
+    const onShutdown = vi.fn(() => Promise.resolve());
     const server = createFakeHttpServer();
 
     attachIdleShutdown({
@@ -134,7 +134,7 @@ describe('attachIdleShutdown', () => {
 
   test('reconnecting within the threshold resets the timer', () => {
     const scheduler = createManualScheduler();
-    const onShutdown = mock(() => Promise.resolve());
+    const onShutdown = vi.fn(() => Promise.resolve());
     const server = createFakeHttpServer();
 
     attachIdleShutdown({
@@ -153,7 +153,7 @@ describe('attachIdleShutdown', () => {
 
   test('upgrades on non-/collab paths do NOT count', () => {
     const scheduler = createManualScheduler();
-    const onShutdown = mock(() => Promise.resolve());
+    const onShutdown = vi.fn(() => Promise.resolve());
     const server = createFakeHttpServer();
 
     attachIdleShutdown({
@@ -174,7 +174,7 @@ describe('attachIdleShutdown', () => {
     // Simulates CC1 broadcaster + AgentSessionManager DirectConnections:
     // they never transit an HTTP upgrade event. The timer must still fire.
     const scheduler = createManualScheduler();
-    const onShutdown = mock(() => Promise.resolve());
+    const onShutdown = vi.fn(() => Promise.resolve());
     const server = createFakeHttpServer();
 
     attachIdleShutdown({
@@ -192,13 +192,13 @@ describe('attachIdleShutdown', () => {
 
   test('emits WARN at thresholdMs - warnBeforeMs (default 5 min before)', () => {
     const scheduler = createManualScheduler();
-    const onShutdown = mock(() => Promise.resolve());
-    const warnSpy = mock((_data: unknown, _message: string) => {});
+    const onShutdown = vi.fn(() => Promise.resolve());
+    const warnSpy = vi.fn((_data: unknown, _message: string) => {});
     const log = {
       warn: warnSpy,
-      info: mock(() => {}),
-      error: mock(() => {}),
-      debug: mock(() => {}),
+      info: vi.fn(() => {}),
+      error: vi.fn(() => {}),
+      debug: vi.fn(() => {}),
     } as unknown as Parameters<typeof attachIdleShutdown>[0]['log'];
     const server = createFakeHttpServer();
 
@@ -225,12 +225,12 @@ describe('attachIdleShutdown', () => {
 
   test('WARN is suppressed if warnBeforeMs >= thresholdMs', () => {
     const scheduler = createManualScheduler();
-    const warnSpy = mock((_data: unknown, _message: string) => {});
+    const warnSpy = vi.fn((_data: unknown, _message: string) => {});
     const log = {
       warn: warnSpy,
-      info: mock(() => {}),
-      error: mock(() => {}),
-      debug: mock(() => {}),
+      info: vi.fn(() => {}),
+      error: vi.fn(() => {}),
+      debug: vi.fn(() => {}),
     } as unknown as Parameters<typeof attachIdleShutdown>[0]['log'];
     const server = createFakeHttpServer();
 
@@ -249,7 +249,7 @@ describe('attachIdleShutdown', () => {
 
   test('detach() removes listener and cancels pending timers', () => {
     const scheduler = createManualScheduler();
-    const onShutdown = mock(() => Promise.resolve());
+    const onShutdown = vi.fn(() => Promise.resolve());
     const server = createFakeHttpServer();
 
     const handle = attachIdleShutdown({
@@ -271,7 +271,7 @@ describe('attachIdleShutdown', () => {
 
   test('detach() is idempotent and safe to call after onShutdown fires', () => {
     const scheduler = createManualScheduler();
-    const onShutdown = mock(() => Promise.resolve());
+    const onShutdown = vi.fn(() => Promise.resolve());
     const server = createFakeHttpServer();
 
     const handle = attachIdleShutdown({
@@ -291,7 +291,7 @@ describe('attachIdleShutdown', () => {
 
   test('onShutdown fires exactly once even if timer would re-trigger', () => {
     const scheduler = createManualScheduler();
-    const onShutdown = mock(() => Promise.resolve());
+    const onShutdown = vi.fn(() => Promise.resolve());
     const server = createFakeHttpServer();
 
     attachIdleShutdown({
@@ -315,7 +315,7 @@ describe('attachIdleShutdown', () => {
 
   test('multiple concurrent WebSocket clients decrement independently', () => {
     const scheduler = createManualScheduler();
-    const onShutdown = mock(() => Promise.resolve());
+    const onShutdown = vi.fn(() => Promise.resolve());
     const server = createFakeHttpServer();
 
     attachIdleShutdown({
@@ -344,7 +344,7 @@ describe('attachIdleShutdown', () => {
 
   test('synchronous onShutdown is supported', () => {
     const scheduler = createManualScheduler();
-    const onShutdown = mock(() => {}); // void return, not a Promise
+    const onShutdown = vi.fn(() => {}); // void return, not a Promise
     const server = createFakeHttpServer();
 
     attachIdleShutdown({
@@ -361,12 +361,12 @@ describe('attachIdleShutdown', () => {
 
   test('async onShutdown rejection is caught (logged, not thrown)', () => {
     const scheduler = createManualScheduler();
-    const errorSpy = mock((_data: unknown, _message: string) => {});
+    const errorSpy = vi.fn((_data: unknown, _message: string) => {});
     const log = {
-      warn: mock(() => {}),
-      info: mock(() => {}),
+      warn: vi.fn(() => {}),
+      info: vi.fn(() => {}),
       error: errorSpy,
-      debug: mock(() => {}),
+      debug: vi.fn(() => {}),
     } as unknown as Parameters<typeof attachIdleShutdown>[0]['log'];
     const server = createFakeHttpServer();
 

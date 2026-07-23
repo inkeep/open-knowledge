@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { aggregateStableChangelog } from './aggregate-stable-changelog.mjs';
 
 // A raw beta body as produced by the beta cadence: a lead line, one bump-level

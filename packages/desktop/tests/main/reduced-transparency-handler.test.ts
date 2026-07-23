@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 
 import {
   applyReducedTransparency,
@@ -8,13 +8,13 @@ import {
 
 interface WindowFixture {
   win: BrowserWindowVibrancyTarget;
-  setVibrancy: ReturnType<typeof mock>;
-  isDestroyed: ReturnType<typeof mock>;
+  setVibrancy: ReturnType<typeof vi.fn>;
+  isDestroyed: ReturnType<typeof vi.fn>;
 }
 
 function makeWindow(opts?: { destroyed?: boolean }): WindowFixture {
-  const setVibrancy = mock(() => {});
-  const isDestroyed = mock(() => opts?.destroyed === true);
+  const setVibrancy = vi.fn(() => {});
+  const isDestroyed = vi.fn(() => opts?.destroyed === true);
   return {
     win: {
       setVibrancy: setVibrancy as unknown as (mat: 'sidebar' | 'window' | null) => void,
@@ -62,7 +62,7 @@ describe('applyReducedTransparency — disable path (reduced=true)', () => {
     // with `win.isDestroyed?.()`. Pin that the optional chain holds for a
     // window that omits the method entirely — dropping the `?.` would throw
     // TypeError mid-loop and abort vibrancy for every remaining window.
-    const setVibrancy = mock(() => {});
+    const setVibrancy = vi.fn(() => {});
     const win: BrowserWindowVibrancyTarget = {
       setVibrancy: setVibrancy as unknown as (mat: 'sidebar' | 'window' | null) => void,
     };
@@ -108,7 +108,7 @@ describe('applyReducedTransparency — diagnostic logging', () => {
   test('emits structured warn with event/reducedTransparency/vibrancy/windowCount on disable', () => {
     const a = makeWindow();
     const b = makeWindow();
-    const warn = mock(() => {});
+    const warn = vi.fn(() => {});
     const deps: ReducedTransparencyDeps = {
       getAllWindows: () => [a.win, b.win],
       defaultVibrancy: 'sidebar',
@@ -129,7 +129,7 @@ describe('applyReducedTransparency — diagnostic logging', () => {
 
   test('emits structured warn with vibrancy=defaultVibrancy on restore', () => {
     const a = makeWindow();
-    const warn = mock(() => {});
+    const warn = vi.fn(() => {});
     const deps: ReducedTransparencyDeps = {
       getAllWindows: () => [a.win],
       defaultVibrancy: 'sidebar',
@@ -149,7 +149,7 @@ describe('applyReducedTransparency — diagnostic logging', () => {
   test('windowCount counts only successfully-applied windows; destroyed windows go to destroyedCount', () => {
     const live = makeWindow();
     const dead = makeWindow({ destroyed: true });
-    const warn = mock(() => {});
+    const warn = vi.fn(() => {});
     const deps: ReducedTransparencyDeps = {
       getAllWindows: () => [live.win, dead.win],
       defaultVibrancy: 'sidebar',
@@ -172,7 +172,7 @@ describe('applyReducedTransparency — diagnostic logging', () => {
     // the completeness operators rely on to tell convergence from failure.
     const a = makeWindow();
     const b = makeWindow({ destroyed: true });
-    const warn = mock(() => {});
+    const warn = vi.fn(() => {});
     const deps: ReducedTransparencyDeps = {
       getAllWindows: () => [a.win, b.win],
       defaultVibrancy: 'sidebar',
@@ -198,7 +198,7 @@ describe('applyReducedTransparency — diagnostic logging', () => {
   });
 
   test('empty windows array still emits structured warn with windowCount=0', () => {
-    const warn = mock(() => {});
+    const warn = vi.fn(() => {});
     const deps: ReducedTransparencyDeps = {
       getAllWindows: () => [],
       defaultVibrancy: 'sidebar',
@@ -238,10 +238,10 @@ describe('applyReducedTransparency — per-window throw isolation', () => {
   // loop. The guard isolates each call.
   function makeThrowingWindow(): WindowFixture {
     const error = new Error('setVibrancy: window destroyed');
-    const setVibrancy = mock(() => {
+    const setVibrancy = vi.fn(() => {
       throw error;
     });
-    const isDestroyed = mock(() => false);
+    const isDestroyed = vi.fn(() => false);
     return {
       win: {
         setVibrancy: setVibrancy as unknown as (mat: 'sidebar' | 'window' | null) => void,
@@ -273,7 +273,7 @@ describe('applyReducedTransparency — per-window throw isolation', () => {
   test('throw on one window emits a structured per-window warn', () => {
     const a = makeWindow();
     const b = makeThrowingWindow();
-    const warn = mock(() => {});
+    const warn = vi.fn(() => {});
     const deps: ReducedTransparencyDeps = {
       getAllWindows: () => [a.win, b.win],
       defaultVibrancy: 'sidebar',
@@ -292,7 +292,7 @@ describe('applyReducedTransparency — per-window throw isolation', () => {
   test('windowCount counts only successfully-toggled windows when one throws', () => {
     const a = makeWindow();
     const b = makeThrowingWindow();
-    const warn = mock(() => {});
+    const warn = vi.fn(() => {});
     const deps: ReducedTransparencyDeps = {
       getAllWindows: () => [a.win, b.win],
       defaultVibrancy: 'sidebar',
@@ -314,7 +314,7 @@ describe('applyReducedTransparency — per-window throw isolation', () => {
   test('per-window failure warn carries the window id for attribution', () => {
     const a = makeWindow();
     // A throwing window that also exposes a stable id, as real BrowserWindows do.
-    const setVibrancy = mock(() => {
+    const setVibrancy = vi.fn(() => {
       throw new Error('setVibrancy: native failure');
     });
     const b: BrowserWindowVibrancyTarget = {
@@ -322,7 +322,7 @@ describe('applyReducedTransparency — per-window throw isolation', () => {
       isDestroyed: () => false,
       setVibrancy: setVibrancy as unknown as (mat: 'sidebar' | 'window' | null) => void,
     };
-    const warn = mock(() => {});
+    const warn = vi.fn(() => {});
     const deps: ReducedTransparencyDeps = {
       getAllWindows: () => [a.win, b],
       defaultVibrancy: 'sidebar',
@@ -343,7 +343,7 @@ describe('applyReducedTransparency — per-window idempotence memo (flicker guar
   // mints fresh window stubs, so memoized state never leaks across tests — but
   // WITHIN a test, reusing the same stub across calls is what exercises the
   // skip path that collapses the N² theme-change re-apply burst.
-  function summaries(warn: ReturnType<typeof mock>) {
+  function summaries(warn: ReturnType<typeof vi.fn>) {
     return warn.mock.calls
       .map((call) => JSON.parse(call[0] as unknown as string))
       .filter((l) => l.event === 'reduced-transparency-applied');
@@ -351,7 +351,7 @@ describe('applyReducedTransparency — per-window idempotence memo (flicker guar
 
   test('skips a window already at the target material on a repeat call (no redundant setVibrancy)', () => {
     const a = makeWindow();
-    const warn = mock(() => {});
+    const warn = vi.fn(() => {});
     const deps: ReducedTransparencyDeps = {
       getAllWindows: () => [a.win],
       defaultVibrancy: 'sidebar',
@@ -389,7 +389,7 @@ describe('applyReducedTransparency — per-window idempotence memo (flicker guar
   test('applies once to a newly-opened window while skipping already-memoized windows', () => {
     const a = makeWindow();
     const b = makeWindow();
-    const warn = mock(() => {});
+    const warn = vi.fn(() => {});
 
     // a is present for the first toggle; b opens before the second.
     applyReducedTransparency(
@@ -431,7 +431,7 @@ describe('applyReducedTransparency — per-window idempotence memo (flicker guar
     // would permanently skip a window that hit one transient error — this test
     // is the regression pin for that.
     let calls = 0;
-    const setVibrancy = mock(() => {
+    const setVibrancy = vi.fn(() => {
       calls += 1;
       if (calls === 1) throw new Error('setVibrancy: transient native failure');
     });

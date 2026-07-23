@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import type { Hocuspocus } from '@hocuspocus/server';
 import {
@@ -19,6 +18,7 @@ import {
   CONFIG_DOC_NAMES,
   SYSTEM_DOC_NAME,
 } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   CC1Broadcaster,
   isConfigDoc,

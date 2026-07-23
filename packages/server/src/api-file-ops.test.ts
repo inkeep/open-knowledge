@@ -1,4 +1,3 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
   mkdirSync,
@@ -16,6 +15,7 @@ import { join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { Hocuspocus } from '@hocuspocus/server';
 import simpleGit from 'simple-git';
+import { afterEach, describe, expect, test } from 'vitest';
 import type * as Y from 'yjs';
 import { createApiExtension } from './api-extension.ts';
 import { BacklinkIndex } from './backlink-index.ts';

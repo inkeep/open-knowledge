@@ -1,18 +1,18 @@
-import { beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import * as actualSonner from 'sonner';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
 // Capture the plain `toast(...)` call so we can assert the wiring without a DOM.
-const toastPlain = mock((_msg: string) => 'toast-id');
-mock.module('sonner', () => ({
+const toastPlain = vi.fn((_msg: string) => 'toast-id');
+vi.doMock('sonner', () => ({
   ...actualSonner,
   toast: Object.assign(toastPlain, {
-    warning: mock(() => 'w'),
-    success: mock(() => 's'),
-    error: mock(() => 'e'),
-    dismiss: mock(() => {}),
-    custom: mock(() => 'c'),
-    loading: mock(() => 'l'),
+    warning: vi.fn(() => 'w'),
+    success: vi.fn(() => 's'),
+    error: vi.fn(() => 'e'),
+    dismiss: vi.fn(() => {}),
+    custom: vi.fn(() => 'c'),
+    loading: vi.fn(() => 'l'),
   }),
 }));
 
@@ -45,9 +45,9 @@ describe('installRecentRemovedListener', () => {
 
   test('subscribes once and toasts the project name when the event fires', () => {
     let captured: ((info: { path: string; projectName: string }) => void) | null = null;
-    const unsubscribe = mock(() => {});
+    const unsubscribe = vi.fn(() => {});
     const bridge = {
-      onRecentRemovedMissing: mock((cb: (info: { path: string; projectName: string }) => void) => {
+      onRecentRemovedMissing: vi.fn((cb: (info: { path: string; projectName: string }) => void) => {
         captured = cb;
         return unsubscribe;
       }),

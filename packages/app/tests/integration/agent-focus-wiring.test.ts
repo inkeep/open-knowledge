@@ -9,10 +9,11 @@
  * The `hints` array in the write response surfaces hub candidates
  * for orphaned writes; absent when the doc has backlinks or no hub exists.
  */
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {
   agentPatch,

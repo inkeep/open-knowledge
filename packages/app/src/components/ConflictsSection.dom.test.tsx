@@ -15,8 +15,9 @@
  *
  * Substrate: jsdom via `bun run test:dom`.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 interface MockConflictsResult {
   conflicts: Array<{ file: string; detectedAt: string }>;
@@ -26,7 +27,7 @@ interface MockConflictsResult {
 
 let mockResult: MockConflictsResult = { conflicts: [], loading: false, error: null };
 
-mock.module('@/hooks/use-conflicts', () => ({
+vi.doMock('@/hooks/use-conflicts', () => ({
   useConflicts: () => mockResult,
 }));
 

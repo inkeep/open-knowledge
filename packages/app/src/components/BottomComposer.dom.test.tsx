@@ -379,7 +379,7 @@ function stubReducedMotion(matches: boolean): () => void {
   };
 }
 
-let consoleErrorSpy: ReturnType<typeof spyOn>;
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});

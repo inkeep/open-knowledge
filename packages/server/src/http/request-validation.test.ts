@@ -19,8 +19,8 @@
  * regression in production.
  */
 
-import { describe, expect, test } from 'bun:test';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
 import {
   PayloadTooLargeError,

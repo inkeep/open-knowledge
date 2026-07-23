@@ -14,8 +14,9 @@
  * folder affordance is not assertable here. Symlinks are
  * likewise not represented in the item shape.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import type { WikiLinkSuggestionItem } from '../extensions/wiki-link-suggestion';
 import { WikiLinkSuggestionMenu } from './WikiLinkSuggestionMenu';
 

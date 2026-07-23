@@ -8,7 +8,7 @@
  * broken FLIP must not block the alignment change itself.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { runWithAlignAnimation } from './animate-align-change';
 
 interface StubAnimation {
@@ -99,7 +99,7 @@ afterEach(() => {
 
 describe('runWithAlignAnimation', () => {
   test('runs mutate when wrapper is null (no DOM ref available)', () => {
-    const mutate = mock(() => {});
+    const mutate = vi.fn(() => {});
     runWithAlignAnimation(null, mutate);
     expect(mutate).toHaveBeenCalledTimes(1);
   });
@@ -110,7 +110,7 @@ describe('runWithAlignAnimation', () => {
     // would swallow the alignment change.
     const target = makeStubTarget(100);
     const wrapper = makeStubWrapper(target);
-    const mutate = mock(() => {});
+    const mutate = vi.fn(() => {});
     runWithAlignAnimation(wrapper, mutate);
     expect(mutate).toHaveBeenCalledTimes(1);
     expect(target.animateCalls.length).toBe(0);
@@ -121,7 +121,7 @@ describe('runWithAlignAnimation', () => {
     installReducedMotionWindow(true);
     const target = makeStubTarget(100);
     const wrapper = makeStubWrapper(target);
-    const mutate = mock(() => {});
+    const mutate = vi.fn(() => {});
     runWithAlignAnimation(wrapper, mutate);
     expect(mutate).toHaveBeenCalledTimes(1);
     flushRaf();
@@ -132,7 +132,7 @@ describe('runWithAlignAnimation', () => {
     installRafStub();
     installReducedMotionWindow(false);
     const wrapper = makeStubWrapper(null);
-    const mutate = mock(() => {});
+    const mutate = vi.fn(() => {});
     runWithAlignAnimation(wrapper, mutate);
     expect(mutate).toHaveBeenCalledTimes(1);
     flushRaf();
@@ -186,8 +186,8 @@ describe('runWithAlignAnimation', () => {
     installReducedMotionWindow(false);
     const target = makeStubTarget(100);
     const wrapper = makeStubWrapper(target);
-    const inFlight: StubAnimation = { id: 'ok-image-align-flip', cancel: mock(() => {}) };
-    const unrelated: StubAnimation = { id: 'some-other-anim', cancel: mock(() => {}) };
+    const inFlight: StubAnimation = { id: 'ok-image-align-flip', cancel: vi.fn(() => {}) };
+    const unrelated: StubAnimation = { id: 'some-other-anim', cancel: vi.fn(() => {}) };
     // Patch getAnimations to return our seeded animations once, then
     // whatever the production code appends after that.
     let firstCall = true;

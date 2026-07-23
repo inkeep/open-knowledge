@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
+import { describe, expect, test } from 'vitest';
 import { buildCorpus } from './generator.ts';
 import { SIZE_ENVELOPES, totalDocsInMix } from './types.ts';
 import { VAULT_MIX, VAULT_NAME_PREFIX, VAULT_SEED, vault } from './vault.ts';

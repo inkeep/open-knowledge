@@ -7,10 +7,11 @@
  *
  * Substrate: jsdom via `bun run test:dom`.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+
 import type { ShareTargetStatusResponse } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useSyncExternalStore } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
 import { missDialogStore } from '@/lib/share/miss-dialog-store';
 import { pendingReceiveNavStore } from '@/lib/share/pending-receive-nav-store';
@@ -19,7 +20,7 @@ import { pendingReceiveNavStore } from '@/lib/share/pending-receive-nav-store';
 // useConfigContext; mock the binding so the guarded flow runs without a live
 // config context, and capture writes. Mocked before the dynamic import below.
 let autoSyncWrites: boolean[] = [];
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     projectLocalBinding: {
       patch: (value: { autoSync?: { enabled?: boolean } }) => {
@@ -39,7 +40,7 @@ function setSyncStatus(next: GitSyncStatus | null): void {
   syncStatus = next;
   for (const listener of syncStatusListeners) listener();
 }
-mock.module('@/hooks/use-git-sync-status', () => ({
+vi.doMock('@/hooks/use-git-sync-status', () => ({
   useGitSyncStatus: () =>
     useSyncExternalStore(
       (onStoreChange: () => void) => {
@@ -53,7 +54,7 @@ mock.module('@/hooks/use-git-sync-status', () => ({
 
 let syncTriggers: string[] = [];
 let triggerSyncImpl: () => Promise<void> = () => Promise.resolve();
-mock.module('@/lib/trigger-sync', () => ({
+vi.doMock('@/lib/trigger-sync', () => ({
   triggerSync: (op: string) => {
     syncTriggers.push(op);
     return triggerSyncImpl();

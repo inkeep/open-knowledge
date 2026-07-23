@@ -11,13 +11,14 @@
  * `createApiExtension` harness other agent-write tests use has no persistence
  * extension and never lands a file).
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { _resetDocExtensionsForTests, getDocExtension } from './doc-extensions.ts';
 import { createServer } from './server-factory.ts';
 

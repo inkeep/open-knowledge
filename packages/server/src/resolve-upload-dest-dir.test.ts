@@ -10,7 +10,7 @@
  * vault open (the acceptance scenario that depends on the
  * bare-name branch specifically).
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { resolveUploadDestDir } from './api-extension.ts';
 
 describe('resolveUploadDestDir (SPEC §6 FR-5 + docs matrix)', () => {

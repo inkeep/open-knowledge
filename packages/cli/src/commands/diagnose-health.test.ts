@@ -12,7 +12,7 @@
  * filesystem state is required.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { runHealthChecks } from './diagnose-health.ts';
 import type { CheckDefinition, CheckResult } from './diagnose-health-checks/index.ts';
 

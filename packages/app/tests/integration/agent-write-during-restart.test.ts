@@ -21,9 +21,10 @@
  * browser client's Y.Doc — any reintroduction of the duplication path
  * trips it red.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterEach, describe, expect, test } from 'vitest';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import {
   agentWriteMd,

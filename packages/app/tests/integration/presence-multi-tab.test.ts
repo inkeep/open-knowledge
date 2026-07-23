@@ -10,8 +10,8 @@
  * conventions. Never hardcodes 'test-doc' — every docName is a random UUID.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { AwarenessUser } from '../../src/presence/identity';
 import {
   dedupeHumansByPrincipalId,

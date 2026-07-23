@@ -5,8 +5,9 @@
  * (same pattern as provider-pool.test.ts). The provider never connects,
  * but emitting `synced` / `close` directly exercises the listener wiring.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { HocuspocusProvider } from '@hocuspocus/provider';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { getCollector, getHistogramSnapshot } from '../lib/perf/collector';
 import { validatePerfMarkName } from '../lib/perf/mark';
 import {
