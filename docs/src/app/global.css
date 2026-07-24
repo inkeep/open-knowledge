@@ -95,10 +95,36 @@
 :root {
   --color-fd-primary: #3784ff;
   --color-fd-ring: #3784ff;
+  /* Wide layout that fills the screen, but the reading column is capped and
+     centered inside the content area (see #nd-page article below) so the text
+     keeps even breathing room on both sides instead of stretching edge-to-edge.
+     --fd-page-width fills the space after the sidebar (layout − 286px sidebar)
+     so the band doesn't float; the fixed TOC pins to its right edge. */
+  --fd-layout-width: 2000px;
+  --fd-page-width: 1714px;
+  /* Responsive reading measure: 85% of the content region (so it stays
+     proportional to the space left after the sidebar/TOC and never butts the
+     edges) capped at 980px on large screens (past which the side air grows,
+     not the text). Lower the % for more air on small screens; lower the px cap
+     to stop expanding sooner on large screens. */
+  --ok-content-width: min(85%, 980px);
 }
 .dark {
   --color-fd-primary: #69a3ff;
   --color-fd-ring: #69a3ff;
+}
+
+/* Cap the docs reading column so text doesn't span the full-width content area.
+   Fumadocs' <article> is w-full with md:mx-auto but no max-width; adding one
+   lets the existing auto margins center it, leaving even side air (the
+   "breathing room inside the content"). Tune via --ok-content-width above.
+
+   Only above 2xl (~1536px): below that, the article fills the content area
+   edge-to-edge (matching prod) rather than getting narrowed on smaller screens. */
+@media (min-width: 1536px) {
+  #nd-page article {
+    max-width: var(--ok-content-width);
+  }
 }
 
 .subtle-scrollbar {
