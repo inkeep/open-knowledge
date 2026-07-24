@@ -11,6 +11,13 @@ copyright: Copyright © 2026 Inkeep
 # electron-rebuild / native-module ABI compilation cannot drift.
 electronVersion: "41.2.1"
 
+# Gate @electron/rebuild per platform: mac/win rebuild native deps (mac needs
+# node-pty's ABI; win cross-builds per-arch binaries), Linux skips it (all shipped
+# Linux natives are N-API prebuilds; the only node-gyp deps are unused, unbuilt-by-
+# design transitive server deps that fail to compile against Electron's v8 headers
+# under GCC -Werror). See scripts/before-build.mjs for the full rationale.
+beforeBuild: scripts/before-build.mjs
+
 directories:
   output: dist-desktop
   buildResources: build
