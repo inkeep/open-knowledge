@@ -504,6 +504,13 @@ export function findDescriptorRoot(live: Element): Element | null {
   let cur: Element | null = live;
   let optedOutWrapper: Element | null = null;
   while (cur && !cur.classList.contains('ProseMirror')) {
+    // Stop at a container's NodeViewContent boundary: everything at or above
+    // `[data-node-view-content]` belongs to the ENCLOSING container's PM node,
+    // not the leaf being resolved. Any descriptor wrapper above this point is
+    // the container's own `.react-renderer`; adopting it would make PM position
+    // the whole container at the leaf's slot. The descriptor already recorded
+    // below the boundary is the leaf's own root, so stop the climb here.
+    if (cur.hasAttribute('data-node-view-content')) break;
     // Opt-out: live-editor render wrappers around bare inline PM atoms
     // (e.g., `ImageInlineZoom`'s `<Zoom>` wrap). The PM node IS the leaf
     // `<img>` — there is no descriptor here, even though tiptap stamps
@@ -529,10 +536,14 @@ export function findDescriptorRoot(live: Element): Element | null {
       cur.hasAttribute('data-node-view-wrapper') ||
       cur.hasAttribute('data-jsx-component')
     ) {
-      // Keep climbing — for nested descriptors, the OUTERMOST is the one
-      // PM positions in its parent's content. For example, `CommonMarkImage`
-      // is a `JsxComponent` rendered as `.react-renderer.node-jsxComponent`
-      // wrapping `[data-node-view-wrapper data-jsx-component]`.
+      // Keep climbing — for nested descriptors OF THE SAME node view, the
+      // OUTERMOST is the one PM positions in its parent's content. For example,
+      // `CommonMarkImage` is a `JsxComponent` rendered as
+      // `.react-renderer.node-jsxComponent` wrapping
+      // `[data-node-view-wrapper data-jsx-component]`. This "outermost wins"
+      // holds only WITHIN one node view; the climb terminates at the first
+      // `[data-node-view-content]` boundary (above), so a container descriptor
+      // hosting the leaf in its content hole is never adopted.
       descriptorRoot = cur;
     }
     cur = cur.parentElement;
