@@ -286,10 +286,6 @@ msgid "{accessibleLabel} (conflict)"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
-msgid "{ahead, plural, one {# commit ahead} other {# commits ahead}}"
-msgstr ""
-
-#: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
 msgstr ""
 
@@ -561,6 +557,10 @@ msgstr ""
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr ""
 
+#: src/components/EnableSyncConfirmDialog.tsx
+msgid "{strandedCommitCount, plural, one {You have 1 change you haven't shared. It will stay on this computer.} other {You have # changes you haven't shared. They will stay on this computer.}}"
+msgstr ""
+
 #: src/components/CreatedItemsList.tsx
 msgid "{templateCount, plural, one {template} other {templates}}"
 msgstr ""
@@ -673,6 +673,10 @@ msgstr ""
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "A branch with that name already exists. Open its worktree from the switcher instead."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "A document has a conflict — resolve it to keep it up to date."
 msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
@@ -1220,16 +1224,8 @@ msgstr ""
 msgid "Auto-save"
 msgstr ""
 
-#: src/components/settings/SyncSection.tsx
-msgid "Auto-sync is off — your edits stay local until you commit and push manually."
-msgstr ""
-
 #: src/hooks/use-worktree-autosync-notice.tsx
 msgid "Auto-sync is off for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr ""
-
-#: src/components/settings/SyncSection.tsx
-msgid "Auto-sync is on — your commits push and remote changes pull on intervals."
 msgstr ""
 
 #: src/hooks/use-worktree-autosync-notice.tsx
@@ -1241,15 +1237,11 @@ msgid "Auto-sync is paused — sign in to resume."
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
-msgid "Auto-sync is paused — you don't have permission to push to this repo."
+msgid "Auto-sync is paused — you don't have permission to push to this repo. Switch to Follow to keep receiving updates."
 msgstr ""
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Auto-sync periodically fetches, pulls, and pushes commits to your remote git repository so your edits stay in sync across machines."
-msgstr ""
-
-#: src/components/settings/SyncSection.tsx
-msgid "Auto-sync pushes/pulls commits to your git remote on intervals and on save. Toggling on requires confirmation."
 msgstr ""
 
 #. Section label for the automatic, one-click install path
@@ -1541,6 +1533,10 @@ msgstr ""
 
 #: src/components/BottomComposer.tsx
 msgid "Checking for agents"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Checking for updates"
 msgstr ""
 
 #: src/components/share-receive-miss-content.tsx
@@ -2998,16 +2994,8 @@ msgstr ""
 msgid "Disable external link previews"
 msgstr ""
 
-#: src/components/settings/SyncSection.tsx
-msgid "Disable git auto-sync"
-msgstr ""
-
 #: src/components/settings/SearchSection.tsx
 msgid "Disable semantic search"
-msgstr ""
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Disable sync"
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
@@ -3399,8 +3387,13 @@ msgstr ""
 msgid "Enable external link previews"
 msgstr ""
 
-#: src/components/settings/SyncSection.tsx
-msgid "Enable git auto-sync"
+#: src/components/AutoSyncOnboardingDialog.tsx
+#: src/components/EnableSyncConfirmDialog.tsx
+msgid "Enable Follow"
+msgstr ""
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Enable Follow?"
 msgstr ""
 
 #: src/components/AutoSyncEnableWarning.tsx
@@ -3409,10 +3402,6 @@ msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "Enable semantic search"
-msgstr ""
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Enable sync"
 msgstr ""
 
 #: src/components/TerminalGate.tsx
@@ -3807,6 +3796,14 @@ msgstr ""
 msgid "Failed to update property"
 msgstr ""
 
+#: src/hooks/use-enable-sync-with-confirm.ts
+msgid "Failed to update sync — {detail}"
+msgstr ""
+
+#: src/hooks/use-enable-sync-with-confirm.ts
+msgid "Failed to update sync mode — {detail}"
+msgstr ""
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Failed to update the auto-approve setting — {detail}"
 msgstr ""
@@ -4027,6 +4024,28 @@ msgstr ""
 msgid "Folders"
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Follow"
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Follow — updates flow in from your remote; your edits stay on this computer."
+msgstr ""
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Follow fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
+msgstr ""
+
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Follow is on for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr ""
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Follow never pushes or commits your local changes. They stay only on this machine."
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "Follow the agent's edits"
 msgstr ""
@@ -4083,6 +4102,11 @@ msgstr ""
 msgid "Frontmatter every document created from this template starts with. Values are YAML — a list is <0>[a, b]</0>; <1>{{date}}</1> fills in on create."
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Full"
+msgstr ""
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Full guide"
 msgstr ""
@@ -4094,6 +4118,14 @@ msgstr ""
 
 #: src/components/skill-actions.tsx
 msgid "Full Path"
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+msgid "Full sync — your commits push and remote changes pull automatically."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Full sync — your edits are committed and pushed to your remote automatically."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -4116,10 +4148,6 @@ msgstr ""
 msgid "Get set up"
 msgstr ""
 
-#: src/components/settings/SyncSection.tsx
-msgid "Git auto-sync"
-msgstr ""
-
 #: src/components/settings/SharingSection.tsx
 #: src/components/SkillsSidebarSection.tsx
 msgid "git configuration is unavailable"
@@ -4135,6 +4163,10 @@ msgstr ""
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "Git needs a helper tool (such as git-lfs) that isn't installed or couldn't be found. Install it, then try again."
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+msgid "Git sync"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -4459,6 +4491,10 @@ msgstr ""
 msgid "I already have it locally →"
 msgstr ""
 
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
+msgstr ""
+
 #: src/components/ConsentDialogBody.tsx
 #: src/components/settings/OkignoreSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -4771,6 +4807,10 @@ msgstr ""
 msgid "Keep original file"
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
+msgid "Keep this project in sync with your git remote. Follow fetches updates without pushing; full sync pushes your commits too. Turning sync on requires confirmation."
+msgstr ""
+
 #: src/components/SeedDialog.tsx
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
 msgstr ""
@@ -4793,10 +4833,6 @@ msgstr ""
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 msgid "Label <0>(visible link text)</0>"
-msgstr ""
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Last sync"
 msgstr ""
 
 #: src/components/ActivityPanelBurstRow.tsx
@@ -5036,6 +5072,10 @@ msgstr ""
 msgid "Local collaboration data for \"{docName}\" could not be cleared. Reload to retry."
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Local commits are keeping this copy from updating"
+msgstr ""
+
 #: src/components/settings/SharingSection.tsx
 #: src/components/SharingModeField.tsx
 msgid "Local only"
@@ -5194,6 +5234,10 @@ msgstr ""
 
 #: src/components/LinksPanel.tsx
 msgid "Missing page: {linkTitle}. Click to create."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Mode"
 msgstr ""
 
 #: src/components/FolderOverview.tsx
@@ -5406,6 +5450,10 @@ msgstr ""
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "New branch <0>{trimmed}</0> will be created from the current commit, in its own worktree under <1>.ok/worktrees/</1>."
+msgstr ""
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "New changes from your remote appear in your copy automatically."
 msgstr ""
 
 #: src/components/AppMenubar.tsx
@@ -5900,10 +5948,6 @@ msgstr ""
 msgid "ok ui responded but server.lock has no port yet"
 msgstr ""
 
-#: src/components/settings/SyncSection.tsx
-msgid "On"
-msgstr ""
-
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
 msgstr ""
@@ -6350,6 +6394,10 @@ msgstr ""
 msgid "Outline"
 msgstr ""
 
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Overlapping edits"
+msgstr ""
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Owner"
 msgstr ""
@@ -6502,6 +6550,10 @@ msgstr ""
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Pattern warnings: {summary}"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pause sync"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
@@ -7310,6 +7362,10 @@ msgstr ""
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Resume sync"
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "Resuming the conversation"
 msgstr ""
@@ -7318,7 +7374,6 @@ msgstr ""
 #: src/components/ConnectingBanner.tsx
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
-#: src/components/SyncStatusBadge.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Retry"
 msgstr ""
@@ -7747,7 +7802,7 @@ msgid "Set identity"
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
-msgid "Set the auto-sync default for users opening this project for the first time. This setting is committed to your repository."
+msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
 msgstr ""
 
 #: src/components/command-palette-commands.ts
@@ -7845,10 +7900,6 @@ msgstr ""
 #: src/components/settings/SharingSection.tsx
 #: src/components/SharingModeField.tsx
 msgid "Shared"
-msgstr ""
-
-#: src/components/settings/SyncSection.tsx
-msgid "Shared auto-sync default"
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
@@ -8376,6 +8427,10 @@ msgstr ""
 msgid "Switch project…"
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
+msgid "Switch to Follow"
+msgstr ""
+
 #: src/components/settings/SharingSection.tsx
 msgid "Switch to local-only refused"
 msgstr ""
@@ -8406,16 +8461,12 @@ msgstr ""
 
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Sync"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync disabled"
-msgstr ""
-
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Sync disabled — you don't have permission to push"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -8426,18 +8477,29 @@ msgstr ""
 msgid "Sync is failing. See the sync status for details."
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
+msgid "Sync is off — your edits stay on this computer until you commit and push manually."
+msgstr ""
+
 #: src/components/SyncStatusBadge.tsx
-msgid "Sync is off — your edits will not sync to the remote repository."
+msgid "Sync is paused. Turn it back on to resume."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Sync mode"
 msgstr ""
 
 #: src/components/share-receive-miss-content.tsx
 #: src/components/ShareFreshnessWarning.tsx
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync now"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync off"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Sync paused"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -8476,6 +8538,10 @@ msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Synced"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Synced {lastSyncedRelative}"
 msgstr ""
 
 #: src/components/TimelinePanel.tsx
@@ -9315,6 +9381,10 @@ msgstr ""
 msgid "Unrecognized wiki link"
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Up to date"
+msgstr ""
+
 #: src/components/SkillUpdateDialog.tsx
 msgid "Update"
 msgstr ""
@@ -9358,6 +9428,10 @@ msgstr ""
 msgid "Updated \"{display}\" to {0}."
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Updated {lastSyncedRelative}"
+msgstr ""
+
 #: src/components/FolderTimelineCard.tsx
 msgid "updated folder properties"
 msgstr ""
@@ -9366,7 +9440,12 @@ msgstr ""
 msgid "Updated to Version {version}"
 msgstr ""
 
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Updates flow in"
+msgstr ""
+
 #: src/components/SkillUpdateDialog.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Updating"
 msgstr ""
 
@@ -9752,7 +9831,7 @@ msgid "You can attach up to {MAX_ATTACHMENTS} images."
 msgstr ""
 
 #: src/components/AutoSyncOnboardingDialog.tsx
-msgid "You can turn this on later in <0>Settings → Sync</0>."
+msgid "You can change this later in <0>Settings → Sync</0>."
 msgstr ""
 
 #: src/components/DocumentErrorBoundary.tsx
@@ -9771,12 +9850,17 @@ msgstr ""
 msgid "You don't have access to this repository."
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "You don't have permission to push to this repo"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You don't have permission to push to this repo."
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+msgid "You don't have permission to push to this repo. Follow can still keep your copy up to date."
 msgstr ""
 
 #: src/components/ShareFreshnessWarning.tsx
@@ -9830,6 +9914,10 @@ msgstr ""
 #: src/components/TimelineDiffPane.tsx
 #: src/components/TimelinePanel.tsx
 msgid "Your current version is saved first, so this is reversible."
+msgstr ""
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Your edits stay on this computer"
 msgstr ""
 
 #: src/components/settings/EmbeddingsKeySection.tsx

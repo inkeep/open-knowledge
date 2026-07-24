@@ -66,6 +66,6 @@ Even on the right branch, a doc or folder can be renamed or deleted after a link
 
 ### Receiving without push permission
 
-If the shared repo is one your GitHub account can't push to (you're not a collaborator on a public repo, or you have read-only access on a private one), OpenKnowledge skips the usual "Enable auto-sync?" prompt. Sync is also disabled for the same reason in **Settings → Sync**. If the project owner grants you write access later, push permission is re-checked the next time the project's server starts. See [GitHub sync: GitHub-side blockers](/docs/features/github-sync#github-side-blockers) for the full set of permission shapes the sync UI handles.
+If the shared repo is one your GitHub account can't push to (you're not a collaborator on a public repo, or you have read-only access on a private one), OpenKnowledge offers **[Follow](/docs/features/github-sync#follow)** at first open instead of the full "Enable auto-sync?" prompt: your copy keeps up to date by pulling the latest from GitHub automatically, while your own edits stay on your computer. You can keep editing — an incoming update combines with your non-overlapping changes automatically, and an edit to the same lines surfaces as a conflict to resolve.
 
 See [GitHub sync](/docs/features/github-sync) for how to automatically sync changes to GitHub, and [Timeline and recovery](/docs/features/timeline-and-recovery) for per-doc history once the doc is open.

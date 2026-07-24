@@ -8,13 +8,15 @@
  * relies on is open during the post-restart race window — silent data loss
  * by the same failure mode.
  *
- * Skip on CI (subprocess + git child spawns; oven-sh/bun#11892) to mirror
- * the existing boot.test.ts skip gate.
+ * This runs in CI. The old blanket `process.env.CI` skip mirrored
+ * boot.test.ts and cited oven-sh/bun#11892 (Bun failing to reap spawned git
+ * children on GitHub runners) — irrelevant now that the suite runs under
+ * vitest, not `bun test`. The restart-recovery guarantee is exactly the
+ * highest-risk path this file exists to pin, and its full-server-boot +
+ * git-child pattern already runs in CI via the sync-wired harness and
+ * sync-engine.test.ts; leaving it CI-skipped meant it never ran there. If it
+ * ever flakes or hangs in CI, narrow to a targeted skip, not a blanket gate.
  */
-
-import { describe as _bunDescribe, afterEach, beforeEach, expect, test } from 'vitest';
-
-const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
 import { execFile } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -23,6 +25,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { bootServer } from './boot.ts';
 import { ConfigSchema } from './config/schema.ts';
 
@@ -49,6 +52,30 @@ function seedConflictsJson(
       file: e.file,
       detectedAt: e.detectedAt ?? '2026-05-19T00:00:00.000Z',
     })),
+  };
+  writeFileSync(resolve(localDir, 'conflicts.json'), JSON.stringify(data, null, 2), 'utf-8');
+}
+
+/**
+ * Seed a pull-only working-tree conflict entry (no MERGE_HEAD): the branch is at
+ * origin tip and the overlay rides uncommitted. Boot restore must keep it even
+ * though no merge is in progress.
+ */
+function seedWorkingTreeConflictsJson(projectDir: string, file: string): void {
+  const localDir = resolve(projectDir, OK_DIR, 'local');
+  mkdirSync(localDir, { recursive: true });
+  const data = {
+    version: 1,
+    branch: 'main',
+    conflicts: [
+      {
+        file,
+        detectedAt: '2026-05-19T00:00:00.000Z',
+        variant: 'working-tree',
+        theirsSha: '0000000000000000000000000000000000000000',
+        baseSha: '0000000000000000000000000000000000000000',
+      },
+    ],
   };
   writeFileSync(resolve(localDir, 'conflicts.json'), JSON.stringify(data, null, 2), 'utf-8');
 }
@@ -121,6 +148,42 @@ describe('bootServer — FR14 lifecycle restoration from conflicts.json', () => 
         const lifecycleMap = dc.document?.getMap('lifecycle');
         expect(lifecycleMap?.get('status')).toBe('conflict');
         expect(lifecycleMap?.get('reason')).toBe('conflict-markers');
+      } finally {
+        await dc.disconnect();
+      }
+    } finally {
+      await booted.destroy();
+    }
+  }, 30_000);
+
+  test('preserves a working-tree conflict with no MERGE_HEAD and restores its lifecycle', async () => {
+    const contentDir = tmpDir;
+    await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    seedOkScaffold(contentDir);
+    // Commit the doc; NO merge in progress (no MERGE_HEAD). A merge-native entry
+    // would be cleared as stale here — a working-tree overlay must survive.
+    await execFileAsync('git', ['config', 'user.email', 'test@example.com'], { cwd: contentDir });
+    await execFileAsync('git', ['config', 'user.name', 'Test'], { cwd: contentDir });
+    writeFileSync(resolve(contentDir, 'wt.md'), 'origin\n', 'utf-8');
+    await execFileAsync('git', ['add', 'wt.md'], { cwd: contentDir });
+    await execFileAsync('git', ['commit', '-m', 'seed'], { cwd: contentDir });
+    seedWorkingTreeConflictsJson(contentDir, 'wt.md');
+
+    const booted = await bootServer({
+      config: TEST_CONFIG,
+      contentDir,
+      port: 0,
+      quiet: true,
+      gitEnabled: false,
+      idleShutdownMs: null,
+      attachUiSibling: false,
+    });
+
+    try {
+      const dc = await booted.serverInstance.hocuspocus.openDirectConnection('wt');
+      try {
+        // Survived the no-MERGE_HEAD reconcile and the lifecycle was restored.
+        expect(dc.document?.getMap('lifecycle').get('status')).toBe('conflict');
       } finally {
         await dc.disconnect();
       }

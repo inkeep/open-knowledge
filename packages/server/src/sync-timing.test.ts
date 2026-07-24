@@ -3,7 +3,11 @@
  */
 
 import { describe, expect, test } from 'vitest';
-import { computeRemainingMs } from './sync-timing.ts';
+import {
+  ANONYMOUS_PULL_MIN_SECONDS,
+  computeRemainingMs,
+  pullIntervalSecondsForAuthTier,
+} from './sync-timing.ts';
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -74,5 +78,23 @@ describe('computeRemainingMs', () => {
     const lastUtc = new Date(simulatedNow - 22 * SECOND).toISOString();
     const remaining = computeRemainingMs(lastUtc, 30, simulatedNow);
     expect(remaining).toBe(8 * SECOND);
+  });
+});
+
+describe('pullIntervalSecondsForAuthTier', () => {
+  test('authenticated followers keep the responsive base interval', () => {
+    expect(pullIntervalSecondsForAuthTier(30, 'authenticated')).toBe(30);
+    expect(pullIntervalSecondsForAuthTier(60, 'authenticated')).toBe(60);
+  });
+
+  test('anonymous followers are floored to the gentle cadence', () => {
+    expect(pullIntervalSecondsForAuthTier(30, 'anonymous')).toBe(ANONYMOUS_PULL_MIN_SECONDS);
+    expect(pullIntervalSecondsForAuthTier(30, 'anonymous')).toBe(180);
+    expect(pullIntervalSecondsForAuthTier(60, 'anonymous')).toBe(180);
+  });
+
+  test('a base interval already at or above the floor is preserved for anonymous', () => {
+    expect(pullIntervalSecondsForAuthTier(180, 'anonymous')).toBe(180);
+    expect(pullIntervalSecondsForAuthTier(300, 'anonymous')).toBe(300);
   });
 });

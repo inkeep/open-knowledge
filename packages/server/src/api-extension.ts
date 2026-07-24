@@ -437,6 +437,7 @@ import { reprojectAllManagedSkills } from './skill-reproject.ts';
 import { readSkillInstallStateSnapshot } from './skill-state.ts';
 import { readSkillTargets, writeSkillTargets } from './skill-targets-store.ts';
 import { handleSpawnCursor } from './spawn-cursor-api.ts';
+import { assertRealpathWithinDir } from './symlink-guard.ts';
 import { readUiLock } from './ui-lock.ts';
 import {
   HashingPassThrough,
@@ -13609,6 +13610,98 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     // backward-compatible.
     const source = url.searchParams.get('source');
     const pg = simpleGit({ baseDir: projectDir, timeout: { block: 15_000 } });
+
+    // Working-tree-variant conflicts (pull-only B1) have no git index stages:
+    // the branch already fast-forwarded to origin tip and the overlay rides
+    // uncommitted on top. Serve `theirs`/`base` from the pinned tip/base blobs
+    // and `ours` from the live doc (or disk when unloaded). The merge-native
+    // stage path below is untouched for git-merge conflicts.
+    const wtEntry = engine
+      ?.getConflicts()
+      .find((c) => c.file === file && c.variant === 'working-tree');
+    if (wtEntry) {
+      try {
+        // A pinned SHA that fails to read is an unexpected failure (the blob was
+        // reachable when the engine pinned it), NOT an absent blob. Returning ''
+        // would misread it downstream as origin-deleted (`kind: 'modify-delete'`)
+        // and steer the user into a `delete` resolution that removes their own
+        // doc. Discriminate: `undefined` sha = genuinely no pinned blob (the
+        // empty side of a delete/modify); a read failure on a present sha logs
+        // and rethrows to the outer catch → 500, matching the merge-native
+        // `showStage` discipline below.
+        const readBlob = async (sha: string | undefined): Promise<string> => {
+          if (!sha) return '';
+          try {
+            return await pg.raw(['cat-file', 'blob', sha]);
+          } catch (err) {
+            console.warn(
+              JSON.stringify({
+                event: 'conflict-content-readblob-failed',
+                file,
+                detail: err instanceof Error ? err.message : String(err),
+                handler: 'sync-conflict-content',
+              }),
+            );
+            throw err;
+          }
+        };
+        const theirs = await readBlob(wtEntry.theirsSha);
+        const base = await readBlob(wtEntry.baseSha);
+        const docName = stripDocExtension(file);
+        const loaded = hocuspocus.documents.get(docName);
+        let ours = '';
+        let oursPresent = false;
+        let lifecycleStatus: string | null = null;
+        if (loaded) {
+          const rawStatus = loaded.getMap('lifecycle').get('status');
+          lifecycleStatus =
+            typeof rawStatus === 'string' && rawStatus.length > 0 ? rawStatus : null;
+          const ytextOurs = serializeDoc ? serializeDoc(docName) : null;
+          if (ytextOurs !== null) {
+            ours = ytextOurs;
+            oursPresent = true;
+          }
+        } else {
+          // Unloaded doc: the overlay is on disk (absent for a delete overlay).
+          // Realpath-contain the read first — `file` is an origin-controlled
+          // tracked path that could be a symlink escaping the working tree,
+          // disclosing a foreign file. A SymlinkEscapeError propagates to the
+          // outer catch → 500; the inner catch still handles the benign ENOENT
+          // of a genuine delete overlay.
+          assertRealpathWithinDir(join(projectDir, file), projectDir);
+          try {
+            ours = readFileSync(join(projectDir, file), 'utf-8');
+            oursPresent = true;
+          } catch {
+            oursPresent = false;
+          }
+        }
+        // A locally-deleted file the tip modified is a delete/modify shape;
+        // otherwise both sides hold content.
+        const kind: 'both-modified' | 'delete-modify' | 'modify-delete' = !oursPresent
+          ? 'delete-modify'
+          : theirs.length === 0
+            ? 'modify-delete'
+            : 'both-modified';
+        successResponse(
+          res,
+          200,
+          SyncConflictContentSuccessSchema,
+          { file, base, ours, theirs, kind, lifecycleStatus },
+          { handler: 'sync-conflict-content' },
+        );
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to read conflict content.',
+          { handler: 'sync-conflict-content', cause: e },
+        );
+      }
+      return;
+    }
+
     // git stages: 1 = base, 2 = ours, 3 = theirs. Any may be missing for
     // delete/edit or add/add conflicts. Return a discriminated shape so the
     // caller can derive `kind` from stage presence — empty-string content is

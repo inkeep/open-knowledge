@@ -23,7 +23,7 @@
  *
  * Extracted from EditorArea into a pure function so each input contributes to
  * an independently testable truth table — mirrors `shouldPaintOverlay` and
- * `shouldShowAutoSyncOnboarding`.
+ * `resolveAutoSyncOnboarding`.
  */
 export interface BottomComposerGateInputs {
   /** Whether the docked terminal is currently visible. */

@@ -61,7 +61,7 @@ interface ConflictLifecycleSeedOptions {
  * `projectDir === contentDir` (the dominant case), but a project with
  * `contentDir` nested inside `projectDir` would otherwise misroute.
  */
-function entryMatchesDocName(
+export function entryMatchesDocName(
   entry: ConflictEntry,
   docName: string,
   projectDir: string,

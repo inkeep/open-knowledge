@@ -25,7 +25,7 @@ import { loadStickyAgent } from '@/lib/unified-agent-store';
 import { setViewMenuState } from '@/lib/view-menu-state-store';
 import { AuthModal } from './AuthModal';
 import { AutoSyncOnboardingDialog } from './AutoSyncOnboardingDialog';
-import { shouldShowAutoSyncOnboarding } from './auto-sync-onboarding-gate';
+import { resolveAutoSyncOnboarding } from './auto-sync-onboarding-gate';
 import { type PanelTab, TABS } from './DocPanel';
 import { EditorArea, type TerminalPlacement } from './EditorArea';
 import { EditorHeader } from './EditorHeader';
@@ -223,9 +223,10 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   const { activeDocName } = useDocumentContext();
 
   // Onboarding modal: open once per machine per project when every gate
-  // input aligns. Decision logic lives in `shouldShowAutoSyncOnboarding`
-  // so each input has its own row in the helper's truth table.
-  const showAutoSyncOnboarding = shouldShowAutoSyncOnboarding({
+  // input aligns. Decision logic lives in `resolveAutoSyncOnboarding`, which
+  // also forks the prompt variant on the push-permission probe (denied →
+  // pull-only), so each input has its own row in the helper's truth table.
+  const autoSyncOnboardingVariant = resolveAutoSyncOnboarding({
     autoSyncOnboardingDismissed,
     hasRemote: syncStatus?.hasRemote,
     projectLocalSynced,
@@ -557,7 +558,8 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         }}
       />
       <AutoSyncOnboardingDialog
-        open={showAutoSyncOnboarding}
+        open={autoSyncOnboardingVariant !== null}
+        variant={autoSyncOnboardingVariant ?? 'full'}
         onResolved={() => setAutoSyncOnboardingDismissed(true)}
       />
       <TagDialog />

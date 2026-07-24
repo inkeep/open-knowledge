@@ -68,11 +68,12 @@ let projectLocalSynced = false;
 let projectSynced = false;
 let projectLocalConfig: { autoSync?: { enabled?: boolean | null } } | null = null;
 let projectConfig: { autoSync?: { default?: boolean | null } } | null = null;
+let pushPermissionCheckStatus: 'allowed' | 'denied' | 'unknown' | undefined = 'allowed';
 
 vi.doMock('@/hooks/use-git-sync-status', () => ({
   useGitSyncStatus: () => ({
     hasRemote,
-    pushPermission: { checkStatus: 'allowed' },
+    pushPermission: { checkStatus: pushPermissionCheckStatus },
   }),
 }));
 
@@ -163,11 +164,20 @@ vi.doMock('@/editor/components/TagDialog', () => ({
 }));
 
 vi.doMock('./AutoSyncOnboardingDialog', () => ({
-  AutoSyncOnboardingDialog: ({ open, onResolved }: { open: boolean; onResolved: () => void }) => (
+  AutoSyncOnboardingDialog: ({
+    open,
+    variant,
+    onResolved,
+  }: {
+    open: boolean;
+    variant: string;
+    onResolved: () => void;
+  }) => (
     <button
       type="button"
       data-testid="auto-sync-onboarding"
       data-open={String(open)}
+      data-variant={variant}
       onClick={onResolved}
     >
       Auto sync onboarding
@@ -192,6 +202,7 @@ describe('EditorPane auto-sync onboarding gate', () => {
     projectSynced = false;
     projectLocalConfig = null;
     projectConfig = null;
+    pushPermissionCheckStatus = 'allowed';
   });
 
   test('exports the EditorPane component', async () => {
@@ -204,6 +215,21 @@ describe('EditorPane auto-sync onboarding gate', () => {
     projectSynced = true;
     projectLocalSynced = true;
     projectLocalConfig = { autoSync: { enabled: null } };
+    projectConfig = { autoSync: { default: null } };
+
+    await renderEditorPane();
+
+    expect(screen.getByTestId('auto-sync-onboarding').getAttribute('data-open')).toBe('true');
+  });
+
+  test('opens when autoSync carries neither a mode nor a legacy enabled value', async () => {
+    hasRemote = true;
+    projectSynced = true;
+    projectLocalSynced = true;
+    // Neither key set → the resolved local mode is null (unanswered), so the
+    // prompt fires — the mode resolver treats absent the same as the null
+    // sentinel, unlike the old literal `enabled === null` check.
+    projectLocalConfig = { autoSync: {} };
     projectConfig = { autoSync: { default: null } };
 
     await renderEditorPane();
@@ -255,14 +281,6 @@ describe('EditorPane auto-sync onboarding gate', () => {
       { autoSync: { default: null } },
     ],
     [
-      'enabled undefined is not the unanswered sentinel',
-      true,
-      true,
-      true,
-      { autoSync: {} },
-      { autoSync: { default: null } },
-    ],
-    [
       'committed default off suppresses the prompt',
       true,
       true,
@@ -284,6 +302,34 @@ describe('EditorPane auto-sync onboarding gate', () => {
     projectLocalSynced = nextSynced;
     projectLocalConfig = nextProjectLocalConfig;
     projectConfig = nextProjectConfig;
+
+    await renderEditorPane();
+
+    expect(screen.getByTestId('auto-sync-onboarding').getAttribute('data-open')).toBe('false');
+  });
+
+  test('a denied push probe opens the pull-only variant', async () => {
+    hasRemote = true;
+    projectSynced = true;
+    projectLocalSynced = true;
+    projectLocalConfig = { autoSync: { enabled: null } };
+    projectConfig = { autoSync: { default: null } };
+    pushPermissionCheckStatus = 'denied';
+
+    await renderEditorPane();
+
+    const dialog = screen.getByTestId('auto-sync-onboarding');
+    expect(dialog.getAttribute('data-open')).toBe('true');
+    expect(dialog.getAttribute('data-variant')).toBe('follow');
+  });
+
+  test('an unknown push probe keeps the prompt closed', async () => {
+    hasRemote = true;
+    projectSynced = true;
+    projectLocalSynced = true;
+    projectLocalConfig = { autoSync: { enabled: null } };
+    projectConfig = { autoSync: { default: null } };
+    pushPermissionCheckStatus = 'unknown';
 
     await renderEditorPane();
 

@@ -959,14 +959,14 @@ describe('createServer() — config file watcher (US-007)', () => {
   });
 });
 
-// ─── file-watcher → engine.setEnabled loop ─────────────────────────────────
+// ─── file-watcher → engine.setMode loop ────────────────────────────────────
 //
 // Writing autoSync.enabled to <projectDir>/.ok/local/config.yml externally
-// must propagate via the file watcher to the SyncEngine's syncEnabled flag.
-// Closes the persistence ↔ engine loop end-to-end without going through
-// the client binding.
+// must propagate via the file watcher to the SyncEngine's mode (legacy
+// `enabled: true` derives to `full`). Closes the persistence ↔ engine loop
+// end-to-end without going through the client binding.
 
-describe('createServer() — project-local file watcher → engine.setEnabled', () => {
+describe('createServer() — project-local file watcher → engine.setMode', () => {
   let testProjectDir: string;
   let testHomedir: string;
 
@@ -1002,7 +1002,7 @@ describe('createServer() — project-local file watcher → engine.setEnabled', 
 
     // Wait for file-watcher to detect the new file, applyExternalConfigChange
     // to update Y.Text, and the post-change handler to call
-    // syncEngine.setEnabled(readProjectAutoSyncEnabled()).
+    // syncEngine.setMode(readProjectAutoSyncMode()).
     const flipped = await waitFor(() => srv.syncEngine?.getStatus().syncEnabled === true);
     expect(flipped).toBe(true);
 
@@ -1056,7 +1056,7 @@ describe('createServer() — project-local file watcher → engine.setEnabled', 
     expect(srv.syncEngine?.getStatus().syncEnabled).toBe(false);
 
     // A maintainer commits autoSync.default: true to <projectDir>/.ok/config.yml.
-    // The committed-config watcher must re-run readProjectAutoSyncEnabled and,
+    // The committed-config watcher must re-run readProjectAutoSyncMode and,
     // because this machine is unanswered, seed the engine from the default.
     mkdirSync(join(testProjectDir, '.ok'), { recursive: true });
     writeFileSync(
@@ -2080,16 +2080,16 @@ describe('createServer() — config-doc admission guard', () => {
   });
 });
 
-// ─── readProjectAutoSyncEnabled precedence + onAutoDisable scope ────────────
+// ─── readProjectAutoSyncMode precedence + onAutoDisable scope ────────────
 //
-// readProjectAutoSyncEnabled reads the per-machine project-local
+// readProjectAutoSyncMode reads the per-machine project-local
 // autoSync.enabled first; when unanswered (null/absent) it falls back to the
 // committed project-scope autoSync.default seed. A committed autoSync.enabled is
 // deliberately ignored (project-local-scoped field → a committed value is a
 // scope mismatch). onAutoDisable persists the auto-off flag to project-local so
 // a teammate's machine never overrides another teammate's preference via git.
 
-describe('createServer() — readProjectAutoSyncEnabled precedence', () => {
+describe('createServer() — readProjectAutoSyncMode precedence', () => {
   let testProjectDir: string;
   let testHomedir: string;
 
@@ -2230,7 +2230,7 @@ describe('createServer() — readProjectAutoSyncEnabled precedence', () => {
   });
 
   test('invalid project-local YAML falls through to committed default (degraded path)', async () => {
-    // Pins the !local.valid branch in readProjectAutoSyncEnabled. A corrupt
+    // Pins the !local.valid branch in readProjectAutoSyncMode. A corrupt
     // project-local file must not silently disable sync — the function logs and
     // falls back to the committed project default so the user keeps working
     // until the corruption is repaired.
@@ -2250,7 +2250,7 @@ describe('createServer() — readProjectAutoSyncEnabled precedence', () => {
 
   test('invalid committed config defaults to disabled (degraded path)', async () => {
     // A corrupt committed `.ok/config.yml` means autoSync.default can't be read,
-    // so sync defaults to disabled (readProjectAutoSyncEnabled logs the
+    // so sync defaults to disabled (readProjectAutoSyncMode logs the
     // correlation). The machine is unanswered, so there is no project-local
     // value to fall back to — mirrors the project-local degraded path.
     seedProjectConfig('autoSync:\n  default: : not-yaml [[[\n');

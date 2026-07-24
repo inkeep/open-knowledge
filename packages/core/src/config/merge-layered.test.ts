@@ -135,7 +135,7 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
 
     // `??` treats null + undefined alike — null in project-local falls through
     // to project, mirroring the existing scope: 'project' (project ?? user)
-    // contract. This matches the server's readProjectAutoSyncEnabled which
+    // contract. This matches the server's readProjectAutoSyncMode which
     // checks `!== null && !== undefined` before short-circuiting.
     const merged = mergeLayered(user, project, projectLocal);
     expect(merged.autoSync?.enabled).toBe(true);

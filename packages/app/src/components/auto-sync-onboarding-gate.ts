@@ -1,7 +1,8 @@
 /**
  * Pure decision function for the AutoSync onboarding modal.
  *
- * The dialog opens once per machine per project when:
+ * Returns which prompt variant to show, or `null` to stay hidden. The dialog
+ * opens once per machine per project when every gate condition aligns:
  *   1. The user has not yet dismissed it this session.
  *   2. A git remote exists for the project (`hasRemote === true`).
  *   3. The project-local CRDT binding has synced from disk
@@ -11,29 +12,39 @@
  *   4. The committed project binding has synced (`projectSynced === true`) —
  *      the same flash-free guard for the committed `autoSync.default` read in
  *      condition 7. Until the committed doc lands, `default` reads as the
- *      schema default (`null`), so a project that ships `default: false` would
- *      flash the modal open and then close once the real value arrives.
+ *      schema default (`null`), so a project that ships a default would flash
+ *      the modal open and then close once the real value arrives.
  *   5. The local config is hydrated (`projectLocalConfig !== null`).
- *   6. The user hasn't answered the autoSync prompt yet
- *      (`autoSync.enabled === null`). The schema's `nullable().default(null)`
- *      makes `null` the canonical "unanswered" sentinel — never `undefined`.
+ *   6. This machine hasn't answered yet — the resolved local mode is `null`.
+ *      `resolveLocalAutoSyncMode` reads `autoSync.mode` and falls back to the
+ *      legacy `autoSync.enabled` boolean, so a machine that answered under
+ *      either shape is treated as answered.
  *   7. The maintainer has NOT committed an `autoSync.default` seed
- *      (`projectConfig.autoSync.default` is `null`/absent). A committed `true`
- *      or `false` pre-answers the prompt for everyone who clones the project,
- *      so the modal is suppressed; only a null/absent default still asks.
- *   8. The push-permission probe HAS resolved AND did not return `'denied'`.
- *      The gate requires the probe to settle first — `undefined` (probe
- *      still pending) keeps the dialog hidden so we don't flash it open
- *      and then close it the moment the probe returns `denied` (the
- *      common case on share-linked clones of someone else's repo).
- *      `'unknown'` (probe failed) still passes — graceful degradation
- *      preserves the read+write user's onboarding ask when the probe
- *      can't reach a verdict.
+ *      (`modeFromCommittedDefault(default)` is `null`). A committed default
+ *      (off/pull/full, or the legacy boolean) pre-answers the prompt for
+ *      everyone who clones the project, so the modal is suppressed; only a
+ *      null/absent default still asks.
+ *   8. The push-permission probe HAS resolved to a forking verdict. `allowed`
+ *      returns the full-sync variant; `denied` (incl. the anonymous no-network
+ *      short-circuit, the common case on share-linked clones) returns the
+ *      pull-only variant. `unknown` (probe failed) and `undefined` (probe
+ *      pending) both suppress: showing a full-sync prompt to a maybe-denied
+ *      user promises pushes we can't keep, and Settings stays available for a
+ *      later opt-in. The pending suppression is also the flash-free guard.
  *
  * Extracted from EditorPane into a pure function so each input contributes
  * to an independently testable truth table. The cheapest checks come first
  * to short-circuit before the more expensive reads.
  */
+import {
+  modeFromCommittedDefault,
+  resolveLocalAutoSyncMode,
+  type StoredSyncMode,
+} from '@inkeep/open-knowledge-core';
+
+/** Which onboarding prompt to show; `follow` explains one-directional sync. */
+export type AutoSyncOnboardingVariant = 'full' | 'follow';
+
 export interface AutoSyncOnboardingGateInputs {
   /** Local React state — has the user already dismissed this session? */
   autoSyncOnboardingDismissed: boolean;
@@ -44,32 +55,34 @@ export interface AutoSyncOnboardingGateInputs {
   /** CRDT lifecycle: has the committed project config doc finished its first sync? */
   projectSynced: boolean | undefined;
   /** Project-local config — null until the binding hydrates. */
-  projectLocalConfig: { autoSync?: { enabled: boolean | null } | null } | null;
+  projectLocalConfig: {
+    autoSync?: { mode?: StoredSyncMode | null; enabled?: boolean | null } | null;
+  } | null;
   /** Committed project config — carries the maintainer's autoSync.default seed. */
-  projectConfig: { autoSync?: { default?: boolean | null } | null } | null;
+  projectConfig: { autoSync?: { default?: boolean | StoredSyncMode | null } | null } | null;
   /** Push-permission probe outcome. */
   pushPermissionCheckStatus: 'allowed' | 'denied' | 'unknown' | undefined;
 }
 
-export function shouldShowAutoSyncOnboarding(inputs: AutoSyncOnboardingGateInputs): boolean {
-  return (
+export function resolveAutoSyncOnboarding(
+  inputs: AutoSyncOnboardingGateInputs,
+): AutoSyncOnboardingVariant | null {
+  const aligned =
     !inputs.autoSyncOnboardingDismissed &&
     inputs.hasRemote === true &&
     inputs.projectLocalSynced === true &&
     inputs.projectSynced === true &&
     inputs.projectLocalConfig !== null &&
-    inputs.projectLocalConfig.autoSync?.enabled === null &&
-    // A committed autoSync.default (true OR false) pre-answers the prompt for
-    // everyone who clones the project — suppress the modal whenever the
-    // maintainer set one; only a null/absent default falls through to the ask.
-    // Gated on projectSynced above so this compares against the real committed
-    // value, not the schema default during the cold-start sync window.
-    (inputs.projectConfig?.autoSync?.default ?? null) === null &&
-    // Probe must have resolved AND not be 'denied' — `undefined` (pending)
-    // would flash the dialog and then close on the probe's `denied` return.
-    // `'unknown'` passes for graceful degradation when the probe can't
-    // reach a verdict (network failure, rate-limit, etc.).
-    (inputs.pushPermissionCheckStatus === 'allowed' ||
-      inputs.pushPermissionCheckStatus === 'unknown')
-  );
+    resolveLocalAutoSyncMode(inputs.projectLocalConfig.autoSync ?? undefined) === null &&
+    modeFromCommittedDefault(inputs.projectConfig?.autoSync?.default) === null;
+  if (!aligned) return null;
+
+  switch (inputs.pushPermissionCheckStatus) {
+    case 'allowed':
+      return 'full';
+    case 'denied':
+      return 'follow';
+    default:
+      return null;
+  }
 }

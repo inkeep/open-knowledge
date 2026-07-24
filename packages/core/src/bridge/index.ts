@@ -60,6 +60,7 @@ export {
   type BridgeMergeContentLossSide,
   type BridgeMergeContentLossWhich,
   mergeThreeWay,
+  tryLineLevelCombine,
 } from './merge-three-way.ts';
 export {
   BRIDGE_TOLERANCE_CLASSES,

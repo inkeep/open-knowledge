@@ -3,10 +3,18 @@ title: GitHub sync
 icon: custom/GitHub
 description: Clone repos from GitHub, auto-sync changes with your team, and resolve conflicts.
 ---
-OpenKnowledge can connect a project to a GitHub remote repository and keep it synced over time. When GitHub sync is enabled, OpenKnowledge actively pulls commits from the remote and pushes commits back.
+
+import { Cloud } from 'lucide-react';
+
+OpenKnowledge can connect a project to a GitHub remote repository and keep it synced over time. When GitHub sync is enabled, OpenKnowledge keeps your copy current with the remote.
+
+There are two modes for GitHub sync:
+
+- **Full** pulls commits from the remote and pushes your commits back.
+- **Follow** fetches updates from the remote and never pushes or commits on your behalf.
 
 <Callout type="warn">
-  Only enable GitHub sync for repositories where you are comfortable with OpenKnowledge writing commits to the remote history. If you are worried about automated commits cluttering your Git history, do not enable sync for that repository.
+  Only enable full GitHub sync for repositories where you are comfortable with OpenKnowledge writing commits to the remote history. If you are worried about automated commits cluttering your Git history, do not enable full sync for that repository.
 </Callout>
 
 ## What GitHub sync is for
@@ -27,7 +35,7 @@ These steps use the desktop app; from a terminal, [`ok clone`](/docs/reference/c
 <Step>
     ### Open the clone dialog
 
-    From the Navigator window, click **Clone from GitHub**. You can open the navigator window from the editor by clicking on your project name in the bottom left and then clicking **Switch project**.
+    From the Navigator window, click **Clone from GitHub**. You can open the Navigator window from the editor by clicking on your project name in the bottom left and then clicking **Switch project**.
 </Step>
 
 <Step>
@@ -57,19 +65,30 @@ This will open a dialog where you can choose an owner and repository name. You c
 
 ## Enable GitHub sync
 
-When you open a freshly cloned project, you will be prompted to enable sync. You can also toggle it from the project settings page at any time.
+When you open a freshly cloned project, you will be prompted to enable sync. If you have full access to the repository, you will be prompted to enable **Full** sync. If you have read only access, you will be prompted to enable **Follow** sync. You can change the sync mode from the sync popover (the <Cloud role="img" aria-label="Sync" className="inline size-4 align-text-bottom" /> icon) or from **Settings → Sync** at any time.
 
-While sync is active, OpenKnowledge:
+If you want to set a default sync setting for future collaborators, go to the project settings page and navigate to the **Sync** → **Shared default** section. This writes [`autoSync.default`](/docs/reference/configuration) — one of `off`, `follow`, or `full` — to the project's committed `.ok/config.yml`, pre-answering the enable-sync prompt for everyone who clones the repo; each machine's own auto-sync choice overrides it.
+
+### Full
+
+With full sync active, OpenKnowledge:
 
 - Fetches commits from the remote
 - Commits your edits locally using the configured Git identity
 - Pushes those commits back to the remote so collaborators see your changes
 
-If your Git identity isn't set, sync still commits under a default "OpenKnowledge" author; the sync status indicator reminds you to set one so teammates see your name.
+If your Git identity isn't set, OpenKnowledge commits under a default "OpenKnowledge" author; the sync status indicator reminds you to set one so teammates see your name.
 
 Pulls can overwrite uncommitted local file changes, so commit or discard work-in-progress before you enable sync.
 
-If you want to set a default auto-sync setting for future collaborators, go to the project settings page and navigate to the **Sync** -> **Shared default** section. This writes [`autoSync.default`](/docs/reference/configuration) to the project's committed `.ok/config.yml`, pre-answering the enable-sync prompt for everyone who clones the repo; each machine's own auto-sync choice overrides it.
+### Follow
+
+With follow sync active, OpenKnowledge:
+
+- Fetches commits from the remote
+- Never commits or pushes your edits to the remote
+
+Your own edits stay on this computer. You can keep editing a followed project: when an update arrives, non-overlapping changes combine automatically, and an edit to the same lines the remote changed surfaces in the [conflict view](#resolving-a-conflict) where you choose which side to keep. Your branch always tracks the remote tip and never forks.
 
 ## Authentication
 
@@ -104,7 +123,7 @@ A few situations stop sync from completing successfully. In each case the sync s
 ### Conflicts and pending changes
 
 - **Unresolved conflicts.** If even one file has a conflict between your edits and your team's, sync waits. You can keep working on every other doc; only the conflicted files are frozen until you choose a side from the diff view. See [Resolving a conflict](#resolving-a-conflict) above.
-- **Local changes would be overwritten by an incoming update.** A teammate's update is ready to pull, but a file it touches has uncommitted local changes. Doc edits are committed automatically before merging, so this usually means other tracked files, like configs. Sync pauses rather than clobber your work; commit, stash, or discard those changes from a terminal and sync resumes.
+- **Local changes would be overwritten by an incoming update.** A teammate's update is ready to pull, but a file it touches has uncommitted local changes. Doc edits are committed automatically before merging, so this usually means other tracked files, like configs. Sync pauses rather than clobbering your work; commit, stash, or discard those changes from a terminal and sync resumes.
 - **Edits made outside the app aren't ready yet.** If you (or another tool) edited a file directly on disk while sync wanted to merge, OpenKnowledge waits until those external edits settle before merging. Usually this clears in a second or two on its own.
 
 ### Project isn't on a normal branch
@@ -115,7 +134,7 @@ A few situations stop sync from completing successfully. In each case the sync s
 ### GitHub-side blockers
 
 - **Authentication errors.** Your stored credentials expired, were revoked, or don't have access to this repository anymore. Reconnect from the sync indicator (or from **Settings → Account**) to clear the error.
-- **You don't have permission to push to this repo.** Someone shared a project backed by a GitHub repo where your account isn't a collaborator (or has read-only access on a private repo). OpenKnowledge checks this up front: instead of prompting you to enable sync that would just fail, the toggle is disabled with an inline "You don't have permission to push to this repo" message in both the sync indicator popover and **Settings → Sync**. If you had sync enabled on a different repo and switch to one you can't push to, OpenKnowledge pauses sync in-memory rather than mutating your preference; your `Auto-sync: on` setting is preserved for the next repo you have full access to. Ask the project owner for write access, then click sync to re-check.
+- **You don't have permission to push to this repo.** Someone shared a project backed by a GitHub repo where your account isn't a collaborator (or has read-only access on a private repo). OpenKnowledge checks this up front and offers **Follow** instead of full sync.
 - **Protected branches and rejected pushes.** If the target branch requires reviews, signed commits, or status checks, GitHub rejects the push. OpenKnowledge turns sync off automatically so it stops retrying, and it stays off until you turn it back on from the sync indicator or **Settings → Sync**. Switch to a branch you can push to, or use a pull request for the protected branch instead.
 
 ### Temporary problems

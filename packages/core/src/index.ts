@@ -80,6 +80,30 @@ export {
   type MenuPlatform,
   type MenuSection,
 } from './commands/command-identity.ts';
+// Sync-mode vocabulary + resolution rules (off/follow/full). Browser+node compatible.
+export {
+  displayActiveMode,
+  hasEverEnabledSync,
+  isSyncActiveMode,
+  isSyncMode,
+  isSyncPaused,
+  modeFromCommittedDefault,
+  modeFromLegacyEnabled,
+  normalizeStoredMode,
+  resolveEffectiveAutoSyncMode,
+  resolveLocalAutoSyncMode,
+  resumeModeOf,
+  STORED_SYNC_ACTIVE_MODES,
+  STORED_SYNC_MODES,
+  type StoredSyncActiveMode,
+  type StoredSyncMode,
+  SYNC_ACTIVE_MODES,
+  SYNC_MODE_CHANGE_SOURCES,
+  SYNC_MODES,
+  type SyncActiveMode,
+  type SyncMode,
+  type SyncModeChangeSource,
+} from './config/auto-sync-mode.ts';
 // Headless config writers + UI ConfigBinding.
 // Browser+node compatible — no Node deps; structural ConfigDocProvider type
 // keeps `@hocuspocus/provider` out of core's runtime deps.
@@ -803,6 +827,9 @@ export {
   ProblemDetailsSchema,
   type ProblemType,
   ProblemTypeSchema,
+  PULL_OUTCOMES,
+  type PullOutcome,
+  PullOutcomeSchema,
   PushPermissionSchema,
   type PushPermissionWire,
   type RenamedAssetMapping,
@@ -976,6 +1003,8 @@ export {
   SyncConflictsSuccessSchema,
   type SyncErrorCode,
   SyncErrorCodeSchema,
+  SyncModeSchema,
+  type SyncModeWire,
   SyncRemoteSchema,
   type SyncRemoteWire,
   type SyncResolveConflictRequest,
@@ -1212,6 +1241,7 @@ export {
   type ToleranceFireRecord,
   type ToleranceTelemetryHook,
   toBridgeInvariantLog,
+  tryLineLevelCombine,
 } from './bridge/index.ts';
 // Two-phase shutdown timing constants — shared by the CLI's idle-shutdown
 // UI-sibling termination and the desktop's `stopAllOwnedServers` auto-

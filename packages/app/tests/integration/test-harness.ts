@@ -17,12 +17,14 @@
  *     (required for test.concurrent() correctness)
  */
 
+import { execFile } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createNetServer, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { promisify } from 'node:util';
 
 export { wait };
 
@@ -33,10 +35,12 @@ import {
   BridgeInvariantViolationError,
   type InvariantViolation,
   isParseEquivalentBridge,
+  LOCAL_DIR,
   MarkdownManager,
   normalizeBridge,
   prependFrontmatter,
   ServerInfoSuccessSchema,
+  type SyncMode,
   sharedExtensions,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
@@ -182,6 +186,15 @@ export interface CreateTestServerOptions {
    * applies to fresh contentDirs (`options.contentDir === undefined`).
    */
   markdownlintEnabled?: boolean;
+  /**
+   * Seconds between the attached SyncEngine's background pull/push cycles.
+   * Forwarded to `ServerOptions`. Sync-wired tests (`createSyncWiredTestServer`)
+   * pass a large value so a background timer never races the scenario the test
+   * drives explicitly via `engine.trigger()`. Omit for the default engine
+   * cadence (30 s pull / 60 s push).
+   */
+  pullIntervalSeconds?: number;
+  pushIntervalSeconds?: number;
 }
 
 export async function createTestServer(options: CreateTestServerOptions = {}): Promise<TestServer> {
@@ -270,6 +283,8 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
     localOpCliArgs: options.localOpCliArgs,
     configHomedirOverride: homeOverride,
     mdManager: options.mdManager,
+    pullIntervalSeconds: options.pullIntervalSeconds,
+    pushIntervalSeconds: options.pushIntervalSeconds,
     ...(ephemeral ? { ephemeral: true, singleDocRelPath: options.singleDocRelPath } : {}),
     // Skip the durable state-manifest pre-flight gate. Each test allocates a fresh tmpdir, so the gate has nothing
     // meaningful to assert; the writes would just generate noise across thousands
@@ -2003,4 +2018,174 @@ export async function pollDiskContentStable(
   throw new Error(
     `pollDiskContentStable: predicate never held for ${settleMs}ms within ${timeoutMs}ms budget on ${filePath}. Last content length: ${lastContent.length}`,
   );
+}
+
+// ─── Sync-wired server (real bare origin + attached SyncEngine) ───
+//
+// The plain `createTestServer` boots a SyncEngine against a remote-less git
+// repo, so it parks dormant and never pulls. `createSyncWiredTestServer` gives
+// the harness a real upstream: a bare origin repo, a seeded author clone that
+// authors upstream commits, and a follower clone (the server's contentDir) that
+// carries an `origin` remote and a project-local `autoSync.mode`. The attached
+// SyncEngine detects that remote at boot, so the composed
+// fetch → fast-forward → CRDT-import → status chain becomes drivable in-process
+// via `engine.trigger('pull')`.
+
+const execFileAsync = promisify(execFile);
+
+/** Large enough that the engine's background cadence never fires within a test;
+ *  sync-wired tests drive cycles explicitly via `trigger()`. Mirrors the
+ *  interval the engine-tier fixtures use to pin scheduling out of the way. */
+const SYNC_WIRED_IDLE_INTERVAL_SECONDS = 99_999;
+
+async function runGit(cwd: string, args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync('git', args, { cwd });
+  return stdout;
+}
+
+/** Write each `path → content` entry under `root`, creating parent dirs. */
+function writeFilesUnder(root: string, files: Record<string, string>): void {
+  for (const [rel, content] of Object.entries(files)) {
+    const abs = join(root, rel);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, content, 'utf-8');
+  }
+}
+
+export interface SyncWiredHandle {
+  /** The bare origin repo the engine fetches from (the "GitHub" of the test). */
+  originDir: string;
+  /**
+   * Author an upstream commit: write each `path → content` file into the
+   * persistent author clone, commit, and push to `origin/main`. Resolves after
+   * the push completes, so a subsequent `engine.trigger('pull')` observes the
+   * new tip. Simulates a teammate pushing to the shared repo. File bytes must
+   * differ from the current tip (an unchanged tree makes `git commit` fail).
+   */
+  pushToOrigin: (files: Record<string, string>, message?: string) => Promise<void>;
+  /** The attached SyncEngine — asserted non-null at boot. Drive with
+   *  `trigger()` / `setMode()`; read with `getStatus()`. Also reachable via
+   *  `server.instance.syncEngine`. */
+  engine: NonNullable<ServerInstance['syncEngine']>;
+}
+
+export interface SyncWiredTestServer extends TestServer {
+  sync: SyncWiredHandle;
+}
+
+export interface CreateSyncWiredServerOptions {
+  /** `autoSync.mode` seeded into the follower's project-local config, so the
+   *  engine attaches in this mode at boot. Default `'full'`. */
+  mode?: SyncMode;
+  /** Files committed to `origin/main` before the follower clone (so the clone
+   *  starts with them). Default seeds one document. */
+  originSeed?: Record<string, string>;
+  /** Engine pull cadence (seconds). Default: parked far out of the way. */
+  pullIntervalSeconds?: number;
+  /** Engine push cadence (seconds). Default: parked far out of the way. */
+  pushIntervalSeconds?: number;
+  /** Extra `createTestServer` options merged in (e.g. `debounce`). `contentDir`
+   *  and `keepContentDir` are managed by this helper and cannot be overridden. */
+  serverOptions?: Omit<CreateTestServerOptions, 'contentDir' | 'keepContentDir'>;
+}
+
+/**
+ * Boot a test server whose SyncEngine is wired to a real bare origin repo.
+ *
+ * Layout created (all under `os.tmpdir()`, per-call unique, parallel-safe):
+ *   - `originDir`  — bare repo, `main` HEAD, seeded via the author clone.
+ *   - author clone — authors upstream commits; reused by `pushToOrigin`.
+ *   - follower clone — the server's `contentDir`; carries the `origin` remote
+ *     and `.ok/local/config.yml` → `autoSync.mode`, so the engine attaches.
+ *
+ * All existing `createTestServer` consumers are unaffected — this is a separate
+ * entry point that layers git setup around the same factory.
+ */
+export async function createSyncWiredTestServer(
+  options: CreateSyncWiredServerOptions = {},
+): Promise<SyncWiredTestServer> {
+  const mode = options.mode ?? 'full';
+  const originSeed = options.originSeed ?? { 'guide.md': '# Guide\n\nseed content\n' };
+
+  // ── Bare origin ──
+  const originDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-sync-origin-')));
+  await runGit(originDir, ['init', '--bare']);
+  // Pin the default branch so the author's first push and the follower clone
+  // agree on `main` regardless of the host git's `init.defaultBranch`.
+  await runGit(originDir, ['symbolic-ref', 'HEAD', 'refs/heads/main']);
+
+  // ── Author clone: seed origin/main ──
+  const authorDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-sync-author-')));
+  await runGit(authorDir, ['init', '--initial-branch=main']);
+  await runGit(authorDir, ['config', 'user.email', 'author@example.com']);
+  await runGit(authorDir, ['config', 'user.name', 'Upstream Author']);
+  await runGit(authorDir, ['remote', 'add', 'origin', originDir]);
+  writeFilesUnder(authorDir, originSeed);
+  await runGit(authorDir, ['add', '-A']);
+  await runGit(authorDir, ['commit', '-m', 'seed origin']);
+  await runGit(authorDir, ['push', 'origin', 'main']);
+
+  // ── Follower clone: the server's contentDir ──
+  const cloneParent = realpathSync(mkdtempSync(join(tmpdir(), 'ok-sync-clone-')));
+  const clonePath = join(cloneParent, 'content');
+  await runGit(cloneParent, ['clone', originDir, clonePath]);
+  const contentDir = realpathSync(clonePath);
+  await runGit(contentDir, ['config', 'user.email', 'follower@example.com']);
+  await runGit(contentDir, ['config', 'user.name', 'Follower']);
+
+  // Project marker (`.ok/config.yml`) so server handlers admit operations, and
+  // the per-machine `autoSync.mode` the engine reads at construction. The
+  // project-local file lives under `.ok/local/` (git-ignored runtime state), so
+  // it never enters the working tree the engine fast-forwards.
+  mkdirSync(join(contentDir, '.ok', LOCAL_DIR), { recursive: true });
+  writeFileSync(join(contentDir, '.ok', 'config.yml'), '', 'utf-8');
+  writeFileSync(
+    join(contentDir, '.ok', LOCAL_DIR, 'config.yml'),
+    `autoSync:\n  mode: ${mode}\n`,
+    'utf-8',
+  );
+
+  const removeScratch = (): void => {
+    rmSync(originDir, { recursive: true, force: true });
+    rmSync(authorDir, { recursive: true, force: true });
+    rmSync(cloneParent, { recursive: true, force: true });
+  };
+
+  const testServer = await createTestServer({
+    ...options.serverOptions,
+    contentDir,
+    // This helper owns all scratch dirs (origin, author, follower parent) and
+    // removes them together in the wrapped cleanup below.
+    keepContentDir: true,
+    pullIntervalSeconds: options.pullIntervalSeconds ?? SYNC_WIRED_IDLE_INTERVAL_SECONDS,
+    pushIntervalSeconds: options.pushIntervalSeconds ?? SYNC_WIRED_IDLE_INTERVAL_SECONDS,
+  });
+
+  const engine = testServer.instance.syncEngine;
+  if (engine === null) {
+    await testServer.cleanup();
+    removeScratch();
+    throw new Error(
+      'createSyncWiredTestServer: SyncEngine did not attach — expected an origin remote on the cloned contentDir',
+    );
+  }
+
+  const pushToOrigin = async (
+    files: Record<string, string>,
+    message = 'upstream update',
+  ): Promise<void> => {
+    writeFilesUnder(authorDir, files);
+    await runGit(authorDir, ['add', '-A']);
+    await runGit(authorDir, ['commit', '-m', message]);
+    await runGit(authorDir, ['push', 'origin', 'main']);
+  };
+
+  return {
+    ...testServer,
+    sync: { originDir, pushToOrigin, engine },
+    cleanup: async () => {
+      await testServer.cleanup();
+      removeScratch();
+    },
+  };
 }

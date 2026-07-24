@@ -167,11 +167,12 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
   });
 
   test('project-strict fields cover autoSync.default + content.* + contentRules.* + telemetry.localSink.*', () => {
-    // `autoSync.default` is the committed seed for a machine's
-    // `autoSync.enabled` on first open (true/false/null). Project scope is the
-    // whole point — it travels with the repo so a maintainer pre-answers the
-    // onboarding prompt for everyone. Its sibling `autoSync.enabled` stays
-    // project-local (per-machine) so the two never collide on scope.
+    // `autoSync.default` is the committed seed for a machine's sync mode on
+    // first open ('off'/'pull'/'full', or the legacy boolean, or null). Project
+    // scope is the whole point — it travels with the repo so a maintainer
+    // pre-answers the onboarding prompt for everyone. Its per-machine siblings
+    // `autoSync.mode`/`autoSync.enabled` stay project-local so scopes never
+    // collide.
     //
     // `content.dir` names the root of this project's knowledge graph — it is
     // project-shared (committed `config.yml`), so a user-global override
@@ -213,11 +214,12 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     ]);
   });
 
-  test('project-local-strict fields cover autoSync.enabled + appearance.sidebar.* + linkPreviews.enabled + search.semantic.* + terminal.enabled', () => {
+  test('project-local-strict fields cover autoSync.mode + autoSync.enabled + appearance.sidebar.* + linkPreviews.enabled + search.semantic.* + terminal.enabled', () => {
     // Project-local fields are per-machine, per-project: each teammate's
     // choice never crosses the git boundary.
     // `<projectDir>/.ok/local/config.yml` is gitignored and never mirrored
-    // to the public repo. `autoSync.enabled` controls per-machine sync;
+    // to the public repo. `autoSync.mode` is the canonical per-machine sync
+    // knob (its legacy sibling `autoSync.enabled` stays project-local too);
     // the `appearance.sidebar.*` toggles are per-machine view preferences
     // for what the file tree and sidebar show; `search.semantic.*` is the
     // per-machine opt-in for embeddings search — enabling it sends content to
@@ -240,6 +242,8 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'appearance.sidebar.showOnlyMarkdownFiles',
       'appearance.sidebar.showSkillsSection',
       'autoSync.enabled',
+      'autoSync.mode',
+      'autoSync.resumeMode',
       'linkPreviews.enabled',
       'search.semantic.baseUrl',
       'search.semantic.dimensions',

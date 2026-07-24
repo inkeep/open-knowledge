@@ -1,11 +1,13 @@
 /**
- * AutoSyncOnboardingDialog — first-run prompt explaining git auto-sync.
+ * AutoSyncOnboardingDialog — first-run prompt explaining git sync.
  *
- * Shown once per project when the sync engine reports a remote exists AND
- * the project-local config field `autoSync.enabled` has not been set
- * (`=== null`). Both buttons write through the project-local ConfigBinding
- * so the choice flows down the standard Y.Text → persistence-hook →
- * file-watcher → SyncEngine pipeline.
+ * Shown once per project when the sync engine reports a remote exists AND this
+ * machine has not chosen a sync mode. `resolveAutoSyncOnboarding` decides
+ * whether to show it and which `variant` to pass: 'full' (bidirectional, the
+ * push-capable prompt) or 'pull' (one-directional, for a push-denied follower).
+ * Both buttons write `autoSync.mode` through the project-local ConfigBinding so
+ * the choice flows down the standard Y.Text → persistence-hook → file-watcher →
+ * SyncEngine pipeline.
  */
 import { Trans, useLingui } from '@lingui/react/macro';
 import { toast } from 'sonner';
@@ -13,6 +15,7 @@ import {
   AutoSyncEnableDialogIntro,
   AutoSyncEnableWarning,
 } from '@/components/AutoSyncEnableWarning';
+import type { AutoSyncOnboardingVariant } from '@/components/auto-sync-onboarding-gate';
 import { Button } from '@/components/ui/button';
 import {
   DialogBody,
@@ -21,23 +24,28 @@ import {
   DialogHeader,
   Dialog as DialogRoot,
 } from '@/components/ui/dialog';
-import { useSyncEnabledWriter } from '@/hooks/use-enable-sync-with-confirm';
+import { useSyncModeWriter } from '@/hooks/use-enable-sync-with-confirm';
 
 interface AutoSyncOnboardingDialogProps {
   open: boolean;
+  variant: AutoSyncOnboardingVariant;
   onResolved: () => void;
 }
 
-export function AutoSyncOnboardingDialog({ open, onResolved }: AutoSyncOnboardingDialogProps) {
+export function AutoSyncOnboardingDialog({
+  open,
+  variant,
+  onResolved,
+}: AutoSyncOnboardingDialogProps) {
   const { t } = useLingui();
-  const writer = useSyncEnabledWriter();
+  const writer = useSyncModeWriter();
 
   function persistChoice(enabled: boolean): void {
     if (writer === null) {
       toast.error(t`Sync settings not yet loaded — try again in a moment`);
       return;
     }
-    const result = writer(enabled);
+    const result = writer(enabled ? (variant === 'follow' ? 'follow' : 'full') : 'off');
     if (!result.ok) {
       const detail = result.error;
       toast.error(
@@ -60,14 +68,14 @@ export function AutoSyncOnboardingDialog({ open, onResolved }: AutoSyncOnboardin
     >
       <DialogContent className="sm:max-w-lg" showCloseButton={false}>
         <DialogHeader>
-          <AutoSyncEnableDialogIntro />
+          <AutoSyncEnableDialogIntro variant={variant} />
         </DialogHeader>
 
         <DialogBody>
-          <AutoSyncEnableWarning />
+          <AutoSyncEnableWarning variant={variant} />
           <p className="mt-3 text-1sm text-muted-foreground">
             <Trans>
-              You can turn this on later in <span className="font-medium">Settings → Sync</span>.
+              You can change this later in <span className="font-medium">Settings → Sync</span>.
             </Trans>
           </p>
         </DialogBody>
@@ -82,7 +90,7 @@ export function AutoSyncOnboardingDialog({ open, onResolved }: AutoSyncOnboardin
             <Trans>Keep disabled</Trans>
           </Button>
           <Button onClick={() => persistChoice(true)} disabled={writer === null}>
-            <Trans>Enable auto-sync</Trans>
+            {variant === 'follow' ? <Trans>Enable Follow</Trans> : <Trans>Enable auto-sync</Trans>}
           </Button>
         </DialogFooter>
       </DialogContent>

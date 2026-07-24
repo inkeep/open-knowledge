@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { DEFAULT_ATTACHMENT_FOLDER_PATH } from '../constants/upload.ts';
 import { DEFAULT_LINKS_VALIDATION, LINKS_VALIDATION_SETTINGS } from '../markdown/lint/types.ts';
 import { THEME_PLUGIN_IDS } from '../theme/theme-plugins.ts';
+import { STORED_SYNC_ACTIVE_MODES, STORED_SYNC_MODES } from './auto-sync-mode.ts';
 import { fieldRegistry } from './field-registry.ts';
 
 // Credential attribute key denylist for the local telemetry file sink. The
@@ -388,22 +389,41 @@ export const ConfigSchema = z.looseObject({
         .default(true),
     })
     .default({ autoApproveOkTools: true }),
-  // `autoSync.enabled` is a per-machine, per-project preference: each
-  // teammate decides independently whether their machine should auto-pull /
-  // auto-push commits for *this* project. Project scope would bleed across
-  // teammates via git; user scope would force one global toggle for every
-  // OK project. The new `'project-local'` layer at
-  // `<projectDir>/.ok/local/config.yml` (gitignored) is the only correct
-  // home. SettingsPane SyncSection, the SyncStatusBadge popover Switch, and
-  // the AutoSyncOnboardingDialog all write here via the project-local
-  // binding — no special HTTP endpoint.
+  // `autoSync.mode` is a per-machine, per-project preference: each teammate
+  // decides independently whether their machine syncs *this* project, and in
+  // which direction. Project scope would bleed across teammates via git; user
+  // scope would force one global choice for every OK project. The
+  // `'project-local'` layer at `<projectDir>/.ok/local/config.yml` (gitignored)
+  // is the only correct home. SettingsPane SyncSection, the SyncStatusBadge
+  // popover, and the AutoSyncOnboardingDialog all write here via the
+  // project-local binding — no special HTTP endpoint.
   //
-  // `null` is the canonical "unanswered" sentinel: the onboarding modal
-  // gates on `enabled === null`, distinguishing "user has not chosen" from
-  // `true` / `false` (chosen). `looseObject` is retained so legacy
-  // `onboardingResolvedAt` keys still on disk parse without error.
+  // `mode` is the single knob the engine reads to decide whether to push: only
+  // `'full'` pushes, so a `'pull'` follower can never be mistaken for a pusher.
+  // It supersedes the legacy `enabled` boolean, which stays readable for configs
+  // written before `mode` existed — `resolveLocalAutoSyncMode` derives a mode
+  // from `enabled` when no `mode` key is present, so the two shapes coexist with
+  // no migration.
+  //
+  // `null` is the canonical "unanswered" sentinel: the onboarding modal gates on
+  // the resolved mode being `null`, distinguishing "user has not chosen" from a
+  // chosen mode. `looseObject` is retained so legacy keys (e.g.
+  // `onboardingResolvedAt`) and a newer version's extra keys still round-trip.
   autoSync: z
     .looseObject({
+      mode: z
+        .enum(STORED_SYNC_MODES)
+        .register(fieldRegistry, {
+          scope: 'project-local',
+          agentSettable: false,
+          defaultScope: 'project-local',
+          description:
+            "How this machine syncs this project with its git remote: 'off' (no sync), 'follow' (one-directional — pull remote changes, never push your own; 'pull' is accepted as a legacy alias), or 'full' (bidirectional pull and push). null = not chosen yet (onboarding asks). Per-machine (project-local) — not shared. Supersedes the legacy autoSync.enabled boolean.",
+        })
+        .nullable()
+        .default(null),
+      // Legacy per-machine toggle, superseded by `autoSync.mode`. Read only when
+      // `mode` is absent (`true` → full, `false` → off); new writes set `mode`.
       enabled: z
         .boolean()
         .register(fieldRegistry, {
@@ -411,33 +431,48 @@ export const ConfigSchema = z.looseObject({
           agentSettable: false,
           defaultScope: 'project-local',
           description:
-            'Whether this machine auto-pulls and auto-pushes git commits for this project. null = not chosen yet (onboarding asks). Per-machine (project-local) — not shared.',
+            'Legacy per-machine sync toggle, superseded by autoSync.mode. Read only when mode is absent (true = full, false = off). null = not chosen yet. Per-machine (project-local) — not shared.',
         })
         .nullable()
         .default(null),
-      // `autoSync.default` is the COMMITTED (project-scope) seed for a
-      // machine's `autoSync.enabled` on first open: `true` = default auto-sync
-      // on, `false` = default off, `null` = ask (show the onboarding modal). It
-      // travels with the repo via git so a maintainer can pre-answer the prompt
-      // for everyone who clones the project. It is a soft default — a
-      // per-machine `autoSync.enabled` (above) always overrides it, in both the
-      // server's `readProjectAutoSyncEnabled` resolution and the onboarding
-      // gate. Sharing `enabled`'s `boolean | null` value space is deliberate:
-      // `null` reuses the same "unanswered → ask" sentinel; the only difference
-      // between the two leaves is scope (committed vs per-machine).
+      // `autoSync.resumeMode` is per-machine UI memory: when sync is paused
+      // (`mode: 'off'`) after having been enabled, it records which active mode
+      // to resume into (and doubles as the "was enabled, now paused" signal that
+      // keeps the badge visible and the manual Sync action available). Storing
+      // paused as `mode: 'off'` keeps an older app — which ignores this key —
+      // reading the project as not-syncing, so pausing never lets a stale reader
+      // push. Meaningful only while `mode` is `off`; ignored otherwise.
+      resumeMode: z
+        .enum(STORED_SYNC_ACTIVE_MODES)
+        .register(fieldRegistry, {
+          scope: 'project-local',
+          agentSettable: false,
+          defaultScope: 'project-local',
+          description:
+            "When sync is paused (autoSync.mode 'off') after having been enabled, the active mode to resume into ('follow' | 'full'). Per-machine UI memory; ignored while a mode is active. Not shared.",
+        })
+        .optional(),
+      // `autoSync.default` is the COMMITTED (project-scope) seed for a machine's
+      // sync mode on first open. It travels with the repo via git so a
+      // maintainer can pre-answer the prompt for everyone who clones the
+      // project. It is a soft default — a per-machine choice always overrides
+      // it, in both the server's `readProjectAutoSyncMode` resolution and the
+      // onboarding gate. The value space is the mode vocabulary plus the legacy
+      // boolean seed (`true` → full, `false` → off) so committed `default: true`
+      // configs keep working; `null` reuses the "unanswered → ask" sentinel.
       default: z
-        .boolean()
+        .union([z.boolean(), z.enum(STORED_SYNC_MODES)])
         .register(fieldRegistry, {
           scope: 'project',
           agentSettable: false,
           defaultScope: 'project',
           description:
-            "Committed project default for a machine's autoSync.enabled on first open: true = auto-sync on, false = off, null = ask (show the onboarding prompt). Shared via git. A per-machine autoSync.enabled choice overrides it.",
+            "Committed project default for a machine's sync mode on first open: 'off' | 'follow' | 'full', or the legacy boolean (true = full, false = off). null = ask (show the onboarding prompt). Shared via git. A per-machine autoSync.mode choice overrides it.",
         })
         .nullable()
         .default(null),
     })
-    .default({ enabled: null, default: null }),
+    .default({ mode: null, enabled: null, default: null }),
   // `terminal.enabled` is the per-project, per-machine opt-out for the in-app
   // terminal's real OS shell. The terminal is available by default; only an
   // explicit `false` disables it (`null`/absent both read as the default-on

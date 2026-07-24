@@ -17,6 +17,7 @@
 
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
+import { SYNC_MODES } from '../../config/auto-sync-mode.ts';
 
 /**
  * `SyncState` literal-union mirroring the in-process `SyncState` type from
@@ -115,6 +116,34 @@ export const SyncErrorCodeSchema = z.enum(SYNC_ERROR_CODES);
 export type SyncErrorCode = z.infer<typeof SyncErrorCodeSchema>;
 
 /**
+ * Project sync mode carried in the sync-status payload — mirrors the engine's
+ * `SyncMode`. `off` = not syncing, `follow` = one-directional (fetch +
+ * fast-forward, never push), `full` = bidirectional. Distinct from `syncEnabled`,
+ * which is true for both `follow` and `full`: a consumer that must branch on push
+ * capability reads `syncMode === 'full'`, not `syncEnabled`.
+ */
+export const SyncModeSchema = z.enum(SYNC_MODES) satisfies StandardSchemaV1;
+export type SyncModeWire = z.infer<typeof SyncModeSchema>;
+
+/**
+ * Outcome of a completed pull cycle — the bounded value a downstream surface
+ * reads to learn how a pull it triggered went. Written at every pull
+ * completion (background and one-shot):
+ *
+ * - `succeeded` — fetched and advanced the branch to the remote tip.
+ * - `up-to-date` — already at the tip; nothing to apply.
+ * - `conflict` — a new same-line conflict surfaced and awaits resolution.
+ * - `refused` — a state gate declined the pull without attempting it (a cycle
+ *   already in flight, an unresolved conflict holding the tree, detached HEAD,
+ *   no remote). Never a silent no-op — the refusal is recorded.
+ * - `error` — the pull hit an error (offline, auth, unexpected git failure).
+ *   The direction's `pullError*` fields carry the detail.
+ */
+export const PULL_OUTCOMES = ['succeeded', 'up-to-date', 'conflict', 'refused', 'error'] as const;
+export const PullOutcomeSchema = z.enum(PULL_OUTCOMES) satisfies StandardSchemaV1;
+export type PullOutcome = z.infer<typeof PullOutcomeSchema>;
+
+/**
  * Full sync engine status — emitted as the flat success body of
  * `GET /api/sync/status` AND as the nested `status` field of
  * `POST /api/sync/set-enabled`. Mirrors the in-process `SyncStatus` interface
@@ -151,6 +180,23 @@ export const SyncStatusSchema = z
     pausedReason: z.string().optional(),
     /** Push-permission probe outcome. Absent when no probe has resolved yet. */
     pushPermission: PushPermissionSchema.optional(),
+    /**
+     * Project sync mode. Optional for version-skew safety — a status payload
+     * from an engine that predates the mode field parses as absent; the current
+     * engine always emits it. `syncEnabled` stays the boolean "is sync on at
+     * all" (true for both `pull` and `full`).
+     */
+    syncMode: SyncModeSchema.optional(),
+    /**
+     * One-shot / background pull observability. Both additive + optional for
+     * version skew (an engine predating the outcome contract omits them).
+     * `lastPullUtc` bumps at EVERY pull completion so a consumer can detect a
+     * fresh result by change; `lastPullOutcome` carries that pull's outcome.
+     * Consumer contract: read-before-trigger, wait-for-change, give-up-timeout —
+     * the changed timestamp reflects a pull that completed after the read.
+     */
+    lastPullUtc: z.string().nullable().optional(),
+    lastPullOutcome: PullOutcomeSchema.nullable().optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type SyncStatusWire = z.infer<typeof SyncStatusSchema>;

@@ -1,110 +1,122 @@
 import { describe, expect, test } from 'vitest';
 import {
   type AutoSyncOnboardingGateInputs,
-  shouldShowAutoSyncOnboarding,
+  resolveAutoSyncOnboarding,
 } from './auto-sync-onboarding-gate.ts';
 
-// Baseline = every condition aligned so the modal SHOWS. Each test flips one
-// input and asserts the gate's response, keeping every condition on its own
-// independently verifiable row.
+// Baseline = every condition aligned so the modal SHOWS the full-sync variant
+// (probe allowed). Each test flips one input and asserts the gate's response,
+// keeping every condition on its own independently verifiable row.
 const SHOWING: AutoSyncOnboardingGateInputs = {
   autoSyncOnboardingDismissed: false,
   hasRemote: true,
   projectLocalSynced: true,
   projectSynced: true,
-  projectLocalConfig: { autoSync: { enabled: null } },
+  projectLocalConfig: { autoSync: { mode: null, enabled: null } },
   projectConfig: { autoSync: { default: null } },
   pushPermissionCheckStatus: 'allowed',
 };
 
-describe('shouldShowAutoSyncOnboarding', () => {
-  test('shows when every condition is aligned (unanswered machine, no committed default)', () => {
-    expect(shouldShowAutoSyncOnboarding(SHOWING)).toBe(true);
+describe('resolveAutoSyncOnboarding', () => {
+  test('shows the full-sync variant when aligned and the probe allows pushing', () => {
+    expect(resolveAutoSyncOnboarding(SHOWING)).toBe('full');
   });
 
   test('hidden once dismissed this session', () => {
-    expect(shouldShowAutoSyncOnboarding({ ...SHOWING, autoSyncOnboardingDismissed: true })).toBe(
-      false,
-    );
+    expect(resolveAutoSyncOnboarding({ ...SHOWING, autoSyncOnboardingDismissed: true })).toBeNull();
   });
 
   test('hidden without a git remote', () => {
-    expect(shouldShowAutoSyncOnboarding({ ...SHOWING, hasRemote: false })).toBe(false);
-    expect(shouldShowAutoSyncOnboarding({ ...SHOWING, hasRemote: undefined })).toBe(false);
+    expect(resolveAutoSyncOnboarding({ ...SHOWING, hasRemote: false })).toBeNull();
+    expect(resolveAutoSyncOnboarding({ ...SHOWING, hasRemote: undefined })).toBeNull();
   });
 
   test('hidden until the project-local binding has synced (flash-free)', () => {
-    expect(shouldShowAutoSyncOnboarding({ ...SHOWING, projectLocalSynced: false })).toBe(false);
-    expect(shouldShowAutoSyncOnboarding({ ...SHOWING, projectLocalSynced: undefined })).toBe(false);
+    expect(resolveAutoSyncOnboarding({ ...SHOWING, projectLocalSynced: false })).toBeNull();
+    expect(resolveAutoSyncOnboarding({ ...SHOWING, projectLocalSynced: undefined })).toBeNull();
   });
 
   test('hidden until the committed project binding has synced (flash-free)', () => {
-    // Without the projectSynced guard, a project shipping default:false would
-    // briefly read the schema default (null) and flash the modal open.
-    expect(shouldShowAutoSyncOnboarding({ ...SHOWING, projectSynced: false })).toBe(false);
-    expect(shouldShowAutoSyncOnboarding({ ...SHOWING, projectSynced: undefined })).toBe(false);
+    // Without the projectSynced guard, a project shipping a committed default
+    // would briefly read the schema default (null) and flash the modal open.
+    expect(resolveAutoSyncOnboarding({ ...SHOWING, projectSynced: false })).toBeNull();
+    expect(resolveAutoSyncOnboarding({ ...SHOWING, projectSynced: undefined })).toBeNull();
   });
 
   test('hidden until project-local config hydrates', () => {
-    expect(shouldShowAutoSyncOnboarding({ ...SHOWING, projectLocalConfig: null })).toBe(false);
+    expect(resolveAutoSyncOnboarding({ ...SHOWING, projectLocalConfig: null })).toBeNull();
   });
 
-  test('hidden once this machine has answered (enabled true or false)', () => {
+  test('hidden once this machine has answered via mode (off/pull/full)', () => {
+    for (const mode of ['off', 'follow', 'full'] as const) {
+      expect(
+        resolveAutoSyncOnboarding({
+          ...SHOWING,
+          projectLocalConfig: { autoSync: { mode } },
+        }),
+      ).toBeNull();
+    }
+  });
+
+  test('hidden once this machine has answered via the legacy enabled boolean', () => {
     expect(
-      shouldShowAutoSyncOnboarding({
+      resolveAutoSyncOnboarding({
         ...SHOWING,
         projectLocalConfig: { autoSync: { enabled: true } },
       }),
-    ).toBe(false);
+    ).toBeNull();
     expect(
-      shouldShowAutoSyncOnboarding({
+      resolveAutoSyncOnboarding({
         ...SHOWING,
         projectLocalConfig: { autoSync: { enabled: false } },
       }),
-    ).toBe(false);
+    ).toBeNull();
   });
 
-  test('suppressed when the maintainer committed autoSync.default: false', () => {
+  test('suppressed when the maintainer committed a mode-valued default', () => {
+    for (const def of ['off', 'follow', 'full'] as const) {
+      expect(
+        resolveAutoSyncOnboarding({
+          ...SHOWING,
+          projectConfig: { autoSync: { default: def } },
+        }),
+      ).toBeNull();
+    }
+  });
+
+  test('suppressed when the maintainer committed a legacy boolean default', () => {
     expect(
-      shouldShowAutoSyncOnboarding({
+      resolveAutoSyncOnboarding({
         ...SHOWING,
         projectConfig: { autoSync: { default: false } },
       }),
-    ).toBe(false);
-  });
-
-  test('suppressed when the maintainer committed autoSync.default: true', () => {
+    ).toBeNull();
     expect(
-      shouldShowAutoSyncOnboarding({
+      resolveAutoSyncOnboarding({
         ...SHOWING,
         projectConfig: { autoSync: { default: true } },
       }),
-    ).toBe(false);
+    ).toBeNull();
   });
 
   test('still asks when committed config is absent or default is null/absent', () => {
-    // projectConfig === null (committed doc empty) → no seed → ask.
-    expect(shouldShowAutoSyncOnboarding({ ...SHOWING, projectConfig: null })).toBe(true);
-    // autoSync present but default absent → no seed → ask.
-    expect(shouldShowAutoSyncOnboarding({ ...SHOWING, projectConfig: { autoSync: {} } })).toBe(
-      true,
-    );
-    // autoSync absent entirely → no seed → ask.
-    expect(shouldShowAutoSyncOnboarding({ ...SHOWING, projectConfig: {} })).toBe(true);
+    expect(resolveAutoSyncOnboarding({ ...SHOWING, projectConfig: null })).toBe('full');
+    expect(resolveAutoSyncOnboarding({ ...SHOWING, projectConfig: { autoSync: {} } })).toBe('full');
+    expect(resolveAutoSyncOnboarding({ ...SHOWING, projectConfig: {} })).toBe('full');
   });
 
-  test('hidden when the push-permission probe denied or is still pending', () => {
-    expect(shouldShowAutoSyncOnboarding({ ...SHOWING, pushPermissionCheckStatus: 'denied' })).toBe(
-      false,
-    );
-    expect(shouldShowAutoSyncOnboarding({ ...SHOWING, pushPermissionCheckStatus: undefined })).toBe(
-      false,
+  test('forks to the follow variant when the push probe is denied', () => {
+    expect(resolveAutoSyncOnboarding({ ...SHOWING, pushPermissionCheckStatus: 'denied' })).toBe(
+      'follow',
     );
   });
 
-  test('shows on probe unknown (graceful degradation)', () => {
-    expect(shouldShowAutoSyncOnboarding({ ...SHOWING, pushPermissionCheckStatus: 'unknown' })).toBe(
-      true,
-    );
+  test('suppressed while the push probe is unknown or still pending', () => {
+    expect(
+      resolveAutoSyncOnboarding({ ...SHOWING, pushPermissionCheckStatus: 'unknown' }),
+    ).toBeNull();
+    expect(
+      resolveAutoSyncOnboarding({ ...SHOWING, pushPermissionCheckStatus: undefined }),
+    ).toBeNull();
   });
 });

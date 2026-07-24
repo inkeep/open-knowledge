@@ -1,13 +1,20 @@
 /**
- * Sync section — surface the git auto-sync toggle in Settings so users
- * have a deliberate path to re-enable when the header badge is hidden
- * (state === 'disabled' hides the badge).
+ * Sync section — the Settings home for the three-way sync mode
+ * (off / pull-only / full) plus the committed shared default, so users have a
+ * deliberate path to change modes even when the header badge is hidden
+ * (state === 'disabled' hides the badge for non-following projects).
  *
- * The toggle writes through the project-local ConfigBinding so the choice
- * lands in `<projectDir>/.ok/local/config.yml`; the file watcher then drives
- * the SyncEngine to match.
+ * The mode control writes through the project-local ConfigBinding so the
+ * choice lands in `<projectDir>/.ok/local/config.yml`; the file watcher then
+ * drives the SyncEngine to match.
  */
 
+import {
+  isSyncMode,
+  modeFromCommittedDefault,
+  resolveLocalAutoSyncMode,
+  type SyncMode,
+} from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
@@ -17,27 +24,25 @@ import { EnableSyncConfirmDialog } from '@/components/EnableSyncConfirmDialog';
 import { PublishToGitHubDialog } from '@/components/PublishToGitHubDialog';
 import {
   formatPausedReason,
-  shouldDisableSyncSwitch,
   shouldOfferReconnect,
   shouldOfferSignInAgain,
 } from '@/components/SyncStatusBadge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-  useEnableSyncWithConfirm,
   useSyncDefaultWriter,
-  useSyncEnabledWriter,
+  useSyncModeSelection,
+  useSyncModeWriter,
 } from '@/hooks/use-enable-sync-with-confirm';
 import { useGitSyncStatus } from '@/hooks/use-git-sync-status';
 import { useConfigContext } from '@/lib/config-provider';
 
-// The selected committed-default option uses the app's primary blue (the same
-// token as the Button default variant), not the muted ToggleGroup default, so
-// the active stance reads as clearly chosen and matches the accent used
-// elsewhere in the app.
-const COMMITTED_DEFAULT_SELECTED_CLASS =
+// Selected toggle items use the app's primary blue (the same token as the
+// Button default variant), not the muted ToggleGroup default, so the active
+// stance reads as clearly chosen and matches the accent used elsewhere.
+const SYNC_SELECTED_TOGGLE_CLASS =
   'data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:hover:bg-primary/90';
 
 export function SyncSection() {
@@ -45,10 +50,14 @@ export function SyncSection() {
   const status = useGitSyncStatus();
   const { projectConfig, projectLocalConfig, projectLocalSynced, projectSynced } =
     useConfigContext();
-  const writer = useSyncEnabledWriter();
+  const modeWriter = useSyncModeWriter();
   const defaultWriter = useSyncDefaultWriter();
-  const { confirmOpen, setConfirmOpen, onToggleRequest, onConfirm } =
-    useEnableSyncWithConfirm(writer);
+  // Per-machine mode: an explicit `autoSync.mode` wins, else derive from the
+  // legacy `enabled` boolean; never-answered resolves to off for display (the
+  // committed shared default has its own control below).
+  const localMode = resolveLocalAutoSyncMode(projectLocalConfig?.autoSync) ?? 'off';
+  const { confirmOpen, setConfirmOpen, pendingMode, onModeSelect, onConfirm } =
+    useSyncModeSelection(modeWriter, localMode);
   const [publishOpen, setPublishOpen] = useState(false);
   // Local AuthModal control for the Sign-in-again affordance surfaced when
   // the probe returns 401. The editor header has its own AuthModal — settings
@@ -119,47 +128,82 @@ export function SyncSection() {
     );
   }
 
-  // Read user intent from the synchronous local CRDT preference (the same
-  // binding `useSyncEnabledWriter` writes to). Don't read from the server's
-  // engine-state projection — that round-trips through ~2 s persistence
-  // debounce + chokidar settle + 100 ms CC1 debounce, making the Switch
-  // appear to lag every click.
-  const enabled = projectLocalConfig?.autoSync?.enabled ?? false;
-  // Mirrors the SyncStatusBadge popover so both surfaces gate identically.
-  // Disable on cold start OR on a denied probe; never disable on
-  // undefined / unknown / pending (preserves read+write parity).
-  const disabledControl = shouldDisableSyncSwitch(
-    projectLocalSynced,
-    status?.pushPermission?.checkStatus,
-  );
-  // Whether the body line should carry the no-permission copy inline (instead
-  // of the standard "your edits stay local" string + a redundant paragraph
-  // underneath). Fires for both the probe-`denied` path AND the in-memory
-  // pause path (autoSync was already enabled when probe came back denied —
-  // engine sets `pausedReason='no-push-permission'`).
+  // Cold-start guard only: disable the control until the project-local config
+  // has hydrated. Unlike the old boolean toggle, a denied probe does NOT disable
+  // it — pull-only never pushes, so a push-denied receiver must still be able to
+  // select it (the whole point of the mode).
+  const modeControlDisabled = !projectLocalSynced;
+  // Full sync paused (or would pause) because the push probe came back denied.
+  // Only `full` cares about push permission — `pull`/`off` never push.
   const isPushDenied =
     status?.pushPermission?.checkStatus === 'denied' ||
     status?.pausedReason === 'no-push-permission';
-  const sectionMessage =
-    isPushDenied || !status?.pausedReason ? null : formatPausedReason(status.pausedReason);
+  // Signed-out denial ('denied/not-authenticated') — signing back in restores
+  // the full sync the user already consented to, so it takes precedence over
+  // the switch-to-pull-only offer (that one is for genuinely revoked access).
+  const offerReconnect = shouldOfferReconnect(status?.pushPermission);
+  const showReconnect = localMode === 'full' && isPushDenied && offerReconnect;
+  const showSwitchToPullOnly = localMode === 'full' && isPushDenied && !offerReconnect;
+  // Full sync would immediately fail-and-pause for a genuine read-only user, so
+  // don't offer it. Signed-out denial is excluded — that user may well have push
+  // access once they authenticate, so Full stays reachable for them.
+  const genuineReadOnlyDenied =
+    status?.pushPermission?.checkStatus === 'denied' &&
+    status.pushPermission.deniedReason !== 'not-authenticated';
+  // A non-permission pause reason (protected-branch, dirty-tree, …) — reachable
+  // only under full sync. Suppressed when the switch-to-pull-only affordance
+  // already explains a paused full-sync engine.
+  const pausedNotice =
+    showSwitchToPullOnly || isPushDenied || !status?.pausedReason
+      ? null
+      : formatPausedReason(status.pausedReason);
+
+  function onModeChange(next: string) {
+    // Radix single ToggleGroup emits '' when the active item is re-pressed
+    // (deselect) — ignore so there is always exactly one selected mode.
+    if (!isSyncMode(next)) return;
+    onModeSelect(next);
+  }
 
   // Committed project default (`autoSync.default`) — the maintainer-facing,
-  // git-shared seed for everyone's first open. true/false/null map to the three
-  // ToggleGroup options; `null` (ask) is the absence of a committed seed.
-  const committedDefault = projectConfig?.autoSync?.default ?? null;
-  const committedDefaultValue =
-    committedDefault === true ? 'on' : committedDefault === false ? 'off' : 'ask';
+  // git-shared seed for everyone's first open. Widened to the mode vocabulary so
+  // a maintainer can ship a pull-only default; `modeFromCommittedDefault` reads
+  // both the mode strings and the legacy boolean seed, `null` (ask) = no seed.
+  const committedDefaultValue = modeFromCommittedDefault(projectConfig?.autoSync?.default) ?? 'ask';
   function onCommittedDefaultChange(next: string) {
     // Radix single ToggleGroup emits '' when the active item is re-pressed
     // (deselect) — ignore it so there is always exactly one committed stance.
-    if (next !== 'ask' && next !== 'on' && next !== 'off') return;
+    if (next !== 'ask' && !isSyncMode(next)) return;
     if (defaultWriter === null) {
       toast.error(t`Sync settings not yet loaded — try again in a moment`);
       return;
     }
-    // 'ask' writes null, which clears the committed key (RFC 7396 merge-patch) →
-    // unanswered machines see the onboarding prompt again.
-    const value = next === 'on' ? true : next === 'off' ? false : null;
+    // 'ask' clears the committed key (RFC 7396 merge-patch) → unanswered machines
+    // see the onboarding prompt again. off/full stay legacy booleans so an older
+    // OK build still honors them verbatim; 'pull' has no legacy equivalent, so it
+    // is written as the mode string (older builds safely re-prompt on it).
+    // Exhaustive per value: this writes committed (git-shared) config, so a
+    // future mode must make a deliberate serialization choice here rather than
+    // silently falling through to one arm.
+    let value: boolean | SyncMode | null;
+    switch (next) {
+      case 'ask':
+        value = null;
+        break;
+      case 'off':
+        value = false;
+        break;
+      case 'full':
+        value = true;
+        break;
+      case 'follow':
+        value = 'follow';
+        break;
+      default: {
+        const exhaustive: never = next;
+        throw new Error(`unhandled committed default: ${String(exhaustive)}`);
+      }
+    }
     const result = defaultWriter(value);
     if (!result.ok) {
       const detail = result.error;
@@ -175,40 +219,27 @@ export function SyncSection() {
         </h3>
         <p className="text-sm text-muted-foreground">
           <Trans>
-            Auto-sync pushes/pulls commits to your git remote on intervals and on save. Toggling on
-            requires confirmation.
+            Keep this project in sync with your git remote. Follow fetches updates without pushing;
+            full sync pushes your commits too. Turning sync on requires confirmation.
           </Trans>
         </p>
       </div>
       <div className="rounded-md border p-3">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <label htmlFor="settings-sync-toggle" className="text-sm font-medium">
-              <Trans>Git auto-sync</Trans>
-            </label>
+            <div id="settings-sync-mode-label" className="text-sm font-medium">
+              <Trans>Git sync</Trans>
+            </div>
             <p className="text-muted-foreground text-1sm" data-testid="settings-sync-body">
-              {isPushDenied ? (
-                // Probe denied (or engine paused in-memory because autoSync was
-                // already on when probe denied). Replace the standard body copy
-                // with the permission-specific message — the redundant
-                // sectionMessage paragraph below is suppressed in this case.
-                // "Paused", not "off": the user's preference is still on (the
-                // toggle shows it), sync is just blocked. Signed-out vs genuine
-                // read-only get different remedies.
-                shouldOfferReconnect(status?.pushPermission) ? (
-                  <Trans>Auto-sync is paused — sign in to resume.</Trans>
-                ) : (
-                  <Trans>
-                    Auto-sync is paused — you don't have permission to push to this repo.
-                  </Trans>
-                )
-              ) : enabled ? (
+              {localMode === 'full' ? (
+                <Trans>Full sync — your commits push and remote changes pull automatically.</Trans>
+              ) : localMode === 'follow' ? (
                 <Trans>
-                  Auto-sync is on — your commits push and remote changes pull on intervals.
+                  Follow — updates flow in from your remote; your edits stay on this computer.
                 </Trans>
               ) : (
                 <Trans>
-                  Auto-sync is off — your edits stay local until you commit and push manually.
+                  Sync is off — your edits stay on this computer until you commit and push manually.
                 </Trans>
               )}
             </p>
@@ -241,24 +272,117 @@ export function SyncSection() {
               </p>
             ) : null}
           </div>
-          <Switch
-            id="settings-sync-toggle"
-            checked={enabled}
-            disabled={disabledControl}
-            onCheckedChange={onToggleRequest}
-            aria-label={
-              status?.pushPermission?.checkStatus === 'denied'
-                ? t`Sync disabled — you don't have permission to push`
-                : enabled
-                  ? t`Disable git auto-sync`
-                  : t`Enable git auto-sync`
-            }
-            data-testid="settings-sync-toggle"
-          />
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            spacing={2}
+            value={localMode}
+            onValueChange={onModeChange}
+            disabled={modeControlDisabled}
+            aria-labelledby="settings-sync-mode-label"
+            data-testid="settings-sync-mode-toggle"
+          >
+            <ToggleGroupItem
+              value="off"
+              className={SYNC_SELECTED_TOGGLE_CLASS}
+              data-testid="settings-sync-mode-off"
+            >
+              <Trans>Off</Trans>
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="follow"
+              className={SYNC_SELECTED_TOGGLE_CLASS}
+              data-testid="settings-sync-mode-follow"
+            >
+              <Trans>Follow</Trans>
+            </ToggleGroupItem>
+            {genuineReadOnlyDenied ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {/* A disabled button emits no pointer events, so the tooltip
+                      hangs off a wrapper span that still receives hover — the
+                      only way to surface why Full is greyed out. Keyboard users
+                      get the same reason from the read-only hint text below. */}
+                  <span className="inline-flex">
+                    <ToggleGroupItem
+                      value="full"
+                      className={SYNC_SELECTED_TOGGLE_CLASS}
+                      disabled
+                      data-testid="settings-sync-mode-full"
+                    >
+                      <Trans>Full</Trans>
+                    </ToggleGroupItem>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent data-testid="settings-sync-mode-full-tip">
+                  <Trans>You don't have permission to push to this repo</Trans>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <ToggleGroupItem
+                value="full"
+                className={SYNC_SELECTED_TOGGLE_CLASS}
+                data-testid="settings-sync-mode-full"
+              >
+                <Trans>Full</Trans>
+              </ToggleGroupItem>
+            )}
+          </ToggleGroup>
         </div>
-        {sectionMessage !== null && (
+        {showReconnect && (
+          // "Paused", not "off": the preference is still full sync, it's just
+          // blocked by a signed-out session — reconnecting resumes it. Mirrors
+          // the popover's reconnect affordance.
+          <div className="mt-2 flex items-start gap-2" data-testid="settings-sync-reconnect">
+            <p className="text-1sm text-muted-foreground flex-1 min-w-0">
+              <Trans>Auto-sync is paused — sign in to resume.</Trans>
+            </p>
+            <Button
+              variant="outline"
+              size="xs"
+              className="self-start"
+              onClick={() => setAuthModalOpen(true)}
+            >
+              <Trans>Sign in</Trans>
+            </Button>
+          </div>
+        )}
+        {showSwitchToPullOnly && (
+          <div className="mt-2 flex items-start gap-2" data-testid="settings-sync-switch-follow">
+            <p className="text-1sm text-muted-foreground flex-1 min-w-0">
+              <Trans>
+                Auto-sync is paused — you don't have permission to push to this repo. Switch to
+                Follow to keep receiving updates.
+              </Trans>
+            </p>
+            <Button
+              variant="outline"
+              size="xs"
+              className="self-start"
+              onClick={() => onModeSelect('follow')}
+              data-testid="settings-sync-switch-follow-action"
+            >
+              <Trans>Switch to Follow</Trans>
+            </Button>
+          </div>
+        )}
+        {!showSwitchToPullOnly && !showReconnect && isPushDenied && localMode !== 'follow' && (
+          // Push-denied and not yet following: point the receiver at pull-only,
+          // which the mode control above already offers. Suppressed for the
+          // signed-out shape — permission is unknowable until they sign in.
+          <p
+            className="text-1sm text-muted-foreground mt-2"
+            data-testid="settings-sync-denied-hint"
+          >
+            <Trans>
+              You don't have permission to push to this repo. Follow can still keep your copy up to
+              date.
+            </Trans>
+          </p>
+        )}
+        {pausedNotice !== null && (
           <p className="text-1sm text-muted-foreground mt-2" data-testid="settings-sync-reason">
-            {sectionMessage}
+            {pausedNotice}
           </p>
         )}
         {shouldOfferSignInAgain(status?.pushPermission) && (
@@ -279,28 +403,16 @@ export function SyncSection() {
             </Button>
           </div>
         )}
-        {shouldOfferReconnect(status?.pushPermission) && (
-          // Signed-out denial ('denied/not-authenticated') — reconnecting
-          // resumes sync (the body copy above reads "sign in to resume"), so
-          // surface the button. Mirrors the popover's reconnect affordance.
-          <div className="mt-2 flex justify-start" data-testid="settings-sync-reconnect">
-            {/* Default size (not xs) to match the None/On/Off toggle row above:
-                both resolve to h-8 / px-2.5 / text-sm. */}
-            <Button variant="outline" onClick={() => setAuthModalOpen(true)}>
-              <Trans>Sign in</Trans>
-            </Button>
-          </div>
-        )}
       </div>
       <div className="rounded-md border p-3 space-y-2" data-testid="settings-sync-default">
         <div className="space-y-0.5">
-          <div className="text-sm font-medium">
+          <div id="settings-sync-default-label" className="text-sm font-medium">
             <Trans>Shared default</Trans>
           </div>
           <p className="text-muted-foreground text-1sm">
             <Trans>
-              Set the auto-sync default for users opening this project for the first time. This
-              setting is committed to your repository.
+              Set the sync default for users opening this project for the first time. This setting
+              is committed to your repository.
             </Trans>
           </p>
         </div>
@@ -311,29 +423,36 @@ export function SyncSection() {
           value={committedDefaultValue}
           onValueChange={onCommittedDefaultChange}
           disabled={!projectSynced}
-          aria-label={t`Shared auto-sync default`}
+          aria-labelledby="settings-sync-default-label"
           data-testid="settings-sync-default-toggle"
         >
           <ToggleGroupItem
             value="ask"
-            className={COMMITTED_DEFAULT_SELECTED_CLASS}
+            className={SYNC_SELECTED_TOGGLE_CLASS}
             data-testid="settings-sync-default-ask"
           >
             <Trans>None</Trans>
           </ToggleGroupItem>
           <ToggleGroupItem
-            value="on"
-            className={COMMITTED_DEFAULT_SELECTED_CLASS}
-            data-testid="settings-sync-default-on"
-          >
-            <Trans>On</Trans>
-          </ToggleGroupItem>
-          <ToggleGroupItem
             value="off"
-            className={COMMITTED_DEFAULT_SELECTED_CLASS}
+            className={SYNC_SELECTED_TOGGLE_CLASS}
             data-testid="settings-sync-default-off"
           >
             <Trans>Off</Trans>
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="follow"
+            className={SYNC_SELECTED_TOGGLE_CLASS}
+            data-testid="settings-sync-default-follow"
+          >
+            <Trans>Follow</Trans>
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="full"
+            className={SYNC_SELECTED_TOGGLE_CLASS}
+            data-testid="settings-sync-default-full"
+          >
+            <Trans>Full</Trans>
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
@@ -341,6 +460,8 @@ export function SyncSection() {
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         onConfirm={onConfirm}
+        variant={pendingMode ?? 'full'}
+        strandedCommitCount={pendingMode === 'follow' ? (status?.ahead ?? 0) : 0}
       />
       <AuthModal
         open={authModalOpen}

@@ -102,6 +102,31 @@ const FIXTURES: Fixture[] = [
     shouldAccept: false,
   },
   {
+    name: 'autoSync.mode=pull accepted',
+    input: { autoSync: { mode: 'pull' } },
+    shouldAccept: true,
+  },
+  {
+    name: 'autoSync.mode=sideways rejected',
+    input: { autoSync: { mode: 'sideways' } },
+    shouldAccept: false,
+  },
+  {
+    name: 'autoSync.default=full (mode string) accepted',
+    input: { autoSync: { default: 'full' } },
+    shouldAccept: true,
+  },
+  {
+    name: 'autoSync.default=true (legacy boolean seed) accepted',
+    input: { autoSync: { default: true } },
+    shouldAccept: true,
+  },
+  {
+    name: 'autoSync.default=3 (outside boolean|mode union) rejected',
+    input: { autoSync: { default: 3 } },
+    shouldAccept: false,
+  },
+  {
     name: 'unknown top-level key passes (looseObject)',
     input: { future_feature: { enabled: true } },
     shouldAccept: true,

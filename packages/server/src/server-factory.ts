@@ -29,9 +29,13 @@ import {
   type LinksValidationSetting,
   type LinterConfig,
   type MarkdownManager,
+  modeFromCommittedDefault,
   type PersistedLinterConfig,
   type Principal,
   parseGlobalSkillBundleDoc,
+  resolveLocalAutoSyncMode,
+  type SyncMode,
+  type SyncModeChangeSource,
   toEffectiveBase,
 } from '@inkeep/open-knowledge-core';
 import {
@@ -74,7 +78,10 @@ import {
 } from './config-file-watcher.ts';
 import { applyExternalConfigChange } from './config-persistence.ts';
 import { isDocInConflict } from './conflict-errors.ts';
-import { createConflictLifecycleSeedExtension } from './conflict-lifecycle-seed.ts';
+import {
+  createConflictLifecycleSeedExtension,
+  entryMatchesDocName,
+} from './conflict-lifecycle-seed.ts';
 import { resolveProjectTemplates } from './content/templates-resolver.ts';
 import { type ContentFilter, createContentFilter } from './content-filter.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
@@ -182,6 +189,7 @@ import {
   SERVICE_WRITER,
   type ShadowHandle,
   type ShadowRef,
+  safetyCheckpoint,
   saveInMemoryCheckpoint,
   shadowGit,
 } from './shadow-repo.ts';
@@ -304,6 +312,15 @@ export interface ServerOptions {
    * Mirrors `SyncEngineOptions.checkPushPermissionFn`.
    */
   checkPushPermissionFn?: (opts: CheckPushPermissionOptions) => Promise<PushPermission>;
+  /**
+   * Seconds between the SyncEngine's background pull/push cycles. Production
+   * leaves these undefined so the engine uses its own defaults (30 s pull /
+   * 60 s push). The integration harness passes a large value so a sync-wired
+   * test drives cycles explicitly via `trigger()` without a background timer
+   * racing the scenario. Same DI rationale as `debounce` / `commitDebounceMs`.
+   */
+  pullIntervalSeconds?: number;
+  pushIntervalSeconds?: number;
   /**
    * Read-only accessor for the embeddings API key (the CLI's 0600
    * `~/.ok/secrets.yml` file), injected from the CLI / desktop wiring layer.
@@ -617,18 +634,20 @@ export function createServer(options: ServerOptions): ServerInstance {
     return project.value.content.attachmentFolderPath ?? DEFAULT_ATTACHMENT_FOLDER_PATH;
   }
 
-  function readProjectAutoSyncEnabled(): boolean {
+  function readProjectAutoSyncMode(): { mode: SyncMode; source: SyncModeChangeSource } {
     const local = readConfigSafely({
       absPath: resolveConfigPath('project-local', projectDir),
       sideline: false,
       warn: (message) => log.warn({ message }, '[config] could not read project-local config'),
     });
-    const localEnabled = local.value.autoSync?.enabled;
-    if (localEnabled !== null && localEnabled !== undefined) {
+    const localMode = resolveLocalAutoSyncMode(local.value.autoSync);
+    if (localMode !== null) {
       // This machine has answered (or the engine auto-disabled on a denied
       // push probe) — the per-machine choice always wins over the committed
-      // default.
-      return localEnabled === true;
+      // default. `full` pushes; `pull` fetches one-directionally; `off` stays
+      // inactive. The prompt/Settings/paused-notice surfaces all write this same
+      // per-machine mode, so they collapse to the `config` telemetry source.
+      return { mode: localMode, source: 'config' };
     }
     // The file was present but failed validation — readConfigSafely already
     // logged the parse/schema detail. Surface the fallback decision so a
@@ -643,8 +662,9 @@ export function createServer(options: ServerOptions): ServerInstance {
     // Unanswered on this machine: consult the committed project default
     // (`autoSync.default`), which a maintainer ships in `.ok/config.yml` to
     // pre-answer the onboarding prompt for everyone who clones the project.
-    // `true` seeds sync on; `false`/`null`/absent leaves it off here (and when
-    // the committed default is `null`/absent the onboarding gate prompts).
+    // A `pull`/`full` (or legacy `true`) seed engages that mode; `off`/`false`/
+    // `null`/absent leaves the engine off here (and when the committed default
+    // is `null`/absent the onboarding gate prompts).
     //
     // We deliberately do NOT read a committed `autoSync.enabled`: that field is
     // project-local-scoped, so a committed value is a scope mismatch. The app
@@ -666,7 +686,12 @@ export function createServer(options: ServerOptions): ServerInstance {
         '[config] committed autoSync.default unavailable (project config invalid) — defaulting to disabled',
       );
     }
-    return project.value.autoSync?.default === true;
+    // `null` (never answered anywhere) resolves to `off` for the engine; the
+    // onboarding prompt is a UI-layer concern that reads config directly.
+    return {
+      mode: modeFromCommittedDefault(project.value.autoSync?.default) ?? 'off',
+      source: 'committed-default',
+    };
   }
 
   // Project-scope base linter config, read FRESH per request so a config edit
@@ -748,20 +773,21 @@ export function createServer(options: ServerOptions): ServerInstance {
   //
   // Both entry points can fire for the same change (producer notify + watcher
   // echo), so every consumer notified here MUST be idempotent on a same-value
-  // re-apply: `SyncEngine.setEnabled` and `SemanticSearchService.applyConfig`
+  // re-apply: `SyncEngine.setMode` and `SemanticSearchService.applyConfig`
   // both early-return when the value is unchanged. A future non-idempotent
   // consumer added here would double-fire.
   function applyPersistedConfigToConsumers(configDocName: string): void {
-    let appliedAutoSyncEnabled: boolean | undefined;
+    let appliedAutoSyncMode: SyncMode | undefined;
     if (
       configDocName === CONFIG_DOC_NAME_PROJECT ||
       configDocName === CONFIG_DOC_NAME_PROJECT_LOCAL
     ) {
-      appliedAutoSyncEnabled = readProjectAutoSyncEnabled();
-      void syncEngine?.setEnabled(appliedAutoSyncEnabled).catch((err) => {
+      const resolved = readProjectAutoSyncMode();
+      appliedAutoSyncMode = resolved.mode;
+      void syncEngine?.setMode(resolved.mode, resolved.source).catch((err) => {
         log.warn(
-          { err, enabled: appliedAutoSyncEnabled, docName: configDocName },
-          '[sync] failed to apply autoSync.enabled from config',
+          { err, mode: resolved.mode, docName: configDocName },
+          '[sync] failed to apply autoSync mode from config',
         );
       });
     }
@@ -779,7 +805,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     log.info(
       {
         docName: configDocName,
-        autoSyncEnabled: appliedAutoSyncEnabled,
+        autoSyncMode: appliedAutoSyncMode,
         semanticEnabled: semCfg.enabled,
       },
       '[config] applied persisted config to in-process consumers',
@@ -1947,6 +1973,22 @@ export function createServer(options: ServerOptions): ServerInstance {
    */
   function clearLifecycleConflict(document: Document): void {
     if (!isDocInConflict(document)) return;
+    // Never clear while the engine still holds a standing conflict for this doc.
+    // A B1 pull-only conflict pull fast-forwards the working tree via a raw git
+    // write (outside `writeTracker`), which the file-watcher re-emits as an
+    // `update`. That reconcile computes `noop` (base==ours==theirs, the conflict
+    // content already applied) and would otherwise wipe the `lifecycle.status`
+    // the pull just set — desyncing the editor→resolver swap from the
+    // ConflictStore, so the resolver vanishes (and never reappears on reopen)
+    // while the conflict is still unresolved. Clearing is correct only once the
+    // engine agrees the conflict is gone (resolve / auto-dissolve).
+    if (
+      syncEngine
+        ?.getConflicts()
+        .some((entry) => entryMatchesDocName(entry, document.name, projectDir, contentDir))
+    ) {
+      return;
+    }
     const lifecycleMap = document.getMap('lifecycle');
     lifecycleMap.delete('status');
     lifecycleMap.delete('reason');
@@ -4244,15 +4286,44 @@ export function createServer(options: ServerOptions): ServerInstance {
       }
     }
 
+    // Clear the conflict lifecycle on a resolved / auto-dissolved working-tree
+    // conflict. Keep-mine resolution and upstream auto-dissolve may not change
+    // disk bytes, so the file-watcher's `case 'update'` clear can't be relied on.
+    function clearLoadedContentConflicts(files: string[]): void {
+      for (const file of files) {
+        try {
+          const absPath = join(projectDir, file);
+          const contentRelPath = toPosix(relative(contentDir, absPath));
+          if (contentRelPath.startsWith('..')) continue;
+          const document = hocuspocus.documents.get(stripDocExtension(contentRelPath));
+          if (document) clearLifecycleConflict(document);
+        } catch (err) {
+          log.warn({ err, file }, '[sync] failed to clear resolved content conflict');
+        }
+      }
+    }
+
     // Start SyncEngine: remote detection + auto-sync.
     const syncCredentialArgs = buildSyncCredentialArgs(localOpCliArgs);
+    const bootAutoSyncMode = readProjectAutoSyncMode();
+    if (bootAutoSyncMode.mode !== 'off') {
+      // A never-asked machine booting into a committed-default mode is the main
+      // way pull-only activates silently; log it (with the resolution source) so
+      // committed-default activations are observable alongside runtime changes.
+      log.info(
+        { mode: bootAutoSyncMode.mode, source: bootAutoSyncMode.source },
+        '[sync] mode active at boot',
+      );
+    }
     try {
       syncEngine = new SyncEngine({
         projectDir,
         contentDir,
         contentFilter,
         contentRoot,
-        syncEnabled: readProjectAutoSyncEnabled(),
+        mode: bootAutoSyncMode.mode,
+        pullIntervalSeconds: options.pullIntervalSeconds,
+        pushIntervalSeconds: options.pushIntervalSeconds,
         credentialArgs: syncCredentialArgs,
         cc1Broadcaster,
         // Push-permission probe auth seam — production callers (CLI `ok start`)
@@ -4280,6 +4351,33 @@ export function createServer(options: ServerOptions): ServerInstance {
           log.info({ state }, `[sync] state → ${state}`);
         },
         onContentConflictsDetected: markLoadedContentConflicts,
+        onContentConflictsResolved: clearLoadedContentConflicts,
+        // Snapshot the working tree to the recoverable timeline before a
+        // pull-only transition realigns the branch over stranded local commits,
+        // so their content survives on the timeline, not just the reflog.
+        checkpointBeforeStrandedConversion: async ({ branch, ahead }) => {
+          const shadow = shadowRef.current;
+          if (!shadow) return;
+          await safetyCheckpoint(
+            shadow,
+            contentRoot ?? '',
+            { action: 'pull-only-stranded-conversion', context: { ahead } },
+            branch,
+          );
+        },
+        // Before a pull-only fast-forward resets an overlapping uncommitted edit
+        // to HEAD, snapshot the working tree so the pre-reset bytes survive on
+        // the shadow timeline through the reset→re-write window.
+        checkpointBeforeOverlayRestore: async ({ branch, paths }) => {
+          const shadow = shadowRef.current;
+          if (!shadow) return;
+          await safetyCheckpoint(
+            shadow,
+            contentRoot ?? '',
+            { action: 'pull-only-overlay-restore', context: { paths } },
+            branch,
+          );
+        },
         onAutoDisable: async (reason) => {
           log.warn({ reason }, '[sync] auto-disabled — persisting to project-local config');
           const result = await writeConfigPatch({

@@ -21,8 +21,11 @@
     "-YV1Uo": ["Pattern ", ["patternNumber"]],
     "-bFGPF": ["Next change"],
     "-dNlfM": ["Undid the last edit on ", ["docName"]],
+    "-f2Ogn": [
+      "Keep this project in sync with your git remote. Follow fetches updates without pushing; full sync pushes your commits too. Turning sync on requires confirmation."
+    ],
     "-g6KIS": ["Unrecognized link"],
-    "-gdcIo": ["Auto-sync is on — your commits push and remote changes pull on intervals."],
+    "-imiMK": ["Follow — updates flow in from your remote; your edits stay on this computer."],
     "-kbIAr": ["Links & images"],
     "-lCAuQ": ["Loading graph"],
     "-o5XAG": [
@@ -86,6 +89,7 @@
     "0t0bbC": ["Could not save sync preference: ", ["detail"]],
     "0uTHCg": ["Start a new OpenKnowledge project."],
     "0wswKc": ["Horizontal rule that divides sections."],
+    "0xnQ_X": ["Updates flow in"],
     "0xnmlQ": ["Repository name"],
     "0yL--g": ["Review conflicts"],
     "10g8I_": ["Turn off Only markdown files"],
@@ -236,6 +240,7 @@
     "4A3Yzu": ["Code block"],
     "4BITzH": ["Error:"],
     "4CfgPM": ["Project folder created, but git init failed. Try again."],
+    "4DcimZ": ["Updated ", ["lastSyncedRelative"]],
     "4E9jPa": ["Create your first project"],
     "4EZrJN": ["Rules"],
     "4Gz2wC": ["Failed to upload file"],
@@ -331,6 +336,7 @@
         }
       ]
     ],
+    "5rnB76": ["Your edits stay on this computer"],
     "5vYdh9": ["New thread with ", ["0"]],
     "5wV2qQ": ["and more"],
     "5y_9lO": ["Waiting for authorization"],
@@ -390,6 +396,7 @@
     "7FamGZ": ["Go to line"],
     "7Fkcej": ["+ Add ", ["addChildName"]],
     "7H4UHD": ["Documents tagged <0>#", ["tagName"], "</0>"],
+    "7IsvrP": ["Checking for updates"],
     "7JtSLi": ["Failed to delete path"],
     "7OhaRy": ["Source search"],
     "7Ongq0": ["Condense my AGENTS.md file to less than 40k characters"],
@@ -446,6 +453,9 @@
     "8RtNI0": ["Failed to load documents"],
     "8TvlHF": ["Crash dump"],
     "8Vq20-": ["Switch worktree"],
+    "8Wav8y": [
+      "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
+    ],
     "8XQRON": ["Loading repositories"],
     "8_brI5": ["Name is required"],
     "8cS0nH": ["Config sharing unavailable: ", ["0"], "."],
@@ -459,6 +469,7 @@
     "8m8diM": ["No location selected. Use Browse to choose a folder."],
     "8nWu1k": ["Empty diagram"],
     "8ruqQi": ["Broken internal links"],
+    "8sMErm": ["Enable Follow?"],
     "8t9CRE": ["Starting ", ["agentName"], "…"],
     "8tjQCz": ["Explore"],
     "8uAWix": [
@@ -616,6 +627,9 @@
     "CSL0l1": ["Couldn't clear the key — please try again."],
     "CTJLpz": ["\"", ["trimmed"], "\" already exists here"],
     "CU3AiE": ["Switching branches"],
+    "CVRM5N": [
+      "Follow fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
+    ],
     "CWzc2T": [
       "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
     ],
@@ -630,6 +644,7 @@
     "CifUuG": ["Update available"],
     "Ck9XRt": ["Couldn't save the key — please try again."],
     "CmeH9S": ["Add property to ", ["keyName"]],
+    "CnOGgs": ["Sync mode"],
     "CoHvYd": ["Moved ", ["0"], " to position ", ["1"], " of ", ["2"]],
     "CooKEf": ["Dock sessions at the bottom"],
     "CvsD6Y": ["via ", ["viaTags"]],
@@ -807,7 +822,6 @@
     "FZtBeR": ["Enable ", ["0"]],
     "FgRAvd": ["Logs & system info"],
     "FjkaiT": ["Zoom out"],
-    "FnMkli": ["Sync disabled — you don't have permission to push"],
     "FqGWeR": ["Couldn't reach the agent registry."],
     "FqTpiN": ["Bird wiki"],
     "Fqr8BP": ["Multi-page PDF viewer with toolbar controls (thumbnails, page nav, zoom)."],
@@ -1061,6 +1075,7 @@
     "LKOLNn": ["No AI agents installed"],
     "LNum6A": [["minutes"], " min ago"],
     "LPAv9E": [["days"], "d ago"],
+    "LQsCPn": ["Local commits are keeping this copy from updating"],
     "LRgZAt": [["owner"], "/", ["name"], " already exists"],
     "LTeJuX": ["Toggle Full Screen"],
     "LXdWeS": ["Medium section heading."],
@@ -1115,13 +1130,14 @@
     "MCjC9A": ["Delete ", ["deleteDescriptorLabel"]],
     "MDBJwN": ["Hard to use"],
     "MDZSJe": ["When the agent runs its scheduled work."],
+    "MGBNwj": ["Pause sync"],
     "MGb89P": [
       "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
     ],
     "MHrjPM": ["Title"],
     "MJqRO6": ["Your report is being sent."],
     "MJuO1q": ["Context window:"],
-    "MKOVhz": ["Enable git auto-sync"],
+    "MKEPCY": ["Follow"],
     "MQIM_Y": ["Couldn't copy. Select the URL above to copy it manually."],
     "MRZxAn": ["Edited"],
     "MTs6g3": ["Couldn't reconnect after server restart"],
@@ -1194,7 +1210,6 @@
     "NgZwB0": [["enabledCount"], "/", ["0"], " on"],
     "NjrIak": ["File: <0>", ["fixedName"], ".md</0>"],
     "NkXEFS": ["Restore failed — document unchanged"],
-    "Nm-3m-": ["Auto-sync is paused — you don't have permission to push to this repo."],
     "NmPNJJ": ["Copy code"],
     "Nn4GgW": ["Will be created as <0>", ["sanitizedName"], "</0>"],
     "NnQapF": ["Open with AI ", ["targetDisplayName"]],
@@ -1206,7 +1221,6 @@
     "Nv3mUj": ["Show advanced"],
     "NvOvTi": ["Create in <0>", ["dirDisplay"], "</0>"],
     "Nwbs0q": ["Don't show"],
-    "Nx7BWE": ["Git auto-sync"],
     "NxW-md": ["Resize ", ["handleKey"]],
     "NzFvyK": ["Session ended — undo unavailable"],
     "NzluOx": ["(optional)"],
@@ -1254,7 +1268,6 @@
     ],
     "Okd2Xv": ["Toggle underline formatting."],
     "OlAl5i": ["Expand all"],
-    "OmHTGj": ["Disable git auto-sync"],
     "Oo_WWc": ["No pages found"],
     "Oos8fo": ["Copy command"],
     "OplnBG": ["Managing AI tools is unavailable in this build."],
@@ -1283,6 +1296,7 @@
     "PQCdtv": ["\"", ["docName"], "\" doesn't exist."],
     "PR9FSv": ["Move to the next visual-editor find result."],
     "PRnH8G": ["of ", ["0"]],
+    "PTb1Nx": ["Sync is paused. Turn it back on to resume."],
     "PVUn_c": ["Open folder"],
     "PYmp-0": ["Import as template"],
     "PZtgO0": ["Opening worktree"],
@@ -1322,6 +1336,7 @@
     "QQghPu": ["Install in Claude Desktop"],
     "QR5SP1": ["created template"],
     "QTsvh1": ["This agent needs you to sign in first — see the notice below."],
+    "QYTOaN": ["You can change this later in <0>Settings → Sync</0>."],
     "QYfQdv": [["displayName"], " CLI"],
     "QcpeeE": ["Navigate to ", ["docName"]],
     "QfFBdJ": ["The template's filename (without `.md`)."],
@@ -1430,13 +1445,15 @@
     "Sq8lf2": ["Editors to install skills into"],
     "SrOuyg": ["Document panels"],
     "SvBFYA": ["No recent projects"],
+    "Sxx_Zz": [
+      "Follow is on for this worktree, inherited from ",
+      ["project"],
+      ". Change it in Settings → Sync."
+    ],
     "T-654M": ["Loading PDF"],
     "T0OVm7": ["The default branch is protected — pushes need a pull request."],
     "T3Mld1": ["Window"],
     "T3j-7o": ["e.g. Switching projects while a sync was running"],
-    "T67A0Y": [
-      "Auto-sync pushes/pulls commits to your git remote on intervals and on save. Toggling on requires confirmation."
-    ],
     "TEEPPF": ["Will replace existing OpenKnowledge entry"],
     "TJnkyf": ["ok ui responded but server.lock has no port yet"],
     "TKQ7K-": ["Install"],
@@ -1464,7 +1481,9 @@
     "U2Kx6T": ["Close all unpinned"],
     "U2pMtf": ["tag-name"],
     "U3IvM5": ["Full guide"],
+    "U4nTfu": ["Enable Follow"],
     "U5Spo9": ["Content directory must be inside the project"],
+    "U6wmNc": ["Sync paused"],
     "U7HJ4y": ["Managed by OpenKnowledge (read-only)"],
     "U8CD-l": ["Copy full path, No workspace"],
     "U9tm58": ["Hide problem indicators"],
@@ -1482,6 +1501,9 @@
     "UTNVyS": ["Select the full source document."],
     "UTZ97u": ["Selection must be inside the project"],
     "UTgWxm": ["Nothing was uploaded. The report stays on this Mac until you email it to us."],
+    "UVDasf": [
+      "Sync is off — your edits stay on this computer until you commit and push manually."
+    ],
     "UVLlMV": ["Couldn't reach GitHub. Try again?"],
     "UW2Fg3": [
       "This project's running server doesn't support live editing. Restart OpenKnowledge to fix."
@@ -1557,9 +1579,6 @@
     "W0i24j": ["Object"],
     "W1SI2K": [["0", "plural", { "one": ["#", " warning"], "other": ["#", " warnings"] }]],
     "W1qRuM": ["This document is already active in the editor. Use Open to collapse the graph."],
-    "W3Xlpc": [
-      "Set the auto-sync default for users opening this project for the first time. This setting is committed to your repository."
-    ],
     "W5A0Ly": ["An unexpected error occurred."],
     "W7XJN4": [
       "Can't nest projects. An OpenKnowledge project already exists at <0>",
@@ -1603,7 +1622,6 @@
     "WmPbvm": ["Get product updates in your inbox."],
     "Wq6Wcm": ["Please enter a valid email address."],
     "WqLq6M": ["Open with AI ", ["displayName"]],
-    "Wt5W56": ["Sync is off — your edits will not sync to the remote repository."],
     "Wtw22s": ["Installing"],
     "WuntOK": ["Preview of the screenshot"],
     "WyQxwa": ["Connect this project to GitHub to share."],
@@ -1703,7 +1721,6 @@
     "Z1LF1M": ["Sharing a doc needs a GitHub repository. Create one for this project."],
     "Z2M5XM": ["Reason: ", ["reason"], " (", ["osDetail"], ")"],
     "Z3FXyt": ["Loading..."],
-    "Z5HWHd": ["On"],
     "Z5h97D": [
       "Hide files and folders from your knowledge base. Hidden items don’t appear in the file tree, search, or AI tools. <0>Learn more about patterns</0>."
     ],
@@ -1722,11 +1739,11 @@
     "ZBt4rI": ["Instruction for the AI"],
     "ZBxvV3": ["New Terminal"],
     "ZI8uvA": ["No problems found."],
-    "ZLQol-": ["You can turn this on later in <0>Settings → Sync</0>."],
     "ZNK2Tq": ["root"],
     "ZQJ1IV": ["Activate the last editor tab."],
     "ZQLDTl": ["created folder"],
     "ZU8VV_": ["Remove failed: ", ["error"]],
+    "ZVOhXM": ["Failed to update sync — ", ["detail"]],
     "ZW3mlR": ["Diff render mode"],
     "ZWgr0b": ["In a subfolder"],
     "ZWolSV": [
@@ -1820,6 +1837,7 @@
     "a9OzSn": ["No pages found for \"", ["trimmedQuery"], "\""],
     "aBgwis": ["Scope"],
     "aByJ8j": ["How does sharing work?"],
+    "aCoQfY": ["New changes from your remote appear in your copy automatically."],
     "aE2_XM": ["One pattern per line — appended to <0>.okignore</0>."],
     "aENGMB": [
       "Semantic search adds meaning-based ranking to the search tool so conceptually-related pages surface even without shared keywords."
@@ -1838,6 +1856,9 @@
     "abiHje": ["Delete selected items"],
     "adsMWO": ["Resolving deltas"],
     "aiArms": ["We couldn't clone this repository."],
+    "ajHi4O": [
+      "Auto-sync is paused — you don't have permission to push to this repo. Switch to Follow to keep receiving updates."
+    ],
     "ajz9F8": ["Couldn't load conflict content for ", ["filePath"], ". Try reloading the page."],
     "ak4LLg": ["Clear menu"],
     "anmUZq": ["Missing a feature"],
@@ -1911,6 +1932,20 @@
     "cZGNlb": ["Add another pattern"],
     "cZI5AL": ["OK Desktop"],
     "cZ_8zB": ["Stays on this computer."],
+    "caw8gO": [
+      [
+        "strandedCommitCount",
+        "plural",
+        {
+          "one": ["You have 1 change you haven't shared. It will stay on this computer."],
+          "other": [
+            "You have ",
+            "#",
+            " changes you haven't shared. They will stay on this computer."
+          ]
+        }
+      ]
+    ],
     "ccNps_": ["Only modified"],
     "cd5EXh": ["Report a bug"],
     "cdm00A": ["No Incoming"],
@@ -1974,7 +2009,6 @@
     ],
     "dprWmL": ["Anchor in this page"],
     "dr1vFs": ["Replace all matches"],
-    "dvGKu2": ["Shared auto-sync default"],
     "dw_3cv": ["Rename skill"],
     "dw_dUJ": ["Failed to duplicate path"],
     "dx-TwN": ["Running project audit"],
@@ -2010,6 +2044,9 @@
       "Mark a block as the source of truth. Mirrors elsewhere update live as you edit it."
     ],
     "euc6Ns": ["Duplicate"],
+    "evHlIg": [
+      "Follow never pushes or commits your local changes. They stay only on this machine."
+    ],
     "evs0iw": ["Tags matching \"", ["tagListQuery"], "\""],
     "f1XQyZ": ["Move block"],
     "f3Nvg7": [
@@ -2051,6 +2088,7 @@
     "fwrPh4": ["Please enter a valid email."],
     "fxJk_6": ["<0>Have more to add?</0> Write to <1/> and mention your reference."],
     "fxbCNQ": ["Synced. The link is up to date."],
+    "g2Tj8R": ["Full"],
     "g3UF2V": ["Accept"],
     "g4WlQK": ["Project AI tool management is only available in the OpenKnowledge desktop app."],
     "g4XBm0": ["Small section heading."],
@@ -2060,6 +2098,7 @@
       ["descriptorLabel"],
       "> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
     ],
+    "g85bAo": ["Synced ", ["lastSyncedRelative"]],
     "gBbxn_": ["Checking sign-in status"],
     "gGVP4q": ["Click <0>+</0> <1/> <2>Create skill</2> <3/> <4>Upload skill</4>."],
     "gHSAWT": ["Create worktree <0>“<1>", ["typedName"], "</1>”</0>"],
@@ -2145,12 +2184,14 @@
     "hwFOFD": ["Settings failed to load"],
     "hxBHxQ": ["A line with a footnote<0><1>[1]</1></0> and a definition shown below."],
     "hxEUVJ": ["Initialize ", ["selectedPackName"]],
+    "hxYFzm": ["Full sync — your commits push and remote changes pull automatically."],
     "hyCxJY": ["Open that worktree instead"],
     "hynz2K": ["Download started"],
     "i-ShMB": ["Diagram"],
     "i09An-": ["Restored an earlier version (", ["0"], ")"],
     "i1flq_": ["Wiki link suggestions"],
     "i3f2kh": ["No matching commands."],
+    "i6ng22": ["Switch to Follow"],
     "i92eAT": ["We'll create a repository and start syncing — no terminal needed."],
     "i9OyGp": ["Undo or redo"],
     "i9TPUi": [
@@ -2179,9 +2220,6 @@
     "iSLIjg": ["Connect"],
     "iSQTsg": ["Ordered list"],
     "iSnkwB": ["Failed to open cloned project."],
-    "iTlqm3": [
-      ["ahead", "plural", { "one": ["#", " commit ahead"], "other": ["#", " commits ahead"] }]
-    ],
     "iTylMl": ["Templates"],
     "iXTp5j": ["Scope: "],
     "idD8Ev": ["Saved"],
@@ -2204,7 +2242,9 @@
     ],
     "iuTKci": ["No edits yet."],
     "iv452l": ["Documentation for ", ["0"], " (opens in browser)"],
+    "iy64Li": ["Full sync — your edits are committed and pushed to your remote automatically."],
     "iycx_A": ["Pushing"],
+    "j5CWO4": ["Up to date"],
     "j9Vqvc": ["inherited"],
     "j9tqwO": ["Not in sidebar"],
     "jAMpHn": ["What is a starter pack?"],
@@ -2298,6 +2338,7 @@
     "klPS-L": ["Original file — before this agent's edits."],
     "kmKqZg": ["Clusters"],
     "knjOzA": ["Tag value"],
+    "ko386X": ["A document has a conflict — resolve it to keep it up to date."],
     "kolRU1": ["Do you want to permanently delete instead?"],
     "kpqWwG": ["This ", ["targetNoun"], " was removed from branch <0>", ["branch"], "</0>."],
     "ktspdq": ["Tint and badge files that have lint or link problems, without opening them."],
@@ -2336,7 +2377,6 @@
     "lHCR4I": ["Clear the field to reset back to the default OpenAI endpoint."],
     "lHwYMr": ["Server error: ", ["status"], " ", ["statusText"]],
     "lI0Td2": ["Use letters, digits, <0>_</0> and <1>-</1> only."],
-    "lIn9L9": ["Disable sync"],
     "lKQnp-": ["Installed ", ["0"], " ", ["1"]],
     "lPzyrU": ["All hunks resolved"],
     "lVWEIL": ["Indexed ", ["embedded"], " of ", ["total"], " pages."],
@@ -2403,6 +2443,9 @@
       "Repositories you've already cloned may keep syncing through git's own saved credentials, even after you disconnect."
     ],
     "msqUNq": ["Ready-made folders and templates to get you started quickly."],
+    "msuDyW": [
+      "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
+    ],
     "mu1O0q": [
       "Open Knowledge can manage ",
       ["0"],
@@ -2433,6 +2476,7 @@
       "This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects."
     ],
     "nNYV3Y": ["and ", ["remaining"], " more"],
+    "nOEDQs": ["Failed to update sync mode — ", ["detail"]],
     "nP-KFo": ["New ", ["0"], " chat"],
     "nP76lk": [
       "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
@@ -2499,6 +2543,7 @@
       ["trimmed"],
       "</1>, in its own window under <2>.ok/worktrees/</2>."
     ],
+    "oBK5fD": ["Overlapping edits"],
     "oBXkm2": ["Delete code block"],
     "oCHfGC": ["Level"],
     "oCNLN8": [
@@ -2592,7 +2637,6 @@
     "qRZh7J": ["Let Tab leave the source editor instead of indenting."],
     "qSKu2v": ["Source navigation and selection"],
     "qSxaOz": ["Accept their deletion"],
-    "qUB_o_": ["Auto-sync is off — your edits stay local until you commit and push manually."],
     "qX-ABr": ["Or to use browser sign-in instead:"],
     "qXN416": ["Couldn't share skills: internal error. Please restart the app."],
     "qXg5W9": ["File saves to <0>~/Downloads/openknowledge.skill</0>."],
@@ -2655,6 +2699,7 @@
     "rgPqOw": ["Convert the current block to a paragraph."],
     "riqekz": ["Suggestion menu navigation"],
     "rlUzXK": ["Could not validate folder. Please try again."],
+    "rn7n0G": ["Resume sync"],
     "roAe2K": ["Link URL"],
     "roiUQQ": ["This page doesn't link to anything yet."],
     "rppgXF": ["Disconnecting"],
@@ -2780,11 +2825,13 @@
       "Couldn't restart the server — it's running under a different account. Restart your computer to clear it, then reopen this project."
     ],
     "uR2YT3": ["Show problem indicators"],
+    "uUiiyC": [
+      "You don't have permission to push to this repo. Follow can still keep your copy up to date."
+    ],
     "uVbUP8": ["Settings…"],
     "uWtdQR": [
       "No templates yet. Add one in this folder's Templates section, or in Settings → Templates."
     ],
-    "uWx2ZP": ["Last sync"],
     "u_lS4C": ["Clone complete — opening project"],
     "uaUc6t": ["Restart server"],
     "ubMwcO": ["The terminal session ended (signal ", ["0"], ")."],
@@ -2865,7 +2912,6 @@
     "w_Sphq": ["Attachments"],
     "waFx9W": ["Managed"],
     "wbv9xO": ["Create new project"],
-    "wbwHYD": ["Enable sync"],
     "wccmX0": [
       "Your embeddings provider API key, used only to create embeddings of your content for semantic search. Stored once for this machine in <0>~/.ok/secrets.yml</0> (readable only by your user account) and shared across all projects. Turn the feature on per project in This project → Search, where you can also override the endpoint."
     ],
@@ -2963,6 +3009,7 @@
     "yWSvcf": ["Content root"],
     "yWWThY": ["Asset reference"],
     "yYR6za": ["Display text"],
+    "yZepkk": ["Git sync"],
     "yZmvQ4": ["This project's server (v", ["0"], ") is newer than this app (v", ["1"], ")."],
     "y_5CE8": ["Item ", ["0"]],
     "y_K0Dz": ["What happened?"],
@@ -3037,6 +3084,7 @@
     "ztKII6": ["Failed to add item"],
     "zvjCD4": ["Detailed diagnostics"],
     "zwBp5t": ["Private"],
-    "zyKa-I": ["Star us on GitHub"]
+    "zyKa-I": ["Star us on GitHub"],
+    "zz_Wd_": ["Mode"]
   }
 }

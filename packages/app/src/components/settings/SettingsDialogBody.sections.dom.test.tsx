@@ -13,11 +13,15 @@ type SyncStatus = {
     unknownError?: string;
   };
   syncEnabled?: boolean;
+  syncMode?: 'off' | 'follow' | 'full';
+  ahead?: number;
   remote?: { label: string; webUrl: string | null } | null;
 } | null;
 
 let syncStatus: SyncStatus = null;
-let projectLocalConfig: { autoSync?: { enabled?: boolean } } | null = {
+let projectLocalConfig: {
+  autoSync?: { enabled?: boolean; mode?: 'off' | 'follow' | 'full' };
+} | null = {
   autoSync: { enabled: true },
 };
 let projectLocalSynced = true;
@@ -33,8 +37,9 @@ let projectBinding: {
   patch: (patch: unknown) => { ok: true } | { ok: false; error: unknown };
 } | null = null;
 let projectBindingPatchCalls: unknown[] = [];
-let syncWriterCalls: boolean[] = [];
-let syncDefaultWriterCalls: Array<boolean | null> = [];
+let syncModeWriterCalls: string[] = [];
+let syncModeSelectCalls: string[] = [];
+let syncDefaultWriterCalls: Array<boolean | string | null> = [];
 let okignoreProps: Array<{ binding: unknown; synced: boolean }> = [];
 let installDialogProps: Array<{
   open: boolean;
@@ -264,36 +269,42 @@ vi.doMock('@/lib/config-provider', () => ({
   }),
 }));
 
+type ModeWriterFn = (mode: string) => { ok: true };
 vi.doMock('@/hooks/use-enable-sync-with-confirm', () => ({
-  useSyncEnabledWriter: () => ({
-    write: (enabled: boolean) => {
-      syncWriterCalls.push(enabled);
-      return true;
-    },
-  }),
-  useSyncDefaultWriter: () => (next: boolean | null) => {
+  useSyncModeWriter: (): ModeWriterFn => (mode: string) => {
+    syncModeWriterCalls.push(mode);
+    return { ok: true };
+  },
+  useSyncDefaultWriter: () => (next: boolean | string | null) => {
     syncDefaultWriterCalls.push(next);
     return { ok: true };
   },
-  useEnableSyncWithConfirm: (writer: { write: (enabled: boolean) => boolean }) => {
+  // Thin recorder mirroring the real hook's gating so the section's wiring is
+  // exercised (deep confirm-flow behavior is covered against the real hook in
+  // SettingsDialogBody.sync-mode.dom.test.tsx and the hook's own test).
+  useSyncModeSelection: (writer: ModeWriterFn, currentMode: string) => {
     const [confirmOpen, setConfirmOpen] = useState(false);
+    const [pendingMode, setPendingMode] = useState<'follow' | 'full' | null>(null);
     return {
       confirmOpen,
       setConfirmOpen,
-      onToggleRequest: (enabled: boolean) => {
-        if (enabled) {
-          setConfirmOpen(true);
+      pendingMode,
+      onModeSelect: (next: string) => {
+        syncModeSelectCalls.push(next);
+        if (next === currentMode) return;
+        if (next === 'off') {
+          writer('off');
           return;
         }
-        writer.write(false);
+        setPendingMode(next as 'follow' | 'full');
+        setConfirmOpen(true);
       },
       onConfirm: () => {
-        writer.write(true);
+        if (pendingMode) writer(pendingMode);
         setConfirmOpen(false);
       },
     };
   },
-  EnableSyncConfirmDialog: () => null,
 }));
 
 vi.doMock('@/components/EnableSyncConfirmDialog', () => ({
@@ -351,7 +362,8 @@ describe('SettingsDialogBody section runtime dispatch', () => {
         return { ok: true };
       },
     };
-    syncWriterCalls = [];
+    syncModeWriterCalls = [];
+    syncModeSelectCalls = [];
     syncDefaultWriterCalls = [];
     okignoreProps = [];
     installDialogProps = [];
@@ -518,22 +530,24 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     );
   });
 
-  test('sync section reads checked state from project-local config and keeps the writer/confirm path', async () => {
+  test('sync section reflects the resolved mode and wires the three-way control', async () => {
     syncStatus = {
-      state: 'enabled',
+      state: 'idle',
       hasRemote: true,
-      syncEnabled: false,
+      syncEnabled: true,
+      syncMode: 'full',
       remote: {
         label: 'inkeep/open-knowledge',
         webUrl: 'https://github.com/inkeep/open-knowledge',
       },
     };
+    // Legacy `enabled: true` derives to full mode.
     projectLocalConfig = { autoSync: { enabled: true } };
 
     await renderBody({ activeId: 'sync' });
 
-    const toggle = screen.getByTestId('settings-sync-toggle');
-    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    const modeToggle = screen.getByTestId('settings-sync-mode-toggle');
+    expect(modeToggle.getAttribute('data-value')).toBe('full');
     expect(screen.getByTestId('settings-sync-remote-link').getAttribute('href')).toBe(
       'https://github.com/inkeep/open-knowledge',
     );
@@ -541,23 +555,32 @@ describe('SettingsDialogBody section runtime dispatch', () => {
       'noopener noreferrer',
     );
 
-    fireEvent.click(toggle);
-    expect(syncWriterCalls).toEqual([false]);
+    // Selecting Off is the safe direction — commits immediately, no confirm.
+    fireEvent.click(screen.getByTestId('settings-sync-mode-off'));
+    expect(syncModeSelectCalls).toEqual(['off']);
+    expect(syncModeWriterCalls).toEqual(['off']);
 
     cleanup();
     syncStatus = {
-      state: 'enabled',
+      state: 'idle',
       hasRemote: true,
       syncEnabled: true,
+      syncMode: 'follow',
       remote: { label: 'ssh://git.example/repo.git', webUrl: null },
     };
-    projectLocalConfig = { autoSync: { enabled: false } };
+    projectLocalConfig = { autoSync: { mode: 'follow' } };
     projectLocalSynced = false;
 
     await renderBody({ activeId: 'sync' });
 
-    expect(screen.getByTestId('settings-sync-toggle').getAttribute('aria-checked')).toBe('false');
-    expect(screen.getByTestId('settings-sync-toggle').hasAttribute('disabled')).toBe(true);
+    // Explicit mode wins; the control is disabled until the project-local config
+    // has hydrated (cold-start guard).
+    expect(screen.getByTestId('settings-sync-mode-toggle').getAttribute('data-value')).toBe(
+      'follow',
+    );
+    expect(screen.getByTestId('settings-sync-mode-toggle').getAttribute('data-disabled')).toBe(
+      'true',
+    );
     expect(screen.getByTestId('settings-sync-remote-label').textContent).toBe(
       'ssh://git.example/repo.git',
     );
@@ -584,13 +607,17 @@ describe('SettingsDialogBody section runtime dispatch', () => {
       'off',
     );
 
-    // "On by default" writes the committed seed `true`.
-    fireEvent.click(screen.getByTestId('settings-sync-default-on'));
+    // "Full by default" writes the legacy boolean seed `true` (older builds honor it).
+    fireEvent.click(screen.getByTestId('settings-sync-default-full'));
     expect(syncDefaultWriterCalls).toEqual([true]);
 
-    // "Ask each person" clears the committed seed (writes null → RFC 7396 delete).
+    // "Pull-only by default" writes the widened mode string.
+    fireEvent.click(screen.getByTestId('settings-sync-default-follow'));
+    expect(syncDefaultWriterCalls).toEqual([true, 'follow']);
+
+    // "None" clears the committed seed (writes null → RFC 7396 delete).
     fireEvent.click(screen.getByTestId('settings-sync-default-ask'));
-    expect(syncDefaultWriterCalls).toEqual([true, null]);
+    expect(syncDefaultWriterCalls).toEqual([true, 'follow', null]);
   });
 
   test('committed default control is disabled until the committed config has synced', async () => {
@@ -616,31 +643,60 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     );
   });
 
-  test('sync section disables the toggle with denied-specific accessible copy when push permission is denied', async () => {
+  test('sync section keeps the mode control enabled and points a denied receiver at pull-only', async () => {
     syncStatus = {
       state: 'idle',
       hasRemote: true,
       syncEnabled: false,
+      syncMode: 'off',
       pushPermission: { checkStatus: 'denied', deniedReason: 'no-collaborator' },
       remote: {
         label: 'inkeep/open-knowledge',
         webUrl: 'https://github.com/inkeep/open-knowledge',
       },
     };
-    projectLocalConfig = { autoSync: { enabled: false } };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
     projectLocalSynced = true;
 
     await renderBody({ activeId: 'sync' });
 
-    const toggle = screen.getByTestId('settings-sync-toggle') as HTMLButtonElement;
-    expect(toggle.disabled).toBe(true);
-    expect(toggle.getAttribute('aria-label')).toBe(
-      "Sync disabled — you don't have permission to push",
+    // A denied probe no longer disables the control — pull-only never pushes, so
+    // the receiver must be able to reach it.
+    expect(screen.getByTestId('settings-sync-mode-toggle').getAttribute('data-disabled')).toBe(
+      'false',
     );
-    expect(screen.getByTestId('settings-sync-body').textContent).toContain(
-      "you don't have permission to push",
+    expect(screen.getByTestId('settings-sync-denied-hint').textContent).toContain(
+      "You don't have permission to push",
     );
-    expect(screen.queryByTestId('settings-sync-reason')).toBeNull();
+    // Off mode is not paused; the switch-to-pull affordance is full-only.
+    expect(screen.queryByTestId('settings-sync-switch-follow')).toBeNull();
+  });
+
+  test('sync section offers Switch to pull-only when full sync is paused on a denied push probe', async () => {
+    syncStatus = {
+      state: 'disabled',
+      hasRemote: true,
+      syncEnabled: true,
+      syncMode: 'full',
+      pausedReason: 'no-push-permission',
+      ahead: 2,
+      remote: {
+        label: 'inkeep/open-knowledge',
+        webUrl: 'https://github.com/inkeep/open-knowledge',
+      },
+    };
+    projectLocalConfig = { autoSync: { mode: 'full' } };
+    projectLocalSynced = true;
+
+    await renderBody({ activeId: 'sync' });
+
+    expect(screen.getByTestId('settings-sync-switch-follow')).not.toBeNull();
+    // The action routes through the mode selector toward pull-only.
+    fireEvent.click(screen.getByTestId('settings-sync-switch-follow-action'));
+    expect(syncModeSelectCalls).toEqual(['follow']);
+    // Opening the confirm, not an immediate write (consent gate).
+    expect(syncModeWriterCalls).toEqual([]);
+    expect(screen.getByTestId('sync-confirm-dialog').getAttribute('data-open')).toBe('true');
   });
 
   test('sync section renders shared paused-reason copy for non-permission pause reasons', async () => {
