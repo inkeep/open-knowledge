@@ -1779,6 +1779,49 @@ async function startParcelWatcher(
 
 // ─── Backend: chokidar ──────────────────────────────────────────────────────
 
+/**
+ * chokidar `ignored` predicate — decides both whether to emit an event for a
+ * path AND (load-bearing) whether to descend into a directory.
+ *
+ * chokidar invokes this WITHOUT `stats` at the subwatch gate that decides
+ * whether a freshly-discovered directory gets its own watcher (readdirp entries
+ * carry lstat stats, but that gate does not). With no stats we cannot tell a
+ * directory from a file, and routing a real subdirectory through the file-only
+ * `isExcluded` — which default-excludes any non-`.md`/non-asset name — prunes
+ * the whole subtree, so the fallback silently stops watching every content
+ * subfolder. `lstatSync` (not `statSync`, to match `followSymlinks: false`)
+ * resolves the type; any stat error admits the path (return `false`) so a
+ * just-deleted file still emits its delete and a transiently-missing path is
+ * never pruned.
+ */
+export function isChokidarPathIgnored(
+  contentDir: string,
+  contentFilter: ContentFilter,
+  filePath: string,
+  stats?: Stats,
+): boolean {
+  const rel = toPosix(relative(contentDir, filePath));
+  if (rel === '' || rel === '.') return false;
+  let isDirectory: boolean;
+  if (stats) {
+    isDirectory = stats.isDirectory();
+  } else {
+    try {
+      isDirectory = lstatSync(filePath).isDirectory();
+    } catch {
+      return false;
+    }
+  }
+  return isDirectory ? contentFilter.isDirExcluded(rel) : contentFilter.isExcluded(rel);
+}
+
+/**
+ * Upper bound on how long `startWatcher` waits for chokidar's `ready` event
+ * before returning anyway. `ready` normally fires in well under a second; the
+ * cap only guards against a pathological initial scan wedging server boot.
+ */
+const CHOKIDAR_READY_TIMEOUT_MS = 10_000;
+
 async function startChokidarWatcher(
   contentDir: string,
   contentFilter: ContentFilter | undefined,
@@ -1800,12 +1843,8 @@ async function startChokidarWatcher(
     // contentDir from sourcing events for an arbitrary location on disk.
     followSymlinks: false,
     ignored: contentFilter
-      ? (filePath: string, stats?: import('node:fs').Stats) => {
-          const rel = toPosix(relative(contentDir, filePath));
-          if (rel === '' || rel === '.') return false;
-          if (stats?.isDirectory()) return contentFilter.isDirExcluded(rel);
-          return contentFilter.isExcluded(rel);
-        }
+      ? (filePath: string, stats?: Stats) =>
+          isChokidarPathIgnored(contentDir, contentFilter, filePath, stats)
       : undefined,
   });
 
@@ -1845,6 +1884,24 @@ async function startChokidarWatcher(
   watcher.on('addDir', (path) => queueEvent('create', path));
   watcher.on('unlinkDir', (path) => queueEvent('delete', path));
 
+  // chokidar's `watch()` returns before its initial scan and per-directory
+  // watch registration finish; unlike @parcel/watcher's `subscribe()`, the
+  // returned watcher is not yet observing. Awaiting `ready` makes `startWatcher`
+  // resolve only once external edits are actually detectable — otherwise an
+  // edit landing in the setup window (routine on slower inotify hosts) is
+  // silently missed. Bounded so a pathological scan never wedges boot: past the
+  // cap we proceed anyway (the watcher keeps arming in the background).
+  await new Promise<void>((resolveReady) => {
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      resolveReady();
+    };
+    watcher.once('ready', settle);
+    setTimeout(settle, CHOKIDAR_READY_TIMEOUT_MS).unref();
+  });
+
   return {
     unsubscribe: () => {
       if (batchTimer) {
@@ -1876,6 +1933,7 @@ export async function startWatcher(
   contentDirRaw: string,
   onDiskEvent: (event: DiskEvent) => Promise<void>,
   contentFilter?: ContentFilter,
+  opts: { forceBackend?: 'parcel' | 'chokidar' } = {},
 ): Promise<WatcherHandle> {
   let contentDir: string;
   try {
@@ -1922,19 +1980,29 @@ export async function startWatcher(
   let subscription: AsyncSubscription;
   let backend: WatcherBackend;
   try {
-    const parcelSub = await startParcelWatcher(
-      contentDir,
-      contentFilter,
-      fileIndex,
-      folderIndex,
-      onDiskEvent,
-      aliasMap,
-      bumpFileIndexGeneration,
-    );
+    // `forceBackend` is a test seam (mirrors head-watcher): 'chokidar' skips
+    // the parcel attempt so the fallback can be exercised on a host where the
+    // native module IS resolvable; 'parcel' throws instead of degrading so a
+    // test can't silently pass on the wrong backend.
+    const parcelSub =
+      opts.forceBackend === 'chokidar'
+        ? null
+        : await startParcelWatcher(
+            contentDir,
+            contentFilter,
+            fileIndex,
+            folderIndex,
+            onDiskEvent,
+            aliasMap,
+            bumpFileIndexGeneration,
+          );
     if (parcelSub) {
       subscription = parcelSub;
       backend = 'parcel';
     } else {
+      if (opts.forceBackend === 'parcel') {
+        throw new Error('@parcel/watcher unavailable (forced backend)');
+      }
       subscription = await startChokidarWatcher(
         contentDir,
         contentFilter,
