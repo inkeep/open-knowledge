@@ -567,6 +567,7 @@
         { "one": ["#", " file conflicted"], "other": ["#", " files conflicted"] }
       ]
     ],
+    "B6Lac2": ["+", ["overflowCount"], " more"],
     "BAH4qX": ["Selected graph item"],
     "BBqGS9": ["Desktop"],
     "BD0XSC": ["Failed to load project templates"],
@@ -598,6 +599,7 @@
     "Bx4EXG": ["Actions for ", ["label"]],
     "By-7Pn": ["Toggle a bullet list."],
     "BymzO4": ["Document outline"],
+    "C-xgad": ["or use a starter pack"],
     "C0hoX6": ["Always included"],
     "C62P6b": ["Editor selection"],
     "C7XjNB": ["Global Skill"],
@@ -1315,7 +1317,6 @@
     "Qj4RL5": ["Completed:"],
     "QlAG4m": ["Tell us more (optional)"],
     "QlxHAH": ["Showing results for \"", ["semanticResultsLabel"], "\""],
-    "QnjpOq": ["What do you want to build?"],
     "QqBQu1": ["Label <0>(visible link text)</0>"],
     "Qvls7J": ["Eng specs"],
     "Qw-7Ie": [
@@ -1383,7 +1384,6 @@
       " has been moved, renamed, or deleted in your local copy, and that change hasn't synced yet."
     ],
     "S33tz3": ["Not connected"],
-    "S34Vju": ["Have something else in mind?"],
     "S48xcO": ["pending"],
     "S60KvX": ["Delete this conversation?"],
     "S6l5dv": ["Could not start creating a new item"],
@@ -1838,6 +1838,7 @@
     ],
     "b4itZn": ["Working"],
     "b5aNbi": ["The ", ["targetNoun"], " could not be opened — try navigating to it manually."],
+    "b6Fgpe": ["Each pack scaffolds your project with ready-made folders and templates."],
     "bBE5tC": ["Detected on this machine"],
     "bBcFK_": ["Open emoji picker for ", ["keyName"]],
     "bD8I7O": ["Complete"],
@@ -1963,6 +1964,7 @@
     "e0NrBM": ["Project"],
     "e1Rn_k": ["Open containing folder"],
     "e1hptq": ["Embed a video with native player controls."],
+    "e4FxjG": ["See all ", ["0"], " starter packs"],
     "e4GHWP": ["Pull"],
     "e4PbgC": ["Duplicate the file-tree item copied from the Files sidebar."],
     "e8L17t": ["A non-empty folder already exists at this path. Pick a different folder."],
@@ -2056,9 +2058,6 @@
       " could not be opened — try navigating to it manually."
     ],
     "gUlRQj": ["Orphans"],
-    "gYuDfu": [
-      "Pick a starter pack to scaffold your project with ready-made folders and templates."
-    ],
     "gYz2ep": ["Expires in ", ["timeLabel"]],
     "gZElfU": ["Fixing ", ["0"], " of ", ["1"], " files"],
     "gbHcbI": ["Failed to delete property"],
@@ -2181,7 +2180,6 @@
     "iqIDv4": ["Sync status unavailable"],
     "iqugog": ["Initialize failed: ", ["errorDetail"]],
     "irFGwu": ["Template list"],
-    "ircigK": ["Blank project"],
     "irrm_E": ["Remove selection"],
     "isRobC": ["New"],
     "itxlnr": [
@@ -2717,6 +2715,7 @@
     "tP5DDk": ["Apply link"],
     "tUvUfp": ["Use a folder you already have."],
     "t_YqKh": ["Remove"],
+    "tcjTlU": ["Starter packs"],
     "teD0H9": ["Couldn't open a worktree for that branch."],
     "ten9en": ["Recent project"],
     "tfDRzk": ["Save"],

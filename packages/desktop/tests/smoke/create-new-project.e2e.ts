@@ -3,11 +3,10 @@
  * Navigator → blank-create affordance → in-app CreateProjectDialog flow and
  * asserts the three end-to-end cascade UX states.
  *
- * Every test seeds zero recents (`seedTmpHome`), so the Navigator opens on the
- * first-run packs-forward view — the blank-create affordance there is
- * `nav-first-run-blank`, NOT the returning-user `nav-create-new` card (which
- * renders only once recents exist). Both fire the same `onCreate` → the same
- * dialog. The cascade states asserted:
+ * Every test seeds zero recents (`seedTmpHome`), which changes only what sits
+ * below the launcher cards (the starter-pack line rather than the Recent
+ * list). `nav-create-new` is the blank-create door in every launcher state.
+ * The cascade states asserted:
  *
  *   1. Free path (happy submit): no banner, Create enabled. After submit,
  *      .ok/config.yml lands at parent/<name> and the editor window opens

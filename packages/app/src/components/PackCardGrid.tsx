@@ -37,7 +37,12 @@ const PACK_ICONS: Record<OkPackId, React.ComponentType<{ className?: string }>> 
   okf: FileCheck,
 };
 
-function iconForPack(id: string): React.ComponentType<{ className?: string }> {
+/**
+ * Exported so surfaces that render packs outside this grid (the Navigator's
+ * starter-pack pill row) show the same icon per pack. A pack whose id has no
+ * entry in `PACK_ICONS` falls back to `Library` rather than rendering nothing.
+ */
+export function iconForPack(id: string): React.ComponentType<{ className?: string }> {
   return (PACK_ICONS as Record<string, React.ComponentType<{ className?: string }>>)[id] ?? Library;
 }
 

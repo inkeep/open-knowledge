@@ -617,6 +617,10 @@ msgstr ""
 msgid "+ Add {addChildName}"
 msgstr ""
 
+#: src/components/NavigatorApp.tsx
+msgid "+{overflowCount} more"
+msgstr ""
+
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "<{componentName}> isn't a known component. Copy the source to use it elsewhere, or delete the block."
 msgstr ""
@@ -1324,10 +1328,6 @@ msgstr ""
 
 #: src/components/NewItemDialog.tsx
 msgid "Blank note"
-msgstr ""
-
-#: src/components/NavigatorApp.tsx
-msgid "Blank project"
 msgstr ""
 
 #: src/editor/slash-command/component-items.tsx
@@ -3208,6 +3208,10 @@ msgstr ""
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr ""
 
+#: src/components/NavigatorApp.tsx
+msgid "Each pack scaffolds your project with ready-made folders and templates."
+msgstr ""
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Each selected tool gets an OpenKnowledge MCP entry."
 msgstr ""
@@ -4181,10 +4185,6 @@ msgstr ""
 
 #: src/components/FeedbackForm.tsx
 msgid "Hard to use"
-msgstr ""
-
-#: src/components/NavigatorApp.tsx
-msgid "Have something else in mind?"
 msgstr ""
 
 #: src/editor/slash-command/items.tsx
@@ -6016,7 +6016,6 @@ msgid "Open emoji picker for {keyName}"
 msgstr ""
 
 #: src/components/AssetPreview.tsx
-#: src/components/NavigatorApp.tsx
 #: src/components/ProjectSwitcher.tsx
 #: src/components/ViewerStatusPane.tsx
 #: src/lib/keyboard-shortcuts.ts
@@ -6028,7 +6027,6 @@ msgstr ""
 msgid "Open file on disk"
 msgstr ""
 
-#: src/components/NavigatorApp.tsx
 #: src/components/ProjectSwitcher.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open folder"
@@ -6243,6 +6241,10 @@ msgstr ""
 
 #: src/components/AuthModal.tsx
 msgid "Or to use browser sign-in instead:"
+msgstr ""
+
+#: src/components/NavigatorApp.tsx
+msgid "or use a starter pack"
 msgstr ""
 
 #: src/components/EmptyEditorState.tsx
@@ -6486,10 +6488,6 @@ msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Pick a name"
-msgstr ""
-
-#: src/components/NavigatorApp.tsx
-msgid "Pick a starter pack to scaffold your project with ready-made folders and templates."
 msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
@@ -7538,6 +7536,11 @@ msgstr ""
 msgid "See <0>Architecture</0> for the system overview."
 msgstr ""
 
+#. placeholder {0}: packs.length
+#: src/components/NavigatorApp.tsx
+msgid "See all {0} starter packs"
+msgstr ""
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr ""
@@ -8192,6 +8195,10 @@ msgstr ""
 
 #: src/components/SeedDialog.tsx
 msgid "starter pack"
+msgstr ""
+
+#: src/components/NavigatorApp.tsx
+msgid "Starter packs"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
@@ -9496,10 +9503,6 @@ msgstr ""
 
 #: src/components/ConfigSharingInfoTooltip.tsx
 msgid "What config sharing covers"
-msgstr ""
-
-#: src/components/NavigatorApp.tsx
-msgid "What do you want to build?"
 msgstr ""
 
 #: src/components/CreatedItemsList.tsx

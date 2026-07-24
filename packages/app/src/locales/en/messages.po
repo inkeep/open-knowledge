@@ -621,6 +621,10 @@ msgstr "+ {overflow} more"
 msgid "+ Add {addChildName}"
 msgstr "+ Add {addChildName}"
 
+#: src/components/NavigatorApp.tsx
+msgid "+{overflowCount} more"
+msgstr "+{overflowCount} more"
+
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "<{componentName}> isn't a known component. Copy the source to use it elsewhere, or delete the block."
 msgstr "<{componentName}> isn't a known component. Copy the source to use it elsewhere, or delete the block."
@@ -1329,10 +1333,6 @@ msgstr "Bird wiki"
 #: src/components/NewItemDialog.tsx
 msgid "Blank note"
 msgstr "Blank note"
-
-#: src/components/NavigatorApp.tsx
-msgid "Blank project"
-msgstr "Blank project"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Block math equation rendered with KaTeX from a LaTeX source string."
@@ -3212,6 +3212,10 @@ msgstr "e.g. Switching projects while a sync was running"
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr "e.g. The editor froze after I pasted a large table"
 
+#: src/components/NavigatorApp.tsx
+msgid "Each pack scaffolds your project with ready-made folders and templates."
+msgstr "Each pack scaffolds your project with ready-made folders and templates."
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Each selected tool gets an OpenKnowledge MCP entry."
 msgstr "Each selected tool gets an OpenKnowledge MCP entry."
@@ -4186,10 +4190,6 @@ msgstr "Hard break"
 #: src/components/FeedbackForm.tsx
 msgid "Hard to use"
 msgstr "Hard to use"
-
-#: src/components/NavigatorApp.tsx
-msgid "Have something else in mind?"
-msgstr "Have something else in mind?"
 
 #: src/editor/slash-command/items.tsx
 msgid "Heading 1"
@@ -6020,7 +6020,6 @@ msgid "Open emoji picker for {keyName}"
 msgstr "Open emoji picker for {keyName}"
 
 #: src/components/AssetPreview.tsx
-#: src/components/NavigatorApp.tsx
 #: src/components/ProjectSwitcher.tsx
 #: src/components/ViewerStatusPane.tsx
 #: src/lib/keyboard-shortcuts.ts
@@ -6032,7 +6031,6 @@ msgstr "Open file"
 msgid "Open file on disk"
 msgstr "Open file on disk"
 
-#: src/components/NavigatorApp.tsx
 #: src/components/ProjectSwitcher.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open folder"
@@ -6248,6 +6246,10 @@ msgstr "or paste a token"
 #: src/components/AuthModal.tsx
 msgid "Or to use browser sign-in instead:"
 msgstr "Or to use browser sign-in instead:"
+
+#: src/components/NavigatorApp.tsx
+msgid "or use a starter pack"
+msgstr "or use a starter pack"
 
 #: src/components/EmptyEditorState.tsx
 msgid "Or use a starter pack"
@@ -6491,10 +6493,6 @@ msgstr "Pick a built-in IDE palette. The dark IDE themes override the light/dark
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Pick a name"
 msgstr "Pick a name"
-
-#: src/components/NavigatorApp.tsx
-msgid "Pick a starter pack to scaffold your project with ready-made folders and templates."
-msgstr "Pick a starter pack to scaffold your project with ready-made folders and templates."
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Pick the folder where you've cloned it."
@@ -7542,6 +7540,11 @@ msgstr "See <0>#design-docs</0> for the latest specs."
 msgid "See <0>Architecture</0> for the system overview."
 msgstr "See <0>Architecture</0> for the system overview."
 
+#. placeholder {0}: packs.length
+#: src/components/NavigatorApp.tsx
+msgid "See all {0} starter packs"
+msgstr "See all {0} starter packs"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "See the full install guide"
@@ -8197,6 +8200,10 @@ msgstr "Starter content"
 #: src/components/SeedDialog.tsx
 msgid "starter pack"
 msgstr "starter pack"
+
+#: src/components/NavigatorApp.tsx
+msgid "Starter packs"
+msgstr "Starter packs"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Starting {agentName}…"
@@ -9501,10 +9508,6 @@ msgstr "What agents match on to decide when to use the skill."
 #: src/components/ConfigSharingInfoTooltip.tsx
 msgid "What config sharing covers"
 msgstr "What config sharing covers"
-
-#: src/components/NavigatorApp.tsx
-msgid "What do you want to build?"
-msgstr "What do you want to build?"
 
 #: src/components/CreatedItemsList.tsx
 msgid "What gets created"
