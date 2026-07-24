@@ -484,6 +484,7 @@
     "9bCiQ8": ["No pages are missing incoming graph links."],
     "9bG48P": ["Sending"],
     "9clcD5": ["Open documents tagged #", ["chip"]],
+    "9dVehq": ["More grant options"],
     "9dw5bW": ["Create with ", ["0"]],
     "9euN0m": [
       [
@@ -1030,7 +1031,6 @@
     "L-rMC9": ["Reset to default"],
     "L1BQTH": [["0"], " isn't installed yet — opening its download page."],
     "L1ZE3M": ["Document statistics"],
-    "L1qaHQ": ["Approved — ", ["0"]],
     "L1rRuU": ["Embeddings API endpoint"],
     "L3CEC1": ["this item"],
     "L4Cdd9": ["or create a new file <0/>"],
@@ -1759,6 +1759,7 @@
     "_IGfXZ": ["OpenKnowledge quit unexpectedly last time."],
     "_IX_7x": ["Other"],
     "_JOGC0": ["Send feedback…"],
+    "_LczaQ": ["Denied — ", ["optionName"]],
     "_NX6gG": ["Managing project AI tools is unavailable in this build."],
     "_PACVa": ["Release notes"],
     "_PBJRl": ["Add at least one letter or number."],
@@ -2516,7 +2517,6 @@
     "ot5BRK": ["Duplicate selected file or folder"],
     "otE4aj": ["Show external URL nodes"],
     "ou1hFW": ["Toggle an ordered list."],
-    "ouTaKR": ["Denied — ", ["0"]],
     "outYNy": ["Duplicate name \"", ["keyName"], "\""],
     "ovIGrT": [
       "Local collaboration data for \"",
@@ -2630,6 +2630,7 @@
     "rZ9HZq": ["To do"],
     "rZVMkf": ["Visual editor replace input focused"],
     "rageVb": ["Custom HTML with a live preview pane (sandboxed iframe)."],
+    "rbrHTd": ["Approved — ", ["optionName"]],
     "rdU729": ["Layout"],
     "rfFpcF": ["Remove ", ["chip"]],
     "rg7hNd": ["Rate your experience"],
@@ -2900,6 +2901,7 @@
     "xhlFsx": ["Inherited — set a value here to replace it."],
     "xi9KGG": ["Show Terminal"],
     "xiv-dW": ["No files yet."],
+    "xlQpTE": ["More refusal options"],
     "xloBjn": ["Relative Path"],
     "xnP32l": ["No description yet — add one so agents know when to use this skill."],
     "xrVr_k": ["Couldn't create skill: ", ["0"]],

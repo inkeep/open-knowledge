@@ -47,13 +47,22 @@ export interface RenderedToolCall {
   rawInput: unknown;
 }
 
-interface RenderedPermission {
+export interface RenderedPermission {
   kind: 'permission';
   requestId: string;
   title: string;
   toolKind: string;
   options: PermissionOption[];
   resolved: { optionId: string | null; auto: boolean } | null;
+  /** The tool call this prompt gates. Null if the agent omitted it. */
+  toolCallId: string | null;
+  /**
+   * That tool call is in the transcript, so its row can carry this outcome and
+   * the prompt need not restate it as a second card. False keeps the standalone
+   * card as the fallback — an outcome must never become unreachable just
+   * because the call it gated never showed up.
+   */
+  mergedIntoToolCall: boolean;
 }
 
 interface RenderedNotice {
@@ -128,6 +137,13 @@ export interface ThreadRenderModel {
   tokenUsage: { used?: number; size?: number } | null;
   /** Terminals by id, for tool calls that embed them (`terminalIds`). */
   terminals: Record<string, RenderedTerminal>;
+  /**
+   * Permission prompts keyed by the tool call they gate, so a call's row can
+   * show its own approval instead of a sibling card repeating the tool name.
+   * Maintained by the fold rather than derived per render — same reason
+   * `terminals` is: a streamed turn re-renders on every chunk.
+   */
+  permissionsByToolCall: Record<string, RenderedPermission>;
 }
 
 function textFromContent(content: unknown): string | null {
@@ -145,6 +161,9 @@ export class ThreadRenderModelBuilder {
   /** Item index by toolCallId / permission requestId / `role:messageId`. */
   private toolCallIndex = new Map<string, number>();
   private permissionIndex = new Map<string, number>();
+  /** Item index of the permission gating a given toolCallId. */
+  private permissionByToolCall = new Map<string, number>();
+  private permissionsByToolCall: Record<string, RenderedPermission> = {};
   private messageIndex = new Map<string, number>();
   private runtimeConsentIndex = new Map<string, number>();
   /** Item index of the most recent consent card — progress events target it. */
@@ -157,6 +176,7 @@ export class ThreadRenderModelBuilder {
     turnActive: false,
     tokenUsage: null,
     terminals: {},
+    permissionsByToolCall: {},
   };
 
   /**
@@ -179,6 +199,7 @@ export class ThreadRenderModelBuilder {
         turnActive: this.turnActive,
         tokenUsage: this.tokenUsage,
         terminals: { ...this.terminals },
+        permissionsByToolCall: { ...this.permissionsByToolCall },
       };
       this.dirty = false;
     }
@@ -193,6 +214,8 @@ export class ThreadRenderModelBuilder {
     this.terminals = {};
     this.toolCallIndex = new Map();
     this.permissionIndex = new Map();
+    this.permissionByToolCall = new Map();
+    this.permissionsByToolCall = {};
     this.messageIndex = new Map();
     this.runtimeConsentIndex = new Map();
     this.lastConsentIndex = null;
@@ -249,26 +272,41 @@ export class ThreadRenderModelBuilder {
           this.items.push({ kind: 'notice', text: event.detail, tone: 'info' });
         }
         break;
-      case 'permission_request':
-        this.permissionIndex.set(event.requestId, this.items.length);
-        this.items.push({
+      case 'permission_request': {
+        const toolCallId = event.toolCall.toolCallId ?? null;
+        const permission: RenderedPermission = {
           kind: 'permission',
           requestId: event.requestId,
           title: event.toolCall.title ?? 'Permission required',
           toolKind: event.toolCall.kind ?? 'other',
           options: event.options,
           resolved: null,
-        });
+          toolCallId,
+          // The gated call may not have streamed in yet; `tool_call` back-fills
+          // this when it lands, so the order of the two events doesn't matter.
+          mergedIntoToolCall: toolCallId !== null && this.toolCallIndex.has(toolCallId),
+        };
+        this.permissionIndex.set(event.requestId, this.items.length);
+        if (toolCallId !== null) {
+          this.permissionByToolCall.set(toolCallId, this.items.length);
+          this.permissionsByToolCall[toolCallId] = permission;
+        }
+        this.items.push(permission);
         break;
+      }
       case 'permission_resolved': {
         const index = this.permissionIndex.get(event.requestId);
         if (index === undefined) break;
         const target = this.items[index];
         if (target.kind !== 'permission') break;
-        this.items[index] = {
+        const resolved: RenderedPermission = {
           ...target,
           resolved: { optionId: event.optionId, auto: event.auto },
         };
+        this.items[index] = resolved;
+        if (resolved.toolCallId !== null) {
+          this.permissionsByToolCall[resolved.toolCallId] = resolved;
+        }
         break;
       }
       case 'runtime_consent_request':
@@ -353,6 +391,20 @@ export class ThreadRenderModelBuilder {
     }
   }
 
+  /**
+   * Mark the permission gating `toolCallId` as carried by that call's row.
+   * No-op when no prompt gated it, or when it is already merged.
+   */
+  private mergePermissionInto(toolCallId: string): void {
+    const index = this.permissionByToolCall.get(toolCallId);
+    if (index === undefined) return;
+    const target = this.items[index];
+    if (target === undefined || target.kind !== 'permission' || target.mergedIntoToolCall) return;
+    const merged: RenderedPermission = { ...target, mergedIntoToolCall: true };
+    this.items[index] = merged;
+    this.permissionsByToolCall[toolCallId] = merged;
+  }
+
   private pushMessageChunk(role: RenderedMessage['role'], messageId: string, text: string): void {
     const key = `${role}:${messageId}`;
     const index = this.messageIndex.get(key);
@@ -405,6 +457,10 @@ export class ThreadRenderModelBuilder {
         mergeToolContent(call, update.content);
         this.toolCallIndex.set(update.toolCallId, this.items.length);
         this.items.push(call);
+        // The prompt for this call arrived first (the usual order: the agent
+        // asks, then streams the call). Now that the row exists to carry the
+        // outcome, fold the standalone card away.
+        this.mergePermissionInto(update.toolCallId);
         break;
       }
       case 'tool_call_update': {
@@ -500,8 +556,16 @@ export function resolvePermissionOutcome(
     // claiming "approved" for it could mislabel a refusal.
     return { kind: 'dismissed' };
   }
+  // Classify from both prefixes rather than treating "not a refusal" as assent.
+  // The four known kinds partition cleanly, but a kind added by a later ACP
+  // release would otherwise be labelled "Approved" — the wrong direction to be
+  // wrong in for a security decision. An unrecognized kind is an answer we
+  // can't read, which is what `dismissed` already means.
+  const denied = chosen.kind.startsWith('reject');
+  const approved = chosen.kind.startsWith('allow');
+  if (!denied && !approved) return { kind: 'dismissed' };
   return {
-    kind: chosen.kind.startsWith('reject') ? 'denied' : 'approved',
+    kind: denied ? 'denied' : 'approved',
     auto: resolved.auto,
     optionName: chosen.name,
   };

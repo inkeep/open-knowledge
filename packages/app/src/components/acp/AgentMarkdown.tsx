@@ -25,7 +25,14 @@ export function AgentMarkdown({ text }: { text: string }): ReactNode {
         // blocks: Streamdown bundles it into the line-number counter classes,
         // so `lineNumbers={false}` alone collapses multi-line code onto one
         // visual line.
-        className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre_code>span]:block"
+        //
+        // Code drops a notch to 13px (Streamdown hard-codes `text-sm` on both
+        // inline and block code) so the mono face, which reads larger than the
+        // UI face at a matched point size, sits optically level with the prose
+        // around it. Deliberately not `!`: the descendant selector already
+        // outranks Streamdown's own class, which leaves an `!` override on a
+        // wrapper — the thought bubble's flattening — free to win.
+        className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre_code>span]:block [&_code]:text-1sm [&_pre]:text-1sm"
         lineNumbers={false}
         controls={{ code: { copy: true, download: false }, table: false, mermaid: false }}
         // Plain hardened anchors instead of Streamdown's confirm-modal flow:

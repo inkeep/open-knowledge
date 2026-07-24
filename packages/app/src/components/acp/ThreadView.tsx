@@ -18,7 +18,6 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  CircleDot,
   Download,
   FileText,
   Loader2,
@@ -34,6 +33,7 @@ import {
 import {
   Fragment,
   type ReactNode,
+  type RefObject,
   useEffect,
   useId,
   useLayoutEffect,
@@ -44,11 +44,13 @@ import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-
 import { useOptionalPageList } from '@/components/PageListContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -71,7 +73,9 @@ import {
   useAgentThreadModel,
 } from '@/lib/acp/thread-client';
 import {
+  type PermissionOutcome,
   type RenderedItem,
+  type RenderedPermission,
   type RenderedTerminal,
   type RenderedToolCall,
   resolvePermissionOutcome,
@@ -90,6 +94,13 @@ import { RegisteredAgentIcon } from './RegisteredAgentIcon';
  * and offers the force-quit escape hatch.
  */
 const CANCEL_STALL_MS = 10_000;
+
+/**
+ * How long a finished tool call holds its check before fading. Long enough to
+ * register as an acknowledgement, short enough that a settled transcript — the
+ * state you scroll back through — carries no per-row status chrome at all.
+ */
+const COMPLETION_CHECK_MS = 1_400;
 
 const TOOL_ICONS: Record<string, typeof Wrench> = {
   read: FileText,
@@ -326,7 +337,7 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
         {model === null || model.items.length === 0 ? (
           <ThreadEmptyState status={status} archived={archived} agent={info.agent} />
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 [&>[data-tool-call]+[data-tool-call]]:-mt-1">
             {model.items.map((item, index) => (
               <ThreadItem
                 // biome-ignore lint/suspicious/noArrayIndexKey: transcript is append-only; index is stable
@@ -339,20 +350,20 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
                 // only a dead thread makes answering impossible.
                 actionable={!archived && status !== 'exited' && status !== 'error'}
                 terminals={model.terminals}
+                permissionsByToolCall={model.permissionsByToolCall}
               />
             ))}
             {turnActive ? (
               status === 'awaiting_permission' ? (
                 <div
-                  className="flex items-center gap-2 px-1 py-1 text-amber-700 text-sm dark:text-amber-400"
+                  className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
                   data-testid="agent-thread-awaiting-permission"
                 >
-                  <CircleDot className="size-3.5" aria-hidden="true" />
                   <span>{t`Waiting for your approval`}</span>
                 </div>
               ) : (
                 <div
-                  className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm"
+                  className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
                   data-testid="agent-thread-working"
                 >
                   <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
@@ -364,7 +375,7 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
               // already in the transcript above — show that the agent is on
               // its way rather than a silent gap until the turn opens.
               <div
-                className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm"
+                className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
                 data-testid="agent-thread-starting"
               >
                 <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
@@ -848,20 +859,33 @@ function ThreadItem({
   threadId,
   actionable,
   terminals,
+  permissionsByToolCall,
 }: {
   item: RenderedItem;
   threadId: string;
   /** The thread can still take answers (live agent, not archived/dead). */
   actionable: boolean;
   terminals: Record<string, RenderedTerminal>;
+  permissionsByToolCall: Record<string, RenderedPermission>;
 }): ReactNode {
   switch (item.kind) {
     case 'message':
       return <MessageBubble item={item} />;
     case 'tool_call':
-      return <ToolCallCard call={item} terminals={terminals} />;
+      return (
+        <ToolCallCard
+          call={item}
+          terminals={terminals}
+          permission={permissionsByToolCall[item.toolCallId]}
+        />
+      );
     case 'permission':
-      return <PermissionPrompt item={item} threadId={threadId} actionable={actionable} />;
+      // A settled prompt whose gated call is in the transcript is shown on that
+      // call's row instead, so this card would only restate it. Pending prompts
+      // always render — they are the thing you have to act on.
+      return item.mergedIntoToolCall && item.resolved !== null ? null : (
+        <PermissionPrompt item={item} threadId={threadId} actionable={actionable} />
+      );
     case 'runtime_consent':
       return <RuntimeConsentPrompt item={item} threadId={threadId} />;
     case 'notice':
@@ -883,7 +907,16 @@ function ThreadItem({
 
 function MessageBubble({ item }: { item: Extract<RenderedItem, { kind: 'message' }> }): ReactNode {
   if (item.role === 'thought') {
-    return <div className="px-1 text-muted-foreground text-xs italic">{item.text}</div>;
+    // Thoughts carry markdown like any other agent output, so they parse —
+    // otherwise an agent's bold summary line shows its literal `**`. But a
+    // thought must never compete with the reply for attention, so emphasis is
+    // flattened to one quiet weight and size: the markup still structures the
+    // text, it just can't shout.
+    return (
+      <div className="px-1 text-muted-foreground text-xs italic **:font-normal! **:text-xs!">
+        <AgentMarkdown text={item.text} />
+      </div>
+    );
   }
   const isUser = item.role === 'user';
   return (
@@ -931,14 +964,62 @@ function formatRawInput(rawInput: unknown): string | null {
   return text.length > 2_000 ? `${text.slice(0, 2_000)}…` : text;
 }
 
+/**
+ * Drop a markdown fence that wraps an entire tool-output block. The block is
+ * rendered literally — tool output frequently isn't markdown, and a renderer
+ * would mangle it — so an agent that fences its output leaves its backticks
+ * on screen. Only a fence enclosing the WHOLE block is removed; one that opens
+ * partway through is part of the output.
+ */
+function stripWrappingFence(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('```')) return text;
+  const lines = trimmed.split('\n');
+  // The opening line may carry an info string (```json), so drop it entirely.
+  if (lines.length < 2 || lines[lines.length - 1]?.trim() !== '```') return text;
+  return lines.slice(1, -1).join('\n');
+}
+
 function ToolCallCard({
   call,
   terminals,
+  permission,
 }: {
   call: RenderedToolCall;
   terminals: Record<string, RenderedTerminal>;
+  /** The prompt that gated this call, when one did. */
+  permission?: RenderedPermission;
 }): ReactNode {
-  const [open, setOpen] = useState(call.status !== 'completed');
+  // Collapsed by default, failures excepted. Opening a call while it runs and
+  // folding it up a beat later showed a body too briefly to read, and the fold
+  // yanked the bottom-pinned transcript. Starting closed removes that motion
+  // entirely; the spinner already says the call is live, and anything you
+  // actually want to watch is one click away. An error is the one body worth
+  // showing unasked.
+  const [open, setOpen] = useState(call.status === 'failed');
+  const userToggledRef = useRef(false);
+  const prevStatusRef = useRef(call.status);
+  const [completedLive, setCompletedLive] = useState(false);
+  const [checkVisible, setCheckVisible] = useState(false);
+  // Keyed on the live transition, never mount state: a replayed transcript
+  // mounts every call already settled, and would otherwise flash a hundred
+  // checks at once and expand every historical failure.
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = call.status;
+    if (prev === call.status) return;
+    if (call.status === 'failed' && !userToggledRef.current) setOpen(true);
+    if (prev !== 'completed' && call.status === 'completed') {
+      setCompletedLive(true);
+      setCheckVisible(true);
+      const timer = setTimeout(() => setCheckVisible(false), COMPLETION_CHECK_MS);
+      return () => clearTimeout(timer);
+    }
+  }, [call.status]);
+  const toggleOpen = (): void => {
+    userToggledRef.current = true;
+    setOpen((value) => !value);
+  };
   const Icon = TOOL_ICONS[call.toolKind] ?? Wrench;
   const callTerminals = call.terminalIds
     .map((id) => terminals[id])
@@ -950,25 +1031,50 @@ function ToolCallCard({
     call.locations.length > 0 ||
     callTerminals.length > 0 ||
     rawInput !== null;
+  const expanded = open && hasBody;
+  const row = (
+    <>
+      <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="truncate">{call.title}</span>
+      {/* One auto margin, not two: sibling `ml-auto`s split the free space
+          between them instead of the first absorbing it, which floated the
+          marks apart mid-row. */}
+      <span className="ml-auto flex shrink-0 items-center gap-1.5">
+        <PermissionRefusalMark permission={permission} status={call.status} />
+        <ToolStatusIndicator
+          status={call.status}
+          completedLive={completedLive}
+          checkVisible={checkVisible}
+        />
+      </span>
+    </>
+  );
   return (
     <div
-      className="rounded-md border border-border/60 text-xs"
+      // The box earns its way in only when there is something inside it. A
+      // collapsed row is a line of text, so a run of calls reads as a list
+      // rather than a ladder of empty rectangles.
+      className={cn('text-xs', expanded && 'rounded-md border border-border/60')}
+      data-tool-call=""
       data-testid="agent-thread-tool-call"
     >
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-auto w-full justify-start gap-1.5 rounded-md px-2 py-1.5 font-normal"
-        onClick={() => setOpen((o) => !o)}
-        disabled={!hasBody}
-        aria-expanded={open}
-      >
-        <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span className="truncate">{call.title}</span>
-        <ToolStatusBadge status={call.status} />
-      </Button>
-      {open && hasBody ? (
+      {hasBody ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-auto w-full justify-start gap-1.5 rounded-md px-2 py-1.5 font-normal"
+          onClick={toggleOpen}
+          aria-expanded={open}
+        >
+          {row}
+        </Button>
+      ) : (
+        // Nothing to reveal — render the row as text rather than a control that
+        // only ever reports itself disabled.
+        <div className="flex w-full items-center gap-1.5 px-2 py-1.5">{row}</div>
+      )}
+      {expanded ? (
         <div className="flex flex-col gap-1.5 border-border/60 border-t px-2 py-1.5">
           {call.diffs.map((diff, index) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: diffs are positional within a card
@@ -983,7 +1089,7 @@ function ToolCallCard({
               key={index}
               className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-muted/50 px-2 py-1 font-mono text-[11px]"
             >
-              {text}
+              {stripWrappingFence(text)}
             </pre>
           ))}
           {rawInput !== null ? <RawInputBlock text={rawInput} /> : null}
@@ -1007,7 +1113,104 @@ function ToolCallCard({
   );
 }
 
-function ToolStatusBadge({ status }: { status: RenderedToolCall['status'] }): ReactNode {
+/**
+ * Agents name their refusal option "Reject" and their grant "Allow", so pinning
+ * that onto "Denied"/"Approved" says the same word twice. Keep the name only
+ * when it carries something the outcome doesn't — the persistence in "Always
+ * deny", say.
+ */
+const OUTCOME_SYNONYM_NAMES = new Set([
+  'accept',
+  'allow',
+  'approve',
+  'decline',
+  'deny',
+  'no',
+  'ok',
+  'reject',
+  'yes',
+]);
+
+function informativeOptionName(name: string | null): string | null {
+  if (name === null) return null;
+  const normalized = name.trim().toLocaleLowerCase();
+  return normalized === '' || OUTCOME_SYNONYM_NAMES.has(normalized) ? null : name;
+}
+
+/**
+ * One phrasing of a settled permission, shared by the standalone card and the
+ * mark on a tool call's row so the two can never drift apart.
+ */
+function usePermissionOutcomeLabel(): (outcome: PermissionOutcome) => string | null {
+  const { t } = useLingui();
+  return (outcome) => {
+    if (outcome === null) return null;
+    // `dismissed` covers timeout, Stop-cancel, and agent exit alike — don't
+    // claim a specific cause the event doesn't carry.
+    if (outcome.kind === 'dismissed') return t`Not answered`;
+    const optionName = informativeOptionName(outcome.optionName);
+    if (outcome.kind === 'approved') {
+      if (outcome.auto) return t`Auto-approved`;
+      return optionName !== null ? t`Approved — ${optionName}` : t`Approved`;
+    }
+    if (outcome.auto) return t`Auto-denied`;
+    return optionName !== null ? t`Denied — ${optionName}` : t`Denied`;
+  };
+}
+
+/**
+ * The outcome of the prompt that gated this call, carried on the call's own row
+ * rather than as a sibling card restating the tool name beside it.
+ *
+ * An approval leaves no trace at all: the call ran, which is the whole message,
+ * and every comparable agent panel drops the prompt once answered rather than
+ * minting a permanent "you allowed this" marker. Only a refusal changed what
+ * happened — and it says so in words, since a lone glyph gives the reader no
+ * way to learn what it means.
+ */
+function PermissionRefusalMark({
+  permission,
+  status,
+}: {
+  permission?: RenderedPermission;
+  status: RenderedToolCall['status'];
+}): ReactNode {
+  const outcomeLabel = usePermissionOutcomeLabel();
+  if (permission === undefined || !permission.mergedIntoToolCall) return null;
+  const outcome = resolvePermissionOutcome(permission);
+  if (outcome === null || outcome.kind === 'approved') return null;
+  // A refused call almost always lands as `failed`, whose badge and body
+  // already say it didn't run and why. Speak only where nothing else does —
+  // an agent that leaves the call unfinished after a refusal.
+  if (status === 'failed') return null;
+  return (
+    <span className="shrink-0 text-muted-foreground" data-testid="agent-thread-tool-permission">
+      {outcomeLabel(outcome)}
+    </span>
+  );
+}
+
+/**
+ * Status by exception. Completion is the expected outcome, so a settled call
+ * shows nothing — a badge on every row buries the one row that failed. Live
+ * calls spin; a call that finishes while you are watching flashes a check that
+ * then fades, so the acknowledgement rides the transition instead of becoming
+ * permanent chrome. The check keeps its box after fading to opacity 0 so the
+ * row does not reflow underneath the pointer.
+ *
+ * Every state keeps its label in the a11y tree: dropping the visible badge is a
+ * density decision, not a reason to withhold status from assistive tech.
+ */
+function ToolStatusIndicator({
+  status,
+  completedLive,
+  checkVisible,
+}: {
+  status: RenderedToolCall['status'];
+  /** This call transitioned to completed while mounted (not a replayed row). */
+  completedLive: boolean;
+  checkVisible: boolean;
+}): ReactNode {
   const { t } = useLingui();
   const label =
     status === 'completed'
@@ -1018,12 +1221,36 @@ function ToolStatusBadge({ status }: { status: RenderedToolCall['status'] }): Re
           ? t`running`
           : t`pending`;
   return (
-    <Badge
-      variant={status === 'failed' ? 'destructive' : 'secondary'}
-      className="ml-auto shrink-0 px-1.5 py-0 text-[10px]"
-    >
-      {label}
-    </Badge>
+    <span className="flex shrink-0 items-center">
+      <span className="sr-only">{label}</span>
+      {status === 'failed' ? (
+        <Badge
+          variant="destructive"
+          className="rounded-sm px-1.5 py-0 text-[10px]"
+          data-testid="agent-thread-tool-failed"
+        >
+          {label}
+        </Badge>
+      ) : status === 'in_progress' || status === 'pending' ? (
+        // `pending` (accepted, not yet started) and `in_progress` both read as
+        // "this call is in flight" — the distinction is the agent's bookkeeping,
+        // not something worth two different marks on the row.
+        <Loader2
+          className="size-3.5 animate-spin text-muted-foreground"
+          aria-hidden="true"
+          data-testid="agent-thread-tool-spinner"
+        />
+      ) : completedLive ? (
+        <Check
+          className={cn(
+            'size-3.5 text-muted-foreground/70 transition-opacity duration-500 motion-reduce:transition-none',
+            checkVisible ? 'opacity-100' : 'opacity-0',
+          )}
+          aria-hidden="true"
+          data-testid="agent-thread-tool-check"
+        />
+      ) : null}
+    </span>
   );
 }
 
@@ -1095,14 +1322,14 @@ function TerminalBlock({ terminal }: { terminal: RenderedTerminal }): ReactNode 
         </span>
         <span className="ml-auto shrink-0">
           {exit === null ? (
-            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground shimmer">
               <Loader2 className="size-3 animate-spin" aria-hidden="true" />
               {t`running`}
             </span>
           ) : (
             <Badge
               variant={failed ? 'destructive' : 'secondary'}
-              className="px-1.5 py-0 font-mono text-[10px]"
+              className="px-1.5 py-0 font-mono text-[10px] rounded-sm"
               data-testid="agent-thread-terminal-exit"
             >
               {exit.signal !== null ? exit.signal : t`exit ${exit.exitCode ?? 0}`}
@@ -1167,71 +1394,34 @@ function PermissionPrompt({
   actionable: boolean;
 }): ReactNode {
   const { t } = useLingui();
+  const outcomeLabel = usePermissionOutcomeLabel();
   const client = getAgentThreadClient();
   const outcome = resolvePermissionOutcome(item);
   const pending = outcome === null;
   const cardRef = useRef<HTMLDivElement>(null);
   const primaryRef = useRef<HTMLButtonElement>(null);
-  // The agent's own choices may already include a refusal; only add our
-  // explicit Deny (the ACP `cancelled` outcome) when they don't — without it
-  // "no" exists only when the agent thinks to offer one.
-  const hasRejectOption = item.options.some((option) => option.kind.startsWith('reject'));
-  const options = [...item.options].sort(
-    (a, b) => permissionOptionRank(a.kind) - permissionOptionRank(b.kind),
-  );
-  // The safest useful default is a one-time grant. A persistent grant is the
-  // final focus fallback, after any refusal the agent exposes.
-  const defaultOptionId =
-    options.find((option) => option.kind === 'allow_once')?.optionId ??
-    options.find((option) => option.kind.startsWith('reject'))?.optionId ??
-    (hasRejectOption
-      ? (options.find((option) => option.kind === 'allow_always')?.optionId ?? options[0]?.optionId)
-      : undefined);
 
-  const optionVariant = (kind: (typeof options)[number]['kind']) =>
-    kind === 'allow_once' ? 'default' : 'outline';
-  const optionLabel = (option: (typeof options)[number]) =>
-    option.kind === 'reject_once' && option.name.trim().toLocaleLowerCase() === 'reject'
-      ? t`Deny`
-      : option.name;
+  const selectOption = (optionId: string): void => {
+    client.respondPermission(threadId, item.requestId, { kind: 'selected', optionId });
+  };
 
-  const optionButtons = options.map((option) => (
-    <Button
-      key={option.optionId}
-      ref={option.optionId === defaultOptionId ? primaryRef : undefined}
-      type="button"
-      size="sm"
-      variant={optionVariant(option.kind)}
-      className="h-auto min-h-7 max-w-full self-start whitespace-normal text-left text-xs"
-      onClick={() =>
-        client.respondPermission(threadId, item.requestId, {
-          kind: 'selected',
-          optionId: option.optionId,
-        })
-      }
-      data-permission-kind={option.kind}
-    >
-      {optionLabel(option)}
-    </Button>
-  ));
-
-  const denyButton = !hasRejectOption ? (
-    // ACP has no first-class per-tool deny beyond the agent's own reject
-    // options; `cancelled` is the protocol's only refusal channel, and agents
-    // may treat it as cancelling the whole turn. Shown only when the agent
-    // offered no reject option, so "no" exists at all.
-    <Button
-      ref={defaultOptionId === undefined ? primaryRef : undefined}
-      type="button"
-      size="sm"
-      variant="outline"
-      className="h-7 self-start text-xs"
-      onClick={() => client.respondPermission(threadId, item.requestId, { kind: 'cancelled' })}
-      data-testid="agent-thread-permission-deny"
-    >
-      {t`Deny`}
-    </Button>
-  ) : null;
+  // Group by stance, never by looking up one option per kind: ACP `kind` is a
+  // styling hint, not a key, and agents do offer several allows separated only
+  // by `name` ("Allow for This Session" vs "Allow and Don't Ask Again").
+  const allowOptions = item.options.filter((option) => option.kind.startsWith('allow'));
+  const rejectOptions = item.options.filter((option) => option.kind.startsWith('reject'));
+  // The least-privilege grant is the primary action; every escalating grant
+  // keeps the agent's own ordering behind the secondary button beside it.
+  const primaryAllow = allowOptions.find((o) => o.kind === 'allow_once') ?? allowOptions[0];
+  const secondaryAllows = allowOptions.filter((option) => option !== primaryAllow);
+  const primaryReject = rejectOptions.find((o) => o.kind === 'reject_once') ?? rejectOptions[0];
+  const denyOptions =
+    primaryReject === undefined
+      ? []
+      : [primaryReject, ...rejectOptions.filter((option) => option !== primaryReject)];
+  // Focus lands on the primary grant; with no grant offered at all, the refusal
+  // is the only actionable control left to take it.
+  const focusRefForDeny = primaryAllow === undefined ? primaryRef : undefined;
 
   // Move focus onto the primary option when a live prompt appears — but only
   // if focus is already inside this thread's panel (e.g. on the composer the
@@ -1244,33 +1434,16 @@ function PermissionPrompt({
     primaryRef.current?.focus();
   }, [pending, actionable]);
 
-  const resolvedLabel =
-    outcome === null
-      ? null
-      : outcome.kind === 'dismissed'
-        ? // Covers timeout, Stop-cancel, and agent exit alike — don't claim a
-          // specific cause the event doesn't carry.
-          t`Not answered`
-        : outcome.kind === 'approved'
-          ? outcome.auto
-            ? t`Auto-approved`
-            : outcome.optionName !== null
-              ? t`Approved — ${outcome.optionName}`
-              : t`Approved`
-          : outcome.auto
-            ? t`Auto-denied`
-            : outcome.optionName !== null
-              ? t`Denied — ${outcome.optionName}`
-              : t`Denied`;
+  const resolvedLabel = outcomeLabel(outcome);
 
   return (
     <div
       ref={cardRef}
       className={cn(
+        // Neutral chrome throughout: a permission request is a routine choice,
+        // and an alarm-colored card overstates it.
         'rounded-md border px-2.5 py-2 text-sm',
-        pending && actionable
-          ? 'border-amber-500/40 bg-amber-500/5'
-          : 'border-border/60 bg-muted/20',
+        pending && actionable ? 'border-border bg-muted/30' : 'border-border/60 bg-muted/20',
       )}
       data-testid="agent-thread-permission"
     >
@@ -1287,21 +1460,150 @@ function PermissionPrompt({
         // impossible, so don't render buttons that would silently no-op.
         <div className="text-muted-foreground text-xs">{t`This request is no longer active.`}</div>
       ) : (
-        <div className="flex flex-col items-start gap-1.5">
-          {optionButtons}
-          {denyButton}
+        // Refusal pinned far left, the primary grant far right, and every
+        // escalating grant collapsed into the secondary button beside it — so
+        // the row stays at most three controls however many options an agent
+        // offers, and the two opposite answers never sit next to each other.
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {denyOptions.length > 0 ? (
+            <PermissionOptionCluster
+              options={denyOptions}
+              onSelect={selectOption}
+              buttonRef={focusRefForDeny}
+              testId="agent-thread-permission-deny"
+              moreLabel={t`More refusal options`}
+              menuAlign="start"
+            />
+          ) : (
+            // ACP has no first-class per-tool deny beyond the agent's own
+            // reject options; `cancelled` is the protocol's only refusal
+            // channel, and agents may treat it as cancelling the whole turn.
+            // Shown only when the agent offered none, so "no" exists at all.
+            <Button
+              ref={focusRefForDeny}
+              type="button"
+              size="sm"
+              variant="outline"
+              className="text-xs"
+              onClick={() =>
+                client.respondPermission(threadId, item.requestId, { kind: 'cancelled' })
+              }
+              data-testid="agent-thread-permission-deny"
+            >
+              {t`Deny`}
+            </Button>
+          )}
+          <div className="ml-auto flex items-center gap-1.5">
+            {secondaryAllows.length > 0 ? (
+              <PermissionOptionCluster
+                options={secondaryAllows}
+                onSelect={selectOption}
+                testId="agent-thread-permission-allow-more"
+                moreLabel={t`More grant options`}
+                menuAlign="end"
+              />
+            ) : null}
+            {primaryAllow !== undefined ? (
+              <Button
+                ref={primaryRef}
+                type="button"
+                size="sm"
+                // The `default` Button variant is `font-mono uppercase`, which
+                // is right for fixed UI verbs and wrong for a label the agent
+                // wrote — "Allow for This Session" must not render shouted.
+                className="text-xs normal-case font-sans"
+                title={primaryAllow.name}
+                onClick={() => selectOption(primaryAllow.optionId)}
+                data-testid="agent-thread-permission-allow"
+                data-permission-kind={primaryAllow.kind}
+              >
+                <span className="max-w-52 truncate">{primaryAllow.name}</span>
+              </Button>
+            ) : null}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function permissionOptionRank(
-  kind: Extract<RenderedItem, { kind: 'permission' }>['options'][number]['kind'],
-): number {
-  if (kind === 'allow_once') return 0;
-  if (kind === 'allow_always') return 1;
-  return 2;
+/**
+ * One cluster of permission choices that share a stance. `options[0]` is the
+ * directly-actionable button — a single click answers with it, so the common
+ * two-option case never costs an extra trip through a menu — and any further
+ * options collapse behind its chevron. The menu repeats the primary so it
+ * reads as the complete list of choices at that stance.
+ *
+ * Agent-authored names run long ("Always allow all mcp__open-knowledge__exec"),
+ * so the button label is width-capped with the full string on its tooltip;
+ * the menu, which has room, always shows names in full.
+ */
+function PermissionOptionCluster({
+  options,
+  onSelect,
+  buttonRef,
+  testId,
+  moreLabel,
+  menuAlign,
+}: {
+  options: Extract<RenderedItem, { kind: 'permission' }>['options'];
+  onSelect: (optionId: string) => void;
+  buttonRef?: RefObject<HTMLButtonElement | null>;
+  testId: string;
+  moreLabel: string;
+  menuAlign: 'start' | 'end';
+}): ReactNode {
+  const primary = options[0];
+  if (primary === undefined) return null;
+
+  const primaryButton = (
+    <Button
+      ref={buttonRef}
+      type="button"
+      size="sm"
+      variant="outline"
+      className="text-xs"
+      title={primary.name}
+      onClick={() => onSelect(primary.optionId)}
+      data-testid={testId}
+      data-permission-kind={primary.kind}
+    >
+      <span className="max-w-52 truncate">{primary.name}</span>
+    </Button>
+  );
+
+  if (options.length === 1) return primaryButton;
+
+  return (
+    <ButtonGroup>
+      {primaryButton}
+      <ButtonGroupSeparator />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            aria-label={moreLabel}
+            data-testid={`${testId}-more`}
+          >
+            <ChevronDown className="size-3.5" aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align={menuAlign} className="max-w-72">
+          {options.map((option) => (
+            <DropdownMenuItem
+              key={option.optionId}
+              onSelect={() => onSelect(option.optionId)}
+              data-permission-kind={option.kind}
+            >
+              {option.name}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </ButtonGroup>
+  );
 }
 
 /**

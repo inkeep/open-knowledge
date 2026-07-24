@@ -1099,10 +1099,9 @@ msgstr "Applying your change"
 msgid "Approved"
 msgstr "Approved"
 
-#. placeholder {0}: outcome.optionName
 #: src/components/acp/ThreadView.tsx
-msgid "Approved — {0}"
-msgstr "Approved — {0}"
+msgid "Approved — {optionName}"
+msgstr "Approved — {optionName}"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Archived"
@@ -2867,10 +2866,9 @@ msgstr "Deleting"
 msgid "Denied"
 msgstr "Denied"
 
-#. placeholder {0}: outcome.optionName
 #: src/components/acp/ThreadView.tsx
-msgid "Denied — {0}"
-msgstr "Denied — {0}"
+msgid "Denied — {optionName}"
+msgstr "Denied — {optionName}"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Deny"
@@ -5160,6 +5158,14 @@ msgstr "Modify the link target, anchor, and display label."
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
 msgstr "More"
+
+#: src/components/acp/ThreadView.tsx
+msgid "More grant options"
+msgstr "More grant options"
+
+#: src/components/acp/ThreadView.tsx
+msgid "More refusal options"
+msgstr "More refusal options"
 
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "More requests were blocked."

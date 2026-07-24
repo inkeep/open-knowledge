@@ -1095,9 +1095,8 @@ msgstr ""
 msgid "Approved"
 msgstr ""
 
-#. placeholder {0}: outcome.optionName
 #: src/components/acp/ThreadView.tsx
-msgid "Approved — {0}"
+msgid "Approved — {optionName}"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
@@ -2863,9 +2862,8 @@ msgstr ""
 msgid "Denied"
 msgstr ""
 
-#. placeholder {0}: outcome.optionName
 #: src/components/acp/ThreadView.tsx
-msgid "Denied — {0}"
+msgid "Denied — {optionName}"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
@@ -5155,6 +5153,14 @@ msgstr ""
 
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "More grant options"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "More refusal options"
 msgstr ""
 
 #: src/editor/components/PreviewBlockedNotice.tsx
