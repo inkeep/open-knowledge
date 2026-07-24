@@ -281,9 +281,23 @@ jobs:
         working-directory: packages/desktop
         run: pnpm run build:desktop
 
-      - name: Package AppImage + deb (x64 + arm64)
+      # node-liblzma (a transitive native dep) links against the system liblzma
+      # via pkg-config during @electron/rebuild; ubuntu-latest ships the runtime
+      # library but not the -dev headers / .pc file, so node-gyp fails with
+      # "Package 'liblzma' ... not found". macOS provides it in the SDK, which is
+      # why the DMG build never hit this. Install the dev package before packaging.
+      - name: Install native build deps (liblzma for node-liblzma)
+        run: sudo apt-get update && sudo apt-get install -y liblzma-dev
+
+      # x64 only. An arm64 deb makes @electron/rebuild cross-compile every native
+      # dep (node-liblzma, node-pty, @mongodb-js/zstd, @parcel/watcher) for
+      # aarch64 on this x64 host, which needs a full cross toolchain plus arm64
+      # system libs — impractical here. arm64 Linux is deferred to a native arm64
+      # runner (ubuntu-*-arm) follow-up; electron-builder.yml keeps deb:[x64,arm64]
+      # as the intended end state, and AppImage is already x64-only there.
+      - name: Package AppImage + deb (x64)
         working-directory: packages/desktop
-        run: pnpm exec electron-builder --linux --publish never
+        run: pnpm exec electron-builder --linux AppImage:x64 deb:x64 --publish never
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
