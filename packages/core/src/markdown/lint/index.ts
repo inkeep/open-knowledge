@@ -45,6 +45,10 @@ export {
   MarkdownlintRuleWriteRequestSchema,
   type PersistedLinterConfig,
   toEffectiveBase,
+  type ValidationAuditResponse,
+  ValidationAuditResponseSchema,
+  type ValidationDocResult,
+  ValidationDocResultSchema,
 } from './config-schemas.ts';
 export { DEFAULT_MARKDOWNLINT_CONFIG, resolveMarkdownlintConfig } from './default-config.ts';
 export { fixMarkdownText, runMarkdownlint } from './markdownlint-runner.ts';
@@ -64,6 +68,7 @@ export {
 } from './rule-catalog-categories.ts';
 export { applyTextEdits } from './text-edits.ts';
 export type {
+  LinksValidationSetting,
   LintDiagnostic,
   LintPosition,
   LintRange,
@@ -76,4 +81,7 @@ export type {
   RuleCatalogEntry,
   RuleOptionSpec,
   RuleOptionType,
+  ValidationDiagnostic,
+  ValidationSource,
 } from './types.ts';
+export { DEFAULT_LINKS_VALIDATION, LINKS_VALIDATION_SETTINGS } from './types.ts';

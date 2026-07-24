@@ -5193,6 +5193,17 @@ html.electron-mode [data-slot="sidebar-inner"] {
 .dark .cm-editor .cm-lintRange-error {
   --lint-error-color: oklch(72% 0.18 25);
 }
+/* File-tree problem-indicator tokens (file-tree-problem-indicators.ts). The
+   editor's --lint-*-color tokens are scoped under .dark .cm-editor / .dark
+   .ProseMirror and never reach the tree's shadow root, so the tree gets its
+   own inheritable pair: light mode rides the var() fallback literals inside
+   the shadow CSS (same values as the editor's light fallbacks); this .dark
+   block carries the dark overrides across the shadow boundary via custom-
+   property inheritance. Values mirror the editor's dark lint palette. */
+.dark {
+  --ok-tree-problem-warning: oklch(80% 0.13 80);
+  --ok-tree-problem-error: oklch(72% 0.18 25);
+}
 /* Diagnostic tooltip + lint panel onto OK popover tokens. */
 .cm-tooltip.cm-tooltip-lint,
 .cm-panel.cm-panel-lint {

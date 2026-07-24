@@ -1,16 +1,19 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: matches sibling OutlinePanel — positional list of <button> rows awaiting a shared shadcn list primitive; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
-import type { LintAuditResponse, LintDiagnostic, LintDocResult } from '@inkeep/open-knowledge-core';
+import type { ValidationAuditResponse, ValidationDocResult } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import {
   AlertCircle,
   AlertTriangle,
   ChevronRight,
+  FilePlus2,
+  Link2,
   RefreshCw,
   Sparkles,
   Wrench,
 } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useOptionalPageList } from '@/components/PageListContext';
 import { type PanelScope, PanelScopeHeader } from '@/components/PanelScopeHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,10 +28,13 @@ import {
   PanelTitle,
 } from '@/components/ui/panel';
 import { Skeleton } from '@/components/ui/skeleton';
-import { fixLintDoc, runLintAudit } from '@/editor/lint-config-client';
+import { fixLintDoc } from '@/editor/lint-config-client';
 import { rememberPendingSourceNavigation } from '@/editor/source-editor-navigation';
+import { runValidationAudit } from '@/editor/validation-audit-client';
+import { createPageFromSeedAndUpdate } from '@/lib/create-page';
 import { filePathToDocName, hashFromDocName } from '@/lib/doc-hash';
 import { cn } from '@/lib/utils';
+import { replaceValidationFromAudit } from '@/lib/validation-store';
 
 /** Jump-to-line intent dispatched when a problem row is clicked in source mode. */
 export interface LintNavDetail {
@@ -41,12 +47,12 @@ export interface LintNavDetail {
 export const LINT_NAV_EVENT = 'open-knowledge:lint-nav';
 
 /**
- * Wire-loose diagnostic shape from the audit response. The engine's
+ * Wire-loose diagnostic shape from the unified audit response. The engine's
  * `LintDiagnostic` (doc scope) is a subtype — its `source` is a plugin-id
  * literal where the wire admits any string — so the row helpers below accept
  * this wider shape and serve both scopes.
  */
-type DiagnosticLike = LintDocResult['diagnostics'][number];
+export type DiagnosticLike = ValidationDocResult['diagnostics'][number];
 
 /** Stable sort key: line, then column. */
 function compareDiagnostics(a: DiagnosticLike, b: DiagnosticLike): number {
@@ -66,15 +72,16 @@ function lintNavDetailOf(diagnostic: DiagnosticLike): LintNavDetail {
 type ProjectAuditState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'loaded'; result: LintAuditResponse }
+  | { status: 'loaded'; result: ValidationAuditResponse }
   | { status: 'failed' };
 
-/** Message line + `source/code · line` subline shared by doc- and project-scope rows. */
+/** Message line + source chip + `source/code · line` subline shared by doc- and project-scope rows. */
 function DiagnosticRowBody({ diagnostic }: { diagnostic: DiagnosticLike }) {
   const { t } = useLingui();
   const Icon = diagnostic.severity === 'error' ? AlertCircle : AlertTriangle;
   const flatId = `${diagnostic.source}/${diagnostic.code}`;
   const displayLine = diagnostic.range.start.line + 1;
+  const isLink = diagnostic.source === 'links';
   return (
     <>
       <span className="flex items-start gap-1.5 text-sm">
@@ -87,8 +94,30 @@ function DiagnosticRowBody({ diagnostic }: { diagnostic: DiagnosticLike }) {
         />
         <span className="text-foreground">{diagnostic.message}</span>
       </span>
-      <span className="ps-5 font-mono text-xs text-muted-foreground">
-        {flatId} · {t`line ${displayLine}`}
+      <span className="flex items-center gap-1.5 ps-5 font-mono text-xs text-muted-foreground">
+        {/* Source tag: the unified plane mixes validators per file, so every
+            row names its category at a glance (the flatId spells the full
+            validator id for the detail-oriented). */}
+        <Badge
+          variant="gray"
+          data-testid="problems-source-tag"
+          className={cn(
+            'h-4 shrink-0 px-1 font-sans text-[10px] uppercase leading-none',
+            isLink && 'gap-0.5',
+          )}
+        >
+          {isLink ? (
+            <>
+              <Link2 aria-hidden="true" className="size-2.5" />
+              <Trans>link</Trans>
+            </>
+          ) : (
+            <Trans>lint</Trans>
+          )}
+        </Badge>
+        <span className="min-w-0 truncate">
+          {flatId} · {t`line ${displayLine}`}
+        </span>
       </span>
     </>
   );
@@ -101,6 +130,40 @@ function diagnosticKey(diagnostic: DiagnosticLike): string {
 /** How many of `diagnostics` carry a deterministic auto-fix. */
 function countFixable(diagnostics: readonly DiagnosticLike[]): number {
   return diagnostics.reduce((n, d) => n + ((d.fixes?.length ?? 0) > 0 ? 1 : 0), 0);
+}
+
+/**
+ * One-shot "create the missing page" action for a dead-link row — the same
+ * action as the Links panel's amber missing-page affordance, surfaced where
+ * the problem is listed. Deliberately outside Fix all (a broken link may be a
+ * typo; bulk-creating targets would mint duplicate files).
+ */
+function CreatePageButton({
+  target,
+  creating,
+  disabled,
+  onCreate,
+}: {
+  target: string;
+  creating: boolean;
+  disabled: boolean;
+  onCreate: () => void;
+}) {
+  const { t } = useLingui();
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      className="h-6 shrink-0 px-2 text-xs"
+      disabled={disabled}
+      onClick={onCreate}
+      aria-label={t`Create missing page ${target}`}
+      data-testid="problems-create-page"
+    >
+      <FilePlus2 aria-hidden="true" className="size-3" />
+      {creating ? <Trans>Creating</Trans> : <Trans>Create page</Trans>}
+    </Button>
+  );
 }
 
 /** "Fix all" action shared by both scopes — same look, same position in the
@@ -157,10 +220,12 @@ export function ProblemsPanel({
   onAskAi,
 }: {
   docName: string;
-  diagnostics: LintDiagnostic[];
+  /** Live lint diagnostics for the open doc PLUS its broken-link findings —
+   *  wire-loose so both the in-process lint shape and the audit plane fit. */
+  diagnostics: DiagnosticLike[];
   /** Apply a fixable diagnostic's auto-fix (this-doc scope only). When absent
    *  (e.g. unit harness), fixable rows render no Fix button. */
-  onFix?: (diagnostic: LintDiagnostic) => void;
+  onFix?: (diagnostic: DiagnosticLike) => void;
   /** Apply every fixable diagnostic's auto-fix in this doc. When absent, the
    *  doc-scope Fix all button is not rendered. */
   onFixAll?: () => void;
@@ -168,12 +233,17 @@ export function ProblemsPanel({
    *  prompt. Desktop-only — absent on web, where rows render no Ask AI button.
    *  Offered on every row, fixable or not: AI is most useful exactly where no
    *  deterministic fix exists. */
-  onAskAi?: (diagnostic: LintDiagnostic) => void;
+  onAskAi?: (diagnostic: DiagnosticLike) => void;
 }) {
   const { t } = useLingui();
   const [scope, setScope] = useState<PanelScope>('doc');
   const [audit, setAudit] = useState<ProjectAuditState>({ status: 'idle' });
   const [projectFixing, setProjectFixing] = useState<{ done: number; total: number } | null>(null);
+  // The dead-link "Create page" one-shot (target being created, else null).
+  // Optional context: the panel is always under PageListProvider in the app;
+  // the null branch only serves bare unit harnesses (create renders disabled).
+  const pageList = useOptionalPageList();
+  const [creatingTarget, setCreatingTarget] = useState<string | null>(null);
   // Tracks whether the panel is still mounted so the async project sweep can
   // stop early instead of posting fixes and setState-ing into an unmounted tree.
   const mountedRef = useRef(true);
@@ -186,9 +256,44 @@ export function ProblemsPanel({
 
   const sorted = [...diagnostics].sort(compareDiagnostics);
 
+  /**
+   * One-shot fix for a dead link: create the missing target page (the same
+   * action as the Links panel's amber "missing page" affordance). Deliberately
+   * NOT part of Fix all — a broken link may be a typo, and bulk-creating
+   * targets would silently mint duplicate files.
+   */
+  async function createLinkTarget(diagnostic: DiagnosticLike) {
+    const target = diagnostic.linkTarget;
+    if (target === undefined || creatingTarget !== null || pageList === null) return;
+    setCreatingTarget(target);
+    // No try/finally: the React Compiler cannot lower a finalizer clause, so
+    // both exits clear the creating flag explicitly.
+    try {
+      await createPageFromSeedAndUpdate(
+        { initialDir: '', suggestedName: target },
+        { addPage: pageList.addPage },
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t`Failed to create page`);
+      if (mountedRef.current) setCreatingTarget(null);
+      return;
+    }
+    toast.success(t`Created ${target}`);
+    if (mountedRef.current) setCreatingTarget(null);
+    // The doc scope heals itself (the create emits the backlinks relay the
+    // link-findings hook listens to); a loaded project snapshot is stale
+    // truth, so refresh it in place.
+    if (mountedRef.current && audit.status === 'loaded') await loadAudit();
+  }
+
   async function loadAudit() {
     setAudit({ status: 'loading' });
-    const result = await runLintAudit();
+    const result = await runValidationAudit();
+    // A successful whole-project audit is full-plane truth — refresh the
+    // shared validation store (freshness trigger 1) so the file tree's tints
+    // update in the same pass. Deliberately BEFORE the mounted guard: the
+    // store outlives this panel, and the fetch already completed.
+    if (result !== null) replaceValidationFromAudit(result.files);
     // Match the sweep's mounted guard: don't setState into an unmounted tree
     // (loadAudit is awaited from the sweep, the refresh button, and scope
     // activation).
@@ -306,6 +411,7 @@ export function ProblemsPanel({
                 {sorted.map((diagnostic) => {
                   const displayLine = diagnostic.range.start.line + 1;
                   const fixable = onFix !== undefined && (diagnostic.fixes?.length ?? 0) > 0;
+                  const canCreate = diagnostic.linkTarget !== undefined && pageList !== null;
                   const flatId = `${diagnostic.source}/${diagnostic.code}`;
                   return (
                     <li
@@ -324,12 +430,20 @@ export function ProblemsPanel({
                       >
                         <DiagnosticRowBody diagnostic={diagnostic} />
                       </button>
-                      {fixable || onAskAi !== undefined ? (
+                      {fixable || onAskAi !== undefined || canCreate ? (
                         // Bottom-right, revealed on hover/focus. `bg-muted`
                         // matches the row's own hover background so it cleanly
                         // occludes the `source/code · line` subline underneath
                         // if a long id would otherwise run beneath it.
                         <div className="absolute bottom-1 right-1 flex items-center gap-1 rounded bg-muted opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none">
+                          {canCreate ? (
+                            <CreatePageButton
+                              target={diagnostic.linkTarget ?? ''}
+                              creating={creatingTarget === diagnostic.linkTarget}
+                              disabled={creatingTarget !== null}
+                              onCreate={() => void createLinkTarget(diagnostic)}
+                            />
+                          ) : null}
                           {fixable ? (
                             <Button
                               size="sm"
@@ -373,6 +487,8 @@ export function ProblemsPanel({
           fixableCount={projectFixableFiles.reduce((n, f) => n + countFixable(f.diagnostics), 0)}
           fixing={projectFixing}
           onFixAll={() => void fixAllProjectFiles()}
+          onCreateTarget={pageList !== null ? (d) => void createLinkTarget(d) : undefined}
+          creatingTarget={creatingTarget}
         />
       )}
     </Panel>
@@ -386,6 +502,8 @@ function ProjectAuditBody({
   fixableCount,
   fixing,
   onFixAll,
+  onCreateTarget,
+  creatingTarget,
 }: {
   audit: ProjectAuditState;
   onRefresh: () => void;
@@ -396,6 +514,9 @@ function ProjectAuditBody({
   /** Sweep progress while a project Fix all is running, else null. */
   fixing: { done: number; total: number } | null;
   onFixAll: () => void;
+  /** Create a dead-link row's missing target page; absent in bare harnesses. */
+  onCreateTarget?: (diagnostic: DiagnosticLike) => void;
+  creatingTarget: string | null;
 }) {
   const { t } = useLingui();
   const loading = audit.status === 'loading' || audit.status === 'idle';
@@ -472,7 +593,12 @@ function ProjectAuditBody({
       )}
 
       {audit.status === 'loaded' && (
-        <ProjectAuditResults result={audit.result} onNavigate={onNavigate} />
+        <ProjectAuditResults
+          result={audit.result}
+          onNavigate={onNavigate}
+          onCreateTarget={onCreateTarget}
+          creatingTarget={creatingTarget}
+        />
       )}
     </PanelBody>
   );
@@ -481,9 +607,13 @@ function ProjectAuditBody({
 function ProjectAuditResults({
   result,
   onNavigate,
+  onCreateTarget,
+  creatingTarget,
 }: {
-  result: LintAuditResponse;
+  result: ValidationAuditResponse;
   onNavigate: (filePath: string, diagnostic: DiagnosticLike) => void;
+  onCreateTarget?: (diagnostic: DiagnosticLike) => void;
+  creatingTarget: string | null;
 }) {
   const { t } = useLingui();
   return (
@@ -512,7 +642,13 @@ function ProjectAuditResults({
         </PanelEmpty>
       ) : (
         result.files.map((file) => (
-          <ProjectFileGroup key={file.file} file={file} onNavigate={onNavigate} />
+          <ProjectFileGroup
+            key={file.file}
+            file={file}
+            onNavigate={onNavigate}
+            onCreateTarget={onCreateTarget}
+            creatingTarget={creatingTarget}
+          />
         ))
       )}
     </div>
@@ -522,9 +658,13 @@ function ProjectAuditResults({
 function ProjectFileGroup({
   file,
   onNavigate,
+  onCreateTarget,
+  creatingTarget,
 }: {
-  file: LintDocResult;
+  file: ValidationDocResult;
   onNavigate: (filePath: string, diagnostic: DiagnosticLike) => void;
+  onCreateTarget?: (diagnostic: DiagnosticLike) => void;
+  creatingTarget: string | null;
 }) {
   const { t } = useLingui();
   const sorted = [...file.diagnostics].sort(compareDiagnostics);
@@ -549,16 +689,32 @@ function ProjectFileGroup({
         <ul aria-label={t`Problems in ${file.file}`} className="flex flex-col gap-0.5 pb-1 ps-3">
           {sorted.map((diagnostic) => {
             const displayLine = diagnostic.range.start.line + 1;
+            const canCreate = diagnostic.linkTarget !== undefined && onCreateTarget !== undefined;
             return (
-              <li key={diagnosticKey(diagnostic)}>
+              <li
+                key={diagnosticKey(diagnostic)}
+                className="group relative rounded transition-colors hover:bg-muted"
+              >
                 <button
                   type="button"
                   onClick={() => onNavigate(file.file, diagnostic)}
-                  className="flex w-full cursor-pointer flex-col gap-0.5 rounded px-2 py-1.5 text-left transition-colors hover:bg-muted"
+                  className="flex w-full cursor-pointer flex-col gap-0.5 rounded px-2 py-1.5 text-left"
                   title={t`Go to line ${displayLine} in ${file.file}`}
                 >
                   <DiagnosticRowBody diagnostic={diagnostic} />
                 </button>
+                {canCreate ? (
+                  // Same hover-revealed overlay contract as the doc scope's
+                  // Fix / Ask AI actions.
+                  <div className="absolute bottom-1 right-1 flex items-center gap-1 rounded bg-muted opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none">
+                    <CreatePageButton
+                      target={diagnostic.linkTarget ?? ''}
+                      creating={creatingTarget === diagnostic.linkTarget}
+                      disabled={creatingTarget !== null}
+                      onCreate={() => onCreateTarget?.(diagnostic)}
+                    />
+                  </div>
+                ) : null}
               </li>
             );
           })}

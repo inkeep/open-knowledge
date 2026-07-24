@@ -28,7 +28,7 @@ import {
   resolveNativeConfigForDoc,
 } from '@inkeep/open-knowledge-server';
 
-export interface FileLintResult {
+interface FileLintResult {
   /** Path relative to `contentDir` (as produced by `node:path`). */
   file: string;
   diagnostics: LintDiagnostic[];

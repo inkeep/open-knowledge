@@ -232,6 +232,7 @@ describe('MCP outputSchema strictness — auto-discovered registerTool sweep (no
     'edit',
     'write',
     'links',
+    'audit',
   ]);
 
   test('every registerTool registration declares `text` in its outputSchema', () => {

@@ -70,6 +70,7 @@ import {
   createWorkspaceSearchDocument,
   DEFAULT_ATTACHMENT_FOLDER_PATH,
   DEFAULT_DEDUP_MODE,
+  DEFAULT_LINKS_VALIDATION,
   DEFAULT_LINTER_CONFIG,
   DeadLinksSuccessSchema,
   DeletePathRequestSchema,
@@ -111,6 +112,7 @@ import {
   LinkGraphSuccessSchema,
   LinkPreviewRequestSchema,
   LinkPreviewResponseSchema,
+  type LinksValidationSetting,
   LintAuditResponseSchema,
   LintConfigResponseSchema,
   LintDocResultSchema,
@@ -246,6 +248,8 @@ import {
   UploadRequestSchema,
   unwrapFrontmatterFences,
   updateWorkspaceSearchCorpus,
+  ValidationAuditResponseSchema,
+  type ValidationDiagnostic,
   type WorkspaceSearchCorpus,
   type WorkspaceSearchDocument,
   type WorkspaceSearchIntent,
@@ -365,6 +369,7 @@ import {
   resolveEffectiveLinterConfig,
   resolveNativeConfigForDoc,
 } from './lint/resolve-config.ts';
+import { createProjectValidators, runValidationAudit } from './lint/validation-audit.ts';
 import { validateMermaidFences } from './mermaid-validator.ts';
 import {
   extractPageIcon,
@@ -474,7 +479,7 @@ import {
 } from './backlink-index.ts';
 import { getBootTimings } from './boot-timings.ts';
 import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from './bridge-intake.ts';
-import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
+import { isConfigDoc, isLinkIndexExcludedDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import type { ResolveStrategy } from './conflict-storage.ts';
 import type { ContentFilter } from './content-filter.ts';
@@ -2903,6 +2908,11 @@ export interface ApiExtensionOptions {
    * Omitted in tests → falls back to `DEFAULT_LINTER_CONFIG`.
    */
   getLinterBaseConfig?: () => LinterConfig;
+  /**
+   * Fresh-per-request broken-link posture (`validation.links`). Omitted in
+   * tests → falls back to the default ('warning').
+   */
+  getLinksValidationSetting?: () => LinksValidationSetting;
 }
 
 interface WorkspaceSearchCacheEntry {
@@ -3021,6 +3031,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     getSemanticSimilarityFloor,
     embeddingsSecretsFile,
     getLinterBaseConfig,
+    getLinksValidationSetting,
     ephemeral = false,
     linkPreviewFetch,
     getLinkPreviewsEnabled,
@@ -18941,11 +18952,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   // `.markdownlint.*` rules through the markdownlint-config endpoint.
 
   // Content-rule violations on a post-write document, for the agent write/edit
-  // advisory channel. Every enabled lint source rides along — markdownlint
-  // included — so agents see the same violations the editor GUI surfaces.
-  // Whole-doc semantics: pre-existing violations reappear on every write to
-  // the doc, which is why the cap matters. Capped; advisory only — never
-  // gates the write. Empty when linting is disabled.
+  // advisory channel — the full validation plane, not just lint: every enabled
+  // lint source PLUS broken internal links, so an agent that writes a dead
+  // wiki-link hears about it on the write response without a separate `audit`
+  // round-trip. Whole-doc semantics: pre-existing violations reappear on every
+  // write to the doc, which is why the cap matters. Capped; advisory only —
+  // never gates the write. Empty when linting is disabled and links are off.
   const LINT_VIOLATION_CAP = 10;
   async function computeLintViolations(
     source: string,
@@ -18953,7 +18965,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   ): Promise<LintViolationWarning[]> {
     const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
     // Advisory-only means advisory-only: by the time this runs the write has
-    // already committed (CRDT + disk + snapshot), so a lint engine crash must
+    // already committed (CRDT + disk + snapshot), so a validation crash must
     // degrade to zero advisories — never bubble into the handler's catch and
     // turn a committed write into a 500 the agent would retry.
     try {
@@ -18961,7 +18973,41 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         docName,
         onProblem: (problem) => log.warn({ problem, docName }, '[lint] native config problem'),
       });
-      return (await lintDocument(source, effective, docName))
+      const lintFindings = await lintDocument(source, effective, docName);
+
+      // Links plane, via the SAME audit validator the Problems panel and the
+      // `audit` tool consume (one canonical predicate, honoring the project's
+      // `validation.links` posture). The live-derived index updates on a
+      // 100 ms debounce AFTER a change, so at this point it does not yet see
+      // the write being advised — refresh this one doc synchronously first
+      // (idempotent: the debounced pass re-applies the same bytes).
+      let linkFindings: ValidationDiagnostic[] = [];
+      const linksSetting = getLinksValidationSetting?.() ?? DEFAULT_LINKS_VALIDATION;
+      if (backlinkIndex && linksSetting !== 'off' && !isLinkIndexExcludedDoc(docName)) {
+        backlinkIndex.updateDocumentFromMarkdown(docName, source);
+        const linksValidator = createProjectValidators({
+          projectDir: projectDir ?? contentDir,
+          contentDir,
+          baseConfig: base,
+          backlinkIndex,
+          linksValidation: linksSetting,
+          admittedDocNames: collectAdmittedDocNames,
+          docFilePathFor: (d) => resolveDocFilePath(contentDir, d),
+        }).find((validator) => validator.id === 'links');
+        if (linksValidator) {
+          const run = await linksValidator.run({
+            targetPath: resolveDocFilePath(contentDir, docName) ?? `${docName}.md`,
+          });
+          linkFindings = run.files.flatMap((file) => file.diagnostics);
+        }
+      }
+
+      return [...lintFindings, ...linkFindings]
+        .sort(
+          (a, b) =>
+            a.range.start.line - b.range.start.line ||
+            a.range.start.character - b.range.start.character,
+        )
         .slice(0, LINT_VIOLATION_CAP)
         .map((d) => ({
           kind: 'lint-violation' as const,
@@ -18972,11 +19018,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           // Advisory display units are 1-based; the diagnostic range is 0-based LSP.
           line: d.range.start.line + 1,
           column: d.range.start.character + 1,
+          ...('linkTarget' in d && d.linkTarget !== undefined ? { linkTarget: d.linkTarget } : {}),
         }));
     } catch (err) {
       log.warn(
         { err, docName },
-        '[lint] advisory lint pass failed post-write; omitting advisories',
+        '[lint] advisory validation pass failed post-write; omitting advisories',
       );
       return [];
     }
@@ -19177,6 +19224,66 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       }
     },
     { handler: 'lint-audit', method: 'GET', skipBodyParse: true },
+  );
+
+  // Unified validation audit: every registered project validator (markdownlint
+  // walk + backlink-index dead-link read) merged into one source-tagged plane.
+  // Additive alongside /api/lint/audit and /api/dead-links, which keep their
+  // single-validator contracts.
+  const handleAudit = withValidation(
+    EmptyRequestSchema,
+    async (req, res) => {
+      try {
+        const url = new URL(req.url ?? '', 'http://localhost');
+        const rawTarget = url.searchParams.get('path');
+        let target = rawTarget === null || rawTarget === '' ? undefined : rawTarget;
+        // Absolute paths and traversal must not reach the validators: the
+        // lint walk reads file bytes under this scope, so an unchecked path
+        // is an arbitrary-directory read for any connected caller.
+        if (target !== undefined && !isValidRelativeContentPath(target)) {
+          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid path.', {
+            handler: 'audit',
+          });
+          return;
+        }
+        // `doc` scopes by docName (extension-less). The client freshness path
+        // knows docNames from disk-ack frames, never file extensions, so the
+        // extension resolution has to happen here. A doc indexed from a live
+        // CRDT session may not be on disk yet — fall back to the default
+        // extension so the links validator can still scope to it (mirrors the
+        // links validator's own fallback).
+        const rawDoc = url.searchParams.get('doc');
+        const docParam = rawDoc === null || rawDoc === '' ? undefined : rawDoc;
+        if (docParam !== undefined) {
+          if (target !== undefined || !isValidRelativeContentPath(docParam)) {
+            errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid doc.', {
+              handler: 'audit',
+            });
+            return;
+          }
+          target = resolveDocFilePath(contentDir, docParam) ?? `${docParam}.md`;
+        }
+        const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
+        const validators = createProjectValidators({
+          projectDir: projectDir ?? contentDir,
+          contentDir,
+          baseConfig,
+          liveSourceFor: liveLintSourceFor,
+          backlinkIndex: backlinkIndex ?? null,
+          linksValidation: getLinksValidationSetting?.(),
+          admittedDocNames: collectAdmittedDocNames,
+          docFilePathFor: (docName) => resolveDocFilePath(contentDir, docName),
+        });
+        const result = await runValidationAudit(validators, { targetPath: target });
+        successResponse(res, 200, ValidationAuditResponseSchema, result, { handler: 'audit' });
+      } catch (e) {
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to audit project.', {
+          handler: 'audit',
+          cause: e,
+        });
+      }
+    },
+    { handler: 'audit', method: 'GET', skipBodyParse: true },
   );
 
   const handleLintFix = withValidation(
@@ -19574,6 +19681,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/lint': handleLintDoc,
     '/api/lint/audit': handleLintAudit,
     '/api/lint/fix': handleLintFix,
+    '/api/audit': handleAudit,
     '/api/suggest-links': handleSuggestLinks,
     '/api/page-headings': handlePageHeadings,
     '/api/create-page': handleCreatePage,

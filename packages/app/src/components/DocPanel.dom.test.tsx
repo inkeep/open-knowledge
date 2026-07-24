@@ -64,6 +64,10 @@ vi.doMock('@/editor/lint-config-client', () => ({
 vi.doMock('@/editor/useDocDiagnostics', () => ({
   useDocDiagnostics: () => diagnosticsValue,
 }));
+vi.doMock('@/editor/validation-audit-client', () => ({
+  runValidationAudit: async () => null,
+  useDocLinkFindings: () => [],
+}));
 // Terminal availability drives the Ask-AI gate — null mirrors the web host.
 let terminalLaunchValue: unknown = null;
 vi.doMock('@/components/handoff/TerminalLaunchContext', () => ({

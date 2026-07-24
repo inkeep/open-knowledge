@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DEFAULT_ATTACHMENT_FOLDER_PATH } from '../constants/upload.ts';
+import { DEFAULT_LINKS_VALIDATION, LINKS_VALIDATION_SETTINGS } from '../markdown/lint/types.ts';
 import { THEME_PLUGIN_IDS } from '../theme/theme-plugins.ts';
 import { fieldRegistry } from './field-registry.ts';
 
@@ -673,6 +674,40 @@ export const ConfigSchema = z.looseObject({
         .default({ enabled: false }),
     })
     .default({ markdownlint: { enabled: false } }),
+  // Validation-surface behavior (the unified audit plane's non-plugin knobs).
+  // PROJECT scope, like `contentRules`: how broken links are classified and
+  // whether the file tree surfaces problem indicators are team-shared
+  // authoring decisions. Deliberately a SIBLING of `contentRules`, not a child
+  // — `contentRules`' direct children are exactly the lint-plugin slices, a
+  // lockstep contract enforced by `linter-leaf-registry-consistency.test.ts`.
+  validation: z
+    .looseObject({
+      // 'off' hides broken-link findings from the whole plane (audit route,
+      // MCP audit tool, ok audit, Problems panel, tree); 'warning'/'error'
+      // set their severity. Default warning: a broken link is often a typo
+      // or a page-yet-to-be-written, not necessarily an error.
+      links: z
+        .enum(LINKS_VALIDATION_SETTINGS)
+        .register(fieldRegistry, {
+          scope: 'project',
+          agentSettable: false,
+          defaultScope: 'project',
+          description:
+            "How broken internal links are reported on the validation plane: 'off' hides them, 'warning' (default) or 'error' sets their severity.",
+        })
+        .default(DEFAULT_LINKS_VALIDATION),
+      fileTreeIndicators: z
+        .boolean()
+        .register(fieldRegistry, {
+          scope: 'project',
+          agentSettable: false,
+          defaultScope: 'project',
+          description:
+            'Whether the file tree tints and badges files that have validation problems.',
+        })
+        .default(true),
+    })
+    .default({ links: DEFAULT_LINKS_VALIDATION, fileTreeIndicators: true }),
   // PROJECT-LOCAL scope: external link-hover previews send the hovered URL to
   // the destination site to fetch its metadata (egress). Read per-machine from
   // the project-local layer, never a committed/shared config, so one clone's

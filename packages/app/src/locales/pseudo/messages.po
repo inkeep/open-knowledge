@@ -1399,6 +1399,10 @@ msgstr ""
 msgid "Bring a remote repository onto this machine."
 msgstr ""
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Broken internal links"
+msgstr ""
+
 #: src/components/GraphPanel.tsx
 msgid "Broken link"
 msgstr ""
@@ -2050,6 +2054,12 @@ msgstr ""
 msgid "Content root"
 msgstr ""
 
+#: src/components/settings/ContentRulesSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Content rules"
+msgstr ""
+
+#: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/LintingSection.tsx
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr ""
@@ -2635,6 +2645,10 @@ msgstr ""
 msgid "Create in <0>{dirDisplay}</0>"
 msgstr ""
 
+#: src/components/ProblemsPanel.tsx
+msgid "Create missing page {target}"
+msgstr ""
+
 #: src/components/CreateProjectDialog.tsx
 #: src/components/NavigatorApp.tsx
 msgid "Create new project"
@@ -2645,6 +2659,7 @@ msgid "Create new tag #{tagValue}"
 msgstr ""
 
 #: src/components/GraphPanel.tsx
+#: src/components/ProblemsPanel.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Create page"
@@ -2698,6 +2713,10 @@ msgstr ""
 msgid "Create your first project"
 msgstr ""
 
+#: src/components/ProblemsPanel.tsx
+msgid "Created {target}"
+msgstr ""
+
 #: src/components/FolderTimelineCard.tsx
 msgid "created folder"
 msgstr ""
@@ -2710,6 +2729,7 @@ msgstr ""
 #: src/components/NewItemDialog.tsx
 #: src/components/NewSkillDialog.tsx
 #: src/components/NewTemplateDialog.tsx
+#: src/components/ProblemsPanel.tsx
 msgid "Creating"
 msgstr ""
 
@@ -3094,6 +3114,10 @@ msgstr ""
 msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
 msgstr ""
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Don't show"
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "done"
 msgstr ""
@@ -3444,6 +3468,10 @@ msgstr ""
 msgid "Entry"
 msgstr ""
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Error"
+msgstr ""
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "Error:"
 msgstr ""
@@ -3549,6 +3577,7 @@ msgid "Failed to create folder"
 msgstr ""
 
 #: src/components/LinksPanel.tsx
+#: src/components/ProblemsPanel.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Failed to create page"
@@ -3752,6 +3781,7 @@ msgid "Failed to reorder"
 msgstr ""
 
 #. placeholder {0}: humanFormat(result.error)
+#: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/LintingSection.tsx
 msgid "Failed to save content rules — {0}"
 msgstr ""
@@ -4310,6 +4340,10 @@ msgstr ""
 msgid "Hide panel ({panelShortcutLabel})"
 msgstr ""
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Hide problem indicators"
+msgstr ""
+
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Hide replace"
 msgstr ""
@@ -4391,6 +4425,14 @@ msgstr ""
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 msgid "How to set up {0} (opens in browser)"
+msgstr ""
+
+#: src/components/settings/ContentRulesSection.tsx
+msgid "How unresolved wiki-links are reported in the Problems panel, audits, and agent tools."
+msgstr ""
+
+#: src/components/settings/ContentRulesSection.tsx
+msgid "How validation findings surface across the project. These choices are committed to config.yml and shared with every collaborator via git."
 msgstr ""
 
 #: src/editor/slash-command/embed-starter-items.tsx
@@ -4793,6 +4835,10 @@ msgstr ""
 msgid "line {displayLine}"
 msgstr ""
 
+#: src/components/ProblemsPanel.tsx
+msgid "link"
+msgstr ""
+
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 #: src/editor/slash-command/component-items.tsx
 msgid "Link"
@@ -4837,6 +4883,14 @@ msgstr ""
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Links & images"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "lint"
+msgstr ""
+
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Lint plugins — which rule families run and their per-rule settings — are configured on their own tab under This project → Plugins."
 msgstr ""
 
 #: src/components/PropertyWidgets.tsx
@@ -6585,6 +6639,10 @@ msgstr ""
 msgid "probe failed"
 msgstr ""
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Problem indicators in the file explorer"
+msgstr ""
+
 #: src/components/DocPanel.tsx
 #: src/components/ProblemsPanel.tsx
 msgid "Problems"
@@ -7929,6 +7987,10 @@ msgstr ""
 msgid "Show panel ({panelShortcutLabel})"
 msgstr ""
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Show problem indicators"
+msgstr ""
+
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Show replace"
 msgstr ""
@@ -8982,6 +9044,10 @@ msgstr ""
 msgid "Timeline"
 msgstr ""
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Tint and badge files that have lint or link problems, without opening them."
+msgstr ""
+
 #: src/components/TemplateProperties.tsx
 msgid "title"
 msgstr ""
@@ -9475,6 +9541,10 @@ msgstr ""
 
 #: src/components/acp/ThreadView.tsx
 msgid "Waiting for your approval"
+msgstr ""
+
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Warning"
 msgstr ""
 
 #: src/components/settings/AccountSection.tsx

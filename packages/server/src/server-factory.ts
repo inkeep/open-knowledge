@@ -21,10 +21,12 @@ import {
   type ConfigIssue,
   createBasenameIndex,
   DEFAULT_ATTACHMENT_FOLDER_PATH,
+  DEFAULT_LINKS_VALIDATION,
   DEFAULT_LINTER_CONFIG,
   DOCUMENT_OPEN_BYTE_LIMIT,
   humanFormat,
   isKnownConfigError,
+  type LinksValidationSetting,
   type LinterConfig,
   type MarkdownManager,
   type PersistedLinterConfig,
@@ -680,6 +682,18 @@ export function createServer(options: ServerOptions): ServerInstance {
     // native `.markdownlint.*` file.
     const persisted = project.value.contentRules as PersistedLinterConfig | undefined;
     return persisted ? toEffectiveBase(persisted) : DEFAULT_LINTER_CONFIG;
+  }
+
+  // Same fresh-per-request contract as `readLinterBaseConfig`: the broken-link
+  // posture (`validation.links`) must apply to the next audit without a restart.
+  function readLinksValidationSetting(): LinksValidationSetting {
+    const project = readConfigSafely({
+      absPath: resolveConfigPath('project', projectDir),
+      sideline: false,
+      warn: (message) =>
+        log.warn({ message }, '[config] could not read project config for link validation'),
+    });
+    return project.value.validation?.links ?? DEFAULT_LINKS_VALIDATION;
   }
 
   // Project-local-only read (shared with `ok embeddings status` so they can't
@@ -1803,6 +1817,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       semanticSearch,
       getSemanticSimilarityFloor: () => readSemanticSearchConfig().similarityFloor,
       getLinterBaseConfig: () => readLinterBaseConfig(),
+      getLinksValidationSetting: () => readLinksValidationSetting(),
       getLinkPreviewsEnabled: readLinkPreviewsEnabled,
       embeddingsSecretsFile: secretsFilePath(configHomedirOverride),
       ephemeral,

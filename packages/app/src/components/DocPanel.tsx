@@ -1,13 +1,13 @@
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { AlertTriangle, Clock, Link2, ListTree, Network } from 'lucide-react';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { composeLintFixTerminalPaste } from '@/components/handoff/compose-lint-fix-prompt';
 import { useTerminalLaunch } from '@/components/handoff/TerminalLaunchContext';
 import { requestActiveTerminalInput } from '@/components/handoff/terminal-input-events';
 import { LinksPanel } from '@/components/LinksPanel';
 import { OutlinePanel } from '@/components/OutlinePanel';
-import { ProblemsPanel } from '@/components/ProblemsPanel';
+import { type DiagnosticLike, ProblemsPanel } from '@/components/ProblemsPanel';
 import { TimelineContent } from '@/components/TimelinePanel';
 import { Badge } from '@/components/ui/badge';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -16,7 +16,9 @@ import { applyLintFixes, collectFixes } from '@/editor/apply-lint-fix';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { useDocLintConfig } from '@/editor/lint-config-client';
 import { useDocDiagnostics } from '@/editor/useDocDiagnostics';
+import { useDocLinkFindings } from '@/editor/validation-audit-client';
 import { useSingleFileMode } from '@/lib/single-file-mode';
+import { type DocProblemCounts, patchDocValidationSource } from '@/lib/validation-store';
 
 export type PanelTab = 'outline' | 'links' | 'graph' | 'timeline' | 'problems';
 
@@ -27,6 +29,16 @@ export const TABS: { id: PanelTab; icon: typeof ListTree }[] = [
   { id: 'timeline', icon: Clock },
   { id: 'problems', icon: AlertTriangle },
 ];
+
+function countsOf(diagnostics: readonly { severity: string }[]): DocProblemCounts {
+  let errorCount = 0;
+  let warningCount = 0;
+  for (const diagnostic of diagnostics) {
+    if (diagnostic.severity === 'error') errorCount += 1;
+    else warningCount += 1;
+  }
+  return { errorCount, warningCount };
+}
 
 /** Localized display label for a doc-panel tab. */
 function tabLabel(id: PanelTab): string {
@@ -85,18 +97,39 @@ export function DocPanel({
   const { activeProvider, activeDocName } = useDocumentContext();
   const { data: lintConfig } = useDocLintConfig(docName);
   const lintProvider = activeDocName === docName ? activeProvider : null;
-  const diagnostics = useDocDiagnostics(lintProvider, lintConfig?.effective ?? null);
+  const lintDiagnostics = useDocDiagnostics(lintProvider, lintConfig?.effective ?? null);
+  // The doc's broken-link findings ride the SAME scoped audit predicate the
+  // project audit runs (one canonical determination); lint stays on the live
+  // CRDT read above, which is fresher than the audit's walk.
+  const linkFindings = useDocLinkFindings(docName);
+  const diagnostics = [...lintDiagnostics, ...linkFindings];
+  // Freshness trigger 2: the open doc's shared-store entry tracks its own live
+  // counts (lint off the CRDT debounce, links off the scoped audit fetch) so
+  // the file tree's tint follows edits without waiting for a project audit.
+  // The store no-ops on unchanged counts, so the identity-fresh arrays are
+  // cheap dependencies. Skipped while nav is settling (`lintProvider` null) —
+  // an empty transient list must not wipe the previous doc's real counts.
+  useEffect(() => {
+    if (lintProvider === null) return;
+    patchDocValidationSource(docName, 'lint', countsOf(lintDiagnostics));
+  }, [docName, lintProvider, lintDiagnostics]);
+  useEffect(() => {
+    if (lintProvider === null) return;
+    patchDocValidationSource(docName, 'links', countsOf(linkFindings));
+  }, [docName, lintProvider, linkFindings]);
   // Apply a diagnostic's auto-fix to the source CRDT. `lintProvider` is the
   // active provider only when it matches this doc, so a fix always targets the
   // document the user is viewing.
-  const handleFix = (diagnostic: (typeof diagnostics)[number]) => {
+  const handleFix = (diagnostic: DiagnosticLike) => {
     if (lintProvider !== null && diagnostic.fixes && diagnostic.fixes.length > 0) {
       applyLintFixes(lintProvider, diagnostic.fixes);
     }
   };
+  // Fix-all stays lint-only by construction: only the live lint diagnostics
+  // carry deterministic fixes (broken links need content edits).
   const handleFixAll = () => {
     if (lintProvider !== null) {
-      applyLintFixes(lintProvider, collectFixes(diagnostics));
+      applyLintFixes(lintProvider, collectFixes(lintDiagnostics));
     }
   };
   // Hand one diagnostic to the docked terminal's agent as a grounded prompt
@@ -104,7 +137,7 @@ export function DocPanel({
   // on web nothing subscribes to the terminal-input event, so the button is
   // withheld entirely by not passing `onAskAi`.
   const terminalLaunch = useTerminalLaunch();
-  const handleAskAi = (diagnostic: (typeof diagnostics)[number]) => {
+  const handleAskAi = (diagnostic: DiagnosticLike) => {
     if (lintProvider === null) return;
     const source = lintProvider.document.getText('source').toString();
     const lineText = source.split('\n')[diagnostic.range.start.line];

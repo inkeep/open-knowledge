@@ -6,7 +6,11 @@ import { useDocumentContext } from '@/editor/DocumentContext';
 import { dispatchCC1Stateless, SYSTEM_DOC_NAME } from '@/lib/cc1';
 import { emitConfigIgnoreNestedError } from '@/lib/config-ignore-nested-error-events';
 import { emitConfigValidationRejected } from '@/lib/config-validation-events';
-import { emitDocumentsChanged, subscribeToDocumentsChanged } from '@/lib/documents-events';
+import {
+  emitDocPersisted,
+  emitDocumentsChanged,
+  subscribeToDocumentsChanged,
+} from '@/lib/documents-events';
 import { createSyncedReconnectGate } from '@/lib/server-info-refresh';
 
 export function SystemDocSubscriber() {
@@ -66,6 +70,10 @@ export function SystemDocSubscriber() {
           },
           onDiskAck: (p) => {
             handlersRef.current.observeDiskAck(p.docName, p.sv);
+            // Relay the docName for validation freshness: disk-ack is the one
+            // per-doc CC1 channel, so it is the "this doc changed" signal the
+            // per-doc re-validate keys off.
+            emitDocPersisted(p.docName);
           },
           onDerivedView: (p) => {
             emitDocumentsChanged([p.ch]);

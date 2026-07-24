@@ -222,6 +222,7 @@ export function SettingsDialogShell({
         { id: 'sync', label: t`Sync` },
         { id: 'search', label: t`Search` },
         { id: 'plugins-manage', label: t`Plugins` },
+        { id: 'content-rules', label: t`Content rules` },
         ...(isFileProtocolRenderer ? [] : [{ id: 'link-previews', label: t`Link previews` }]),
         ...(terminalSettingsAvailable ? [{ id: 'terminal', label: t`Terminal` }] : []),
         // Per-project MCP wiring + runtime skill — desktop-only because the

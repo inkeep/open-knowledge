@@ -131,6 +131,10 @@ import {
   selectedTreePathsToDeleteTargets,
 } from '@/components/file-tree-path-helpers';
 import {
+  applyProblemIndicators,
+  FILE_TREE_PROBLEM_CSS,
+} from '@/components/file-tree-problem-indicators';
+import {
   applyRenameInputAffordance,
   FILE_TREE_RENAME_INPUT_CSS,
 } from '@/components/file-tree-rename-chip';
@@ -227,6 +231,7 @@ import {
 } from '@/lib/show-all-stream';
 import { OK_SIDEBAR_DRAG_MIME, serializeSidebarDragPayload } from '@/lib/sidebar-drag';
 import { cn } from '@/lib/utils';
+import { getValidationSnapshot, subscribeToValidationStore } from '@/lib/validation-store';
 import { joinWorkspacePath } from '@/lib/workspace-paths';
 import { mergeRootEntriesAdditive, spliceLazyFolderChildren } from './file-tree-merge';
 import { OpenInAgentContextSubmenu } from './handoff/OpenInAgentContextSubmenu';
@@ -393,7 +398,7 @@ const FILE_TREE_CREATION_CLEARED_CSS = `
 // markdown icon stays gray when its row is selected. The full styling block lives
 // alongside the badge-injection processor in file-tree-extension-badge.ts so the
 // CSS + DOM-mutation contract stays in one place.
-const FILE_TREE_UNSAFE_CSS = `${FILE_TREE_EXT_BADGE_CSS}\n${FILE_TREE_RENAME_INPUT_CSS}\n${FILE_TREE_ROOT_DROP_CSS}\n${FILE_TREE_EXTERNAL_FILE_DROP_CSS}\n${FILE_TREE_CREATION_CLEARED_CSS}\n${FILE_TREE_INDENT_GUIDE_CSS}\n${FILE_TREE_STICKY_HEADER_CSS}`;
+const FILE_TREE_UNSAFE_CSS = `${FILE_TREE_EXT_BADGE_CSS}\n${FILE_TREE_PROBLEM_CSS}\n${FILE_TREE_RENAME_INPUT_CSS}\n${FILE_TREE_ROOT_DROP_CSS}\n${FILE_TREE_EXTERNAL_FILE_DROP_CSS}\n${FILE_TREE_CREATION_CLEARED_CSS}\n${FILE_TREE_INDENT_GUIDE_CSS}\n${FILE_TREE_STICKY_HEADER_CSS}`;
 
 interface PendingCreate {
   kind: 'file' | 'folder';
@@ -3406,6 +3411,39 @@ export function FileTree({
     });
     return () => observer.disconnect();
   }, [loading, documents.length]);
+
+  // Tint + badge rows whose docs have validation problems, from the shared
+  // validation store. Same shadow-root + MutationObserver pattern as the
+  // extension badge above, plus a store subscription so tint updates arrive
+  // without a DOM mutation (e.g. a project audit landing while the tree is
+  // idle). Our own attribute writes are outside the `data-item-path` filter
+  // and the badge write is value-gated, so the observer stays quiescent.
+  const problemIndicatorsEnabled = merged?.validation?.fileTreeIndicators !== false;
+  useEffect(() => {
+    if (loading || documents.length === 0) return;
+    const shadow = fileTreeHostRef.current?.querySelector(FILE_TREE_TAG_NAME)?.shadowRoot;
+    if (!shadow) return;
+    if (!problemIndicatorsEnabled) {
+      // One clearing pass strips any tint/badges left from before the toggle
+      // flipped off; no observer or store subscription while disabled.
+      applyProblemIndicators(shadow, new Map());
+      return;
+    }
+    const apply = () => applyProblemIndicators(shadow, getValidationSnapshot());
+    apply();
+    const observer = new MutationObserver(apply);
+    observer.observe(shadow, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['data-item-path'],
+    });
+    const unsubscribe = subscribeToValidationStore(apply);
+    return () => {
+      observer.disconnect();
+      unsubscribe();
+    };
+  }, [loading, documents.length, problemIndicatorsEnabled]);
 
   // Select Pierre's rename-input stem while keeping the extension visible and
   // editable. Kept separate from the badge observer because the watched event

@@ -27,6 +27,7 @@ import { PageListProvider, usePageList } from '@/components/PageListContext';
 import { ReportBugMenuTrigger } from '@/components/ReportBugMenuTrigger';
 import { SystemDocSubscriber } from '@/components/SystemDocSubscriber';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
+import { ValidationFreshness } from '@/components/ValidationFreshness';
 import {
   DocumentProvider,
   useDocumentContext,
@@ -504,6 +505,7 @@ function AppBody() {
       <ConnectingBanner />
       <PageListProvider>
         <SystemDocSubscriber />
+        <ValidationFreshness />
         <NavigationHandler />
         <ActiveTargetBridgePush />
         <NewItemShortcutHandler />

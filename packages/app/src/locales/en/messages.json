@@ -458,6 +458,7 @@
     "8lwQlE": [["0"], " added, ", ["1"], " removed"],
     "8m8diM": ["No location selected. Use Browse to choose a folder."],
     "8nWu1k": ["Empty diagram"],
+    "8ruqQi": ["Broken internal links"],
     "8t9CRE": ["Starting ", ["agentName"], "…"],
     "8tjQCz": ["Explore"],
     "8uAWix": [
@@ -719,6 +720,7 @@
     "EOjU5V": ["Inline Math Properties"],
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " tokens used"],
     "ETyvvg": ["No language match."],
+    "EWCJFu": ["Created ", ["target"]],
     "EWPtMO": ["Code"],
     "EWX92Z": ["Collapse Ask AI"],
     "EZVxVz": ["Replace the active match from the replace field."],
@@ -791,6 +793,9 @@
     "FOGD7m": ["Create something great."],
     "FRYB1Q": ["/api/config returned a malformed body"],
     "FRqZ9v": ["Couldn't update skill: ", ["0"]],
+    "FTBN5g": [
+      "How validation findings surface across the project. These choices are committed to config.yml and shared with every collaborator via git."
+    ],
     "FTUGgh": ["Enter a repository URL or owner/repo"],
     "FUMerq": ["Could not enable sync: ", ["detail"]],
     "FWQuPE": [
@@ -1065,6 +1070,7 @@
     "Lcehxn": ["Save resolution"],
     "LdABLa": ["Could not open ", ["target"], ". Try opening it manually."],
     "LdKIHS": ["Draft a spec"],
+    "LdyooL": ["link"],
     "LeGeTf": ["OpenKnowledge on GitHub"],
     "LhQlGR": [
       "This project is running an older version of OpenKnowledge (v",
@@ -1150,6 +1156,9 @@
       " — your previous version is in history if you need to restore it."
     ],
     "MysZUL": ["Connecting to ", ["agentName"], "…"],
+    "N-IonL": [
+      "How unresolved wiki-links are reported in the Problems panel, audits, and agent tools."
+    ],
     "N1KkEO": ["Jump to last tab"],
     "N1YYa7": ["Loading image"],
     "N1mdmS": ["This file can't be opened in the text editor."],
@@ -1196,6 +1205,7 @@
     "NuH1jp": ["Public repository"],
     "Nv3mUj": ["Show advanced"],
     "NvOvTi": ["Create in <0>", ["dirDisplay"], "</0>"],
+    "Nwbs0q": ["Don't show"],
     "Nx7BWE": ["Git auto-sync"],
     "NxW-md": ["Resize ", ["handleKey"]],
     "NzFvyK": ["Session ended — undo unavailable"],
@@ -1223,6 +1233,7 @@
     "ONPvOb": ["Loading agent activity"],
     "ONgEZF": ["Loading headings for ", ["pageTarget"]],
     "OOIVJo": ["Uninstalled \"", ["0"], "\" from ", ["1"]],
+    "OPOiKn": ["Content rules"],
     "OTF92M": ["Label <0>(optional display text)</0>"],
     "OVjNeX": ["Terminal ", ["0"]],
     "OX2Neh": ["Inline code"],
@@ -1396,6 +1407,7 @@
     "SItQRc": ["How do you like OpenKnowledge?"],
     "SOPwPh": ["Restore to this edit"],
     "SQWJ-i": ["Restore sessions"],
+    "STOrpI": ["lint"],
     "STTOnz": [["keyName"], " type: complex value (nested; read-only)"],
     "SUOoXn": ["Failed to open project."],
     "SVLPt5": [["formatted"], " GitHub stars"],
@@ -1414,6 +1426,7 @@
     "SiUUCS": ["Next match"],
     "SkMZlS": ["Couldn't remove <0>", ["targetGitPath"], "</0>: ", ["removeGitError"]],
     "Skr_7L": ["Search worktrees"],
+    "SlfejT": ["Error"],
     "Sq8lf2": ["Editors to install skills into"],
     "SrOuyg": ["Document panels"],
     "SvBFYA": ["No recent projects"],
@@ -1454,6 +1467,7 @@
     "U5Spo9": ["Content directory must be inside the project"],
     "U7HJ4y": ["Managed by OpenKnowledge (read-only)"],
     "U8CD-l": ["Copy full path, No workspace"],
+    "U9tm58": ["Hide problem indicators"],
     "UBv8UK": ["Delete Permanently"],
     "UDFrWm": ["Checking GitHub connection..."],
     "UL8A9w": ["Tag"],
@@ -1655,6 +1669,9 @@
     "Y8ViJx": ["A newer version may have been deployed since this tab opened."],
     "YBt9YP": ["Beta"],
     "YC6_wP": ["Edit ", ["keyName"]],
+    "YDL7N6": [
+      "Lint plugins — which rule families run and their per-rule settings — are configured on their own tab under This project → Plugins."
+    ],
     "YEIS9T": ["Edits apply live. Light or dark is chosen from the background."],
     "YEP3X2": ["Delete a table when the active table cell selection covers the full table."],
     "YGIi_c": ["Reinstall"],
@@ -2283,6 +2300,7 @@
     "knjOzA": ["Tag value"],
     "kolRU1": ["Do you want to permanently delete instead?"],
     "kpqWwG": ["This ", ["targetNoun"], " was removed from branch <0>", ["branch"], "</0>."],
+    "ktspdq": ["Tint and badge files that have lint or link problems, without opening them."],
     "ku0yLQ": ["Pages are embedded the first time a search needs them."],
     "ky9Tuc": ["Edit ", ["0"], " source"],
     "l-4nnw": ["Search rules"],
@@ -2494,6 +2512,7 @@
     "oKBnk5": ["More requests were blocked."],
     "oQA-cA": ["Full path"],
     "oS1YpJ": ["Open the Project Navigator."],
+    "oWsZk8": ["Create missing page ", ["target"]],
     "oXKEsy": ["Delete an adjacent wiki-link or tag chip."],
     "oXlLi4": [
       "Project plugins are your project's authoring standard — turn them on or off here. The choice is committed to config.yml and shared with every collaborator via git. Each enabled plugin gets its own page under Plugins in the settings sidebar."
@@ -2600,6 +2619,7 @@
     "r4R7AZ": ["Network error during cleanup"],
     "r51jLC": ["File saved & Claude Desktop App opened"],
     "r6ncaO": ["Close tab"],
+    "r6y-jM": ["Warning"],
     "r871ed": [
       "Your knowledge base is now on GitHub at <0>",
       ["ownerLogin"],
@@ -2759,6 +2779,7 @@
     "uQewpR": [
       "Couldn't restart the server — it's running under a different account. Restart your computer to clear it, then reopen this project."
     ],
+    "uR2YT3": ["Show problem indicators"],
     "uVbUP8": ["Settings…"],
     "uWtdQR": [
       "No templates yet. Add one in this folder's Templates section, or in Settings → Templates."
@@ -2870,6 +2891,7 @@
       ["projectEntries", "plural", { "one": ["#", " entry"], "other": ["#", " entries"] }],
       ")"
     ],
+    "x3kWeu": ["Problem indicators in the file explorer"],
     "x57cJf": ["Open link"],
     "xCJdfg": ["Clear"],
     "xCdTnb": ["Close new tab"],

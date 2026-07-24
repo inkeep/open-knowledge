@@ -452,6 +452,7 @@ export { MarkdownManager, type SerializeCallOptions } from './markdown/index.ts'
 export {
   applyTextEdits,
   canonicalRuleId,
+  DEFAULT_LINKS_VALIDATION,
   DEFAULT_LINTER_CONFIG,
   DEFAULT_MARKDOWNLINT_CONFIG,
   displayCategoryForRule,
@@ -459,7 +460,9 @@ export {
   fixDocument,
   fixMarkdownText,
   isMarkdownlintJsonConfig,
+  LINKS_VALIDATION_SETTINGS,
   LINT_PLUGINS,
+  type LinksValidationSetting,
   type LintAuditResponse,
   LintAuditResponseSchema,
   type LintConfigResponse,
@@ -495,6 +498,12 @@ export {
   resolveMarkdownlintConfig,
   runMarkdownlint,
   toEffectiveBase,
+  type ValidationAuditResponse,
+  ValidationAuditResponseSchema,
+  type ValidationDiagnostic,
+  type ValidationDocResult,
+  ValidationDocResultSchema,
+  type ValidationSource,
 } from './markdown/lint/index.ts';
 export { markdownToHtml, mdastToHtml } from './markdown/mdast-to-html.ts';
 export { normalizeDocRelativeAssetUrl } from './markdown/resolve-image-url.ts';

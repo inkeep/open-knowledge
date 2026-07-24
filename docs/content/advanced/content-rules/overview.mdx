@@ -37,12 +37,23 @@ ok lint --errors-only   # exit non-zero only on error-severity problems
 
 The exit code is CI-friendly: non-zero when any problems are found. Findings are warnings unless your config promotes a rule to `"error"` severity, so `--errors-only` lets you gate CI on just the rules you've chosen to enforce.
 
+`ok audit` widens the same report to the full validation plane — markdownlint problems **and** broken internal links, each finding tagged with its source:
+
+```bash
+ok audit                 # audit the whole project (lint + links)
+ok audit guides/         # scope to a folder or a single file
+ok audit --json          # the full structured diagnostic plane
+ok audit --errors-only   # exit non-zero only on error-severity problems
+```
+
+Unlike `ok lint`, `ok audit` needs the project's server running (`ok start` or OK Desktop) — the links validator reads the live backlink index. Same CI-friendly exit code; there's no `--fix` because the audit is read-only (lint fixes go through `ok lint --fix`, link repairs are content edits).
+
 ## AI agents
 
 Agents get the same signal you see:
 
 - The MCP **`lint`** tool lints a single document or audits the project (optionally scoped to a folder or file), and with `fix: true` on a document auto-fixes fixable rules in place — attributed and live in the preview, the same result as the editor's **Fix** action. Audit output is capped at 10 files × 10 diagnostics per file with explicit "… and N more" indicators — the totals always reflect the full scan, and re-running with a narrower scope recovers the detail. See the [MCP reference](/docs/reference/mcp).
-- Every agent write response carries up to 10 lint findings for the document it touched, so an agent can clean up after itself without being asked. Advisory only — a finding never blocks the write.
+- Every agent write response carries up to 10 validation findings for the document it touched — lint violations **and** broken internal links, following the same [Content rules](/docs/reference/configuration) posture as the audit — so an agent that writes a dead link hears about it immediately and can clean up after itself without being asked. Dead-link findings name the unresolved target, ready for a create-page fix. Advisory only — a finding never blocks the write.
 
 ## See also
 

@@ -896,3 +896,46 @@ export function parseRenameCollidingPairs(value: unknown): RenameCollisionPair[]
       : [];
   });
 }
+
+/**
+ * Audit output caps shared by the `lint` (project-audit shape) and `audit`
+ * tools: a whole-project audit can carry thousands of diagnostics, which
+ * would flood the calling agent's context. Totals stay uncapped; scoping via
+ * `path` recovers omitted detail. One definition so the two tools' outputs
+ * can never silently diverge for the same scope.
+ */
+export const AUDIT_FILE_CAP = 10;
+export const AUDIT_FILE_DIAGNOSTIC_CAP = 10;
+
+/**
+ * Structural diagnostic shape the `lint` and `audit` text formatters read —
+ * the intersection of both tools' wire payload types (all optional, since it
+ * describes loosely-deserialized server output). One definition so the two
+ * tools' human-facing summaries can never silently diverge (same contract as
+ * the shared caps above).
+ */
+export interface FormattableDiagnostic {
+  severity?: string;
+  range?: { start?: { line?: number } };
+  source?: string;
+  code?: string;
+  message?: string;
+}
+
+/** One diagnostic as a human-facing text line: `  ✘ line 12 markdownlint/MD010: Hard tabs`. */
+export function formatDiagnosticLine(d: FormattableDiagnostic): string {
+  const marker = d.severity === 'error' ? '✘' : '⚠';
+  const startLine = d.range?.start?.line;
+  // Text output is human-facing: display 1-based lines from the 0-based range.
+  const where = startLine !== undefined ? `line ${startLine + 1}` : 'line ?';
+  const flatId = d.source !== undefined && d.code !== undefined ? `${d.source}/${d.code}` : '?';
+  return `  ${marker} ${where} ${flatId}: ${d.message ?? ''}`.trimEnd();
+}
+
+/** `2 errors, 1 warning` / `no problems` — the count clause in a summary header. */
+export function countSummary(errorCount: number, warningCount: number): string {
+  const parts: string[] = [];
+  if (errorCount > 0) parts.push(`${errorCount} error${errorCount === 1 ? '' : 's'}`);
+  if (warningCount > 0) parts.push(`${warningCount} warning${warningCount === 1 ? '' : 's'}`);
+  return parts.length > 0 ? parts.join(', ') : 'no problems';
+}

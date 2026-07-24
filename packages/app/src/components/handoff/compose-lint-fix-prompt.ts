@@ -19,7 +19,10 @@ const ALIAS_BY_CODE = new Map(MARKDOWNLINT_RULE_CATALOG.map((rule) => [rule.id, 
  */
 export function composeLintFixTerminalPaste(
   docName: string,
-  diagnostic: LintDiagnostic,
+  // Structural over the fields actually read: the unified Problems panel
+  // hands wire-shape diagnostics whose `source` is any validator id, not the
+  // in-process lint-plugin literal union. `LintDiagnostic` remains assignable.
+  diagnostic: Pick<LintDiagnostic, 'code' | 'message' | 'range'> & { source: string },
   lineText: string | undefined,
 ): string {
   return composeLintFixPrompt({

@@ -44,6 +44,8 @@ describe('extractWikiLinksFromMarkdown', () => {
         target: 'beta',
         anchor: null,
         snippet: 'Alpha links to beta for deployment notes.',
+        line: 0,
+        column: 15,
       },
     ]);
   });
@@ -64,6 +66,8 @@ describe('extractWikiLinksFromMarkdown', () => {
         target: 'alpha',
         anchor: null,
         snippet: 'See alpha.',
+        line: 0,
+        column: 4,
       },
     ]);
   });
@@ -76,6 +80,8 @@ describe('extractWikiLinksFromMarkdown', () => {
         target: 'beta',
         anchor: null,
         snippet: 'See beta.',
+        line: 2,
+        column: 4,
       },
     ]);
   });
@@ -92,8 +98,8 @@ describe('extractWikiLinksFromMarkdown', () => {
     ].join('\n');
 
     expect(extractWikiLinksFromMarkdown(markdown)).toEqual([
-      { target: 'alpha', anchor: null, snippet: 'See alpha.' },
-      { target: 'gamma', anchor: null, snippet: 'And gamma.' },
+      { target: 'alpha', anchor: null, snippet: 'See alpha.', line: 0, column: 4 },
+      { target: 'gamma', anchor: null, snippet: 'And gamma.', line: 6, column: 4 },
     ]);
   });
 
@@ -111,8 +117,8 @@ describe('extractWikiLinksFromMarkdown', () => {
     ].join('\n');
 
     expect(extractWikiLinksFromMarkdown(markdown)).toEqual([
-      { target: 'alpha', anchor: null, snippet: 'Before alpha.' },
-      { target: 'beta', anchor: null, snippet: 'After beta.' },
+      { target: 'alpha', anchor: null, snippet: 'Before alpha.', line: 0, column: 7 },
+      { target: 'beta', anchor: null, snippet: 'After beta.', line: 6, column: 6 },
     ]);
   });
 
@@ -120,8 +126,20 @@ describe('extractWikiLinksFromMarkdown', () => {
     const markdown = 'See [[alpha]] and [[beta]] for more.\n';
 
     expect(extractWikiLinksFromMarkdown(markdown)).toEqual([
-      { target: 'alpha', anchor: null, snippet: 'See alpha and beta for more.' },
-      { target: 'beta', anchor: null, snippet: 'See alpha and beta for more.' },
+      {
+        target: 'alpha',
+        anchor: null,
+        snippet: 'See alpha and beta for more.',
+        line: 0,
+        column: 4,
+      },
+      {
+        target: 'beta',
+        anchor: null,
+        snippet: 'See alpha and beta for more.',
+        line: 0,
+        column: 14,
+      },
     ]);
   });
 
@@ -129,7 +147,13 @@ describe('extractWikiLinksFromMarkdown', () => {
     const markdown = 'See [[guide#installation]] for setup.\n';
 
     expect(extractWikiLinksFromMarkdown(markdown)).toEqual([
-      { target: 'guide', anchor: 'installation', snippet: 'See guide#installation for setup.' },
+      {
+        target: 'guide',
+        anchor: 'installation',
+        snippet: 'See guide#installation for setup.',
+        line: 0,
+        column: 4,
+      },
     ]);
   });
 
@@ -137,7 +161,7 @@ describe('extractWikiLinksFromMarkdown', () => {
     const markdown = 'See [[guide|the guide]] for setup.\n';
 
     expect(extractWikiLinksFromMarkdown(markdown)).toEqual([
-      { target: 'guide', anchor: null, snippet: 'See the guide for setup.' },
+      { target: 'guide', anchor: null, snippet: 'See the guide for setup.', line: 0, column: 4 },
     ]);
   });
 
@@ -145,7 +169,7 @@ describe('extractWikiLinksFromMarkdown', () => {
     const markdown = 'See [[API#auth|Auth Docs]] for setup.\n';
 
     expect(extractWikiLinksFromMarkdown(markdown)).toEqual([
-      { target: 'API', anchor: 'auth', snippet: 'See Auth Docs for setup.' },
+      { target: 'API', anchor: 'auth', snippet: 'See Auth Docs for setup.', line: 0, column: 4 },
     ]);
   });
 
@@ -155,7 +179,13 @@ describe('extractWikiLinksFromMarkdown', () => {
     const markdown = 'Not a link: \\[[page]] but [[real]] is.\n';
 
     expect(extractWikiLinksFromMarkdown(markdown)).toEqual([
-      { target: 'real', anchor: null, snippet: 'Not a link: [[page]] but real is.' },
+      {
+        target: 'real',
+        anchor: null,
+        snippet: 'Not a link: [[page]] but real is.',
+        line: 0,
+        column: 25,
+      },
     ]);
   });
 
@@ -165,7 +195,13 @@ describe('extractWikiLinksFromMarkdown', () => {
     const markdown = 'See `foo``bar` and [[target]].\n';
 
     expect(extractWikiLinksFromMarkdown(markdown)).toEqual([
-      { target: 'target', anchor: null, snippet: 'See foo``bar and target.' },
+      {
+        target: 'target',
+        anchor: null,
+        snippet: 'See foo``bar and target.',
+        line: 0,
+        column: 17,
+      },
     ]);
   });
 
@@ -183,8 +219,16 @@ describe('extractWikiLinksFromMarkdown', () => {
     const links = extractWikiLinksFromMarkdown(markdown);
     const elapsed = performance.now() - start;
 
-    expect(links).toEqual([{ target: 'target', anchor: null, snippet: 'See target.' }]);
+    expect(links).toEqual([
+      { target: 'target', anchor: null, snippet: 'See target.', line: 2, column: 4 },
+    ]);
     expect(elapsed).toBeLessThan(1000);
+  });
+
+  test('offsets link lines by the caller-supplied lineOffset', () => {
+    expect(extractWikiLinksFromMarkdown('See [[alpha]].', '', 3)).toEqual([
+      { target: 'alpha', anchor: null, snippet: 'See alpha.', line: 3, column: 4 },
+    ]);
   });
 });
 
@@ -462,6 +506,142 @@ describe('BacklinkIndex', () => {
       expect(index.getDeadLinks(['report']).map((entry) => entry.target)).toEqual([
         'evidence/new-target',
       ]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('getDeadLinks positions each broken link at its 0-based full-doc source line', () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dead-link-lines-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      // Frontmatter and the fenced decoy shift the body: a body-relative or
+      // fence-blind line count would land on the wrong line.
+      const markdown = [
+        '---', // line 0
+        'title: Alpha', // line 1
+        '---', // line 2
+        '# Alpha', // line 3
+        '', // line 4
+        '```ts', // line 5
+        'const decoy = "[[ghost-wiki]] and [gone](./ghost-md.md)";', // line 6
+        '```', // line 7
+        '', // line 8
+        'See [[ghost-wiki]].', // line 9
+        'And [also gone](./ghost-md.md).', // line 10
+        '',
+      ].join('\n');
+      index.updateDocumentFromMarkdown('alpha', markdown);
+
+      const deadLinks = index.getDeadLinks(['alpha']);
+      expect(deadLinks.map((entry) => entry.target)).toEqual(['ghost-md', 'ghost-wiki']);
+
+      const mdSource = deadLinks[0]?.sources[0];
+      const wikiSource = deadLinks[1]?.sources[0];
+      expect(wikiSource).toEqual(expect.objectContaining({ source: 'alpha', line: 9 }));
+      expect(mdSource).toEqual(expect.objectContaining({ source: 'alpha', line: 10 }));
+      // Column is approximate by contract (flat-text offset) — assert presence only.
+      expect(typeof wikiSource?.column).toBe('number');
+      expect(typeof mdSource?.column).toBe('number');
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a target broken from multiple source docs carries a per-source position', () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dead-link-multi-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      index.updateDocumentFromMarkdown('alpha', 'See [[ghost]].\n');
+      index.updateDocumentFromMarkdown('beta', '# Beta\n\nAlso [[ghost]].\n');
+
+      const deadLinks = index.getDeadLinks(['alpha', 'beta']);
+      expect(deadLinks.map((entry) => entry.target)).toEqual(['ghost']);
+      expect(deadLinks[0]?.sources).toEqual([
+        expect.objectContaining({ source: 'alpha', line: 0 }),
+        expect.objectContaining({ source: 'beta', line: 2 }),
+      ]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('dead-link positions survive a cache save/load round-trip', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dead-link-cache-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      index.updateDocumentFromMarkdown('alpha', '# Alpha\n\nSee [[ghost]].\n');
+      await index.saveToDisk();
+
+      const reloaded = new BacklinkIndex({ projectDir, contentDir });
+      expect(await reloaded.loadFromDisk()).toBe(true);
+      expect(reloaded.getDeadLinks(['alpha'])[0]?.sources[0]).toEqual(
+        expect.objectContaining({ source: 'alpha', line: 2 }),
+      );
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a pre-position backlinks cache loads and serves entries without positions', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dead-link-legacy-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      // The exact on-disk shape older servers wrote: backward entries carry only
+      // {source, anchor, snippet}.
+      const cacheDir = join(projectDir, '.ok', LOCAL_DIR, 'cache', 'main');
+      mkdirSync(cacheDir, { recursive: true });
+      writeFileSync(
+        join(cacheDir, 'backlinks.json'),
+        JSON.stringify({
+          backward: {
+            ghost: [{ source: 'alpha', anchor: null, snippet: 'See ghost.' }],
+            // Invalid positions (hand-edited or corrupt cache) must degrade to
+            // "position unknown", not leak through to consumers — including
+            // negative and fractional numbers, which pass a bare typeof check.
+            wraith: [
+              { source: 'alpha', anchor: null, snippet: 'See wraith.', line: '7', column: -2 },
+            ],
+            shade: [{ source: 'alpha', anchor: null, snippet: 'See shade.', line: 1.5 }],
+          },
+          forward: { alpha: ['ghost', 'wraith', 'shade'] },
+          externalForward: {},
+        }),
+        'utf-8',
+      );
+
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      expect(await index.loadFromDisk()).toBe(true);
+      expect(index.getBacklinks('ghost')).toEqual([
+        { source: 'alpha', anchor: null, snippet: 'See ghost.' },
+      ]);
+      const legacySource = index.getDeadLinks(['alpha']).find((e) => e.target === 'ghost')
+        ?.sources[0];
+      expect(legacySource).toEqual(
+        expect.objectContaining({ source: 'alpha', snippet: 'See ghost.' }),
+      );
+      expect(legacySource?.line).toBeUndefined();
+      expect(legacySource?.column).toBeUndefined();
+      const corruptSource = index.getDeadLinks(['alpha']).find((e) => e.target === 'wraith')
+        ?.sources[0];
+      expect(corruptSource?.line).toBeUndefined();
+      expect(corruptSource?.column).toBeUndefined();
+      const fractionalSource = index.getDeadLinks(['alpha']).find((e) => e.target === 'shade')
+        ?.sources[0];
+      expect(fractionalSource?.line).toBeUndefined();
+
+      // Re-indexing the source doc upgrades its entry with a position.
+      index.updateDocumentFromMarkdown('alpha', 'See [[ghost]].\n');
+      expect(index.getDeadLinks(['alpha'])[0]?.sources[0]).toEqual(
+        expect.objectContaining({ source: 'alpha', line: 0 }),
+      );
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }
@@ -1107,71 +1287,107 @@ describe('extractMarkdownLinksFromMarkdown', () => {
   test('extracts relative inline markdown links', () => {
     const md = 'See [related](./other.md) for details.';
     expect(extractMarkdownLinksFromMarkdown(md, 'notes')).toEqual<ExtractedWikiLink[]>([
-      { target: 'other', anchor: null, snippet: 'See related for details.' },
+      { target: 'other', anchor: null, snippet: 'See related for details.', line: 0, column: 4 },
     ]);
   });
 
   test('extracts root-absolute markdown links from the content root', () => {
     const md = 'See [the guide](/docs/guide.md) for details.';
     expect(extractMarkdownLinksFromMarkdown(md, 'notes')).toEqual<ExtractedWikiLink[]>([
-      { target: 'docs/guide', anchor: null, snippet: 'See the guide for details.' },
+      {
+        target: 'docs/guide',
+        anchor: null,
+        snippet: 'See the guide for details.',
+        line: 0,
+        column: 4,
+      },
     ]);
   });
 
   test('extracts multiple markdown links from the same line', () => {
     const md = 'See [page A](./a.md) and [page B](./b.md) for more.';
     expect(extractMarkdownLinksFromMarkdown(md, 'notes')).toEqual<ExtractedWikiLink[]>([
-      { target: 'a', anchor: null, snippet: 'See page A and page B for more.' },
-      { target: 'b', anchor: null, snippet: 'See page A and page B for more.' },
+      { target: 'a', anchor: null, snippet: 'See page A and page B for more.', line: 0, column: 4 },
+      {
+        target: 'b',
+        anchor: null,
+        snippet: 'See page A and page B for more.',
+        line: 0,
+        column: 15,
+      },
     ]);
   });
 
   test('resolves links relative to the source doc directory', () => {
     const md = 'See [overview](../overview.md).';
     expect(extractMarkdownLinksFromMarkdown(md, 'folder/page')).toEqual([
-      { target: 'overview', anchor: null, snippet: 'See overview.' },
+      { target: 'overview', anchor: null, snippet: 'See overview.', line: 0, column: 4 },
     ]);
   });
 
   test('extracts internal links with optional titles', () => {
     const md = 'See [overview](./overview.md "Project overview") for details.';
     expect(extractMarkdownLinksFromMarkdown(md, 'notes')).toEqual([
-      { target: 'overview', anchor: null, snippet: 'See overview for details.' },
+      {
+        target: 'overview',
+        anchor: null,
+        snippet: 'See overview for details.',
+        line: 0,
+        column: 4,
+      },
     ]);
   });
 
   test('extracts markdown link anchors', () => {
     const md = 'See [install](./guide.md#install) for details.';
     expect(extractMarkdownLinksFromMarkdown(md, 'notes')).toEqual([
-      { target: 'guide', anchor: 'install', snippet: 'See install for details.' },
+      {
+        target: 'guide',
+        anchor: 'install',
+        snippet: 'See install for details.',
+        line: 0,
+        column: 4,
+      },
     ]);
   });
 
   test('ignores external links', () => {
     const md = 'Visit [example](https://example.com) and [local](./local.md).';
     expect(extractMarkdownLinksFromMarkdown(md, 'notes')).toEqual([
-      { target: 'local', anchor: null, snippet: 'Visit example and local.' },
+      { target: 'local', anchor: null, snippet: 'Visit example and local.', line: 0, column: 18 },
     ]);
   });
 
   test('ignores image syntax while still extracting sibling links', () => {
     const md = 'See ![diagram](./assets/diagram.png) and [docs](./docs.md).';
     expect(extractMarkdownLinksFromMarkdown(md, 'notes')).toEqual([
-      { target: 'docs', anchor: null, snippet: expect.any(String) as string },
+      {
+        target: 'docs',
+        anchor: null,
+        snippet: expect.any(String) as string,
+        line: 0,
+        column: 41,
+      },
     ]);
   });
 
   test('ignores links inside fenced code blocks', () => {
     const md = ['See [page](./page.md).', '', '```', '[ignore](./ignore.md)', '```'].join('\n');
     expect(extractMarkdownLinksFromMarkdown(md, 'notes')).toEqual([
-      { target: 'page', anchor: null, snippet: 'See page.' },
+      { target: 'page', anchor: null, snippet: 'See page.', line: 0, column: 4 },
     ]);
   });
 
   test('ignores links inside inline code spans', () => {
     const md = 'Use `[skip](./skip.md)` then [real](./real.md).';
     expect(extractMarkdownLinksFromMarkdown(md, 'notes')).toEqual([
-      { target: 'real', anchor: null, snippet: expect.any(String) as string },
+      {
+        target: 'real',
+        anchor: null,
+        snippet: expect.any(String) as string,
+        line: 0,
+        column: 27,
+      },
     ]);
   });
 
@@ -1185,6 +1401,12 @@ describe('extractMarkdownLinksFromMarkdown', () => {
   test('returns empty array when no internal links present', () => {
     expect(extractMarkdownLinksFromMarkdown('Just text.', 'notes')).toEqual([]);
     expect(extractMarkdownLinksFromMarkdown('[ext](https://example.com)', 'notes')).toEqual([]);
+  });
+
+  test('offsets link lines by the caller-supplied lineOffset', () => {
+    expect(extractMarkdownLinksFromMarkdown('Read [the guide](./guide.md).', 'notes', 4)).toEqual([
+      { target: 'guide', anchor: null, snippet: 'Read the guide.', line: 4, column: 5 },
+    ]);
   });
 });
 

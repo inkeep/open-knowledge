@@ -124,6 +124,10 @@ const EXEMPT_HANDLERS = new Set([
   // does not apply.
   'handleLintDoc',
   'handleLintAudit',
+  // `/api/audit` (GET) — read-only unified validation audit (markdownlint +
+  // dead links). No Y.Doc target (reads disk + the in-memory backlink index),
+  // so the per-doc conflict gate does not apply.
+  'handleAudit',
   // `/api/templates` — project-wide flat enumeration of every template
   // (read-only). Walks `<folder>/.ok/templates/*.md`; no Y.Doc target,
   // so the per-doc conflict gate does not apply.

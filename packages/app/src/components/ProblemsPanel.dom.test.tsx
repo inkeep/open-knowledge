@@ -7,7 +7,7 @@
  * affordance, and click-navigates to the offending doc by hash.
  */
 
-import type { LintAuditResponse, LintDiagnostic } from '@inkeep/open-knowledge-core';
+import type { LintDiagnostic, ValidationAuditResponse } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -32,20 +32,17 @@ vi.doMock('@lingui/core/macro', () => linguiMacroMock);
 vi.doMock('@lingui/react/macro', () => linguiMacroMock);
 
 let auditCalls = 0;
-let runLintAuditImpl: () => Promise<LintAuditResponse | null> = async () => null;
+let runLintAuditImpl: () => Promise<ValidationAuditResponse | null> = async () => null;
 let fixLintDocCalls: string[] = [];
 let fixLintDocImpl: (docName: string) => Promise<{ ok: boolean; errorDetail?: string | null }> =
   async () => ({ ok: true });
 const toastError = vi.fn((_message: string) => {});
 
-vi.doMock('sonner', () => ({ toast: { error: toastError } }));
+const toastSuccess = vi.fn((_message: string) => {});
+vi.doMock('sonner', () => ({ toast: { error: toastError, success: toastSuccess } }));
 vi.doMock('@/editor/lint-config-client', () => ({
   emitLintConfigChanged: () => {},
   subscribeToLintConfigChanged: () => () => {},
-  runLintAudit: () => {
-    auditCalls += 1;
-    return runLintAuditImpl();
-  },
   fixLintDoc: (docName: string) => {
     fixLintDocCalls.push(docName);
     return fixLintDocImpl(docName);
@@ -54,6 +51,35 @@ vi.doMock('@/editor/lint-config-client', () => ({
   useProjectLintConfig: () => ({ data: null }),
   fetchEffectiveLintConfig: async () => null,
   writeMarkdownlintRule: async () => ({ ok: false, errorDetail: null }),
+}));
+// The panel's project scope now consumes the unified audit plane.
+vi.doMock('@/editor/validation-audit-client', () => ({
+  runValidationAudit: () => {
+    auditCalls += 1;
+    return runLintAuditImpl();
+  },
+  useDocLinkFindings: () => [],
+}));
+// Page-list context for the dead-link "Create page" one-shot. `addPage` is the
+// only member the panel touches.
+const addPageCalls: string[] = [];
+vi.doMock('@/components/PageListContext', () => ({
+  useOptionalPageList: () => ({ addPage: (docName: string) => addPageCalls.push(docName) }),
+}));
+let createPageCalls: { initialDir: string; suggestedName: string }[] = [];
+let createPageImpl: (seed: { initialDir: string; suggestedName: string }) => Promise<{
+  docName: string;
+}> = async (seed) => ({ docName: seed.suggestedName });
+vi.doMock('@/lib/create-page', () => ({
+  createPageFromSeedAndUpdate: async (
+    seed: { initialDir: string; suggestedName: string },
+    options: { addPage: (docName: string) => void },
+  ) => {
+    createPageCalls.push(seed);
+    const created = await createPageImpl(seed);
+    options.addPage(created.docName);
+    return created;
+  },
 }));
 
 const { ProblemsPanel, LINT_NAV_EVENT } = await import('./ProblemsPanel');
@@ -79,8 +105,26 @@ function diag(over: Partial<LintDiagnostic> & { line?: number; column?: number }
   };
 }
 
-function auditResult(over: Partial<LintAuditResponse> = {}): LintAuditResponse {
+function auditResult(over: Partial<ValidationAuditResponse> = {}): ValidationAuditResponse {
   return { files: [], fileCount: 3, errorCount: 0, warningCount: 0, warnings: [], ...over };
+}
+
+/** A dead-link diagnostic as the links validator reports it on the wire. */
+function linkDiag(
+  over: Partial<LintDiagnostic> & { line?: number } = {},
+): LintDiagnostic & { linkTarget: string } {
+  return {
+    ...diag({
+      severity: 'warning',
+      code: 'dead-link',
+      message: 'Link target "ghost" does not resolve to an existing document.',
+      ...over,
+      // The wire's `source` is any validator id; the in-process type is narrower,
+      // so route around it for the fixture.
+      source: 'links' as LintDiagnostic['source'],
+    }),
+    linkTarget: 'ghost',
+  };
 }
 
 beforeEach(() => {
@@ -88,7 +132,11 @@ beforeEach(() => {
   runLintAuditImpl = async () => null;
   fixLintDocCalls = [];
   fixLintDocImpl = async () => ({ ok: true });
+  createPageCalls = [];
+  createPageImpl = async (seed) => ({ docName: seed.suggestedName });
+  addPageCalls.length = 0;
   toastError.mockClear();
+  toastSuccess.mockClear();
 });
 
 afterEach(() => {
@@ -243,6 +291,55 @@ describe('ProblemsPanel', () => {
     }
   });
 
+  test('every row carries a source tag: lint for validators, link for dead links', () => {
+    render(
+      <ProblemsPanel docName="notes" diagnostics={[diag({ line: 2 }), linkDiag({ line: 5 })]} />,
+    );
+    const tags = screen.getAllByTestId('problems-source-tag');
+    expect(tags).toHaveLength(2);
+    expect(tags[0]?.textContent).toBe('lint');
+    expect(tags[1]?.textContent).toBe('link');
+  });
+
+  test('a dead-link row offers the one-shot Create page action; lint rows do not', async () => {
+    render(<ProblemsPanel docName="notes" diagnostics={[linkDiag({ line: 5 }), diag({})]} />);
+    // Exactly one Create button — the lint row gets none.
+    const createButtons = screen.getAllByTestId('problems-create-page');
+    expect(createButtons).toHaveLength(1);
+
+    fireEvent.click(createButtons[0] as HTMLElement);
+    await waitFor(() =>
+      expect(createPageCalls).toEqual([{ initialDir: '', suggestedName: 'ghost' }]),
+    );
+    // The created page lands in the page list (same flow as the Links panel).
+    expect(addPageCalls).toEqual(['ghost']);
+  });
+
+  test('the create action is never counted by Fix all', () => {
+    render(
+      <ProblemsPanel docName="notes" diagnostics={[linkDiag({})]} onFixAll={vi.fn(() => {})} />,
+    );
+    // A dead link is not deterministically fixable — the Fix all label counts 0.
+    const button = screen.getByTestId('problems-fix-all') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toContain('(0)');
+  });
+
+  test('a dead-link row click-jumps to its line', () => {
+    let received: { line: number; column: number } | null = null;
+    const listener = (e: Event) => {
+      received = (e as CustomEvent<{ line: number; column: number }>).detail;
+    };
+    window.addEventListener(LINT_NAV_EVENT, listener);
+    try {
+      render(<ProblemsPanel docName="notes" diagnostics={[linkDiag({ line: 5 })]} />);
+      fireEvent.click(screen.getByRole('button', { name: /does not resolve/ }));
+      expect(received).toEqual({ line: 5, column: 1 });
+    } finally {
+      window.removeEventListener(LINT_NAV_EVENT, listener);
+    }
+  });
+
   test('clicking a row banks a pending lint intent for later source-mode activation', () => {
     render(<ProblemsPanel docName="notes" diagnostics={[diag({ line: 7, column: 2 })]} />);
     fireEvent.click(screen.getByRole('button'));
@@ -294,6 +391,50 @@ describe('ProblemsPanel — project scope', () => {
     expect(screen.getByTestId('problems-audit-summary').textContent).toContain('3 warnings');
   });
 
+  test('project groups mix lint and link findings for one file, source-tagged', async () => {
+    runLintAuditImpl = async () =>
+      auditResult({
+        files: [
+          {
+            file: 'guides/setup.md',
+            diagnostics: [diag({ line: 4 }), linkDiag({ line: 9 })],
+          },
+        ],
+        fileCount: 4,
+        errorCount: 1,
+        warningCount: 1,
+      });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
+
+    const tags = screen.getAllByTestId('problems-source-tag');
+    expect(tags.map((tag) => tag.textContent)).toEqual(['lint', 'link']);
+    // The rollup summary carries the merged plane's counts.
+    expect(screen.getByTestId('problems-audit-summary').textContent).toContain('1 error');
+    expect(screen.getByTestId('problems-audit-summary').textContent).toContain('1 warning');
+  });
+
+  test('a project-scope dead-link row creates its target and re-audits the plane', async () => {
+    runLintAuditImpl = async () =>
+      auditResult({
+        files: [{ file: 'guides/setup.md', diagnostics: [linkDiag({ line: 3 })] }],
+        fileCount: 2,
+        warningCount: 1,
+      });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
+    expect(auditCalls).toBe(1);
+
+    fireEvent.click(screen.getByTestId('problems-create-page'));
+    await waitFor(() =>
+      expect(createPageCalls).toEqual([{ initialDir: '', suggestedName: 'ghost' }]),
+    );
+    // A loaded snapshot is stale truth after the create — the panel re-audits.
+    await waitFor(() => expect(auditCalls).toBe(2));
+  });
+
   test('the cached result is reused when toggling scopes; refresh re-fetches', async () => {
     runLintAuditImpl = async () =>
       auditResult({ files: [{ file: 'first.md', diagnostics: [diag({})] }] });
@@ -318,7 +459,7 @@ describe('ProblemsPanel — project scope', () => {
   });
 
   test('a pending audit shows the loading skeleton with the refresh disabled', async () => {
-    let resolveAudit: (value: LintAuditResponse | null) => void = () => {};
+    let resolveAudit: (value: ValidationAuditResponse | null) => void = () => {};
     runLintAuditImpl = () =>
       new Promise((resolve) => {
         resolveAudit = resolve;

@@ -95,6 +95,9 @@ vi.doMock('@/lib/config-provider', () => ({
   ConfigProvider: ({ children }: { children: ReactNode }) => (
     <div data-testid="config-provider">{children}</div>
   ),
+  // ValidationFreshness (mounted in the App body) gates on the merged config;
+  // null merged reads as every default (indicators on).
+  useConfigContext: () => ({ merged: null }),
 }));
 
 // AppBody reads `merged.appearance.preview.autoOpen` to compose the

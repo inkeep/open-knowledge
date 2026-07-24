@@ -275,19 +275,20 @@ export const RenderWarningSchema = z
 export type RenderWarning = z.infer<typeof RenderWarningSchema>;
 
 /**
- * A markdown-lint / content-rule violation on the post-write document. Strictly
- * advisory — the write always lands (storage never gates on rules). Emitted by
+ * A content-rule violation on the post-write document — the full validation
+ * plane: markdown-lint findings AND broken internal links. Strictly advisory —
+ * the write always lands (storage never gates on rules). Emitted by
  * `handleAgentWriteMd` / `handleAgentPatch` against the doc's effective rule
- * config, capped server-side, so an agent writing a doc sees the same
- * violations the editor would show. `kind` is the discriminator; one write can
- * carry several violations.
+ * config + the project's `validation.links` posture, capped server-side, so an
+ * agent writing a doc sees the same violations the editor would show. `kind`
+ * is the discriminator; one write can carry several violations.
  */
 export const LintViolationWarningSchema = z
   .object({
     kind: z.literal('lint-violation'),
-    /** Which plugin produced it — its registry id (e.g. `markdownlint`). */
+    /** Which validator produced it — a plugin registry id (e.g. `markdownlint`) or `links`. */
     source: z.string(),
-    /** The engine's native rule id, unprefixed (e.g. `MD010`). */
+    /** The engine's native rule id, unprefixed (e.g. `MD010`, `dead-link`). */
     code: z.string(),
     /** Human-readable, already-resolved message. */
     message: z.string(),
@@ -295,6 +296,8 @@ export const LintViolationWarningSchema = z
     /** 1-based line / column in the source document (agent-facing display units). */
     line: z.number().int().positive(),
     column: z.number().int().positive(),
+    /** `links` findings only: the unresolved target docName, verbatim. */
+    linkTarget: z.string().optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type LintViolationWarning = z.infer<typeof LintViolationWarningSchema>;

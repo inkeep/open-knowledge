@@ -141,6 +141,10 @@ const EXEMPT_HANDLERS = new Set([
   // other read handlers below.
   'handleLintDoc',
   'handleLintAudit',
+  // `/api/audit` (GET) — read-only unified validation audit (markdownlint +
+  // dead links) over the project or a sub-path. No writes, no agent identity —
+  // same rationale as `handleLintAudit`.
+  'handleAudit',
   // `/api/template/import` — imports an existing doc as a template. Same
   // project-config posture as `handleTemplate`; it DOES thread
   // `extractActorIdentity` (folder timeline) + `extractAgentIdentity` (template

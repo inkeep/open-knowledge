@@ -206,6 +206,10 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'telemetry.localSink.enabled',
       'telemetry.localSink.logs.maxBytes',
       'telemetry.localSink.spans.maxBytes',
+      // `validation.*` — the audit plane's non-plugin knobs (broken-link
+      // posture + file-tree indicators), shared like `contentRules.*`.
+      'validation.fileTreeIndicators',
+      'validation.links',
     ]);
   });
 

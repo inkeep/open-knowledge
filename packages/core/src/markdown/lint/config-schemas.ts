@@ -81,6 +81,26 @@ export const LintAuditResponseSchema = z.object({
 export type LintDocResult = z.infer<typeof LintDocResultSchema>;
 export type LintAuditResponse = z.infer<typeof LintAuditResponseSchema>;
 
+const ValidationDiagnosticSchema = LintDiagnosticSchema.extend({
+  linkTarget: z.string().optional(),
+});
+
+export const ValidationDocResultSchema = z.object({
+  file: z.string(),
+  diagnostics: z.array(ValidationDiagnosticSchema),
+});
+
+export const ValidationAuditResponseSchema = z.object({
+  files: z.array(ValidationDocResultSchema),
+  fileCount: z.number(),
+  errorCount: z.number(),
+  warningCount: z.number(),
+  warnings: z.array(z.string()),
+});
+
+export type ValidationDocResult = z.infer<typeof ValidationDocResultSchema>;
+export type ValidationAuditResponse = z.infer<typeof ValidationAuditResponseSchema>;
+
 export const LintFixRequestSchema = z
   .object({
     docName: safeDocNameField,

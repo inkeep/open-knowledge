@@ -27,6 +27,18 @@ export interface LintDiagnostic {
   fixes?: LintTextEdit[];
 }
 
+const VALIDATION_SOURCES = [...LINT_PLUGIN_IDS, 'links'] as const;
+export type ValidationSource = (typeof VALIDATION_SOURCES)[number];
+
+export interface ValidationDiagnostic extends Omit<LintDiagnostic, 'source'> {
+  source: ValidationSource;
+  linkTarget?: string;
+}
+
+export const LINKS_VALIDATION_SETTINGS = ['off', 'warning', 'error'] as const;
+export type LinksValidationSetting = (typeof LINKS_VALIDATION_SETTINGS)[number];
+export const DEFAULT_LINKS_VALIDATION: LinksValidationSetting = 'warning';
+
 type MarkdownlintRuleParams = Record<string, unknown>;
 
 export const MARKDOWNLINT_RULE_SEVERITIES = ['error', 'warning'] as const;

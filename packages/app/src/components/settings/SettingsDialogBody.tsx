@@ -27,6 +27,7 @@ import { AccountSection } from './AccountSection';
 import { AiToolsSection } from './AiToolsSection';
 import { AttachmentsSection } from './AttachmentsSection';
 import { ConfigureAgentsSection } from './ConfigureAgentsSection';
+import { ContentRulesSection } from './ContentRulesSection';
 import { EmbeddingsKeySection } from './EmbeddingsKeySection';
 import { SectionSkeleton } from './field-controls';
 import { HotkeysSection } from './HotkeysSection';
@@ -125,6 +126,11 @@ export function SettingsDialogBody({
     // Project-scope plugins management (This project → Plugins): toggle the
     // project's content-rule plugins + the audit pointer.
     return <ProjectPluginsManageSection />;
+  }
+  if (activeId === 'content-rules') {
+    // Validation-surface knobs that are not lint plugins (This project →
+    // Content rules): broken-link posture + file-tree problem indicators.
+    return <ContentRulesSection />;
   }
   if (activeId === 'user-plugins-manage') {
     // User-scope plugins management (User → Plugins): toggle personal plugins

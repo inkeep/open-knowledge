@@ -33,6 +33,7 @@ import { type Config, ConfigSchema, trustSystemCertificates } from '@inkeep/open
  * Config loaded via preAction hook: CLI > ENV > project > user > Zod defaults.
  */
 import { Command } from 'commander';
+import { auditCommand } from './commands/audit.ts';
 import { authCommand } from './commands/auth/index.ts';
 import { bugReportCommand } from './commands/bug-report.ts';
 import { cleanCommand } from './commands/clean.ts';
@@ -230,6 +231,10 @@ program.addCommand(preview);
 
 // lint command — headless markdown linting (whole project, a folder, or a file)
 program.addCommand(lintCommand(() => resolvedConfig));
+
+// audit command — unified validation audit (lint + broken internal links) via
+// the running project server; CLI sibling of the `audit` MCP tool
+program.addCommand(auditCommand(() => resolvedConfig));
 
 // ui command — serves the React editor (sibling of `start`).
 const ui = uiCommand(() => resolvedConfig);

@@ -6,8 +6,6 @@
  */
 
 import {
-  type LintAuditResponse,
-  LintAuditResponseSchema,
   type LintConfigResponse,
   LintConfigResponseSchema,
   type LinterConfig,
@@ -58,29 +56,6 @@ async function fetchLintConfig(docName?: string): Promise<LintConfigResponse | n
 export async function fetchEffectiveLintConfig(docName: string): Promise<LinterConfig | null> {
   const response = await fetchLintConfig(docName);
   return response?.effective ?? null;
-}
-
-/**
- * GET a project-wide (or sub-path) lint audit. Returns every in-scope doc that
- * has at least one diagnostic, plus file/error/warning counts. null on failure.
- */
-export async function runLintAudit(targetPath?: string): Promise<LintAuditResponse | null> {
-  try {
-    const query = targetPath ? `?path=${encodeURIComponent(targetPath)}` : '';
-    const res = await fetch(`/api/lint/audit${query}`);
-    if (!res.ok) return null;
-    const body = await res.json().catch(() => null);
-    const parsed = LintAuditResponseSchema.safeParse(body);
-    if (!parsed.success) {
-      // Mirror the sibling `fetchLintConfig` logging so a client/server schema
-      // drift window leaves a diagnostic trail instead of a silent null.
-      console.warn('[lint] audit response failed schema validation', parsed.error.issues);
-      return null;
-    }
-    return parsed.data;
-  } catch {
-    return null;
-  }
 }
 
 /**

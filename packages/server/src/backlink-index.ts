@@ -46,6 +46,17 @@ export interface ExtractedWikiLink {
   target: string;
   anchor: string | null;
   snippet: string | null;
+  /**
+   * 0-based source line of the occurrence (the extractor's `lineOffset` param
+   * folds a stripped-frontmatter prefix back in, keeping this full-doc exact).
+   */
+  line?: number;
+  /**
+   * 0-based offset into the markdown-stripped flat rendering of the line —
+   * approximate against the raw source column (escapes, inline-code backticks,
+   * and leading list/heading prefixes are collapsed before offsets are taken).
+   */
+  column?: number;
 }
 
 interface ExtractedExternalLink {
@@ -58,6 +69,14 @@ export interface BacklinkEntry {
   source: string;
   anchor: string | null;
   snippet: string | null;
+  /**
+   * 0-based full-doc position of the link occurrence in the source doc (line
+   * exact, column approximate — see `ExtractedWikiLink`). Absent on entries
+   * deserialized from a cache written before positions were indexed; re-indexing
+   * the source doc fills them in.
+   */
+  line?: number;
+  column?: number;
 }
 
 interface DocumentForwardLinkEntry {
@@ -104,8 +123,15 @@ export type GraphNode = DocGraphNode | ExternalGraphNode;
 
 export { isOrphanMode, ORPHAN_MODES, type OrphanMode };
 
+interface BackwardLinkMeta {
+  anchor: string | null;
+  snippet: string | null;
+  line?: number;
+  column?: number;
+}
+
 interface BranchGraphState {
-  backward: Map<string, Map<string, { anchor: string | null; snippet: string | null }>>;
+  backward: Map<string, Map<string, BackwardLinkMeta>>;
   forward: Map<string, Set<string>>;
   externalForward: Map<string, Map<string, { label: string | null; snippet: string | null }>>;
   externalBackward: Map<string, Map<string, { label: string | null; snippet: string | null }>>;
@@ -174,18 +200,23 @@ function parseSkillBundleDocAnyScope(
 }
 
 function mergeLinkMeta(
-  existing: { anchor: string | null; snippet: string | null } | undefined,
-  next: { anchor: string | null; snippet: string | null },
-): { anchor: string | null; snippet: string | null } {
+  existing: BackwardLinkMeta | undefined,
+  next: BackwardLinkMeta,
+): BackwardLinkMeta {
   if (!existing) return next;
+  // The position travels as a (line, column) unit — mixing one occurrence's
+  // line with another's column would point at a coordinate no link occupies.
+  const positioned = existing.line !== undefined ? existing : next;
   return {
     anchor: existing.anchor ?? next.anchor,
     snippet: existing.snippet ?? next.snippet,
+    line: positioned.line,
+    column: positioned.column,
   };
 }
 
 function getRepresentativeAnchor(
-  sources: Map<string, { anchor: string | null; snippet: string | null }> | undefined,
+  sources: Map<string, BackwardLinkMeta> | undefined,
 ): string | null {
   if (!sources) return null;
   for (const [, meta] of [...sources.entries()].sort(([a], [b]) => a.localeCompare(b))) {
@@ -561,16 +592,36 @@ function extractExternalMarkdownLinksFromLine(
   return { text: flatText, occurrences };
 }
 
+/**
+ * Number of source lines a `stripFrontmatter` frontmatter block occupied —
+ * the line offset that maps body-relative extractor lines back to full-doc
+ * lines. The matched block always ends in a newline (or sits at EOF with an
+ * empty body), so counting newlines after the extractors' own CRLF/CR
+ * normalization equals the count of full lines removed.
+ */
+function frontmatterLineCount(frontmatter: string): number {
+  if (!frontmatter) return 0;
+  const normalized = frontmatter.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  let count = 0;
+  for (let i = 0; i < normalized.length; i++) {
+    if (normalized[i] === '\n') count++;
+  }
+  return count;
+}
+
 export function extractMarkdownLinksFromMarkdown(
   markdown: string,
   sourceDocName: string,
+  lineOffset = 0,
 ): ExtractedWikiLink[] {
   const source = markdown.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
   const lines = source.split('\n');
   const links: ExtractedWikiLink[] = [];
   let fence: FenceState | null = null;
 
-  for (const line of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex] ?? '';
+
     if (fence) {
       if (isFenceClose(line, fence)) fence = null;
     } else {
@@ -584,6 +635,8 @@ export function extractMarkdownLinksFromMarkdown(
             target,
             anchor,
             snippet: snippetAround(extracted.text, start, end),
+            line: lineOffset + lineIndex,
+            column: start,
           })),
         );
       }
@@ -596,6 +649,7 @@ export function extractMarkdownLinksFromMarkdown(
 export function extractWikiLinksFromMarkdown(
   markdown: string,
   sourceDocName = '',
+  lineOffset = 0,
 ): ExtractedWikiLink[] {
   const source = markdown.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
   const lines = source.split('\n');
@@ -618,6 +672,8 @@ export function extractWikiLinksFromMarkdown(
             target,
             anchor,
             snippet: snippetAround(extracted.text, start, end),
+            line: lineOffset + lineIndex,
+            column: start,
           })),
         );
       }
@@ -872,10 +928,15 @@ function serializeState(state: BranchGraphState): SerializedBranchGraphState {
     backward: Object.fromEntries(
       [...state.backward.entries()].map(([target, sources]) => [
         target,
+        // `line`/`column` are undefined on entries carried over from a
+        // pre-position cache; JSON.stringify drops them, so the on-disk shape
+        // only ever holds real positions.
         [...sources.entries()].map(([source, meta]) => ({
           source,
           anchor: meta.anchor,
           snippet: meta.snippet,
+          line: meta.line,
+          column: meta.column,
         })),
       ]),
     ),
@@ -919,6 +980,10 @@ function buildExternalBackward(
   return externalBackward;
 }
 
+function cachePosition(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
 function deserializeState(data: SerializedBranchGraphState): BranchGraphState {
   const externalForward = new Map(
     Object.entries(data.externalForward ?? {}).map(([source, targets]) => [
@@ -945,6 +1010,12 @@ function deserializeState(data: SerializedBranchGraphState): BranchGraphState {
             {
               anchor: entry.anchor ?? null,
               snippet: entry.snippet ?? null,
+              // Cache files predating position indexing lack these fields, and
+              // the cache is read without schema validation — admit non-negative
+              // integers only (typeof alone lets -2 / 1.5 / NaN through to the
+              // wire) so a stale/corrupt file degrades to "position unknown".
+              line: cachePosition(entry.line),
+              column: cachePosition(entry.column),
             },
           ]),
         ),
@@ -1139,7 +1210,12 @@ export class BacklinkIndex {
       }
       sources.set(
         docName,
-        mergeLinkMeta(sources.get(docName), { anchor: link.anchor, snippet: link.snippet }),
+        mergeLinkMeta(sources.get(docName), {
+          anchor: link.anchor,
+          snippet: link.snippet,
+          line: link.line,
+          column: link.column,
+        }),
       );
     }
 
@@ -1165,9 +1241,10 @@ export class BacklinkIndex {
 
   updateDocumentFromMarkdown(docName: string, markdown: string, branch = this.activeBranch): void {
     try {
-      const { body } = stripFrontmatter(markdown);
-      const wikiLinks = extractWikiLinksFromMarkdown(body, docName);
-      const mdLinks = extractMarkdownLinksFromMarkdown(body, docName);
+      const { frontmatter, body } = stripFrontmatter(markdown);
+      const lineOffset = frontmatterLineCount(frontmatter);
+      const wikiLinks = extractWikiLinksFromMarkdown(body, docName, lineOffset);
+      const mdLinks = extractMarkdownLinksFromMarkdown(body, docName, lineOffset);
       const wikiExternalLinks = extractExternalWikiLinksFromMarkdown(body);
       const mdExternalLinks = extractExternalMarkdownLinksFromMarkdown(body, docName);
       // Merge: wiki links take precedence for duplicate targets (they have richer snippet context)
@@ -1385,7 +1462,13 @@ export class BacklinkIndex {
         target,
         sources: [...sources.entries()]
           .filter(([source]) => !sourceDocSet || sourceDocSet.has(source))
-          .map(([source, meta]) => ({ source, anchor: meta.anchor, snippet: meta.snippet }))
+          .map(([source, meta]) => ({
+            source,
+            anchor: meta.anchor,
+            snippet: meta.snippet,
+            line: meta.line,
+            column: meta.column,
+          }))
           .sort((a, b) => a.source.localeCompare(b.source)),
       }))
       .filter((entry) => entry.sources.length > 0)
@@ -1663,9 +1746,10 @@ export class BacklinkIndex {
         }
         const { docName, mtimeMs, markdown } = result.value;
         mtimes.set(docName, mtimeMs);
-        const { body } = stripFrontmatter(markdown);
-        const wikiLinks = extractWikiLinksFromMarkdown(body, docName);
-        const mdLinks = extractMarkdownLinksFromMarkdown(body, docName);
+        const { frontmatter, body } = stripFrontmatter(markdown);
+        const lineOffset = frontmatterLineCount(frontmatter);
+        const wikiLinks = extractWikiLinksFromMarkdown(body, docName, lineOffset);
+        const mdLinks = extractMarkdownLinksFromMarkdown(body, docName, lineOffset);
         const wikiExternalLinks = extractExternalWikiLinksFromMarkdown(body);
         const mdExternalLinks = extractExternalMarkdownLinksFromMarkdown(body, docName);
         const seen = new Set(wikiLinks.map((l) => l.target));
@@ -1692,7 +1776,12 @@ export class BacklinkIndex {
           }
           sources.set(
             docName,
-            mergeLinkMeta(sources.get(docName), { anchor: link.anchor, snippet: link.snippet }),
+            mergeLinkMeta(sources.get(docName), {
+              anchor: link.anchor,
+              snippet: link.snippet,
+              line: link.line,
+              column: link.column,
+            }),
           );
         }
         for (const link of externalLinks) {
