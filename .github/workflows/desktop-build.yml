@@ -222,6 +222,15 @@ jobs:
         working-directory: packages/desktop
         run: node scripts/prepare-universal.mjs
 
+      # Stage @parcel/watcher onto the bundled CLI's module path. This workflow
+      # invokes electron-builder directly (not the build:mac npm script, which
+      # DOES run this), so the step must be explicit here or the smoke/QA DMG
+      # ships without @parcel/watcher on the CLI path and the server degrades to
+      # chokidar (#760).
+      - name: Stage @parcel/watcher for the bundled CLI
+        working-directory: packages/desktop
+        run: node scripts/stage-parcel-watcher.mjs
+
       # Step B: package via electron-builder. Kept as a separate runner step
       # from step A (rather than chained via && in a single shell). The split
       # was originally forced by a packaging bug in the previous script runner:

@@ -341,6 +341,15 @@ jobs:
         working-directory: packages/desktop
         run: node scripts/prepare-universal.mjs
 
+      # Stage @parcel/watcher onto the bundled CLI's module path. This workflow
+      # invokes electron-builder directly (not the build:mac npm script, which
+      # DOES run this), so the step must be explicit here or the published DMG
+      # ships without @parcel/watcher on the CLI path and the server degrades to
+      # chokidar (#760).
+      - name: Stage @parcel/watcher for the bundled CLI
+        working-directory: packages/desktop
+        run: node scripts/stage-parcel-watcher.mjs
+
       - name: Build + sign + notarize + publish DMG/ZIP
         # electron-builder picks up CSC_LINK / CSC_KEY_PASSWORD from env +
         # signs. afterSign.mjs picks up APPLE_* + notarizes + staples +

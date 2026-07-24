@@ -1,0 +1,5 @@
+---
+"@inkeep/open-knowledge": patch
+---
+
+Restored the native `@parcel/watcher` file watcher in the packaged desktop app (inkeep/open-knowledge#760). The app runs `ok start` from a bundled CLI whose module resolver never reaches the app's own `@parcel/watcher` copy, so at server boot `import('@parcel/watcher')` failed with "Cannot find package" and the watcher silently fell back to chokidar. The macOS build now stages `@parcel/watcher` — its wrapper, the runtime dependencies it loads (`picomatch`, `is-glob`, `is-extglob`, `detect-libc`), and the per-architecture native binary — onto the CLI's own module path, so the fast native watcher loads as intended. Combined with the chokidar-fallback fix in the same release, external edits to files in subfolders are reflected in the graph, backlinks, and dead-link views without a restart. The staging resolves each dependency exactly as the wrapper loads it (the workspace carries two `picomatch` majors, so a naive copy could have shipped the wrong one), and a packaging test verifies the staged tree is CLI-resolvable without needing a full app build.

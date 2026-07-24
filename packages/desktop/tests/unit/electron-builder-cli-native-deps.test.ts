@@ -33,17 +33,29 @@ const okRoot = resolve(desktopRoot, '..', '..');
 /**
  * Natives intentionally NOT shipped into cli/node_modules, each with its
  * reason. Every entry asserts "we considered this and decided the bundled-CLI
- * path doesn't need it." Keep this set as small as possible.
+ * path doesn't need it." Keep this set as small as possible — empty is ideal.
  *
- * `@parcel/watcher`: only reached when `ok start` / `ok mcp` boots the server
- * in-process from the bundled CLI. Its absence degrades to chokidar (a
- * functional fallback), not a silent security downgrade, and shipping it
- * cleanly requires its transitive runtime JS deps too (detect-libc, is-glob,
- * picomatch, ...).
+ * `@parcel/watcher` used to live here (absence degraded to chokidar). It is now
+ * staged onto the CLI path via the `build/parcel-watcher-staging/node_modules →
+ * cli/node_modules` rule (see `stage-parcel-watcher.mjs`), so it is covered
+ * below through `shippedViaParcelStaging`, not allowlisted.
  */
-const KNOWN_UNCOVERED: Record<string, string> = {
-  '@parcel/watcher': 'degrades to chokidar fallback; transitive runtime deps tracked as follow-up',
-};
+const KNOWN_UNCOVERED: Record<string, string> = {};
+
+/**
+ * @parcel/watcher ships as a whole staged tree copied to `cli/node_modules`
+ * (wrapper + runtime deps + per-arch binary), so its coverage is the presence
+ * of that one staging rule rather than a `cli/node_modules/@parcel/watcher`
+ * target. Recognizing it here means this test also fails loudly if the staging
+ * rule is ever dropped — defense in depth alongside
+ * electron-builder-parcel-watcher-deps.test.ts.
+ */
+function shippedViaParcelStaging(pkg: string): boolean {
+  if (pkg !== '@parcel/watcher') return false;
+  return readExtraResources().some(
+    (r) => r.to === 'cli/node_modules' && r.from === 'build/parcel-watcher-staging/node_modules',
+  );
+}
 
 function readNeverBundle(): string[] {
   try {
@@ -120,7 +132,7 @@ describe('bundled CLI can resolve tsdown neverBundle native addons', () => {
 
   for (const pkg of neverBundle) {
     test(`'${pkg}' is shipped to cli/node_modules or explicitly allowlisted`, () => {
-      const shipped = targets.includes(`cli/node_modules/${pkg}`);
+      const shipped = targets.includes(`cli/node_modules/${pkg}`) || shippedViaParcelStaging(pkg);
       const allowlisted = pkg in KNOWN_UNCOVERED;
       expect(
         shipped || allowlisted,

@@ -193,6 +193,17 @@ jobs:
         working-directory: packages/desktop
         run: node scripts/prepare-platform-natives.mjs
 
+      # Stage @parcel/watcher onto the bundled CLI's module path. This workflow
+      # invokes electron-builder directly (not the build:win/build:linux npm
+      # scripts, which DO run this), so the step must be explicit here or the
+      # packaged app ships without @parcel/watcher on the CLI path and the
+      # server degrades to chokidar (#760). Stages only the host-arch binary
+      # today; the other-arch artifact uses the (subfolder-correct) chokidar
+      # fallback — see scripts/stage-parcel-watcher.mjs.
+      - name: Stage @parcel/watcher for the bundled CLI
+        working-directory: packages/desktop
+        run: node scripts/stage-parcel-watcher.mjs
+
       - name: Build desktop main/preload/renderer
         working-directory: packages/desktop
         run: pnpm run build:desktop
@@ -276,6 +287,17 @@ jobs:
       - name: Prepare cross-arch keyring prebuilds
         working-directory: packages/desktop
         run: node scripts/prepare-platform-natives.mjs
+
+      # Stage @parcel/watcher onto the bundled CLI's module path. This workflow
+      # invokes electron-builder directly (not the build:win/build:linux npm
+      # scripts, which DO run this), so the step must be explicit here or the
+      # packaged app ships without @parcel/watcher on the CLI path and the
+      # server degrades to chokidar (#760). Stages only the host-arch binary
+      # today; the other-arch artifact uses the (subfolder-correct) chokidar
+      # fallback — see scripts/stage-parcel-watcher.mjs.
+      - name: Stage @parcel/watcher for the bundled CLI
+        working-directory: packages/desktop
+        run: node scripts/stage-parcel-watcher.mjs
 
       - name: Build desktop main/preload/renderer
         working-directory: packages/desktop

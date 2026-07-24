@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -162,4 +163,91 @@ describe('asarUnpack covers @parcel/watcher runtime deps', () => {
       ).toBe(true);
     });
   }
+});
+
+/**
+ * The asarUnpack rules above cover the desktop app's OWN copy of
+ * @parcel/watcher. The spawned `ok start` CLI resolves from a separate tree
+ * (`cli/node_modules/`) it never reaches through the asar, so it needs its own
+ * copy — staged by `scripts/stage-parcel-watcher.mjs` and placed by the
+ * `build/parcel-watcher-staging/node_modules → cli/node_modules` extraResources
+ * rule. This suite runs the staging script and verifies the staged tree is
+ * actually resolvable the way the CLI will load it — the packaging-time
+ * signal for #760 that doesn't need a full DMG build.
+ */
+describe('stage-parcel-watcher stages a CLI-resolvable @parcel/watcher tree', () => {
+  const stageScript = resolve(desktopRoot, 'scripts', 'stage-parcel-watcher.mjs');
+  const stagedRoot = resolve(desktopRoot, 'build', 'parcel-watcher-staging', 'node_modules');
+  const stagedParcelPkg = resolve(stagedRoot, '@parcel', 'watcher', 'package.json');
+
+  let staged = false;
+  let stageError = '';
+  try {
+    execFileSync('node', [stageScript], { stdio: 'pipe' });
+    staged = true;
+  } catch (err) {
+    // Surface the script's own stderr so a CI failure names WHY (unresolvable
+    // package / dep, zero binaries) instead of a bare non-zero exit.
+    const e = err as { stderr?: Buffer; stdout?: Buffer; message?: string };
+    stageError = (e.stderr?.toString() || e.stdout?.toString() || e.message || '').trim();
+  }
+
+  test('the staging script runs and produces the staged wrapper', () => {
+    expect(staged, `node scripts/stage-parcel-watcher.mjs failed:\n${stageError}`).toBe(true);
+    expect(existsSync(stagedParcelPkg)).toBe(true);
+  });
+
+  test('the wrapper resolves its runtime deps from the staged tree, at picomatch v4', () => {
+    if (!existsSync(stagedParcelPkg)) {
+      expect(staged).toBe(true);
+      return;
+    }
+    const req = createRequire(stagedParcelPkg);
+    // detect-libc is require()d by index.js on linux; staged on every platform
+    // so a Linux staging regression is caught here rather than only in a Linux
+    // packaged build.
+    for (const dep of ['picomatch', 'is-glob', 'is-extglob', 'detect-libc']) {
+      expect(() => req.resolve(dep), `'${dep}' must resolve from the staged wrapper`).not.toThrow();
+    }
+    // The workspace carries both picomatch v2 and v4; the wrapper needs v4. A
+    // static `.npmrc` hoist could stage v2 — assert the resolver-accurate copy
+    // shipped the major the wrapper actually loads.
+    const picomatch = JSON.parse(readFileSync(req.resolve('picomatch/package.json'), 'utf8')) as {
+      version: string;
+    };
+    expect(picomatch.version.startsWith('4.')).toBe(true);
+  });
+
+  test('at least one per-arch binary package with a .node is staged', () => {
+    const parcelScope = resolve(stagedRoot, '@parcel');
+    if (!existsSync(parcelScope)) {
+      expect(staged).toBe(true);
+      return;
+    }
+    const prebuilds = readdirSync(parcelScope).filter((n) => n.startsWith('watcher-'));
+    expect(prebuilds.length).toBeGreaterThan(0);
+    const hasBinary = prebuilds.some((p) =>
+      readdirSync(resolve(parcelScope, p)).some((f) => f.endsWith('.node')),
+    );
+    expect(hasBinary, 'a staged @parcel/watcher-* package must carry its .node binary').toBe(true);
+  });
+
+  test('electron-builder copies the staged tree onto the CLI path', () => {
+    let extraResources: Array<{ from?: string; to?: string }> = [];
+    try {
+      const config = parse(readFileSync(builderYml, 'utf8')) as {
+        extraResources?: Array<{ from?: string; to?: string }>;
+      };
+      extraResources = config.extraResources ?? [];
+    } catch {
+      // Fall through — the assertion below names the missing/unreadable rule.
+    }
+    const rule = extraResources.find(
+      (r) => r.from === 'build/parcel-watcher-staging/node_modules' && r.to === 'cli/node_modules',
+    );
+    expect(
+      rule,
+      'electron-builder.yml must copy build/parcel-watcher-staging/node_modules → cli/node_modules',
+    ).toBeTruthy();
+  });
 });

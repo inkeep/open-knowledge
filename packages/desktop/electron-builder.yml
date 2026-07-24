@@ -128,6 +128,22 @@ extraResources:
       - "index.d.ts"
       - "package.json"
       - "*.node"
+  # @parcel/watcher for the bundled CLI. The `asarUnpack` globs below cover the
+  # desktop app's OWN copy under app.asar.unpacked/, but the spawned `ok start`
+  # CLI resolves from `cli/dist → cli → Resources → …` and never reaches it (the
+  # same resolver-scope wall keyring + native-config work around above). Without
+  # a copy on the CLI's path, `import('@parcel/watcher')` throws at server boot
+  # and the watcher degrades to chokidar, dropping external subfolder edits
+  # (inkeep/open-knowledge#760). `scripts/stage-parcel-watcher.mjs` (run from the
+  # per-platform build scripts) resolves the wrapper + its runtime deps
+  # (picomatch v4 / is-glob / is-extglob / detect-libc) + the present per-arch
+  # binary package the way Node's `require()` does — NOT via `.npmrc` hoist,
+  # which the tree's dual picomatch v2/v4 would make ship the wrong major — and
+  # stages them per-OS. This one rule copies that staged tree onto the CLI path.
+  # Coverage: tests/unit/electron-builder-parcel-watcher-deps.test.ts.
+  - from: "build/parcel-watcher-staging/node_modules"
+    to: "cli/node_modules"
+    filter: ["**/*"]
 
 asarUnpack:
   - "**/*.node"
@@ -211,9 +227,12 @@ mac:
   # path so Universal's merger picks one slice deterministically, or (b)
   # invoking @electron/universal with the `singleArchFiles` option for the
   # native module. Both require validation against the keyring spec's
-  # Pass 0 expectations. For now we ship arm64-only DMG/ZIP so the beta
-  # cadence has a working artifact and electron-updater on the beta
-  # channel can flow.
+  # Pass 0 expectations. When restoring Universal, the same arch-filter must
+  # also cover the staged `cli/node_modules/@parcel/watcher-darwin-<arch>/
+  # watcher.node` binary (via `scripts/stage-parcel-watcher.mjs`) — it hits the
+  # identical lipo "same in both slices" rejection. For now we ship arm64-only
+  # DMG/ZIP so the beta cadence has a working artifact and electron-updater on
+  # the beta channel can flow.
   target:
     - target: dmg
       arch: [arm64]
