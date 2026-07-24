@@ -29,6 +29,7 @@ const fullPluginShape = Object.fromEntries(
   LINT_PLUGINS.map((plugin) => [plugin.id, plugin.sliceSchema]),
 ) as z.ZodRawShape;
 
+
 export const LinterConfigSchema = z.object({
   enabled: z.boolean(),
   plugins: z.object(fullPluginShape),

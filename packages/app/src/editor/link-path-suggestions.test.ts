@@ -15,12 +15,24 @@ describe('buildLinkPathSuggestions', () => {
   const folderPaths = new Set(['docs', 'guides', 'notes']);
   const assetPaths = new Set(['assets/logo.png', 'guides/demo.mov']);
 
-  test('does not suggest paths until the value starts with a single slash', () => {
-    expect(buildLinkPathSuggestions({ value: 'guides', pages, folderPaths })).toEqual([]);
+  test('matches a bare name query without requiring a leading slash', () => {
+    expect(buildLinkPathSuggestions({ value: 'guides', pages, folderPaths })).toEqual([
+      { kind: 'folder', path: 'guides' },
+      { kind: 'page', path: 'guides/bun' },
+      { kind: 'page', path: 'guides/intro' },
+    ]);
+    expect(buildLinkPathSuggestions({ value: 'install', pages, folderPaths })).toEqual([
+      { kind: 'page', path: 'docs/install' },
+    ]);
+  });
+
+  test('returns nothing for a bare query that matches no path', () => {
+    expect(buildLinkPathSuggestions({ value: 'zzz-nope', pages, folderPaths })).toEqual([]);
+    // URL-shaped values match no path; suppression of the panel for real URLs
+    // is the component's job, not this pure matcher's.
     expect(buildLinkPathSuggestions({ value: 'https://example.com', pages, folderPaths })).toEqual(
       [],
     );
-    expect(buildLinkPathSuggestions({ value: '//example.com', pages, folderPaths })).toEqual([]);
   });
 
   test('suggests matching existing page and folder paths after slash input', () => {
@@ -61,14 +73,36 @@ describe('buildLinkPathSuggestions', () => {
   });
 
   test('ranks basename substring matches before full-path-only substring matches', () => {
+    const ranked = [
+      { kind: 'page', path: 'notes/api' },
+      { kind: 'page', path: 'guides/api/reference' },
+    ];
+    // Same ranking whether the query carries a leading slash or not — the query
+    // is normalized before scoring, so both forms hit the identical code path.
     expect(
       buildLinkPathSuggestions({
         value: '/api',
         pages: new Set(['guides/api/reference', 'notes/api']),
       }),
-    ).toEqual([
-      { kind: 'page', path: 'notes/api' },
-      { kind: 'page', path: 'guides/api/reference' },
-    ]);
+    ).toEqual(ranked);
+    expect(
+      buildLinkPathSuggestions({
+        value: 'api',
+        pages: new Set(['guides/api/reference', 'notes/api']),
+      }),
+    ).toEqual(ranked);
+  });
+
+  test('browse ordering keeps content pages ahead of dot-directory files', () => {
+    const mixed = new Set(['.github/ci', '.changeset/note', 'docs/install', 'guides/intro']);
+    const browsed = buildLinkPathSuggestions({ value: '', pages: mixed }).map((s) => s.path);
+    // Every non-dot page appears before any dot-directory page.
+    const firstDotIndex = browsed.findIndex((p) => p.split('/')[0]?.startsWith('.'));
+    const lastNonDotIndex = browsed.reduce(
+      (last, p, i) => (p.split('/')[0]?.startsWith('.') ? last : i),
+      -1,
+    );
+    expect(lastNonDotIndex).toBeLessThan(firstDotIndex);
+    expect(browsed.slice(0, 2)).toEqual(['docs/install', 'guides/intro']);
   });
 });

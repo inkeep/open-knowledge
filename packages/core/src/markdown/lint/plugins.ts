@@ -1,3 +1,4 @@
+
 import { z } from 'zod';
 import { DEFAULT_MARKDOWNLINT_CONFIG, resolveMarkdownlintConfig } from './default-config.ts';
 import { fixMarkdownText, runMarkdownlint } from './markdownlint-runner.ts';
@@ -7,6 +8,7 @@ import {
   MARKDOWNLINT_RULE_SEVERITIES,
   type MarkdownlintSlice,
 } from './types.ts';
+
 
 const MarkdownlintRuleSettingSchema = z.union([
   z.boolean(),

@@ -63,6 +63,8 @@ describe('LinkPathSuggestionInput', () => {
 
     expect(screen.getByRole('listbox', { name: 'Path suggestions' })).toBeDefined();
     expect(screen.getByRole('option', { name: '/docs/install Page' })).toBeDefined();
+    // Full path is exposed as a hover tooltip so a truncated row is still readable.
+    expect(screen.getByTitle('/docs/install')).toBeDefined();
   });
 
   test('opens project path suggestions when slash input has focus', () => {
@@ -75,6 +77,51 @@ describe('LinkPathSuggestionInput', () => {
     expect(screen.getByRole('option', { name: '/guides Folder' })).toBeDefined();
     expect(screen.getByRole('option', { name: '/guides/bun Page' })).toBeDefined();
     expect(screen.getByRole('option', { name: '/guides/intro Page' })).toBeDefined();
+  });
+
+  test('opens suggestions for a bare name and lists the matching page', () => {
+    render(<Harness initialValue="install" />);
+
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Link target' }));
+
+    expect(screen.getByRole('listbox', { name: 'Path suggestions' })).toBeDefined();
+    expect(screen.getByRole('option', { name: '/docs/install Page' })).toBeDefined();
+  });
+
+  test('does not open the panel while typing an external URL', () => {
+    render(<Harness initialValue="https://example.com" />);
+
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Link target' }));
+
+    expect(screen.queryByRole('listbox', { name: 'Path suggestions' })).toBeNull();
+  });
+
+  test('does not open the panel for a protocol-relative or scheme URL', () => {
+    render(<Harness initialValue="//example.com" />);
+
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Link target' }));
+
+    expect(screen.queryByRole('listbox', { name: 'Path suggestions' })).toBeNull();
+  });
+
+  test('does not open the panel for a bare in-doc anchor', () => {
+    render(<Harness initialValue="#section" />);
+
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Link target' }));
+
+    expect(screen.queryByRole('listbox', { name: 'Path suggestions' })).toBeNull();
+  });
+
+  test('stays silent for a bare name with no match — no empty-state flash', () => {
+    // A scheme-less value that matches nothing (e.g. a URL-in-progress like
+    // example.com) must not pop the "No matching paths" empty-state. Only an
+    // empty browse or an explicit leading slash surfaces that state.
+    render(<Harness initialValue="zzz-no-such-page" />);
+
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Link target' }));
+
+    expect(screen.queryByRole('listbox', { name: 'Path suggestions' })).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   test('shows an empty state for slash input with no matching paths', () => {

@@ -29,11 +29,6 @@ function normalizeInputPath(value: string): string {
     .replace(/\/+$/g, '');
 }
 
-function slashPathQuery(value: string): string | null {
-  if (!isSlashPathSuggestionValue(value)) return null;
-  return normalizeInputPath(value.slice(1)).toLowerCase();
-}
-
 export function isSlashPathSuggestionValue(value: string): boolean {
   return value.startsWith('/') && !value.startsWith('//');
 }
@@ -41,6 +36,10 @@ export function isSlashPathSuggestionValue(value: string): boolean {
 function basename(path: string): string {
   const parts = path.split('/');
   return parts.at(-1) ?? path;
+}
+
+function firstSegmentIsDot(path: string): boolean {
+  return path.split('/')[0]?.startsWith('.') ?? false;
 }
 
 function scorePath(path: string, query: string): number | null {
@@ -92,8 +91,15 @@ function collectSuggestions(options: BuildLinkPathSuggestionsOptions): LinkPathS
 export function buildLinkPathSuggestions(
   options: BuildLinkPathSuggestionsOptions,
 ): LinkPathSuggestion[] {
-  const query = slashPathQuery(options.value);
-  if (query === null) return [];
+  // Any input is a query, not just a leading-slash path — typing a bare name
+  // matches by basename like the command palette does. Whether to suggest at
+  // all (path vs external URL vs anchor) is the caller's decision, not this
+  // pure matcher's. An empty query browses (every candidate scores 0).
+  const query = normalizeInputPath(options.value).toLowerCase();
+  // Dot-demotion is a browse-ordering concern only. On a real query, relevance
+  // (score) leads; applying it to scored ties could push an exact-matched
+  // dotfile past the result cap behind equally-scored siblings.
+  const browsing = query === '';
 
   const scored: ScoredSuggestion[] = [];
   for (const suggestion of collectSuggestions(options)) {
@@ -106,6 +112,15 @@ export function buildLinkPathSuggestions(
     if (a.score !== b.score) return a.score - b.score;
     const kindCompare = kindRank(a.suggestion.kind) - kindRank(b.suggestion.kind);
     if (kindCompare !== 0) return kindCompare;
+    if (browsing) {
+      // Rank real content paths ahead of dot-directory files (.github,
+      // .changeset) — otherwise the browse list's alphabetical fallback fills
+      // the cap with dotfiles before any content page appears.
+      const dotCompare =
+        (firstSegmentIsDot(a.suggestion.path) ? 1 : 0) -
+        (firstSegmentIsDot(b.suggestion.path) ? 1 : 0);
+      if (dotCompare !== 0) return dotCompare;
+    }
     return a.suggestion.path.localeCompare(b.suggestion.path);
   });
 
