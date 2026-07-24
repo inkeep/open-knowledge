@@ -26,6 +26,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // and must list the apex (rendered by the marketing zone) plus /brand + docs.
   return [
     { url: SITE_URL, changeFrequency: 'weekly', priority: 1.0 },
+    // /blog and its posts render in the marketing zone, whose content this
+    // public app can't enumerate — they live in the marketing zone's own
+    // /blog/sitemap.xml, listed alongside this one in robots.ts.
     { url: `${SITE_URL}${CHANGELOG_ROUTE}`, changeFrequency: 'weekly', priority: 0.6 },
     ...releasePages,
     { url: `${SITE_URL}${BRAND_ROUTE}`, changeFrequency: 'monthly', priority: 0.4 },
