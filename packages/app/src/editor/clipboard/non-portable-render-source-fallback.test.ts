@@ -1,7 +1,7 @@
 /**
  * Co-located unit tests for the non-portable-render source-fallback
  * helper. Mirrors the convention from `clipboard-walker-fallback-
- * palette.test.ts`: bun-test has no DOM, so the DOM-shape behaviour of
+ * palette.test.ts`: the vitest node environment has no DOM, so the DOM-shape behaviour of
  * `nonPortableRenderSourceFallback` is covered by Playwright E2E. This
  * file pins the **structural** dispatch contract that is testable
  * without a DOM via `sourceFallbackFormFor` (the inner pure classifier).
@@ -9,11 +9,13 @@
  * Coverage tiers:
  *   1. Block jsxComponents (Math, Mermaid) → expected markdown-source
  *      bytes
- *   2. Falls through (Callout, paragraph, heading, mathInline,
+ *   2. Preview-active codeBlock → fenced-source bytes; non-preview → null
+ *   3. Falls through (Callout, paragraph, heading, mathInline,
  *      unknown jsxComponent) → null
- *   3. Edge cases — empty / missing / non-string props
+ *   4. Edge cases — empty / missing / non-string props
  */
 
+import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { describe, expect, test } from 'vitest';
 import { sourceFallbackFormFor } from './non-portable-render-source-fallback.ts';
@@ -28,13 +30,19 @@ function stubPmNode(args: {
   typeName: string;
   componentName?: string;
   props?: Record<string, unknown>;
+  language?: unknown;
+  meta?: unknown;
+  textContent?: string;
 }): PmNode {
   return {
     type: { name: args.typeName },
     attrs: {
       ...(args.componentName !== undefined ? { componentName: args.componentName } : {}),
       ...(args.props !== undefined ? { props: args.props } : {}),
+      ...(args.language !== undefined ? { language: args.language } : {}),
+      ...(args.meta !== undefined ? { meta: args.meta } : {}),
     },
+    textContent: args.textContent ?? '',
   } as unknown as PmNode;
 }
 
@@ -126,6 +134,165 @@ describe('sourceFallbackFormFor — MermaidFence jsxComponent', () => {
       props: { chart: { type: 'flowchart' } },
     });
     expect(sourceFallbackFormFor(node)).toEqual({ source: '```mermaid\n\n```' });
+  });
+});
+
+describe('sourceFallbackFormFor — preview-active codeBlock', () => {
+  test('html + preview → fenced source with the authored info-string', () => {
+    const node = stubPmNode({
+      typeName: 'codeBlock',
+      language: 'html',
+      meta: 'preview',
+      textContent: '<h1>Hi</h1>',
+    });
+    expect(sourceFallbackFormFor(node)).toEqual({
+      source: '```html preview\n<h1>Hi</h1>\n```',
+    });
+  });
+
+  test('xml + preview → recognized via the normalize path', () => {
+    // `html` normalizes to highlight.js's `xml` key; a block authored as
+    // `xml preview` renders the same iframe and must fall back too.
+    const node = stubPmNode({
+      typeName: 'codeBlock',
+      language: 'xml',
+      meta: 'preview',
+      textContent: '<svg></svg>',
+    });
+    expect(sourceFallbackFormFor(node)).toEqual({
+      source: '```xml preview\n<svg></svg>\n```',
+    });
+  });
+
+  test('fence widens past a backtick run in the body (no early close)', () => {
+    // A body containing a ``` run would early-close a 3-backtick fence on
+    // re-parse (CommonMark §4.5); the fence widens to one longer.
+    const body = 'before\n```\ninner\n```\nafter';
+    const node = stubPmNode({
+      typeName: 'codeBlock',
+      language: 'html',
+      meta: 'preview',
+      textContent: body,
+    });
+    expect(sourceFallbackFormFor(node)).toEqual({
+      source: `\`\`\`\`html preview\n${body}\n\`\`\`\``,
+    });
+  });
+
+  test('tilde fence widens past a ~~~ run in the body (no early close)', () => {
+    // A backtick in the meta forces a tilde fence; a body containing a `~~~`
+    // run would early-close a 3-tilde fence on re-parse (CommonMark §4.5),
+    // so the tilde fence widens to one longer.
+    const body = 'before\n~~~\ninner\n~~~\nafter';
+    const node = stubPmNode({
+      typeName: 'codeBlock',
+      language: 'html',
+      meta: 'title="a`b`" preview',
+      textContent: body,
+    });
+    const source = sourceFallbackFormFor(node)?.source ?? '';
+    expect(source.startsWith('~~~~')).toBe(true);
+    expect(source.endsWith('\n~~~~')).toBe(true);
+  });
+
+  test('non-preview html code block → null (portable clean-clone path)', () => {
+    const node = stubPmNode({
+      typeName: 'codeBlock',
+      language: 'html',
+      textContent: '<h1>Hi</h1>',
+    });
+    expect(sourceFallbackFormFor(node)).toBeNull();
+  });
+
+  test('preview meta on a non-previewable language → null', () => {
+    // `js preview` renders no iframe — the preview pane only mounts for
+    // html/xml. The gate must not fire for other languages.
+    const node = stubPmNode({
+      typeName: 'codeBlock',
+      language: 'js',
+      meta: 'preview',
+      textContent: "console.log('x')",
+    });
+    expect(sourceFallbackFormFor(node)).toBeNull();
+  });
+
+  test('null language attr → null (no preview gate, no throw)', () => {
+    // Symmetric defense with the Math/Mermaid non-string prop tests — a
+    // non-string attr narrows to '' and the preview gate declines it.
+    const node = stubPmNode({
+      typeName: 'codeBlock',
+      language: null,
+      meta: 'preview',
+      textContent: '<h1>Hi</h1>',
+    });
+    expect(sourceFallbackFormFor(node)).toBeNull();
+  });
+
+  test('null meta attr → null (no preview gate, no throw)', () => {
+    const node = stubPmNode({
+      typeName: 'codeBlock',
+      language: 'html',
+      meta: null,
+      textContent: '<h1>Hi</h1>',
+    });
+    expect(sourceFallbackFormFor(node)).toBeNull();
+  });
+
+  test('meta carrying a backtick emits a valid fence (tilde), not a broken backtick fence', () => {
+    // A `title="…"` meta token may contain a backtick (setMetaTitle strips
+    // `"` and newlines but not backticks; a tilde-authored fence has no
+    // restriction). CommonMark §4.5 forbids backticks in a backtick fence's
+    // info-string, so embedding such meta after a backtick fence produces an
+    // opener that parsers reject — the block degrades to a paragraph. The
+    // emitted source must stay a valid fence so the round-trip intent holds.
+    const node = stubPmNode({
+      typeName: 'codeBlock',
+      language: 'html',
+      meta: 'title="a`b`" preview',
+      textContent: '<h1>Hi</h1>',
+    });
+    const form = sourceFallbackFormFor(node);
+    expect(form).not.toBeNull();
+    const source = form?.source ?? '';
+    expect(source).not.toBe('');
+    // The info-string line must not embed the fence character it opens with.
+    const fenceChar = source[0];
+    const infoLine = source.slice(0, source.indexOf('\n'));
+    expect(infoLine.slice(3)).not.toContain(fenceChar);
+  });
+});
+
+describe('sourceFallbackFormFor — emitted fence round-trips through OK`s parser', () => {
+  // The whole point of emitting fenced source (rather than the live iframe) is
+  // that a markdown-aware destination — OK`s own parser included — re-parses it
+  // back to a code block. Drive the REAL markdown pipeline so a fence that only
+  // LOOKS valid but degrades to prose on re-parse is caught.
+  const md = new MarkdownManager({ extensions: sharedExtensions });
+  const topNodeType = (source: string): string | undefined => {
+    const doc = md.parse(source) as { content?: Array<{ type?: string }> };
+    return doc.content?.[0]?.type;
+  };
+
+  test('plain preview meta round-trips to a codeBlock', () => {
+    const node = stubPmNode({
+      typeName: 'codeBlock',
+      language: 'html',
+      meta: 'preview',
+      textContent: '<h1>Hi</h1>',
+    });
+    const source = sourceFallbackFormFor(node)?.source ?? '';
+    expect(topNodeType(source)).toBe('codeBlock');
+  });
+
+  test('backtick-in-meta still round-trips to a codeBlock (not a paragraph)', () => {
+    const node = stubPmNode({
+      typeName: 'codeBlock',
+      language: 'html',
+      meta: 'title="a`b`" preview',
+      textContent: '<h1>Hi</h1>',
+    });
+    const source = sourceFallbackFormFor(node)?.source ?? '';
+    expect(topNodeType(source)).toBe('codeBlock');
   });
 });
 

@@ -439,6 +439,7 @@ export {
   type UrnIpcLookup,
   withSkillPointer,
 } from './handoff/index.ts';
+export { selectFenceChar, widenFenceLength } from './markdown/code-fence.ts';
 export {
   HTML_MAX_BYTES,
   HtmlPayloadTooLargeError,

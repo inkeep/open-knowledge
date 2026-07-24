@@ -29,8 +29,9 @@ import { nonPortableRenderSourceFallback } from './non-portable-render-source-fa
 /**
  * Callout type → cross-app tone mapping. Exported so the registry-coverage
  * test in `clipboard-walker-fallback-palette.test.ts` can pin the supported
- * type set without invoking the DOM-creating palette functions (bun-test
- * has no DOM; full palette DOM behavior is covered in Playwright E2E).
+ * type set without invoking the DOM-creating palette functions (the vitest
+ * node environment has no DOM; full palette DOM behavior is covered in
+ * Playwright E2E).
  */
 export const TYPE_TO_TONE: Record<string, { color: string; bg: string }> = {
   note: { color: '#0969da', bg: '#dbeafe' },
@@ -268,6 +269,13 @@ function audioPalette(props: Record<string, unknown>): Element {
  * results as no-ops.
  */
 export function paletteFor(node: PmNode): Element | null {
+  // Preview-active `html`/`xml` code blocks are native PM nodes (not
+  // jsxComponents) whose live render is a non-portable iframe. Route them
+  // through the shared helper ahead of the jsxComponent guard so the
+  // Activity-hidden path emits the same clean fenced source the mounted
+  // walker path does — `nonPortableRenderSourceFallback` returns null for
+  // non-preview code blocks, so plain fences still fall through to null.
+  if (node.type.name === 'codeBlock') return nonPortableRenderSourceFallback(node, document);
   if (node.type.name !== 'jsxComponent') return null;
   const componentName = node.attrs.componentName as string | undefined;
   const props = (node.attrs.props as Record<string, unknown>) ?? {};

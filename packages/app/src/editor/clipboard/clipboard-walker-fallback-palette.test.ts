@@ -8,7 +8,7 @@
  * appends as a no-op — Activity-hidden copies would lose the descriptor
  * entirely.
  *
- * bun-test has no DOM (`document.createElement` is unavailable), so the
+ * the vitest node environment has no DOM (`document.createElement` is unavailable), so the
  * DOM-shape behavior of the palette functions is covered by Playwright
  * E2E. This file pins the **structural** contracts that are testable
  * without a DOM:
@@ -19,10 +19,13 @@
  * - `TYPE_TO_TONE` shape pins the supported callout type set.
  */
 
-import { describe, expect, test } from 'vitest';
+import type { Node as PmNode } from '@tiptap/pm/model';
+import { JSDOM } from 'jsdom';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { classifyUrlPortability } from './clipboard-sanitize.ts';
 import {
   PALETTE_DESCRIPTOR_NAMES,
+  paletteFor,
   paletteUrlReason,
   TYPE_TO_TONE,
   toneForType,
@@ -109,9 +112,62 @@ describe('toneForType — type-to-tone lookup with prototype-pollution guard', (
 // the palette-side surface — a thin `null|reason` wrapper over
 // `classifyUrlPortability` that gives the palette tests a pure assertion
 // target without needing a DOM (palette functions themselves create real
-// `<img>`/`<video>`/`<audio>` elements, which bun-test cannot exercise).
+// `<img>`/`<video>`/`<audio>` elements, which the vitest node environment
+// cannot exercise).
 // DOM-shape coverage of the actual swap happens in the cross-app
 // sanitizer-proxy fixture tests and Playwright E2E.
+
+// ─── paletteFor — codeBlock route (Activity-hidden preview fallback) ────
+//
+// A preview-active `html`/`xml` code block is a native PM node (not a
+// jsxComponent), so `paletteFor` routes it through
+// `nonPortableRenderSourceFallback` via a pre-switch `codeBlock` guard.
+// That guard is the ONLY thing keeping the Activity-hidden path from
+// dropping the block (a codeBlock that reached the `!== 'jsxComponent'`
+// check returns null). This describe block pins the route so removing the
+// guard fails here. `nonPortableRenderSourceFallback` builds a `<pre>`, so a
+// real DOM is installed for these cases only.
+
+function stubCodeBlock(args: { language: string; meta?: string; textContent?: string }): PmNode {
+  return {
+    type: { name: 'codeBlock' },
+    attrs: { language: args.language, meta: args.meta ?? '' },
+    textContent: args.textContent ?? '',
+  } as unknown as PmNode;
+}
+
+describe('paletteFor — preview-active codeBlock route', () => {
+  let dom: JSDOM;
+  const prevDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  beforeAll(() => {
+    dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
+    Object.defineProperty(globalThis, 'document', {
+      value: dom.window.document,
+      configurable: true,
+      writable: true,
+    });
+  });
+  afterAll(() => {
+    if (prevDocument) Object.defineProperty(globalThis, 'document', prevDocument);
+    else Reflect.deleteProperty(globalThis as unknown as Record<string, unknown>, 'document');
+    dom.window.close();
+  });
+
+  test('preview-active html codeBlock → non-null clean source (guard present)', () => {
+    const el = paletteFor(
+      stubCodeBlock({ language: 'html', meta: 'preview', textContent: '<h1>Hi</h1>' }),
+    );
+    expect(el).not.toBeNull();
+    expect(el?.textContent ?? '').toContain('<h1>Hi</h1>');
+    // Clean fenced source, not the live iframe render.
+    expect(el?.querySelector('iframe')).toBeNull();
+  });
+
+  test('non-preview codeBlock → null (portable clean-clone path)', () => {
+    const el = paletteFor(stubCodeBlock({ language: 'html', textContent: '<h1>Hi</h1>' }));
+    expect(el).toBeNull();
+  });
+});
 
 describe('paletteUrlReason — portability decision', () => {
   test('returns null for fragment-only refs', () => {
