@@ -122,15 +122,27 @@ jobs:
           pnpm exec turbo run build --filter=@inkeep/open-knowledge
 
       # Hand the platform-neutral build products to the packaging jobs:
-      # the full bundled CLI tree + the native-config addon dir the
-      # electron-builder `../native-config` extraResources rule reads
+      # the full bundled CLI tree + core/server dist + the native-config addon
+      # dir the electron-builder `../native-config` extraResources rule reads
       # (index.js loader + package.json + every staged .node).
+      #
+      # core/server dist are load-bearing: `build:desktop` (electron-vite) in
+      # the packaging jobs bundles the desktop main process + app renderer
+      # source, which import `@inkeep/open-knowledge-core` and
+      # `@inkeep/open-knowledge-server`. Those resolve via `exports` to
+      # `./dist/index.mjs`; without the built dist here, electron-vite fails
+      # with "Rolldown failed to resolve import @inkeep/open-knowledge-core".
+      # The packaging jobs can't rebuild them (the Windows job's default shell
+      # can't run the CLI build chain's `cp -r` bash-isms), so prepare builds
+      # everything once and ships the dist forward.
       - name: Upload workspace bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: workspace-bundle
           path: |
             packages/cli/dist/
+            packages/core/dist/
+            packages/server/dist/
             packages/native-config/index.js
             packages/native-config/index.d.ts
             packages/native-config/*.node

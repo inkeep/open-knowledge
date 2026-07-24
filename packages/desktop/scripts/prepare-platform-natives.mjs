@@ -128,9 +128,17 @@ for (const suffix of suffixes) {
     }
 
     mkdirSync(targetDir, { recursive: true });
-    // bsdtar ships with Windows 10+ (and every Linux runner), so plain `tar`
-    // works on both platforms this script supports.
-    execFileSync('tar', ['-xzf', tmpTarball, '-C', targetDir, '--strip-components=1'], {
+    // Extract with bsdtar. On Windows a bare `tar` resolved from a Git-bash
+    // PATH is GNU tar, which misreads the absolute `C:\...` tarball path as an
+    // rsync-style `host:path` remote and dies with "Cannot connect to C:".
+    // Windows 10+ ships bsdtar at System32\tar.exe, which handles drive-letter
+    // paths natively — invoke it by absolute path rather than trusting PATH
+    // resolution. Linux runners keep plain `tar`.
+    const tarBin =
+      process.platform === 'win32'
+        ? join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe')
+        : 'tar';
+    execFileSync(tarBin, ['-xzf', tmpTarball, '-C', targetDir, '--strip-components=1'], {
       stdio: 'inherit',
     });
   } finally {
