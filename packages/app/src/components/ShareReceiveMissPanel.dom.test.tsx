@@ -1,5 +1,6 @@
 import type { ShareTargetStatusResponse } from '@inkeep/open-knowledge-core';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
 import { pendingReceiveNavStore } from '@/lib/share/pending-receive-nav-store';
@@ -20,12 +21,34 @@ vi.doMock('@/lib/config-provider', () => ({
   }),
 }));
 
-// The changed-locally cell picks its CTA off the live sync status: Enable
-// auto-sync when the toggle is off, Sync now when it is already on.
+// The changed-locally cell picks its CTA off the live sync status (Enable
+// auto-sync when the toggle is off, Sync now when it is already on), and the
+// behind cell reads it for the pull CTA. Reactive so a test can land a pull
+// (lastPullUtc advance) and observe the re-probe.
 let syncStatus: GitSyncStatus | null = null;
+const syncStatusListeners = new Set<() => void>();
+function setSyncStatus(next: GitSyncStatus | null): void {
+  syncStatus = next;
+  for (const listener of syncStatusListeners) listener();
+}
 vi.doMock('@/hooks/use-git-sync-status', () => ({
-  useGitSyncStatus: () => syncStatus,
+  useGitSyncStatus: () =>
+    useSyncExternalStore(
+      (onStoreChange: () => void) => {
+        syncStatusListeners.add(onStoreChange);
+        return () => syncStatusListeners.delete(onStoreChange);
+      },
+      () => syncStatus,
+    ),
   useGitSyncStatusDetailed: () => ({ status: syncStatus, fetchError: null }),
+}));
+
+let syncTriggers: string[] = [];
+vi.doMock('@/lib/trigger-sync', () => ({
+  triggerSync: (op: string) => {
+    syncTriggers.push(op);
+    return Promise.resolve();
+  },
 }));
 
 function makeSyncStatus(partial: Partial<GitSyncStatus>): GitSyncStatus {
@@ -42,7 +65,25 @@ function makeSyncStatus(partial: Partial<GitSyncStatus>): GitSyncStatus {
   };
 }
 
+/**
+ * Status of a sync-off receiver whose engine carries the pull-outcome contract —
+ * the shape that makes the behind cell's pull CTA actionable. `makeSyncStatus`
+ * deliberately omits `lastPullUtc` so the default is the version-skew case.
+ */
+function pullableSyncStatus(partial: Partial<GitSyncStatus> = {}): GitSyncStatus {
+  return makeSyncStatus({
+    syncEnabled: false,
+    state: 'disabled',
+    lastPullUtc: 'p0',
+    lastPullOutcome: null,
+    ...partial,
+  });
+}
+
 const { ShareReceiveMissPanel } = await import('./ShareReceiveMissPanel');
+// Same module instance the panel renders, so the once-per-session follow-offer
+// latch resets between tests instead of the first offer suppressing the rest.
+const { __resetFollowOfferLatchForTests } = await import('./share-receive-miss-content');
 
 type FetchTargetStatus = (req: {
   projectPath: string;
@@ -76,6 +117,7 @@ beforeEach(() => {
   cleanup();
   window.location.hash = '';
   pendingReceiveNavStore.clear();
+  __resetFollowOfferLatchForTests();
 });
 afterEach(() => {
   cleanup();
@@ -83,7 +125,9 @@ afterEach(() => {
   window.location.hash = '';
   pendingReceiveNavStore.clear();
   autoSyncWrites = [];
+  syncTriggers = [];
   syncStatus = null;
+  syncStatusListeners.clear();
 });
 
 describe('ShareReceiveMissPanel verdict surfaces', () => {
@@ -163,7 +207,7 @@ describe('ShareReceiveMissPanel verdict surfaces', () => {
   // Enable auto-sync recovery CTA (the guarded off → on flow).
   test('changed-locally verdict shows the local-change message and enables auto-sync in place', async () => {
     installBridge(stubVerdict({ verdict: 'changed-locally' }));
-    syncStatus = makeSyncStatus({ syncEnabled: false, state: 'disabled' });
+    setSyncStatus(makeSyncStatus({ syncEnabled: false, state: 'disabled' }));
     const panel = await renderResolved();
 
     expect(panel.getAttribute('data-verdict')).toBe('changed-locally');
@@ -189,7 +233,7 @@ describe('ShareReceiveMissPanel verdict surfaces', () => {
   // dialog's dom tests; both shells share the content component).
   test('changed-locally with auto-sync ON offers Sync now, not Enable auto-sync', async () => {
     installBridge(stubVerdict({ verdict: 'changed-locally' }));
-    syncStatus = makeSyncStatus({ syncEnabled: true });
+    setSyncStatus(makeSyncStatus({ syncEnabled: true }));
     const panel = await renderResolved();
 
     expect(panel.getAttribute('data-verdict')).toBe('changed-locally');
@@ -255,5 +299,85 @@ describe('ShareReceiveMissPanel verdict surfaces', () => {
     await renderResolved();
     // The rename redirect is the primary action; keyboard users land on it.
     expect(document.activeElement).toBe(screen.getByTestId('share-receive-miss-open-renamed'));
+  });
+});
+
+describe('ShareReceiveMissPanel pull recovery', () => {
+  test('the behind cell offers Pull latest changes on a pull-capable engine', async () => {
+    installBridge(stubVerdict({ verdict: 'on-origin' }));
+    setSyncStatus(pullableSyncStatus());
+    const panel = await renderResolved();
+
+    expect(panel.getAttribute('data-verdict')).toBe('on-origin');
+    expect(screen.getByTestId('share-receive-miss-pull-now')).toBeTruthy();
+    // The button replaces the manual instruction the cell used to give.
+    expect(panel.textContent).toContain('is behind');
+    expect(panel.textContent).not.toContain('then open the link again');
+    expect(screen.getByTestId('share-receive-miss-browse')).toBeTruthy();
+    // Keyboard users land on the recovery, which is now the first action.
+    expect(document.activeElement).toBe(screen.getByTestId('share-receive-miss-pull-now'));
+  });
+
+  // Unlike the pre-nav dialog (which navigates on a landed pull), the in-tab
+  // backstop resolves in place: when the pull materialized the target, EditorArea
+  // swaps the panel out for the editor on its own, so all the panel owes is a
+  // re-probe — the pre-pull cell must not stay on screen as the honest answer.
+  test('a landed pull re-probes the target status once the follow offer is answered', async () => {
+    // The second probe fetches again, so it can see an upstream change the first
+    // one missed — here the target turned out to be gone for good.
+    const verdicts: ShareTargetStatusResponse[] = [
+      { verdict: 'on-origin' },
+      { verdict: 'deleted' },
+    ];
+    let probeCount = 0;
+    installBridge(() => Promise.resolve(verdicts[Math.min(probeCount++, verdicts.length - 1)]));
+    setSyncStatus(pullableSyncStatus());
+    const panel = await renderResolved();
+
+    fireEvent.click(screen.getByTestId('share-receive-miss-pull-now'));
+    expect(syncTriggers).toEqual(['pull']);
+
+    setSyncStatus(pullableSyncStatus({ lastPullUtc: 'p1', lastPullOutcome: 'succeeded' }));
+
+    // A sync-off receiver meets the follow offer here too; declining it hands
+    // control straight back to the panel.
+    const consent = await screen.findByRole('dialog');
+    fireEvent.click(within(consent).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => {
+      expect(panel.getAttribute('data-verdict')).toBe('deleted');
+    });
+    expect(probeCount).toBe(2);
+  });
+
+  test('an already-syncing receiver re-probes directly, with no follow offer in between', async () => {
+    // Pins the panel's own onPullApplied wiring on the path that skips the
+    // consent gate — if the prop were dropped, this receiver would stay stuck
+    // on "is behind" after a successful pull.
+    const verdicts: ShareTargetStatusResponse[] = [
+      { verdict: 'on-origin' },
+      { verdict: 'deleted' },
+    ];
+    let probeCount = 0;
+    installBridge(() => Promise.resolve(verdicts[Math.min(probeCount++, verdicts.length - 1)]));
+    setSyncStatus(pullableSyncStatus({ syncEnabled: true, state: 'idle' }));
+    const panel = await renderResolved();
+
+    fireEvent.click(screen.getByTestId('share-receive-miss-pull-now'));
+    setSyncStatus(
+      pullableSyncStatus({
+        syncEnabled: true,
+        state: 'idle',
+        lastPullUtc: 'p1',
+        lastPullOutcome: 'succeeded',
+      }),
+    );
+
+    await waitFor(() => {
+      expect(panel.getAttribute('data-verdict')).toBe('deleted');
+    });
+    expect(probeCount).toBe(2);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(autoSyncWrites).toEqual([]);
   });
 });

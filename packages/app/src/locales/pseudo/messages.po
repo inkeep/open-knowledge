@@ -1113,6 +1113,10 @@ msgstr ""
 msgid "and more"
 msgstr ""
 
+#: src/components/share-receive-miss-content.tsx
+msgid "Another sync operation is in progress. Try again in a moment."
+msgstr ""
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "any"
 msgstr ""
@@ -2550,6 +2554,10 @@ msgstr ""
 msgid "Couldn't open the worktree. Try again."
 msgstr ""
 
+#: src/components/share-receive-miss-content.tsx
+msgid "Couldn't pull from GitHub. Check your connection and sign-in, then retry."
+msgstr ""
+
 #: src/components/ConnectingBanner.tsx
 msgid "Couldn't reach collab server — {errorDetail}. Try <0>ok status</0> or check <1>.ok/local/last-spawn-error.log</1>."
 msgstr ""
@@ -2657,6 +2665,10 @@ msgstr ""
 
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't start the agent thread — please try again."
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
+msgid "Couldn't start the sync. Check your connection, then retry."
 msgstr ""
 
 #. placeholder {0}: result.error
@@ -7113,8 +7125,17 @@ msgstr ""
 msgid "Pull"
 msgstr ""
 
+#: src/components/share-receive-miss-content.tsx
+msgid "Pull latest changes"
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Pulling"
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
+msgid "Pulling the latest changes"
 msgstr ""
 
 #: src/components/AutoSyncEnableWarning.tsx
@@ -8873,6 +8894,10 @@ msgstr ""
 msgid "Syncing"
 msgstr ""
 
+#: src/components/share-receive-miss-content.tsx
+msgid "Syncing your changes"
+msgstr ""
+
 #: src/components/TrashFailureModal.tsx
 msgid "System error"
 msgstr ""
@@ -10330,7 +10355,15 @@ msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
 msgstr ""
 
 #: src/components/share-receive-miss-content.tsx
+msgid "Your local copy is behind."
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
 msgid "Your local copy is behind. Pull the latest changes, then open the link again."
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
+msgid "Your local copy of branch <0>{branch}</0> is behind."
 msgstr ""
 
 #: src/components/share-receive-miss-content.tsx

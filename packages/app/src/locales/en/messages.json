@@ -125,6 +125,7 @@
     "1njn7W": ["Light"],
     "1nke1r": ["Open ", ["0"], " on GitHub (opens in a new tab)"],
     "1t_NnN": ["Reject"],
+    "1u-mAI": ["Couldn't start the sync. Check your connection, then retry."],
     "2-CeZn": [
       "Your report is saved on this Mac, so nothing was lost. You can email it to us instead."
     ],
@@ -1032,6 +1033,7 @@
       "No disconnected pages. Pages appear here only when they have no incoming and no outgoing graph edges."
     ],
     "JE21eh": ["Symlink to ", ["targetPath"]],
+    "JG_8KT": ["Couldn't pull from GitHub. Check your connection and sign-in, then retry."],
     "JHf6qZ": ["you@company.com"],
     "JJcBCm": [["0"], " total"],
     "JK-Ave": ["Hide thumbnails"],
@@ -1746,6 +1748,7 @@
     "XmJfZT": ["name"],
     "XnlF3W": ["Add the next matching source selection."],
     "XopE_I": ["Failed to parse backlinks error response (HTTP ", ["status"], ")"],
+    "Xp7Kq4": ["Another sync operation is in progress. Try again in a moment."],
     "XpIZmv": ["Fenced code block with monospace text."],
     "XqNHcm": ["Couldn't update skill targets: ", ["0"]],
     "XtRoxT": ["Page ", ["pageNumber"]],
@@ -2091,6 +2094,7 @@
     "dURmlQ": ["\"frontmatter\" is a reserved property name"],
     "dVaXnv": ["Content rules not yet loaded — try again in a moment"],
     "dXCi3J": ["Something broke"],
+    "dXOolp": ["Syncing your changes"],
     "dXWMFn": ["Removes this skill from your editors."],
     "dYCvMf": ["Couldn't resume this conversation: ", ["0"]],
     "darW93": [
@@ -2191,6 +2195,7 @@
     "fbdLmk": ["Toggle bold formatting."],
     "fbsiBw": ["Something went wrong starting the terminal."],
     "fcgvCA": ["Claude"],
+    "fevEu0": ["Pull latest changes"],
     "fiMNLl": ["Sync settings not yet loaded — try again in a moment"],
     "fj5YiP": ["Downloads a fresh copy from GitHub."],
     "fnlBN4": ["Auto-approve settings not yet loaded — try again in a moment"],
@@ -2242,6 +2247,7 @@
     "gh27t1": ["Link previews"],
     "gijbne": ["Failed to rename path"],
     "gk_-qj": ["Couldn't rename template: ", ["0"]],
+    "glG1TR": ["Pulling the latest changes"],
     "gljvbT": [["words", "plural", { "one": ["word"], "other": ["words"] }]],
     "glzsS_": ["Pan right"],
     "gmJ0An": ["Failed to open folder."],
@@ -2252,6 +2258,7 @@
     "gvApb7": [
       "Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later."
     ],
+    "gwEcOD": ["Your local copy is behind."],
     "gwykHF": ["This doc hasn't synced to GitHub yet. The link will work after the next sync."],
     "h-AdvS": ["The folders and templates are already here, so there's nothing to add."],
     "h06R3C": ["No pages are missing outgoing graph links."],
@@ -3070,6 +3077,7 @@
     "wndeIl": ["Project-level pages with neither incoming nor outgoing graph edges."],
     "ws5o1F": ["Checked by: ", ["0"]],
     "wtcxiD": ["Share this setup with your team?"],
+    "wvK7Ay": ["Your local copy of branch <0>", ["branch"], "</0> is behind."],
     "wvbc1r": ["Couldn't open document"],
     "wzq9Rv": [
       "A branch with that name already exists. Open its worktree from the switcher instead."

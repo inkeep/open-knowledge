@@ -73,6 +73,10 @@ export function ShareReceiveMissPanel({ nav }: { nav: PendingReceiveNav }) {
         // A landed Sync now push changes the verdict — re-probe so the panel
         // pivots to the honest cell rather than keeping stale copy.
         onSyncCompleted={refetch}
+        // A landed pull needs no navigation here: the target is already the
+        // active one, so `EditorArea` swaps this panel for the editor as soon as
+        // the doc materializes. Re-probe for the case where it did not.
+        onPullApplied={refetch}
       />
     </div>
   );

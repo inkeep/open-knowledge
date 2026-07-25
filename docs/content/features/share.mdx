@@ -58,11 +58,13 @@ If you have the repo open locally but on a different branch, the app opens a bra
 
 If uncommitted changes conflict with the switch, switching is disabled until you commit or stash them; if the share's branch is already checked out in another worktree, the dialog offers to open that worktree instead.
 
-If OpenKnowledge can't reach GitHub to make this call, the dialog falls back to the plain switch; the "pull the latest changes, then open the link again" guidance appears only if the target is still missing after the switch.
+If OpenKnowledge can't reach GitHub to make this call, the dialog falls back to the plain switch.
 
-### When the shared target has moved or been removed
+### When the shared target is not on your local copy
 
-Even on the right branch, a doc or folder can be renamed or deleted after a link is minted. Rather than opening an empty editor at the old path — where you could unknowingly start a divergent copy — OpenKnowledge shows a dialog before navigating (or an in-tab panel, if the miss is only discovered after a tab opens) with the same verdict-driven copy as the branch-switch dialog: an offer to open a renamed target at its new path, a plain "removed from this branch" message with a link back to the parent folder, or "not pushed yet" when the path never existed. A target you moved, renamed, or deleted in your own local copy gets a fourth verdict: commit your changes or enable auto-sync. If the check can't reach GitHub, it falls back to the usual pull-and-retry guidance.
+Even on the right branch, a shared target (file or folder) can be renamed or deleted after a link is minted. In this case, OpenKnowledge offers to open the renamed target at its new path, a plain "removed from this branch" message with a link back to the parent folder, or "not pushed yet" when the path never existed.
+If the target was moved, renamed, or deleted in your own local copy, OpenKnowledge tells you to commit your changes manually or enable auto-sync.
+If the target is on GitHub but hasn't reached your local copy yet, OpenKnowledge alerts you that your local copy is behind. The **Pull latest changes** button on this message fetches from GitHub and fast-forwards your copy in place. It only ever pulls: nothing is committed or pushed on your behalf, and your uncommitted edits ride on top of what comes in. If the pull can't run — another sync operation is already in flight, or GitHub is unreachable — the reason appears under the message and the button stays available to retry.
 
 ### Receiving without push permission
 

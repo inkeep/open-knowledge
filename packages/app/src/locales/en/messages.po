@@ -1117,6 +1117,10 @@ msgstr "and {remaining} more"
 msgid "and more"
 msgstr "and more"
 
+#: src/components/share-receive-miss-content.tsx
+msgid "Another sync operation is in progress. Try again in a moment."
+msgstr "Another sync operation is in progress. Try again in a moment."
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "any"
 msgstr "any"
@@ -2554,6 +2558,10 @@ msgstr "Couldn't open the terminal — please try again."
 msgid "Couldn't open the worktree. Try again."
 msgstr "Couldn't open the worktree. Try again."
 
+#: src/components/share-receive-miss-content.tsx
+msgid "Couldn't pull from GitHub. Check your connection and sign-in, then retry."
+msgstr "Couldn't pull from GitHub. Check your connection and sign-in, then retry."
+
 #: src/components/ConnectingBanner.tsx
 msgid "Couldn't reach collab server — {errorDetail}. Try <0>ok status</0> or check <1>.ok/local/last-spawn-error.log</1>."
 msgstr "Couldn't reach collab server — {errorDetail}. Try <0>ok status</0> or check <1>.ok/local/last-spawn-error.log</1>."
@@ -2662,6 +2670,10 @@ msgstr "Couldn't share skills: internal error. Please restart the app."
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't start the agent thread — please try again."
 msgstr "Couldn't start the agent thread — please try again."
+
+#: src/components/share-receive-miss-content.tsx
+msgid "Couldn't start the sync. Check your connection, then retry."
+msgstr "Couldn't start the sync. Check your connection, then retry."
 
 #. placeholder {0}: result.error
 #: src/components/skill-actions.tsx
@@ -7117,9 +7129,18 @@ msgstr "Publishing..."
 msgid "Pull"
 msgstr "Pull"
 
+#: src/components/share-receive-miss-content.tsx
+msgid "Pull latest changes"
+msgstr "Pull latest changes"
+
+#: src/components/share-receive-miss-content.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Pulling"
 msgstr "Pulling"
+
+#: src/components/share-receive-miss-content.tsx
+msgid "Pulling the latest changes"
+msgstr "Pulling the latest changes"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Pulls may overwrite uncommitted edits in your local files."
@@ -8877,6 +8898,10 @@ msgstr "Synced. The link is up to date."
 msgid "Syncing"
 msgstr "Syncing"
 
+#: src/components/share-receive-miss-content.tsx
+msgid "Syncing your changes"
+msgstr "Syncing your changes"
+
 #: src/components/TrashFailureModal.tsx
 msgid "System error"
 msgstr "System error"
@@ -10334,8 +10359,16 @@ msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
 msgstr "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
 
 #: src/components/share-receive-miss-content.tsx
+msgid "Your local copy is behind."
+msgstr "Your local copy is behind."
+
+#: src/components/share-receive-miss-content.tsx
 msgid "Your local copy is behind. Pull the latest changes, then open the link again."
 msgstr "Your local copy is behind. Pull the latest changes, then open the link again."
+
+#: src/components/share-receive-miss-content.tsx
+msgid "Your local copy of branch <0>{branch}</0> is behind."
+msgstr "Your local copy of branch <0>{branch}</0> is behind."
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Your local copy of branch <0>{branch}</0> is behind. Pull the latest changes, then open the link again."

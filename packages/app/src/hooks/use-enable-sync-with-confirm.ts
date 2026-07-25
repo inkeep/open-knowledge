@@ -211,10 +211,18 @@ interface UseSyncModeSelectionResult {
  * `currentMode` is the resolved per-machine mode; the caller renders
  * `<EnableSyncConfirmDialog variant={pendingMode ?? 'full'} ...>` with the
  * returned props.
+ *
+ * `opts.onApplied` (optional) fires once per SUCCESSFUL write, with the mode
+ * that landed, so a host surface can chain a follow-up on the same click (e.g.
+ * the share-receive miss surface's post-pull follow offer resolving its consent
+ * gate — closing the offer and opening the target — once Follow is confirmed).
+ * It never fires on a failed write. Mirrors `opts.onEnabled` on the boolean
+ * sibling {@link useEnableSyncWithConfirm}.
  */
 export function useSyncModeSelection(
   writer: SyncModeWriter | null,
   currentMode: SyncMode,
+  opts?: { onApplied?: (mode: SyncMode) => void },
 ): UseSyncModeSelectionResult {
   const { t } = useLingui();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -232,6 +240,9 @@ export function useSyncModeSelection(
       toast.error(t`Failed to update sync mode — ${detail}`);
       return false;
     }
+    // Success-only notify, fired from the single write choke point so both
+    // directions (immediate 'off', confirmed enable) report exactly once.
+    opts?.onApplied?.(next);
     return true;
   }
 

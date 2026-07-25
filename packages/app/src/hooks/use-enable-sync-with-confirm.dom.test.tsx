@@ -92,12 +92,18 @@ let latestModeSelection: ModeSelectionState | null = null;
 function ModeSelectionProbe({
   writer,
   currentMode,
+  onApplied,
 }: {
   writer: ModeWriter;
   currentMode: SyncMode;
+  onApplied?: (mode: SyncMode) => void;
 }) {
   if (!hooks) throw new Error('hooks not loaded');
-  latestModeSelection = hooks.useSyncModeSelection(writer, currentMode);
+  latestModeSelection = hooks.useSyncModeSelection(
+    writer,
+    currentMode,
+    onApplied ? { onApplied } : undefined,
+  );
   return (
     <div data-testid="mode-selection">
       {String(latestModeSelection.confirmOpen)}:{String(latestModeSelection.pendingMode)}
@@ -502,5 +508,90 @@ describe('useSyncModeSelection runtime behavior', () => {
 
     expect(screen.getByTestId('mode-selection').textContent).toBe('true:full');
     expect(toastErrors).toEqual(['Failed to update sync mode — branch is protected']);
+  });
+
+  test('fires opts.onApplied with the confirmed mode after a successful write', async () => {
+    await loadHooks();
+    const applied: SyncMode[] = [];
+    const writer: ModeWriter = () => ({ ok: true });
+    render(
+      <ModeSelectionProbe
+        writer={writer}
+        currentMode="off"
+        onApplied={(mode) => applied.push(mode)}
+      />,
+    );
+
+    await act(async () => {
+      latestModeSelection?.onModeSelect('follow');
+    });
+    expect(applied).toEqual([]); // not until the user confirms
+
+    await act(async () => {
+      latestModeSelection?.onConfirm();
+    });
+    expect(applied).toEqual(['follow']);
+  });
+
+  test('fires opts.onApplied for the unconfirmed off direction too', async () => {
+    await loadHooks();
+    const applied: SyncMode[] = [];
+    const writer: ModeWriter = () => ({ ok: true });
+    render(
+      <ModeSelectionProbe
+        writer={writer}
+        currentMode="full"
+        onApplied={(mode) => applied.push(mode)}
+      />,
+    );
+
+    await act(async () => {
+      latestModeSelection?.onModeSelect('off');
+    });
+
+    expect(applied).toEqual(['off']);
+  });
+
+  test('does not fire opts.onApplied when the mode write fails', async () => {
+    await loadHooks();
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const applied: SyncMode[] = [];
+    const writer: ModeWriter = () => ({ ok: false, error: 'branch is protected' });
+    render(
+      <ModeSelectionProbe
+        writer={writer}
+        currentMode="off"
+        onApplied={(mode) => applied.push(mode)}
+      />,
+    );
+
+    await act(async () => {
+      latestModeSelection?.onModeSelect('follow');
+    });
+    await act(async () => {
+      latestModeSelection?.onConfirm();
+    });
+
+    expect(applied).toEqual([]);
+    expect(toastErrors).toEqual(['Failed to update sync mode — branch is protected']);
+  });
+
+  test('does not fire opts.onApplied when no writer has mounted yet', async () => {
+    await loadHooks();
+    const applied: SyncMode[] = [];
+    render(
+      <ModeSelectionProbe
+        writer={null}
+        currentMode="full"
+        onApplied={(mode) => applied.push(mode)}
+      />,
+    );
+
+    await act(async () => {
+      latestModeSelection?.onModeSelect('off');
+    });
+
+    expect(applied).toEqual([]);
+    expect(toastErrors).toEqual(['Sync settings not yet loaded — try again in a moment']);
   });
 });
