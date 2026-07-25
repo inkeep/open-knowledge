@@ -8,8 +8,8 @@
  *   - `claude-cowork` — written by `buildAndOpenSkill` (server HTTP path) and
  *     `handleBuildAndOpen` (desktop Electron bridge). Read by the renderer's
  *     install gate before triggering a fresh `.skill` rebuild.
- *   - `cli-hosts`     — written by `installUserSkill` after a successful
- *     `npx skills add --agent '*' -g` subprocess. Replaces the legacy
+ *   - `cli-hosts`     — written by `installUserSkill` after it copies the
+ *     user-global bundle into the detected agent hosts. Replaces the legacy
  *     `~/.ok/skill-installed-version` file (migrated on first encounter).
  *
  * `recordedAt` is in-band: the YAML's own mtime is no longer authoritative.

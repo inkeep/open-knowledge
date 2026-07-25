@@ -137,20 +137,15 @@ The **Install for Claude Chat & Cowork** command (command palette or Help menu) 
 
 ### Installing the package
 
-Installing `@inkeep/open-knowledge` from npm (or invoking it with `npx`) drops the two CLI binaries plus a bundled native addon, and runs a `postinstall` step that registers a small "discovery" skill so the AI editors on your machine know OpenKnowledge exists.
+Installing `@inkeep/open-knowledge` from npm (or invoking it with `npx`) drops the two CLI binaries plus a bundled native addon. **Nothing is written to your home directory at install time** — no lifecycle scripts run, and no skills are registered until you run `ok init`.
 
 | Path | What it is | Scope |
 | --- | --- | --- |
 | `ok`, `open-knowledge` (on your `PATH`) | The two CLI binaries (identical entry point) | Outside-project (npm global/bin) |
 | `<pkg>/dist/native/` | Bundled native TOML-editing addon, shipped inside the package | Outside-project (package dir) |
-| `~/.agents/skills/open-knowledge-discovery/` | The **discovery skill** — a short instruction file that teaches any agent host how to find and initialize OpenKnowledge. Installed via `npx skills add … --agent '*' -g` | Outside-project (home dir) |
-| `~/.ok/skill-state.yml` | Records which skill version is installed, so the step is skipped next time | Outside-project (home dir) |
-| `~/.ok/skill-install-events.jsonl` | Append-only local log of skill-install attempts | Outside-project (home dir) |
-
-The `postinstall` step is **non-fatal** (install always succeeds even if it fails) and **version-gated** (it does nothing if the current version is already installed). It installs the discovery skill for every detected agent host: the shared `~/.agents/skills/` directory and each detected editor's user-level skills folder (`~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`). The only network access is npm fetching the `skills` helper.
 
 <Callout type="info" title="Opt out">
-  Install with `npm install --ignore-scripts` to skip the `postinstall` skill step entirely. You can always add the skills later from `ok init`.
+  Installing the package writes nothing outside its own directory, so there is nothing to opt out of here. The user-global skills are installed by `ok init`, and `ok init --no-skills` declines them.
 </Callout>
 
 ### `ok init`
@@ -182,6 +177,20 @@ With `--scope user` or `both` (the default), `ok init` also registers the `open-
 | `~/.gemini/config/mcp_config.json` | Antigravity (only when `~/.gemini/` exists) — shared by the IDE and the `agy` CLI | Outside-project (editor config) |
 | `~/.lmstudio/mcp.json` | LM Studio (only when installed; also checks `~/.cache/lm-studio/mcp.json`) | Outside-project (editor config) |
 | `~/.hermes/config.yaml` | Hermes (only when `~/.hermes/` exists) | Outside-project (editor config) |
+
+`ok init` also installs the user-global **discovery skill** — a short instruction file that teaches an agent host how to find and initialize OpenKnowledge — so it is available in every project. It is written **only** into the skills directories of agent hosts already present in your home directory, plus the shared `~/.agents/skills/` hub those hosts read. If none of them is present, nothing is written at all.
+
+| Path | What it is | Scope |
+| --- | --- | --- |
+| `~/.agents/skills/open-knowledge-*/` | Shared hub read natively by Codex, OpenCode, and Cursor | Outside-project (home dir) |
+| `~/.claude/skills/open-knowledge-*/` | Written only when `~/.claude/` already exists | Outside-project (home dir) |
+| `~/.cursor/skills/open-knowledge-*/` | Written only when `~/.cursor/` already exists | Outside-project (home dir) |
+| `~/.codex/skills/open-knowledge-*/` | Written only when `~/.codex/` already exists | Outside-project (home dir) |
+| `~/.opencode/skills/open-knowledge-*/` | Written only when `~/.opencode/` already exists | Outside-project (home dir) |
+| `~/.ok/skill-state.yml` | Records which skill version is installed, so the step is skipped next time | Outside-project (home dir) |
+| `~/.ok/skill-install-events.jsonl` | Append-only local log of skill-install attempts | Outside-project (home dir) |
+
+The install is **non-fatal** (`ok init` still exits 0 if it fails), **version-gated** (a no-op when the current version is already installed), and needs **no network access**. Decline it with `ok init --no-skills`, or choose individual bundles with `--skills <ids>`; the decision is remembered in `~/.ok/skill-state.yml` and honored by every later install path. `ok repair-skills` re-runs it.
 
 Pi is the exception: it has no user-level MCP config (it has no MCP support at all), so its integration is only ever the project-scoped bridge extension above.
 

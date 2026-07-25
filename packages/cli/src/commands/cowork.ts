@@ -19,9 +19,9 @@
  *   4. User completes the manual upload inside the Claude Desktop App:
  *      Customize → Skills → + → Create skill → Upload skill → pick file.
  *
- * Why this exists: `ok init` installs the skill into Claude via `npx skills
- * add`, but that flow doesn't reach Claude Chat or Cowork modes (they read from
- * a separate, isolated Skills list inside the Claude Desktop App).
+ * Why this exists: `ok init` installs the skill into Claude's user-global
+ * skills dir, but that flow doesn't reach Claude Chat or Cowork modes (they
+ * read from a separate, isolated Skills list inside the Claude Desktop App).
  *
  * The underlying `buildAndOpenSkill` lives in `@inkeep/open-knowledge-server`
  * (alongside `buildSkillZip`). The `POST /api/install-skill` endpoint and the

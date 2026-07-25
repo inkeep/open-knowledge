@@ -123,6 +123,22 @@
       "plugins": ["./biome-plugins/require-windowshide-on-spawn.grit"]
     },
     {
+      // Scope discipline for user-global Agent Skill installs (issue #820).
+      // OK writes these dirs itself, gated on `detectUserSkillHosts`; shelling
+      // out to the `skills` CLI with `--agent '*'` bypasses host detection and
+      // creates config dirs for tools the user never installed. Scoped to
+      // server + cli (where the user-global install lives). Tests are NOT
+      // excluded — a test reintroducing the invocation is as load-bearing as
+      // production code, and the suite asserts through the filesystem, never
+      // through argv.
+      "includes": [
+        "packages/server/src/**/*.ts",
+        "packages/cli/src/**/*.ts",
+        "biome-plugins/__fixtures__/no-blind-agent-host-fanout.fixture.tsx"
+      ],
+      "plugins": ["./biome-plugins/no-blind-agent-host-fanout.grit"]
+    },
+    {
       // One-shot `expect(await locator.count())` reads never retry and are
       // the canonical hidden-flake assertion shape (2026-06 e2e audit).
       // Scoped to the browser e2e suites (all three dirs the e2e-stop-rules

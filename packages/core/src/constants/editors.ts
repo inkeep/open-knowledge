@@ -82,9 +82,10 @@ export const EDITOR_LABELS = {
  * broadcasting into a shared dir.
  *
  * The asymmetry with USER/global scope is deliberate: `~/.agents/skills` IS the
- * right hub there, because the `skills` CLI fans the bundled discovery skill out
- * from it via `--agent '*'` (see `skill-install.ts`) — a shared convergence
- * point that exists globally but has no per-project equivalent.
+ * right hub there — several hosts (Codex, OpenCode, Cursor) read it natively at
+ * user scope, so it is a real convergence point with no per-project equivalent.
+ * The user-global writer (`installUserSkill`) writes it ALONGSIDE the per-host
+ * dirs of detected hosts, and only when at least one host is detected.
  *
  * The CLI's `EDITOR_TARGETS.projectSkillPath` is a second source for the same
  * map and must move in lock-step.

@@ -1,0 +1,23 @@
+---
+"@inkeep/open-knowledge": patch
+---
+
+The user-global Agent Skill now installs only into agent hosts you actually have, and nothing is written when you have none.
+
+Previously `ok init` shelled out to `npx -y skills@~1.5.0 add … --agent '*' -g -y --copy`. The `--agent '*'` flag makes that CLI skip its own host detection and write into every host in its registry, so a single `ok init` created 110 directories across 54 tool-config homes in a real `$HOME` — 51 of them for tools that had never been installed, including `.zencoder`, `.terramind`, `.rovodev`, `.snowflake/cortex` and `.tabnine/agent`. Because OK's user-global skills are behavioural instructions autonomous software reads and acts on, that is a scope-of-consent problem, not cosmetic clutter. Neither `--no-mcp` nor `--local-only` suppressed it, and `OK_RECLAIM_DISABLE` / `OK_SKILL_MANAGE` gate a different code path, so there was no way to narrow it short of the undiscoverable `--no-skills`.
+
+The install no longer runs a subprocess at all. OK copies the bundle itself into the skills directory of each detected host — the same `detectPath` probe `ok init` already uses to decide which editors get MCP wiring — plus the shared `~/.agents/skills/` hub those hosts read natively. With no host detected it writes nothing, not even the hub. Nothing about the dependency was load-bearing: OK passed a local path, forced `--copy`, and that CLI writes no lockfile or state at global scope, so it contributed a directory table OK already maintains in core for project scope. Dropping it also removes a floating-range `npx -y` fetch-and-execute at init time and third-party install telemetry (`add-skill.vercel.sh`) that OK never opted out of, and makes the install work where `npx` isn't on `PATH`.
+
+Coverage narrows from that CLI's ~75 hosts to the ones OK supports and tests — Claude Code, Cursor, Codex, and OpenCode — which is the same set `ok init` already wires MCP for.
+
+`ok repair-skills` now also cleans up after the old behaviour. It removes OK's own `open-knowledge*` skill directories from the agent homes a pre-0.42 fan-out reached but OK never supported, and then removes those agent homes themselves when OK's skill was the only thing in them — otherwise the fix would leave ~47 empty directories behind and a home-directory diff would look much as it did before. On a home left by the old build that is 54 top-level entries down to 9.
+
+The prune is not conditional on there being a skill to delete: a machine swept by an interim build has the skills already gone and only empty `~/.<host>/skills/` husks left, and keying the walk off a fresh deletion would make those unreachable forever. `ok repair-skills` removes them on their own.
+
+Deleting from `$HOME` is exactly what issue #820 was about, so the cleanup asks first. It prints every path it would remove, says plainly that each agent home is going because it holds nothing once OK's skill is gone, and waits for confirmation; a bare Enter declines. `--yes` skips the prompt, and a non-interactive run without it declines rather than deleting unattended. It is deliberately **not** wired into `ok init`.
+
+It also refuses to descend through a symlink: agent hosts commonly symlink their `skills/` dir at the shared `~/.agents/skills` hub, and following one could delete a live install — or a user directory — through the link, so any symlinked ancestor disqualifies that host entirely. `applyLegacyFanoutSweep` re-derives the set of paths it is allowed to touch and aborts without deleting anything if handed one outside it, and both entry points reject a non-absolute home (an empty one would silently retarget the sweep at the process's working directory).
+
+Three further bounds keep it conservative: only directories named in a frozen list of the agent homes that one shipped version wrote to (never a path discovered by walking the filesystem), only directories that are empty afterwards — a tool you actually use keeps its folder, and the removal goes through `rmdir`, which refuses a non-empty directory even if something appears between the prompt and the delete — and never a shared root, so `~/.config/goose` goes while `~/.config` stays.
+
+The `ok init` summary now names the hosts it wrote to (`installed for Claude, Cursor`) instead of claiming `installed to detected agent hosts` while detection had been bypassed, reports when no host was found, and points failures at `ok repair-skills` rather than a manual `npx` command. The `@inkeep/open-knowledge` package no longer declares a `postinstall` script; it never worked (the symbol it imported was never exported from the published bundle) and would have fanned out with no consent gate had it been repaired.

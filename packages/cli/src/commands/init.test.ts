@@ -104,9 +104,9 @@ describe('runInit', () => {
     },
   });
   /**
-   * Stubbed installUserSkill used by every test unless overridden. Prevents
-   * the real `npx skills` subprocess from firing in the test suite, keeping
-   * runs hermetic + fast.
+   * Stubbed installUserSkill used by every test unless overridden. Keeps the
+   * real installer from copying bundles into the runner's `$HOME`, so runs
+   * stay hermetic + fast.
    */
   const defaultInstallUserSkill = async () => 'installed' as const;
   const runInitForTest = async (options: Parameters<typeof runInit>[0] = {}) =>
@@ -916,7 +916,7 @@ describe('runInit', () => {
       const beforeClaude = readFileSync(claudePath, 'utf-8');
       const beforeAgents = readFileSync(agentsPath, 'utf-8');
 
-      // Run init with a no-op skill install so we don't shell out to `npx skills`.
+      // Run init with a no-op skill install so nothing touches the real $HOME.
       await runInitForTest({ installUserSkill: async () => 'skip-current' });
 
       // Byte-identical pre/post — the new init code does NOT touch legacy injections.
@@ -937,7 +937,33 @@ describe('runInit', () => {
       expect(result.skillInstall).toBe('installed');
       const output = formatInitResult(result, testDir);
       expect(output).toContain('User-global skill:');
-      expect(output).toContain('installed to detected agent hosts');
+      // The summary must name real targets. It previously claimed "detected
+      // agent hosts" while the install had bypassed detection entirely and
+      // written into ~75 tool dirs (issue #820) — an install summary must never
+      // assert more scope discipline than the install actually applied.
+      expect(output).toContain('installed for');
+      expect(output).not.toContain('detected agent hosts');
+    });
+
+    it('reports the hosts actually written, never an unverified claim (issue #820)', async () => {
+      // `.claude` is the only host dotdir staged under the fake home, so the
+      // summary must name Claude and nothing else.
+      mkdirSync(join(fakeHome, '.claude'), { recursive: true });
+      const result = await runInitForTest({
+        installUserSkill: async () => 'installed',
+      });
+      expect(result.skillHosts).toEqual(['claude']);
+      expect(formatInitResult(result, testDir)).toContain('installed for Claude');
+    });
+
+    it('returns skillInstall = "no-hosts" when no agent host is present', async () => {
+      const result = await runInitForTest({
+        installUserSkill: async () => 'no-hosts',
+      });
+      expect(result.skillInstall).toBe('no-hosts');
+      expect(result.skillHosts).toEqual([]);
+      const output = formatInitResult(result, testDir);
+      expect(output).toContain('no supported agent host detected');
     });
 
     it('returns skillInstall = "skip-current" when the sidecar is current', async () => {
@@ -960,7 +986,10 @@ describe('runInit', () => {
       // Manual-install hint surfaces in the summary
       const output = formatInitResult(result, testDir);
       expect(output).toContain('install failed');
-      expect(output).toContain('npx skills');
+      // Recovery is OK's own command — the hint no longer points at a
+      // third-party CLI OK doesn't invoke (issue #820).
+      expect(output).toContain('ok repair-skills');
+      expect(output).not.toContain('npx skills');
     });
 
     it('passes opts.home through to installUserSkill (D15)', async () => {
@@ -1154,11 +1183,10 @@ describe('runInit', () => {
   describe('ensureProjectGit wiring (US-005)', () => {
     it('fresh tmpdir (no .git/) → runInit creates .git/ and reports didGitInit=true', async () => {
       // Use runInitForTest (defaultInstallUserSkill stub) — the real
-      // installUserSkill shells out to `npx skills@~1.5.0 add` which
-      // intermittently fails in CI sandboxes (subprocess returns nonzero
-      // with empty stderr; exit code null) and times out the 5s budget.
-      // The git-init wiring under test is independent of skill install,
-      // so the hermetic stub is the right scope.
+      // installUserSkill copies the bundle into every detected agent host
+      // under `$HOME`, which this test has no reason to touch. The git-init
+      // wiring under test is independent of skill install, so the hermetic
+      // stub is the right scope.
       const result = await runInitForTest({ editors: ['claude'] });
 
       expect(result.didGitInit).toBe(true);

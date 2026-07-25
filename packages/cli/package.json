@@ -40,7 +40,6 @@
     "build:schema": "node --import tsx --conditions=development scripts/build-config-schema.mjs",
     "build:assets": "pnpm run build:app && pnpm run build:skill-asset && pnpm run build:notices && pnpm run build:license && pnpm run build:native && pnpm run build:schema",
     "build": "pnpm run build:cli && pnpm run build:assets",
-    "postinstall": "node scripts/postinstall.mjs",
     "test": "pnpm run build:schema && vitest run",
     "test:e2e:cli": "vitest run --config vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit",

@@ -1,0 +1,59 @@
+// no-blind-agent-host-fanout — user-global skill installs must be detection-gated.
+//
+// OK's user-global Agent Skills are behavioural instructions autonomous software
+// reads and acts on. Writing them into a tool's config dir is a scope-of-consent
+// decision, so it is allowed ONLY for hosts detected on disk.
+//
+// The regression this prevents (issue #820): `installUserSkill` shelled out to
+//
+//   npx -y skills@~1.5.0 add <dir> --agent '*' -g -y --copy
+//
+// `--agent '*'` makes that CLI skip its own host detection and target every host
+// in its registry (~75 and growing). One `ok init` created 110 directories across
+// 54 tool-config homes in a real `$HOME`; 51 of those tools were never installed.
+// The invocation shipped in v0.3.0 and survived 15 months because the spec's own
+// open question about `--agent '*'`'s behavior (Q10) was never closed, while the
+// code's doc comment and the terminal summary both asserted the OPPOSITE — that
+// OK had detected the user's hosts.
+//
+// The rule bans the ingredients rather than the assembled command line, because
+// the argv is built as an array of literals that no single node spans:
+//   - any `skills@…` npm spec — OK writes user-global skills itself now
+//     (`installUserSkill` in `packages/server/src/skill-install.ts`), gated on
+//     `detectUserSkillHosts`. There is no supported reason to re-introduce the
+//     subprocess; it also cost a floating-range fetch-and-execute at init time
+//     and third-party telemetry OK never opted out of.
+//   - a bare `'--agent'` argv token — the flag only exists to address that CLI,
+//     and `'*'` is the value that caused the incident.
+//
+// Scoped via `overrides[].plugins` to `packages/{server,cli}/src/**` — where the
+// user-global install lives. Tests are NOT excluded: a test that reintroduces the
+// invocation is exactly as load-bearing as production code here, and the suite
+// asserts the writer's behavior through the filesystem, never through argv.
+//
+// Does NOT catch (documented honestly): a spec string assembled by concatenation
+// or interpolation (`'skills@' + range`), or the flag reaching a subprocess via a
+// variable. Both are defeatable-on-purpose, not accidental reintroductions; the
+// filesystem assertions in `skill-install.test.ts` ("never creates a dotdir for a
+// host that is not installed") are the behavioural backstop.
+//
+// If a future host genuinely needs a different install mechanism, add it to
+// `HOSTS_WITH_USER_SKILL_DIR` in `packages/core/src/constants/editors.ts` and let
+// the detection gate cover it — do not suppress this rule.
+//
+// See PRECEDENTS.md #42 (custom Biome enforcement is GritQL plugins).
+
+language js
+
+or {
+    `'skills@~1.5.0'` as $lit,
+    `'skills@^1.5.0'` as $lit,
+    `'skills@1.5.0'` as $lit,
+    `'skills@latest'` as $lit,
+    `'--agent'` as $lit
+} where {
+    register_diagnostic(
+        span = $lit,
+        message = "User-global skill installs must be gated on detected hosts, not fanned out via the `skills` CLI's `--agent '*'`. OK writes these dirs itself — use `installUserSkill` / `detectUserSkillHosts` from @inkeep/open-knowledge-server, whose host set comes from core's `HOSTS_WITH_USER_SKILL_DIR`. `--agent '*'` bypasses host detection and creates config dirs for tools the user never installed (issue #820: 51 such dirs from one `ok init`). See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-blind-agent-host-fanoutgrit"
+    )
+}

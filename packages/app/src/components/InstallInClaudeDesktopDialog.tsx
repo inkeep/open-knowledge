@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
  * `InstallInClaudeDesktopDialog` — concierge for installing the Open
  * Knowledge skill for **Claude Chat & Cowork** inside the **Claude Desktop
  * App**. Distinct from Claude (CLI / Code tab) which is already covered
- * by `ok init`'s `npx skills add` flow.
+ * by `ok init`'s user-global skill install.
  *
  * Runtime branches on `'okDesktop' in window`:
  *   - Electron: calls `window.okDesktop.skill.buildAndOpen()` — main process

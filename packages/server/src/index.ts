@@ -518,6 +518,8 @@ export {
   type BuildAndOpenSkillResult,
   type BuildAndOpenSkillStatus,
   buildAndOpenSkill,
+  type DetectedSkillHost,
+  detectUserSkillHosts,
   type InstallUserSkillOptions,
   type InstallUserSkillResult,
   installUserSkill,

@@ -1,14 +1,16 @@
 import { type SpawnOptions, spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { homedir, platform as osPlatform } from 'node:os';
-import { dirname, join, resolve as resolvePath } from 'node:path';
+import { dirname, isAbsolute, join, resolve as resolvePath } from 'node:path';
+import { type EditorId, HOSTS_WITH_USER_SKILL_DIR } from '@inkeep/open-knowledge-core';
 import {
   type BuildSkillZipResult,
   buildSkillZip,
   resolveBundledSkillDir,
 } from './build-skill-zip.ts';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
-import { tracedMkdir } from './fs-traced.ts';
+import { tracedCpSync, tracedMkdir, tracedMkdirSync, tracedRmSync } from './fs-traced.ts';
 import { getLogger } from './logger.ts';
 import { BUNDLE_SKILL_NAME, type BundleId } from './skill-bundles.ts';
 import { recordSkillInstallEvent, type SkillInstallEventOutcome } from './skill-install-events.ts';
@@ -44,24 +46,13 @@ export type SpawnLike = (
 export interface InstallUserSkillOptions {
   /**
    * Override `$HOME`. The per-target install-state lives in
-   * `${home}/.ok/skill-state.yml` under target key `cli-hosts`.
-   * `HOME` env var is also overridden for the `npx skills` subprocess so it
-   * writes per-host skill copies under the overridden home. Tests pass a tmpdir
-   * here.
+   * `${home}/.ok/skill-state.yml` under target key `cli-hosts`; the skill
+   * copies land under `${home}/.agents/skills/` and `${home}/.<host>/skills/`.
+   * Tests pass a tmpdir here.
    */
   home?: string;
   /** Optional logger. Falls back to `console.warn` / `console.info`. */
   logger?: SkillInstallLogger;
-  /**
-   * Inject a `spawn`-like function for unit tests. Defaults to `node:child_process#spawn`.
-   * Production callers never pass this.
-   */
-  spawn?: SpawnLike;
-  /**
-   * Subprocess timeout in milliseconds. Defaults to 60_000 (60 s). Tests
-   * may lower this for faster coverage.
-   */
-  timeoutMs?: number;
   /**
    * Install-source attribution recorded on the per-target YAML entry.
    * Defaults to `'cli-npx-skills-add'` for the CLI / `ok init` path. The
@@ -70,13 +61,6 @@ export interface InstallUserSkillOptions {
    * distinguish it from a user-typed `ok init`.
    */
   surface?: SkillStateSurface;
-  /**
-   * Override the detected platform. Defaults to `process.platform`. On
-   * `'win32'` the `npx` subprocess is spawned with `shell:true` (see
-   * `runSpawn`). Tests inject `'win32'` to assert the `.cmd` shim path without
-   * a real Windows host.
-   */
-  platform?: NodeJS.Platform;
   /**
    * Which user-global bundle to install. Defaults to `'discovery'` so existing
    * callers (and the `ok init` discovery leg) are unchanged; `ok init` calls
@@ -96,7 +80,7 @@ export interface InstallUserSkillOptions {
   force?: boolean;
 }
 
-export type InstallUserSkillResult = 'installed' | 'skip-current' | 'failed';
+export type InstallUserSkillResult = 'installed' | 'skip-current' | 'failed' | 'no-hosts';
 
 /**
  * Pre-split user-global skill name. The legacy migration removes any install
@@ -107,19 +91,37 @@ export type InstallUserSkillResult = 'installed' | 'skip-current' | 'failed';
 const LEGACY_USER_SKILL_NAME = 'open-knowledge';
 
 /**
- * Host dirs that may carry a pre-split `open-knowledge` user-global skill —
- * the `--copy`-mode install targets. Mirrors the desktop reclaim's host set.
+ * Vendor-neutral central store. Written only when at least one host is
+ * detected — it is a convergence point FOR installed hosts (Codex, OpenCode,
+ * Cursor read it natively), not a destination in its own right, so a machine
+ * with no agent host gets nothing at all.
  */
-const LEGACY_USER_SKILL_HOST_DIRS = ['.claude', '.cursor', '.agents'] as const;
-
-/** Pinned patch-range for the `skills` CLI. */
-const SKILLS_CLI_SPEC = 'skills@~1.5.0';
-
-/** Subprocess timeout default. */
-const DEFAULT_TIMEOUT_MS = 60_000;
+const CENTRAL_HOST_DIR = '.agents';
 
 function centralSkillDir(home: string, bundleName: string): string {
-  return join(home, '.agents', 'skills', bundleName);
+  return join(home, CENTRAL_HOST_DIR, 'skills', bundleName);
+}
+
+/** A user-global skill destination: the central store, or one detected host. */
+export interface DetectedSkillHost {
+  /** Home-relative dotdir whose presence means the host is installed. */
+  readonly hostDir: string;
+  readonly editorId: EditorId;
+}
+
+/**
+ * The OK-supported agent hosts actually present under `home`.
+ *
+ * STOP: this detection gate is load-bearing. OK writes agent INSTRUCTIONS, not
+ * inert config — a skill dir created for a tool the user never installed is
+ * both clutter and a scope-of-consent violation (issue #820, where a single
+ * `ok init` created 51 tool-config dirs in a real `$HOME`). Every user-global
+ * write site MUST filter through this. Host set comes from core's
+ * `HOSTS_WITH_USER_SKILL_DIR`, derived from `EDITOR_PROJECT_SKILL_ROOT`, so it
+ * can't drift from the editors OK actually supports.
+ */
+export function detectUserSkillHosts(home: string): DetectedSkillHost[] {
+  return HOSTS_WITH_USER_SKILL_DIR.filter((host) => existsSync(join(home, host.hostDir)));
 }
 
 async function centralSkillExists(home: string, bundleName: string): Promise<boolean> {
@@ -131,161 +133,130 @@ async function centralSkillExists(home: string, bundleName: string): Promise<boo
   }
 }
 
-interface SpawnOutcome {
-  kind: 'ok' | 'nonzero' | 'timeout' | 'spawn-error';
-  exitCode?: number | null;
-  stderr: string;
-  error?: Error;
-}
-
 /**
- * Quote one argv token for Windows `cmd.exe` when spawning with `shell:true`.
- * cmd.exe joins the argv into a single command line and splits on whitespace,
- * ignoring argv boundaries, so a whitespace-bearing token (notably the skill
- * dir under a `C:\Users\<name with space>` home) must be double-quoted to
- * survive as one argument. Whitespace-free tokens pass through untouched so a
- * flag like `*` reaches `npx` literally.
+ * Legacy migration: remove any pre-split user-global `open-knowledge` skill dir
+ * before the `discovery` bundle lands. Swept across the detected hosts plus the
+ * central store (Codex's former home before it moved to `.codex`). Fail-soft —
+ * a removal failure is logged and swallowed; the install below is what the
+ * result gates on. Sibling: `removeLegacyUserSkillDirs` in the desktop reclaim.
  */
-export function quoteForWindowsShell(arg: string): string {
-  return /\s/.test(arg) ? `"${arg.replaceAll('"', '\\"')}"` : arg;
-}
-
-function runSpawn(
-  spawnFn: SpawnLike,
-  command: string,
-  args: readonly string[],
-  env: NodeJS.ProcessEnv,
-  timeoutMs: number,
-  platform: NodeJS.Platform,
-): Promise<SpawnOutcome> {
-  return new Promise((resolve) => {
-    let child: ReturnType<typeof spawn>;
-    // On Windows `npx` resolves to `npx.cmd`; Node's `spawn` refuses to exec a
-    // `.cmd`/`.bat` without a shell (hardened by CVE-2024-27980) and throws
-    // ENOENT. `shell:true` routes through cmd.exe instead — but cmd.exe does
-    // not re-quote argv, so whitespace-bearing args are quoted by us first.
-    const useShell = platform === 'win32';
-    const spawnArgs = useShell ? args.map(quoteForWindowsShell) : args;
+function removeLegacyUserSkillDirs(
+  home: string,
+  hosts: readonly DetectedSkillHost[],
+  logger: SkillInstallLogger,
+): void {
+  const legacyHostDirs = [...hosts.map((h) => h.hostDir), CENTRAL_HOST_DIR];
+  for (const hostDir of legacyHostDirs) {
+    const legacyDir = join(home, hostDir, 'skills', LEGACY_USER_SKILL_NAME);
+    if (!existsSync(legacyDir)) continue;
     try {
-      child = spawnFn(
-        command,
-        spawnArgs,
-        withHiddenWindowsConsole({
-          env,
-          stdio: ['ignore', 'pipe', 'pipe'],
-          ...(useShell ? { shell: true } : {}),
-        }),
+      tracedRmSync(legacyDir, { recursive: true, force: true });
+      logger.info?.(
+        { event: 'skill-install.legacy-removed', path: legacyDir },
+        'Removed pre-split `open-knowledge` user-global skill dir.',
       );
     } catch (err) {
-      resolve({ kind: 'spawn-error', stderr: '', error: err as Error });
-      return;
-    }
-
-    let stderr = '';
-    let settled = false;
-    const settle = (outcome: SpawnOutcome) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(outcome);
-    };
-
-    child.stderr?.on('data', (chunk: Buffer | string) => {
-      stderr += typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
-    });
-
-    child.on('error', (err) => {
-      // ENOENT on `npx` itself surfaces here.
-      settle({ kind: 'spawn-error', stderr, error: err });
-    });
-
-    child.on('exit', (code) => {
-      if (code === 0) settle({ kind: 'ok', exitCode: code, stderr });
-      else settle({ kind: 'nonzero', exitCode: code, stderr });
-    });
-
-    const timer = setTimeout(() => {
-      try {
-        child.kill('SIGTERM');
-      } catch {
-        /* already exited */
-      }
-      settle({ kind: 'timeout', stderr });
-    }, timeoutMs);
-  });
-}
-
-/**
- * True when any pre-split `open-knowledge` user-global skill dir is on disk.
- * Gates the subprocess-spawning `npx skills remove` so a fresh machine with
- * nothing to migrate pays no `npx` cost — mirrors the desktop reclaim's
- * `existsSync` gate in `skill-reclaim.ts`.
- */
-async function anyLegacyUserSkillExists(home: string): Promise<boolean> {
-  for (const hostDir of LEGACY_USER_SKILL_HOST_DIRS) {
-    try {
-      const info = await stat(join(home, hostDir, 'skills', LEGACY_USER_SKILL_NAME));
-      if (info.isDirectory()) return true;
-    } catch {
-      /* absent — keep checking the remaining hosts */
+      logger.warn(
+        { event: 'skill-install.legacy-remove-failed', path: legacyDir, err },
+        'Legacy `open-knowledge` skill removal failed; continuing with install.',
+      );
     }
   }
-  return false;
 }
 
 /**
- * Legacy migration: remove any pre-split user-global `open-knowledge` skill
- * install before the new `discovery` bundle lands. No-op (no subprocess) when
- * no legacy dir is on disk — a fresh machine pays no `npx` cost. Fail-soft:
- * `npx skills remove` of an absent skill is expected to exit 0, but the
- * outcome is not load-bearing — non-zero exit / timeout / spawn error is
- * logged and swallowed. The subsequent `add` is what the install gates on.
+ * Replace `destDir` with a fresh copy of `sourceDir`. `rm -rf` first so a
+ * shrinking bundle can't leave orphaned files from a prior version behind.
  */
-async function removeLegacyUserSkill(
+function replaceSkillDir(sourceDir: string, destDir: string): void {
+  tracedRmSync(destDir, { recursive: true, force: true });
+  tracedMkdirSync(dirname(destDir), { recursive: true });
+  tracedCpSync(sourceDir, destDir, { recursive: true });
+}
+
+/** Per-destination outcome, for the structured install log. */
+interface SkillWriteEntry {
+  path: string;
+  status: 'written' | 'failed';
+  error?: string;
+}
+
+/**
+ * Copy one bundle into the central store plus every detected host dir.
+ * Callers pass an already-filtered `hosts` — this never probes for, or creates,
+ * a dir belonging to an absent tool.
+ */
+function writeBundleToHosts(
   home: string,
-  spawnFn: SpawnLike,
-  env: NodeJS.ProcessEnv,
-  timeoutMs: number,
-  logger: SkillInstallLogger,
-  platform: NodeJS.Platform,
-): Promise<void> {
-  if (!(await anyLegacyUserSkillExists(home))) return;
-  const args = ['-y', SKILLS_CLI_SPEC, 'remove', '--agent', '*', '-g', LEGACY_USER_SKILL_NAME];
-  const outcome = await runSpawn(spawnFn, 'npx', args, env, timeoutMs, platform);
-  if (outcome.kind !== 'ok') {
-    logger.warn(
-      {
-        event: 'skill-install.legacy-remove-failed',
-        reason: outcome.kind,
-        exitCode: outcome.exitCode,
-        stderr: outcome.stderr,
-      },
-      'Legacy `open-knowledge` skill removal did not exit cleanly; continuing with install.',
-    );
+  bundleName: string,
+  sourceDir: string,
+  hosts: readonly DetectedSkillHost[],
+): SkillWriteEntry[] {
+  const entries: SkillWriteEntry[] = [];
+  const centralDest = centralSkillDir(home, bundleName);
+  const destinations = [
+    centralDest,
+    ...hosts
+      .map((host) => join(home, host.hostDir, 'skills', bundleName))
+      // Defensive: a host dest that collapses onto the central store would be a
+      // redundant double-write of the same bytes. No host root is `.agents`
+      // today, but the guard keeps the central write authoritative if that
+      // ever changes.
+      .filter((dest) => dest !== centralDest),
+  ];
+
+  for (const dest of destinations) {
+    try {
+      replaceSkillDir(sourceDir, dest);
+      entries.push({ path: dest, status: 'written' });
+    } catch (err) {
+      entries.push({
+        path: dest,
+        status: 'failed',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
+  return entries;
 }
 
 /**
- * Install OpenKnowledge's user-global Agent Skill to every detected agent host.
+ * Install one user-global OpenKnowledge Agent Skill bundle into the agent hosts
+ * actually present under `home`.
  *
- * Installs the SLIM `discovery` bundle only — the rich `project` bundle never
- * lands at user scope; it ships project-local via `ok init`'s
- * `writeProjectSkill`. Each invocation first removes any pre-split
- * `open-knowledge` user-global install (fail-soft) then runs
- * `npx skills@~1.5.0 add <discovery-dir> --agent '*' -g -y --copy`.
+ * Writes directly — no subprocess, no network. This used to shell out to
+ * `npx skills@~1.5.0 add … --agent '*' -g -y --copy`; `--agent '*'` bypassed
+ * that CLI's host detection and created a skill dir in all ~75 hosts it knows,
+ * so one `ok init` wrote 51 tool-config dirs for tools the user had never
+ * installed (issue #820). Nothing about that dependency was load-bearing: OK
+ * passes a local path (no source resolution), forces `--copy` (no symlinks),
+ * and the CLI writes no lockfile or state at global scope — it contributed a
+ * directory table, which OK already maintains in core for project scope. It
+ * also cost a floating-range `npx -y` fetch-and-execute at init time and
+ * third-party telemetry OK never opted out of.
+ *
+ * Destinations: the central `${home}/.agents/skills/<name>/` store plus
+ * `${home}/.<host>/skills/<name>/` for each detected host — and NOTHING when no
+ * host is detected (`'no-hosts'`), so a machine with no agent tooling gets no
+ * dirs at all. See `detectUserSkillHosts` for why that gate is load-bearing.
  *
  * Idempotency: the `cli-hosts` entry in `${home}/.ok/skill-state.yml` gates
- * re-install. The subprocess is NOT invoked (and `'skip-current'` is returned)
- * only when BOTH the recorded version matches the current
+ * re-install. Nothing is written (and `'skip-current'` is returned) only when
+ * BOTH the recorded version matches the current
  * `@inkeep/open-knowledge-server` package version AND the central skill
  * directory at `${home}/.agents/skills/open-knowledge-discovery` is still on
- * disk. The disk-presence check exists because a manual `npx skills remove -g`
- * (or equivalent rm) leaves the state file untouched, which would otherwise
- * wedge the next `ok init` into a no-op despite the skill being gone.
+ * disk. The disk-presence check exists because a manual `rm` of the skill
+ * leaves the state file untouched, which would otherwise wedge the next
+ * `ok init` into a no-op despite the skill being gone.
  *
- * Always resolves (never throws). Non-zero exit, timeout, or spawn error on
- * the `add` logs a warning via `opts.logger` (or `console.warn`) and returns
- * `'failed'`.
+ * Always resolves (never throws). Returns `'failed'` when no usable install
+ * could be RECORDED — every destination write errored, a pre-write dependency
+ * was missing (version read, bundled asset), or the state-file write failed
+ * after the copies landed. That last case is why `'failed'` does not imply
+ * "nothing on disk": the skill dirs exist but the version gate never advanced,
+ * so the next run reinstalls rather than skipping. A partial host failure is
+ * the opposite — it records the version and returns `'installed'`, because the
+ * surviving copies are usable.
  */
 export async function installUserSkill(
   opts: InstallUserSkillOptions = {},
@@ -295,12 +266,27 @@ export async function installUserSkill(
     warn: (data, message) => getLogger('skills').warn(data, message),
     info: (data, message) => getLogger('skills').info(data, message),
   };
-  const spawnFn = opts.spawn ?? (spawn as SpawnLike);
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  // Historical enum value — kept verbatim because it is persisted in every
+  // existing `~/.ok/skill-state.yml` and `skill-install-events.jsonl`; the
+  // install no longer shells out to npx.
   const surfaceAttribution: SkillStateSurface = opts.surface ?? 'cli-npx-skills-add';
-  const platform = opts.platform ?? process.platform;
   const bundleId = opts.bundleId ?? 'discovery';
   const bundleName = BUNDLE_SKILL_NAME[bundleId];
+
+  // FIRST, before anything derives a path from `home` — including `report`,
+  // which appends the JSONL event log at `<home>/.ok/`. `join('', '.claude', …)`
+  // is RELATIVE and `os.homedir()` returns `$HOME` verbatim, so a broken or
+  // unset HOME sends every path below (the recursive `rmSync` in
+  // `replaceSkillDir`, and the event log itself) into the process cwd — for the
+  // CLI, the user's project. Nothing is recorded on this path: there is nowhere
+  // safe to record it. Returns rather than throws: never-throws contract.
+  if (!isAbsolute(home)) {
+    logger.warn(
+      { event: 'skill-install.failed', reason: 'home-not-absolute', home },
+      'Skill install aborted — $HOME is not an absolute path.',
+    );
+    return 'failed';
+  }
 
   const report = async (
     outcome: SkillInstallEventOutcome,
@@ -380,79 +366,71 @@ export async function installUserSkill(
     await report('failed', currentVersion, 'bundled-asset-missing');
     return 'failed';
   }
-  const env: NodeJS.ProcessEnv = { ...process.env, HOME: home };
+  // Detect BEFORE writing anything. No detected host ⇒ no destinations ⇒ we
+  // write nothing at all, not even the central store.
+  const hosts = detectUserSkillHosts(home);
+  if (hosts.length === 0) {
+    logger.info?.(
+      { event: 'skill-install.no-hosts', version: currentVersion },
+      'No supported agent host detected; skipping user-global skill install.',
+    );
+    await report('skip-current', currentVersion, 'no-hosts');
+    return 'no-hosts';
+  }
 
   // Drop any pre-split `open-knowledge` user-global install first (no-op on a
-  // fresh machine). Fail-soft — the `add` below is what the install gates on.
-  await removeLegacyUserSkill(home, spawnFn, env, timeoutMs, logger, platform);
+  // fresh machine). Fail-soft — the writes below are what the result gates on.
+  removeLegacyUserSkillDirs(home, hosts, logger);
 
-  // Install the bundle to every detected agent host.
-  const args = ['-y', SKILLS_CLI_SPEC, 'add', bundleDir, '--agent', '*', '-g', '-y', '--copy'];
-  const outcome = await runSpawn(spawnFn, 'npx', args, env, timeoutMs, platform);
+  const entries = writeBundleToHosts(home, bundleName, bundleDir, hosts);
+  const written = entries.filter((e) => e.status === 'written');
+  const failed = entries.filter((e) => e.status === 'failed');
 
-  if (outcome.kind === 'ok') {
-    try {
-      await writeTargetVersion(home, 'cli-hosts', currentVersion, surfaceAttribution, logger);
-    } catch (err) {
-      logger.warn(
-        { event: 'skill-install.failed', reason: 'sidecar-write-failed', err },
-        'Skill install succeeded but sidecar write failed.',
-      );
-      await report('failed', currentVersion, 'sidecar-write-failed');
-      return 'failed';
-    }
-    logger.info?.(
-      { event: 'skill-install.installed', version: currentVersion },
-      'OpenKnowledge skill installed to detected agent hosts.',
-    );
-    await report('installed', currentVersion);
-    return 'installed';
-  }
-
-  if (outcome.kind === 'timeout') {
+  if (written.length === 0) {
     logger.warn(
-      { event: 'skill-install.failed', reason: 'timeout', timeoutMs, stderr: outcome.stderr },
-      'Skill install subprocess timed out. Run manually: npx ' +
-        `${SKILLS_CLI_SPEC} add ${bundleDir} --agent '*' -g -y --copy`,
+      { event: 'skill-install.failed', reason: 'write-failed', entries: failed },
+      'Skill install failed — every destination write errored.',
     );
-    await report('failed', currentVersion, 'timeout');
+    await report('failed', currentVersion, 'write-failed');
     return 'failed';
   }
 
-  if (outcome.kind === 'spawn-error') {
+  try {
+    await writeTargetVersion(home, 'cli-hosts', currentVersion, surfaceAttribution, logger);
+  } catch (err) {
     logger.warn(
-      {
-        event: 'skill-install.failed',
-        reason: 'spawn-error',
-        err: outcome.error,
-        stderr: outcome.stderr,
-      },
-      'Skill install failed — `npx` unavailable or spawn errored. Run manually: npx ' +
-        `${SKILLS_CLI_SPEC} add ${bundleDir} --agent '*' -g -y --copy`,
+      { event: 'skill-install.failed', reason: 'sidecar-write-failed', err },
+      'Skill install succeeded but sidecar write failed.',
     );
-    await report('failed', currentVersion, 'spawn-error');
+    await report('failed', currentVersion, 'sidecar-write-failed');
     return 'failed';
   }
 
-  // nonzero
-  logger.warn(
+  if (failed.length > 0) {
+    logger.warn(
+      { event: 'skill-install.partial', version: currentVersion, entries: failed },
+      'Some agent hosts could not be written; the remaining copies are installed.',
+    );
+  }
+  logger.info?.(
     {
-      event: 'skill-install.failed',
-      reason: 'nonzero-exit',
-      exitCode: outcome.exitCode,
-      stderr: outcome.stderr,
+      event: 'skill-install.installed',
+      version: currentVersion,
+      hosts: hosts.map((h) => h.editorId),
+      paths: written.map((e) => e.path),
     },
-    'Skill install subprocess exited non-zero. Run manually: npx ' +
-      `${SKILLS_CLI_SPEC} add ${bundleDir} --agent '*' -g -y --copy`,
+    `OpenKnowledge skill installed to ${written.length} location(s): ${written
+      .map((e) => e.path)
+      .join(', ')}`,
   );
-  await report('failed', currentVersion, `nonzero-exit:${outcome.exitCode ?? 'unknown'}`);
-  return 'failed';
+  await report('installed', currentVersion);
+  return 'installed';
 }
 
 // ─── Claude Desktop install (.skill file + OS file association) ────────────
 //
-// Distinct surface from `installUserSkill` above (which targets Claude
-// CLI / Cursor / Codex via `npx skills add`). This path produces an
+// Distinct surface from `installUserSkill` above (which copies the bundle
+// into Claude Code / Cursor / Codex skill dirs). This path produces an
 // `openknowledge.skill` zip and hands it to the OS so Claude Desktop's native
 // install dialog takes over. Shared consumers: `ok install-skill` CLI,
 // `POST /api/install-skill`. The Electron `okDesktop.skill.buildAndOpen`

@@ -207,6 +207,24 @@ The rule does NOT catch: bare `exec(...)` (the identifier is too commonly shadow
 
 Plugin: [`biome-plugins/require-windowshide-on-spawn.grit`](require-windowshide-on-spawn.grit). Fixture: [`biome-plugins/__fixtures__/require-windowshide-on-spawn.fixture.tsx`](__fixtures__/require-windowshide-on-spawn.fixture.tsx). Test: [`packages/server/src/lint-plugins/require-windowshide-on-spawn.test.ts`](../packages/server/src/lint-plugins/require-windowshide-on-spawn.test.ts). See [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
 
+### `no-blind-agent-host-fanout.grit`
+
+Scope discipline for user-global Agent Skill installs. Bans the `skills` CLI npm specs (`skills@~1.5.0` and its caret / exact / `latest` variants) and the bare `'--agent'` argv token anywhere under `packages/{server,cli}/src/**`.
+
+**Why.** `installUserSkill` used to shell out to `npx -y skills@~1.5.0 add <dir> --agent '*' -g -y --copy`. `--agent '*'` makes that CLI skip its own host detection and target every host in its registry (~75 and growing), so a single `ok init` wrote 110 directories across 54 tool-config homes in a real `$HOME` — 51 of them for tools the reporter had never installed ([issue #820](https://github.com/inkeep/open-knowledge/issues/820)). OK's user-global skills are behavioural instructions autonomous software reads and acts on, so writing one into a tool's config dir is a scope-of-consent decision, not cosmetic clutter.
+
+Nothing about the dependency was load-bearing: OK passed a local path (no source resolution), forced `--copy` (no symlinks), and the CLI writes no lockfile or state at global scope. It contributed a directory table that OK already maintains in core for project scope — while costing a floating-range `npx -y` fetch-and-execute at init time and third-party telemetry OK never opted out of. The install now writes directly, gated on `detectUserSkillHosts`, whose host set derives from `HOSTS_WITH_USER_SKILL_DIR` in [`packages/core/src/constants/editors.ts`](../packages/core/src/constants/editors.ts).
+
+The rule bans the *ingredients* rather than the assembled command line, because the argv was built as an array of literals that no single AST node spans.
+
+**Scoped via `overrides[].plugins`** to `packages/{server,cli}/src/**/*.ts`. Tests are deliberately **in** scope (unlike the sibling spawn rule): a test that reintroduces the invocation reintroduces the fan-out, and the suite asserts the writer's behavior through the filesystem, never through argv.
+
+The rule does NOT catch a spec assembled by concatenation or interpolation (`` `skills@${range}` ``), or the flag reaching a subprocess through a variable — GritQL matches the string-literal node. Both are defeatable-on-purpose rather than accidental; the behavioural backstop is [`packages/server/src/skill-install.test.ts`](../packages/server/src/skill-install.test.ts), whose "never creates a dotdir for a host that is not installed" case asserts the real filesystem outcome.
+
+Adding a host that needs a different install mechanism? Add it to `HOSTS_WITH_USER_SKILL_DIR` and let the detection gate cover it — don't suppress this rule.
+
+Plugin: [`biome-plugins/no-blind-agent-host-fanout.grit`](no-blind-agent-host-fanout.grit). Fixture: [`biome-plugins/__fixtures__/no-blind-agent-host-fanout.fixture.tsx`](__fixtures__/no-blind-agent-host-fanout.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-blind-agent-host-fanout.test.ts`](../packages/app/tests/lint-plugins/no-blind-agent-host-fanout.test.ts). See [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
+
 ## Suppression
 
 Inline `// biome-ignore` comments silence individual diagnostics. The most specific form names the rule and the reason:

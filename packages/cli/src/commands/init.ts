@@ -25,6 +25,7 @@ import type {
 } from '@inkeep/open-knowledge-server';
 import {
   BUNDLE_SKILL_NAME,
+  detectUserSkillHosts,
   ensureProjectGit,
   ensureProjectSkillGitignore,
   GitNotAvailableError,
@@ -81,6 +82,7 @@ import { accent, dim, error, info, success, warning } from '../ui/colors.ts';
 import { isObject } from '../utils/is-object.ts';
 import {
   ALL_EDITOR_IDS,
+  EDITOR_LABELS,
   EDITOR_TARGETS,
   type EditorId,
   type EditorMcpTarget,
@@ -841,6 +843,13 @@ interface InitCommandResult {
    * step could run.
    */
   skillInstall?: InstallUserSkillResult | 'declined';
+  /**
+   * Agent hosts the user-global skill was actually written to, as editor ids.
+   * Empty unless `skillInstall === 'installed'`. Reported verbatim in the
+   * summary so the line names real targets instead of claiming detection that
+   * did not happen (issue #820).
+   */
+  skillHosts?: readonly string[];
   /** Content preview result (undefined if preview failed or was not run). */
   preview?: PreviewResult;
   /** `true` if `ensureProjectGit` ran `git init` during this invocation. */
@@ -1813,6 +1822,7 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
   let anyInstalled = false;
   let anyFailed = false;
   let anySkipped = false;
+  let anyNoHosts = false;
   for (const id of USER_GLOBAL_BUNDLE_IDS) {
     const enabled = enabledBundles.has(id);
     await writeBundleDecision(skillHome, BUNDLE_SKILL_NAME[id], enabled).catch(() => {});
@@ -1823,6 +1833,7 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
       const result = await installSkill({ home: options.home, bundleId: id, force: true });
       if (result === 'installed') anyInstalled = true;
       else if (result === 'failed') anyFailed = true;
+      else if (result === 'no-hosts') anyNoHosts = true;
       else anySkipped = true;
     } else {
       try {
@@ -1843,7 +1854,12 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
       ? 'installed'
       : anyEnabled && anySkipped
         ? 'skip-current'
-        : 'declined';
+        : anyEnabled && anyNoHosts
+          ? 'no-hosts'
+          : 'declined';
+  // Named so the summary can report the hosts actually written rather than
+  // asserting an unverified "detected agent hosts" (issue #820).
+  const skillHosts = anyInstalled ? detectUserSkillHosts(skillHome).map((h) => h.editorId) : [];
 
   // Derive backward-compat fields from the Claude entry (preferred) or first result
   const defaultAction: EditorMcpResult['action'] = skipMcp ? 'skipped-flag' : 'skipped-missing';
@@ -1879,6 +1895,7 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
     projectSkills: projectSkillResults,
     legacyProjectConfigs,
     skillInstall,
+    skillHosts,
     didGitInit: gitResult.didInit,
     rootGitignoreCreated,
     gitRootPromoted: resolution.gitRootPromoted,
@@ -2189,24 +2206,33 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
     lines.push('');
     lines.push(accent('User-global skill:'));
     switch (result.skillInstall) {
-      case 'installed':
-        lines.push(
-          `  open-knowledge  ${success('installed to detected agent hosts')} via \`npx skills\``,
+      case 'installed': {
+        // Name the hosts. The previous copy claimed "detected agent hosts"
+        // while the install had bypassed detection entirely (issue #820) — an
+        // install summary must never assert more scope discipline than it used.
+        const hostLabels = (result.skillHosts ?? []).map(
+          (id) => EDITOR_LABELS[id as EditorId] ?? id,
         );
+        const target = hostLabels.length > 0 ? hostLabels.join(', ') : 'the shared ~/.agents store';
+        lines.push(`  open-knowledge  ${success(`installed for ${target}`)}`);
         break;
+      }
       case 'skip-current':
         lines.push(`  open-knowledge  ${success('already installed at current version')}`);
         break;
       case 'declined':
         lines.push(`  open-knowledge  ${dim('skipped (opted out via --no-skills)')}`);
         break;
+      case 'no-hosts':
+        lines.push(
+          `  open-knowledge  ${dim('skipped — no supported agent host detected in your home directory')}`,
+        );
+        break;
       case 'failed':
         lines.push(
-          `  ${warning('open-knowledge  install failed — MCP still configured; run manually:')}`,
+          `  ${warning('open-knowledge  install failed — MCP still configured; retry with:')}`,
         );
-        lines.push(
-          `  ${warning("  npx skills@~1.5.0 add <bundled-path> --agent '*' -g -y --copy")}`,
-        );
+        lines.push(`  ${warning('  ok repair-skills')}`);
         break;
     }
   }
