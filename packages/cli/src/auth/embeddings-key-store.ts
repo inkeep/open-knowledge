@@ -8,8 +8,8 @@
  */
 
 export {
-  clearEmbeddingsKeyFromAllBackends,
+  clearAllEmbeddingsKeys,
   createEmbeddingsSecretStore,
-  describeStoredEmbeddingsKey,
   makeLazyEmbeddingsKeyStore,
+  resolveEmbeddingsCredential,
 } from '@inkeep/open-knowledge-server';

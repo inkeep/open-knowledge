@@ -91,7 +91,6 @@ import { docNameToRelativePath, getDocExtension, stripDocExtension } from './doc
 import { runDocLineageGuard } from './doc-lineage-guard.ts';
 import { DocumentDurabilityState } from './document-durability-state.ts';
 import {
-  DEFAULT_EMBEDDINGS_DIMENSIONS,
   type Embedder,
   type EmbeddingsKeyStore,
   loadOpenAiEmbedder,
@@ -757,8 +756,12 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   // Provider identity for the cache key + the service's re-warm trigger. A change
   // here (provider/model/dims) re-loads the embedder and invalidates the cache.
+  // Unset `dimensions` is its own stable identity, NOT the OpenAI default: the
+  // length is whatever the provider returns, and substituting a number here
+  // would disagree with the length the cache actually persisted — re-wiping and
+  // re-embedding the corpus on every restart.
   function semanticProviderFingerprint(cfg: ResolvedSemanticConfig): string {
-    return `${normalizeProviderId(cfg.baseUrl)}|${cfg.model}|${cfg.dimensions ?? DEFAULT_EMBEDDINGS_DIMENSIONS}`;
+    return `${normalizeProviderId(cfg.baseUrl)}|${cfg.model}|${cfg.dimensions ?? 'auto'}`;
   }
 
   // Re-apply a just-persisted config to the live in-process consumers by
@@ -978,6 +981,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         const cfg = readSemanticSearchConfig();
         return loadOpenAiEmbedder({
           keyStore: options.embeddingsKeyStore ?? null,
+          projectDir,
           config: { baseUrl: cfg.baseUrl, model: cfg.model, dimensions: cfg.dimensions },
         });
       }),
@@ -1856,6 +1860,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       getLinksValidationSetting: () => readLinksValidationSetting(),
       getLinkPreviewsEnabled: readLinkPreviewsEnabled,
       embeddingsSecretsFile: secretsFilePath(configHomedirOverride),
+      readSemanticProviderConfig: readSemanticSearchConfig,
       ephemeral,
       onReferencedAssetsCacheInvalidator: (invalidate) => {
         invalidateReferencedAssetsCache = invalidate;

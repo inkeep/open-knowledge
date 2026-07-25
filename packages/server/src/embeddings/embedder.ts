@@ -16,13 +16,21 @@
  * zero egress. A null return means "no key → degrade to lexical search".
  */
 
-import { checkEmbeddingsBaseUrl, sleep as defaultSleep } from '@inkeep/open-knowledge-core';
+import {
+  checkEmbeddingsBaseUrl,
+  DEFAULT_EMBEDDINGS_BASE_URL,
+  sleep as defaultSleep,
+  isLoopbackEmbeddingsUrl,
+} from '@inkeep/open-knowledge-core';
+import { getLogger } from '../logger.ts';
 import {
   type EmbeddingErrorReason,
   recordEmbeddingProviderError,
   recordEmbeddingRequestDuration,
   recordEmbeddingTokens,
 } from './embeddings-telemetry.ts';
+
+const log = getLogger('embeddings');
 
 /**
  * Default output dimensionality for `text-embedding-3-small`. Used when the
@@ -50,8 +58,20 @@ export interface Embedder {
   readonly providerId: string;
   /** Model identity — also part of the cache key (cross-model guard). */
   readonly modelId: string;
-  /** Output dimensionality — also part of the cache key. */
-  readonly dims: number;
+  /**
+   * Vector length: the configured size, the size detected from the first
+   * response, or `null` while auto-detecting and nothing has come back yet.
+   * Hardcoding a default here is what made every non-1536 model fail its first
+   * response, so an unset config means "whatever the provider returns".
+   */
+  readonly dims: number | null;
+  /**
+   * Adopt a length pinned by a previous run (from the vector cache's manifest)
+   * so the first response of this run is checked against it rather than
+   * silently re-pinning over a corpus of the old size. No-op once a length is
+   * fixed. Absent on embedders whose size is inherent.
+   */
+  pinDims?(dims: number): void;
   /**
    * Embed a batch of texts. `role` distinguishes query vs document spend for
    * telemetry (the provider treats both identically — `text-embedding-3` is
@@ -62,40 +82,64 @@ export interface Embedder {
 }
 
 /**
- * Read-only accessor for the embeddings API key. Implemented in the CLI /
- * desktop wiring layer (reads the 0600 `~/.ok/secrets.yml` file) and injected
- * into the server the same way as `ProbeTokenStore`, so the server stays
- * agnostic to where the key is stored.
+ * Read-only accessor for the embeddings API key. Implemented by the 0600
+ * `~/.ok/secrets.yml` backend and injected into the server the same way as
+ * `ProbeTokenStore`, so the server stays agnostic to where the key is stored.
+ * Resolution is project + endpoint scoped: the key is bound to the exact
+ * endpoint it was entered against, so it can never travel to a different host.
  */
 export interface EmbeddingsKeyStore {
-  /** Resolve the stored key, or `null` when none is set. Never throws. */
-  get(): Promise<string | null>;
+  /** Key bound to (projectDir, baseUrl), or `{ key: null }`. Never throws. */
+  resolveForProject(
+    projectDir: string,
+    baseUrl: string,
+  ): Promise<{ key: string | null; source?: string | null }>;
 }
 
 /**
- * Thrown when the provider returns vectors of an unexpected length — almost
- * always a misconfiguration (model whose native size ≠ the configured
- * `dimensions`). Surfaced (not swallowed) so the service can log it once and
- * degrade to lexical instead of corrupting the cache with ragged vectors.
+ * A provider call that failed, carrying the classification `attemptOnce`
+ * already computed. Without it the reason reaches the telemetry counter and
+ * then evaporates, leaving callers (the Test-connection probe) to re-derive it
+ * from a message string. Every error `embed()` throws is one of these.
  */
-export class EmbeddingDimsMismatchError extends Error {
+export class EmbeddingProviderError extends Error {
+  constructor(
+    readonly reason: EmbeddingErrorReason,
+    message: string,
+    /** Provider HTTP status when the failure was a response, else undefined. */
+    readonly status?: number,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+    this.name = 'EmbeddingProviderError';
+  }
+}
+
+/**
+ * Thrown when the provider returns vectors of a length other than the one in
+ * force. Two distinct causes, and the caller must tell them apart:
+ *  - `dimensions` is configured and the server ignores the request param
+ *    (Ollama does) — a misconfiguration, re-embedding cannot fix it.
+ *  - the size was auto-detected and has since changed (a model swapped behind
+ *    an alias) — the cached corpus is stale and must be rebuilt.
+ * Surfaced either way, never swallowed: mixing lengths corrupts scoring
+ * silently, because cosine similarity truncates to the shorter vector.
+ */
+export class EmbeddingDimsMismatchError extends EmbeddingProviderError {
   readonly name = 'EmbeddingDimsMismatchError';
   constructor(
     readonly expected: number,
     readonly got: number,
   ) {
-    super(
-      `embeddings provider returned ${got}-dim vectors, expected ${expected}. ` +
-        `Set search.semantic.dimensions to ${got} (or point at the right model).`,
-    );
+    super('dims_mismatch', `embeddings provider returned ${got}-dim vectors, expected ${expected}`);
   }
 }
 
 /** A provider response whose shape/length doesn't match the request. */
-class MalformedEmbeddingResponseError extends Error {
+class MalformedEmbeddingResponseError extends EmbeddingProviderError {
   readonly name = 'MalformedEmbeddingResponseError';
-  constructor(expected: number, got: number) {
-    super(`embeddings response had ${got} vectors, expected ${expected}`);
+  constructor(message: string) {
+    super('malformed_response', message);
   }
 }
 
@@ -129,13 +173,20 @@ export interface OpenAiEmbedderConfig {
   model: string;
   /**
    * Requested output dimensions. When set it is sent as the `dimensions`
-   * request param AND used as the cache dims; when omitted the provider's
-   * native size is used (defaulting the declared dims to
-   * {@link DEFAULT_EMBEDDINGS_DIMENSIONS}) and the param is not sent.
+   * request param AND enforced on every response (a provider that ignores the
+   * param fails loudly). When omitted the param is not sent and whatever length
+   * the provider returns is accepted — the only way a non-1536 model works
+   * without the user knowing its size up front.
    */
   dimensions?: number;
-  /** The provider API key (Bearer). Never logged. */
-  apiKey: string;
+  /**
+   * The provider API key (Bearer). Never logged. Optional: a loopback
+   * self-hosted server (Ollama / LM Studio) needs no key, and omitting it sends
+   * NO `Authorization` header at all rather than a bogus one. The caller decides
+   * whether keyless is allowed for the target host (`loadOpenAiEmbedder` only
+   * permits it for loopback); the client itself is agnostic.
+   */
+  apiKey?: string;
 }
 
 export interface OpenAiEmbedderOptions {
@@ -230,7 +281,11 @@ export function createOpenAiEmbedder(
   const queryTimeoutMs = options.queryTimeoutMs ?? DEFAULTS.queryTimeoutMs;
 
   assertSafeEmbeddingsBaseUrl(config.baseUrl);
-  const dims = config.dimensions ?? DEFAULT_EMBEDDINGS_DIMENSIONS;
+  // The length every response is held to. Starts `null` when `dimensions` is
+  // unset — the provider decides, and the first clean response pins it for the
+  // life of this embedder. Defaulting it to 1536 is what made every model that
+  // isn't OpenAI-sized fail on its very first response.
+  let pinnedDims = config.dimensions ?? null;
   const endpoint = `${config.baseUrl.replace(/\/+$/, '')}/embeddings`;
 
   /** Split inputs into provider-request-sized batches (count + char budget). */
@@ -274,7 +329,8 @@ export function createOpenAiEmbedder(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${config.apiKey}`,
+          // No key → no header (keyless loopback), never `Bearer undefined`.
+          ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
         },
         body,
         signal: controller.signal,
@@ -286,15 +342,35 @@ export function createOpenAiEmbedder(
         // a provider error body can echo request fields. Keep only the status.
         await res.text().catch(() => '');
         const reason: EmbeddingErrorReason = res.status === 429 ? 'rate_limit' : 'http_error';
-        const error = new Error(`embeddings request failed: HTTP ${res.status}`);
+        const error = new EmbeddingProviderError(
+          reason,
+          `embeddings request failed: HTTP ${res.status}`,
+          res.status,
+        );
         return RETRYABLE_STATUS.has(res.status)
           ? { kind: 'retry', reason, error }
           : { kind: 'fatal', reason, error };
       }
-      const json = (await res.json()) as OpenAiEmbeddingResponse;
-      const vectors = parseEmbeddingResponse(json, expectedCount, dims);
+      // A 200 carrying something other than JSON is a configuration problem —
+      // a base URL that landed on a proxy's HTML page or a site root rather
+      // than an embeddings API. Left to the generic catch below it would read
+      // as a transient network fault: retried four times, then reported as
+      // "couldn't reach the endpoint" for a host that answered immediately.
+      let json: OpenAiEmbeddingResponse;
+      try {
+        json = (await res.json()) as OpenAiEmbeddingResponse;
+      } catch {
+        throw new MalformedEmbeddingResponseError(
+          'embeddings endpoint returned a non-JSON body — check the base URL',
+        );
+      }
+      const parsed = parseEmbeddingResponse(json, expectedCount);
+      // Commit the detection only once the WHOLE response parsed cleanly — a
+      // response that turned out ragged must not leave its first vector's
+      // length pinned behind it.
+      pinnedDims ??= parsed.dims;
       recordEmbeddingTokens(roleLabel, json.usage?.total_tokens ?? 0);
-      return { kind: 'ok', vectors };
+      return { kind: 'ok', vectors: parsed.vectors };
     } catch (err) {
       // Parse-time config errors are fatal (no point retrying); network / abort
       // (timeout) are retryable.
@@ -328,7 +404,13 @@ export function createOpenAiEmbedder(
       if (result.kind === 'ok') return result.vectors;
       // Every non-ok attempt feeds the provider-error rate metric.
       recordEmbeddingProviderError(result.reason);
-      if (result.kind === 'fatal' || attempt >= maxRetries) throw result.error;
+      if (result.kind === 'fatal' || attempt >= maxRetries) {
+        throw result.error instanceof EmbeddingProviderError
+          ? result.error
+          : new EmbeddingProviderError(result.reason, result.error.message, undefined, {
+              cause: result.error,
+            });
+      }
       attempt += 1;
       // Full-jitter exponential backoff.
       const ceiling = backoffBaseMs * 2 ** (attempt - 1);
@@ -336,35 +418,57 @@ export function createOpenAiEmbedder(
     }
   }
 
+  /** Parse + validate one response, reporting the length it settled on. */
   function parseEmbeddingResponse(
     json: OpenAiEmbeddingResponse,
     expectedCount: number,
-    expectedDims: number,
-  ): Float32Array[] {
+  ): { vectors: Float32Array[]; dims: number } {
     const data = json.data;
     if (!Array.isArray(data) || data.length !== expectedCount) {
-      throw new MalformedEmbeddingResponseError(expectedCount, data?.length ?? 0);
+      throw new MalformedEmbeddingResponseError(
+        `embeddings response had ${data?.length ?? 0} vectors, expected ${expectedCount}`,
+      );
     }
     // Provider guarantees no order, but returns an `index` — sort defensively.
     const ordered = [...data].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
     const out: Float32Array[] = [];
+    // With nothing pinned yet the first vector sets the bar for the rest: a
+    // length that varies within one response is incoherent under any config.
+    let requiredDims = pinnedDims;
     for (const item of ordered) {
       const emb = item.embedding;
-      if (!Array.isArray(emb)) throw new MalformedEmbeddingResponseError(expectedCount, 0);
-      if (emb.length !== expectedDims)
-        throw new EmbeddingDimsMismatchError(expectedDims, emb.length);
+      if (!Array.isArray(emb)) {
+        throw new MalformedEmbeddingResponseError(
+          'embeddings response contained a non-array embedding (expected float vectors)',
+        );
+      }
+      requiredDims ??= emb.length;
+      if (emb.length !== requiredDims) {
+        throw new EmbeddingDimsMismatchError(requiredDims, emb.length);
+      }
       out.push(normalizeInPlace(Float32Array.from(emb)));
     }
-    return out;
+    if (requiredDims === null) {
+      throw new MalformedEmbeddingResponseError('embeddings response contained no vectors');
+    }
+    return { vectors: out, dims: requiredDims };
   }
 
   return {
     providerId: normalizeProviderId(config.baseUrl),
     modelId: config.model,
-    dims,
+    get dims() {
+      return pinnedDims;
+    },
+    pinDims(next: number) {
+      pinnedDims ??= next;
+    },
     async embed(texts, { role }) {
       if (texts.length === 0) return [];
       const out: Float32Array[] = [];
+      // Each batch is validated against the pin the previous one established,
+      // so a gateway that fails over mid-call can't hand back a mix of sizes
+      // that the caller would happily write into one cache entry.
       for (const batch of batchInputs(texts)) {
         out.push(...(await embedOneBatch(batch, role)));
       }
@@ -373,9 +477,66 @@ export function createOpenAiEmbedder(
   };
 }
 
+/** True when `baseUrl` is the built-in OpenAI endpoint (identity comparison). */
+function isDefaultOpenAiEndpoint(baseUrl: string): boolean {
+  return normalizeProviderId(baseUrl) === normalizeProviderId(DEFAULT_EMBEDDINGS_BASE_URL);
+}
+
+/** Where a resolved embeddings credential came from, or that none is needed/found. */
+export type EmbeddingsCredentialSource = 'project' | 'file' | 'env' | 'none';
+
+export interface ResolvedEmbeddingsCredential {
+  /** The key to send, or `null`. */
+  apiKey: string | null;
+  /** No key, but the endpoint is loopback so it may be probed/embedded keyless. */
+  keyless: boolean;
+  source: EmbeddingsCredentialSource;
+}
+
+/**
+ * THE single resolution seam — every path (warm-time embedder load, the Test
+ * button, status) resolves a credential here so they can never disagree about
+ * which key reaches which endpoint. Order:
+ *   1. the project's stored key for this exact endpoint (structurally bound).
+ *   2. `OK_EMBEDDINGS_API_KEY` — DEFAULT OpenAI endpoint ONLY. A machine-wide
+ *      env key must never travel to a custom host; the store scopes the flat
+ *      file key the same way.
+ *   3. no key + loopback endpoint → keyless (Ollama / LM Studio need no key).
+ *   4. otherwise no credential (→ semantic search stays unready).
+ * Makes no network call — resolution is "is there a key", not "does it work".
+ */
+export async function resolveEmbeddingsCredential(
+  keyStore: EmbeddingsKeyStore | null,
+  projectDir: string,
+  baseUrl: string,
+): Promise<ResolvedEmbeddingsCredential> {
+  const resolved = keyStore
+    ? await keyStore.resolveForProject(projectDir, baseUrl).catch((err) => {
+        // A read failure (unreadable/corrupt secrets file, EPERM) must not throw
+        // on the warm path, but silently mapping it to "no key" would report
+        // keyPresent:false for a key that IS stored — the user re-runs set-key
+        // chasing a ghost. Log it so the degradation leaves a trail.
+        log.warn({ err }, '[embeddings] failed to read the stored key — treating as unset');
+        return null;
+      })
+    : null;
+  if (resolved?.key) {
+    const source = resolved.source === 'file' ? 'file' : 'project';
+    return { apiKey: resolved.key, keyless: false, source };
+  }
+  if (isDefaultOpenAiEndpoint(baseUrl)) {
+    const env = process.env[EMBEDDINGS_API_KEY_ENV];
+    if (env) return { apiKey: env, keyless: false, source: 'env' };
+  }
+  if (isLoopbackEmbeddingsUrl(baseUrl)) return { apiKey: null, keyless: true, source: 'none' };
+  return { apiKey: null, keyless: false, source: 'none' };
+}
+
 export interface LoadOpenAiEmbedderInput {
-  /** Injected key store (the CLI's secrets file). `null` = no store; env fallback only. */
+  /** Injected key store (the 0600 secrets file). `null` = no store; env/keyless only. */
   keyStore: EmbeddingsKeyStore | null;
+  /** The running server's project directory — scopes key resolution. */
+  projectDir: string;
   /** Non-secret provider config, read fresh so a config change re-warms cleanly. */
   config: Pick<OpenAiEmbedderConfig, 'baseUrl' | 'model' | 'dimensions'>;
   /** Embedder construction options (timeouts/batching/fetch — tests inject). */
@@ -383,14 +544,90 @@ export interface LoadOpenAiEmbedderInput {
 }
 
 /**
- * Resolve the key (stored secrets file → `OK_EMBEDDINGS_API_KEY` env fallback)
- * and build the embedder, or `null` when no key is available (→ lexical). Makes no
- * network call — capability detection is "is there a key", not "does the API
- * answer", so warming is free.
+ * Resolve the credential for this project + endpoint and build the embedder, or
+ * `null` when there's no key and the endpoint isn't loopback (→ lexical). Makes
+ * no network call, so warming is free.
  */
 export async function loadOpenAiEmbedder(input: LoadOpenAiEmbedderInput): Promise<Embedder | null> {
-  const stored = input.keyStore ? await input.keyStore.get().catch(() => null) : null;
-  const apiKey = stored ?? process.env[EMBEDDINGS_API_KEY_ENV] ?? null;
-  if (!apiKey) return null;
-  return createOpenAiEmbedder({ ...input.config, apiKey }, input.options);
+  const cred = await resolveEmbeddingsCredential(
+    input.keyStore,
+    input.projectDir,
+    input.config.baseUrl,
+  );
+  if (cred.apiKey) {
+    return createOpenAiEmbedder({ ...input.config, apiKey: cred.apiKey }, input.options);
+  }
+  // Keyless loopback: construct with no key → no Authorization header.
+  if (cred.keyless) return createOpenAiEmbedder({ ...input.config }, input.options);
+  return null;
+}
+
+/**
+ * The one string the connection probe embeds. Fixed and content-free — a probe
+ * must never ship a page or a query to an endpoint the user is still testing.
+ */
+const EMBEDDINGS_PROBE_INPUT = 'OpenKnowledge embeddings connection test';
+
+/** Probe budget. Short: this runs behind a button the user is waiting on. */
+const PROBE_TIMEOUT_MS = 10_000;
+
+export interface EmbeddingProbeInput {
+  baseUrl: string;
+  model: string;
+  /** Explicit dimensions, if configured — probing with it exercises the same
+   *  strict length check the real embed path would apply. */
+  dimensions?: number;
+  /** Omit for a keyless loopback endpoint — probes with no Authorization header. */
+  apiKey?: string;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+}
+
+export type EmbeddingProbeResult =
+  | { ok: true; dimensions: number }
+  | { ok: false; reason: EmbeddingErrorReason | 'invalid_endpoint'; status?: number };
+
+/**
+ * One live embed against the configured endpoint, classified. The on-demand
+ * answer to "is this thing actually working" — without it a wrong URL / key /
+ * model is indistinguishable from a working setup that simply hasn't indexed
+ * yet, because every failure degrades quietly to keyword search.
+ *
+ * No retries and a short timeout: a user waiting on a button wants the verdict,
+ * not four backoffs. The detected vector length on success doubles as the
+ * readout that replaces a hand-entered dimensions field.
+ */
+export async function probeEmbeddingEndpoint(
+  input: EmbeddingProbeInput,
+): Promise<EmbeddingProbeResult> {
+  let embedder: Embedder;
+  try {
+    embedder = createOpenAiEmbedder(
+      {
+        baseUrl: input.baseUrl,
+        model: input.model,
+        dimensions: input.dimensions,
+        apiKey: input.apiKey,
+      },
+      {
+        fetchImpl: input.fetchImpl,
+        maxRetries: 0,
+        queryTimeoutMs: input.timeoutMs ?? PROBE_TIMEOUT_MS,
+      },
+    );
+  } catch {
+    // Construction only fails the base-URL guard (unparseable, or plaintext to
+    // a non-loopback host) — nothing left the machine.
+    return { ok: false, reason: 'invalid_endpoint' };
+  }
+  try {
+    const [vector] = await embedder.embed([EMBEDDINGS_PROBE_INPUT], { role: 'query' });
+    if (!vector || vector.length === 0) return { ok: false, reason: 'malformed_response' };
+    return { ok: true, dimensions: vector.length };
+  } catch (err) {
+    if (err instanceof EmbeddingProviderError) {
+      return { ok: false, reason: err.reason, status: err.status };
+    }
+    return { ok: false, reason: 'network' };
+  }
 }

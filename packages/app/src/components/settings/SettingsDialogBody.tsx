@@ -28,7 +28,6 @@ import { AiToolsSection } from './AiToolsSection';
 import { AttachmentsSection } from './AttachmentsSection';
 import { ConfigureAgentsSection } from './ConfigureAgentsSection';
 import { ContentRulesSection } from './ContentRulesSection';
-import { EmbeddingsKeySection } from './EmbeddingsKeySection';
 import { SectionSkeleton } from './field-controls';
 import { HotkeysSection } from './HotkeysSection';
 import { IntegrationsSection } from './IntegrationsSection';
@@ -98,15 +97,10 @@ export function SettingsDialogBody({
     return <HotkeysSection />;
   }
   if (activeId === 'account') {
-    // Two machine-global credentials live here: the GitHub account and the
-    // embeddings provider key (the latter shared across all projects; semantic
-    // search is enabled per-project in This project → Search).
-    return (
-      <div className="space-y-8">
-        <AccountSection />
-        <EmbeddingsKeySection />
-      </div>
-    );
+    // The GitHub account credential. The embeddings API key moved to This
+    // project → Search, next to the endpoint it belongs to (keys are per-project
+    // now, not machine-global).
+    return <AccountSection />;
   }
   if (activeId === 'sync') {
     // When there's no git remote, SyncSection renders a setup CTA (the

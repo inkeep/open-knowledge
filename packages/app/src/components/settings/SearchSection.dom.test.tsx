@@ -61,9 +61,17 @@ vi.doMock('@/lib/config-provider', () => ({
 
 const { SearchSection } = await import('./SearchSection');
 
-function configWithSemantic({ enabled, baseUrl }: { enabled: boolean; baseUrl?: string }): Config {
+function configWithSemantic({
+  enabled,
+  baseUrl,
+  model,
+}: {
+  enabled: boolean;
+  baseUrl?: string;
+  model?: string;
+}): Config {
   return {
-    search: { semantic: { enabled, ...(baseUrl ? { baseUrl } : {}) } },
+    search: { semantic: { enabled, ...(baseUrl ? { baseUrl } : {}), ...(model ? { model } : {}) } },
   } as unknown as Config;
 }
 
@@ -158,6 +166,7 @@ describe('SearchSection', () => {
     mockStatus = {
       enabled: true,
       keyPresent: true,
+      keyNotRequired: false,
       keySource: 'file',
       ready: true,
       capable: true,
@@ -180,6 +189,7 @@ describe('SearchSection', () => {
     mockStatus = {
       enabled: true,
       keyPresent: true,
+      keyNotRequired: false,
       keySource: 'file',
       ready: true,
       capable: true,
@@ -200,6 +210,7 @@ describe('SearchSection', () => {
     mockStatus = {
       enabled: true,
       keyPresent: true,
+      keyNotRequired: false,
       keySource: 'file',
       ready: true,
       capable: true,
@@ -213,7 +224,7 @@ describe('SearchSection', () => {
     expect(coverage.textContent).toContain('first time a search needs them');
   });
 
-  test('on + NO key: shows the needs-a-key hint pointing at Account (instant, no warm)', async () => {
+  test('on + NO key: shows the needs-a-key hint pointing at the on-screen field (instant, no warm)', async () => {
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
     mockProjectLocalConfig = configWithSemantic({ enabled: true });
@@ -222,6 +233,7 @@ describe('SearchSection', () => {
     mockStatus = {
       enabled: true,
       keyPresent: false,
+      keyNotRequired: false,
       keySource: null,
       ready: false,
       capable: false,
@@ -233,7 +245,7 @@ describe('SearchSection', () => {
 
     const hint = await screen.findByTestId('settings-search-needs-key');
     expect(hint.textContent).toContain('no API key is set');
-    expect(hint.textContent).toContain('Account');
+    expect(hint.textContent).toContain('below');
     expect(screen.queryByTestId('settings-search-coverage')).toBeNull();
     expect(screen.queryByTestId('settings-search-pending')).toBeNull();
   });
@@ -245,6 +257,7 @@ describe('SearchSection', () => {
     mockStatus = {
       enabled: true,
       keyPresent: true,
+      keyNotRequired: false,
       keySource: 'file',
       ready: true,
       capable: false,
@@ -266,6 +279,7 @@ describe('SearchSection', () => {
     mockStatus = {
       enabled: true,
       keyPresent: true,
+      keyNotRequired: false,
       keySource: 'file',
       ready: false,
       capable: false,
@@ -289,6 +303,7 @@ describe('SearchSection', () => {
     mockStatus = {
       enabled: false,
       keyPresent: false,
+      keyNotRequired: false,
       keySource: null,
       ready: false,
       capable: false,
@@ -342,19 +357,64 @@ describe('SearchSection', () => {
     expect(await screen.findByTestId('settings-search-confirm')).toBeDefined();
   });
 
-  test('shows the default endpoint when no custom provider is configured', () => {
+  // The endpoint + model now live behind a disclosure. Opening it is part of
+  // every provider test because a value the user can't reach isn't configurable.
+  async function openCustomEndpoint(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByTestId('settings-search-custom-endpoint-trigger'));
+    return screen.getByTestId('settings-search-base-url') as HTMLInputElement;
+  }
+
+  async function confirmProviderChange(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByTestId('settings-search-provider-confirm-apply'));
+  }
+
+  const DEFAULT_MODEL = 'text-embedding-3-small';
+
+  test('shows the default endpoint and model when nothing is overridden', async () => {
+    const user = userEvent.setup();
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
     mockProjectLocalConfig = configWithSemantic({ enabled: false });
 
     render(<SearchSection />);
 
-    expect((screen.getByTestId('settings-search-base-url') as HTMLInputElement).value).toBe(
-      DEFAULT_EMBEDDINGS_BASE_URL,
+    const input = await openCustomEndpoint(user);
+    expect(input.value).toBe(DEFAULT_EMBEDDINGS_BASE_URL);
+    expect((screen.getByTestId('settings-search-model') as HTMLInputElement).value).toBe(
+      DEFAULT_MODEL,
     );
   });
 
-  test('blurring the endpoint field writes the trimmed custom base URL', async () => {
+  test('the disclosure starts open when a custom endpoint is already configured', () => {
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({
+      enabled: false,
+      baseUrl: 'https://my-vllm.internal/v1',
+    });
+
+    render(<SearchSection />);
+
+    // Auto-expanded: an override set from the CLI must not be hidden from the
+    // person who comes to Settings looking for it.
+    expect((screen.getByTestId('settings-search-base-url') as HTMLInputElement).value).toBe(
+      'https://my-vllm.internal/v1',
+    );
+  });
+
+  test('the disclosure starts open when only the model is overridden', () => {
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: false, model: 'nomic-embed-text' });
+
+    render(<SearchSection />);
+
+    expect((screen.getByTestId('settings-search-model') as HTMLInputElement).value).toBe(
+      'nomic-embed-text',
+    );
+  });
+
+  test('blurring the endpoint field writes the trimmed custom base URL after confirmation', async () => {
     const user = userEvent.setup();
     const { binding, calls } = makeBinding();
     mockProjectLocalBinding = binding;
@@ -362,17 +422,25 @@ describe('SearchSection', () => {
 
     render(<SearchSection />);
 
-    const input = screen.getByTestId('settings-search-base-url');
+    const input = await openCustomEndpoint(user);
     await user.clear(input);
     await user.type(input, '  https://azure.example.com/openai/v1/  ');
     await user.tab();
 
+    // Nothing is written until the re-index + egress warning is accepted.
+    expect(calls).toEqual([]);
+    await confirmProviderChange(user);
+
     expect(calls).toEqual([
-      { search: { semantic: { baseUrl: 'https://azure.example.com/openai/v1/' } } },
+      {
+        search: {
+          semantic: { baseUrl: 'https://azure.example.com/openai/v1/', model: DEFAULT_MODEL },
+        },
+      },
     ]);
   });
 
-  test('pressing Enter in the endpoint field writes the trimmed custom base URL', async () => {
+  test('pressing Enter in the endpoint field commits the same way', async () => {
     const user = userEvent.setup();
     const { binding, calls } = makeBinding();
     mockProjectLocalBinding = binding;
@@ -380,13 +448,78 @@ describe('SearchSection', () => {
 
     render(<SearchSection />);
 
-    const input = screen.getByTestId('settings-search-base-url');
+    const input = await openCustomEndpoint(user);
     await user.clear(input);
     await user.type(input, '  https://azure.example.com/openai/v1/  {Enter}');
+    await confirmProviderChange(user);
 
     expect(calls).toEqual([
-      { search: { semantic: { baseUrl: 'https://azure.example.com/openai/v1/' } } },
+      {
+        search: {
+          semantic: { baseUrl: 'https://azure.example.com/openai/v1/', model: DEFAULT_MODEL },
+        },
+      },
     ]);
+  });
+
+  test('a custom model is written as free text', async () => {
+    const user = userEvent.setup();
+    const { binding, calls } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: false });
+
+    render(<SearchSection />);
+
+    await openCustomEndpoint(user);
+    const model = screen.getByTestId('settings-search-model');
+    await user.clear(model);
+    await user.type(model, 'nomic-embed-text{Enter}');
+    await confirmProviderChange(user);
+
+    expect(calls).toEqual([
+      {
+        search: { semantic: { baseUrl: DEFAULT_EMBEDDINGS_BASE_URL, model: 'nomic-embed-text' } },
+      },
+    ]);
+  });
+
+  test('clearing the model field resets it to the default', async () => {
+    const user = userEvent.setup();
+    const { binding, calls } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: false, model: 'nomic-embed-text' });
+
+    render(<SearchSection />);
+
+    const model = screen.getByTestId('settings-search-model');
+    await user.clear(model);
+    await user.tab();
+    await confirmProviderChange(user);
+
+    expect(calls).toEqual([
+      { search: { semantic: { baseUrl: DEFAULT_EMBEDDINGS_BASE_URL, model: DEFAULT_MODEL } } },
+    ]);
+  });
+
+  test('cancelling the warning restores the previous values and writes nothing', async () => {
+    const user = userEvent.setup();
+    const { binding, calls } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: false });
+
+    render(<SearchSection />);
+
+    const input = await openCustomEndpoint(user);
+    await user.clear(input);
+    await user.type(input, 'https://my-vllm.internal/v1{Enter}');
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+
+    expect(calls).toEqual([]);
+    await waitFor(() =>
+      expect((screen.getByTestId('settings-search-base-url') as HTMLInputElement).value).toBe(
+        DEFAULT_EMBEDDINGS_BASE_URL,
+      ),
+    );
   });
 
   test('clearing the endpoint field resets it to the default OpenAI endpoint', async () => {
@@ -403,8 +536,11 @@ describe('SearchSection', () => {
     const input = screen.getByTestId('settings-search-base-url');
     await user.clear(input);
     await user.tab();
+    await confirmProviderChange(user);
 
-    expect(calls).toEqual([{ search: { semantic: { baseUrl: DEFAULT_EMBEDDINGS_BASE_URL } } }]);
+    expect(calls).toEqual([
+      { search: { semantic: { baseUrl: DEFAULT_EMBEDDINGS_BASE_URL, model: DEFAULT_MODEL } } },
+    ]);
   });
 
   test('a malformed URL is not flagged mid-typing, but errors on commit and blocks the write', async () => {
@@ -415,7 +551,7 @@ describe('SearchSection', () => {
 
     render(<SearchSection />);
 
-    const input = screen.getByTestId('settings-search-base-url');
+    const input = await openCustomEndpoint(user);
     await user.clear(input);
     await user.type(input, 'not-a-url');
 
@@ -426,6 +562,7 @@ describe('SearchSection', () => {
 
     expect(screen.getByTestId('settings-search-base-url-error')).toBeDefined();
     expect(input.getAttribute('aria-invalid')).toBe('true');
+    expect(screen.queryByTestId('settings-search-provider-confirm')).toBeNull();
     expect(calls).toEqual([]); // guaranteed-to-fail endpoint is not persisted
   });
 
@@ -437,9 +574,9 @@ describe('SearchSection', () => {
 
     render(<SearchSection />);
 
-    const input = screen.getByTestId('settings-search-base-url');
+    const input = await openCustomEndpoint(user);
     await user.clear(input);
-    // Enter is the distinct commit path (preventDefault + commitBaseUrlInput).
+    // Enter is the distinct commit path (preventDefault + commitProviderEdits).
     await user.type(input, 'not-a-url{Enter}');
 
     expect(screen.getByTestId('settings-search-base-url-error')).toBeDefined();
@@ -455,7 +592,7 @@ describe('SearchSection', () => {
 
     render(<SearchSection />);
 
-    const input = screen.getByTestId('settings-search-base-url');
+    const input = await openCustomEndpoint(user);
     await user.clear(input);
     await user.type(input, 'http://azure.example.com/v1');
     await user.tab();
@@ -472,13 +609,16 @@ describe('SearchSection', () => {
 
     render(<SearchSection />);
 
-    const input = screen.getByTestId('settings-search-base-url');
+    const input = await openCustomEndpoint(user);
     await user.clear(input);
     await user.type(input, 'http://localhost:11434/v1');
     await user.tab();
+    await confirmProviderChange(user);
 
     expect(screen.queryByTestId('settings-search-base-url-error')).toBeNull();
-    expect(calls).toEqual([{ search: { semantic: { baseUrl: 'http://localhost:11434/v1' } } }]);
+    expect(calls).toEqual([
+      { search: { semantic: { baseUrl: 'http://localhost:11434/v1', model: DEFAULT_MODEL } } },
+    ]);
   });
 
   test('after a failed commit, fixing the value clears the error live and writes on re-commit', async () => {
@@ -489,7 +629,7 @@ describe('SearchSection', () => {
 
     render(<SearchSection />);
 
-    const input = screen.getByTestId('settings-search-base-url');
+    const input = await openCustomEndpoint(user);
     await user.clear(input);
     await user.type(input, 'nope');
     await user.tab(); // commit → error shows, field is now "touched"
@@ -502,8 +642,290 @@ describe('SearchSection', () => {
     expect(input.getAttribute('aria-invalid')).toBe('false');
 
     await user.tab();
+    await confirmProviderChange(user);
     expect(calls).toEqual([
-      { search: { semantic: { baseUrl: 'https://azure.example.com/openai/v1' } } },
+      {
+        search: {
+          semantic: { baseUrl: 'https://azure.example.com/openai/v1', model: DEFAULT_MODEL },
+        },
+      },
     ]);
+  });
+
+  test('a successful connection test reports the detected vector size', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({
+      enabled: true,
+      baseUrl: 'https://my-vllm.internal/v1',
+      model: 'nomic-embed-text',
+    });
+
+    render(
+      <SearchSection
+        transport={{
+          setKey: async () => ({ ok: true }),
+          clearKey: async () => ({ ok: true }),
+          testConnection: async () => ({
+            ok: true,
+            endpoint: 'https://my-vllm.internal/v1',
+            model: 'nomic-embed-text',
+            dimensions: 1024,
+          }),
+        }}
+      />,
+    );
+
+    await user.click(screen.getByTestId('settings-search-test-connection'));
+    const result = await screen.findByTestId('settings-search-test-ok');
+    // The detected size is the readout that replaces a hand-entered field.
+    expect(result.textContent).toContain('1024');
+  });
+
+  test('a failing connection test names the specific reason', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({
+      enabled: true,
+      baseUrl: 'https://my-vllm.internal/v1',
+    });
+
+    render(
+      <SearchSection
+        transport={{
+          setKey: async () => ({ ok: true }),
+          clearKey: async () => ({ ok: true }),
+          testConnection: async () => ({
+            ok: false,
+            endpoint: 'https://my-vllm.internal/v1',
+            model: 'text-embedding-3-small',
+            reason: 'http_error',
+            status: 401,
+          }),
+        }}
+      />,
+    );
+
+    await user.click(screen.getByTestId('settings-search-test-connection'));
+    const result = await screen.findByTestId('settings-search-test-error');
+    expect(result.textContent).toContain('401');
+  });
+
+  test('a verdict for a stale endpoint says so instead of reporting it', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({
+      enabled: true,
+      baseUrl: 'https://my-vllm.internal/v1',
+    });
+
+    render(
+      <SearchSection
+        transport={{
+          setKey: async () => ({ ok: true }),
+          clearKey: async () => ({ ok: true }),
+          // The server still has the endpoint the user just replaced.
+          testConnection: async () => ({
+            ok: true,
+            endpoint: DEFAULT_EMBEDDINGS_BASE_URL,
+            model: 'text-embedding-3-small',
+            dimensions: 1536,
+          }),
+        }}
+      />,
+    );
+
+    await user.click(screen.getByTestId('settings-search-test-connection'));
+    expect(await screen.findByTestId('settings-search-test-stale')).toBeDefined();
+    expect(screen.queryByTestId('settings-search-test-ok')).toBeNull();
+  });
+
+  test('the API key field is always visible (not buried in the disclosure)', () => {
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
+    mockStatus = {
+      enabled: true,
+      keyPresent: false,
+      keyNotRequired: false,
+      keySource: null,
+      keyHint: null,
+      ready: false,
+      capable: false,
+      embedded: 0,
+      total: 3,
+    } as unknown as SemanticIndexStatus;
+
+    render(<SearchSection />);
+    // Present without opening the "Custom endpoint" disclosure.
+    expect(screen.getByTestId('settings-search-key-input')).toBeDefined();
+  });
+
+  test('saving a key calls the transport and refreshes', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
+    mockStatus = {
+      enabled: true,
+      keyPresent: false,
+      keyNotRequired: false,
+      keySource: null,
+      keyHint: null,
+      ready: false,
+      capable: false,
+      embedded: 0,
+      total: 3,
+    } as unknown as SemanticIndexStatus;
+
+    const setKey = vi.fn(async () => ({ ok: true }) as const);
+    render(
+      <SearchSection
+        transport={{
+          setKey,
+          clearKey: async () => ({ ok: true }),
+          testConnection: async () => null,
+        }}
+      />,
+    );
+
+    const input = await screen.findByTestId('settings-search-key-input');
+    await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false));
+    await user.type(input, 'sk-my-key');
+    await user.click(screen.getByTestId('settings-search-key-save'));
+    expect(setKey).toHaveBeenCalledWith('sk-my-key');
+  });
+
+  test('pressing Enter in the key field saves (parity with endpoint/model)', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
+    mockStatus = {
+      enabled: true,
+      keyPresent: false,
+      keyNotRequired: false,
+      keySource: null,
+      keyHint: null,
+      ready: false,
+      capable: false,
+      embedded: 0,
+      total: 3,
+    } as unknown as SemanticIndexStatus;
+
+    const setKey = vi.fn(async () => ({ ok: true }) as const);
+    render(
+      <SearchSection
+        transport={{
+          setKey,
+          clearKey: async () => ({ ok: true }),
+          testConnection: async () => null,
+        }}
+      />,
+    );
+
+    const input = await screen.findByTestId('settings-search-key-input');
+    await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false));
+    await user.type(input, 'sk-enter-key{Enter}');
+    expect(setKey).toHaveBeenCalledWith('sk-enter-key');
+  });
+
+  test('a failed key save surfaces the error, does not clear the input', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
+    mockStatus = {
+      enabled: true,
+      keyPresent: false,
+      keyNotRequired: false,
+      keySource: null,
+      keyHint: null,
+      ready: false,
+      capable: false,
+      embedded: 0,
+      total: 3,
+    } as unknown as SemanticIndexStatus;
+
+    render(
+      <SearchSection
+        transport={{
+          setKey: async () => ({ ok: false, error: 'disk full' }),
+          clearKey: async () => ({ ok: true }),
+          testConnection: async () => null,
+        }}
+      />,
+    );
+
+    const input = await screen.findByTestId('settings-search-key-input');
+    await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false));
+    await user.type(input, 'sk-doomed');
+    await user.click(screen.getByTestId('settings-search-key-save'));
+    const err = await screen.findByTestId('settings-search-key-error');
+    expect(err.textContent).toContain('disk full');
+    expect((input as HTMLInputElement).value).toBe('sk-doomed'); // not wiped on failure
+  });
+
+  test('a present key shows a redacted hint + Clear, never the key', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
+    mockStatus = {
+      enabled: true,
+      keyPresent: true,
+      keyNotRequired: false,
+      keySource: 'project',
+      keyHint: '9xяz'.slice(-4),
+      ready: true,
+      capable: true,
+      embedded: 3,
+      total: 3,
+    } as unknown as SemanticIndexStatus;
+
+    const clearKey = vi.fn(async () => ({ ok: true }) as const);
+    render(
+      <SearchSection
+        transport={{
+          setKey: async () => ({ ok: true }),
+          clearKey,
+          testConnection: async () => null,
+        }}
+      />,
+    );
+
+    expect(await screen.findByTestId('settings-search-key-hint')).toBeDefined();
+    await user.click(screen.getByTestId('settings-search-key-clear'));
+    expect(clearKey).toHaveBeenCalled();
+  });
+
+  test('a localhost endpoint shows the key as not required, and no needs-key nag', async () => {
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({
+      enabled: true,
+      baseUrl: 'http://localhost:11434/v1',
+    });
+    mockStatus = {
+      enabled: true,
+      keyPresent: false,
+      keyNotRequired: true,
+      keySource: null,
+      keyHint: null,
+      ready: false,
+      capable: false,
+      embedded: 0,
+      total: 3,
+    } as unknown as SemanticIndexStatus;
+
+    render(<SearchSection />);
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-search-key').textContent).toContain('Not required'),
+    );
+    // No amber "add a key" nag when the endpoint needs none.
+    expect(screen.queryByTestId('settings-search-needs-key')).toBeNull();
   });
 });

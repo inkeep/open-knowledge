@@ -27,6 +27,7 @@ import {
   createServer,
   getLogger,
   handleCollabSocketError,
+  makeLazyEmbeddingsKeyStore,
   parseKeepaliveConnectionId,
   releaseServerLock,
   toBroadcasterKey,
@@ -143,6 +144,10 @@ export function hocuspocusPlugin(): Plugin {
         gitEnabled: isEphemeralTest ? false : !isTestIsolated || gitEnabledForTest,
         enableTestRoutes: true,
         quiet: true,
+        // Read the same 0600 ~/.ok/secrets.yml the production boot does, so the
+        // dev server resolves stored embeddings keys (dev/prod parity — without
+        // this, semantic search only ever resolves the env key / keyless).
+        embeddingsKeyStore: makeLazyEmbeddingsKeyStore(),
         ...(isEphemeralTest ? { ephemeral: true, singleDocRelPath: SINGLE_DOC_REL_PATH } : {}),
       });
 

@@ -197,9 +197,11 @@ const EXEMPT_HANDLERS = new Set([
   'handleLocalOpAuthPat',
   'handleLocalOpAuthGhLogin',
   // Loopback-gated writes of the machine-global embeddings key to the user's
-  // secrets file — no Y.Doc mutation, so the conflict-refusal gate doesn't apply.
+  // secrets file, plus the read-only endpoint probe — no Y.Doc mutation, so the
+  // conflict-refusal gate doesn't apply.
   'handleLocalOpEmbeddingsSetKey',
   'handleLocalOpEmbeddingsClearKey',
+  'handleLocalOpEmbeddingsTest',
   'handleSpawnCursorRoute',
   'handleHandoffDispatchRoute',
   'handleInstallSkill',

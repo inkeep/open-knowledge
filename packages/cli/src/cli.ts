@@ -277,7 +277,7 @@ program.addCommand(authCommand(getCliLogger));
 
 // embeddings command group — set-key / clear-key / status for semantic search.
 // A sibling of `auth` (which is GitHub-specific); manages the embeddings
-// provider key in the OS keyring + the per-machine capability status.
+// provider key in `~/.ok/secrets.yml` + the per-machine capability status.
 program.addCommand(embeddingsCommand());
 
 // clone command — git clone + auto-start

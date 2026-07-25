@@ -520,6 +520,10 @@ msgstr "{packName} skill installed."
 msgid "{packName} was already set up. Nothing to do."
 msgstr "{packName} was already set up. Nothing to do."
 
+#: src/components/settings/SearchSection.tsx
+msgid "{pageCount, plural, one {The full text of your 1 page will be sent to <0>{host}</0> as it is re-embedded.} other {The full text of all {pageCount} pages will be sent to <1>{host}</1> as they are re-embedded.}}"
+msgstr "{pageCount, plural, one {The full text of your 1 page will be sent to <0>{host}</0> as it is re-embedded.} other {The full text of all {pageCount} pages will be sent to <1>{host}</1> as they are re-embedded.}}"
+
 #: src/components/acp/ThreadView.tsx
 msgid "{percent}% used ({left}% left)"
 msgstr "{percent}% used ({left}% left)"
@@ -701,8 +705,8 @@ msgid "A folder named <0>{sanitized}</0> already has files here. Pick a differen
 msgstr "A folder named <0>{sanitized}</0> already has files here. Pick a different name."
 
 #: src/components/settings/SearchSection.tsx
-msgid "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Check the key in <0>Settings → Account</0> and the embeddings endpoint setting."
-msgstr "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Check the key in <0>Settings → Account</0> and the embeddings endpoint setting."
+msgid "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Use <0>Test connection</0> under Custom endpoint to see what went wrong."
+msgstr "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Use <0>Test connection</0> under Custom endpoint to see what went wrong."
 
 #: src/components/SeedDialog.tsx
 msgid "A knowledge base that follows Google's Open Knowledge Format, a shared way of organizing what you know. Pick this if you want your notes to work well with other tools that understand the format."
@@ -871,7 +875,7 @@ msgstr "Actual Size"
 msgid "Add"
 msgstr "Add"
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Add a key"
 msgstr "Add a key"
 
@@ -1126,7 +1130,7 @@ msgstr "any doc named {0}"
 msgid "Anyone can see"
 msgstr "Anyone can see"
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "API key set"
 msgstr "API key set"
 
@@ -1521,6 +1525,10 @@ msgstr "By meaning"
 msgid "By tag"
 msgstr "By tag"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Cached embeddings belong to the endpoint and model that produced them, so this rebuilds the index from scratch."
+msgstr "Cached embeddings belong to the endpoint and model that produced them, so this rebuilds the index from scratch."
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Can't nest projects. An OpenKnowledge project already exists at <0>{rootPath}</0>. Choose a location outside it, or open that project instead."
 msgstr "Can't nest projects. An OpenKnowledge project already exists at <0>{rootPath}</0>. Choose a location outside it, or open that project instead."
@@ -1573,6 +1581,14 @@ msgstr "Cancelled"
 #: src/editor/image-upload/index.ts
 msgid "Cannot upload: no document is open"
 msgstr "Cannot upload: no document is open"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Change provider"
+msgstr "Change provider"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Change the embeddings provider?"
+msgstr "Change the embeddings provider?"
 
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
@@ -1682,7 +1698,7 @@ msgstr "Claude Code is installed, but OpenKnowledge tools aren't connected to it
 msgid "Claude Desktop"
 msgstr "Claude Desktop"
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Clear"
 msgstr "Clear"
 
@@ -2068,6 +2084,11 @@ msgstr "Connect tools"
 msgid "Connect your AI tools to OpenKnowledge"
 msgstr "Connect your AI tools to OpenKnowledge"
 
+#. placeholder {0}: response.dimensions
+#: src/components/settings/SearchSection.tsx
+msgid "Connected — this endpoint returns {0}-dimension vectors."
+msgstr "Connected — this endpoint returns {0}-dimension vectors."
+
 #: src/components/AuthModal.tsx
 #: src/components/settings/AccountSection.tsx
 msgid "Connected as @{login}"
@@ -2403,7 +2424,7 @@ msgstr "Could not write project files. Try a different location."
 msgid "Couldn't apply the change: {0}"
 msgstr "Couldn't apply the change: {0}"
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Couldn't clear the key — please try again."
 msgstr "Couldn't clear the key — please try again."
 
@@ -2549,6 +2570,10 @@ msgstr "Couldn't reach the agent registry."
 msgid "Couldn't reach the embeddings provider — press ↵ to retry"
 msgstr "Couldn't reach the embeddings provider — press ↵ to retry"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Couldn't reach the endpoint. Check the URL and that the server is up."
+msgstr "Couldn't reach the endpoint. Check the URL and that the server is up."
+
 #: src/components/EditorActivityPool.tsx
 msgid "Couldn't reconnect after server restart"
 msgstr "Couldn't reconnect after server restart"
@@ -2598,11 +2623,15 @@ msgstr "Couldn't restart the server. Try `ok start` in this folder."
 msgid "Couldn't resume this conversation: {0}"
 msgstr "Couldn't resume this conversation: {0}"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Couldn't run the test. Check that OpenKnowledge is still running."
+msgstr "Couldn't run the test. Check that OpenKnowledge is still running."
+
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
 msgstr "Couldn't save template: {error}"
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Couldn't save the key — please try again."
 msgstr "Couldn't save the key — please try again."
 
@@ -2831,6 +2860,10 @@ msgstr "Current commit"
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Custom display text"
 msgstr "Custom display text"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Custom endpoint"
+msgstr "Custom endpoint"
 
 #: src/editor/slash-command/embed-starter-items.tsx
 msgid "Custom HTML with a live preview pane (sandboxed iframe)."
@@ -3452,16 +3485,12 @@ msgid "Embed an image with optional alt text."
 msgstr "Embed an image with optional alt text."
 
 #: src/components/settings/SearchSection.tsx
-msgid "Embeddings API endpoint"
-msgstr "Embeddings API endpoint"
+msgid "Embeddings API key"
+msgstr "Embeddings API key"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Embeddings are computed only when a search runs and are cached locally under <0>.ok/local</0>."
 msgstr "Embeddings are computed only when a search runs and are cached locally under <0>.ok/local</0>."
-
-#: src/components/settings/EmbeddingsKeySection.tsx
-msgid "Embeddings provider key"
-msgstr "Embeddings provider key"
 
 #: src/components/ArrayOfObjectsWidget.tsx
 #: src/components/ObjectWidget.tsx
@@ -3544,6 +3573,10 @@ msgstr "Enable Themes"
 #: src/components/ActivityModeContent.tsx
 msgid "Ended"
 msgstr "Ended"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Endpoint"
+msgstr "Endpoint"
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Eng specs"
@@ -3974,8 +4007,8 @@ msgid "Failed to update the auto-approve setting — {detail}"
 msgstr "Failed to update the auto-approve setting — {detail}"
 
 #: src/components/settings/SearchSection.tsx
-msgid "Failed to update the embeddings endpoint — {detail}"
-msgstr "Failed to update the embeddings endpoint — {detail}"
+msgid "Failed to update the embeddings provider — {detail}"
+msgstr "Failed to update the embeddings provider — {detail}"
 
 #: src/components/settings/SyncSection.tsx
 msgid "Failed to update the project sync default — {detail}"
@@ -5004,7 +5037,7 @@ msgstr "Keep this project in sync with your git remote. Follow fetches updates w
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
 msgstr "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Key ending in {keyHint}"
 msgstr "Key ending in {keyHint}"
 
@@ -5433,6 +5466,15 @@ msgstr "Missing page: {linkTitle}. Click to create."
 msgid "Mode"
 msgstr "Mode"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Model"
+msgstr "Model"
+
+#. placeholder {0}: pending?.model
+#: src/components/settings/SearchSection.tsx
+msgid "Model: <0>{0}</0>"
+msgstr "Model: <0>{0}</0>"
+
 #: src/components/FolderOverview.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
@@ -5791,6 +5833,10 @@ msgstr "No agents match your search."
 msgid "No AI agents installed"
 msgstr "No AI agents installed"
 
+#: src/components/settings/SearchSection.tsx
+msgid "No API key is set for this endpoint. Add one above."
+msgstr "No API key is set for this endpoint. Add one above."
+
 #: src/components/ActivityPanelDiffView.tsx
 msgid "No changes"
 msgstr "No changes"
@@ -6104,6 +6150,10 @@ msgstr "Not installed"
 #: src/lib/install-server-drift-listener.ts
 msgid "Not now"
 msgstr "Not now"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Not required for a localhost endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
+msgstr "Not required for a localhost endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
 
 #. placeholder {0}: summary.pattern
 #: src/components/settings/LintingSection.tsx
@@ -6733,7 +6783,7 @@ msgstr "Paste URL, owner/repo, or search your repos"
 msgid "Paste was incomplete — {chunksCompleted} of {totalChunks} chunks landed.{restoreSuffix}"
 msgstr "Paste was incomplete — {chunksCompleted} of {totalChunks} chunks landed.{restoreSuffix}"
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Paste your API key"
 msgstr "Paste your API key"
 
@@ -6862,6 +6912,10 @@ msgstr "Please enter a valid email."
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Plugins"
 msgstr "Plugins"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted server or another provider. The API key above is for whichever endpoint you set here."
+msgstr "Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted server or another provider. The API key above is for whichever endpoint you set here."
 
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -7098,6 +7152,10 @@ msgstr "Re-authenticate with GitHub"
 #: src/components/AuthModal.tsx
 msgid "Re-authenticate with GitHub Enterprise Server"
 msgstr "Re-authenticate with GitHub Enterprise Server"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Re-embedding happens as searches run, so coverage restarts at zero and refills."
+msgstr "Re-embedding happens as searches run, so coverage restarts at zero and refills."
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
@@ -7408,7 +7466,7 @@ msgstr "Replace current match"
 msgid "Replace current match from field"
 msgstr "Replace current match from field"
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Replace key"
 msgstr "Replace key"
 
@@ -7712,7 +7770,7 @@ msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "Sandboxed HTML embed — write HTML, see the rendered preview live."
 
 #: src/components/AuthModal.tsx
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 #: src/editor/components/CodePreviewEditModal.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
@@ -7749,7 +7807,7 @@ msgstr "Saved with the project for your team."
 msgid "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
 msgstr "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Saving"
 msgstr "Saving"
 
@@ -7980,8 +8038,8 @@ msgid "Semantic search adds meaning-based ranking to the search tool so conceptu
 msgstr "Semantic search adds meaning-based ranking to the search tool so conceptually-related pages surface even without shared keywords."
 
 #: src/components/settings/SearchSection.tsx
-msgid "Semantic search is on, but no API key is set — search falls back to keyword matching. Add one in <0>Settings → Account</0> (it's stored once for your whole machine)."
-msgstr "Semantic search is on, but no API key is set — search falls back to keyword matching. Add one in <0>Settings → Account</0> (it's stored once for your whole machine)."
+msgid "Semantic search is on, but no API key is set — search falls back to keyword matching. Add one below."
+msgstr "Semantic search is on, but no API key is set — search falls back to keyword matching. Add one below."
 
 #: src/components/acp/ThreadView.tsx
 #: src/components/FeedbackForm.tsx
@@ -8016,6 +8074,10 @@ msgstr "Sending report"
 #: src/components/ReportBugDialogBody.tsx
 msgid "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
 msgstr "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
+
+#: src/components/settings/SearchSection.tsx
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>~/.ok/secrets.yml</1>), never in the project."
+msgstr "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>~/.ok/secrets.yml</1>), never in the project."
 
 #: src/editor/slash-command/items.tsx
 msgid "Separator"
@@ -8622,10 +8684,6 @@ msgstr "Stopping"
 msgid "Stored at <0>.ok/templates/</0> in this project. Available in every folder (folder-scoped templates can override by filename)."
 msgstr "Stored at <0>.ok/templates/</0> in this project. Available in every folder (folder-scoped templates can override by filename)."
 
-#: src/components/settings/EmbeddingsKeySection.tsx
-msgid "Stored on this machine."
-msgstr "Stored on this machine."
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Strikethrough"
 msgstr "Strikethrough"
@@ -8972,6 +9030,14 @@ msgstr "Terminal settings not loaded yet — try again in a moment."
 msgid "Terminal settings not yet loaded — try again in a moment"
 msgstr "Terminal settings not yet loaded — try again in a moment"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Test connection"
+msgstr "Test connection"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Testing"
+msgstr "Testing"
+
 #: src/components/PropertyWidgets.tsx
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Text"
@@ -8993,6 +9059,10 @@ msgstr "Thanks for the report!"
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "That branch is already open in another worktree."
 msgstr "That branch is already open in another worktree."
+
+#: src/components/settings/SearchSection.tsx
+msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
+msgstr "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
@@ -9040,6 +9110,14 @@ msgstr "The desktop app isn't responding. Refresh and try again."
 msgid "the doc {0}"
 msgstr "the doc {0}"
 
+#: src/components/settings/SearchSection.tsx
+msgid "The endpoint answered, but not with an OpenAI-compatible embeddings response. Check the base URL."
+msgstr "The endpoint answered, but not with an OpenAI-compatible embeddings response. Check the base URL."
+
+#: src/components/settings/SearchSection.tsx
+msgid "The endpoint didn't respond in time."
+msgstr "The endpoint didn't respond in time."
+
 #: src/components/FileTree.tsx
 msgid "The file is in your Trash; the file-watcher will reconcile."
 msgstr "The file is in your Trash; the file-watcher will reconcile."
@@ -9070,6 +9148,10 @@ msgstr "the git exclude file isn't writable"
 msgid "The menu label agents pick this template by (required)."
 msgstr "The menu label agents pick this template by (required)."
 
+#: src/components/settings/SearchSection.tsx
+msgid "The model id your endpoint serves. Its vector size is detected automatically — clear the field to go back to {DEFAULT_EMBEDDINGS_MODEL}."
+msgstr "The model id your endpoint serves. Its vector size is detected automatically — clear the field to go back to {DEFAULT_EMBEDDINGS_MODEL}."
+
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
 msgstr "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
@@ -9077,6 +9159,19 @@ msgstr "The preview blocks resources that don't meet its security rules (for exa
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
 msgstr "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
+
+#: src/components/settings/SearchSection.tsx
+msgid "The provider is rate-limiting this key. Try again in a moment."
+msgstr "The provider is rate-limiting this key. Try again in a moment."
+
+#. placeholder {0}: response.status
+#: src/components/settings/SearchSection.tsx
+msgid "The provider rejected the request (HTTP {0}). Check the API key and the model id."
+msgstr "The provider rejected the request (HTTP {0}). Check the API key and the model id."
+
+#: src/components/settings/SearchSection.tsx
+msgid "The provider rejected the request. Check the API key and the model id."
+msgstr "The provider rejected the request. Check the API key and the model id."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "The report service couldn't be reached."
@@ -9226,6 +9321,10 @@ msgstr "This doc isn't on GitHub yet. The link won't work until it's pushed."
 msgid "This document is already active in the editor. Use Open to collapse the graph."
 msgstr "This document is already active in the editor. Use Open to collapse the graph."
 
+#: src/components/settings/SearchSection.tsx
+msgid "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."
+msgstr "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "This field carries additional schema keywords the editor does not show — they are preserved on save."
 msgstr "This field carries additional schema keywords the editor does not show — they are preserved on save."
@@ -9374,8 +9473,8 @@ msgid "This setting is per-machine and isn't shared with collaborators."
 msgstr "This setting is per-machine and isn't shared with collaborators."
 
 #: src/components/settings/SearchSection.tsx
-msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key set with <0>ok embeddings set-key</0>."
-msgstr "This setting is per-machine and isn't shared with collaborators. It needs an API key set with <0>ok embeddings set-key</0>."
+msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
+msgstr "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
 
 #: src/components/TemplateDeleteDialog.tsx
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
@@ -9819,10 +9918,6 @@ msgstr "Use lowercase letters, digits, and <0>-</0> only."
 msgid "Use lowercase letters, digits, and hyphens only."
 msgstr "Use lowercase letters, digits, and hyphens only."
 
-#: src/components/settings/SearchSection.tsx
-msgid "Use the default OpenAI endpoint or override it with an OpenAI-compatible base URL for Azure or a self-hosted provider."
-msgstr "Use the default OpenAI endpoint or override it with an OpenAI-compatible base URL for Azure or a self-hosted provider."
-
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "User"
@@ -9832,7 +9927,7 @@ msgstr "User"
 msgid "User plugins are personal to this device — turn them on or off here. The choice lives in your user config and is never committed to the project. Each enabled plugin gets its own page under Plugins in the settings sidebar."
 msgstr "User plugins are personal to this device — turn them on or off here. The choice lives in your user config and is never committed to the project. Each enabled plugin gets its own page under Plugins in the settings sidebar."
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."
 msgstr "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."
 
@@ -10208,6 +10303,10 @@ msgstr "You're subscribed!"
 msgid "you@company.com"
 msgstr "you@company.com"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Your change is still being saved — run the test again in a moment."
+msgstr "Your change is still being saved — run the test again in a moment."
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Your copy of branch <0>{shareBranch}</0> has changes that aren't on GitHub. The {targetNoun} will appear once the branch syncs."
 msgstr "Your copy of branch <0>{shareBranch}</0> has changes that aren't on GitHub. The {targetNoun} will appear once the branch syncs."
@@ -10220,10 +10319,6 @@ msgstr "Your current version is saved first, so this is reversible."
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Your edits stay on this computer"
 msgstr "Your edits stay on this computer"
-
-#: src/components/settings/EmbeddingsKeySection.tsx
-msgid "Your embeddings provider API key, used only to create embeddings of your content for semantic search. Stored once for this machine in <0>~/.ok/secrets.yml</0> (readable only by your user account) and shared across all projects. Turn the feature on per project in This project → Search, where you can also override the endpoint."
-msgstr "Your embeddings provider API key, used only to create embeddings of your content for semantic search. Stored once for this machine in <0>~/.ok/secrets.yml</0> (readable only by your user account) and shared across all projects. Turn the feature on per project in This project → Search, where you can also override the endpoint."
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx

@@ -27,7 +27,7 @@ import { atomicWriteFileSync } from '@inkeep/open-knowledge-core/server';
 // existsSync gates the actual removal.
 import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { resolveLockDir } from '@inkeep/open-knowledge-server';
-import { clearEmbeddingsKeyFromAllBackends } from '../auth/embeddings-key-store.ts';
+import { clearAllEmbeddingsKeys } from '../auth/embeddings-key-store.ts';
 import { clearTokenFromAllBackends } from '../auth/token-store.ts';
 import {
   DESKTOP_LEGACY_PRODUCT_NAME,
@@ -290,7 +290,7 @@ export function buildUninstallPlan(input: UninstallPlanInput): RemovalPlan {
   ops.push({
     kind: 'embeddings-key',
     group: 'Credentials',
-    label: 'Remove the embeddings API key (secrets.yml)',
+    label: 'Remove all embeddings API keys (secrets.yml)',
   });
 
   // 3. PATH shim revert — strip the managed block from each recorded rc file and
@@ -456,7 +456,7 @@ export interface RunRemovalDeps {
   clearToken?: (
     host: string,
   ) => Promise<{ touched: Array<'keychain' | 'file'>; keychainError?: string }>;
-  /** Clear the embeddings key. Injectable (touches ~/.ok/secrets.yml). */
+  /** Clear a project's embeddings keys. Injectable (touches ~/.ok/secrets.yml). */
   clearEmbeddingsKey?: () => Promise<{ touched: Array<'file'> }>;
   /**
    * Stop a server. Injectable (SIGTERMs real processes). Returns both the count
@@ -479,7 +479,7 @@ export async function runRemoval(
   deps: RunRemovalDeps = {},
 ): Promise<RemovalOutcome> {
   const clearToken = deps.clearToken ?? clearTokenFromAllBackends;
-  const clearEmbeddingsKey = deps.clearEmbeddingsKey ?? clearEmbeddingsKeyFromAllBackends;
+  const clearEmbeddingsKey = deps.clearEmbeddingsKey ?? clearAllEmbeddingsKeys;
   const stopServer =
     deps.stopServer ??
     ((lockDir: string) => {

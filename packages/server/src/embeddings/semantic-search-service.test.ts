@@ -186,6 +186,30 @@ describe('SemanticSearchService', () => {
     expect(svc.getStatus().embeddedCount).toBe(2);
   });
 
+  test('reloadCredential re-warms so a key set after warming takes effect', async () => {
+    // Model the "key added mid-session" flow: warm returns a NEW embedder each
+    // call, and we assert the second warm ran (a fresh embedder was loaded).
+    let loads = 0;
+    const svc = new SemanticSearchService({
+      loadEmbedder: () => {
+        loads += 1;
+        return Promise.resolve(createConceptEmbedder({ concepts }));
+      },
+      cacheDir: null,
+      enabled: true,
+    });
+    await svc.ensureWarm();
+    expect(loads).toBe(1);
+    expect(svc.getStatus().capable).toBe(true);
+
+    // A live warm won't re-read the key on its own; reloadCredential forces it.
+    svc.reloadCredential();
+    expect(svc.getStatus().capable).toBe(false); // reset until the next search
+    await svc.ensureWarm();
+    expect(loads).toBe(2); // the credential was re-resolved
+    expect(svc.getStatus().capable).toBe(true);
+  });
+
   test('disable racing an in-flight embed pass does NOT wipe the on-disk cache', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-vec-race-'));
     try {

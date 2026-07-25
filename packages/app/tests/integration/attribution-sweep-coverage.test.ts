@@ -248,6 +248,10 @@ const EXEMPT_HANDLERS = new Set([
   // sibling local-op auth handlers. No agent identity to thread.
   'handleLocalOpEmbeddingsSetKey',
   'handleLocalOpEmbeddingsClearKey',
+  // POST /api/local-op/embeddings/test — one probe embed of a fixed string
+  // against the configured endpoint. Reads config + the credential file and
+  // writes nothing; no document content, so no identity to thread.
+  'handleLocalOpEmbeddingsTest',
   'handleTestReset',
   // POST /api/test-flush-git — test-routes-only L2 git-flush drain; mutates
   // no document content (commits what persistence already wrote), so there

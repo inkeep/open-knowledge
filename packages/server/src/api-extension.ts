@@ -70,6 +70,8 @@ import {
   createWorkspaceSearchDocument,
   DEFAULT_ATTACHMENT_FOLDER_PATH,
   DEFAULT_DEDUP_MODE,
+  DEFAULT_EMBEDDINGS_BASE_URL,
+  DEFAULT_EMBEDDINGS_MODEL,
   DEFAULT_LINKS_VALIDATION,
   DEFAULT_LINTER_CONFIG,
   DeadLinksSuccessSchema,
@@ -134,6 +136,8 @@ import {
   LocalOpCloneRequestSchema,
   LocalOpEmbeddingsMutationSuccessSchema,
   LocalOpEmbeddingsSetKeyRequestSchema,
+  type LocalOpEmbeddingsTestResponse,
+  LocalOpEmbeddingsTestResponseSchema,
   LocalOpOkInitRequestSchema,
   LocalOpOkInitResponseSchema,
   lintDocument,
@@ -341,9 +345,10 @@ import {
   type SemanticQueryOutcome,
 } from './embeddings/embeddings-telemetry.ts';
 import {
-  clearEmbeddingsKeyFromAllBackends,
-  EMBEDDINGS_API_KEY_ENV,
   FileEmbeddingsBackend,
+  probeEmbeddingEndpoint,
+  type ResolvedSemanticConfig,
+  resolveEmbeddingsCredential,
   SEMANTIC_MIN_QUERY_LENGTH,
   type SemanticSearchService,
 } from './embeddings/index.ts';
@@ -2920,6 +2925,14 @@ export interface ApiExtensionOptions {
    */
   embeddingsSecretsFile?: string;
   /**
+   * Resolve the project-local `search.semantic.*` provider knobs, read FRESH so
+   * the Test-connection probe hits whatever is currently persisted — the same
+   * contract as the embedder loader, so a probe and a real embed can never
+   * disagree about which endpoint is configured. Omitted in tests that don't
+   * exercise the probe (the route then reports `no_key`-style unavailability).
+   */
+  readSemanticProviderConfig?: () => ResolvedSemanticConfig;
+  /**
    * Resolve the project's base `contentRules` config (project scope), read FRESH
    * per request so a config edit takes effect without a restart. The lint
    * endpoints inject the native `.markdownlint.*` rules over this base.
@@ -3048,6 +3061,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     semanticSearch,
     getSemanticSimilarityFloor,
     embeddingsSecretsFile,
+    readSemanticProviderConfig,
     getLinterBaseConfig,
     getLinksValidationSetting,
     ephemeral = false,
@@ -18909,6 +18923,21 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   // click) avoids a lost update. Mirrors the other local-op handlers.
   const LOCAL_OP_EMBEDDINGS_GUARD = '/api/local-op/embeddings';
 
+  // The (project, endpoint) a key op targets — derived ENTIRELY from the
+  // server's own identity + persisted config, NEVER a request body field. The
+  // route is loopback-gated but unauthenticated; letting the body name the
+  // project or endpoint would be a cross-project key-planting primitive. The
+  // body carries key bytes only. The project is this server's project; the
+  // endpoint is whatever the project currently has configured — so the key
+  // binds to exactly the endpoint the next embed will use.
+  function embeddingsKeyScope(): { projectDir: string; baseUrl: string } {
+    const cfg = readSemanticProviderConfig?.();
+    return {
+      projectDir: projectDir ?? contentDir,
+      baseUrl: cfg?.baseUrl ?? DEFAULT_EMBEDDINGS_BASE_URL,
+    };
+  }
+
   const handleLocalOpEmbeddingsSetKey = withValidation(
     LocalOpEmbeddingsSetKeyRequestSchema,
     async (_req, res, body) => {
@@ -18923,7 +18952,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         return;
       }
       try {
-        await new FileEmbeddingsBackend(embeddingsSecretsFile).set(body.key);
+        const { projectDir: pd, baseUrl } = embeddingsKeyScope();
+        await new FileEmbeddingsBackend(embeddingsSecretsFile).setForProject(pd, baseUrl, body.key);
+        // Re-warm on the next search so the new key takes effect without a
+        // restart (the key isn't part of the provider fingerprint).
+        semanticSearch?.reloadCredential();
         successResponse(
           res,
           200,
@@ -18965,7 +18998,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         return;
       }
       try {
-        await clearEmbeddingsKeyFromAllBackends(embeddingsSecretsFile);
+        const { projectDir: pd, baseUrl } = embeddingsKeyScope();
+        await new FileEmbeddingsBackend(embeddingsSecretsFile).clearForProject(pd, baseUrl);
+        semanticSearch?.reloadCredential(); // re-warm so the cleared key takes effect now
         successResponse(
           res,
           200,
@@ -18990,6 +19025,98 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       method: 'POST',
       preBodyGate: (req, res) =>
         checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_EMBEDDINGS_CLEAR_KEY }),
+    },
+  );
+
+  /**
+   * POST /api/local-op/embeddings/test — one live probe embed against the SAVED
+   * endpoint + the resolved key.
+   *
+   * The on-demand answer to "is my custom endpoint actually working". Every
+   * embeddings failure degrades quietly to keyword search, so without this a
+   * wrong URL / key / model looks exactly like a working setup that hasn't
+   * indexed yet. Sends one fixed, content-free probe string — never a page and
+   * never a query — and reports either the detected vector length or a
+   * classified reason.
+   *
+   * Deliberately takes NO endpoint from the request body: it probes what is
+   * persisted, so the route can never be pointed at an arbitrary host, and the
+   * echoed `endpoint`/`model` let the UI notice its own unsaved edit rather
+   * than misread a stale result.
+   */
+  const HANDLE_LOCAL_OP_EMBEDDINGS_TEST = 'local-op-embeddings-test';
+  // Its own guard slot: a probe waits on a remote provider, so sharing the
+  // set/clear mutex would let one slow test block the key controls. Serializing
+  // probes against each other still stops a double-click from double-calling.
+  const LOCAL_OP_EMBEDDINGS_TEST_GUARD = '/api/local-op/embeddings/test';
+
+  const handleLocalOpEmbeddingsTest = withValidation(
+    EmptyRequestSchema,
+    async (_req, res) => {
+      if (!localOpGuard.tryAcquire(LOCAL_OP_EMBEDDINGS_TEST_GUARD)) {
+        errorResponse(
+          res,
+          429,
+          'urn:ok:error:concurrent-operation',
+          'A connection test is already in progress.',
+          { handler: HANDLE_LOCAL_OP_EMBEDDINGS_TEST, extraHeaders: { 'Retry-After': '5' } },
+        );
+        return;
+      }
+      try {
+        // Absent reader = no project-local layer plumbed, which resolves to the
+        // same defaults `readProjectLocalSemanticConfig` would return.
+        const config = readSemanticProviderConfig?.() ?? {
+          baseUrl: DEFAULT_EMBEDDINGS_BASE_URL,
+          model: DEFAULT_EMBEDDINGS_MODEL,
+          dimensions: undefined,
+        };
+        // THE shared resolver, so a passing test guarantees the real embed path
+        // resolves the same credential to the same endpoint (project key → env
+        // on the default host → keyless loopback).
+        const cred = await resolveEmbeddingsCredential(
+          new FileEmbeddingsBackend(embeddingsSecretsFile),
+          projectDir ?? contentDir,
+          config.baseUrl,
+        );
+        const echo = { endpoint: config.baseUrl, model: config.model };
+        // Typed here rather than inline: `successResponse` takes `unknown`, so
+        // this annotation is what statically pins the embedder's classification
+        // to the wire enum — a new `EmbeddingErrorReason` fails to compile
+        // instead of failing schema validation at the wire boundary.
+        const probe =
+          cred.apiKey || cred.keyless
+            ? await probeEmbeddingEndpoint({
+                baseUrl: config.baseUrl,
+                model: config.model,
+                dimensions: config.dimensions,
+                apiKey: cred.apiKey ?? undefined,
+              })
+            : ({ ok: false, reason: 'no_key', status: undefined } as const);
+        const payload: LocalOpEmbeddingsTestResponse = probe.ok
+          ? { ok: true, ...echo, dimensions: probe.dimensions }
+          : { ok: false, ...echo, reason: probe.reason, status: probe.status };
+        successResponse(res, 200, LocalOpEmbeddingsTestResponseSchema, payload, {
+          handler: HANDLE_LOCAL_OP_EMBEDDINGS_TEST,
+          extraHeaders: { 'Cache-Control': 'no-store' },
+        });
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to test the embeddings endpoint.',
+          { handler: HANDLE_LOCAL_OP_EMBEDDINGS_TEST, cause: e },
+        );
+      } finally {
+        localOpGuard.release(LOCAL_OP_EMBEDDINGS_TEST_GUARD);
+      }
+    },
+    {
+      handler: HANDLE_LOCAL_OP_EMBEDDINGS_TEST,
+      method: 'POST',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_EMBEDDINGS_TEST }),
     },
   );
 
@@ -19021,18 +19148,27 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           capable = status.capable;
           embedded = status.embeddedCount;
         }
-        // Key presence is a free, prompt-free read of the 0600 secrets file (+ env
-        // override). The key itself is never returned — only `keyHint`, a redacted
-        // last-4 tail (never the full key), so the UI can show WHICH key is set.
-        // Lets the UI show "no key" the instant the toggle flips, without a warm.
-        const storedKey = await new FileEmbeddingsBackend(embeddingsSecretsFile).get();
-        const envKey = process.env[EMBEDDINGS_API_KEY_ENV] ?? null;
-        const keySource: 'file' | 'env' | null = storedKey ? 'file' : envKey ? 'env' : null;
-        const keyPresent = keySource !== null;
+        // Resolve the SAME credential the embedder would, for this project +
+        // its configured endpoint, so status can't disagree with the real path.
+        // A free, prompt-free file/env read — no warm, no egress. The key itself
+        // is never returned; only `keyHint` (redacted last-4) so the UI can show
+        // WHICH key is set. `keyNotRequired` marks a loopback endpoint that needs
+        // no key at all, so the UI doesn't nag a keyless Ollama/LM Studio user.
+        const statusConfig = readSemanticProviderConfig?.();
+        const statusBaseUrl = statusConfig?.baseUrl ?? DEFAULT_EMBEDDINGS_BASE_URL;
+        const cred = await resolveEmbeddingsCredential(
+          new FileEmbeddingsBackend(embeddingsSecretsFile),
+          projectDir ?? contentDir,
+          statusBaseUrl,
+        );
+        const keyPresent = cred.apiKey !== null;
+        const keyNotRequired = !keyPresent && cred.keyless;
+        const keySource: 'project' | 'file' | 'env' | null = keyPresent
+          ? (cred.source as 'project' | 'file' | 'env')
+          : null;
         // Last 4 chars only, and only when the key is long enough that those 4 are
         // a negligible fraction (real provider keys are 40+ chars); never the key.
-        const resolvedKey = storedKey ?? envKey;
-        const keyHint = resolvedKey && resolvedKey.length >= 8 ? resolvedKey.slice(-4) : null;
+        const keyHint = cred.apiKey && cred.apiKey.length >= 8 ? cred.apiKey.slice(-4) : null;
         // Total embeddable pages = the same filtered set the search corpus uses.
         let total = 0;
         for (const [docName] of getFileIndex()) {
@@ -19044,7 +19180,17 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           res,
           200,
           SemanticIndexStatusSchema,
-          { enabled, keyPresent, keySource, keyHint, ready, capable, embedded, total },
+          {
+            enabled,
+            keyPresent,
+            keyNotRequired,
+            keySource,
+            keyHint,
+            ready,
+            capable,
+            embedded,
+            total,
+          },
           { handler: 'semantic-status', extraHeaders: { 'Cache-Control': 'no-store' } },
         );
       } catch (e) {
@@ -20035,6 +20181,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/local-op/auth/set-identity': handleLocalOpAuthSetIdentity,
     '/api/local-op/embeddings/set-key': handleLocalOpEmbeddingsSetKey,
     '/api/local-op/embeddings/clear-key': handleLocalOpEmbeddingsClearKey,
+    '/api/local-op/embeddings/test': handleLocalOpEmbeddingsTest,
     '/api/installed-agents': handleInstalledAgentsRoute,
     '/api/spawn-cursor': handleSpawnCursorRoute,
     '/api/handoff': handleHandoffDispatchRoute,

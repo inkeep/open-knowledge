@@ -166,6 +166,7 @@
       " results."
     ],
     "2ojpo0": ["Dock sessions on the right"],
+    "2pR7ad": ["Embeddings API key"],
     "2q_Q7x": ["Visibility"],
     "2rLM8r": ["Couldn't start the agent thread — please try again."],
     "2ryd91": ["Failed to rename property"],
@@ -201,7 +202,6 @@
       "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
     ],
     "3SZrdj": ["Check for updates…"],
-    "3TCafD": ["Stored on this machine."],
     "3TSz9S": ["Minimize"],
     "3VbwPp": ["Open ", ["keyName"], " in browser"],
     "3VsNTI": ["Loading document"],
@@ -305,6 +305,9 @@
     "5PrrYw": ["Start ", ["agentName"]],
     "5QGTaA": ["Could not copy relative path"],
     "5SwVv1": ["Not installed"],
+    "5Szq6N": [
+      "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."
+    ],
     "5Tk8Fb": ["Loading files"],
     "5Umg9i": ["Disable external link previews"],
     "5WDhAk": ["Link to a page or external URL."],
@@ -428,6 +431,7 @@
       ["sanitized"],
       "</0> already has files here. Pick a different name."
     ],
+    "7cAW1G": ["No API key is set for this endpoint. Add one above."],
     "7d1a0d": ["Public"],
     "7hctf2": ["Describe the project you want to create"],
     "7jIIFX": ["You're all set up!"],
@@ -511,6 +515,7 @@
     ],
     "9Vh9Jf": ["Reopen this window to sign in with your browser"],
     "9XIEYq": ["Attach the file in an email to <0/>"],
+    "9aVlF2": ["Change provider"],
     "9bCiQ8": ["No pages are missing incoming graph links."],
     "9bG48P": ["Sending"],
     "9clcD5": ["Open documents tagged #", ["chip"]],
@@ -587,6 +592,9 @@
     "AqnqMJ": ["API key set"],
     "AsqRE_": ["Default location for new attachments"],
     "AtBdnD": ["Couldn't delete skill: ", ["error"]],
+    "AwLCZA": [
+      "The endpoint answered, but not with an OpenAI-compatible embeddings response. Check the base URL."
+    ],
     "B11p-O": ["Edit markdown link"],
     "B2DrPb": ["Auto-save"],
     "B2Srgd": [["packName"], " skill installed."],
@@ -630,6 +638,11 @@
     "Bx4EXG": ["Actions for ", ["label"]],
     "By-7Pn": ["Toggle a bullet list."],
     "BymzO4": ["Document outline"],
+    "C-mmmK": [
+      "The model id your endpoint serves. Its vector size is detected automatically — clear the field to go back to ",
+      ["DEFAULT_EMBEDDINGS_MODEL"],
+      "."
+    ],
     "C-xgad": ["or use a starter pack"],
     "C0hoX6": ["Always included"],
     "C52RBg": [
@@ -673,6 +686,7 @@
     "CvsD6Y": ["via ", ["viaTags"]],
     "CwOXMT": ["Value for ", ["keyName"]],
     "D-Oh1s": ["How to set up ", ["0"], " (opens in browser)"],
+    "D-_B7l": ["Connected — this endpoint returns ", ["0"], "-dimension vectors."],
     "D12vtS": ["(detached)"],
     "D2CwBE": [
       "Create a new OpenKnowledge project from the <0>",
@@ -697,6 +711,9 @@
     "DFfRbX": ["Sync status: ", ["syncStateLabel"], " — git identity unset"],
     "DId6MT": ["Project-level pages with no outgoing graph edges."],
     "DJd000": ["Activate the previous editor tab."],
+    "DKYW1G": [
+      "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
+    ],
     "DMeaxi": ["Downloading ", ["0"], " ", ["1"], "…"],
     "DPfwMq": ["Done"],
     "DTI-fp": [
@@ -758,6 +775,9 @@
     "EEYbdt": ["Publish"],
     "EHu0x2": ["Syncing"],
     "EJuO7B": ["Connect a GitHub account to browse and sync your repositories."],
+    "EKwNEe": [
+      "Cached embeddings belong to the endpoint and model that produced them, so this rebuilds the index from scratch."
+    ],
     "ELYtNJ": [".ok folders"],
     "EL_YRd": ["Mirror of <0>api-spec</0>"],
     "ENpRJV": ["External link previews"],
@@ -825,6 +845,7 @@
     "FCAcjR": [
       "Run a real terminal docked inside OpenKnowledge, starting in this project's folder."
     ],
+    "FCKppt": ["Endpoint"],
     "FCxvG5": ["First item"],
     "FDBwmS": ["Open folder…"],
     "FEK4oC": [
@@ -952,6 +973,7 @@
       "</0>. Please commit your changes or enable auto-sync."
     ],
     "Hp1l6f": ["Current"],
+    "Hp4rRh": ["Custom endpoint"],
     "HpK_8d": ["Reload"],
     "HptUxX": ["Number"],
     "HqOPpj": [
@@ -1088,7 +1110,6 @@
     "L-rMC9": ["Reset to default"],
     "L1BQTH": [["0"], " isn't installed yet — opening its download page."],
     "L1ZE3M": ["Document statistics"],
-    "L1rRuU": ["Embeddings API endpoint"],
     "L3CEC1": ["this item"],
     "L4Cdd9": ["or create a new file <0/>"],
     "L6Hhh6": ["(root)"],
@@ -1305,6 +1326,9 @@
     "OiHJdA": [
       "Move through slash, wiki-link, tag, and path suggestions; accept or dismiss the active suggestion."
     ],
+    "Oj-JV8": [
+      "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Use <0>Test connection</0> under Custom endpoint to see what went wrong."
+    ],
     "Okd2Xv": ["Toggle underline formatting."],
     "OlAl5i": ["Expand all"],
     "Oo_WWc": ["No pages found"],
@@ -1349,11 +1373,15 @@
     "PdJZ5p": ["No skills yet."],
     "Pgu10b": ["Saved as <0>", ["slug"], ".md</0>"],
     "PgzIpb": ["Move to the previous visual-editor find result."],
+    "PhLu69": [
+      "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
+    ],
     "PiH3UR": ["Copied!"],
     "PijLsG": ["File name (created in .ok/schemas/)"],
     "PkeYXL": ["Expanded graph mode"],
     "Pkw7J9": ["This folder is empty."],
     "PlGC6r": ["the git exclude file isn't writable"],
+    "PpJy-V": ["The endpoint didn't respond in time."],
     "PqYWiC": [
       "Couldn't restart the server automatically. Try running `ok stop all` in a terminal, then reopen this project — or restart your computer if it persists."
     ],
@@ -1437,6 +1465,11 @@
     "RfaEio": ["Toggle source comment"],
     "RfilGt": ["No rules match your filters."],
     "RgbKEe": ["You don't have access to this repository."],
+    "RhX_1U": [
+      "Sent to <0>",
+      ["endpointHost"],
+      "</0> to embed your content. Stored on this machine only (in <1>~/.ok/secrets.yml</1>), never in the project."
+    ],
     "Rj01Fz": ["Links"],
     "RlCInP": ["Slash commands"],
     "RlLl3G": ["Actions for ", ["0"]],
@@ -1843,6 +1876,7 @@
       "</1>."
     ],
     "_FLBbi": [["sizeText"], " · secrets redacted · crash dump not redacted"],
+    "_GRWOJ": ["Change the embeddings provider?"],
     "_IGfXZ": ["OpenKnowledge quit unexpectedly last time."],
     "_IX_7x": ["Other"],
     "_JOGC0": ["Send feedback…"],
@@ -1901,6 +1935,7 @@
     "aHPdYV": ["Go to line ", ["displayLine"]],
     "aM23Wr": ["page-name"],
     "aOp3hw": ["Couldn't move to Trash"],
+    "aQD_86": ["Failed to update the embeddings provider — ", ["detail"]],
     "aRI3Om": ["Close Window"],
     "aWlJai": ["Starting sign-in flow"],
     "a_u4ck": ["Loading tags"],
@@ -1967,6 +2002,7 @@
     "c8iK2Y": ["No templates found."],
     "c8jBgX": ["Checking for updates on GitHub"],
     "cCd8Bs": ["Cut"],
+    "cD3aew": ["Re-embedding happens as searches run, so coverage restarts at zero and refills."],
     "cEoyWz": ["Add item to ", ["keyName"]],
     "cF9DyA": ["Reconnecting after server restart"],
     "cFCKYZ": ["Deny"],
@@ -2042,9 +2078,6 @@
     "dIYSqk": ["remote"],
     "dJw2_7": ["Saved with the project for your team."],
     "dMsx3p": ["Home page and navigation hub."],
-    "dN20LW": [
-      "Semantic search is on, but no API key is set — search falls back to keyword matching. Add one in <0>Settings → Account</0> (it's stored once for your whole machine)."
-    ],
     "dNM58w": ["Claude Code (claude) isn't installed or on your PATH."],
     "dOHMA0": ["Failed to move"],
     "dOxPd4": ["Footnote"],
@@ -2060,6 +2093,26 @@
     "dXCi3J": ["Something broke"],
     "dXWMFn": ["Removes this skill from your editors."],
     "dYCvMf": ["Couldn't resume this conversation: ", ["0"]],
+    "darW93": [
+      [
+        "pageCount",
+        "plural",
+        {
+          "one": [
+            "The full text of your 1 page will be sent to <0>",
+            ["host"],
+            "</0> as it is re-embedded."
+          ],
+          "other": [
+            "The full text of all ",
+            ["pageCount"],
+            " pages will be sent to <1>",
+            ["host"],
+            "</1> as they are re-embedded."
+          ]
+        }
+      ]
+    ],
     "dbapvC": ["Follow us on social media"],
     "dbhUX1": ["Hide this file"],
     "dbtjJh": ["(opens in new tab)"],
@@ -2075,6 +2128,7 @@
     "e0NrBM": ["Project"],
     "e1Rn_k": ["Open containing folder"],
     "e1hptq": ["Embed a video with native player controls."],
+    "e2zZ3E": ["Test connection"],
     "e4FxjG": ["See all ", ["0"], " starter packs"],
     "e4GHWP": ["Pull"],
     "e4PbgC": ["Duplicate the file-tree item copied from the Files sidebar."],
@@ -2089,7 +2143,6 @@
     "eGUbmF": ["Copy selected file or folder"],
     "eJitUk": ["Upload from computer"],
     "eKThTQ": ["Failed to reorder"],
-    "eLl1VX": ["Failed to update the embeddings endpoint — ", ["detail"]],
     "eNQGRb": ["Inline LaTeX math rendered with KaTeX."],
     "ePK91l": ["Edit"],
     "eQkgKV": ["Installed"],
@@ -2360,6 +2413,11 @@
       "Ready-made folders and templates to get you started quickly. Select a pack to preview what gets created, then add it to your project."
     ],
     "k7Hoig": ["No content changes at this version."],
+    "k8xtrB": [
+      "Not required for a localhost endpoint like <0>",
+      ["endpointHost"],
+      "</0> — most local servers ignore it. Add one only if yours needs it."
+    ],
     "kCNU4q": [
       "Indexing your pages — ",
       ["semanticIndexedCount"],
@@ -2378,6 +2436,9 @@
       " will appear once the branch syncs."
     ],
     "kNqMMd": ["Folder"],
+    "kRTXGw": [
+      "Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted server or another provider. The API key above is for whichever endpoint you set here."
+    ],
     "kUn-CN": ["Sync off"],
     "kV2YZv": [
       "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
@@ -2577,7 +2638,6 @@
       "Stored at <0>.ok/templates/</0> in this project. Available in every folder (folder-scoped templates can override by filename)."
     ],
     "ng2Ibo": ["Branch name"],
-    "nh3wwx": ["Embeddings provider key"],
     "njBeMm": ["Both"],
     "njU86j": ["Property \"", ["trimmed"], "\" already exists"],
     "nmwqWS": ["Not answered"],
@@ -2604,9 +2664,6 @@
     "o2yoFu": ["Reveal in Finder, No workspace"],
     "o49mDZ": ["Loading timeline history"],
     "o4dcAf": ["Reveal in File Explorer, ", ["hint"]],
-    "o5gfs1": [
-      "This setting is per-machine and isn't shared with collaborators. It needs an API key set with <0>ok embeddings set-key</0>."
-    ],
     "o9CrsQ": ["research-note"],
     "oAFVKX": ["Failed to update the project sync default — ", ["detail"]],
     "oAGN8p": [
@@ -2623,9 +2680,6 @@
       "Toggle the bottom terminal panel. With text selected, stage it in the terminal's AI input instead."
     ],
     "oCZkaG": ["Copy path"],
-    "oEgEn_": [
-      "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Check the key in <0>Settings → Account</0> and the embeddings endpoint setting."
-    ],
     "oJl7eO": ["Unknown component: ", ["componentName"], " — source editable below"],
     "oKBnk5": ["More requests were blocked."],
     "oQA-cA": ["Full path"],
@@ -2684,12 +2738,10 @@
     "phM8Kh": ["Found the repo but could not open the project. Please try again."],
     "pha01Y": ["Project-level pages with no incoming graph edges."],
     "pkAft1": ["Search failed."],
-    "pmOGtg": [
-      "Use the default OpenAI endpoint or override it with an OpenAI-compatible base URL for Azure or a self-hosted provider."
-    ],
     "pmUArF": ["Workspace"],
     "ppDgFi": ["Restart with this app's version"],
     "psfGPX": ["MCP connections"],
+    "psl2Sj": ["Your change is still being saved — run the test again in a moment."],
     "pvnfJD": ["Dark"],
     "pzutoc": ["Italic"],
     "q2kXMG": ["Inline Math"],
@@ -2709,6 +2761,7 @@
     "qEIFZu": ["Key ending in ", ["keyHint"]],
     "qEue6Q": [" or "],
     "qFWMl-": ["View as text"],
+    "qIJIrD": ["Testing"],
     "qNOgUu": ["Edits at the source land here — no copy-paste drift."],
     "qRZh7J": ["Let Tab leave the source editor instead of indenting."],
     "qSKu2v": ["Source navigation and selection"],
@@ -2821,6 +2874,7 @@
     ],
     "saIASg": ["Second item"],
     "saYiIO": ["Path cannot contain null bytes"],
+    "scu3wk": ["Model"],
     "seeS6l": ["Setup OpenKnowledge in this folder?"],
     "sgmRY8": ["Skipped downloading ", ["0"], "."],
     "shNd9t": ["Slash command menu"],
@@ -2839,6 +2893,7 @@
     "stlgky": [
       "On — your search queries and the text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
     ],
+    "sweBEk": ["Model: <0>", ["0"], "</0>"],
     "sxTdZI": ["Loading paths…"],
     "sxjyRq": ["Worktrees"],
     "sxkWRg": ["Advanced"],
@@ -2856,6 +2911,7 @@
     "t9Qn8y": ["No agents enabled"],
     "tAPZEx": ["Below"],
     "tHKQ6j": ["Renaming"],
+    "tN5WTS": ["The provider rejected the request. Check the API key and the model id."],
     "tP5DDk": ["Apply link"],
     "tUvUfp": ["Use a folder you already have."],
     "t_YqKh": ["Remove"],
@@ -2901,6 +2957,7 @@
     "uMHsvM": [
       "A <0>Modified</0> badge marks schemas your config maps — on or off. Reset removes the mapping from config.yml."
     ],
+    "uNGmQn": ["Couldn't run the test. Check that OpenKnowledge is still running."],
     "uO9WLl": ["Push"],
     "uQNW00": ["Detached HEAD — checkout a branch to resume"],
     "uQewpR": [
@@ -2959,6 +3016,11 @@
     "vYPvPB": ["Switch project…"],
     "vZVeFG": ["Upload failed — please try again"],
     "v_2_3v": ["Deleted ", ["file"]],
+    "v_cQn_": [
+      "The provider rejected the request (HTTP ",
+      ["0"],
+      "). Check the API key and the model id."
+    ],
     "vbK_ZG": ["Files sidebar"],
     "ve8vEM": ["Code expired — please try again"],
     "vfRlCI": ["Could not copy full path"],
@@ -2997,9 +3059,6 @@
     "w_Sphq": ["Attachments"],
     "waFx9W": ["Managed"],
     "wbv9xO": ["Create new project"],
-    "wccmX0": [
-      "Your embeddings provider API key, used only to create embeddings of your content for semantic search. Stored once for this machine in <0>~/.ok/secrets.yml</0> (readable only by your user account) and shared across all projects. Turn the feature on per project in This project → Search, where you can also override the endpoint."
-    ],
     "wdxz7K": ["Source"],
     "weP6me": ["Couldn't load docs — type @ again to retry"],
     "wlwXUk": [
@@ -3024,10 +3083,14 @@
       ")"
     ],
     "x3kWeu": ["Problem indicators in the file explorer"],
+    "x4pGVR": [
+      "Semantic search is on, but no API key is set — search falls back to keyword matching. Add one below."
+    ],
     "x57cJf": ["Open link"],
     "xCJdfg": ["Clear"],
     "xCdTnb": ["Close new tab"],
     "xDBki3": ["Heading suggestions"],
+    "xDEcka": ["The provider is rate-limiting this key. Try again in a moment."],
     "xFQRu4": ["I already have it locally"],
     "xG4tb6": ["Lost connection to \"", ["docName"], "\"."],
     "xHGM4U": ["Hide HTML preview"],
@@ -3071,6 +3134,7 @@
     "yEJ-sl": [
       "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
     ],
+    "yFr-5x": ["Couldn't reach the endpoint. Check the URL and that the server is up."],
     "yFyZMJ": ["No pages matched \"", ["semanticQueryText"], "\" by meaning."],
     "yH7T4q": [
       [

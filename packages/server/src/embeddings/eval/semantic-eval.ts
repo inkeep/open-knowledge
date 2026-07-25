@@ -228,6 +228,7 @@ export function runHeldOutEval(prep: PreparedEval): HeldOutReport {
 export async function loadEvalEmbedder(): Promise<Embedder | null> {
   return loadOpenAiEmbedder({
     keyStore: null, // env (OK_EMBEDDINGS_API_KEY) fallback only — gated runs set it
+    projectDir: process.cwd(),
     config: {
       baseUrl: process.env.OK_EMBEDDINGS_BASE_URL ?? 'https://api.openai.com/v1',
       model: process.env.OK_EMBEDDINGS_MODEL ?? 'text-embedding-3-small',

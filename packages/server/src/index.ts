@@ -126,18 +126,26 @@ export {
 export { FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 export { DocumentDurabilityState, type StoreFailure } from './document-durability-state.ts';
 export {
-  clearEmbeddingsKeyFromAllBackends,
+  canonicalProjectKey,
+  clearAllEmbeddingsKeys,
   createEmbeddingsSecretStore,
   DEFAULT_EMBEDDINGS_DIMENSIONS,
   describeStoredEmbeddingsKey,
   EMBEDDINGS_API_KEY_ENV,
+  type EmbeddingsCredentialSource,
+  type EmbeddingsKeyPresence,
   type EmbeddingsKeyReader,
+  type EmbeddingsKeySource,
   type EmbeddingsKeyStore,
+  type EmbeddingsProjectListing,
   type EmbeddingsSecretStore,
   FileEmbeddingsBackend,
   makeLazyEmbeddingsKeyStore,
+  type ResolvedEmbeddingsCredential,
+  type ResolvedEmbeddingsKey,
   type ResolvedSemanticConfig,
   readProjectLocalSemanticConfig,
+  resolveEmbeddingsCredential,
 } from './embeddings/index.ts';
 export {
   applyExternalChange,

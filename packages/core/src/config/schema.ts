@@ -27,7 +27,7 @@ export const DEFAULT_LOGS_MAX_BYTES = 26_214_400;
 
 // Non-secret embeddings-provider defaults. Shared with the server so the live
 // layered config read and the schema `.default()` below cannot drift. The API
-// key is NEVER a config value — it lives only in the OS keyring.
+// key is NEVER a config value — it lives only in `~/.ok/secrets.yml` (0600).
 export const DEFAULT_EMBEDDINGS_BASE_URL = 'https://api.openai.com/v1';
 export const DEFAULT_EMBEDDINGS_MODEL = 'text-embedding-3-small';
 
@@ -44,6 +44,27 @@ export type EmbeddingsBaseUrlProblem = 'invalid-url' | 'insecure-scheme';
  * endpoint at entry instead of letting it surface later as a provider-rejected
  * status. Whitespace is the caller's to trim.
  */
+/**
+ * True when the URL targets the local machine's loopback interface. Checked on
+ * the PARSED hostname (never a substring of the raw URL) so an attacker host
+ * like `http://localhost.evil.com` or `http://127.0.0.1.evil.com` can't pass —
+ * their `hostname` is the full foreign name, not `localhost`/`127.0.0.1`.
+ * The single source of truth for "may be keyless" and "http:// is permitted":
+ * a keyless or plaintext request is only ever allowed to a host that stays on
+ * this machine. Non-URLs are not loopback.
+ */
+export function isLoopbackEmbeddingsUrl(baseUrl: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return false;
+  }
+  // `URL.hostname` returns IPv6 hosts bracketed (`[::1]`), never bare `::1`.
+  const host = url.hostname.toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+}
+
 export function checkEmbeddingsBaseUrl(baseUrl: string): EmbeddingsBaseUrlProblem | null {
   let url: URL;
   try {
@@ -52,10 +73,7 @@ export function checkEmbeddingsBaseUrl(baseUrl: string): EmbeddingsBaseUrlProble
     return 'invalid-url';
   }
   if (url.protocol === 'https:') return null;
-  // `URL.hostname` returns IPv6 hosts bracketed (`[::1]`), never bare `::1`.
-  const host = url.hostname.toLowerCase();
-  const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
-  if (url.protocol === 'http:' && isLoopback) return null;
+  if (url.protocol === 'http:' && isLoopbackEmbeddingsUrl(baseUrl)) return null;
   return 'insecure-scheme';
 }
 
@@ -589,13 +607,14 @@ export const ConfigSchema = z.looseObject({
   // PROJECT-LOCAL scope: semantic search is an additive embeddings signal fused
   // into the MCP `search` tool's lexical ranking. It is per-machine, not
   // project-shared, because enabling it sends content to a third-party
-  // embeddings provider (egress) and needs an API key in the local OS keyring —
+  // embeddings provider (egress) and needs an API key in the local secrets file —
   // each teammate opts in deliberately for their own machine. Project scope
   // would force one teammate's egress choice across collaborators via git; user
   // scope would force it for every project. Default OFF — the feature ships dark.
   //
   // The non-secret provider knobs (baseUrl / model / dimensions) live here; the
-  // API key NEVER does — it lives only in the OS keyring (`ok embeddings set-key`).
+  // API key NEVER does — it lives only in the 0600 `~/.ok/secrets.yml`
+  // (`ok embeddings set-key`), out of the agent-readable project tree.
   search: z
     .looseObject({
       semantic: z
@@ -617,7 +636,7 @@ export const ConfigSchema = z.looseObject({
               agentSettable: false,
               defaultScope: 'project-local',
               description:
-                'Base URL of the OpenAI-compatible embeddings API (default https://api.openai.com/v1). Override for Azure / self-hosted / other providers. The API key is NOT stored here — set it with `ok embeddings set-key` (OS keyring).',
+                'Base URL of the OpenAI-compatible embeddings API (default https://api.openai.com/v1). Override to point at a self-hosted server (Ollama / vLLM / LM Studio) or another provider. The API key is NOT stored here — set it with `ok embeddings set-key` (`~/.ok/secrets.yml`); it is sent to whichever endpoint this names.',
             })
             .default(DEFAULT_EMBEDDINGS_BASE_URL),
           model: z
@@ -639,7 +658,7 @@ export const ConfigSchema = z.looseObject({
               agentSettable: false,
               defaultScope: 'project-local',
               description:
-                "Optional output vector dimensions. Omit to use the model's native size (1536 for text-embedding-3-small). Set a smaller value (text-embedding-3 supports e.g. 512 / 1024) to shrink the on-disk cache, trading a little retrieval quality. Changing it re-embeds the corpus.",
+                "Optional output vector dimensions. Omit (recommended) to detect the model's native size from its first response — that is what lets a non-OpenAI model work without knowing its size up front. Set a smaller value (text-embedding-3 supports e.g. 512 / 1024) to shrink the on-disk cache, trading a little retrieval quality; a server that ignores the request param then fails loudly instead of silently. Changing it re-embeds the corpus.",
             })
             .optional(),
           similarityFloor: z
