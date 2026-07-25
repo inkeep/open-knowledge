@@ -18,7 +18,8 @@ import {
 import { SymlinkEscapeError } from '../apply-managed-rename.ts';
 import { createContentFilter } from '../content-filter.ts';
 import { isWithinContentDir } from '../content-path.ts';
-import { resolveEffectiveLinterConfig } from './resolve-config.ts';
+import { unmatchedAppliesToProblems } from './frontmatter-schemas.ts';
+import { composeFrontmatterSchemasConfig, resolveEffectiveLinterConfig } from './resolve-config.ts';
 
 export interface FileLintResult {
   /** Path relative to `contentDir`. */
@@ -54,7 +55,7 @@ export interface AuditOptions {
 export async function lintDoc(
   opts: AuditOptions & { docRelPath: string; onConfigProblem?: (problem: string) => void },
 ): Promise<FileLintResult> {
-  const { contentDir, baseConfig, docRelPath, onConfigProblem, liveSourceFor } = opts;
+  const { projectDir, contentDir, baseConfig, docRelPath, onConfigProblem, liveSourceFor } = opts;
   const live = liveSourceFor?.(docRelPath) ?? null;
   let text: string;
   if (live !== null) {
@@ -68,6 +69,7 @@ export async function lintDoc(
   }
   const cfg = resolveEffectiveLinterConfig(contentDir, baseConfig, {
     docName: docRelPath,
+    projectDir,
     onProblem: onConfigProblem,
   });
   return { file: docRelPath, diagnostics: await lintDocument(text, cfg, docRelPath) };
@@ -89,14 +91,64 @@ export async function lintAndFixSource(
     onConfigProblem?: (problem: string) => void;
   },
 ): Promise<{ cfg: LinterConfig; before: LintDiagnostic[]; fixed: string }> {
-  const { contentDir, baseConfig, docRelPath, source, onConfigProblem } = opts;
+  const { projectDir, contentDir, baseConfig, docRelPath, source, onConfigProblem } = opts;
   const cfg = resolveEffectiveLinterConfig(contentDir, baseConfig, {
     docName: docRelPath,
+    projectDir,
     onProblem: onConfigProblem,
   });
   const before = await lintDocument(source, cfg, docRelPath);
   const fixed = fixDocument(source, cfg);
   return { cfg, before, fixed };
+}
+
+/**
+ * Enumerate every in-scope `.md`/`.mdx` document under `scopeDir` (default:
+ * all of `contentDir`) as content-relative paths — the same walk the audit
+ * lints over (ignore rules, hidden-segment skips, extension gate), exposed so
+ * doc-independent checks (unmatched appliesTo globs on the lint-config
+ * surface) agree with the audit about what counts as a doc.
+ */
+export function collectDocFiles(opts: {
+  projectDir: string;
+  contentDir: string;
+  scopeDir?: string;
+  onWarning?: (warning: string) => void;
+}): string[] {
+  const { projectDir, contentDir, scopeDir, onWarning } = opts;
+  const filter = createContentFilter({ projectDir, contentDir });
+  const docFiles: string[] = [];
+
+  function walk(absDir: string): void {
+    let entries: import('node:fs').Dirent[];
+    try {
+      entries = readdirSync(absDir, { withFileTypes: true });
+    } catch (e) {
+      onWarning?.(`could not read ${relative(contentDir, absDir) || '.'}: ${errMsg(e)}`);
+      return;
+    }
+    for (const entry of entries) {
+      // Hidden segments (.ok/, .git/, .obsidian/, dotfiles) are not
+      // addressable as docNames (see `validateDocName`), so a diagnostic here
+      // could be neither navigated to nor auto-fixed — the fix endpoint
+      // rejects the docName outright. Skip them so the audit's scope stays
+      // symmetric with the write path's addressability (precedent #55).
+      if (entry.name.startsWith('.')) continue;
+      const full = join(absDir, entry.name);
+      const rel = relative(contentDir, full);
+      if (entry.isDirectory()) {
+        if (filter.isDirExcluded(rel)) continue;
+        walk(full);
+      } else if (entry.isFile()) {
+        if (!isDocFile(entry.name)) continue;
+        if (filter.isExcluded(rel)) continue;
+        docFiles.push(rel);
+      }
+    }
+  }
+
+  walk(scopeDir ?? contentDir);
+  return docFiles;
 }
 
 /** Lint every in-scope `.md`/`.mdx` document under `contentDir` (or a sub-path). */
@@ -105,7 +157,6 @@ export async function auditProject(
 ): Promise<AuditResult> {
   const { projectDir, contentDir, baseConfig, targetPath } = opts;
   const warnings: string[] = [];
-  const filter = createContentFilter({ projectDir, contentDir });
 
   const docFiles: string[] = [];
   const scope = resolveScope(targetPath, contentDir);
@@ -139,35 +190,14 @@ export async function auditProject(
   if (scope.kind === 'file') {
     docFiles.push(relative(contentDir, scope.path));
   } else {
-    walk(scope.path);
-  }
-
-  function walk(absDir: string): void {
-    let entries: import('node:fs').Dirent[];
-    try {
-      entries = readdirSync(absDir, { withFileTypes: true });
-    } catch (e) {
-      warnings.push(`could not read ${relative(contentDir, absDir) || '.'}: ${errMsg(e)}`);
-      return;
-    }
-    for (const entry of entries) {
-      // Hidden segments (.ok/, .git/, .obsidian/, dotfiles) are not
-      // addressable as docNames (see `validateDocName`), so a diagnostic here
-      // could be neither navigated to nor auto-fixed — the fix endpoint
-      // rejects the docName outright. Skip them so the audit's scope stays
-      // symmetric with the write path's addressability (precedent #55).
-      if (entry.name.startsWith('.')) continue;
-      const full = join(absDir, entry.name);
-      const rel = relative(contentDir, full);
-      if (entry.isDirectory()) {
-        if (filter.isDirExcluded(rel)) continue;
-        walk(full);
-      } else if (entry.isFile()) {
-        if (!isDocFile(entry.name)) continue;
-        if (filter.isExcluded(rel)) continue;
-        docFiles.push(rel);
-      }
-    }
+    docFiles.push(
+      ...collectDocFiles({
+        projectDir,
+        contentDir,
+        scopeDir: scope.path,
+        onWarning: (warning) => warnings.push(warning),
+      }),
+    );
   }
 
   docFiles.sort();
@@ -182,13 +212,24 @@ export async function auditProject(
     seenConfigProblems.add(problem);
     warnings.push(problem);
   };
+  // Frontmatter schema loading is doc-independent — resolve once for the whole
+  // audit; the per-doc resolution sees resolved entries and skips the reads.
+  const auditBase = composeFrontmatterSchemasConfig(projectDir, baseConfig, onConfigProblem);
+  // Zero-match globs only make sense against the FULL doc set — a sub-path
+  // audit would flag every pattern scoped to a folder outside the target.
+  const fmSlice = auditBase.plugins.frontmatter;
+  if ((targetPath === undefined || targetPath === '') && fmSlice.enabled) {
+    for (const problem of unmatchedAppliesToProblems(fmSlice.schemas, docFiles)) {
+      onConfigProblem(problem);
+    }
+  }
   for (const rel of docFiles) {
     let result: FileLintResult;
     try {
       result = await lintDoc({
         projectDir,
         contentDir,
-        baseConfig,
+        baseConfig: auditBase,
         docRelPath: rel,
         onConfigProblem,
         liveSourceFor: opts.liveSourceFor,

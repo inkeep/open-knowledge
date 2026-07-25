@@ -202,6 +202,8 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'autoSync.default',
       'content.attachmentFolderPath',
       'content.dir',
+      'contentRules.frontmatter.enabled',
+      'contentRules.frontmatter.schemas',
       'contentRules.markdownlint.enabled',
       'telemetry.localSink.attributeDenylist',
       'telemetry.localSink.enabled',

@@ -802,6 +802,16 @@ export function createServer(options: ServerOptions): ServerInstance {
       enabled: semCfg.enabled,
       providerFingerprint: semanticProviderFingerprint(semCfg),
     });
+    // The effective lint config is derived from the on-disk `.ok/config.yml`
+    // (readLinterBaseConfig reads fresh per request) — clients that refetched
+    // on the CRDT patch raced the persistence debounce and may hold a stale
+    // compose (e.g. a problems banner for a just-removed schema mapping).
+    // This persist is the moment the disk read converges; the signal is a
+    // debounced pure hint, so the producer-notify + watcher-echo double-fire
+    // this function documents is safe.
+    if (configDocName === CONFIG_DOC_NAME_PROJECT) {
+      cc1Broadcaster?.signal('lint-config');
+    }
     log.info(
       {
         docName: configDocName,
@@ -1002,7 +1012,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     rejectReady = rej;
   });
 
-  function signalChannel(channel: 'files' | 'backlinks' | 'graph' | 'tags'): void {
+  function signalChannel(channel: 'files' | 'backlinks' | 'graph' | 'tags' | 'lint-config'): void {
     cc1Broadcaster?.signal(channel);
   }
 

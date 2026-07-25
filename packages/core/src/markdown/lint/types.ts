@@ -1,4 +1,4 @@
-export const LINT_PLUGIN_IDS = ['markdownlint'] as const;
+export const LINT_PLUGIN_IDS = ['markdownlint', 'frontmatter'] as const;
 export type LintPluginId = (typeof LINT_PLUGIN_IDS)[number];
 
 export type LintSeverity = 'error' | 'warning' | 'info' | 'hint';
@@ -51,6 +51,22 @@ export type MarkdownlintRuleSetting = MarkdownlintRuleWriteValue | MarkdownlintR
 export interface MarkdownlintSlice {
   enabled: boolean;
   rules: Record<string, MarkdownlintRuleSetting>;
+}
+
+export interface FrontmatterSchemaMapping {
+  appliesTo?: string | string[];
+  file: string;
+  enabled?: boolean;
+}
+
+export interface ResolvedFrontmatterSchemaEntry extends FrontmatterSchemaMapping {
+  key?: string;
+  schema?: Record<string, unknown>;
+}
+
+export interface FrontmatterSlice {
+  enabled: boolean;
+  schemas: ResolvedFrontmatterSchemaEntry[];
 }
 
 interface RuleOptionSpecBase {

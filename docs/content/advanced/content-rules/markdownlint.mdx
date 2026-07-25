@@ -4,7 +4,9 @@ icon: LuListChecks
 description: The markdownlint linter for content rules — VS Code-parity defaults, your project's native `.markdownlint.*` config, and a no-code browser for all 53 rules.
 ---
 
-markdownlint is the first content-rules linter — the standard [markdownlint](https://github.com/DavidAnson/markdownlint) engine, the same one behind `markdownlint-cli2` and the popular editor extensions. This page covers its defaults, how it reads your project's config, and the built-in rule browser. For the linter-agnostic parts — where problems appear, the Problems panel, `ok lint`, and agent advisories — see the [content rules overview](/docs/advanced/content-rules/overview).
+markdownlint is the content-rules linter for markdown style — the standard [markdownlint](https://github.com/DavidAnson/markdownlint) engine, the same one behind `markdownlint-cli2` and the popular editor extensions.
+
+This page covers its defaults, how it reads your project's config, and the built-in rule browser. For the linter-agnostic parts — where problems appear, the Problems panel, `ok lint`, and agent advisories — see the [content rules overview](/docs/advanced/content-rules/overview). For validating frontmatter rather than markdown style, see [Frontmatter schemas](/docs/advanced/content-rules/frontmatter).
 
 ## Default rules
 
@@ -29,17 +31,46 @@ The rules live in your project's own native markdownlint file — `.markdownlint
 
 **Settings ▸ Plugins ▸ markdownlint** (markdownlint appears there once the plugin is enabled) lists the full catalog — all 53 rules, generated from the installed engine's own config schema, so it always matches what actually runs. Search by id, alias, or name; browse by category (Headings, Lists, Whitespace, Code, Links & images, Style); or check **Only modified** to see just the rules your config changes. Expanding a rule reveals a link to its upstream documentation and typed editors for each of its options.
 
-The same browser also opens **directly on the config file**. Open your project's root `.markdownlint.json` or `.markdownlint.jsonc` in the editor (reveal hidden files to find it) and use the **Source / Rules** toggle: **Source** — the default — shows the raw file read-only, and **Rules** is the same no-code browser. Because rule edits target the project's governing root config, **Rules** is enabled only for that root file; open a nested or otherwise non-governing `.markdownlint.*` and **Rules** is disabled with a tooltip while **Source** still shows the file. Your Source/Rules choice is remembered separately from the document editor's own Visual/Markdown mode.
+The same browser also opens **directly on the config file**. Open your project's root `.markdownlint.json` or `.markdownlint.jsonc` in the editor (reveal hidden files to find it) and use the **Source / Rules** toggle: **Source**, the default, shows the raw file read-only; **Rules** is the same no-code browser. Your choice is remembered separately from the document editor's own Visual/Markdown mode.
 
-Every edit writes back to your native `.markdownlint.*` file, preserving what you wrote: JSON and JSONC files get minimal text edits (comments and formatting survive), and a rule you configured under an alias stays under that alias. Severity strings are shown as a read-only badge. If the project has no file yet, the first change creates a `.markdownlint.json` seeded with the defaults — from then on that file is the whole story for OK and every other markdownlint tool.
+That toggle appears for JSON and JSONC configs only — a `.markdownlint.yaml`, `.markdownlint.yml`, or `.markdownlintrc` opens in the read-only file preview instead. And because rule edits target the project's governing root config, **Rules** is enabled only for that file; open a nested JSON config and **Rules** is disabled with a tooltip while **Source** still shows it.
+
+Every edit writes back to your native `.markdownlint.*` file, and a rule you configured under an alias stays under that alias. JSON and JSONC files get minimal text edits, so comments and formatting survive; a YAML config is re-serialized, which drops its comments. Severity strings are shown as a read-only badge. If the project has no file yet, the first change creates a `.markdownlint.json` seeded with the defaults — from then on that file is the whole story for OK and every other markdownlint tool.
+
+## What a finding looks like
+
+A markdownlint finding carries the rule id as its `code` under source `markdownlint` — rendered as `markdownlint/MD010` in reports — with the upstream engine's message. In `ok lint` text output:
+
+```text
+docs/guide.md
+  7:5     warning  Hard tabs: Column: 5  markdownlint/MD010
+```
+
+And as a diagnostic in `ok lint --json` (or the MCP `lint` tool's structured content), where an auto-fixable rule also carries its `fixes` — the exact text edits `--fix` or the editor's **Fix** action would apply:
+
+```json
+{
+  "range": { "start": { "line": 6, "character": 4 }, "end": { "line": 6, "character": 5 } },
+  "severity": "warning",
+  "source": "markdownlint",
+  "code": "MD010",
+  "message": "Hard tabs: Column: 5",
+  "fixes": [
+    { "range": { "start": { "line": 6, "character": 4 }, "end": { "line": 6, "character": 5 } }, "newText": " " }
+  ]
+}
+```
+
+JSON ranges are 0-based and end-exclusive; the text report is 1-based. A rule that can't be auto-fixed simply has no `fixes` key. The shared report shapes — file grouping, counts, configuration warnings — are on the [overview](/docs/advanced/content-rules/overview#what-it-returns).
 
 ## Auto-fix and severities
 
-- **Auto-fix covers only some rules.** markdownlint can mechanically fix problems like hard tabs, trailing whitespace, list-marker style, and blank-line spacing — but not ones that need a human decision, such as inline HTML (`MD033`) or a missing top-level heading (`MD041`). In source mode the **Fix** action appears only on a problem markdownlint can fix; `ok lint --fix` applies every fixable problem across the project and leaves the rest untouched, still reported. There's no "fix everything" — the rest always need a manual edit.
+- **Auto-fix covers only some rules.** markdownlint can mechanically fix problems like hard tabs, trailing whitespace, list-marker style, and blank-line spacing — but not ones that need a human decision, such as inline HTML (`MD033`) or a missing top-level heading (`MD041`). In source mode the **Fix** action appears only on a problem markdownlint can fix; the Problems panel offers **Fix all** to apply every fixable problem in the current scope at once; and `ok lint --fix` does the same across the whole project. Whatever's left is still reported, untouched — no affordance resolves the rules that need a human decision.
 - **Severities.** A rule reports as a warning unless your config promotes it to `"error"`. Set `"error"` as the rule's value or via a `severity` key, then gate CI on just those rules with `ok lint --errors-only`.
 
 ## See also
 
 - [Content rules overview](/docs/advanced/content-rules/overview): where problems show up, the Problems panel, `ok lint`, and agents
+- [Frontmatter schemas](/docs/advanced/content-rules/frontmatter): the sibling linter for frontmatter validation
 - [Configuration reference](/docs/reference/configuration): `config.yml` and what's shared via git
 - [markdownlint rules](https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md): the upstream rule reference

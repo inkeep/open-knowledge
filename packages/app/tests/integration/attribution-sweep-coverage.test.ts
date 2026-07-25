@@ -136,6 +136,12 @@ const EXEMPT_HANDLERS = new Set([
   // content — same rationale as `handleFolderConfig`. No agent identity needed.
   'handleGetLintConfig',
   'handleWriteMarkdownlintRule',
+  // Project-config write (frontmatter schema file), not agent-authored content —
+  // same class as handleWriteMarkdownlintRule.
+  'handleWriteFrontmatterSchema',
+  // `/api/lint/frontmatter-schemas` (GET) — read-only enumeration of the
+  // project's `.ok/schemas/*.json` files for the mapping picker. No writes.
+  'handleFrontmatterSchemasList',
   // `/api/lint` (GET) + `/api/lint/audit` (GET) — read-only lint of a single doc
   // / the whole project. No writes, no agent identity — same rationale as the
   // other read handlers below.

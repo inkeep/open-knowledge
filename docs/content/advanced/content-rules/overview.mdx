@@ -6,7 +6,9 @@ description: A non-blocking linting layer over your project's markdown — probl
 
 Content rules are a lightweight linting layer over your project's markdown. **Enable a linter for a project** and it checks your markdown as you write. Findings are **non-blocking**: they surface as warnings, never stop a save, and never gate an agent's edit.
 
-Today the only linter is [markdownlint](/docs/advanced/content-rules/markdownlint) — the standard engine for markdown style (hard tabs, heading increments, list markers, and the rest). Content rules is built as a pluggable system, and more linters are planned. This page covers the parts that are the same whatever the linter runs; the [markdownlint page](/docs/advanced/content-rules/markdownlint) covers that engine's rules and configuration.
+Two linters ship today. [markdownlint](/docs/advanced/content-rules/markdownlint) is the standard engine for markdown style — hard tabs, heading increments, list markers, and the rest. [Frontmatter schemas](/docs/advanced/content-rules/frontmatter) validates each doc's frontmatter against standard JSON Schema files. The system is pluggable and more linters are planned.
+
+This page covers what's the same whatever linter runs; each linter's page covers its own rules and configuration.
 
 ## Where problems show up
 
@@ -35,9 +37,85 @@ ok lint --json          # structured JSON output
 ok lint --errors-only   # exit non-zero only on error-severity problems
 ```
 
-The exit code is CI-friendly: non-zero when any problems are found. Findings are warnings unless your config promotes a rule to `"error"` severity, so `--errors-only` lets you gate CI on just the rules you've chosen to enforce.
+The exit code is non-zero when any problem is found. Findings are warnings unless your `.markdownlint.*` promotes a rule to `"error"`, so `--errors-only` gates CI on just the rules you chose to enforce. Only markdownlint rules can be promoted — [frontmatter](/docs/advanced/content-rules/frontmatter) findings are always warnings, so `--errors-only` never gates on them.
 
-`ok audit` widens the same report to the full validation plane — markdownlint problems **and** broken internal links, each finding tagged with its source:
+### What it returns
+
+The text report lists each finding as `line:column` (1-based), severity, message, and a composed `source/code` id naming the linter and the violated rule:
+
+```text
+docs/guide.md
+  7:5     warning  Hard tabs: Column: 5  markdownlint/MD010
+  1:1     warning  Frontmatter property "owner" is required  frontmatter/required
+  2:1     warning  Frontmatter property "status" must be one of: draft, review, published (got "shipped")  frontmatter/enum
+
+3 problems (0 errors, 3 warnings) across 1 file.
+```
+
+Configuration problems (a malformed config file, a broken schema) print as `!` lines after the findings — they describe your setup, not a document. `--json` emits the same data as a machine-readable object:
+
+```json
+{
+  "contentDir": "/path/to/project",
+  "files": [
+    {
+      "file": "docs/guide.md",
+      "fixed": false,
+      "diagnostics": [
+        {
+          "range": { "start": { "line": 6, "character": 4 }, "end": { "line": 6, "character": 5 } },
+          "severity": "warning",
+          "source": "markdownlint",
+          "code": "MD010",
+          "message": "Hard tabs: Column: 5",
+          "fixes": [
+            { "range": { "start": { "line": 6, "character": 4 }, "end": { "line": 6, "character": 5 } }, "newText": " " }
+          ]
+        },
+        {
+          "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 3 } },
+          "severity": "warning",
+          "source": "frontmatter",
+          "code": "required",
+          "message": "Frontmatter property \"owner\" is required"
+        },
+        {
+          "range": { "start": { "line": 1, "character": 0 }, "end": { "line": 1, "character": 15 } },
+          "severity": "warning",
+          "source": "frontmatter",
+          "code": "enum",
+          "message": "Frontmatter property \"status\" must be one of: draft, review, published (got \"shipped\")"
+        }
+      ]
+    }
+  ],
+  "warnings": [],
+  "fileCount": 1,
+  "errorCount": 0,
+  "warningCount": 3,
+  "fixedCount": 0
+}
+```
+
+Conventions to know:
+
+- JSON ranges are **0-based and end-exclusive** (LSP-aligned); the text report displays 1-based positions.
+- `fixes` appears only on auto-fixable findings — its presence is how tooling knows `--fix` would resolve the problem.
+- `fixed` is `true` on each file `--fix` rewrote, and the top-level `fixedCount` counts **files**, not problems.
+- The top-level `warnings` array carries the configuration problems.
+
+With `--fix`, fixable findings are applied in place, fixed files are marked `(fixed)`, and the report lists what remains:
+
+```text
+docs/guide.md (fixed)
+  1:1     warning  Frontmatter property "owner" is required  frontmatter/required
+  2:1     warning  Frontmatter property "status" must be one of: draft, review, published (got "shipped")  frontmatter/enum
+
+2 problems (0 errors, 2 warnings) across 1 file.
+Fixed 1 file.
+```
+
+`ok audit` widens the same report to the full validation plane — content-rule problems **and** broken internal links, each finding tagged with its source:
 
 ```bash
 ok audit                 # audit the whole project (lint + links)
@@ -46,18 +124,99 @@ ok audit --json          # the full structured diagnostic plane
 ok audit --errors-only   # exit non-zero only on error-severity problems
 ```
 
-Unlike `ok lint`, `ok audit` needs the project's server running (`ok start` or OK Desktop) — the links validator reads the live backlink index. Same CI-friendly exit code; there's no `--fix` because the audit is read-only (lint fixes go through `ok lint --fix`, link repairs are content edits).
+Unlike `ok lint`, `ok audit` needs the project's server running (`ok start` or OK Desktop) — the links validator reads the live backlink index. There's no `--fix` because the audit is read-only (lint fixes go through `ok lint --fix`, link repairs are content edits).
+
+`--json` returns the same per-file grouping as `ok lint --json`, with two differences: the audit never writes, so there's no `contentDir`, `fixed`, or `fixedCount`; and a `links` finding carries `linkTarget` — the unresolved target verbatim, so tooling never parses it back out of the message:
+
+```json
+{
+  "files": [
+    {
+      "file": "docs/guide.md",
+      "diagnostics": [
+        {
+          "range": { "start": { "line": 11, "character": 0 }, "end": { "line": 11, "character": 0 } },
+          "severity": "warning",
+          "source": "links",
+          "code": "dead-link",
+          "message": "Link target \"guides/setup\" does not resolve to an existing document.",
+          "linkTarget": "guides/setup"
+        }
+      ]
+    }
+  ],
+  "warnings": [],
+  "fileCount": 1,
+  "errorCount": 0,
+  "warningCount": 1
+}
+```
+
+Broken links are warnings by default. The project's `validation.links` setting — **Settings ▸ This project ▸ Content rules** — decides both whether they appear and at what severity: `warning` (the default), `error` to gate CI on them with `--errors-only`, or `off` to drop them from the plane entirely. Content-rule findings keep their own severities, so `--errors-only` covers both planes at once.
 
 ## AI agents
 
-Agents get the same signal you see:
+Agents get the same signal you see, across three surfaces. See the [MCP reference](/docs/reference/mcp) for the full tool list.
 
-- The MCP **`lint`** tool lints a single document or audits the project (optionally scoped to a folder or file), and with `fix: true` on a document auto-fixes fixable rules in place — attributed and live in the preview, the same result as the editor's **Fix** action. Audit output is capped at 10 files × 10 diagnostics per file with explicit "… and N more" indicators — the totals always reflect the full scan, and re-running with a narrower scope recovers the detail. See the [MCP reference](/docs/reference/mcp).
-- Every agent write response carries up to 10 validation findings for the document it touched — lint violations **and** broken internal links, following the same [Content rules](/docs/reference/configuration) posture as the audit — so an agent that writes a dead link hears about it immediately and can clean up after itself without being asked. Dead-link findings name the unresolved target, ready for a create-page fix. Advisory only — a finding never blocks the write.
+### The `lint` tool
+
+Lints a single document, or audits the project when `document` is omitted (`path` scopes it to a folder or file). `fix: true` — which requires `document` — auto-fixes fixable rules in place, attributed and live in the preview, the same result as the editor's **Fix** action.
+
+A single-document call returns a readable summary. Configuration problems ride along as `⚠` lines, and the closing hint tells the agent whether `fix: true` would help:
+
+```text
+docs/guide.md: 2 warnings
+  ⚠ line 1 frontmatter/required: Frontmatter property "owner" is required
+  ⚠ line 2 frontmatter/enum: Frontmatter property "status" must be one of: draft, review, published (got "shipped")
+  ⚠ frontmatter schema .ok/schemas/missing.schema.json: cannot read (ENOENT: no such file or directory, …)
+None are auto-fixable — these need content edits via `edit`/`write`.
+```
+
+The structured content is close to `ok lint --json`, with three differences:
+
+| | `ok lint --json` | MCP `lint` |
+| --- | --- | --- |
+| Project path | `contentDir` | `cwd` |
+| `fixedCount` counts | files rewritten | **problems** resolved |
+| Cap fields | — | `omittedFileCount`, per-file `omittedDiagnosticCount` |
+
+Everything else matches: `files[].diagnostics` with 0-based `range`, `severity`, `source`, `code`, `message`, plus `errorCount`, `warningCount`, `fileCount` on an audit, and the configuration-problem `warnings`. Audit output is capped at 10 files × 10 diagnostics per file — the text channel marks the remainder with "… and N more", the structured channel with the two cap fields above. Counts always reflect the full scan, and re-running with a narrower `path` recovers the detail. With `fix: true` the summary reports what was applied and what remains: `Fixed 1 problem in docs/guide.md.` followed by the unfixable findings.
+
+### The `audit` tool
+
+The agent-side `ok audit` — content-rule problems and broken links in one read-only call, grouped by file, same 10 × 10 cap, no fix shape.
+
+### Write responses
+
+Every write response carries validation findings for the document it touched, on two channels. Both nest under `document` in the structured content, and both are advisory: a finding never blocks the write.
+
+```json
+"document": {
+  "brokenLinks": [
+    { "href": "./guides/setup", "resolvedTo": "guides/setup", "reason": "no-such-doc" }
+  ],
+  "warnings": [
+    {
+      "kind": "lint-violation",
+      "source": "frontmatter",
+      "code": "enum",
+      "message": "Frontmatter property \"status\" must be one of: draft, review, published (got \"shipped\")",
+      "severity": "warning",
+      "line": 2,
+      "column": 1
+    }
+  ]
+}
+```
+
+**`warnings`** carries up to 10 findings across the whole validation plane — lint violations and broken links alike, honoring the project's `validation.links` setting. Positions are 1-based (`line`/`column`), ready to echo back to a human, and a `links` finding adds `linkTarget`. The field is present only when the write produced findings.
+
+**`brokenLinks`** is the dedicated link channel, and unlike `warnings` it is **always present** — an empty array is the positive "every outbound link resolves" confirmation, which saves a separate `links({ kind: "dead" })` round-trip. Each entry names the href exactly as authored, so an agent can grep for it. `reason` is `no-such-doc` (resolved to a docName that doesn't exist), `no-such-file` (a linked asset or source file missing from disk), or `unresolvable` (an empty href, or a relative path escaping the content root); `resolvedTo` is `null` for `unresolvable`.
 
 ## See also
 
 - [markdownlint](/docs/advanced/content-rules/markdownlint): the rules, your `.markdownlint.*` config, and the rule browser
+- [Frontmatter schemas](/docs/advanced/content-rules/frontmatter): JSON Schema validation of document frontmatter, and the schema editor
 - [Editor](/docs/features/editor): source mode, WYSIWYG, and the document panel
 - [Configuration reference](/docs/reference/configuration): `config.yml` and what's shared via git
 - [MCP reference](/docs/reference/mcp): the tools agents use to read and write your project

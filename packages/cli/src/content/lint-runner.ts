@@ -24,6 +24,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import {
   composeEffectiveLinterConfig,
+  composeFrontmatterSchemasConfig,
   createContentFilter,
   resolveNativeConfigForDoc,
 } from '@inkeep/open-knowledge-server';
@@ -63,23 +64,31 @@ export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
   const warnings: string[] = [];
   const filter = createContentFilter({ projectDir, contentDir });
 
+  const seenConfigProblems = new Set<string>();
+  const pushConfigProblem = (problem: string): void => {
+    if (seenConfigProblems.has(problem)) return;
+    seenConfigProblems.add(problem);
+    warnings.push(problem);
+  };
+
+  // Frontmatter schema files load once per run (the mapping is project-wide,
+  // resolved from projectDir; per-doc appliesTo filtering lives in the plugin);
+  // load problems surface as report warnings — the same resolution the server
+  // uses.
+  const resolvedBase = composeFrontmatterSchemasConfig(projectDir, baseConfig, pushConfigProblem);
+
   // markdownlint `rules` come from the project's native `.markdownlint.*`
   // files, resolved per doc with cli2 cascade semantics (nearest file on the
   // doc→root walk governs wholesale; OK's tuned defaults only when no file
   // governs) — the same resolution the server uses. Memoized per directory:
   // every doc in a folder shares one governing file.
   const cfgByDir = new Map<string, LinterConfig>();
-  const seenConfigProblems = new Set<string>();
   const configForDoc = (rel: string): LinterConfig => {
     const dir = dirname(rel);
     const cached = cfgByDir.get(dir);
     if (cached) return cached;
-    const native = resolveNativeConfigForDoc(contentDir, rel, (problem) => {
-      if (seenConfigProblems.has(problem)) return;
-      seenConfigProblems.add(problem);
-      warnings.push(problem);
-    });
-    const cfg = composeEffectiveLinterConfig(baseConfig, native);
+    const native = resolveNativeConfigForDoc(contentDir, rel, pushConfigProblem);
+    const cfg = composeEffectiveLinterConfig(resolvedBase, native);
     cfgByDir.set(dir, cfg);
     return cfg;
   };

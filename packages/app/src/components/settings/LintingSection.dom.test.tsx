@@ -6,7 +6,7 @@
  */
 
 import type { Config, ConfigBinding } from '@inkeep/open-knowledge-core';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -141,6 +141,11 @@ describe('ProjectPluginsManageSection', () => {
     expect(screen.getByTestId('settings-plugins-audit-pointer').textContent).toContain(
       'Run a project audit from the Problems panel',
     );
+    // The frontmatter plugin is feature-beta; markdownlint is not.
+    const list = screen.getByTestId('settings-plugins-list');
+    const rows = within(list).getAllByText('Beta');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.closest('label')?.textContent).toContain('Frontmatter schemas');
   });
 
   test('toggling a project plugin writes the per-plugin enabled patch', async () => {

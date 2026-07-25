@@ -295,6 +295,9 @@ function formatDirectoryEntry(d: DirectoryMeta): string {
       .join(', ');
     parts.push(`templates: ${tpl}`);
   }
+  if (d.schemas_applicable && d.schemas_applicable.length > 0) {
+    parts.push(`schemas: ${d.schemas_applicable.join(', ')}`);
+  }
   const counts: string[] = [];
   counts.push(
     d.recursiveMdCount > d.directMdCount
@@ -325,6 +328,9 @@ export function formatFileEntry(m: EnrichedMeta): string {
   const fmType = typeof m.frontmatter.type === 'string' ? m.frontmatter.type : null;
   if (fmStatus) parts.push(`status: ${fmStatus}`);
   if (fmType) parts.push(`type: ${fmType}`);
+  if (m.schemas_applicable && m.schemas_applicable.length > 0) {
+    parts.push(`schemas: ${m.schemas_applicable.join(', ')}`);
+  }
   if (m.backlinkCount !== null) {
     // Source paths are populated on single-cat rich only (null on multi-path); render
     // them so the agent can follow a backlink without a second links() call.
@@ -515,6 +521,18 @@ export async function buildExecResult(
   // differ only when the caller targets a subdirectory of the project.
   const { cwd, executionCwd, config, url: resolvedServerUrl } = context;
 
+  // Read-time schema advertisement: when the frontmatter plugin is enabled,
+  // enrichment resolves which schema files govern each listed doc/folder
+  // server-side (the agent never evaluates an appliesTo glob).
+  const frontmatterSlice = config.contentRules.frontmatter;
+  const enrichSchemaDeps =
+    frontmatterSlice.enabled && frontmatterSlice.schemas.length > 0
+      ? {
+          contentDir: resolve(cwd, config.content.dir),
+          frontmatterSchemas: frontmatterSlice.schemas,
+        }
+      : {};
+
   // Referenced paths emerge from stdout relative to where bash ran
   // (`executionCwd`); enrichment addresses them project-relative, so rebase each
   // onto the project root. Identity no-op when the two coincide (the common
@@ -618,7 +636,7 @@ export async function buildExecResult(
     files.map((p) =>
       enrichPath(
         p,
-        { projectDir: cwd, serverUrl: resolvedServerUrl },
+        { projectDir: cwd, serverUrl: resolvedServerUrl, ...enrichSchemaDeps },
         {
           includeRichFields: isSinglePathCat,
         },
@@ -648,7 +666,7 @@ export async function buildExecResult(
   // change away.
   const dirEnriched: DirectoryMeta[] = await Promise.all(
     dirs.map((p) =>
-      enrichDirectoryRecursive(p, 1, { projectDir: cwd }).catch(
+      enrichDirectoryRecursive(p, 1, { projectDir: cwd, ...enrichSchemaDeps }).catch(
         (): DirectoryMeta => ({
           path: p,
           type: 'directory',

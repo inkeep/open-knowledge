@@ -247,6 +247,7 @@ export {
 } from './lint/markdownlint-write.ts';
 export {
   composeEffectiveLinterConfig,
+  composeFrontmatterSchemasConfig,
   type ResolveLinterConfigOptions,
   resolveEffectiveLinterConfig,
   resolveNativeConfigForDoc,

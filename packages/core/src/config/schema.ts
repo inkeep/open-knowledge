@@ -707,8 +707,49 @@ export const ConfigSchema = z.looseObject({
           // persists only this toggle.
         })
         .default({ enabled: false }),
+      frontmatter: z
+        .object({
+          enabled: z
+            .boolean()
+            .register(fieldRegistry, {
+              scope: 'project',
+              agentSettable: false,
+              defaultScope: 'project',
+              description:
+                'Whether the frontmatter plugin (JSON-Schema validation of document frontmatter) contributes diagnostics.',
+            })
+            .default(false),
+          // Schema CONTENT is NOT persisted here. Each entry scopes one
+          // standard draft-07 JSON Schema file (project-root-relative `file`,
+          // portable to any external tool) to a set of docs via `appliesTo`
+          // globs (single or list; leading `!` excludes; absent matches every
+          // doc). Loaded server/CLI-side and injected into the effective
+          // config; entry order carries no precedence — every match validates.
+          schemas: z
+            .array(
+              z.object({
+                appliesTo: z.union([z.string(), z.array(z.string())]).optional(),
+                file: z.string(),
+                // Absent = enabled; the Settings toggle writes false to keep
+                // the mapping (and its appliesTo) without validating.
+                enabled: z.boolean().optional(),
+              }),
+            )
+            .register(fieldRegistry, {
+              scope: 'project',
+              agentSettable: false,
+              defaultScope: 'project',
+              description:
+                'Frontmatter schema mappings: which docs (appliesTo globs) validate against which JSON Schema file (project-root-relative path).',
+            })
+            .default([]),
+        })
+        .default({ enabled: false, schemas: [] }),
     })
-    .default({ markdownlint: { enabled: false } }),
+    .default({
+      markdownlint: { enabled: false },
+      frontmatter: { enabled: false, schemas: [] },
+    }),
   // Validation-surface behavior (the unified audit plane's non-plugin knobs).
   // PROJECT scope, like `contentRules`: how broken links are classified and
   // whether the file tree surfaces problem indicators are team-shared

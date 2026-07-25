@@ -38,7 +38,10 @@ function run(opts: Partial<Parameters<typeof runLint>[0]> = {}) {
     // so enable the plugin explicitly on the base config.
     baseConfig: {
       ...DEFAULT_LINTER_CONFIG,
-      plugins: { markdownlint: { ...DEFAULT_LINTER_CONFIG.plugins.markdownlint, enabled: true } },
+      plugins: {
+        ...DEFAULT_LINTER_CONFIG.plugins,
+        markdownlint: { ...DEFAULT_LINTER_CONFIG.plugins.markdownlint, enabled: true },
+      },
     },
     ...opts,
   });
@@ -149,5 +152,69 @@ describe('runLint — per-dir cascade (cli2 semantics)', () => {
     write('a.md', '# A\n');
     const result = await run({});
     expect(result.warnings).toEqual([expect.stringContaining('malformed markdownlint config')]);
+  });
+});
+
+describe('runLint — frontmatter schemas', () => {
+  const DOC_SCHEMA = JSON.stringify({
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    type: 'object',
+    required: ['owner', 'status'],
+    properties: { status: { enum: ['draft', 'review', 'published'] } },
+  });
+
+  function frontmatterBase(schemas: { appliesTo?: string | string[]; file: string }[]) {
+    return {
+      ...DEFAULT_LINTER_CONFIG,
+      plugins: {
+        ...DEFAULT_LINTER_CONFIG.plugins,
+        frontmatter: { enabled: true, schemas },
+      },
+    };
+  }
+
+  test('matching docs report frontmatter diagnostics with server-identical anchors', async () => {
+    write('.ok/schemas/doc.schema.json', DOC_SCHEMA);
+    write('docs/guide.md', '---\nstatus: shipped\n---\n\n# Guide\n');
+    write('docs/index.md', '---\nstatus: shipped\n---\n\n# Index\n');
+    const result = await run({
+      baseConfig: frontmatterBase([
+        { appliesTo: ['docs/**', '!**/{index,log}'], file: '.ok/schemas/doc.schema.json' },
+      ]),
+    });
+    expect(result.warnings).toEqual([]);
+    const guide = result.files.find((f) => f.file === join('docs', 'guide.md'));
+    const codes = guide?.diagnostics.map((d) => `${d.source}/${d.code}`).sort();
+    expect(codes).toEqual(['frontmatter/enum', 'frontmatter/required']);
+    const enumDiag = guide?.diagnostics.find((d) => d.code === 'enum');
+    expect(enumDiag?.range.start.line).toBe(1);
+    const index = result.files.find((f) => f.file === join('docs', 'index.md'));
+    expect(index?.diagnostics.filter((d) => d.source === 'frontmatter')).toEqual([]);
+  });
+
+  test('schemaError surfaces as a report warning and never flips diagnostics', async () => {
+    write('docs/guide.md', '---\nstatus: draft\n---\n');
+    const result = await run({
+      baseConfig: frontmatterBase([{ appliesTo: 'docs/**', file: '.ok/schemas/missing.json' }]),
+    });
+    expect(result.warnings).toEqual([expect.stringContaining('missing.json')]);
+    expect(result.files.every((f) => f.diagnostics.length === 0)).toBe(true);
+  });
+
+  test('--fix leaves frontmatter diagnostics untouched while fixing markdownlint issues', async () => {
+    write('.ok/schemas/doc.schema.json', DOC_SCHEMA);
+    write('docs/guide.md', '---\nstatus: shipped\n---\n\n# G\n\na\tb\n');
+    const base = frontmatterBase([{ appliesTo: 'docs/**', file: '.ok/schemas/doc.schema.json' }]);
+    base.plugins = {
+      ...base.plugins,
+      markdownlint: { ...DEFAULT_LINTER_CONFIG.plugins.markdownlint, enabled: true },
+    };
+    const result = await run({ baseConfig: base, fix: true });
+    const guide = result.files.find((f) => f.file === join('docs', 'guide.md'));
+    expect(guide?.fixed).toBe(true);
+    const onDisk = readFileSync(join(root, 'docs', 'guide.md'), 'utf-8');
+    expect(onDisk).toContain('status: shipped');
+    expect(onDisk).not.toContain('\t');
+    expect(guide?.diagnostics.some((d) => d.source === 'frontmatter')).toBe(true);
   });
 });

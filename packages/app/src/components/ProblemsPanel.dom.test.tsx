@@ -11,6 +11,7 @@ import type { LintDiagnostic, ValidationAuditResponse } from '@inkeep/open-knowl
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 // Both lingui macro specifiers alias to ONE shim module under the vitest dom
@@ -36,6 +37,7 @@ let runLintAuditImpl: () => Promise<ValidationAuditResponse | null> = async () =
 let fixLintDocCalls: string[] = [];
 let fixLintDocImpl: (docName: string) => Promise<{ ok: boolean; errorDetail?: string | null }> =
   async () => ({ ok: true });
+let projectLintConfigData: unknown = null;
 const toastError = vi.fn((_message: string) => {});
 
 const toastSuccess = vi.fn((_message: string) => {});
@@ -48,7 +50,7 @@ vi.doMock('@/editor/lint-config-client', () => ({
     return fixLintDocImpl(docName);
   },
   useDocLintConfig: () => ({ data: null }),
-  useProjectLintConfig: () => ({ data: null }),
+  useProjectLintConfig: () => ({ data: projectLintConfigData }),
   fetchEffectiveLintConfig: async () => null,
   writeMarkdownlintRule: async () => ({ ok: false, errorDetail: null }),
 }));
@@ -81,6 +83,21 @@ vi.doMock('@/lib/create-page', () => ({
     return created;
   },
 }));
+
+/** Minimal lint-config payload with the plugin toggles the panel reads. */
+function lintConfigWith(plugins: { markdownlint: boolean; frontmatter: boolean }): unknown {
+  return {
+    effective: {
+      enabled: true,
+      plugins: {
+        markdownlint: { enabled: plugins.markdownlint, rules: {} },
+        frontmatter: { enabled: plugins.frontmatter, schemas: [] },
+      },
+    },
+    configFile: null,
+    configProblems: [],
+  };
+}
 
 const { ProblemsPanel, LINT_NAV_EVENT } = await import('./ProblemsPanel');
 // The real registry, deliberately unmocked: the tests assert the banked intent
@@ -132,6 +149,7 @@ beforeEach(() => {
   runLintAuditImpl = async () => null;
   fixLintDocCalls = [];
   fixLintDocImpl = async () => ({ ok: true });
+  projectLintConfigData = null;
   createPageCalls = [];
   createPageImpl = async (seed) => ({ docName: seed.suggestedName });
   addPageCalls.length = 0;
@@ -148,6 +166,66 @@ afterEach(() => {
 describe('ProblemsPanel', () => {
   test('shows the empty state when there are no diagnostics', () => {
     render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    expect(screen.getByText('No problems found.')).toBeTruthy();
+  });
+
+  test('a compact Checked-by line reveals the active plugins in a tooltip', async () => {
+    projectLintConfigData = lintConfigWith({ markdownlint: true, frontmatter: true });
+    render(
+      <TooltipProvider>
+        <ProblemsPanel docName="notes" diagnostics={[]} />
+      </TooltipProvider>,
+    );
+    const trigger = screen.getByTestId('problems-active-plugins');
+    // The pill itself carries only the count — names live in the tooltip.
+    expect(trigger.textContent).toContain('2 plugins');
+    expect(trigger.textContent).not.toContain('markdownlint');
+    fireEvent.focus(trigger);
+    const tooltip = await screen.findByTestId('problems-active-plugins-tooltip');
+    expect(tooltip.textContent).toContain('Checked by: markdownlint, Frontmatter schemas');
+    // Plugins are on, so the ordinary empty state (not the no-plugins one) shows.
+    expect(screen.getByText('No problems found.')).toBeTruthy();
+    expect(screen.queryByTestId('problems-no-plugins')).toBeNull();
+  });
+
+  test('only enabled plugins appear in the tooltip', async () => {
+    projectLintConfigData = lintConfigWith({ markdownlint: true, frontmatter: false });
+    render(
+      <TooltipProvider>
+        <ProblemsPanel docName="notes" diagnostics={[]} />
+      </TooltipProvider>,
+    );
+    const trigger = screen.getByTestId('problems-active-plugins');
+    expect(trigger.textContent).toContain('1 plugin');
+    fireEvent.focus(trigger);
+    const tooltip = await screen.findByTestId('problems-active-plugins-tooltip');
+    expect(tooltip.textContent).toContain('markdownlint');
+    expect(tooltip.textContent).not.toContain('Frontmatter schemas');
+  });
+
+  test('with zero plugins enabled, the empty state names the gap and links to Settings', () => {
+    projectLintConfigData = lintConfigWith({ markdownlint: false, frontmatter: false });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    expect(screen.queryByTestId('problems-active-plugins')).toBeNull();
+    expect(screen.getByTestId('problems-no-plugins')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('problems-enable-plugins'));
+    expect(window.location.hash).toBe('#settings/plugins-manage');
+  });
+
+  test('link findings still render with zero plugins enabled (links validate regardless)', () => {
+    projectLintConfigData = lintConfigWith({ markdownlint: false, frontmatter: false });
+    render(<ProblemsPanel docName="notes" diagnostics={[linkDiag()]} />);
+    // The no-plugins hint only replaces the EMPTY list — a populated plane
+    // (broken links) must never be hidden behind it.
+    expect(screen.queryByTestId('problems-no-plugins')).toBeNull();
+    expect(screen.getByText(/does not resolve/)).toBeTruthy();
+  });
+
+  test('while the lint config has not loaded, the panel makes no plugin claim', () => {
+    projectLintConfigData = null;
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    expect(screen.queryByTestId('problems-active-plugins')).toBeNull();
+    expect(screen.queryByTestId('problems-no-plugins')).toBeNull();
     expect(screen.getByText('No problems found.')).toBeTruthy();
   });
 

@@ -42,7 +42,9 @@ import { PropertyDisclosure } from '@/components/PropertyDisclosure';
 import { coerceValue, DEFAULT_VALUE_FOR_TYPE } from '@/components/PropertyWidgets';
 import { usePropertiesCollapsed } from '@/components/properties-collapsed-store';
 import { Button } from '@/components/ui/button';
+import { useDocLintConfig } from '@/editor/lint-config-client';
 import { usePublishFrontmatterSelection } from '@/hooks/use-selection-context';
+import { enumConstraintsForDoc } from '@/lib/frontmatter-enum-constraints';
 
 interface PropertyPanelProps {
   provider: HocuspocusProvider;
@@ -105,6 +107,13 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [resetCounters, setResetCounters] = useState<Record<string, number>>({});
   const docName = provider.configuration.name ?? '';
+
+  // Schema-driven select vocabularies: enum-constrained fields render as
+  // selects instead of free text (same schemas + same appliesTo matching as
+  // the linter, via the server-resolved effective config). Resolution failure
+  // or a disabled plugin degrades to today's free-text panel.
+  const { data: lintConfigData } = useDocLintConfig(docName === '' ? null : docName);
+  const enumConstraints = enumConstraintsForDoc(lintConfigData?.effective ?? null, docName);
 
   // Publish a highlight inside the property panel into the selection-context
   // store (keyed `(docName, 'frontmatter')`) so a property-value selection feeds
@@ -465,6 +474,7 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
                   keyName={key}
                   value={value}
                   declared={declared}
+                  enumConstraint={enumConstraints.get(key)}
                   error={errors[key] ?? null}
                   resetCounter={resetCounters[key] ?? 0}
                   isDuplicate={isDuplicate}
@@ -499,6 +509,7 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
             keyName="tags"
             value={[]}
             declared="list"
+            enumConstraint={enumConstraints.get('tags')}
             error={errors.tags ?? null}
             resetCounter={resetCounters.tags ?? 0}
             isPlaceholder

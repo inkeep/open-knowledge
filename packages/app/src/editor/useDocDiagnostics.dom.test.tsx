@@ -26,7 +26,10 @@ function fakeProvider(initial: string): { provider: HocuspocusProvider; doc: Y.D
 const enabled: LinterConfig = {
   ...DEFAULT_LINTER_CONFIG,
   enabled: true,
-  plugins: { markdownlint: { ...DEFAULT_LINTER_CONFIG.plugins.markdownlint, enabled: true } },
+  plugins: {
+    ...DEFAULT_LINTER_CONFIG.plugins,
+    markdownlint: { ...DEFAULT_LINTER_CONFIG.plugins.markdownlint, enabled: true },
+  },
 };
 
 afterEach(() => cleanup());

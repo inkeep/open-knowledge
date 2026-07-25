@@ -1,0 +1,126 @@
+---
+title: Frontmatter schemas
+icon: LuBraces
+description: Validate document frontmatter against standard JSON Schema files — scoped to folders with globs, with schema-driven selects in the property panel and a no-code schema editor.
+---
+
+Frontmatter schemas is a content-rules linter that validates each document's YAML frontmatter against [JSON Schema](https://json-schema.org/) (draft-07) files. The schema files are plain, portable JSON Schema — nothing OK-specific in them — so the same files work with any external tool that understands the standard.
+
+This page covers the schema mappings, the schema files, the no-code editors, and what agents see. For the linter-agnostic parts — where problems appear, the Problems panel, `ok lint`, and agent advisories — see the [content rules overview](/docs/advanced/content-rules/overview).
+
+## Schema mappings
+
+Which docs validate against which schema lives in the project's `config.yml` (shared via git):
+
+```yaml
+contentRules:
+  frontmatter:
+    enabled: true
+    schemas:
+      - appliesTo: "docs/**"
+        file: ".ok/schemas/doc.schema.json"
+      - appliesTo:
+          - "specs/**"
+          - "!**/index"
+        file: ".ok/schemas/spec.schema.json"
+```
+
+- **`file`** is a project-root-relative path to a JSON Schema file. Schemas can live anywhere in the project; `.ok/schemas/` is the default home the settings editor creates them in.
+- **`appliesTo`** is a glob or list of globs matched against content-relative, extension-less doc paths (`docs/guide`, not `docs/guide.md`). A leading `!` excludes, and a doc is in scope when it matches a positive glob and no negated one. A list with no positive glob gains an implicit `**`, so `["!drafts/**"]` means every doc except drafts; an absent or empty `appliesTo` means **every doc**.
+- **Bad globs surface on the config channel, never per-doc.** One that can't compile matches nothing and is reported as a configuration problem — it never silently widens a mapping. One that compiles but can't match a normalized doc path gets an advisory instead: a trailing slash (`docs/`), a leading slash (`/docs/**`), or a file extension (`docs/**/*.md`), none of which appear in the paths being matched.
+- **Every matching mapping validates.** Two schemas both in scope for a doc act as a conjunction — the frontmatter must satisfy both. One file mapped from several entries still validates once.
+- Each mapping has its own **`enabled`** toggle, so you can park a mapping without deleting it. Absent means enabled — set `enabled: false` to park one.
+
+## Schema files
+
+Standard draft-07 only: an absent `$schema` is treated as draft-07, and a file declaring another dialect is skipped with a configuration problem. A schema file that is missing, malformed, or refused by the validator is also a **configuration problem** — it shows at the top of the Problems panel's project scope, in `ok lint` warnings, and on the MCP `lint` tool, never as a per-doc diagnostic.
+
+A doc with no frontmatter block (or unparsable YAML) validates as an empty object — so `required` fields still report on brand-new docs. The reverse also works: a schema with `"maxProperties": 0` enforces that docs carry no frontmatter at all.
+
+## What a finding looks like
+
+Take the schema above governing `docs/**`, and a doc that misses one required field and misspells an enum value:
+
+```markdown
+---
+status: shipped
+---
+
+# Guide
+```
+
+`ok lint` (and the Problems panel) reports both violations, each carrying source `frontmatter` and the violated JSON Schema keyword as its code:
+
+```text
+docs/guide.md
+  1:1     warning  Frontmatter property "owner" is required  frontmatter/required
+  2:1     warning  Frontmatter property "status" must be one of: draft, review, published (got "shipped")  frontmatter/enum
+
+2 problems (0 errors, 2 warnings) across 1 file.
+```
+
+As a diagnostic in `ok lint --json` or the MCP `lint` tool's structured content (0-based, end-exclusive ranges — the text report is 1-based):
+
+```json
+{
+  "range": { "start": { "line": 1, "character": 0 }, "end": { "line": 1, "character": 15 } },
+  "severity": "warning",
+  "source": "frontmatter",
+  "code": "enum",
+  "message": "Frontmatter property \"status\" must be one of: draft, review, published (got \"shipped\")"
+}
+```
+
+**Anchoring.** A violation on a key underlines that key's line (the `enum` finding above sits on line 2, where `status:` is written); a missing `required` field anchors to the opening `---` fence; a doc with no fence anchors to the top. And a broken schema file is never a per-doc finding — it rides the configuration channel instead, as a `!` line in `ok lint`:
+
+```text
+! frontmatter schema .ok/schemas/missing.schema.json: cannot read (ENOENT: no such file or directory, …)
+```
+
+Frontmatter findings are always **warnings** — there's no severity promotion yet, so `ok lint --errors-only` won't gate on them — and none carry `fixes` (choosing the right value is a human decision), so `ok lint --fix` and the MCP `fix: true` leave them in place, still reported.
+
+## The settings editor
+
+**Settings ▸ Plugins ▸ Frontmatter schemas** (once the plugin is enabled) lists the project's schema files: search, an **Only modified** filter, and **New schema** to scaffold a fresh file in `.ok/schemas/`. Each entry shows a plain-language summary of its scope ("everything under docs/ — except any doc named index"), an editor for the `appliesTo` globs, an enable toggle, and delete for schema files OK manages.
+
+## The schema editor
+
+Opening a schema file in the editor (any `*.schema.json`, or a `.json` under `.ok/schemas/`) gets a **Source / Fields** toggle, like the markdownlint config's rule browser. **Source** shows the raw JSON; **Fields** is a no-code editor: each frontmatter field as a row with its type (string, number, boolean, enum, array, object), required toggle, description, allowed values, and pattern — recursing into object fields and array-of-object elements for nested frontmatter.
+
+Edits are **non-destructive**: the editor merges only the field you changed, and keywords it doesn't model (`allOf`, `if`/`then`, `x-` extensions, …) survive verbatim — with a note when the schema carries root-level advanced rules the Fields view doesn't show. Your hand-written schema stays yours.
+
+## The property panel
+
+The document panel's property editor reads the same schemas through the same `appliesTo` matching as the linter, so the two can never disagree. A field constrained by `enum` renders as a select instead of free text; an array field with `items.enum` renders as a multi-select. When several schemas govern a doc, the offered values are the intersection — and if no value could satisfy them all, the field falls back to free text while the linter reports the conflict.
+
+## AI agents
+
+Beyond the shared `lint` tool and write advisories (see the [overview](/docs/advanced/content-rules/overview#ai-agents)), reads advertise the contract up front: `exec` listings and reads carry a `schemas:` entry naming the schema files that govern each doc — and each folder, so an agent learns the expected shape **before** writing the first doc there. An `exec("ls docs/")` comes back with:
+
+```text
+- **docs/** (directory) — schemas: .ok/schemas/doc.schema.json — 2 md files — most recent: guide.md (docs/guide.md, 2026-07-21)
+- **docs/guide.md** (docs/guide.md) — status: shipped — schemas: .ok/schemas/doc.schema.json — backlinks: 0
+```
+
+The server resolves the globs; agents never evaluate `appliesTo` themselves. And when a write violates a governing schema, the write still lands and the response carries the violations as `lint-violation` advisories (1-based `line`/`column`), so the agent can correct its own frontmatter in a follow-up edit:
+
+```json
+"warnings": [
+  {
+    "kind": "lint-violation",
+    "source": "frontmatter",
+    "code": "required",
+    "message": "Frontmatter property \"owner\" is required",
+    "severity": "warning",
+    "line": 1,
+    "column": 1
+  }
+]
+```
+
+## See also
+
+- [Content rules overview](/docs/advanced/content-rules/overview): where problems show up, the Problems panel, `ok lint`, and agents
+- [markdownlint](/docs/advanced/content-rules/markdownlint): the sibling linter for markdown style
+- [Configuration reference](/docs/reference/configuration): `config.yml` and what's shared via git
+- [JSON Schema draft-07](https://json-schema.org/specification-links#draft-7): the schema dialect

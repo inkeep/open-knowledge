@@ -93,6 +93,8 @@ import {
   ForwardLinksSuccessSchema,
   FrontmatterPatchRequestSchema,
   FrontmatterPatchSuccessSchema,
+  FrontmatterSchemasListSuccessSchema,
+  FrontmatterSchemaWriteRequestSchema,
   getHeadingSlug,
   getParseHealth,
   type HeadingEntry,
@@ -104,6 +106,7 @@ import {
   InstallSkillRequestSchema,
   InstallSkillSuccessSchema,
   instantiateDoc,
+  isFrontmatterSchemaAsset,
   isHiddenDocName,
   isManagedArtifactDocName,
   isValidAttachmentFolderPath,
@@ -362,10 +365,24 @@ import {
   recordSkillInstall,
   removeSkillInstall,
 } from './installed-skills-marker.ts';
-import { auditProject, lintAndFixSource, lintDoc } from './lint/audit.ts';
+import { auditProject, collectDocFiles, lintAndFixSource, lintDoc } from './lint/audit.ts';
+import {
+  createEmptyFrontmatterSchemaFile,
+  deleteFrontmatterSchemaFile,
+  removeFrontmatterSchemaField,
+  renameFrontmatterSchemaField,
+  type WriteFrontmatterSchemaResult,
+  writeFrontmatterSchemaField,
+} from './lint/frontmatter-schema-write.ts';
+import {
+  listProjectSchemaFiles,
+  SCHEMA_LIST_CAP,
+  unmatchedAppliesToProblems,
+} from './lint/frontmatter-schemas.ts';
 import { type WriteMarkdownlintResult, writeMarkdownlintRule } from './lint/markdownlint-write.ts';
 import {
   composeEffectiveLinterConfig,
+  composeFrontmatterSchemasConfig,
   resolveEffectiveLinterConfig,
   resolveNativeConfigForDoc,
 } from './lint/resolve-config.ts';
@@ -2722,7 +2739,7 @@ export interface ApiExtensionOptions {
   contentRoot?: string;
   backlinkIndex?: BacklinkIndex;
   tagIndex?: TagIndex;
-  signalChannel?: (channel: 'files' | 'backlinks' | 'graph') => void;
+  signalChannel?: (channel: 'files' | 'backlinks' | 'graph' | 'lint-config') => void;
   /**
    * Optional. When present, agent write handlers publish per-write attribution
    * entries on `__system__` awareness (`agentFocus` map) with writeKind +
@@ -19064,6 +19081,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     try {
       const effective = resolveEffectiveLinterConfig(contentDir, base, {
         docName,
+        projectDir: projectDir ?? contentDir,
         onProblem: (problem) => log.warn({ problem, docName }, '[lint] native config problem'),
       });
       const lintFindings = await lintDocument(source, effective, docName);
@@ -19122,6 +19140,17 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     }
   }
 
+  // Zero-match appliesTo detection needs the project's doc list — a content
+  // walk — so only the doc-independent lint-config responses (the surfaces the
+  // Settings frontmatter panel reads) pay for it; per-doc `?doc=` fetches and
+  // the per-write lint path never do.
+  function unmatchedGlobProblems(effective: LinterConfig): string[] {
+    const slice = effective.plugins.frontmatter;
+    if (!slice.enabled || slice.schemas.length === 0) return [];
+    const docFiles = collectDocFiles({ projectDir: projectDir ?? contentDir, contentDir });
+    return unmatchedAppliesToProblems(slice.schemas, docFiles);
+  }
+
   const handleGetLintConfig = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -19142,7 +19171,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         const native = resolveNativeConfigForDoc(contentDir, docName ?? undefined, (problem) =>
           configProblems.push(problem),
         );
-        const effective = composeEffectiveLinterConfig(base, native);
+        const effective = composeFrontmatterSchemasConfig(
+          projectDir ?? contentDir,
+          composeEffectiveLinterConfig(base, native),
+          (problem) => configProblems.push(problem),
+        );
+        if (docName === null) configProblems.push(...unmatchedGlobProblems(effective));
         successResponse(
           res,
           200,
@@ -19199,13 +19233,23 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       }
       // Past this point the rule IS on disk — a re-read failure must not
       // report the write itself as failed.
+      // Converge every other window on the new rules. Without this a rule
+      // toggle in one window leaves the rest linting against a stale config
+      // until they happen to refetch, which is what the frontmatter sibling
+      // below already avoids.
+      signalChannel?.('lint-config');
       try {
         const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
         const configProblems: string[] = [];
         const native = resolveNativeConfigForDoc(contentDir, undefined, (problem) =>
           configProblems.push(problem),
         );
-        const effective = composeEffectiveLinterConfig(base, native);
+        const effective = composeFrontmatterSchemasConfig(
+          projectDir ?? contentDir,
+          composeEffectiveLinterConfig(base, native),
+          (problem) => configProblems.push(problem),
+        );
+        configProblems.push(...unmatchedGlobProblems(effective));
         successResponse(
           res,
           200,
@@ -19224,6 +19268,158 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       }
     },
     { handler: 'markdownlint-config', method: 'POST' },
+  );
+
+  // Edit one field of a frontmatter schema file (non-destructive merge via
+  // applyFieldConstraint; create-on-first-edit). Responds with the recomputed
+  // effective config, mirroring the markdownlint write.
+  const handleWriteFrontmatterSchema = withValidation(
+    FrontmatterSchemaWriteRequestSchema,
+    async (_req, res, body) => {
+      let writeResult: WriteFrontmatterSchemaResult;
+      try {
+        // Five shapes over one route (schema-refined): delete → remove the
+        // tool-managed file; field + removeField → drop the field; field +
+        // renameTo → rename it; field + constraint → per-field edit;
+        // otherwise create-empty (scaffold the skeleton so a freshly-picked
+        // new schema file exists).
+        const root = resolve(projectDir ?? contentDir);
+        const parentPath = body.parentPath ?? [];
+        writeResult = body.delete
+          ? deleteFrontmatterSchemaFile(root, body.file)
+          : body.field !== undefined && body.removeField
+            ? removeFrontmatterSchemaField(root, body.file, body.field, parentPath)
+            : body.field !== undefined && body.renameTo !== undefined
+              ? renameFrontmatterSchemaField(root, body.file, body.field, body.renameTo, parentPath)
+              : body.field !== undefined && body.constraint !== undefined
+                ? writeFrontmatterSchemaField(
+                    root,
+                    body.file,
+                    body.field,
+                    body.constraint,
+                    parentPath,
+                  )
+                : createEmptyFrontmatterSchemaFile(root, body.file);
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to write the frontmatter schema.',
+          { handler: 'frontmatter-schema', cause: e },
+        );
+        return;
+      }
+      if (writeResult.action === 'refused') {
+        errorResponse(
+          res,
+          409,
+          'urn:ok:error:config-not-writable',
+          `The frontmatter schema (${writeResult.file}) was not written: ${writeResult.reason}.`,
+          { handler: 'frontmatter-schema' },
+        );
+        return;
+      }
+      // `.ok/` is outside the content file-watcher, so schema-file mutations
+      // never reach the tree or other clients through watcher events. `files`
+      // keeps show-OK trees live on create/delete; `lint-config` converges
+      // every other window's effective config (this response only reaches the
+      // requesting client).
+      if (writeResult.action === 'created' || writeResult.action === 'deleted') {
+        signalChannel?.('files');
+      }
+      signalChannel?.('lint-config');
+      try {
+        const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
+        const configProblems: string[] = [];
+        const native = resolveNativeConfigForDoc(contentDir, undefined, (problem) =>
+          configProblems.push(problem),
+        );
+        const effective = composeFrontmatterSchemasConfig(
+          projectDir ?? contentDir,
+          composeEffectiveLinterConfig(base, native),
+          (problem) => configProblems.push(problem),
+        );
+        configProblems.push(...unmatchedGlobProblems(effective));
+        successResponse(
+          res,
+          200,
+          LintConfigResponseSchema,
+          { effective, configFile: native?.file ?? null, configProblems },
+          { handler: 'frontmatter-schema' },
+        );
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'The schema was saved, but the effective config could not be re-read.',
+          { handler: 'frontmatter-schema', cause: e },
+        );
+      }
+    },
+    { handler: 'frontmatter-schema', method: 'POST' },
+  );
+
+  // Enumerate the project's `.ok/schemas/*.json` files (flat, top-level only)
+  // as project-root-relative paths for the mapping picker. A missing dir is
+  // an empty list, not an error; bounded so a pathological schemas dir can't
+  // produce an unbounded response.
+  const handleFrontmatterSchemasList = withValidation(
+    EmptyRequestSchema,
+    async (_req, res) => {
+      try {
+        const root = resolve(projectDir ?? contentDir);
+        // Two discovery sources: the flat tool-created `.ok/schemas/` scan,
+        // plus a filtered content walk for the ecosystem `*.schema.json`
+        // convention anywhere in the project. The walk deliberately does NOT
+        // re-admit `.ok`: the scan above already covers `.ok/schemas/`, and
+        // lifting ContentFilter's always-skip floor here would let this
+        // surface enumerate the rest of OK's internal state to find schemas.
+        const { schemas, truncated } = listProjectSchemaFiles(root);
+        const found = new Set(schemas);
+        let walkTruncated = false;
+        if (contentFilter !== undefined) {
+          const walk = streamShowAllEntries({
+            contentDir,
+            contentFilter,
+            dirFilter: null,
+            maxEntries: 20_000,
+          });
+          let walkResult = await walk.next();
+          while (!walkResult.done) {
+            const entry = walkResult.value;
+            const entryPath = entry.kind === 'asset' ? entry.path : undefined;
+            if (entryPath !== undefined && isFrontmatterSchemaAsset(entryPath)) {
+              const projectRel = relative(root, resolve(contentDir, entryPath));
+              if (!projectRel.startsWith('..') && !isAbsolute(projectRel)) found.add(projectRel);
+            }
+            walkResult = await walk.next();
+          }
+          walkTruncated = walkResult.value.truncated;
+        }
+        const merged = [...found].sort((a, b) => a.localeCompare(b));
+        successResponse(
+          res,
+          200,
+          FrontmatterSchemasListSuccessSchema,
+          {
+            schemas: merged.slice(0, SCHEMA_LIST_CAP),
+            truncated: truncated || walkTruncated || merged.length > SCHEMA_LIST_CAP,
+          },
+          { handler: 'frontmatter-schemas-list' },
+        );
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to list frontmatter schemas.',
+          { handler: 'frontmatter-schemas-list', cause: e },
+        );
+      }
+    },
+    { handler: 'frontmatter-schemas-list', method: 'GET', skipBodyParse: true },
   );
 
   /**
@@ -19260,14 +19456,22 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           return;
         }
         const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
+        const configWarnings: string[] = [];
         const result = await lintDoc({
           projectDir: projectDir ?? contentDir,
           contentDir,
           baseConfig,
           docRelPath,
+          onConfigProblem: (problem) => configWarnings.push(problem),
           liveSourceFor: liveLintSourceFor,
         });
-        successResponse(res, 200, LintDocResultSchema, result, { handler: 'lint' });
+        successResponse(
+          res,
+          200,
+          LintDocResultSchema,
+          configWarnings.length > 0 ? { ...result, warnings: configWarnings } : result,
+          { handler: 'lint' },
+        );
       } catch (e) {
         if (e instanceof SymlinkEscapeError) {
           errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
@@ -19771,6 +19975,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/semantic-status': handleSemanticStatus,
     '/api/lint/config': handleGetLintConfig,
     '/api/lint/markdownlint-config': handleWriteMarkdownlintRule,
+    '/api/lint/frontmatter-schema': handleWriteFrontmatterSchema,
+    '/api/lint/frontmatter-schemas': handleFrontmatterSchemasList,
     '/api/lint': handleLintDoc,
     '/api/lint/audit': handleLintAudit,
     '/api/lint/fix': handleLintFix,
@@ -19856,6 +20062,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const MUTATING_ROUTES: ReadonlySet<string> = new Set([
     '/api/upload',
     '/api/lint/markdownlint-config',
+    '/api/lint/frontmatter-schema',
     '/api/lint/fix',
     '/api/create-page',
     '/api/create-folder',

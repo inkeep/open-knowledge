@@ -187,6 +187,12 @@ export interface CreateTestServerOptions {
    */
   markdownlintEnabled?: boolean;
   /**
+   * Verbatim YAML seeded as the project `.ok/config.yml` — for tests needing
+   * config beyond the boolean toggles (e.g. frontmatter schema mappings).
+   * Takes precedence over `markdownlintEnabled`; fresh contentDirs only.
+   */
+  seedProjectConfigYml?: string;
+  /**
    * Seconds between the attached SyncEngine's background pull/push cycles.
    * Forwarded to `ServerOptions`. Sync-wired tests (`createSyncWiredTestServer`)
    * pass a large value so a background timer never races the scenario the test
@@ -243,9 +249,9 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
       mkdirSync(join(contentDir, '.ok'), { recursive: true });
       // markdownlint is off by default; opt it in for lint tests that need
       // real diagnostics (readLinterBaseConfig reads this file fresh per request).
-      const seedConfig = options.markdownlintEnabled
-        ? 'contentRules:\n  markdownlint:\n    enabled: true\n'
-        : '';
+      const seedConfig =
+        options.seedProjectConfigYml ??
+        (options.markdownlintEnabled ? 'contentRules:\n  markdownlint:\n    enabled: true\n' : '');
       writeFileSync(join(contentDir, '.ok', 'config.yml'), seedConfig, 'utf-8');
     }
 

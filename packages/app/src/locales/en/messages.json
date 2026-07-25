@@ -92,6 +92,7 @@
     "0xnQ_X": ["Updates flow in"],
     "0xnmlQ": ["Repository name"],
     "0yL--g": ["Review conflicts"],
+    "0zAhu6": ["every doc"],
     "10g8I_": ["Turn off Only markdown files"],
     "12F9WL": ["(no id)"],
     "151wvk": ["Show sidebar"],
@@ -175,7 +176,9 @@
     "34qyH5": ["Could not reach server"],
     "36WXSC": ["Couldn't delete template: ", ["error"]],
     "36aWJD": ["Join us on Discord"],
+    "37P2BJ": ["Search schemas"],
     "38foVZ": ["Loading diff"],
+    "3BLniE": ["Configuration problems"],
     "3BnyYc": ["This doc isn't on GitHub yet. The link won't work until it's pushed."],
     "3DJEEt": [
       ["sizeText"],
@@ -185,6 +188,7 @@
     "3DTatP": ["Copy a prompt for your agent, start a blank file, or scaffold from a template."],
     "3FMvls": ["A short line shown under the title in the template list."],
     "3Fcb0I": ["Open graph"],
+    "3HAPpl": ["No schemas match your search."],
     "3HNlwb": ["Hello, world!"],
     "3Ib6FN": ["Move down"],
     "3Ijjy1": ["Couldn't load this skill's files."],
@@ -304,10 +308,12 @@
     "5Tk8Fb": ["Loading files"],
     "5Umg9i": ["Disable external link previews"],
     "5WDhAk": ["Link to a page or external URL."],
+    "5Y17qa": ["Applies to (globs — leading ! excludes; empty means every doc)"],
     "5ZB7XC": ["File drop zone"],
     "5ZbJFS": ["Your current version is saved first, so this is reversible."],
     "5_8TCr": ["Fix all (", ["count"], ")"],
     "5_j-DA": ["Kill Terminal"],
+    "5aahsI": ["nothing (", ["0"], " is not a valid pattern)"],
     "5e1Dri": ["The menu label agents pick this template by (required)."],
     "5gr_ev": [
       "Becomes the document's content when someone creates a doc from this template. Type <0>",
@@ -336,7 +342,9 @@
         }
       ]
     ],
+    "5qQr1u": ["Allowed values for ", ["field"]],
     "5rnB76": ["Your edits stay on this computer"],
+    "5tcmwY": ["Add value"],
     "5vYdh9": ["New thread with ", ["0"]],
     "5wV2qQ": ["and more"],
     "5y_9lO": ["Waiting for authorization"],
@@ -380,6 +388,7 @@
     "6ki7F2": [["0", "plural", { "one": ["#", " item"], "other": ["#", " items"] }]],
     "6lGV3K": ["Show less"],
     "6m_7We": ["Open this settings dialog."],
+    "6pe_G5": ["Element type"],
     "6q0rnH": ["writing"],
     "6qMe0o": [
       "Draft a technical spec for my project. Start with an overview, then add cross-linked pages for the architecture, the key modules, and the open questions, all linked from a specs index."
@@ -390,9 +399,13 @@
     "6zzhQL": ["Send your report by email"],
     "72xhRD": ["Diagram view mode"],
     "74-bX-": ["A pull quote stands out from the surrounding text."],
+    "74C2zx": ["Edit schema ", ["file"]],
     "74eHt-": ["No file or folder selected"],
     "75Y1dk": ["Horizontal pill strip + active panel below; click a pill to switch panels."],
     "77SdEP": ["Delete ", ["itemName"]],
+    "78G7R3": [
+      "Validate document frontmatter against JSON Schema files, scoped to doc sets by glob."
+    ],
     "7FamGZ": ["Go to line"],
     "7Fkcej": ["+ Add ", ["addChildName"]],
     "7H4UHD": ["Documents tagged <0>#", ["tagName"], "</0>"],
@@ -480,6 +493,11 @@
     "92rbk2": ["Mirror loading <0>", ["mirrorRef"], "</0>"],
     "96G6Re": ["New folder"],
     "96w9hU": ["Something went wrong opening this file (HTTP ", ["status"], ")."],
+    "98FP1E": [
+      "This schema carries root-level advanced rules the editor does not show (",
+      ["0"],
+      ") — they still validate and survive every edit. Open the schema file to see them."
+    ],
     "99eR72": ["Visual editor table selection"],
     "9Bd18D": ["Failed to load hub pages"],
     "9KooKn": ["Run a project audit from the Problems panel."],
@@ -513,6 +531,7 @@
     "9i21pa": ["Commits happen automatically"],
     "9jnjV0": ["Embed an audio file with native player controls."],
     "9mEZeD": [["name"], " CLI"],
+    "9nIrRp": ["Nested fields"],
     "9npOH9": ["Open file"],
     "9o1bIV": [["behind"], " behind"],
     "9oE4C3": ["Browse your repos:"],
@@ -613,6 +632,9 @@
     "BymzO4": ["Document outline"],
     "C-xgad": ["or use a starter pack"],
     "C0hoX6": ["Always included"],
+    "C52RBg": [
+      "Validate document frontmatter against standard JSON Schema files (draft-07). Toggle a schema on to validate the docs its globs match; violations surface as warnings and never block a write. Use Edit to open the schema file."
+    ],
     "C62P6b": ["Editor selection"],
     "C7XjNB": ["Global Skill"],
     "C9TBvF": ["No Outgoing"],
@@ -630,6 +652,7 @@
     "CVRM5N": [
       "Follow fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
     ],
+    "CWjM1r": ["docs directly in ", ["0"], "/"],
     "CWzc2T": [
       "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
     ],
@@ -648,6 +671,7 @@
     "CoHvYd": ["Moved ", ["0"], " to position ", ["1"], " of ", ["2"]],
     "CooKEf": ["Dock sessions at the bottom"],
     "CvsD6Y": ["via ", ["viaTags"]],
+    "CwOXMT": ["Value for ", ["keyName"]],
     "D-Oh1s": ["How to set up ", ["0"], " (opens in browser)"],
     "D12vtS": ["(detached)"],
     "D2CwBE": [
@@ -656,6 +680,11 @@
       "</0> starter pack (",
       ["1", "plural", { "one": ["#", " folder"], "other": ["#", " folders"] }],
       " and starter templates) in the folder of your choice."
+    ],
+    "D2E7tr": [
+      "This permanently deletes ",
+      ["deleteTarget"],
+      " from the project and removes its mapping from config.yml. Docs it validated keep their frontmatter; they just stop being checked."
     ],
     "D2emTw": ["Something went wrong sending your feedback. Please try again."],
     "D4H2N6": ["Remove ", ["tag"]],
@@ -732,6 +761,7 @@
     "ELYtNJ": [".ok folders"],
     "EL_YRd": ["Mirror of <0>api-spec</0>"],
     "ENpRJV": ["External link previews"],
+    "EO4Dt1": ["Enable ", ["file"]],
     "EOjU5V": ["Inline Math Properties"],
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " tokens used"],
     "ETyvvg": ["No language match."],
@@ -760,6 +790,7 @@
     "EiVgl5": ["You don't have permission to push to this repo."],
     "Eji13z": ["Toggle highlight formatting."],
     "EkH9pt": ["Update"],
+    "EkUnmS": ["any"],
     "El7NbA": ["Heading 2"],
     "ElatXA": [
       "Context window: ",
@@ -897,6 +928,7 @@
     "H3oH0g": ["Redo"],
     "H6nKok": ["Show in File Manager"],
     "H86f9p": ["Collapse"],
+    "H9E1bE": ["Reset to default (removes it from config.yml)"],
     "HAvRAI": [["skillCount", "plural", { "one": ["skill"], "other": ["skills"] }]],
     "HCn0Ay": ["Toggle strikethrough formatting."],
     "HGNCsl": ["Connection lost — keep this tab open, your edits will sync when reconnected"],
@@ -910,6 +942,7 @@
     "HjNrT0": [["0", "plural", { "one": ["#", " backlink"], "other": ["#", " backlinks"] }]],
     "Hl89Qd": ["Loading templates"],
     "HlmZBk": ["Documents response did not match expected shape."],
+    "Hngy37": ["No problems found — but no lint plugins are enabled, so only links are checked."],
     "Hnl9nT": ["Set where pasted and dropped files are stored for this project."],
     "HoWElC": [
       "This ",
@@ -938,11 +971,13 @@
     "IA1wNb": ["The Claude Desktop App didn't open the file. Is it installed? (", ["msg"], ")"],
     "IA6JW2": ["Detecting"],
     "ICoNYz": ["You can also manage this in Settings."],
+    "IFALcX": ["Description for ", ["field"]],
     "IFezUv": ["The audit could not be completed. Try again."],
     "IInnZo": ["Conflict"],
     "IKoTAC": ["Keep disabled"],
     "IN4UX8": ["Search (", ["searchShortcut"], ")"],
     "IQPyrD": ["Missing page — click to create"],
+    "IQgeSn": ["Failed to save the schema field"],
     "IRv9cH": ["Cloned ", ["repoName"], "."],
     "IWGfGF": ["Checking your GitHub connection"],
     "IX7-sq": ["Something went wrong opening \"", ["docName"], "\"."],
@@ -966,6 +1001,7 @@
     "IxyZXD": ["Screenshot"],
     "Izb10l": ["Fix all ", ["count"], " fixable problems"],
     "J2Mv98": ["Name (e.g. ", ["login"], ")"],
+    "J2_JuX": ["nothing (", ["0"], " cannot match a doc)"],
     "J2eKUI": ["File"],
     "J3HzPL": ["Collapse ", ["keyName"]],
     "J6N5MX": ["Couldn't construct the share URL. Try Done and re-share."],
@@ -1075,6 +1111,7 @@
     "LKOLNn": ["No AI agents installed"],
     "LNum6A": [["minutes"], " min ago"],
     "LPAv9E": [["days"], "d ago"],
+    "LQdLio": ["New schema"],
     "LQsCPn": ["Local commits are keeping this copy from updating"],
     "LRgZAt": [["owner"], "/", ["name"], " already exists"],
     "LTeJuX": ["Toggle Full Screen"],
@@ -1201,6 +1238,7 @@
     "NSnIUP": ["Two-page (even)"],
     "NUr4kz": ["A reusable starting point for new documents in this folder."],
     "NYUhy5": ["Subfolder name"],
+    "NYn1cR": ["Loading editor"],
     "NYu2Pt": ["New project…"],
     "N_7kkF": [
       "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
@@ -1255,6 +1293,7 @@
     "OXdGnd": ["Problems"],
     "OYnx7O": ["Path cannot start with \"/\""],
     "OZJeTZ": ["Skill"],
+    "OZavHH": ["everything under ", ["0"], "/"],
     "Oawo4U": ["The report service couldn't be reached."],
     "OcBurH": [
       "Choose which agents appear in the agent selector. Turn one off to hide it everywhere."
@@ -1288,6 +1327,7 @@
     "PBwmDJ": ["Searching by meaning"],
     "PBxg_E": ["Not now"],
     "PCSkw2": ["Skills"],
+    "PGPGsL": ["Add description"],
     "PIMM5l": ["You're subscribed!"],
     "PKLY-1": ["Opening..."],
     "PKjGhT": ["Headings"],
@@ -1298,6 +1338,7 @@
     "PRnH8G": ["of ", ["0"]],
     "PTb1Nx": ["Sync is paused. Turn it back on to resume."],
     "PVUn_c": ["Open folder"],
+    "PVggyD": ["Frontmatter schemas"],
     "PYmp-0": ["Import as template"],
     "PZtgO0": ["Opening worktree"],
     "P_bX4O": ["How to set up"],
@@ -1309,6 +1350,7 @@
     "Pgu10b": ["Saved as <0>", ["slug"], ".md</0>"],
     "PgzIpb": ["Move to the previous visual-editor find result."],
     "PiH3UR": ["Copied!"],
+    "PijLsG": ["File name (created in .ok/schemas/)"],
     "PkeYXL": ["Expanded graph mode"],
     "Pkw7J9": ["This folder is empty."],
     "PlGC6r": ["the git exclude file isn't writable"],
@@ -1330,6 +1372,7 @@
       "</0> already has a worktree — it'll open in its own window."
     ],
     "QDZbvN": [["diffDays"], "d ago"],
+    "QLgdT6": ["any doc named ", ["0"]],
     "QM3SBZ": ["Plan (", ["done"], "/", ["0"], ")"],
     "QOINDn": ["empty"],
     "QQbwzK": ["No agents available."],
@@ -1385,6 +1428,7 @@
     "RXEbZy": ["In app"],
     "RXNu_r": ["Shared via git with everyone working on this project."],
     "RY6Bq1": ["Open shared ", ["targetNoun"]],
+    "R_U_A4": ["Add file or folder pattern, e.g. guides/**/*"],
     "RaPMZv": ["Keyboard shortcuts available in the editor and workspace."],
     "Rah7yq": ["What should the AI do? (optional)"],
     "Rb1zMa": ["No excerpt"],
@@ -1438,6 +1482,7 @@
     "SgKLfA": ["Not connected to GitHub."],
     "Sh3Qkg": ["No matching branches."],
     "Si7mIR": ["Create report"],
+    "SiFgBx": ["docs matching ", ["0"]],
     "SiUUCS": ["Next match"],
     "SkMZlS": ["Couldn't remove <0>", ["targetGitPath"], "</0>: ", ["removeGitError"]],
     "Skr_7L": ["Search worktrees"],
@@ -1458,6 +1503,7 @@
     "TJnkyf": ["ok ui responded but server.lock has no port yet"],
     "TKQ7K-": ["Install"],
     "TLIO3j": ["Toggle italic formatting."],
+    "TMLAx2": ["Required"],
     "TQJCR6": [["0", "plural", { "one": ["#", " result"], "other": ["#", " results"] }]],
     "TTDXD8": ["New worktree…"],
     "TUzThQ": ["Share skills"],
@@ -1466,6 +1512,9 @@
     "Ta25TG": ["No history yet"],
     "TbjyhA": ["Docs"],
     "TdfEV7": ["Archived"],
+    "TdlVEN": [
+      "This field carries additional schema keywords the editor does not show — they are preserved on save."
+    ],
     "Te6sK2": [
       "Heads up: editing any rule or option here creates a <0>.markdownlint.json</0> file in your project to save your changes."
     ],
@@ -1485,10 +1534,12 @@
     "U5Spo9": ["Content directory must be inside the project"],
     "U6wmNc": ["Sync paused"],
     "U7HJ4y": ["Managed by OpenKnowledge (read-only)"],
+    "U88xbi": ["Failed to create the schema file"],
     "U8CD-l": ["Copy full path, No workspace"],
     "U9tm58": ["Hide problem indicators"],
     "UBv8UK": ["Delete Permanently"],
     "UDFrWm": ["Checking GitHub connection..."],
+    "UGeJuP": ["Allowed values (empty = any)"],
     "UL8A9w": ["Tag"],
     "ULRb5t": [
       "Adds telemetry, server state, and runtime info when available. Document names are anonymized."
@@ -1565,6 +1616,7 @@
     "VZSBXL": ["Semantic ranking activates the first time an agent runs a search."],
     "V_6bJ4": ["Terminal settings not loaded yet — try again in a moment."],
     "V_wltx": ["Enter a title for this template."],
+    "Va3xJe": ["Add field"],
     "VbqhBI": ["Already at ", ["assetContentPath"], " — reusing."],
     "VcqWBy": ["Upload may have succeeded but the sidebar is out of date — refresh to resync"],
     "VdXv4D": ["Clone from GitHub"],
@@ -1693,6 +1745,7 @@
     "YEIS9T": ["Edits apply live. Light or dark is chosen from the background."],
     "YEP3X2": ["Delete a table when the active table cell selection covers the full table."],
     "YGIi_c": ["Reinstall"],
+    "YGNRB5": ["— except"],
     "YJ1BTp": ["A skill with that name already exists."],
     "YJPN3F": ["Too slow"],
     "YKLP_-": ["Template renamed"],
@@ -1794,6 +1847,7 @@
     "_IX_7x": ["Other"],
     "_JOGC0": ["Send feedback…"],
     "_LczaQ": ["Denied — ", ["optionName"]],
+    "_NWEid": ["Search schema files by path"],
     "_NX6gG": ["Managing project AI tools is unavailable in this build."],
     "_PACVa": ["Release notes"],
     "_PBJRl": ["Add at least one letter or number."],
@@ -1824,8 +1878,10 @@
     "_rP3HI": [["minutes"], "m ago"],
     "_tekeB": ["updated folder properties"],
     "_tjopj": ["Paste duplicate"],
+    "_yB-24": ["everything under any ", ["0"], "/ folder"],
     "a-cKXz": ["Select all source"],
     "a3H_MR": ["Open and focus the Ask AI composer for the current editor selection."],
+    "a45f2c": ["Glob patterns this schema applies to"],
     "a4FRQv": ["Undo to this edit?"],
     "a5Gha5": ["Local changes blocked the merge"],
     "a5W0q0": [
@@ -1880,6 +1936,7 @@
     "bBE5tC": ["Detected on this machine"],
     "bBcFK_": ["Open emoji picker for ", ["keyName"]],
     "bD8I7O": ["Complete"],
+    "bF22t6": ["Remove field ", ["field"]],
     "bGa3Fk": ["Uploading file"],
     "bH382I": ["Edit this HTML — the preview updates live."],
     "bSD4im": ["Search worktrees and branches"],
@@ -1901,6 +1958,7 @@
     "bwil08": ["Building <0>openknowledge.skill</0> and opening the Claude Desktop App"],
     "c1LZZH": ["Link copied."],
     "c3XJ18": ["Help"],
+    "c3ZGrq": ["the doc ", ["0"]],
     "c4fVUV": ["Fix"],
     "c5PTFE": ["Dev instance: ", ["label"], " (isolated from other worktrees)"],
     "c5f7sm": ["Code block language: ", ["currentLabel"], ". Click to change."],
@@ -1923,6 +1981,7 @@
     "cOSAfL": ["No repositories found on your GitHub account."],
     "cOrTMo": ["Your share link is ready below."],
     "cRHuuI": ["Couldn't copy path"],
+    "cRm498": ["No schema files in this project yet — create one to start validating."],
     "cSCbv3": ["BETA"],
     "cUK8lW": [
       ["conflictCount", "plural", { "one": ["#", " conflict"], "other": ["#", " conflicts"] }]
@@ -1959,6 +2018,7 @@
     "crqzW5": ["AI tools"],
     "cs4mps": ["Config sharing"],
     "csDS2L": ["Available"],
+    "cstC0z": ["Pattern (regex)"],
     "ct2kv5": ["No headings in ", ["pageTarget"]],
     "cuA8QW": ["Organize specs"],
     "d1JjXo": [
@@ -2018,6 +2078,7 @@
     "e4FxjG": ["See all ", ["0"], " starter packs"],
     "e4GHWP": ["Pull"],
     "e4PbgC": ["Duplicate the file-tree item copied from the Files sidebar."],
+    "e60wew": ["Allowed element values for ", ["field"]],
     "e8L17t": ["A non-empty folder already exists at this path. Pick a different folder."],
     "e8zRrb": ["Show Files"],
     "e8zYa8": ["Could not open ", ["shareBranch"], " in a worktree. Try again."],
@@ -2048,6 +2109,7 @@
       "Follow never pushes or commits your local changes. They stay only on this machine."
     ],
     "evs0iw": ["Tags matching \"", ["tagListQuery"], "\""],
+    "ezUmoU": ["Allowed element values (empty = any)"],
     "f1XQyZ": ["Move block"],
     "f3Nvg7": [
       ["0"],
@@ -2117,6 +2179,7 @@
     "gYz2ep": ["Expires in ", ["timeLabel"]],
     "gZElfU": ["Fixing ", ["0"], " of ", ["1"], " files"],
     "gbHcbI": ["Failed to delete property"],
+    "geIbmI": ["Reset ", ["file"], " to default"],
     "gfdqcY": ["Couldn't apply the change: ", ["0"]],
     "gfohmY": ["Connect tools"],
     "ggm6JX": [
@@ -2172,6 +2235,7 @@
     "haHgQj": ["Copied relative path"],
     "habOU_": ["Failed to update the auto-approve setting — ", ["detail"]],
     "he3ygx": ["Copy"],
+    "hgtsat": ["Failed to delete ", ["file"]],
     "hh4mVC": ["Ask AI to fix ", ["flatId"]],
     "hjO0Mq": ["Add tab"],
     "hmYd9H": [
@@ -2223,6 +2287,7 @@
     "iTylMl": ["Templates"],
     "iXTp5j": ["Scope: "],
     "idD8Ev": ["Saved"],
+    "idni-S": ["Values for ", ["keyName"]],
     "ig5vUe": ["Failed to load file"],
     "ii5mVn": ["Report this error"],
     "iilQXA": ["Folder duplicated"],
@@ -2253,6 +2318,7 @@
     "jEZ6Lf": ["provisional"],
     "jEdF24": ["Missing page: ", ["linkTitle"], ". Click to create."],
     "jKd3AP": ["Could not enable the terminal: ", ["0"]],
+    "jL3gox": ["Select a value"],
     "jPUPvG": ["Couldn't resolve the conflict for ", ["filePath"], "."],
     "jRAGrQ": ["Configure agents"],
     "jRHdCz": ["Failed to load PDF"],
@@ -2340,6 +2406,7 @@
     "knjOzA": ["Tag value"],
     "ko386X": ["A document has a conflict — resolve it to keep it up to date."],
     "kolRU1": ["Do you want to permanently delete instead?"],
+    "kooyLJ": ["Failed to rename the field"],
     "kpqWwG": ["This ", ["targetNoun"], " was removed from branch <0>", ["branch"], "</0>."],
     "ktspdq": ["Tint and badge files that have lint or link problems, without opening them."],
     "ku0yLQ": ["Pages are embedded the first time a search needs them."],
@@ -2404,10 +2471,12 @@
     "m16xKo": ["Add"],
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m6YGpY": ["Active panel content for the selected tab shows here."],
+    "mAzs2H": ["Disable ", ["file"]],
     "mBltnd": ["Path suggestions"],
     "mCB6Je": ["Select All"],
     "mGaZwZ": ["See the full install guide"],
     "mHVPm5": ["Reconnect required"],
+    "mHf8mp": ["Delete schema file ", ["file"]],
     "mLAjyL": [
       "Give the AI tools you use access to read and update your projects. Checking a box sets it up right away; unchecking removes it."
     ],
@@ -2487,6 +2556,9 @@
     "nYKerc": ["(user-level only)"],
     "nYeBmY": [["hours"], "h ago"],
     "nbfdhU": ["Integrations"],
+    "nc-ipN": [
+      "Field editing is available for schema files mapped in the Frontmatter schemas plugin"
+    ],
     "ndeI89": ["Use Cmd/Ctrl+C to copy the link below, or open OK in the desktop app."],
     "ndwmea": ["unavailable on this platform"],
     "neRy3o": ["Split list item"],
@@ -2520,6 +2592,7 @@
     "nrGWJ7": [
       "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
     ],
+    "nrXDdR": ["Field name"],
     "nskygk": ["Choose agent"],
     "nwtY4N": ["Something went wrong"],
     "nxlOpL": ["OpenKnowledge is using this GitHub account."],
@@ -2588,6 +2661,7 @@
     "p0Iq25": ["Insert link"],
     "p2LEhJ": ["Personal access token"],
     "p8TjFD": ["Collapse session dock"],
+    "p98xmP": ["Applies to"],
     "p9sdCy": ["New ignore pattern"],
     "pAgkuZ": ["Reopening \"", ["docName"], "\" with a fresh local collaboration cache."],
     "pBROkv": ["Thanks for subscribing. Watch your inbox for product updates."],
@@ -2600,6 +2674,7 @@
     "pWT04I": ["Checking..."],
     "pWbsW6": ["Loading docs"],
     "pZAs1T": ["Failed to load outgoing links"],
+    "paCw0z": ["everything under ", ["0"], "/ folders inside ", ["1"], "/"],
     "pajIrl": ["Could not turn off the terminal: ", ["0"]],
     "pbwTg6": [["seconds"], "s ago"],
     "pckX1A": [["0", "plural", { "one": ["#", " use"], "other": ["#", " uses"] }]],
@@ -2629,6 +2704,7 @@
       ["tabCount", "plural", { "one": ["#", " tab"], "other": ["#", " tabs"] }]
     ],
     "qAx7xG": ["Fixed folder in content root"],
+    "qC7PwZ": ["Failed to remove the field"],
     "qEEfPk": ["Bug report ", ["0"]],
     "qEIFZu": ["Key ending in ", ["keyHint"]],
     "qEue6Q": [" or "],
@@ -2655,6 +2731,7 @@
     "qmL1UG": ["Uploading securely"],
     "qo4zCg": ["Path cannot contain backslashes"],
     "qpQwGC": ["Describe what you're working on and the agent sets it up for you."],
+    "qribBG": ["schema ", ["deleteTarget"]],
     "qvWGzP": ["Collapse all"],
     "qyLmWw": ["Source editor search panel"],
     "r-OJYm": ["Enter a valid branch name (no spaces, no leading dot, no \"..\")."],
@@ -2697,9 +2774,11 @@
     "rfFpcF": ["Remove ", ["chip"]],
     "rg7hNd": ["Rate your experience"],
     "rgPqOw": ["Convert the current block to a paragraph."],
+    "ri6zS-": ["The schema file does not exist or failed to load — adding a field creates it."],
     "riqekz": ["Suggestion menu navigation"],
     "rlUzXK": ["Could not validate folder. Please try again."],
     "rn7n0G": ["Resume sync"],
+    "rnX-1S": ["Enable plugins"],
     "roAe2K": ["Link URL"],
     "roiUQQ": ["This page doesn't link to anything yet."],
     "rppgXF": ["Disconnecting"],
@@ -2819,6 +2898,9 @@
     "uKRYiW": ["Sync status unavailable — server error."],
     "uL_Wx8": ["The terminal stopped unexpectedly."],
     "uM6jnS": ["Restore failed"],
+    "uMHsvM": [
+      "A <0>Modified</0> badge marks schemas your config maps — on or off. Reset removes the mapping from config.yml."
+    ],
     "uO9WLl": ["Push"],
     "uQNW00": ["Detached HEAD — checkout a branch to resume"],
     "uQewpR": [
@@ -2867,6 +2949,7 @@
     "vAYoCZ": ["Couldn't open the worktree. Try again."],
     "vDXqVv": ["Insert a markdown hard break."],
     "vEJDlt": ["The file is in your Trash; the file-watcher will reconcile."],
+    "vF68cg": ["Fields"],
     "vGeNNQ": ["Copy a prompt and paste it into your agent to set up your project."],
     "vIxrEk": ["Fit width"],
     "vLyv1R": ["Hide"],
@@ -2875,6 +2958,7 @@
     "vWc9a0": ["Type to edit; <0>⌘ Enter</0> saves, <1>Esc</1> cancels."],
     "vYPvPB": ["Switch project…"],
     "vZVeFG": ["Upload failed — please try again"],
+    "v_2_3v": ["Deleted ", ["file"]],
     "vbK_ZG": ["Files sidebar"],
     "ve8vEM": ["Code expired — please try again"],
     "vfRlCI": ["Could not copy full path"],
@@ -2902,6 +2986,7 @@
     "wQp1V3": ["Mirror of <0>", ["src"], "</0>"],
     "wT4iQr": ["Open visual-editor find with replace controls expanded."],
     "wTcjov": ["No workspace"],
+    "wU8WyK": ["Element fields"],
     "wVa83H": ["Couldn't create the report"],
     "wXO4Tg": [["hrs"], "h ago"],
     "wXw19Y": [
@@ -2924,6 +3009,7 @@
       "Skills teach agents repeatable tasks. Author them here; install a skill to project it into your editors' skill folders."
     ],
     "wndeIl": ["Project-level pages with neither incoming nor outgoing graph edges."],
+    "ws5o1F": ["Checked by: ", ["0"]],
     "wtcxiD": ["Share this setup with your team?"],
     "wvbc1r": ["Couldn't open document"],
     "wzq9Rv": [
@@ -3037,6 +3123,7 @@
     "yutJKi": ["Checklist with checkboxes."],
     "yvG-l1": ["Open source lint panel"],
     "yvHDYG": ["Claude Desktop"],
+    "yxF19Y": [["0", "plural", { "one": ["#", " plugin"], "other": ["#", " plugins"] }]],
     "yz7wBu": ["Close"],
     "yzF66j": ["Link"],
     "yzGPkm": ["Expand graph"],

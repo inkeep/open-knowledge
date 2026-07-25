@@ -25,6 +25,10 @@ msgstr ""
 msgid " Your selection has been restored."
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "— except"
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "… earlier output trimmed"
 msgstr ""
@@ -149,6 +153,11 @@ msgstr ""
 #. placeholder {0}: opts.length
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "{0, plural, one {# option set} other {# options set}}"
+msgstr ""
+
+#. placeholder {0}: activePlugins.length
+#: src/components/ProblemsPanel.tsx
+msgid "{0, plural, one {# plugin} other {# plugins}}"
 msgstr ""
 
 #. placeholder {0}: blocked.length
@@ -667,6 +676,10 @@ msgstr ""
 msgid "A <0>Modified</0> badge marks rules your config sets explicitly — directly, or inherited through <1>extends</1>. Unmarked rules keep their default state."
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "A <0>Modified</0> badge marks schemas your config maps — on or off. Reset removes the mapping from config.yml."
+msgstr ""
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "A branch named {shareBranch} already exists. Open its worktree from the switcher instead."
 msgstr ""
@@ -850,6 +863,7 @@ msgstr ""
 #: src/components/FrontmatterRow.tsx
 #: src/components/ObjectWidget.tsx
 #: src/components/PropertyPanel.tsx
+#: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add"
 msgstr ""
 
@@ -875,6 +889,18 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Add cursors or select matching occurrences through CodeMirror."
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Add description"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Add field"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Add file or folder pattern, e.g. guides/**/*"
 msgstr ""
 
 #: src/components/SeedDialog.tsx
@@ -931,6 +957,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Add the next matching source selection."
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Add value"
 msgstr ""
 
 #. Subtext for the open-knowledge-write-skill skill row
@@ -1026,6 +1056,22 @@ msgstr ""
 msgid "All tags"
 msgstr ""
 
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Allowed element values (empty = any)"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Allowed element values for {field}"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Allowed values (empty = any)"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Allowed values for {field}"
+msgstr ""
+
 #: src/editor/image-upload/index.ts
 msgid "Already at {assetContentPath} — reusing."
 msgstr ""
@@ -1063,6 +1109,15 @@ msgstr ""
 msgid "and more"
 msgstr ""
 
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "any"
+msgstr ""
+
+#. placeholder {0}: summary.name
+#: src/components/settings/LintingSection.tsx
+msgid "any doc named {0}"
+msgstr ""
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Anyone can see"
 msgstr ""
@@ -1085,6 +1140,14 @@ msgstr ""
 
 #: src/components/CommandPalette.tsx
 msgid "Application"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Applies to"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Applies to (globs — leading ! excludes; empty means every doc)"
 msgstr ""
 
 #: src/components/settings/TerminalSection.tsx
@@ -1299,6 +1362,7 @@ msgid "Below"
 msgstr ""
 
 #: src/components/acp/AgentBetaBadge.tsx
+#: src/components/settings/PluginBetaBadge.tsx
 msgid "Beta"
 msgstr ""
 
@@ -1529,6 +1593,11 @@ msgstr ""
 
 #: src/components/PropertyWidgets.tsx
 msgid "Checkbox"
+msgstr ""
+
+#. placeholder {0}: activePlugins.map((plugin) => plugin.label).join(', ')
+#: src/components/ProblemsPanel.tsx
+msgid "Checked by: {0}"
 msgstr ""
 
 #: src/components/BottomComposer.tsx
@@ -1908,6 +1977,10 @@ msgstr ""
 
 #: src/components/settings/SharingSection.tsx
 msgid "Config sharing unchanged — see details below."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Configuration problems"
 msgstr ""
 
 #: src/components/ProblemsPanel.tsx
@@ -2591,6 +2664,7 @@ msgstr ""
 #: src/components/CreateProjectDialog.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/NewItemDialog.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/TemplateRow.tsx
 msgid "Create"
 msgstr ""
@@ -2849,6 +2923,10 @@ msgstr ""
 msgid "Delete Permanently"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Delete schema file {file}"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Delete selected files or folders"
 msgstr ""
@@ -2863,6 +2941,10 @@ msgstr ""
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this conversation?"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Deleted {file}"
 msgstr ""
 
 #: src/components/FolderTimelineCard.tsx
@@ -2913,6 +2995,10 @@ msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Description (optional)"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Description for {field}"
 msgstr ""
 
 #: src/components/empty-state/CreatePromptComposer.tsx
@@ -2990,6 +3076,10 @@ msgstr ""
 msgid "Disable {0}"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Disable {file}"
+msgstr ""
+
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Disable external link previews"
 msgstr ""
@@ -3049,6 +3139,16 @@ msgstr ""
 
 #: src/components/HelpPopover.tsx
 msgid "Docs"
+msgstr ""
+
+#. placeholder {0}: summary.folder
+#: src/components/settings/LintingSection.tsx
+msgid "docs directly in {0}/"
+msgstr ""
+
+#. placeholder {0}: summary.pattern
+#: src/components/settings/LintingSection.tsx
+msgid "docs matching {0}"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
@@ -3229,6 +3329,7 @@ msgid "Each selected tool gets an OpenKnowledge MCP entry."
 msgstr ""
 
 #: src/components/AppMenubar.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/skill-actions.tsx
 #: src/components/TemplateForm.tsx
 #: src/components/TemplateRow.tsx
@@ -3252,6 +3353,10 @@ msgstr ""
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 msgid "Edit markdown link"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Edit schema {file}"
 msgstr ""
 
 #: src/editor/extensions/CodeBlockView.tsx
@@ -3308,6 +3413,14 @@ msgstr ""
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Edits at the source land here — no copy-paste drift."
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Element fields"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Element type"
 msgstr ""
 
 #: src/components/AuthModal.tsx
@@ -3376,6 +3489,10 @@ msgstr ""
 msgid "Enable {displayName} CLI"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Enable {file}"
+msgstr ""
+
 #: src/components/AutoSyncOnboardingDialog.tsx
 #: src/components/EnableSyncConfirmDialog.tsx
 #: src/components/share-receive-miss-content.tsx
@@ -3398,6 +3515,10 @@ msgstr ""
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Enable git auto-sync?"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "Enable plugins"
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
@@ -3463,6 +3584,26 @@ msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Error:"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "every doc"
+msgstr ""
+
+#. placeholder {0}: summary.folder
+#: src/components/settings/LintingSection.tsx
+msgid "everything under {0}/"
+msgstr ""
+
+#. placeholder {0}: summary.folder
+#. placeholder {1}: summary.root
+#: src/components/settings/LintingSection.tsx
+msgid "everything under {0}/ folders inside {1}/"
+msgstr ""
+
+#. placeholder {0}: summary.folder
+#: src/components/settings/LintingSection.tsx
+msgid "everything under any {0}/ folder"
 msgstr ""
 
 #: src/components/settings/SharingSection.tsx
@@ -3570,6 +3711,14 @@ msgstr ""
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Failed to create page"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Failed to create the schema file"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Failed to delete {file}"
 msgstr ""
 
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -3747,6 +3896,10 @@ msgstr ""
 msgid "Failed to remove project."
 msgstr ""
 
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Failed to remove the field"
+msgstr ""
+
 #: src/components/PropertyPanel.tsx
 msgid "Failed to rename"
 msgstr ""
@@ -3758,6 +3911,10 @@ msgstr ""
 #: src/components/ObjectWidget.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Failed to rename property"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Failed to rename the field"
 msgstr ""
 
 #: src/editor/components/Pdf.tsx
@@ -3773,6 +3930,10 @@ msgstr ""
 #: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/LintingSection.tsx
 msgid "Failed to save content rules — {0}"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Failed to save the schema field"
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
@@ -3836,6 +3997,18 @@ msgstr ""
 msgid "Fetching"
 msgstr ""
 
+#: src/components/SchemaConfigEditor.tsx
+msgid "Field editing is available for schema files mapped in the Frontmatter schemas plugin"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Field name"
+msgstr ""
+
+#: src/components/SchemaConfigEditor.tsx
+msgid "Fields"
+msgstr ""
+
 #: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
 #: src/components/settings/AiToolsSection.tsx
@@ -3859,6 +4032,10 @@ msgstr ""
 
 #: src/components/NewItemDialog.tsx
 msgid "File name"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "File name (created in .ok/schemas/)"
 msgstr ""
 
 #: src/components/TrashFailureModal.tsx
@@ -4102,6 +4279,10 @@ msgstr ""
 msgid "Frontmatter every document created from this template starts with. Values are YAML — a list is <0>[a, b]</0>; <1>{{date}}</1> fills in on create."
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Frontmatter schemas"
+msgstr ""
+
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Full"
@@ -4183,6 +4364,10 @@ msgstr ""
 
 #: src/components/McpConsentDialogBody.tsx
 msgid "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Glob patterns this schema applies to"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -4985,6 +5170,10 @@ msgstr ""
 msgid "Loading document"
 msgstr ""
 
+#: src/components/EditorArea.tsx
+msgid "Loading editor"
+msgstr ""
+
 #: src/components/FileTree.tsx
 msgid "Loading files"
 msgstr ""
@@ -5241,6 +5430,7 @@ msgid "Mode"
 msgstr ""
 
 #: src/components/FolderOverview.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Modified"
 msgstr ""
@@ -5407,6 +5597,10 @@ msgstr ""
 msgid "Nested .okignore error in {path}"
 msgstr ""
 
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Nested fields"
+msgstr ""
+
 #: src/components/FileTree.tsx
 msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr ""
@@ -5507,6 +5701,10 @@ msgstr ""
 
 #: src/components/FrontmatterRow.tsx
 msgid "New property name"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "New schema"
 msgstr ""
 
 #: src/components/NewSkillDialog.tsx
@@ -5763,6 +5961,10 @@ msgid "No patterns yet. Type a folder or file name below to start hiding files."
 msgstr ""
 
 #: src/components/ProblemsPanel.tsx
+msgid "No problems found — but no lint plugins are enabled, so only links are checked."
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
 msgid "No problems found."
 msgstr ""
 
@@ -5797,6 +5999,14 @@ msgstr ""
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "No rules match your filters."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "No schema files in this project yet — create one to start validating."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "No schemas match your search."
 msgstr ""
 
 #: src/components/settings/SettingsDialogShell.tsx
@@ -5891,6 +6101,16 @@ msgstr ""
 msgid "Not now"
 msgstr ""
 
+#. placeholder {0}: summary.pattern
+#: src/components/settings/LintingSection.tsx
+msgid "nothing ({0} cannot match a doc)"
+msgstr ""
+
+#. placeholder {0}: summary.pattern
+#: src/components/settings/LintingSection.tsx
+msgid "nothing ({0} is not a valid pattern)"
+msgstr ""
+
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
 msgstr ""
@@ -5983,6 +6203,7 @@ msgstr ""
 msgid "Only markdown files"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Only modified"
 msgstr ""
@@ -6536,6 +6757,10 @@ msgstr ""
 msgid "Path suggestions"
 msgstr ""
 
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Pattern (regex)"
+msgstr ""
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "Pattern {patternNumber}"
 msgstr ""
@@ -7039,6 +7264,10 @@ msgstr ""
 msgid "Remove failed: {error}"
 msgstr ""
 
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Remove field {field}"
+msgstr ""
+
 #: src/components/NavigatorApp.tsx
 #: src/components/recent-remove-controls.tsx
 msgid "Remove from recent projects"
@@ -7220,6 +7449,10 @@ msgstr ""
 msgid "Repository not found. It may have been renamed, deleted, or moved."
 msgstr ""
 
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Required"
+msgstr ""
+
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Requires {brand}."
 msgstr ""
@@ -7241,6 +7474,10 @@ msgstr ""
 msgid "Reset {0} to default"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Reset {file} to default"
+msgstr ""
+
 #: src/components/settings/field-controls.tsx
 msgid "Reset {labelText} to default"
 msgstr ""
@@ -7248,6 +7485,10 @@ msgstr ""
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Reset to default"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Reset to default (removes it from config.yml)"
 msgstr ""
 
 #: src/editor/components/Mermaid.tsx
@@ -7508,6 +7749,10 @@ msgstr ""
 msgid "Saving"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "schema {deleteTarget}"
+msgstr ""
+
 #: src/components/NewSkillDialog.tsx
 #: src/components/PanelScopeHeader.tsx
 msgid "Scope"
@@ -7592,6 +7837,14 @@ msgstr ""
 msgid "Search rules by id, alias, or name"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Search schema files by path"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Search schemas"
+msgstr ""
+
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Search settings"
 msgstr ""
@@ -7656,6 +7909,10 @@ msgstr ""
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
+msgstr ""
+
+#: src/components/FrontmatterRow.tsx
+msgid "Select a value"
 msgstr ""
 
 #: src/components/AppMenubar.tsx
@@ -8212,6 +8469,7 @@ msgstr ""
 #: src/components/AgentDiffPane.tsx
 #: src/components/LintConfigEditor.tsx
 #: src/components/MermaidFileViewer.tsx
+#: src/components/SchemaConfigEditor.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Source"
 msgstr ""
@@ -8773,6 +9031,11 @@ msgstr ""
 msgid "The desktop app isn't responding. Refresh and try again."
 msgstr ""
 
+#. placeholder {0}: summary.target
+#: src/components/settings/LintingSection.tsx
+msgid "the doc {0}"
+msgstr ""
+
 #: src/components/FileTree.tsx
 msgid "The file is in your Trash; the file-watcher will reconcile."
 msgstr ""
@@ -8821,6 +9084,10 @@ msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "The repository was moved, renamed, or deleted."
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr ""
 
 #: src/components/TemplateProperties.tsx
@@ -8955,6 +9222,10 @@ msgstr ""
 msgid "This document is already active in the editor. Use Open to collapse the graph."
 msgstr ""
 
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "This field carries additional schema keywords the editor does not show — they are preserved on save."
+msgstr ""
+
 #: src/components/use-viewer-text.ts
 msgid "This file can't be opened in the text editor."
 msgstr ""
@@ -9009,6 +9280,10 @@ msgstr ""
 
 #: src/components/ConsentDialogBody.tsx
 msgid "This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "This permanently deletes {deleteTarget} from the project and removes its mapping from config.yml. Docs it validated keep their frontmatter; they just stop being checked."
 msgstr ""
 
 #. placeholder {0}: skill.path
@@ -9075,6 +9350,11 @@ msgstr ""
 
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."
+msgstr ""
+
+#. placeholder {0}: rootAdvancedKeywords.join(', ')
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "This schema carries root-level advanced rules the editor does not show ({0}) — they still validate and survive every edit. Open the schema file to see them."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
@@ -9265,6 +9545,7 @@ msgstr ""
 msgid "Two-page (odd)"
 msgstr ""
 
+#: src/components/settings/frontmatter-schema-field-editor.tsx
 #: src/components/TemplateForm.tsx
 msgid "Type"
 msgstr ""
@@ -9551,9 +9832,25 @@ msgstr ""
 msgid "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Validate document frontmatter against JSON Schema files, scoped to doc sets by glob."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Validate document frontmatter against standard JSON Schema files (draft-07). Toggle a schema on to validate the docs its globs match; violations surface as warnings and never block a write. Use Edit to open the schema file."
+msgstr ""
+
+#: src/components/FrontmatterRow.tsx
+msgid "Value for {keyName}"
+msgstr ""
+
 #: src/components/FolderPropertiesCard.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Value is required"
+msgstr ""
+
+#: src/components/FrontmatterRow.tsx
+msgid "Values for {keyName}"
 msgstr ""
 
 #: src/components/CommandPalette.tsx

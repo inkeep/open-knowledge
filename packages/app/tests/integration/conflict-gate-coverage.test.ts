@@ -119,6 +119,12 @@ const EXEMPT_HANDLERS = new Set([
   // apply — same posture as `handleFolderConfig`.
   'handleGetLintConfig',
   'handleWriteMarkdownlintRule',
+  // No Y.Doc target (schema-file write to disk) — the conflict gate is N/A,
+  // same class as handleWriteMarkdownlintRule.
+  'handleWriteFrontmatterSchema',
+  // `/api/lint/frontmatter-schemas` (GET) — read-only enumeration of
+  // `.ok/schemas/*.json`. No Y.Doc target; conflict gate does not apply.
+  'handleFrontmatterSchemasList',
   // `/api/lint` (GET) + `/api/lint/audit` (GET) — read-only lint of one doc /
   // the project. No Y.Doc target (reads from disk), so the per-doc conflict gate
   // does not apply.

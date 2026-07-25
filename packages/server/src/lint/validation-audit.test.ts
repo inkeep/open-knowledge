@@ -28,7 +28,10 @@ let admitted: Set<string>;
 
 const lintOn: LinterConfig = {
   ...DEFAULT_LINTER_CONFIG,
-  plugins: { markdownlint: { ...DEFAULT_LINTER_CONFIG.plugins.markdownlint, enabled: true } },
+  plugins: {
+    ...DEFAULT_LINTER_CONFIG.plugins,
+    markdownlint: { ...DEFAULT_LINTER_CONFIG.plugins.markdownlint, enabled: true },
+  },
 };
 
 // MD010 (hard tabs) is on by default; a doc with a tab produces a diagnostic.

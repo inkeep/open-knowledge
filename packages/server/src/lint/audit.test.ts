@@ -25,7 +25,10 @@ const CLEAN_DOC = '# Title\n\nClean paragraph.\n';
 
 const base: LinterConfig = {
   ...DEFAULT_LINTER_CONFIG,
-  plugins: { markdownlint: { ...DEFAULT_LINTER_CONFIG.plugins.markdownlint, enabled: true } },
+  plugins: {
+    ...DEFAULT_LINTER_CONFIG.plugins,
+    markdownlint: { ...DEFAULT_LINTER_CONFIG.plugins.markdownlint, enabled: true },
+  },
 };
 
 beforeEach(() => {

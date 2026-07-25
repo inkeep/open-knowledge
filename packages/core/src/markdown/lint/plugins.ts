@@ -1,7 +1,12 @@
 import { z } from 'zod';
 import { DEFAULT_MARKDOWNLINT_CONFIG, resolveMarkdownlintConfig } from './default-config.ts';
+import {
+  selectApplicableFrontmatterSchemas,
+  validateFrontmatterSource,
+} from './frontmatter-validate.ts';
 import { fixMarkdownText, runMarkdownlint } from './markdownlint-runner.ts';
 import {
+  type FrontmatterSlice,
   type LintDiagnostic,
   type LintPluginId,
   MARKDOWNLINT_RULE_SEVERITIES,
@@ -37,7 +42,30 @@ const markdownlintPlugin: LintPlugin<'markdownlint', MarkdownlintSlice> = {
   },
 };
 
-export const LINT_PLUGINS = [markdownlintPlugin] as const;
+const FrontmatterSchemaEntrySchema = z.object({
+  appliesTo: z.union([z.string(), z.array(z.string())]).optional(),
+  file: z.string(),
+  enabled: z.boolean().optional(),
+  key: z.string().optional(),
+  schema: z.record(z.string(), z.unknown()).optional(),
+});
+
+const frontmatterPlugin: LintPlugin<'frontmatter', FrontmatterSlice> = {
+  id: 'frontmatter',
+  sliceSchema: z.object({
+    enabled: z.boolean(),
+    schemas: z.array(FrontmatterSchemaEntrySchema),
+  }),
+  defaultSlice: { enabled: false, schemas: [] },
+  async lint(text, slice, ctx) {
+    return validateFrontmatterSource(
+      text,
+      selectApplicableFrontmatterSchemas(slice.schemas, ctx.docName),
+    );
+  },
+};
+
+export const LINT_PLUGINS = [markdownlintPlugin, frontmatterPlugin] as const;
 
 type LintPluginEntry = (typeof LINT_PLUGINS)[number];
 

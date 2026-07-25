@@ -27,7 +27,8 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { applyEdits, modify, parse as parseJsonc, stripComments } from 'jsonc-parser';
 import { stringify as stringifyYaml } from 'yaml';
-import { tracedRenameSync, tracedUnlinkSync, tracedWriteFileSync } from '../fs-traced.ts';
+import { tracedUnlinkSync } from '../fs-traced.ts';
+import { writeFileAtomic } from './fs-safety.ts';
 import {
   DEFAULT_MARKDOWNLINT_FILENAME,
   findNativeMarkdownlintFile,
@@ -86,25 +87,6 @@ function applyJsoncRuleChange(
   }
   const key = governingKey(rules, ruleId);
   return applyEdits(text, modify(text, [key], value, { formattingOptions: JSONC_FORMATTING }));
-}
-
-/** Atomic write (tmp + rename), traced; never leaves the tmp file behind. */
-function writeFileAtomic(file: string, content: string): void {
-  const tmp = `${file}.tmp.${process.pid}.${Date.now()}`;
-  try {
-    tracedWriteFileSync(tmp, content, 'utf-8');
-    tracedRenameSync(tmp, file);
-  } catch (err) {
-    // The tmp file sits in user-visible content space — never leave an
-    // orphan behind on a failed write/rename (same pattern as
-    // config-persistence.ts).
-    try {
-      tracedUnlinkSync(tmp);
-    } catch {
-      // tmp may not exist if the write itself failed.
-    }
-    throw err;
-  }
 }
 
 /**

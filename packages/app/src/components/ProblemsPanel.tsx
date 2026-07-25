@@ -15,6 +15,7 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useOptionalPageList } from '@/components/PageListContext';
 import { type PanelScope, PanelScopeHeader } from '@/components/PanelScopeHeader';
+import { LINT_PLUGIN_META, type LintPluginMeta } from '@/components/settings/lint-plugin-meta';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -28,11 +29,13 @@ import {
   PanelTitle,
 } from '@/components/ui/panel';
 import { Skeleton } from '@/components/ui/skeleton';
-import { fixLintDoc } from '@/editor/lint-config-client';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { fixLintDoc, useProjectLintConfig } from '@/editor/lint-config-client';
 import { rememberPendingSourceNavigation } from '@/editor/source-editor-navigation';
 import { runValidationAudit } from '@/editor/validation-audit-client';
 import { createPageFromSeedAndUpdate } from '@/lib/create-page';
 import { filePathToDocName, hashFromDocName } from '@/lib/doc-hash';
+import { openProjectPluginsSettings } from '@/lib/use-settings-route';
 import { cn } from '@/lib/utils';
 import { replaceValidationFromAudit } from '@/lib/validation-store';
 
@@ -237,6 +240,17 @@ export function ProblemsPanel({
 }) {
   const { t } = useLingui();
   const [scope, setScope] = useState<PanelScope>('doc');
+  // Which lint plugins actually check content, from the server-resolved
+  // effective config (the same truth the diagnostics come from). Null while
+  // the config hasn't loaded — the panel then makes no claim either way.
+  const { data: lintConfig } = useProjectLintConfig();
+  const activePlugins: LintPluginMeta[] | null =
+    lintConfig === null
+      ? null
+      : lintConfig.effective.enabled
+        ? LINT_PLUGIN_META.filter((plugin) => lintConfig.effective.plugins[plugin.id].enabled)
+        : [];
+  const noPluginsEnabled = activePlugins !== null && activePlugins.length === 0;
   const [audit, setAudit] = useState<ProjectAuditState>({ status: 'idle' });
   const [projectFixing, setProjectFixing] = useState<{ done: number; total: number } | null>(null);
   // The dead-link "Create page" one-shot (target being created, else null).
@@ -384,18 +398,60 @@ export function ProblemsPanel({
   return (
     <Panel>
       <PanelHeader>
-        <PanelTitle>
-          <Trans>Problems</Trans>
-        </PanelTitle>
+        <div className="flex min-w-0 items-center gap-2">
+          <PanelTitle>
+            <Trans>Problems</Trans>
+          </PanelTitle>
+          {activePlugins !== null && activePlugins.length > 0 && (
+            <Tooltip>
+              {/* Bare trigger = a real (focusable) button, so keyboard focus
+                  opens the tooltip too; dressed as a PanelCount pill to match
+                  the Graph header's node/link counts. */}
+              <TooltipTrigger
+                className="shrink-0 cursor-default rounded-md bg-muted-foreground/5 px-2 py-1 font-mono text-xs text-muted-foreground"
+                data-testid="problems-active-plugins"
+              >
+                <Plural value={activePlugins.length} one="# plugin" other="# plugins" />
+              </TooltipTrigger>
+              <TooltipContent data-testid="problems-active-plugins-tooltip">
+                <Trans>Checked by: {activePlugins.map((plugin) => plugin.label).join(', ')}</Trans>
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
         {scope === 'doc' && sorted.length > 0 && <PanelCount>{sorted.length}</PanelCount>}
       </PanelHeader>
       <PanelScopeHeader scope={scope} onScopeChange={handleScopeChange} />
       {scope === 'doc' ? (
         <PanelBody className="px-2 py-2">
           {sorted.length === 0 ? (
-            <PanelEmpty className="px-2">
-              <Trans>No problems found.</Trans>
-            </PanelEmpty>
+            noPluginsEnabled ? (
+              // Zero lint plugins narrows the plane to link validation alone —
+              // say so instead of an unqualified "no problems", and point at
+              // the switch. Only the empty list carries the hint: link
+              // findings still render, so the body is never blanked.
+              <>
+                <PanelEmpty className="px-2" data-testid="problems-no-plugins">
+                  <Trans>
+                    No problems found — but no lint plugins are enabled, so only links are checked.
+                  </Trans>
+                </PanelEmpty>
+                <div className="px-2 pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openProjectPluginsSettings}
+                    data-testid="problems-enable-plugins"
+                  >
+                    <Trans>Enable plugins</Trans>
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <PanelEmpty className="px-2">
+                <Trans>No problems found.</Trans>
+              </PanelEmpty>
+            )
           ) : (
             <>
               {onFixAll !== undefined && (

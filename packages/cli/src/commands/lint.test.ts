@@ -96,3 +96,31 @@ describe('resolveTarget', () => {
     expect(out.includes(`${cwd}/${cwd}`)).toBe(false);
   });
 });
+
+describe('formatLintReport — frontmatter diagnostics', () => {
+  test('renders the composed frontmatter/<keyword> id with 1-based display line', async () => {
+    const out = formatLintReport(
+      result({
+        fileCount: 1,
+        warningCount: 1,
+        files: [
+          {
+            file: 'docs/guide.md',
+            fixed: false,
+            diagnostics: [
+              {
+                range: { start: { line: 1, character: 0 }, end: { line: 1, character: 15 } },
+                severity: 'warning',
+                source: 'frontmatter',
+                code: 'enum',
+                message: 'Frontmatter property "status" must be one of: draft, review, published',
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(out).toContain('frontmatter/enum');
+    expect(out).toContain('2:1');
+  });
+});

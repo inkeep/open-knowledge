@@ -92,6 +92,7 @@ interface LintDiagnosticPayload {
 interface LintDocPayload {
   file?: string;
   diagnostics?: LintDiagnosticPayload[];
+  warnings?: string[];
 }
 
 interface LintFixPayload {
@@ -158,7 +159,9 @@ export function register(server: ServerInstance, deps: LintDeps): void {
         warnings: z
           .array(z.string())
           .optional()
-          .describe('Audit only: non-fatal issues (unreadable files/dirs).'),
+          .describe(
+            'Non-fatal issues: unreadable files/dirs (audit) and lint-config problems such as broken frontmatter schema files (audit + single doc).',
+          ),
         omittedFileCount: z
           .number()
           .optional()
@@ -255,19 +258,27 @@ async function lintSingleDoc(document: string, url: string, cwd: string) {
   const { ok: _ok, ...rest } = result;
   const data = rest as LintDocPayload;
   const diagnostics = data.diagnostics ?? [];
+  const configWarnings = data.warnings ?? [];
   const errorCount = diagnostics.filter((d) => d.severity === 'error').length;
   const warningCount = diagnostics.length - errorCount;
   const file = { file: data.file ?? normalized.docName, diagnostics };
-  const structured = { files: [file], errorCount, warningCount, cwd };
+  const structured = {
+    files: [file],
+    errorCount,
+    warningCount,
+    ...(configWarnings.length > 0 ? { warnings: configWarnings } : {}),
+    cwd,
+  };
 
   const header =
     diagnostics.length === 0
       ? `No problems in ${file.file}.`
       : `${file.file}: ${countSummary(errorCount, warningCount)}`;
   const lines = diagnostics.map(formatDiagnosticLine);
+  const warningLines = configWarnings.map((w) => `  ⚠ ${w}`);
   const fixableCount = diagnostics.filter((d) => (d.fixes?.length ?? 0) > 0).length;
   const footer = diagnostics.length > 0 ? [singleDocFixHint(fixableCount, diagnostics.length)] : [];
-  return textPlusStructured([header, ...lines, ...footer].join('\n'), structured);
+  return textPlusStructured([header, ...lines, ...warningLines, ...footer].join('\n'), structured);
 }
 
 async function lintAudit(path: string | undefined, url: string, cwd: string) {
