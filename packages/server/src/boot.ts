@@ -208,6 +208,7 @@ export interface BootServerOptions
     | 'wipRef'
     | 'destroyTimeoutMs'
     | 'localOpCliArgs'
+    | 'authStreamHeartbeatMs'
     | 'onAgentWrite'
     | 'shadowRepo'
     | 'enableTestRoutes'
@@ -674,6 +675,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     shadowRepo: opts.shadowRepo,
     destroyTimeoutMs: opts.destroyTimeoutMs,
     localOpCliArgs: opts.localOpCliArgs,
+    authStreamHeartbeatMs: opts.authStreamHeartbeatMs,
     onAgentWrite: opts.onAgentWrite,
     lockKind,
     skipStateManifestCheck: opts.skipStateManifestCheck,

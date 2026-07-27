@@ -252,6 +252,12 @@ export interface ServerOptions {
    */
   localOpCliArgs?: string[];
   /**
+   * Keepalive cadence for the streaming auth flows, in ms. Defaults to 15s in
+   * `createApiExtension`; tests shorten it so an idle stream's heartbeat is
+   * observable inside a normal test budget.
+   */
+  authStreamHeartbeatMs?: number;
+  /**
    * Server kind written into the lock metadata. `interactive` (default) for
    * user-facing boots; `mcp-spawned` for the MCP detach-spawn path. Desktop
    * attach validation refuses to attach to non-interactive locks.
@@ -591,6 +597,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     contentRoot,
     destroyTimeoutMs = 10_000,
     localOpCliArgs,
+    authStreamHeartbeatMs,
     skipStateManifestCheck = false,
     singleDocRelPath,
     ephemeral = false,
@@ -1838,6 +1845,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       onAgentWrite: options.onAgentWrite,
       getSyncEngine: () => syncEngine,
       localOpCliArgs,
+      authStreamHeartbeatMs,
       projectDir,
       resolveEmbed,
       getPrincipal: () => loadedPrincipal,

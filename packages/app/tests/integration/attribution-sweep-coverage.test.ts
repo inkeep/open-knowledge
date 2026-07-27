@@ -242,6 +242,9 @@ const EXEMPT_HANDLERS = new Set([
   // thread.
   'handleLocalOpAuthPat',
   'handleLocalOpAuthGhLogin',
+  // POST /api/local-op/auth/cancel — user-initiated stop for an in-flight
+  // device flow. Terminates a subprocess on the local machine; writes nothing.
+  'handleLocalOpAuthCancel',
   // POST /api/local-op/embeddings/{set-key,clear-key} — loopback-gated writes of
   // the machine-global embeddings key to ~/.ok/secrets.yml. Operate on the local
   // user's credential file, not agent-authored content — same rationale as the

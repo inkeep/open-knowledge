@@ -1901,6 +1901,7 @@ msgid "Code copied to clipboard"
 msgstr "Code copied to clipboard"
 
 #: src/components/AuthModal.tsx
+#: src/lib/transports/auth-transport.ts
 msgid "Code expired — please try again"
 msgstr "Code expired — please try again"
 
@@ -2155,6 +2156,7 @@ msgid "Connection dropped"
 msgstr "Connection dropped"
 
 #: src/components/AuthModal.tsx
+#: src/lib/transports/auth-transport.ts
 msgid "Connection error — try again"
 msgstr "Connection error — try again"
 
@@ -4025,7 +4027,12 @@ msgstr "Failed to save the schema field"
 msgid "Failed to save theme setting"
 msgstr "Failed to save theme setting"
 
+#: src/lib/transports/auth-transport.ts
+msgid "Failed to start sign-in — try again"
+msgstr "Failed to start sign-in — try again"
+
 #: src/components/AuthModal.tsx
+#: src/lib/transports/auth-transport.ts
 msgid "Failed to store the token — try again"
 msgstr "Failed to store the token — try again"
 
@@ -8539,6 +8546,7 @@ msgid "Sign in to {agentName} first"
 msgstr "Sign in to {agentName} first"
 
 #: src/components/AuthModal.tsx
+#: src/lib/transports/auth-transport.ts
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "Sign-in stream ended without confirmation — please try again"
 
@@ -9885,6 +9893,7 @@ msgid "Unknown component: {unregisteredComponentName}"
 msgstr "Unknown component: {unregisteredComponentName}"
 
 #: src/components/DocumentErrorBoundary.tsx
+#: src/lib/transports/auth-transport.ts
 msgid "Unknown error"
 msgstr "Unknown error"
 

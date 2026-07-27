@@ -196,6 +196,9 @@ const EXEMPT_HANDLERS = new Set([
   // gate doesn't apply.
   'handleLocalOpAuthPat',
   'handleLocalOpAuthGhLogin',
+  // Stops an in-flight device-flow subprocess. Terminates a child and frees a
+  // concurrency slot — no Y.Doc target at all.
+  'handleLocalOpAuthCancel',
   // Loopback-gated writes of the machine-global embeddings key to the user's
   // secrets file, plus the read-only endpoint probe — no Y.Doc mutation, so the
   // conflict-refusal gate doesn't apply.

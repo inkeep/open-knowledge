@@ -1,3 +1,4 @@
+
 import {
   type FromProseMirrorOptions,
   fromPmMark,
@@ -196,6 +197,7 @@ export class MarkdownManager {
   }
 }
 
+
 const registry = createRegistry();
 
 function destructureAttrs(
@@ -244,6 +246,7 @@ function destructureAttrs(
   return result;
 }
 
+
 function hasDirtyDescendant(node: PmNode): boolean {
   let found = false;
   node.descendants((child) => {
@@ -262,6 +265,7 @@ function effectiveDirty(node: PmNode, freshnessChecker?: StructuralFreshnessChec
   if (node.attrs.sourceDirty || hasDirtyDescendant(node)) return true;
   return freshnessChecker ? freshnessChecker.isDiverged(node.toJSON()) : false;
 }
+
 
 function isEmptyMdastParagraph(node: MdastNodes): boolean {
   if (node.type !== 'paragraph') return false;
@@ -330,6 +334,7 @@ function extractTextFromMdastNodes(nodes: MdastNodes[]): string {
   }
   return out;
 }
+
 
 import {
   AUDIO_EXTENSIONS,
@@ -577,6 +582,7 @@ function buildMdastToPmHandlers(
     }));
   }
 
+
   if (m.emphasis) {
     handlers.emphasis = toPmMark(m.emphasis, (node: Emphasis) => ({
       sourceDelimiter: node.data?.sourceDelimiter ?? '*',
@@ -656,6 +662,7 @@ function buildMdastToPmHandlers(
       sourceContinuationIndent: node.data?.sourceContinuationIndent ?? null,
     }));
   }
+
 
   if (m.link) {
     const sourceLiteralMark = m.sourceLiteral;
@@ -935,6 +942,7 @@ function buildMdastToPmHandlers(
     };
   }
 
+
   const blockUnknownHandler = (node: {
     type: string;
     position?: { start: { offset: number }; end: { offset: number } };
@@ -1059,6 +1067,7 @@ function buildMdastToPmHandlers(
 
   return handlers as RemarkProseMirrorOptions['handlers'];
 }
+
 
 function buildPmToMdastHandlers(
   schema: Schema,

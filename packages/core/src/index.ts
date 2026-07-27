@@ -805,6 +805,8 @@ export {
   LinkPreviewResponseSchema,
   type LintViolationWarning,
   LintViolationWarningSchema,
+  type LocalOpAuthCancelRequest,
+  LocalOpAuthCancelRequestSchema,
   type LocalOpAuthEmptySuccess,
   LocalOpAuthEmptySuccessSchema,
   type LocalOpAuthHostRequest,

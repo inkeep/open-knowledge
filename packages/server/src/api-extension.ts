@@ -125,6 +125,7 @@ import {
   LintFixRequestSchema,
   LintFixResultSchema,
   type LintViolationWarning,
+  LocalOpAuthCancelRequestSchema,
   LocalOpAuthEmptySuccessSchema,
   type LocalOpAuthHostRequest,
   LocalOpAuthHostRequestSchema,
@@ -2782,6 +2783,12 @@ export interface ApiExtensionOptions {
    */
   localOpCliArgs?: string[];
   /**
+   * Keepalive cadence for the streaming auth flows, in ms. Production uses the
+   * 15s default; tests override it so the heartbeat is observable inside a
+   * normal test budget without faking timers around a real HTTP stream.
+   */
+  authStreamHeartbeatMs?: number;
+  /**
    * Path to the project's parent git working tree (i.e. the repo root, not
    * the shadow git dir). Used for upload tmp-file placement, git-relative
    * path resolution for managed renames (`renameTrackedPathInGit`), and the
@@ -3045,6 +3052,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     onAgentWrite,
     getSyncEngine,
     localOpCliArgs = ['open-knowledge'],
+    authStreamHeartbeatMs,
     projectDir,
     getPrincipal,
     homeDirOverride,
@@ -12632,6 +12640,27 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const LOCAL_OP_AUTH_GH_LOGIN_KEY = '/api/local-op/auth/gh-login';
 
   /**
+   * Keepalive cadence for the two streaming auth flows. Between `verification`
+   * and `complete` the device flow writes nothing for as long as the user takes
+   * to authorize — up to the code's ~15-minute life — and a loopback connection
+   * carrying zero bytes is exactly what an idle-connection reaper severs
+   * (AV/EDR SSL-inspection agents, VPN local proxies, some tab-backgrounding).
+   * A periodic no-op line keeps bytes flowing. `{ type: 'ping' }` is not an
+   * `AuthEvent`: consumers skip it, it never terminates the stream, and it does
+   * not touch the code's expiry.
+   */
+  const AUTH_STREAM_HEARTBEAT_MS = authStreamHeartbeatMs ?? 15_000;
+
+  /**
+   * Wall-clock cap on a device-flow child, deliberately longer than the generic
+   * `LOCAL_OP_TIMEOUT_MS`. GitHub issues codes with `expires_in: 899` (~15 min)
+   * and the UI now counts down to that real deadline, so a 10-minute SIGTERM
+   * would kill the flow while the code on the user's screen is still good. The
+   * CLI's own poller gives up first at `expired_token`; this is only a backstop.
+   */
+  const AUTH_DEVICE_FLOW_TIMEOUT_MS = 16 * 60 * 1000;
+
+  /**
    * Default host for the auth relay endpoints when the request omits `host`.
    * Read per-request (not cached): the origin remote can change over the
    * server's lifetime.
@@ -12655,8 +12684,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
    * OK's store) while gh-login runs `gh auth login --web` (gh's OAuth app, works
    * on GHES, token → gh keyring → tier A) — so the caller supplies `makeFlow`.
    * Everything else is identical and lives here once: the concurrency slot with
-   * displace-on-restart, NDJSON streaming, client-disconnect cancel, sync-resume,
-   * and the ownership-guarded slot release.
+   * displace-on-restart, NDJSON streaming, the idle keepalive, disconnect
+   * detach, sync-resume, and the ownership-guarded slot release.
    */
   function streamAuthFlow(cfg: {
     res: ServerResponse;
@@ -12717,6 +12746,28 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     // Wrap raw `error` events in the RFC 9457 streaming envelope.
     const writeStreamError = createStreamingErrorWriter(res, handler);
 
+    // Three-way guard + try-catch matches the writer's race-window defense; a
+    // lost progress event is not crashworthy.
+    const writeLine = (line: string): void => {
+      if (res.writableEnded || res.destroyed) return;
+      try {
+        res.write(line);
+      } catch {
+        /* socket destroyed between guard and write — line lost */
+      }
+    };
+
+    let heartbeat: ReturnType<typeof setInterval> | null = setInterval(() => {
+      writeLine(`${JSON.stringify({ type: 'ping' })}\n`);
+    }, AUTH_STREAM_HEARTBEAT_MS);
+    // A keepalive must never be the reason the process stays up.
+    heartbeat.unref();
+    const stopHeartbeat = (): void => {
+      if (heartbeat === null) return;
+      clearInterval(heartbeat);
+      heartbeat = null;
+    };
+
     const flow = makeFlow((event: AuthEvent) => {
       if (event.type === 'error') {
         writeStreamError(500, 'urn:ok:error:auth-failed', streamErrorMessage, {
@@ -12726,38 +12777,63 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       }
       // On `complete`, resume a SyncEngine parked in `auth-error` so a reconnect
       // restores sync without an app restart. Server-authoritative: works
-      // regardless of which UI surface ran the sign-in.
+      // regardless of which UI surface ran the sign-in — and, since the flow now
+      // outlives its client connection, regardless of whether anyone is still
+      // listening when the token lands.
       resumeSyncOnAuthEvent(event, getSyncEngine);
-      // Three-way guard + try-catch matches the writer's race-window defense; a
-      // lost progress event is not crashworthy.
-      if (!res.writableEnded && !res.destroyed) {
-        try {
-          res.write(`${JSON.stringify(event)}\n`);
-        } catch {
-          /* socket destroyed between guard and write — event lost */
-        }
-      }
+      writeLine(`${JSON.stringify(event)}\n`);
     });
     inFlight.current = flow;
 
-    // Kill the child if the client disconnects so the flow doesn't keep polling
-    // and write a token the user never saw confirmed. Free the slot synchronously
-    // (ownership-guarded) rather than waiting for the SIGTERM'd child to exit —
-    // that window would otherwise 429 a reopen.
+    // A transport disconnect is NOT a cancel, and must not kill the flow.
+    //
+    // On loopback the stream gets severed by things the user never sees — an
+    // AV/EDR inspection agent, a VPN local proxy, a backgrounded tab. Killing
+    // the child there turns a blip into an unrecoverable sign-in: the user
+    // finishes authorizing on github.com and no token is ever stored, with no
+    // way back except starting over for a fresh code. So a disconnect only
+    // stops the writer; the flow runs on to its own timeout (or the code's
+    // expiry) and a reconnecting client picks the outcome up from
+    // `POST /api/local-op/auth/status`.
+    //
+    // What the old kill-on-disconnect protected — don't land a token after the
+    // user backed out — rides on an EXPLICIT signal instead: `POST
+    // /api/local-op/auth/cancel` when the modal closes, or displacement by a
+    // fresh start. That is the lifetime model the IPC twin has always had
+    // (`handleAuthStart` in desktop/src/main/ipc/local-op.ts), where a vanished
+    // renderer never killed the flow either and only `:cancel` did; HTTP was
+    // the outlier purely because a socket close was the only signal it had.
+    //
+    // The slot stays HELD here. Releasing it on disconnect would let a
+    // concurrent start spawn a second device-flow child alongside the live one;
+    // a genuine restart still gets in via the stale-slot displacement above.
     const onClientClose = () => {
-      flow.cancel();
-      if (inFlight.current === flow) {
-        inFlight.current = null;
-        localOpGuard.release(guardKey);
-      }
+      stopHeartbeat();
+      // Log only a GENUINE detach — a flow left running with nobody attached.
+      // An explicit cancel already cleared the slot synchronously before the
+      // client's socket closed, and a displaced flow no longer owns it either,
+      // so this identity check is what separates "an intermediary cut us off"
+      // from routine teardown. Without it this fires on every normal cancel and
+      // the signal is worthless. Completion needs no check: `flow.done.finally`
+      // removes this listener before ending the response.
+      if (inFlight.current !== flow) return;
+      console.warn(
+        JSON.stringify({
+          event: 'ok-local-op:auth-stream-detached',
+          channel: 'auth',
+          transport: 'http',
+          handler,
+        }),
+      );
     };
     res.on('close', onClientClose);
 
     // `flow.done` cannot reject (`proc.done` only resolves; the onEvent callback
     // is throw-safe), so `.finally` needs no IIFE-level try/catch. The release is
-    // ownership-guarded: a displaced/disconnected flow that already freed or
+    // ownership-guarded: a displaced/cancelled flow that already freed or
     // handed off the slot must not release a successor's when its child exits.
     void flow.done.finally(() => {
+      stopHeartbeat();
       res.off('close', onClientClose);
       if (!res.writableEnded && !res.destroyed) {
         try {
@@ -12815,7 +12891,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         runDeviceFlowSubprocess({
           cliArgs: localOpCliArgs,
           host,
-          timeoutMs: LOCAL_OP_TIMEOUT_MS,
+          timeoutMs: AUTH_DEVICE_FLOW_TIMEOUT_MS,
           onEvent,
         }),
     });
@@ -12858,7 +12934,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         concurrentMessage: 'A gh sign-in is already in progress.',
         streamErrorMessage: 'gh sign-in reported an error.',
         makeFlow: (onEvent) =>
-          runGhDeviceLoginSubprocess({ host, ghPath, timeoutMs: LOCAL_OP_TIMEOUT_MS, onEvent }),
+          runGhDeviceLoginSubprocess({
+            host,
+            ghPath,
+            timeoutMs: AUTH_DEVICE_FLOW_TIMEOUT_MS,
+            onEvent,
+          }),
       });
     },
     {
@@ -12866,6 +12947,68 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       method: 'POST',
       preBodyGate: (req, res) =>
         checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AUTH_GH_LOGIN }),
+    },
+  );
+
+  /**
+   * POST /api/local-op/auth/cancel
+   *
+   * Body: { channel?: 'login' | 'gh-login' }
+   * Explicit, user-initiated stop for a streaming sign-in — the intent signal
+   * that a transport disconnect deliberately is not (see `streamAuthFlow`).
+   * SIGTERMs the device-flow child so it can't land a token the user backed out
+   * of, and frees the concurrency slot synchronously so a reopen right behind
+   * the cancel isn't 429'd during the SIGTERM-to-exit window.
+   *
+   * Idempotent by construction: the client fires this on modal close without
+   * knowing whether a flow is still running, so "nothing in flight" is a 200,
+   * not an error.
+   *
+   * Deliberately has no `localOpGuard` slot of its own, unlike its sibling
+   * local-op endpoints. Those guard a subprocess spawn; this one spawns
+   * nothing and does no IO, so the body runs to completion with no `await` in
+   * it — two concurrent cancels cannot interleave, and the second reads a
+   * null slot and no-ops. A guard here would buy nothing and add a failure
+   * mode that inverts the endpoint's purpose: a 429'd cancel leaves the flow
+   * running, which is precisely what the caller asked to stop.
+   */
+  const HANDLE_LOCAL_OP_AUTH_CANCEL = 'local-op-auth-cancel';
+  const handleLocalOpAuthCancel = withValidation(
+    LocalOpAuthCancelRequestSchema,
+    // Wrapped so an unexpected throw still lands as a typed 500. The body
+    // itself has no failure mode — hence no `errorResponse` of its own.
+    catchErrors(
+      async (_req, res, body) => {
+        const target =
+          body.channel === 'gh-login'
+            ? { inFlight: authGhLoginInFlight, guardKey: LOCAL_OP_AUTH_GH_LOGIN_KEY }
+            : { inFlight: authLoginInFlight, guardKey: LOCAL_OP_AUTH_LOGIN_KEY };
+        const flow = target.inFlight.current;
+        if (flow) {
+          flow.cancel();
+          // Free the slot rather than waiting for the SIGTERM'd child to exit,
+          // so a reopen right behind the cancel isn't 429'd during that window.
+          // Ownership-guarded by construction: we clear the same reference we
+          // just read, and the cancelled flow's own `done.finally` re-checks
+          // identity, so its late exit can't free a successor's slot.
+          target.inFlight.current = null;
+          localOpGuard.release(target.guardKey);
+        }
+        successResponse(
+          res,
+          200,
+          LocalOpAuthEmptySuccessSchema,
+          {},
+          { handler: HANDLE_LOCAL_OP_AUTH_CANCEL },
+        );
+      },
+      { handler: HANDLE_LOCAL_OP_AUTH_CANCEL, title: 'Failed to cancel the sign-in.' },
+    ),
+    {
+      handler: HANDLE_LOCAL_OP_AUTH_CANCEL,
+      method: 'POST',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AUTH_CANCEL }),
     },
   );
 
@@ -20176,6 +20319,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/local-op/auth/status': handleLocalOpAuthStatus,
     '/api/local-op/auth/pat': handleLocalOpAuthPat,
     '/api/local-op/auth/gh-login': handleLocalOpAuthGhLogin,
+    '/api/local-op/auth/cancel': handleLocalOpAuthCancel,
     '/api/local-op/auth/repos': handleLocalOpAuthRepos,
     '/api/local-op/auth/signout': handleLocalOpAuthSignout,
     '/api/local-op/auth/set-identity': handleLocalOpAuthSetIdentity,

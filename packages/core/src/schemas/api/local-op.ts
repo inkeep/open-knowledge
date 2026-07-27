@@ -223,8 +223,28 @@ export const LocalOpAuthStatusSuccessSchema = z
 export type LocalOpAuthStatusSuccess = z.infer<typeof LocalOpAuthStatusSuccessSchema>;
 
 /**
- * Success body for `POST /api/local-op/auth/signout` and
- * `POST /api/local-op/auth/set-identity`. Empty object — clients only branch
+ * Request body for `POST /api/local-op/auth/cancel` — the explicit,
+ * user-initiated stop for a streaming device-flow sign-in. `channel` picks
+ * which of the two streaming flows to cancel (`/auth/login` vs
+ * `/auth/gh-login`), since each holds its own concurrency slot. Defaults to
+ * `login`, the flow every non-enterprise client runs.
+ *
+ * This exists because a transport disconnect is deliberately NOT treated as a
+ * cancel: on loopback the stream can be severed by an inspection proxy or a
+ * backgrounded tab, and killing the flow there strands a sign-in the user is
+ * still completing on github.com. Intent needs its own signal.
+ */
+export const LocalOpAuthCancelRequestSchema = z
+  .object({
+    channel: z.enum(['login', 'gh-login']).default('login'),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LocalOpAuthCancelRequest = z.infer<typeof LocalOpAuthCancelRequestSchema>;
+
+/**
+ * Success body for `POST /api/local-op/auth/signout`,
+ * `POST /api/local-op/auth/set-identity`, and
+ * `POST /api/local-op/auth/cancel`. Empty object — clients only branch
  * on HTTP status (200 = success). `.loose()` for forward-compat (e.g., a
  * future `signedOutAt: ISO` echo).
  */

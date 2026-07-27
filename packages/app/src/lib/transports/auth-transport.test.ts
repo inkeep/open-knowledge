@@ -125,20 +125,203 @@ describe('httpAuthTransport().start / ghLogin (streamAuthEndpoint)', () => {
     expect(events).toEqual([{ type: 'error', message: 'Device flow was denied' }]);
   });
 
-  test('a stream that ends without a terminal event surfaces the no-confirmation error', async () => {
+  test('a stream that ends before any code is issued surfaces the no-confirmation error', async () => {
+    // Nothing to recover: without a `verification` event there is no in-flight
+    // device flow on the server to rejoin, so failing fast is correct.
+    globalThis.fetch = vi.fn(async () => ndjsonResponse([])) as unknown as typeof fetch;
+
+    const events = await collectEvents(httpAuthTransport().start() as never);
+    expect(events.map((e) => e.type)).toEqual(['error']);
+    expect(events[0]?.message).toContain('without confirmation');
+  });
+
+  test('keepalive ping lines are ignored — not surfaced, not terminal', async () => {
     globalThis.fetch = vi.fn(async () =>
       ndjsonResponse([
+        JSON.stringify({ type: 'ping' }),
         JSON.stringify({
           type: 'verification',
           user_code: 'AB-12',
           verification_uri: 'https://github.com/login/device',
           expires_in: 900,
         }),
+        JSON.stringify({ type: 'ping' }),
+        JSON.stringify({ type: 'ping' }),
+        JSON.stringify({ type: 'complete', host: 'github.com', login: 'octocat' }),
       ]),
     ) as unknown as typeof fetch;
 
     const events = await collectEvents(httpAuthTransport().start() as never);
+    expect(events.map((e) => e.type)).toEqual(['verification', 'complete']);
+  });
+});
+
+/**
+ * Issue #803. The device code is on screen and still valid, then the loopback
+ * stream is severed by something outside OpenKnowledge (AV/EDR inspection, VPN
+ * proxy, tab-backgrounding). The server keeps the flow alive across the drop,
+ * so the client's job is to notice the authorization landing anyway instead of
+ * declaring an unrecoverable failure.
+ */
+describe('streamAuthEndpoint — recovery after a mid-flow stream drop', () => {
+  const VERIFICATION = JSON.stringify({
+    type: 'verification',
+    user_code: 'AB-12',
+    verification_uri: 'https://github.com/login/device',
+    expires_in: 900,
+  });
+
+  /** A body that yields the verification line, then errors mid-stream. */
+  function severedAfterVerification(): Response {
+    let sent = false;
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (!sent) {
+            sent = true;
+            controller.enqueue(new TextEncoder().encode(`${VERIFICATION}\n`));
+            return;
+          }
+          controller.error(new TypeError('network error'));
+        },
+      }),
+      { status: 200 },
+    );
+  }
+
+  test('a severed stream recovers via the status poll once the token lands', async () => {
+    let statusCalls = 0;
+    globalThis.fetch = vi.fn(async (url: string) => {
+      if (String(url).endsWith('/auth/status')) {
+        statusCalls++;
+        // Not signed in yet on the first probe; the user finishes authorizing
+        // on github.com between polls.
+        return new Response(
+          JSON.stringify(
+            statusCalls === 1
+              ? { authenticated: false }
+              : { authenticated: true, host: 'github.com', login: 'octocat', name: 'Mona' },
+          ),
+          { status: 200 },
+        );
+      }
+      return severedAfterVerification();
+    }) as unknown as typeof fetch;
+
+    const events = await collectEvents(httpAuthTransport().start() as never);
+    expect(events.map((e) => e.type)).toEqual(['verification', 'complete']);
+    expect(events[1]?.login).toBe('octocat');
+    expect(events[1]?.name).toBe('Mona');
+    expect(statusCalls).toBeGreaterThanOrEqual(2);
+  }, 20_000);
+
+  test('a clean stream end after the code was issued also recovers rather than failing', async () => {
+    // Some intermediaries close the connection tidily (FIN, no reset), so the
+    // reader sees a normal end-of-stream with no terminal event.
+    globalThis.fetch = vi.fn(async (url: string) => {
+      if (String(url).endsWith('/auth/status')) {
+        return new Response(
+          JSON.stringify({ authenticated: true, host: 'github.com', login: 'octocat' }),
+          { status: 200 },
+        );
+      }
+      return ndjsonResponse([VERIFICATION]);
+    }) as unknown as typeof fetch;
+
+    const events = await collectEvents(httpAuthTransport().start() as never);
+    expect(events.map((e) => e.type)).toEqual(['verification', 'complete']);
+    expect(events[1]?.login).toBe('octocat');
+  }, 20_000);
+
+  test('an expired code ends recovery with the expiry error, not a stream error', async () => {
+    globalThis.fetch = vi.fn(async (url: string) => {
+      if (String(url).endsWith('/auth/status')) {
+        return new Response(JSON.stringify({ authenticated: false }), { status: 200 });
+      }
+      // `expires_in: 0` — the code is already dead when the stream drops, so
+      // recovery must not spin.
+      return ndjsonResponse([
+        JSON.stringify({
+          type: 'verification',
+          user_code: 'AB-12',
+          verification_uri: 'https://github.com/login/device',
+          expires_in: 0,
+        }),
+      ]);
+    }) as unknown as typeof fetch;
+
+    const events = await collectEvents(httpAuthTransport().start() as never);
     expect(events.map((e) => e.type)).toEqual(['verification', 'error']);
-    expect(events[1]?.message).toContain('without confirmation');
+    expect(events[1]?.message).toContain('expired');
+  });
+
+  test('user cancel stops recovery and tells the server it was intentional', async () => {
+    const cancelCalls: unknown[] = [];
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith('/auth/cancel')) {
+        cancelCalls.push(JSON.parse(String(init?.body)));
+        return new Response('{}', { status: 200 });
+      }
+      if (String(url).endsWith('/auth/status')) {
+        return new Response(JSON.stringify({ authenticated: false }), { status: 200 });
+      }
+      return ndjsonResponse([VERIFICATION]);
+    }) as unknown as typeof fetch;
+
+    const handle = httpAuthTransport().start();
+    const iter = handle.events[Symbol.asyncIterator]();
+    const first = await iter.next();
+    expect((first.value as { type: string }).type).toBe('verification');
+
+    // The user closes the modal while recovery is polling.
+    handle.cancel();
+
+    // Iteration ends with no error event — a deliberate cancel is not a failure.
+    expect((await iter.next()).done).toBe(true);
+    expect(cancelCalls).toEqual([{ channel: 'login' }]);
+  });
+
+  test('cancel after a completed flow does not tell the server to cancel', async () => {
+    // The modal unmounts on success and calls `cancel()` in cleanup; firing a
+    // cancel there could displace a NEW flow the user has since started.
+    const cancelCalls: unknown[] = [];
+    globalThis.fetch = vi.fn(async (url: string) => {
+      if (String(url).endsWith('/auth/cancel')) {
+        cancelCalls.push(url);
+        return new Response('{}', { status: 200 });
+      }
+      return ndjsonResponse([
+        VERIFICATION,
+        JSON.stringify({ type: 'complete', host: 'github.com', login: 'octocat' }),
+      ]);
+    }) as unknown as typeof fetch;
+
+    const handle = httpAuthTransport().start();
+    await collectEvents(handle as never);
+    handle.cancel();
+    expect(cancelCalls).toEqual([]);
+  });
+
+  test('the gh-login flow cancels its own channel, not the device-flow slot', async () => {
+    const cancelBodies: unknown[] = [];
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith('/auth/cancel')) {
+        cancelBodies.push(JSON.parse(String(init?.body)));
+        return new Response('{}', { status: 200 });
+      }
+      if (String(url).endsWith('/auth/status')) {
+        return new Response(JSON.stringify({ authenticated: false }), { status: 200 });
+      }
+      return ndjsonResponse([VERIFICATION]);
+    }) as unknown as typeof fetch;
+
+    const handle = httpAuthTransport().ghLogin?.('ghes.acme.test') as never as {
+      events: AsyncIterable<unknown>;
+      cancel: () => void;
+    };
+    const iter = handle.events[Symbol.asyncIterator]();
+    await iter.next();
+    handle.cancel();
+    expect(cancelBodies).toEqual([{ channel: 'gh-login' }]);
   });
 });

@@ -144,6 +144,11 @@ export interface CreateTestServerOptions {
    */
   localOpCliArgs?: string[];
   /**
+   * Keepalive cadence for the streaming auth flows, in ms. Tests that assert
+   * the heartbeat shorten it so an idle stream is observable quickly.
+   */
+  authStreamHeartbeatMs?: number;
+  /**
    * Override `os.homedir()` for user-global resolution (`~/.ok/global.yml` and
    * global-scope skills at `<home>/.ok/skills`). Pass a tempdir so global
    * writes + the skills-list union don't touch the real user home.
@@ -287,6 +292,7 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
     contentRoot: options.gitEnabled === true ? '.' : undefined,
     enableTestRoutes: true,
     localOpCliArgs: options.localOpCliArgs,
+    authStreamHeartbeatMs: options.authStreamHeartbeatMs,
     configHomedirOverride: homeOverride,
     mdManager: options.mdManager,
     pullIntervalSeconds: options.pullIntervalSeconds,

@@ -1897,6 +1897,7 @@ msgid "Code copied to clipboard"
 msgstr ""
 
 #: src/components/AuthModal.tsx
+#: src/lib/transports/auth-transport.ts
 msgid "Code expired — please try again"
 msgstr ""
 
@@ -2151,6 +2152,7 @@ msgid "Connection dropped"
 msgstr ""
 
 #: src/components/AuthModal.tsx
+#: src/lib/transports/auth-transport.ts
 msgid "Connection error — try again"
 msgstr ""
 
@@ -4021,7 +4023,12 @@ msgstr ""
 msgid "Failed to save theme setting"
 msgstr ""
 
+#: src/lib/transports/auth-transport.ts
+msgid "Failed to start sign-in — try again"
+msgstr ""
+
 #: src/components/AuthModal.tsx
+#: src/lib/transports/auth-transport.ts
 msgid "Failed to store the token — try again"
 msgstr ""
 
@@ -8535,6 +8542,7 @@ msgid "Sign in to {agentName} first"
 msgstr ""
 
 #: src/components/AuthModal.tsx
+#: src/lib/transports/auth-transport.ts
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr ""
 
@@ -9881,6 +9889,7 @@ msgid "Unknown component: {unregisteredComponentName}"
 msgstr ""
 
 #: src/components/DocumentErrorBoundary.tsx
+#: src/lib/transports/auth-transport.ts
 msgid "Unknown error"
 msgstr ""
 
