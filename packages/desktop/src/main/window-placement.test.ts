@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import type { PersistedWindowBounds } from './state-store.ts';
+import type { PersistedWindowBounds, RestoredWindow } from './state-store.ts';
 import {
   MIN_VISIBLE_WIDTH_PX,
   resolveRestoredPlacement,
-  sortByFocusSequence,
+  sortWindowsByFocusSequence,
   TITLE_BAR_REACH_PX,
 } from './window-placement.ts';
 
@@ -129,34 +129,43 @@ describe('resolveRestoredPlacement', () => {
   });
 });
 
-describe('sortByFocusSequence', () => {
-  test('orders least → most recently focused', () => {
+describe('sortWindowsByFocusSequence', () => {
+  const proj = (projectPath: string): RestoredWindow => ({ kind: 'project', projectPath });
+  const file = (filePath: string): RestoredWindow => ({ kind: 'file', filePath });
+
+  test('orders least → most recently focused, across projects and loose files', () => {
     const seq = new Map([
       ['/a', 3],
-      ['/b', 9],
+      ['/notes/todo.md', 9],
       ['/c', 5],
     ]);
-    expect(sortByFocusSequence(['/a', '/b', '/c'], seq)).toEqual(['/a', '/c', '/b']);
+    expect(
+      sortWindowsByFocusSequence([proj('/a'), file('/notes/todo.md'), proj('/c')], seq),
+    ).toEqual([proj('/a'), proj('/c'), file('/notes/todo.md')]);
   });
 
-  test('never-focused paths sort first, preserving relative order', () => {
+  test('never-focused windows sort first, preserving relative order', () => {
     const seq = new Map([['/focused', 4]]);
-    expect(sortByFocusSequence(['/x', '/focused', '/y'], seq)).toEqual(['/x', '/y', '/focused']);
+    expect(sortWindowsByFocusSequence([proj('/x'), proj('/focused'), file('/y.md')], seq)).toEqual([
+      proj('/x'),
+      file('/y.md'),
+      proj('/focused'),
+    ]);
   });
 
   test('does not mutate the input', () => {
-    const paths = ['/b', '/a'];
-    sortByFocusSequence(
-      paths,
+    const windows = [proj('/b'), proj('/a')];
+    sortWindowsByFocusSequence(
+      windows,
       new Map([
         ['/a', 1],
         ['/b', 2],
       ]),
     );
-    expect(paths).toEqual(['/b', '/a']);
+    expect(windows).toEqual([proj('/b'), proj('/a')]);
   });
 
   test('empty input → empty output', () => {
-    expect(sortByFocusSequence([], new Map())).toEqual([]);
+    expect(sortWindowsByFocusSequence([], new Map())).toEqual([]);
   });
 });

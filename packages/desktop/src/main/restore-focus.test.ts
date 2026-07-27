@@ -116,7 +116,7 @@ describe('raiseMostRecentlyFocusedAfterRestore', () => {
     const raised: string[] = [];
 
     const p = raiseMostRecentlyFocusedAfterRestore({
-      projects: ['/a', '/b'],
+      windowKeys: ['/a', '/b'],
       getWindow: (path) => wins[path],
       raise: (path) => raised.push(path),
       deps,
@@ -141,7 +141,7 @@ describe('raiseMostRecentlyFocusedAfterRestore', () => {
     const raised: string[] = [];
 
     const p = raiseMostRecentlyFocusedAfterRestore({
-      projects: ['/a', '/b'],
+      windowKeys: ['/a', '/b'],
       getWindow: (path) => wins[path],
       raise: (path) => raised.push(path),
       deps,
@@ -159,7 +159,7 @@ describe('raiseMostRecentlyFocusedAfterRestore', () => {
     const raised: string[] = [];
 
     await raiseMostRecentlyFocusedAfterRestore({
-      projects: ['/b'],
+      windowKeys: ['/b'],
       getWindow: () => winB,
       raise: (path) => raised.push(path),
       deps,
@@ -172,7 +172,7 @@ describe('raiseMostRecentlyFocusedAfterRestore', () => {
     const { deps } = makeTimers();
     const raised: string[] = [];
     await raiseMostRecentlyFocusedAfterRestore({
-      projects: [],
+      windowKeys: [],
       getWindow: () => undefined,
       raise: (path) => raised.push(path),
       deps,
@@ -188,7 +188,7 @@ describe('raiseMostRecentlyFocusedAfterRestore', () => {
     const raised: string[] = [];
 
     const p = raiseMostRecentlyFocusedAfterRestore({
-      projects: ['/a', '/b'],
+      windowKeys: ['/a', '/b'],
       getWindow: (path) => wins[path],
       raise: (path) => raised.push(path),
       deps,
@@ -199,5 +199,27 @@ describe('raiseMostRecentlyFocusedAfterRestore', () => {
     fireAll();
     await p;
     expect(raised).toEqual(['/b']);
+  });
+
+  test('raises across kinds — a loose-file key can be the raise target', async () => {
+    // Keys are opaque (a project path OR a canonical file path); the loose-file
+    // window is focused last, so it is the one raised after every window reveals.
+    const { deps } = makeTimers();
+    const projWin = makeWindow({ visible: true });
+    const fileWin = makeWindow();
+    const wins: Record<string, FakeWindow> = { '/proj': projWin, '/notes/todo.md': fileWin };
+    const raised: string[] = [];
+
+    const p = raiseMostRecentlyFocusedAfterRestore({
+      windowKeys: ['/proj', '/notes/todo.md'],
+      getWindow: (key) => wins[key],
+      raise: (key) => raised.push(key),
+      deps,
+    });
+
+    await flush();
+    fileWin.emitShow();
+    await p;
+    expect(raised).toEqual(['/notes/todo.md']);
   });
 });

@@ -145,7 +145,7 @@ describe('resolveBootRestoreDecision (cold-start URL settle barrier)', () => {
     const settle = manualSettle();
 
     const decisionPromise = resolveBootRestoreDecision({
-      pendingRestore: ['/projects/a'],
+      pendingRestore: [{ kind: 'project', projectPath: '/projects/a' }],
       lastOpenedProject: '/projects/last',
       optionHeld: false,
       pathExists: () => true,
@@ -164,7 +164,7 @@ describe('resolveBootRestoreDecision (cold-start URL settle barrier)', () => {
     expect(decision).toEqual({
       clearSnapshot: true,
       action: 'restore',
-      projects: ['/projects/a'],
+      windows: [{ kind: 'project', projectPath: '/projects/a' }],
     });
   });
 

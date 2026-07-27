@@ -155,7 +155,7 @@ import {
   channelFromVersion,
   type StartAutoUpdaterHandle,
 } from './auto-updater.ts';
-import { resolveBootRestoreDecision } from './boot-restore-decision.ts';
+import { resolveBootRestoreDecision, resolveRestoreActions } from './boot-restore-decision.ts';
 import { readBootSessionUuid } from './boot-session.ts';
 import { runBootstrap } from './bootstrap.ts';
 import {
@@ -333,6 +333,7 @@ import { beginRoot, childSpan, endRoot, injectTraceparent } from './startup-trac
 import { type RendererMarks, StartupWaterfall } from './startup-waterfall.ts';
 import {
   type AppState,
+  addRecentFile,
   addRecentProject,
   annotateMissing,
   emptyState,
@@ -407,7 +408,7 @@ import {
   WindowManager,
 } from './window-manager.ts';
 import { WINDOW_MIN_SIZE } from './window-min-size.ts';
-import { resolveRestoredPlacement, sortByFocusSequence } from './window-placement.ts';
+import { resolveRestoredPlacement, sortWindowsByFocusSequence } from './window-placement.ts';
 import {
   classifyRecentGit,
   classifyRecentGitAsync,
@@ -619,16 +620,62 @@ function freezeFocusTracking(reason: string): void {
   getLogger('lifecycle').info({ reason }, 'project focus tracking frozen for shutdown');
 }
 
+// Advance the focus-recency sequence for a window key (a project path, or a
+// loose-file window's canonical file path). Ordering only — never writes
+// `lastOpenedProject`.
+function recordWindowFocusSeq(key: string): void {
+  projectFocusSeqCounter += 1;
+  projectFocusSeq.set(key, projectFocusSeqCounter);
+}
+
 function trackProjectWindowFocus(win: BrowserWindow, projectPath: string): void {
   win.on('focus', () => {
     if (focusTrackingFrozen) return;
-    projectFocusSeqCounter += 1;
-    projectFocusSeq.set(projectPath, projectFocusSeqCounter);
+    recordWindowFocusSeq(projectPath);
     if (appState.lastOpenedProject !== projectPath) {
       appState = { ...appState, lastOpenedProject: projectPath };
       saveAppState(appState);
     }
   });
+}
+
+// Focus-recency for a loose single-file (ephemeral) window, keyed by its
+// canonical file path so it joins the restore ordering + post-restore raise.
+// MUST NOT write `lastOpenedProject`: an ephemeral window's "projectPath" is the
+// file's PARENT directory, which would poison the single-project restore
+// fallback (open `~/notes` as a project) and collide two loose files in one dir.
+function trackEphemeralWindowFocus(win: BrowserWindow, fileKey: string): void {
+  win.on('focus', () => {
+    if (focusTrackingFrozen) return;
+    recordWindowFocusSeq(fileKey);
+  });
+}
+
+// Write-once guard so the richest pre-teardown snapshot wins. On the "Relaunch
+// now" path `prepareForRelaunch` snapshots first, then `quitAndInstall`
+// internally re-enters `before-quit`; on the silent install-on-quit path
+// `before-quit-for-update` snapshots before it stops servers, ahead of the
+// plain `before-quit`. Whichever hook fires first wins; later re-fires no-op.
+let windowRestoreSnapshotWritten = false;
+
+// Capture the full open-window set (projects + loose files) into
+// `pendingWindowRestore`, ordered least → most recently focused, so the next
+// boot restores everything and raises the window the user was last in. Called
+// at the earliest teardown-preceding hook of every clean-exit path (write-once).
+// Callers MUST `freezeFocusTracking` first so the close cascade can't corrupt
+// the order.
+function captureWindowRestoreSnapshot(reason: string): void {
+  if (windowRestoreSnapshotWritten) return;
+  windowRestoreSnapshotWritten = true;
+  const windows = sortWindowsByFocusSequence(wm?.getOpenWindows() ?? [], projectFocusSeq);
+  appState = { ...appState, pendingWindowRestore: windows };
+  if (!saveAppState(appState)) {
+    // Persist failed — the next boot may not reopen everything that was open.
+    console.warn('[main] failed to persist window-restore snapshot', {
+      reason,
+      windowCount: windows.length,
+    });
+  }
 }
 
 /**
@@ -1205,6 +1252,10 @@ function ensureWindowManager() {
       if (opts.projectPath !== undefined) {
         trackProjectWindowBounds(win, opts.projectPath);
         trackProjectWindowFocus(win, opts.projectPath);
+      } else if (opts.focusKey !== undefined) {
+        // Ephemeral loose-file window: focus-recency ordering only — no bounds
+        // memory, and no `lastOpenedProject` write (its key is a file path).
+        trackEphemeralWindowFocus(win, opts.focusKey);
       }
       attachSpellcheckMenuToWindow(win);
       // Per-window PTY reap: closing the window kills its shell (no orphan).
@@ -2281,6 +2332,11 @@ async function openEphemeralFile(filePath: string): Promise<void> {
     // The external-link / asset safety net is attached by the window factory
     // (WindowManager.attachSafetyNet) — for ephemeral windows the asset root is
     // the file's real parent (`opts.contentDir`), wired there.
+    // Track the loose file in Recent Files (durable, separate from recent
+    // projects) so File → Open Recent can reopen it. Keyed by canonical path;
+    // does NOT touch `lastOpenedProject` (a loose file is not a project).
+    appState = addRecentFile(appState, plan.canonicalFilePath, basename(plan.canonicalFilePath));
+    saveAppState(appState);
     tryCloseNavigator(navigatorWindow, { projectPath: plan.contentDir });
     refreshApplicationMenu();
   } catch (err) {
@@ -2491,6 +2547,12 @@ async function runApplicationMenuRefresh(): Promise<void> {
     getRecentProjects: () => appState.recentProjects,
     clearRecentProjects: () => {
       appState = { ...appState, recentProjects: [] };
+      saveAppState(appState);
+      refreshApplicationMenu();
+    },
+    getRecentFiles: () => appState.recentFiles,
+    clearRecentFiles: () => {
+      appState = { ...appState, recentFiles: [] };
       saveAppState(appState);
       refreshApplicationMenu();
     },
@@ -6432,7 +6494,7 @@ function bootPrimaryInstance(): void {
           // next boot. The existsSync filter limits the blast radius to
           // projects that still exist on disk.
           console.warn('[main] failed to persist cleared window-restore snapshot', {
-            projectCount: decision.action === 'restore' ? decision.projects.length : 0,
+            windowCount: decision.action === 'restore' ? decision.windows.length : 0,
           });
         }
       }
@@ -6472,28 +6534,55 @@ function bootPrimaryInstance(): void {
       }
 
       if (decision.action === 'restore') {
-        // Parallel opens — the snapshot is ordered least → most recently
-        // focused (see `pendingWindowRestore`), but each window's OS-level
-        // `show()` is deferred behind its own dual-signal show gate, which
-        // releases in nondeterministic order. `show()` steals key-window focus
-        // on macOS, so the raise must wait for EVERY restored window to reveal
-        // before raising the snapshot's last entry — otherwise a sibling window
-        // that shows later steals focus back (the reported "active window isn't
-        // the one I was working in" after a relaunch). Waiting for all reveals
-        // also keeps `bringToFront`'s `show()` from bypassing the target's own
-        // gate: the target is already shown by the time we raise it.
-        const opens = decision.projects.map((projectPath) =>
-          openProjectOrFallbackToNavigator(projectPath, 'recents'),
-        );
+        // Re-derive each entry to its EFFECTIVE open target and dedupe. A loose
+        // file whose realpath now sits inside a project re-derives to that
+        // project (`prepareSingleFileOpen`, same as `openEphemeralFile`), so two
+        // entries — two loose files under one project root, or a loose file that
+        // resolves into a project already present as a `project` entry — can
+        // collapse onto one target. Deduping keeps a single ordered raise-key
+        // list and (with the WM's project in-flight reservation) prevents a
+        // duplicate window + second server. A file that vanished / became
+        // non-markdown since the snapshot throws here and is skipped silently.
+        // The file→project re-derivation + duplicate collapse + ordering lives
+        // in the pure `resolveRestoreActions` (unit-tested); here we just inject
+        // the real `prepareSingleFileOpen` (a throw → skip the vanished file).
+        const { orderedKeys, actionByKey } = resolveRestoreActions(decision.windows, (filePath) => {
+          try {
+            const plan = prepareSingleFileOpen(filePath);
+            return plan.mode === 'project'
+              ? { kind: 'project', projectPath: plan.projectRoot }
+              : { kind: 'file', filePath };
+          } catch {
+            return null;
+          }
+        });
+
+        // Parallel opens — each window's OS-level `show()` is deferred behind
+        // its own dual-signal show gate, which releases in nondeterministic
+        // order. `show()` steals key-window focus on macOS, so the raise waits
+        // for EVERY restored window to reveal before raising the last (most
+        // recently focused) entry — otherwise a sibling that shows later steals
+        // focus back. Waiting for all reveals also keeps `bringToFront`'s
+        // `show()` from bypassing the target's own gate.
+        const opens = orderedKeys.map((key) => {
+          const action = actionByKey.get(key);
+          if (action === undefined) return Promise.resolve();
+          return action.kind === 'project'
+            ? openProjectOrFallbackToNavigator(action.projectPath, 'recents')
+            : openEphemeralFile(action.filePath);
+        });
         void Promise.allSettled(opens).then(() =>
           raiseMostRecentlyFocusedAfterRestore({
-            projects: decision.projects,
-            getWindow: (projectPath) => {
-              const ctx = wm?.getWindowFor(projectPath);
+            windowKeys: orderedKeys,
+            // `getWindowFor` / `focusWindowForProject` canonicalize their input,
+            // so a loose-file key (canonical file path) resolves its ephemeral
+            // window just as a project key resolves its project window.
+            getWindow: (key) => {
+              const ctx = wm?.getWindowFor(key);
               return ctx ? (ctx.window as unknown as RevealableWindow) : undefined;
             },
-            raise: (projectPath) => {
-              wm?.focusWindowForProject(projectPath);
+            raise: (key) => {
+              wm?.focusWindowForProject(key);
             },
             deps: {
               setTimeout: (cb, ms) => setTimeout(cb, ms),
@@ -6727,25 +6816,14 @@ function bootPrimaryInstance(): void {
           // those events would rewrite `lastOpenedProject` / the focus
           // sequence with close-order noise after the snapshot is taken.
           freezeFocusTracking('prepare-for-relaunch');
-          // Snapshot every open project window so the post-update boot
-          // restores all of them — not just `lastOpenedProject` — ordered
-          // least → most recently focused so the boot can raise the last
-          // entry and land the user in the window they were working in.
-          // Persist BEFORE the server shutdown: `saveAppState` is a
-          // synchronous tmp-write + rename that completes well before
-          // `stopAllOwnedServers` returns or `quitAndInstall()` fires.
-          const openProjects = sortByFocusSequence(
-            wm?.getOpenProjectPaths() ?? [],
-            projectFocusSeq,
-          );
-          appState = { ...appState, pendingWindowRestore: openProjects };
-          if (!saveAppState(appState)) {
-            // Persisting the snapshot failed, so the post-update boot may not
-            // reopen all the windows that were open before the relaunch.
-            console.warn('[main] failed to persist window-restore snapshot before relaunch', {
-              projectCount: openProjects.length,
-            });
-          }
+          // Snapshot every open window (projects + loose files) so the
+          // post-update boot restores all of them — not just
+          // `lastOpenedProject` — ordered least → most recently focused so the
+          // boot can raise the last entry. Write-once + persisted BEFORE the
+          // server shutdown: `saveAppState` is a synchronous tmp-write + rename
+          // that completes well before `stopAllOwnedServers` returns or
+          // `quitAndInstall()` fires.
+          captureWindowRestoreSnapshot('prepare-for-relaunch');
           // Two-phase shutdown: SIGTERM detached server pids (and SIGKILL any
           // dev-path utilityProcess.fork helpers), then poll the lock files
           // until they release or 10 s elapses, then escalate to SIGKILL on
@@ -6860,6 +6938,11 @@ function bootPrimaryInstance(): void {
     // close re-focuses a surviving window, and recording that churn would
     // overwrite `lastOpenedProject` with whichever window closed last.
     freezeFocusTracking('before-quit');
+    // Snapshot the open-window set for session restore on the next launch.
+    // Write-once: the update paths (`prepareForRelaunch` / `before-quit-for-
+    // update`) already captured the richer pre-teardown set, so this no-ops
+    // there and only fires for a normal quit.
+    captureWindowRestoreSnapshot('before-quit');
     // Flush pending startup telemetry before exit. `emitStartupWaterfall`
     // covers a quit during the post-window-shown flush-deadline window (the
     // `.unref()`'d deadline timer won't fire once the process is exiting): it
@@ -6882,6 +6965,12 @@ function bootPrimaryInstance(): void {
     // silent install-on-quit path and is idempotent with the earlier
     // `prepareForRelaunch` freeze on the "Relaunch now" path.
     freezeFocusTracking('before-quit-for-update');
+    // Snapshot BEFORE the server teardown below: on the silent
+    // `autoInstallOnAppQuit` path there is no `prepareForRelaunch`, and this
+    // hook precedes the plain `before-quit`, so this is the only pre-teardown
+    // capture point. Write-once, so the "Relaunch now" path (already
+    // snapshotted in `prepareForRelaunch`) no-ops here.
+    captureWindowRestoreSnapshot('before-quit-for-update');
     // Shut down the servers this desktop spawned BEFORE the swap completes, so
     // the relaunched (new-version) app spawns fresh instead of attaching to a
     // stale old-version server and showing the version-drift toast. Fires on

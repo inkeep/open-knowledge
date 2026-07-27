@@ -82,6 +82,14 @@ export interface MenuDeps {
   getRecentProjects(): ReadonlyArray<{ path: string; name: string }>;
   /** Clear the recent-projects list (File → Recent project → Clear menu). */
   clearRecentProjects(): void;
+  /**
+   * Current recent loose-files list (top-of-LRU first). Optional — when wired
+   * (alongside `openEphemeralFile`), File → Recent files ▸ <row> reopens each
+   * loose file. Absent (unit tests) → no Recent files submenu renders.
+   */
+  getRecentFiles?(): ReadonlyArray<{ path: string; name: string }>;
+  /** Clear the recent loose-files list (File → Recent files → Clear menu). */
+  clearRecentFiles?(): void;
   /** Open an external URL (Help menu). Injected so the `shell` runtime value doesn't cross the module boundary. */
   openExternalUrl(url: string): void;
   /**
@@ -681,6 +689,28 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
           },
         ];
 
+  // Recent loose files (File → Open File). Only rendered when `getRecentFiles`
+  // is wired; each row reopens via `openEphemeralFile` (which re-derives
+  // project-vs-ephemeral). Mirrors the Recent project submenu.
+  const recentFiles = deps.getRecentFiles?.() ?? [];
+  const recentFilesSubmenu: MenuItemConstructorOptions[] =
+    recentFiles.length === 0
+      ? [{ label: 'No recent files', enabled: false }]
+      : [
+          ...recentFiles.slice(0, 10).map((row) => ({
+            label: row.name,
+            sublabel: row.path,
+            click: () => {
+              void deps.openEphemeralFile?.(row.path);
+            },
+          })),
+          { type: 'separator' as const },
+          {
+            label: 'Clear menu',
+            click: () => deps.clearRecentFiles?.(),
+          },
+        ];
+
   const template: MenuItemConstructorOptions[] = [
     // macOS application menu (auto-populated with the app name).
     ...(isMac
@@ -727,6 +757,9 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
           label: 'Recent project',
           submenu: recentSubmenu,
         },
+        ...(deps.getRecentFiles !== undefined
+          ? [{ label: 'Recent files', submenu: recentFilesSubmenu }]
+          : []),
         ...leafOf('file-project'),
         { type: 'separator' },
         ...leafOf('file-worktree'),

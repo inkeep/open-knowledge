@@ -79,21 +79,23 @@ export function whenWindowRevealed(win: RevealableWindow, deps: RestoreFocusDeps
  * were destroyed mid-restore are skipped; if the target itself is gone, nothing
  * is raised.
  *
- * @param projects Restored project paths, ordered least → most recently focused.
+ * @param windowKeys Restore keys — a project path OR a loose-file's canonical
+ *   file path — ordered least → most recently focused. `getWindow` / `raise`
+ *   resolve either kind (the WM lookups canonicalize their input).
  */
 export async function raiseMostRecentlyFocusedAfterRestore(input: {
-  projects: readonly string[];
-  getWindow: (projectPath: string) => RevealableWindow | undefined;
-  raise: (projectPath: string) => void;
+  windowKeys: readonly string[];
+  getWindow: (key: string) => RevealableWindow | undefined;
+  raise: (key: string) => void;
   deps: RestoreFocusDeps;
 }): Promise<void> {
-  const { projects, getWindow, raise, deps } = input;
-  const target = projects[projects.length - 1];
+  const { windowKeys, getWindow, raise, deps } = input;
+  const target = windowKeys[windowKeys.length - 1];
   if (target === undefined) return;
 
   await Promise.all(
-    projects.map((projectPath) => {
-      const win = getWindow(projectPath);
+    windowKeys.map((key) => {
+      const win = getWindow(key);
       if (!win || win.isDestroyed?.() === true) return Promise.resolve();
       return whenWindowRevealed(win, deps);
     }),

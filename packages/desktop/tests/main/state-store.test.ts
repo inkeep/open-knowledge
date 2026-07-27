@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import {
+  addRecentFile,
   addRecentProject,
   annotateMissing,
   emptyState,
@@ -463,25 +464,63 @@ describe('state-store (pendingWindowRestore — post-update window restore)', ()
     expect(parsed?.pendingWindowRestore).toBeNull();
   });
 
-  test('parseAppState round-trips a non-empty restore snapshot', () => {
-    const state = { ...emptyState(), pendingWindowRestore: ['/tmp/a', '/tmp/b'] };
+  test('parseAppState coerces a LEGACY string[] snapshot to project entries', () => {
+    // Back-compat: a state.json written before the kinded union stored bare
+    // project paths. Each coerces to a `{ kind: 'project' }` entry — no schema
+    // bump needed.
+    const parsed = parseAppState({
+      recentProjects: [],
+      pendingWindowRestore: ['/tmp/a', '/tmp/b'],
+    });
+    expect(parsed?.pendingWindowRestore).toEqual([
+      { kind: 'project', projectPath: '/tmp/a' },
+      { kind: 'project', projectPath: '/tmp/b' },
+    ]);
+  });
+
+  test('parseAppState round-trips a kinded snapshot (project + loose file)', () => {
+    const state = {
+      recentProjects: [],
+      pendingWindowRestore: [
+        { kind: 'project', projectPath: '/tmp/a' },
+        { kind: 'file', filePath: '/notes/todo.md' },
+      ],
+    };
     const parsed = parseAppState(JSON.parse(JSON.stringify(state)));
-    expect(parsed?.pendingWindowRestore).toEqual(['/tmp/a', '/tmp/b']);
+    expect(parsed?.pendingWindowRestore).toEqual([
+      { kind: 'project', projectPath: '/tmp/a' },
+      { kind: 'file', filePath: '/notes/todo.md' },
+    ]);
   });
 
   test('parseAppState preserves an empty snapshot as [] — distinct from null', () => {
-    // [] means "a relaunch happened with no project windows open"; the boot
-    // path opens the Navigator rather than falling back to lastOpenedProject.
+    // [] means "the app quit with nothing open"; the boot path opens the
+    // Navigator rather than falling back to lastOpenedProject.
     const parsed = parseAppState({ recentProjects: [], pendingWindowRestore: [] });
     expect(parsed?.pendingWindowRestore).toEqual([]);
   });
 
-  test('parseAppState dedupes and drops non-string / empty entries', () => {
+  test('parseAppState dedupes and drops invalid entries (mixed legacy + kinded)', () => {
     const parsed = parseAppState({
       recentProjects: [],
-      pendingWindowRestore: ['/tmp/a', '/tmp/a', '', 123, '/tmp/b', null],
+      pendingWindowRestore: [
+        '/tmp/a', // legacy project string
+        { kind: 'project', projectPath: '/tmp/a' }, // dup of the above → dropped
+        '', // empty → dropped
+        123, // non-string/object → dropped
+        { kind: 'file', filePath: '/notes/x.md' },
+        { kind: 'file' }, // missing filePath → dropped
+        { kind: 'bogus', projectPath: '/tmp/z' }, // unknown kind → dropped
+        { kind: 'file', filePath: '/notes/x.md' }, // dup file → dropped
+        { kind: 'project', projectPath: '/tmp/b' },
+        null,
+      ],
     });
-    expect(parsed?.pendingWindowRestore).toEqual(['/tmp/a', '/tmp/b']);
+    expect(parsed?.pendingWindowRestore).toEqual([
+      { kind: 'project', projectPath: '/tmp/a' },
+      { kind: 'file', filePath: '/notes/x.md' },
+      { kind: 'project', projectPath: '/tmp/b' },
+    ]);
   });
 
   test('parseAppState coerces a non-array pendingWindowRestore to null', () => {
@@ -491,6 +530,60 @@ describe('state-store (pendingWindowRestore — post-update window restore)', ()
     expect(
       parseAppState({ recentProjects: [], pendingWindowRestore: null })?.pendingWindowRestore,
     ).toBeNull();
+  });
+});
+
+describe('state-store (recentFiles — durable loose-file LRU)', () => {
+  test('emptyState seeds recentFiles as an empty list', () => {
+    expect(emptyState().recentFiles).toEqual([]);
+  });
+
+  test('addRecentFile prepends and does NOT touch lastOpenedProject', () => {
+    const withProject = addRecentProject(emptyState(), '/tmp/proj', 'proj');
+    const next = addRecentFile(withProject, '/notes/todo.md', 'todo.md');
+    expect(next.recentFiles.length).toBe(1);
+    expect(next.recentFiles[0]?.path).toBe('/notes/todo.md');
+    expect(next.recentFiles[0]?.name).toBe('todo.md');
+    // A loose file must never become the single-project restore fallback.
+    expect(next.lastOpenedProject).toBe('/tmp/proj');
+  });
+
+  test('addRecentFile moves an existing entry to the front', () => {
+    let s = addRecentFile(emptyState(), '/notes/a.md', 'a.md');
+    s = addRecentFile(s, '/notes/b.md', 'b.md');
+    s = addRecentFile(s, '/notes/a.md', 'a.md'); // re-open a
+    expect(s.recentFiles.map((f) => f.path)).toEqual(['/notes/a.md', '/notes/b.md']);
+  });
+
+  test('addRecentFile caps the list at 20 (LRU eviction)', () => {
+    let s = emptyState();
+    for (let i = 0; i < 25; i++) {
+      s = addRecentFile(s, `/notes/f${i}.md`, `f${i}.md`);
+    }
+    expect(s.recentFiles.length).toBe(20);
+    expect(s.recentFiles[0]?.path).toBe('/notes/f24.md');
+    expect(s.recentFiles.find((f) => f.path === '/notes/f0.md')).toBeUndefined();
+  });
+
+  test('parseAppState round-trips recentFiles and drops invalid entries', () => {
+    const parsed = parseAppState({
+      recentProjects: [],
+      recentFiles: [
+        { path: '/notes/a.md', name: 'a.md', lastOpenedAt: '2026-07-20T00:00:00Z' },
+        { path: '', name: 'empty', lastOpenedAt: '2026-07-20T00:00:00Z' }, // empty path → dropped
+        { path: '/notes/a.md', name: 'dup', lastOpenedAt: '2026-07-21T00:00:00Z' }, // dup → dropped
+        { path: '/notes/b.md', name: 'b.md' }, // missing lastOpenedAt → dropped
+        'nonsense', // non-object → dropped
+      ],
+    });
+    expect(parsed?.recentFiles).toEqual([
+      { path: '/notes/a.md', name: 'a.md', lastOpenedAt: '2026-07-20T00:00:00Z' },
+    ]);
+  });
+
+  test('parseAppState defaults a legacy state.json without recentFiles to []', () => {
+    const parsed = parseAppState({ recentProjects: [], lastOpenedProject: null });
+    expect(parsed?.recentFiles).toEqual([]);
   });
 });
 

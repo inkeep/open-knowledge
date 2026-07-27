@@ -39,6 +39,7 @@ import { registerPendingDelivery } from '../shared/ipc-send.ts';
 import type { AssetOpenResult } from './asset-allowlist.ts';
 import { attachAssetSafetyNet } from './asset-safety-net.ts';
 import type { ShowGateRegistry } from './show-gate.ts';
+import type { RestoredWindow } from './state-store.ts';
 import type { ShareDeepLinkBranchSwitchPayload } from './url-scheme.ts';
 import { classifyServerVersion } from './version-drift.ts';
 
@@ -423,11 +424,19 @@ export interface WindowManagerDeps {
      * both the relaunch-restore snapshot and `removeRecentProject` cleanup
      * (which deletes by this exact string — a divergent key would leak the
      * bounds entry). Present only for project windows (spawn + attach);
-     * ephemeral single-file windows omit it and keep cascade placement +
-     * no focus tracking (their "projectPath" is the file's parent dir,
-     * never a project, and file keys are never pruned from recents).
+     * ephemeral single-file windows omit it and keep cascade placement (their
+     * "projectPath" is the file's parent dir, never a project, so bounds memory
+     * and `lastOpenedProject` must not key off it). Ephemeral windows instead
+     * pass `focusKey`.
      */
     projectPath?: string;
+    /**
+     * Focus-recency key for an ephemeral single-file window — the canonical
+     * file path. Wired so a loose-file window joins the restore focus ordering
+     * (and the post-restore raise) WITHOUT writing `lastOpenedProject`, which
+     * stays project-only (keyed by `projectPath`). Absent for project windows.
+     */
+    focusKey?: string;
     /** Other webPreferences / window opts the manager wants to set. */
   }): BrowserWindowLike;
   /**
@@ -849,6 +858,19 @@ export class WindowManager {
   private readonly ephemeralPendingByPath = new Map<string, Promise<ProjectContext>>();
 
   /**
+   * canonicalKey → in-flight `createProjectWindow` promise. The project analog
+   * of `ephemeralPendingByPath`: `createProjectWindow`'s existing dedup only
+   * matches a COMPLETED window in `windowsByPath`, but that entry lands only
+   * after the seconds-long discover + spawn + renderer load. Two concurrent
+   * opens of the same project (session restore re-deriving two loose files into
+   * one project, or a restore racing a deep-link) would both miss the completed-
+   * window dedup and spawn a duplicate window + second server. Registered
+   * synchronously before the first await; a concurrent caller awaits it and
+   * focuses the resulting window. Cleared in the work body's `finally`.
+   */
+  private readonly projectPendingByPath = new Map<string, Promise<ProjectContext>>();
+
+  /**
    * canonicalKey → keepalive WS handle for the open project window. Opened
    * by `attachToExistingServer` and closed by the window's `closed` handler
    * — so the WS bracket exactly matches "a project window is open." The
@@ -964,6 +986,27 @@ export class WindowManager {
       paths.push(ctx.projectPath);
     }
     return paths;
+  }
+
+  /**
+   * Every live window as a kinded restore descriptor — a project window keyed
+   * by its (possibly symlinked) `projectPath`, or a loose single-file window
+   * keyed by its canonical file path. The session-restore snapshot source,
+   * superseding `getOpenProjectPaths` (which flattened an ephemeral window to
+   * its parent directory, so a restored loose file reopened as a full project).
+   * Skips destroyed windows, same as `getOpenProjectPaths`.
+   */
+  getOpenWindows(): RestoredWindow[] {
+    const windows: RestoredWindow[] = [];
+    for (const ctx of this.windowsByPath.values()) {
+      if (ctx.window.isDestroyed?.() === true) continue;
+      windows.push(
+        ctx.ephemeral !== undefined
+          ? { kind: 'file', filePath: ctx.canonicalKey }
+          : { kind: 'project', projectPath: ctx.projectPath },
+      );
+    }
+    return windows;
   }
 
   windowCount(): number {
@@ -1397,6 +1440,43 @@ export class WindowManager {
   }
 
   async createProjectWindow(opts: CreateProjectWindowOpts): Promise<ProjectContext> {
+    const canonicalKey = this.canonicalizeKey(resolve(opts.projectPath));
+    // In-flight reservation (mirrors `createEphemeralWindow`): the inner
+    // method's dedup only matches a COMPLETED window, so a concurrent second
+    // open of the same project — session restore collapsing two loose files
+    // into one project, or a restore racing a deep-link — would spawn a
+    // duplicate. Registered synchronously so a concurrent caller observes it.
+    const inFlight = this.projectPendingByPath.get(canonicalKey);
+    if (inFlight) {
+      const ctx = await inFlight;
+      if (ctx.window.isDestroyed?.() !== true) {
+        this.bringToFront(ctx.window);
+        return ctx;
+      }
+      // The in-flight open's window was torn down before we observed it; its
+      // `finally` cleared the reservation, so the fresh attempt starts clean.
+    }
+    // `spawnProjectWindow`'s synchronous prefix (the `tryAttachExistingServer`
+    // sync gates) still runs synchronously as `work` is created — no await
+    // precedes it here — preserving the spawn-path tests' `fire('ready')`
+    // ordering.
+    const work = (async (): Promise<ProjectContext> => {
+      try {
+        return await this.spawnProjectWindow(opts);
+      } finally {
+        this.projectPendingByPath.delete(canonicalKey);
+      }
+    })();
+    this.projectPendingByPath.set(canonicalKey, work);
+    return work;
+  }
+
+  /**
+   * The uncached body of `createProjectWindow` — never call directly (it has no
+   * in-flight reservation, so two direct calls would race). Keeps its own
+   * COMPLETED-window fast-path for sequential re-opens.
+   */
+  private async spawnProjectWindow(opts: CreateProjectWindowOpts): Promise<ProjectContext> {
     const projectPath = resolve(opts.projectPath);
     const canonicalKey = this.canonicalizeKey(projectPath);
     const existing = this.windowsByPath.get(canonicalKey);
@@ -2116,6 +2196,9 @@ export class WindowManager {
         ...instanceLabelArgs(),
       ],
       title: formatEditorTitle(projectName),
+      // Focus-recency key = canonical file path, so this loose-file window
+      // joins the restore ordering without writing `lastOpenedProject`.
+      focusKey: canonicalKey,
     });
     // Asset root is the file's real parent (`opts.contentDir`), NOT the throwaway
     // temp projectDir — so `![[sibling]]` assets are allowlisted against the

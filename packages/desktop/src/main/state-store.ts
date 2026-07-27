@@ -50,6 +50,40 @@ export interface PersistedWindowBounds {
   isFullScreen: boolean;
 }
 
+/**
+ * One entry in the persisted session-restore snapshot. A restart reopens the
+ * full set of windows open at the last clean exit — each is either a project
+ * window (keyed by its resolved project path) or a loose single-file
+ * ("Open File") window (keyed by the canonical file path). Ordered least → most
+ * recently focused so the restoring boot can raise the last entry.
+ */
+export type RestoredWindow =
+  | { kind: 'project'; projectPath: string }
+  | { kind: 'file'; filePath: string };
+
+/**
+ * Stable key for a `RestoredWindow` — the string used for focus-recency
+ * ordering and for the WindowManager `getWindowFor` lookup at restore time.
+ * Projects key by their (possibly symlinked) resolved path, matching
+ * `projectFocusSeq` + `getOpenProjectPaths`; loose files key by the canonical
+ * file path (matching an ephemeral window's `canonicalKey`).
+ */
+export function windowRestoreKey(w: RestoredWindow): string {
+  return w.kind === 'project' ? w.projectPath : w.filePath;
+}
+
+/**
+ * A loose single-file ("Open File") open, tracked in a durable LRU list
+ * separate from `recentProjects`. Surfaced in File → Open Recent so a user can
+ * reopen a file they edited outside any project. `path` is the realpath-
+ * canonical file path (the LRU key); `name` is the basename shown in the menu.
+ */
+interface RecentFile {
+  path: string;
+  name: string;
+  lastOpenedAt: string;
+}
+
 interface ProjectSessionState {
   /** User-open tabs for this project, in visible tab order. */
   openTabs: string[];
@@ -93,6 +127,13 @@ export const MAX_SUPPORTED_SCHEMA_VERSION = 1;
 export interface AppState {
   /** LRU-capped recent-projects, newest first. */
   recentProjects: RecentProject[];
+  /**
+   * LRU-capped recent loose files opened via File → Open File, newest first.
+   * Separate from `recentProjects` — a loose file is not a project. Surfaced in
+   * File → Open Recent so a user can reopen a file they edited outside any
+   * project.
+   */
+  recentFiles: RecentFile[];
   /** Most recently opened project, or null if Navigator was last visible. */
   lastOpenedProject: string | null;
   /**
@@ -213,15 +254,17 @@ export interface AppState {
    */
   lastUsedProjectParent: string | null;
   /**
-   * Snapshot of every project window open at the moment the auto-updater's
-   * `quitAndInstall()` was about to fire (the `prepareForRelaunch` hook).
-   * The next boot restores ALL of these windows, not just `lastOpenedProject`
-   * — an update relaunch should land the user back where they were.
+   * Snapshot of every window open at the last clean exit — a normal quit, a
+   * "Relaunch now" update, or the silent install-on-quit update. Captured
+   * write-once at the earliest teardown-preceding hook of each path. Each entry
+   * is a project OR a loose single-file window. The next boot restores ALL of
+   * them, not just `lastOpenedProject` — a restart should land the user back
+   * where they were.
    *
-   * `null` means no relaunch-restore is pending: the normal boot path opens
-   * `lastOpenedProject` (or the Navigator). An empty array means a relaunch
-   * happened with no project windows open (only the Navigator) — the boot
-   * path consumes it and opens the Navigator rather than `lastOpenedProject`.
+   * `null` means no restore is pending: the boot path falls back to
+   * `lastOpenedProject` (or the Navigator). An empty array means the app quit
+   * with nothing open (only the Navigator) — the boot path consumes it and
+   * opens the Navigator rather than `lastOpenedProject`.
    * Cleared back to `null` on the boot that consumes it, before any window
    * opens, so a crash mid-restore can't loop the restore forever.
    *
@@ -233,7 +276,7 @@ export interface AppState {
    * actually working in. Readers must not assume the pre-ordering-era
    * insertion order.
    */
-  pendingWindowRestore: string[] | null;
+  pendingWindowRestore: RestoredWindow[] | null;
   /**
    * Whether spell check is enabled. `session.setSpellCheckerEnabled` is
    * session-wide and all OK windows share the default session, so this is a
@@ -244,10 +287,12 @@ export interface AppState {
 }
 
 const RECENT_CAP = 20;
+const RECENT_FILES_CAP = 20;
 
 export function emptyState(): AppState {
   return {
     recentProjects: [],
+    recentFiles: [],
     lastOpenedProject: null,
     versionPendingInstall: null,
     attemptedInstall: null,
@@ -375,6 +420,62 @@ function parseProjectSessions(raw: unknown): Record<string, ProjectSessionState>
 }
 
 /**
+ * Tolerant parse of the session-restore snapshot. Accepts BOTH the legacy
+ * `string[]` shape (each string coerced to a `{ kind: 'project' }` entry) and
+ * the current `RestoredWindow[]` object shape; unrecognized entries are
+ * dropped and duplicates de-duped. Returns `null` only for a non-array (absent
+ * / legacy-null); an empty-but-present array stays `[]` (the "quit with nothing
+ * open → Navigator" signal). No `schemaVersion` bump is needed: an older build
+ * reading a new-format array coerces the objects away via its own
+ * `sanitizeStringArray`, degrading to one Navigator open, never corruption.
+ */
+function parsePendingWindowRestore(raw: unknown): RestoredWindow[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: RestoredWindow[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    let win: RestoredWindow | null = null;
+    if (typeof item === 'string') {
+      if (item.length > 0) win = { kind: 'project', projectPath: item };
+    } else if (typeof item === 'object' && item !== null) {
+      const o = item as Record<string, unknown>;
+      if (o.kind === 'project' && typeof o.projectPath === 'string' && o.projectPath.length > 0) {
+        win = { kind: 'project', projectPath: o.projectPath };
+      } else if (o.kind === 'file' && typeof o.filePath === 'string' && o.filePath.length > 0) {
+        win = { kind: 'file', filePath: o.filePath };
+      }
+    }
+    if (win === null) continue;
+    const key = `${win.kind}:${windowRestoreKey(win)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(win);
+  }
+  return out;
+}
+
+function parseRecentFiles(raw: unknown): RecentFile[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RecentFile[] = [];
+  const seen = new Set<string>();
+  for (const r of raw) {
+    if (typeof r !== 'object' || r === null) continue;
+    const item = r as Record<string, unknown>;
+    if (
+      typeof item.path === 'string' &&
+      item.path.length > 0 &&
+      typeof item.name === 'string' &&
+      typeof item.lastOpenedAt === 'string' &&
+      !seen.has(item.path)
+    ) {
+      seen.add(item.path);
+      out.push({ path: item.path, name: item.name, lastOpenedAt: item.lastOpenedAt });
+    }
+  }
+  return out;
+}
+
+/**
  * Add a project to the recent list (or move to front if already present).
  * Returns a NEW state (immutable update — caller persists).
  *
@@ -409,6 +510,24 @@ export function addRecentProject(
   }
   const updated: RecentProject[] = [entry, ...filtered].slice(0, RECENT_CAP);
   return { ...state, recentProjects: updated, lastOpenedProject: projectPath };
+}
+
+/**
+ * Add a loose file to the Recent Files list (or move it to the front). Returns
+ * a NEW state (immutable update — caller persists). `filePath` is the realpath-
+ * canonical path (the LRU key); `name` is the basename shown in the menu.
+ * Unlike `addRecentProject`, this does NOT touch `lastOpenedProject` — a loose
+ * file is not a project and must never become the single-project restore
+ * fallback.
+ */
+export function addRecentFile(state: AppState, filePath: string, name: string): AppState {
+  const now = new Date().toISOString();
+  const filtered = state.recentFiles.filter((f) => f.path !== filePath);
+  const updated: RecentFile[] = [{ path: filePath, name, lastOpenedAt: now }, ...filtered].slice(
+    0,
+    RECENT_FILES_CAP,
+  );
+  return { ...state, recentFiles: updated };
 }
 
 /** Remove a project from the recent list. */
@@ -661,18 +780,19 @@ export function parseAppState(raw: unknown): AppState | null {
     typeof obj.lastUsedProjectParent === 'string' && obj.lastUsedProjectParent.length > 0
       ? obj.lastUsedProjectParent
       : null;
-  // Defensive: only an array coerces to a (deduped, string-only) restore
-  // snapshot; everything else (absent key on a legacy state.json, null, wrong
-  // type) returns null — the normal `lastOpenedProject` boot path.
-  const pendingWindowRestore = Array.isArray(obj.pendingWindowRestore)
-    ? sanitizeStringArray(obj.pendingWindowRestore)
-    : null;
+  // Tolerant union parse (legacy `string[]` + new `RestoredWindow[]`); see
+  // `parsePendingWindowRestore`. A non-array (absent / legacy-null) returns
+  // null — the `lastOpenedProject` fallback path.
+  const pendingWindowRestore = parsePendingWindowRestore(obj.pendingWindowRestore);
+  // Additive field: absent / corrupt → empty list (no Recent Files yet).
+  const recentFiles = parseRecentFiles(obj.recentFiles);
   // Additive field: a missing or non-boolean value coerces to the `true`
   // default, so only an explicit persisted `false` keeps checking off.
   const spellCheckEnabled =
     typeof obj.spellCheckEnabled === 'boolean' ? obj.spellCheckEnabled : true;
   return {
     recentProjects,
+    recentFiles,
     lastOpenedProject,
     versionPendingInstall,
     attemptedInstall,
