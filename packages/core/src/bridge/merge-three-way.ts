@@ -65,7 +65,6 @@ export function tryLineLevelCombine(
   return { clean: true, merged };
 }
 
-
 export type BridgeMergeContentLossSide = 'user' | 'agent';
 
 export type BridgeMergeContentLossWhich = 'substring' | 'order' | 'growth';

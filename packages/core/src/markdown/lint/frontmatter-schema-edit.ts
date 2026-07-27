@@ -1,4 +1,3 @@
-
 import { DRAFT07_SCHEMA_URIS } from './frontmatter-validate.ts';
 
 export interface FrontmatterFieldConstraint {
