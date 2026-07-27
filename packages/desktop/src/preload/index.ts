@@ -65,6 +65,8 @@ import type {
 } from '../shared/ipc-channels.ts';
 import { createInvoker } from '../shared/ipc-invoke.ts';
 import { resolveOkDesktopMode } from '../shared/ok-desktop-mode.ts';
+import { isUninstallPreload } from '../shared/uninstall-preload-arg.ts';
+import { createUninstallBridge } from './uninstall.ts';
 
 const invoke = createInvoker(ipcRenderer);
 
@@ -842,4 +844,13 @@ if (parseArg('debug-keyring-smoke') === '1') {
   };
 }
 
-contextBridge.exposeInMainWorld('okDesktop', bridge);
+// The self-uninstall window gets `okUninstall` INSTEAD of `okDesktop`: it has
+// no business reaching the editor's ~90-channel surface, and the cheapest way
+// to guarantee it cannot is to never put that object on its window. One bundle
+// serves both because a sandboxed preload must be a single self-contained file
+// — see `./uninstall.ts`.
+if (isUninstallPreload(process.argv)) {
+  contextBridge.exposeInMainWorld('okUninstall', createUninstallBridge(invoke));
+} else {
+  contextBridge.exposeInMainWorld('okDesktop', bridge);
+}

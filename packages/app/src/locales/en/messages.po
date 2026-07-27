@@ -230,6 +230,12 @@ msgstr "{0} isn't installed yet — opening its download page."
 msgid "{0} needs {1}"
 msgstr "{0} needs {1}"
 
+#. placeholder {0}: selected.size
+#. placeholder {1}: projects.length
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "{0} of {1} projects selected"
+msgstr "{0} of {1} projects selected"
+
 #. placeholder {0}: templates.length
 #: src/components/empty-state/CreateView.tsx
 msgid "{0} templates available"
@@ -852,6 +858,10 @@ msgstr "Activate the next editor tab."
 msgid "Activate the previous editor tab."
 msgstr "Activate the previous editor tab."
 
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "active"
+msgstr "active"
+
 #: src/components/ActivityModeContent.tsx
 msgid "Active"
 msgstr "Active"
@@ -1134,6 +1144,10 @@ msgstr "any doc named {0}"
 msgid "Anyone can see"
 msgstr "Anyone can see"
 
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "Anything you'd like to add? (optional)"
+msgstr "Anything you'd like to add? (optional)"
+
 #: src/components/settings/SearchSection.tsx
 msgid "API key set"
 msgstr "API key set"
@@ -1369,6 +1383,10 @@ msgstr "Becomes the document's content when someone creates a doc from this temp
 msgid "Before syncing, set your identity for git commits:"
 msgstr "Before syncing, set your identity for git commits:"
 
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "Before you go, mind sharing why?"
+msgstr "Before you go, mind sharing why?"
+
 #: src/editor/slash-command/items.tsx
 msgid "Below"
 msgstr "Below"
@@ -1497,6 +1515,10 @@ msgstr "Bug report {0}"
 msgid "Bug reporting needs the OpenKnowledge desktop app."
 msgstr "Bug reporting needs the OpenKnowledge desktop app."
 
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "Bugs, crashes, or it felt unreliable"
+msgstr "Bugs, crashes, or it felt unreliable"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Build a competitor research knowledge base. Start with an overview page, then add cross-linked pages for each competitor, their products and pricing, and the sources behind every claim."
 msgstr "Build a competitor research knowledge base. Start with an overview page, then add cross-linked pages for each competitor, their products and pricing, and the sources behind every claim."
@@ -1575,6 +1597,7 @@ msgstr "Can't safely edit this tool's config"
 #: src/editor/components/CodePreviewEditModal.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
+#: src/uninstall/UninstallPickerScreen.tsx
 msgid "Cancel"
 msgstr "Cancel"
 
@@ -1701,6 +1724,10 @@ msgstr "Claude Code is installed, but OpenKnowledge tools aren't connected to it
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Claude Desktop"
 msgstr "Claude Desktop"
+
+#: src/uninstall/UninstallNoticeScreen.tsx
+msgid "Cleanup log"
+msgstr "Cleanup log"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Clear"
@@ -3083,6 +3110,10 @@ msgstr "Detected from the editors this project is set up for. Adjust to control 
 msgid "Detected on this machine"
 msgstr "Detected on this machine"
 
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "Detected OpenKnowledge projects"
+msgstr "Detected OpenKnowledge projects"
+
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Detecting"
@@ -3267,6 +3298,10 @@ msgstr "done"
 #: src/editor/slash-command/items.tsx
 msgid "Done"
 msgstr "Done"
+
+#: src/uninstall/UninstallNoticeScreen.tsx
+msgid "Done."
+msgstr "Done."
 
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -3477,6 +3512,7 @@ msgid "Email"
 msgstr "Email"
 
 #: src/components/SubscribeForm.tsx
+#: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Email address"
 msgstr "Email address"
 
@@ -4725,6 +4761,10 @@ msgstr "I already have it locally"
 msgid "I already have it locally →"
 msgstr "I already have it locally →"
 
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "I'm switching to another tool"
+msgstr "I'm switching to another tool"
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
@@ -4987,6 +5027,22 @@ msgstr "Invalid input — pick a different folder."
 msgid "Invalid patch payload"
 msgstr "Invalid patch payload"
 
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "It didn't fit into my workflow"
+msgstr "It didn't fit into my workflow"
+
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "It was a trial or one-off project"
+msgstr "It was a trial or one-off project"
+
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "It was missing a feature I needed"
+msgstr "It was missing a feature I needed"
+
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "It was too hard to set up or get started"
+msgstr "It was too hard to set up or get started"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Italic"
 msgstr "Italic"
@@ -5088,6 +5144,10 @@ msgstr "Let agents use OpenKnowledge without asking"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Let Tab leave the source editor instead of indenting."
 msgstr "Let Tab leave the source editor instead of indenting."
+
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "Let us follow up by email"
+msgstr "Let us follow up by email"
 
 #: src/components/SkillProperties.tsx
 msgid "Level"
@@ -5828,6 +5888,10 @@ msgstr "Next tab"
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "No <0>.markdownlint.*</0> file yet — every rule runs on the same defaults as the VS Code markdownlint extension: all on, except line length."
 msgstr "No <0>.markdownlint.*</0> file yet — every rule runs on the same defaults as the VS Code markdownlint extension: all on, except line length."
+
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "No active or recent OpenKnowledge projects were found."
+msgstr "No active or recent OpenKnowledge projects were found."
 
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "No agents available."
@@ -6942,6 +7006,10 @@ msgstr "Preparing search"
 msgid "Preparing share URL..."
 msgstr "Preparing share URL..."
 
+#: src/uninstall/UninstallApp.tsx
+msgid "Preparing to uninstall OpenKnowledge"
+msgstr "Preparing to uninstall OpenKnowledge"
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or open OK in the desktop app."
 msgstr "Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or open OK in the desktop app."
@@ -7206,6 +7274,10 @@ msgstr "Reason: {reason} ({osDetail})"
 msgid "Receiving objects"
 msgstr "Receiving objects"
 
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "recent"
+msgstr "recent"
+
 #: src/components/NavigatorApp.tsx
 msgid "Recent"
 msgstr "Recent"
@@ -7365,6 +7437,11 @@ msgstr "Remove item {0}"
 msgid "Remove link"
 msgstr "Remove link"
 
+#. placeholder {0}: project.path
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "Remove OpenKnowledge from {0}"
+msgstr "Remove OpenKnowledge from {0}"
+
 #: src/components/TemplateForm.tsx
 msgid "Remove property"
 msgstr "Remove property"
@@ -7389,6 +7466,10 @@ msgstr "Removes this skill from your editors."
 #: src/components/CreateProjectDialog.tsx
 msgid "Removing"
 msgstr "Removing"
+
+#: src/uninstall/UninstallProgressScreen.tsx
+msgid "Removing OpenKnowledge files…"
+msgstr "Removing OpenKnowledge files…"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -7998,6 +8079,10 @@ msgstr "See the full install guide"
 msgid "Select a value"
 msgstr "Select a value"
 
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "Select all"
+msgstr "Select all"
+
 #: src/components/AppMenubar.tsx
 msgid "Select All"
 msgstr "Select All"
@@ -8066,6 +8151,10 @@ msgstr "Semantic search is on, but no API key is set — search falls back to ke
 #: src/components/FeedbackForm.tsx
 msgid "Send"
 msgstr "Send"
+
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "Send & continue"
+msgstr "Send & continue"
 
 #: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
@@ -8501,6 +8590,7 @@ msgstr "Skills teach agents repeatable tasks. Author them here; install a skill 
 #. Secondary button — dismisses the dialog without wiring any tools
 #: src/components/AuthModal.tsx
 #: src/components/McpConsentDialogBody.tsx
+#: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Skip"
 msgstr "Skip"
 
@@ -8524,6 +8614,10 @@ msgstr "Small section heading."
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "Something broke"
+
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "Something else"
+msgstr "Something else"
 
 #: src/components/AppErrorBoundary.tsx
 msgid "Something went wrong"
@@ -9068,6 +9162,10 @@ msgstr "Testing"
 msgid "Text"
 msgstr "Text"
 
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "Thanks for giving OpenKnowledge a try."
+msgstr "Thanks for giving OpenKnowledge a try."
+
 #: src/components/SubscribeForm.tsx
 msgid "Thanks for subscribing. Watch your inbox for product updates."
 msgstr "Thanks for subscribing. Watch your inbox for product updates."
@@ -9394,6 +9492,10 @@ msgstr "this item"
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 
+#: src/uninstall/UninstallProgressScreen.tsx
+msgid "This may take a moment. Your markdown content is kept."
+msgstr "This may take a moment. Your markdown content is kept."
+
 #: src/components/SeedDialog.tsx
 msgid "This pack is already set up here."
 msgstr "This pack is already set up here."
@@ -9465,6 +9567,10 @@ msgstr "This project's running server doesn't support live editing. Restart Open
 msgid "This project's server (v{0}) is newer than this app (v{1})."
 msgstr "This project's server (v{0}) is newer than this app (v{1})."
 
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
+msgstr "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
+
 #. placeholder {0}: skill.bundledVersion ?? ''
 #. placeholder {1}: skill.installedVersion
 #: src/components/SkillUpdateDialog.tsx
@@ -9534,6 +9640,10 @@ msgstr "Title"
 #: src/editor/slash-command/items.tsx
 msgid "To do"
 msgstr "To do"
+
+#: src/uninstall/UninstallNoticeScreen.tsx
+msgid "To do."
+msgstr "To do."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle a bullet list."
@@ -9747,6 +9857,14 @@ msgstr "Uninstall"
 #: src/components/SkillEditorActions.tsx
 msgid "Uninstall everywhere"
 msgstr "Uninstall everywhere"
+
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "Uninstall OpenKnowledge"
+msgstr "Uninstall OpenKnowledge"
+
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "Uninstall OpenKnowledge?"
+msgstr "Uninstall OpenKnowledge?"
 
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(removed)
@@ -10124,6 +10242,10 @@ msgstr "What were you doing?"
 msgid "What would you like to create?"
 msgstr "What would you like to create?"
 
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "What you share is sent to the OpenKnowledge team."
+msgstr "What you share is sent to the OpenKnowledge team."
+
 #: src/components/HelpPopover.tsx
 msgid "What's new"
 msgstr "What's new"
@@ -10325,6 +10447,7 @@ msgid "You're subscribed!"
 msgstr "You're subscribed!"
 
 #: src/components/FeedbackForm.tsx
+#: src/uninstall/UninstallSurveyScreen.tsx
 msgid "you@company.com"
 msgstr "you@company.com"
 

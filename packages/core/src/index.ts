@@ -290,6 +290,8 @@ export { PRODUCT_NAME } from './constants/product.ts';
 export { DEFAULT_SERVER_HOST } from './constants/server.ts';
 export {
   isUninstallFeedbackReason,
+  UNINSTALL_FEEDBACK_EMAIL_MAX_LEN,
+  UNINSTALL_FEEDBACK_NOTE_MAX_LEN,
   UNINSTALL_FEEDBACK_REASONS,
   type UninstallFeedbackReason,
 } from './constants/uninstall-feedback.ts';
@@ -1137,6 +1139,16 @@ export {
   THEME_PLUGIN_IDS,
   THEME_PLUGINS,
 } from './theme/theme-plugins.ts';
+export type {
+  OkUninstallBridge,
+  UninstallDispatchRequest,
+  UninstallDispatchResult,
+  UninstallIntent,
+  UninstallNoticeChecklistItem,
+  UninstallNoticeScreen,
+  UninstallProjectRow,
+  UninstallScreenSpec,
+} from './uninstall-bridge.ts';
 export {
   HIDDEN_CONFIG_BASENAMES,
   isHiddenDocName,

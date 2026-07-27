@@ -29,3 +29,6 @@ export function createInvoker(ipc: IpcRenderer) {
     ...args: RequestChannels[K]['args']
   ): Promise<RequestChannels[K]['result']> => ipc.invoke(channel, ...args);
 }
+
+/** The bound invoker, for preload helpers that take it as a parameter. */
+export type IpcInvoker = ReturnType<typeof createInvoker>;

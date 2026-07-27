@@ -70,12 +70,15 @@ import {
 } from '@inkeep/open-knowledge';
 import {
   CLIENT_VERSION_HEADER,
+  hasUninstallFeedbackContent,
   PROTOCOL_VERSION,
   ServerInfoSuccessSchema,
   SPAWN_ERROR_LOG,
   TERMINAL_CLIS,
   type TerminalCli,
   type UninstallFeedbackAnswers,
+  type UninstallIntent,
+  type UninstallScreenSpec,
 } from '@inkeep/open-knowledge-core';
 import {
   assertGitAvailable,
@@ -139,6 +142,7 @@ import type {
 } from '../shared/ipc-channels.ts';
 import { createHandler } from '../shared/ipc-handler.ts';
 import { registerPendingDelivery, sendToRenderer } from '../shared/ipc-send.ts';
+import { UNINSTALL_PRELOAD_ARG } from '../shared/uninstall-preload-arg.ts';
 import { resolveShell } from '../utility/pty-host.ts';
 import { buildAboutPanelOptions } from './about-panel.ts';
 import { appendOkIgnoreSync } from './append-okignore.ts';
@@ -195,12 +199,9 @@ import {
 import { createDebugIpc, type DebugIpcHandle } from './debug-ipc.ts';
 import { flushDesktopLogger, getLogger, getRootDesktopLogger } from './desktop-logger.ts';
 import {
-  buildDesktopUninstallFeedbackHtml,
-  buildDesktopUninstallNoticeHtml,
-  buildDesktopUninstallProgressHtml,
-  buildDesktopUninstallProjectPickerHtml,
   collectDesktopUninstallProjectCandidates,
   confirmDesktopUninstall,
+  type DesktopUninstallFlowPreviewMode,
   type DesktopUninstallNoticeSpec,
   type DesktopUninstallProjectCandidate,
   type DesktopUninstallUiPreviewMode,
@@ -210,17 +211,15 @@ import {
   desktopUninstallFailureNotice,
   desktopUninstallFinalStepNotice,
   isSupportedApplicationsBundle,
-  parseDesktopUninstallFeedbackUrl,
-  parseDesktopUninstallNoticeUrl,
-  parseDesktopUninstallProjectPickerUrl,
+  normalizeDesktopUninstallFeedbackAnswers,
   type RunDesktopUninstallCleanupResult,
   readDesktopUninstallLogForDisplay,
   resolveAppBundleFromExecPath,
-  resolveDesktopUninstallProjectSelection,
   resolveDesktopUninstallUiPreviewMode,
   runDesktopUninstallCleanup,
   runDesktopUninstallFeedbackStep,
   runDesktopUninstallOutcomeStep,
+  selectDesktopUninstallProjectsByIndex,
 } from './desktop-uninstall.ts';
 import { promptForExistingFolder, promptForExistingMarkdownFile } from './dialog-helpers.ts';
 import {
@@ -374,6 +373,13 @@ import {
 import { getTerminalWindowContext, resolvePtyProjectRoot } from './terminal-window-registry.ts';
 import { applyThemeApplied } from './theme-applied-handler.ts';
 import { applyThemeSource, isOkThemeSource } from './theme-handler.ts';
+import { createUninstallScreenRegistry } from './uninstall-ipc.ts';
+import {
+  loadUninstallEntry,
+  noticeCloseIsConfirm,
+  resolveUninstallEntryTarget,
+  resolveUninstallWindowTheme,
+} from './uninstall-window.ts';
 import {
   applyResetIncompatible,
   applyStateQuery,
@@ -2644,10 +2650,13 @@ async function showMessageBoxAttached(options: MessageBoxOptions) {
 }
 
 /**
- * Show a `DesktopUninstallNoticeSpec` in a styled utility window and resolve
- * true on confirm. Closing the window without a button press means Cancel for
- * a two-button notice; a single-button notice proceeds either way (there is
- * nothing else to choose, and the flow must still quit).
+ * Show a `DesktopUninstallNoticeSpec` in the React uninstall window and resolve
+ * true on confirm.
+ *
+ * Closing the window without pressing a button means Cancel for a two-button
+ * notice — an unanswered question must not proceed. A single-button notice has
+ * nothing else to choose and the flow still has to finish, so closing it
+ * confirms. The screen mirrors the same split on Escape.
  */
 async function showDesktopUninstallNotice(
   spec: DesktopUninstallNoticeSpec,
@@ -2659,64 +2668,38 @@ async function showDesktopUninstallNotice(
     onRevealLog?: () => void;
   } = {},
 ): Promise<boolean> {
-  const parent = BrowserWindow.getFocusedWindow();
-  const closeMeansConfirm = spec.cancelLabel === undefined;
+  const closeMeansConfirm = noticeCloseIsConfirm(spec);
   return new Promise((resolveNotice) => {
-    const win = createDesktopUninstallUtilityWindow({
-      parent,
-      width: options.width ?? 480,
-      height: options.height ?? 300,
-      title: spec.title,
-      modal: parent != null,
-      resizable: options.resizable ?? false,
-    });
-
     let settled = false;
-    const finish = (confirmed: boolean) => {
+    const finish = (confirmed: boolean, win?: BrowserWindow) => {
       if (settled) return;
       settled = true;
       resolveNotice(confirmed);
-      if (!win.isDestroyed()) win.destroy();
+      if (win !== undefined && !win.isDestroyed()) win.destroy();
     };
 
-    win.webContents.on('will-navigate', (event, url) => {
-      const action = parseDesktopUninstallNoticeUrl(url);
-      if (action === 'reveal-log') {
-        // Non-terminal: reveal the log in Finder and leave the notice open.
-        event.preventDefault();
-        options.onRevealLog?.();
-        return;
-      }
-      if (action !== null) {
-        event.preventDefault();
-        finish(action === 'confirm');
-        return;
-      }
-      if (!url.startsWith('data:text/html')) event.preventDefault();
-    });
-
-    win.on('close', (event) => {
-      if (settled) return;
-      event.preventDefault();
+    void openDesktopUninstallRendererWindow({
+      screen: { kind: 'notice', notice: spec },
+      width: options.width ?? 480,
+      height: options.height ?? 300,
+      resizable: options.resizable ?? false,
+      title: spec.title,
+      onIntent: (intent, win) => {
+        if (intent.kind === 'notice-reveal-log') {
+          // Non-terminal: reveal the log in Finder and leave the notice up, so
+          // the user can read what happened and still answer.
+          options.onRevealLog?.();
+        } else if (intent.kind === 'notice-confirm') {
+          finish(true, win);
+        } else if (intent.kind === 'notice-cancel') {
+          finish(false, win);
+        }
+      },
+      onClosed: () => finish(closeMeansConfirm),
+    }).catch((err) => {
+      getLogger('lifecycle').warn({ err }, 'desktop uninstall notice failed to load');
       finish(closeMeansConfirm);
     });
-    win.on('closed', () => {
-      if (settled) return;
-      settled = true;
-      resolveNotice(closeMeansConfirm);
-    });
-    win.once('ready-to-show', () => {
-      if (!win.isDestroyed()) win.show();
-    });
-
-    void win
-      .loadURL(
-        `data:text/html;charset=utf-8,${encodeURIComponent(buildDesktopUninstallNoticeHtml(spec))}`,
-      )
-      .catch((err) => {
-        getLogger('lifecycle').warn({ err }, 'desktop uninstall notice failed to load');
-        finish(closeMeansConfirm);
-      });
   });
 }
 
@@ -2729,6 +2712,12 @@ function createDesktopUninstallUtilityWindow(options: {
   title: string;
   modal?: boolean;
   resizable?: boolean;
+  /**
+   * Load the preload bridge and tag the window as the uninstall renderer, so
+   * the preload exposes `okUninstall` instead of `okDesktop`. The inline-HTML
+   * screens omit it and get no preload at all.
+   */
+  uninstallBridge?: boolean;
 }): BrowserWindow {
   const win = new BrowserWindow({
     width: options.width,
@@ -2745,6 +2734,12 @@ function createDesktopUninstallUtilityWindow(options: {
     fullscreenable: false,
     webPreferences: {
       ...DEFAULT_WIN_OPTS.webPreferences,
+      ...(options.uninstallBridge === true
+        ? {
+            preload: join(__dirname, '../preload/index.js'),
+            additionalArguments: [UNINSTALL_PRELOAD_ARG],
+          }
+        : {}),
     },
   });
   win.setMenu(null);
@@ -2752,6 +2747,115 @@ function createDesktopUninstallUtilityWindow(options: {
   return win;
 }
 
+/**
+ * Every live React uninstall window, keyed by webContents id. Main answers
+ * `ok:uninstall:dispatch` only for senders in here — see `uninstall-ipc.ts`.
+ */
+const uninstallScreens = createUninstallScreenRegistry();
+
+/**
+ * Open the React uninstall renderer (`packages/app/uninstall.html`) showing
+ * `screen`, and resolve once it is visible.
+ *
+ * The theme is resolved here, in main, and travels in the entry query so the
+ * renderer's inline stamp runs before the body parses — `ready-to-show` (and
+ * therefore `show()`) cannot beat it, so there is no wrong-theme frame.
+ *
+ * The screen registration is torn down on `closed`, so a window main has
+ * finished with can no longer drive the flow even if its renderer is still
+ * executing.
+ */
+async function openDesktopUninstallRendererWindow(options: {
+  screen: UninstallScreenSpec;
+  width?: number;
+  height?: number;
+  minWidth?: number;
+  minHeight?: number;
+  title?: string;
+  resizable?: boolean;
+  /**
+   * Refuse user-initiated closes. `destroy()` bypasses it, so main can still
+   * take the window down when the step it covers is over.
+   */
+  preventClose?: boolean;
+  /** Receives the window so a settling intent can close the screen it came from. */
+  onIntent: (intent: UninstallIntent, win: BrowserWindow) => void;
+  /**
+   * Runs once the window is gone, however it went — user close, a settling
+   * intent, or a load failure. Wired here rather than by the caller because a
+   * window can close before this function's promise resolves, and a listener
+   * attached afterwards would never fire.
+   */
+  onClosed?: () => void;
+}): Promise<BrowserWindow> {
+  const parent = BrowserWindow.getFocusedWindow();
+  const win = createDesktopUninstallUtilityWindow({
+    parent,
+    width: options.width ?? 560,
+    height: options.height ?? 420,
+    minWidth: options.minWidth,
+    minHeight: options.minHeight,
+    title: options.title ?? 'Uninstall OpenKnowledge',
+    resizable: options.resizable,
+    uninstallBridge: true,
+  });
+  if (options.preventClose === true) {
+    win.on('close', (event) => event.preventDefault());
+  }
+  const release = uninstallScreens.open(win.webContents.id, {
+    screen: options.screen,
+    onIntent: (intent) => options.onIntent(intent, win),
+  });
+  const shown = new Promise<void>((resolveShown) => {
+    win.once('ready-to-show', () => {
+      if (!win.isDestroyed()) win.show();
+      resolveShown();
+    });
+    win.once('closed', () => {
+      release();
+      options.onClosed?.();
+      resolveShown();
+    });
+  });
+
+  const theme = resolveUninstallWindowTheme(nativeTheme.shouldUseDarkColors);
+  try {
+    await loadUninstallEntry(
+      win,
+      resolveUninstallEntryTarget(
+        {
+          devServerUrl: rendererDevUrl,
+          isPackaged: app.isPackaged,
+          resourcesPath: process.resourcesPath,
+          mainDir: __dirname,
+        },
+        theme,
+      ),
+    );
+  } catch (err) {
+    // `win.destroy()` fires `closed` synchronously, which runs release()
+    // (idempotent) and onClosed?.() through the `closed` handler. The explicit
+    // release() here unregisters the window before destroy fires it again. The
+    // re-throw reaches the caller's `.catch()`, but for any caller providing
+    // `onClosed` its outer Promise has already settled through that closed path
+    // by the time the catch runs — the `settled` guard makes it a no-op.
+    release();
+    if (!win.isDestroyed()) win.destroy();
+    throw err;
+  }
+  await shown;
+  return win;
+}
+
+/**
+ * Show the project picker and resolve with the projects to also deinit, or
+ * `null` when the user cancels.
+ *
+ * Closing the window IS a cancel — this screen is the flow's confirm gate, so
+ * every exit that is not an explicit confirm has to leave the install alone.
+ * (The churn survey deliberately maps close the other way; see
+ * `showDesktopUninstallFeedbackWindow`.)
+ */
 async function showDesktopUninstallProjectPicker(
   candidates: readonly DesktopUninstallProjectCandidate[],
 ): Promise<DesktopUninstallProjectCandidate[] | null> {
@@ -2763,57 +2867,40 @@ async function showDesktopUninstallProjectPicker(
   const height = Math.max(460, Math.min(680, workArea.height - 80));
 
   return new Promise((resolveSelection) => {
-    const win = createDesktopUninstallUtilityWindow({
-      parent,
+    let settled = false;
+    const finish = (selection: DesktopUninstallProjectCandidate[] | null, win?: BrowserWindow) => {
+      if (settled) return;
+      settled = true;
+      resolveSelection(selection);
+      if (win !== undefined && !win.isDestroyed()) win.destroy();
+    };
+
+    void openDesktopUninstallRendererWindow({
+      screen: {
+        kind: 'picker',
+        projects: candidates.map((candidate) => ({
+          path: candidate.path,
+          open: candidate.open,
+          recent: candidate.recent,
+          running: candidate.running,
+        })),
+      },
       width,
       height,
       minWidth: 560,
       minHeight: 420,
-      title: 'Uninstall OpenKnowledge',
+      onIntent: (intent, win) => {
+        if (intent.kind === 'picker-confirm') {
+          finish(selectDesktopUninstallProjectsByIndex(candidates, intent.selectedIndexes), win);
+        } else if (intent.kind === 'picker-cancel') {
+          finish(null, win);
+        }
+      },
+      onClosed: () => finish(null),
+    }).catch((err) => {
+      getLogger('lifecycle').warn({ err }, 'desktop uninstall project picker failed to load');
+      finish(null);
     });
-
-    let settled = false;
-    const finish = (raw: unknown) => {
-      if (settled) return;
-      settled = true;
-      resolveSelection(resolveDesktopUninstallProjectSelection(candidates, raw));
-      if (!win.isDestroyed()) win.destroy();
-    };
-
-    win.webContents.on('will-navigate', (event, url) => {
-      const pickerResult = parseDesktopUninstallProjectPickerUrl(url);
-      if (pickerResult !== null) {
-        event.preventDefault();
-        finish(pickerResult);
-        return;
-      }
-      if (!url.startsWith('data:text/html')) event.preventDefault();
-    });
-
-    win.on('close', (event) => {
-      if (settled) return;
-      event.preventDefault();
-      finish({ action: 'cancel' });
-    });
-    win.on('closed', () => {
-      if (settled) return;
-      settled = true;
-      resolveSelection(null);
-    });
-    win.once('ready-to-show', () => {
-      if (!win.isDestroyed()) win.show();
-    });
-
-    void win
-      .loadURL(
-        `data:text/html;charset=utf-8,${encodeURIComponent(
-          buildDesktopUninstallProjectPickerHtml(candidates),
-        )}`,
-      )
-      .catch((err) => {
-        getLogger('lifecycle').warn({ err }, 'desktop uninstall project picker failed to load');
-        finish({ action: 'cancel' });
-      });
   });
 }
 
@@ -2834,55 +2921,33 @@ async function showDesktopUninstallFeedbackWindow(): Promise<UninstallFeedbackAn
   const height = Math.max(520, Math.min(640, workArea.height - 80));
 
   return new Promise((resolveAnswers) => {
-    const win = createDesktopUninstallUtilityWindow({
-      parent,
+    let settled = false;
+    const finish = (answers: UninstallFeedbackAnswers, win?: BrowserWindow) => {
+      if (settled) return;
+      settled = true;
+      resolveAnswers(answers);
+      if (win !== undefined && !win.isDestroyed()) win.destroy();
+    };
+
+    void openDesktopUninstallRendererWindow({
+      screen: { kind: 'survey' },
       width,
       height,
       minWidth: 480,
       minHeight: 420,
       title: 'Before you go',
-    });
-
-    let settled = false;
-    const finish = (answers: UninstallFeedbackAnswers) => {
-      if (settled) return;
-      settled = true;
-      resolveAnswers(answers);
-      if (!win.isDestroyed()) win.destroy();
-    };
-
-    win.webContents.on('will-navigate', (event, url) => {
-      const answers = parseDesktopUninstallFeedbackUrl(url);
-      if (answers !== null) {
-        event.preventDefault();
-        finish(answers);
-        return;
-      }
-      if (!url.startsWith('data:text/html')) event.preventDefault();
-    });
-
-    win.on('close', (event) => {
-      if (settled) return;
-      event.preventDefault();
+      onIntent: (intent, win) => {
+        if (intent.kind === 'survey-send') {
+          finish(normalizeDesktopUninstallFeedbackAnswers(intent), win);
+        } else if (intent.kind === 'survey-skip') {
+          finish({}, win);
+        }
+      },
+      onClosed: () => finish({}),
+    }).catch((err) => {
+      getLogger('lifecycle').warn({ err }, 'desktop uninstall feedback window failed to load');
       finish({});
     });
-    win.on('closed', () => {
-      if (settled) return;
-      settled = true;
-      resolveAnswers({});
-    });
-    win.once('ready-to-show', () => {
-      if (!win.isDestroyed()) win.show();
-    });
-
-    void win
-      .loadURL(
-        `data:text/html;charset=utf-8,${encodeURIComponent(buildDesktopUninstallFeedbackHtml())}`,
-      )
-      .catch((err) => {
-        getLogger('lifecycle').warn({ err }, 'desktop uninstall feedback window failed to load');
-        finish({});
-      });
   });
 }
 
@@ -2905,41 +2970,31 @@ async function collectDesktopUninstallFeedback(): Promise<void> {
   }
 }
 
+/**
+ * Run `work` behind the progress screen, which stays up — and refuses to be
+ * closed — until the work settles.
+ */
 async function withDesktopUninstallProgress<T>(work: () => Promise<T>): Promise<T> {
-  const parent = BrowserWindow.getFocusedWindow();
-  const win = createDesktopUninstallUtilityWindow({
-    parent,
+  // Cosmetic: a window that fails to load must neither skip the cleanup nor
+  // leak, so a failure is logged and the work runs without it.
+  const win = await openDesktopUninstallRendererWindow({
+    screen: { kind: 'progress' },
     width: 420,
     height: 220,
-    title: 'Uninstalling OpenKnowledge',
-    modal: parent != null,
     resizable: false,
-  });
-  win.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith('data:text/html')) event.preventDefault();
-  });
-  const preventClose = (event: { preventDefault(): void }) => event.preventDefault();
-  win.on('close', preventClose);
-  win.once('ready-to-show', () => {
-    if (!win.isDestroyed()) win.show();
+    preventClose: true,
+    title: 'Uninstalling OpenKnowledge',
+    // Nothing on this screen can be pressed, so anything arriving here is noise.
+    onIntent: () => undefined,
+  }).catch((err) => {
+    getLogger('lifecycle').warn({ err }, 'desktop uninstall progress window failed to load');
+    return null;
   });
 
   try {
-    // The progress window is cosmetic — a failed load must neither skip the
-    // cleanup nor (being outside the finally) leak the close-prevented window.
-    try {
-      await win.loadURL(
-        `data:text/html;charset=utf-8,${encodeURIComponent(buildDesktopUninstallProgressHtml())}`,
-      );
-    } catch (err) {
-      getLogger('lifecycle').warn({ err }, 'desktop uninstall progress window failed to load');
-    }
     return await work();
   } finally {
-    if (!win.isDestroyed()) {
-      win.removeListener('close', preventClose);
-      win.destroy();
-    }
+    if (win !== null && !win.isDestroyed()) win.destroy();
   }
 }
 
@@ -3038,6 +3093,12 @@ async function startDesktopSelfUninstallFlow(): Promise<void> {
  *
  * `OK_UNINSTALL_UI_PREVIEW=success` walks the happy path (feedback → completion);
  * `=failure` walks the failure notices. See `runDesktopUninstallUiPreview`.
+ * `=renderer`, `=picker`, `=survey` and `=notice` skip the flow entirely and
+ * open one screen — a notice, the project picker, the churn survey and both
+ * notice shapes respectively — so a screen's fidelity and its IPC round trip
+ * can be asserted on their own. Each settles by destroying its window, the same
+ * shape the real screens use, which is the observable a smoke needs to prove an
+ * intent actually reached main.
  */
 function maybeRunDesktopUninstallUiPreview(): void {
   const mode = resolveDesktopUninstallUiPreviewMode(
@@ -3045,9 +3106,145 @@ function maybeRunDesktopUninstallUiPreview(): void {
     app.isPackaged,
   );
   if (mode === null) return;
-  void runDesktopUninstallUiPreview(mode).catch((err) => {
+  void runDesktopUninstallPreviewMode(mode).catch((err) => {
     getLogger('lifecycle').error({ err }, 'desktop uninstall UI preview failed');
   });
+}
+
+async function runDesktopUninstallPreviewMode(mode: DesktopUninstallUiPreviewMode): Promise<void> {
+  if (mode === 'renderer') {
+    await openDesktopUninstallRendererWindow({
+      screen: { kind: 'notice', notice: desktopUninstallConfirmNotice() },
+      onIntent: (intent, win) => {
+        getLogger('lifecycle').info(
+          { intent: intent.kind },
+          'uninstall UI preview: renderer intent received',
+        );
+        if (!win.isDestroyed()) win.destroy();
+      },
+    });
+    return;
+  }
+  if (mode === 'picker') {
+    const selection = await showDesktopUninstallProjectPicker(
+      desktopUninstallPreviewCandidates(osHomedir()),
+    );
+    getLogger('lifecycle').info(
+      { cancelled: selection === null, selected: selection?.length ?? 0 },
+      'uninstall UI preview: project picker resolved',
+    );
+    // Echo what main resolved back onto the screen, so walking the picker shows
+    // which projects the flow would actually have acted on rather than leaving
+    // that to the log.
+    await openDesktopUninstallRendererWindow({
+      screen: {
+        kind: 'notice',
+        notice: {
+          title: describeDesktopUninstallPreviewSelection(selection),
+          paragraphs: selection?.map((candidate) => candidate.path) ?? [],
+          confirmLabel: 'Close',
+        },
+      },
+      onIntent: (_intent, win) => {
+        if (!win.isDestroyed()) win.destroy();
+      },
+    });
+    return;
+  }
+  if (mode === 'notice') {
+    // The two shapes back to back, so one walkthrough shows both close
+    // semantics: leaving the question unanswered must cancel, while leaving the
+    // recap unanswered must still confirm.
+    const confirmed = await showDesktopUninstallNotice(desktopUninstallConfirmNotice(), {
+      height: 280,
+    });
+    let reveals = 0;
+    const acknowledged = await showDesktopUninstallNotice(
+      desktopUninstallCompletionNotice({ projectCount: 2 }),
+      // Counted rather than revealed: a preview must not open Finder.
+      { height: 440, onRevealLog: () => (reveals += 1) },
+    );
+    getLogger('lifecycle').info(
+      { confirmed, acknowledged, reveals },
+      'uninstall UI preview: notices resolved',
+    );
+    await openDesktopUninstallRendererWindow({
+      screen: {
+        kind: 'notice',
+        notice: {
+          title: 'Notice results',
+          paragraphs: [
+            `confirm=${confirmed ? 'confirmed' : 'cancelled'}`,
+            `completion=${acknowledged ? 'confirmed' : 'cancelled'}`,
+            `revealLog=${reveals}`,
+          ],
+          confirmLabel: 'Close',
+        },
+      },
+      onIntent: (_intent, win) => {
+        if (!win.isDestroyed()) win.destroy();
+      },
+    });
+    return;
+  }
+  if (mode === 'survey') {
+    const answers = await showDesktopUninstallFeedbackWindow();
+    getLogger('lifecycle').info(
+      { answered: hasUninstallFeedbackContent(answers) },
+      'uninstall UI preview: churn survey resolved',
+    );
+    // Nothing is POSTed here — the answers are echoed onto the screen so
+    // walking the survey shows exactly what the flow would have filed.
+    await openDesktopUninstallRendererWindow({
+      screen: {
+        kind: 'notice',
+        notice: {
+          title: describeDesktopUninstallPreviewAnswers(answers),
+          paragraphs: [],
+          confirmLabel: 'Close',
+        },
+      },
+      onIntent: (_intent, win) => {
+        if (!win.isDestroyed()) win.destroy();
+      },
+    });
+    return;
+  }
+  await runDesktopUninstallUiPreview(mode);
+}
+
+function describeDesktopUninstallPreviewSelection(
+  selection: readonly DesktopUninstallProjectCandidate[] | null,
+): string {
+  if (selection === null) return 'Picker cancelled';
+  if (selection.length === 0) return 'Picker confirmed with no projects';
+  return `Picker confirmed: ${selection.map((candidate) => candidate.path).join(', ')}`;
+}
+
+/**
+ * The whole answer set on one line. Names each field so the preview proves
+ * which one an answer landed in, not just that something came through.
+ */
+function describeDesktopUninstallPreviewAnswers(answers: UninstallFeedbackAnswers): string {
+  if (!hasUninstallFeedbackContent(answers)) return 'Survey continued unanswered';
+  return [
+    'Survey answered',
+    `reason=${answers.reason ?? '(none)'}`,
+    `note=${answers.note ?? '(none)'}`,
+    `email=${answers.email ?? '(none)'}`,
+  ].join(' | ');
+}
+
+/**
+ * Stand-in projects for the dev-only previews. These paths are never touched —
+ * every preview mode stubs out or stops short of the cleanup step.
+ */
+function desktopUninstallPreviewCandidates(home: string): DesktopUninstallProjectCandidate[] {
+  return [
+    { path: `${home}/Notes`, open: true, recent: true, running: true },
+    { path: `${home}/Work/Team Handbook`, open: false, recent: true, running: false },
+    { path: `${home}/Personal/Journal`, open: false, recent: true, running: false },
+  ];
 }
 
 /**
@@ -3075,7 +3272,7 @@ async function collectDesktopUninstallFeedbackPreview(): Promise<void> {
   );
 }
 
-async function runDesktopUninstallUiPreview(mode: DesktopUninstallUiPreviewMode): Promise<void> {
+async function runDesktopUninstallUiPreview(mode: DesktopUninstallFlowPreviewMode): Promise<void> {
   const log = getLogger('lifecycle');
   log.warn(
     { mode },
@@ -3083,13 +3280,7 @@ async function runDesktopUninstallUiPreview(mode: DesktopUninstallUiPreviewMode)
   );
 
   const home = osHomedir();
-  // Illustrative candidates so the picker has rows. These paths are never
-  // touched — the cleanup step below is stubbed out.
-  const candidates: DesktopUninstallProjectCandidate[] = [
-    { path: `${home}/Notes`, open: true, recent: true, running: true },
-    { path: `${home}/Work/Team Handbook`, open: false, recent: true, running: false },
-    { path: `${home}/Personal/Journal`, open: false, recent: true, running: false },
-  ];
+  const candidates = desktopUninstallPreviewCandidates(home);
 
   const confirmation = await confirmDesktopUninstall({
     candidates,
@@ -3723,6 +3914,14 @@ function registerIpcHandlers() {
     setSpellCheckEnabledAppWide(!appState.spellCheckEnabled);
     return appState.spellCheckEnabled;
   });
+
+  // Self-uninstall renderer. The registry answers only senders it registered
+  // as live uninstall screens, so an editor window that invokes this channel
+  // gets `refused` and drives nothing. `event.sender.id` is the identity —
+  // it is observed by main, not supplied by the payload.
+  handle('ok:uninstall:dispatch', (event, request) =>
+    uninstallScreens.dispatch(event.sender.id, request),
+  );
 
   // Per-session membership set for `ok:fs:remove-git-folder`. Populated
   // by `ok:fs:find-enclosing-git-root` returns; read by the destructive

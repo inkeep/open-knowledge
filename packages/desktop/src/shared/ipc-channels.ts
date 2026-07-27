@@ -30,7 +30,7 @@
  * existing channels is preferred over net-new hand-rolled channels until
  * that migration lands.
  *
- * Count is 86 (ratchet cap 86). The 74→75 bump reconciled a merge collision:
+ * Count is 89 (ratchet cap 89). The 74→75 bump reconciled a merge collision:
  * the worktree selector (`ok:worktree:dispatch`) and the terminal-controls PR
  * (`ok:terminal:cli-installed-map`) each landed in the base tree's single free
  * slot concurrently. The 75→76 bump then unioned in the desktop
@@ -60,7 +60,11 @@
  * (`ok:terminal:set-dock-state`). The 87→88 bump reconciled the Windows/Linux
  * desktop port: the win/linux renderer menubar (`ok:menu:dispatch`, a
  * discriminated fold per the sharing-dispatch precedent — the custom-drawn menu
- * bar's whole surface in one slot). Full rationale in the ratchet test header.
+ * bar's whole surface in one slot). The 88→89 bump added the React self-uninstall
+ * window (`ok:uninstall:dispatch`), the last renderer→main surface that still
+ * rode a private URL scheme through `will-navigate`; folding all four screens
+ * plus the screen pull into one slot keeps the whole migration at one channel.
+ * Full rationale in the ratchet test header.
  */
 
 import type {
@@ -76,6 +80,8 @@ import type {
   OkFolderState,
   ShareTargetStatusResponse,
   TerminalCli,
+  UninstallDispatchRequest,
+  UninstallDispatchResult,
   WorktreeCreateRequest,
   WorktreeCreateResult,
   WorktreeListResult,
@@ -1551,6 +1557,23 @@ export interface RequestChannels {
   'ok:menu:dispatch': {
     args: [request: MenuDispatchRequest];
     result: MenuRendererSnapshot | undefined;
+  };
+
+  /**
+   * The whole self-uninstall renderer surface in one discriminated channel
+   * (the `ok:sharing:dispatch` precedent): `{kind:'ready'}` pulls the screen
+   * main opened this window for, every other kind reports a user action.
+   *
+   * Serviced by `main/uninstall-ipc.ts`, which refuses any sender that is not
+   * a live uninstall window. Intents are path-free by construction — the
+   * picker answers with indexes into the list main sent — so deletion
+   * authorization, target derivation and the `/Applications` + realpath guards
+   * stay wholly in main. Contract types live in core so the app package's
+   * uninstall entry compiles against the same declaration.
+   */
+  'ok:uninstall:dispatch': {
+    args: [request: UninstallDispatchRequest];
+    result: UninstallDispatchResult;
   };
 
   /**

@@ -2,7 +2,7 @@
 
 Custom lint rules for this workspace, registered in [`biome.jsonc`](../biome.jsonc) at the top-level `plugins` array (workspace-wide) OR a scoped `overrides[].plugins` entry (file-specific — used when the rule's invariant only applies to a known subset of files). Each `.grit` file is a single GritQL pattern (or `or { ... }` of patterns) emitting diagnostics via `register_diagnostic()`.
 
-Plugins surface as lint errors during `biome check` (i.e. `bun run lint` and `bun run check`) and as inline editor squiggles via the Biome LSP.
+Plugins surface as lint errors during `biome check` (i.e. `pnpm lint` and `pnpm check`) and as inline editor squiggles via the Biome LSP.
 
 ## Convention
 
@@ -38,7 +38,7 @@ Test: [`packages/desktop/tests/integration/no-loosely-typed-webcontents-ipc.test
 
 ### `no-raw-html-interactive-element.grit`
 
-UI primitives discipline. Forbids raw JSX `<button>`, `<input>`, `<textarea>`, `<select>` inside production `.tsx` under `packages/{app,desktop,plugin}/src/**`. Consumers must use the shadcn primitives (`Button`, `Input`, `Textarea`, `Select`) from `@/components/ui/*`; if the primitive isn't installed yet, add it via `bunx --bun shadcn@latest add <name>` first. The rule catches the PR #937 failure mode: contributors (including Codex / Claude Code / human reviewers) introducing raw `<button>` JSX while a shadcn `<Button>` from `@/components/ui/button` was already imported in the same file.
+UI primitives discipline. Forbids raw JSX `<button>`, `<input>`, `<textarea>`, `<select>` inside production `.tsx` under `packages/{app,desktop,plugin}/src/**`. Consumers must use the shadcn primitives (`Button`, `Input`, `Textarea`, `Select`) from `@/components/ui/*`; if the primitive isn't installed yet, add it via `pnpm dlx shadcn@latest add <name>` first. The rule catches the PR #937 failure mode: contributors (including Codex / Claude Code / human reviewers) introducing raw `<button>` JSX while a shadcn `<Button>` from `@/components/ui/button` was already imported in the same file.
 
 **Scoped via `overrides[].plugins`** to `packages/{app,desktop,plugin}/src/**/*.tsx`. Exemptions encoded as negative `!`-globs in the same `includes[]`:
 
@@ -71,7 +71,7 @@ Test: [`packages/desktop/tests/integration/no-resolved-value-theme-source.test.t
 
 H6 cross-doc DOM bleed contract. `@tiptap/react`'s `PureEditorContent.componentDidMount` runs `element.append(...editor.view.dom.parentNode.childNodes)` — a sibling-vacuum primitive. When `view.dom` shares a parent with another editor's `view.dom` (e.g., V2 cache parked nodes, cross-Activity reconciliation transitions), the vacuum drags foreign content into the active wrapper. The structural fix is to render every `<EditorContent>` via `React.createPortal` into a per-Activity exclusively-owned DOM target, so `view.dom`'s parent only ever contains THIS editor's nodes.
 
-The rule flags every JSX usage of `<EditorContent>` — both self-closing and child-bearing forms — and asks the author to suppress at the canonical portaled site (where the createPortal call lives) with `// biome-ignore lint/plugin/no-unportaled-editor-content: <reason>`. Adding a non-portaled `<EditorContent>` anywhere else in the codebase becomes a lint error, gated at editor-save / `bun run lint` time.
+The rule flags every JSX usage of `<EditorContent>` — both self-closing and child-bearing forms — and asks the author to suppress at the canonical portaled site (where the createPortal call lives) with `// biome-ignore lint/plugin/no-unportaled-editor-content: <reason>`. Adding a non-portaled `<EditorContent>` anywhere else in the codebase becomes a lint error, gated at editor-save / `pnpm lint` time.
 
 Canonical sanctioned shape (TiptapEditor.tsx):
 
@@ -83,6 +83,18 @@ createPortal(
 ```
 
 Plugin: [`biome-plugins/no-unportaled-editor-content.grit`](no-unportaled-editor-content.grit). Fixture: [`biome-plugins/__fixtures__/no-unportaled-editor-content.fixture.tsx`](__fixtures__/no-unportaled-editor-content.fixture.tsx). Test: [`packages/app/tests/integration/no-unportaled-editor-content.test.ts`](../packages/app/tests/integration/no-unportaled-editor-content.test.ts). See [PRECEDENTS.md #44](../PRECEDENTS.md) for the H6 cross-doc DOM bleed contract and [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
+
+### `no-uninstall-forbidden-import.grit`
+
+"Connects to nothing" first-hop feedback. The self-uninstall window's survey and completion screens render after `ok uninstall --yes` has stopped the local Hocuspocus server and removed `~/.ok`, so the uninstall entry must never reach the editor, the CRDT stack, the provider pool, or the server bootstrap — and must eager-load (no dynamic `import()`) so those screens paint from memory once teardown is under way.
+
+Scoped via `overrides[].plugins` to `packages/app/src/uninstall/**` (test files exempt — a dom test legitimately does `await import('./main')` to prove the entry paints). Two diagnostics:
+- A static import (`import … from`, `import type … from`, `import * as … from`, or side-effect `import`) whose source is an editor / CRDT / provider-pool / Hocuspocus-server specifier (`@/editor/*`, `@inkeep/open-knowledge-server`, `@hocuspocus/*`, `yjs`, `y-protocols`, `y-prosemirror`, `y-codemirror.next`, `y-indexeddb`, `@tiptap/y-tiptap`, `@tiptap/extension-collaboration*`). `@inkeep/open-knowledge-core` (shared types + constants) is deliberately allowed.
+- Any dynamic `import()`.
+
+This rule is **shallow, first-hop feedback only**. The authoritative gate is the transitive-module-graph test at [`packages/desktop/tests/unit/uninstall-module-graph.test.ts`](../packages/desktop/tests/unit/uninstall-module-graph.test.ts), which builds the entry alone and checks its whole loaded-module set — so it also catches a forbidden module reached indirectly through a shared `@/lib` / `@/components/ui` module, and re-export (`export … from`) edges GritQL cannot express.
+
+Plugin: [`biome-plugins/no-uninstall-forbidden-import.grit`](no-uninstall-forbidden-import.grit). Fixture: [`biome-plugins/__fixtures__/no-uninstall-forbidden-import.fixture.tsx`](__fixtures__/no-uninstall-forbidden-import.fixture.tsx). Test: [`packages/desktop/tests/integration/no-uninstall-forbidden-import.test.ts`](../packages/desktop/tests/integration/no-uninstall-forbidden-import.test.ts). See [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
 
 ### `path-conditional-map-driven-origin.grit`
 
@@ -247,6 +259,7 @@ Current production suppressions:
 - `no-resolved-value-theme-source`: 0 sites
 - `no-roundtrip-identity-oracle`: 0 sites
 - `no-inline-tolerance-class`: 0 sites
+- `no-uninstall-forbidden-import`: 0 sites
 
 ## Adding a new plugin
 
@@ -291,14 +304,14 @@ Place at `biome-plugins/__fixtures__/<rule-name>.fixture.tsx`. **Pair positive c
 - 1+ positive case per pattern branch the rule has
 - 2-4 negative cases that resemble positive ones but should NOT fire (adjacent methods on the same objects, type declarations, unrelated functions with the same name)
 
-The main `bun run lint` does NOT reach the `biome-plugins/` directory (lint paths are `packages docs *.json *.jsonc *.ts`), so the deliberately-bad fixture content is invisible to the main lint.
+The main `pnpm lint` does NOT reach the `biome-plugins/` directory (lint paths are `packages docs *.json *.jsonc *.ts`), so the deliberately-bad fixture content is invisible to the main lint.
 
 ### 4. Author the fixture-file test
 
 Place at `packages/<host>/tests/<scope>/<rule-name>.test.ts` where `<host>` matches the package whose code the rule mainly targets. For `<scope>`: use `lint-plugins/` when `<host>` is `app` (`packages/app/tests/integration/` is in `md-audit`'s `DEFAULT_TEST_GLOBS` and requires `@covers-surface` / `@covers-construct` JSDoc tags scoped to markdown editor surfaces that don't apply to lint-plugin tests), and use `integration/` for all other hosts (`desktop`, `plugin`). Template:
 
 ```ts
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 
@@ -308,7 +321,7 @@ const FIXTURE_REL = 'biome-plugins/__fixtures__/<rule-name>.fixture.tsx';
 
 describe('<rule-name> GritQL plugin', () => {
   test('fires on exactly N positive cases (and on no negative case)', () => {
-    const result = spawnSync('bunx', ['biome', 'check', FIXTURE_REL], {
+    const result = spawnSync('pnpm', ['exec', 'biome', 'check', FIXTURE_REL], {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
     });
@@ -345,10 +358,10 @@ The "plugin is registered" test catches the failure mode where a `.grit` file is
 cd public/open-knowledge
 
 # 1. Plugin loads + lint stays clean (after suppression comments at legitimate sites):
-bun run lint
+pnpm lint
 
 # 2. Fixture test fires the diagnostic on positive cases:
-bun test packages/<host>/tests/integration/<rule-name>.test.ts
+pnpm exec vitest run packages/<host>/tests/integration/<rule-name>.test.ts
 
 # 3. Mutation check (manual, one-time during dev):
 #    Temporarily break the .grit pattern; re-run the test; confirm it FAILS;

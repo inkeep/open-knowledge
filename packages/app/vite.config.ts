@@ -6,6 +6,7 @@ import { chromeTokensVitePlugin } from './src/build/chrome-tokens-vite-plugin';
 import { rejectionLoopGuardPlugin } from './src/build/rejection-loop-guard-plugin';
 import { hocuspocusPlugin } from './src/server/hocuspocus-plugin';
 import { RENDERER_DEDUPE } from './vite.dedupe';
+import { RENDERER_HTML_ENTRIES, rendererHtmlInput } from './vite.entries';
 import { RENDERER_BABEL_OPTIONS } from './vite.react-babel';
 
 // Inject the app's own version onto import.meta.env.VITE_APP_VERSION for the
@@ -35,12 +36,12 @@ export default defineConfig({
   // Playwright fixture overrides via `OK_TEST_VITE_CACHE_DIR`.
   cacheDir: viteCacheDir,
   optimizeDeps: {
-    // Scope the dependency scanner to the real app entry. Vite's default
+    // Scope the dependency scanner to the real app entries. Vite's default
     // entries glob (every `**/*.html`) also picks up
     // `scripts/audit-strings/viewer-template.html`, which wastes scan work
     // and appeared as a scan entry in the CI dep-scan failures ("Failed to
     // run dependency scan … The server is being restarted or closed").
-    entries: ['index.html'],
+    entries: Object.values(RENDERER_HTML_ENTRIES),
   },
   // Default Vite envPrefix is `VITE_` only — keep it that way. The cold-mount
   // PROD-build override lives at `VITE_OK_PERF_INSTRUMENT` (alongside the
@@ -93,6 +94,12 @@ export default defineConfig({
     // catches a future regression but doesn't fire on every clean build.
     chunkSizeWarningLimit: 1500,
     rolldownOptions: {
+      // Two HTML entries: the editor shell and the self-uninstall window.
+      // Absolute paths (not root-relative strings) because rollup resolves
+      // input ids against CWD, not Vite's `root`. Built from the shared map
+      // so this build and the Electron renderer build cannot disagree about
+      // which entries exist — see `vite.entries.ts`.
+      input: rendererHtmlInput(import.meta.dirname),
       // Filter known false-positive warnings. Re-evaluate when bumping
       // rolldown / vite. Anything not matched falls through to default.
       onLog(level, log, defaultHandler) {

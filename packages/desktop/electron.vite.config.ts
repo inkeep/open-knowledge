@@ -5,6 +5,7 @@ import { defineConfig } from 'electron-vite';
 import { injectAppVersionEnv } from '../app/src/build/app-version';
 import { chromeTokensVitePlugin } from '../app/src/build/chrome-tokens-vite-plugin';
 import { RENDERER_DEDUPE } from '../app/vite.dedupe';
+import { rendererHtmlInput } from '../app/vite.entries';
 import { RENDERER_BABEL_OPTIONS } from '../app/vite.react-babel';
 
 // Inject the app's version onto import.meta.env.VITE_APP_VERSION for the
@@ -38,7 +39,7 @@ const appRoot = resolve(__dirname, '../app');
 // runs from `packages/desktop`, so without this the renderer Babel pass fails
 // with "Lingui was unable to find a config!". Point it at the app's config —
 // the renderer source IS `packages/app`. (`packages/app`'s own vite.config.ts
-// needs no equivalent: `bun run dev`/`build` already run with that cwd.)
+// needs no equivalent: `pnpm dev`/`build` already run with that cwd.)
 process.env.LINGUI_CONFIG ??= resolve(appRoot, 'lingui.config.ts');
 
 export default defineConfig({
@@ -85,6 +86,16 @@ export default defineConfig({
     build: {
       sourcemap: 'hidden',
       rollupOptions: {
+        // ONE preload entry, deliberately. A sandboxed preload's `require` is
+        // a polyfill over an allowlist of module NAMES (`electron`, a few node
+        // builtins) and cannot resolve a relative path, so every preload must
+        // be a single self-contained file. Rolldown splits any module two
+        // entries share into `chunks/` and offers no per-entry inlining knob
+        // (`codeSplitting: false` is rejected outright for multi-input builds),
+        // so a second entry here silently kills BOTH preloads: `window.okDesktop`
+        // goes undefined and the editor falls into web mode. The uninstall
+        // window's narrow bridge therefore ships inside this entry and is
+        // selected at exposure time — see `src/preload/uninstall.ts`.
         input: { index: resolve(__dirname, 'src/preload/index.ts') },
         // CommonJS, not ESM. Electron's sandboxed preload (webPreferences.sandbox: true,
         // our locked default) only supports CommonJS — ESM preloads require
@@ -132,7 +143,12 @@ export default defineConfig({
       outDir: resolve(__dirname, 'out/renderer'),
       sourcemap: 'hidden',
       rollupOptions: {
-        input: resolve(appRoot, 'index.html'),
+        // Keyed multi-entry: the editor shell plus the self-uninstall window.
+        // Shared with `packages/app/vite.config.ts` via `vite.entries.ts` —
+        // the app build is what a PACKAGED window loads (its `dist/` ships as
+        // `<Resources>/app/`), this build is the unpackaged-dev fallback, so
+        // an entry declared in only one of them 404s in the shipped app.
+        input: rendererHtmlInput(appRoot),
       },
     },
     server: {

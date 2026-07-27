@@ -154,6 +154,29 @@
       "plugins": ["./biome-plugins/playwright-prefer-to-have-count.grit"]
     },
     {
+      // "Connects to nothing" first-hop feedback. The self-uninstall window's
+      // survey/completion screens render after `ok uninstall --yes` stops the
+      // local Hocuspocus server and removes ~/.ok, so the uninstall entry must
+      // never import the editor / CRDT / provider-pool / Hocuspocus-server
+      // surface, and must eager-load (no dynamic import). This is SHALLOW
+      // first-hop feedback; the authoritative gate is the transitive-graph test
+      // at packages/desktop/tests/unit/uninstall-module-graph.test.ts, which
+      // also catches indirect and re-export pull-ins GritQL can't express.
+      // @inkeep/open-knowledge-core (shared types + constants) is allowed.
+      // Test files are excluded: the invariant is about the SHIPPED entry graph,
+      // and a dom test legitimately does `await import('./main')` to prove the
+      // entry paints (a dynamic import the eager-load rule would otherwise flag).
+      "includes": [
+        "packages/app/src/uninstall/**/*.ts",
+        "packages/app/src/uninstall/**/*.tsx",
+        "!packages/app/src/uninstall/**/*.test.ts",
+        "!packages/app/src/uninstall/**/*.test.tsx",
+        "!packages/app/src/uninstall/**/*.dom.test.tsx",
+        "biome-plugins/__fixtures__/no-uninstall-forbidden-import.fixture.tsx"
+      ],
+      "plugins": ["./biome-plugins/no-uninstall-forbidden-import.grit"]
+    },
+    {
       // UI primitives discipline (see PR #937 retrospective). Scoped to
       // packages/{app,desktop,plugin}/src/**/*.tsx — production UI surfaces.
       // Exemptions:

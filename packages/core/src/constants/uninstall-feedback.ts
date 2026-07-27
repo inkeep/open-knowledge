@@ -21,6 +21,15 @@ export const UNINSTALL_FEEDBACK_REASONS = Object.freeze([
   { value: 'other', label: 'Something else' },
 ] as const satisfies readonly { readonly value: string; readonly label: string }[]);
 
+/**
+ * The intake's own `message` / `email` ceilings; overrunning either 400s the
+ * whole ticket. Shared so the surface that lets a user type (the uninstall
+ * window's `maxlength`) and the surface that clamps what they typed (the main
+ * process, before it posts) cannot disagree about where the limit is.
+ */
+export const UNINSTALL_FEEDBACK_NOTE_MAX_LEN = 10_000;
+export const UNINSTALL_FEEDBACK_EMAIL_MAX_LEN = 320;
+
 /** A single offered reason, as rendered by the desktop window and CLI prompt. */
 type UninstallFeedbackReasonOption = (typeof UNINSTALL_FEEDBACK_REASONS)[number];
 
@@ -33,8 +42,8 @@ const UNINSTALL_FEEDBACK_REASON_VALUES: ReadonlySet<unknown> = new Set(
 
 /**
  * Narrow an inbound slug to the taxonomy. The desktop window hands its answers
- * back to the main process through a navigation URL, so the slug arrives as an
- * arbitrary string and has to be re-checked before it can be filed.
+ * back to the main process over IPC, so the slug arrives as an arbitrary string
+ * and has to be re-checked before it can be filed.
  */
 export function isUninstallFeedbackReason(value: unknown): value is UninstallFeedbackReason {
   return UNINSTALL_FEEDBACK_REASON_VALUES.has(value);
