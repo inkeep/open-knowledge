@@ -30,6 +30,7 @@ import {
   TYPE_TO_TONE,
   toneForType,
 } from './clipboard-walker-fallback-palette.ts';
+import { nonPortableDescriptorNames } from './non-portable-descriptors.test-helper.ts';
 
 describe('PALETTE_DESCRIPTOR_NAMES — registry coverage', () => {
   test('covers every canonical descriptor', () => {
@@ -60,7 +61,36 @@ describe('PALETTE_DESCRIPTOR_NAMES — registry coverage', () => {
     // Hard count anchor. If a descriptor is added or removed, this
     // failing test becomes the prompt to also update the palette switch
     // and PALETTE_DESCRIPTOR_NAMES together.
-    expect(PALETTE_DESCRIPTOR_NAMES.length).toBe(10);
+    expect(PALETTE_DESCRIPTOR_NAMES.length).toBe(12);
+  });
+});
+
+describe('PALETTE_DESCRIPTOR_NAMES — registry-derived non-portable coverage', () => {
+  // The non-portable-render descriptors are the ones the source fallback
+  // (`sourceFallbackFormFor`) canonicalizes: their live React render is
+  // KaTeX / mermaid SVG, which pastes as garbage cross-app. The palette
+  // path must cover every descriptor whose RENDER identity is one of those
+  // canonicals, not just the canonically-named ones — a compat descriptor
+  // authored as `$$…$$` (`DollarMath`) or ` ```math ` (`MathFence`) renders
+  // as `<Math>` and so must resolve to a palette entry too. Deriving the
+  // expectation from the registry (rather than a frozen literal list) is
+  // what makes a newly-added non-portable compat descriptor fail loudly
+  // instead of silently dropping out of the Activity-hidden payload.
+  // Set + predicate are shared with the walker-path guard via
+  // non-portable-descriptors.test-helper.ts.
+
+  test('every descriptor that renders as a non-portable canonical has a palette name', () => {
+    const descriptorNames = nonPortableDescriptorNames();
+
+    // Sanity: the registry must actually carry the two math compat rows,
+    // otherwise this test would vacuously pass.
+    expect(descriptorNames).toEqual(
+      expect.arrayContaining(['Math', 'MermaidFence', 'DollarMath', 'MathFence']),
+    );
+
+    for (const name of descriptorNames) {
+      expect([...PALETTE_DESCRIPTOR_NAMES], name).toContain(name);
+    }
   });
 });
 

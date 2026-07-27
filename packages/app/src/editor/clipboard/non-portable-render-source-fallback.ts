@@ -74,7 +74,13 @@ export function sourceFallbackFormFor(node: PmNode): SourceFallbackForm | null {
   const props = (node.attrs.props as Record<string, unknown> | undefined) ?? {};
 
   switch (componentName) {
-    case 'Math': {
+    // `DollarMath` (`$$…$$`-authored) and `MathFence` (```math-authored)
+    // are compat descriptors that render as `<Math>` (KaTeX) but keep
+    // their authored componentName; they share the `formula` prop, so
+    // all three block-math forms emit the same portable dollar source.
+    case 'Math':
+    case 'DollarMath':
+    case 'MathFence': {
       // `$$\nformula\n$$` newlines are load-bearing: a single-line
       // `$$x$$` mid-paragraph parses as inline math, breaking the
       // block-vs-inline distinction we want to preserve through the

@@ -79,6 +79,11 @@ export const PALETTE_DESCRIPTOR_NAMES = [
   // same `<pre class="mdx-component">` shape regardless of whether the
   // slice was Activity-mounted or not.
   'Math',
+  // Compat block-math descriptors that render as `<Math>`.
+  'DollarMath',
+  'MathFence',
+  // MermaidFence: separate non-portable canonical (mermaid SVG), not a
+  // Math compat.
   'MermaidFence',
 ] as const;
 
@@ -293,7 +298,15 @@ export function paletteFor(node: PmNode): Element | null {
       return videoPalette(props);
     case 'audio':
       return audioPalette(props);
+    // `DollarMath` / `MathFence` are compat descriptors that render as
+    // `<Math>` but keep their authored componentName; route them through
+    // the same source-fallback so the Activity-hidden path doesn't drop
+    // block math authored as `$$…$$` or ```math. `MermaidFence` is a
+    // separate non-portable canonical (mermaid SVG) sharing the same
+    // source-fallback path.
     case 'Math':
+    case 'DollarMath':
+    case 'MathFence':
     case 'MermaidFence':
       return nonPortableRenderSourceFallback(node, document);
     default:

@@ -7,17 +7,20 @@
  * without a DOM via `sourceFallbackFormFor` (the inner pure classifier).
  *
  * Coverage tiers:
- *   1. Block jsxComponents (Math, Mermaid) → expected markdown-source
- *      bytes
+ *   1. Block jsxComponents (Math, DollarMath, MathFence, MermaidFence)
+ *      → expected markdown-source bytes
  *   2. Preview-active codeBlock → fenced-source bytes; non-preview → null
  *   3. Falls through (Callout, paragraph, heading, mathInline,
  *      unknown jsxComponent) → null
  *   4. Edge cases — empty / missing / non-string props
+ *   5. Registry-derived completeness — every descriptor rendering as a
+ *      non-portable canonical yields a source form
  */
 
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { describe, expect, test } from 'vitest';
+import { nonPortableDescriptorNames } from './non-portable-descriptors.test-helper.ts';
 import { sourceFallbackFormFor } from './non-portable-render-source-fallback.ts';
 
 /**
@@ -134,6 +137,92 @@ describe('sourceFallbackFormFor — MermaidFence jsxComponent', () => {
       props: { chart: { type: 'flowchart' } },
     });
     expect(sourceFallbackFormFor(node)).toEqual({ source: '```mermaid\n\n```' });
+  });
+});
+
+describe('sourceFallbackFormFor — block-math compat authored forms (DollarMath / MathFence)', () => {
+  // `$$…$$`-authored block math parses to a `DollarMath` jsxComponent and
+  // ` ```math ` fences parse to `MathFence`; both `rendersAs: 'Math'` so
+  // they paste as the same non-portable KaTeX render as canonical `Math`.
+  // The source fallback must fire for all three authored forms — every
+  // block-math node that renders as KaTeX owes the clipboard the same
+  // readable `$$\nformula\n$$` bytes regardless of how it was authored.
+  test('DollarMath emits the same `$$\\nformula\\n$$` source as canonical Math', () => {
+    const dollar = stubPmNode({
+      typeName: 'jsxComponent',
+      componentName: 'DollarMath',
+      props: { formula: 'E = mc^2' },
+    });
+    const canonical = stubPmNode({
+      typeName: 'jsxComponent',
+      componentName: 'Math',
+      props: { formula: 'E = mc^2' },
+    });
+    expect(sourceFallbackFormFor(dollar)).toEqual({ source: '$$\nE = mc^2\n$$' });
+    expect(sourceFallbackFormFor(dollar)).toEqual(sourceFallbackFormFor(canonical));
+  });
+
+  test('MathFence emits the same `$$\\nformula\\n$$` source as canonical Math', () => {
+    const fence = stubPmNode({
+      typeName: 'jsxComponent',
+      componentName: 'MathFence',
+      props: { formula: 'a^2 + b^2 = c^2' },
+    });
+    const canonical = stubPmNode({
+      typeName: 'jsxComponent',
+      componentName: 'Math',
+      props: { formula: 'a^2 + b^2 = c^2' },
+    });
+    expect(sourceFallbackFormFor(fence)).toEqual({ source: '$$\na^2 + b^2 = c^2\n$$' });
+    expect(sourceFallbackFormFor(fence)).toEqual(sourceFallbackFormFor(canonical));
+  });
+
+  test('block-math compat forms preserve the block-vs-inline newlines', () => {
+    // Same load-bearing newline invariant the canonical Math case pins:
+    // a single-line `$$x$$` re-parses as inline math at the destination.
+    for (const componentName of ['DollarMath', 'MathFence']) {
+      const node = stubPmNode({
+        typeName: 'jsxComponent',
+        componentName,
+        props: { formula: 'x' },
+      });
+      expect(sourceFallbackFormFor(node), componentName).toEqual({ source: '$$\nx\n$$' });
+    }
+  });
+
+  test('missing formula prop on compat forms falls back to empty string', () => {
+    for (const componentName of ['DollarMath', 'MathFence']) {
+      const node = stubPmNode({ typeName: 'jsxComponent', componentName, props: {} });
+      expect(sourceFallbackFormFor(node), componentName).toEqual({ source: '$$\n\n$$' });
+    }
+  });
+});
+
+describe('sourceFallbackFormFor — registry-derived non-portable coverage', () => {
+  // Symmetric guard to the palette's registry-derived coverage test. The
+  // primary walker path (`sourceFallbackFormFor`) must emit a source form
+  // for every descriptor whose RENDER identity is a non-portable canonical
+  // (`Math` / `MermaidFence`), not just the canonically-named ones — a
+  // compat descriptor authored as `$$…$$` (`DollarMath`) or ` ```math `
+  // (`MathFence`) renders as `<Math>` and so owes the same readable source.
+  // Deriving the set from the registry makes a newly-added non-portable
+  // compat descriptor fail loudly here instead of silently falling through
+  // to the KaTeX/SVG live-DOM clone. Set + predicate are shared with the
+  // palette guard via non-portable-descriptors.test-helper.ts.
+
+  test('every descriptor that renders as a non-portable canonical yields a source form', () => {
+    const descriptorNames = nonPortableDescriptorNames();
+
+    // Sanity: the registry must actually carry the two math compat rows,
+    // otherwise this test would vacuously pass.
+    expect(descriptorNames).toEqual(
+      expect.arrayContaining(['Math', 'MermaidFence', 'DollarMath', 'MathFence']),
+    );
+
+    for (const componentName of descriptorNames) {
+      const node = stubPmNode({ typeName: 'jsxComponent', componentName, props: {} });
+      expect(sourceFallbackFormFor(node), componentName).not.toBeNull();
+    }
   });
 });
 
