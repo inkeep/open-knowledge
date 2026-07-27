@@ -47,9 +47,9 @@
  * popover lifecycles (rAF + onCloseAutoFocus) and the floating drag-handle
  * hover-then-click sequence don't replay deterministically off real browser.
  *
- * This file is NOT in the CI `test:e2e` file list
- * (`packages/app/package.json` dispatches a fixed subset for PR-tier runs);
- * generic `bunx playwright test` invocations run it for pre-push coverage.
+ * This file IS in the CI `test:e2e` file list
+ * (`packages/app/package.json` dispatches a fixed subset that includes it),
+ * so it runs on every PR-tier and merge_group validation.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -167,9 +167,17 @@ test('AC25: grip-click on a Callout sets data-selected=true and the halo paints 
   // Halo paint asserted as opacity > 0 rather than === 1 because the halo's
   // CSS transition (`globals.css` `.jsx-component-wrapper::after`) may still
   // be mid-flight when the test polls. The semantic invariant is "halo is
-  // visible," not "transition complete."
-  const opacityStr = await callout.evaluate((el) => window.getComputedStyle(el, '::after').opacity);
-  expect(Number.parseFloat(opacityStr)).toBeGreaterThan(0);
+  // visible," not "transition complete." Polled, not one-shot: the 180ms
+  // opacity transition starts at computed opacity 0 the instant
+  // `data-selected` flips, so a single sample can land on the first
+  // transition frame and read exactly 0.
+  await expect
+    .poll(
+      () =>
+        callout.evaluate((el) => Number.parseFloat(window.getComputedStyle(el, '::after').opacity)),
+      { timeout: 2_000 },
+    )
+    .toBeGreaterThan(0);
 });
 
 // ── non-leaf ancestor still gets data-has-child-selected ──
@@ -324,9 +332,15 @@ test('AC30: NodeSelect → gear → drift → Esc — halo re-paints after FR16 
   // Halo re-paint asserted as opacity > 0 rather than === 1 — the halo's
   // CSS transition may still be mid-flight when the test polls. The
   // semantic invariant is "the halo came back," not "the transition
-  // completed."
-  const opacityStr = await callout.evaluate((el) => window.getComputedStyle(el, '::after').opacity);
-  expect(Number.parseFloat(opacityStr)).toBeGreaterThan(0);
+  // completed." Polled, not one-shot, for the same first-transition-frame
+  // race as the grip-click paint assertion above.
+  await expect
+    .poll(
+      () =>
+        callout.evaluate((el) => Number.parseFloat(window.getComputedStyle(el, '::after').opacity)),
+      { timeout: 2_000 },
+    )
+    .toBeGreaterThan(0);
 });
 
 // ── range that fully covers single wrapper paints SOFT, not FULL ──
