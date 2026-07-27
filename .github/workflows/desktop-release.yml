@@ -549,14 +549,47 @@ jobs:
           # to Slack mrkdwn, and keeps every section under Slack's 3000-char cap.
           # `text` is the notification/a11y fallback Slack recommends alongside
           # blocks. Unit-tested in scripts/build-slack-release-payload.test.mjs.
+          # Take the builder from the same commit as this workflow file, NOT
+          # from the checked-out release tag. On repository_dispatch GitHub
+          # runs the workflow from the default branch while the job checks out
+          # client_payload.ref, and a stable tag points at the promoted beta's
+          # commit, which can predate any script the workflow references.
+          # v0.41.0 hit exactly that: the tag was older than the builder, node
+          # failed with "Cannot find module", and the announcement was lost.
+          # Reading the blob at $GITHUB_SHA keeps tool and workflow in lockstep
+          # for any tag age. Fetched into RUNNER_TEMP so the release checkout
+          # this job just published from stays untouched. Do not swap this for
+          # a second actions/checkout: a `path` input re-homes knip's analysis
+          # of this workflow to that directory, and every binary the file
+          # invokes (electron-builder) then fails to resolve against a
+          # workspace, which fails `pnpm run knip`.
+          BUILDER="${RUNNER_TEMP}/build-slack-release-payload.mjs"
+          if ! git fetch --depth=1 origin "$GITHUB_SHA" >/dev/null 2>&1 ||
+             ! git show "${GITHUB_SHA}:scripts/build-slack-release-payload.mjs" > "$BUILDER" 2>/dev/null; then
+            rm -f "$BUILDER"
+          fi
           payload="$(printf '%s' "$NOTES" \
-            | node scripts/build-slack-release-payload.mjs --version "$VERSION" --url "$RELEASE_URL" \
+            | node "$BUILDER" --version "$VERSION" --url "$RELEASE_URL" \
             || true)"
-          # Keep the announcement best-effort: a builder failure warns rather
-          # than failing a release that is already published.
+          # Never go silent. If the builder is missing or fails, post the
+          # link-only message instead of nothing: losing the notes is a
+          # degradation, losing the whole announcement is an outage, and the
+          # step exiting 0 makes that outage invisible.
           if [[ -z "$payload" ]]; then
-            echo "::warning::Could not build the Slack payload for ${RELEASE_TAG} (release is published; notification is best-effort)."
-            exit 0
+            echo "::warning::Slack notes builder unavailable for ${RELEASE_TAG}; falling back to the link-only announcement."
+            payload="$(jq -n \
+              --arg version "$VERSION" \
+              --arg release_url "$RELEASE_URL" \
+              '{
+                text: ("OpenKnowledge \($version) released — " + $release_url),
+                blocks: [
+                  { type: "header",
+                    text: { type: "plain_text", text: "🎉 OpenKnowledge \($version) released", emoji: true } },
+                  { type: "section",
+                    text: { type: "mrkdwn",
+                            text: ("*<\($release_url)|Release notes & downloads>*") } }
+                ]
+              }')"
           fi
           # The failing curl sits in an `if` condition, which `set -e` does
           # not treat as fatal — a Slack outage routes to the else/warning
