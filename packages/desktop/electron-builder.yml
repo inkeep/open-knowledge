@@ -288,6 +288,19 @@ mac:
   extendInfo:
     NSUserActivityTypes:
       - NSUserActivityTypeBrowsingWeb
+    # The text of the macOS microphone consent dialog. Declared here rather
+    # than left to Electron's stock Info.plist, whose default ("This app
+    # needs access to the microphone") describes the wrong thing: the app
+    # records no audio of its own, and what the user is actually granting is
+    # mic access to whatever CLI they run in the docked terminal. The consent
+    # dialog is the only place that distinction is ever shown, so the string
+    # names it. Pairs with `com.apple.security.device.audio-input` in
+    # `build/entitlements.mac.plist`, but the two fail differently: without
+    # the entitlement tccd denies silently and no dialog appears at all;
+    # without this key the dialog still appears, having fallen back to the
+    # stock Electron string, and misdescribes what is being granted.
+    NSMicrophoneUsageDescription: >-
+      A program running in OpenKnowledge's terminal wants to use the microphone.
   # Notarization is invoked from `scripts/afterSign.mjs` per spec §8.9 (custom
   # afterSign pipeline) — NOT electron-builder's built-in notarize. Setting
   # `mac.notarize: true` would double-notarize. The afterSign script gates on

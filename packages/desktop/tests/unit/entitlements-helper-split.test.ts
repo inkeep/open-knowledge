@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 
 /**
  * Helper-process entitlements MUST NOT include restricted entitlements (those
@@ -97,6 +98,26 @@ const HELPER_REQUIRED_KEYS = [
   'com.apple.security.cs.allow-dyld-environment-variables',
   'com.apple.security.inherit',
 ] as const;
+
+/**
+ * Resource-access entitlements the MAIN app must carry on behalf of the
+ * processes it is responsible for, distinct from HELPER_FORBIDDEN_KEYS —
+ * these are not illegal on a helper, just unnecessary there.
+ *
+ * `device.audio-input` exists for CLI tools the user runs in the docked
+ * terminal, not for the app itself (it opens no audio device). macOS TCC
+ * attributes a child's request to the responsible process — the top-level
+ * .app — so the entitlement is only load-bearing on the main binary.
+ * Dropping it is a SILENT failure: no dialog, no error, and the app never
+ * appears in Privacy & Security > Microphone. That silence is why this is
+ * pinned rather than left to review.
+ *
+ * The helper side needs no matching forbidden-key entry: the allowlist
+ * assertion below already fails on any helper key outside
+ * HELPER_REQUIRED_KEYS, so putting this on a helper stays a conscious
+ * decision requiring a test edit.
+ */
+const MAIN_REQUIRED_RESOURCE_KEYS = ['com.apple.security.device.audio-input'] as const;
 
 function extractKeys(plistContent: string): string[] {
   // Match `<key>some.key.name</key>` — XML plist canonical form. Tolerates
@@ -208,5 +229,44 @@ describe('macOS helper-process entitlements (Tahoe AMFI compliance)', () => {
     const allowed = new Set<string>(HELPER_REQUIRED_KEYS as readonly string[]);
     const unexpected = keys.filter((k) => !allowed.has(k));
     expect(unexpected, `Unexpected keys in helper plist: ${unexpected.join(', ')}`).toHaveLength(0);
+  });
+
+  test('main-app plist carries the resource-access entitlements brokered for child processes', () => {
+    const content = readFileSync(mainPlist, 'utf8');
+    const keys = extractKeys(content);
+    for (const required of MAIN_REQUIRED_RESOURCE_KEYS) {
+      expect(keys, `${required} must appear in main-app entitlements`).toContain(required);
+    }
+  });
+
+  test('electron-builder.yml declares the microphone usage description under mac.extendInfo', () => {
+    // The other half of the pair: the entitlement makes the app eligible to
+    // prompt, this string is the prompt's text. It fails differently from a
+    // missing entitlement — the dialog still appears, having fallen back to
+    // the stock Electron string, and misdescribes the grant — so the
+    // entitlement assertion above cannot stand in for this one.
+    //
+    // Asserted as "declared in this file" rather than "present in the built
+    // Info.plist" for that same reason: the stock default means a
+    // build-output check would stay green after this key was deleted here.
+    //
+    // Parsed rather than regex-matched because `mac.extendInfo` is the ONLY
+    // block electron-builder merges into the macOS Info.plist. A key that
+    // survives a YAML refactor at the wrong nesting depth — de-indented to
+    // top level, or landed under `win:`/`linux:` — is inert, and a
+    // file-wide text match would stay green while the packaged app silently
+    // reverted to the stock string. That is the same invisible-failure class
+    // this entitlement exists to fix, so the assertion is structural.
+    const config = parseYaml(readFileSync(builderYml, 'utf8')) as {
+      mac?: { extendInfo?: Record<string, unknown> };
+    };
+    const usage = config.mac?.extendInfo?.NSMicrophoneUsageDescription;
+    expect(typeof usage, 'NSMicrophoneUsageDescription must be a string under mac.extendInfo').toBe(
+      'string',
+    );
+    expect(
+      (usage as string).trim().length,
+      'NSMicrophoneUsageDescription must not be empty',
+    ).toBeGreaterThan(0);
   });
 });
