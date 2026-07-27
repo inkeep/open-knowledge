@@ -529,6 +529,7 @@ jobs:
         if: success() && steps.channel.outputs.channel == 'latest' && github.event_name != 'workflow_dispatch'
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
           VERSION: ${{ steps.channel.outputs.version }}
         run: |
@@ -538,23 +539,25 @@ jobs:
             exit 0
           fi
           RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
-          # Build the Block Kit payload with jq so $VERSION / $RELEASE_URL are
-          # JSON-escaped — a stray quote in a tag would otherwise corrupt the
-          # body. `text` is the notification/a11y fallback Slack recommends
-          # alongside blocks; the header is plain_text, the section mrkdwn.
-          payload="$(jq -n \
-            --arg version "$VERSION" \
-            --arg release_url "$RELEASE_URL" \
-            '{
-              text: ("OpenKnowledge \($version) released — " + $release_url),
-              blocks: [
-                { type: "header",
-                  text: { type: "plain_text", text: "🎉 OpenKnowledge \($version) released", emoji: true } },
-                { type: "section",
-                  text: { type: "mrkdwn",
-                          text: ("*<\($release_url)|Release notes & downloads>*") } }
-              ]
-            }')"
+          # Inline the notes so the channel reads what shipped without clicking
+          # through. A failed fetch is not fatal: the builder degrades to the
+          # header + link message on empty input.
+          NOTES="$(gh release view "$RELEASE_TAG" --json body --jq '.body' 2>/dev/null || true)"
+          # The builder emits the whole Block Kit payload as JSON (so $VERSION /
+          # $RELEASE_URL are JSON-escaped — a stray quote in a tag would
+          # otherwise corrupt the body), converts the notes from GitHub markdown
+          # to Slack mrkdwn, and keeps every section under Slack's 3000-char cap.
+          # `text` is the notification/a11y fallback Slack recommends alongside
+          # blocks. Unit-tested in scripts/build-slack-release-payload.test.mjs.
+          payload="$(printf '%s' "$NOTES" \
+            | node scripts/build-slack-release-payload.mjs --version "$VERSION" --url "$RELEASE_URL" \
+            || true)"
+          # Keep the announcement best-effort: a builder failure warns rather
+          # than failing a release that is already published.
+          if [[ -z "$payload" ]]; then
+            echo "::warning::Could not build the Slack payload for ${RELEASE_TAG} (release is published; notification is best-effort)."
+            exit 0
+          fi
           # The failing curl sits in an `if` condition, which `set -e` does
           # not treat as fatal — a Slack outage routes to the else/warning
           # and the step still exits 0.
