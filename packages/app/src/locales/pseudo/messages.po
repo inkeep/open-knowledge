@@ -5761,6 +5761,10 @@ msgstr ""
 msgid "New schema"
 msgstr ""
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "New session"
+msgstr ""
+
 #: src/components/NewSkillDialog.tsx
 #: src/components/settings/SkillsManagerSection.tsx
 #: src/components/SkillsSidebarSection.tsx
@@ -5784,10 +5788,6 @@ msgstr ""
 
 #: src/components/command-palette-commands.ts
 msgid "New Terminal"
-msgstr ""
-
-#: src/lib/keyboard-shortcuts.ts
-msgid "New terminal tab"
 msgstr ""
 
 #. placeholder {0}: info.agent.name
@@ -6312,6 +6312,10 @@ msgstr ""
 msgid "Open a doc to share its URL."
 msgstr ""
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Open a new session with your preferred AI. With text selected, stage it there instead of running it."
+msgstr ""
+
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Open a project to edit."
 msgstr ""
@@ -6334,10 +6338,6 @@ msgstr ""
 
 #: src/presence/PresenceBar.tsx
 msgid "Open activity panel for {tooltipName}, editing {realCurrentDoc}"
-msgstr ""
-
-#: src/lib/keyboard-shortcuts.ts
-msgid "Open an additional terminal tab. With text selected, stage it in the new tab's AI input."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -9592,7 +9592,7 @@ msgid "Toggle strikethrough formatting."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Toggle the bottom terminal panel. With text selected, stage it in the terminal's AI input instead."
+msgid "Toggle the bottom terminal panel. With text selected, stage it for your preferred AI instead."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts

@@ -132,16 +132,22 @@ export function DocPanel({
       applyLintFixes(lintProvider, collectFixes(lintDiagnostics));
     }
   };
-  // Hand one diagnostic to the docked terminal's agent as a grounded prompt
-  // (live TUI reuse or a fresh Claude launch — the host decides). Desktop-only:
-  // on web nothing subscribes to the terminal-input event, so the button is
+  // Hand one diagnostic to the user's preferred AI as a grounded fix prompt (the
+  // host resolves which AI, and reuses a live session or launches one). Desktop-
+  // only: on web nothing subscribes to the terminal-input event, so the button is
   // withheld entirely by not passing `onAskAi`.
+  //
+  // `submit` because the composed text is a complete "fix this problem"
+  // instruction, not material the user is expected to finish writing — so a fresh
+  // session runs it, the same as a fresh CLI always has.
   const terminalLaunch = useTerminalLaunch();
   const handleAskAi = (diagnostic: DiagnosticLike) => {
     if (lintProvider === null) return;
     const source = lintProvider.document.getText('source').toString();
     const lineText = source.split('\n')[diagnostic.range.start.line];
-    requestActiveTerminalInput(composeLintFixTerminalPaste(docName, diagnostic, lineText));
+    requestActiveTerminalInput(composeLintFixTerminalPaste(docName, diagnostic, lineText), {
+      submit: true,
+    });
   };
   // Single-file `ok <file>` keeps only the Outline + Problems tabs. Links/Graph
   // need a multi-doc knowledge base, and Timeline is git history — all empty or

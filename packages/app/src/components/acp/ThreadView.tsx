@@ -72,6 +72,7 @@ import {
   useAgentThread,
   useAgentThreadModel,
 } from '@/lib/acp/thread-client';
+import { subscribeStagedThreadDraft } from '@/lib/acp/thread-draft-staging';
 import {
   type PermissionOutcome,
   type RenderedItem,
@@ -133,6 +134,17 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
   // dedupes so each target navigates once.
   const initialSeqRef = useRef<number | null>(null);
   const lastFollowedRef = useRef<string | null>(null);
+
+  // A selection send (⌘J) or Problems-panel "Ask AI" that resolved to this agent
+  // seeds the composer instead of auto-sending, so the user reviews and extends
+  // the passage before spending a turn — the same stage-don't-submit contract the
+  // terminal CLI path honors. Appends rather than overwrites so a staged value
+  // arriving after the user started typing can't eat their words.
+  useEffect(() => {
+    return subscribeStagedThreadDraft(info.threadId, (text) => {
+      setDraft((prev) => (prev.trim() === '' ? text : `${prev.replace(/\s+$/, '')}\n\n${text}`));
+    });
+  }, [info.threadId]);
 
   // Incrementally folded in the store — never re-fold `state.events` here;
   // the per-render full fold was O(transcript) per streamed chunk.

@@ -46,8 +46,8 @@ export function isInAppAgentEnabled(
  * (`undefined`, e.g. the cold-start window) still shows the row, so a probe miss
  * never silently drops an installed CLI. Claude is not special-cased visible: a
  * probed-absent Claude CLI hides like any other. The user can still re-enable it
- * in Settings, and the install-nudge launch default in `resolveDefaultCli` is a
- * separate last-resort path, not a visibility rule.
+ * in Settings, and the install-nudge launch default is a separate last-resort
+ * path, not a visibility rule.
  */
 export function isTerminalCliEnabled(
   overrides: EnabledOverrides,

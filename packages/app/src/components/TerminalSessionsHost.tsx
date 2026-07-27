@@ -33,6 +33,7 @@ import {
   useArchivedAgentThreads,
   useOpenAgentThreadTabs,
 } from '@/lib/acp/thread-client';
+import { stageThreadDraft } from '@/lib/acp/thread-draft-staging';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import {
   type DockSessionOrder,
@@ -66,7 +67,11 @@ const ThreadView = lazy(() =>
   import('@/components/acp/ThreadView').then((mod) => ({ default: mod.ThreadView })),
 );
 
-import { subscribeToActiveTerminalInput } from './handoff/terminal-input-events';
+import { subscribeToPreferredSessionRequests } from './handoff/preferred-session-events';
+import {
+  type ActiveTerminalInputDetail,
+  subscribeToActiveTerminalInput,
+} from './handoff/terminal-input-events';
 import { requestTerminalLaunch } from './handoff/terminal-launch-events';
 import { TerminalGate } from './TerminalGate';
 import { TerminalNewChatButton } from './TerminalNewChatButton';
@@ -244,13 +249,6 @@ interface TerminalSessionsHostProps {
   /** Reports whether ANY session (terminal or thread) is open, so the placement
    *  owner (EditorArea via EditorPane) can render the dock column/shell. */
   readonly onHasSessionsChange?: (hasSessions: boolean) => void;
-  /** Reports whether the ACTIVE tab is an AI-CLI session (was launched with a
-   *  `cli`, e.g. a "New chat" / "Open with AI" tab) rather than a bare shell.
-   *  The ⌘J selection-send reads this to decide inject-into-running-CLI vs
-   *  launch-a-new-CLI (a raw prompt typed into a bare shell mangles). Proxy: the
-   *  session's launch descriptor — a bare shell the user manually `claude`'d into
-   *  reads as non-CLI, which is fine (it just starts a fresh CLI tab). */
-  readonly onActiveSessionCliChange?: (isCli: boolean) => void;
 }
 
 /**
@@ -280,7 +278,6 @@ export function TerminalSessionsHost({
   dockPosition,
   onToggleDock,
   onHasSessionsChange,
-  onActiveSessionCliChange,
 }: TerminalSessionsHostProps) {
   const { t } = useLingui();
 
@@ -531,6 +528,96 @@ export function TerminalSessionsHost({
     // `choose` → reveal the empty dock without auto-opening the catalog.
   }
 
+  /**
+   * Which AI an "Ask AI" passage goes to. Same resolver as the New primary, but
+   * with both bare-terminal knobs off: a composed passage needs an *AI*, and a
+   * bare shell would just paste markdown into zsh. So a user whose last session
+   * pick was "Terminal" still gets their preferred agent for Ask AI, and when
+   * nothing is enabled this yields `none` (→ Configure agents) rather than
+   * silently opening a shell.
+   */
+  const askAiSelection = resolveLauncherSelection({
+    sticky: stickyAgentId,
+    effectiveThreadAgent: effectiveDefaultAgent,
+    enabledClis: enabledTerminalClis(enabledOverrides, installedClis ?? {}),
+    enabledDesktopTargets: [],
+    installedClis: installedClis ?? {},
+    terminalAvailable,
+    threadsAvailable: hostThreads,
+    desktopSelectable: false,
+    preferBareTerminal: false,
+    bareTerminalFallback: false,
+  });
+
+  /**
+   * Route an "Ask AI" passage (selection bubble, code block, Problems panel, the
+   * ⌘J/⇧⌘J selection sends) to the user's preferred AI. This is the single place
+   * the which-AI decision is made, so every surface honors the preferred agent
+   * rather than a per-surface default.
+   *
+   * Reuse first, unless the caller asked for a fresh session (⇧⌘J): a live thread
+   * takes the passage as a staged composer draft; a live CLI takes it as a
+   * no-carriage-return write into its input. Reuse writes without submitting on
+   * both families.
+   *
+   * The reuse write is gated on the terminal tab being a CLI session
+   * (`launch.cli`), NOT merely any live PTY. `terminal.input` writes bytes
+   * straight to the PTY, and a bare shell in canonical mode treats each `\n` in
+   * the passage as accept-line, so a raw write there would run the passage as
+   * shell commands; an interactive CLI's TUI is in raw mode and treats the same
+   * bytes as input. A bare shell therefore falls through to the launch path
+   * below (the fresh-CLI staging the ⌘J send has always used for a non-CLI tab)
+   * instead of executing the passage.
+   *
+   * With nothing to reuse, launch whatever `askAiSelection` names, and let
+   * `submit` decide how the text lands: an Ask AI surface sends a complete
+   * instruction and runs it; a ⌘J selection send is raw material and waits.
+   */
+  function dispatchAskAi({ text, newTab, submit }: ActiveTerminalInputDetail) {
+    const activeId = activeSessionIdRef.current;
+    const active = sessionsRef.current.find((s) => s.id === activeId);
+    if (!newTab && active != null) {
+      if (active.kind === 'thread') {
+        // Reuse ignores `submit` on purpose, so this is NOT an asymmetry to
+        // "fix" by threading submit through: writing into a live CLI has never
+        // pressed enter, and a thread the user is already in behaves the same.
+        // `submit` only decides how a FRESH session receives the text.
+        stageThreadDraft(active.threadId, text);
+        queueMicrotask(() => focusSession(active));
+        return;
+      }
+      const livePtyId = ptyIdBySessionRef.current.get(active.id);
+      const terminal = bridge?.terminal;
+      // Only a live CLI tab is reused. A bare shell — and a reload survivor, which
+      // rehydrates as launch:null with its CLI-ness unrecoverable — falls through
+      // to a fresh launch. Do NOT widen this to any live PTY to restore survivor
+      // reuse: a rehydrated bare shell would then run the passage as commands
+      // (see the `launch.cli` gate rationale above).
+      if (livePtyId != null && terminal != null && active.launch?.cli != null) {
+        terminal.input(livePtyId, text);
+        queueMicrotask(() => focusTerminalSession(activeId));
+        return;
+      }
+    }
+    if (askAiSelection.kind === 'thread') {
+      const agent = { source: askAiSelection.agent.source, id: askAiSelection.agent.id };
+      // `prompt` runs on creation, `stageDraft` waits — the thread twins of the
+      // launch intent's `prompt` / `stagePaste`.
+      if (submit) launchAgentThread(agent, text, null, null, null);
+      else launchAgentThread(agent, null, null, null, text);
+    } else if (askAiSelection.kind === 'cli') {
+      requestTerminalLaunch(text, askAiSelection.cli, { stage: !submit });
+    } else {
+      // Only `none` reaches here. `askAiSelection` is built with
+      // `desktopSelectable: false` + `bareTerminalFallback/preferBareTerminal: false`,
+      // so the resolver cannot yield `desktop` or `terminal` for this path — flip
+      // either knob and a bare shell would land in this branch silently instead of
+      // being refused. Nothing enabled to ask, so send the user where they can
+      // enable something: the same destination the New primary uses in this state.
+      openAgentSettings();
+    }
+  }
+
   // Dropdown CLI pick: clear the bare-terminal preference, persist `cli`, open it.
   function pickNewChatCli(cli: TerminalCli) {
     setPreferBareTerminal(false);
@@ -655,6 +742,8 @@ export function TerminalSessionsHost({
   const moveActiveSessionRef = useRef(moveActiveSession);
   const openSessionRef = useRef(openSession);
   const seedOnRevealRef = useRef(seedOnReveal);
+  const dispatchAskAiRef = useRef(dispatchAskAi);
+  const launchSelectedNewTabRef = useRef(launchSelectedNewTab);
 
   // Close a tab — kind-dispatched. A terminal is removed from the list (its panel
   // unmounts, killing the PTY); a thread is archived server-side (discarded if it
@@ -689,6 +778,8 @@ export function TerminalSessionsHost({
   useEffect(() => {
     openSessionRef.current = openSession;
     seedOnRevealRef.current = seedOnReveal;
+    dispatchAskAiRef.current = dispatchAskAi;
+    launchSelectedNewTabRef.current = launchSelectedNewTab;
     moveActiveSessionRef.current = moveActiveSession;
     activeSessionIdRef.current = activeSessionId;
     sessionsRef.current = sessions;
@@ -958,26 +1049,20 @@ export function TerminalSessionsHost({
     return () => window.clearTimeout(timer);
   }, [canRehydrate]);
 
-  // The editor's "Ask AI" selection affordance routes here. Live PTY → write the
-  // composed prompt into the active shell (e.g. a running claude TUI); no trailing
-  // newline so the user reviews/sends. No live PTY → launch a fresh Claude tab
-  // pre-loaded with the same prompt (mirrors the "Open in terminal" path).
+  // Every editor "Ask AI" affordance routes here; `dispatchAskAi` owns the
+  // reuse-vs-launch and which-AI decisions. Subscribed whenever EITHER family can
+  // serve the passage — threads are server-hosted, so a host with no terminal can
+  // still answer an Ask AI with the user's preferred agent.
   useEffect(() => {
-    if (!terminalAvailable || bridge?.terminal == null) return;
-    const terminal = bridge.terminal;
-    return subscribeToActiveTerminalInput((text) => {
-      const activeId = activeSessionIdRef.current;
-      const active = sessionsRef.current.find((s) => s.id === activeId);
-      const livePtyId =
-        active?.kind === 'terminal' ? ptyIdBySessionRef.current.get(active.id) : undefined;
-      if (livePtyId != null) {
-        terminal.input(livePtyId, text);
-        queueMicrotask(() => focusTerminalSession(activeId));
-      } else {
-        requestTerminalLaunch(text, 'claude');
-      }
-    });
-  }, [bridge, terminalAvailable]);
+    if (!terminalAvailable && !hostThreads) return;
+    return subscribeToActiveTerminalInput((detail) => dispatchAskAiRef.current(detail));
+  }, [terminalAvailable, hostThreads]);
+
+  // ⇧⌘J with no selection: open a new session with the preferred AI — the same
+  // resolution the New split-button primary uses, so it is never hardcoded to a CLI.
+  useEffect(() => {
+    return subscribeToPreferredSessionRequests(() => launchSelectedNewTabRef.current());
+  }, []);
 
   // Terminal application-menu actions act on the tab collection.
   useEffect(() => {
@@ -1054,16 +1139,6 @@ export function TerminalSessionsHost({
   useEffect(() => {
     onHasSessionsChange?.(sessions.length > 0);
   }, [onHasSessionsChange, sessions.length]);
-
-  // Report whether the active tab is a CLI session (see the prop doc). Derived in
-  // render so the effect fires only on actual transitions, not on every session-
-  // list mutation. EditorPane's ⌘J read decides inject-vs-launch off this.
-  const activeSession = sessions.find((s) => s.id === activeSessionId);
-  const activeSessionIsCli =
-    activeSession?.kind === 'terminal' && activeSession.launch?.cli != null;
-  useEffect(() => {
-    onActiveSessionCliChange?.(activeSessionIsCli);
-  }, [onActiveSessionCliChange, activeSessionIsCli]);
 
   // Return focus out of the hidden dock so a keyboard user is never stranded.
   // Only acts when focus is actually inside the dock.

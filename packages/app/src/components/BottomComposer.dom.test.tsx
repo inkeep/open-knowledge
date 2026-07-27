@@ -290,7 +290,7 @@ async function renderComposerWithTerminal(
           terminalLaunchCalls.push({ input, cli });
         },
         // The composer reads the install map from here (not its own probe), so it
-        // drives both the no-pick default (resolveDefaultCli) and row gating
+        // drives both the no-pick default and row gating
         // (isTerminalCliEnabled). Default {} ⇒ probe unresolved ⇒ fail-open (all
         // CLIs), matching the ungated rows most tests were written against.
         installedClis,

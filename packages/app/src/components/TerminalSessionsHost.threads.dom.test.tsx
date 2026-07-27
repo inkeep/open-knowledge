@@ -8,12 +8,16 @@
  */
 
 import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState, useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { subscribeStagedThreadDraft } from '@/lib/acp/thread-draft-staging';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import { requestPreferredSession } from './handoff/preferred-session-events';
+import { requestActiveTerminalInput } from './handoff/terminal-input-events';
+import { subscribeToTerminalLaunchRequests } from './handoff/terminal-launch-events';
 
 // A tiny controllable stand-in for the server-authoritative thread store.
 let openThreads: ThreadInfo[] = [];
@@ -83,16 +87,23 @@ vi.doMock('@/components/acp/ThreadView', () => ({
   ),
 }));
 
+/**
+ * The registered in-app agent, when a test wants one. Null (the default) models a
+ * machine with no ACP agent set up, so the launcher falls through to the CLI /
+ * bare-terminal families.
+ */
+let mockRegisteredAgent: { source: 'registry' | 'custom'; id: string; name: string } | null = null;
+
 vi.doMock('@/lib/acp/registered-agents', () => ({
-  useRegisteredAgents: () => [],
-  useDefaultRegisteredAgent: () => null,
-  getDefaultRegisteredAgent: () => null,
+  useRegisteredAgents: () => (mockRegisteredAgent === null ? [] : [mockRegisteredAgent]),
+  useDefaultRegisteredAgent: () => mockRegisteredAgent,
+  getDefaultRegisteredAgent: () => mockRegisteredAgent,
   registerAgent: () => {},
   // Real code loaded here imports these too (TerminalSessionsHost →
   // pickEffectiveDefaultAgent; catalog → hydrateRegisteredAgentMeta). A
   // mock.module replaces the whole module, so any omitted export becomes an
   // unresolved import that fails the file (and can cascade to siblings).
-  pickEffectiveDefaultAgent: () => null,
+  pickEffectiveDefaultAgent: () => mockRegisteredAgent,
   hydrateRegisteredAgentMeta: () => {},
 }));
 
@@ -118,6 +129,20 @@ function makeThread(overrides: Partial<ThreadInfo> & { threadId: string }): Thre
     archived: false,
     ...overrides,
   };
+}
+
+/** Minimal desktop bridge whose only job is to make `terminalAvailable` true, so
+ *  the CLI family is a candidate the launcher can resolve to. */
+function makeTerminalBridge(): OkDesktopBridge {
+  return {
+    terminal: {
+      create: vi.fn(async () => ({ ptyId: 'pty-1' })),
+      kill: vi.fn(),
+      input: vi.fn(),
+      list: vi.fn(async () => []),
+    },
+    editor: { notifyViewMenuStateChanged: vi.fn() },
+  } as unknown as OkDesktopBridge;
 }
 
 function Harness({
@@ -162,6 +187,7 @@ describe('TerminalSessionsHost — agent-thread hosting (web / no bridge)', () =
     deleteThread.mockClear();
     launchAgentThread.mockClear();
     catalogData = undefined;
+    mockRegisteredAgent = null;
   });
   afterEach(() => cleanup());
 
@@ -316,6 +342,185 @@ describe('TerminalSessionsHost — agent-thread hosting (web / no bridge)', () =
     render(<Harness />);
     setOpenThreads([makeThread({ threadId: 'live', title: 'Live' })]);
     expect(screen.queryByRole('button', { name: 'Restore sessions' })).toBeNull();
+  });
+
+  // Every "Ask AI" surface (Problems panel, selection bubble, code block, ⌘J/⇧⌘J)
+  // funnels through this one channel, and the host is the only place that knows
+  // which AI the user prefers — so the preferred agent, CLI, or bare shell is what
+  // each surface routes to, uniformly.
+  describe('Ask AI honors the preferred AI', () => {
+    test('an Ask AI instruction RUNS on a new thread (never a CLI)', async () => {
+      mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
+      const launches: unknown[] = [];
+      const stopLaunch = subscribeToTerminalLaunchRequests((prompt, cli, opts) =>
+        launches.push({ prompt, cli, ...opts }),
+      );
+      render(<Harness />);
+      await screen.findByTestId('terminal-new-chat');
+
+      await act(async () => {
+        requestActiveTerminalInput('fix this lint error', { submit: true });
+      });
+      stopLaunch();
+
+      // The passage lands as `prompt` (2nd arg), so the thread runs it on
+      // creation — the thread twin of a fresh CLI baking the prompt as an arg.
+      // Nothing is staged.
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      const [agent, prompt, , , stagedDraft] = launchAgentThread.mock.calls[0];
+      expect(agent).toEqual({ source: 'registry', id: 'acme-agent' });
+      expect(prompt).toBe('fix this lint error');
+      expect(stagedDraft).toBeNull();
+      // Crucially: no terminal launch at all. This is the assertion that fails
+      // against the old hardcoded `requestTerminalLaunch(text, 'claude')`.
+      expect(launches).toEqual([]);
+    });
+
+    test('a ⌘J selection send STAGES on a new thread instead of running', async () => {
+      mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
+      render(<Harness />);
+      await screen.findByTestId('terminal-new-chat');
+
+      await act(async () => {
+        requestActiveTerminalInput('a selected passage', { submit: false });
+      });
+
+      // Raw material, so it waits on the user's send — mirroring the terminal,
+      // where a selection send rides `stagePaste` and never auto-runs.
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      const [, prompt, , , stagedDraft] = launchAgentThread.mock.calls[0];
+      expect(prompt).toBeNull();
+      expect(stagedDraft).toBe('a selected passage');
+    });
+
+    // Reuse never submits on EITHER family. Not a choice made for threads: it is
+    // what `terminal.input` has always done (write, don't press enter).
+    test.each([true, false])('reusing an open thread always stages, submit=%s', async (submit) => {
+      mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
+      render(<Harness />);
+      setOpenThreads([makeThread({ threadId: 't1', title: 'Work' })]);
+      await screen.findByTestId('thread-view');
+
+      const staged: string[] = [];
+      const stopStaging = subscribeStagedThreadDraft('t1', (text) => staged.push(text));
+      await act(async () => {
+        requestActiveTerminalInput('fix this lint error', { submit });
+      });
+      stopStaging();
+
+      expect(staged).toEqual(['fix this lint error']);
+      expect(launchAgentThread).not.toHaveBeenCalled();
+    });
+
+    test('newTab forces a fresh thread even with one open (⇧⌘J)', async () => {
+      mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
+      render(<Harness />);
+      setOpenThreads([makeThread({ threadId: 't1', title: 'Work' })]);
+      await screen.findByTestId('thread-view');
+
+      const staged: string[] = [];
+      const stopStaging = subscribeStagedThreadDraft('t1', (text) => staged.push(text));
+      await act(async () => {
+        requestActiveTerminalInput('a fresh question', { newTab: true, submit: false });
+      });
+      stopStaging();
+
+      expect(staged).toEqual([]);
+      // Both positions, matching the sibling above: asserting the draft alone
+      // would still pass if a caller set BOTH prompt and stageDraft, which would
+      // auto-run the passage the user only highlighted.
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      const [, prompt, , , stagedDraft] = launchAgentThread.mock.calls[0];
+      expect(prompt).toBeNull();
+      expect(stagedDraft).toBe('a fresh question');
+    });
+
+    // The other half of the matrix: an Ask AI INSTRUCTION that forces a fresh
+    // session (a Problems-panel ask dispatched while a thread is already open).
+    // Skips reuse like the case above, but `submit` sends it to `prompt`.
+    test('newTab with submit runs the instruction in a fresh thread', async () => {
+      mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
+      render(<Harness />);
+      setOpenThreads([makeThread({ threadId: 't1', title: 'Work' })]);
+      await screen.findByTestId('thread-view');
+
+      const staged: string[] = [];
+      const stopStaging = subscribeStagedThreadDraft('t1', (text) => staged.push(text));
+      await act(async () => {
+        requestActiveTerminalInput('fix this lint error', { newTab: true, submit: true });
+      });
+      stopStaging();
+
+      expect(staged).toEqual([]);
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      const [, prompt, , , stagedDraft] = launchAgentThread.mock.calls[0];
+      expect(prompt).toBe('fix this lint error');
+      expect(stagedDraft).toBeNull();
+    });
+
+    // Closes the triangle: the channel and `launchSelectedNewTab` are each tested
+    // alone, but nothing fired a request into a mounted host. A stale closure or an
+    // event-name drift would slip past both endpoint tests.
+    test('a promptless preferred-session request opens the preferred agent', async () => {
+      mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
+      render(<Harness />);
+      await screen.findByTestId('terminal-new-chat');
+
+      await act(async () => {
+        requestPreferredSession();
+      });
+
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      const [agent, prompt, , , stagedDraft] = launchAgentThread.mock.calls[0];
+      expect(agent).toEqual({ source: 'registry', id: 'acme-agent' });
+      // Promptless: ⇧⌘J with no selection carries nothing to run or stage.
+      // Normalized because this path omits the optional 5th arg rather than
+      // passing an explicit null — the invariant is "no staged draft", not which
+      // of the two nullish encodings the call site happens to use.
+      expect(prompt).toBeNull();
+      expect(stagedDraft ?? null).toBeNull();
+    });
+
+    // The CLI family must carry the SAME distinction, or ⇧⌘J would auto-run a
+    // raw passage the moment no agent is configured.
+    test.each([
+      { submit: true, stage: false, label: 'an Ask AI instruction runs' },
+      { submit: false, stage: true, label: 'a selection send stages' },
+    ])('with NO agent set up, $label on the CLI', async ({ submit, stage }) => {
+      const launches: { prompt: string; cli: string; stage: boolean }[] = [];
+      const stopLaunch = subscribeToTerminalLaunchRequests((prompt, cli, opts) =>
+        launches.push({ prompt, cli, stage: opts.stage }),
+      );
+      render(<Harness bridge={makeTerminalBridge()} />);
+      await screen.findByTestId('terminal-new-chat');
+
+      await act(async () => {
+        requestActiveTerminalInput('fix this lint error', { submit });
+      });
+      stopLaunch();
+
+      // No in-app agent → the CLI family is next in the uniform precedence, so the
+      // passage still reaches an AI. Claude here is the resolver's install-nudge
+      // default, not a hardcoded sender-side choice.
+      expect(launchAgentThread).not.toHaveBeenCalled();
+      expect(launches).toEqual([{ prompt: 'fix this lint error', cli: 'claude', stage }]);
+    });
+
+    test('with nothing set up, an Ask AI send opens Configure agents (no silent shell)', async () => {
+      // No registered agent and no terminal host → nothing to ask. The passage
+      // routes to Settings rather than silently opening a bare shell or a
+      // hardcoded CLI, matching the New primary's destination in this state.
+      window.location.hash = '';
+      render(<Harness />);
+      await screen.findByTestId('terminal-new-chat');
+
+      await act(async () => {
+        requestActiveTerminalInput('fix this lint error', { submit: false });
+      });
+
+      expect(launchAgentThread).not.toHaveBeenCalled();
+      expect(window.location.hash).toBe('#settings/configure-agents');
+    });
   });
 
   test('a dropped WS shows the reconnecting banner above the active thread', async () => {

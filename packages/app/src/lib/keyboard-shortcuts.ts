@@ -177,7 +177,7 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     id: 'toggle-terminal-panel',
     category: 'general',
     title: msg`Show or hide terminal`,
-    description: msg`Toggle the bottom terminal panel. With text selected, stage it in the terminal's AI input instead.`,
+    description: msg`Toggle the bottom terminal panel. With text selected, stage it for your preferred AI instead.`,
     scope: msg`OK Desktop`,
     bindings: [
       {
@@ -202,13 +202,13 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     ],
   },
   {
-    // Sibling of ⌘J: opens an additional terminal tab. With text selected, that
-    // selection is staged into the new tab. The shift matcher keeps this clear
-    // of the ⌘J toggle, whose matcher rejects shift.
+    // Sibling of ⌘J: opens a fresh session with the preferred AI. With text
+    // selected, that selection is staged into the new session. The shift matcher
+    // keeps this clear of the ⌘J toggle, whose matcher rejects shift.
     id: 'new-terminal-tab',
     category: 'general',
-    title: msg`New terminal tab`,
-    description: msg`Open an additional terminal tab. With text selected, stage it in the new tab's AI input.`,
+    title: msg`New session`,
+    description: msg`Open a new session with your preferred AI. With text selected, stage it there instead of running it.`,
     scope: msg`OK Desktop`,
     bindings: [
       {

@@ -1801,6 +1801,7 @@
     "Yi0VMG": ["Upload ", ["keyName"]],
     "YjMLg2": ["Off — external links show only their URL. No requests leave this computer."],
     "YjhKI5": ["Cloning..."],
+    "YkvmF4": ["New session"],
     "YlDuro": ["Fit height"],
     "YsEYYS": [
       ["behind", "plural", { "one": ["#", " commit behind"], "other": ["#", " commits behind"] }]
@@ -2369,6 +2370,9 @@
     "iv452l": ["Documentation for ", ["0"], " (opens in browser)"],
     "iy64Li": ["Full sync — your edits are committed and pushed to your remote automatically."],
     "iycx_A": ["Pushing"],
+    "j2kt1j": [
+      "Open a new session with your preferred AI. With text selected, stage it there instead of running it."
+    ],
     "j5CWO4": ["Up to date"],
     "j9Vqvc": ["inherited"],
     "j9tqwO": ["Not in sidebar"],
@@ -2412,7 +2416,6 @@
     ],
     "jxtXZI": ["Install the gh CLI"],
     "k0dL2I": ["Reconnecting to the agent service…"],
-    "k0vc0N": ["New terminal tab"],
     "k2fEi7": [
       "User plugins are personal to this device — turn them on or off here. The choice lives in your user config and is never committed to the project. Each enabled plugin gets its own page under Plugins in the settings sidebar."
     ],
@@ -2505,6 +2508,9 @@
       " MB from ",
       ["4"],
       ") that won't touch the rest of your system."
+    ],
+    "l9HUtd": [
+      "Toggle the bottom terminal panel. With text selected, stage it for your preferred AI instead."
     ],
     "lAiyU_": ["Only the current document uses <0>#", ["tag"], "</0>."],
     "lCC_D5": ["Subscribing..."],
@@ -2683,9 +2689,6 @@
     "oBK5fD": ["Overlapping edits"],
     "oBXkm2": ["Delete code block"],
     "oCHfGC": ["Level"],
-    "oCNLN8": [
-      "Toggle the bottom terminal panel. With text selected, stage it in the terminal's AI input instead."
-    ],
     "oCZkaG": ["Copy path"],
     "oJl7eO": ["Unknown component: ", ["componentName"], " — source editable below"],
     "oKBnk5": ["More requests were blocked."],
@@ -2885,9 +2888,6 @@
     "seeS6l": ["Setup OpenKnowledge in this folder?"],
     "sgmRY8": ["Skipped downloading ", ["0"], "."],
     "shNd9t": ["Slash command menu"],
-    "si3L24": [
-      "Open an additional terminal tab. With text selected, stage it in the new tab's AI input."
-    ],
     "skf5Ix": ["Indent or outdent source editor lines."],
     "sn5BEU": [
       ["sizeText"],

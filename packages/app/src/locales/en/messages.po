@@ -5765,6 +5765,10 @@ msgstr "New property name"
 msgid "New schema"
 msgstr "New schema"
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "New session"
+msgstr "New session"
+
 #: src/components/NewSkillDialog.tsx
 #: src/components/settings/SkillsManagerSection.tsx
 #: src/components/SkillsSidebarSection.tsx
@@ -5789,10 +5793,6 @@ msgstr "New terminal"
 #: src/components/command-palette-commands.ts
 msgid "New Terminal"
 msgstr "New Terminal"
-
-#: src/lib/keyboard-shortcuts.ts
-msgid "New terminal tab"
-msgstr "New terminal tab"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
@@ -6316,6 +6316,10 @@ msgstr "Open a blank editor tab."
 msgid "Open a doc to share its URL."
 msgstr "Open a doc to share its URL."
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Open a new session with your preferred AI. With text selected, stage it there instead of running it."
+msgstr "Open a new session with your preferred AI. With text selected, stage it there instead of running it."
+
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Open a project to edit."
 msgstr "Open a project to edit."
@@ -6339,10 +6343,6 @@ msgstr "Open activity panel for {tooltipName}"
 #: src/presence/PresenceBar.tsx
 msgid "Open activity panel for {tooltipName}, editing {realCurrentDoc}"
 msgstr "Open activity panel for {tooltipName}, editing {realCurrentDoc}"
-
-#: src/lib/keyboard-shortcuts.ts
-msgid "Open an additional terminal tab. With text selected, stage it in the new tab's AI input."
-msgstr "Open an additional terminal tab. With text selected, stage it in the new tab's AI input."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
@@ -9596,8 +9596,8 @@ msgid "Toggle strikethrough formatting."
 msgstr "Toggle strikethrough formatting."
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Toggle the bottom terminal panel. With text selected, stage it in the terminal's AI input instead."
-msgstr "Toggle the bottom terminal panel. With text selected, stage it in the terminal's AI input instead."
+msgid "Toggle the bottom terminal panel. With text selected, stage it for your preferred AI instead."
+msgstr "Toggle the bottom terminal panel. With text selected, stage it for your preferred AI instead."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle the left file sidebar."

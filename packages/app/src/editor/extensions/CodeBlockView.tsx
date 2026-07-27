@@ -667,6 +667,9 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
                     selectionMarkdown,
                     target: 'claude-code',
                   }),
+                  // A composed ask, so a fresh session runs it — matching the
+                  // fresh-CLI behavior this surface has always had.
+                  { submit: true },
                 );
               });
             }}

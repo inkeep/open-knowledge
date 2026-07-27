@@ -125,7 +125,11 @@ function EditWithAiBubbleMenu({
               emitOpenAskAiComposer();
               return;
             }
-            requestActiveTerminalInput(composeTerminalSelectionPaste(docName, selectionMarkdown));
+            // A composed, self-contained ask — runs on a fresh session (what a
+            // fresh CLI has always done), on a CLI and an agent thread alike.
+            requestActiveTerminalInput(composeTerminalSelectionPaste(docName, selectionMarkdown), {
+              submit: true,
+            });
           });
         }}
       >

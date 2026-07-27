@@ -34,6 +34,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
+import { subscribeToTerminalLaunchRequests } from './handoff/terminal-launch-events';
 
 const TERMINAL_PANEL_ID = 'terminal-dock-panel';
 
@@ -318,8 +319,20 @@ describe('issue #351 — the terminal dock rehydrates surviving sessions after a
     });
   });
 
-  test('an Ask-AI selection reuses a reload-rehydrated (adopted) session via a direct PTY write', async () => {
+  test('an Ask-AI selection does NOT raw-write into a reload survivor (unknown shell type)', async () => {
+    // A reload survivor comes back with no launch descriptor, so the host cannot
+    // tell a surviving CLI TUI (safe to write) from a surviving bare shell (where a
+    // raw write of a multi-line passage runs line-by-line as shell commands). It
+    // therefore treats the survivor as non-CLI and falls the selection through to a
+    // fresh staged launch — safety over reusing a PTY of unknown type.
     const { bridge, create, input } = makeSurvivingMainBridge([{ ptyId: 'pty-1' }]);
+    // Capture `stage` too, not just the text: falling through to a launch is only
+    // half the safety property. A fallthrough that ran the passage as the CLI's
+    // prompt would auto-execute the very text this guard exists to hold back.
+    const launchRequests: Array<{ text: string; cli: string; stage: boolean }> = [];
+    const stopLaunch = subscribeToTerminalLaunchRequests((text, cli, opts) =>
+      launchRequests.push({ text, cli, stage: opts.stage }),
+    );
     render(dockUi(bridge, true));
 
     // Rehydration recovers exactly one adopted tab, which reports its adopted PTY
@@ -329,17 +342,19 @@ describe('issue #351 — the terminal dock rehydrates surviving sessions after a
     });
     await act(async () => {}); // flush the onPtyId report into the host's reuse map
 
-    // The selection-bubble "Ask AI" fires while the recovered survivor is the
-    // active tab. Reuse is the selection-input path (verbatim text into the live
-    // shell), NOT a launch nonce — launches always open their own tab now.
+    // The selection-bubble "Ask AI" fires while the recovered survivor is active.
     await act(async () => {
       requestActiveTerminalInput('explain');
     });
+    stopLaunch();
 
-    // Reused, not respawned: the raw selection text is written straight into the
-    // adopted PTY (`pty-1`) — no `<bin> '<prompt>'` command wrapping, no new tab,
-    // no fresh create(). Covers reuse for reload survivors.
-    await waitFor(() => expect(input).toHaveBeenCalledWith('pty-1', 'explain'));
+    // Never a raw write into the survivor's adopted PTY (the bare-shell hazard).
+    expect(input).not.toHaveBeenCalled();
+    // The selection falls through to a fresh STAGED launch instead — `stage: true`
+    // is what keeps it written-and-waiting rather than run.
+    expect(launchRequests).toEqual([{ text: 'explain', cli: 'claude', stage: true }]);
+    // The survivor tab is not hijacked; the fresh launch is consumed by EditorPane
+    // (not mounted in this host-only rig), so no create() fires here.
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
     expect(create).not.toHaveBeenCalled();
   });
