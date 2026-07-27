@@ -1,5 +1,0 @@
----
-"@inkeep/open-knowledge": minor
----
-
-The Problems panel is now the single validation space, and the file tree shows which files have problems without opening them. Project scope consumes the unified audit (`GET /api/audit`), so markdownlint violations and broken internal links render together, grouped by file with a per-row source tag (lint vs link); doc scope merges the open document's broken-link findings into the live lint list via the same canonical audit predicate, and link rows click-jump to their line in source mode. Fix all remains lint-only (links are not auto-fixable). In the file tree, files with problems tint their name red (errors) or yellow (warnings) and carry a problem-count badge; both severities light up, and clean files stay bare. Freshness comes from three cheap triggers — a project audit refreshes everything, the open document's entry tracks its live diagnostics, and a document whose bytes reach disk is re-validated alone (so an agent writing a broken link into an unopened file tints its row) — never a background whole-project scan. The Links panel is unchanged: it remains the navigation and graph aid.

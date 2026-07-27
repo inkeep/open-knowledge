@@ -1,5 +1,0 @@
----
-"@inkeep/open-knowledge": patch
----
-
-Fixed external edits to files in subfolders not being picked up when the server runs on its chokidar file-watching fallback (inkeep/open-knowledge#760). The server prefers `@parcel/watcher` but falls back to chokidar whenever that native module can't load. The fallback's ignore predicate misclassified any subdirectory that chokidar probed without file stats — routing it through the file-only exclusion rule, which rejects anything that isn't a Markdown doc or linkable asset — so chokidar pruned every content subfolder and silently stopped watching it. The result: editing a note in a subfolder with an external editor (or a `git pull` landing changes there) never reached the server, and the graph, backlinks, and dead-link views stayed stale until the next restart re-read everything from disk. The predicate now resolves whether a stats-less path is a directory before deciding, so subfolders are watched again; a path that can't be stat'd (for example a file deleted mid-scan) is admitted rather than pruned, so its delete still propagates. Excluded trees such as `node_modules/` and `.git/` stay pruned as before.
