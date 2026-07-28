@@ -3,12 +3,24 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { usePanelRef } from 'react-resizable-panels';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import type { TerminalDockPosition } from '@/lib/terminal-dock-store';
-import { getInitialTerminalHeight, writeTerminalHeight } from '@/lib/terminal-height-store';
+import {
+  clampTerminalHeight,
+  getInitialTerminalHeight,
+  writeTerminalHeight,
+} from '@/lib/terminal-height-store';
 import { cn } from '@/lib/utils';
 import { TerminalRevealTab } from './TerminalRevealTab';
 import { useLiveXtermTheme } from './use-live-xterm-theme';
 
 const TERMINAL_PANEL_ID = 'terminal-dock-panel';
+
+/**
+ * Per-mount cap on the stranded-dock diagnostic. A healthy fire is one line — the
+ * guard shuts the panel immediately — so a cap only bites when something fights
+ * the collapse, exactly the case where an unbounded log would bury the signal it
+ * exists to carry.
+ */
+export const MAX_STRANDED_REPORTS = 5;
 
 interface TerminalDockProps {
   /** The editor chrome (header + area) the terminal docks beneath. */
@@ -101,6 +113,35 @@ export function TerminalDock({
       writeTimerRef.current = null;
     }, 100);
   }
+  // Diagnostic for the illegal state the guard below repairs. The repair is
+  // silent by construction — the panel snaps shut and the user sees nothing — so
+  // without this line a recurrence leaves no trace and the next report is as
+  // undiagnosable as the first. The renderer console is captured to a persisted
+  // log on both hosts (the Electron main capture; `/api/client-logs` on web),
+  // though only the web path reaches a submitted diagnostics bundle today. Every
+  // field is a number or a fixed enum — no paths, no document content.
+  const strandedReportsRef = useRef(0);
+  function reportStrandedDock(panelPx: number, panelPct: number) {
+    if (strandedReportsRef.current >= MAX_STRANDED_REPORTS) return;
+    strandedReportsRef.current += 1;
+    console.warn(
+      JSON.stringify({
+        event: 'ok-terminal-dock-stranded-while-hidden',
+        panelPx: Math.round(panelPx),
+        panelPct: Number.isFinite(panelPct) ? Math.round(panelPct * 10) / 10 : null,
+        dockPosition,
+        visible,
+        // The height this shell would reopen at. Reading it against `innerHeight`
+        // is what distinguishes a value clamped for the current viewport from one
+        // carried over from a differently-sized display.
+        dockHeightPx: heightPxRef.current,
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        devicePixelRatio: window.devicePixelRatio,
+      }),
+    );
+  }
+
   // The drag-end listener is added to `window` on pointerdown and normally removes
   // itself on pointerup. If the shell unmounts mid-drag the closure would leak —
   // track it so unmount can detach it.
@@ -122,11 +163,42 @@ export function TerminalDock({
   useEffect(() => {
     const panel = panelRef.current;
     if (panel == null) return;
-    if (bottomOpen) {
-      panel.resize(`${heightPxRef.current}px`);
-    } else {
-      panel.collapse();
+    try {
+      if (bottomOpen) {
+        panel.resize(`${heightPxRef.current}px`);
+      } else {
+        panel.collapse();
+      }
+    } catch {
+      // The imperative panel handles throw once their group has unregistered
+      // (same reason EditorArea's assertRightRailLayout wraps its calls). A throw
+      // means the panel never resized, so no onResize fires and the invariant
+      // guard cannot see it: recovery is the next `bottomOpen` transition
+      // re-running this effect, or any later change to the panel's own box.
     }
+  }, [bottomOpen, panelRef]);
+
+  // The persisted height is viewport-relative: `readTerminalHeight` caps it at
+  // 50vh, but only at read time, and this shell snapshots it once at mount. A
+  // window that changes size afterwards — moving to another display being the
+  // common case — otherwise keeps a ceiling computed for a viewport that no
+  // longer exists, letting the dock occupy more than half the editor. Re-clamp
+  // against the live viewport, and re-apply while open so an open dock shrinks
+  // with the window rather than waiting for the next remount.
+  useEffect(() => {
+    const reclampToViewport = () => {
+      const next = clampTerminalHeight(heightPxRef.current);
+      if (next === heightPxRef.current) return;
+      heightPxRef.current = next;
+      if (!bottomOpen) return;
+      try {
+        panelRef.current?.resize(`${next}px`);
+      } catch {
+        // Panel unregistered mid-flight — nothing to re-clamp against.
+      }
+    };
+    window.addEventListener('resize', reclampToViewport);
+    return () => window.removeEventListener('resize', reclampToViewport);
   }, [bottomOpen, panelRef]);
 
   return (
@@ -197,6 +269,30 @@ export function TerminalDock({
         onResize={(size) => {
           const collapsed = size.asPercentage === 0;
           setIsCollapsed(collapsed);
+          // Invariant: the bottom panel occupies ZERO height whenever the dock is
+          // not open (hidden, or right-docked). The `bottomOpen` effect asserts
+          // that only on a TRANSITION, so any path leaving the panel expanded
+          // without flipping `bottomOpen` — a library re-layout, or a collapse
+          // issued while the group was unmeasurable and therefore discarded —
+          // strands the editor behind an empty band with no dock chrome and
+          // nothing left to re-assert it. This is the panel's own resize signal,
+          // so it catches that state whatever produced it. The handle is disabled
+          // while hidden, so an expanded-hidden panel is never a user width worth
+          // preserving.
+          //
+          // Gate on pixels rather than `collapsed`: an unmeasurable group makes
+          // `asPercentage` NaN, which compares false against 0 and would read as
+          // "expanded", firing this guard spuriously on a panel that has no size
+          // at all.
+          if (!bottomOpen && size.inPixels > 0 && !isDraggingRef.current) {
+            reportStrandedDock(size.inPixels, size.asPercentage);
+            try {
+              panelRef.current?.collapse();
+            } catch {
+              // Panel unregistered mid-flight — the next resize re-asserts.
+            }
+            return;
+          }
           // Persist + reflect to controlled visibility only on a user drag;
           // imperative replays from the `visible` effect also fire onResize and must
           // not overwrite the persisted value or loop onVisibleChange.

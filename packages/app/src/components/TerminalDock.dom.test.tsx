@@ -163,9 +163,13 @@ vi.doMock('./TerminalGate', () => ({
 vi.doMock('@/lib/terminal-height-store', () => ({
   getInitialTerminalHeight: () => 240,
   writeTerminalHeight: () => {},
+  // The dock's viewport re-clamp listener calls this on every window resize. The
+  // clamp is not wrapped by that listener's try/catch, so omitting it here would
+  // throw for any test that dispatches a resize event.
+  clampTerminalHeight: (px: number) => px,
 }));
 
-const { TerminalDock } = await import('./TerminalDock');
+const { TerminalDock, MAX_STRANDED_REPORTS } = await import('./TerminalDock');
 const { TerminalSessionsHost } = await import('./TerminalSessionsHost');
 // After the vi.doMock block (a static import would load the real xterm).
 const { STAGE_PASTE_SETTLE_MS } = await import('./TerminalPanel');
@@ -1396,5 +1400,112 @@ describe('TerminalDock extraction pins', () => {
       `[data-terminal-session="${nowActive}"] .xterm-helper-textarea`,
     );
     await waitFor(() => expect(document.activeElement).toBe(focusSink));
+  });
+});
+
+/**
+ * The bottom panel must occupy zero height whenever the dock is not open. The
+ * controlled effect asserts that only when `bottomOpen` changes, so a panel left
+ * expanded by anything else — a library re-layout, or a collapse issued while the
+ * group was unmeasurable and therefore discarded — strands the editor behind an
+ * empty band with no dock chrome and no drag handle to recover it.
+ *
+ * These drive the panel's own `onResize`, which is the signal the guard hangs off
+ * and the one rung where the illegal state can be produced on demand: the real
+ * library will not un-collapse a collapsed panel, so a browser-level test cannot
+ * reach this state and would pass with or without the guard.
+ */
+describe('TerminalDock hidden-dock invariant', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    terminalPanelProps = null;
+    panelHandle.collapse.mockClear();
+    panelHandle.resize.mockClear();
+    panelHandle.expand.mockClear();
+    sharedPanelRef.current = panelHandle;
+    __resetLocalMenuActionBusForTests();
+  });
+  afterEach(() => {
+    cleanup();
+    __resetLocalMenuActionBusForTests();
+  });
+
+  function reportSize(inPixels: number, asPercentage: number) {
+    act(() => {
+      terminalPanelProps?.onResize?.({ asPercentage, inPixels });
+    });
+  }
+
+  function strandedLogs(warn: ReturnType<typeof vi.spyOn>): string[] {
+    return warn.mock.calls
+      .map((call) => String(call[0]))
+      .filter((line) => line.includes('ok-terminal-dock-stranded-while-hidden'));
+  }
+
+  test('a hidden dock that reports a non-zero height is snapped shut', () => {
+    renderDock(false);
+    panelHandle.collapse.mockClear();
+
+    reportSize(588, 42.5);
+
+    expect(panelHandle.collapse).toHaveBeenCalled();
+  });
+
+  test('an unmeasurable group (NaN percentage, zero pixels) is left alone', () => {
+    // A zero-height group makes the library's percentage NaN, which compares
+    // false against 0 — gating on that instead of pixels would fire the guard on
+    // a panel that has no size at all.
+    renderDock(false);
+    panelHandle.collapse.mockClear();
+
+    reportSize(0, Number.NaN);
+
+    expect(panelHandle.collapse).not.toHaveBeenCalled();
+  });
+
+  test('an open dock keeps the height it reports', () => {
+    renderDock(true);
+    panelHandle.collapse.mockClear();
+
+    reportSize(240, 30);
+
+    expect(panelHandle.collapse).not.toHaveBeenCalled();
+  });
+
+  test('the repair is reported with the geometry needed to diagnose it', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      renderDock(false);
+      reportSize(588, 42.5);
+
+      const [line] = strandedLogs(warn);
+      expect(line).toBeDefined();
+      expect(JSON.parse(line as string)).toMatchObject({
+        event: 'ok-terminal-dock-stranded-while-hidden',
+        panelPx: 588,
+        panelPct: 42.5,
+        dockPosition: 'bottom',
+        visible: false,
+      });
+      // Viewport geometry is the half that distinguishes a height clamped for the
+      // current window from one carried over from a differently-sized display.
+      const payload = JSON.parse(line as string);
+      expect(typeof payload.innerHeight).toBe('number');
+      expect(typeof payload.dockHeightPx).toBe('number');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test('the report is capped so a fight with another layout writer cannot flood the log', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      renderDock(false);
+      for (let i = 0; i < MAX_STRANDED_REPORTS + 4; i++) reportSize(588, 42.5);
+
+      expect(strandedLogs(warn)).toHaveLength(MAX_STRANDED_REPORTS);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  clampTerminalHeight,
   DEFAULT_TERMINAL_HEIGHT,
   type HeightStorage,
   MIN_TERMINAL_HEIGHT,
@@ -122,5 +123,30 @@ describe('writeTerminalHeight', () => {
       },
     };
     expect(() => writeTerminalHeight(240, throwing, TALL)).not.toThrow();
+  });
+});
+
+/**
+ * The 50vh ceiling is viewport-relative, but `readTerminalHeight` applies it only
+ * at read time and callers snapshot the result at mount. Moving the window to a
+ * shorter display therefore leaves a height that outlives the viewport it was
+ * sized for, so the live value needs re-clamping independently of a read.
+ */
+describe('clampTerminalHeight', () => {
+  test('caps a height carried over from a taller viewport', () => {
+    expect(clampTerminalHeight(588, 1000)).toBe(500);
+  });
+
+  test('leaves a height that already fits', () => {
+    expect(clampTerminalHeight(240, TALL)).toBe(240);
+  });
+
+  test('raises a height below the floor', () => {
+    expect(clampTerminalHeight(10, TALL)).toBe(MIN_TERMINAL_HEIGHT);
+  });
+
+  test('keeps the floor reachable on a viewport too short for it', () => {
+    // 50vh of 100px is below MIN; the clamp window must not invert.
+    expect(clampTerminalHeight(400, 100)).toBe(MIN_TERMINAL_HEIGHT);
   });
 });

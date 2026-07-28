@@ -47,6 +47,22 @@ function currentViewportHeight(): number {
   return window.innerHeight;
 }
 
+/**
+ * Re-clamp a live height against the CURRENT viewport's 50vh ceiling.
+ *
+ * `readTerminalHeight` applies that ceiling only at read time, and callers
+ * snapshot the result once at mount. A window that changes size afterwards —
+ * moving to another display is the common case — therefore carries a ceiling
+ * computed for a viewport that no longer exists, and the dock can occupy more
+ * than half the editor.
+ *
+ * This registers no listener of its own: a caller holding a live height is
+ * responsible for subscribing to `window` resize and re-clamping there.
+ */
+export function clampTerminalHeight(px: number, viewportHeight?: number): number {
+  return clamp(px, viewportHeight ?? currentViewportHeight());
+}
+
 export function readTerminalHeight(storage?: HeightStorage, viewportHeight?: number): number {
   try {
     const s = storage ?? localStorage;
