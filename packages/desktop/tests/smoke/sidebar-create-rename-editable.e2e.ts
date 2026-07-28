@@ -5,28 +5,16 @@
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PACKAGED_EXECUTABLE = resolve(
-  __dirname,
-  '..',
-  '..',
-  'dist-desktop',
-  'mac-arm64',
-  'OpenKnowledge.app',
-  'Contents',
-  'MacOS',
-  'OpenKnowledge',
-);
+const TARGET = resolveDesktopTarget({ requirePackaged: true });
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const PACKAGED_BUILD_EXISTS = existsSync(PACKAGED_EXECUTABLE);
 
 interface SeededProject {
   tmpHome: string;
@@ -71,18 +59,20 @@ function seedProject(prefix: string): SeededProject {
 async function launchApp(seed: SeededProject): Promise<ElectronApplication> {
   const deepLink = `openknowledge://open?project=${encodeURIComponent(seed.projectDir)}&doc=start`;
   const args = [`--user-data-dir=${seed.userDataDir}`, deepLink];
-  return electron.launch({
-    executablePath: PACKAGED_EXECUTABLE,
-    args,
-    timeout: 30_000,
-    env: {
-      ...process.env,
-      HOME: seed.tmpHome,
-      OK_DESKTOP_E2E_SMOKE: '1',
-      OK_RECLAIM_DISABLE: '1',
-      NODE_ENV: 'production',
-    },
-  });
+  return electron.launch(
+    desktopLaunchOptions({
+      target: TARGET,
+      args,
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: seed.tmpHome,
+        OK_DESKTOP_E2E_SMOKE: '1',
+        OK_RECLAIM_DISABLE: '1',
+        NODE_ENV: 'production',
+      },
+    }),
+  );
 }
 
 async function findEditorWindow(app: ElectronApplication, docName: string): Promise<Page> {
@@ -152,10 +142,7 @@ async function createSidebarFileAndType(
 test.describe('Sidebar create and rename editability smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Smoke harness is darwin-only in v0.');
-  test.skip(
-    !PACKAGED_BUILD_EXISTS,
-    `Packaged desktop build missing at ${PACKAGED_EXECUTABLE} — run an unpacked packaged build first.`,
-  );
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('successive sidebar-created files remain editable after inline rename commit', async ({
     captureStderrFor,

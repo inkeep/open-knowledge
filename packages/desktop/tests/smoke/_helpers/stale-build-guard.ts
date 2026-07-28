@@ -14,7 +14,7 @@
  * undefined; main rejected the IPC; consent dialog never rendered. Hours
  * lost reading IPC choreography that was never actually broken.
  *
- * In CI this can't happen — `bun run build:desktop` runs immediately
+ * In CI this can't happen — `pnpm run build:desktop` runs immediately
  * before the test step. In local dev it happens whenever a contributor
  * edits `src/` and starts a smoke run without rebuilding. This guard
  * fires a clear diagnostic at globalSetup time so the wasted-debugging
@@ -94,7 +94,7 @@ export default function staleBuildGuard(): void {
         '',
         ...stale,
         '',
-        'Run `bun run build:desktop` from public/open-knowledge before re-running smoke tests.',
+        'Run `pnpm run build:desktop` from public/open-knowledge before re-running smoke tests.',
         '',
         'Why this matters: the smoke harness launches `out/main/index.js` directly.',
         'If `out/` is older than `src/`, tests run against a phantom version of the app',

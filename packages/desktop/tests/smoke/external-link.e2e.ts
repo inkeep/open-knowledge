@@ -9,26 +9,21 @@
  * Skip conditions match deep-link.e2e.ts.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 
 test.describe('external-link safety-net delegation', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Smoke uses open(1) for the deep-link drive — macOS-only.');
-  test.skip(
-    !BUILD_EXISTS,
-    `Main build missing at ${MAIN_ENTRY} — run "bun run build:desktop" first.`,
-  );
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('window.open(https://...) routes to shell.openExternal via safety net', async ({
     captureStderrFor,
@@ -50,14 +45,17 @@ test.describe('external-link safety-net delegation', () => {
     // instead of letting `OK_TEST_OPEN_PROJECT` drive the project — same
     // mechanism documented in deep-link.e2e.ts:53. The dir lands under the
     // test's `projectDir` tmpdir so the fixture's `cleanupDirs` covers it.
-    const app = await electron.launch({
-      args: [MAIN_ENTRY, `--user-data-dir=${join(projectDir, 'electron-userdata')}`],
-      timeout: 30_000,
-      env: {
-        ...process.env,
-        OK_TEST_OPEN_PROJECT: projectDir,
-      },
-    });
+    const app = await electron.launch(
+      desktopLaunchOptions({
+        target: TARGET,
+        args: [`--user-data-dir=${join(projectDir, 'electron-userdata')}`],
+        timeout: 30_000,
+        env: {
+          ...process.env,
+          OK_TEST_OPEN_PROJECT: projectDir,
+        },
+      }),
+    );
     captureStderrFor(app, { cleanupDirs: [projectDir] });
 
     // Tap into the main process — install a stub for shell.openExternal that

@@ -463,6 +463,63 @@ jobs:
             attempt=$((attempt + 1))
           done
 
+      # FR5b — smoke the signed DMG before anything about this release becomes
+      # visible or installable. This is the only point in the cascade where the
+      # artifact exists AND nothing has shipped yet: the Release is still a
+      # draft, npm has not moved, and the announcements have not posted. A
+      # failure here leaves all three exactly as they are.
+      #
+      # A failure here suppresses the promote, the moved npm dispatch, and both
+      # announcements. Note the mechanism, because it is easy to get wrong:
+      # Actions injects the implicit `if: success()` only on steps that declare
+      # NO `if:`. The promote step relies on that. Every step below that DOES
+      # declare an `if:` must spell `success() &&` itself — omitting it is how
+      # a gated step fires anyway on a job that already failed.
+      #
+      # The gate is skipped when the checked-out ref predates it. On the
+      # cascade path this job checks out `client_payload.ref` — a tag pointing
+      # at the promoted beta's commit, which for the first releases after this
+      # lands will not contain the smoke harness. Blocking a release because
+      # the gate did not exist yet would be wrong; the gate applies from the
+      # first tag that carries it.
+      #
+      # Stable only. Every beta cut flows through this same job on
+      # channel=beta, and FR5b is scoped to the stable artifact — the beta
+      # equivalent is the selection-time gate in select-beta-to-promote.yml,
+      # which smokes an already-published beta without standing between a cut
+      # and its release. Smoking here on beta would add 5-15 min to every
+      # cadence cut and let a bad DMG block the cadence itself.
+      - name: Smoke the packaged DMG (FR5b)
+        id: dmg_smoke
+        if: steps.channel.outputs.channel == 'latest'
+        env:
+          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          CONFIG="packages/desktop/playwright.packaged.config.ts"
+          DRIVER=".github/scripts/smoke-packaged-dmg.mjs"
+          if [[ ! -f "$CONFIG" || ! -f "$DRIVER" ]]; then
+            echo "verdict=skipped" >> "$GITHUB_OUTPUT"
+            echo "reason=the smoke harness is not present at ${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+            echo "::notice::DMG smoke gate absent at ${RELEASE_TAG} (ref predates the harness) — releasing without it. Later tags carry the gate."
+            exit 0
+          fi
+          # `.dmg.blockmap` sorts next to `.dmg`; match only the bundle itself.
+          # `|| true` keeps `set -e` from killing the step when dist-desktop is
+          # absent — the explicit empty-DMG guard below owns that message.
+          DMG="$(find packages/desktop/dist-desktop -maxdepth 1 -name '*.dmg' 2>/dev/null | head -1 || true)"
+          if [[ -z "$DMG" ]]; then
+            echo "verdict=error" >> "$GITHUB_OUTPUT"
+            echo "reason=electron-builder produced no .dmg to smoke" >> "$GITHUB_OUTPUT"
+            echo "::error::No .dmg found under packages/desktop/dist-desktop for ${RELEASE_TAG}; refusing to publish an unverified release."
+            exit 1
+          fi
+          echo "Smoking ${DMG} for ${RELEASE_TAG}…"
+          # The driver writes verdict= / reason= to GITHUB_OUTPUT itself and
+          # exits 0 / 1 / 2 for pass / fail / error, so this step fails closed
+          # on both non-pass verdicts without any branching here.
+          node "$DRIVER" "$DMG"
+
       # Closes the publish-window race: release.yml / promote-stable.yml
       # create the GitHub Release as --draft so it stays out of the .atom
       # feed until the channel manifest (beta-mac.yml / latest-mac.yml) is
@@ -503,6 +560,61 @@ jobs:
             gh release edit "$RELEASE_TAG" --draft=false
             echo "Promoted ${RELEASE_TAG} to published (draft=false, latest=false; channel=${CHANNEL})."
           fi
+
+      # FR5b — the npm stable publish, moved here from promote-stable.yml so it
+      # sits downstream of the DMG smoke gate. promote-stable dispatched this
+      # before desktop-release even started, which meant npm `latest` could move
+      # for a release whose DMG later failed to build at all. Here it fires only
+      # after the DMG is built, smoked, and the Release has left draft.
+      #
+      # The payload shape is unchanged — same event type, same three field names
+      # — so release.yml's input contract is untouched. Only `dispatched_by`
+      # differs in value: it now names this run rather than the promote-stable
+      # run. `contents: write` (declared at the job) is the scope
+      # POST /repos/{}/dispatches needs, and repository_dispatch is GitHub's
+      # documented exemption to the rule that GITHUB_TOKEN-triggered events do
+      # not create workflow runs.
+      #
+      # Gated the same way the --latest flip above is: beta cuts flow through
+      # this same job on channel=beta and must never publish an npm stable, and
+      # a manual workflow_dispatch recovery re-run must never re-publish a
+      # version that is already on npm.
+      #
+      # `success() &&` is load-bearing, not decoration. Actions injects the
+      # implicit `success()` only on steps with NO `if:`; write one and you own
+      # the whole predicate. Without it this step would fire after the smoke
+      # gate refused the release — publishing to npm exactly the artifact the
+      # gate rejected, which is the failure FR5b exists to prevent.
+      - name: Trigger release.yml to publish stable to npm
+        if: success() && steps.channel.outputs.channel == 'latest' && github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STABLE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+          STABLE_VERSION: ${{ steps.channel.outputs.version }}
+        run: |
+          set -euo pipefail
+          SELF_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          payload=$(jq -nc \
+            --arg ref "$STABLE_TAG" \
+            --arg version "$STABLE_VERSION" \
+            --arg by "$SELF_URL" \
+            '{event_type: "publish-stable", client_payload: {ref: $ref, version: $version, dispatched_by: $by}}')
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/dispatches" --input - <<<"$payload"
+          echo "Dispatched publish-stable to release.yml (ref=${STABLE_TAG}, version=${STABLE_VERSION}) after the DMG smoke gate passed."
+          # Best-effort forward-link to the release.yml run we just triggered.
+          CHILD=""
+          for _ in 1 2 3 4 5 6; do
+            CHILD=$(gh run list --workflow=release.yml --event=repository_dispatch --limit 8 --json url,createdAt \
+              --jq "[.[] | select(.createdAt >= \"$SINCE\")] | sort_by(.createdAt) | last | .url // empty" 2>/dev/null || true)
+            [[ -n "$CHILD" ]] && break
+            sleep 3
+          done
+          {
+            echo "### Dispatched release.yml (npm publish)"
+            echo "- Gated on the DMG smoke verdict: \`${{ steps.dmg_smoke.outputs.verdict }}\`"
+            if [[ -n "$CHILD" ]]; then echo "- Run: ${CHILD}"; else echo "- (run link unresolved; open release.yml)"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # The on-site changelog (/docs/changelog) is rebuilt by
       # public-open-knowledge-docs-changelog-deploy.yml (on agents-private), which
@@ -651,6 +763,93 @@ jobs:
       # GitHub Actions log search using the STUCK-DRAFT tag. Operators
       # bisecting a missing release can grep workflow logs for the tag,
       # then run the recovery command in the message.
+      # FR5c — page the release channel when the gate refuses a release.
+      # Without this a blocked release is silent: the Release simply never
+      # appears and nobody learns why until someone goes looking. The alert is
+      # deliberately loud and visually unlike the routine
+      # "🎉 OpenKnowledge X.Y.Z released" post that lands in the same channels.
+      #
+      # `if: failure()` (not `success()`) — this is the one step that must run
+      # precisely when the rest of the job did not. It fires for ANY job
+      # failure at or after the smoke gate; the payload reports the smoke
+      # verdict when there is one and falls back to `error` when the failure
+      # came from elsewhere, which is the honest reading (the gate never
+      # returned a product verdict).
+      #
+      # No new secret: SLACK_WEBHOOK_URL / DISCORD_WEBHOOK_URL already exist
+      # and are consumed by the announcement steps above with the same
+      # unset -> ::notice:: -> skip tolerance.
+      - name: Alert on a blocked release (FR5c)
+        # Stable only, matching the gate's own scope. A failed beta cut keeps
+        # its existing STUCK-DRAFT warning below; paging the release channel for
+        # every beta hiccup would train readers to ignore the alert.
+        if: failure() && steps.channel.outputs.channel == 'latest'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+          SMOKE_VERDICT: ${{ steps.dmg_smoke.outputs.verdict }}
+          SMOKE_REASON: ${{ steps.dmg_smoke.outputs.reason }}
+        run: |
+          set -uo pipefail
+          # A skipped gate (ref predates the harness) is not a blocked release,
+          # and neither is a failure before the DMG was even built. Both leave
+          # the verdict empty or 'skipped'; report those as `error` so the
+          # message never implies the app itself failed a test it never ran.
+          VERDICT="${SMOKE_VERDICT:-}"
+          if [[ "$VERDICT" != "fail" ]]; then
+            VERDICT="error"
+          fi
+          REASON="${SMOKE_REASON:-the release job failed before the smoke gate reached a verdict}"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          # Take the builder from the same commit as this workflow file, NOT
+          # from the checked-out release tag. On repository_dispatch GitHub runs
+          # the workflow from the default branch while the job checks out
+          # client_payload.ref, and a stable tag points at the promoted beta's
+          # commit, which can predate any script the workflow references.
+          # v0.41.0 hit exactly that and lost its announcement to
+          # "Cannot find module". Fetched into RUNNER_TEMP so the release
+          # checkout stays untouched.
+          BUILDER="${RUNNER_TEMP}/build-smoke-alert-payload.mjs"
+          if ! git fetch --depth=1 origin "$GITHUB_SHA" >/dev/null 2>&1 ||
+             ! git show "${GITHUB_SHA}:.github/scripts/build-smoke-alert-payload.mjs" > "$BUILDER" 2>/dev/null; then
+            rm -f "$BUILDER"
+          fi
+
+          # `${var^}` (bash 4) is deliberately avoided: macOS runners ship
+          # bash 3.2, so the label is passed in already-cased instead.
+          post() {
+            local channel="$1" webhook="$2" label="$3"
+            if [[ -z "$webhook" ]]; then
+              echo "::notice::${label} webhook not set — skipping the ${label} smoke alert for ${RELEASE_TAG}."
+              return 0
+            fi
+            local payload=""
+            if [[ -f "$BUILDER" ]]; then
+              payload="$(node "$BUILDER" --channel "$channel" --tag "$RELEASE_TAG" \
+                --verdict "$VERDICT" --reason "$REASON" --run-url "$RUN_URL" || true)"
+            fi
+            if [[ -z "$payload" ]]; then
+              # Never go silent. Losing the formatting is a degradation; losing
+              # the page is the outage this step exists to prevent.
+              echo "::warning::Smoke-alert payload builder unavailable for ${RELEASE_TAG}; sending the plain-text alert."
+              payload="$(jq -nc --arg t "🚨 RELEASE BLOCKED: ${RELEASE_TAG} DMG smoke ${VERDICT} — nothing shipped. ${REASON} ${RUN_URL}" '{content: $t, text: $t}')"
+            fi
+            # The failing curl sits in an `if` condition, so a webhook outage
+            # routes to the warning instead of masking the smoke failure.
+            if curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$webhook"; then
+              echo "Posted the ${label} smoke alert for ${RELEASE_TAG}."
+            else
+              echo "::warning::${label} smoke alert failed to POST for ${RELEASE_TAG} — the release is still blocked; only the notification was lost."
+            fi
+          }
+
+          post slack "${SLACK_WEBHOOK_URL:-}" Slack
+          post discord "${DISCORD_WEBHOOK_URL:-}" Discord
+          # The annotation is emitted IN ADDITION to the page, so the run page
+          # tells the same story as the channel.
+          echo "::error::RELEASE BLOCKED: ${RELEASE_TAG} DMG smoke ${VERDICT} — ${REASON}. The Release stays a draft and npm latest is untouched."
+
       - name: Warn on stuck draft
         if: failure()
         env:

@@ -23,9 +23,9 @@
 // null for 404 and throwing for everything else; selectPromotion lets the throw
 // propagate so main() can exit non-zero.
 
-import { execFileSync, spawnSync } from "node:child_process";
-import { appendFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { execFileSync, spawnSync } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 const BETA_TAG_RE = /^v\d+\.\d+\.\d+-beta\.\d+$/;
 const STABLE_TAG_RE = /^v\d+\.\d+\.\d+$/;
@@ -36,21 +36,24 @@ const STABLE_TAG_RE = /^v\d+\.\d+\.\d+$/;
 // stable tags and any non-conforming ref.
 export function parseBetaTags(rawTagOutput) {
   return rawTagOutput
-    .split("\n")
+    .split('\n')
     .map((s) => s.trim())
     .filter((s) => BETA_TAG_RE.test(s));
 }
 
 function isFullyCut(meta) {
   const assets = Array.isArray(meta.assets) ? meta.assets : [];
-  const hasDmg = assets.some((a) => typeof a.name === "string" && a.name.endsWith(".dmg"));
-  const hasManifest = assets.some((a) => typeof a.name === "string" && a.name.endsWith("-mac.yml"));
+  const hasDmg = assets.some((a) => typeof a.name === 'string' && a.name.endsWith('.dmg'));
+  const hasManifest = assets.some((a) => typeof a.name === 'string' && a.name.endsWith('-mac.yml'));
   return meta.isDraft !== true && Boolean(meta.publishedAt) && hasDmg && hasManifest;
 }
 
 // Walk betaTags newest -> oldest and return the selection decision:
-//   { kind: "select", target }  -> dispatch promote-stable for `target`
-//   { kind: "none" }            -> nothing eligible right now
+//   { kind: "select", target, tier }  -> dispatch promote-stable for `target`
+//   { kind: "none" }                  -> nothing eligible right now
+// `tier` is "soak" for the 24h path and "fast" for a DMG-smoke-proven early
+// promotion.
+//
 // Selects the NEWEST beta that is unshipped + fully cut + soaked >= soakSeconds.
 // A fresher head that is under-soaked or not-yet-cut is skipped in favor of the
 // previous soaked beta. The descent STOPS at the first already-shipped beta (its
@@ -59,22 +62,70 @@ function isFullyCut(meta) {
 // promote-stable derives it from the changeset delta over the latest stable.
 // Propagates any throw from fetchReleaseMeta (a non-404 infra error) instead of
 // skipping the candidate.
-export function selectPromotion({ betaTags, isAlreadyShipped, fetchReleaseMeta, soakSeconds, nowMs }) {
+//
+// FAST TIER (FR5a), OFF BY DEFAULT. `qualifiesForFastTier` defaults to "nothing
+// qualifies", which makes the under-soaked branch below fall through to the same
+// `continue` this function has always used — so with no predicate supplied the
+// decision is byte-for-byte what it is today and `smokeBeta` is never called.
+// When a predicate IS supplied, an under-soaked candidate is promoted early only
+// if its DMG smoke returns "pass". "fail" and "error" both refuse the fast tier
+// and leave the 24h outcome exactly as it would have been, and neither ever
+// fails the job — this evaluator must never block a release.
+export function selectPromotion({
+  betaTags,
+  isAlreadyShipped,
+  fetchReleaseMeta,
+  soakSeconds,
+  nowMs,
+  qualifiesForFastTier = () => false,
+  smokeBeta = null,
+  log = () => {},
+}) {
   const soakMs = soakSeconds * 1000;
   for (const beta of betaTags) {
     if (isAlreadyShipped(beta)) {
       // This beta's commit is already in the latest stable; every older beta is
       // too. Nothing newer than this is eligible below, so stop.
-      return { kind: "none" };
+      return { kind: 'none' };
     }
     const meta = fetchReleaseMeta(beta); // null === 404 (no release yet); throws on infra error
     if (meta === null) continue;
     if (!isFullyCut(meta)) continue;
     const ageMs = nowMs - Date.parse(meta.publishedAt);
-    if (Number.isNaN(ageMs) || ageMs < soakMs) continue;
-    return { kind: "select", target: beta };
+    if (!Number.isNaN(ageMs) && ageMs >= soakMs) {
+      return { kind: 'select', target: beta, tier: 'soak' };
+    }
+    // Under-soaked (or unparseable publish date). The fast tier is the only way
+    // this beta can be selected; everything below is inert unless armed.
+    if (smokeBeta && qualifiesForFastTier(beta, meta)) {
+      const verdict = evaluateSmoke(beta, smokeBeta, log);
+      if (verdict === 'pass') {
+        return { kind: 'select', target: beta, tier: 'fast' };
+      }
+      // Refuse the fast tier and keep descending, which is exactly what this
+      // loop did before the fast tier existed.
+      log(
+        verdict === 'fail'
+          ? `::warning::Fast tier REFUSED for ${beta}: its DMG failed the smoke subset. Falling back to the 24h tier.`
+          : `::warning::Fast tier REFUSED for ${beta}: the DMG smoke hit an infrastructure error and never reached a verdict. Falling back to the 24h tier.`,
+      );
+    }
   }
-  return { kind: "none" };
+  return { kind: 'none' };
+}
+
+// A smoke outcome can never fail this job (FR5a: the gate must never block a
+// release), so a thrown smoke is folded into the `error` verdict rather than
+// propagated. This is deliberately unlike fetchReleaseMeta, whose non-404
+// throws MUST propagate — that one decides whether a beta is shippable at all.
+function evaluateSmoke(beta, smokeBeta, log) {
+  try {
+    const verdict = smokeBeta(beta);
+    return verdict === 'pass' || verdict === 'fail' ? verdict : 'error';
+  } catch (err) {
+    log(`::warning::DMG smoke threw for ${beta}: ${err?.message ?? String(err)}`);
+    return 'error';
+  }
 }
 
 // --- workflow-runtime wiring (real git / gh boundary) ---
@@ -85,31 +136,35 @@ export function selectPromotion({ betaTags, isAlreadyShipped, fetchReleaseMeta, 
 // longer maps 1:1 to a stable version, so "is this beta already released" is
 // "is its commit contained in the latest stable".
 function resolveLatestStableSha() {
-  const out = execFileSync("git", ["tag", "--list", "v*", "--sort=-version:refname"], { encoding: "utf8" });
-  for (const line of out.split("\n")) {
+  const out = execFileSync('git', ['tag', '--list', 'v*', '--sort=-version:refname'], {
+    encoding: 'utf8',
+  });
+  for (const line of out.split('\n')) {
     const t = line.trim();
     if (STABLE_TAG_RE.test(t)) {
-      return execFileSync("git", ["rev-parse", "--verify", `${t}^{commit}`], { encoding: "utf8" }).trim();
+      return execFileSync('git', ['rev-parse', '--verify', `${t}^{commit}`], {
+        encoding: 'utf8',
+      }).trim();
     }
   }
-  return "";
+  return '';
 }
 
 function makeRealIsAlreadyShipped(latestStableSha) {
   return (betaTag) => {
     if (!latestStableSha) return false; // no stable yet -> nothing is shipped
-    const betaSha = execFileSync("git", ["rev-parse", "--verify", `${betaTag}^{commit}`], {
-      encoding: "utf8",
+    const betaSha = execFileSync('git', ['rev-parse', '--verify', `${betaTag}^{commit}`], {
+      encoding: 'utf8',
     }).trim();
     // Distinguish a clean "not an ancestor" (exit 1) from an infra failure (any
     // other non-zero), which must fail loud rather than read as "not shipped".
-    const res = spawnSync("git", ["merge-base", "--is-ancestor", betaSha, latestStableSha], {
-      encoding: "utf8",
+    const res = spawnSync('git', ['merge-base', '--is-ancestor', betaSha, latestStableSha], {
+      encoding: 'utf8',
     });
     if (res.status === 0) return true;
     if (res.status === 1) return false;
     throw new Error(
-      `git merge-base --is-ancestor ${betaSha} ${latestStableSha} failed (exit ${res.status}): ${String(res.stderr || "").trim()}`,
+      `git merge-base --is-ancestor ${betaSha} ${latestStableSha} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`,
     );
   };
 }
@@ -120,14 +175,18 @@ function makeRealIsAlreadyShipped(latestStableSha) {
 // string-match the 404 signature and rethrow everything else (fail loud).
 function realFetchReleaseMeta(tag) {
   try {
-    const out = execFileSync("gh", ["release", "view", tag, "--json", "isDraft,publishedAt,assets"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const out = execFileSync(
+      'gh',
+      ['release', 'view', tag, '--json', 'isDraft,publishedAt,assets'],
+      {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
     const j = JSON.parse(out);
     return { isDraft: j.isDraft, publishedAt: j.publishedAt || null, assets: j.assets || [] };
   } catch (err) {
-    const stderr = String(err?.stderr || err?.message || "");
+    const stderr = String(err?.stderr || err?.message || '');
     if (/release not found|not found|HTTP 404|could not find/i.test(stderr)) {
       return null;
     }
@@ -136,9 +195,9 @@ function realFetchReleaseMeta(tag) {
 }
 
 function main() {
-  const soakSeconds = Number(process.env.SOAK_SECONDS || "86400");
-  const rawTags = execFileSync("git", ["tag", "--list", "v*-beta.*", "--sort=-version:refname"], {
-    encoding: "utf8",
+  const soakSeconds = Number(process.env.SOAK_SECONDS || '86400');
+  const rawTags = execFileSync('git', ['tag', '--list', 'v*-beta.*', '--sort=-version:refname'], {
+    encoding: 'utf8',
   });
   const betaTags = parseBetaTags(rawTags);
   const latestStableSha = resolveLatestStableSha();
@@ -160,16 +219,30 @@ function main() {
     process.exit(1);
   }
 
-  let target = "";
-  if (result.kind === "select") {
+  let target = '';
+  let tier = '';
+  if (result.kind === 'select') {
     target = result.target;
-    console.log(`::notice::Eligible: ${target} (unshipped + fully cut + soaked >= ${soakSeconds}s).`);
+    tier = result.tier;
+    console.log(
+      `::notice::Eligible: ${target} (unshipped + fully cut + soaked >= ${soakSeconds}s).`,
+    );
   } else {
-    console.log("No-op: no beta is currently eligible (need unshipped + fully cut + soaked >= 24h).");
+    console.log(
+      'No-op: no beta is currently eligible (need unshipped + fully cut + soaked >= 24h).',
+    );
   }
 
   if (process.env.GITHUB_OUTPUT) {
-    appendFileSync(process.env.GITHUB_OUTPUT, `target=${target}\n`);
+    // `fast_tier_candidate` is the seam the macOS smoke leg keys off. Nothing
+    // populates it today: `main()` supplies no fast-tier predicate, so
+    // selectPromotion never reports the fast tier and the leg never runs. That
+    // is the whole of the build-but-do-not-arm posture — arming is a documented
+    // operator step in RELEASES.md, not a side effect of merging this.
+    appendFileSync(
+      process.env.GITHUB_OUTPUT,
+      `target=${target}\ntier=${tier}\nfast_tier_candidate=\n`,
+    );
   }
 }
 

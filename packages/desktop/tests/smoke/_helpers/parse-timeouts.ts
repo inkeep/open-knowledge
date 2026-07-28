@@ -28,8 +28,16 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { DEFAULT_LAUNCH_TIMEOUT_MS } from './launch-desktop';
 
 const TIMEOUT_LITERAL_RE = /\btimeout:\s*(\d+(?:_\d+)*)/g;
+/**
+ * Smoke files launch through the shared helper rather than an inline
+ * `electron.launch({ timeout: 30_000 })`, so the parser has to know what that
+ * helper spends by default. Imported rather than duplicated so the two cannot
+ * drift.
+ */
+const LAUNCH_HELPER_CALL_RE = /\bdesktopLaunchOptions\(/;
 const TOPASS_TIMEOUT_RE = /\.toPass\(\s*\{[^}]*timeout:\s*(\d+(?:_\d+)*)/g;
 const DEFAULT_TIMEOUT_ARG_RE = /\btimeoutMs\s*=\s*(\d+(?:_\d+)*)/g;
 const FUNCTION_HEADER_RE = /(?:^|\n)(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(/g;
@@ -288,6 +296,14 @@ export function extractHelperBudgets(src: string): HelperBudget[] {
     // Literal `timeout: N` inside body (electron.launch, expect.poll, etc.).
     for (const tm of body.matchAll(TIMEOUT_LITERAL_RE)) {
       budgets.push(parseNumericLiteral(tm[1]));
+    }
+    // `desktopLaunchOptions(...)` spends the shared launch default unless the
+    // call passes its own `timeout:` — which the literal scan above already
+    // counts, and `Math.max` below picks whichever is larger. Without this the
+    // budget would read 0 for every helper that launches Electron, silently
+    // understating the cumulative budget the calibration invariant checks.
+    if (LAUNCH_HELPER_CALL_RE.test(body)) {
+      budgets.push(DEFAULT_LAUNCH_TIMEOUT_MS);
     }
     const maxTimeoutMs = budgets.length > 0 ? Math.max(...budgets) : 0;
     if (maxTimeoutMs > 0) {

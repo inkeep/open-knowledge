@@ -36,16 +36,15 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { fileURLToPath } from 'node:url';
 import { type ElectronApplication, _electron as electron } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
 
@@ -293,7 +292,7 @@ async function setupElectron(
 }> {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Driver uses macOS open(1).');
-  test.skip(!existsSync(MAIN_ENTRY), `out/main/index.js missing — run \`bun run build:desktop\`.`);
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
   const contentDir = mkdtempSync(join(tmpdir(), `ok-agent-patch-probe-${variantTag}-`));
   const userDataDir = mkdtempSync(join(tmpdir(), `ok-pw-userdata-${variantTag}-`));
@@ -307,11 +306,14 @@ async function setupElectron(
 
   const deepLink = `openknowledge://open?project=${encodeURIComponent(contentDir)}&doc=${encodeURIComponent(docName)}`;
 
-  const app = await electron.launch({
-    args: [MAIN_ENTRY, `--user-data-dir=${userDataDir}`, deepLink],
-    env: { ...process.env, NODE_ENV: 'production' },
-    timeout: 30_000,
-  });
+  const app = await electron.launch(
+    desktopLaunchOptions({
+      target: TARGET,
+      args: [`--user-data-dir=${userDataDir}`, deepLink],
+      env: { ...process.env, NODE_ENV: 'production' },
+      timeout: 30_000,
+    }),
+  );
   captureStderrFor(app);
 
   // Find the editor window by hash.

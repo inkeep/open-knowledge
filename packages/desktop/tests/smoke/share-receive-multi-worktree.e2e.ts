@@ -37,19 +37,17 @@
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 
 function userDataDirFor(tmpHome: string): string {
   return join(tmpHome, 'electron-userdata');
@@ -127,10 +125,7 @@ function setupMultiWorktree(): MultiWorktreeFixture {
 test.describe('share-receive multi-worktree smoke (US-014 / J1 silent dispatch)', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Deep-link URL scheme is macOS-only in v0.');
-  test.skip(
-    !BUILD_EXISTS,
-    `Main build missing at ${MAIN_ENTRY} — run "bun run build:desktop" first.`,
-  );
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
   // Deferred (same harness limitation as the J2/J5 cases below and
   // deep-link.e2e.ts's cold-start path): the share-receive dispatch never
@@ -176,10 +171,13 @@ test.describe('share-receive multi-worktree smoke (US-014 / J1 silent dispatch)'
     };
     writeFileSync(join(userData, 'Electron', 'state.json'), JSON.stringify(recentsState, null, 2));
 
-    const app = await electron.launch({
-      args: [MAIN_ENTRY, `--user-data-dir=${userData}`],
-      timeout: 30_000,
-    });
+    const app = await electron.launch(
+      desktopLaunchOptions({
+        target: TARGET,
+        args: [`--user-data-dir=${userData}`],
+        timeout: 30_000,
+      }),
+    );
     // cleanupDirs handles tmpdir removal after the Electron process group is
     // reaped; fixture.root is one of those dirs so the dedicated cleanup()
     // helper is redundant here. Keep the helper for callers that need

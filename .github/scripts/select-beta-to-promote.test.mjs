@@ -52,7 +52,7 @@ describe('selectPromotion', () => {
         'v0.10.0-beta.5': meta({ publishedAt: SOAKED }),
       }),
     });
-    expect(r).toEqual({ kind: 'select', target: 'v0.10.0-beta.5' });
+    expect(r).toEqual({ kind: 'select', target: 'v0.10.0-beta.5', tier: 'soak' });
   });
 
   test('selects the head when the head itself is soaked', () => {
@@ -63,7 +63,7 @@ describe('selectPromotion', () => {
         'v0.10.0-beta.5': meta({ publishedAt: SOAKED }),
       }),
     });
-    expect(r).toEqual({ kind: 'select', target: 'v0.10.0-beta.6' });
+    expect(r).toEqual({ kind: 'select', target: 'v0.10.0-beta.6', tier: 'soak' });
   });
 
   test('selects the newest soaked UNSHIPPED beta, even across a version boundary', () => {
@@ -78,7 +78,7 @@ describe('selectPromotion', () => {
         'v0.30.1-beta.8': meta({ publishedAt: SOAKED }),
       }),
     });
-    expect(r).toEqual({ kind: 'select', target: 'v0.31.0-beta.0' });
+    expect(r).toEqual({ kind: 'select', target: 'v0.31.0-beta.0', tier: 'soak' });
   });
 
   test('stops at the first already-shipped beta and never reaches an older cycle', () => {
@@ -100,7 +100,7 @@ describe('selectPromotion', () => {
         'v0.10.0-beta.5': meta({ publishedAt: SOAKED }),
       }),
     });
-    expect(r).toEqual({ kind: 'select', target: 'v0.10.0-beta.5' });
+    expect(r).toEqual({ kind: 'select', target: 'v0.10.0-beta.5', tier: 'soak' });
   });
 
   test('skips a head missing the DMG asset', () => {
@@ -157,5 +157,108 @@ describe('selectPromotion', () => {
         }),
       }),
     ).toThrow(/infra error/);
+  });
+});
+
+describe('fast tier (FR5a) — DMG-smoke-gated early promotion', () => {
+  // Two under-soaked betas over one soaked one. Without the fast tier the
+  // evaluator descends past both and picks beta.4; with it, an under-soaked
+  // beta can be promoted early, but only on a passing DMG smoke.
+  const TAGS = ['v0.10.0-beta.6', 'v0.10.0-beta.5', 'v0.10.0-beta.4'];
+  const metas = fetcher({
+    'v0.10.0-beta.6': meta({ publishedAt: FRESH }),
+    'v0.10.0-beta.5': meta({ publishedAt: FRESH }),
+    'v0.10.0-beta.4': meta({ publishedAt: SOAKED }),
+  });
+  const fastTierOn = () => true;
+
+  function run(over = {}) {
+    const logs = [];
+    const smokeCalls = [];
+    const result = select({
+      betaTags: TAGS,
+      fetchReleaseMeta: metas,
+      log: (m) => logs.push(m),
+      ...over,
+      smokeBeta: over.smokeBeta
+        ? (tag) => {
+            smokeCalls.push(tag);
+            return over.smokeBeta(tag);
+          }
+        : undefined,
+    });
+    return { result, logs, smokeCalls };
+  }
+
+  test('is inert by default: same selection as today, and the smoke is never invoked', () => {
+    const { result, smokeCalls } = run({ smokeBeta: () => 'pass' });
+    // No predicate supplied -> nothing qualifies -> descends to the soaked beta.
+    expect(result).toEqual({ kind: 'select', target: 'v0.10.0-beta.4', tier: 'soak' });
+    expect(smokeCalls).toEqual([]);
+  });
+
+  test('a passing DMG smoke promotes the under-soaked head on the fast tier', () => {
+    const { result, smokeCalls } = run({
+      qualifiesForFastTier: fastTierOn,
+      smokeBeta: () => 'pass',
+    });
+    expect(result).toEqual({ kind: 'select', target: 'v0.10.0-beta.6', tier: 'fast' });
+    expect(smokeCalls).toEqual(['v0.10.0-beta.6']);
+  });
+
+  test('a failing DMG smoke refuses the fast tier and leaves the 24h outcome untouched', () => {
+    const { result, logs } = run({
+      qualifiesForFastTier: fastTierOn,
+      smokeBeta: () => 'fail',
+    });
+    const withoutFastTier = select({ betaTags: TAGS, fetchReleaseMeta: metas });
+    expect(result).toEqual(withoutFastTier);
+    expect(result).toEqual({ kind: 'select', target: 'v0.10.0-beta.4', tier: 'soak' });
+    expect(logs.join('\n')).toContain('failed the smoke subset');
+  });
+
+  test('an infrastructure error refuses the fast tier and is distinguishable from a fail', () => {
+    const failLogs = run({ qualifiesForFastTier: fastTierOn, smokeBeta: () => 'fail' }).logs;
+    const errorLogs = run({ qualifiesForFastTier: fastTierOn, smokeBeta: () => 'error' }).logs;
+    expect(errorLogs.join('\n')).toContain('infrastructure error');
+    expect(errorLogs.join('\n')).not.toContain('failed the smoke subset');
+    expect(failLogs.join('\n')).not.toContain('infrastructure error');
+  });
+
+  test('a thrown smoke never fails the job — it degrades to an error refusal', () => {
+    // FR5a: the selection gate must never block a release. Unlike
+    // fetchReleaseMeta, whose non-404 throws must propagate.
+    const { result, logs } = run({
+      qualifiesForFastTier: fastTierOn,
+      smokeBeta: () => {
+        throw new Error('runner exploded');
+      },
+    });
+    expect(result).toEqual({ kind: 'select', target: 'v0.10.0-beta.4', tier: 'soak' });
+    expect(logs.join('\n')).toContain('runner exploded');
+  });
+
+  test('an unrecognised verdict is treated as an error, never as a pass', () => {
+    const { result } = run({ qualifiesForFastTier: fastTierOn, smokeBeta: () => 'probably fine' });
+    expect(result.tier).toBe('soak');
+  });
+
+  test('the predicate can qualify one beta and not another', () => {
+    const { result, smokeCalls } = run({
+      qualifiesForFastTier: (tag) => tag === 'v0.10.0-beta.5',
+      smokeBeta: () => 'pass',
+    });
+    expect(result).toEqual({ kind: 'select', target: 'v0.10.0-beta.5', tier: 'fast' });
+    expect(smokeCalls).toEqual(['v0.10.0-beta.5']);
+  });
+
+  test('the fast tier never reaches back across an already-shipped boundary', () => {
+    const { result, smokeCalls } = run({
+      isAlreadyShipped: shippedIn('v0.10.0-beta.6'),
+      qualifiesForFastTier: fastTierOn,
+      smokeBeta: () => 'pass',
+    });
+    expect(result).toEqual({ kind: 'none' });
+    expect(smokeCalls).toEqual([]);
   });
 });

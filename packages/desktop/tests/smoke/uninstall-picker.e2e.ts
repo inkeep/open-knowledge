@@ -12,19 +12,17 @@
  * darwin only, and a prior `pnpm run build:desktop`.
  */
 
-import { existsSync, mkdtempSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { _electron as electron, type Page } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 
 /** The stand-in projects `OK_UNINSTALL_UI_PREVIEW=picker` offers, home-relative. */
 const PREVIEW_PROJECTS = ['/Notes', '/Work/Team Handbook', '/Personal/Journal'];
@@ -51,21 +49,24 @@ async function findWindowByPath(
 test.describe('uninstall project picker smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'The uninstall flow is darwin-only.');
-  test.skip(!BUILD_EXISTS, `Main build missing at ${MAIN_ENTRY} — run "pnpm run build:desktop".`);
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('renders main’s projects and carries a confirmed selection back', async ({
     captureStderrFor,
   }) => {
     const home = mkdtempSync(join(tmpdir(), 'ok-uninstall-picker-'));
 
-    const app = await electron.launch({
-      args: [MAIN_ENTRY, `--user-data-dir=${join(home, 'electron-userdata')}`],
-      // `picker` opens only the project picker, over stand-in candidates, and
-      // resolves without entering the flow. Nothing is removed; gated on
-      // `!app.isPackaged` in main.
-      env: { ...process.env, OK_UNINSTALL_UI_PREVIEW: 'picker' },
-      timeout: 30_000,
-    });
+    const app = await electron.launch(
+      desktopLaunchOptions({
+        target: TARGET,
+        args: [`--user-data-dir=${join(home, 'electron-userdata')}`],
+        // `picker` opens only the project picker, over stand-in candidates, and
+        // resolves without entering the flow. Nothing is removed; gated on
+        // `!app.isPackaged` in main.
+        env: { ...process.env, OK_UNINSTALL_UI_PREVIEW: 'picker' },
+        timeout: 30_000,
+      }),
+    );
     captureStderrFor(app, { cleanupDirs: [home] });
 
     await app.firstWindow({ timeout: 20_000 });
@@ -119,11 +120,14 @@ test.describe('uninstall project picker smoke', () => {
   test('closing the picker window cancels rather than proceeding', async ({ captureStderrFor }) => {
     const home = mkdtempSync(join(tmpdir(), 'ok-uninstall-picker-close-'));
 
-    const app = await electron.launch({
-      args: [MAIN_ENTRY, `--user-data-dir=${join(home, 'electron-userdata')}`],
-      env: { ...process.env, OK_UNINSTALL_UI_PREVIEW: 'picker' },
-      timeout: 30_000,
-    });
+    const app = await electron.launch(
+      desktopLaunchOptions({
+        target: TARGET,
+        args: [`--user-data-dir=${join(home, 'electron-userdata')}`],
+        env: { ...process.env, OK_UNINSTALL_UI_PREVIEW: 'picker' },
+        timeout: 30_000,
+      }),
+    );
     captureStderrFor(app, { cleanupDirs: [home] });
 
     await app.firstWindow({ timeout: 20_000 });

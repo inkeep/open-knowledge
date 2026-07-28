@@ -17,31 +17,29 @@
  * rather than clicking the dropdown trigger — exercising the IPC contract is
  * the goal here; full DOM-driven affordance coverage (dropdown click,
  * CommandPalette `Cmd+K` keystroke) belongs to component-level Playwright
- * runs that also need the `bun run dev` server, not the smoke harness.
+ * runs that also need the `pnpm dev` server, not the smoke harness.
  *
  * Skip gates mirror `deep-link.e2e.ts` and `mcp-wiring.e2e.ts`:
- *   - `OK_DESKTOP_E2E_SMOKE !== '1'` — opt-in so `bunx playwright test` on
+ *   - `OK_DESKTOP_E2E_SMOKE !== '1'` — opt-in so `pnpm exec playwright test` on
  *     the whole repo doesn't try to launch Electron in headless CI.
  *   - `process.platform !== 'darwin'` — the smoke harness is darwin-only in
  *     v0; the IPC plumbing is platform-agnostic and remains exercised by the
  *     Bun unit/integration tests on every platform.
- *   - `out/main/index.js` missing — `bun run build:desktop` must have run.
+ *   - `out/main/index.js` missing — `pnpm run build:desktop` must have run.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 
 interface SeededHome {
   tmpHome: string;
@@ -90,15 +88,18 @@ function seedHomeWithLastOpenedProject(prefix: string): SeededHome {
 }
 
 async function launchApp(tmpHome: string): Promise<ElectronApplication> {
-  return electron.launch({
-    args: [MAIN_ENTRY, `--user-data-dir=${userDataDirFor(tmpHome)}`],
-    timeout: 30_000,
-    env: {
-      ...process.env,
-      HOME: tmpHome,
-      OK_DESKTOP_E2E_SMOKE: '1',
-    },
-  });
+  return electron.launch(
+    desktopLaunchOptions({
+      target: TARGET,
+      args: [`--user-data-dir=${userDataDirFor(tmpHome)}`],
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: tmpHome,
+        OK_DESKTOP_E2E_SMOKE: '1',
+      },
+    }),
+  );
 }
 
 async function findEditorWindow(app: ElectronApplication, timeoutMs = 20_000): Promise<Page> {
@@ -165,10 +166,7 @@ async function findNavigatorWindow(app: ElectronApplication, timeoutMs = 15_000)
 test.describe('Project Navigator return-affordance smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Smoke harness is darwin-only in v0.');
-  test.skip(
-    !BUILD_EXISTS,
-    `Main build missing at ${MAIN_ENTRY} — run "bun run build:desktop" first.`,
-  );
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('bridge.navigator.open() opens navigator from editor; re-invokes never spawn a duplicate', async ({
     captureStderrFor,

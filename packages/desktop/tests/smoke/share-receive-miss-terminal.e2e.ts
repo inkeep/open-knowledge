@@ -31,19 +31,17 @@
 
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 
 function git(cwd: string, ...args: string[]): void {
   execFileSync('git', args, {
@@ -102,10 +100,7 @@ function setupDeletedTargetFixture(): MissFixture {
 test.describe('share-receive miss terminal smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Deep-link URL scheme is macOS-only in v0.');
-  test.skip(
-    !BUILD_EXISTS,
-    `Main build missing at ${MAIN_ENTRY} — run "bun run build:desktop" first.`,
-  );
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('a deleted share target lands the receiver on the miss dialog, never create-mode', async ({
     captureStderrFor,
@@ -134,10 +129,13 @@ test.describe('share-receive miss terminal smoke', () => {
     const githubBlobUrl = `https://github.com/inkeep/open-knowledge/blob/main/${fixture.docPath}`;
     const shareUrl = `openknowledge://share?url=${encodeURIComponent(githubBlobUrl)}`;
 
-    const app = await electron.launch({
-      args: [MAIN_ENTRY, `--user-data-dir=${userData}`, shareUrl],
-      timeout: 30_000,
-    });
+    const app = await electron.launch(
+      desktopLaunchOptions({
+        target: TARGET,
+        args: [`--user-data-dir=${userData}`, shareUrl],
+        timeout: 30_000,
+      }),
+    );
     captureStderrFor(app, { cleanupDirs: [fixture.root, tmpHome] });
 
     const firstWindow = await app.firstWindow({ timeout: 15_000 });

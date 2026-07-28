@@ -22,28 +22,26 @@
  *   - Not on macOS (`process.platform !== 'darwin'`) — the `open` command
  *     is macOS-specific, and the URL-scheme handler is darwin-only in v0.
  *   - Main-process build output missing (`out/main/index.js` absent) — the
- *     app must be built via `bun run build:desktop` before this test runs.
+ *     app must be built via `pnpm run build:desktop` before this test runs.
  *     CI runs without a pre-build skip gracefully rather than misreporting.
- *   - `OK_DESKTOP_E2E_SMOKE !== '1'` — gate so `bunx playwright test` on the
+ *   - `OK_DESKTOP_E2E_SMOKE !== '1'` — gate so `pnpm exec playwright test` on the
  *     entire repo without explicit opt-in doesn't attempt to launch Electron
  *     (which crashes headless CI that lacks a display server).
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 // Environment gate: opt-in only. Default-off keeps the test harmless on CI.
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 
 // Compute a per-test Electron userData dir under tmpHome. The Chromium
 // `--user-data-dir=<path>` switch is the only mechanism that reliably
@@ -61,10 +59,7 @@ function userDataDirFor(tmpHome: string): string {
 test.describe('deep-link warm-start smoke (M4 US-009 / AC7)', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Deep-link URL scheme is macOS-only in v0 (D51 NOT NOW).');
-  test.skip(
-    !BUILD_EXISTS,
-    `Main build missing at ${MAIN_ENTRY} — run "bun run build:desktop" first.`,
-  );
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
   // Explicit visibility of the coverage gap — appears in test-run output as
   // a named skip so the missing coverage can't be overlooked when scanning
@@ -100,10 +95,13 @@ test.describe('deep-link warm-start smoke (M4 US-009 / AC7)', () => {
     );
     writeFileSync(join(projectDir, 'target.md'), '# Target Doc\n\nDeep-link smoke content.\n');
 
-    const app = await electron.launch({
-      args: [MAIN_ENTRY, `--user-data-dir=${userDataDirFor(tmpHome)}`],
-      timeout: 30_000,
-    });
+    const app = await electron.launch(
+      desktopLaunchOptions({
+        target: TARGET,
+        args: [`--user-data-dir=${userDataDirFor(tmpHome)}`],
+        timeout: 30_000,
+      }),
+    );
     captureStderrFor(app, { cleanupDirs: [projectDir, tmpHome] });
 
     // Wait for the first window to appear — the Navigator spawns at boot in
@@ -153,10 +151,13 @@ test.describe('deep-link warm-start smoke (M4 US-009 / AC7)', () => {
       '# Meeting Notes\n\nNested doc smoke.\n',
     );
 
-    const app = await electron.launch({
-      args: [MAIN_ENTRY, `--user-data-dir=${userDataDirFor(tmpHome)}`],
-      timeout: 30_000,
-    });
+    const app = await electron.launch(
+      desktopLaunchOptions({
+        target: TARGET,
+        args: [`--user-data-dir=${userDataDirFor(tmpHome)}`],
+        timeout: 30_000,
+      }),
+    );
     captureStderrFor(app, { cleanupDirs: [projectDir, tmpHome] });
 
     const firstWindow = await app.firstWindow({ timeout: 15_000 });

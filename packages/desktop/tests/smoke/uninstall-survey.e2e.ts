@@ -13,19 +13,17 @@
  * darwin only, and a prior `pnpm run build:desktop`.
  */
 
-import { existsSync, mkdtempSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { _electron as electron, type Page } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 
 async function findWindowByPath(
   app: import('@playwright/test').ElectronApplication,
@@ -50,21 +48,24 @@ async function launchSurveyPreview(
   prefix: string,
 ): Promise<{ app: import('@playwright/test').ElectronApplication; home: string }> {
   const home = mkdtempSync(join(tmpdir(), prefix));
-  const app = await electron.launch({
-    args: [MAIN_ENTRY, `--user-data-dir=${join(home, 'electron-userdata')}`],
-    // `survey` opens only the churn survey and echoes what main resolved back
-    // onto a notice. Nothing is removed and nothing is POSTed; gated on
-    // `!app.isPackaged` in main.
-    env: { ...process.env, OK_UNINSTALL_UI_PREVIEW: 'survey' },
-    timeout: 30_000,
-  });
+  const app = await electron.launch(
+    desktopLaunchOptions({
+      target: TARGET,
+      args: [`--user-data-dir=${join(home, 'electron-userdata')}`],
+      // `survey` opens only the churn survey and echoes what main resolved back
+      // onto a notice. Nothing is removed and nothing is POSTed; gated on
+      // `!app.isPackaged` in main.
+      env: { ...process.env, OK_UNINSTALL_UI_PREVIEW: 'survey' },
+      timeout: 30_000,
+    }),
+  );
   return { app, home };
 }
 
 test.describe('uninstall churn survey smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'The uninstall flow is darwin-only.');
-  test.skip(!BUILD_EXISTS, `Main build missing at ${MAIN_ENTRY} — run "pnpm run build:desktop".`);
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('carries a filled-in survey back to main as answers', async ({ captureStderrFor }) => {
     const { app, home } = await launchSurveyPreview('ok-uninstall-survey-');

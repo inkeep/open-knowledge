@@ -32,19 +32,17 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { clickNavOpen } from './_helpers/navigator-actions';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
@@ -105,16 +103,18 @@ async function launchApp(tmpHome: string, opts: LaunchOpts = {}): Promise<Electr
   // Support state and `lastOpenedProject` from real usage causes the editor
   // window to spawn instead of the navigator.
   const userDataDir = join(tmpHome, 'Library', 'Application Support', DESKTOP_PRODUCT_NAME);
-  return electron.launch({
-    args: [MAIN_ENTRY, `--user-data-dir=${userDataDir}`],
-    timeout: 30_000,
-    env: {
-      ...process.env,
-      HOME: tmpHome,
-      OK_DESKTOP_E2E_SMOKE: '1',
-      ...(opts.pickedPath !== undefined ? { OK_DESKTOP_TEST_PICKED_PATH: opts.pickedPath } : {}),
-    },
-  });
+  return electron.launch(
+    desktopLaunchOptions({
+      target: TARGET,
+      args: [`--user-data-dir=${userDataDir}`],
+      env: {
+        ...process.env,
+        HOME: tmpHome,
+        OK_DESKTOP_E2E_SMOKE: '1',
+        ...(opts.pickedPath !== undefined ? { OK_DESKTOP_TEST_PICKED_PATH: opts.pickedPath } : {}),
+      },
+    }),
+  );
 }
 
 async function findWindowByMode(
@@ -175,10 +175,7 @@ function trackForCleanup(...paths: string[]): void {
 test.describe('Consent-dialog smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Smoke harness is darwin-only.');
-  test.skip(
-    !BUILD_EXISTS,
-    `Main build missing at ${MAIN_ENTRY} — run "bun run build:desktop" first.`,
-  );
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
   test.afterEach(async () => {
     for (const target of cleanupTargets.splice(0)) {

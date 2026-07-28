@@ -20,28 +20,18 @@
  * (QUARANTINE_ALLOWLIST); tracked in inkeep/agents-private#2187.
  */
 
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
@@ -89,21 +79,23 @@ function seed(prefix: string): Seed {
 
 async function launchApp(s: Seed): Promise<ElectronApplication> {
   const deepLink = `openknowledge://open?project=${encodeURIComponent(s.projectDir)}&doc=start`;
-  return electron.launch({
-    args: [
-      MAIN_ENTRY,
-      `--user-data-dir=${join(s.tmpHome, 'Library', 'Application Support', DESKTOP_PRODUCT_NAME)}`,
-      deepLink,
-    ],
-    timeout: 30_000,
-    env: {
-      ...process.env,
-      HOME: s.tmpHome,
-      PATH: `${s.pathPrefix}:${process.env.PATH ?? ''}`,
-      OK_DESKTOP_E2E_SMOKE: '1',
-      OK_RECLAIM_DISABLE: '1',
-    },
-  });
+  return electron.launch(
+    desktopLaunchOptions({
+      target: TARGET,
+      args: [
+        `--user-data-dir=${join(s.tmpHome, 'Library', 'Application Support', DESKTOP_PRODUCT_NAME)}`,
+        deepLink,
+      ],
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: s.tmpHome,
+        PATH: `${s.pathPrefix}:${process.env.PATH ?? ''}`,
+        OK_DESKTOP_E2E_SMOKE: '1',
+        OK_RECLAIM_DISABLE: '1',
+      },
+    }),
+  );
 }
 
 async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): Promise<Page> {
@@ -199,8 +191,8 @@ function track(...paths: string[]): void {
 
 test.describe('Terminal clickable links — live Electron', () => {
   test.skip(
-    !SMOKE_ENABLED || !DARWIN || !BUILD_EXISTS,
-    'Live-Electron smoke: set OK_DESKTOP_E2E_SMOKE=1 on darwin after `bun run build:desktop`.',
+    !SMOKE_ENABLED || !DARWIN || !TARGET.exists,
+    `Live-Electron smoke: set OK_DESKTOP_E2E_SMOKE=1 on darwin. ${TARGET.missingReason}`,
   );
   test.skip(
     IS_CI,

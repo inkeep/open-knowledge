@@ -13,24 +13,22 @@
  * darwin-only, the electron-vite build must exist, and CI-skipped (the
  * live-Electron terminal surface is not yet validated on the CI runner — same
  * caveat as the docked-terminal smoke). Runs in local dev to keep the seam
- * covered. Not part of `bun run check`; run via `bunx playwright test` or
- * `bun run check:full:parallel`.
+ * covered. Not part of `pnpm check`; run via `pnpm exec playwright test` or
+ * `pnpm run check:full:parallel`.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
@@ -69,17 +67,20 @@ function seed(prefix: string): Seed {
 
 async function launchApp(s: Seed): Promise<ElectronApplication> {
   const deepLink = `openknowledge://open?project=${encodeURIComponent(s.projectDir)}&doc=start`;
-  return electron.launch({
-    args: [MAIN_ENTRY, `--user-data-dir=${s.userDataDir}`, deepLink],
-    timeout: 30_000,
-    env: {
-      ...process.env,
-      HOME: s.tmpHome,
-      PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
-      OK_DESKTOP_E2E_SMOKE: '1',
-      OK_RECLAIM_DISABLE: '1',
-    },
-  });
+  return electron.launch(
+    desktopLaunchOptions({
+      target: TARGET,
+      args: [`--user-data-dir=${s.userDataDir}`, deepLink],
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: s.tmpHome,
+        PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
+        OK_DESKTOP_E2E_SMOKE: '1',
+        OK_RECLAIM_DISABLE: '1',
+      },
+    }),
+  );
 }
 
 async function findWindowByMode(
@@ -130,7 +131,7 @@ function track(...paths: string[]): void {
 test.describe('Standalone terminal window — live Electron', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Desktop is darwin-only.');
-  test.skip(!BUILD_EXISTS, `Main build missing at ${MAIN_ENTRY} — run "bun run build:desktop".`);
+  test.skip(!TARGET.exists, TARGET.missingReason);
   test.skip(
     IS_CI,
     'Quarantined on CI: constrained-runner degradation on the live-Electron terminal surface, same class as terminal-dock (inkeep/agents-private#2187). Runs in local dev.',

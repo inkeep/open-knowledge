@@ -30,14 +30,13 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { fileURLToPath } from 'node:url';
 import { type ElectronApplication, _electron as electron } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
 
@@ -69,7 +68,7 @@ async function runProbe(
 ): Promise<ProbeOutcome> {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Driver uses macOS open(1).');
-  test.skip(!existsSync(MAIN_ENTRY), `out/main/index.js missing — run \`bun run build:desktop\`.`);
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
   // Fresh isolated everything
   const contentDir = mkdtempSync(join(tmpdir(), `ok-rename-probe-${variant}-`));
@@ -91,11 +90,14 @@ async function runProbe(
   // doesn't fire open-url Apple Event, but main process parses argv URLs
   // for first-instance — confirmed by the packaged .app working earlier
   // with the same args shape).
-  const app = await electron.launch({
-    args: [MAIN_ENTRY, `--user-data-dir=${userDataDir}`, deepLink],
-    env: { ...process.env, NODE_ENV: 'production' },
-    timeout: 30_000,
-  });
+  const app = await electron.launch(
+    desktopLaunchOptions({
+      target: TARGET,
+      args: [`--user-data-dir=${userDataDir}`, deepLink],
+      env: { ...process.env, NODE_ENV: 'production' },
+      timeout: 30_000,
+    }),
+  );
   // Registers BOTH the stderr-capture and the bounded-cleanup contract.
   // The fixture's teardown reaps the Electron process group within a
   // ~5s budget — the test body must not call `app.close()` itself

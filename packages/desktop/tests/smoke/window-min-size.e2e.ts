@@ -18,24 +18,22 @@
  * Skip gates (same as the rest of the smoke suite):
  *   - `OK_DESKTOP_E2E_SMOKE !== '1'` — opt-in.
  *   - `process.platform !== 'darwin'` — darwin-only.
- *   - `out/main/index.js` missing — `bun run build:desktop` must have run.
+ *   - `out/main/index.js` missing — `pnpm run build:desktop` must have run.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import type { ElectronApplication, JSHandle, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { WINDOW_MIN_SIZE } from '../../src/main/window-min-size.ts';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 
 interface SeededHome {
   tmpHome: string;
@@ -78,15 +76,18 @@ function seedHomeWithLastOpenedProject(prefix: string): SeededHome {
 }
 
 async function launchApp(tmpHome: string): Promise<ElectronApplication> {
-  return electron.launch({
-    args: [MAIN_ENTRY, `--user-data-dir=${userDataDirFor(tmpHome)}`],
-    timeout: 30_000,
-    env: {
-      ...process.env,
-      HOME: tmpHome,
-      OK_DESKTOP_E2E_SMOKE: '1',
-    },
-  });
+  return electron.launch(
+    desktopLaunchOptions({
+      target: TARGET,
+      args: [`--user-data-dir=${userDataDirFor(tmpHome)}`],
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: tmpHome,
+        OK_DESKTOP_E2E_SMOKE: '1',
+      },
+    }),
+  );
 }
 
 async function findWindow(
@@ -137,10 +138,7 @@ async function readMinSizeFor(app: ElectronApplication, page: Page): Promise<Min
 test.describe('BrowserWindow min-size smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Smoke harness is darwin-only in v0.');
-  test.skip(
-    !BUILD_EXISTS,
-    `Main build missing at ${MAIN_ENTRY} — run "bun run build:desktop" first.`,
-  );
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
   test(`Editor window enforces ${WINDOW_MIN_SIZE.EDITOR.width}x${WINDOW_MIN_SIZE.EDITOR.height} min; Navigator window enforces ${WINDOW_MIN_SIZE.NAVIGATOR.width}x${WINDOW_MIN_SIZE.NAVIGATOR.height} min`, async ({
     captureStderrFor,
