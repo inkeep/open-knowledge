@@ -365,7 +365,7 @@ function ReportBugDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md" showCloseButton={!sending}>
+      <DialogContent className="sm:max-w-xl" showCloseButton={!sending}>
         {phase.step === 'compose' && (
           <>
             <DialogHeader>
