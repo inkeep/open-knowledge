@@ -37,13 +37,18 @@ const setConfigOption = vi.fn(
   (_threadId: string, _configId: string, _value: string | boolean) => {},
 );
 const setMode = vi.fn((_threadId: string, _modeId: string) => {});
+const prompt = vi.fn((_threadId: string, _content: string) => {});
+const editQueued = vi.fn((_threadId: string, _id: string, _content: string) => {});
+const removeQueued = vi.fn((_threadId: string, _id: string) => {});
 
 vi.doMock('@/lib/acp/thread-client', () => ({
   getAgentThreadClient: () => ({
     respondPermission,
     respondRuntimeConsent: () => {},
     cancel: () => {},
-    prompt: () => {},
+    prompt,
+    editQueued,
+    removeQueued,
     setMode,
     setConfigOption,
     closeThread: () => {},
@@ -80,6 +85,10 @@ vi.doMock('@/components/acp/AgentMarkdown', () => ({
 }));
 
 const { ThreadView } = await import('./ThreadView');
+// Not mocked — the settings popover writes real remembered picks through it.
+const { agentSettingsKey, getRememberedAgentConfig, getRememberedAgentMode } = await import(
+  '@/lib/acp/agent-settings-store'
+);
 
 function makeInfo(overrides?: Partial<ThreadInfo>): ThreadInfo {
   return {
@@ -147,12 +156,16 @@ async function openToolCall(): Promise<void> {
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   // No-op when timers are already real; makes cleanup unconditional even if a
   // test using fake timers fails before its own teardown would run.
   vi.useRealTimers();
   respondPermission.mockClear();
   setConfigOption.mockClear();
   setMode.mockClear();
+  prompt.mockClear();
+  editQueued.mockClear();
+  removeQueued.mockClear();
   model = null;
 });
 
@@ -231,6 +244,127 @@ describe('ThreadView agent settings', () => {
     expect(setConfigOption).toHaveBeenCalledWith('thread-1', 'model', 'opus');
   });
 
+  test('remembers every pick for this agent, modes included', async () => {
+    const key = agentSettingsKey({ source: 'registry', id: 'claude' });
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          configOptions: [
+            {
+              id: 'model',
+              name: 'Model',
+              category: 'model',
+              type: 'select',
+              currentValue: 'sonnet',
+              options: [
+                { value: 'sonnet', name: 'Sonnet' },
+                { value: 'opus', name: 'Opus' },
+              ],
+            },
+            {
+              id: 'permission',
+              name: 'Permission mode',
+              category: 'mode',
+              type: 'select',
+              currentValue: 'default',
+              options: [
+                { value: 'default', name: 'Default' },
+                { value: 'bypass', name: 'Bypass permissions' },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+
+    // A model pick is remembered, so the next thread with this agent opens on it.
+    await userEvent.click(screen.getByTestId('agent-thread-config-model'));
+    fireEvent.click(await screen.findByTestId('agent-thread-config-option-opus'));
+    expect(setConfigOption).toHaveBeenCalledWith('thread-1', 'model', 'opus');
+    expect(getRememberedAgentConfig(key)).toEqual({ model: 'opus' });
+
+    // A mode advertised as a config option is remembered through that same
+    // path — no special case. Its permissiveness is surfaced by the accent, not
+    // by declining to remember it. (Picking a select value closes the menu, so
+    // reopen it.)
+    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByTestId('agent-thread-config-permission'));
+    fireEvent.click(await screen.findByTestId('agent-thread-config-option-bypass'));
+    expect(setConfigOption).toHaveBeenCalledWith('thread-1', 'permission', 'bypass');
+    expect(getRememberedAgentConfig(key)).toEqual({ model: 'opus', permission: 'bypass' });
+  });
+});
+
+describe('ThreadView permissive-mode accent', () => {
+  /** A ready thread sitting on `currentValue`. */
+  const modeInfo = (currentValue: string) =>
+    makeInfo({
+      status: 'ready',
+      configOptions: [
+        {
+          id: 'permission',
+          name: 'Permission mode',
+          category: 'mode',
+          type: 'select',
+          currentValue,
+          options: [
+            { value: 'default', name: 'Default' },
+            { value: 'bypassPermissions', name: 'Bypass permissions' },
+          ],
+        },
+      ],
+    });
+
+  test('an ordinary mode carries no accent', () => {
+    render(<ThreadView info={modeInfo('default')} />);
+    expect(screen.queryByTestId('agent-thread-mode-accent')).toBeNull();
+  });
+
+  test('a mode that lets the agent act unprompted is marked, and says so', () => {
+    render(<ThreadView info={modeInfo('bypassPermissions')} />);
+    expect(screen.queryByTestId('agent-thread-mode-accent')).not.toBeNull();
+    // The warning must name what it is warning about, not just glow.
+    expect(
+      screen.getByRole('button', {
+        name: /Bypass permissions lets Claude Agent act without asking/,
+      }),
+    ).toBeDefined();
+  });
+
+  test('marks a permissive mode on the legacy modes surface too', () => {
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          modes: {
+            currentModeId: 'yolo',
+            availableModes: [
+              { id: 'default', name: 'Default' },
+              { id: 'yolo', name: 'YOLO' },
+            ],
+          },
+        })}
+      />,
+    );
+    expect(screen.queryByTestId('agent-thread-mode-accent')).not.toBeNull();
+  });
+
+  test('the accent tracks the live mode, restored or hand-picked alike', async () => {
+    const { rerender } = render(<ThreadView info={modeInfo('default')} />);
+    expect(screen.queryByTestId('agent-thread-mode-accent')).toBeNull();
+    // Whatever moved the thread into a permissive mode — a pick, or a restore
+    // applied before turn 1 — the accent follows the mode the agent reports.
+    rerender(<ThreadView info={modeInfo('bypassPermissions')} />);
+    expect(screen.queryByTestId('agent-thread-mode-accent')).not.toBeNull();
+    rerender(<ThreadView info={modeInfo('default')} />);
+    expect(screen.queryByTestId('agent-thread-mode-accent')).toBeNull();
+  });
+});
+
+describe('ThreadView agent settings (modes)', () => {
   test('includes the legacy ACP mode selector when no mode config option is advertised', async () => {
     render(
       <ThreadView
@@ -254,6 +388,38 @@ describe('ThreadView agent settings', () => {
     await userEvent.click(screen.getByTestId('agent-thread-config-legacy-mode'));
     fireEvent.click(await screen.findByTestId('agent-thread-config-option-ask'));
     expect(setMode).toHaveBeenCalledWith('thread-1', 'ask');
+    // The legacy surface has no config option to ride, so it persists under its
+    // own key — but it persists just the same.
+    expect(getRememberedAgentMode(agentSettingsKey({ source: 'registry', id: 'claude' }))).toBe(
+      'ask',
+    );
+  });
+
+  test('a permissive legacy mode persists like any other — it is flagged, not withheld', async () => {
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          modes: {
+            currentModeId: 'default',
+            availableModes: [
+              { id: 'default', name: 'Default' },
+              { id: 'yolo', name: 'YOLO' },
+            ],
+          },
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByTestId('agent-thread-config-legacy-mode'));
+    fireEvent.click(await screen.findByTestId('agent-thread-config-option-yolo'));
+    expect(setMode).toHaveBeenCalledWith('thread-1', 'yolo');
+    // Guards against a relapse into gating persistence on permissiveness: the
+    // accent is what makes a permissive mode legible, not refusing to keep it.
+    expect(getRememberedAgentMode(agentSettingsKey({ source: 'registry', id: 'claude' }))).toBe(
+      'yolo',
+    );
   });
 });
 
@@ -831,5 +997,92 @@ describe('ThreadView raw input', () => {
     model = makeModel({ items: [toolCall({ rawInput: {} })] });
     render(<ThreadView info={makeInfo()} />);
     expect(screen.queryByTestId('agent-thread-tool-raw-input')).toBeNull();
+  });
+});
+
+describe('ThreadView message queue', () => {
+  test('mid-turn the composer offers Stop AND a live Send that queues the draft', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    expect(screen.getByTestId('agent-thread-cancel')).toBeTruthy();
+    const send = screen.getByTestId('agent-thread-send');
+    expect(send.getAttribute('aria-label')).toBe('Queue message');
+    expect((send as HTMLButtonElement).disabled).toBe(true); // empty draft
+
+    fireEvent.change(screen.getByTestId('agent-thread-composer'), {
+      target: { value: 'queued while running' },
+    });
+    fireEvent.click(screen.getByTestId('agent-thread-send'));
+    expect(prompt).toHaveBeenCalledWith('thread-1', 'queued while running');
+  });
+
+  test('queued messages render between transcript and composer with a remove control', () => {
+    model = makeModel({ turnActive: true });
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'running',
+          queue: [
+            { id: 'q1', content: 'first queued', ts: 1 },
+            { id: 'q2', content: 'second queued', ts: 2 },
+          ],
+        })}
+      />,
+    );
+
+    const rows = screen.getAllByTestId('agent-thread-queued');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.textContent).toContain('first queued');
+    expect(rows[1]?.textContent).toContain('second queued');
+
+    const firstRow = rows[0];
+    if (firstRow === undefined) throw new Error('missing queue row');
+    fireEvent.click(within(firstRow).getByTestId('agent-thread-queued-remove'));
+    expect(removeQueued).toHaveBeenCalledWith('thread-1', 'q1');
+  });
+
+  test('in-place edit opens with the current content and saves on Enter', () => {
+    model = makeModel({ turnActive: true });
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'running',
+          queue: [{ id: 'q1', content: 'original text', ts: 1 }],
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('agent-thread-queued-edit'));
+    const input = screen.getByTestId('agent-thread-queued-input') as HTMLTextAreaElement;
+    expect(input.value).toBe('original text');
+
+    fireEvent.change(input, { target: { value: 'sharper text' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(editQueued).toHaveBeenCalledWith('thread-1', 'q1', 'sharper text');
+    // The row returned to display mode.
+    expect(screen.queryByTestId('agent-thread-queued-input')).toBeNull();
+    expect(screen.getByTestId('agent-thread-queued')).toBeTruthy();
+  });
+
+  test('Escape abandons the edit without sending anything', () => {
+    model = makeModel({ turnActive: true });
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'running',
+          queue: [{ id: 'q1', content: 'keep me', ts: 1 }],
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('agent-thread-queued-edit'));
+    const input = screen.getByTestId('agent-thread-queued-input') as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: 'discarded' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+
+    expect(editQueued).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('agent-thread-queued-input')).toBeNull();
+    expect(screen.getByTestId('agent-thread-queued').textContent).toContain('keep me');
   });
 });

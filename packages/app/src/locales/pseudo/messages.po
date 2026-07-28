@@ -224,6 +224,12 @@ msgstr ""
 msgid "{0} isn't installed yet — opening its download page."
 msgstr ""
 
+#. placeholder {0}: modeSurface.currentName
+#. placeholder {1}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} lets {1} act without asking"
+msgstr ""
+
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -1604,6 +1610,10 @@ msgstr ""
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Cancel"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Cancel editing"
 msgstr ""
 
 #: src/components/DocumentErrorBoundary.tsx
@@ -3452,6 +3462,10 @@ msgstr ""
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 msgid "Edit markdown link"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Edit queued message"
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
@@ -7287,6 +7301,14 @@ msgstr ""
 msgid "Pushing"
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Queue message"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Queued"
+msgstr ""
+
 #: src/editor/slash-command/items.tsx
 msgid "Quote"
 msgstr ""
@@ -7510,6 +7532,10 @@ msgstr ""
 
 #: src/components/TemplateForm.tsx
 msgid "Remove property"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Remove queued message"
 msgstr ""
 
 #: src/components/BottomComposer.tsx
@@ -7958,6 +7984,10 @@ msgstr ""
 
 #: src/components/FolderPropertiesCard.tsx
 msgid "Save failed: {error}"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Save queued message"
 msgstr ""
 
 #: src/components/DiffView.tsx

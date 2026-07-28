@@ -224,6 +224,12 @@ msgstr "{0} hex value"
 msgid "{0} isn't installed yet — opening its download page."
 msgstr "{0} isn't installed yet — opening its download page."
 
+#. placeholder {0}: modeSurface.currentName
+#. placeholder {1}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} lets {1} act without asking"
+msgstr "{0} lets {1} act without asking"
+
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -1609,6 +1615,10 @@ msgstr "Can't safely edit this tool's config"
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Cancel"
 msgstr "Cancel"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Cancel editing"
+msgstr "Cancel editing"
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Cancelled"
@@ -3457,6 +3467,10 @@ msgstr "Edit in config file"
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 msgid "Edit markdown link"
 msgstr "Edit markdown link"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Edit queued message"
+msgstr "Edit queued message"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Edit schema {file}"
@@ -7291,6 +7305,14 @@ msgstr "Push failed — check the server logs for details."
 msgid "Pushing"
 msgstr "Pushing"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Queue message"
+msgstr "Queue message"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Queued"
+msgstr "Queued"
+
 #: src/editor/slash-command/items.tsx
 msgid "Quote"
 msgstr "Quote"
@@ -7515,6 +7537,10 @@ msgstr "Remove OpenKnowledge from {0}"
 #: src/components/TemplateForm.tsx
 msgid "Remove property"
 msgstr "Remove property"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Remove queued message"
+msgstr "Remove queued message"
 
 #: src/components/BottomComposer.tsx
 msgid "Remove selection"
@@ -7963,6 +7989,10 @@ msgstr "Save changes"
 #: src/components/FolderPropertiesCard.tsx
 msgid "Save failed: {error}"
 msgstr "Save failed: {error}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Save queued message"
+msgstr "Save queued message"
 
 #: src/components/DiffView.tsx
 msgid "Save resolution"

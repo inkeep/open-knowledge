@@ -23,7 +23,7 @@ import type { AgentSessionManager } from '../agent-sessions.ts';
 import { getLogger } from '../logger.ts';
 import { AcpPermissionStore } from './permissions.ts';
 import { AcpRegistry } from './registry.ts';
-import { AcpThreadManager } from './thread-manager.ts';
+import { AcpThreadManager, MAX_QUEUED_PROMPTS } from './thread-manager.ts';
 
 const log = getLogger('acp-thread-test');
 
@@ -68,6 +68,7 @@ function makeManager(
   const manager = new AcpThreadManager({
     contentDir,
     localDir,
+    globalDir: null,
     registry: new AcpRegistry({
       localDir,
       log,
@@ -1225,4 +1226,525 @@ describe('AcpThreadManager terminals + permission effects', () => {
 
     await manager.closeThread(info.threadId);
   }, 45_000);
+});
+
+/**
+ * A stdio ACP agent whose thought-level options depend on the model — picking
+ * `opus` unlocks `xhigh`, which `sonnet` doesn't offer. Exercises the initial-
+ * config apply's model-first ordering + per-step re-validation.
+ */
+function writeCascadingConfigAgent(localDir: string): void {
+  const agentPath = join(localDir, 'cascade-agent.mjs');
+  writeFileSync(
+    agentPath,
+    `
+let model = 'sonnet';
+let thought = 'med';
+const thoughtOptions = () =>
+  model === 'opus'
+    ? [{ value: 'low', name: 'Low' }, { value: 'med', name: 'Med' }, { value: 'high', name: 'High' }, { value: 'xhigh', name: 'XHigh' }]
+    : [{ value: 'low', name: 'Low' }, { value: 'med', name: 'Med' }];
+const configOptions = () => [
+  { id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: model,
+    options: [{ value: 'sonnet', name: 'Sonnet' }, { value: 'opus', name: 'Opus' }] },
+  { id: 'thought_level', name: 'Thinking', category: 'thought_level', type: 'select', currentValue: thought,
+    options: thoughtOptions() },
+];
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    const reply = (result) =>
+      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }) + '\\n');
+    if (msg.method === 'initialize') {
+      reply({ protocolVersion: 1, agentCapabilities: {} });
+    } else if (msg.method === 'session/new') {
+      reply({ sessionId: 's1', configOptions: configOptions() });
+    } else if (msg.method === 'session/set_config_option') {
+      const { configId, value } = msg.params;
+      if (configId === 'model') model = value;
+      else if (configId === 'thought_level' && thoughtOptions().some((o) => o.value === value)) thought = value;
+      reply({ configOptions: configOptions() });
+    } else if (msg.method === 'session/prompt') {
+      reply({ stopReason: 'end_turn' });
+    } else if (msg.id !== undefined) {
+      reply({});
+    }
+  }
+});
+`,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([
+      { id: 'cascade-agent', name: 'Cascade Agent', command: 'node', args: [agentPath] },
+    ]),
+  );
+}
+
+/**
+ * A stdio ACP agent that advertises legacy `SessionModeState` modes (Claude's
+ * permission-mode surface) and accepts `session/set_mode`. Exercises the
+ * opt-in mode restore via `session/set_mode`.
+ */
+function writeLegacyModeAgent(localDir: string): void {
+  const agentPath = join(localDir, 'mode-agent.mjs');
+  writeFileSync(
+    agentPath,
+    `
+let current = 'default';
+const modes = () => ({ currentModeId: current, availableModes: [
+  { id: 'default', name: 'Default' },
+  { id: 'plan', name: 'Plan' },
+  { id: 'bypass', name: 'Bypass permissions' },
+] });
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    const reply = (result) =>
+      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }) + '\\n');
+    if (msg.method === 'initialize') {
+      reply({ protocolVersion: 1, agentCapabilities: {} });
+    } else if (msg.method === 'session/new') {
+      reply({ sessionId: 's1', modes: modes() });
+    } else if (msg.method === 'session/set_mode') {
+      current = msg.params.modeId;
+      reply({});
+    } else if (msg.method === 'session/prompt') {
+      reply({ stopReason: 'end_turn' });
+    } else if (msg.id !== undefined) {
+      reply({});
+    }
+  }
+});
+`,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([{ id: 'mode-agent', name: 'Mode Agent', command: 'node', args: [agentPath] }]),
+  );
+}
+
+/**
+ * A stdio ACP agent that exposes mode through a generalized mode-category
+ * config option (the newer surface) rather than legacy `modes`. Exercises the
+ * opt-in mode restore falling through to `session/set_config_option`.
+ */
+function writeConfigModeAgent(localDir: string): void {
+  const agentPath = join(localDir, 'config-mode-agent.mjs');
+  writeFileSync(
+    agentPath,
+    `
+let mode = 'default';
+const configOptions = () => [
+  { id: 'permission', name: 'Permission mode', category: 'mode', type: 'select', currentValue: mode,
+    options: [{ value: 'default', name: 'Default' }, { value: 'bypass', name: 'Bypass permissions' }] },
+];
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    const reply = (result) =>
+      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }) + '\\n');
+    if (msg.method === 'initialize') {
+      reply({ protocolVersion: 1, agentCapabilities: {} });
+    } else if (msg.method === 'session/new') {
+      reply({ sessionId: 's1', configOptions: configOptions() });
+    } else if (msg.method === 'session/set_config_option') {
+      if (msg.params.configId === 'permission') mode = msg.params.value;
+      reply({ configOptions: configOptions() });
+    } else if (msg.method === 'session/prompt') {
+      reply({ stopReason: 'end_turn' });
+    } else if (msg.id !== undefined) {
+      reply({});
+    }
+  }
+});
+`,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([
+      { id: 'config-mode-agent', name: 'Config Mode Agent', command: 'node', args: [agentPath] },
+    ]),
+  );
+}
+
+/**
+ * A legacy-modes agent that *rejects* every `session/set_mode` with a JSON-RPC
+ * error. Proves the opt-in mode restore is best-effort: a rejected set is
+ * caught and the thread still reaches `ready` on the agent's default mode.
+ */
+function writeRejectingModeAgent(localDir: string): void {
+  const agentPath = join(localDir, 'reject-mode-agent.mjs');
+  writeFileSync(
+    agentPath,
+    `
+const modes = { currentModeId: 'default', availableModes: [
+  { id: 'default', name: 'Default' },
+  { id: 'bypass', name: 'Bypass permissions' },
+] };
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    const reply = (result) =>
+      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }) + '\\n');
+    if (msg.method === 'initialize') {
+      reply({ protocolVersion: 1, agentCapabilities: {} });
+    } else if (msg.method === 'session/new') {
+      reply({ sessionId: 's1', modes });
+    } else if (msg.method === 'session/set_mode') {
+      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id,
+        error: { code: -32000, message: 'mode change refused' } }) + '\\n');
+    } else if (msg.method === 'session/prompt') {
+      reply({ stopReason: 'end_turn' });
+    } else if (msg.id !== undefined) {
+      reply({});
+    }
+  }
+});
+`,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([
+      { id: 'reject-mode-agent', name: 'Reject Mode Agent', command: 'node', args: [agentPath] },
+    ]),
+  );
+}
+
+describe('AcpThreadManager initial mode apply', () => {
+  test('restores an opted-in mode via session/set_mode before ready', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeLegacyModeAgent(localDir);
+    const manager = makeManager(contentDir, localDir);
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'mode-agent' },
+      settings: { modeId: 'bypass' },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    expect(manager.getInfo(info.threadId)?.modes?.currentModeId).toBe('bypass');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('skips a remembered mode the session no longer advertises', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeLegacyModeAgent(localDir);
+    const manager = makeManager(contentDir, localDir);
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'mode-agent' },
+      // `ghost` isn't in availableModes → no set_mode is sent; the session
+      // stays on its own default rather than arming a retired mode.
+      settings: { modeId: 'ghost' },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    expect(manager.getInfo(info.threadId)?.modes?.currentModeId).toBe('default');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('restores an opted-in mode exposed as a config option via set_config_option', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeConfigModeAgent(localDir);
+    const manager = makeManager(contentDir, localDir);
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'config-mode-agent' },
+      settings: { modeId: 'bypass' },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    const opts = manager.getInfo(info.threadId)?.configOptions ?? [];
+    expect(opts.find((o) => o.id === 'permission')?.currentValue).toBe('bypass');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('a rejected set_mode still reaches ready on the agent default', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeRejectingModeAgent(localDir);
+    const manager = makeManager(contentDir, localDir);
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'reject-mode-agent' },
+      settings: { modeId: 'bypass' },
+    });
+    // The set_mode rejection is caught (best-effort) — startup must not hang.
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    // The refused mode did not stick; the session stays on its own default.
+    expect(manager.getInfo(info.threadId)?.modes?.currentModeId).toBe('default');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+});
+
+describe('AcpThreadManager initial config apply', () => {
+  test('applies remembered config before ready — model first, dependent option re-validated', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeCascadingConfigAgent(localDir);
+    const manager = makeManager(contentDir, localDir);
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'cascade-agent' },
+      // thought_level listed first on purpose: it's only valid AFTER the model
+      // switches to opus, so a correct apply must order model → thought_level.
+      // `retired_option` pins the skip contract: a remembered key this agent
+      // version no longer advertises must be ignored, not fail the launch.
+      settings: { config: { thought_level: 'xhigh', model: 'opus', retired_option: 'gone' } },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    const opts = manager.getInfo(info.threadId)?.configOptions ?? [];
+    expect(opts.find((o) => o.id === 'model')?.currentValue).toBe('opus');
+    expect(opts.find((o) => o.id === 'thought_level')?.currentValue).toBe('xhigh');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('skips a remembered value the resolved options no longer offer', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeCascadingConfigAgent(localDir);
+    const manager = makeManager(contentDir, localDir);
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'cascade-agent' },
+      // No model change → the model stays sonnet, whose options lack `xhigh`,
+      // so the stored thought_level is dropped rather than sent-and-rejected.
+      settings: { config: { thought_level: 'xhigh' } },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    const opts = manager.getInfo(info.threadId)?.configOptions ?? [];
+    expect(opts.find((o) => o.id === 'model')?.currentValue).toBe('sonnet');
+    expect(opts.find((o) => o.id === 'thought_level')?.currentValue).toBe('med');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+});
+
+describe('AcpThreadManager prompt queueing', () => {
+  type Collected = Array<{ seq: number; event: ThreadEvent }>;
+  const collect = (into: Collected) => (frame: ThreadServerFrame) => {
+    if (frame.op === 'event') into.push({ seq: frame.seq, event: frame.event });
+    if (frame.op === 'events') {
+      for (const [i, event] of frame.events.entries()) {
+        into.push({ seq: frame.fromSeq + i, event });
+      }
+    }
+  };
+  const agentText = (events: Collected): string =>
+    events
+      .map((e) => e.event)
+      .filter((e) => e.kind === 'session_update')
+      .map((e) => {
+        const update = (e as { update?: { sessionUpdate?: string; content?: { text?: string } } })
+          .update;
+        return update?.sessionUpdate === 'agent_message_chunk' ? (update.content?.text ?? '') : '';
+      })
+      .join('');
+  const userMessages = (events: Collected): string[] =>
+    events
+      .map((e) => e.event)
+      .filter((e): e is Extract<ThreadEvent, { kind: 'user_message' }> => e.kind === 'user_message')
+      .map((e) => e.content);
+
+  /** Agent that echoes each prompt and holds a WAIT-marked turn open until
+   *  `releasePath` exists — the deterministic gate the queue forms behind. */
+  function writeGateAgent(localDir: string, releasePath: string): void {
+    writeRequestingAgentEntry(
+      localDir,
+      'gate-agent',
+      `
+  const text = (msg.params.prompt ?? []).map((b) => b.text ?? '').join('');
+  notify({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'ran:' + text + ';' } });
+  if (text.includes('WAIT')) {
+    const fs = await import('node:fs');
+    while (!fs.existsSync(${JSON.stringify(releasePath)})) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+  finish();
+`,
+    );
+  }
+
+  test('mid-turn prompts queue, edit/remove target entries by id, and drain FIFO', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    writeGateAgent(localDir, releasePath);
+    const manager = makeManager(contentDir, localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+
+    manager.sendPrompt(info.threadId, 'second draft');
+    manager.sendPrompt(info.threadId, 'third');
+    manager.sendPrompt(info.threadId, 'fourth');
+    const queued = manager.getInfo(info.threadId)?.queue ?? [];
+    expect(queued.map((m) => m.content)).toEqual(['second draft', 'third', 'fourth']);
+
+    // Edit the head in place, drop the middle; unknown ids are silent no-ops.
+    const head = queued[0];
+    const middle = queued[1];
+    if (head === undefined || middle === undefined) throw new Error('queue entries missing');
+    manager.editQueued(info.threadId, head.id, 'second final');
+    manager.removeQueued(info.threadId, middle.id);
+    manager.editQueued(info.threadId, 'no-such-id', 'ignored');
+    manager.removeQueued(info.threadId, 'no-such-id');
+    expect((manager.getInfo(info.threadId)?.queue ?? []).map((m) => m.content)).toEqual([
+      'second final',
+      'fourth',
+    ]);
+
+    writeFileSync(releasePath, 'go');
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 3,
+      20_000,
+      `three turn ends; got ${JSON.stringify(events.map((e) => e.event.kind))}`,
+    );
+    expect(manager.getInfo(info.threadId)?.queue).toBeUndefined();
+    expect(manager.getInfo(info.threadId)?.status).toBe('ready');
+
+    // FIFO order with the edit applied; the removed entry never ran.
+    const text = agentText(events);
+    expect(text).toContain('ran:second final;');
+    expect(text).toContain('ran:fourth;');
+    expect(text).not.toContain('second draft');
+    expect(text).not.toContain('ran:third;');
+    expect(text.indexOf('ran:second final;')).toBeLessThan(text.indexOf('ran:fourth;'));
+
+    // Each drained prompt landed as a normal user turn in the transcript.
+    expect(userMessages(events)).toEqual(['WAIT at the gate', 'second final', 'fourth']);
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  test('cancel drops the whole queue; the cap rejects the overflow prompt', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    writeGateAgent(localDir, releasePath);
+    const manager = makeManager(contentDir, localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT for cancel');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+
+    for (let i = 0; i < MAX_QUEUED_PROMPTS; i += 1) {
+      manager.sendPrompt(info.threadId, `queued ${i}`);
+    }
+    expect(manager.getInfo(info.threadId)?.queue?.length).toBe(MAX_QUEUED_PROMPTS);
+    expect(() => manager.sendPrompt(info.threadId, 'one too many')).toThrow(/already waiting/);
+
+    manager.cancel(info.threadId);
+    expect(manager.getInfo(info.threadId)?.queue).toBeUndefined();
+
+    // The gate agent ignores session/cancel — release it and confirm the
+    // cleared queue never drains.
+    writeFileSync(releasePath, 'go');
+    await waitUntil(() => !internals(manager).turnActive(info.threadId), 10_000, 'turn ended');
+    expect(manager.getInfo(info.threadId)?.queue).toBeUndefined();
+    expect(userMessages(events)).toEqual(['WAIT for cancel']);
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  test('a terminal status drops the queue — a dead agent keeps no phantom entries', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeGateAgent(localDir, join(localDir, 'release-turn'));
+    const manager = makeManager(contentDir, localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    await manager.subscribe(info.threadId, 0, () => {});
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    manager.sendPrompt(info.threadId, 'never runs');
+    expect(manager.getInfo(info.threadId)?.queue?.length).toBe(1);
+
+    // Killing the agent mid-turn takes the thread terminal. The queue has to go
+    // with it: entries that outlive the agent render as messages the user can
+    // see but can never dispatch.
+    await manager.closeThread(info.threadId);
+    expect(manager.getInfo(info.threadId)?.queue).toBeUndefined();
+  }, 40_000);
+
+  test('the queue is never persisted — a rehydrated thread comes back empty', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeGateAgent(localDir, join(localDir, 'release-turn'));
+    const manager = makeManager(contentDir, localDir);
+    // init() creates the threads dir — without it the archive's meta write has
+    // nowhere to land and there is nothing for manager2 to rehydrate.
+    await manager.init();
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    await manager.subscribe(info.threadId, 0, () => {});
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    manager.sendPrompt(info.threadId, 'queued while busy');
+    expect(manager.getInfo(info.threadId)?.queue?.length).toBe(1);
+
+    await manager.closeThread(info.threadId);
+
+    // A fresh manager over the same persistence dir rehydrates the archived
+    // thread from its meta. `buildMeta` strips the queue on the way out, so it
+    // must not come back — otherwise a restart resurrects undispatchable rows.
+    const manager2 = makeManager(contentDir, localDir);
+    await manager2.init();
+    expect(manager2.getInfo(info.threadId)).toBeDefined();
+    expect(manager2.getInfo(info.threadId)?.queue).toBeUndefined();
+  }, 40_000);
 });

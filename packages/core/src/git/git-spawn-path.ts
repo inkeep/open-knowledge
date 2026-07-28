@@ -77,21 +77,88 @@ export function wellKnownToolDirs(platform: NodeJS.Platform, homeDir: string): r
 }
 
 /**
- * Return `currentPath` with well-known tool directories APPENDED: only
- * directories that exist on disk and aren't already present (exact string
- * match against current entries). `undefined`/empty input yields just the
- * existing well-known dirs, so a spawn env never ends up with an empty PATH.
- * Idempotent — augmenting an already-augmented PATH is a no-op.
+ * Append `dirs` to `currentPath`: only those that exist on disk and aren't
+ * already present (exact string match against current entries, and against
+ * dirs already appended this call). `undefined`/empty input yields just the
+ * appended dirs, so a spawn env never ends up with an empty PATH. Appending
+ * (never prepending) keeps existing entries authoritative. Idempotent.
  */
-export function augmentGitSpawnPath(
+function appendDirs(
   currentPath: string | undefined,
+  dirs: readonly string[],
   options: GitSpawnPathOptions,
 ): string {
   const delim = options.delimiter;
   const existing = (currentPath ?? '').split(delim).filter((entry) => entry.length > 0);
   const present = new Set(existing);
-  const additions = wellKnownToolDirs(options.platform, options.homeDir).filter(
-    (dir) => !present.has(dir) && options.isDir(dir),
-  );
+  const additions: string[] = [];
+  for (const dir of dirs) {
+    if (!present.has(dir) && options.isDir(dir)) {
+      present.add(dir);
+      additions.push(dir);
+    }
+  }
   return [...existing, ...additions].join(delim);
+}
+
+/**
+ * Return `currentPath` with well-known tool directories APPENDED. See
+ * `appendDirs` for the append/dedup/existence semantics.
+ */
+export function augmentGitSpawnPath(
+  currentPath: string | undefined,
+  options: GitSpawnPathOptions,
+): string {
+  return appendDirs(currentPath, wellKnownToolDirs(options.platform, options.homeDir), options);
+}
+
+/**
+ * JavaScript package-manager global bin directories where coding-agent CLIs
+ * (the ACP harnesses — pi, claude, codex, …) land on a global install. These
+ * are put on PATH only by a shell profile, so an agent installed with e.g.
+ * `pnpm add -g` is unreachable from a Dock/Finder-launched app that inherits
+ * launchd's minimal PATH. Static home-relative literals, NOT `$PNPM_HOME` /
+ * `$BUN_INSTALL` reads: those vars are shell-profile-set too, so they are
+ * equally absent in exactly the launchd-minimal case this targets.
+ */
+export function agentToolDirs(platform: NodeJS.Platform, homeDir: string): readonly string[] {
+  switch (platform) {
+    case 'darwin':
+      return [
+        `${homeDir}/Library/pnpm`, // pnpm global (PNPM_HOME default on macOS)
+        `${homeDir}/.bun/bin`, // bun global
+        `${homeDir}/.volta/bin`, // Volta shims
+        `${homeDir}/.yarn/bin`, // Yarn classic global
+        `${homeDir}/.npm-global/bin`, // npm's documented non-sudo prefix
+      ];
+    case 'win32':
+      // Explorer-launched apps inherit the registry-backed user PATH, so the
+      // minimal-PATH class barely exists here — nothing safe to statically add.
+      return [];
+    default:
+      return [
+        `${homeDir}/.local/share/pnpm`, // pnpm global (XDG default on Linux)
+        `${homeDir}/.bun/bin`,
+        `${homeDir}/.volta/bin`,
+        `${homeDir}/.yarn/bin`,
+        `${homeDir}/.npm-global/bin`,
+      ];
+  }
+}
+
+/**
+ * Like `augmentGitSpawnPath`, but for ACP agent + terminal spawns: appends the
+ * well-known tool dirs (npx/uvx/node are commonly Homebrew installs) AND the
+ * package-manager global bins where agent CLIs install. Same append-only,
+ * existence-gated, idempotent semantics; never yields an empty PATH.
+ */
+export function augmentAgentSpawnPath(
+  currentPath: string | undefined,
+  options: GitSpawnPathOptions,
+): string {
+  const dirs = [
+    ...wellKnownToolDirs(options.platform, options.homeDir),
+    ...agentToolDirs(options.platform, options.homeDir),
+  ];
+  return appendDirs(currentPath, dirs, options);
 }

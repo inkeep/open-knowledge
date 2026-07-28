@@ -66,6 +66,7 @@ export function attachAcpThreadSocket(
               prompt: frame.prompt,
               docName: frame.docName,
               titleHint: frame.titleHint,
+              settings: frame.settings,
             });
             send({ op: 'created', reqId: frame.reqId, info });
             // Creating implies interest: auto-subscribe from the beginning
@@ -105,6 +106,14 @@ export function attachAcpThreadSocket(
           }
           case 'prompt': {
             manager.sendPrompt(frame.threadId, frame.content);
+            return;
+          }
+          case 'queue_edit': {
+            manager.editQueued(frame.threadId, frame.id, frame.content);
+            return;
+          }
+          case 'queue_remove': {
+            manager.removeQueued(frame.threadId, frame.id);
             return;
           }
           case 'permission_response': {

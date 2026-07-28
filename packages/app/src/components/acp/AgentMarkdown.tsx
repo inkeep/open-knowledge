@@ -26,13 +26,21 @@ export function AgentMarkdown({ text }: { text: string }): ReactNode {
         // so `lineNumbers={false}` alone collapses multi-line code onto one
         // visual line.
         //
+        // Lists force `list-outside` + inline-start padding for a deterministic
+        // hanging indent: the marker sits in the padding and wrapped lines align
+        // under the text. Without this, lists inherit Tailwind's preflight
+        // (ol/ul padding:0) and Streamdown's list-style-position varies by build
+        // — top-level markers then hang into zero padding and clip off the
+        // transcript's narrow, scroll-free left edge. Padding matches
+        // Streamdown's own nested-list `[li_&]:pl-6`.
+        //
         // Code drops a notch to 13px (Streamdown hard-codes `text-sm` on both
         // inline and block code) so the mono face, which reads larger than the
         // UI face at a matched point size, sits optically level with the prose
         // around it. Deliberately not `!`: the descendant selector already
         // outranks Streamdown's own class, which leaves an `!` override on a
         // wrapper — the thought bubble's flattening — free to win.
-        className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre_code>span]:block [&_code]:text-1sm [&_pre]:text-1sm"
+        className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre_code>span]:block [&_ol]:list-outside [&_ul]:list-outside [&_ol]:ps-6 [&_ul]:ps-6 [&_code]:text-1sm [&_pre]:text-1sm"
         lineNumbers={false}
         controls={{ code: { copy: true, download: false }, table: false, mermaid: false }}
         // Plain hardened anchors instead of Streamdown's confirm-modal flow:

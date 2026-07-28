@@ -55,7 +55,9 @@ const NPX_AGENT = {
   id: 'npxagent',
   name: 'NPX Agent',
   version: '1.0.0',
-  // Empty PATH forces the system `npx` to be unresolvable → download flow.
+  // Empty overlay PATH forces the system `npx` to be unresolvable → download
+  // flow. Also pins the contract that an explicit overlay PATH is used verbatim:
+  // `mergedEnv`'s base-PATH augmentation must not re-populate it.
   distribution: { npx: { package: '@fake/agent', env: { PATH: '' } } },
 };
 
@@ -101,6 +103,7 @@ function makeManager(opts: {
   const manager = new AcpThreadManager({
     contentDir: opts.contentDir,
     localDir: opts.localDir,
+    globalDir: null,
     registry: new AcpRegistry({ localDir: opts.localDir, log, fetchImpl: opts.fetchImpl }),
     permissions: new AcpPermissionStore(opts.localDir, log),
     sessionManager: fakeSessionManager,

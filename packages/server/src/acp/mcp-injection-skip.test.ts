@@ -61,6 +61,7 @@ function makeManager(
   const manager = new AcpThreadManager({
     contentDir: tmp(),
     localDir,
+    globalDir: null,
     registry: new AcpRegistry({
       localDir,
       log,

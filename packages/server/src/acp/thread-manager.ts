@@ -34,6 +34,7 @@ import {
   type PermissionOption,
   PROTOCOL_VERSION,
   type RequestPermissionResponse,
+  type SessionConfigOption,
   type SessionNotification,
   type SessionUpdate,
   type SetSessionConfigOptionRequest,
@@ -49,6 +50,7 @@ import {
   iconFromClientName,
 } from '@inkeep/open-knowledge-core';
 import type {
+  QueuedMessage,
   ThreadAgentInfo,
   ThreadEvent,
   ThreadInfo,
@@ -99,6 +101,8 @@ import { type PersistedThreadMeta, ThreadPersistenceStore } from './thread-persi
 import { clampThreadTitle, deriveThreadTitle } from './thread-title.ts';
 
 export const MAX_ACP_THREADS = 8;
+/** Prompts allowed to wait behind the active turn before `prompt` rejects. */
+export const MAX_QUEUED_PROMPTS = 20;
 const EVENT_LOG_LIMIT = 5_000;
 const DEFAULT_IDLE_REAP_MS = 60 * 60 * 1000;
 const REAP_SWEEP_MS = 5 * 60 * 1000;
@@ -243,6 +247,14 @@ export interface AcpThreadManagerOptions {
   contentDir: string;
   /** `<projectDir>/.ok/local` — custom agents, permission grants, registry cache. */
   localDir: string;
+  /**
+   * Machine-global OK dir (`~/.ok`) where thread transcripts persist under
+   * `threads/`, shared across projects and cwd-scoped by `contentDir`. `null`
+   * keeps transcripts in the per-project `localDir/threads` (tests). Required
+   * so a new construction site can't silently forget where threads live —
+   * `null` is the explicit opt-out.
+   */
+  globalDir: string | null;
   registry: AcpRegistry;
   permissions: AcpPermissionStore;
   sessionManager: AgentSessionManager;
@@ -347,7 +359,15 @@ export class AcpThreadManager {
     this.idleReapMs = opts.idleReapMs ?? DEFAULT_IDLE_REAP_MS;
     this.unwatchedTurnCancelMs = opts.unwatchedTurnCancelMs ?? DEFAULT_UNWATCHED_TURN_CANCEL_MS;
     this.unwatchedTurnKillMs = opts.unwatchedTurnKillMs ?? DEFAULT_UNWATCHED_TURN_KILL_MS;
-    this.persistence = new ThreadPersistenceStore(opts.localDir, opts.log);
+    this.persistence = new ThreadPersistenceStore({
+      // Global dir → transcripts under `~/.ok/threads`, cwd-scoped, with the
+      // per-project `localDir/threads` as a read-only legacy fallback. No
+      // global dir → single per-project dir (unchanged behavior).
+      primaryDir: opts.globalDir ?? opts.localDir,
+      legacyDir: opts.globalDir !== null ? opts.localDir : null,
+      cwd: opts.globalDir !== null ? opts.contentDir : null,
+      log: opts.log,
+    });
     this.reapTimer = setInterval(() => this.reapIdleThreads(), REAP_SWEEP_MS);
     this.reapTimer.unref?.();
   }
@@ -468,6 +488,12 @@ export class AcpThreadManager {
     prompt?: string;
     docName?: string;
     titleHint?: string;
+    /**
+     * Remembered settings to apply before turn 1: `config` (model, thought
+     * level, and any mode advertised as a config option) and `modeId` (the
+     * legacy mode surface). Validated against the live session before applying.
+     */
+    settings?: { config?: Record<string, string | boolean>; modeId?: string };
   }): Promise<ThreadInfo> {
     if (this.destroyed) throw new ThreadOpError('capacity', 'server is shutting down');
     if (this.liveThreadCount() >= this.maxThreads) {
@@ -984,7 +1010,11 @@ export class AcpThreadManager {
 
   private async startThread(
     record: ThreadRecord,
-    params: { agent: { source: 'registry' | 'custom'; id: string }; prompt?: string },
+    params: {
+      agent: { source: 'registry' | 'custom'; id: string };
+      prompt?: string;
+      settings?: { config?: Record<string, string | boolean>; modeId?: string };
+    },
     custom: CustomAgentEntry | null,
   ): Promise<void> {
     let handshake: Awaited<ReturnType<AcpThreadManager['connectAgent']>>;
@@ -1031,6 +1061,17 @@ export class AcpThreadManager {
       return;
     }
     if (record.closed) return;
+
+    if (params.settings?.config !== undefined) {
+      await this.applyInitialConfig(record, conn, params.settings.config);
+      if (record.closed) return;
+    }
+    if (params.settings?.modeId !== undefined) {
+      // After config: a model→option cascade may reshape the mode surface, so
+      // validate the remembered mode against the settled session state.
+      await this.applyInitialMode(record, conn, params.settings.modeId);
+      if (record.closed) return;
+    }
 
     this.setPresence(record, 'idle');
     this.emitStatus(record, 'ready');
@@ -1248,9 +1289,53 @@ export class AcpThreadManager {
       throw new ThreadOpError('not-ready', 'thread has no live agent session');
     }
     if (t.turnActive) {
-      throw new ThreadOpError('not-ready', 'a turn is already running — cancel it first');
+      // Queue behind the active turn instead of rejecting; the turn-end
+      // handler in dispatchPrompt drains FIFO. Queue state is ephemeral
+      // (memory-only): cancel, agent error/exit, and archive all drop it.
+      const queue = t.info.queue ?? [];
+      if (queue.length >= MAX_QUEUED_PROMPTS) {
+        throw new ThreadOpError(
+          'not-ready',
+          `${MAX_QUEUED_PROMPTS} messages are already waiting — let the agent catch up`,
+        );
+      }
+      t.info.queue = [...queue, { id: crypto.randomUUID(), content, ts: Date.now() }];
+      t.info.lastActivityAt = Date.now();
+      this.emitInfo(t);
+      return;
     }
     this.dispatchPrompt(t, content, { echo: true });
+  }
+
+  /** Replace a queued message's content in place. Unknown id: the entry
+   *  raced its own dispatch (or a cancel) — silent no-op; the transcript
+   *  already shows what actually ran. */
+  editQueued(threadId: string, id: string, content: string): void {
+    const t = this.mustGet(threadId);
+    const queue = t.info.queue ?? [];
+    if (!queue.some((m) => m.id === id)) return;
+    t.info.queue = queue.map((m) => (m.id === id ? { ...m, content } : m));
+    this.emitInfo(t);
+  }
+
+  /** Remove a queued message before it dispatches. Unknown id: no-op. */
+  removeQueued(threadId: string, id: string): void {
+    const t = this.mustGet(threadId);
+    const queue = t.info.queue ?? [];
+    const next = queue.filter((m) => m.id !== id);
+    if (next.length === queue.length) return;
+    t.info.queue = next.length > 0 ? next : undefined;
+    this.emitInfo(t);
+  }
+
+  /** Pop the next queued prompt, or null. Broadcast rides the dispatch that
+   *  follows (its status flip emits the refreshed info snapshot). */
+  private takeNextQueued(t: ThreadRecord): QueuedMessage | null {
+    const queue = t.info.queue;
+    if (queue === undefined || queue.length === 0) return null;
+    const [next, ...rest] = queue;
+    t.info.queue = rest.length > 0 ? rest : undefined;
+    return next ?? null;
   }
 
   /** Adopt-title + append the `user_message` transcript event for a prompt. */
@@ -1331,6 +1416,17 @@ export class AcpThreadManager {
           stopReason: response.stopReason,
           ts: Date.now(),
         });
+        // Drain the queue FIFO — skip the 'ready' blip so the status history
+        // reads running → running, matching what the user sees. Guarded on a
+        // live connection: an agent that died as the turn settled already
+        // dropped the queue via its terminal status.
+        if (t.sessionId !== null && t.conn !== null) {
+          const next = this.takeNextQueued(t);
+          if (next !== null) {
+            this.dispatchPrompt(t, next.content, { echo: true });
+            return;
+          }
+        }
         this.emitStatus(t, 'ready');
         this.setPresence(t, 'idle');
       })
@@ -1351,6 +1447,13 @@ export class AcpThreadManager {
 
   cancel(threadId: string): void {
     const t = this.mustGet(threadId);
+    // Stop means "stop the plan", not just the current turn — queued
+    // messages go with it (before the conn guard, so a cancel racing agent
+    // death still clears).
+    if (t.info.queue !== undefined) {
+      t.info.queue = undefined;
+      this.emitInfo(t);
+    }
     if (t.conn === null || t.sessionId === null) return;
     if (t.turnActive) t.cancelRequested = true;
     // Per ACP, a cancelled turn's pending permission requests resolve as
@@ -1403,6 +1506,121 @@ export class AcpThreadManager {
       .catch((err) => {
         this.opts.log.warn({ err, threadId, configId }, '[acp-threads] set_config_option failed');
       });
+  }
+
+  /**
+   * Apply the user's remembered per-agent config options to a fresh session
+   * BEFORE the first prompt, so turn 1 runs on their chosen model. Applied
+   * model-category first and awaited one at a time: a `set_config_option`
+   * response is the agent's authoritative post-change state (picking a model
+   * can reshape the thought-level choices), so each step re-validates against
+   * the reshaped options. Unknown / deprecated / already-current values are
+   * skipped; a rejected set is logged and does not block the rest. Best-effort
+   * by design — the turn proceeds on the agent's defaults for anything that
+   * couldn't be applied.
+   */
+  private async applyInitialConfig(
+    record: ThreadRecord,
+    conn: NonNullable<ThreadRecord['conn']>,
+    config: Record<string, string | boolean>,
+  ): Promise<void> {
+    const sessionId = record.sessionId;
+    if (sessionId === null) return;
+    const isModel = (id: string): boolean =>
+      (record.info.configOptions ?? []).find((o) => o.id === id)?.category === 'model';
+    const ids = Object.keys(config).sort((a, b) => Number(isModel(b)) - Number(isModel(a)));
+    let applied = false;
+    const rejected: string[] = [];
+    for (const configId of ids) {
+      const value = config[configId];
+      if (value === undefined) continue;
+      const option = (record.info.configOptions ?? []).find((o) => o.id === configId);
+      if (option === undefined) continue; // agent no longer offers this option
+      if (option.currentValue === value) continue; // already the agent's default
+      if (!initialConfigValueValid(option, value)) continue; // stored value gone (e.g. retired model)
+      const request: SetSessionConfigOptionRequest =
+        typeof value === 'boolean'
+          ? { sessionId, configId, type: 'boolean', value }
+          : { sessionId, configId, value };
+      try {
+        const response: SetSessionConfigOptionResponse = await conn.agent.request(
+          acpMethods.agent.session.setConfigOption,
+          request,
+        );
+        record.info.configOptions = response.configOptions;
+        applied = true;
+      } catch (err) {
+        rejected.push(configId);
+        this.opts.log.warn(
+          { err, threadId: record.info.threadId, configId },
+          '[acp-threads] initial config apply failed',
+        );
+      }
+      if (record.closed) return;
+    }
+    // The thread still opens on the agent's defaults for anything that couldn't
+    // be applied (best-effort). One rolled-up warn makes "my remembered settings
+    // didn't stick" diagnosable from a bundle without correlating per-id lines.
+    if (rejected.length > 0) {
+      this.opts.log.warn(
+        { threadId: record.info.threadId, rejectedConfigIds: rejected },
+        '[acp-threads] some remembered config options could not be applied to the new session',
+      );
+    }
+    if (applied) this.emitInfo(record);
+  }
+
+  /**
+   * Apply the user's remembered mode to a fresh session BEFORE the first
+   * prompt. Best-effort: the mode must still be advertised
+   * by the settled session; an unknown or already-current mode is skipped, and
+   * a rejected set is logged and does not block the turn. Handles both mode
+   * surfaces — the legacy `SessionModeState` (`session/set_mode`) and the
+   * generalized mode-category config option (`session/set_config_option`).
+   */
+  private async applyInitialMode(
+    record: ThreadRecord,
+    conn: NonNullable<ThreadRecord['conn']>,
+    modeId: string,
+  ): Promise<void> {
+    const sessionId = record.sessionId;
+    if (sessionId === null) return;
+    const modes = record.info.modes;
+    if (modes != null) {
+      // Legacy SessionModeState path (Claude's permission modes).
+      if (modes.availableModes.some((m) => m.id === modeId)) {
+        if (modes.currentModeId === modeId) return; // already the session default
+        try {
+          await conn.agent.request(acpMethods.agent.session.setMode, { sessionId, modeId });
+          record.info.modes = { ...modes, currentModeId: modeId };
+          this.emitInfo(record);
+        } catch (err) {
+          this.opts.log.warn(
+            { err, threadId: record.info.threadId, modeId, method: 'set_mode' },
+            '[acp-threads] initial mode apply failed',
+          );
+        }
+        return;
+      }
+    }
+    // Generalized mode-category config option (agents that expose mode there).
+    const option = (record.info.configOptions ?? []).find(
+      (o) => o.category === 'mode' && initialConfigValueValid(o, modeId),
+    );
+    if (option === undefined || option.currentValue === modeId) return;
+    try {
+      const response: SetSessionConfigOptionResponse = await conn.agent.request(
+        acpMethods.agent.session.setConfigOption,
+        { sessionId, configId: option.id, value: modeId },
+      );
+      record.info.configOptions = response.configOptions;
+      this.emitInfo(record);
+    } catch (err) {
+      this.opts.log.warn(
+        { err, threadId: record.info.threadId, modeId, method: 'set_config_option' },
+        '[acp-threads] initial mode apply failed',
+      );
+    }
   }
 
   respondPermission(
@@ -1803,6 +2021,10 @@ export class AcpThreadManager {
   }
 
   private emitStatus(t: ThreadRecord, status: ThreadStatus, detail?: string): void {
+    // A terminal status is the single choke point where queued prompts die —
+    // whatever path got here (agent exit, connection loss, prompt failure,
+    // archive), messages must not fire into a dead agent.
+    if (status === 'exited' || status === 'error') t.info.queue = undefined;
     t.info.status = status;
     t.info.lastActivityAt = Date.now();
     this.appendEvent(t, { kind: 'status', status, detail, ts: Date.now() });
@@ -1823,9 +2045,12 @@ export class AcpThreadManager {
   }
 
   private buildMeta(t: ThreadRecord): PersistedThreadMeta {
+    // The queue is ephemeral by contract — persisting it would resurrect
+    // ghost entries into an archived thread after a mid-turn crash.
+    const { queue: _ephemeral, ...info } = t.info;
     return {
       version: 1,
-      info: { ...t.info },
+      info,
       sessionId: t.sessionId,
       cwd: t.cwd,
       agentRef: t.agentRef,
@@ -1981,7 +2206,9 @@ export async function confineToContentDir(
 function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
   const status = meta.info.status === 'error' ? 'error' : 'exited';
   return {
-    info: { ...meta.info, status, archived: true },
+    // `queue: undefined` belt-and-suspenders: buildMeta never persists one,
+    // but a meta written by a different build must not resurrect entries.
+    info: { ...meta.info, status, archived: true, queue: undefined },
     docName: meta.docName,
     agentRef: meta.agentRef,
     cwd: meta.cwd,
@@ -2015,6 +2242,20 @@ function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
     // rehydrated record as having received a message.
     hadUserMessage: true,
   };
+}
+
+/** True when `value` is still a selectable value of `option` (booleans always). */
+function initialConfigValueValid(option: SessionConfigOption, value: string | boolean): boolean {
+  if (typeof value === 'boolean') return option.type === 'boolean';
+  if (option.type !== 'select') return false;
+  for (const entry of option.options) {
+    if ('value' in entry) {
+      if (entry.value === value) return true;
+    } else if (entry.options.some((o) => o.value === value)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Error detail shown when a runtime download is declined or times out. */

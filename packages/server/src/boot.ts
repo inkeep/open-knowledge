@@ -22,6 +22,7 @@
  */
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import type { Server as HttpServer } from 'node:http';
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
   ASSET_EXTENSIONS,
@@ -835,6 +836,11 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     : new AcpThreadManager({
         contentDir: opts.contentDir,
         localDir: lockDir,
+        // Transcripts persist under `~/.ok/threads`, shared across projects and
+        // cwd-scoped — surviving project-folder churn (like the agent binary and
+        // runtime caches already at `~/.ok`). The legacy per-project dir is read
+        // back for pre-move threads.
+        globalDir: resolve(homedir(), OK_DIR),
         registry: serverInstance.acpRegistry,
         permissions: serverInstance.acpPermissions,
         sessionManager,

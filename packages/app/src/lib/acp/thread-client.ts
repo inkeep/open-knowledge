@@ -23,6 +23,11 @@ import type {
 import { t } from '@lingui/core/macro';
 import { useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
+import {
+  agentSettingsKey,
+  getRememberedAgentConfig,
+  getRememberedAgentMode,
+} from './agent-settings-store';
 import { type ThreadRenderModel, ThreadRenderModelBuilder } from './thread-event-model';
 
 export interface ThreadState {
@@ -194,13 +199,46 @@ export class AgentThreadClient {
       }, CREATE_TIMEOUT_MS);
       this.pendingCreates.set(reqId, { resolve, reject, timer });
     });
-    this.send({ op: 'create', reqId, ...params });
+    // Carry this agent type's remembered settings so the server applies them
+    // before turn 1 (a new thread of the same agent opens on the last-chosen
+    // options). `modeId` covers the legacy mode surface; a mode advertised as a
+    // config option already rides `config`. Absent → the agent's defaults stand.
+    const settingsKey = agentSettingsKey(params.agent);
+    const config = getRememberedAgentConfig(settingsKey);
+    const modeId = getRememberedAgentMode(settingsKey);
+    const settings =
+      config !== undefined || modeId !== undefined
+        ? {
+            ...(config !== undefined ? { config } : {}),
+            ...(modeId !== undefined ? { modeId } : {}),
+          }
+        : undefined;
+    this.send({
+      op: 'create',
+      reqId,
+      ...params,
+      ...(settings !== undefined ? { settings } : {}),
+    });
     return promise;
   }
 
   prompt(threadId: string, content: string): void {
     this.reqCounter += 1;
     this.send({ op: 'prompt', threadId, reqId: `prompt-${this.reqCounter}`, content });
+  }
+
+  /** Edit a message waiting in the thread's queue (`ThreadInfo.queue`) in
+   *  place. The server confirms via an `info` frame; an entry that already
+   *  dispatched is silently left alone. */
+  editQueued(threadId: string, id: string, content: string): void {
+    const trimmed = content.trim();
+    if (trimmed === '') return;
+    this.send({ op: 'queue_edit', threadId, id, content: trimmed });
+  }
+
+  /** Remove a message from the thread's queue before it dispatches. */
+  removeQueued(threadId: string, id: string): void {
+    this.send({ op: 'queue_remove', threadId, id });
   }
 
   respondPermission(
@@ -516,9 +554,9 @@ export class AgentThreadClient {
             return;
           }
           if (frame.reqId.startsWith('prompt-')) {
-            // A rejected prompt (e.g. a turn was already running) never
-            // reaches the transcript — the composer already cleared, so
-            // without feedback the user's message just vanishes.
+            // A rejected prompt (thread archived/not ready, or the queue is
+            // full) never reaches the transcript — the composer already
+            // cleared, so without feedback the user's message just vanishes.
             toast.error(t`Message not sent: ${frame.message}`);
             return;
           }

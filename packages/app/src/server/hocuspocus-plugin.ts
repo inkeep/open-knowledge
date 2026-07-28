@@ -13,11 +13,13 @@
  * wired to a soon-to-be-destroyed srv.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { relative, resolve } from 'node:path';
 import {
   ASSET_EXTENSIONS,
   EXECUTABLE_BLOCKLIST_EXTENSIONS,
   INLINE_RENDERABLE_EXTENSIONS,
+  OK_DIR,
 } from '@inkeep/open-knowledge-core';
 import {
   AcpThreadManager,
@@ -191,6 +193,9 @@ export function hocuspocusPlugin(): Plugin {
         : new AcpThreadManager({
             contentDir: CONTENT_DIR,
             localDir: currentSrv.lockDir,
+            // Match boot.ts: transcripts under `~/.ok/threads`, cwd-scoped, with
+            // the per-project dir read back for pre-move threads.
+            globalDir: resolve(homedir(), OK_DIR),
             registry: currentSrv.acpRegistry,
             permissions: currentSrv.acpPermissions,
             sessionManager,

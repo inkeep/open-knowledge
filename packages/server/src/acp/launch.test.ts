@@ -10,10 +10,11 @@
 
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   AgentLaunchError,
+  mergedEnv,
   preflightLaunch,
   type ResolvedLaunch,
   resolveWindowsCommand,
@@ -21,6 +22,27 @@ import {
   terminateAgentTree,
   windowsCmdWrap,
 } from './launch.ts';
+
+describe('mergedEnv PATH augmentation', () => {
+  test('an explicit overlay PATH is used verbatim — augmentation repairs only the inherited base', () => {
+    const key = 'PATH' in process.env ? 'PATH' : 'Path';
+    const out = mergedEnv({ [key]: '/sentinel/only' });
+    // An overlay PATH is a spawn-env contract: it wins verbatim, never appended-to.
+    expect(out[key]).toBe('/sentinel/only');
+  });
+
+  test('appends without dropping any existing PATH entry', () => {
+    const key = 'PATH' in process.env ? 'PATH' : 'Path';
+    const after = new Set((mergedEnv()[key] ?? '').split(delimiter));
+    for (const dir of (process.env[key] ?? '').split(delimiter).filter(Boolean)) {
+      expect(after.has(dir)).toBe(true);
+    }
+  });
+
+  test('preserves non-PATH process.env entries', () => {
+    expect(mergedEnv().HOME).toBe(process.env.HOME);
+  });
+});
 
 const isAlive = (pid: number): boolean => {
   try {

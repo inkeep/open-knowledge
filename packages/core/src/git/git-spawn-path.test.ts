@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { augmentGitSpawnPath, wellKnownToolDirs } from './git-spawn-path.ts';
+import {
+  agentToolDirs,
+  augmentAgentSpawnPath,
+  augmentGitSpawnPath,
+  wellKnownToolDirs,
+} from './git-spawn-path.ts';
 
 const HOME = '/Users/tester';
 
@@ -79,5 +84,61 @@ describe('augmentGitSpawnPath', () => {
     expect(dirs).toContain(`${HOME}/.local/share/mise/shims`);
     expect(dirs).not.toContain('/opt/homebrew/bin');
     expect(dirs).not.toContain('/opt/local/bin');
+  });
+});
+
+describe('augmentAgentSpawnPath', () => {
+  test('appends package-manager global bins on top of the well-known dirs', () => {
+    const out = augmentAgentSpawnPath(
+      '/usr/bin:/bin',
+      darwinOpts([`${HOME}/Library/pnpm`, '/opt/homebrew/bin']),
+    );
+    // Well-known dirs come first, then the PM-global dirs — both append-only.
+    expect(out).toBe(`/usr/bin:/bin:/opt/homebrew/bin:${HOME}/Library/pnpm`);
+  });
+
+  test('resolves an agent CLI dir (~/Library/pnpm) that the git variant omits', () => {
+    const opts = darwinOpts([`${HOME}/Library/pnpm`]);
+    expect(augmentAgentSpawnPath('/usr/bin', opts).split(':')).toContain(`${HOME}/Library/pnpm`);
+    // Pure superset: the git variant must NOT pick up the agent-only dir.
+    expect(augmentGitSpawnPath('/usr/bin', opts).split(':')).not.toContain(`${HOME}/Library/pnpm`);
+  });
+
+  test('never prepends and is idempotent', () => {
+    const opts = darwinOpts(['/opt/homebrew/bin', `${HOME}/.bun/bin`]);
+    const once = augmentAgentSpawnPath('/usr/bin', opts);
+    expect(once.startsWith('/usr/bin')).toBe(true);
+    expect(augmentAgentSpawnPath(once, opts)).toBe(once);
+  });
+
+  test('skips dirs that do not exist on disk', () => {
+    expect(augmentAgentSpawnPath('/usr/bin', darwinOpts([]))).toBe('/usr/bin');
+  });
+});
+
+describe('agentToolDirs', () => {
+  test('darwin lists every JS package-manager global bin', () => {
+    expect(agentToolDirs('darwin', HOME)).toEqual([
+      `${HOME}/Library/pnpm`,
+      `${HOME}/.bun/bin`,
+      `${HOME}/.volta/bin`,
+      `${HOME}/.yarn/bin`,
+      `${HOME}/.npm-global/bin`,
+    ]);
+  });
+
+  test('linux uses the XDG pnpm dir, not the macOS Library path', () => {
+    expect(agentToolDirs('linux', HOME)).toEqual([
+      `${HOME}/.local/share/pnpm`,
+      `${HOME}/.bun/bin`,
+      `${HOME}/.volta/bin`,
+      `${HOME}/.yarn/bin`,
+      `${HOME}/.npm-global/bin`,
+    ]);
+    expect(agentToolDirs('linux', HOME)).not.toContain(`${HOME}/Library/pnpm`);
+  });
+
+  test('win32 adds nothing (Explorer inherits the registry user PATH)', () => {
+    expect(agentToolDirs('win32', 'C:\\Users\\tester')).toEqual([]);
   });
 });

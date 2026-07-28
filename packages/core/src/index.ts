@@ -410,6 +410,8 @@ export {
 } from './extensions/wiki-link-embed.ts';
 export { parseBranchList } from './git/branch-list-parser.ts';
 export {
+  agentToolDirs,
+  augmentAgentSpawnPath,
   augmentGitSpawnPath,
   type GitSpawnPathOptions,
   wellKnownToolDirs,

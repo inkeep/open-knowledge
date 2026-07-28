@@ -151,6 +151,7 @@ function makeManager(contentDir: string, localDir: string): AcpThreadManager {
   const manager = new AcpThreadManager({
     contentDir,
     localDir,
+    globalDir: null,
     registry: new AcpRegistry({
       localDir,
       log,
@@ -366,4 +367,37 @@ describe('/collab/thread socket — history ops', () => {
     socket.close();
     viewer.close();
   }, 45_000);
+});
+
+describe('/collab/thread socket — queue ops', () => {
+  test('queue_edit / queue_remove route to the manager; unknown thread → error frame', async () => {
+    const manager = makeManager(tmp(), tmp());
+    await manager.init();
+    const socket = attachFakeSocket(manager);
+
+    const errors = () =>
+      socket.frames.filter((f): f is Extract<ThreadServerFrame, { op: 'error' }> => {
+        return f.op === 'error';
+      });
+    const awaitErrors = async (count: number): Promise<void> => {
+      const deadline = Date.now() + 10_000;
+      while (errors().length < count) {
+        if (Date.now() > deadline) {
+          throw new Error(`saw ${errors().length}/${count} errors`);
+        }
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    };
+
+    socket.emit(
+      JSON.stringify({ op: 'queue_edit', threadId: 'missing', id: 'q1', content: 'new text' }),
+    );
+    socket.emit(JSON.stringify({ op: 'queue_remove', threadId: 'missing', id: 'q1' }));
+    // Empty content fails structural parse and never reaches the manager.
+    socket.emit(JSON.stringify({ op: 'queue_edit', threadId: 'missing', id: 'q1', content: '' }));
+    await awaitErrors(3);
+
+    expect(errors().map((f) => f.code)).toEqual(['unknown-thread', 'unknown-thread', 'bad-frame']);
+    expect(errors()[0]?.threadId).toBe('missing');
+  });
 });

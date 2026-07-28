@@ -19,7 +19,7 @@ import { constants, statSync } from 'node:fs';
 import { access, chmod, stat } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { delimiter, isAbsolute, join, resolve } from 'node:path';
-import { OK_DIR } from '@inkeep/open-knowledge-core';
+import { augmentAgentSpawnPath, OK_DIR } from '@inkeep/open-knowledge-core';
 import { tracedMkdir, tracedRename, tracedRm } from '../fs-traced.ts';
 import type { PinoLogger } from '../logger.ts';
 import { downloadToFileWithSha, extractArchive, isWithin, sanitizeSegment } from './archive.ts';
@@ -51,12 +51,40 @@ function defaultBinaryCacheDir(): string {
   return join(homedir(), OK_DIR, 'acp-agents');
 }
 
-export function mergedEnv(overlay?: Record<string, string>): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) {
-    if (v !== undefined) env[k] = v;
+/** True iff `dir` exists and is a directory (symlinks followed). */
+function isDir(dir: string): boolean {
+  try {
+    return statSync(dir).isDirectory();
+  } catch {
+    return false;
   }
-  return { ...env, ...overlay };
+}
+
+/**
+ * Build the spawn env for an ACP agent / terminal: `process.env` with its PATH
+ * repaired, then `overlay` applied on top.
+ *
+ * The PATH repair targets the INHERITED base only — a Dock/Finder-launched
+ * Desktop inherits launchd's minimal PATH, so an agent CLI installed under a
+ * package-manager global bin (`~/Library/pnpm`, `~/.bun/bin`, …) isn't found
+ * even when it runs fine from a terminal. We append the well-known tool +
+ * PM-global dirs, the same augmentation git spawns use. An overlay that sets
+ * PATH is a spawn-env contract and wins verbatim (applied after): augmentation
+ * repairs the base env, it does not transform caller intent — matching
+ * `child_process` / Docker / systemd semantics.
+ */
+export function mergedEnv(overlay?: Record<string, string>): Record<string, string> {
+  const base: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined) base[k] = v;
+  }
+  base[pathKey(base)] = augmentAgentSpawnPath(envPath(base), {
+    platform: process.platform,
+    homeDir: homedir(),
+    isDir,
+    delimiter,
+  });
+  return { ...base, ...overlay };
 }
 
 /**
@@ -254,7 +282,7 @@ function missingCommandHint(launch: ResolvedLaunch): string {
     case 'binary':
       return `the agent binary at ${launch.cmd} is missing or not executable.`;
     case 'custom':
-      return `\`${launch.cmd}\` was not found on your PATH — check the command configured for this custom agent.`;
+      return `\`${launch.cmd}\` was not found on your PATH. A desktop app launched from the Dock or Finder doesn't inherit your shell's PATH, so an agent installed only in a shell-configured location won't be visible here — use an absolute path to the command, or install it to a standard location.`;
   }
 }
 

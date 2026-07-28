@@ -58,6 +58,19 @@ export interface ThreadAgentInfo {
   source: 'registry' | 'custom';
 }
 
+/**
+ * A prompt waiting behind the active turn. Queue state is ephemeral —
+ * in-memory only, dropped on cancel/error/exit and never persisted — so it
+ * rides the `ThreadInfo` snapshot (meta channel), NOT the event log: a
+ * replayed transcript must not resurrect ghost queue entries.
+ */
+export interface QueuedMessage {
+  /** Server-assigned id — the handle `queue_edit` / `queue_remove` target. */
+  id: string;
+  content: string;
+  ts: number;
+}
+
 /** Snapshot metadata for one thread (tab strip + thread header). */
 export interface ThreadInfo {
   threadId: string;
@@ -79,12 +92,19 @@ export interface ThreadInfo {
   lastSeq: number;
   /**
    * The thread's agent process is gone but its transcript is retained on
-   * disk (`.ok/local/threads/`). Archived threads are listed, viewable via
+   * disk (`~/.ok/threads/`, or the pre-move per-project `.ok/local/threads/`
+   * for threads created before that move). Archived threads are listed, viewable via
    * `subscribe` (replayed from disk), resumable via `resume`, and deletable
    * via `delete`. Optional on the wire for version skew — servers always set
    * it; clients treat absence as `false`.
    */
   archived?: boolean;
+  /**
+   * Prompts queued behind the active turn, FIFO. Absent (or empty) when
+   * nothing is waiting. Live-thread-only and never persisted: the server
+   * drops the queue on cancel, agent error/exit, and archive.
+   */
+  queue?: QueuedMessage[];
 }
 
 /** One entry in a thread's event log. */
@@ -203,10 +223,40 @@ export type ThreadClientFrame =
        * deriving from `prompt`.
        */
       titleHint?: string;
+      /**
+       * Remembered per-agent-type settings to apply between `session/new` and
+       * the first prompt, so a new thread of the same agent opens on the
+       * model / options the user last chose. `config` maps configId → value;
+       * the server applies them (model-category first) so option cascades
+       * re-validate before turn 1. `modeId` restores a mode on the legacy
+       * `SessionModeState` surface (a mode advertised as a config option rides
+       * `config` like any other option). The server validates it against the
+       * live session's advertised modes; a mode that reads as permissive stays
+       * visibly marked in the client while it is in force.
+       */
+      settings?: { config?: Record<string, string | boolean>; modeId?: string };
     }
   | { op: 'subscribe'; threadId: string; sinceSeq?: number }
   | { op: 'unsubscribe'; threadId: string }
   | { op: 'prompt'; threadId: string; reqId: string; content: string }
+  | {
+      /**
+       * Replace a queued message's content in place. Targets an entry of
+       * `ThreadInfo.queue` by its server-assigned id; an unknown id is a
+       * silent no-op (the entry raced its own dispatch — the transcript
+       * already shows the original was sent).
+       */
+      op: 'queue_edit';
+      threadId: string;
+      id: string;
+      content: string;
+    }
+  | {
+      /** Remove a queued message before it dispatches. Unknown id: no-op. */
+      op: 'queue_remove';
+      threadId: string;
+      id: string;
+    }
   | {
       op: 'permission_response';
       threadId: string;
@@ -313,6 +363,8 @@ const CLIENT_OPS = new Set([
   'subscribe',
   'unsubscribe',
   'prompt',
+  'queue_edit',
+  'queue_remove',
   'permission_response',
   'runtime_consent_response',
   'cancel',
@@ -356,6 +408,18 @@ export function parseThreadClientFrame(raw: string): ThreadClientFrame | null {
       }
       if (frame.prompt !== undefined && typeof frame.prompt !== 'string') return null;
       if (frame.docName !== undefined && typeof frame.docName !== 'string') return null;
+      if (frame.settings !== undefined) {
+        const settings = frame.settings as Record<string, unknown> | null;
+        if (typeof settings !== 'object' || settings === null) return null;
+        if (settings.config !== undefined) {
+          const config = settings.config as Record<string, unknown> | null;
+          if (typeof config !== 'object' || config === null || Array.isArray(config)) return null;
+          for (const v of Object.values(config)) {
+            if (typeof v !== 'string' && typeof v !== 'boolean') return null;
+          }
+        }
+        if (settings.modeId !== undefined && typeof settings.modeId !== 'string') return null;
+      }
       return frame as unknown as ThreadClientFrame;
     }
     case 'subscribe':
@@ -364,6 +428,12 @@ export function parseThreadClientFrame(raw: string): ThreadClientFrame | null {
       return frame as unknown as ThreadClientFrame;
     case 'prompt':
       if (!str('threadId') || !str('reqId') || typeof frame.content !== 'string') return null;
+      return frame as unknown as ThreadClientFrame;
+    case 'queue_edit':
+      if (!str('threadId') || !str('id') || !str('content')) return null;
+      return frame as unknown as ThreadClientFrame;
+    case 'queue_remove':
+      if (!str('threadId') || !str('id')) return null;
       return frame as unknown as ThreadClientFrame;
     case 'permission_response': {
       if (!str('threadId') || !str('requestId')) return null;

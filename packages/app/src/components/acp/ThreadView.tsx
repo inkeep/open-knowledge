@@ -9,6 +9,7 @@
  */
 
 import type {
+  QueuedMessage,
   SessionConfigOption,
   ThreadInfo,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
@@ -29,6 +30,7 @@ import {
   Terminal as TerminalIcon,
   Trash2,
   Wrench,
+  X,
 } from 'lucide-react';
 import {
   Fragment,
@@ -64,7 +66,13 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDocumentContext } from '@/editor/DocumentContext';
+import {
+  agentSettingsKey,
+  rememberAgentConfigOption,
+  rememberAgentMode,
+} from '@/lib/acp/agent-settings-store';
 import { computeDiffRows } from '@/lib/acp/inline-diff';
+import { isPermissiveMode } from '@/lib/acp/permissive-mode';
 import { renderTerminalText } from '@/lib/acp/terminal-text';
 import {
   getAgentThreadClient,
@@ -157,6 +165,9 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
   const [resumePending, setResumePending] = useState(false);
   const [resumeError, setResumeError] = useState<ThreadResumeError | null>(null);
   const canPrompt = archived ? !resumePending : status === 'ready' && !turnActive;
+  // Mid-turn sends don't reject anymore — the server queues them behind the
+  // active turn and drains FIFO (`ThreadInfo.queue`).
+  const canQueue = !archived && turnActive;
   // Command-derived follow targets (exec `cat foo.md`) only navigate to docs
   // that exist — a read of a missing file would open a blank create-on-open
   // tab. Skipped while the page list is still loading (unknown ≠ missing).
@@ -283,7 +294,7 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
 
   const submit = (): void => {
     const text = draft.trim();
-    if (text === '' || !canPrompt) return;
+    if (text === '' || !(canPrompt || canQueue)) return;
     if (archived) {
       // Type-to-resume: the send respawns the agent and reconnects the
       // stored session; the message rides the resume op as its first turn
@@ -445,6 +456,7 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
         onDraftChange={setDraft}
         onSubmit={submit}
         canPrompt={canPrompt}
+        canQueue={canQueue}
         turnActive={turnActive}
         cancelPending={cancelPending}
         onCancel={requestCancel}
@@ -525,47 +537,130 @@ function hasSelectValues(option: SelectConfigOption): boolean {
   return option.options.some((entry) => ('value' in entry ? true : entry.options.length > 0));
 }
 
+/** Every selectable value, flattened across groups. */
+function flattenSelectValues(option: SelectConfigOption): Array<{ id: string; name: string }> {
+  const flat: Array<{ id: string; name: string }> = [];
+  for (const entry of option.options) {
+    if ('value' in entry) flat.push({ id: entry.value, name: entry.name });
+    else for (const grouped of entry.options) flat.push({ id: grouped.value, name: grouped.name });
+  }
+  return flat;
+}
+
+/**
+ * The one mode surface this agent exposes, normalized. Agents advertise modes
+ * either as a mode-category config option (current) or as `SessionModeState`
+ * (legacy `session/set_mode`) — `configId` says which, so callers apply a mode
+ * without re-deriving the branch. Single source of truth for the settings menu
+ * and the mode offer, which must agree on what "the current mode" is.
+ */
+interface ModeSurface {
+  /** Config-option id, or null when the agent uses legacy `session/set_mode`. */
+  configId: string | null;
+  currentId: string;
+  currentName: string;
+  values: ReadonlyArray<{ id: string; name: string }>;
+}
+
+function deriveModeSurface(info: ThreadInfo): ModeSurface | null {
+  const modeOption = (info.configOptions ?? []).find(
+    (option): option is SelectConfigOption =>
+      option.type === 'select' && option.category === 'mode' && hasSelectValues(option),
+  );
+  if (modeOption !== undefined) {
+    return {
+      configId: modeOption.id,
+      currentId: modeOption.currentValue,
+      currentName: selectOptionName(modeOption),
+      values: flattenSelectValues(modeOption),
+    };
+  }
+  // `modes` predates generalized config options. Keep it as a fallback, but
+  // never duplicate a mode the agent already exposes in `configOptions`.
+  const modes = info.modes;
+  if (modes != null && modes.availableModes.length > 1) {
+    return {
+      configId: null,
+      currentId: modes.currentModeId,
+      currentName:
+        modes.availableModes.find((mode) => mode.id === modes.currentModeId)?.name ??
+        modes.currentModeId,
+      values: modes.availableModes.map((mode) => ({ id: mode.id, name: mode.name })),
+    };
+  }
+  return null;
+}
+
 /** One stable trigger for every setting an ACP agent advertises. */
 function AgentSettingsPopover({ info }: { info: ThreadInfo }): ReactNode {
   const { t } = useLingui();
   const client = getAgentThreadClient();
+  const settingsKey = agentSettingsKey(info.agent);
+  const applyConfig = (option: SessionConfigOption, value: string | boolean): void => {
+    client.setConfigOption(info.threadId, option.id, value);
+    // Every pick carries to the next thread of this agent, modes included — a
+    // mode advertised as a config option needs no special case. What keeps a
+    // restored permissive mode honest is the accent below, not withholding it.
+    rememberAgentConfigOption(settingsKey, option.id, value);
+  };
   const configOptions = (info.configOptions ?? []).filter(
     (option) => option.type === 'boolean' || hasSelectValues(option),
   );
-  const modes = info.modes;
-  // `modes` predates generalized config options. Keep it as a fallback, but
-  // never duplicate a mode the agent already exposes in `configOptions`.
-  const showLegacyModes =
-    modes != null &&
-    modes.availableModes.length > 1 &&
-    !configOptions.some((option) => option.category === 'mode');
+  const modeSurface = deriveModeSurface(info);
+  const showLegacyModes = modeSurface !== null && modeSurface.configId === null;
   if (configOptions.length === 0 && !showLegacyModes) return null;
+
+  const legacyModeName = showLegacyModes ? modeSurface.currentName : undefined;
+  // Modes carry across threads like everything else, so the thing worth
+  // marking is not "this was restored" but "this mode lets the agent act
+  // without asking" — true whether it was restored or just picked. Best-effort
+  // name matching; see `permissive-mode.ts` for why a hint is the right bar.
+  const permissiveMode =
+    modeSurface !== null &&
+    isPermissiveMode({ id: modeSurface.currentId, name: modeSurface.currentName });
 
   const primarySelect =
     configOptions.find(
       (option): option is SelectConfigOption =>
         option.type === 'select' && option.category === 'model',
     ) ?? configOptions.find((option): option is SelectConfigOption => option.type === 'select');
-  const legacyModeName = showLegacyModes
-    ? modes?.availableModes.find((mode) => mode.id === modes.currentModeId)?.name
-    : undefined;
   const triggerText =
     primarySelect !== undefined ? selectOptionName(primarySelect) : (legacyModeName ?? t`Settings`);
+  const accentTooltip =
+    permissiveMode && modeSurface !== null
+      ? t`${modeSurface.currentName} lets ${info.agent.name} act without asking`
+      : t`Agent settings`;
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          className="h-6 max-w-48 gap-1 rounded-md px-2 text-xs"
-          aria-label={t`Agent settings`}
-          data-testid="agent-thread-settings"
-        >
-          <span className="truncate">{triggerText}</span>
-          <ChevronDown className="size-3.5" data-icon="inline-end" aria-hidden="true" />
-        </Button>
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-6 max-w-48 gap-1 rounded-md px-2 text-xs"
+              aria-label={accentTooltip}
+              data-testid="agent-thread-settings"
+            >
+              {/* A mode that lets the agent act unprompted should never be in
+                  force unnoticed — least of all one carried over from an
+                  earlier thread. Kept small and low-contrast: present, not
+                  alarming. */}
+              {permissiveMode ? (
+                <span
+                  className="size-1.5 shrink-0 rounded-full bg-amber-500 ring-[3px] ring-amber-500/15 dark:bg-amber-400 dark:ring-amber-400/15"
+                  data-testid="agent-thread-mode-accent"
+                  aria-hidden="true"
+                />
+              ) : null}
+              <span className="truncate">{triggerText}</span>
+              <ChevronDown className="size-3.5" data-icon="inline-end" aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{accentTooltip}</TooltipContent>
+      </Tooltip>
       {/* Hybrid menu: each multi-value select is a submenu row summarizing its
           current value; a lone boolean stays inline. The compact top level scales
           as agents expose more (and longer-described) options — the sprawl lives
@@ -576,27 +671,30 @@ function AgentSettingsPopover({ info }: { info: ThreadInfo }): ReactNode {
             <ConfigSelectSub
               key={option.id}
               option={option}
-              onSelect={(value) => client.setConfigOption(info.threadId, option.id, value)}
+              onSelect={(value) => applyConfig(option, value)}
             />
           ) : (
             <ConfigBooleanItem
               key={option.id}
               option={option}
-              onCheckedChange={(value) => client.setConfigOption(info.threadId, option.id, value)}
+              onCheckedChange={(value) => applyConfig(option, value)}
             />
           ),
         )}
-        {showLegacyModes && modes != null ? (
+        {showLegacyModes ? (
           <ConfigSelectSub
             option={{
               id: 'legacy-mode',
               name: t`Agent mode`,
               category: 'mode',
               type: 'select',
-              currentValue: modes.currentModeId,
-              options: modes.availableModes.map((mode) => ({ value: mode.id, name: mode.name })),
+              currentValue: modeSurface.currentId,
+              options: modeSurface.values.map((mode) => ({ value: mode.id, name: mode.name })),
             }}
-            onSelect={(modeId) => client.setMode(info.threadId, modeId)}
+            onSelect={(modeId) => {
+              client.setMode(info.threadId, modeId);
+              rememberAgentMode(settingsKey, modeId);
+            }}
           />
         ) : null}
       </DropdownMenuContent>
@@ -1841,6 +1939,7 @@ function ThreadComposer({
   onDraftChange,
   onSubmit,
   canPrompt,
+  canQueue,
   turnActive,
   cancelPending,
   onCancel,
@@ -1854,6 +1953,8 @@ function ThreadComposer({
   onDraftChange: (value: string) => void;
   onSubmit: () => void;
   canPrompt: boolean;
+  /** A turn is running — sends queue behind it instead of dispatching. */
+  canQueue: boolean;
   turnActive: boolean;
   /** Stop was pressed and the turn hasn't ended yet. */
   cancelPending: boolean;
@@ -1887,8 +1988,13 @@ function ThreadComposer({
       ? Math.min(100, Math.round((usage.used / usage.size) * 100))
       : null;
 
+  const queue = info.queue ?? [];
+
   return (
     <div className="p-2">
+      {queue.length > 0 && !archived ? (
+        <QueuedMessageList threadId={info.threadId} queue={queue} />
+      ) : null}
       {/* Two-row field: the textarea fills the full width on top; a bottom bar
           holds the model/agent settings (left) and the context ring + send/stop
           (right). The wrapper owns the border + focus ring so the whole box lights
@@ -1962,22 +2068,162 @@ function ThreadComposer({
                   <Square className="size-3 fill-current" aria-hidden="true" />
                 )}
               </Button>
-            ) : (
-              <Button
-                type="button"
-                size="icon-sm"
-                className="rounded-lg"
-                disabled={!canPrompt || draft.trim() === ''}
-                onClick={onSubmit}
-                aria-label={t`Send`}
-                data-testid="agent-thread-send"
-              >
-                <ArrowUp className="size-4" aria-hidden="true" />
-              </Button>
-            )}
+            ) : null}
+            <Button
+              type="button"
+              size="icon-sm"
+              className="rounded-lg"
+              disabled={!(canPrompt || canQueue) || draft.trim() === ''}
+              onClick={onSubmit}
+              aria-label={canQueue ? t`Queue message` : t`Send`}
+              data-testid="agent-thread-send"
+            >
+              <ArrowUp className="size-4" aria-hidden="true" />
+            </Button>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Messages waiting behind the active turn, shown between the transcript and
+ *  the composer. Server-authoritative (`ThreadInfo.queue`): rows appear for
+ *  every subscriber of the thread and vanish as each entry dispatches. */
+function QueuedMessageList({
+  threadId,
+  queue,
+}: {
+  threadId: string;
+  queue: readonly QueuedMessage[];
+}): ReactNode {
+  const { t } = useLingui();
+  return (
+    <div className="mb-1.5 flex flex-col gap-1" data-testid="agent-thread-queue">
+      <span className="px-1 font-medium text-[10px] text-muted-foreground/70 uppercase tracking-wide">
+        {t`Queued`}
+      </span>
+      {queue.map((message) => (
+        <QueuedMessageRow key={message.id} threadId={threadId} message={message} />
+      ))}
+    </div>
+  );
+}
+
+function QueuedMessageRow({
+  threadId,
+  message,
+}: {
+  threadId: string;
+  message: QueuedMessage;
+}): ReactNode {
+  const { t } = useLingui();
+  const client = getAgentThreadClient();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState('');
+
+  const startEdit = (): void => {
+    setValue(message.content);
+    setEditing(true);
+  };
+  const save = (): void => {
+    const trimmed = value.trim();
+    if (trimmed === '') {
+      // Empty isn't a valid queued prompt. Treat Enter-on-empty as cancel —
+      // exit editing and keep the original — rather than trapping the user in
+      // edit mode with a silent no-op. Removing is its own explicit action.
+      setEditing(false);
+      return;
+    }
+    // The server confirms via an `info` frame; if the entry dispatched while
+    // the edit was open, the row unmounts and the transcript shows what ran.
+    if (trimmed !== message.content) client.editQueued(threadId, message.id, trimmed);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div
+        className="rounded-md border border-input bg-muted/30 p-1"
+        data-testid="agent-thread-queued-editing"
+      >
+        <Textarea
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              save();
+            } else if (event.key === 'Escape') {
+              event.preventDefault();
+              setEditing(false);
+            }
+          }}
+          autoFocus
+          rows={1}
+          aria-label={t`Edit queued message`}
+          className="min-h-8 resize-none border-0 bg-transparent px-1.5 py-1 shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
+          data-testid="agent-thread-queued-input"
+        />
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            className="size-6"
+            onClick={() => setEditing(false)}
+            aria-label={t`Cancel editing`}
+            data-testid="agent-thread-queued-cancel-edit"
+          >
+            <X className="size-3.5" aria-hidden="true" />
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            className="size-6"
+            disabled={value.trim() === ''}
+            onClick={save}
+            aria-label={t`Save queued message`}
+            data-testid="agent-thread-queued-save"
+          >
+            <Check className="size-3.5" aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex items-center gap-1 rounded-md border border-input/60 bg-muted/30 py-0.5 pl-2 pr-1"
+      data-testid="agent-thread-queued"
+    >
+      <span className="min-w-0 flex-1 truncate text-muted-foreground text-sm">
+        {message.content}
+      </span>
+      <Button
+        type="button"
+        size="icon-sm"
+        variant="ghost"
+        className="size-6 shrink-0 text-muted-foreground"
+        onClick={startEdit}
+        aria-label={t`Edit queued message`}
+        data-testid="agent-thread-queued-edit"
+      >
+        <SquarePen className="size-3.5" aria-hidden="true" />
+      </Button>
+      <Button
+        type="button"
+        size="icon-sm"
+        variant="ghost"
+        className="size-6 shrink-0 text-muted-foreground"
+        onClick={() => client.removeQueued(threadId, message.id)}
+        aria-label={t`Remove queued message`}
+        data-testid="agent-thread-queued-remove"
+      >
+        <X className="size-3.5" aria-hidden="true" />
+      </Button>
     </div>
   );
 }

@@ -18,6 +18,7 @@
     "-QCLWk": ["Templates available"],
     "-Qw-1t": ["GitHub authentication failed. Try signing in again."],
     "-WFFG2": ["Default properties"],
+    "-WeuHF": ["Remove queued message"],
     "-YV1Uo": ["Pattern ", ["patternNumber"]],
     "-bFGPF": ["Next change"],
     "-dNlfM": ["Undid the last edit on ", ["docName"]],
@@ -345,6 +346,7 @@
     ],
     "5qQr1u": ["Allowed values for ", ["field"]],
     "5rnB76": ["Your edits stay on this computer"],
+    "5soCUZ": ["Edit queued message"],
     "5tcmwY": ["Add value"],
     "5vAI6Z": ["It didn't fit into my workflow"],
     "5vYdh9": ["New thread with ", ["0"]],
@@ -495,6 +497,7 @@
     ],
     "8vCZcs": ["Failed to open file."],
     "8vETh9": ["Show"],
+    "8wu9lr": ["Queued"],
     "92rbk2": ["Mirror loading <0>", ["mirrorRef"], "</0>"],
     "96G6Re": ["New folder"],
     "96w9hU": ["Something went wrong opening this file (HTTP ", ["status"], ")."],
@@ -650,6 +653,7 @@
     "C62P6b": ["Editor selection"],
     "C7XjNB": ["Global Skill"],
     "C9TBvF": ["No Outgoing"],
+    "CB7c0Z": ["Save queued message"],
     "CBsdhe": ["The agent isn't stopping. Force stop closes this thread and quits the agent."],
     "CCTop_": ["Recent"],
     "CFnavk": ["This project isn't a git repository, so worktrees aren't available."],
@@ -1226,6 +1230,7 @@
     "MqQoV-": ["Describe what you want to build, start a blank file, or scaffold from a template."],
     "MqsbfN": ["Turn on external link previews?"],
     "MrwYIK": ["Toggle a source comment through CodeMirror."],
+    "MuxcRB": [["0"], " lets ", ["1"], " act without asking"],
     "My0wYT": [
       "When you hover an external link, its URL is sent to the destination site to fetch the page's preview metadata — one request per previewed link."
     ],
@@ -1462,6 +1467,7 @@
       "We'll build <0>openknowledge.skill</0>, save it to <1>~/Downloads</1>, and open the Claude Desktop App for you."
     ],
     "RO-yts": ["Failed to disable link previews — ", ["detail"]],
+    "RQWuCs": ["Queue message"],
     "RSqaSd": ["Project root"],
     "RVZJWQ": ["Search projects..."],
     "RXEbZy": ["In app"],
@@ -2642,6 +2648,7 @@
     "n8DwqQ": [
       "Connects automatically the next time you open this project in a trusted Codex session."
     ],
+    "nBHvPL": ["Cancel editing"],
     "nCzR-G": ["Copy code ", ["userCode"]],
     "nD7Fx9": [
       "This replaces the current skill content with the bundled version ",

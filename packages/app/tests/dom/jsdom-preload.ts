@@ -65,6 +65,27 @@ if (domWindow?.HTMLElement) {
   domWindow.HTMLElement.prototype.scrollIntoView ||= () => {};
 }
 
+// jsdom doesn't implement layout, so `Range` has no `getClientRects` /
+// `getBoundingClientRect`. ProseMirror measures a text Range on every
+// selection scroll (`coordsAtPos` → `singleRect`), and TipTap dispatches that
+// scroll ASYNCHRONOUSLY — so the resulting TypeError lands after the test that
+// triggered it has finished, where vitest can only report it as an unhandled
+// error and fail the whole run. Backfilling the two methods removes the throw
+// at its source; empty rects are the honest answer in a layout-free DOM, and
+// PM already treats a zero rect as "unmeasurable".
+if (domWindow?.Range && typeof domWindow.Range.prototype.getClientRects !== 'function') {
+  Object.defineProperty(domWindow.Range.prototype, 'getClientRects', {
+    configurable: true,
+    value: () => [],
+  });
+}
+if (domWindow?.Range && typeof domWindow.Range.prototype.getBoundingClientRect !== 'function') {
+  Object.defineProperty(domWindow.Range.prototype, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => ({ bottom: 0, height: 0, left: 0, right: 0, top: 0, width: 0 }),
+  });
+}
+
 // jsdom doesn't ship MessageChannel; React 19's scheduler uses it for postTask
 // scheduling. Node 24 provides it globally, but guard for jsdom builds that
 // shadow it as undefined.

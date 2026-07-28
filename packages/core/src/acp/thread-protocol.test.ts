@@ -43,6 +43,35 @@ describe('parseThreadClientFrame', () => {
     ).toBeNull();
   });
 
+  test('queue_edit requires threadId, id, and non-empty content', () => {
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ op: 'queue_edit', threadId: 't', id: 'q1', content: 'new text' }),
+      ),
+    ).toMatchObject({ op: 'queue_edit', threadId: 't', id: 'q1', content: 'new text' });
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ op: 'queue_edit', threadId: 't', id: 'q1', content: '' }),
+      ),
+    ).toBeNull();
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'queue_edit', threadId: 't', content: 'x' })),
+    ).toBeNull();
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'queue_edit', id: 'q1', content: 'x' })),
+    ).toBeNull();
+  });
+
+  test('queue_remove requires threadId and id', () => {
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'queue_remove', threadId: 't', id: 'q1' })),
+    ).toMatchObject({ op: 'queue_remove', threadId: 't', id: 'q1' });
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'queue_remove', threadId: 't' })),
+    ).toBeNull();
+    expect(parseThreadClientFrame(JSON.stringify({ op: 'queue_remove', id: 'q1' }))).toBeNull();
+  });
+
   test('permission_response validates the outcome union', () => {
     expect(
       parseThreadClientFrame(
@@ -207,6 +236,60 @@ describe('parseThreadClientFrame', () => {
       parseThreadClientFrame(
         JSON.stringify({ op: 'set_config_option', threadId: 't', value: 'opus' }),
       ),
+    ).toBeNull();
+  });
+});
+
+describe('parseThreadClientFrame create settings', () => {
+  const base = { op: 'create', reqId: 'r', agent: { source: 'registry', id: 'x' } };
+
+  test('accepts a create with a config settings map', () => {
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ ...base, settings: { config: { model: 'opus', verbose: true } } }),
+      ),
+    ).toMatchObject({ op: 'create', settings: { config: { model: 'opus', verbose: true } } });
+  });
+
+  test('accepts a create with no settings (settings is optional)', () => {
+    expect(parseThreadClientFrame(JSON.stringify(base))).toMatchObject({ op: 'create' });
+  });
+
+  test('rejects non-object settings', () => {
+    expect(parseThreadClientFrame(JSON.stringify({ ...base, settings: 'x' }))).toBeNull();
+  });
+
+  test('rejects a config that is not a plain object', () => {
+    expect(
+      parseThreadClientFrame(JSON.stringify({ ...base, settings: { config: [] } })),
+    ).toBeNull();
+  });
+
+  test('rejects non-primitive config values', () => {
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ ...base, settings: { config: { model: { nested: 1 } } } }),
+      ),
+    ).toBeNull();
+  });
+
+  test('accepts a string modeId in settings', () => {
+    expect(
+      parseThreadClientFrame(JSON.stringify({ ...base, settings: { modeId: 'bypass' } })),
+    ).toMatchObject({ op: 'create', settings: { modeId: 'bypass' } });
+  });
+
+  test('accepts config and modeId together', () => {
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ ...base, settings: { config: { model: 'opus' }, modeId: 'plan' } }),
+      ),
+    ).toMatchObject({ op: 'create', settings: { config: { model: 'opus' }, modeId: 'plan' } });
+  });
+
+  test('rejects a non-string modeId', () => {
+    expect(
+      parseThreadClientFrame(JSON.stringify({ ...base, settings: { modeId: 42 } })),
     ).toBeNull();
   });
 });

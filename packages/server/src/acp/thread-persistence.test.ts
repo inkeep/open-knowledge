@@ -1,4 +1,12 @@
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ThreadEvent, ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
@@ -20,7 +28,7 @@ afterEach(() => {
 });
 
 async function makeStore(): Promise<ThreadPersistenceStore> {
-  const store = new ThreadPersistenceStore(tmp(), log);
+  const store = new ThreadPersistenceStore({ primaryDir: tmp(), log });
   await store.init();
   return store;
 }
@@ -144,5 +152,115 @@ describe('ThreadPersistenceStore', () => {
     expect(await store.scan()).toHaveLength(0);
     expect(await readAll(store, 't1', 0, 100)).toHaveLength(0);
     expect((await store.resolveEventLog('t1')).count).toBe(0);
+  });
+});
+
+const metaCwd = (threadId: string, cwd: string): PersistedThreadMeta => ({
+  version: 1,
+  info: info(threadId),
+  sessionId: 'sess-1',
+  cwd,
+  agentRef: { source: 'custom', id: 'a' },
+});
+
+describe('ThreadPersistenceStore global dir + legacy fallback', () => {
+  test('scan cwd-filters the shared global dir (by realpath) but never the legacy dir', async () => {
+    const global = tmp();
+    const legacy = tmp();
+    const rawCwd = tmp(); // on macOS a /var symlink; canonicalizes to /private/var
+    const canonCwd = realpathSync(rawCwd);
+    const otherCwd = realpathSync(tmp());
+
+    // Global-dir threads for this project (cwd matches) and another (does not).
+    const globalWriter = new ThreadPersistenceStore({
+      primaryDir: global,
+      legacyDir: legacy,
+      cwd: canonCwd,
+      log,
+    });
+    await globalWriter.init();
+    globalWriter.queueMetaWrite('mine', metaCwd('mine', rawCwd)); // un-canonicalized, as the manager stores it
+    globalWriter.queueMetaWrite('other', metaCwd('other', otherCwd));
+    await globalWriter.whenIdle('mine');
+    await globalWriter.whenIdle('other');
+
+    // A pre-move thread living in the per-project legacy dir, with a cwd that
+    // would FAIL a cwd filter — proving the legacy dir is admitted unfiltered.
+    const legacyWriter = new ThreadPersistenceStore({ primaryDir: legacy, log });
+    await legacyWriter.init();
+    legacyWriter.queueMetaWrite('legacy', metaCwd('legacy', otherCwd));
+    await legacyWriter.whenIdle('legacy');
+
+    const reader = new ThreadPersistenceStore({
+      primaryDir: global,
+      legacyDir: legacy,
+      cwd: canonCwd,
+      log,
+    });
+    const ids = (await reader.scan()).map((m) => m.info.threadId).sort();
+    expect(ids).toEqual(['legacy', 'mine']); // 'other' filtered out; realpath let 'mine' match
+  });
+
+  test('a legacy-homed thread stays in legacy for append and delete (never split)', async () => {
+    const global = tmp();
+    const legacy = tmp();
+    const cwd = realpathSync(tmp());
+
+    const seed = new ThreadPersistenceStore({ primaryDir: legacy, log });
+    await seed.init();
+    seed.queueMetaWrite('tl', metaCwd('tl', cwd));
+    seed.appendEvents('tl', [ev(0), ev(1)]);
+    await seed.whenIdle('tl');
+
+    const store = new ThreadPersistenceStore({
+      primaryDir: global,
+      legacyDir: legacy,
+      cwd,
+      log,
+    });
+    await store.init();
+    expect((await store.scan()).map((m) => m.info.threadId)).toContain('tl');
+
+    // Appends ride the legacy file — the seq contract needs one file, not a split.
+    store.appendEvents('tl', [ev(2)]);
+    await store.whenIdle('tl');
+    expect(store.eventsPath('tl')).toContain(legacy);
+    expect(existsSync(join(global, 'threads', 'tl.ndjson'))).toBe(false);
+    expect((await store.resolveEventLog('tl')).count).toBe(3);
+
+    await store.delete('tl');
+    expect(existsSync(join(legacy, 'threads', 'tl.ndjson'))).toBe(false);
+    expect((await store.resolveEventLog('tl')).count).toBe(0);
+  });
+
+  test('new threads write to the global primary dir', async () => {
+    const global = tmp();
+    const legacy = tmp();
+    const cwd = realpathSync(tmp());
+    const store = new ThreadPersistenceStore({ primaryDir: global, legacyDir: legacy, cwd, log });
+    await store.init();
+    store.queueMetaWrite('tn', metaCwd('tn', cwd));
+    store.appendEvents('tn', [ev(0)]);
+    await store.whenIdle('tn');
+    expect(store.eventsPath('tn')).toContain(global);
+    expect(existsSync(join(global, 'threads', 'tn.ndjson'))).toBe(true);
+  });
+
+  test('an unwritable primary dir degrades to legacy without failing init', async () => {
+    const fileAsDir = join(tmp(), 'not-a-dir');
+    writeFileSync(fileAsDir, 'x'); // primaryDir is a file → mkdir(<file>/threads) fails
+    const legacy = tmp();
+    const store = new ThreadPersistenceStore({
+      primaryDir: fileAsDir,
+      legacyDir: legacy,
+      cwd: null,
+      log,
+    });
+    await store.init(); // must NOT throw — boot survives a bad HOME
+    store.queueMetaWrite('td', metaCwd('td', '/x'));
+    store.appendEvents('td', [ev(0)]);
+    await store.whenIdle('td');
+    expect(store.eventsPath('td')).toContain(legacy);
+    expect(existsSync(join(legacy, 'threads', 'td.ndjson'))).toBe(true);
   });
 });
