@@ -49,6 +49,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # SECURITY: Do NOT add `ref: ${{ github.event.pull_request.head.sha }}` here.
+      # pull_request_target runs in the base-branch context with access to
+      # repository secrets. Checking out PR head code would allow any PR
+      # author's scripts (e.g. .github/scripts/bridge-public-pr-to-monorepo.mjs)
+      # to execute with OSS_SYNC_APP credentials, enabling exfiltration of or
+      # writes to inkeep/agents-private. Intentionally omitted; keep it that way.
       - name: Checkout public repo automation
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -120,6 +126,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # SECURITY: Do NOT add `ref: ${{ github.event.pull_request.head.sha }}` here.
+      # Same rationale as the sync job above: pull_request_target runs in the
+      # base-branch context with access to repository secrets, so checking out
+      # PR head code here would allow any PR author's scripts to execute with
+      # OSS_SYNC_APP credentials. Intentionally omitted; keep it that way.
       - name: Checkout public repo automation
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
