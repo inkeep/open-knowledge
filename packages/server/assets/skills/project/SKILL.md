@@ -67,7 +67,7 @@ Call `write` / `edit` as soon as you have content (route through MCP per the STO
 
 **Persist incrementally — the knowledge base IS your checkpoint (MUST).** On any multi-step or long-running task — a research sweep, a multi-source synthesis, a batch of docs — write completed work to the KB as you finish each unit: per section, per source, per doc. Never hold finished findings only in your context waiting for one final write at the end. A rate limit, crash, or context compaction mid-task discards everything still unwritten; work already persisted survives, and you resume by reading the doc back. Create the target doc early (skeleton + frontmatter), then `edit` each section in as it firms up.
 
-**Pass a `summary` on every content write (SHOULD)** — a one-line (≤80 chars) user-facing change-note that becomes the timeline entry. **Reach for visual structure** (Callout, `mermaid`, table, `html preview`) where it carries the point better than prose; call `palette` as you draft. Advisory write-warnings, MDX authoring, delete/move mechanics, and visual authoring: `references/writing.md` + `references/components-and-visuals.md` + `references/media-and-assets.md`.
+**Pass a `summary` on every content write (SHOULD)** — a one-line (≤80 chars) user-facing change-note that becomes the timeline entry. **Reach for visual structure** (Callout, `mermaid`, table, `html preview`) where it carries the point better than prose; call `palette` as you draft. Advisory write-warnings, MDX authoring, delete/move mechanics, keeping `==`/`$`/`%%`/`<!--` literal, and visual authoring: `references/writing.md` + `references/components-and-visuals.md` + `references/media-and-assets.md`.
 
 ## Grounding — every factual claim needs a source (MUST)
 

@@ -40,11 +40,13 @@ interface ToolResult {
 
 type ToolHandler = (args: { cwd?: string }) => Promise<ToolResult>;
 
-function captureRegistration(): ToolHandler {
+function captureRegistrationFull(): { handler: ToolHandler; description: string } {
   let captured: ToolHandler | null = null;
+  let capturedDescription: string | null = null;
   const server = {
-    registerTool(_name: string, _config: unknown, handler: ToolHandler) {
+    registerTool(_name: string, config: { description: string }, handler: ToolHandler) {
       captured = handler;
+      capturedDescription = config.description;
     },
     tool() {
       throw new Error('legacy tool() should not be called by palette');
@@ -54,8 +56,12 @@ function captureRegistration(): ToolHandler {
     config: BASE_CONFIG,
     resolveCwd: async () => '/tmp/ok-get-authoring-palette-test',
   });
-  if (!captured) throw new Error('tool not registered');
-  return captured;
+  if (!captured || capturedDescription === null) throw new Error('tool not registered');
+  return { handler: captured, description: capturedDescription };
+}
+
+function captureRegistration(): ToolHandler {
+  return captureRegistrationFull().handler;
 }
 
 describe('palette tool', () => {
@@ -112,6 +118,56 @@ describe('palette tool', () => {
     expect(mermaid?.example).toContain('sequenceDiagram');
     expect(mermaid?.example).toContain('#59;');
     expect(mermaid?.example).toContain('"Start (label with punctuation)"');
+  });
+
+  test('Highlight and Comment entries teach both suppression forms', async () => {
+    const handler = captureRegistration();
+    const { structuredContent } = await handler({});
+    const byId = new Map((structuredContent?.components ?? []).map((c) => [c.id, c]));
+
+    const highlight = byId.get('Highlight');
+    expect(highlight?.authoring).toBe('markdown');
+    expect(highlight?.example).toContain('==key phrase==');
+    // Code span first (always works), backslash second (running prose).
+    expect(highlight?.guidance).toContain('`==x==`');
+    expect(highlight?.guidance).toContain('\\==x\\==');
+
+    const comment = byId.get('Comment');
+    expect(comment?.authoring).toBe('markdown');
+    expect(comment?.example).toContain('%%');
+    expect(comment?.example).toContain('<!--');
+    // The comment forms HIDE text, which is why they need the loudest warning.
+    expect(comment?.guidance).toContain('HIDES');
+    expect(comment?.guidance).toContain('`%%x%%`');
+    expect(comment?.guidance).toContain('\\%\\%x\\%\\%');
+
+    // Currency is the highest-frequency accidental `$` pair.
+    const math = byId.get('Math');
+    expect(math?.guidance).toContain('Cost $5$ each');
+    expect(math?.guidance).toContain('`$5`');
+    expect(math?.guidance).toContain('\\$5');
+  });
+
+  test('the tool description discloses the delimiters that are live in prose', () => {
+    const { description } = captureRegistrationFull();
+    // The palette description is the surface every agent reads before
+    // authoring, so the live-in-prose disclosure lives there and not only on
+    // the per-construct entries.
+    for (const token of [
+      '==highlight==',
+      '$inline math$',
+      '%%comment%%',
+      '<!-- comment -->',
+      // `~~` is the one family whose escape is asymmetric: a one-sided
+      // `\~~x~~` renders right but gets rewritten, so both tildes must be
+      // escaped. If that guidance is ever refactored away, this catches it.
+      '~~strikethrough~~',
+    ]) {
+      expect(description).toContain(token);
+    }
+    expect(description).toContain('HIDES');
+    expect(description).toContain('inline code span');
+    expect(description).toContain('backslash-escape');
   });
 
   test('every registry-backed authoring form names a live canonical descriptor', async () => {

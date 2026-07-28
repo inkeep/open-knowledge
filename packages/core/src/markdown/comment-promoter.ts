@@ -2,7 +2,11 @@ import type { Nodes, Paragraph, PhrasingContent, Root, RootContent, Text } from 
 import { SKIP, visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
 import type { CommentBlockMdast, CommentMdast } from './mdast-augmentation.ts';
-import { deriveFragmentPosition } from './promoter-position.ts';
+import {
+  deriveFragmentPosition,
+  escapedValueOffsets,
+  isEscapeDerivedRun,
+} from './promoter-position.ts';
 
 const PERCENT_COMMENT_RE = /(?<!%)%%([^\n]*?[^\n%])%%(?!%)/g;
 
@@ -11,7 +15,7 @@ const HTML_COMMENT_INLINE_RE = /<!--([\s\S]*?)-->/g;
 export function commentPromoterPlugin() {
   return (tree: Root, file: VFile) => {
     const source = typeof file.value === 'string' ? file.value : '';
-    handleBlockCommentsAtRoot(tree);
+    handleBlockCommentsAtRoot(tree, source);
 
     visit(tree, 'text', (node: Text, index, parent) => {
       if (parent === undefined || index === undefined || index === null) return;
@@ -19,7 +23,7 @@ export function commentPromoterPlugin() {
       const value = node.value;
       if (value.indexOf('%%') === -1 && value.indexOf('<!--') === -1) return;
 
-      const matches = collectInlineCommentMatches(value);
+      const matches = collectInlineCommentMatches(value, escapedValueOffsets(source, node));
       if (matches.length === 0) return;
 
       const replacements: PhrasingContent[] = [];
@@ -63,13 +67,23 @@ interface InlineCommentMatch {
   sourceForm: 'percent' | 'html';
 }
 
-function collectInlineCommentMatches(value: string): InlineCommentMatch[] {
+function collectInlineCommentMatches(
+  value: string,
+  escaped: ReadonlySet<number> | null,
+): InlineCommentMatch[] {
   const out: InlineCommentMatch[] = [];
 
   PERCENT_COMMENT_RE.lastIndex = 0;
   let pm: RegExpExecArray | null;
   // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex iteration
   while ((pm = PERCENT_COMMENT_RE.exec(value)) !== null) {
+    if (
+      isEscapeDerivedRun(escaped, pm.index, 2) ||
+      isEscapeDerivedRun(escaped, pm.index + pm[0].length - 2, 2)
+    ) {
+      PERCENT_COMMENT_RE.lastIndex = pm.index + 1;
+      continue;
+    }
     if (pm[1].trim().length === 0) continue;
     out.push({
       start: pm.index,
@@ -83,6 +97,13 @@ function collectInlineCommentMatches(value: string): InlineCommentMatch[] {
   let hm: RegExpExecArray | null;
   // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex iteration
   while ((hm = HTML_COMMENT_INLINE_RE.exec(value)) !== null) {
+    if (
+      isEscapeDerivedRun(escaped, hm.index, 4) ||
+      isEscapeDerivedRun(escaped, hm.index + hm[0].length - 3, 3)
+    ) {
+      HTML_COMMENT_INLINE_RE.lastIndex = hm.index + 1;
+      continue;
+    }
     const body = hm[1].trim();
     if (body === '') continue;
     out.push({
@@ -104,7 +125,7 @@ function collectInlineCommentMatches(value: string): InlineCommentMatch[] {
   return deduped;
 }
 
-function handleBlockCommentsAtRoot(tree: Root): void {
+function handleBlockCommentsAtRoot(tree: Root, source: string): void {
   const children = tree.children;
   let i = 0;
   while (i < children.length) {
@@ -113,8 +134,21 @@ function handleBlockCommentsAtRoot(tree: Root): void {
     if (child.type === 'paragraph') {
       const single = isSingleTextParagraph(child);
       if (single !== null) {
+        const onlyText = child.children[0] as Text;
+        let onlyEscapedCache: ReadonlySet<number> | null | undefined;
+        const onlyEscapes = (): ReadonlySet<number> | null => {
+          if (onlyEscapedCache === undefined) {
+            onlyEscapedCache = escapedValueOffsets(source, onlyText);
+          }
+          return onlyEscapedCache;
+        };
+
         const fenced = matchSingleParagraphFence(single);
-        if (fenced !== null) {
+        if (
+          fenced !== null &&
+          !isEscapeDerivedRun(onlyEscapes(), 0, 2) &&
+          !isEscapeDerivedRun(onlyEscapes(), single.length - 2, 2)
+        ) {
           const block: CommentBlockMdast = {
             type: 'commentBlock',
             children: [
@@ -131,7 +165,11 @@ function handleBlockCommentsAtRoot(tree: Root): void {
         }
 
         const htmlBlockBody = matchHtmlCommentBlock(single);
-        if (htmlBlockBody !== null) {
+        if (
+          htmlBlockBody !== null &&
+          !isEscapeDerivedRun(onlyEscapes(), single.length - single.trimStart().length, 4) &&
+          !isEscapeDerivedRun(onlyEscapes(), single.trimEnd().length - 3, 3)
+        ) {
           const block: CommentBlockMdast = {
             type: 'commentBlock',
             children: [
@@ -149,7 +187,7 @@ function handleBlockCommentsAtRoot(tree: Root): void {
       }
 
       const strippedHtml = stripHtmlCommentDelimiters(child);
-      if (strippedHtml !== null) {
+      if (strippedHtml !== null && !boundaryDelimitersEscaped(source, child, 4, 3)) {
         const block: CommentBlockMdast = {
           type: 'commentBlock',
           children: [strippedHtml],
@@ -161,7 +199,7 @@ function handleBlockCommentsAtRoot(tree: Root): void {
       }
 
       const strippedPercent = stripPercentDelimiters(child);
-      if (strippedPercent !== null) {
+      if (strippedPercent !== null && !boundaryDelimitersEscaped(source, child, 2, 2)) {
         const block: CommentBlockMdast = {
           type: 'commentBlock',
           children: [strippedPercent],
@@ -173,11 +211,11 @@ function handleBlockCommentsAtRoot(tree: Root): void {
       }
     }
 
-    if (child.type === 'paragraph' && isFenceOnlyParagraph(child)) {
+    if (child.type === 'paragraph' && isFenceOnlyParagraph(child, source)) {
       let j = i + 1;
       while (j < children.length) {
         const sibling = children[j];
-        if (sibling.type === 'paragraph' && isFenceOnlyParagraph(sibling)) break;
+        if (sibling.type === 'paragraph' && isFenceOnlyParagraph(sibling, source)) break;
         j += 1;
       }
       if (j < children.length && j > i + 1) {
@@ -195,6 +233,27 @@ function handleBlockCommentsAtRoot(tree: Root): void {
 
     i += 1;
   }
+}
+
+function runEscaped(source: string, node: Text, valueOffset: number, length: number): boolean {
+  return isEscapeDerivedRun(escapedValueOffsets(source, node), valueOffset, length);
+}
+
+function boundaryDelimitersEscaped(
+  source: string,
+  p: Paragraph,
+  openLength: number,
+  closeLength: number,
+): boolean {
+  const first = p.children[0];
+  const last = p.children[p.children.length - 1];
+  if (first.type !== 'text' || last.type !== 'text') return false;
+  const openAt = first.value.length - first.value.trimStart().length;
+  const closeAt = last.value.trimEnd().length - closeLength;
+  const firstEscaped = escapedValueOffsets(source, first);
+  if (isEscapeDerivedRun(firstEscaped, openAt, openLength)) return true;
+  const lastEscaped = last === first ? firstEscaped : escapedValueOffsets(source, last);
+  return isEscapeDerivedRun(lastEscaped, closeAt, closeLength);
 }
 
 function isSingleTextParagraph(p: Paragraph): string | null {
@@ -322,8 +381,9 @@ function countOccurrences(haystack: string, needle: string): number {
   return count;
 }
 
-function isFenceOnlyParagraph(p: Paragraph): boolean {
+function isFenceOnlyParagraph(p: Paragraph, source: string): boolean {
   const text = isSingleTextParagraph(p);
   if (text === null) return false;
-  return text.trim() === '%%';
+  if (text.trim() !== '%%') return false;
+  return !runEscaped(source, p.children[0] as Text, text.indexOf('%%'), 2);
 }
