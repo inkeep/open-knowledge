@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { type ReactNode, useEffect } from 'react';
+import { type MouseEventHandler, type ReactNode, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import {
   expectVisualClassTokens,
@@ -36,7 +37,7 @@ function Button({
   children?: ReactNode;
   asChild?: boolean;
   onCheckedChange?: unknown;
-  onClick?: () => void;
+  onClick?: MouseEventHandler<HTMLButtonElement>;
   onSelect?: () => void;
   size?: unknown;
   variant?: unknown;
@@ -45,8 +46,8 @@ function Button({
   return (
     <button
       type="button"
-      onClick={() => {
-        onClick?.();
+      onClick={(event) => {
+        onClick?.(event);
         onSelect?.();
       }}
       {...props}
@@ -355,12 +356,6 @@ vi.doMock('@/components/ui/sidebar', () => ({
   useSidebar: () => ({ state: sidebarState }),
 }));
 
-vi.doMock('@/components/ui/tooltip', () => ({
-  Tooltip: PassThrough,
-  TooltipContent: ({ children }: { children?: ReactNode }) => <div role="tooltip">{children}</div>,
-  TooltipTrigger: PassThrough,
-}));
-
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName,
@@ -425,7 +420,7 @@ vi.doMock('sonner', () => ({
 
 async function renderSidebar() {
   const { FileSidebar } = await import('./FileSidebar');
-  return render(<FileSidebar onOpenSearch={onOpenSearch} />);
+  return render(<FileSidebar onOpenSearch={onOpenSearch} />, { wrapper: TooltipProvider });
 }
 
 describe('FileSidebar runtime behavior', () => {

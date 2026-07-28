@@ -2,6 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 // Controls the mocked git-sync hook's hasRemote signal per test.
 let hasRemote = true;
@@ -157,12 +158,6 @@ vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuTrigger: PassThrough,
 }));
 
-vi.doMock('@/components/ui/tooltip', () => ({
-  Tooltip: PassThrough,
-  TooltipContent: ElementPassThrough,
-  TooltipTrigger: PassThrough,
-}));
-
 vi.doMock('@/components/handoff/OpenInAgentEmptySpaceSubmenu', () => ({
   OpenInAgentEmptySpaceSubmenu: () => null,
 }));
@@ -217,6 +212,10 @@ vi.doMock('sonner', () => ({
 
 const { FileSidebar } = await import('./FileSidebar');
 
+function renderSidebar() {
+  return render(<FileSidebar onOpenSearch={() => {}} />, { wrapper: TooltipProvider });
+}
+
 describe('FileSidebar project-root Share', () => {
   beforeEach(() => {
     hasRemote = true;
@@ -231,7 +230,7 @@ describe('FileSidebar project-root Share', () => {
   });
 
   test('the project-root header is marked so right-clicks open the project menu', async () => {
-    render(<FileSidebar onOpenSearch={() => {}} />);
+    renderSidebar();
     const header = await screen.findByText('open-knowledge');
     // The header (or an ancestor) carries the right-click-exemption marker.
     expect(header.closest('[data-sidebar-root-context]')).not.toBeNull();
@@ -239,7 +238,7 @@ describe('FileSidebar project-root Share', () => {
 
   test('empty-space menu shows Share and dispatches a root-scope share input', async () => {
     const user = userEvent.setup();
-    render(<FileSidebar onOpenSearch={() => {}} />);
+    renderSidebar();
 
     const share = await screen.findByTestId('empty-space-menu-share');
     await user.click(share);
@@ -254,7 +253,7 @@ describe('FileSidebar project-root Share', () => {
 
   test('Share is hidden when the project has no GitHub remote', async () => {
     hasRemote = false;
-    render(<FileSidebar onOpenSearch={() => {}} />);
+    renderSidebar();
 
     // Another always-present root item proves the menu rendered.
     await screen.findByTestId('empty-space-menu-new-file');

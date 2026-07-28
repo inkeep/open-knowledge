@@ -8,8 +8,10 @@
  * `autoSync.mode` on the project-local binding.
  */
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { createContext, type ReactNode, use } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 type SyncStatus = {
@@ -152,15 +154,6 @@ vi.doMock('@/components/ui/toggle-group', () => ({
   },
 }));
 
-vi.doMock('@/components/ui/tooltip', () => ({
-  TooltipProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
-  Tooltip: ({ children }: { children?: ReactNode }) => <>{children}</>,
-  TooltipContent: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
-    <div {...props}>{children}</div>
-  ),
-  TooltipTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
-}));
-
 vi.doMock('@/components/PublishToGitHubDialog', () => ({
   PublishToGitHubDialog: () => null,
 }));
@@ -194,12 +187,14 @@ vi.doMock('@/lib/config-provider', () => ({
 async function renderSyncSection() {
   const { SettingsDialogBody } = await import('./SettingsDialogBody');
   render(
-    <SettingsDialogBody
-      activeId="sync"
-      userBinding={null as never}
-      okignoreBinding={null as never}
-      okignoreSynced={false}
-    />,
+    <TooltipProvider>
+      <SettingsDialogBody
+        activeId="sync"
+        userBinding={null as never}
+        okignoreBinding={null as never}
+        okignoreSynced={false}
+      />
+    </TooltipProvider>,
   );
 }
 
@@ -293,6 +288,7 @@ describe('Settings Sync section — three-way mode control (real hooks + dialog)
   });
 
   test('a genuine read-only denial disables Full but keeps Off and Pull-only reachable', async () => {
+    const user = userEvent.setup();
     syncStatus = {
       ...syncStatus,
       pushPermission: { checkStatus: 'denied', deniedReason: 'no-collaborator' },
@@ -310,7 +306,13 @@ describe('Settings Sync section — three-way mode control (real hooks + dialog)
       false,
     );
     // The disabled Full item carries a tooltip explaining the read-only denial.
-    expect(screen.getByTestId('settings-sync-mode-full-tip').textContent ?? '').toContain(
+    const fullTrigger = screen
+      .getByTestId('settings-sync-mode-full')
+      .closest('[data-slot="tooltip-trigger"]');
+    if (fullTrigger === null) throw new Error('expected Full to have a tooltip trigger');
+    expect(screen.queryByTestId('settings-sync-mode-full-tip')).toBeNull();
+    await user.hover(fullTrigger);
+    expect((await screen.findByTestId('settings-sync-mode-full-tip')).textContent ?? '').toContain(
       "You don't have permission to push to this repo",
     );
   });

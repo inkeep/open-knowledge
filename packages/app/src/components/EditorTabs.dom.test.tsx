@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { isMacOS } from '@tiptap/core';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { assetTabId, folderTabId } from '@/editor/editor-tabs';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import {
@@ -170,12 +171,6 @@ vi.doMock('@/components/ui/context-menu', () => ({
   ContextMenuTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }));
 
-vi.doMock('@/components/ui/tooltip', () => ({
-  Tooltip: ({ children }: { children?: ReactNode }) => <>{children}</>,
-  TooltipContent: ({ children }: { children?: ReactNode }) => <div role="tooltip">{children}</div>,
-  TooltipTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
-}));
-
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName,
@@ -280,7 +275,11 @@ function resetState() {
 
 async function renderEditorTabs() {
   const { EditorTabs } = await import('./EditorTabs');
-  return render(<EditorTabs />);
+  return render(
+    <TooltipProvider>
+      <EditorTabs />
+    </TooltipProvider>,
+  );
 }
 
 function latestDndContext() {

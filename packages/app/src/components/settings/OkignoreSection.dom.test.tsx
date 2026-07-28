@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { emitConfigIgnoreNestedError } from '@/lib/config-ignore-nested-error-events';
 import { emitConfigValidationRejected } from '@/lib/config-validation-events';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
@@ -131,12 +132,6 @@ vi.doMock('@/components/ui/skeleton', () => ({
   ),
 }));
 
-vi.doMock('@/components/ui/tooltip', () => ({
-  Tooltip: ({ children }: { children?: ReactNode }) => <>{children}</>,
-  TooltipContent: ({ children }: { children?: ReactNode }) => <div role="tooltip">{children}</div>,
-  TooltipTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
-}));
-
 vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => ({
     assetPaths: new Set(['assets/logo.png']),
@@ -185,7 +180,11 @@ async function renderSection({
   synced?: boolean;
 } = {}) {
   const { OkignoreSection } = await import('./OkignoreSection');
-  render(<OkignoreSection binding={binding as never} synced={synced} />);
+  render(
+    <TooltipProvider>
+      <OkignoreSection binding={binding as never} synced={synced} />
+    </TooltipProvider>,
+  );
   return binding;
 }
 

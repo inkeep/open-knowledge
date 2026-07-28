@@ -16,6 +16,12 @@ const restrictedSyntax = [
     message:
       "Do not use `typeof window !== 'undefined'` inside useLayoutEffect; useLayoutEffect already runs client-side.",
   },
+  {
+    selector:
+      "CallExpression[callee.object.name='vi'][callee.property.name='doMock'] Literal[value='@/components/ui/tooltip'], CallExpression[callee.object.name='vi'][callee.property.name='mock'] Literal[value='@/components/ui/tooltip']",
+    message:
+      'Do not mock tooltip primitives. Import TooltipProvider and wrap the rendered component instead.',
+  },
 ];
 
 // Test files execute as ES modules, where a CommonJS `require()` is not

@@ -1,6 +1,7 @@
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import type { ResolvedNavigationTarget } from './navigation-targets';
 
 type MenuAction =
@@ -175,12 +176,6 @@ vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuTrigger: PassThrough,
 }));
 
-vi.doMock('@/components/ui/tooltip', () => ({
-  Tooltip: PassThrough,
-  TooltipContent: ElementPassThrough,
-  TooltipTrigger: PassThrough,
-}));
-
 vi.doMock('@/components/handoff/OpenInAgentEmptySpaceSubmenu', () => ({
   OpenInAgentEmptySpaceSubmenu: () => null,
 }));
@@ -268,6 +263,10 @@ const {
   subscribeToFileTreeMenuActionRename,
 } = await import('@/lib/file-tree-menu-action-events');
 
+function renderSidebar() {
+  return render(<FileSidebar onOpenSearch={() => {}} />, { wrapper: TooltipProvider });
+}
+
 describe('FileSidebar menu-action runtime routing', () => {
   beforeEach(() => {
     menuActionCallback = null;
@@ -327,7 +326,7 @@ describe('FileSidebar menu-action runtime routing', () => {
     });
 
     try {
-      render(<FileSidebar onOpenSearch={() => {}} />);
+      renderSidebar();
       await waitFor(() => expect(menuActionCallback).not.toBeNull());
 
       menuActionCallback?.('duplicate' as MenuAction);
@@ -339,7 +338,7 @@ describe('FileSidebar menu-action runtime routing', () => {
   });
 
   test('toggle-sidebar menu action invokes useSidebar().toggleSidebar()', async () => {
-    render(<FileSidebar onOpenSearch={() => {}} />);
+    renderSidebar();
     await waitFor(() => expect(menuActionCallback).not.toBeNull());
 
     menuActionCallback?.('toggle-sidebar' as MenuAction);
@@ -348,7 +347,7 @@ describe('FileSidebar menu-action runtime routing', () => {
   });
 
   test('create and tree-state actions route through the FileTree handle', async () => {
-    render(<FileSidebar onOpenSearch={() => {}} />);
+    renderSidebar();
     await waitFor(() => expect(menuActionCallback).not.toBeNull());
 
     menuActionCallback?.('new-doc' as MenuAction);
@@ -371,7 +370,7 @@ describe('FileSidebar menu-action runtime routing', () => {
     const unsubscribeDelete = subscribeToFileTreeMenuActionDelete((target) => deleted.push(target));
 
     try {
-      render(<FileSidebar onOpenSearch={() => {}} />);
+      renderSidebar();
       await waitFor(() => expect(menuActionCallback).not.toBeNull());
 
       menuActionCallback?.('rename' as MenuAction);
@@ -401,7 +400,7 @@ describe('FileSidebar menu-action runtime routing', () => {
     const unsubscribeDelete = subscribeToFileTreeMenuActionDelete((target) => deleted.push(target));
 
     try {
-      render(<FileSidebar onOpenSearch={() => {}} />);
+      renderSidebar();
       await waitFor(() => expect(menuActionCallback).not.toBeNull());
 
       menuActionCallback?.('rename' as MenuAction);
@@ -441,7 +440,7 @@ describe('FileSidebar menu-action runtime routing', () => {
     const unsubscribeDelete = subscribeToFileTreeMenuActionDelete((target) => deleted.push(target));
 
     try {
-      const rendered = render(<FileSidebar onOpenSearch={() => {}} />);
+      const rendered = renderSidebar();
       await waitFor(() => expect(menuActionCallback).not.toBeNull());
 
       menuActionCallback?.('rename' as MenuAction);
@@ -470,7 +469,7 @@ describe('FileSidebar menu-action runtime routing', () => {
   });
 
   test('shell, clipboard, handoff, and visibility-toggle actions use runtime dependencies', async () => {
-    render(<FileSidebar onOpenSearch={() => {}} />);
+    renderSidebar();
     await waitFor(() => expect(menuActionCallback).not.toBeNull());
 
     menuActionCallback?.('reveal-in-finder' as MenuAction);
@@ -535,7 +534,7 @@ describe('FileSidebar menu-action runtime routing', () => {
       { action: 'toggle-show-skills-section', key: 'showSkillsSection', defaultValue: true },
     ] as const;
 
-    const { rerender } = render(<FileSidebar onOpenSearch={() => {}} />);
+    const { rerender } = renderSidebar();
     await waitFor(() => expect(menuActionCallback).not.toBeNull());
 
     for (const { action, key, defaultValue } of toggleRoundTrips) {
@@ -561,7 +560,7 @@ describe('FileSidebar menu-action runtime routing', () => {
   });
 
   test('pushes View menu state to the desktop bridge with merged visibility and tree gates', async () => {
-    render(<FileSidebar onOpenSearch={() => {}} />);
+    renderSidebar();
 
     await waitFor(() =>
       expect(notifyViewMenuStateChangedMock).toHaveBeenCalledWith(

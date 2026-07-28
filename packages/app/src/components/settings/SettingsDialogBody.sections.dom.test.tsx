@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createContext, type ReactNode, use, useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 type SyncStatus = {
@@ -212,13 +213,6 @@ vi.doMock('@/components/ui/toggle-group', () => ({
   },
 }));
 
-vi.doMock('@/components/ui/tooltip', () => ({
-  TooltipProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
-  Tooltip: ({ children }: { children?: ReactNode }) => <>{children}</>,
-  TooltipContent: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  TooltipTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
-}));
-
 vi.doMock('@/components/PublishToGitHubDialog', () => ({
   PublishToGitHubDialog: (props: { open: boolean }) => {
     publishDialogProps.push(props);
@@ -338,12 +332,14 @@ async function renderBody(
 ) {
   const { SettingsDialogBody } = await import('./SettingsDialogBody');
   render(
-    <SettingsDialogBody
-      activeId={props.activeId}
-      userBinding={(props.userBinding ?? null) as never}
-      okignoreBinding={(props.okignoreBinding ?? null) as never}
-      okignoreSynced={props.okignoreSynced ?? false}
-    />,
+    <TooltipProvider>
+      <SettingsDialogBody
+        activeId={props.activeId}
+        userBinding={(props.userBinding ?? null) as never}
+        okignoreBinding={(props.okignoreBinding ?? null) as never}
+        okignoreSynced={props.okignoreSynced ?? false}
+      />
+    </TooltipProvider>,
   );
 }
 
