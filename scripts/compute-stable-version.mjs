@@ -33,6 +33,13 @@
  * "something is wrong". The mode is additive; the beta-tag contract above is
  * unchanged, because sibling workflows already depend on it.
  *
+ * Third mode: node scripts/compute-stable-version.mjs --point-release <mode> <sha>
+ * See `computePointReleaseVersion` below. The point-release lane builds a
+ * synthetic commit that no tag names, so it cannot ask the beta-tag mode for a
+ * version. Appends point_release_version / point_release_tag / bump /
+ * added_ids / removed_ids / latest_stable_version / latest_stable_sha to
+ * $GITHUB_OUTPUT. Also additive.
+ *
  * The pure core (`computeStablePromotion`) takes its git boundary as an injected
  * dependency so tests need no live repo (mirrors promote-stable-auto.mjs).
  */
@@ -137,6 +144,66 @@ export function computeStablePromotion(betaTag, git) {
 }
 
 /**
+ * The stable version a POINT RELEASE lands on: one bump over the current
+ * stable, computed from the changeset delta of an arbitrary synthetic commit
+ * instead of a beta tag.
+ *
+ * Why this is a second entry point rather than a widened `computeStablePromotion`.
+ * That function's input is a beta TAG, and two of its branches are correct for
+ * the soak lane and wrong here. A point release builds its own commit that no
+ * tag names, so there is nothing to `revParse`. And in revert mode the added
+ * changeset delta is legitimately empty, which the promotion path reads as
+ * "nothing to promote" and declines. The version arithmetic underneath is the
+ * same set difference, so it is reused; the decision wrapped around it is not.
+ *
+ * Where the bump comes from depends on `mode`:
+ *   'cherry-pick' — max bump across the changesets the picked fix brought in,
+ *                   the same rule the soak lane applies.
+ *   'revert'      — the constant 'patch'. A revert restores already-shipped
+ *                   behavior and adds no changeset, so there is no frontmatter
+ *                   to read and nothing that could justify minor or major.
+ *
+ * `removedIds` is reported, never acted on here. A revert dropping a still
+ * pending changeset from the synthetic tree is expected; the same in
+ * cherry-pick mode means the operator picked a ref that undoes pending work,
+ * and the caller's delta guard needs both halves of the difference to say so.
+ *
+ * A missing or malformed `latestStableTag` throws instead of bootstrapping.
+ * There is no bootstrap shape here by construction: a point release is a patch
+ * OVER an existing stable, so no stable at all means the wrong lane, not a
+ * first release.
+ *
+ * Returns { version, tag, latestStableVersion, addedIds, removedIds, bump }.
+ */
+export function computePointReleaseVersion({ syntheticSha, latestStableTag, latestStableSha, mode }, git) {
+  if (mode !== 'cherry-pick' && mode !== 'revert') {
+    // An unrecognized mode would otherwise fall through to the cherry-pick
+    // branch and read frontmatter off changesets a revert never added.
+    throw new Error(`Point-release mode '${mode}' is not one of: cherry-pick, revert.`);
+  }
+  const sha = String(syntheticSha ?? '').trim();
+  if (sha === '') throw new Error('Point-release requires a synthetic commit sha.');
+  const stableSha = String(latestStableSha ?? '').trim();
+  if (stableSha === '') throw new Error('Point-release requires the latest stable commit sha.');
+  const stableTag = String(latestStableTag ?? '').trim();
+  if (!STABLE_TAG_RE.test(stableTag)) {
+    throw new Error(`latest stable tag '${latestStableTag}' is not in the expected vX.Y.Z format.`);
+  }
+
+  const latestStableVersion = stableTag.slice(1);
+  const stableIdList = git.changesetIds(stableSha);
+  const syntheticIdList = git.changesetIds(sha);
+  const stableIds = new Set(stableIdList);
+  const syntheticIds = new Set(syntheticIdList);
+  const addedIds = syntheticIdList.filter((id) => !stableIds.has(id));
+  const removedIds = stableIdList.filter((id) => !syntheticIds.has(id));
+
+  const bump = mode === 'revert' ? 'patch' : maxBumpType(addedIds.map((id) => git.bumpTypeOf(sha, id)));
+  const version = bumpSemver(latestStableVersion, bump);
+  return { version, tag: `v${version}`, latestStableVersion, addedIds, removedIds, bump };
+}
+
+/**
  * Is the changeset anchor still level with the newest stable tag?
  *
  * The anchor is `pre.json#initialVersions[<fixed group anchor>]`, which a
@@ -220,8 +287,15 @@ function compareVersions(a, b) {
 }
 
 // --- workflow-runtime wiring (real git boundary) ---
+//
+// `runGit`, `realGit` and `readAnchorVersion` are exported because
+// .github/scripts/point-release-plan.mjs builds its own boundary on top of
+// them. Keeping one implementation matters most for `isAncestor` and
+// `changesetIds`: a second copy that read a clean "not an ancestor" and an
+// infra failure the same way would let a release path decide confidently on a
+// git error.
 
-function runGit(args) {
+export function runGit(args) {
   const res = spawnSync('git', args, { encoding: 'utf8' });
   if (res.status !== 0) {
     throw new Error(`git ${args.join(' ')} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`);
@@ -229,7 +303,7 @@ function runGit(args) {
   return String(res.stdout || '');
 }
 
-const realGit = {
+export const realGit = {
   revParse: (ref) => runGit(['rev-parse', '--verify', `${ref}^{commit}`]).trim(),
   newestStableTag: () => {
     for (const line of runGit(['tag', '--list', 'v*', '--sort=-version:refname']).split('\n')) {
@@ -264,7 +338,7 @@ const realGit = {
 // while the stable tags only exist where releases are cut. Run this in the
 // source monorepo instead and `newestStableTag` returns a different product's
 // `v*` tags, so the guard refuses on every invocation.
-function readAnchorVersion() {
+export function readAnchorVersion() {
   const pre = JSON.parse(readFileSync('.changeset/pre.json', 'utf8'));
   // Outside pre mode `initialVersions` is whatever the last cycle left behind,
   // which would read as a plausible anchor and yield a confident wrong verdict.
@@ -312,9 +386,57 @@ function anchorGuardMain() {
   log(result.reason);
 }
 
+function pointReleaseMain() {
+  let result;
+  try {
+    const latestStableTag = realGit.newestStableTag();
+    if (!latestStableTag) {
+      throw new Error('No stable tag exists in this clone; a point release is a patch over an existing stable.');
+    }
+    result = computePointReleaseVersion(
+      {
+        syntheticSha: process.argv[4],
+        latestStableTag,
+        latestStableSha: realGit.revParse(latestStableTag),
+        mode: process.argv[3],
+      },
+      realGit,
+    );
+  } catch (err) {
+    console.error(`::error::compute-stable-version --point-release: ${err.message}`);
+    process.exit(1);
+  }
+
+  log(
+    `Point release -> ${result.tag} (${result.bump} over v${result.latestStableVersion}; ` +
+      `${result.addedIds.length} added, ${result.removedIds.length} removed changesets).`,
+  );
+  console.log(JSON.stringify(result));
+
+  if (process.env.GITHUB_OUTPUT) {
+    appendFileSync(
+      process.env.GITHUB_OUTPUT,
+      [
+        `point_release_version=${result.version}`,
+        `point_release_tag=${result.tag}`,
+        `latest_stable_version=${result.latestStableVersion}`,
+        `bump=${result.bump}`,
+        `added_ids=${JSON.stringify(result.addedIds)}`,
+        `removed_ids=${JSON.stringify(result.removedIds)}`,
+        '',
+      ].join('\n'),
+    );
+  }
+}
+
 function main() {
   if (process.argv[2] === '--anchor-guard') {
     anchorGuardMain();
+    return;
+  }
+
+  if (process.argv[2] === '--point-release') {
+    pointReleaseMain();
     return;
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { computeStablePromotion, evaluateAnchorGuard } from './compute-stable-version.mjs';
+import { computePointReleaseVersion, computeStablePromotion, evaluateAnchorGuard } from './compute-stable-version.mjs';
 
 // Injected git boundary so tests need no repo. Defaults: unknown changeset bump
 // types resolve to 'patch' (the patch floor), isAncestor false.
@@ -184,5 +184,170 @@ describe('evaluateAnchorGuard', () => {
     const b = evaluateAnchorGuard({ anchorVersion: '0.41.0', latestStableTag: 'v0.41.1' });
     expect(a).toEqual(b);
     expect(Date.now() - before).toBeLessThan(500);
+  });
+});
+
+describe('computePointReleaseVersion', () => {
+  test('cherry-pick mode: one patch fix over the latest stable lands on the next patch', () => {
+    const git = fakeGit({ changesets: { S: ['c0'], SYN: ['c0', 'fix1'] } });
+    const r = computePointReleaseVersion(
+      { syntheticSha: 'SYN', latestStableTag: 'v0.32.0', latestStableSha: 'S', mode: 'cherry-pick' },
+      git,
+    );
+    expect(r).toMatchObject({
+      version: '0.32.1',
+      tag: 'v0.32.1',
+      latestStableVersion: '0.32.0',
+      bump: 'patch',
+      addedIds: ['fix1'],
+      removedIds: [],
+    });
+  });
+
+  test('revert mode over the canonical shape: the culprit changeset leaves, nothing arrives', () => {
+    const git = fakeGit({ changesets: { S: ['c0', 'bad'], SYN: ['c0'] } });
+    const r = computePointReleaseVersion(
+      { syntheticSha: 'SYN', latestStableTag: 'v0.32.0', latestStableSha: 'S', mode: 'revert' },
+      git,
+    );
+    expect(r).toMatchObject({
+      version: '0.32.1',
+      tag: 'v0.32.1',
+      bump: 'patch',
+      addedIds: [],
+      removedIds: ['bad'],
+    });
+  });
+
+  test('revert mode reads no changeset frontmatter even when the delta is non-empty', () => {
+    // With a real boundary the read is `git show <sha>:.changeset/<id>.md`, so
+    // routing revert through the cherry-pick bump path would fail the run
+    // outright whenever the revert deleted the file being read. The fake throws
+    // to pin that the call never happens.
+    const git = {
+      ...fakeGit({ changesets: { S: ['c0'], SYN: ['c0', 'leftover'] } }),
+      bumpTypeOf: () => {
+        throw new Error('revert mode must not read changeset frontmatter');
+      },
+    };
+    const r = computePointReleaseVersion(
+      { syntheticSha: 'SYN', latestStableTag: 'v0.32.0', latestStableSha: 'S', mode: 'revert' },
+      git,
+    );
+    expect(r).toMatchObject({ version: '0.32.1', bump: 'patch', addedIds: ['leftover'] });
+  });
+
+  test('revert mode stays a patch even when the synthetic tree gained a major changeset', () => {
+    // Guards against a future refactor routing revert through the cherry-pick
+    // bump path: a stray added changeset must not silently escalate the version.
+    const git = fakeGit({ changesets: { S: ['c0'], SYN: ['c0', 'stray'] }, bumps: { stray: 'major' } });
+    const r = computePointReleaseVersion(
+      { syntheticSha: 'SYN', latestStableTag: 'v0.32.0', latestStableSha: 'S', mode: 'revert' },
+      git,
+    );
+    expect(r).toMatchObject({ version: '0.32.1', bump: 'patch', addedIds: ['stray'] });
+  });
+
+  test('cherry-pick mode takes the max bump across the added changesets', () => {
+    const git = fakeGit({
+      changesets: { S: ['c0'], SYN: ['c0', 'p1', 'm1'] },
+      bumps: { p1: 'patch', m1: 'minor' },
+    });
+    const r = computePointReleaseVersion(
+      { syntheticSha: 'SYN', latestStableTag: 'v0.32.4', latestStableSha: 'S', mode: 'cherry-pick' },
+      git,
+    );
+    expect(r).toMatchObject({ version: '0.33.0', tag: 'v0.33.0', bump: 'minor', addedIds: ['p1', 'm1'] });
+  });
+
+  test('removedIds reports the changesets the stable had and the synthetic tree lost', () => {
+    const git = fakeGit({ changesets: { S: ['keep', 'gone'], SYN: ['keep', 'new'] } });
+    const r = computePointReleaseVersion(
+      { syntheticSha: 'SYN', latestStableTag: 'v0.32.0', latestStableSha: 'S', mode: 'cherry-pick' },
+      git,
+    );
+    expect(r.addedIds).toEqual(['new']);
+    expect(r.removedIds).toEqual(['gone']);
+  });
+
+  test('an empty added delta still yields a patch bump in cherry-pick mode', () => {
+    // maxBumpType floors at 'patch' for an empty list, so the version is always
+    // computable; refusing an empty delta is the caller's guard, not this one's.
+    const git = fakeGit({ changesets: { S: ['c0'], SYN: ['c0'] } });
+    const r = computePointReleaseVersion(
+      { syntheticSha: 'SYN', latestStableTag: 'v0.32.0', latestStableSha: 'S', mode: 'cherry-pick' },
+      git,
+    );
+    expect(r).toMatchObject({ version: '0.32.1', bump: 'patch', addedIds: [], removedIds: [] });
+  });
+
+  test('double-digit version components bump numerically', () => {
+    const git = fakeGit({ changesets: { S: [], SYN: ['fix'] } });
+    expect(
+      computePointReleaseVersion(
+        { syntheticSha: 'SYN', latestStableTag: 'v0.35.19', latestStableSha: 'S', mode: 'revert' },
+        git,
+      ).tag,
+    ).toBe('v0.35.20');
+    expect(
+      computePointReleaseVersion(
+        { syntheticSha: 'SYN', latestStableTag: 'v0.9.0', latestStableSha: 'S', mode: 'cherry-pick' },
+        git,
+      ).tag,
+    ).toBe('v0.9.1');
+  });
+
+  test('a malformed or absent latest stable tag throws rather than bootstrapping', () => {
+    // A point release is a patch OVER an existing stable; no stable at all means
+    // the operator is on the wrong lane, not that this is a first release.
+    const git = fakeGit();
+    const call = (latestStableTag) =>
+      computePointReleaseVersion({ syntheticSha: 'SYN', latestStableTag, latestStableSha: 'S', mode: 'revert' }, git);
+    expect(() => call('')).toThrow(/vX\.Y\.Z format/);
+    expect(() => call('v0.32.0-beta.4')).toThrow(/vX\.Y\.Z format/);
+    expect(() => call('garbage')).toThrow(/vX\.Y\.Z format/);
+    expect(() => call(undefined)).toThrow(/vX\.Y\.Z format/);
+  });
+
+  test('an unrecognized mode throws instead of defaulting to a bump rule', () => {
+    const git = fakeGit({ changesets: { S: [], SYN: ['fix'] } });
+    expect(() =>
+      computePointReleaseVersion(
+        { syntheticSha: 'SYN', latestStableTag: 'v0.32.0', latestStableSha: 'S', mode: 'revrt' },
+        git,
+      ),
+    ).toThrow(/not one of: cherry-pick, revert/);
+    expect(() =>
+      computePointReleaseVersion(
+        { syntheticSha: 'SYN', latestStableTag: 'v0.32.0', latestStableSha: 'S', mode: undefined },
+        git,
+      ),
+    ).toThrow(/not one of: cherry-pick, revert/);
+  });
+
+  test('a missing commit sha on either side throws a named error', () => {
+    const git = fakeGit({ changesets: { S: [], SYN: [] } });
+    expect(() =>
+      computePointReleaseVersion(
+        { syntheticSha: '', latestStableTag: 'v0.32.0', latestStableSha: 'S', mode: 'revert' },
+        git,
+      ),
+    ).toThrow(/synthetic commit sha/);
+    expect(() =>
+      computePointReleaseVersion(
+        { syntheticSha: 'SYN', latestStableTag: 'v0.32.0', latestStableSha: undefined, mode: 'revert' },
+        git,
+      ),
+    ).toThrow(/latest stable commit sha/);
+  });
+
+  test('tolerates surrounding whitespace from raw git output', () => {
+    const git = fakeGit({ changesets: { S: ['c0'], SYN: ['c0', 'fix'] } });
+    const r = computePointReleaseVersion(
+      { syntheticSha: 'SYN\n', latestStableTag: ' v0.32.0\n', latestStableSha: ' S ', mode: 'cherry-pick' },
+      git,
+    );
+    expect(r.tag).toBe('v0.32.1');
+    expect(r.addedIds).toEqual(['fix']);
   });
 });
