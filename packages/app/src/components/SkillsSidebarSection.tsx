@@ -41,7 +41,7 @@ import {
 } from '@/components/ui/sidebar';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { useSkills } from '@/hooks/use-skills';
-import { hashFromDocName, hashFromSkillFile, replaceHashWithoutNavigation } from '@/lib/doc-hash';
+import { hashFromDocName, hashFromSkillFile, pushHashWithoutNavigation } from '@/lib/doc-hash';
 import { subscribeToSkillsChanged } from '@/lib/documents-events';
 import {
   projectSkillContentDocName,
@@ -331,11 +331,11 @@ function SkillFolderContents({ skill }: { skill: SkillsListEntry }) {
   // Open a project-skill content doc as a PERSISTENT tab. `append` (not
   // `replace-active`) so opening a second skill keeps the first open — skills are
   // worked on side-by-side, unlike the file tree's single preview tab. `openTarget`
-  // still activates the newly-opened tab; `replaceHashWithoutNavigation` syncs the
+  // still activates the newly-opened tab; `pushHashWithoutNavigation` records the
   // hash (bare `openDocument` bypasses the hash and a later nav effect steals focus).
   function openProjectDoc(docName: string) {
     openTarget({ kind: 'doc', target: docName, docName }, { tabBehavior: 'append' });
-    replaceHashWithoutNavigation(hashFromDocName(docName));
+    pushHashWithoutNavigation(hashFromDocName(docName));
   }
 
   // Open a skill file. A PROJECT skill's `.md`/`.mdx` reference is a real
@@ -356,7 +356,7 @@ function SkillFolderContents({ skill }: { skill: SkillsListEntry }) {
       path: filePath,
     };
     openTarget(target, { tabBehavior: 'replace-active' });
-    replaceHashWithoutNavigation(
+    pushHashWithoutNavigation(
       hashFromSkillFile({ scope: skill.scope, name: skill.name, path: filePath }),
     );
   }

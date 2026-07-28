@@ -257,6 +257,17 @@ export function AppMenubar() {
       <MenubarMenu>
         <MenubarTrigger className="px-2 py-1 text-xs font-normal">{t`View`}</MenubarTrigger>
         <MenubarContent>
+          <MenubarItem onSelect={() => dispatch({ kind: 'menu-action', action: 'navigate-back' })}>
+            {t`Back`}
+            <MenubarShortcut>Alt+Left</MenubarShortcut>
+          </MenubarItem>
+          <MenubarItem
+            onSelect={() => dispatch({ kind: 'menu-action', action: 'navigate-forward' })}
+          >
+            {t`Forward`}
+            <MenubarShortcut>Alt+Right</MenubarShortcut>
+          </MenubarItem>
+          <MenubarSeparator />
           <MenubarItem onSelect={() => dispatch({ kind: 'role', role: 'reload' })}>
             {t`Reload`}
           </MenubarItem>

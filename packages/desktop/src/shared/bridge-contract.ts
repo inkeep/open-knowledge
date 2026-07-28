@@ -205,6 +205,9 @@ export type OkMenuAction =
   | 'version-history'
   | 'focus-search'
   | 'focus-command-palette'
+  // Navigation history.
+  | 'navigate-back'
+  | 'navigate-forward'
   // File menu state-aware items. Renderer subscribes via the existing
   // `onMenuAction` bridge surface; routing through the same channel
   // avoids inventing a new IPC for what is conceptually "user picked a menu

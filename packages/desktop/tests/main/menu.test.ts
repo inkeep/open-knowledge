@@ -49,6 +49,19 @@ function findByLabel(
   return undefined;
 }
 
+function buildMenuTemplateForPlatform(
+  platform: NodeJS.Platform,
+  deps: MenuDeps,
+): MenuItemConstructorOptions[] {
+  const original = process.platform;
+  Object.defineProperty(process, 'platform', { configurable: true, value: platform });
+  try {
+    return buildMenuTemplate(deps);
+  } finally {
+    Object.defineProperty(process, 'platform', { configurable: true, value: original });
+  }
+}
+
 describe('buildMenuTemplate', () => {
   test('empty recents → "No recent projects" disabled placeholder', () => {
     const deps = makeDeps();
@@ -1438,5 +1451,53 @@ describe('Terminal menu — New Terminal Window', () => {
       'New Terminal Window',
     );
     expect(wired?.enabled).toBe(true);
+  });
+});
+
+describe('buildMenuTemplate — View navigation history', () => {
+  test('does not add a standalone Go menu', () => {
+    const labels = buildMenuTemplate(makeDeps()).map((item) => item.label);
+    expect(labels).not.toContain('Go');
+  });
+
+  test('starts View with Back before Forward and platform-specific accelerators', () => {
+    const callbacks = {
+      onNavigateBack: vi.fn(() => {}),
+      onNavigateForward: vi.fn(() => {}),
+    };
+
+    const mac = buildMenuTemplateForPlatform('darwin', makeDeps(callbacks));
+    const macRows = findByLabel(mac, 'View')?.submenu as MenuItemConstructorOptions[] | undefined;
+    expect(macRows?.slice(0, 2).map((item) => item.label)).toEqual(['Back', 'Forward']);
+    expect(findByLabel(mac, 'Back')?.accelerator).toBe('Cmd+[');
+    expect(findByLabel(mac, 'Forward')?.accelerator).toBe('Cmd+]');
+
+    const windows = buildMenuTemplateForPlatform('win32', makeDeps(callbacks));
+    const windowsRows = findByLabel(windows, 'View')?.submenu as
+      | MenuItemConstructorOptions[]
+      | undefined;
+    expect(windowsRows?.slice(0, 2).map((item) => item.label)).toEqual(['Back', 'Forward']);
+    expect(findByLabel(windows, 'Back')?.accelerator).toBe('Alt+Left');
+    expect(findByLabel(windows, 'Forward')?.accelerator).toBe('Alt+Right');
+  });
+
+  test('invokes each callback exactly once', () => {
+    const onNavigateBack = vi.fn(() => {});
+    const onNavigateForward = vi.fn(() => {});
+    const template = buildMenuTemplate(makeDeps({ onNavigateBack, onNavigateForward }));
+
+    (findByLabel(template, 'Back')?.click as (() => void) | undefined)?.();
+    expect(onNavigateBack).toHaveBeenCalledOnce();
+    expect(onNavigateForward).not.toHaveBeenCalled();
+
+    (findByLabel(template, 'Forward')?.click as (() => void) | undefined)?.();
+    expect(onNavigateBack).toHaveBeenCalledOnce();
+    expect(onNavigateForward).toHaveBeenCalledOnce();
+  });
+
+  test('disables both rows when their callbacks are unwired', () => {
+    const template = buildMenuTemplate(makeDeps());
+    expect(findByLabel(template, 'Back')?.enabled).toBe(false);
+    expect(findByLabel(template, 'Forward')?.enabled).toBe(false);
   });
 });

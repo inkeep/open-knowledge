@@ -37,9 +37,6 @@
     "-r_Kx7": ["Create skill"],
     "-slrNR": ["Toggle a task list."],
     "-uaQnI": ["No matching worktrees or branches."],
-    "-wePNM": [
-      "Search matches file names, paths, and folders. Open a file to search its body (⌘F)."
-    ],
     "-zA2E7": ["Couldn't create the worktree. Try a different name."],
     "-zy2Nq": ["Type"],
     "0-31GV": ["Removing"],
@@ -241,7 +238,6 @@
       "). Any local edits will be replaced — your current version is saved to history first, so you can restore it."
     ],
     "484LKL": ["Remove link"],
-    "48uGTI": ["Failed to load docs. Press Escape and re-open to retry."],
     "494br3": ["Shared with everyone on this project — committed to config.yml via git."],
     "4A3Yzu": ["Code block"],
     "4BITzH": ["Error:"],
@@ -360,6 +356,7 @@
     "62bOuM": ["Latest edit"],
     "636K3K": ["Delete adjacent chip"],
     "67f-3g": ["Duplicate succeeded but the sidebar may be out of date — refresh to resync"],
+    "69KLIV": ["Escape"],
     "6Aih4U": ["Offline"],
     "6EKG_c": ["What agents match on to decide when to use the skill."],
     "6HCOwA": ["Failed to open."],
@@ -518,6 +515,7 @@
       "Adds the OpenKnowledge skill to the <0>Claude Desktop App</0> so it's available in Chat and Cowork sessions."
     ],
     "9Vh9Jf": ["Reopen this window to sign in with your browser"],
+    "9Vnjc9": ["Enter"],
     "9XIEYq": ["Attach the file in an email to <0/>"],
     "9aVlF2": ["Change provider"],
     "9bCiQ8": ["No pages are missing incoming graph links."],
@@ -732,6 +730,7 @@
     "DVh_Tb": ["Failed to clean up after trash"],
     "DXd9LM": ["New worktree"],
     "D_WKe_": ["Click an agent's avatar in the presence bar to view their session."],
+    "DbCfXV": ["Search (", ["searchShortcutLabel"], ")"],
     "DbILZA": ["No matches. Some files are excluded from search (hidden or ignored files)."],
     "DcLaew": ["Custom theme"],
     "DeDYLr": ["Unrecognized wiki link"],
@@ -944,6 +943,11 @@
     "GsBUCk": ["Loading settings"],
     "Gt4gOO": ["This folder has unpushed changes. Recipients will see the last pushed version."],
     "GtJbUa": ["Background"],
+    "GuLeuE": [
+      "Search matches file names, paths, and folders. Open a file to search its body <0>",
+      ["0"],
+      "</0>."
+    ],
     "GuaJb-": ["Open email draft"],
     "GubkSu": ["Use a starter pack"],
     "GuqOb1": ["Failed to load headings"],
@@ -1004,7 +1008,6 @@
     "IFezUv": ["The audit could not be completed. Try again."],
     "IInnZo": ["Conflict"],
     "IKoTAC": ["Keep disabled"],
-    "IN4UX8": ["Search (", ["searchShortcut"], ")"],
     "IQPyrD": ["Missing page — click to create"],
     "IQgeSn": ["Failed to save the schema field"],
     "IRv9cH": ["Cloned ", ["repoName"], "."],
@@ -1077,7 +1080,6 @@
     "K9J00P": ["Clone failed — connection error"],
     "KDuPiY": ["Uploading ", ["fileName"]],
     "KDw4GX": ["Try again"],
-    "KFdXwz": ["Show panel (", ["panelShortcut"], ")"],
     "KH5bQi": [
       "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."
     ],
@@ -1216,7 +1218,6 @@
     "MZSBsh": [
       "No templates yet. Add one to give new docs in this folder a ready-made starting point."
     ],
-    "MZoxVx": ["Failed to load tags. Press Escape and re-open to retry."],
     "Mb_20S": ["Visual"],
     "Md709y": ["Loading ", ["fileName"]],
     "MdpSC1": ["New skill"],
@@ -1228,7 +1229,6 @@
     "MqQoV-": ["Describe what you want to build, start a blank file, or scaffold from a template."],
     "MqsbfN": ["Turn on external link previews?"],
     "MrwYIK": ["Toggle a source comment through CodeMirror."],
-    "MsuXaI": ["Hide panel (", ["panelShortcut"], ")"],
     "My0wYT": [
       "When you hover an external link, its URL is sent to the destination site to fetch the page's preview metadata — one request per previewed link."
     ],
@@ -1646,6 +1646,7 @@
       "</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."
     ],
     "V48OUT": ["You deleted <0>", ["filePath"], "</0> locally, but it was modified upstream."],
+    "V6AIOn": ["Workspace navigation"],
     "V7QxyT": ["Connection dropped"],
     "VAHWL_": ["Connected as <0>@", ["signedInLogin"], "</0>"],
     "VBE2dw": [
@@ -1738,6 +1739,7 @@
     "XDzAnp": ["Opens in a new tab"],
     "XH30C4": ["document"],
     "XJOV1Y": ["Activity"],
+    "XK5cbh": ["Traverse OpenKnowledge navigation history forward."],
     "XNBGZw": ["Message not sent: ", ["0"]],
     "XPJ0sN": [["settingsDescriptorLabel"], " properties"],
     "XPqe3B": ["Create new tag #", ["tagValue"]],
@@ -1772,7 +1774,6 @@
       "Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again."
     ],
     "Xv_ijG": ["https://github.com/owner/repo or owner/repo"],
-    "Xw_maT": ["Type a query, then press ↵ to search your pages by meaning."],
     "Xwump4": ["no git repository here"],
     "XyOUTJ": ["Exit merge"],
     "Xzy0s0": ["Remove ", ["fullLabel"], " from context"],
@@ -1880,8 +1881,6 @@
     "Zue_jx": ["Your GitHub token is missing required scopes. Try signing in again."],
     "Zul8Ry": ["never"],
     "ZvzbDF": ["Add it directly to this project."],
-    "ZxXhLY": ["Hide Files (", ["sidebarShortcut"], ")"],
-    "Zz25kq": ["Show Files (", ["sidebarShortcut"], ")"],
     "_0JUKX": ["Bug reporting needs the OpenKnowledge desktop app."],
     "_2cM9E": ["recent"],
     "_5qBNl": ["AI tools & CLI"],
@@ -2075,6 +2074,7 @@
     "cdmk8A": ["Uncommitted changes"],
     "cgl-gn": ["Connected to GitHub"],
     "chL5IG": ["Community"],
+    "cjtjry": ["Traverse OpenKnowledge navigation history backward."],
     "cklVjM": ["Timeline"],
     "clJ3qM": ["Done."],
     "cn1sLi": ["Couldn't connect OpenKnowledge tools to Claude Code. Please try again."],
@@ -2180,6 +2180,7 @@
     "eTL5y9": ["Show selection preview"],
     "eTsJYJ": ["description"],
     "eVPynQ": ["Open <0><1>", ["verificationUri"], "</1><2/></0> and enter this code:"],
+    "eaHUxx": ["Files toolbar"],
     "el312q": ["Install skills into"],
     "emgiet": ["Authoritative content; mirrored verbatim everywhere it's referenced."],
     "enPTnx": ["line ", ["displayLine"]],
@@ -2456,6 +2457,7 @@
       ["endpointHost"],
       "</0> — most local servers ignore it. Add one only if yours needs it."
     ],
+    "kBNHN1": ["Navigation history"],
     "kCNU4q": [
       "Indexing your pages — ",
       ["semanticIndexedCount"],
@@ -2521,6 +2523,7 @@
     "l3s5ri": ["Import"],
     "l3zD7w": ["Starting the agent…"],
     "l46MqT": ["Next tab"],
+    "l5J_HM": ["Type a query, then press <0>↵</0> to search your pages by meaning."],
     "l6kpzR": [
       "This ",
       ["targetNoun"],
@@ -2668,7 +2671,6 @@
     "nc-ipN": [
       "Field editing is available for schema files mapped in the Frontmatter schemas plugin"
     ],
-    "ndeI89": ["Use Cmd/Ctrl+C to copy the link below, or open OK in the desktop app."],
     "ndwmea": ["unavailable on this platform"],
     "neRy3o": ["Split list item"],
     "nfPccR": [
@@ -2813,6 +2815,7 @@
     "qRZh7J": ["Let Tab leave the source editor instead of indenting."],
     "qSKu2v": ["Source navigation and selection"],
     "qSxaOz": ["Accept their deletion"],
+    "qTcZZu": ["Failed to load tags. Press <0>Esc</0> and re-open to retry."],
     "qX-ABr": ["Or to use browser sign-in instead:"],
     "qXN416": ["Couldn't share skills: internal error. Please restart the app."],
     "qXg5W9": ["File saves to <0>~/Downloads/openknowledge.skill</0>."],
@@ -2848,7 +2851,6 @@
       ["repoName"],
       "</0>."
     ],
-    "rBc32v": ["Couldn't reach the embeddings provider — press ↵ to retry"],
     "rD-woT": [
       "Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until you've reviewed it."
     ],
@@ -2886,6 +2888,7 @@
     "rssK8c": ["Ignore patterns (raw text)"],
     "rtdR4v": ["Show or hide Files"],
     "rwrPbS": ["Component boundary navigation"],
+    "rxWGWX": ["Forward"],
     "s-MGs7": ["Resources"],
     "s-XOaI": ["File name"],
     "s0-xF4": ["Tell us how it's going"],
@@ -3075,12 +3078,18 @@
     "vfWA_g": ["You picked ~/Desktop. OpenKnowledge will index everything on your desktop."],
     "vhAnzJ": ["Turn on semantic search?"],
     "viwC-K": ["Failed to remove project."],
+    "vj-33a": [
+      "Use <0>",
+      ["copyShortcut"],
+      "</0> to copy the link below, or open OK in the desktop app."
+    ],
     "vja0Dg": ["Open session dock"],
     "vppAju": ["Where newly added attachments are placed."],
     "vv7kpg": ["Cancelled"],
     "vvWZnu": ["Diff unavailable"],
     "w3tVpc": ["No links yet. Add wiki links or markdown links to build a graph."],
     "w3vFfL": ["Hide Files"],
+    "w4ZzmQ": ["Couldn't reach the embeddings provider — retry"],
     "w4hMYl": [
       "Could not read branch state for this project. Close this dialog and open the share link again."
     ],
@@ -3272,6 +3281,7 @@
       "A <0>Modified</0> badge marks rules your config sets explicitly — directly, or inherited through <1>extends</1>. Unmarked rules keep their default state."
     ],
     "zZ_I5K": ["Open project menu"],
+    "z_4xza": ["Failed to load docs. Press <0>Esc</0> and re-open to retry."],
     "zaXlhf": [
       "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
     ],

@@ -1,5 +1,5 @@
 import type { EditorOptions } from '@tiptap/core';
-import { replaceHashWithoutNavigation } from '@/lib/doc-hash';
+import { pushHashWithoutNavigation } from '@/lib/doc-hash';
 import {
   navigationForSidebarDragPayload,
   parseSidebarDragPayload,
@@ -35,5 +35,5 @@ export function openSidebarDropPayload(
 ): void {
   const navigation = navigationForSidebarDragPayload(payload);
   openTarget(navigation.target, { tabBehavior: 'append' });
-  replaceHashWithoutNavigation(navigation.hash);
+  pushHashWithoutNavigation(navigation.hash);
 }

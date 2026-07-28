@@ -24,6 +24,8 @@ export const OK_MENU_ACTIONS = [
   'version-history',
   'focus-search',
   'focus-command-palette',
+  'navigate-back',
+  'navigate-forward',
   'new-from-template',
   'duplicate',
   'move-to-trash',

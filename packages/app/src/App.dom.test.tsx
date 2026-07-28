@@ -1,6 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { pushHashWithoutNavigation } from '@/lib/doc-hash';
+import { matchesKeyboardShortcut, type ShortcutEventLike } from '@/lib/keyboard-shortcuts';
+import {
+  __resetLocalMenuActionBusForTests,
+  emitLocalMenuAction,
+} from '@/lib/local-menu-action-bus';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 
 type NavigationTarget =
@@ -35,7 +41,9 @@ let fetchApiConfigMock = vi.fn(() =>
 );
 let clearTargetMock = vi.fn(() => {});
 let syncOpenTabsWithKnownTargetsMock = vi.fn(() => {});
-let openTargetTransitionMock = vi.fn((_: NavigationTarget) => {});
+let openTargetTransitionMock = vi.fn(
+  (_: NavigationTarget, _options?: { tabBehavior?: 'append' | 'replace-active' }) => {},
+);
 let resolveNavigationTargetMock = vi.fn(
   (docName: string): NavigationTarget => ({ kind: 'doc', target: docName, docName }),
 );
@@ -176,7 +184,8 @@ vi.doMock('@/components/ShareReceiveMissDialog', () => ({
 }));
 
 vi.doMock('@/components/NewItemDialog', () => ({
-  isNewItemShortcut: () => false,
+  isNewItemShortcut: (event: ShortcutEventLike) =>
+    matchesKeyboardShortcut(event, 'new-item', 'mac'),
   NewItemDialog: ({ open, initialDir }: { open: boolean; initialDir: string }) => (
     <div data-testid="new-item-dialog" data-open={String(open)} data-initial-dir={initialDir} />
   ),
@@ -256,6 +265,7 @@ function setHash(hash: string) {
 describe('App runtime wiring', () => {
   beforeEach(() => {
     cleanup();
+    __resetLocalMenuActionBusForTests();
     Reflect.deleteProperty(window, 'okDesktop');
     setHash('');
     activeTarget = null;
@@ -284,7 +294,9 @@ describe('App runtime wiring', () => {
     globalThis.fetch = vi.fn(() => Promise.resolve(new Response(null, { status: 204 }))) as never;
     clearTargetMock = vi.fn(() => {});
     syncOpenTabsWithKnownTargetsMock = vi.fn(() => {});
-    openTargetTransitionMock = vi.fn((_: NavigationTarget) => {});
+    openTargetTransitionMock = vi.fn(
+      (_: NavigationTarget, _options?: { tabBehavior?: 'append' | 'replace-active' }) => {},
+    );
     resolveNavigationTargetMock = vi.fn(
       (docName: string): NavigationTarget => ({ kind: 'doc', target: docName, docName }),
     );
@@ -294,6 +306,8 @@ describe('App runtime wiring', () => {
 
   afterEach(() => {
     cleanup();
+    __resetLocalMenuActionBusForTests();
+    vi.restoreAllMocks();
   });
 
   test('imports and mounts the app shell providers and core surfaces', () => {
@@ -332,6 +346,22 @@ describe('App runtime wiring', () => {
 
     fireEvent.keyDown(window, { key: ',', metaKey: true });
     expect(window.location.hash).toBe('#settings');
+  });
+
+  test('does not claim Cmd+Shift+N from the desktop new-folder accelerator', () => {
+    renderApp({ bridge: createBridge() });
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'N',
+      metaKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(window, event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(screen.getByTestId('new-item-dialog').getAttribute('data-open')).toBe('false');
   });
 
   test('hash navigation opens the downgraded folder-index target, not the pre-downgrade result', async () => {
@@ -378,6 +408,119 @@ describe('App runtime wiring', () => {
       });
     });
     expect(resolveNavigationTargetMock).not.toHaveBeenCalled();
+  });
+
+  test('navigation-history subscription cleans up before remount and invokes each action once', () => {
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+    const forward = vi.spyOn(window.history, 'forward').mockImplementation(() => {});
+    renderApp();
+    cleanup();
+    renderApp();
+
+    emitLocalMenuAction('navigate-back');
+    expect(back).toHaveBeenCalledOnce();
+    expect(forward).not.toHaveBeenCalled();
+
+    emitLocalMenuAction('navigate-forward');
+    expect(back).toHaveBeenCalledOnce();
+    expect(forward).toHaveBeenCalledOnce();
+  });
+
+  test('history traversal reuses the active tab across same-tab page navigation', async () => {
+    setHash('#/page-a');
+    renderApp();
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith({
+        kind: 'doc',
+        target: 'page-a',
+        docName: 'page-a',
+      });
+    });
+
+    // File-tree navigation opens in the active tab and records the URL with
+    // pushState, so NavigationHandler sees only the later history traversal.
+    pushHashWithoutNavigation('#/page-b');
+    pushHashWithoutNavigation('#/page-c');
+    openTargetTransitionMock.mockClear();
+
+    window.history.back();
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe('#/page-b');
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        {
+          kind: 'doc',
+          target: 'page-b',
+          docName: 'page-b',
+        },
+        { tabBehavior: 'replace-active' },
+      );
+    });
+
+    openTargetTransitionMock.mockClear();
+    window.history.back();
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe('#/page-a');
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        {
+          kind: 'doc',
+          target: 'page-a',
+          docName: 'page-a',
+        },
+        { tabBehavior: 'replace-active' },
+      );
+    });
+
+    openTargetTransitionMock.mockClear();
+    window.history.forward();
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe('#/page-b');
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        {
+          kind: 'doc',
+          target: 'page-b',
+          docName: 'page-b',
+        },
+        { tabBehavior: 'replace-active' },
+      );
+    });
+  });
+
+  test('direct hash navigation preserves the active tab', async () => {
+    setHash('#/page-a');
+    renderApp();
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith({
+        kind: 'doc',
+        target: 'page-a',
+        docName: 'page-a',
+      });
+    });
+
+    openTargetTransitionMock.mockClear();
+    window.history.pushState(null, '', `${window.location.pathname}#/page-b`);
+    window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith({
+        kind: 'doc',
+        target: 'page-b',
+        docName: 'page-b',
+      });
+    });
+    expect(openTargetTransitionMock).not.toHaveBeenCalledWith(
+      {
+        kind: 'doc',
+        target: 'page-b',
+        docName: 'page-b',
+      },
+      { tabBehavior: 'replace-active' },
+    );
   });
 
   test('active doc and folder targets are pushed to the desktop bridge', async () => {

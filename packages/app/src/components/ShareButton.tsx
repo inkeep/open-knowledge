@@ -34,9 +34,11 @@ import { toast } from 'sonner';
 import { CopyButton } from '@/components/CopyButton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Kbd } from '@/components/ui/kbd';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { useGitSyncStatusDetailed } from '@/hooks/use-git-sync-status';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
+import { formatShortcutBinding, formatShortcutBindingLabel } from '@/lib/keyboard-shortcuts';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import {
   CLIPBOARD_ERROR_TOAST,
@@ -48,6 +50,7 @@ import { ShareFreshnessWarning, shareFreshnessRowVisible } from './ShareFreshnes
 
 /** Docs page explaining the share flow (links out of the popover). */
 const SHARE_DOCS_URL = 'https://openknowledge.ai/docs/features/share';
+const COPY_SHORTCUT = { mac: '⌘ C', windowsLinux: 'Ctrl C' };
 
 export interface ShareButtonProps {
   /**
@@ -94,6 +97,8 @@ export function ShareButton({ input, onClickWhenNoRemote }: ShareButtonProps) {
   const hasRemote = status?.hasRemote === true;
   const triggerDisabled = input === null;
   const showFreshnessRow = shareFreshnessRowVisible(sharePopover?.freshness, status);
+  const copyShortcut = formatShortcutBinding(COPY_SHORTCUT);
+  const copyShortcutLabel = formatShortcutBindingLabel(COPY_SHORTCUT);
 
   async function handleClick() {
     if (busy) return;
@@ -180,7 +185,10 @@ export function ShareButton({ input, onClickWhenNoRemote }: ShareButtonProps) {
         </p>
         {sharePopover?.autoCopyFailed ? (
           <p className="text-xs text-muted-foreground">
-            <Trans>Use Cmd/Ctrl+C to copy the link below, or open OK in the desktop app.</Trans>
+            <Trans>
+              Use <Kbd aria-label={copyShortcutLabel}>{copyShortcut}</Kbd> to copy the link below,
+              or open OK in the desktop app.
+            </Trans>
           </p>
         ) : null}
         <div className="relative">

@@ -126,6 +126,7 @@ export type MenuSection =
   | 'view-panels'
   | 'view-visibility'
   | 'view-tree'
+  | 'view-history'
   | 'terminal'
   | 'help-install'
   | 'help-links'
@@ -220,6 +221,35 @@ export interface CommandIdentity {
  * Menu-only commands are interleaved near their menu neighbors.
  */
 export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
+  // ── Commands group (palette) / View-history (menu) ─────────────────────────
+  {
+    id: 'navigate-back',
+    menuActionId: 'navigate-back',
+    labelKey: 'back',
+    keywords: ['previous history'],
+    shortcutId: 'navigate-back',
+    shortcutDesktopOnly: true,
+    availability: { host: 'desktop' },
+    palette: { group: 'commands', visibility: 'search-only' },
+    menu: [
+      { section: 'view-history', order: 0, platform: 'mac', accelerator: 'Cmd+[' },
+      { section: 'view-history', order: 0, platform: 'other', accelerator: 'Alt+Left' },
+    ],
+  },
+  {
+    id: 'navigate-forward',
+    menuActionId: 'navigate-forward',
+    labelKey: 'forward',
+    keywords: ['next history'],
+    shortcutId: 'navigate-forward',
+    shortcutDesktopOnly: true,
+    availability: { host: 'desktop' },
+    palette: { group: 'commands', visibility: 'search-only' },
+    menu: [
+      { section: 'view-history', order: 1, platform: 'mac', accelerator: 'Cmd+]' },
+      { section: 'view-history', order: 1, platform: 'other', accelerator: 'Alt+Right' },
+    ],
+  },
   // ── Commands group (palette) / File-create (menu) ───────────────────────────
   {
     id: 'new-file',

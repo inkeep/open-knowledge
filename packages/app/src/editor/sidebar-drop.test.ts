@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
+import { isManagedHashHistoryState } from '@/lib/doc-hash';
 import {
   OK_SIDEBAR_DRAG_MIME,
   type SidebarDragPayload,
@@ -67,7 +68,7 @@ describe('createSidebarAwareHandleDrop', () => {
 });
 
 describe('openSidebarDropPayload', () => {
-  test('opens sidebar payloads as appended tabs and replaces the hash directly', () => {
+  test('opens sidebar payloads as appended tabs and pushes the hash directly', () => {
     const restoreWindow = installFakeWindow({
       hash: '#/old',
       pathname: '/app',
@@ -86,18 +87,23 @@ describe('openSidebarDropPayload', () => {
       { kind: 'doc', target: 'notes/Intro', docName: 'notes/Intro' },
       { tabBehavior: 'append' },
     );
-    expect(fakeReplaceState).toHaveBeenCalledWith(null, '', '/app?workspace=ok#/notes/Intro');
+    expect(fakePushState).toHaveBeenCalledWith(
+      expect.anything(),
+      '',
+      '/app?workspace=ok#/notes/Intro',
+    );
+    expect(isManagedHashHistoryState(fakePushState.mock.calls[0]?.[0])).toBe(true);
   });
 });
 
-let fakeReplaceState = vi.fn((_state: unknown, _unused: string, _url: string) => {});
+let fakePushState = vi.fn((_state: unknown, _unused: string, _url: string) => {});
 
 function installFakeWindow(location: {
   hash: string;
   pathname: string;
   search: string;
 }): () => void {
-  fakeReplaceState = vi.fn((_state: unknown, _unused: string, _url: string) => {});
+  fakePushState = vi.fn((_state: unknown, _unused: string, _url: string) => {});
   const global = globalThis as { window?: unknown };
   const previous = global.window;
   Object.defineProperty(globalThis, 'window', {
@@ -105,7 +111,7 @@ function installFakeWindow(location: {
     value: {
       location,
       history: {
-        replaceState: fakeReplaceState,
+        pushState: fakePushState,
       },
     },
   });

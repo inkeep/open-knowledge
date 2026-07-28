@@ -81,6 +81,9 @@ type OkMenuAction =
   | 'version-history'
   | 'focus-search'
   | 'focus-command-palette'
+  // Navigation history.
+  | 'navigate-back'
+  | 'navigate-forward'
   // File menu state-aware items. See bridge-contract.ts for
   // rationale; mirrored here per the OkDesktopBridge 3-way-mirror invariant.
   | 'new-from-template'

@@ -1,14 +1,16 @@
 import { parseManagedArtifactName } from '@inkeep/open-knowledge-core';
-import { Trans, useLingui } from '@lingui/react/macro';
+import { useLingui } from '@lingui/react/macro';
 import { Search } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import { shouldShowAppMenubar } from '@/components/app-menubar-gate';
 import { Button } from '@/components/ui/button';
+import { ButtonGroup } from '@/components/ui/button-group';
+import { Kbd } from '@/components/ui/kbd';
 import { Separator } from '@/components/ui/separator';
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDocumentContext } from '@/editor/DocumentContext';
-import { formatShortcut } from '@/lib/keyboard-shortcuts';
+import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import {
   buildDocShareInput,
   buildFolderShareInput,
@@ -21,6 +23,7 @@ import { BetaBadge } from './BetaBadge';
 import { EditorTabs } from './EditorTabs';
 import { HelpPopover } from './HelpPopover';
 import { InstanceBadge } from './InstanceBadge';
+import { NavigationHistoryControls } from './NavigationHistoryControls';
 import { PublishToGitHubDialog } from './PublishToGitHubDialog';
 import { SettingsButton } from './SettingsButton';
 import { ShareButton } from './ShareButton';
@@ -53,7 +56,9 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
   // doc-scoped actions (Share / sync / agent handoff) intact.
   const singleFile = useSingleFileMode();
   const sidebarShortcut = formatShortcut('toggle-files-sidebar');
+  const sidebarShortcutLabel = formatShortcutLabel('toggle-files-sidebar');
   const searchShortcut = formatShortcut('command-palette');
+  const searchShortcutLabel = formatShortcutLabel('command-palette');
   const [publishOpen, setPublishOpen] = useState(false);
   // Share input for the header button: folder → folder-scope, doc → doc-scope,
   // empty editor → project root; non-shareable surfaces yield null (disabled).
@@ -134,45 +139,52 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
         )}
         {!singleFile && (
           <>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <SidebarTrigger
-                  className={cn(
-                    '-ml-1 shrink-0 text-muted-foreground',
-                    isElectronHost && '[-webkit-app-region:no-drag]',
-                  )}
-                />
-              </TooltipTrigger>
-              <TooltipContent>
-                {sidebarState === 'expanded' ? (
-                  <Trans>Hide Files ({sidebarShortcut})</Trans>
-                ) : (
-                  <Trans>Show Files ({sidebarShortcut})</Trans>
-                )}
-              </TooltipContent>
-            </Tooltip>
-            {isCollapsed && onOpenSearch && (
+            <ButtonGroup
+              aria-label={t`Workspace navigation`}
+              className={cn(
+                '-ml-1 shrink-0 has-[>[data-slot=button-group]]:gap-0',
+                isElectronHost && '[-webkit-app-region:no-drag]',
+              )}
+            >
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={onOpenSearch}
-                    aria-label={t`Search (${searchShortcut})`}
-                    data-telemetry-event="ok.editor_header.search.click"
+                  <SidebarTrigger
                     className={cn(
                       'shrink-0 text-muted-foreground',
                       isElectronHost && '[-webkit-app-region:no-drag]',
                     )}
-                  >
-                    <Search aria-hidden="true" />
-                  </Button>
+                  />
                 </TooltipTrigger>
                 <TooltipContent>
-                  <Trans>Search ({searchShortcut})</Trans>
+                  <span>{sidebarState === 'expanded' ? t`Hide Files` : t`Show Files`}</span>{' '}
+                  <Kbd aria-label={sidebarShortcutLabel}>{sidebarShortcut}</Kbd>
                 </TooltipContent>
               </Tooltip>
-            )}
+              {isCollapsed && onOpenSearch && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={onOpenSearch}
+                      aria-label={t`Search (${searchShortcutLabel})`}
+                      data-telemetry-event="ok.editor_header.search.click"
+                      className={cn(
+                        'shrink-0 text-muted-foreground',
+                        isElectronHost && '[-webkit-app-region:no-drag]',
+                      )}
+                    >
+                      <Search aria-hidden="true" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <span>{t`Search`}</span>{' '}
+                    <Kbd aria-label={searchShortcutLabel}>{searchShortcut}</Kbd>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {isElectronHost && isCollapsed && <NavigationHistoryControls />}
+            </ButtonGroup>
             <Separator
               orientation="vertical"
               className="mr-1 h-4 shrink-0 data-vertical:self-center"
@@ -191,7 +203,7 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
           // HelpPopover (and the visual Separator) fire their handlers instead
           // of initiating a window drag. Each consumer uses Radix asChild so
           // the rendered DOM root is a single direct child of this zone.
-          isElectronHost && '[&>*]:[-webkit-app-region:no-drag]',
+          isElectronHost && '*:[-webkit-app-region:no-drag]',
           // Windows/Linux: the OS window controls float over the top-right
           // of this row (titleBarOverlay). --ok-titlebar-reserve-right is
           // non-zero only under electron-platform-win32/linux (see

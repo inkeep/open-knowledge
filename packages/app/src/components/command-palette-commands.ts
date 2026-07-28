@@ -11,6 +11,8 @@ import { msg, t } from '@lingui/core/macro';
 import {
   Blocks,
   Bug,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Download,
   Eye,
@@ -165,6 +167,8 @@ export interface PaletteCommand {
  * palette in lockstep with the native menu's `MENU_LABELS` source.
  */
 const PALETTE_COMMAND_LABELS = {
+  back: msg`Back`,
+  forward: msg`Forward`,
   newFile: msg`New file`,
   newFolder: msg`New folder`,
   openGraph: msg`Open graph`,
@@ -216,6 +220,8 @@ export { PALETTE_COMMAND_LABELS };
  *  `toPaletteCommand` throws at module load if an id is missing, rather than
  *  silently substituting a wrong default. */
 const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
+  'navigate-back': ChevronLeft,
+  'navigate-forward': ChevronRight,
   'new-file': FilePlus2,
   'new-folder': FolderPlus,
   'open-graph': Network,

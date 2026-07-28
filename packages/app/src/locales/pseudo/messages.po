@@ -1346,8 +1346,12 @@ msgstr ""
 msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+#: src/components/NavigationHistoryControls.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
+#: src/lib/keyboard-shortcuts.ts
 msgid "Back"
 msgstr ""
 
@@ -2609,7 +2613,7 @@ msgid "Couldn't reach the agent registry."
 msgstr ""
 
 #: src/components/CommandPalette.tsx
-msgid "Couldn't reach the embeddings provider — press ↵ to retry"
+msgid "Couldn't reach the embeddings provider — retry"
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
@@ -3645,6 +3649,10 @@ msgstr ""
 msgid "Eng specs"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
+msgid "Enter"
+msgstr ""
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Enter a 6-digit hex like #1A2B3C"
 msgstr ""
@@ -3684,6 +3692,10 @@ msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Error:"
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "Escape"
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
@@ -3878,7 +3890,7 @@ msgid "Failed to load backlinks"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
-msgid "Failed to load docs. Press Escape and re-open to retry."
+msgid "Failed to load docs. Press <0>Esc</0> and re-open to retry."
 msgstr ""
 
 #: src/components/FileTree.tsx
@@ -3942,7 +3954,7 @@ msgid "Failed to load skills: {0}"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
-msgid "Failed to load tags. Press Escape and re-open to retry."
+msgid "Failed to load tags. Press <0>Esc</0> and re-open to retry."
 msgstr ""
 
 #: src/components/TemplatesCard.tsx
@@ -4183,6 +4195,10 @@ msgstr ""
 msgid "Files sidebar"
 msgstr ""
 
+#: src/components/FileSidebar.tsx
+msgid "Files toolbar"
+msgstr ""
+
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Filter languages"
 msgstr ""
@@ -4366,6 +4382,13 @@ msgstr ""
 
 #: src/components/FeedbackForm.tsx
 msgid "Formatting looked wrong"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+#: src/components/NavigationHistoryControls.tsx
+#: src/lib/keyboard-shortcuts.ts
+msgid "Forward"
 msgstr ""
 
 #: src/components/LinksPanel.tsx
@@ -4629,12 +4652,9 @@ msgstr ""
 msgid "Hide external URL nodes"
 msgstr ""
 
+#: src/components/EditorHeader.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Hide Files"
-msgstr ""
-
-#: src/components/EditorHeader.tsx
-msgid "Hide Files ({sidebarShortcut})"
 msgstr ""
 
 #: src/components/ui/sidebar.tsx
@@ -4654,12 +4674,9 @@ msgid "Hide HTML preview"
 msgstr ""
 
 #: src/components/AgentDiffPane.tsx
+#: src/components/EditorToolbar.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Hide panel"
-msgstr ""
-
-#: src/components/EditorToolbar.tsx
-msgid "Hide panel ({panelShortcut})"
 msgstr ""
 
 #: src/components/EditorToolbar.tsx
@@ -5737,6 +5754,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Navigation and suggestions"
+msgstr ""
+
+#: src/components/NavigationHistoryControls.tsx
+msgid "Navigation history"
 msgstr ""
 
 #: src/components/settings/OkignoreSection.tsx
@@ -7983,6 +8004,7 @@ msgid "Screenshot"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
+#: src/components/EditorHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SidebarSearchBar.tsx
 #: src/lib/keyboard-shortcuts.ts
@@ -7994,7 +8016,7 @@ msgid "Search \"{semanticSubmitQuery}\" by meaning"
 msgstr ""
 
 #: src/components/EditorHeader.tsx
-msgid "Search ({searchShortcut})"
+msgid "Search ({searchShortcutLabel})"
 msgstr ""
 
 #: src/components/settings/ConfigureAgentsSection.tsx
@@ -8033,8 +8055,9 @@ msgstr ""
 msgid "Search files, folders, or commands"
 msgstr ""
 
+#. placeholder {0}: formatShortcut('find')
 #: src/components/CommandPalette.tsx
-msgid "Search matches file names, paths, and folders. Open a file to search its body (⌘F)."
+msgid "Search matches file names, paths, and folders. Open a file to search its body <0>{0}</0>."
 msgstr ""
 
 #: src/components/ProjectSwitcher.tsx
@@ -8461,12 +8484,9 @@ msgstr ""
 msgid "Show fewer"
 msgstr ""
 
+#: src/components/EditorHeader.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Show Files"
-msgstr ""
-
-#: src/components/EditorHeader.tsx
-msgid "Show Files ({sidebarShortcut})"
 msgstr ""
 
 #: src/components/ui/sidebar.tsx
@@ -8516,12 +8536,9 @@ msgid "Show or hide terminal"
 msgstr ""
 
 #: src/components/AgentDiffPane.tsx
+#: src/components/EditorToolbar.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Show panel"
-msgstr ""
-
-#: src/components/EditorToolbar.tsx
-msgid "Show panel ({panelShortcut})"
 msgstr ""
 
 #: src/components/EditorToolbar.tsx
@@ -9791,6 +9808,14 @@ msgstr ""
 msgid "Top linked pages"
 msgstr ""
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Traverse OpenKnowledge navigation history backward."
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Traverse OpenKnowledge navigation history forward."
+msgstr ""
+
 #: src/components/FileSidebar.tsx
 msgid "Tree view options"
 msgstr ""
@@ -9847,7 +9872,7 @@ msgid "Type"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
-msgid "Type a query, then press ↵ to search your pages by meaning."
+msgid "Type a query, then press <0>↵</0> to search your pages by meaning."
 msgstr ""
 
 #: src/editor/components/CodePreviewEditModal.tsx
@@ -10088,6 +10113,10 @@ msgstr ""
 msgid "Upstream sync"
 msgstr ""
 
+#: src/components/ShareButton.tsx
+msgid "Use <0>{copyShortcut}</0> to copy the link below, or open OK in the desktop app."
+msgstr ""
+
 #: src/components/NavigatorApp.tsx
 msgid "Use a folder you already have."
 msgstr ""
@@ -10102,10 +10131,6 @@ msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "Use an https:// URL — http:// is only allowed for localhost."
-msgstr ""
-
-#: src/components/ShareButton.tsx
-msgid "Use Cmd/Ctrl+C to copy the link below, or open OK in the desktop app."
 msgstr ""
 
 #: src/components/TemplateProperties.tsx
@@ -10395,6 +10420,10 @@ msgstr ""
 
 #: src/components/CommandPalette.tsx
 msgid "Workspace Command Palette"
+msgstr ""
+
+#: src/components/EditorHeader.tsx
+msgid "Workspace navigation"
 msgstr ""
 
 #: src/components/NavigatorApp.tsx

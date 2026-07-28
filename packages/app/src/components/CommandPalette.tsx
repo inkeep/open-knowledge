@@ -73,6 +73,7 @@ import {
   CommandList,
   CommandShortcut,
 } from '@/components/ui/command';
+import { Kbd } from '@/components/ui/kbd';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import type { TagSummaryEntry } from '@/editor/extensions/tag-suggestion';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
@@ -83,7 +84,11 @@ import { hashFromDocName } from '@/lib/doc-hash';
 import { runWithToast as runWithToastBase } from '@/lib/error-state';
 import { openExternalUrl as openExternalUrlViaHost } from '@/lib/external-link';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
-import { formatShortcut, matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
+import {
+  formatShortcut,
+  formatShortcutLabel,
+  matchesKeyboardShortcut,
+} from '@/lib/keyboard-shortcuts';
 import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 import { useWorkspace } from '@/lib/use-workspace';
@@ -246,7 +251,8 @@ function SearchHint({
     >
       {mode === 'name-only' ? (
         <Trans>
-          Search matches file names, paths, and folders. Open a file to search its body (⌘F).
+          Search matches file names, paths, and folders. Open a file to search its body{' '}
+          <Kbd aria-label={formatShortcutLabel('find')}>{formatShortcut('find')}</Kbd>.
         </Trans>
       ) : mode === 'truncated' ? (
         <Trans>
@@ -1207,10 +1213,13 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                     data-testid="command-palette-semantic-submit"
                   >
                     {semanticView.submit.kind === 'retry' ? (
-                      <span className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                      <>
                         <Sparkles />
-                        <Trans>Couldn't reach the embeddings provider — press ↵ to retry</Trans>
-                      </span>
+                        <span className="min-w-0 flex-1 truncate text-amber-700 dark:text-amber-400">
+                          <Trans>Couldn't reach the embeddings provider — retry</Trans>
+                        </span>
+                        <CommandShortcut>↵</CommandShortcut>
+                      </>
                     ) : (
                       <>
                         <Sparkles />
@@ -1226,7 +1235,10 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
 
               {semanticView.notice === 'empty' ? (
                 <CommandEmpty data-testid="command-palette-semantic-empty">
-                  <Trans>Type a query, then press ↵ to search your pages by meaning.</Trans>
+                  <Trans>
+                    Type a query, then press <Kbd aria-label={t`Enter`}>↵</Kbd> to search your pages
+                    by meaning.
+                  </Trans>
                 </CommandEmpty>
               ) : null}
               {semanticView.notice === 'searching' ? (
@@ -1311,7 +1323,10 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
               ) : null}
               {tagsListStatus === 'error' ? (
                 <CommandEmpty>
-                  <Trans>Failed to load tags. Press Escape and re-open to retry.</Trans>
+                  <Trans>
+                    Failed to load tags. Press <Kbd aria-label={t`Escape`}>Esc</Kbd> and re-open to
+                    retry.
+                  </Trans>
                 </CommandEmpty>
               ) : null}
               {showTagListEmpty ? (
@@ -1347,7 +1362,10 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
               ) : null}
               {tagDocsStatus === 'error' ? (
                 <CommandEmpty>
-                  <Trans>Failed to load docs. Press Escape and re-open to retry.</Trans>
+                  <Trans>
+                    Failed to load docs. Press <Kbd aria-label={t`Escape`}>Esc</Kbd> and re-open to
+                    retry.
+                  </Trans>
                 </CommandEmpty>
               ) : null}
               {showTagDocsEmpty ? (

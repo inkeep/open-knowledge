@@ -41,8 +41,12 @@ import {
   assetPathFromHash,
   docNameFromHash,
   isContentRootHash,
+  isManagedHashHistoryState,
+  markCurrentHashHistoryEntry,
+  replaceHashWithoutNavigation,
   skillFileFromHash,
 } from '@/lib/doc-hash';
+import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { mark, ProfilerBoundary } from '@/lib/perf';
 import { SingleFileModeProvider, useSingleFileMode } from '@/lib/single-file-mode';
 import { useServerKeepalive } from '@/lib/use-server-keepalive';
@@ -141,7 +145,20 @@ function NavigationHandler() {
     pagesByBasename,
   } = usePageList();
   const lastSyncedTargetsSignatureRef = useRef<string | null>(null);
+  // Same-tab navigation records hashes with pushState, which stays silent until
+  // history traversal. Pair popstate with its following hashchange so replay
+  // replaces the active tab instead of taking the hash handler's append path.
+  const historyTraversalUrlRef = useRef<string | null>(null);
   const targetsSignature = knownTargetsSignature(pages, folderPaths, assetPaths, filePaths);
+
+  useEffect(
+    () =>
+      subscribeLocalMenuAction((action) => {
+        if (action === 'navigate-back') window.history.back();
+        if (action === 'navigate-forward') window.history.forward();
+      }),
+    [],
+  );
 
   useEffect(() => {
     if (
@@ -167,7 +184,26 @@ function NavigationHandler() {
   useEffect(() => {
     onHashChange();
 
+    function onPopState(event: PopStateEvent) {
+      historyTraversalUrlRef.current = isManagedHashHistoryState(event.state)
+        ? window.location.href
+        : null;
+    }
+
     function onHashChange() {
+      const isHistoryTraversal = historyTraversalUrlRef.current === window.location.href;
+      historyTraversalUrlRef.current = null;
+      // Chromium also emits popstate before hashchange for direct hash assignments.
+      // Mark entries after classifying them so only actual history traversal reuses the active tab.
+      markCurrentHashHistoryEntry();
+      const openHashTarget = (target: ResolvedNavigationTarget) => {
+        if (isHistoryTraversal) {
+          openTargetTransition(target, { tabBehavior: 'replace-active' });
+          return;
+        }
+        openTargetTransition(target);
+      };
+
       // Overlay-dialog hashes (settings, install) don't replace the
       // active document — they portal a Dialog over it. Skipping
       // here keeps the editor mounted underneath; without this guard
@@ -182,7 +218,7 @@ function NavigationHandler() {
         const assetExt = assetPath.split('.').pop() ?? '';
         const mediaKind = mediaKindForSidebarAssetExtension(assetExt);
         mark('ok/nav/hash-change', { docName: null, kind: 'asset' });
-        openTargetTransition({
+        openHashTarget({
           kind: 'asset',
           target: assetPath,
           assetPath,
@@ -193,7 +229,7 @@ function NavigationHandler() {
       const skillFile = skillFileFromHash(window.location.hash);
       if (skillFile) {
         mark('ok/nav/hash-change', { docName: null, kind: 'skill-file' });
-        openTargetTransition({
+        openHashTarget({
           kind: 'skill-file',
           target: `${skillFile.scope}/${skillFile.name}/${skillFile.path}`,
           scope: skillFile.scope,
@@ -210,7 +246,7 @@ function NavigationHandler() {
       // sentinel check must run BEFORE the null-docName clear.
       if (isContentRootHash(window.location.hash)) {
         mark('ok/nav/hash-change', { docName: null, kind: 'folder' });
-        openTargetTransition({ kind: 'folder', target: '', folderPath: '' });
+        openHashTarget({ kind: 'folder', target: '', folderPath: '' });
         return;
       }
       const docName = docNameFromHash(window.location.hash);
@@ -237,10 +273,14 @@ function NavigationHandler() {
       }
       const target = withLargeFileOpenGuard(downgradeFolderIndexForHashNav(resolved), pageMeta);
       mark('ok/nav/hash-change', { docName, kind: target.kind });
-      openTargetTransition(target);
+      openHashTarget(target);
     }
+    window.addEventListener('popstate', onPopState);
     window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('hashchange', onHashChange);
+    };
   }, [
     clearTarget,
     folderPaths,
@@ -284,8 +324,7 @@ function InstallInClaudeDesktopTrigger() {
     if (!next && window.location.hash === INSTALL_DIALOG_HASH) {
       // Clear the fragment so closing doesn't instantly re-open on refresh.
       // Uses history.replaceState to avoid adding a history entry.
-      const { pathname, search } = window.location;
-      window.history.replaceState(null, '', `${pathname}${search}`);
+      replaceHashWithoutNavigation('');
     }
   }
 
@@ -404,6 +443,7 @@ function NewItemShortcutHandler() {
           metaKey: e.metaKey,
           ctrlKey: e.ctrlKey,
           altKey: e.altKey,
+          shiftKey: e.shiftKey,
           key: e.key,
         })
       ) {

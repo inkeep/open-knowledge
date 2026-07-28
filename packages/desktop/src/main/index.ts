@@ -2647,6 +2647,9 @@ async function runApplicationMenuRefresh(): Promise<void> {
             getLogger('lifecycle').error({ err }, 'desktop self-uninstall flow failed');
           })
       : undefined,
+    // View menu history traversal uses the same focused-renderer action channel.
+    onNavigateBack: () => sendMenuActionToFocused('navigate-back'),
+    onNavigateForward: () => sendMenuActionToFocused('navigate-forward'),
     // File menu state-aware items. activeTarget drives enable/disable;
     // per-item handlers fire `ok:menu-action` to the focused renderer which
     // already knows the current scope (sidebar selection + editor

@@ -15,7 +15,8 @@
  *   - divergent click-while-open semantics: pill click is a no-op when the
  *     palette is open (mirrors the legacy icon); ⌘K-while-open toggles
  *     closed (preserves the global-shortcut contract)
- *   - removal of the legacy Search ToolbarButton from SidebarHeader
+ *   - project actions live with the project-root row rather than
+ *     SidebarHeader; the legacy Search ToolbarButton remains absent
  *   - accessible-name calculation returns "Search" with no aria-label
  *     override; lucide icon carries aria-hidden
  *   - compositional journey: discovery → click → query → result selection
@@ -29,9 +30,9 @@
  *     suppressed by the pill overrides
  *   - the pill follows the sidebar offcanvas during collapse
  *   - web-mode 'Files' label still renders alongside the pill
- *   - empty-workspace path (hasFolders === false) renders the pill
- *     alongside the 4-button toolbar — the Tree view options trigger is
- *     state-independent (its Show group always has content)
+ *   - empty-workspace path (hasFolders === false) renders the pill while the
+ *     project-root action row retains all 4 controls — the Tree view options
+ *     trigger is state-independent (its Show group always has content)
  *   - the multi-scope search backend still yields results when the pill
  *     opens the palette (no regression in palette functionality)
  *   - the locked `data-telemetry-event="ok.sidebar.search_pill.click"`
@@ -63,6 +64,11 @@ const pill = (page: Page) => page.locator('[data-telemetry-event="ok.sidebar.sea
 const cmdkRoot = (page: Page) => page.locator('[cmdk-root]');
 const cmdkInput = (page: Page) => page.locator('[data-slot="command-input"]');
 const sidebarHeader = (page: Page) => page.locator('[data-slot="sidebar-header"]');
+const projectRootToolbar = (page: Page) =>
+  page
+    .locator('[data-sidebar-root-context]')
+    .locator('xpath=ancestor::*[@data-slot="sidebar-group"][1]')
+    .getByTestId('sidebar-toolbar');
 
 async function deletePathIfExists(baseURL: string, kind: 'file' | 'folder', path: string) {
   const response = await fetch(`${baseURL}/api/delete-path`, {
@@ -263,16 +269,15 @@ test.describe('sidebar-search-pill — discovery, click, keyboard, semantics', (
     await expect(cmdkRoot(page)).toBeHidden({ timeout: 2_000 });
   });
 
-  test('legacy Search ToolbarButton is gone from SidebarHeader (no two redundant entry points)', async ({
+  test('project actions live under the project-root row and Search stays out of SidebarHeader', async ({
     page,
     api,
     workerServer,
   }) => {
-    // Seed a doc inside a folder so hasFolders → true → all four toolbar
-    // buttons render. The pill button ALSO has accessible name "Search"
-    // — but lives OUTSIDE SidebarHeader, so we scope our query to the
-    // header container. Seed a root-level template so the smart-hide gate
-    // around "New from template" evaluates true (the button hides when
+    // Seed a doc inside a folder so hasFolders → true → all four project-root
+    // actions render. The pill button ALSO has accessible name "Search" but
+    // lives outside SidebarHeader. Seed a root-level template so the smart-hide
+    // gate around "New from template" evaluates true (the button hides when
     // zero templates resolve at the root cascade).
     await api.seedDocs([{ name: 'q006', markdown: '# q006\n\nBody.' }]);
     const folderRes = await fetch(`${workerServer.baseURL}/api/create-folder`, {
@@ -305,11 +310,17 @@ test.describe('sidebar-search-pill — discovery, click, keyboard, semantics', (
       timeout: 15_000,
     });
 
-    // No button with accessible name 'Search' exists inside SidebarHeader.
+    // SidebarHeader no longer owns the project action toolbar, and the legacy
+    // Search ToolbarButton remains absent.
+    await expect(sidebarHeader(page).getByTestId('sidebar-toolbar')).toHaveCount(0);
     const searchInsideHeader = sidebarHeader(page).getByRole('button', { name: 'Search' });
     await expect(searchInsideHeader).toHaveCount(0);
 
-    // The four expected toolbar buttons are present. `'New from template'`
+    // The toolbar is nested under the project-root group, beside the root row.
+    const toolbar = projectRootToolbar(page);
+    await expect(toolbar).toBeVisible();
+
+    // The four expected project actions are present. `'New from template'`
     // uniquely identifies the FilePlus button — no other toolbar button
     // has that substring in its accessible name. Label is ASCII-only by
     // codebase microcopy policy (U+2026 reserved for macOS native menus
@@ -319,14 +330,10 @@ test.describe('sidebar-search-pill — discovery, click, keyboard, semantics', (
     // Chromium drops a trailing U+2026 from the computed accessible name
     // while macOS preserves it — so the pattern is portable even if a
     // future label gains a trailing ellipsis.
-    await expect(
-      sidebarHeader(page).getByRole('button', { name: 'Tree view options' }),
-    ).toBeVisible();
-    await expect(sidebarHeader(page).getByRole('button', { name: 'New file' })).toBeVisible();
-    await expect(
-      sidebarHeader(page).getByRole('button', { name: 'New from template' }),
-    ).toBeVisible();
-    await expect(sidebarHeader(page).getByRole('button', { name: 'New folder' })).toBeVisible();
+    await expect(toolbar.getByRole('button', { name: 'Tree view options' })).toBeVisible();
+    await expect(toolbar.getByRole('button', { name: 'New file' })).toBeVisible();
+    await expect(toolbar.getByRole('button', { name: 'New from template' })).toBeVisible();
+    await expect(toolbar.getByRole('button', { name: 'New folder' })).toBeVisible();
   });
 
   test('pill has accessible name "Search" with no aria-label override; lucide icon is aria-hidden', async ({
@@ -844,7 +851,7 @@ test.describe('sidebar-search-pill — Electron host & sidebar-state', () => {
       .toBe('expanded');
   });
 
-  test('empty workspace — pill renders alongside the 4-button toolbar (Tree view options trigger is state-independent)', async ({
+  test('empty workspace — pill and the project-root 4-button toolbar remain available', async ({
     page,
     api,
     workerServer,
@@ -858,8 +865,8 @@ test.describe('sidebar-search-pill — Electron host & sidebar-state', () => {
 
       // Seed a root template so the smart-hide gate around "New from
       // template" resolves true — that button hides when zero templates
-      // resolve at the root cascade (see the "legacy Search ToolbarButton
-      // is gone" test). Without an explicit seed this test passed only when
+      // resolve at the root cascade (see the project-actions placement test
+      // above). Without an explicit seed this test passed only when
       // an earlier same-worker test happened to leave a template behind;
       // seeding here makes the 3-button assertion deterministic.
       const templateRes = await fetch(`${workerServer.baseURL}/api/template`, {
@@ -879,24 +886,20 @@ test.describe('sidebar-search-pill — Electron host & sidebar-state', () => {
       await page.setViewportSize(DESKTOP_VIEWPORT);
       await page.goto('/');
 
-      // Four core toolbar buttons present. ASCII-only substring match for
-      // `New from template` — see the comment in the "legacy Search
-      // ToolbarButton is gone from SidebarHeader" test above for the
-      // cross-platform accessible-name rationale.
-      await expect(sidebarHeader(page).getByRole('button', { name: 'New file' })).toBeVisible({
-        timeout: 15_000,
-      });
-      await expect(
-        sidebarHeader(page).getByRole('button', { name: 'New from template' }),
-      ).toBeVisible();
-      await expect(sidebarHeader(page).getByRole('button', { name: 'New folder' })).toBeVisible();
+      const toolbar = projectRootToolbar(page);
+      await expect(toolbar).toBeVisible({ timeout: 15_000 });
+
+      // Four core project actions are present. ASCII-only substring match for
+      // `New from template` — see the project-actions placement test above
+      // for the cross-platform accessible-name rationale.
+      await expect(toolbar.getByRole('button', { name: 'New file' })).toBeVisible();
+      await expect(toolbar.getByRole('button', { name: 'New from template' })).toBeVisible();
+      await expect(toolbar.getByRole('button', { name: 'New folder' })).toBeVisible();
 
       // Tree view options trigger stays VISIBLE with zero folders — its Show
       // group is folder-state-independent, so the trigger no longer smart-
       // hides with the Expand/Collapse-all commands.
-      await expect(
-        sidebarHeader(page).getByRole('button', { name: 'Tree view options' }),
-      ).toBeVisible();
+      await expect(toolbar.getByRole('button', { name: 'Tree view options' })).toBeVisible();
 
       // Pill renders normally.
       await expect(pill(page)).toBeVisible();

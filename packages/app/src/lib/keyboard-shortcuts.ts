@@ -219,6 +219,22 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     ],
   },
   {
+    id: 'navigate-back',
+    category: 'navigation',
+    title: msg`Back`,
+    description: msg`Traverse OpenKnowledge navigation history backward.`,
+    scope: msg`OK Desktop`,
+    bindings: [{ mac: '⌘ [', windowsLinux: 'Alt ←' }],
+  },
+  {
+    id: 'navigate-forward',
+    category: 'navigation',
+    title: msg`Forward`,
+    description: msg`Traverse OpenKnowledge navigation history forward.`,
+    scope: msg`OK Desktop`,
+    bindings: [{ mac: '⌘ ]', windowsLinux: 'Alt →' }],
+  },
+  {
     id: 'tab-new',
     category: 'navigation',
     title: msg`New tab`,

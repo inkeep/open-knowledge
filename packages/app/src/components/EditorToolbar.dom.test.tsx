@@ -1,8 +1,10 @@
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 
@@ -77,6 +79,23 @@ describe('EditorToolbar runtime layout', () => {
     const sourceButton = screen.getByRole('radio', { name: 'Markdown source' });
     const middleCell = sourceButton.closest('.pointer-events-auto.flex.justify-center');
     expect(middleCell).toBeTruthy();
+  });
+
+  test('renders the document-panel shortcut as a Kbd keycap', async () => {
+    const user = userEvent.setup();
+    await renderToolbar();
+
+    await user.hover(
+      screen.getByRole('button', {
+        name: `Hide panel (${formatShortcutLabel('toggle-document-panel')})`,
+      }),
+    );
+    const tooltip = await screen.findByRole('tooltip', {
+      name: `Hide panel ${formatShortcutLabel('toggle-document-panel')}`,
+    });
+    expect(tooltip.querySelector('[data-slot="kbd"]')?.textContent).toBe(
+      formatShortcut('toggle-document-panel'),
+    );
   });
 
   test('a tree-hidden doc gets the not-in-sidebar indicator beside the breadcrumb', async () => {

@@ -25,6 +25,7 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { formatShortcutBinding, formatShortcutBindingLabel } from '@/lib/keyboard-shortcuts';
 import type { ShareTargetInput } from '@/lib/share/run-share-action';
 
 // ShareButton mounts a Radix Tooltip + Popover (focus-scope) which reach for
@@ -165,6 +166,12 @@ describe('ShareButton', () => {
     // `initialCopied` (which keys off `autoCopyFailed`).
     expect(screen.getByRole('button', { name: 'Copy' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Copied!' })).toBeNull();
+    const copyBinding = { mac: '⌘ C', windowsLinux: 'Ctrl C' };
+    const copyKeycap = screen
+      .getByTestId('share-button-popover')
+      .querySelector('[data-slot="kbd"]');
+    expect(copyKeycap?.textContent).toBe(formatShortcutBinding(copyBinding));
+    expect(copyKeycap?.getAttribute('aria-label')).toBe(formatShortcutBindingLabel(copyBinding));
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/share/construct-url', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

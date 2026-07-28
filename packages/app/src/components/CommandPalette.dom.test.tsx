@@ -980,6 +980,8 @@ describe('Cmd+K menu-parity backfill', () => {
   // Each id-backed backfill row renders under a matching query and emits its
   // OkMenuAction id on the bus when selected.
   const ID_BACKED: Array<{ testid: string; query: string; id: string }> = [
+    { testid: 'command-palette-navigate-back', query: 'back', id: 'navigate-back' },
+    { testid: 'command-palette-navigate-forward', query: 'forward', id: 'navigate-forward' },
     {
       testid: 'command-palette-new-from-template',
       query: 'new from template',
@@ -1041,6 +1043,18 @@ describe('Cmd+K menu-parity backfill', () => {
       expect(busActions).toContain(id);
     });
   }
+
+  test('navigation-history rows expose their native platform shortcuts on desktop', async () => {
+    await renderPalette({ bridge: createBridge() });
+
+    await setQuery('back');
+    expect(screen.getByTestId('command-palette-navigate-back').textContent).toMatch(/⌘ \[|Alt ←/);
+
+    await setQuery('forward');
+    expect(screen.getByTestId('command-palette-navigate-forward').textContent).toMatch(
+      /⌘ \]|Alt →/,
+    );
+  });
 
   // Ratchet C completeness: every id classified as a palette command (shared with
   // the id-classification ratchet via command-menu-parity.test-helper) must be
@@ -1153,6 +1167,10 @@ describe('Cmd+K menu-parity backfill', () => {
     expect(screen.queryByTestId('command-palette-check-for-updates')).toBeNull();
     await setQuery('rename');
     expect(screen.queryByTestId('command-palette-rename')).toBeNull();
+    await setQuery('back');
+    expect(screen.queryByTestId('command-palette-navigate-back')).toBeNull();
+    await setQuery('forward');
+    expect(screen.queryByTestId('command-palette-navigate-forward')).toBeNull();
   });
 
   test('AC5: the sidebar toggle label reflects view-menu-state', async () => {

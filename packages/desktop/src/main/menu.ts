@@ -6,7 +6,8 @@
  *     Recent project submenu, Close Window
  *   - Edit: macOS defaults (Undo/Redo/Cut/Copy/Paste/Select All)
  *   - View: Reload / Force Reload / zoom / fullscreen always; Toggle DevTools
- *     gated on `showDevToolsMenu` (dev + beta only) — Electron built-in roles
+ *     gated on `showDevToolsMenu` (dev + beta only) — Electron built-in roles;
+ *     Back / Forward navigation history
  *   - Window: macOS defaults (Minimize / Zoom / Bring to Front)
  *
  * Deferred to later work:
@@ -49,6 +50,8 @@ import type { EditorActiveTargetSnapshot } from '../shared/ipc-channels.ts';
 import { promptForExistingFolder, promptForExistingMarkdownFile } from './dialog-helpers.ts';
 
 export interface MenuDeps {
+  onNavigateBack?(): void;
+  onNavigateForward?(): void;
   /** `app.name` — the running app's name, used for the macOS App menu label. */
   appName: string;
   /**
@@ -383,6 +386,14 @@ interface MenuCommandBinding {
 }
 
 const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
+  'navigate-back': {
+    click: (d) => () => d.onNavigateBack?.(),
+    enabled: (d) => d.onNavigateBack !== undefined,
+  },
+  'navigate-forward': {
+    click: (d) => () => d.onNavigateForward?.(),
+    enabled: (d) => d.onNavigateForward !== undefined,
+  },
   'new-file': { click: (d) => () => d.onNewFile?.(), enabled: (d) => d.onNewFile !== undefined },
   'new-folder': {
     click: (d) => () => d.onNewFolder?.(),
@@ -799,6 +810,8 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
     {
       label: 'View',
       submenu: [
+        ...leafOf('view-history'),
+        { type: 'separator' as const },
         // Reload / Force Reload ship on every channel; Toggle Developer Tools is
         // gated on `showDevToolsMenu` (dev + beta) — Electron built-in roles.
         { role: 'reload' as const },

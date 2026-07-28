@@ -204,7 +204,7 @@ import {
   hashFromAssetPath,
   hashFromDocName,
   hashFromFolderPath,
-  replaceHashWithoutNavigation,
+  pushHashWithoutNavigation,
 } from '@/lib/doc-hash';
 import { emitDocumentsChanged, subscribeToDocumentsChanged } from '@/lib/documents-events';
 import {
@@ -1269,13 +1269,13 @@ export function FileTree({
       openTarget(navigationTargetForDocument(target.docName, target.size), {
         tabBehavior: 'replace-active',
       });
-      replaceHashWithoutNavigation(hashFromDocName(target.docName));
+      pushHashWithoutNavigation(hashFromDocName(target.docName));
     } else if (target.kind === 'folder') {
       openTarget(
         { kind: 'folder', target: target.folderPath, folderPath: target.folderPath },
         { tabBehavior: 'replace-active' },
       );
-      replaceHashWithoutNavigation(hashFromFolderPath(target.folderPath));
+      pushHashWithoutNavigation(hashFromFolderPath(target.folderPath));
     } else {
       const currentEntries = target.entries ?? documentsRef.current;
       const entry = currentEntries.find(
@@ -1291,7 +1291,7 @@ export function FileTree({
         },
         { tabBehavior: 'replace-active' },
       );
-      replaceHashWithoutNavigation(hashFromAssetPath(target.assetPath));
+      pushHashWithoutNavigation(hashFromAssetPath(target.assetPath));
     }
     notifySidebarFileSelected();
   }
@@ -1314,7 +1314,7 @@ export function FileTree({
         },
         { tabBehavior: 'replace-active' },
       );
-      replaceHashWithoutNavigation(action.hash);
+      pushHashWithoutNavigation(action.hash);
       notifySidebarFileSelected();
       return;
     }
@@ -1336,7 +1336,7 @@ export function FileTree({
     });
     if (okTarget?.kind === 'asset') {
       openTarget(okTarget, { tabBehavior: 'replace-active' });
-      replaceHashWithoutNavigation(hashFromAssetPath(okTarget.assetPath));
+      pushHashWithoutNavigation(hashFromAssetPath(okTarget.assetPath));
       notifySidebarFileSelected();
       return;
     }

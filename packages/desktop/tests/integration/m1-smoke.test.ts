@@ -598,12 +598,8 @@ describe('M1 smoke', () => {
     expect(desktopMembers.size).toBeGreaterThan(0);
     expect(coreMembers.size).toBeGreaterThan(0);
     expect(appMembers.size).toBeGreaterThan(0);
-    // 26 + 2 worktree actions (`new-worktree`, `switch-worktree`) for the
-    // worktree selector (worktree = window) + `report-bug` and
-    // `send-feedback` (Help menu) + 3 sidebar visibility toggles
-    // (`toggle-show-ok-folders`, `toggle-show-only-markdown-files`,
-    // `toggle-show-skills-section`).
-    expect(desktopMembers.size).toBe(33);
+    // 26 baseline + 2 worktree + 2 Help + 3 sidebar + 2 navigation actions.
+    expect(desktopMembers.size).toBe(35);
     expect(desktopMembers).toEqual(coreMembers);
     expect(desktopMembers).toEqual(appMembers);
     // Pin the visibility toggles explicitly: a bare count check wouldn't
@@ -615,6 +611,8 @@ describe('M1 smoke', () => {
     expect(desktopMembers.has('new-worktree')).toBe(true);
     expect(desktopMembers.has('switch-worktree')).toBe(true);
     expect(desktopMembers.has('report-bug')).toBe(true);
+    expect(desktopMembers.has('navigate-back')).toBe(true);
+    expect(desktopMembers.has('navigate-forward')).toBe(true);
   });
 
   test('M1 invariant: EntryPoint / OkProjectEntryPoint literal-union drift catcher', async () => {

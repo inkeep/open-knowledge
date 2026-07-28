@@ -3,6 +3,7 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import { ListPlus, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 import { Button } from '@/components/ui/button.tsx';
+import { Kbd } from '@/components/ui/kbd';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { EditorModeValue } from '@/editor/use-editor-mode.ts';
 import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
@@ -173,11 +174,8 @@ export function EditorToolbar({
             </TooltipTrigger>
           </Button>
           <TooltipContent side="bottom">
-            {isPanelCollapsed ? (
-              <Trans>Show panel ({panelShortcut})</Trans>
-            ) : (
-              <Trans>Hide panel ({panelShortcut})</Trans>
-            )}
+            <span>{isPanelCollapsed ? t`Show panel` : t`Hide panel`}</span>{' '}
+            <Kbd aria-label={panelShortcutLabel}>{panelShortcut}</Kbd>
           </TooltipContent>
         </Tooltip>
       </div>

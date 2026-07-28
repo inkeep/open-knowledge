@@ -90,6 +90,8 @@ export const MENU_LABELS = {
   sidebarHide: 'Hide sidebar',
   docPanelShow: 'Show document panel',
   docPanelHide: 'Hide document panel',
+  back: 'Back',
+  forward: 'Forward',
   terminalShow: 'Show Terminal',
   terminalHide: 'Hide Terminal',
   // Palette form for the install command, whose native-menu leaf renders a
