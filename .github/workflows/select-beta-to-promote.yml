@@ -37,15 +37,35 @@ name: Select beta to promote
 # trigger is an additive fast-path so an already-eligible beta promotes promptly
 # when a Copybara mirror commit lands in-hours.
 #
-# Weekend latency: the cron is Mon-Fri, so a beta that crosses 24h over the
-# weekend promotes on the next weekday tick — a Friday-published beta can be up
-# to ~71h online before its Monday-morning promotion. This is the intended "no
-# weekend promotions" behavior; workflow_dispatch (which bypasses the hours gate)
-# is the escape hatch for an urgent out-of-hours promotion.
+# Weekend latency: the in-script gate is Mon-Fri, so a beta that crosses 24h
+# over the weekend promotes on the next weekday tick — a Friday-published beta
+# can be up to ~71h online before its Monday-morning promotion. This is the
+# intended "no weekend promotions" behavior for the standard soak tier;
+# workflow_dispatch (which bypasses the hours gate) is the escape hatch for an
+# urgent out-of-hours promotion.
+#
+# SOAK TIERS. Two are defined; only one is reachable today.
+#   standard — 24h online, dispatched inside the window above. Every promotion
+#              uses this.
+#   fast     — 1h online, around the clock, for a cut that is BOTH patch-only
+#              AND carries a linked bug fix. Both conjuncts are load-bearing:
+#              patch-only alone covers most stable transitions, so on its own it
+#              would be a blanket soak reduction rather than a bug lane.
+# This is a different axis from the DMG-smoke fast tier below, which asks
+# whether an under-soaked beta may promote early on a clean smoke. The two are
+# reported as separate step outputs (`soak_tier` and `tier`) and are not wired
+# to each other.
+#
+# The fast SOAK tier is NOT ARMED. `FAST_TIER_ARMED` on the select step is a
+# literal "false", so the script computes and logs the tier it would choose and
+# then always reports soak_tier=standard. SOAK_SECONDS stays 86400 on every path
+# and the dispatched target is always the 24h selection, so which betas promote
+# and when is unchanged. Arming is an owner decision — the "Soak tiers" section
+# of RELEASES.md is the operator-facing record.
 #
 # DST correctness: GitHub Actions cron is UTC and ignores daylight saving, so a
-# hard-coded "9am ET" would drift an hour twice a year. The cron fires hourly
-# across the UTC band that brackets the ET/PT window year-round; the
+# hard-coded "9am ET" would drift an hour twice a year. The cron therefore does
+# not encode the window at all — it fires around the clock, and the
 # AUTHORITATIVE business-hours decision is made in-script against the
 # America/New_York clock (see the "Business-hours gate" step), so the window
 # stays exact through DST transitions. 4pm PT == 7pm ET == 19:00 ET, so the ET
@@ -68,16 +88,19 @@ name: Select beta to promote
 
 on:
   schedule:
-    # Hourly at :17 (off the :00 scheduler spike), 13:00-23:59 UTC, Mon-Fri.
-    # This UTC band brackets the ET/PT window across DST (9am ET = 13:00 UTC
-    # under EDT / 14:00 UTC under EST; 4pm PT = 23:00 UTC under PDT / 00:00 UTC
-    # under PST). The in-script ET gate is authoritative and rejects any tick
-    # outside 09:00-19:00 ET for the current DST state, so band-edge over-firing
-    # is a clean no-op. Ticks land at :17, so up to ~1h can elapse before a
-    # newly-soaked beta is noticed, and the final ~40 min before the window
-    # closes falls between the last in-window tick and the boundary; both are
-    # covered by the next in-window tick or the push fast-path.
-    - cron: "17 13-23 * * 1-5"
+    # Every 10 minutes, around the clock. A strict superset of the previous
+    # hourly :17 weekday-band tick, so nothing that used to fire stops firing.
+    # Two reasons for the widening: a 1h fast-tier soak only means ~1h if the
+    # evaluator looks more often than hourly, and the soak-tier decision has to
+    # be observable at every hour of every day, not only inside the window. The
+    # offsets stay off :00 to avoid the scheduler spike.
+    #
+    # Cron here is UTC and DST-blind BY DESIGN — it no longer encodes the window
+    # at all. The AUTHORITATIVE business-hours decision is still made in-script
+    # against the America/New_York clock (see the "Business-hours gate" step), so
+    # the window stays exact through DST transitions and an out-of-window tick is
+    # a clean evaluate-and-no-op.
+    - cron: "7,17,27,37,47,57 * * * *"
   # Fast-path: re-evaluate the gate when Copybara mirrors a commit to main so an
   # already-eligible beta promotes promptly in-hours. Additive to the schedule;
   # the same in-script business-hours + soak gate applies.
@@ -148,8 +171,12 @@ jobs:
             echo "open=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Checkout / setup-node / select deliberately carry NO hours gate. The
+      # soak-tier decision has to be computed and logged on every tick,
+      # including outside the window, and gating the selector on the clock
+      # would make that impossible. Only the dispatch step below is gated, so
+      # an out-of-window tick evaluates and then does nothing.
       - name: Checkout (need full tag history for beta resolution)
-        if: steps.hours.outputs.open == 'true'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
@@ -159,25 +186,41 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node
-        if: steps.hours.outputs.open == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
 
       - name: Select the beta to promote
         id: select
-        if: steps.hours.outputs.open == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SOAK_SECONDS: "86400" # 24h online soak
-        # Writes target= to GITHUB_OUTPUT (empty target => no-op). Exits non-zero
-        # (fails the job) on any non-404 gh/git infra error — a fail-loud
-        # retry-next-tick, never a silent skip. Logic + tests:
-        # .github/scripts/select-beta-to-promote.{mjs,test.mjs}.
+          SOAK_SECONDS: "86400" # 24h online soak — the ONLY soak that can set target
+          # THE ARMING SWITCH, and the only edit that turns the fast soak tier
+          # on. While this is "false" the script computes and logs the tier it
+          # would choose but always returns soak_tier=standard, so promotion
+          # keeps using the 24h soak above and this workflow behaves exactly as
+          # it did before the tier existed. Flipping it to "true" requires a
+          # reviewed PR — read the "Soak tiers" section of RELEASES.md first:
+          # arming has prerequisites, and it is an owner decision.
+          FAST_TIER_ARMED: "false"
+          # Optional. Absent (the current state) the bug-link lookup reports
+          # "unresolvable" and the tier degrades to standard, which is the
+          # expected steady state until an operator provisions the secret.
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+        # Writes target=, tier=, soak_tier= (plus the predicate inputs) to
+        # GITHUB_OUTPUT; an empty target => no-op. Exits non-zero (fails the job)
+        # on any non-404 gh/git infra error — a fail-loud retry-next-tick, never
+        # a silent skip. The soak-tier predicate is the one deliberate
+        # exception: it degrades to the slower tier rather than failing the tick.
+        # Logic + tests: .github/scripts/select-beta-to-promote.{mjs,test.mjs}.
         run: node .github/scripts/select-beta-to-promote.mjs
 
+      # The hours gate is soak-tier-conditional: a fast-tier cut may dispatch
+      # outside the window, a standard-tier cut may not. With the tier unarmed
+      # the script can never emit soak_tier=fast, so this reduces to the previous
+      # condition — `open == 'true' && target != ''` — on every tick.
       - name: Guard against an in-flight promotion, then dispatch
-        if: steps.hours.outputs.open == 'true' && steps.select.outputs.target != ''
+        if: (steps.hours.outputs.open == 'true' || steps.select.outputs.soak_tier == 'fast') && steps.select.outputs.target != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET: ${{ steps.select.outputs.target }}
