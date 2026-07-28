@@ -81,7 +81,7 @@ Before writing the skill, run the scenario WITHOUT it and capture what the agent
 does wrong — verbatim, including its rationalizations ("the test is trivial so I
 skipped it"). Those rationalizations are the exact loopholes the skill body must
 close. If you have a running server, use the agent simulator
-(`cd packages/app && bun run src/server/agent-sim.ts`) as the executor; otherwise
+(`cd packages/app && pnpm exec tsx src/server/agent-sim.ts`) as the executor; otherwise
 reason through the baseline transcript with the user. Skip this stage for plain
 reference skills.
 
