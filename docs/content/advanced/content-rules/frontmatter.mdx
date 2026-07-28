@@ -4,7 +4,7 @@ icon: LuBraces
 description: Validate document frontmatter against standard JSON Schema files — scoped to folders with globs, with schema-driven selects in the property panel and a no-code schema editor.
 ---
 
-Frontmatter schemas is a content-rules linter that validates each document's YAML frontmatter against [JSON Schema](https://json-schema.org/) (draft-07) files. The schema files are plain, portable JSON Schema — nothing OK-specific in them — so the same files work with any external tool that understands the standard.
+Frontmatter schemas is a content-rules linter that validates each document's YAML frontmatter against [JSON Schema](https://json-schema.org/) files. The schema files are plain, portable JSON Schema — nothing OK-specific in them — so the same files work with any external tool that understands the standard.
 
 This page covers the schema mappings, the schema files, the no-code editors, and what agents see. For the linter-agnostic parts — where problems appear, the Problems panel, `ok lint`, and agent advisories — see the [content rules overview](/docs/advanced/content-rules/overview).
 
@@ -33,9 +33,28 @@ contentRules:
 
 ## Schema files
 
-Standard draft-07 only: an absent `$schema` is treated as draft-07, and a file declaring another dialect is skipped with a configuration problem. A schema file that is missing, malformed, or refused by the validator is also a **configuration problem** — it shows at the top of the Problems panel's project scope, in `ok lint` warnings, and on the MCP `lint` tool, never as a per-doc diagnostic.
+A schema file that is missing, malformed, or refused by the validator is a **configuration problem** — it shows at the top of the Problems panel's project scope, in `ok lint` warnings, and on the MCP `lint` tool, never as a per-doc diagnostic.
 
 A doc with no frontmatter block (or unparsable YAML) validates as an empty object — so `required` fields still report on brand-new docs. The reverse also works: a schema with `"maxProperties": 0` enforces that docs carry no frontmatter at all.
+
+### Dialects
+
+Four dialects are supported, each validated against its own rules:
+
+| `$schema` | Dialect |
+| --- | --- |
+| `http://json-schema.org/draft-06/schema#` | draft-06 |
+| `http://json-schema.org/draft-07/schema#` | draft-07 |
+| `https://json-schema.org/draft/2019-09/schema` | 2019-09 |
+| `https://json-schema.org/draft/2020-12/schema` | 2020-12 |
+
+Each is accepted in `http` or `https` form, with or without the trailing `#`. An **absent `$schema` is treated as draft-07**, and that is also what **New schema** scaffolds — the widest-compatibility choice, and the friendly subset the Fields editor writes is spelled identically in every dialect. A file declaring anything else (draft-04 and older) is skipped with a configuration problem.
+
+Three things worth knowing:
+
+- **`format` always asserts.** From 2019-09 on, the spec demotes `format` to an annotation that validators may ignore. OK asserts it on every dialect instead, so raising a schema's `$schema` never silently switches off format checks it already had. This is deliberately stricter than the spec.
+- **The Fields editor doesn't model `prefixItems`.** 2020-12 spells tuple arrays as `prefixItems`, which the no-code editor leaves alone — it appears in the "advanced rules" note alongside `allOf` and friends, and survives every edit verbatim. Uniform arrays (`items`) are modeled as usual.
+- **draft-06 is validated by the draft-07 engine.** draft-07 only added keywords, so every draft-06 construct behaves identically — but the reverse also holds: keywords draft-07 introduced (`if`/`then`/`else`, `readOnly`, `writeOnly`) are honored in a schema that declares draft-06, where a strict draft-06 validator would ignore them. Harmless unless you rely on another tool ignoring them.
 
 ## What a finding looks like
 
@@ -123,4 +142,4 @@ The server resolves the globs; agents never evaluate `appliesTo` themselves. And
 - [Content rules overview](/docs/advanced/content-rules/overview): where problems show up, the Problems panel, `ok lint`, and agents
 - [markdownlint](/docs/advanced/content-rules/markdownlint): the sibling linter for markdown style
 - [Configuration reference](/docs/reference/configuration): `config.yml` and what's shared via git
-- [JSON Schema draft-07](https://json-schema.org/specification-links#draft-7): the schema dialect
+- [JSON Schema specification links](https://json-schema.org/specification-links): the supported dialects

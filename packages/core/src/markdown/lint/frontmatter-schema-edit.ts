@@ -1,4 +1,4 @@
-import { DRAFT07_SCHEMA_URIS } from './frontmatter-validate.ts';
+import { CANONICAL_SCHEMA_DIALECT_URIS, DEFAULT_SCHEMA_DIALECT } from './frontmatter-validate.ts';
 
 export interface FrontmatterFieldConstraint {
   type?: 'string' | 'number' | 'boolean' | 'array' | 'object' | null;
@@ -14,7 +14,8 @@ export interface FrontmatterFieldConstraint {
 export type SchemaParentPathSegment = string | { items: true };
 
 export function emptyFrontmatterSchemaText(): string {
-  return `${JSON.stringify({ $schema: DRAFT07_SCHEMA_URIS[0], type: 'object' }, null, 2)}\n`;
+  const $schema = CANONICAL_SCHEMA_DIALECT_URIS[DEFAULT_SCHEMA_DIALECT];
+  return `${JSON.stringify({ $schema, type: 'object' }, null, 2)}\n`;
 }
 
 export function isToolManagedSchemaPath(file: string): boolean {

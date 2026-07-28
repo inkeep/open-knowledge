@@ -1,4 +1,7 @@
 import Ajv, { type ValidateFunction } from 'ajv';
+import Ajv2019 from 'ajv/dist/2019.js';
+import Ajv2020 from 'ajv/dist/2020.js';
+import type AjvCore from 'ajv/dist/core.js';
 import addFormats from 'ajv-formats';
 import { isMap, isScalar, parseDocument } from 'yaml';
 import {
@@ -32,29 +35,88 @@ export function selectApplicableFrontmatterSchemas(
   return selected;
 }
 
-export const DRAFT07_SCHEMA_URIS = [
-  'http://json-schema.org/draft-07/schema#',
-  'http://json-schema.org/draft-07/schema',
-  'https://json-schema.org/draft-07/schema#',
-  'https://json-schema.org/draft-07/schema',
-] as const;
+export type FrontmatterSchemaDialect = 'draft-06' | 'draft-07' | '2019-09' | '2020-12';
 
-export function isSupportedSchemaDialect(schema: Record<string, unknown>): boolean {
-  const declared = schema.$schema;
-  if (declared === undefined) return true;
-  return (
-    typeof declared === 'string' && (DRAFT07_SCHEMA_URIS as readonly string[]).includes(declared)
-  );
+export const CANONICAL_SCHEMA_DIALECT_URIS: Record<FrontmatterSchemaDialect, string> = {
+  'draft-06': 'http://json-schema.org/draft-06/schema#',
+  'draft-07': 'http://json-schema.org/draft-07/schema#',
+  '2019-09': 'https://json-schema.org/draft/2019-09/schema',
+  '2020-12': 'https://json-schema.org/draft/2020-12/schema',
+};
+
+export const SUPPORTED_SCHEMA_DIALECTS = Object.keys(
+  CANONICAL_SCHEMA_DIALECT_URIS,
+) as readonly FrontmatterSchemaDialect[];
+
+export const DEFAULT_SCHEMA_DIALECT: FrontmatterSchemaDialect = 'draft-07';
+
+const DIALECT_BY_NORMALIZED_URI = new Map<string, FrontmatterSchemaDialect>(
+  SUPPORTED_SCHEMA_DIALECTS.map((dialect) => [
+    normalizeDialectUri(CANONICAL_SCHEMA_DIALECT_URIS[dialect]),
+    dialect,
+  ]),
+);
+
+function normalizeDialectUri(uri: string): string {
+  return uri.replace(/^https?:\/\//, '').replace(/#$/, '');
 }
 
-let ajvInstance: Ajv | null = null;
+export function resolveFrontmatterSchemaDialect(
+  schema: Record<string, unknown>,
+): FrontmatterSchemaDialect | null {
+  const declared = schema.$schema;
+  if (declared === undefined) return DEFAULT_SCHEMA_DIALECT;
+  if (typeof declared !== 'string') return null;
+  return DIALECT_BY_NORMALIZED_URI.get(normalizeDialectUri(declared)) ?? null;
+}
 
-function getAjv(): Ajv {
-  if (!ajvInstance) {
-    ajvInstance = new Ajv({ allErrors: true, strict: false });
-    addFormats(ajvInstance);
+export function isSupportedSchemaDialect(schema: Record<string, unknown>): boolean {
+  return resolveFrontmatterSchemaDialect(schema) !== null;
+}
+
+const ajvByDialect = new Map<FrontmatterSchemaDialect, AjvCore>();
+
+function assertNeverDialect(dialect: never): never {
+  throw new Error(`Unhandled FrontmatterSchemaDialect: ${JSON.stringify(dialect as unknown)}`);
+}
+
+function getAjv(dialect: FrontmatterSchemaDialect): AjvCore {
+  const existing = ajvByDialect.get(dialect);
+  if (existing) return existing;
+  const options = { allErrors: true, strict: false };
+  let created: AjvCore;
+  switch (dialect) {
+    case '2020-12':
+      created = new Ajv2020(options);
+      break;
+    case '2019-09':
+      created = new Ajv2019(options);
+      break;
+    case 'draft-06':
+    case 'draft-07':
+      created = new Ajv(options);
+      break;
+    default:
+      return assertNeverDialect(dialect);
   }
-  return ajvInstance;
+  (addFormats as (ajv: AjvCore) => void)(created);
+  ajvByDialect.set(dialect, created);
+  return created;
+}
+
+function schemaBodyForAjv(schema: Record<string, unknown>): Record<string, unknown> {
+  const { $schema: _declared, ...body } = schema;
+  return body;
+}
+
+function compileOnDialect(
+  dialect: FrontmatterSchemaDialect,
+  schema: Record<string, unknown>,
+): ValidateFunction {
+  const ajv = getAjv(dialect);
+  const declaredId = schema.$id;
+  if (typeof declaredId === 'string' && declaredId !== '') ajv.removeSchema(declaredId);
+  return ajv.compile(schemaBodyForAjv(schema));
 }
 
 const compiledByContent = new Map<string, ValidateFunction | null>();
@@ -65,10 +127,10 @@ function compileSchema(schema: Record<string, unknown>): ValidateFunction | null
   const cached = compiledByContent.get(key);
   if (cached !== undefined) return cached;
   let compiled: ValidateFunction | null = null;
-  if (isSupportedSchemaDialect(schema)) {
-    const { $schema: _dialect, ...body } = schema;
+  const dialect = resolveFrontmatterSchemaDialect(schema);
+  if (dialect !== null) {
     try {
-      compiled = getAjv().compile(body);
+      compiled = compileOnDialect(dialect, schema);
     } catch {
       compiled = null;
     }
@@ -80,9 +142,10 @@ function compileSchema(schema: Record<string, unknown>): ValidateFunction | null
 
 export function frontmatterSchemaCompileError(schema: Record<string, unknown>): string | null {
   if (compileSchema(schema)) return null;
-  const { $schema: _dialect, ...body } = schema;
+  const dialect = resolveFrontmatterSchemaDialect(schema);
+  if (dialect === null) return `unsupported dialect ${JSON.stringify(schema.$schema)}`;
   try {
-    getAjv().compile(body);
+    compileOnDialect(dialect, schema);
     return 'schema was refused';
   } catch (err) {
     return err instanceof Error ? err.message : String(err);

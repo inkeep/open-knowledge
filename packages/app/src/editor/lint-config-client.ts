@@ -220,7 +220,7 @@ async function listFrontmatterSchemas(): Promise<string[]> {
 
 /**
  * POST a create-empty request to the schema write endpoint (no field) —
- * scaffolds `<file>` with the draft-07 skeleton if it doesn't exist yet, so
+ * scaffolds `<file>` with the default-dialect skeleton if it doesn't exist yet, so
  * the picker's "create new schema" lands a real, valid file. Idempotent
  * server-side (an existing file is left untouched). Emits
  * `emitLintConfigChanged()` on success so the picker list + open editors refresh.

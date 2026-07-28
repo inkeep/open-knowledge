@@ -739,8 +739,8 @@ export const ConfigSchema = z.looseObject({
             })
             .default(false),
           // Schema CONTENT is NOT persisted here. Each entry scopes one
-          // standard draft-07 JSON Schema file (project-root-relative `file`,
-          // portable to any external tool) to a set of docs via `appliesTo`
+          // standard JSON Schema file (project-root-relative `file`, portable
+          // to any external tool) to a set of docs via `appliesTo`
           // globs (single or list; leading `!` excludes; absent matches every
           // doc). Loaded server/CLI-side and injected into the effective
           // config; entry order carries no precedence — every match validates.

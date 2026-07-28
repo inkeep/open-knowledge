@@ -613,9 +613,9 @@ export function FrontmatterPluginSection() {
         beta
       >
         <Trans>
-          Validate document frontmatter against standard JSON Schema files (draft-07). Toggle a
-          schema on to validate the docs its globs match; violations surface as warnings and never
-          block a write. Use Edit to open the schema file.
+          Validate document frontmatter against standard JSON Schema files (draft-06, draft-07,
+          2019-09, or 2020-12). Toggle a schema on to validate the docs its globs match; violations
+          surface as warnings and never block a write. Use Edit to open the schema file.
         </Trans>
       </PluginSectionHeader>
 

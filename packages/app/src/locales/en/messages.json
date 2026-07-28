@@ -647,9 +647,6 @@
     ],
     "C-xgad": ["or use a starter pack"],
     "C0hoX6": ["Always included"],
-    "C52RBg": [
-      "Validate document frontmatter against standard JSON Schema files (draft-07). Toggle a schema on to validate the docs its globs match; violations surface as warnings and never block a write. Use Edit to open the schema file."
-    ],
     "C62P6b": ["Editor selection"],
     "C7XjNB": ["Global Skill"],
     "C9TBvF": ["No Outgoing"],
@@ -1644,6 +1641,9 @@
       "These rules come from your project's <0>",
       ["configFile"],
       "</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."
+    ],
+    "V3iDh1": [
+      "Validate document frontmatter against standard JSON Schema files (draft-06, draft-07, 2019-09, or 2020-12). Toggle a schema on to validate the docs its globs match; violations surface as warnings and never block a write. Use Edit to open the schema file."
     ],
     "V48OUT": ["You deleted <0>", ["filePath"], "</0> locally, but it was modified upstream."],
     "V6AIOn": ["Workspace navigation"],

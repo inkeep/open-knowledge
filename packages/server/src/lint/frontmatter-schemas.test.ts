@@ -9,7 +9,13 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { DEFAULT_LINTER_CONFIG, type LinterConfig } from '@inkeep/open-knowledge-core';
+import {
+  CANONICAL_SCHEMA_DIALECT_URIS,
+  DEFAULT_LINTER_CONFIG,
+  DEFAULT_SCHEMA_DIALECT,
+  type LinterConfig,
+  SUPPORTED_SCHEMA_DIALECTS,
+} from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   listProjectSchemaFiles,
@@ -122,13 +128,41 @@ describe('resolveFrontmatterSchemas — loading', () => {
     expect(problems[0]).toContain('not a JSON object');
   });
 
-  test('another dialect is skipped with a problem', () => {
+  test.each(SUPPORTED_SCHEMA_DIALECTS)('a %s schema loads cleanly', (dialect) => {
     write(
-      '2020.json',
-      JSON.stringify({ $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object' }),
+      'dialect.json',
+      JSON.stringify({
+        $schema: CANONICAL_SCHEMA_DIALECT_URIS[dialect],
+        type: 'object',
+        required: ['title'],
+      }),
     );
-    const { entries, problems } = resolveFrontmatterSchemas(projectDir, [{ file: '2020.json' }]);
+    const { entries, problems } = resolveFrontmatterSchemas(projectDir, [{ file: 'dialect.json' }]);
+    expect(problems).toEqual([]);
+    expect(entries[0]?.schema).toMatchObject({ required: ['title'] });
+  });
+
+  test('a schema with no $schema loads (absent means the default dialect)', () => {
+    write('bare.json', JSON.stringify({ type: 'object', required: ['title'] }));
+    const { entries, problems } = resolveFrontmatterSchemas(projectDir, [{ file: 'bare.json' }]);
+    expect(problems).toEqual([]);
+    expect(entries[0]?.schema).toMatchObject({ required: ['title'] });
+  });
+
+  test('an unsupported dialect is skipped with a problem naming what is supported', () => {
+    write(
+      'draft04.json',
+      JSON.stringify({ $schema: 'http://json-schema.org/draft-04/schema#', type: 'object' }),
+    );
+    const { entries, problems } = resolveFrontmatterSchemas(projectDir, [{ file: 'draft04.json' }]);
     expect(problems[0]).toContain('unsupported dialect');
+    expect(problems[0]).toContain('draft-04');
+    for (const dialect of SUPPORTED_SCHEMA_DIALECTS) {
+      expect(problems[0]).toContain(dialect);
+    }
+    // The message carries a paste-ready canonical `$schema` URI, not just the
+    // dialect labels, so the fix reads off directly.
+    expect(problems[0]).toContain(CANONICAL_SCHEMA_DIALECT_URIS[DEFAULT_SCHEMA_DIALECT]);
     expect(entries[0]?.schema).toBeUndefined();
   });
 

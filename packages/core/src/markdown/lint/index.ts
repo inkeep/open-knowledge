@@ -73,8 +73,13 @@ export {
   type SchemaParentPathSegment,
 } from './frontmatter-schema-edit.ts';
 export {
+  CANONICAL_SCHEMA_DIALECT_URIS,
+  DEFAULT_SCHEMA_DIALECT,
+  type FrontmatterSchemaDialect,
   frontmatterSchemaCompileError,
   isSupportedSchemaDialect,
+  resolveFrontmatterSchemaDialect,
+  SUPPORTED_SCHEMA_DIALECTS,
   selectApplicableFrontmatterSchemas,
 } from './frontmatter-validate.ts';
 export { fixMarkdownText, runMarkdownlint } from './markdownlint-runner.ts';

@@ -1,7 +1,8 @@
 /**
  * Frontmatter schema-file WRITE surface: merge one field's constraints into a
  * schema file via the core `applyFieldConstraint` (non-destructive — advanced
- * keywords survive verbatim), creating the file with the draft-07 skeleton on
+ * keywords survive verbatim), creating the file with the default-dialect
+ * skeleton on
  * first edit. Same safety posture as the markdownlint writer: project-root
  * escape guarding (lexical + realpath), atomic tmp+rename through the traced
  * fs wrappers, and a typed refusal instead of a throw for policy declines.
@@ -103,7 +104,7 @@ export function writeFrontmatterSchemaField(
 }
 
 /**
- * Scaffold an empty schema file (the draft-07 skeleton) at `file` if it does
+ * Scaffold an empty schema file (the default-dialect skeleton) at `file` if it does
  * not already exist — the create-empty half of the write surface, so the
  * picker's "create new schema" lands a real, valid file before any field is
  * added. Idempotent: an existing file is left untouched (never clobbered).

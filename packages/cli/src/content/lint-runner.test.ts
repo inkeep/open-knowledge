@@ -192,6 +192,29 @@ describe('runLint — frontmatter schemas', () => {
     expect(index?.diagnostics.filter((d) => d.source === 'frontmatter')).toEqual([]);
   });
 
+  test('a 2020-12 schema validates through the CLI path too', async () => {
+    write(
+      '.ok/schemas/modern.schema.json',
+      JSON.stringify({
+        $schema: 'https://json-schema.org/draft/2020-12/schema',
+        type: 'object',
+        $defs: { Status: { enum: ['draft', 'published'] } },
+        properties: { status: { $ref: '#/$defs/Status' } },
+        required: ['status'],
+      }),
+    );
+    write('docs/guide.md', '---\nstatus: shipped\n---\n\n# Guide\n');
+    const result = await run({
+      baseConfig: frontmatterBase([
+        { appliesTo: 'docs/**', file: '.ok/schemas/modern.schema.json' },
+      ]),
+    });
+    expect(result.warnings).toEqual([]);
+    const guide = result.files.find((f) => f.file === join('docs', 'guide.md'));
+    expect(guide?.diagnostics.map((d) => `${d.source}/${d.code}`)).toEqual(['frontmatter/enum']);
+    expect(guide?.diagnostics[0]?.range.start.line).toBe(1);
+  });
+
   test('schemaError surfaces as a report warning and never flips diagnostics', async () => {
     write('docs/guide.md', '---\nstatus: draft\n---\n');
     const result = await run({

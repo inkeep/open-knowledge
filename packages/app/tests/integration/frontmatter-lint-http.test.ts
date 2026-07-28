@@ -30,6 +30,10 @@ const SEED_CONFIG = [
   '        file: ".ok/schemas/doc.schema.json"',
   '      - appliesTo: "broken/**"',
   '        file: ".ok/schemas/missing.schema.json"',
+  '      - appliesTo: "modern/**"',
+  '        file: ".ok/schemas/modern.schema.json"',
+  '      - appliesTo: "nineteen/**"',
+  '        file: ".ok/schemas/nineteen.schema.json"',
   '',
 ].join('\n');
 
@@ -43,6 +47,31 @@ const DOC_SCHEMA = {
   },
 };
 
+// 2020-12, exercising the keywords draft-07 cannot express: `$defs` with a
+// `$ref`, and a `prefixItems` tuple.
+const MODERN_SCHEMA = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  $defs: { Status: { enum: ['draft', 'review', 'published'] } },
+  required: ['owner', 'status'],
+  properties: {
+    owner: { type: 'string' },
+    status: { $ref: '#/$defs/Status' },
+    pair: { type: 'array', prefixItems: [{ type: 'string' }, { type: 'number' }] },
+  },
+};
+
+// 2019-09 runs on a different ajv class (Ajv2019) than 2020-12 (Ajv2020), so the
+// server load -> HTTP diagnostic path is proven for both, not just the newest.
+const NINETEEN_SCHEMA = {
+  $schema: 'https://json-schema.org/draft/2019-09/schema',
+  type: 'object',
+  $defs: { Slug: { type: 'string', pattern: '^[a-z-]+$' } },
+  required: ['slug'],
+  properties: { slug: { $ref: '#/$defs/Slug' } },
+  dependentRequired: { slug: ['owner'] },
+};
+
 const VIOLATING_DOC = ['---', 'status: shipped', '---', '', '# Guide'].join('\n');
 
 beforeAll(async () => {
@@ -53,9 +82,41 @@ beforeAll(async () => {
     JSON.stringify(DOC_SCHEMA, null, 2),
     'utf-8',
   );
+  writeFileSync(
+    join(server.contentDir, '.ok', 'schemas', 'modern.schema.json'),
+    JSON.stringify(MODERN_SCHEMA, null, 2),
+    'utf-8',
+  );
   mkdirSync(join(server.contentDir, 'docs'), { recursive: true });
   writeFileSync(join(server.contentDir, 'docs', 'guide.md'), VIOLATING_DOC, 'utf-8');
   writeFileSync(join(server.contentDir, 'docs', 'index.md'), VIOLATING_DOC, 'utf-8');
+  writeFileSync(
+    join(server.contentDir, '.ok', 'schemas', 'nineteen.schema.json'),
+    JSON.stringify(NINETEEN_SCHEMA, null, 2),
+    'utf-8',
+  );
+  mkdirSync(join(server.contentDir, 'nineteen'), { recursive: true });
+  writeFileSync(
+    join(server.contentDir, 'nineteen', 'note.md'),
+    ['---', 'slug: Bad Slug', '---', '', '# Note'].join('\n'),
+    'utf-8',
+  );
+  mkdirSync(join(server.contentDir, 'modern'), { recursive: true });
+  writeFileSync(
+    join(server.contentDir, 'modern', 'spec.md'),
+    [
+      '---',
+      'owner: serafin',
+      'status: shipped',
+      'pair:',
+      '  - ok',
+      '  - nope',
+      '---',
+      '',
+      '# Spec',
+    ].join('\n'),
+    'utf-8',
+  );
 }, HARNESS_BOOT_TIMEOUT_MS);
 
 afterAll(async () => {
@@ -86,6 +147,49 @@ describe('GET /api/lint — frontmatter diagnostics', () => {
     const res = await fetch(api('/api/lint?doc=docs%2Findex'));
     const body = LintDocResultSchema.parse(await res.json());
     expect(body.diagnostics.filter((d) => d.source === 'frontmatter')).toEqual([]);
+  });
+
+  /**
+   * A dialect newer than draft-07 loads and validates over the wire — the
+   * whole path (loader dialect check, per-dialect ajv, HTTP shape), not just
+   * the pure validator.
+   *
+   */
+  test('a 2020-12 schema validates, including $defs/$ref and prefixItems', async () => {
+    const res = await fetch(api('/api/lint?doc=modern%2Fspec'));
+    expect(res.status).toBe(200);
+    const body = LintDocResultSchema.parse(await res.json());
+    const frontmatter = body.diagnostics.filter((d) => d.source === 'frontmatter');
+
+    // No config problem for this mapping — the dialect is supported now.
+    expect(body.warnings?.some((w) => w.includes('modern.schema.json'))).toBe(false);
+
+    const enumViolation = frontmatter.find((d) => d.code === 'enum');
+    expect(enumViolation?.message).toContain('draft, review, published');
+    expect(enumViolation?.range.start.line).toBe(2);
+
+    const tuple = frontmatter.find((d) => d.code === 'type');
+    expect(tuple?.message).toContain('"pair.1"');
+    expect(tuple?.range.start.line).toBe(3);
+  });
+
+  /**
+   * 2019-09 compiles on `Ajv2019`, a different class than 2020-12's `Ajv2020`.
+   * Proving only the newest dialect over the wire would leave a per-class
+   * wiring failure invisible at this tier.
+   *
+   */
+  test('a 2019-09 schema validates, including $defs/$ref and dependentRequired', async () => {
+    const res = await fetch(api('/api/lint?doc=nineteen%2Fnote'));
+    expect(res.status).toBe(200);
+    const body = LintDocResultSchema.parse(await res.json());
+    const frontmatter = body.diagnostics.filter((d) => d.source === 'frontmatter');
+
+    expect(body.warnings?.some((w) => w.includes('nineteen.schema.json'))).toBe(false);
+    expect(frontmatter.map((d) => d.code).sort()).toEqual(['dependentRequired', 'pattern']);
+
+    const pattern = frontmatter.find((d) => d.code === 'pattern');
+    expect(pattern?.range.start.line).toBe(1);
   });
 
   test('single-doc responses carry the schemaError on the additive warnings channel, never per-doc', async () => {

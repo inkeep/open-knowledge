@@ -3,7 +3,7 @@
  * mapping names a JSON Schema file by a path relative to the PROJECT ROOT
  * (the folder containing `.ok/` — not `contentDir`, so the `.ok/schemas/`
  * default keeps working when `content.dir` scopes docs to a subfolder). This
- * loads each file once, validates the draft-07 dialect pin, and injects the
+ * loads each file once, validates the declared dialect, and injects the
  * parsed content + a canonical dedup key into the resolved entries the core
  * plugin (and the browser, via the effective config) validates with.
  *
@@ -19,12 +19,15 @@
 import { readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
+  CANONICAL_SCHEMA_DIALECT_URIS,
   compileAppliesTo,
+  DEFAULT_SCHEMA_DIALECT,
   type FrontmatterSchemaMapping,
   findZeroMatchAppliesToPatterns,
   frontmatterSchemaCompileError,
   isSupportedSchemaDialect,
   type ResolvedFrontmatterSchemaEntry,
+  SUPPORTED_SCHEMA_DIALECTS,
 } from '@inkeep/open-knowledge-core';
 import { getLogger } from '../logger.ts';
 import { isInside } from './fs-safety.ts';
@@ -146,8 +149,12 @@ function loadSchemaFile(projectDir: string, file: string): LoadOutcome {
   }
   const schema = parsed as Record<string, unknown>;
   if (!isSupportedSchemaDialect(schema)) {
+    // Name the supported dialects (the overview) and one paste-ready canonical
+    // `$schema` URI (a concrete fix), so the author doesn't have to translate a
+    // label back into the exact string to write.
+    const example = JSON.stringify(CANONICAL_SCHEMA_DIALECT_URIS[DEFAULT_SCHEMA_DIALECT]);
     return {
-      problem: `frontmatter schema ${file}: unsupported dialect ${JSON.stringify(schema.$schema)} (draft-07 required)`,
+      problem: `frontmatter schema ${file}: unsupported dialect ${JSON.stringify(schema.$schema)} (supported: ${SUPPORTED_SCHEMA_DIALECTS.join(', ')}; e.g. ${example})`,
     };
   }
   const compileError = frontmatterSchemaCompileError(schema);
