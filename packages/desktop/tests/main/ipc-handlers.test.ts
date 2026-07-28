@@ -7,10 +7,10 @@
  * smoke-tested by the integration surface (contract-equality scan).
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
   detectProtocol,
   extractTrashDetail,

@@ -16,11 +16,12 @@ import {
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
 import { formatReconcileSubject } from '@inkeep/open-knowledge-core/shadow-repo-layout';
-import type * as Y from 'yjs';
-import { composeAndWriteRawBody } from './bridge-intake.ts';
 import { isConfigDoc, isMermaidDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { isDocInConflict } from './conflict-errors.ts';
+import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import { recordContributor } from './contributor-tracker.ts';
+import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
+import type { DocumentDurabilityState } from './document-durability-state.ts';
 import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
 import { getLogger } from './logger.ts';
 import {
@@ -28,74 +29,10 @@ import {
   incrementReconcileInFlightFallthroughs,
   incrementReconcileOwnFlushSkips,
 } from './metrics.ts';
-import {
-  getReconciledBase,
-  isWithinContentDir,
-  peekInFlightFlush,
-  safeContentPath,
-  setReconciledBase,
-} from './persistence.ts';
 import { reconcile } from './reconciliation.ts';
-import type { PairedWriteOrigin } from './server-observers.ts';
 import { FILE_SYSTEM_WRITER } from './shadow-repo.ts';
 
-/**
- * Transaction origin for file-watcher disk→CRDT bridge operations.
- *
- * Exported so the bridge-invariant watcher can include it in its
- * enforcing-origins Set by identity (not by string literal). Y.js transaction
- * matching uses `Set.has(tx.origin)` which is identity-based for objects;
- * a string literal `'file-watcher'` would never match this object.
- *
- * skipStoreHooks: true — prevents persistence from re-saving a file we just
- * loaded from disk (feedback loop prevention).
- *
- * paired: true — `applyExternalChange` atomically writes BOTH XmlFragment and
- * Y.Text inside one `doc.transact(..., FILE_WATCHER_ORIGIN)` block. Server
- * Observer A/B match via `context.paired === true` and short-circuit
- * symmetrically.
- */
-export const FILE_WATCHER_ORIGIN = {
-  source: 'local',
-  skipStoreHooks: true,
-  context: { origin: 'file-watcher', paired: true },
-} as const satisfies PairedWriteOrigin;
-
-/**
- * Apply file content to a live Y.Doc through the shared
- * `composeAndWriteRawBody` primitive. Pure CRDT update — no contributor
- * recording, no reconciledBase advance, no `Hocuspocus` lookup.
- *
- * Y.Text-is-truth contract: disk bytes land in Y.Text
- * verbatim. The fragment derives from `parse(body)` via the primitive.
- * No canonicalize-write-back step — markdown forms (e.g. doc-start `---`
- * thematic breaks) survive in Y.Text in the user's source bytes;
- * the bridge invariant tolerates any difference between raw bytes and
- * `serialize(fragment)` via `normalizeBridge`'s equivalence classes.
- *
- * Used both by the file-watcher path (`applyExternalChange`, which adds
- * contributor + reconciledBase side effects) and by the persistence
- * tripwire reset path (which must NOT advance attribution or the
- * reconciled base because no disk write happened).
- *
- * Atomicity boundary: caller MUST wrap this in
- * `document.transact(..., FILE_WATCHER_ORIGIN)` so paired-write origin
- * identity (precedent #24) reaches the observer guards. Calling transact
- * inside the function would either lose origin identity (nested transacts
- * pick the outer's) or fragment the atomicity contract for callers that
- * already wrap.
- */
-export function applyDiskContentToDoc(
-  document: Y.Doc,
-  content: string,
-  resolveEmbed?: (basename: string, sourcePath: string) => string | null,
-  sourcePath?: string,
-  resolveSize?: (basename: string, sourcePath: string) => number | null,
-): void {
-  const embedResolver =
-    resolveEmbed && sourcePath ? { resolveEmbed, resolveSize, sourcePath } : undefined;
-  composeAndWriteRawBody(document, content, 'file-watcher', embedResolver);
-}
+export { FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 
 /**
  * Apply external file content to a live Y.Doc — the throwing core of the
@@ -127,6 +64,7 @@ export function applyDiskContentToDoc(
  * so dev/test surfaces regressions loudly.
  */
 export function applyExternalChange(
+  durabilityState: DocumentDurabilityState,
   hocuspocus: Hocuspocus,
   docName: string,
   content: string,
@@ -180,7 +118,7 @@ export function applyExternalChange(
     // B settlement, or user mutation. Re-throwing preserves the existing
     // outer error-handling contract (`createExternalChangeHandler`
     // increments the error counter and logs).
-    setReconciledBase(docName, document.getText('source').toString());
+    durabilityState.setReconciledBase(docName, document.getText('source').toString());
     throw err;
   }
 
@@ -211,7 +149,7 @@ export function applyExternalChange(
 
   // Set the reconciled base so persistence does not re-serialize and re-write
   // the same content on next flush.
-  setReconciledBase(docName, content);
+  durabilityState.setReconciledBase(docName, content);
 }
 
 /**
@@ -227,13 +165,14 @@ export function applyExternalChange(
  * here would silently subvert the test-mode loud-failure gates.
  */
 export function createExternalChangeHandler(
+  durabilityState: DocumentDurabilityState,
   hocuspocus: Hocuspocus,
   resolveEmbed?: (basename: string, sourcePath: string) => string | null,
   resolveSize?: (basename: string, sourcePath: string) => number | null,
 ): (docName: string, content: string) => Promise<void> {
   return async (docName: string, content: string): Promise<void> => {
     try {
-      applyExternalChange(hocuspocus, docName, content, resolveEmbed, resolveSize);
+      applyExternalChange(durabilityState, hocuspocus, docName, content, resolveEmbed, resolveSize);
       getLogger('file-watcher').info({ docName }, 'applied external change');
     } catch (err) {
       if (
@@ -359,6 +298,7 @@ export function serializeYDocSource(document: {
 }
 
 export function reconcileDiskBeforeAgentWrite(
+  durabilityState: DocumentDurabilityState,
   hocuspocus: Hocuspocus,
   docName: string,
   contentDir: string,
@@ -374,7 +314,7 @@ export function reconcileDiskBeforeAgentWrite(
   const document = hocuspocus.documents.get(docName);
   if (document && isDocInConflict(document)) return NOT_RECONCILED;
 
-  const base = getReconciledBase(docName);
+  const base = durabilityState.getReconciledBase(docName);
   if (base === undefined) return NOT_RECONCILED;
 
   let canonical: string;
@@ -424,7 +364,7 @@ export function reconcileDiskBeforeAgentWrite(
   // flush continuation is the single owner of the base advance and runs
   // moments later. A foreign byte sequence landing inside the window does not
   // match and still falls through to the three-way merge below.
-  const inFlightFlush = peekInFlightFlush(docName);
+  const inFlightFlush = durabilityState.peekInFlightFlush(docName);
   if (inFlightFlush !== undefined) {
     if (normalizeBridge(diskContent) === inFlightFlush) {
       incrementReconcileOwnFlushSkips();
@@ -503,13 +443,13 @@ export function reconcileDiskBeforeAgentWrite(
       // FILE_WATCHER_ORIGIN transact and advances reconciledBase
       // synchronously.
       const ingest = outcome.kind === 'clean' ? diskContent : outcome.newContent;
-      applyExternalChange(hocuspocus, docName, ingest, resolveEmbed);
+      applyExternalChange(durabilityState, hocuspocus, docName, ingest, resolveEmbed);
       if (outcome.kind === 'merged') {
         // The base must track the DISK bytes, not the memory-only merged
         // content: the L3 store backstop and the watcher's queued event for
         // this same disk write both compare disk against the base, and the
         // caller's forced flush is what lands the merged content on disk.
-        setReconciledBase(docName, diskContent);
+        durabilityState.setReconciledBase(docName, diskContent);
       }
       // UTF-8 byte counts (Buffer.byteLength), matching the sibling
       // ContentDivergenceWarning's `*Bytes` semantics on the shared

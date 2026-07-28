@@ -18,8 +18,9 @@
  * cannot satisfy both — which is exactly why `position: 'replace'` was
  * de-overloaded into `replace` (atomic) and `patch` (incremental).
  */
-import { describe, expect, test } from 'bun:test';
+
 import type { Document } from '@hocuspocus/server';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { AGENT_WRITE_ORIGIN, applyAgentMarkdownWrite } from './agent-sessions.ts';
 

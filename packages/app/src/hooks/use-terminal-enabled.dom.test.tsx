@@ -7,19 +7,20 @@
  * project-local layer, and routing grant/revoke to `terminal.enabled` via the
  * binding's `patch` (the human-only write path).
  */
-import { afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
+
 import type { Config, ConfigBinding, ConfigPatch } from '@inkeep/open-knowledge-core';
 import { cleanup, render } from '@testing-library/react';
+import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import type { TerminalConsentState, TerminalEnabledWriter } from './use-terminal-enabled';
 
 const consentGrants: true[] = [];
-mock.module('@/lib/terminal-telemetry', () => ({
+vi.doMock('@/lib/terminal-telemetry', () => ({
   recordShellConsentGranted: () => consentGrants.push(true),
   recordTerminalOpened: () => undefined,
 }));
 
-// Load the hooks AFTER the mock registers — `mock.module` is not hoisted, but a
+// Load the hooks AFTER the mock registers — `vi.doMock` is not hoisted, but a
 // static import is, so a static import of the subject would bind the real
 // telemetry module before the mock takes effect.
 let useTerminalConsentState: typeof import('./use-terminal-enabled').useTerminalConsentState;

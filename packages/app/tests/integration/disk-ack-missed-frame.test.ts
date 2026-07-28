@@ -38,10 +38,11 @@
  * Expected: PASS. Both client and disk show the marker exactly once
  * after the recycle.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterEach, describe, expect, test } from 'vitest';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import { refreshServerInfo } from '../../src/lib/server-info-refresh';
 import {

@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
   mkdirSync,
@@ -24,6 +23,7 @@ import {
   type UiLockMetadata,
   updateServerLockPort,
 } from '@inkeep/open-knowledge-server';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   closeHttpServers,
   DEFAULT_UI_PORT,

@@ -14,19 +14,19 @@
  * `dataTransfer.files.length > 0` so that path takes over.
  */
 
-import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import * as actualCore from '@inkeep/open-knowledge-core';
 import * as actualSonner from 'sonner';
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
-mock.module('@inkeep/open-knowledge-core', () => {
+vi.doMock('@inkeep/open-knowledge-core', () => {
   return {
     ...actualCore,
-    htmlToMdast: mock((_html: string) => ({ type: 'root', children: [] })),
-    mdastToMarkdown: mock((_tree: unknown) => '**bold**'),
+    htmlToMdast: vi.fn((_html: string) => ({ type: 'root', children: [] })),
+    mdastToMarkdown: vi.fn((_tree: unknown) => '**bold**'),
   };
 });
 
-mock.module('sonner', () => ({ ...actualSonner, toast: { error: mock(() => {}) } }));
+vi.doMock('sonner', () => ({ ...actualSonner, toast: { error: vi.fn(() => {}) } }));
 
 // The dispatcher imports the mocked `@inkeep/open-knowledge-core`; bind it after
 // the mock is registered so the stubbed htmlToMdast/mdastToMarkdown take effect
@@ -59,7 +59,7 @@ function fakeDropEvent({ data, filesCount = 0, shiftKey = false }: FakeDropOptio
 
 function fakeMdManager() {
   return {
-    parse: mock((_md: string) => ({
+    parse: vi.fn((_md: string) => ({
       type: 'doc',
       content: [{ type: 'paragraph', content: [{ type: 'text', text: 'parsed' }] }],
     })),
@@ -68,9 +68,9 @@ function fakeMdManager() {
 
 // biome-ignore lint/suspicious/noExplicitAny: narrow fake view for unit test
 function fakeView(opts: { inCodeBlock?: boolean } = {}): any {
-  const dispatch = mock(() => {});
+  const dispatch = vi.fn(() => {});
   const codeBlockType = {
-    create: mock((_attrs: unknown, _content: unknown) => ({
+    create: vi.fn((_attrs: unknown, _content: unknown) => ({
       slice: (_f: number, _t: number) => 'CODE-SLICE',
     })),
   };
@@ -91,16 +91,16 @@ function fakeView(opts: { inCodeBlock?: boolean } = {}): any {
         }),
       },
       tr: {
-        replaceSelectionWith: mock(function (this: unknown, _node: unknown) {
+        replaceSelectionWith: vi.fn(function (this: unknown, _node: unknown) {
           return this;
         }),
-        replaceSelection: mock(function (this: unknown, _slice: unknown) {
+        replaceSelection: vi.fn(function (this: unknown, _slice: unknown) {
           return this;
         }),
-        setMeta: mock(function (this: unknown, _key: unknown, _value: unknown) {
+        setMeta: vi.fn(function (this: unknown, _key: unknown, _value: unknown) {
           return this;
         }),
-        scrollIntoView: mock(function (this: unknown) {
+        scrollIntoView: vi.fn(function (this: unknown) {
           return this;
         }),
       },

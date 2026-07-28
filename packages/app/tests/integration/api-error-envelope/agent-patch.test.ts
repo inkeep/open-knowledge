@@ -11,8 +11,8 @@
  *     - reserved docname → 400 `urn:ok:error:reserved-doc-name` (post-identity)
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { AgentPatchSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
 import { agentWriteMd, createTestServer, type TestServer } from '../test-harness';
 

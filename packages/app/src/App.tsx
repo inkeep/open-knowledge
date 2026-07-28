@@ -5,6 +5,7 @@ import { ConnectingBanner } from '@/components/ConnectingBanner';
 import { CreateProjectMenuTrigger } from '@/components/CreateProjectMenuTrigger';
 import { DesktopAgentMigration } from '@/components/DesktopAgentMigration';
 import { EditorPane } from '@/components/EditorPane';
+import { FeedbackMenuTrigger } from '@/components/FeedbackMenuTrigger';
 import { FileSidebar } from '@/components/FileSidebar';
 import { defaultInitialDir } from '@/components/file-tree-utils';
 import {
@@ -26,6 +27,7 @@ import { PageListProvider, usePageList } from '@/components/PageListContext';
 import { ReportBugMenuTrigger } from '@/components/ReportBugMenuTrigger';
 import { SystemDocSubscriber } from '@/components/SystemDocSubscriber';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
+import { ValidationFreshness } from '@/components/ValidationFreshness';
 import {
   DocumentProvider,
   useDocumentContext,
@@ -39,8 +41,12 @@ import {
   assetPathFromHash,
   docNameFromHash,
   isContentRootHash,
+  isManagedHashHistoryState,
+  markCurrentHashHistoryEntry,
+  replaceHashWithoutNavigation,
   skillFileFromHash,
 } from '@/lib/doc-hash';
+import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { mark, ProfilerBoundary } from '@/lib/perf';
 import { SingleFileModeProvider, useSingleFileMode } from '@/lib/single-file-mode';
 import { useServerKeepalive } from '@/lib/use-server-keepalive';
@@ -139,7 +145,20 @@ function NavigationHandler() {
     pagesByBasename,
   } = usePageList();
   const lastSyncedTargetsSignatureRef = useRef<string | null>(null);
+  // Same-tab navigation records hashes with pushState, which stays silent until
+  // history traversal. Pair popstate with its following hashchange so replay
+  // replaces the active tab instead of taking the hash handler's append path.
+  const historyTraversalUrlRef = useRef<string | null>(null);
   const targetsSignature = knownTargetsSignature(pages, folderPaths, assetPaths, filePaths);
+
+  useEffect(
+    () =>
+      subscribeLocalMenuAction((action) => {
+        if (action === 'navigate-back') window.history.back();
+        if (action === 'navigate-forward') window.history.forward();
+      }),
+    [],
+  );
 
   useEffect(() => {
     if (
@@ -165,7 +184,26 @@ function NavigationHandler() {
   useEffect(() => {
     onHashChange();
 
+    function onPopState(event: PopStateEvent) {
+      historyTraversalUrlRef.current = isManagedHashHistoryState(event.state)
+        ? window.location.href
+        : null;
+    }
+
     function onHashChange() {
+      const isHistoryTraversal = historyTraversalUrlRef.current === window.location.href;
+      historyTraversalUrlRef.current = null;
+      // Chromium also emits popstate before hashchange for direct hash assignments.
+      // Mark entries after classifying them so only actual history traversal reuses the active tab.
+      markCurrentHashHistoryEntry();
+      const openHashTarget = (target: ResolvedNavigationTarget) => {
+        if (isHistoryTraversal) {
+          openTargetTransition(target, { tabBehavior: 'replace-active' });
+          return;
+        }
+        openTargetTransition(target);
+      };
+
       // Overlay-dialog hashes (settings, install) don't replace the
       // active document — they portal a Dialog over it. Skipping
       // here keeps the editor mounted underneath; without this guard
@@ -180,7 +218,7 @@ function NavigationHandler() {
         const assetExt = assetPath.split('.').pop() ?? '';
         const mediaKind = mediaKindForSidebarAssetExtension(assetExt);
         mark('ok/nav/hash-change', { docName: null, kind: 'asset' });
-        openTargetTransition({
+        openHashTarget({
           kind: 'asset',
           target: assetPath,
           assetPath,
@@ -191,7 +229,7 @@ function NavigationHandler() {
       const skillFile = skillFileFromHash(window.location.hash);
       if (skillFile) {
         mark('ok/nav/hash-change', { docName: null, kind: 'skill-file' });
-        openTargetTransition({
+        openHashTarget({
           kind: 'skill-file',
           target: `${skillFile.scope}/${skillFile.name}/${skillFile.path}`,
           scope: skillFile.scope,
@@ -208,7 +246,7 @@ function NavigationHandler() {
       // sentinel check must run BEFORE the null-docName clear.
       if (isContentRootHash(window.location.hash)) {
         mark('ok/nav/hash-change', { docName: null, kind: 'folder' });
-        openTargetTransition({ kind: 'folder', target: '', folderPath: '' });
+        openHashTarget({ kind: 'folder', target: '', folderPath: '' });
         return;
       }
       const docName = docNameFromHash(window.location.hash);
@@ -235,10 +273,14 @@ function NavigationHandler() {
       }
       const target = withLargeFileOpenGuard(downgradeFolderIndexForHashNav(resolved), pageMeta);
       mark('ok/nav/hash-change', { docName, kind: target.kind });
-      openTargetTransition(target);
+      openHashTarget(target);
     }
+    window.addEventListener('popstate', onPopState);
     window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('hashchange', onHashChange);
+    };
   }, [
     clearTarget,
     folderPaths,
@@ -282,8 +324,7 @@ function InstallInClaudeDesktopTrigger() {
     if (!next && window.location.hash === INSTALL_DIALOG_HASH) {
       // Clear the fragment so closing doesn't instantly re-open on refresh.
       // Uses history.replaceState to avoid adding a history entry.
-      const { pathname, search } = window.location;
-      window.history.replaceState(null, '', `${pathname}${search}`);
+      replaceHashWithoutNavigation('');
     }
   }
 
@@ -402,6 +443,7 @@ function NewItemShortcutHandler() {
           metaKey: e.metaKey,
           ctrlKey: e.ctrlKey,
           altKey: e.altKey,
+          shiftKey: e.shiftKey,
           key: e.key,
         })
       ) {
@@ -477,26 +519,33 @@ function AppBody() {
   // the "Open the OK editor in web view." trailer the web deep-link handoff
   // carries: the terminal launches next to an already-open editor, so that
   // directive would point the agent at a surface the user is already viewing.
-  // Null on the web host (no real OS shell) so the menu rows that consume it
-  // render nothing.
+  // Null on the web host (no real OS shell) AND on desktop hosts where the PTY
+  // is unavailable (`config.ptyAvailable` is false on Windows/Linux — node-pty
+  // is excluded from those packages), so the menu rows that consume it render
+  // nothing rather than a silent no-op: the docked terminal in EditorPane is
+  // gated on the same `ptyAvailable` flag, so a Terminal row here would launch
+  // into a surface that never mounts. Mirrors the gate in EditorPane / Settings
+  // / AppMenubar.
   // Which launchable CLIs are on PATH — each launch surface gates its rows from
   // this map via `isTerminalCliEnabled` so a CLI that isn't installed (e.g.
   // Antigravity, or Claude) doesn't clutter the menu once the probe confirms it absent.
   const installedClis = useInstalledClis();
-  const terminalLaunch: TerminalLaunchContextValue | null = desktopBridge
-    ? {
-        launchInTerminal: (input, cli) => {
-          requestTerminalLaunch(composeTerminalLaunchPrompt(input, cli), cli);
-        },
-        installedClis,
-      }
-    : null;
+  const terminalLaunch: TerminalLaunchContextValue | null =
+    desktopBridge && desktopBridge.config.ptyAvailable === true
+      ? {
+          launchInTerminal: (input, cli) => {
+            requestTerminalLaunch(composeTerminalLaunchPrompt(input, cli), cli);
+          },
+          installedClis,
+        }
+      : null;
 
   return (
     <>
       <ConnectingBanner />
       <PageListProvider>
         <SystemDocSubscriber />
+        <ValidationFreshness />
         <NavigationHandler />
         <ActiveTargetBridgePush />
         <NewItemShortcutHandler />
@@ -511,9 +560,13 @@ function AppBody() {
         {/* One-time upgrade migration: carry an existing user's installed desktop
             apps over into the new opt-in Desktop model. Desktop-only. */}
         {desktopBridge ? <DesktopAgentMigration /> : null}
-        {/* Help → Report a Bug… opens ReportBugDialog here — same
+        {/* Help → Report a bug… opens ReportBugDialog here — same
             desktop-only App-root trigger pattern as CreateProjectMenuTrigger. */}
         {desktopBridge ? <ReportBugMenuTrigger /> : null}
+        {/* Help → Send feedback… opens the same FeedbackFormDialog the
+            Resources menu and Cmd+K open. Desktop-only for the same reason as
+            the sibling above: the menu action never fires in the web host. */}
+        {desktopBridge ? <FeedbackMenuTrigger /> : null}
         {/* First-launch consent dialog — host-agnostic. Self-gates on
             the shared `mcpConsentStore` snapshot; renders nothing until
             main fires `ok:mcp-wiring:show`. Mounted identically in

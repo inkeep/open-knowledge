@@ -9,9 +9,9 @@
  * they run unskipped in the default test tier.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { createServer as createHttpServer } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
+import { afterEach, describe, expect, test } from 'vitest';
 import { bootEndpointServer, type EndpointRig } from './endpoint-http.test-helper.ts';
 import { createGitTriangle, type GitTriangle } from './git-fixture.test-helper.ts';
 import { computeShareTargetStatus } from './target-status.ts';

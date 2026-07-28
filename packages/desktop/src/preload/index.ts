@@ -23,6 +23,8 @@ import type {
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
+  OkBugReportDeleteResult,
+  OkBugReportListResult,
   OkBugReportScreenshot,
   OkBugReportSendMetadata,
   OkBugReportSendResult,
@@ -42,9 +44,11 @@ import type {
   OkLocalOpStream,
   OkMcpWiringShowPayload,
   OkMenuAction,
+  OkMenuDispatchRequest,
   OkOnboardingShowPayload,
   OkPtyData,
   OkPtyExit,
+  OkRecentRemovedMissingInfo,
   OkServerRestartedInfo,
   OkServerVersionDriftInfo,
   OkShareReceivedPayload,
@@ -63,6 +67,8 @@ import type {
 } from '../shared/ipc-channels.ts';
 import { createInvoker } from '../shared/ipc-invoke.ts';
 import { resolveOkDesktopMode } from '../shared/ok-desktop-mode.ts';
+import { isUninstallPreload } from '../shared/uninstall-preload-arg.ts';
+import { createUninstallBridge } from './uninstall.ts';
 
 const invoke = createInvoker(ipcRenderer);
 
@@ -234,6 +240,12 @@ function readConfigFromArgv(): OkDesktopConfig {
   // when OTel is enabled in main; the renderer extracts it to parent its startup
   // span into the launch trace. Absent → renderer skips the startup span.
   const startupTraceparent = parseArg('startup-traceparent');
+  // Terminal-dock pty capability (windows-linux-port terminal posture): node-pty is
+  // bundled on macOS only, so off-mac the renderer must hide the terminal
+  // affordances rather than let a spawn fail. Platform is the whole signal —
+  // a mac install with a broken node-pty still surfaces the existing
+  // spawn-error UX, which is the correct diagnostic there.
+  const ptyAvailable = process.platform === 'darwin';
   return Object.freeze({
     collabUrl,
     apiOrigin,
@@ -244,6 +256,7 @@ function readConfigFromArgv(): OkDesktopConfig {
     singleFile,
     initialDoc,
     freshlyCreated,
+    ptyAvailable,
     ...(startupTraceparent !== undefined ? { startupTraceparent } : {}),
   });
 }
@@ -363,6 +376,13 @@ const bridge: OkDesktopBridge = {
     // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:server-restarted', listener);
     return () => ipcRenderer.removeListener('ok:server-restarted', listener);
+  },
+
+  onRecentRemovedMissing(cb: (info: OkRecentRemovedMissingInfo) => void) {
+    const listener = (_event: IpcRendererEvent, info: OkRecentRemovedMissingInfo) => cb(info);
+    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    ipcRenderer.on('ok:project:recent-removed-missing', listener);
+    return () => ipcRenderer.removeListener('ok:project:recent-removed-missing', listener);
   },
 
   restartServer: (projectPath: string) => invoke('ok:project:restart-server', projectPath),
@@ -516,6 +536,10 @@ const bridge: OkDesktopBridge = {
         kind: 'crash-ack',
         eventId: request.eventId,
       }) as Promise<OkBugReportCrashAckResult>,
+    list: () =>
+      invoke('ok:bug-report:dispatch', { kind: 'list' }) as Promise<OkBugReportListResult>,
+    delete: (id: string) =>
+      invoke('ok:bug-report:dispatch', { kind: 'delete', id }) as Promise<OkBugReportDeleteResult>,
     onCrashDetected(cb: (event: OkBugReportCrashDetectedEvent) => void) {
       const listener = (_event: IpcRendererEvent, event: OkBugReportCrashDetectedEvent) =>
         cb(event);
@@ -710,6 +734,13 @@ const bridge: OkDesktopBridge = {
     },
   },
 
+  menu: {
+    // Windows/Linux renderer-menubar dispatch (windows-linux-port renderer menubar). One discriminated
+    // channel; rejections propagate — the menubar surfaces a failed query
+    // as its unwired default state rather than swallowing silently.
+    dispatch: (request: OkMenuDispatchRequest) => invoke('ok:menu:dispatch', request),
+  },
+
   startup: {
     reportMarks: (marks: { pageListReadyMs: number; firstContentMs: number }) => {
       // Fire-and-forget renderer→main push of the two launch checkpoints.
@@ -819,4 +850,13 @@ if (parseArg('debug-keyring-smoke') === '1') {
   };
 }
 
-contextBridge.exposeInMainWorld('okDesktop', bridge);
+// The self-uninstall window gets `okUninstall` INSTEAD of `okDesktop`: it has
+// no business reaching the editor's ~90-channel surface, and the cheapest way
+// to guarantee it cannot is to never put that object on its window. One bundle
+// serves both because a sandboxed preload must be a single self-contained file
+// — see `./uninstall.ts`.
+if (isUninstallPreload(process.argv)) {
+  contextBridge.exposeInMainWorld('okUninstall', createUninstallBridge(invoke));
+} else {
+  contextBridge.exposeInMainWorld('okDesktop', bridge);
+}

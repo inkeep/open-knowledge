@@ -30,6 +30,7 @@ import type { TerminalDockPosition } from '@/lib/terminal-dock-store';
 import { writePreferBareTerminal } from '@/lib/terminal-new-tab-store';
 import { saveStickyAgent, terminalCliId } from '@/lib/unified-agent-store';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
+import { subscribeToTerminalLaunchRequests } from './handoff/terminal-launch-events';
 
 const TERMINAL_PANEL_ID = 'terminal-dock-panel';
 
@@ -166,7 +167,7 @@ vi.doMock('@/lib/terminal-height-store', () => ({
 
 const { TerminalDock } = await import('./TerminalDock');
 const { TerminalSessionsHost } = await import('./TerminalSessionsHost');
-// After the mock.module block (a static import would load the real xterm).
+// After the vi.doMock block (a static import would load the real xterm).
 const { STAGE_PASTE_SETTLE_MS } = await import('./TerminalPanel');
 
 function makeBridge() {
@@ -229,7 +230,6 @@ function DockHarness({
   bridge,
   onReveal,
   dock = 'bottom',
-  onActiveSessionCliChange,
   // biome-ignore lint/suspicious/noExplicitAny: test harness props
 }: any) {
   const [bottomContainer, setBottomContainer] = useState<HTMLDivElement | null>(null);
@@ -259,18 +259,12 @@ function DockHarness({
         onRequestEditorFocus={() => editorRegionEl?.focus()}
         dockPosition={dock}
         onToggleDock={() => {}}
-        onActiveSessionCliChange={onActiveSessionCliChange}
       />
     </TooltipProvider>
   );
 }
 
-function renderDock(
-  visible: boolean,
-  launch?: TestLaunch | null,
-  onReveal?: () => void,
-  onActiveSessionCliChange?: (isCli: boolean) => void,
-) {
+function renderDock(visible: boolean, launch?: TestLaunch | null, onReveal?: () => void) {
   const onVisibleChange = vi.fn((_v: boolean) => {});
   const { bridge, create, kill, input, viewMenuPushes, dispatchMenuAction } = makeBridge();
   const ui = (v: boolean, l?: TestLaunch | null, dock?: TerminalDockPosition) => (
@@ -281,7 +275,6 @@ function renderDock(
       bridge={bridge}
       onReveal={onReveal}
       dock={dock ?? 'bottom'}
-      onActiveSessionCliChange={onActiveSessionCliChange}
     />
   );
   const utils = render(ui(visible, launch));
@@ -870,14 +863,16 @@ describe('TerminalDock multi-session', () => {
     expect(view.input).not.toHaveBeenCalled();
   });
 
-  test('the selection input reuses the live terminal — raw PTY write, no new tab', async () => {
+  test('the selection input reuses a live CLI tab — raw PTY write, no new tab', async () => {
     const view = renderDock(true);
-    // Wait until the seed session's PTY is live and reported up into the reuse map.
+    // A bare-shell seed opens first (pty-1); a CLI launch then takes over as the
+    // active tab (pty-2), so the reuse target is a running CLI's TUI (raw mode).
     await waitFor(() => expect(emitTitle('pty-1', 'zsh')).toBe(true));
+    act(() => view.rerender(true, { prompt: null, cli: 'claude', nonce: 1 }));
+    await waitFor(() => expect(emitTitle('pty-2', 'claude')).toBe(true));
     const runningId = activePanelId();
-    expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
 
-    // The selection-bubble channel fires while that shell is live (the other half
+    // The selection-bubble channel fires while that CLI is live (the other half
     // of the design: launches open their own tab, the selection reuses the open
     // one).
     await act(async () => {
@@ -885,50 +880,35 @@ describe('TerminalDock multi-session', () => {
     });
 
     // Reused, not respawned: the raw selection text goes straight into the live
-    // PTY (no `<bin> '<prompt>'` wrapping), no new tab, and the running shell
-    // stays active.
-    await waitFor(() => expect(view.input).toHaveBeenCalledWith('pty-1', 'explain this'));
-    expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
+    // CLI PTY (no `<bin> '<prompt>'` wrapping), no new tab, and it stays active.
+    await waitFor(() => expect(view.input).toHaveBeenCalledWith('pty-2', 'explain this'));
     expect(activePanelId()).toBe(runningId);
   });
 
-  test('reports whether the active tab is a CLI session (drives ⌘J inject-vs-launch)', () => {
-    // Seeded from a CLI launch → active tab is a CLI session.
-    const cliReports: boolean[] = [];
-    const { unmount } = renderDock(
-      true,
-      { prompt: 'work', cli: 'claude', nonce: 1 },
-      undefined,
-      (isCli) => cliReports.push(isCli),
+  test('a selection send into a bare shell is NEVER raw-written — it stages a fresh CLI instead', async () => {
+    // Regression guard: `terminal.input` writes bytes straight to the PTY, and a
+    // bare shell in canonical mode runs each `\n` in the passage as accept-line.
+    // So the reuse write must be gated on the active tab being a CLI (raw-mode
+    // TUI); a bare shell falls through to a fresh staged launch.
+    const view = renderDock(true);
+    await waitFor(() => expect(emitTitle('pty-1', 'zsh')).toBe(true));
+    expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
+
+    const launchRequests: Array<{ text: string; cli: string; stage: boolean }> = [];
+    const stopLaunch = subscribeToTerminalLaunchRequests((text, cli, opts) =>
+      launchRequests.push({ text, cli, stage: opts.stage }),
     );
-    expect(cliReports.at(-1)).toBe(true);
-    unmount();
-    cliReports.length = 0;
+    await act(async () => {
+      requestActiveTerminalInput('explain this');
+    });
+    stopLaunch();
 
-    // A bare-shell seed (no launch) → active tab is NOT a CLI session.
-    renderDock(true, null, undefined, (isCli) => cliReports.push(isCli));
-    expect(cliReports.at(-1)).toBe(false);
-  });
-
-  test('CLI-active report tracks tab SWITCHES (CLI tab ↔ bare-shell tab)', async () => {
-    // The transition is the load-bearing case: a stale `true` after switching
-    // to a bare-shell tab would route the next ⌘J selection-send through the
-    // raw-inject path into that bare shell — the mangling the inject-vs-launch
-    // decision exists to avoid.
-    const user = userEvent.setup();
-    const cliReports: boolean[] = [];
-    renderDock(true, { prompt: 'work', cli: 'claude', nonce: 1 }, undefined, (isCli) =>
-      cliReports.push(isCli),
-    );
-    expect(cliReports.at(-1)).toBe(true);
-
-    // Add a bare-shell tab (becomes active) → report flips false.
-    await addTerminalTab(user);
-    expect(cliReports.at(-1)).toBe(false);
-
-    // Switch back to the CLI tab → report flips true again.
-    await user.click(screen.getByRole('tab', { name: 'Terminal 1' }));
-    expect(cliReports.at(-1)).toBe(true);
+    // Never a raw write into the bare shell's PTY.
+    expect(view.input).not.toHaveBeenCalled();
+    // The bare shell is not hijacked into a CLI in place; the fresh session is a
+    // staged launch (consumed by EditorPane, not mounted in this host-only rig).
+    expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
+    expect(launchRequests).toEqual([{ text: 'explain this', cli: 'claude', stage: true }]);
   });
 
   test('a stagePaste launch opens its own tab; the HOST never types the passage (staging is TerminalPanel-owned, bake-gated)', async () => {

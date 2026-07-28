@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import {
   signalDetachedServerStop,
   signalStopOwnedUtilityForks,
@@ -20,7 +20,7 @@ function ctx(
 
 describe('signalDetachedServerStop (before-quit-for-update teardown)', () => {
   test('sends SIGTERM to every detached server pid', () => {
-    const killProbe = mock((_pid: number, _signal: number | NodeJS.Signals) => {});
+    const killProbe = vi.fn((_pid: number, _signal: number | NodeJS.Signals) => {});
     const signalled = signalDetachedServerStop(
       [
         ['/proj/a', 101],
@@ -35,26 +35,26 @@ describe('signalDetachedServerStop (before-quit-for-update teardown)', () => {
   });
 
   test('treats an already-exited server (ESRCH) as done without logging a failure', () => {
-    const killProbe = mock((_pid: number, _signal: number | NodeJS.Signals) => {
+    const killProbe = vi.fn((_pid: number, _signal: number | NodeJS.Signals) => {
       const err = new Error('no such process') as NodeJS.ErrnoException;
       err.code = 'ESRCH';
       throw err;
     });
-    const log = { warn: mock((_o: object, _m: string) => {}) };
+    const log = { warn: vi.fn((_o: object, _m: string) => {}) };
     const signalled = signalDetachedServerStop([['/proj/gone', 303]], killProbe, log);
     expect(signalled).toBe(0);
     expect(log.warn).not.toHaveBeenCalled();
   });
 
   test('logs but never throws on a non-ESRCH signal failure, and continues to later pids', () => {
-    const killProbe = mock((pid: number, _signal: number | NodeJS.Signals) => {
+    const killProbe = vi.fn((pid: number, _signal: number | NodeJS.Signals) => {
       if (pid === 404) {
         const err = new Error('operation not permitted') as NodeJS.ErrnoException;
         err.code = 'EPERM';
         throw err;
       }
     });
-    const log = { warn: mock((_o: object, _m: string) => {}) };
+    const log = { warn: vi.fn((_o: object, _m: string) => {}) };
     // The EPERM pid is first to prove iteration continues past a failure.
     const signalled = signalDetachedServerStop(
       [
@@ -76,7 +76,7 @@ describe('signalDetachedServerStop (before-quit-for-update teardown)', () => {
   });
 
   test('no entries (already drained — e.g. the Relaunch-now path) is a clean no-op', () => {
-    const killProbe = mock((_pid: number, _signal: number | NodeJS.Signals) => {});
+    const killProbe = vi.fn((_pid: number, _signal: number | NodeJS.Signals) => {});
     expect(signalDetachedServerStop([], killProbe)).toBe(0);
     expect(killProbe).not.toHaveBeenCalled();
   });
@@ -84,16 +84,16 @@ describe('signalDetachedServerStop (before-quit-for-update teardown)', () => {
 
 describe('signalStopOwnedUtilityForks (shared utility-fork hard-kill)', () => {
   test('SIGKILLs every owned utility fork', () => {
-    const killA = mock((_s: NodeJS.Signals) => {});
-    const killB = mock((_s: NodeJS.Signals) => {});
+    const killA = vi.fn((_s: NodeJS.Signals) => {});
+    const killB = vi.fn((_s: NodeJS.Signals) => {});
     signalStopOwnedUtilityForks([ctx(true, killA, '/a'), ctx(true, killB, '/b')]);
     expect(killA).toHaveBeenCalledWith('SIGKILL');
     expect(killB).toHaveBeenCalledWith('SIGKILL');
   });
 
   test('skips contexts that do not own their server or have no utility', () => {
-    const killOwned = mock((_s: NodeJS.Signals) => {});
-    const killNotOwned = mock((_s: NodeJS.Signals) => {});
+    const killOwned = vi.fn((_s: NodeJS.Signals) => {});
+    const killNotOwned = vi.fn((_s: NodeJS.Signals) => {});
     signalStopOwnedUtilityForks([
       ctx(false, killNotOwned), // attached (sibling-owned) server — must not touch
       ctx(true, null), // detached server, no in-process utility fork
@@ -104,11 +104,11 @@ describe('signalStopOwnedUtilityForks (shared utility-fork hard-kill)', () => {
   });
 
   test('logs but never throws on a kill failure, and continues to later forks', () => {
-    const killLater = mock((_s: NodeJS.Signals) => {});
-    const throwing = mock((_s: NodeJS.Signals) => {
+    const killLater = vi.fn((_s: NodeJS.Signals) => {});
+    const throwing = vi.fn((_s: NodeJS.Signals) => {
       throw new Error('already dead');
     });
-    const log = { warn: mock((_o: object, _m: string) => {}) };
+    const log = { warn: vi.fn((_o: object, _m: string) => {}) };
     signalStopOwnedUtilityForks([ctx(true, throwing, '/boom'), ctx(true, killLater, '/ok')], log);
     expect(killLater).toHaveBeenCalledWith('SIGKILL');
     expect(log.warn).toHaveBeenCalledTimes(1);

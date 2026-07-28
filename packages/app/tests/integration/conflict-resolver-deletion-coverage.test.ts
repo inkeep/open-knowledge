@@ -12,9 +12,10 @@
  *     `ConflictResolver` symbol or the `onOpenConflictResolver` /
  *     `onOpenResolver` prop names.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 const APP_SRC = join(import.meta.dir, '..', '..', 'src');
 const RESOLVER_PATH = join(APP_SRC, 'components', 'ConflictResolver.tsx');

@@ -5,7 +5,7 @@
  * the right injected capability — all without mounting a BrowserWindow.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import {
   attachSpellcheckContextMenu,
   type ContextMenuHandlerParams,
@@ -33,7 +33,7 @@ function makeParams(overrides: Partial<ContextMenuHandlerParams> = {}): ContextM
 function makeWebContents() {
   let handler: ((event: unknown, params: ContextMenuHandlerParams) => void) | undefined;
   return {
-    on: mock(
+    on: vi.fn(
       (
         _event: 'context-menu',
         listener: (event: unknown, params: ContextMenuHandlerParams) => void,
@@ -41,8 +41,8 @@ function makeWebContents() {
         handler = listener;
       },
     ),
-    replaceMisspelling: mock((_: string) => {}),
-    showDefinitionForSelection: mock(() => {}),
+    replaceMisspelling: vi.fn((_: string) => {}),
+    showDefinitionForSelection: vi.fn(() => {}),
     /** Fire a context-menu event at the registered handler. */
     fire(params: ContextMenuHandlerParams) {
       if (!handler) throw new Error('no context-menu handler registered');
@@ -54,10 +54,10 @@ function makeWebContents() {
 function makeDeps(isSpellCheckEnabled: () => boolean = () => true) {
   return {
     isSpellCheckEnabled,
-    setSpellCheckEnabled: mock((_: boolean) => {}),
-    addToDictionary: mock((_: string) => {}),
-    openExternal: mock((_: string) => {}),
-    popMenu: mock((_: BuildSpellcheckMenuTemplateParams) => {}),
+    setSpellCheckEnabled: vi.fn((_: boolean) => {}),
+    addToDictionary: vi.fn((_: string) => {}),
+    openExternal: vi.fn((_: string) => {}),
+    popMenu: vi.fn((_: BuildSpellcheckMenuTemplateParams) => {}),
   };
 }
 

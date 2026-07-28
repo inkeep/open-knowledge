@@ -57,10 +57,43 @@ export function hashFromDocName(docName: string, anchor?: string | null): string
   return anchor ? `${base}#${encodeURIComponent(anchor)}` : base;
 }
 
+const MANAGED_HASH_HISTORY_STATE_KEY = '__okHashHistoryEntry';
+
+function managedHashHistoryState(state: unknown): Record<string, unknown> {
+  const preservedState = typeof state === 'object' && state !== null ? state : {};
+  return { ...preservedState, [MANAGED_HASH_HISTORY_STATE_KEY]: true };
+}
+
+export function isManagedHashHistoryState(state: unknown): boolean {
+  return (
+    typeof state === 'object' &&
+    state !== null &&
+    (state as Record<string, unknown>)[MANAGED_HASH_HISTORY_STATE_KEY] === true
+  );
+}
+
+export function markCurrentHashHistoryEntry(): void {
+  if (isManagedHashHistoryState(window.history.state)) return;
+  window.history.replaceState(managedHashHistoryState(window.history.state), '');
+}
+
 export function replaceHashWithoutNavigation(hash: string): void {
+  const { pathname, search } = window.location;
+  window.history.replaceState(
+    managedHashHistoryState(window.history.state),
+    '',
+    `${pathname}${search}${hash}`,
+  );
+}
+
+export function pushHashWithoutNavigation(hash: string): void {
   if (window.location.hash === hash) return;
   const { pathname, search } = window.location;
-  window.history.replaceState(null, '', `${pathname}${search}${hash}`);
+  window.history.pushState(
+    managedHashHistoryState(window.history.state),
+    '',
+    `${pathname}${search}${hash}`,
+  );
 }
 
 /**

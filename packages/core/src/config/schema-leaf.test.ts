@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { ConfigSchema } from './schema.ts';
 import { getLeafFieldMeta, resolveLeafSchema } from './schema-leaf.ts';
 
@@ -65,6 +65,36 @@ describe('getLeafFieldMeta', () => {
       scope: 'project-local',
       agentSettable: false,
       defaultScope: 'project-local',
+      description: expect.any(String),
+    });
+  });
+
+  test('resolves metadata for the project-local autoSync.mode enum leaf (.register before wrappers)', () => {
+    const meta = getLeafFieldMeta(ConfigSchema, ['autoSync', 'mode']);
+    expect(meta).toEqual({
+      scope: 'project-local',
+      agentSettable: false,
+      defaultScope: 'project-local',
+      description: expect.any(String),
+    });
+  });
+
+  test('resolves metadata for the legacy project-local autoSync.enabled leaf', () => {
+    const meta = getLeafFieldMeta(ConfigSchema, ['autoSync', 'enabled']);
+    expect(meta).toEqual({
+      scope: 'project-local',
+      agentSettable: false,
+      defaultScope: 'project-local',
+      description: expect.any(String),
+    });
+  });
+
+  test('resolves metadata for the committed autoSync.default union leaf (.register before wrappers)', () => {
+    const meta = getLeafFieldMeta(ConfigSchema, ['autoSync', 'default']);
+    expect(meta).toEqual({
+      scope: 'project',
+      agentSettable: false,
+      defaultScope: 'project',
       description: expect.any(String),
     });
   });

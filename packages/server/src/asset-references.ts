@@ -7,10 +7,10 @@ import {
   mediaKindForSidebarAssetExtension,
   resolveAssetProjectPath,
 } from '@inkeep/open-knowledge-core';
+import { isWithinContentDir } from './content-path.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 import { matchMarkdownLinks, matchWikiLinks } from './link-syntax.ts';
 import { getLogger } from './logger.ts';
-import { isWithinContentDir } from './persistence.ts';
 
 const log = getLogger('asset-references');
 

@@ -54,6 +54,7 @@ import {
   isEntryUpToDate,
   isOwnManagedEntry,
   type McpInstallOptions,
+  okBugReportsDir,
   type ProjectAiIntegrationsResult,
   previewContent,
   readExistingMcpEntry,
@@ -70,11 +71,15 @@ import {
 } from '@inkeep/open-knowledge';
 import {
   CLIENT_VERSION_HEADER,
+  hasUninstallFeedbackContent,
   PROTOCOL_VERSION,
   ServerInfoSuccessSchema,
   SPAWN_ERROR_LOG,
   TERMINAL_CLIS,
   type TerminalCli,
+  type UninstallFeedbackAnswers,
+  type UninstallIntent,
+  type UninstallScreenSpec,
 } from '@inkeep/open-knowledge-core';
 import {
   assertGitAvailable,
@@ -131,14 +136,18 @@ import type {
   EditorActiveTargetSnapshot,
   EditorViewMenuStateSnapshot,
   McpWiringEditorId,
+  MenuDispatchCommand,
+  MenuDispatchRole,
   OnboardingShowPayload,
   RecentProject,
 } from '../shared/ipc-channels.ts';
 import { createHandler } from '../shared/ipc-handler.ts';
 import { registerPendingDelivery, sendToRenderer } from '../shared/ipc-send.ts';
+import { UNINSTALL_PRELOAD_ARG } from '../shared/uninstall-preload-arg.ts';
 import { resolveShell } from '../utility/pty-host.ts';
 import { buildAboutPanelOptions } from './about-panel.ts';
 import { appendOkIgnoreSync } from './append-okignore.ts';
+import { registerAppImageDeepLinks } from './appimage-integration.ts';
 import { openAssetSafely, revealAssetSafely } from './asset-allowlist.ts';
 import { popAssetMenu } from './asset-menu.ts';
 import { resolveEffectiveInstanceName } from './auto-instance.ts';
@@ -147,7 +156,7 @@ import {
   channelFromVersion,
   type StartAutoUpdaterHandle,
 } from './auto-updater.ts';
-import { resolveBootRestoreDecision } from './boot-restore-decision.ts';
+import { resolveBootRestoreDecision, resolveRestoreActions } from './boot-restore-decision.ts';
 import { readBootSessionUuid } from './boot-session.ts';
 import { runBootstrap } from './bootstrap.ts';
 import {
@@ -157,6 +166,7 @@ import {
   proxyRunCheckout,
   proxyShareTargetStatus,
 } from './branch-info-proxy.ts';
+import { createBugReportSidecarStore } from './bug-report-sidecar.ts';
 import { wrapperPathInBundle } from './bundle-paths.ts';
 import {
   type BundleReplaceWatcherHandle,
@@ -164,6 +174,7 @@ import {
 } from './bundle-replace-detector.ts';
 import { cascadePosition } from './cascade-position.ts';
 import {
+  checkProjectDirExists,
   checkTargetExists as checkTargetExistsImpl,
   computeShareTargetMissing,
 } from './check-target-exists.ts';
@@ -190,24 +201,27 @@ import {
 import { createDebugIpc, type DebugIpcHandle } from './debug-ipc.ts';
 import { flushDesktopLogger, getLogger, getRootDesktopLogger } from './desktop-logger.ts';
 import {
-  buildDesktopUninstallNoticeHtml,
-  buildDesktopUninstallProgressHtml,
-  buildDesktopUninstallProjectPickerHtml,
   collectDesktopUninstallProjectCandidates,
+  confirmDesktopUninstall,
+  type DesktopUninstallFlowPreviewMode,
   type DesktopUninstallNoticeSpec,
   type DesktopUninstallProjectCandidate,
+  type DesktopUninstallUiPreviewMode,
   defaultDesktopUninstallLogPath,
   desktopUninstallCompletionNotice,
   desktopUninstallConfirmNotice,
   desktopUninstallFailureNotice,
   desktopUninstallFinalStepNotice,
   isSupportedApplicationsBundle,
-  parseDesktopUninstallNoticeUrl,
-  parseDesktopUninstallProjectPickerUrl,
+  normalizeDesktopUninstallFeedbackAnswers,
+  type RunDesktopUninstallCleanupResult,
   readDesktopUninstallLogForDisplay,
   resolveAppBundleFromExecPath,
-  resolveDesktopUninstallProjectSelection,
+  resolveDesktopUninstallUiPreviewMode,
   runDesktopUninstallCleanup,
+  runDesktopUninstallFeedbackStep,
+  runDesktopUninstallOutcomeStep,
+  selectDesktopUninstallProjectsByIndex,
 } from './desktop-uninstall.ts';
 import { promptForExistingFolder, promptForExistingMarkdownFile } from './dialog-helpers.ts';
 import {
@@ -219,6 +233,7 @@ import { EMBED_HOST_PATTERNS, rewriteEmbedRequestHeaders } from './embed-referer
 import { discoverProject, validateFolderPick } from './folder-admission.ts';
 import { ensureGitAvailable } from './git-preflight-handler.ts';
 import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
+import { classifyInstallShape } from './install-shape.ts';
 import { formatInstanceAppName, resolveInstanceLabel } from './instance-identity.ts';
 import { deriveInstanceUserDataDir } from './instance-isolation.ts';
 import { registerIntegrationsSettings } from './integrations-settings.ts';
@@ -310,7 +325,9 @@ import { handleRevealExternal } from './reveal-external.ts';
 import { createServerExitRecorder, type ServerExitRecorder } from './server-exit-record.ts';
 import { startFirstRunHandshake } from './share-handoff.ts';
 import { checkOutboundUrl, handleShellOpenExternal } from './shell-allowlist.ts';
+import { applyHarvestedAuthSock, harvestShellAuthSock } from './shell-env.ts';
 import { createShowGateRegistry, type ShowGateRegistry } from './show-gate.ts';
+import { installSignalCleanQuit } from './signal-clean-quit.ts';
 import { reclaimProjectSkillsOnProjectOpen, reclaimUserSkillsOnLaunch } from './skill-reclaim.ts';
 import { attachSpellcheckContextMenu } from './spellcheck-context-menu.ts';
 import { popSpellcheckMenu } from './spellcheck-menu.ts';
@@ -318,6 +335,7 @@ import { beginRoot, childSpan, endRoot, injectTraceparent } from './startup-trac
 import { type RendererMarks, StartupWaterfall } from './startup-waterfall.ts';
 import {
   type AppState,
+  addRecentFile,
   addRecentProject,
   annotateMissing,
   emptyState,
@@ -358,6 +376,13 @@ import {
 import { getTerminalWindowContext, resolvePtyProjectRoot } from './terminal-window-registry.ts';
 import { applyThemeApplied } from './theme-applied-handler.ts';
 import { applyThemeSource, isOkThemeSource } from './theme-handler.ts';
+import { createUninstallScreenRegistry } from './uninstall-ipc.ts';
+import {
+  loadUninstallEntry,
+  noticeCloseIsConfirm,
+  resolveUninstallEntryTarget,
+  resolveUninstallWindowTheme,
+} from './uninstall-window.ts';
 import {
   applyResetIncompatible,
   applyStateQuery,
@@ -377,6 +402,7 @@ import {
   createDefaultEditorViewMenuState,
   mergeViewMenuState,
 } from './view-menu-state.ts';
+import { applyThemeToWindow, buildNonDarwinChromeOpts } from './window-chrome.ts';
 import {
   type BrowserWindowLike,
   setWindowInstanceLabel,
@@ -384,7 +410,7 @@ import {
   WindowManager,
 } from './window-manager.ts';
 import { WINDOW_MIN_SIZE } from './window-min-size.ts';
-import { resolveRestoredPlacement, sortByFocusSequence } from './window-placement.ts';
+import { resolveRestoredPlacement, sortWindowsByFocusSequence } from './window-placement.ts';
 import {
   classifyRecentGit,
   classifyRecentGitAsync,
@@ -425,17 +451,24 @@ import {
 // future Electron upgrade.
 const VIBRANCY_DEFAULT: VibrancyMaterial = 'sidebar';
 
-// Chrome stack scoped to darwin; other platforms deferred. Electron applies
-// `titleBarStyle: 'hiddenInset'` / `vibrancy` / `visualEffectState` /
-// `transparent` / `trafficLightPosition` on every platform that supports
-// them — un-gated, a Linux/Windows developer running the desktop dev
-// command today gets a frameless transparent window with no usable chrome.
-// Conditional spread keeps the fields off non-darwin runners. `resizable`
+// Chrome stack is per-platform. Electron applies `titleBarStyle:
+// 'hiddenInset'` / `vibrancy` / `visualEffectState` / `transparent` /
+// `trafficLightPosition` on every platform that supports them — un-gated, a
+// Linux/Windows window would be a frameless transparent surface with no
+// usable chrome. The darwin spread keeps the mac vibrancy stack; non-darwin
+// gets `titleBarStyle: 'hidden'` + `titleBarOverlay` (OS-drawn min/max/close
+// over the renderer chrome row) + a solid theme-matched background from
+// `window-chrome.ts` (windows-linux-port chrome). `resizable`
 // stays at Electron's default true: the editor needs drag-resize, and the
 // transparent-windows-not-resizable note in Electron's
 // custom-window-styles tutorial has not surfaced on Electron 41.x macOS in
 // dogfooding (verified via the smoke matrix). If a future Electron upgrade
 // regresses this, the smoke job will catch it before users do.
+//
+// Non-darwin theme note: `nativeTheme.shouldUseDarkColors` is read at
+// module load for the initial chrome; a `nativeTheme.on('updated')`
+// listener (registered in bootstrap below) re-applies via
+// `applyThemeToWindow`, and covers windows created after a theme flip.
 const DEFAULT_WIN_OPTS: BrowserWindowConstructorOptions = {
   width: 1280,
   height: 800,
@@ -450,7 +483,7 @@ const DEFAULT_WIN_OPTS: BrowserWindowConstructorOptions = {
         visualEffectState: 'followWindow',
         transparent: true,
       }
-    : {}),
+    : buildNonDarwinChromeOpts(nativeTheme.shouldUseDarkColors)),
   webPreferences: {
     contextIsolation: true,
     nodeIntegration: false,
@@ -589,16 +622,62 @@ function freezeFocusTracking(reason: string): void {
   getLogger('lifecycle').info({ reason }, 'project focus tracking frozen for shutdown');
 }
 
+// Advance the focus-recency sequence for a window key (a project path, or a
+// loose-file window's canonical file path). Ordering only — never writes
+// `lastOpenedProject`.
+function recordWindowFocusSeq(key: string): void {
+  projectFocusSeqCounter += 1;
+  projectFocusSeq.set(key, projectFocusSeqCounter);
+}
+
 function trackProjectWindowFocus(win: BrowserWindow, projectPath: string): void {
   win.on('focus', () => {
     if (focusTrackingFrozen) return;
-    projectFocusSeqCounter += 1;
-    projectFocusSeq.set(projectPath, projectFocusSeqCounter);
+    recordWindowFocusSeq(projectPath);
     if (appState.lastOpenedProject !== projectPath) {
       appState = { ...appState, lastOpenedProject: projectPath };
       saveAppState(appState);
     }
   });
+}
+
+// Focus-recency for a loose single-file (ephemeral) window, keyed by its
+// canonical file path so it joins the restore ordering + post-restore raise.
+// MUST NOT write `lastOpenedProject`: an ephemeral window's "projectPath" is the
+// file's PARENT directory, which would poison the single-project restore
+// fallback (open `~/notes` as a project) and collide two loose files in one dir.
+function trackEphemeralWindowFocus(win: BrowserWindow, fileKey: string): void {
+  win.on('focus', () => {
+    if (focusTrackingFrozen) return;
+    recordWindowFocusSeq(fileKey);
+  });
+}
+
+// Write-once guard so the richest pre-teardown snapshot wins. On the "Relaunch
+// now" path `prepareForRelaunch` snapshots first, then `quitAndInstall`
+// internally re-enters `before-quit`; on the silent install-on-quit path
+// `before-quit-for-update` snapshots before it stops servers, ahead of the
+// plain `before-quit`. Whichever hook fires first wins; later re-fires no-op.
+let windowRestoreSnapshotWritten = false;
+
+// Capture the full open-window set (projects + loose files) into
+// `pendingWindowRestore`, ordered least → most recently focused, so the next
+// boot restores everything and raises the window the user was last in. Called
+// at the earliest teardown-preceding hook of every clean-exit path (write-once).
+// Callers MUST `freezeFocusTracking` first so the close cascade can't corrupt
+// the order.
+function captureWindowRestoreSnapshot(reason: string): void {
+  if (windowRestoreSnapshotWritten) return;
+  windowRestoreSnapshotWritten = true;
+  const windows = sortWindowsByFocusSequence(wm?.getOpenWindows() ?? [], projectFocusSeq);
+  appState = { ...appState, pendingWindowRestore: windows };
+  if (!saveAppState(appState)) {
+    // Persist failed — the next boot may not reopen everything that was open.
+    console.warn('[main] failed to persist window-restore snapshot', {
+      reason,
+      windowCount: windows.length,
+    });
+  }
 }
 
 /**
@@ -999,6 +1078,19 @@ const bugReportScreenshots = new Map<number, BugReportScreenshotEntry>();
 const BUG_REPORT_SCREENSHOT_PREVIEW_WIDTH = 720;
 
 /**
+ * Durable per-report sidecar record backing the history/retry list — owns the
+ * write-on-generate, the send-state transitions, the retention sweep, and the
+ * process-local in-flight lock, all scoped to `~/.ok/bug-reports/`. The logger
+ * is a thin adapter so `getLogger` resolves at call time, not module load.
+ */
+const bugReportSidecar = createBugReportSidecarStore({
+  dir: okBugReportsDir(),
+  logger: {
+    warn: (data, message) => getLogger('bug-report').warn(data as Record<string, unknown>, message),
+  },
+});
+
+/**
  * Active-editor target snapshot pushed by the renderer via
  * `ok:editor:active-target-changed`. Drives the macOS File menu's state-aware
  * item-management section — when the renderer navigates to a new doc /
@@ -1175,6 +1267,10 @@ function ensureWindowManager() {
       if (opts.projectPath !== undefined) {
         trackProjectWindowBounds(win, opts.projectPath);
         trackProjectWindowFocus(win, opts.projectPath);
+      } else if (opts.focusKey !== undefined) {
+        // Ephemeral loose-file window: focus-recency ordering only — no bounds
+        // memory, and no `lastOpenedProject` write (its key is a file path).
+        trackEphemeralWindowFocus(win, opts.focusKey);
       }
       attachSpellcheckMenuToWindow(win);
       // Per-window PTY reap: closing the window kills its shell (no orphan).
@@ -2034,6 +2130,50 @@ async function openProject(
   refreshApplicationMenu();
 }
 
+/**
+ * Strict VS Code "Open Recent" parity: when a recents entry's folder no longer
+ * exists on disk, drop it from the single canonical recents list (and its
+ * associated session / window-bounds / last-opened keys, via
+ * `removeRecentProject`) and refresh the File → Open Recent menu. Returns
+ * whether an entry was actually removed plus the display name for the notice.
+ * A no-op (`removed: false`) when the path is present, was never a recent, or is
+ * only `'unreadable'` (an EACCES / I-O error where the folder may still exist),
+ * so a plain pick-existing of a vanished folder is left to the normal error path.
+ */
+function pruneRecentIfMissing(projectPath: string): { removed: boolean; name: string } {
+  const entry = appState.recentProjects.find((p) => p.path === projectPath);
+  if (entry === undefined) return { removed: false, name: basename(projectPath) };
+  // Strict VS Code parity: prune only on a genuine not-exist miss. `existsSync`
+  // collapses EACCES / I-O errors to `false`, so gating on it would wrongly drop
+  // a recent whose folder is still present but momentarily unreadable (a
+  // permission-restricted parent, a transient I/O error). Classify via the
+  // errno-aware probe so only a definitive `'missing'` prunes; `'exists'` and
+  // `'unreadable'` fall through to the normal open path.
+  const dirState = checkProjectDirExists(projectPath);
+  if (dirState !== 'missing') {
+    // A folder that exists but can't be read (EACCES / I-O) never self-cleans on
+    // open, so leave a breadcrumb — otherwise a "this dead recent won't go away"
+    // report is indistinguishable from an intentional keep.
+    if (dirState === 'unreadable') {
+      console.warn('[main] recents entry left intact: project folder is unreadable', {
+        projectPath,
+      });
+    }
+    return { removed: false, name: entry.name };
+  }
+  appState = removeRecentProject(appState, projectPath);
+  saveAppState(appState);
+  refreshApplicationMenu();
+  // This deletes persisted state (recents row + saved session + window bounds +
+  // lastOpenedProject); leave a trace so a "my project vanished from recents"
+  // report has a main-process signal, as the sibling openProject-catch fallback
+  // does for its failure.
+  console.warn('[main] pruned stale recents entry: project folder no longer exists', {
+    projectPath,
+  });
+  return { removed: true, name: entry.name };
+}
+
 async function openProjectOrFallbackToNavigator(
   projectPath: string,
   entryPoint: EntryPoint,
@@ -2043,6 +2183,23 @@ async function openProjectOrFallbackToNavigator(
   pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload,
   pendingTargetMissing?: boolean,
 ) {
+  // Prune-and-fall-back for internal callers that have no originating renderer
+  // to notify (native File → Open Recent, boot restore of a vanished
+  // lastOpenedProject): drop the stale recent and land on the Navigator rather
+  // than spawning a server for a gone path. Renderer opens instead prune (and
+  // toast) up front in the `ok:project:open` handler and return there on a
+  // genuine miss, so any renderer open that reaches here has a present folder —
+  // making this an extra, harmless existence probe for that path. Share opens
+  // carry a deep-link / branch-switch target and render their own honest verdict
+  // panel, so they skip this prune and proceed to `openProject` below.
+  if (
+    pendingDeepLinkTarget === undefined &&
+    pendingShareBranchSwitch === undefined &&
+    pruneRecentIfMissing(projectPath).removed
+  ) {
+    openNavigator();
+    return;
+  }
   try {
     await openProject(
       projectPath,
@@ -2190,6 +2347,11 @@ async function openEphemeralFile(filePath: string): Promise<void> {
     // The external-link / asset safety net is attached by the window factory
     // (WindowManager.attachSafetyNet) — for ephemeral windows the asset root is
     // the file's real parent (`opts.contentDir`), wired there.
+    // Track the loose file in Recent Files (durable, separate from recent
+    // projects) so File → Open Recent can reopen it. Keyed by canonical path;
+    // does NOT touch `lastOpenedProject` (a loose file is not a project).
+    appState = addRecentFile(appState, plan.canonicalFilePath, basename(plan.canonicalFilePath));
+    saveAppState(appState);
     tryCloseNavigator(navigatorWindow, { projectPath: plan.contentDir });
     refreshApplicationMenu();
   } catch (err) {
@@ -2249,6 +2411,134 @@ function refreshApplicationMenu(): void {
     });
 }
 
+/**
+ * Menubar `command` dispatch (the windows-linux-port renderer-menubar decision). Each case
+ * reuses the exact behavior the native menu deps wire in
+ * `runApplicationMenuRefresh` — a divergence here would make the same menu
+ * item act differently per platform.
+ */
+async function runMenuDispatchCommand(
+  command: MenuDispatchCommand,
+  sender: Electron.WebContents,
+): Promise<void> {
+  switch (command) {
+    case 'open-navigator':
+      openNavigator();
+      return;
+    case 'open-folder-dialog': {
+      const picked = await promptForExistingFolder(dialog);
+      if (picked) await openProjectOrFallbackToNavigator(picked, 'pick-existing');
+      return;
+    }
+    case 'clear-recent-projects':
+      appState = { ...appState, recentProjects: [] };
+      saveAppState(appState);
+      refreshApplicationMenu();
+      return;
+    case 'open-settings': {
+      // Same hash-routed mount path as the native Settings… item; prefer the
+      // dispatching window (the menubar lives in it) over the focus query.
+      const target =
+        BrowserWindow.fromWebContents(sender) ??
+        BrowserWindow.getFocusedWindow() ??
+        BrowserWindow.getAllWindows()[0];
+      if (!target) return;
+      target.webContents
+        .executeJavaScript("window.location.hash = '#settings'; undefined")
+        .catch(() => {
+          // Window torn down mid-dispatch — the click degrades to a no-op.
+        });
+      return;
+    }
+    case 'check-for-updates':
+      void autoUpdaterHandle?.checkForUpdatesNow().catch((err) => {
+        console.warn('[main] checkForUpdatesNow rejected', {
+          message: err instanceof Error ? err.message : String(err),
+        });
+      });
+      return;
+    case 'reconfigure-mcp-wiring':
+      // Gate lives inside reconfigureMcpWiringNow (returns false when the
+      // surface is unavailable) — same body the Cmd+K invoke channel runs.
+      reconfigureMcpWiringNow();
+      return;
+    case 'open-github':
+      // Hardcoded https URL — same build-time-trusted rationale as the
+      // native Help-menu items (see openExternalUrl in the menu deps).
+      void shell.openExternal('https://github.com/inkeep/open-knowledge');
+      return;
+    case 'toggle-spell-check':
+      setSpellCheckEnabledAppWide(!appState.spellCheckEnabled);
+      return;
+  }
+}
+
+/**
+ * Menubar `role` dispatch — the hand-rolled equivalents of the Electron
+ * menu roles the native template gets for free. Applied to the dispatching
+ * window (the menubar that fired lives in it).
+ */
+function applyMenuDispatchRole(role: MenuDispatchRole, sender: Electron.WebContents): void {
+  if (role === 'quit') {
+    app.quit();
+    return;
+  }
+  const win = BrowserWindow.fromWebContents(sender) ?? BrowserWindow.getFocusedWindow();
+  if (!win || win.isDestroyed()) return;
+  const wc = win.webContents;
+  switch (role) {
+    case 'undo':
+      wc.undo();
+      return;
+    case 'redo':
+      wc.redo();
+      return;
+    case 'cut':
+      wc.cut();
+      return;
+    case 'copy':
+      wc.copy();
+      return;
+    case 'paste':
+      wc.paste();
+      return;
+    case 'selectAll':
+      wc.selectAll();
+      return;
+    case 'reload':
+      wc.reload();
+      return;
+    case 'forceReload':
+      wc.reloadIgnoringCache();
+      return;
+    case 'toggleDevTools':
+      // Channel-gated like the native View menu: stable builds don't expose
+      // the inspector even if a stale renderer sends the role.
+      if (!app.isPackaged || channelFromVersion(app.getVersion()) === 'beta') {
+        wc.toggleDevTools();
+      }
+      return;
+    case 'resetZoom':
+      wc.setZoomLevel(0);
+      return;
+    case 'zoomIn':
+      wc.setZoomLevel(wc.getZoomLevel() + 0.5);
+      return;
+    case 'zoomOut':
+      wc.setZoomLevel(wc.getZoomLevel() - 0.5);
+      return;
+    case 'toggleFullScreen':
+      win.setFullScreen(!win.isFullScreen());
+      return;
+    case 'minimize':
+      win.minimize();
+      return;
+    case 'close':
+      win.close();
+      return;
+  }
+}
+
 async function runApplicationMenuRefresh(): Promise<void> {
   // installApplicationMenu is async because it dynamically imports
   // `electron.Menu` (see menu.ts header — keeps `buildMenuTemplate`
@@ -2275,6 +2565,12 @@ async function runApplicationMenuRefresh(): Promise<void> {
       saveAppState(appState);
       refreshApplicationMenu();
     },
+    getRecentFiles: () => appState.recentFiles,
+    clearRecentFiles: () => {
+      appState = { ...appState, recentFiles: [] };
+      saveAppState(appState);
+      refreshApplicationMenu();
+    },
     // The scheme allowlist is enforced in the renderer IPC path (shell-allowlist.ts).
     // Help-menu URLs are hardcoded in menu.ts (always `https://github.com/inkeep/…`),
     // so they're trusted at build time — direct shell.openExternal is fine here.
@@ -2294,7 +2590,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
     // windows the armed mount-ack fallback delivers the dialog to the next
     // window that opens.
     reconfigureMcpWiring:
-      process.platform === 'darwin' && app.isPackaged
+      app.isPackaged && supportedPackagedInstall()
         ? () => {
             reconfigureMcpWiringNow();
           }
@@ -2321,9 +2617,14 @@ async function runApplicationMenuRefresh(): Promise<void> {
     openSettings: () => {
       const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
       if (!target) return;
-      target.webContents.executeJavaScript("window.location.hash = '#settings'; undefined");
+      target.webContents
+        .executeJavaScript("window.location.hash = '#settings'; undefined")
+        .catch(() => {
+          // Window torn down mid-dispatch — the click degrades to a no-op.
+        });
     },
     onReportBug: () => sendMenuActionToFocused('report-bug'),
+    onSendFeedback: () => sendMenuActionToFocused('send-feedback'),
     // App-menu / Help-menu "Check for Updates…" entries fire this. Returns
     // void: the menu doesn't surface in-flight progress; the existing
     // `update-available` / `update-not-available` electron-updater events
@@ -2346,6 +2647,9 @@ async function runApplicationMenuRefresh(): Promise<void> {
             getLogger('lifecycle').error({ err }, 'desktop self-uninstall flow failed');
           })
       : undefined,
+    // View menu history traversal uses the same focused-renderer action channel.
+    onNavigateBack: () => sendMenuActionToFocused('navigate-back'),
+    onNavigateForward: () => sendMenuActionToFocused('navigate-forward'),
     // File menu state-aware items. activeTarget drives enable/disable;
     // per-item handlers fire `ok:menu-action` to the focused renderer which
     // already knows the current scope (sidebar selection + editor
@@ -2381,7 +2685,18 @@ async function runApplicationMenuRefresh(): Promise<void> {
     // resulting CRDT mutation triggers a sibling push back so the checkmark
     // snaps.
     ...buildViewMenuStateDeps(editorViewMenuState, sendMenuActionToFocused),
-    onNewTerminalWindow: () => openTerminalWindow(),
+    // Terminal dock is dark off-mac (windows-linux-port terminal posture): node-pty
+    // is not bundled on win/linux, so strip every terminal handler there —
+    // the menu items render disabled instead of surfacing a spawn failure.
+    // Overrides the three handlers `buildViewMenuStateDeps` just spread in.
+    ...(process.platform === 'darwin'
+      ? { onNewTerminalWindow: () => openTerminalWindow() }
+      : {
+          onToggleTerminal: undefined,
+          onNewTerminal: undefined,
+          onKillTerminal: undefined,
+          onNewTerminalWindow: undefined,
+        }),
     // Edit -> "Check Spelling While Typing": the checkbox reflects the
     // persisted app-wide flag; the click flips it through the shared toggle
     // (session + persist + menu rebuild) so this and the in-editor
@@ -2389,6 +2704,18 @@ async function runApplicationMenuRefresh(): Promise<void> {
     spellCheckEnabled: appState.spellCheckEnabled,
     onToggleSpellCheck: () => setSpellCheckEnabledAppWide(!appState.spellCheckEnabled),
   });
+}
+
+/**
+ * Shared predicate for the machine-integration surfaces (MCP wiring
+ * re-arm, integrations settings): the running executable is one of the
+ * supported packaged layouts from `install-shape.ts`. AppImage and dev
+ * shells are excluded — matching the reclaim modules' own gates, so a
+ * surface never arms a flow its module would refuse.
+ */
+function supportedPackagedInstall(): boolean {
+  const kind = classifyInstallShape(process.platform, app.getPath('exe'), process.env).kind;
+  return kind !== 'appimage' && kind !== 'unsupported';
 }
 
 function desktopSelfUninstallAvailable(): boolean {
@@ -2403,67 +2730,56 @@ async function showMessageBoxAttached(options: MessageBoxOptions) {
 }
 
 /**
- * Show a `DesktopUninstallNoticeSpec` in a styled utility window and resolve
- * true on confirm. Closing the window without a button press means Cancel for
- * a two-button notice; a single-button notice proceeds either way (there is
- * nothing else to choose, and the flow must still quit).
+ * Show a `DesktopUninstallNoticeSpec` in the React uninstall window and resolve
+ * true on confirm.
+ *
+ * Closing the window without pressing a button means Cancel for a two-button
+ * notice — an unanswered question must not proceed. A single-button notice has
+ * nothing else to choose and the flow still has to finish, so closing it
+ * confirms. The screen mirrors the same split on Escape.
  */
 async function showDesktopUninstallNotice(
   spec: DesktopUninstallNoticeSpec,
-  options: { width?: number; height?: number; resizable?: boolean } = {},
+  options: {
+    width?: number;
+    height?: number;
+    resizable?: boolean;
+    /** Reveal the cleanup log in Finder when the notice's log link is clicked. */
+    onRevealLog?: () => void;
+  } = {},
 ): Promise<boolean> {
-  const parent = BrowserWindow.getFocusedWindow();
-  const closeMeansConfirm = spec.cancelLabel === undefined;
+  const closeMeansConfirm = noticeCloseIsConfirm(spec);
   return new Promise((resolveNotice) => {
-    const win = createDesktopUninstallUtilityWindow({
-      parent,
-      width: options.width ?? 480,
-      height: options.height ?? 300,
-      title: spec.title,
-      modal: parent != null,
-      resizable: options.resizable ?? false,
-    });
-
     let settled = false;
-    const finish = (confirmed: boolean) => {
+    const finish = (confirmed: boolean, win?: BrowserWindow) => {
       if (settled) return;
       settled = true;
       resolveNotice(confirmed);
-      if (!win.isDestroyed()) win.destroy();
+      if (win !== undefined && !win.isDestroyed()) win.destroy();
     };
 
-    win.webContents.on('will-navigate', (event, url) => {
-      const action = parseDesktopUninstallNoticeUrl(url);
-      if (action !== null) {
-        event.preventDefault();
-        finish(action === 'confirm');
-        return;
-      }
-      if (!url.startsWith('data:text/html')) event.preventDefault();
-    });
-
-    win.on('close', (event) => {
-      if (settled) return;
-      event.preventDefault();
+    void openDesktopUninstallRendererWindow({
+      screen: { kind: 'notice', notice: spec },
+      width: options.width ?? 480,
+      height: options.height ?? 300,
+      resizable: options.resizable ?? false,
+      title: spec.title,
+      onIntent: (intent, win) => {
+        if (intent.kind === 'notice-reveal-log') {
+          // Non-terminal: reveal the log in Finder and leave the notice up, so
+          // the user can read what happened and still answer.
+          options.onRevealLog?.();
+        } else if (intent.kind === 'notice-confirm') {
+          finish(true, win);
+        } else if (intent.kind === 'notice-cancel') {
+          finish(false, win);
+        }
+      },
+      onClosed: () => finish(closeMeansConfirm),
+    }).catch((err) => {
+      getLogger('lifecycle').warn({ err }, 'desktop uninstall notice failed to load');
       finish(closeMeansConfirm);
     });
-    win.on('closed', () => {
-      if (settled) return;
-      settled = true;
-      resolveNotice(closeMeansConfirm);
-    });
-    win.once('ready-to-show', () => {
-      if (!win.isDestroyed()) win.show();
-    });
-
-    void win
-      .loadURL(
-        `data:text/html;charset=utf-8,${encodeURIComponent(buildDesktopUninstallNoticeHtml(spec))}`,
-      )
-      .catch((err) => {
-        getLogger('lifecycle').warn({ err }, 'desktop uninstall notice failed to load');
-        finish(closeMeansConfirm);
-      });
   });
 }
 
@@ -2476,6 +2792,12 @@ function createDesktopUninstallUtilityWindow(options: {
   title: string;
   modal?: boolean;
   resizable?: boolean;
+  /**
+   * Load the preload bridge and tag the window as the uninstall renderer, so
+   * the preload exposes `okUninstall` instead of `okDesktop`. The inline-HTML
+   * screens omit it and get no preload at all.
+   */
+  uninstallBridge?: boolean;
 }): BrowserWindow {
   const win = new BrowserWindow({
     width: options.width,
@@ -2492,6 +2814,12 @@ function createDesktopUninstallUtilityWindow(options: {
     fullscreenable: false,
     webPreferences: {
       ...DEFAULT_WIN_OPTS.webPreferences,
+      ...(options.uninstallBridge === true
+        ? {
+            preload: join(__dirname, '../preload/index.js'),
+            additionalArguments: [UNINSTALL_PRELOAD_ARG],
+          }
+        : {}),
     },
   });
   win.setMenu(null);
@@ -2499,6 +2827,115 @@ function createDesktopUninstallUtilityWindow(options: {
   return win;
 }
 
+/**
+ * Every live React uninstall window, keyed by webContents id. Main answers
+ * `ok:uninstall:dispatch` only for senders in here — see `uninstall-ipc.ts`.
+ */
+const uninstallScreens = createUninstallScreenRegistry();
+
+/**
+ * Open the React uninstall renderer (`packages/app/uninstall.html`) showing
+ * `screen`, and resolve once it is visible.
+ *
+ * The theme is resolved here, in main, and travels in the entry query so the
+ * renderer's inline stamp runs before the body parses — `ready-to-show` (and
+ * therefore `show()`) cannot beat it, so there is no wrong-theme frame.
+ *
+ * The screen registration is torn down on `closed`, so a window main has
+ * finished with can no longer drive the flow even if its renderer is still
+ * executing.
+ */
+async function openDesktopUninstallRendererWindow(options: {
+  screen: UninstallScreenSpec;
+  width?: number;
+  height?: number;
+  minWidth?: number;
+  minHeight?: number;
+  title?: string;
+  resizable?: boolean;
+  /**
+   * Refuse user-initiated closes. `destroy()` bypasses it, so main can still
+   * take the window down when the step it covers is over.
+   */
+  preventClose?: boolean;
+  /** Receives the window so a settling intent can close the screen it came from. */
+  onIntent: (intent: UninstallIntent, win: BrowserWindow) => void;
+  /**
+   * Runs once the window is gone, however it went — user close, a settling
+   * intent, or a load failure. Wired here rather than by the caller because a
+   * window can close before this function's promise resolves, and a listener
+   * attached afterwards would never fire.
+   */
+  onClosed?: () => void;
+}): Promise<BrowserWindow> {
+  const parent = BrowserWindow.getFocusedWindow();
+  const win = createDesktopUninstallUtilityWindow({
+    parent,
+    width: options.width ?? 560,
+    height: options.height ?? 420,
+    minWidth: options.minWidth,
+    minHeight: options.minHeight,
+    title: options.title ?? 'Uninstall OpenKnowledge',
+    resizable: options.resizable,
+    uninstallBridge: true,
+  });
+  if (options.preventClose === true) {
+    win.on('close', (event) => event.preventDefault());
+  }
+  const release = uninstallScreens.open(win.webContents.id, {
+    screen: options.screen,
+    onIntent: (intent) => options.onIntent(intent, win),
+  });
+  const shown = new Promise<void>((resolveShown) => {
+    win.once('ready-to-show', () => {
+      if (!win.isDestroyed()) win.show();
+      resolveShown();
+    });
+    win.once('closed', () => {
+      release();
+      options.onClosed?.();
+      resolveShown();
+    });
+  });
+
+  const theme = resolveUninstallWindowTheme(nativeTheme.shouldUseDarkColors);
+  try {
+    await loadUninstallEntry(
+      win,
+      resolveUninstallEntryTarget(
+        {
+          devServerUrl: rendererDevUrl,
+          isPackaged: app.isPackaged,
+          resourcesPath: process.resourcesPath,
+          mainDir: __dirname,
+        },
+        theme,
+      ),
+    );
+  } catch (err) {
+    // `win.destroy()` fires `closed` synchronously, which runs release()
+    // (idempotent) and onClosed?.() through the `closed` handler. The explicit
+    // release() here unregisters the window before destroy fires it again. The
+    // re-throw reaches the caller's `.catch()`, but for any caller providing
+    // `onClosed` its outer Promise has already settled through that closed path
+    // by the time the catch runs — the `settled` guard makes it a no-op.
+    release();
+    if (!win.isDestroyed()) win.destroy();
+    throw err;
+  }
+  await shown;
+  return win;
+}
+
+/**
+ * Show the project picker and resolve with the projects to also deinit, or
+ * `null` when the user cancels.
+ *
+ * Closing the window IS a cancel — this screen is the flow's confirm gate, so
+ * every exit that is not an explicit confirm has to leave the install alone.
+ * (The churn survey deliberately maps close the other way; see
+ * `showDesktopUninstallFeedbackWindow`.)
+ */
 async function showDesktopUninstallProjectPicker(
   candidates: readonly DesktopUninstallProjectCandidate[],
 ): Promise<DesktopUninstallProjectCandidate[] | null> {
@@ -2510,95 +2947,134 @@ async function showDesktopUninstallProjectPicker(
   const height = Math.max(460, Math.min(680, workArea.height - 80));
 
   return new Promise((resolveSelection) => {
-    const win = createDesktopUninstallUtilityWindow({
-      parent,
+    let settled = false;
+    const finish = (selection: DesktopUninstallProjectCandidate[] | null, win?: BrowserWindow) => {
+      if (settled) return;
+      settled = true;
+      resolveSelection(selection);
+      if (win !== undefined && !win.isDestroyed()) win.destroy();
+    };
+
+    void openDesktopUninstallRendererWindow({
+      screen: {
+        kind: 'picker',
+        projects: candidates.map((candidate) => ({
+          path: candidate.path,
+          open: candidate.open,
+          recent: candidate.recent,
+          running: candidate.running,
+        })),
+      },
       width,
       height,
       minWidth: 560,
       minHeight: 420,
-      title: 'Uninstall OpenKnowledge',
+      onIntent: (intent, win) => {
+        if (intent.kind === 'picker-confirm') {
+          finish(selectDesktopUninstallProjectsByIndex(candidates, intent.selectedIndexes), win);
+        } else if (intent.kind === 'picker-cancel') {
+          finish(null, win);
+        }
+      },
+      onClosed: () => finish(null),
+    }).catch((err) => {
+      getLogger('lifecycle').warn({ err }, 'desktop uninstall project picker failed to load');
+      finish(null);
     });
-
-    let settled = false;
-    const finish = (raw: unknown) => {
-      if (settled) return;
-      settled = true;
-      resolveSelection(resolveDesktopUninstallProjectSelection(candidates, raw));
-      if (!win.isDestroyed()) win.destroy();
-    };
-
-    win.webContents.on('will-navigate', (event, url) => {
-      const pickerResult = parseDesktopUninstallProjectPickerUrl(url);
-      if (pickerResult !== null) {
-        event.preventDefault();
-        finish(pickerResult);
-        return;
-      }
-      if (!url.startsWith('data:text/html')) event.preventDefault();
-    });
-
-    win.on('close', (event) => {
-      if (settled) return;
-      event.preventDefault();
-      finish({ action: 'cancel' });
-    });
-    win.on('closed', () => {
-      if (settled) return;
-      settled = true;
-      resolveSelection(null);
-    });
-    win.once('ready-to-show', () => {
-      if (!win.isDestroyed()) win.show();
-    });
-
-    void win
-      .loadURL(
-        `data:text/html;charset=utf-8,${encodeURIComponent(
-          buildDesktopUninstallProjectPickerHtml(candidates),
-        )}`,
-      )
-      .catch((err) => {
-        getLogger('lifecycle').warn({ err }, 'desktop uninstall project picker failed to load');
-        finish({ action: 'cancel' });
-      });
   });
 }
 
-async function withDesktopUninstallProgress<T>(work: () => Promise<T>): Promise<T> {
+/**
+ * Show the churn survey and resolve with whatever the user left behind. Every
+ * non-answer exit — closing the window, a renderer that fails to load —
+ * resolves empty and lets the uninstall continue: the decision was already made
+ * on the confirm surface before this, so an optional question must not become a
+ * second, hidden cancel gate. That is why this deliberately does NOT reuse the
+ * project picker's close-means-cancel mapping.
+ */
+async function showDesktopUninstallFeedbackWindow(): Promise<UninstallFeedbackAnswers> {
   const parent = BrowserWindow.getFocusedWindow();
-  const win = createDesktopUninstallUtilityWindow({
-    parent,
+  const workArea = (
+    parent ? screen.getDisplayMatching(parent.getBounds()) : screen.getPrimaryDisplay()
+  ).workArea;
+  const width = Math.max(520, Math.min(620, workArea.width - 80));
+  const height = Math.max(520, Math.min(640, workArea.height - 80));
+
+  return new Promise((resolveAnswers) => {
+    let settled = false;
+    const finish = (answers: UninstallFeedbackAnswers, win?: BrowserWindow) => {
+      if (settled) return;
+      settled = true;
+      resolveAnswers(answers);
+      if (win !== undefined && !win.isDestroyed()) win.destroy();
+    };
+
+    void openDesktopUninstallRendererWindow({
+      screen: { kind: 'survey' },
+      width,
+      height,
+      minWidth: 480,
+      minHeight: 420,
+      title: 'Before you go',
+      onIntent: (intent, win) => {
+        if (intent.kind === 'survey-send') {
+          finish(normalizeDesktopUninstallFeedbackAnswers(intent), win);
+        } else if (intent.kind === 'survey-skip') {
+          finish({}, win);
+        }
+      },
+      onClosed: () => finish({}),
+    }).catch((err) => {
+      getLogger('lifecycle').warn({ err }, 'desktop uninstall feedback window failed to load');
+      finish({});
+    });
+  });
+}
+
+async function collectDesktopUninstallFeedback(): Promise<void> {
+  const outcome = await runDesktopUninstallFeedbackStep({
+    collect: showDesktopUninstallFeedbackWindow,
+    appVersion: app.getVersion(),
+  });
+  if (outcome.status === 'failed') {
+    getLogger('lifecycle').warn({ err: outcome.error }, 'desktop uninstall feedback step failed');
+  } else if (outcome.status === 'submitted' && !outcome.result.ok) {
+    // Offline, a hung intake, or feedback switched off server-side are all
+    // expected conditions. A rejected payload is not — it means our body and
+    // the intake's schema have drifted, and the only other symptom would be
+    // churn tickets quietly going to zero.
+    const log = getLogger('lifecycle');
+    const line = 'desktop uninstall feedback was not delivered';
+    if (outcome.result.reason === 'invalid') log.warn({ reason: outcome.result.reason }, line);
+    else log.info({ reason: outcome.result.reason }, line);
+  }
+}
+
+/**
+ * Run `work` behind the progress screen, which stays up — and refuses to be
+ * closed — until the work settles.
+ */
+async function withDesktopUninstallProgress<T>(work: () => Promise<T>): Promise<T> {
+  // Cosmetic: a window that fails to load must neither skip the cleanup nor
+  // leak, so a failure is logged and the work runs without it.
+  const win = await openDesktopUninstallRendererWindow({
+    screen: { kind: 'progress' },
     width: 420,
     height: 220,
-    title: 'Uninstalling OpenKnowledge',
-    modal: parent != null,
     resizable: false,
-  });
-  win.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith('data:text/html')) event.preventDefault();
-  });
-  const preventClose = (event: { preventDefault(): void }) => event.preventDefault();
-  win.on('close', preventClose);
-  win.once('ready-to-show', () => {
-    if (!win.isDestroyed()) win.show();
+    preventClose: true,
+    title: 'Uninstalling OpenKnowledge',
+    // Nothing on this screen can be pressed, so anything arriving here is noise.
+    onIntent: () => undefined,
+  }).catch((err) => {
+    getLogger('lifecycle').warn({ err }, 'desktop uninstall progress window failed to load');
+    return null;
   });
 
   try {
-    // The progress window is cosmetic — a failed load must neither skip the
-    // cleanup nor (being outside the finally) leak the close-prevented window.
-    try {
-      await win.loadURL(
-        `data:text/html;charset=utf-8,${encodeURIComponent(buildDesktopUninstallProgressHtml())}`,
-      );
-    } catch (err) {
-      getLogger('lifecycle').warn({ err }, 'desktop uninstall progress window failed to load');
-    }
     return await work();
   } finally {
-    if (!win.isDestroyed()) {
-      win.removeListener('close', preventClose);
-      win.destroy();
-    }
+    if (win !== null && !win.isDestroyed()) win.destroy();
   }
 }
 
@@ -2629,18 +3105,15 @@ async function startDesktopSelfUninstallFlow(): Promise<void> {
     openProjectPaths: wm?.getOpenProjectPaths() ?? [],
     lockDirs,
   });
-  let projectPaths: string[] = [];
-  if (projectCandidates.length > 0) {
-    const selectedProjects = await showDesktopUninstallProjectPicker(projectCandidates);
-    if (selectedProjects === null) return;
-    projectPaths = selectedProjects.map((candidate) => candidate.path);
-  } else {
-    const confirmed = await showDesktopUninstallNotice(desktopUninstallConfirmNotice(), {
-      height: 280,
-    });
-    if (!confirmed) return;
-  }
+  const confirmation = await confirmDesktopUninstall({
+    candidates: projectCandidates,
+    showProjectPicker: showDesktopUninstallProjectPicker,
+    showConfirmNotice: () =>
+      showDesktopUninstallNotice(desktopUninstallConfirmNotice(), { height: 280 }),
+  });
+  if (!confirmation.proceed) return;
 
+  const projectPaths = confirmation.projectPaths;
   const includeProjects = projectPaths.length > 0;
   const logPath = defaultDesktopUninstallLogPath(osHomedir());
   const cleanup = await withDesktopUninstallProgress(() =>
@@ -2650,38 +3123,302 @@ async function startDesktopSelfUninstallFlow(): Promise<void> {
       logPath,
     }),
   );
-  if (!cleanup.ok) {
-    // Cleanup ran but reported problems (a refused path, a failed deinit…).
-    // Surface the log inline so the user doesn't have to hunt for the file,
-    // then continue to the remove-the-app step — the user asked to uninstall,
-    // and the log spells out anything that needs manual follow-up.
-    getLogger('lifecycle').warn(
-      { includeProjects, projectCount: projectPaths.length, logPath, error: cleanup.error },
-      'desktop self-uninstall cleanup reported failures',
-    );
-    await showDesktopUninstallNotice(
-      desktopUninstallFailureNotice({
-        error: cleanup.error,
-        logPath,
-        logText: readDesktopUninstallLogForDisplay(logPath),
-      }),
-      { width: 560, height: 520, resizable: true },
-    );
-    await showDesktopUninstallNotice(desktopUninstallFinalStepNotice(), { height: 240 });
-  } else {
-    getLogger('lifecycle').info(
-      { includeProjects, projectCount: projectPaths.length, logPath },
-      'desktop self-uninstall cleanup finished',
-    );
-    await showDesktopUninstallNotice(
-      desktopUninstallCompletionNotice({ projectCount: projectPaths.length, logPath }),
-      { height: 320 },
-    );
-  }
+  await runDesktopUninstallOutcomeStep({
+    cleanup,
+    // Ask why only after a successful removal, before the finish screen.
+    runFeedbackStep: collectDesktopUninstallFeedback,
+    showCompletion: async () => {
+      getLogger('lifecycle').info(
+        { includeProjects, projectCount: projectPaths.length, logPath },
+        'desktop self-uninstall cleanup finished',
+      );
+      await showDesktopUninstallNotice(
+        desktopUninstallCompletionNotice({ projectCount: projectPaths.length }),
+        { height: 440, onRevealLog: () => shell.showItemInFolder(logPath) },
+      );
+    },
+    showFailure: async ({ error }) => {
+      // Cleanup ran but reported problems (a refused path, a failed deinit…).
+      // Surface the log inline so the user doesn't have to hunt for the file,
+      // then continue to the remove-the-app step — the user asked to uninstall,
+      // and the log spells out anything that needs manual follow-up. No survey
+      // here: a failed uninstall isn't a departure worth asking about.
+      getLogger('lifecycle').warn(
+        { includeProjects, projectCount: projectPaths.length, logPath, error },
+        'desktop self-uninstall cleanup reported failures',
+      );
+      await showDesktopUninstallNotice(
+        desktopUninstallFailureNotice({
+          error,
+          logPath,
+          logText: readDesktopUninstallLogForDisplay(logPath),
+        }),
+        { width: 560, height: 520, resizable: true },
+      );
+      await showDesktopUninstallNotice(desktopUninstallFinalStepNotice(), { height: 240 });
+    },
+  });
 
   shell.showItemInFolder(appBundlePath);
   autoUpdaterHandle?.suppressAutoInstallOnQuit();
   app.quit();
+}
+
+/**
+ * Dev-only walkthrough of the uninstall UI. Reuses the exact windows the real
+ * flow shows — project picker, progress, feedback survey, and the
+ * completion/failure notices — but stubs out the destructive cleanup: nothing is
+ * removed, and the app is never trashed or quit. Gated on `!app.isPackaged` via
+ * `resolveDesktopUninstallUiPreviewMode`, so it can never fire in a shipped app.
+ *
+ * `OK_UNINSTALL_UI_PREVIEW=success` walks the happy path (feedback → completion);
+ * `=failure` walks the failure notices. See `runDesktopUninstallUiPreview`.
+ * `=renderer`, `=picker`, `=survey` and `=notice` skip the flow entirely and
+ * open one screen — a notice, the project picker, the churn survey and both
+ * notice shapes respectively — so a screen's fidelity and its IPC round trip
+ * can be asserted on their own. Each settles by destroying its window, the same
+ * shape the real screens use, which is the observable a smoke needs to prove an
+ * intent actually reached main.
+ */
+function maybeRunDesktopUninstallUiPreview(): void {
+  const mode = resolveDesktopUninstallUiPreviewMode(
+    process.env.OK_UNINSTALL_UI_PREVIEW,
+    app.isPackaged,
+  );
+  if (mode === null) return;
+  void runDesktopUninstallPreviewMode(mode).catch((err) => {
+    getLogger('lifecycle').error({ err }, 'desktop uninstall UI preview failed');
+  });
+}
+
+async function runDesktopUninstallPreviewMode(mode: DesktopUninstallUiPreviewMode): Promise<void> {
+  if (mode === 'renderer') {
+    await openDesktopUninstallRendererWindow({
+      screen: { kind: 'notice', notice: desktopUninstallConfirmNotice() },
+      onIntent: (intent, win) => {
+        getLogger('lifecycle').info(
+          { intent: intent.kind },
+          'uninstall UI preview: renderer intent received',
+        );
+        if (!win.isDestroyed()) win.destroy();
+      },
+    });
+    return;
+  }
+  if (mode === 'picker') {
+    const selection = await showDesktopUninstallProjectPicker(
+      desktopUninstallPreviewCandidates(osHomedir()),
+    );
+    getLogger('lifecycle').info(
+      { cancelled: selection === null, selected: selection?.length ?? 0 },
+      'uninstall UI preview: project picker resolved',
+    );
+    // Echo what main resolved back onto the screen, so walking the picker shows
+    // which projects the flow would actually have acted on rather than leaving
+    // that to the log.
+    await openDesktopUninstallRendererWindow({
+      screen: {
+        kind: 'notice',
+        notice: {
+          title: describeDesktopUninstallPreviewSelection(selection),
+          paragraphs: selection?.map((candidate) => candidate.path) ?? [],
+          confirmLabel: 'Close',
+        },
+      },
+      onIntent: (_intent, win) => {
+        if (!win.isDestroyed()) win.destroy();
+      },
+    });
+    return;
+  }
+  if (mode === 'notice') {
+    // The two shapes back to back, so one walkthrough shows both close
+    // semantics: leaving the question unanswered must cancel, while leaving the
+    // recap unanswered must still confirm.
+    const confirmed = await showDesktopUninstallNotice(desktopUninstallConfirmNotice(), {
+      height: 280,
+    });
+    let reveals = 0;
+    const acknowledged = await showDesktopUninstallNotice(
+      desktopUninstallCompletionNotice({ projectCount: 2 }),
+      // Counted rather than revealed: a preview must not open Finder.
+      { height: 440, onRevealLog: () => (reveals += 1) },
+    );
+    getLogger('lifecycle').info(
+      { confirmed, acknowledged, reveals },
+      'uninstall UI preview: notices resolved',
+    );
+    await openDesktopUninstallRendererWindow({
+      screen: {
+        kind: 'notice',
+        notice: {
+          title: 'Notice results',
+          paragraphs: [
+            `confirm=${confirmed ? 'confirmed' : 'cancelled'}`,
+            `completion=${acknowledged ? 'confirmed' : 'cancelled'}`,
+            `revealLog=${reveals}`,
+          ],
+          confirmLabel: 'Close',
+        },
+      },
+      onIntent: (_intent, win) => {
+        if (!win.isDestroyed()) win.destroy();
+      },
+    });
+    return;
+  }
+  if (mode === 'survey') {
+    const answers = await showDesktopUninstallFeedbackWindow();
+    getLogger('lifecycle').info(
+      { answered: hasUninstallFeedbackContent(answers) },
+      'uninstall UI preview: churn survey resolved',
+    );
+    // Nothing is POSTed here — the answers are echoed onto the screen so
+    // walking the survey shows exactly what the flow would have filed.
+    await openDesktopUninstallRendererWindow({
+      screen: {
+        kind: 'notice',
+        notice: {
+          title: describeDesktopUninstallPreviewAnswers(answers),
+          paragraphs: [],
+          confirmLabel: 'Close',
+        },
+      },
+      onIntent: (_intent, win) => {
+        if (!win.isDestroyed()) win.destroy();
+      },
+    });
+    return;
+  }
+  await runDesktopUninstallUiPreview(mode);
+}
+
+function describeDesktopUninstallPreviewSelection(
+  selection: readonly DesktopUninstallProjectCandidate[] | null,
+): string {
+  if (selection === null) return 'Picker cancelled';
+  if (selection.length === 0) return 'Picker confirmed with no projects';
+  return `Picker confirmed: ${selection.map((candidate) => candidate.path).join(', ')}`;
+}
+
+/**
+ * The whole answer set on one line. Names each field so the preview proves
+ * which one an answer landed in, not just that something came through.
+ */
+function describeDesktopUninstallPreviewAnswers(answers: UninstallFeedbackAnswers): string {
+  if (!hasUninstallFeedbackContent(answers)) return 'Survey continued unanswered';
+  return [
+    'Survey answered',
+    `reason=${answers.reason ?? '(none)'}`,
+    `note=${answers.note ?? '(none)'}`,
+    `email=${answers.email ?? '(none)'}`,
+  ].join(' | ');
+}
+
+/**
+ * Stand-in projects for the dev-only previews. These paths are never touched —
+ * every preview mode stubs out or stops short of the cleanup step.
+ */
+function desktopUninstallPreviewCandidates(home: string): DesktopUninstallProjectCandidate[] {
+  return [
+    { path: `${home}/Notes`, open: true, recent: true, running: true },
+    { path: `${home}/Work/Team Handbook`, open: false, recent: true, running: false },
+    { path: `${home}/Personal/Journal`, open: false, recent: true, running: false },
+  ];
+}
+
+/**
+ * Show the feedback survey during a preview without ever reaching production
+ * intake. Submits only when a non-production `OK_FEEDBACK_INTAKE_ORIGIN` is set;
+ * otherwise the survey is shown but nothing is POSTed, so a preview can never
+ * file a real churn ticket.
+ */
+async function collectDesktopUninstallFeedbackPreview(): Promise<void> {
+  const origin = process.env.OK_FEEDBACK_INTAKE_ORIGIN;
+  const hasLocalIntake =
+    typeof origin === 'string' && origin.length > 0 && !/openknowledge\.ai/i.test(origin);
+  if (hasLocalIntake) {
+    // A local intake is configured — exercise the real submit path against it.
+    await collectDesktopUninstallFeedback();
+    return;
+  }
+  // No local intake: show the real survey but never POST. Point
+  // OK_FEEDBACK_INTAKE_ORIGIN at a local ok-marketing origin to exercise
+  // end-to-end delivery.
+  await showDesktopUninstallFeedbackWindow();
+  getLogger('lifecycle').warn(
+    { submitted: false },
+    'uninstall UI preview: feedback survey shown but not submitted — set OK_FEEDBACK_INTAKE_ORIGIN to a local ok-marketing origin to exercise delivery',
+  );
+}
+
+async function runDesktopUninstallUiPreview(mode: DesktopUninstallFlowPreviewMode): Promise<void> {
+  const log = getLogger('lifecycle');
+  log.warn(
+    { mode },
+    'desktop uninstall UI preview started — non-destructive; no files are removed and the app is not trashed',
+  );
+
+  const home = osHomedir();
+  const candidates = desktopUninstallPreviewCandidates(home);
+
+  const confirmation = await confirmDesktopUninstall({
+    candidates,
+    showProjectPicker: showDesktopUninstallProjectPicker,
+    showConfirmNotice: () =>
+      showDesktopUninstallNotice(desktopUninstallConfirmNotice(), { height: 280 }),
+  });
+  if (!confirmation.proceed) {
+    log.info({ mode }, 'desktop uninstall UI preview cancelled at the confirm surface');
+    return;
+  }
+
+  const projectPaths = confirmation.projectPaths;
+  const logPath = defaultDesktopUninstallLogPath(home);
+  // Write a placeholder log so the completion screen's "reveal in Finder" link
+  // opens a real file during the preview — a single throwaway note in the
+  // standard uninstall-log location, nothing else on disk changes.
+  try {
+    writeFileSync(
+      logPath,
+      'OpenKnowledge uninstall UI preview — this is a simulated log. Nothing was removed.\n',
+    );
+  } catch (err) {
+    log.warn({ err, logPath }, 'uninstall UI preview: could not write placeholder log');
+  }
+
+  // Stubbed cleanup: pause on the progress window like a real removal would,
+  // then report the requested outcome. Nothing is deleted.
+  const cleanup: RunDesktopUninstallCleanupResult = await withDesktopUninstallProgress(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+    return mode === 'failure'
+      ? { ok: false, error: 'Simulated cleanup failure (preview) — nothing was removed.' }
+      : { ok: true };
+  });
+
+  await runDesktopUninstallOutcomeStep({
+    cleanup,
+    runFeedbackStep: collectDesktopUninstallFeedbackPreview,
+    showCompletion: async () => {
+      await showDesktopUninstallNotice(
+        desktopUninstallCompletionNotice({ projectCount: projectPaths.length }),
+        { height: 440, onRevealLog: () => shell.showItemInFolder(logPath) },
+      );
+    },
+    showFailure: async ({ error }) => {
+      await showDesktopUninstallNotice(
+        desktopUninstallFailureNotice({
+          error,
+          logPath,
+          logText: readDesktopUninstallLogForDisplay(logPath),
+        }),
+        { width: 560, height: 520, resizable: true },
+      );
+      await showDesktopUninstallNotice(desktopUninstallFinalStepNotice(), { height: 240 });
+    },
+  });
+
+  log.warn({ mode }, 'desktop uninstall UI preview finished — OpenKnowledge is still installed');
 }
 
 /**
@@ -2981,12 +3718,14 @@ function armMcpWiring(opts: ArmMcpWiringOpts = {}): RunMcpWiringHandle {
  * `ok:mcp-wiring:reconfigure` invoke. Tears down any prior handle then arms a
  * fresh one with `forceShow: true` so the marker-present gate is bypassed, and
  * hands it an already-loaded window so the dialog opens immediately. Returns
- * `false` when the surface is unavailable (non-darwin / unpackaged — same gate
- * that hides the menu leaf) or when arming threw, so the palette can toast
- * rather than silently no-op.
+ * `false` when the surface is unavailable (unpackaged, or an install shape
+ * with no persistent MCP wiring — same gate that hides the menu leaf) or
+ * when arming threw, so the palette can toast rather than silently no-op.
+ * Shared by the native File menu dep, the renderer menubar's
+ * `reconfigure-mcp-wiring` dispatch, and the Cmd+K invoke channel.
  */
 function reconfigureMcpWiringNow(): boolean {
-  if (!(process.platform === 'darwin' && app.isPackaged)) return false;
+  if (!(app.isPackaged && supportedPackagedInstall())) return false;
   mcpWiringHandle?.destroy();
   mcpWiringHandle = null;
   try {
@@ -3256,6 +3995,14 @@ function registerIpcHandlers() {
     return appState.spellCheckEnabled;
   });
 
+  // Self-uninstall renderer. The registry answers only senders it registered
+  // as live uninstall screens, so an editor window that invokes this channel
+  // gets `refused` and drives nothing. `event.sender.id` is the identity —
+  // it is observed by main, not supplied by the payload.
+  handle('ok:uninstall:dispatch', (event, request) =>
+    uninstallScreens.dispatch(event.sender.id, request),
+  );
+
   // Per-session membership set for `ok:fs:remove-git-folder`. Populated
   // by `ok:fs:find-enclosing-git-root` returns; read by the destructive
   // handler via the `allowedGitRoots` dep on `removeGitFolder`. Scope-
@@ -3417,7 +4164,7 @@ function registerIpcHandlers() {
   });
   handle('ok:terminal:claude-assist', async (event, req) => {
     let rewireError: string | undefined;
-    if (req.action === 'rewire' && process.platform === 'darwin' && app.isPackaged) {
+    if (req.action === 'rewire' && app.isPackaged && supportedPackagedInstall()) {
       // Re-arm MCP wiring: the same forceShow consent path as
       // File -> Set up OpenKnowledge integrations, so the user can wire
       // `open-knowledge` into Claude Code. Fires ONLY from the renderer's
@@ -3902,6 +4649,44 @@ function registerIpcHandlers() {
     return undefined;
   });
 
+  // Windows/Linux renderer-menubar dispatch (the windows-linux-port renderer-menubar decision).
+  // The renderer-drawn menu bar routes every click here so menu semantics
+  // stay single-sourced with the native template: `menu-action` relays
+  // through the exact `sendMenuActionToFocused` path the native items use,
+  // `role` maps onto what Electron menu roles do, `command` reuses the
+  // same click handlers the native deps wire, and `query` returns the
+  // aggregated state (`activeTarget` + view-menu snapshot + recents +
+  // capability flags) that drives the native menu's enable/check rendering.
+  // macOS renderers never call this (they keep the native menu bar).
+  handle('ok:menu:dispatch', async (event, request) => {
+    switch (request.kind) {
+      case 'query':
+        return {
+          recentProjects: appState.recentProjects.map((r) => ({ path: r.path, name: r.name })),
+          spellCheckEnabled: appState.spellCheckEnabled,
+          // Same channel discriminator as the native menu (see
+          // runApplicationMenuRefresh's showDevToolsMenu rationale).
+          showDevToolsMenu: !app.isPackaged || channelFromVersion(app.getVersion()) === 'beta',
+          canCheckForUpdates: autoUpdaterHandle != null,
+          canReconfigureMcpWiring: app.isPackaged && supportedPackagedInstall(),
+          activeTarget: editorActiveTarget ?? { kind: null },
+          viewMenuState: editorViewMenuState,
+        };
+      case 'menu-action':
+        sendMenuActionToFocused(request.action);
+        return undefined;
+      case 'open-recent-project':
+        await openProjectOrFallbackToNavigator(request.path, 'recents');
+        return undefined;
+      case 'command':
+        await runMenuDispatchCommand(request.command, event.sender);
+        return undefined;
+      case 'role':
+        applyMenuDispatchRole(request.role, event.sender);
+        return undefined;
+    }
+  });
+
   handle('ok:startup:renderer-marks', async (_event, marks) => {
     // Fold the renderer's two launch checkpoints into the waterfall. Fire-and-
     // forget from the renderer; we never reject (the renderer swallows anyway).
@@ -3933,6 +4718,10 @@ function registerIpcHandlers() {
       // Ephemeral single-file windows carry teardown state on `ctx.ephemeral`;
       // its presence IS the single-file signal for the renderer's chrome gate.
       singleFile: ctx.ephemeral !== undefined,
+      // Mirrors the preload's cold-start config: pty capability is a
+      // platform fact (node-pty ships on macOS only), identical for a
+      // re-queried live window.
+      ptyAvailable: process.platform === 'darwin',
       // `initialDoc` is a cold-start-only hash seed (consumed once at renderer
       // boot from the preload-injected bridge config). A live window queried via
       // get-info has already navigated, so there is nothing to re-seed → null.
@@ -3976,6 +4765,12 @@ function registerIpcHandlers() {
         request,
       );
     }
+    if (request.kind === 'list') {
+      return bugReportSidecar.list();
+    }
+    if (request.kind === 'delete') {
+      return bugReportSidecar.remove(request.id);
+    }
     if (request.kind === 'send') {
       return handleBugReportSend(
         {
@@ -3990,6 +4785,9 @@ function registerIpcHandlers() {
           // Same containment root the Reveal handler whitelists above — only
           // zips `create` produced may be read and uploaded.
           bugReportsRoot: dirname(defaultBugReportZipPath()),
+          // Records uploading → sent/upload-failed/email-drafted on the sidecar
+          // and holds the in-flight lock, for the first send and a list retry.
+          sidecar: bugReportSidecar.sendHooks,
         },
         request,
       );
@@ -4028,6 +4826,9 @@ function registerIpcHandlers() {
         // Main-owned bytes captured for this exact window; `create` stages them
         // only when the renderer opted in via `includeScreenshot`.
         screenshotPngBytes: () => bugReportScreenshots.get(event.sender.id)?.png ?? null,
+        // Persist the report's `generated` sidecar and run the retention sweep
+        // once the bundle is written, so it survives dialog close + restart.
+        onReportGenerated: (meta) => bugReportSidecar.recordGenerated(meta),
         logger: getLogger('bug-report'),
       },
       request,
@@ -4108,7 +4909,7 @@ function registerIpcHandlers() {
     return undefined;
   });
 
-  handle('ok:project:open', async (_event, request) => {
+  handle('ok:project:open', async (event, request) => {
     // Route through the wrapper so boot failures (lock collision, git-init
     // error, generic crash) surface as the standard Electron error dialog
     // + Navigator fall-back instead of escaping to the renderer as a raw
@@ -4117,6 +4918,25 @@ function registerIpcHandlers() {
       throw new Error(
         `ok:project:open rejected: invalid entryPoint '${String(request.entryPoint)}'`,
       );
+    }
+    // Strict VS Code "Open Recent" parity for renderer-initiated opens: a plain
+    // (non-share) open of a recents entry whose folder is gone prunes the stale
+    // entry from the single recents list and notifies the originating window
+    // with a lightweight toast — instead of spawning a broken window or bouncing
+    // to the Navigator. The user stays where they are. Share opens (which carry
+    // a deep-link / branch-switch target) are handled by the probe below.
+    if (
+      request.pendingDeepLinkTarget === undefined &&
+      request.pendingShareBranchSwitch === undefined
+    ) {
+      const pruned = pruneRecentIfMissing(request.path);
+      if (pruned.removed) {
+        sendToRenderer(event.sender, 'ok:project:recent-removed-missing', {
+          path: request.path,
+          projectName: pruned.name,
+        });
+        return undefined;
+      }
     }
     // Renderer-initiated share-receive opens (fresh clone, multi-worktree pivot)
     // reach window-open here instead of through the URL-scheme dispatcher, which
@@ -4667,11 +5487,15 @@ function registerIpcHandlers() {
  */
 function registerIntegrationsSettingsIpc(): void {
   const integrationsLogger = getLogger('integrations-settings');
+  // Mirrors the mcp-wiring/skill-reclaim gates via the shared classifier:
+  // any supported packaged layout (darwin bundle / NSIS / linux dir) is
+  // available; AppImage + dev shells render the section read-only.
   const available =
     process.env.OK_RECLAIM_DISABLE !== '1' &&
-    process.platform === 'darwin' &&
     (app.isPackaged || process.env.OK_M6B_FORCE === '1') &&
-    /\.app\/Contents\/MacOS\/[^/]+$/.test(app.getPath('exe'));
+    !['appimage', 'unsupported'].includes(
+      classifyInstallShape(process.platform, app.getPath('exe'), process.env).kind,
+    );
   const tildifyHomePath = (path: string): string => {
     const home = osHomedir();
     return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
@@ -4837,11 +5661,12 @@ function registerIntegrationsSettingsIpc(): void {
  */
 function registerProjectIntegrationsSettingsIpc(): void {
   const projectLogger = getLogger('project-integrations-settings');
+  // Same shape gate as the user-scope section — see
+  // registerIntegrationsSettingsIpc.
   const available =
     process.env.OK_RECLAIM_DISABLE !== '1' &&
-    process.platform === 'darwin' &&
     (app.isPackaged || process.env.OK_M6B_FORCE === '1') &&
-    /\.app\/Contents\/MacOS\/[^/]+$/.test(app.getPath('exe'));
+    supportedPackagedInstall();
   const tildifyHomePath = (path: string): string => {
     const home = osHomedir();
     return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
@@ -5219,6 +6044,22 @@ function bootPrimaryInstance(): void {
   powerMonitor.on('shutdown', () => crashDetection?.noteOsShutdown());
   powerMonitor.on('suspend', () => crashDetection?.noteSuspend());
   powerMonitor.on('resume', () => crashDetection?.noteResume());
+  // Clean-quit on catchable termination signals (SIGTERM/SIGINT/SIGHUP) so an
+  // orderly stop (logout, `killall`, Activity Monitor's "Quit") isn't misread
+  // as a crash next boot. Installed after crashDetection is wired so
+  // `markCleanQuit` is live. Full rationale + SIGKILL-race handling live in
+  // `signal-clean-quit.ts`.
+  installSignalCleanQuit({
+    process,
+    markCleanQuit: () => crashDetection?.markCleanQuit(),
+    quit: () => app.quit(),
+    logger: getLogger('signal-clean-quit'),
+  });
+  // A sidecar left `uploading` is a send interrupted by a crash/quit last
+  // session — a send never survives a restart, so demote it to `upload-failed`
+  // making it retryable and evictable again. Fire-and-forget +
+  // fail-soft: a reconcile failure must not block boot.
+  void bugReportSidecar.reconcileStaleUploading();
   app.on('child-process-gone', (_event, details) => {
     // Feed the server-exit recorder every Utility death (not just the crash
     // reasons the invitation pipeline acts on) so the bundle can distinguish a
@@ -5456,6 +6297,18 @@ function bootPrimaryInstance(): void {
       // its return tells the waterfall whether main spans are live.
       startupWaterfall.mark('appReady');
       startupWaterfall.otelEnabled = beginRoot();
+      // Login-shell SSH_AUTH_SOCK harvest — started here so its (2s-bounded)
+      // shell spawn overlaps the bootstrap I/O below; awaited + applied just
+      // before the window-open branch, ahead of the git preflight and both
+      // server-spawn paths (utility fork + detached spawn). Desktop-main git
+      // spawns pick the corrected value up automatically: gitSpawnEnv()
+      // rebuilds from live process.env per call and must never be frozen
+      // into a module-level constant (see git-spawn-env.ts).
+      const shellEnvLogger = {
+        event: (payload: Record<string, unknown> & { event: string }) =>
+          getLogger('shell-env').info(payload, payload.event),
+      };
+      const authSockHarvest = harvestShellAuthSock({ logger: shellEnvLogger });
       // One-time userData migration for the "Open Knowledge" → "OpenKnowledge"
       // rename. Dormant until the packaged productName flips the userData
       // basename to "OpenKnowledge"; then it relocates a verified-ours legacy
@@ -5500,6 +6353,37 @@ function bootPrimaryInstance(): void {
         maxSupportedSchemaVersion: MAX_SUPPORTED_SCHEMA_VERSION,
       });
       appState = result.appState;
+
+      // Windows/Linux chrome theme-reactivity (windows-linux-port chrome): construction options are
+      // read once per window, so a theme flip after creation must re-apply
+      // the solid background (+ overlay colors on win32) to every live
+      // window. macOS is untouched — vibrancy tracks nativeTheme natively.
+      if (process.platform !== 'darwin') {
+        nativeTheme.on('updated', () => {
+          for (const win of BrowserWindow.getAllWindows()) {
+            applyThemeToWindow(win, process.platform, nativeTheme.shouldUseDarkColors);
+          }
+        });
+      }
+
+      // AppImage deep-link self-registration (windows-linux-port deep-link posture): fire-and-forget — a
+      // failure means openknowledge:// links stay unregistered on this
+      // box, which is exactly the pre-existing state. Skips itself
+      // everywhere but packaged Linux AppImage launches.
+      void registerAppImageDeepLinks({
+        platform: process.platform,
+        isPackaged: app.isPackaged,
+        env: process.env,
+        homeDir: osHomedir(),
+        log: {
+          info: (obj, msg) => getLogger('lifecycle').info(obj as Record<string, unknown>, msg),
+          warn: (obj, msg) => getLogger('lifecycle').warn(obj as Record<string, unknown>, msg),
+        },
+      }).then((result) => {
+        if (result.status === 'failed') {
+          getLogger('lifecycle').warn(result, '[appimage-integration] registration failed');
+        }
+      });
       pendingSchemaIncompatibility = result.pendingSchemaIncompatibility;
       // Snapshot the post-upgrade signal BEFORE step 6 (`bootAutoUpdater`)
       // advances `lastSeenVersion` — this bootstrap runs at step 2, the first
@@ -5597,6 +6481,14 @@ function bootPrimaryInstance(): void {
           });
         });
 
+      // Apply the harvested login-shell SSH_AUTH_SOCK before the window-open
+      // branch. A Finder launch inherits launchd's default-agent socket, which
+      // holds no keys for external-agent users (1Password, Proton Pass) —
+      // patching process.env here lets every downstream git spawn inherit the
+      // agent the user's terminal actually uses. Failure or an empty value
+      // leaves the inherited socket untouched.
+      applyHarvestedAuthSock(process.env, await authSockHarvest, shellEnvLogger);
+
       // Every project open spawns a NEW editor window. Boot restore order:
       //   1. An update relaunch left a `pendingWindowRestore` snapshot — open
       //      EVERY project that was open before the relaunch, not just the
@@ -5637,7 +6529,7 @@ function bootPrimaryInstance(): void {
           // next boot. The existsSync filter limits the blast radius to
           // projects that still exist on disk.
           console.warn('[main] failed to persist cleared window-restore snapshot', {
-            projectCount: decision.action === 'restore' ? decision.projects.length : 0,
+            windowCount: decision.action === 'restore' ? decision.windows.length : 0,
           });
         }
       }
@@ -5677,28 +6569,55 @@ function bootPrimaryInstance(): void {
       }
 
       if (decision.action === 'restore') {
-        // Parallel opens — the snapshot is ordered least → most recently
-        // focused (see `pendingWindowRestore`), but each window's OS-level
-        // `show()` is deferred behind its own dual-signal show gate, which
-        // releases in nondeterministic order. `show()` steals key-window focus
-        // on macOS, so the raise must wait for EVERY restored window to reveal
-        // before raising the snapshot's last entry — otherwise a sibling window
-        // that shows later steals focus back (the reported "active window isn't
-        // the one I was working in" after a relaunch). Waiting for all reveals
-        // also keeps `bringToFront`'s `show()` from bypassing the target's own
-        // gate: the target is already shown by the time we raise it.
-        const opens = decision.projects.map((projectPath) =>
-          openProjectOrFallbackToNavigator(projectPath, 'recents'),
-        );
+        // Re-derive each entry to its EFFECTIVE open target and dedupe. A loose
+        // file whose realpath now sits inside a project re-derives to that
+        // project (`prepareSingleFileOpen`, same as `openEphemeralFile`), so two
+        // entries — two loose files under one project root, or a loose file that
+        // resolves into a project already present as a `project` entry — can
+        // collapse onto one target. Deduping keeps a single ordered raise-key
+        // list and (with the WM's project in-flight reservation) prevents a
+        // duplicate window + second server. A file that vanished / became
+        // non-markdown since the snapshot throws here and is skipped silently.
+        // The file→project re-derivation + duplicate collapse + ordering lives
+        // in the pure `resolveRestoreActions` (unit-tested); here we just inject
+        // the real `prepareSingleFileOpen` (a throw → skip the vanished file).
+        const { orderedKeys, actionByKey } = resolveRestoreActions(decision.windows, (filePath) => {
+          try {
+            const plan = prepareSingleFileOpen(filePath);
+            return plan.mode === 'project'
+              ? { kind: 'project', projectPath: plan.projectRoot }
+              : { kind: 'file', filePath };
+          } catch {
+            return null;
+          }
+        });
+
+        // Parallel opens — each window's OS-level `show()` is deferred behind
+        // its own dual-signal show gate, which releases in nondeterministic
+        // order. `show()` steals key-window focus on macOS, so the raise waits
+        // for EVERY restored window to reveal before raising the last (most
+        // recently focused) entry — otherwise a sibling that shows later steals
+        // focus back. Waiting for all reveals also keeps `bringToFront`'s
+        // `show()` from bypassing the target's own gate.
+        const opens = orderedKeys.map((key) => {
+          const action = actionByKey.get(key);
+          if (action === undefined) return Promise.resolve();
+          return action.kind === 'project'
+            ? openProjectOrFallbackToNavigator(action.projectPath, 'recents')
+            : openEphemeralFile(action.filePath);
+        });
         void Promise.allSettled(opens).then(() =>
           raiseMostRecentlyFocusedAfterRestore({
-            projects: decision.projects,
-            getWindow: (projectPath) => {
-              const ctx = wm?.getWindowFor(projectPath);
+            windowKeys: orderedKeys,
+            // `getWindowFor` / `focusWindowForProject` canonicalize their input,
+            // so a loose-file key (canonical file path) resolves its ephemeral
+            // window just as a project key resolves its project window.
+            getWindow: (key) => {
+              const ctx = wm?.getWindowFor(key);
               return ctx ? (ctx.window as unknown as RevealableWindow) : undefined;
             },
-            raise: (projectPath) => {
-              wm?.focusWindowForProject(projectPath);
+            raise: (key) => {
+              wm?.focusWindowForProject(key);
             },
             deps: {
               setTimeout: (cb, ms) => setTimeout(cb, ms),
@@ -5771,6 +6690,11 @@ function bootPrimaryInstance(): void {
           err: err instanceof Error ? err.message : String(err),
         });
       });
+
+      // Dev-only: when OK_UNINSTALL_UI_PREVIEW is set (never in a packaged
+      // build), walk the uninstall windows non-destructively so the real UI can
+      // be exercised without removing anything. No-op otherwise.
+      maybeRunDesktopUninstallUiPreview();
 
       // Auto-updater — wired as the LAST step in whenReady, after the window-
       // open branch (either openProjectOrFallbackToNavigator OR openNavigator).
@@ -5927,25 +6851,14 @@ function bootPrimaryInstance(): void {
           // those events would rewrite `lastOpenedProject` / the focus
           // sequence with close-order noise after the snapshot is taken.
           freezeFocusTracking('prepare-for-relaunch');
-          // Snapshot every open project window so the post-update boot
-          // restores all of them — not just `lastOpenedProject` — ordered
-          // least → most recently focused so the boot can raise the last
-          // entry and land the user in the window they were working in.
-          // Persist BEFORE the server shutdown: `saveAppState` is a
-          // synchronous tmp-write + rename that completes well before
-          // `stopAllOwnedServers` returns or `quitAndInstall()` fires.
-          const openProjects = sortByFocusSequence(
-            wm?.getOpenProjectPaths() ?? [],
-            projectFocusSeq,
-          );
-          appState = { ...appState, pendingWindowRestore: openProjects };
-          if (!saveAppState(appState)) {
-            // Persisting the snapshot failed, so the post-update boot may not
-            // reopen all the windows that were open before the relaunch.
-            console.warn('[main] failed to persist window-restore snapshot before relaunch', {
-              projectCount: openProjects.length,
-            });
-          }
+          // Snapshot every open window (projects + loose files) so the
+          // post-update boot restores all of them — not just
+          // `lastOpenedProject` — ordered least → most recently focused so the
+          // boot can raise the last entry. Write-once + persisted BEFORE the
+          // server shutdown: `saveAppState` is a synchronous tmp-write + rename
+          // that completes well before `stopAllOwnedServers` returns or
+          // `quitAndInstall()` fires.
+          captureWindowRestoreSnapshot('prepare-for-relaunch');
           // Two-phase shutdown: SIGTERM detached server pids (and SIGKILL any
           // dev-path utilityProcess.fork helpers), then poll the lock files
           // until they release or 10 s elapses, then escalate to SIGKILL on
@@ -6060,6 +6973,11 @@ function bootPrimaryInstance(): void {
     // close re-focuses a surviving window, and recording that churn would
     // overwrite `lastOpenedProject` with whichever window closed last.
     freezeFocusTracking('before-quit');
+    // Snapshot the open-window set for session restore on the next launch.
+    // Write-once: the update paths (`prepareForRelaunch` / `before-quit-for-
+    // update`) already captured the richer pre-teardown set, so this no-ops
+    // there and only fires for a normal quit.
+    captureWindowRestoreSnapshot('before-quit');
     // Flush pending startup telemetry before exit. `emitStartupWaterfall`
     // covers a quit during the post-window-shown flush-deadline window (the
     // `.unref()`'d deadline timer won't fire once the process is exiting): it
@@ -6082,6 +7000,12 @@ function bootPrimaryInstance(): void {
     // silent install-on-quit path and is idempotent with the earlier
     // `prepareForRelaunch` freeze on the "Relaunch now" path.
     freezeFocusTracking('before-quit-for-update');
+    // Snapshot BEFORE the server teardown below: on the silent
+    // `autoInstallOnAppQuit` path there is no `prepareForRelaunch`, and this
+    // hook precedes the plain `before-quit`, so this is the only pre-teardown
+    // capture point. Write-once, so the "Relaunch now" path (already
+    // snapshotted in `prepareForRelaunch`) no-ops here.
+    captureWindowRestoreSnapshot('before-quit-for-update');
     // Shut down the servers this desktop spawned BEFORE the swap completes, so
     // the relaunched (new-version) app spawns fresh instead of attaching to a
     // stale old-version server and showing the version-drift toast. Fires on

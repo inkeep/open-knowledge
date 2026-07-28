@@ -14,7 +14,7 @@
  *     after error / tag-mode exit.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import type { WorkspaceEntry, WorkspaceSearchEntry } from './command-palette-search';
 
 // Dynamic import so a missing export surfaces as an assertion error in the

@@ -9,8 +9,9 @@
  * no monospace), the basename loses its trailing dot, and folders /
  * extension-less rows are ignored.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { cleanup } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   applyExtensionBadges,
   OK_EXT_BADGE_ATTR,

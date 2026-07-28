@@ -9,9 +9,9 @@
  * card has no chrome strings, so assertions read the server-provided data.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import type { LinkPreviewMetadata } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import { ExternalLinkPreviewCard } from './ExternalLinkPreviewCard';
 
 afterEach(cleanup);

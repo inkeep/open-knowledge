@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test';
 import type { Editor } from '@tiptap/core';
+import { describe, expect, it } from 'vitest';
 import { __hasInteractionLayerForTests, getInteractionLayer } from './interaction-layer-host';
 
 // Minimal Editor stub — the host only touches `on('destroy', cb)` and the

@@ -37,9 +37,9 @@
  *          `bun test --isolate` flag provided (oven-sh/bun#12823).
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { appVitestConfig } from '../../vitest.config.ts';
 import { appDomVitestConfig } from '../../vitest.dom.config.ts';
 
@@ -107,14 +107,9 @@ describe('Tier-3 substrate-additive contract — package.json + vitest config in
     expect(appDomVitestConfig.test.include).toEqual(['**/*.dom.test.tsx']);
   });
 
-  test('dom project sets isolate:true (per-file fresh module registry, oven-sh/bun#12823)', () => {
-    // Bun's mock.module is in-place: a mock declared at module level in one
-    // .dom.test.tsx file persists into sibling files run in one invocation. Linux
-    // CI's filesystem iteration ordered config-provider.dom.test.tsx (which mocks
-    // '@/hooks/use-theme-bridge' to a no-op) BEFORE use-theme-bridge.dom.test.tsx,
-    // replacing the real hook globally and producing the Received: 0 mode the
-    // substrate hit on PR #853. `isolate: true` gives each file a fresh module
-    // registry so mocks don't bleed. Removing it would re-open the leak class.
+  test('dom project sets isolate:true for a fresh per-file module registry', () => {
+    // Several DOM suites register module-level vi.doMock factories. Per-file
+    // isolation keeps those replacements from changing sibling suites.
     expect(appDomVitestConfig.test.isolate).toBe(true);
   });
 });

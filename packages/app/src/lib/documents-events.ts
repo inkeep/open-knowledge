@@ -41,6 +41,33 @@ export function subscribeToDocumentsChanged(
   return () => window.removeEventListener(DOCUMENTS_CHANGED_EVENT, listener);
 }
 
+// Doc-persisted relays the CC1 `disk-ack` frame's docName — the one per-doc
+// push channel — for consumers that react to "this document's bytes just
+// reached disk" (the validation-freshness per-doc re-audit). Kept separate
+// from documents-changed: derived-view channels are doc-anonymous signals,
+// while this event's whole value is the docName it names.
+const DOC_PERSISTED_EVENT = 'open-knowledge:doc-persisted';
+
+interface DocPersistedDetail {
+  docName: string;
+}
+
+export function emitDocPersisted(docName: string): void {
+  window.dispatchEvent(
+    new CustomEvent<DocPersistedDetail>(DOC_PERSISTED_EVENT, { detail: { docName } }),
+  );
+}
+
+export function subscribeToDocPersisted(onPersisted: (docName: string) => void): () => void {
+  const listener = (event: Event) => {
+    if (!(event instanceof CustomEvent)) return;
+    const docName = (event as CustomEvent<DocPersistedDetail>).detail?.docName;
+    if (typeof docName === 'string' && docName.length > 0) onPersisted(docName);
+  };
+  window.addEventListener(DOC_PERSISTED_EVENT, listener);
+  return () => window.removeEventListener(DOC_PERSISTED_EVENT, listener);
+}
+
 // Branch-changed is a side-channel event for surfaces that display the
 // current git branch (sidebar footer, editor footer). Emitted by the
 // DocumentContext branch dispatchers (`observeBranch`, `onBranchSwitched`),

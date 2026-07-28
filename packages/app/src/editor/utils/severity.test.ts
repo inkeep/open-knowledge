@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { classifySeverity, SEVERITY_STYLES } from './severity';
 
 describe('classifySeverity', () => {

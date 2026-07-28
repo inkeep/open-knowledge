@@ -4,8 +4,8 @@
  * stubbed; no network or token-store work happens in this file.
  */
 
-import { describe, expect, test } from 'bun:test';
 import type { Octokit } from '@octokit/rest';
+import { describe, expect, test } from 'vitest';
 import { listShareOwners } from './owners.ts';
 
 interface OrgMembershipFixture {

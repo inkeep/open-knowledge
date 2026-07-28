@@ -61,13 +61,15 @@ function ShareReceiveMissDialogInner({ nav }: { nav: PendingReceiveNav }) {
     dismiss();
   }
 
-  function openRenamed(renamedTo: string): void {
-    // Arm the in-tab backstop before navigating: if the rename destination is
-    // also missing locally (the receiver's ref is behind), the miss surface
-    // renders for it too instead of the create-mode editor.
-    pendingReceiveNavStore.arm({ kind: nav.kind, path: renamedTo, branch: nav.branch });
-    window.location.hash =
-      nav.kind === 'folder' ? hashFromFolderPath(renamedTo) : hashFromDocName(renamedTo);
+  /**
+   * Arm the in-tab backstop before navigating: if the target is still missing
+   * locally (a rename destination the receiver's behind ref doesn't carry, or a
+   * pull that came back up-to-date), the miss surface renders for it again
+   * instead of the create-mode editor.
+   */
+  function navigateWithBackstop(path: string): void {
+    pendingReceiveNavStore.arm({ kind: nav.kind, path, branch: nav.branch });
+    window.location.hash = nav.kind === 'folder' ? hashFromFolderPath(path) : hashFromDocName(path);
     dismiss();
   }
 
@@ -98,13 +100,17 @@ function ShareReceiveMissDialogInner({ nav }: { nav: PendingReceiveNav }) {
             nav={nav}
             state={state}
             onBrowseFolder={browseFolder}
-            onOpenRenamed={openRenamed}
+            onOpenRenamed={navigateWithBackstop}
             onEnableAutoSync={dismiss}
             // A landed Sync now push changes the verdict (the local
             // delete/rename is now on the branch) — re-probe instead of
             // dismissing, so the dialog pivots to the honest cell (including
             // the rename redirect offer).
             onSyncCompleted={refetch}
+            // A resolved pull opens what the receiver clicked the link for.
+            // Re-probing instead would risk an on-origin → pull → on-origin
+            // loop, since an up-to-date pull leaves the verdict unchanged.
+            onPullApplied={() => navigateWithBackstop(nav.path)}
           />
         </DialogBody>
       </DialogContent>

@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -6,6 +5,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { LOCAL_DIR, OK_DIR } from '@inkeep/open-knowledge-core';
 import { AutoStartDisabledError, type ServerLockMetadata } from '@inkeep/open-knowledge-server';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   bridgeStdioToHttpMcp,
   parseSpawnTimeoutEnv,

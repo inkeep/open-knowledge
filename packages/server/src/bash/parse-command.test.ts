@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { augmentStagesWithExcludes, parseCommand, serializeStages } from './parse-command.ts';
 
 function expectOk(

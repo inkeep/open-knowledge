@@ -4,11 +4,12 @@
  * React Context API surface under the jsdom substrate (precedent #43);
  * invocation via `bun run test:dom`.
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
-import { cleanup, render, screen } from '@testing-library/react';
 
-// `mock.module(...)` is module-level and is NOT reset by Bun's `mock.restore()`
-// — it persists for the lifetime of this file. Both `describe` blocks below
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
+// `vi.doMock(...)` is module-level and is not reset by `vi.restoreAllMocks()`;
+// it persists for the lifetime of this file. Both `describe` blocks below
 // share the mocked `useThemeBridge` surface. That's intentional here because
 // every test in this file exercises the `collabUrl: null` cold-start path (the
 // prop is passed as null below) where the real provider early-returns before
@@ -16,7 +17,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 // needs to exercise the REAL seam (e.g. asserting that ConfigProvider calls
 // useThemeBridge with `themeValue ?? 'system'`), start a sibling `*.dom.test.tsx`
 // file rather than fighting these module-level mocks.
-mock.module('@/hooks/use-theme-bridge', () => ({
+vi.doMock('@/hooks/use-theme-bridge', () => ({
   useThemeBridge: () => {},
 }));
 
@@ -72,10 +73,10 @@ describe('ConfigProvider runtime (Tier-3)', () => {
   });
 
   describe('useConfigContext outside provider', () => {
-    let consoleErrorSpy: ReturnType<typeof spyOn>;
+    let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
-      consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+      consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     });
 
     afterEach(() => {

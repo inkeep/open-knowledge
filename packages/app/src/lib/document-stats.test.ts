@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { computeBodyStats, computeSelectionStats, EMPTY_STATS } from './document-stats';
 
 describe('computeBodyStats', () => {

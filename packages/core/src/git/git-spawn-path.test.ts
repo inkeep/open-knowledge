@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { augmentGitSpawnPath, wellKnownToolDirs } from './git-spawn-path.ts';
 
 const HOME = '/Users/tester';

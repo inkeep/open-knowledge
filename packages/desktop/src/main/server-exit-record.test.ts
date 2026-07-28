@@ -6,11 +6,11 @@
  * them, and the fail-soft write path.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SERVER_EXIT_LOG } from '@inkeep/open-knowledge-core';
+import { afterEach, describe, expect, test } from 'vitest';
 import { createServerExitRecorder, type ServerExitRecord } from './server-exit-record.ts';
 
 const tmpDirs: string[] = [];

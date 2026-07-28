@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { rejectionLoopGuardPlugin } from './rejection-loop-guard-plugin.ts';
 import GUARD_SCRIPT from './rejection-loop-guard-script.js?raw';
 

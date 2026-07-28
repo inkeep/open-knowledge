@@ -10,7 +10,6 @@
  * `$HOME`, so an env override wouldn't work — the seam is threaded explicitly.)
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,6 +18,7 @@ import {
   SkillGetSuccessSchema,
   SkillsListSuccessSchema,
 } from '@inkeep/open-knowledge-core';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
 import { createTestServer, type TestServer } from '../test-harness';
 

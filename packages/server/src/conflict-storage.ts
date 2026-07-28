@@ -13,9 +13,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { getLocalDir } from './config/paths.ts';
+import { tracedUnlinkSync, tracedWriteFileSync } from './fs-traced.ts';
 import { listNames } from './git-paths.ts';
 import { getLogger } from './logger.ts';
 import { isWithinDir } from './path-utils.ts';
+import { assertRealpathWithinDir } from './symlink-guard.ts';
 
 const log = getLogger('conflict-storage');
 
@@ -32,6 +34,13 @@ export interface ConflictEntry {
   theirsSha?: string;
   /** SHA of the merge base at conflict time (optional). */
   baseSha?: string;
+  /**
+   * `'working-tree'` marks a pull-only overlay conflict: the branch is already
+   * at origin tip and the local edit rides uncommitted on top, so there is no
+   * unmerged index / MERGE_HEAD to resolve against. Absent (the default) means
+   * a git-merge-native conflict resolved through the index stages.
+   */
+  variant?: 'working-tree';
 }
 
 export type ResolveStrategy = 'mine' | 'theirs' | 'content' | 'delete';
@@ -82,8 +91,8 @@ export class ConflictStore {
     }
   }
 
-  /** Persist current state to disk. */
-  save(): void {
+  /** Persist current state to disk. Returns false when the disk write failed. */
+  save(): boolean {
     try {
       const dir = dirname(this.storePath);
       if (!existsSync(dir)) {
@@ -95,26 +104,45 @@ export class ConflictStore {
         conflicts: this.conflicts,
       };
       writeFileSync(this.storePath, JSON.stringify(data, null, 2), 'utf-8');
+      return true;
     } catch (e) {
       log.warn({ err: e }, '[conflicts] failed to save conflicts.json');
+      return false;
     }
   }
 
-  /** Add a new conflict entry (idempotent by file path). */
-  addConflict(entry: ConflictEntry): void {
+  /**
+   * Add a new conflict entry (idempotent by file path). Returns false when the
+   * in-memory upsert succeeded but the disk persist failed — the caller must
+   * decide whether that divergence (a conflict shown this session but absent
+   * from conflicts.json after a restart) is tolerable.
+   */
+  addConflict(entry: ConflictEntry): boolean {
+    // Invariant: a working-tree (pull-only overlay) entry must carry the pinned
+    // origin blob — the 'theirs' resolution reads it back by SHA. The optional
+    // `theirsSha` field can't express this at the type level, so fail loudly at
+    // insert time rather than with an opaque throw at resolve time.
+    if (entry.variant === 'working-tree' && !entry.theirsSha) {
+      throw new Error(
+        `[conflicts] working-tree conflict for ${entry.file} has no pinned theirs blob`,
+      );
+    }
     const existing = this.conflicts.findIndex((c) => c.file === entry.file);
     if (existing !== -1) {
       this.conflicts[existing] = entry; // update if already tracked
     } else {
       this.conflicts.push(entry);
     }
-    this.save();
+    return this.save();
   }
 
-  /** Remove a conflict entry by file path. */
-  removeConflict(file: string): void {
+  /**
+   * Remove a conflict entry by file path. Returns false when the in-memory
+   * removal succeeded but the disk persist failed.
+   */
+  removeConflict(file: string): boolean {
     this.conflicts = this.conflicts.filter((c) => c.file !== file);
-    this.save();
+    return this.save();
   }
 
   /** Remove all conflicts for the current branch. */
@@ -177,6 +205,14 @@ export class ConflictStore {
       throw new Error(`[conflicts] strategy 'content' requires content parameter`);
     }
 
+    // Pull-only overlay conflicts resolve without any index/commit — split off
+    // before the merge-native path so its `git checkout --ours/--theirs` +
+    // `git commit --no-edit` semantics stay untouched.
+    if (entry.variant === 'working-tree') {
+      await this.resolveWorkingTreeConflict(entry, strategy, content, credentialArgs);
+      return;
+    }
+
     // Dynamic import so CRUD tests don't load simple-git (broken symlink in test env)
     const { createGitInstance } = await import('./git-handle.ts');
     const handle = createGitInstance(this.projectDir, { credentialArgs });
@@ -212,7 +248,12 @@ export class ConflictStore {
         if (!isWithinDir(absPath, projectRoot)) {
           throw new Error(`[conflicts] file path escapes project directory: ${file}`);
         }
-        writeFileSync(absPath, content, 'utf-8');
+        // Lexical containment alone lets a symlink materialized by the merge at
+        // the conflicted path escape the tree on write; the working-tree path
+        // already realpath-guards, so mirror it here and route through the
+        // traced fs wrapper like every other server-side disk write.
+        assertRealpathWithinDir(absPath, projectRoot);
+        tracedWriteFileSync(absPath, content, 'utf-8');
         await handle.git.raw(['add', '--', file]);
         break;
       }
@@ -296,5 +337,80 @@ export class ConflictStore {
         );
       }
     }
+  }
+
+  /**
+   * Resolve a pull-only overlay conflict. The branch already fast-forwarded to
+   * origin tip and the local overlay is uncommitted on top, so there is no
+   * unmerged index: resolution writes the chosen bytes straight to the working
+   * tree and NEVER runs `git checkout --ours/--theirs` or `git commit` — the
+   * engine never commits on a pull-only user's behalf.
+   *
+   *   'mine'    — keep the local overlay verbatim (no disk write)
+   *   'theirs'  — restore the pinned origin-tip blob to disk
+   *   'content' — write the caller-supplied merged bytes to disk
+   *   'delete'  — honor a local deletion (remove the file)
+   *
+   * After resolving, the entry is removed. The branch stays at origin tip in
+   * every case; keep-mine leaves the overlay in place against the advanced tip.
+   */
+  private async resolveWorkingTreeConflict(
+    entry: ConflictEntry,
+    strategy: ResolveStrategy,
+    content: string | undefined,
+    credentialArgs: string[],
+  ): Promise<void> {
+    const projectRoot = resolve(this.projectDir);
+    const absPath = resolve(projectRoot, entry.file);
+    if (!isWithinDir(absPath, projectRoot)) {
+      throw new Error(`[conflicts] file path escapes project directory: ${entry.file}`);
+    }
+    // Lexical containment is not enough: an untrusted origin can ship a symlink
+    // at a tracked content path, and `writeFileSync`/`unlinkSync` would follow
+    // it out of the working tree. Refuse when the realpath escapes.
+    assertRealpathWithinDir(absPath, projectRoot);
+
+    switch (strategy) {
+      case 'mine':
+        // The working tree already holds the overlay — keep it as-is.
+        break;
+
+      case 'theirs': {
+        if (!entry.theirsSha) {
+          throw new Error(
+            `[conflicts] working-tree conflict for ${entry.file} has no pinned theirs blob`,
+          );
+        }
+        const { createGitInstance } = await import('./git-handle.ts');
+        const handle = createGitInstance(this.projectDir, { credentialArgs });
+        const theirsBytes = await handle.git.raw(['cat-file', 'blob', entry.theirsSha]);
+        // The realpath guard above ran before this `await`, which yielded the
+        // event loop; a concurrent pull cycle could have materialized a symlink
+        // at absPath in that gap. Re-check immediately before the write, matching
+        // applyOverlayPlan's per-write containment.
+        assertRealpathWithinDir(absPath, projectRoot);
+        tracedWriteFileSync(absPath, theirsBytes, 'utf-8');
+        break;
+      }
+
+      case 'content': {
+        if (content === undefined) {
+          throw new Error(`[conflicts] strategy 'content' requires content parameter`);
+        }
+        tracedWriteFileSync(absPath, content, 'utf-8');
+        break;
+      }
+
+      case 'delete':
+        if (existsSync(absPath)) tracedUnlinkSync(absPath);
+        break;
+
+      default: {
+        const exhaustive: never = strategy;
+        throw new Error(`[conflicts] unknown resolve strategy: ${exhaustive}`);
+      }
+    }
+
+    this.removeConflict(entry.file);
   }
 }

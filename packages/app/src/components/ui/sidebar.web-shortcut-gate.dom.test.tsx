@@ -15,8 +15,9 @@
  * desktop width so `toggleSidebar` takes the `setOpen` branch and the derived
  * state is `expanded` → `collapsed` on a single toggle.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { act, cleanup, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { SIDEBAR_PINS_KEY } from '@/lib/sidebar-pin-store';
 import { SidebarProvider, useSidebar } from './sidebar';
 

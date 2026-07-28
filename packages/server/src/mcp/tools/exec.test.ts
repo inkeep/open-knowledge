@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { commitWip, initShadowRepo, type WriterIdentity } from '@inkeep/open-knowledge-server';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import type { EnrichedMeta } from '../../content/enrichment.ts';
 import {
@@ -1021,6 +1021,67 @@ describe('formatFileEntry rendering', () => {
       graphRole: null,
     });
     expect(line).toContain('forward links: 1 (https://example.com)');
+  });
+});
+
+describe('exec — frontmatter schemas_applicable read-time advertisement', () => {
+  // The composition this pins: config.contentRules.frontmatter → exec.ts's
+  // enrichSchemaDeps wiring → enrichment's appliesTo resolver → the schema
+  // path surfaced on the `cat`/`ls` enriched entry an agent actually reads.
+  // (The resolver itself is unit-tested in content/enrichment.test.ts; this is
+  // the wiring root, which that test cannot reach.)
+  const SCHEMA_CONFIG: Config = ConfigSchema.parse({
+    contentRules: {
+      frontmatter: {
+        enabled: true,
+        schemas: [{ appliesTo: 'content/**', file: '.ok/schemas/doc.schema.json' }],
+      },
+    },
+  });
+
+  test('cat advertises the governing schema for a matching doc', async () => {
+    const project = await bootstrap();
+    const contentDir = resolve(project, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    writeFileSync(resolve(contentDir, 'guide.md'), '---\ntitle: Guide\n---\nBody\n');
+
+    const result = (await buildExecResult(
+      { command: 'cat content/guide.md' },
+      { resolveCwd: async () => project, serverUrl: undefined, config: SCHEMA_CONFIG },
+    )) as ExecResult;
+
+    const files = fileEntries(structured(result));
+    expect(files[0]?.schemas_applicable).toEqual(['.ok/schemas/doc.schema.json']);
+  });
+
+  test('a doc outside the appliesTo scope carries no schemas_applicable', async () => {
+    const project = await bootstrap();
+    const outside = resolve(project, 'other');
+    mkdirSync(outside, { recursive: true });
+    writeFileSync(resolve(outside, 'note.md'), '---\ntitle: Note\n---\nBody\n');
+
+    const result = (await buildExecResult(
+      { command: 'cat other/note.md' },
+      { resolveCwd: async () => project, serverUrl: undefined, config: SCHEMA_CONFIG },
+    )) as ExecResult;
+
+    const files = fileEntries(structured(result));
+    expect(files[0]?.schemas_applicable).toBeUndefined();
+  });
+
+  test('plugin disabled → no advertisement even for a matching path', async () => {
+    const project = await bootstrap();
+    const contentDir = resolve(project, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    writeFileSync(resolve(contentDir, 'guide.md'), '---\ntitle: Guide\n---\nBody\n');
+
+    const result = (await buildExecResult(
+      { command: 'cat content/guide.md' },
+      { resolveCwd: async () => project, serverUrl: undefined, config: DEFAULT_CONFIG },
+    )) as ExecResult;
+
+    const files = fileEntries(structured(result));
+    expect(files[0]?.schemas_applicable).toBeUndefined();
   });
 });
 

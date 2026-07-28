@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import {
   emitConfigIgnoreNestedError,
   subscribeToConfigIgnoreNestedError,
@@ -14,7 +14,7 @@ const SAMPLE_PAYLOAD = {
 
 describe('config-ignore-nested-error-events pubsub', () => {
   test('subscribed listener fires on emit', () => {
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     const unsub = subscribeToConfigIgnoreNestedError(listener);
     emitConfigIgnoreNestedError(SAMPLE_PAYLOAD);
     expect(listener).toHaveBeenCalledTimes(1);
@@ -23,7 +23,7 @@ describe('config-ignore-nested-error-events pubsub', () => {
   });
 
   test('unsubscribe stops the listener', () => {
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     const unsub = subscribeToConfigIgnoreNestedError(listener);
     unsub();
     emitConfigIgnoreNestedError(SAMPLE_PAYLOAD);
@@ -31,8 +31,8 @@ describe('config-ignore-nested-error-events pubsub', () => {
   });
 
   test('multiple subscribers all fire', () => {
-    const a = mock(() => {});
-    const b = mock(() => {});
+    const a = vi.fn(() => {});
+    const b = vi.fn(() => {});
     const ua = subscribeToConfigIgnoreNestedError(a);
     const ub = subscribeToConfigIgnoreNestedError(b);
     emitConfigIgnoreNestedError(SAMPLE_PAYLOAD);
@@ -43,10 +43,10 @@ describe('config-ignore-nested-error-events pubsub', () => {
   });
 
   test('listener exception is caught; other listeners still fire', () => {
-    const thrower = mock(() => {
+    const thrower = vi.fn(() => {
       throw new Error('boom');
     });
-    const ok = mock(() => {});
+    const ok = vi.fn(() => {});
     const u1 = subscribeToConfigIgnoreNestedError(thrower);
     const u2 = subscribeToConfigIgnoreNestedError(ok);
     expect(() => emitConfigIgnoreNestedError(SAMPLE_PAYLOAD)).not.toThrow();

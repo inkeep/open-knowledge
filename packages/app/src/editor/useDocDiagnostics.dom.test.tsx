@@ -4,10 +4,10 @@
  * (the hook only touches `provider.document.getText('source')`).
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { DEFAULT_LINTER_CONFIG, type LinterConfig } from '@inkeep/open-knowledge-core';
 import { cleanup, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { useDocDiagnostics } from './useDocDiagnostics';
 
@@ -26,7 +26,10 @@ function fakeProvider(initial: string): { provider: HocuspocusProvider; doc: Y.D
 const enabled: LinterConfig = {
   ...DEFAULT_LINTER_CONFIG,
   enabled: true,
-  plugins: { markdownlint: { ...DEFAULT_LINTER_CONFIG.plugins.markdownlint, enabled: true } },
+  plugins: {
+    ...DEFAULT_LINTER_CONFIG.plugins,
+    markdownlint: { ...DEFAULT_LINTER_CONFIG.plugins.markdownlint, enabled: true },
+  },
 };
 
 afterEach(() => cleanup());

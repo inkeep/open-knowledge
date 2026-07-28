@@ -6,8 +6,8 @@
  * or internal call patterns.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TerminalExitNotice } from './TerminalExitNotice';
 
 afterEach(() => cleanup());
@@ -43,7 +43,7 @@ describe('TerminalExitNotice', () => {
   });
 
   test('the restart control is an accessible button that spawns a fresh session', () => {
-    const onRestart = mock(() => {});
+    const onRestart = vi.fn(() => {});
     render(<TerminalExitNotice info={{ exitCode: 0, signal: null }} onRestart={onRestart} />);
 
     const restart = screen.getByRole('button', { name: 'Restart terminal' });

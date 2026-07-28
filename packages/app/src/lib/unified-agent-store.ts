@@ -62,8 +62,8 @@ export function terminalCliId(cli: TerminalCli): string {
  * like a sticky agent choice. `parseStickyCliId` returns null for it and
  * `resolveStickyAgent` (app targets only) never returns it, so callers gate
  * thread mode explicitly (`id === IN_APP_THREAD_ID`) — the same shape the
- * CLI sentinel uses. On terminal-only surfaces it degrades via
- * `resolveDefaultCli` to the default CLI, harmlessly.
+ * CLI sentinel uses. On terminal-only surfaces it degrades to the default CLI,
+ * harmlessly.
  *
  * Two forms coexist (additive parse, no key bump — see {@link parseStickyThreadAgent}):
  *   - the bare `in-app-thread` sentinel — "in-app thread, whatever the default

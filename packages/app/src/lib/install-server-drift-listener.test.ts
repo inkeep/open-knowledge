@@ -1,5 +1,5 @@
-import { beforeAll, describe, expect, mock, test } from 'bun:test';
 import * as actualSonner from 'sonner';
+import { beforeAll, describe, expect, test, vi } from 'vitest';
 import type {
   OkDesktopBridge,
   OkServerRestartOutcome,
@@ -7,16 +7,16 @@ import type {
 } from '@/lib/desktop-bridge-types';
 
 // Capture sonner calls so we can assert the toast wiring without a DOM.
-const toastWarning = mock((_msg: string, _opts?: unknown) => 'warn-id');
-const toastSuccess = mock((_msg: string) => 'success-id');
-const toastLoading = mock((_msg: string, _opts?: unknown) => 'loading-id');
-const toastError = mock((_msg: string, _opts?: unknown) => 'error-id');
-const toastDismiss = mock((_id?: unknown) => {});
-const toastCustom = mock((_render: (id: unknown) => unknown, _opts?: unknown) => 'custom-id');
-mock.module('sonner', () => ({
+const toastWarning = vi.fn((_msg: string, _opts?: unknown) => 'warn-id');
+const toastSuccess = vi.fn((_msg: string) => 'success-id');
+const toastLoading = vi.fn((_msg: string, _opts?: unknown) => 'loading-id');
+const toastError = vi.fn((_msg: string, _opts?: unknown) => 'error-id');
+const toastDismiss = vi.fn((_id?: unknown) => {});
+const toastCustom = vi.fn((_render: (id: unknown) => unknown, _opts?: unknown) => 'custom-id');
+vi.doMock('sonner', () => ({
   ...actualSonner,
   toast: Object.assign(
-    mock(() => {}),
+    vi.fn(() => {}),
     {
       warning: toastWarning,
       success: toastSuccess,
@@ -59,15 +59,15 @@ function makeBridge(opts?: { restartOutcome?: OkServerRestartOutcome; restartRej
   bridge: OkDesktopBridge;
   fireDrift: (info: OkServerVersionDriftInfo) => void;
   fireRestarted: (appRuntime: string) => void;
-  restartServer: ReturnType<typeof mock>;
-  unsubDrift: ReturnType<typeof mock>;
-  unsubRestarted: ReturnType<typeof mock>;
+  restartServer: ReturnType<typeof vi.fn>;
+  unsubDrift: ReturnType<typeof vi.fn>;
+  unsubRestarted: ReturnType<typeof vi.fn>;
 } {
   let driftCb: ((info: OkServerVersionDriftInfo) => void) | null = null;
   let restartedCb: ((info: { appRuntime: string }) => void) | null = null;
-  const unsubDrift = mock(() => {});
-  const unsubRestarted = mock(() => {});
-  const restartServer = mock(async () => {
+  const unsubDrift = vi.fn(() => {});
+  const unsubRestarted = vi.fn(() => {});
+  const restartServer = vi.fn(async () => {
     if (opts?.restartReject) throw new Error('channel closed');
     return opts?.restartOutcome ?? { ok: true };
   });

@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, jest, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { isMacOS } from '@tiptap/core';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { assetTabId, folderTabId } from '@/editor/editor-tabs';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import {
@@ -22,19 +23,17 @@ let pageMeta: Map<string, { docExt?: string }> = new Map();
 let lifecycleStatuses: Map<string, string> = new Map();
 let toastErrors: string[] = [];
 
-const activateTab = mock(() => {});
-const activateNewTab = mock(() => {});
-const closeAndClearForRename = mock(() => Promise.resolve());
-const closeNewTab = mock(() => {});
-const closeTab = mock(() => {});
-const closeTabs = mock(() => {});
-const getPoolActiveDocName = mock(() => null as string | null);
-const openNewTab = mock(() => {});
-const pinTab = mock(() => {});
-const reopenClosedTab = mock(() => {});
-const remapTabsForRename = mock(() => {});
-const reorderTabs = mock(() => {});
-const unpinTab = mock(() => {});
+const activateTab = vi.fn(() => {});
+const activateNewTab = vi.fn(() => {});
+const closeNewTab = vi.fn(() => {});
+const closeTab = vi.fn(() => {});
+const closeTabs = vi.fn(() => {});
+const openNewTab = vi.fn(() => {});
+const pinTab = vi.fn(() => {});
+const reopenClosedTab = vi.fn(() => {});
+const reconcileLocalRename = vi.fn(() => Promise.resolve());
+const reorderTabs = vi.fn(() => {});
+const unpinTab = vi.fn(() => {});
 
 function primaryShortcutModifier(): Pick<KeyboardEventInit, 'ctrlKey' | 'metaKey'> {
   return isMacOS() ? { metaKey: true } : { ctrlKey: true };
@@ -59,13 +58,13 @@ const sortableOptions: Array<{ id: string; disabled?: boolean }> = [];
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children?: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-mock.module('@dnd-kit/core', () => ({
+vi.doMock('@dnd-kit/core', () => ({
   closestCenter: closestCenterToken,
   DndContext: (props: DndContextProps) => {
     dndContextProps.push(props);
@@ -91,7 +90,7 @@ mock.module('@dnd-kit/core', () => ({
   useSensors: (...sensors: unknown[]) => sensors,
 }));
 
-mock.module('@dnd-kit/sortable', () => ({
+vi.doMock('@dnd-kit/sortable', () => ({
   arrayMove: <T,>(items: T[], from: number, to: number) => {
     const next = [...items];
     const [item] = next.splice(from, 1);
@@ -130,7 +129,7 @@ mock.module('@dnd-kit/sortable', () => ({
   },
 }));
 
-mock.module('@dnd-kit/utilities', () => ({
+vi.doMock('@dnd-kit/utilities', () => ({
   CSS: {
     Transform: {
       toString: () => undefined,
@@ -138,7 +137,7 @@ mock.module('@dnd-kit/utilities', () => ({
   },
 }));
 
-mock.module('@/components/ui/context-menu', () => ({
+vi.doMock('@/components/ui/context-menu', () => ({
   ContextMenu: ({ children }: { children?: ReactNode }) => <>{children}</>,
   ContextMenuContent: ({ children, className }: { children?: ReactNode; className?: string }) => (
     <div className={className} role="menu">
@@ -172,13 +171,7 @@ mock.module('@/components/ui/context-menu', () => ({
   ContextMenuTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }));
 
-mock.module('@/components/ui/tooltip', () => ({
-  Tooltip: ({ children }: { children?: ReactNode }) => <>{children}</>,
-  TooltipContent: ({ children }: { children?: ReactNode }) => <div role="tooltip">{children}</div>,
-  TooltipTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
-}));
-
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName,
     activeNewTabId,
@@ -186,11 +179,9 @@ mock.module('@/editor/DocumentContext', () => ({
     activeTarget,
     activateNewTab,
     activateTab,
-    closeAndClearForRename,
     closeNewTab,
     closeTab,
     closeTabs,
-    getPoolActiveDocName,
     isNewTabActive,
     newTabIds,
     openNewTab,
@@ -198,24 +189,24 @@ mock.module('@/editor/DocumentContext', () => ({
     pinTab,
     pinnedTabIds,
     reopenClosedTab,
-    remapTabsForRename,
+    reconcileLocalRename,
     reorderTabs,
     unpinTab,
     visibleTabIds,
   }),
 }));
 
-mock.module('@/components/PageListContext', () => ({
+vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => ({
     pageMeta,
   }),
 }));
 
-mock.module('@/hooks/use-lifecycle-status', () => ({
+vi.doMock('@/hooks/use-lifecycle-status', () => ({
   useLifecycleStatus: (docName: string) => lifecycleStatuses.get(docName) ?? null,
 }));
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: {
     error: (message: string) => {
       toastErrors.push(message);
@@ -261,34 +252,34 @@ function resetState() {
   for (const fn of [
     activateTab,
     activateNewTab,
-    closeAndClearForRename,
     closeNewTab,
     closeTab,
     closeTabs,
-    getPoolActiveDocName,
     openNewTab,
     pinTab,
     reopenClosedTab,
-    remapTabsForRename,
+    reconcileLocalRename,
     reorderTabs,
     unpinTab,
   ]) {
     fn.mockClear();
   }
-  closeAndClearForRename.mockImplementation(() => Promise.resolve());
-  getPoolActiveDocName.mockImplementation(() => null);
-  remapTabsForRename.mockImplementation(() => {});
+  reconcileLocalRename.mockImplementation(() => Promise.resolve());
   Object.defineProperty(window, 'okDesktop', {
     configurable: true,
     value: undefined,
   });
   window.location.hash = '';
-  globalThis.fetch = mock(() => Promise.reject(new Error('unexpected fetch'))) as never;
+  globalThis.fetch = vi.fn(() => Promise.reject(new Error('unexpected fetch'))) as never;
 }
 
 async function renderEditorTabs() {
   const { EditorTabs } = await import('./EditorTabs');
-  return render(<EditorTabs />);
+  return render(
+    <TooltipProvider>
+      <EditorTabs />
+    </TooltipProvider>,
+  );
 }
 
 function latestDndContext() {
@@ -487,7 +478,7 @@ describe('EditorTabs runtime behavior', () => {
   });
 
   test('modifier hold delays per-tab shortcut hints and non-active close affordances', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     try {
       await renderEditorTabs();
 
@@ -506,7 +497,7 @@ describe('EditorTabs runtime behavior', () => {
       );
 
       act(() => {
-        jest.advanceTimersByTime(999);
+        vi.advanceTimersByTime(999);
       });
 
       expect(screen.queryAllByTestId('editor-tab-shortcut-hint')).toHaveLength(0);
@@ -516,7 +507,7 @@ describe('EditorTabs runtime behavior', () => {
       );
 
       act(() => {
-        jest.advanceTimersByTime(1);
+        vi.advanceTimersByTime(1);
       });
 
       expect(
@@ -532,7 +523,7 @@ describe('EditorTabs runtime behavior', () => {
 
       fireEvent.keyDown(window, { key: 'Meta', metaKey: true });
       act(() => {
-        jest.advanceTimersByTime(1000);
+        vi.advanceTimersByTime(1000);
       });
       expect(screen.getAllByTestId('editor-tab-shortcut-hint')).toHaveLength(6);
 
@@ -541,7 +532,7 @@ describe('EditorTabs runtime behavior', () => {
       expect(screen.queryAllByTestId('editor-tab-shortcut-hint')).toHaveLength(0);
       expect(screen.getByRole('button', { name: 'Close docs/team/notes.md' })).toBeTruthy();
     } finally {
-      jest.useRealTimers();
+      vi.useRealTimers();
     }
   });
 
@@ -621,13 +612,45 @@ describe('EditorTabs runtime behavior', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
+  test('passes the successful response mapping to reconciliation before navigating', async () => {
+    activeDocName = 'docs/team/readme';
+    activeTabId = 'docs/team/readme';
+    reconcileLocalRename.mockImplementation((input) => {
+      expect(input).toEqual({
+        renamed: [{ fromDocName: 'docs/team/readme', toDocName: 'docs/team/renamed' }],
+      });
+      expect(window.location.hash).toBe('');
+      return Promise.resolve();
+    });
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            renamed: [{ fromDocName: 'docs/team/readme', toDocName: 'docs/team/renamed' }],
+            renamedAssets: [],
+          }),
+          { headers: { 'Content-Type': 'application/json' }, status: 200 },
+        ),
+      ),
+    ) as never;
+
+    await renderEditorTabs();
+    fireEvent.doubleClick(tabButton('docs/team/readme.txt'));
+    const input = screen.getByTestId('editor-tab-rename-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'renamed.txt' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(reconcileLocalRename).toHaveBeenCalledTimes(1);
+      expect(window.location.hash).toBe('#/docs/team/renamed');
+    });
+  });
+
   test('rename post-commit reconciliation failures surface the refresh toast and skip navigation', async () => {
     activeDocName = 'docs/team/readme';
     activeTabId = 'docs/team/readme';
-    remapTabsForRename.mockImplementation(() => {
-      throw new Error('idb clear failed');
-    });
-    globalThis.fetch = mock(() =>
+    reconcileLocalRename.mockImplementation(() => Promise.reject(new Error('idb clear failed')));
+    globalThis.fetch = vi.fn(() =>
       Promise.resolve(
         new Response(
           JSON.stringify({

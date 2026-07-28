@@ -21,10 +21,10 @@
  * aggregateCampaign cross-fixture winner selection.
  */
 
-import { describe, expect, it } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
 import type { ScenarioCtx, ScenarioOptions } from '../lib/scenario.ts';
 import type {
   HostClassFingerprint,

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 describe('SettingsDialogShell module', () => {
   test('exports SettingsDialogShell component', async () => {

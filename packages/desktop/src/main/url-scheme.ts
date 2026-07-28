@@ -894,6 +894,28 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
     } catch (err) {
       deps.log?.warn({ err }, '[url-scheme] setAsDefaultProtocolClient failed');
     }
+  } else if (platform !== 'darwin') {
+    // Packaged Windows/Linux self-heal (windows-linux-port deep-link posture).
+    // Unlike macOS (where LaunchServices owns the CFBundleURLTypes binding
+    // installed with the .app), Windows resolves the scheme from
+    // HKCU\Software\Classes and Linux from the .desktop database — both
+    // user-mutable and installer-dependent (the NSIS include writes the
+    // registry keys; deb's .desktop carries the MimeType; AppImage has no
+    // install step at all, see appimage-integration.ts). Re-asserting at
+    // every boot repairs a stale binding after the install moves, another
+    // app steals the scheme, or the installer-time registration was lost.
+    // No before-quit removal here — a packaged install keeps its binding.
+    try {
+      const ok = deps.app.setAsDefaultProtocolClient('openknowledge');
+      if (!ok) {
+        deps.log?.warn(
+          {},
+          '[url-scheme] packaged setAsDefaultProtocolClient returned false — openknowledge:// links may not reach this install',
+        );
+      }
+    } catch (err) {
+      deps.log?.warn({ err }, '[url-scheme] packaged setAsDefaultProtocolClient failed');
+    }
   }
 
   /**

@@ -21,10 +21,11 @@
  *      open, newly populated with only the current server's state.
  *
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import { createRestartableServer, pollUntil, seedClientPersistenceState } from './test-harness';

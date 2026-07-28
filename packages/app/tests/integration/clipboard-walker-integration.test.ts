@@ -14,13 +14,13 @@
  *     interface (has `serializeFragment`).
  */
 
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import { createClipboardHtmlSerializer } from '../../src/editor/clipboard/serialize.ts';
 
 function fakeMdManager() {
   return {
-    serialize: mock(() => '# heading\n'),
-    parse: mock(() => ({ type: 'doc', content: [] })),
+    serialize: vi.fn(() => '# heading\n'),
+    parse: vi.fn(() => ({ type: 'doc', content: [] })),
   };
 }
 

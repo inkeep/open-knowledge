@@ -51,10 +51,11 @@ export type PinSessionUpdateKinds = Expect<
 >;
 
 // Dependents: `resolvePermissionOutcome` classifies by kind PREFIX
-// (`startsWith('reject')` → denied, everything else → approved), and the
-// permission card renders its own Deny only when no reject-kind option
-// exists. A fifth kind outside these four would silently classify as an
-// approval.
+// (`startsWith('allow')` → approved, `startsWith('reject')` → denied,
+// anything else → dismissed), and the permission card renders its own Deny
+// only when no reject-kind option exists. A fifth kind outside these four
+// classifies as dismissed — decide whether it warrants its own label rather
+// than leaving it in the unreadable-answer bucket.
 export type PinPermissionOptionKind = Expect<
   Equal<PermissionOption['kind'], 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always'>
 >;

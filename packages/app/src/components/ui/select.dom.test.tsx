@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import { cleanup, render } from '@testing-library/react';
 import { act } from 'react';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   expectVisualClassTokens,
   expectVisualClassTokensAbsent,

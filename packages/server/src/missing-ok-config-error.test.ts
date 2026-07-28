@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { MISSING_OK_CONFIG_MESSAGE, MissingOkConfigError } from './missing-ok-config-error.ts';
 
 describe('MissingOkConfigError', () => {

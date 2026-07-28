@@ -234,6 +234,7 @@ async function installDelayedDesktopSessionBridge(
         onShareReceived: () => unsubscribe,
         onServerVersionDrift: () => unsubscribe,
         onServerRestarted: () => unsubscribe,
+        onRecentRemovedMissing: () => unsubscribe,
         restartServer: async () => ({ ok: true }),
         dialog: {
           openFolder: async () => null,

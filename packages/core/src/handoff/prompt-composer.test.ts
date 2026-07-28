@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, test } from 'vitest';
 import { buildClaudeUrl } from './claude-url.ts';
 import { buildCodexUrl } from './codex-url.ts';
 import { buildCursorUrl } from './cursor-url.ts';

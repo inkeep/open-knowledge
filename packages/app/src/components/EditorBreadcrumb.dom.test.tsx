@@ -10,8 +10,9 @@
  * Exercises `render` under the jsdom substrate (precedent #43); invocation
  * via `bunx turbo run test:dom`.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 import { EditorBreadcrumb } from './EditorBreadcrumb';
 

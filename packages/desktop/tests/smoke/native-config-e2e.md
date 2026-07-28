@@ -6,7 +6,7 @@
 
 | Check | Fidelity | Where |
 |---|---|---|
-| Bundle is produced + loadable + round-trips (parse / upsert / symlink) from `packages/cli/dist/native/` | Real (runs in `bun run check`) | `packages/desktop/tests/unit/verify-native-config-driver.test.mjs` (end-to-end test) |
+| Bundle is produced + loadable + round-trips (parse / upsert / symlink) from `packages/cli/dist/native/` | Real (runs in `pnpm check`) | `packages/desktop/tests/unit/verify-native-config-driver.test.mjs` (end-to-end test) |
 | Driver maps `.dmg`/`.app`/dir inputs + exit codes | Real (unit) | same test file |
 | Loads from a packaged `.app`/`.dmg` shipped layout | Real, but needs a built artifact | this runbook, Step 2 (`verify-native-config-in-packaged-dmg.mjs`) |
 | Loads **in the Electron main process** (hardened runtime + asar) | Deferred to signed-DMG QA | this runbook, Step 3 |
@@ -18,12 +18,12 @@ The addon is pure computation over a napi N-API surface that is ABI-stable acros
 ## Step 1 — Pre-package (creds-free, runs in CI)
 
 ```bash
-bun run build                                    # turbo builds native-config -> cli; copies into dist/native
+pnpm build                                       # turbo builds native-config -> cli; copies into dist/native
 node scripts/verify-native-config-in-packaged-dmg.mjs packages/cli/dist
 # Expect: "verify-native-config: OK — backend=native nativeDir=.../dist/native durationMs=N" and exit 0
 ```
 
-`bun run check` runs the same load end-to-end via the driver test, so a regression that breaks the bundle (a missing `build:native` step, a `type: module` collision, a missing `package.json` in `dist/native/`) fails the gate.
+`pnpm check` runs the same load end-to-end via the driver test, so a regression that breaks the bundle (a missing `build:native` step, a `type: module` collision, a missing `package.json` in `dist/native/`) fails the gate.
 
 Exit codes: `0` loaded + round-tripped · `1` found but failed to load · `2` bad args · `3` no `dist/native` loader found.
 
@@ -34,7 +34,7 @@ Exit codes: `0` loaded + round-tripped · `1` found but failed to load · `2` ba
 After an unsigned or signed build, point the driver at the artifact:
 
 ```bash
-bun run --cwd packages/desktop build:mac:unsigned
+pnpm --dir packages/desktop run build:mac:unsigned
 node scripts/verify-native-config-in-packaged-dmg.mjs \
   packages/desktop/dist-desktop/OpenKnowledge-arm64.dmg
 # Expect: "verify-native-config: OK — backend=native ..." and exit 0

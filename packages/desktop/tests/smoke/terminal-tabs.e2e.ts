@@ -22,23 +22,21 @@
  * darwin-only, the electron-vite build must exist (out/main/index.js), and
  * CI-quarantined (the live-Electron terminal surface degrades on the constrained
  * runner — allowlisted in the CI no-skip guard, not hidden). Runs in local dev /
- * the release gate. Not part of `bun run check`.
+ * the release gate. Not part of `pnpm check`.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
@@ -80,17 +78,20 @@ async function launchApp(s: Seed): Promise<ElectronApplication> {
   // Restricted, system-only PATH: the New-chat carat opens a BARE shell (the
   // "Terminal" pick) so no `claude` install is needed to spawn a live PTY.
   const PATH = '/usr/bin:/bin:/usr/sbin:/sbin';
-  return electron.launch({
-    args: [MAIN_ENTRY, `--user-data-dir=${s.userDataDir}`, deepLink],
-    timeout: 30_000,
-    env: {
-      ...process.env,
-      HOME: s.tmpHome,
-      PATH,
-      OK_DESKTOP_E2E_SMOKE: '1',
-      OK_RECLAIM_DISABLE: '1',
-    },
-  });
+  return electron.launch(
+    desktopLaunchOptions({
+      target: TARGET,
+      args: [`--user-data-dir=${s.userDataDir}`, deepLink],
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: s.tmpHome,
+        PATH,
+        OK_DESKTOP_E2E_SMOKE: '1',
+        OK_RECLAIM_DISABLE: '1',
+      },
+    }),
+  );
 }
 
 async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): Promise<Page> {
@@ -214,7 +215,7 @@ function track(...paths: string[]): void {
 test.describe('Terminal tabs — live Electron', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Desktop is darwin-only.');
-  test.skip(!BUILD_EXISTS, `Main build missing at ${MAIN_ENTRY} — run "bun run build:desktop".`);
+  test.skip(!TARGET.exists, TARGET.missingReason);
   test.skip(
     IS_CI,
     'Quarantined on CI: the live-Electron terminal surface degrades on the constrained runner — see inkeep/agents-private#2187.',

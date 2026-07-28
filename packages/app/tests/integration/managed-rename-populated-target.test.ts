@@ -16,10 +16,11 @@
  *
  * Expected: PASS. API returns 409; no content mutation on either client.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterEach, describe, expect, test } from 'vitest';
 import { createMultiClientContext, createRestartableServer, pollUntil } from './test-harness';
 
 const SOURCE_CONTENT = `# Source Doc

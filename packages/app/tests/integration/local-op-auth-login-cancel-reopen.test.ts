@@ -1,10 +1,17 @@
 /**
  * HTTP auth-login concurrency-slot lifecycle — the cancel→reopen contract.
  *
- * Invariant under test: a cancelled / disconnected auth-login must immediately
- * free or displace the concurrency slot, so a fresh login attempt is always
+ * Invariant under test: a cancelled / disconnected auth-login must never leave
+ * the concurrency slot permanently pinned, so a fresh login attempt is always
  * admittable. Closing the device-flow modal without completing must NOT block
  * the next start.
+ *
+ * Two admission routes satisfy that, and which one applies depends on how the
+ * flow ended. An EXPLICIT cancel (`POST /api/local-op/auth/cancel`, or a flow
+ * that ran to completion) frees the slot synchronously. A bare transport
+ * disconnect does not: the flow deliberately survives it (see
+ * `local-op-auth-stream-resilience.test.ts`), so the slot stays held and the
+ * next start is admitted by displacing the stale controller.
  *
  * The desktop editor window drives `POST /api/local-op/auth/login` over HTTP
  * (the Navigator window uses the IPC twin, hardened separately). These tests
@@ -21,10 +28,10 @@
  * window; the slow-die child makes the defect deterministic.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import { createTestServer, pollUntil, type TestServer, wait } from './test-harness';
 
 // Fake device-flow CLI: ignores the appended `auth login --json --host ...`
@@ -125,8 +132,9 @@ async function openLoginUntilVerification(): Promise<{
   return { status: res.status, verification: null, controller };
 }
 
-/** Simulate the client closing the modal: abort the in-flight login fetch.
- * The handler wires `res.on('close')` → `flow.cancel()`. */
+/** Simulate the transport dropping: abort the in-flight login fetch. The
+ * handler treats this as a detach, not a cancel — the flow keeps running and
+ * keeps its slot, so the next start is admitted via displacement. */
 function disconnect(controller: AbortController): void {
   controller.abort();
 }
@@ -140,14 +148,14 @@ describe('HTTP auth-login cancel→reopen concurrency-slot contract', () => {
     expect(first.status).toBe(200);
     expect(first.verification?.type).toBe('verification');
 
-    // Client closes the modal. The child swallows SIGTERM and is still alive.
+    // The transport drops. The flow survives (by design), so the slot is still
+    // held by a child that also swallows SIGTERM.
     disconnect(first.controller);
 
-    // Reopen: a fresh login must NOT be rejected with 429. The slot has to be
-    // freed (synchronous release on disconnect) or displaced (fresh-start
-    // backstop). On the unfixed handler the slot is still held by the lingering
-    // child, so this reopen gets 429 "An auth login operation is already in
-    // progress." and the assertions below fail.
+    // Reopen: a fresh login must NOT be rejected with 429. The slot is still
+    // held, so admission rides on the fresh-start displacement backstop.
+    // Without it the lingering child pins the slot and this reopen gets 429
+    // "An auth login operation is already in progress."
     const second = await openLoginUntilVerification();
     expect(second.status).not.toBe(429);
     expect(second.status).toBe(200);
@@ -173,20 +181,19 @@ describe('HTTP auth-login cancel→reopen concurrency-slot contract', () => {
   });
 
   test("a cancelled login's late child-exit does not release the successor's slot (ownership-guarded release)", async () => {
-    // Pins the subtle correctness property a synchronous-free + displacement
-    // fix still needs: object-identity ownership on the slot release. After a
-    // login is cancelled and a FRESH login is admitted, the OLD (cancelled)
-    // device-flow child eventually exits — and its `done.finally` must NOT
-    // release the slot the successor now owns. Without the ownership guard
-    // (`authLoginInFlight === flow`), the stale child's late `done.finally`
-    // deletes the Set key the successor holds, so a third start no longer
-    // displaces the live login but spuriously acquires a "free" slot — leaking
-    // the second login's child as an orphaned background poller (the exact
-    // "don't leave a poller writing an unconfirmed token" property the
-    // disconnect handler exists for).
+    // Pins the subtle correctness property the displacement backstop needs:
+    // object-identity ownership on the slot release. After a login is displaced
+    // and a FRESH login owns the slot, the OLD device-flow child eventually
+    // exits — and its `done.finally` must NOT release the slot the successor
+    // now owns. Without the ownership guard (`authLoginInFlight === flow`), the
+    // stale child's late `done.finally` deletes the Set key the successor
+    // holds, so a third start no longer displaces the live login but spuriously
+    // acquires a "free" slot — leaving the second login's child running as an
+    // orphaned background poller alongside the third. Single-flight per channel
+    // is what stops two children from racing to store a token.
     //
     // The fake CLI here exits SOON after SIGTERM (not after a long linger) so
-    // the cancelled child's `done.finally` fires DURING the measurement window,
+    // the displaced child's `done.finally` fires DURING the measurement window,
     // while the successor owns the slot. To remove timing flakiness the exit is
     // gated on a `go` file the test writes only after the successor is admitted:
     // child exit (and therefore the late release) is ordered strictly after the
@@ -201,12 +208,7 @@ describe('HTTP auth-login cancel→reopen concurrency-slot contract', () => {
     // without displacing, #2's child is never terminated, and only one prior
     // child records an exit.
     //
-    // RED status: on the CURRENT (unfixed) handler this test fails earlier, at
-    // the "#2 admitted" step, for the same reason the two tests above fail (the
-    // slot stays pinned → reopen 429s). The ownership property it isolates is
-    // only reachable once the synchronous-free + displacement halves land; it
-    // then PASSES, and regresses to RED if the ownership guard on the release is
-    // later removed.
+    // Regresses to RED if the ownership guard on the release is removed.
     const dir = mkdtempSync(join(tmpdir(), 'ok-auth-ownership-'));
     tmpDirs.push(dir);
     const exitMarker = join(dir, 'child-exits.log');
@@ -260,17 +262,17 @@ describe('HTTP auth-login cancel→reopen concurrency-slot contract', () => {
     expect(first.status).toBe(200);
     expect(first.verification?.type).toBe('verification');
 
-    // Client closes the modal → res.on('close') → flow.cancel() → SIGTERM to
-    // child #1. The child does not exit yet (no go-signal).
+    // The transport drops. Child #1 keeps running and keeps the slot.
     disconnect(first.controller);
 
-    // Login #2 (reopen) must be admitted and now OWNS the slot. (Unfixed code
-    // 429s here — the masked failure shared with the tests above.)
+    // Login #2 (reopen) must be admitted and now OWNS the slot — admission
+    // displaces #1, SIGTERM-ing its child. The child does not exit yet (no
+    // go-signal).
     const second = await openLoginUntilVerification();
     expect(second.status).toBe(200);
     expect(second.verification?.type).toBe('verification');
 
-    // Now let the cancelled child #1 exit — strictly after #2 claimed the slot.
+    // Now let the displaced child #1 exit — strictly after #2 claimed the slot.
     // Its `done.finally` fires here; the ownership guard must stop it from
     // releasing #2's slot.
     writeFileSync(goSignal, '1', 'utf-8');
@@ -289,7 +291,7 @@ describe('HTTP auth-login cancel→reopen concurrency-slot contract', () => {
     expect(third.status).toBe(200);
     expect(third.verification?.type).toBe('verification');
 
-    // Contract: two prior children (#1 cancelled, #2 displaced) must have been
+    // Contract: two prior children (#1 and #2, both displaced) must have been
     // terminated. If #1's late release freed #2's slot, #2 is orphaned and only
     // one child ever records an exit → this times out (RED).
     await pollUntil(() => markerCount() >= 2, 4000, 20);
@@ -300,7 +302,7 @@ describe('HTTP auth-login cancel→reopen concurrency-slot contract', () => {
 
   test('a login that completes normally releases the slot, and the next login is admitted via normal acquisition (not displacement)', async () => {
     // Pins the happy-path release. The three tests above all exercise the
-    // cancel / displace paths; none covers a login that COMPLETES. When a
+    // displacement path; none covers a login that COMPLETES. When a
     // device flow completes, `flow.done` resolves and the ownership-guarded
     // `done.finally` must release the slot so the next login acquires it via
     // the normal `tryAcquire` path.

@@ -1,10 +1,10 @@
-import { describe, expect, test } from 'bun:test';
 import {
   ALLOWED_AUDIO_MIME_TYPES,
   ALLOWED_IMAGE_MIME_TYPES,
   ALLOWED_PDF_MIME_TYPES,
   ALLOWED_VIDEO_MIME_TYPES,
 } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { filterAssetsByAccept } from './filter-assets-by-accept.ts';
 
 const PATHS = [

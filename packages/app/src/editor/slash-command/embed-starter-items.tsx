@@ -26,10 +26,9 @@
 import { PREVIEW_EMBED_STARTERS, type PreviewEmbedStarter } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { Trans } from '@lingui/react/macro';
-import type { Editor } from '@tiptap/react';
 import { BarChart3, Code, LayoutGrid, Shapes, SlidersHorizontal } from 'lucide-react';
 import type { ReactNode } from 'react';
-import type { SlashCommandItem } from './items';
+import type { SlashCommandContext, SlashCommandItem } from './items';
 
 /**
  * Insert an `html preview` code block at the current selection. Single
@@ -37,10 +36,8 @@ import type { SlashCommandItem } from './items';
  * themed starters both call through here so the (codeBlock + language=html
  * + meta=preview) shape stays in one place.
  */
-function insertHtmlPreview(editor: Editor, html: string): void {
-  editor
-    .chain()
-    .focus()
+function insertHtmlPreview(chain: SlashCommandContext['chain'], html: string): void {
+  chain()
     .insertContent({
       type: 'codeBlock',
       attrs: { language: 'html', meta: 'preview' },
@@ -163,7 +160,7 @@ function getBlankHtmlEmbedItem(): SlashCommandItem {
     category: 'embed',
     aliases: ['html', 'embed', 'preview', 'iframe', 'sandbox', 'web', 'snippet'],
     description: t`Sandboxed HTML embed — write HTML, see the rendered preview live.`,
-    command: (editor: Editor) => insertHtmlPreview(editor, BLANK_HTML_BODY),
+    command: ({ chain }) => insertHtmlPreview(chain, BLANK_HTML_BODY),
     preview: {
       description: t`Custom HTML with a live preview pane (sandboxed iframe).`,
       // Hand-built browser-pane mockup matching the `Embed` jsx component's
@@ -207,7 +204,7 @@ export function getEmbedStarterItems(): SlashCommandItem[] {
       label: starter.title,
       icon: ui.icon,
       category: 'embed',
-      command: (editor: Editor) => insertHtmlPreview(editor, starter.html),
+      command: ({ chain }) => insertHtmlPreview(chain, starter.html),
       aliases: ui.aliases,
       description: starter.description,
       preview: {

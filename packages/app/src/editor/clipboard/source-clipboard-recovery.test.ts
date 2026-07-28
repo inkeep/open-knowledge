@@ -17,13 +17,13 @@
  * Playwright E2E, not bun-test.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { ChunkedInsertError } from '@inkeep/open-knowledge-core';
 import * as actualSonner from 'sonner';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-type ToastFn = { error: ReturnType<typeof mock> };
-const toastMock: ToastFn = { error: mock(() => {}) };
-mock.module('sonner', () => ({ ...actualSonner, toast: toastMock }));
+type ToastFn = { error: ReturnType<typeof vi.fn> };
+const toastMock: ToastFn = { error: vi.fn(() => {}) };
+vi.doMock('sonner', () => ({ ...actualSonner, toast: toastMock }));
 
 // Imported AFTER the mock so the module picks up our stub.
 // biome-ignore lint/suspicious/noExplicitAny: test-scoped dynamic import
@@ -48,13 +48,13 @@ interface DispatchCall {
 }
 
 function makeFakeView(docLength = 1_000_000): {
-  dispatch: ReturnType<typeof mock>;
+  dispatch: ReturnType<typeof vi.fn>;
   dispatches: DispatchCall[];
   // biome-ignore lint/suspicious/noExplicitAny: fake view state for unit test
   state: any;
 } {
   const dispatches: DispatchCall[] = [];
-  const dispatch = mock((arg: { changes: DispatchCall }) => {
+  const dispatch = vi.fn((arg: { changes: DispatchCall }) => {
     dispatches.push(arg.changes);
   });
   return {
@@ -225,7 +225,7 @@ describe('handleChunkedInsertFailure — Source-view recovery contract', () => {
   });
 
   test('dispatch throw during rollback is logged but does not prevent toast', () => {
-    const throwingDispatch = mock(() => {
+    const throwingDispatch = vi.fn(() => {
       throw new Error('view destroyed');
     });
     withSilencedWarn(() =>
@@ -253,7 +253,7 @@ describe('handleChunkedInsertFailure — Source-view recovery contract', () => {
     // When dispatch throws (view destroyed by Activity-hidden unmount, Y.Doc
     // GC'd, etc.), the user's selection is NOT restored. The toast must say
     // so rather than claim a successful restoration.
-    const throwingDispatch = mock(() => {
+    const throwingDispatch = vi.fn(() => {
       throw new Error('view destroyed');
     });
     withSilencedWarn(() =>
@@ -282,7 +282,7 @@ describe('handleChunkedInsertFailure — Source-view recovery contract', () => {
 
   test('non-ChunkedInsertError + dispatch throw: toast accurately states selection NOT restored', () => {
     // Same regression for the generic-error path.
-    const throwingDispatch = mock(() => {
+    const throwingDispatch = vi.fn(() => {
       throw new Error('view destroyed');
     });
     withSilencedWarn(() =>

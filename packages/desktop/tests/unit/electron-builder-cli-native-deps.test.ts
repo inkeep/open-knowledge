@@ -1,7 +1,7 @@
-import { describe, expect, test } from 'bun:test';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 
 /**
@@ -33,17 +33,29 @@ const okRoot = resolve(desktopRoot, '..', '..');
 /**
  * Natives intentionally NOT shipped into cli/node_modules, each with its
  * reason. Every entry asserts "we considered this and decided the bundled-CLI
- * path doesn't need it." Keep this set as small as possible.
+ * path doesn't need it." Keep this set as small as possible — empty is ideal.
  *
- * `@parcel/watcher`: only reached when `ok start` / `ok mcp` boots the server
- * in-process from the bundled CLI. Its absence degrades to chokidar (a
- * functional fallback), not a silent security downgrade, and shipping it
- * cleanly requires its transitive runtime JS deps too (detect-libc, is-glob,
- * picomatch, ...).
+ * `@parcel/watcher` used to live here (absence degraded to chokidar). It is now
+ * staged onto the CLI path via the `build/parcel-watcher-staging/node_modules →
+ * cli/node_modules` rule (see `stage-parcel-watcher.mjs`), so it is covered
+ * below through `shippedViaParcelStaging`, not allowlisted.
  */
-const KNOWN_UNCOVERED: Record<string, string> = {
-  '@parcel/watcher': 'degrades to chokidar fallback; transitive runtime deps tracked as follow-up',
-};
+const KNOWN_UNCOVERED: Record<string, string> = {};
+
+/**
+ * @parcel/watcher ships as a whole staged tree copied to `cli/node_modules`
+ * (wrapper + runtime deps + per-arch binary), so its coverage is the presence
+ * of that one staging rule rather than a `cli/node_modules/@parcel/watcher`
+ * target. Recognizing it here means this test also fails loudly if the staging
+ * rule is ever dropped — defense in depth alongside
+ * electron-builder-parcel-watcher-deps.test.ts.
+ */
+function shippedViaParcelStaging(pkg: string): boolean {
+  if (pkg !== '@parcel/watcher') return false;
+  return readExtraResources().some(
+    (r) => r.to === 'cli/node_modules' && r.from === 'build/parcel-watcher-staging/node_modules',
+  );
+}
 
 function readNeverBundle(): string[] {
   try {
@@ -56,23 +68,39 @@ function readNeverBundle(): string[] {
   }
 }
 
-function readExtraResourceTargets(): string[] {
-  try {
-    const cfg = parse(readFileSync(builderYml, 'utf8')) as {
-      extraResources?: Array<{ to?: string }>;
-    };
-    return (cfg.extraResources ?? []).map((r) => r.to ?? '').filter(Boolean);
-  } catch {
-    return [];
-  }
+function readExtraResourceTargets(platform?: 'mac' | 'win' | 'linux'): string[] {
+  return readExtraResources(platform)
+    .map((r) => r.to ?? '')
+    .filter(Boolean);
 }
 
 type ExtraResourceRule = { from?: string; to?: string; filter?: string[] | string };
 
-function readExtraResources(): ExtraResourceRule[] {
+type BuilderConfig = {
+  extraResources?: ExtraResourceRule[];
+  mac?: { extraResources?: ExtraResourceRule[] };
+  win?: { extraResources?: ExtraResourceRule[] };
+  linux?: { extraResources?: ExtraResourceRule[] };
+};
+
+/**
+ * Platform-specific `extraResources` merge with the top-level list at build
+ * time (electron-builder semantics), so coverage here reads them merged the
+ * same way. `platform` narrows to one platform's effective rule set.
+ */
+function readExtraResources(platform?: 'mac' | 'win' | 'linux'): ExtraResourceRule[] {
   try {
-    const cfg = parse(readFileSync(builderYml, 'utf8')) as { extraResources?: ExtraResourceRule[] };
-    return cfg.extraResources ?? [];
+    const cfg = parse(readFileSync(builderYml, 'utf8')) as BuilderConfig;
+    const top = cfg.extraResources ?? [];
+    if (!platform) {
+      return [
+        ...top,
+        ...(cfg.mac?.extraResources ?? []),
+        ...(cfg.win?.extraResources ?? []),
+        ...(cfg.linux?.extraResources ?? []),
+      ];
+    }
+    return [...top, ...(cfg[platform]?.extraResources ?? [])];
   } catch {
     return [];
   }
@@ -104,7 +132,7 @@ describe('bundled CLI can resolve tsdown neverBundle native addons', () => {
 
   for (const pkg of neverBundle) {
     test(`'${pkg}' is shipped to cli/node_modules or explicitly allowlisted`, () => {
-      const shipped = targets.includes(`cli/node_modules/${pkg}`);
+      const shipped = targets.includes(`cli/node_modules/${pkg}`) || shippedViaParcelStaging(pkg);
       const allowlisted = pkg in KNOWN_UNCOVERED;
       expect(
         shipped || allowlisted,
@@ -117,17 +145,29 @@ describe('bundled CLI can resolve tsdown neverBundle native addons', () => {
     });
   }
 
-  test("'@napi-rs/keyring' ships the wrapper AND an arm64 platform binary", () => {
+  test("'@napi-rs/keyring' ships the wrapper AND a platform binary on every platform", () => {
     // The wrapper (@napi-rs/keyring) requires its sibling platform package at
-    // runtime; both must be on the CLI's resolution path. arm64-only matches
-    // the arm64-only DMG (see `mac.target` in electron-builder.yml).
+    // runtime; both must be on the CLI's resolution path. The wrapper is
+    // platform-neutral JS and ships from the top-level list; each platform
+    // block ships its own binary package(s): darwin arm64-only (matches the
+    // arm64-only DMG, see `mac.target`), win/linux both arches (per-arch
+    // installers share one static extraResources list).
     expect(targets).toContain('cli/node_modules/@napi-rs/keyring');
-    const hasPlatform = targets.some((t) => t === 'cli/node_modules/@napi-rs/keyring-darwin-arm64');
-    expect(
-      hasPlatform,
-      "Ship '@napi-rs/keyring-darwin-arm64' into cli/node_modules — the wrapper " +
-        'requires its platform binary sibling at runtime.',
-    ).toBe(true);
+    const expectedPerPlatform: Record<'mac' | 'win' | 'linux', string[]> = {
+      mac: ['keyring-darwin-arm64'],
+      win: ['keyring-win32-x64-msvc', 'keyring-win32-arm64-msvc'],
+      linux: ['keyring-linux-x64-gnu', 'keyring-linux-arm64-gnu'],
+    };
+    for (const [platform, pkgs] of Object.entries(expectedPerPlatform)) {
+      const platformTargets = readExtraResourceTargets(platform as 'mac' | 'win' | 'linux');
+      for (const pkg of pkgs) {
+        expect(
+          platformTargets,
+          `Ship '@napi-rs/${pkg}' into cli/node_modules for ${platform} — the wrapper ` +
+            'requires its platform binary sibling at runtime.',
+        ).toContain(`cli/node_modules/@napi-rs/${pkg}`);
+      }
+    }
   });
 
   test('keyring copy sources exist at the hoisted root node_modules', () => {
@@ -147,6 +187,32 @@ describe('bundled CLI can resolve tsdown neverBundle native addons', () => {
         true,
       );
     }
+  });
+});
+
+/**
+ * Every platform must ship an `ok` CLI wrapper into `cli/bin/` — it is the
+ * PATH-install target (mac symlinks, deb /usr/bin symlink, NSIS user-PATH
+ * dir) and the path MCP clients hold in their configs. The wrapper file
+ * differs per platform (bundle layouts differ), the destination does not.
+ */
+describe('per-platform ok CLI wrapper ships to cli/bin', () => {
+  test('mac + linux ship a cli/bin/ok.sh; win ships ok.cmd + ok.ps1', () => {
+    expect(readExtraResourceTargets('mac')).toContain('cli/bin/ok.sh');
+    expect(readExtraResourceTargets('linux')).toContain('cli/bin/ok.sh');
+    const win = readExtraResourceTargets('win');
+    expect(win).toContain('cli/bin/ok.cmd');
+    expect(win).toContain('cli/bin/ok.ps1');
+  });
+
+  test('the linux cli/bin/ok.sh sources the linux-layout wrapper, not the .app one', () => {
+    const rule = readExtraResources('linux').find((r) => r.to === 'cli/bin/ok.sh');
+    expect(
+      rule?.from,
+      'linux must ship resources/cli/bin/ok-linux.sh as cli/bin/ok.sh — the darwin ' +
+        'ok.sh derives its paths from the .app bundle shape and self-diagnoses exit 69 ' +
+        'on the flat Linux layout.',
+    ).toBe('resources/cli/bin/ok-linux.sh');
   });
 });
 

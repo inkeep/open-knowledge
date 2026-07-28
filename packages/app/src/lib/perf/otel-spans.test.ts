@@ -9,7 +9,7 @@
  * Uses InMemorySpanExporter purely for assertions — production wiring
  * runs via the lazy-loaded sdk-trace-web in telemetry-impl.ts.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { context, metrics, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import {
@@ -18,6 +18,7 @@ import {
   type ReadableSpan,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   __coldMountSpanCount,
   __resetColdMountSpans,

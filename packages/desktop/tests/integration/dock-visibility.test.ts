@@ -45,10 +45,10 @@
  *
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, test } from 'vitest';
 import { resolveDetachedSpawnArgs } from '../../src/main/resolve-detached-spawn-args.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));

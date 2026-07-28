@@ -15,8 +15,8 @@
  *   3. Otherwise: top-N by `lastAccessedAt` descending (MRU first).
  */
 
-import { describe, expect, test } from 'bun:test';
 import { SYSTEM_DOC_NAME } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import {
   ACTIVITY_MOUNT_LIMIT,
   computeActivityMountList,

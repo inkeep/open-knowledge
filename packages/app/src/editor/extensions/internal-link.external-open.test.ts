@@ -25,10 +25,10 @@
  * the same per-file DOM install the other headless editor-plugin suites use.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { getInteractionLayer } from '../interaction-layer-host';
 import { installDomGlobals } from '../walk-currency-test-harness';
 import { InternalLink } from './internal-link';
@@ -117,8 +117,8 @@ function mountWithExternalLink(url: string): {
 describe('WYSIWYG external-link activation — desktop (bridge present)', () => {
   test('bare click routes to the OS browser via okDesktop.shell.openExternal, NOT window.open', () => {
     const url = 'https://youtube.com/watch?v=abc';
-    const openExternal = mock(async (_url: string) => {});
-    const openWindow = mock(() => null);
+    const openExternal = vi.fn(async (_url: string) => {});
+    const openWindow = vi.fn(() => null);
     const w = testWindow();
     w.okDesktop = { shell: { openExternal } };
     w.open = openWindow as unknown as OpenExternalWindow['open'];
@@ -139,8 +139,8 @@ describe('WYSIWYG external-link activation — desktop (bridge present)', () => 
     // External URLs must land in the OS browser on EVERY activation — bare or
     // modifier-click. The modifier path must not fall back to window.open.
     const url = 'https://example.com/path';
-    const openExternal = mock(async (_url: string) => {});
-    const openWindow = mock(() => null);
+    const openExternal = vi.fn(async (_url: string) => {});
+    const openWindow = vi.fn(() => null);
     const w = testWindow();
     w.okDesktop = { shell: { openExternal } };
     w.open = openWindow as unknown as OpenExternalWindow['open'];
@@ -160,7 +160,7 @@ describe('WYSIWYG external-link activation — web (no bridge)', () => {
   // the fix from regressing the web path to a no-op.
   test('bare click falls back to window.open with the new-tab + noopener features', () => {
     const url = 'https://example.com/web';
-    const openWindow = mock(() => null);
+    const openWindow = vi.fn(() => null);
     const w = testWindow();
     delete w.okDesktop;
     w.open = openWindow as unknown as OpenExternalWindow['open'];

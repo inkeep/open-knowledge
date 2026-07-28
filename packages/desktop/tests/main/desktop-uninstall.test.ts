@@ -1,24 +1,19 @@
-import { describe, expect, mock, test } from 'bun:test';
 import { join } from 'node:path';
+import { describe, expect, test, vi } from 'vitest';
 import {
   buildDesktopUninstallCleanupScript,
-  buildDesktopUninstallNoticeHtml,
-  buildDesktopUninstallProgressHtml,
-  buildDesktopUninstallProjectPickerHtml,
   collectDesktopUninstallProjectCandidates,
   defaultDesktopUninstallLogPath,
   desktopUninstallCompletionNotice,
   desktopUninstallConfirmNotice,
   desktopUninstallFailureNotice,
   desktopUninstallFinalStepNotice,
-  formatDesktopUninstallProjectList,
   isSupportedApplicationsBundle,
-  parseDesktopUninstallNoticeUrl,
-  parseDesktopUninstallProjectPickerUrl,
   readDesktopUninstallLogForDisplay,
   resolveAppBundleFromExecPath,
-  resolveDesktopUninstallProjectSelection,
+  resolveDesktopUninstallUiPreviewMode,
   runDesktopUninstallCleanup,
+  selectDesktopUninstallProjectsByIndex,
 } from '../../src/main/desktop-uninstall.ts';
 
 describe('desktop self-uninstall helpers', () => {
@@ -69,79 +64,40 @@ describe('desktop self-uninstall helpers', () => {
     ]);
   });
 
-  test('formats a bounded candidate list with source tags', () => {
-    const formatted = formatDesktopUninstallProjectList(
-      [
-        { path: '/work/a', open: true, recent: false, running: true },
-        { path: '/work/b', open: false, recent: true, running: false },
-      ],
-      1,
-    );
-    expect(formatted).toBe('• /work/a (open, running)\n• …and 1 more');
-  });
-
-  test('builds a scrollable project picker with every candidate and bulk controls', () => {
-    const html = buildDesktopUninstallProjectPickerHtml([
-      { path: '/work/a', open: true, recent: false, running: true },
-      { path: '/work/<unsafe>&b', open: false, recent: true, running: false },
-    ]);
-
-    expect(html).toContain('Select all');
-    expect(html).toContain('Select none');
-    expect(html).toContain('ok-desktop-uninstall://');
-    expect(html).toContain('overflow-y: scroll');
-    expect(html).toContain('Scrollable list — review all 2 projects');
-    expect(html).toContain('/work/a');
-    expect(html).toContain('/work/&lt;unsafe&gt;&amp;b');
-    expect(html).not.toContain('…and');
-    // The drag-to-Trash instruction belongs to the post-cleanup dialog only.
-    expect(html).not.toContain('Trash');
-  });
-
-  test('builds a progress page with a loading indicator', () => {
-    const html = buildDesktopUninstallProgressHtml();
-    expect(html).toContain('Removing OpenKnowledge files…');
-    expect(html).toContain('class="spinner"');
-    expect(html).toContain('role="status"');
-  });
-
-  test('parses the private picker navigation URL into selected indexes', () => {
-    expect(
-      parseDesktopUninstallProjectPickerUrl('ok-desktop-uninstall://confirm?indexes=2%2C0%2Cbad'),
-    ).toEqual({ action: 'confirm', selectedIndexes: [2, 0] });
-    // Empty selection — the default, most common confirm (global-only uninstall).
-    expect(
-      parseDesktopUninstallProjectPickerUrl('ok-desktop-uninstall://confirm?indexes='),
-    ).toEqual({ action: 'confirm', selectedIndexes: [] });
-    expect(parseDesktopUninstallProjectPickerUrl('ok-desktop-uninstall://cancel')).toEqual({
-      action: 'cancel',
-    });
-    expect(
-      parseDesktopUninstallProjectPickerUrl('https://example.test/confirm?indexes=0'),
-    ).toBeNull();
-  });
-
-  test('resolves project picker output by candidate index only', () => {
+  test('resolves a picker intent to candidates the renderer could not have widened', () => {
     const candidates = [
       { path: '/work/a', open: true, recent: false, running: false },
       { path: '/work/b', open: false, recent: true, running: false },
       { path: '/work/c', open: false, recent: false, running: true },
     ];
 
+    expect(selectDesktopUninstallProjectsByIndex(candidates, [1])).toEqual([candidates[1]]);
+    expect(selectDesktopUninstallProjectsByIndex(candidates, [])).toEqual([]);
+
+    // Everything a hostile renderer could try in place of an index: values that
+    // reach past the list, values that are not indexes at all, and paths the
+    // renderer would like to have deleted. None of it survives.
     expect(
-      resolveDesktopUninstallProjectSelection(candidates, {
-        action: 'confirm',
-        selectedIndexes: [2, 0, 2, 99, -1, '1'],
-        selectedPaths: ['/work/b'],
-      }),
-    ).toEqual([candidates[0], candidates[2]]);
-    expect(
-      resolveDesktopUninstallProjectSelection(candidates, {
-        action: 'confirm',
-        selectedIndexes: [],
-      }),
+      selectDesktopUninstallProjectsByIndex(candidates, [
+        3,
+        99,
+        -1,
+        1.5,
+        Number.NaN,
+        '0',
+        '/etc/passwd',
+        { path: '/etc/passwd' },
+        null,
+      ]),
     ).toEqual([]);
-    expect(resolveDesktopUninstallProjectSelection(candidates, { action: 'cancel' })).toBeNull();
+    expect(selectDesktopUninstallProjectsByIndex(candidates, '/etc/passwd')).toEqual([]);
+    expect(selectDesktopUninstallProjectsByIndex(candidates, undefined)).toEqual([]);
+
+    // Duplicates collapse and order follows main's list, not the renderer's.
+    expect(selectDesktopUninstallProjectsByIndex(candidates, [2, 0, 2])).toEqual([
+      candidates[0],
+      candidates[2],
+    ]);
   });
 
   test('builds a cleanup script that deinitializes selected projects before global uninstall', () => {
@@ -226,53 +182,38 @@ describe('desktop self-uninstall helpers', () => {
     expect(confirm.danger).toBe(true);
     expect(confirm.paragraphs.join(' ')).not.toContain('Trash');
 
-    const done = desktopUninstallCompletionNotice({ projectCount: 0, logPath: '/log' });
-    expect(done.paragraphs.join(' ')).toContain('move OpenKnowledge.app to the Trash');
-    // Projects were off by default — silence beats "No projects were deinitialized."
-    expect(done.paragraphs.join(' ')).not.toContain('project');
-    expect(done.footnote).toBe('Cleanup log: /log');
-    expect(
-      desktopUninstallCompletionNotice({ projectCount: 2, logPath: '/log' }).paragraphs.join(' '),
-    ).toContain('removed from 2 projects');
+    const done = desktopUninstallCompletionNotice({ projectCount: 0 });
+    // A scannable checklist — two done items plus the one remaining action.
+    expect((done.checklist ?? []).map((item) => item.label)).toEqual([
+      'Kept your content',
+      'Removed OpenKnowledge files',
+      'Move OpenKnowledge.app to the Trash',
+    ]);
+    expect(done.checklist?.[0]?.done).toBe(true);
+    expect(done.checklist?.[1]?.done).toBe(true);
+    expect(done.checklist?.[2]?.done).toBe(false); // the one pending action
+    expect(done.confirmLabel).toBe('Reveal in Finder');
+    // The log is a link, not a raw path; the path never enters the spec/HTML.
+    expect(done.logRevealLabel).toBe('Cleanup log');
+    expect(done.footnote).toBeUndefined();
+    expect(done.paragraphs).toEqual([]);
+    // Projects were off by default — no project count in the removed-item detail.
+    expect(done.checklist?.[1]?.detail).not.toContain('project');
+    expect(desktopUninstallCompletionNotice({ projectCount: 2 }).checklist?.[1]?.detail).toContain(
+      '2 projects',
+    );
 
     expect(desktopUninstallFinalStepNotice().paragraphs.join(' ')).toContain('Trash');
-  });
-
-  test('notice html escapes content and finishes through the private scheme', () => {
-    const html = buildDesktopUninstallNoticeHtml({
-      title: 'T<itle>',
-      paragraphs: ['a&b'],
-      footnote: 'saved <here>',
-      log: 'line <1>',
-      confirmLabel: 'Continue',
-    });
-    expect(html).toContain('T&lt;itle&gt;');
-    expect(html).toContain('a&amp;b');
-    expect(html).toContain('saved &lt;here&gt;');
-    expect(html).toContain('line &lt;1&gt;');
-    expect(html).toContain("'ok-desktop-uninstall://notice-' + action");
-    expect(html).not.toContain('id="cancel"');
-
-    const twoButton = buildDesktopUninstallNoticeHtml(desktopUninstallConfirmNotice());
-    expect(twoButton).toContain('id="cancel"');
-    expect(twoButton).toContain('class="danger"');
-  });
-
-  test('parses notice URLs, rejecting foreign schemes and hosts', () => {
-    expect(parseDesktopUninstallNoticeUrl('ok-desktop-uninstall://notice-confirm')).toBe('confirm');
-    expect(parseDesktopUninstallNoticeUrl('ok-desktop-uninstall://notice-cancel')).toBe('cancel');
-    expect(parseDesktopUninstallNoticeUrl('ok-desktop-uninstall://confirm?indexes=0')).toBeNull();
-    expect(parseDesktopUninstallNoticeUrl('https://example.test/notice-confirm')).toBeNull();
   });
 
   test('runDesktopUninstallCleanup spawns an attached shell and resolves on close', async () => {
     const listeners = new Map<string, (...args: unknown[]) => void>();
     const child = {
-      once: mock((event: string, listener: (...args: unknown[]) => void) => {
+      once: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
         listeners.set(event, listener);
       }),
     };
-    const spawn = mock(() => child);
+    const spawn = vi.fn(() => child);
     const resultPromise = runDesktopUninstallCleanup(
       {
         cliPath: '/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh',
@@ -330,5 +271,34 @@ describe('desktop self-uninstall helpers', () => {
         },
       }),
     ).resolves.toEqual({ ok: false, error: 'shell missing' });
+  });
+});
+
+describe('resolveDesktopUninstallUiPreviewMode', () => {
+  test('always returns null in a packaged build, even for a valid mode', () => {
+    // The isPackaged guard is the safety gate that keeps the non-destructive
+    // preview scaffolding from ever short-circuiting the real cleanup path in a
+    // shipped app. An inversion here would let a packaged build enter preview.
+    for (const raw of ['success', 'failure', 'renderer', 'picker', 'survey', 'notice', '1']) {
+      expect(resolveDesktopUninstallUiPreviewMode(raw, true)).toBeNull();
+    }
+  });
+
+  test('maps each recognized env value to its mode in a dev build', () => {
+    expect(resolveDesktopUninstallUiPreviewMode('success', false)).toBe('success');
+    expect(resolveDesktopUninstallUiPreviewMode('1', false)).toBe('success');
+    expect(resolveDesktopUninstallUiPreviewMode('true', false)).toBe('success');
+    expect(resolveDesktopUninstallUiPreviewMode('failure', false)).toBe('failure');
+    expect(resolveDesktopUninstallUiPreviewMode('fail', false)).toBe('failure');
+    expect(resolveDesktopUninstallUiPreviewMode('renderer', false)).toBe('renderer');
+    expect(resolveDesktopUninstallUiPreviewMode('picker', false)).toBe('picker');
+    expect(resolveDesktopUninstallUiPreviewMode('survey', false)).toBe('survey');
+    expect(resolveDesktopUninstallUiPreviewMode('notice', false)).toBe('notice');
+  });
+
+  test('returns null for an unset or unrecognized value in a dev build', () => {
+    expect(resolveDesktopUninstallUiPreviewMode(undefined, false)).toBeNull();
+    expect(resolveDesktopUninstallUiPreviewMode('', false)).toBeNull();
+    expect(resolveDesktopUninstallUiPreviewMode('failed', false)).toBeNull();
   });
 });

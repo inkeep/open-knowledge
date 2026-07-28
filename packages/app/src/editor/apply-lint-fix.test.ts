@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import type { LintDiagnostic, LintTextEdit } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { applyLintFixes, collectFixes, LINT_SOURCE_FIXED_EVENT } from './apply-lint-fix.ts';
 

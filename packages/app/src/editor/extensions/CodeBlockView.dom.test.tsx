@@ -9,19 +9,22 @@
  * `srcdoc`.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { Config } from '@inkeep/open-knowledge-core';
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import type { NodeViewProps } from '@tiptap/core';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { subscribeToOpenAskAiComposer } from '@/components/ask-ai-composer-events';
-import { subscribeToActiveTerminalInput } from '@/components/handoff/terminal-input-events';
+import {
+  type ActiveTerminalInputDetail,
+  subscribeToActiveTerminalInput,
+} from '@/components/handoff/terminal-input-events';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 
 // The Ask AI click handler routes through `serializeWysiwygSelection`, which
 // runs the full markdown pipeline against the selected slice. Testing that
 // pipeline end-to-end is the fidelity suite's job; this file tests the
 // click→dispatch contract, so stub the serializer to a fixed fenced body.
-mock.module('../edit-with-ai-selection', () => ({
+vi.doMock('../edit-with-ai-selection', () => ({
   serializeWysiwygSelection: () => '```json\n{ "name": "sample" }\n```',
 }));
 
@@ -246,7 +249,7 @@ describe('CodeBlockView Ask AI dispatch', () => {
     }) as typeof globalThis.requestAnimationFrame;
   }
 
-  let terminalInputs: string[] = [];
+  let terminalInputs: ActiveTerminalInputDetail[] = [];
   let composerOpens = 0;
   let unsubscribeTerminal: (() => void) | null = null;
   let unsubscribeComposer: (() => void) | null = null;
@@ -262,8 +265,8 @@ describe('CodeBlockView Ask AI dispatch', () => {
   });
 
   function subscribeAll() {
-    unsubscribeTerminal = subscribeToActiveTerminalInput((text) => {
-      terminalInputs.push(text);
+    unsubscribeTerminal = subscribeToActiveTerminalInput((detail) => {
+      terminalInputs.push(detail);
     });
     unsubscribeComposer = subscribeToOpenAskAiComposer(() => {
       composerOpens += 1;
@@ -335,12 +338,14 @@ describe('CodeBlockView Ask AI dispatch', () => {
     fireEvent.click(askBtn as HTMLButtonElement);
 
     await waitFor(() => expect(terminalInputs).toHaveLength(1));
-    const [prompt] = terminalInputs;
+    const [detail] = terminalInputs;
     // Doc named as an @-mention (grounding contract from composeSelectionPrompt).
-    expect(prompt).toContain('@specs/foo/SPEC.md');
+    expect(detail.text).toContain('@specs/foo/SPEC.md');
     // Stubbed fenced body survives verbatim into the composed prompt.
-    expect(prompt).toContain('```json');
-    expect(prompt).toContain('{ "name": "sample" }');
+    expect(detail.text).toContain('```json');
+    expect(detail.text).toContain('{ "name": "sample" }');
+    // A composed Ask AI instruction RUNS on a fresh session (submit).
+    expect(detail.submit).toBe(true);
     // Terminal-input branch does NOT open the composer.
     expect(composerOpens).toBe(0);
   });

@@ -21,11 +21,11 @@
  * the safety-net back above the gate silently fails.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { contributorCount, swapContributors } from './contributor-tracker.ts';
 import { createServer } from './server-factory.ts';

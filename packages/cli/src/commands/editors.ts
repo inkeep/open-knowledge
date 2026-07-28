@@ -31,22 +31,28 @@ const DEV_MCP_ENV = {
 } as const;
 
 /**
- * Resilient chain (v1) — the Unix member of the two-shape canonical set
+ * Resilient chain (v2) — the Unix member of the two-shape canonical set
  * (Windows sibling: `CHAIN_WIN_V1`). One byte-identical entry every
  * macOS/Linux developer's editor sees.
  *
- * At MCP-host spawn time, `/bin/sh -l -c CHAIN_V1` resolves whichever runtime
+ * At MCP-host spawn time, `/bin/sh -l -c CHAIN_V2` resolves whichever runtime
  * is locally available — bundle first, then `npx` on a login-shell PATH, then
- * an explicit glob across the common version-manager directories. DMG-only
- * users (no Node) hit the bundle branch; npm-installed CLI users hit `npx`;
+ * an explicit glob across the common version-manager directories. Desktop-only
+ * users (no Node) hit a bundle branch; npm-installed CLI users hit `npx`;
  * teammates with neither see the structured stderr and exit 127.
  *
- * Two bundle probes — user-local first (`$HOME/Applications`), then the
- * system path (`/Applications`). Matches `findBundledOkPath` in
+ * Three bundle probes — macOS user-local first (`$HOME/Applications`), then
+ * the macOS system path (`/Applications`), then the Linux deb layout
+ * (`/opt/OpenKnowledge`). The mac ordering matches `findBundledOkPath` in
  * `packages/cli/src/mcp/bundle-proxy.ts`, which already treats the user-local
  * install as first-class for users on locked-down macs or non-admin macOS
  * accounts. Diverging here would silently drop the bundle branch for the
- * exact DMG persona it exists to serve.
+ * exact DMG persona it exists to serve. The deb probe (v2) keeps a deb-only
+ * Linux user off the npx/registry path — without it their MCP entry either
+ * runs a version-drifting `@latest` or, with no Node installed, dies with
+ * "install OK Desktop" while OK Desktop is installed (VM-verified). AppImage
+ * installs have no stable path and decline MCP wiring entirely, so no
+ * AppImage probe exists.
  *
  * Each branch is empirically load-bearing:
  *   1. `[ -f ] && [ -x ]` BEFORE every `exec`. `exec MISSING_FILE` in a
@@ -78,25 +84,30 @@ const DEV_MCP_ENV = {
  *      `EBADENGINE`. `-y` suppresses the install-confirm prompt under
  *      non-TTY (MCP hosts are always non-TTY).
  *
- * The first line `# ok-mcp-v1` is both a shell comment and the version
- * sentinel checked by `isEntryUpToDate`. Bump the suffix (`v2`, `v3`, …)
- * on any structurally-different chain so reclaim recognizes stale text.
+ * The first line `# ok-mcp-v2` is both a shell comment and the version
+ * sentinel checked by `isEntryUpToDate`. Bump the suffix (`v3`, `v4`, …)
+ * on any structurally-different chain so reclaim recognizes stale text —
+ * v1 → v2 added the deb probe, so v1 entries now classify stale and the
+ * repair sweep upgrades them in place (inert on macOS: the deb path never
+ * exists there).
  *
- * `CHAIN_V1` / `CHAIN_VERSION_SENTINEL` are package-internal — exported
+ * `CHAIN_V2` / `CHAIN_VERSION_SENTINEL` are package-internal — exported
  * from this module for per-package tests, but DELIBERATELY NOT re-exported
  * from `packages/cli/src/index.ts`. Cross-package consumers should use
  * `buildManagedServerEntry()` to construct chain-shape entries and
  * `isEntryUpToDate()` to classify them — bytes are an implementation detail.
  */
 /** @internal */
-export const CHAIN_VERSION_SENTINEL = '# ok-mcp-v1';
+export const CHAIN_VERSION_SENTINEL = '# ok-mcp-v2';
 
 /** @internal */
-export const CHAIN_V1 = `# ok-mcp-v1
+export const CHAIN_V2 = `# ok-mcp-v2
 USER_BUNDLE="$HOME/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh"
 [ -f "$USER_BUNDLE" ] && [ -x "$USER_BUNDLE" ] && exec "$USER_BUNDLE" mcp
 BUNDLE="/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh"
 [ -f "$BUNDLE" ] && [ -x "$BUNDLE" ] && exec "$BUNDLE" mcp
+DEB_BUNDLE="/opt/OpenKnowledge/resources/cli/bin/ok.sh"
+[ -f "$DEB_BUNDLE" ] && [ -x "$DEB_BUNDLE" ] && exec "$DEB_BUNDLE" mcp
 command -v npx >/dev/null 2>&1 && exec npx -y @inkeep/open-knowledge@latest mcp
 for d in "$HOME/.nvm/versions/node"/*/bin "$HOME/.fnm/node-versions"/*/installation/bin "$HOME/.asdf/installs/nodejs"/*/bin /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin" "$HOME/.volta/bin"; do
   [ -f "$d/npx" ] && [ -x "$d/npx" ] && exec "$d/npx" -y @inkeep/open-knowledge@latest mcp
@@ -177,12 +188,12 @@ const OK_MCP_CHAIN_MARKER = '# ok-mcp';
  * default, nvm-windows via `NVM_SYMLINK`, fnm, Volta, Scoop, pnpm).
  *
  * `@latest` on the npx package spec is load-bearing for the same
- * engine-filter reason documented on `CHAIN_V1`.
+ * engine-filter reason documented on `CHAIN_V2`.
  *
  * The first line `# ok-mcp-win-v1` is both a PowerShell comment and the
  * version sentinel checked by `isEntryUpToDate`. Bump the suffix (`win-v2`,
  * …) on any structurally-different chain. Same `@internal` export rules as
- * `CHAIN_V1`.
+ * `CHAIN_V2`.
  */
 /** @internal */
 export const CHAIN_WIN_V1 = `# ok-mcp-win-v1
@@ -243,7 +254,7 @@ export const PI_MANAGED_FILE_ENTRY_COMMAND = 'ok-pi-managed-extension';
  * MCP install modes for `ok init`-written editor configs.
  *
  * - `'published'` (default) — the local platform's resilient chain shape:
- *   `{command: '/bin/sh', args: ['-l', '-c', CHAIN_V1]}` on macOS/Linux,
+ *   `{command: '/bin/sh', args: ['-l', '-c', CHAIN_V2]}` on macOS/Linux,
  *   `{command: 'powershell', args: ['-NoProfile', '-NonInteractive',
  *   '-Command', CHAIN_WIN_V1]}` on Windows.
  *   Resolves an installed runtime at spawn time. Byte-identical across all
@@ -302,7 +313,7 @@ export function isEntryUpToDate(entry: unknown): boolean {
   const e = entry as Record<string, unknown>;
 
   // Unix chain shape (claude / claude-desktop / cursor / codex):
-  // `{ command: '/bin/sh', args: ['-l', '-c', CHAIN_V1] }`.
+  // `{ command: '/bin/sh', args: ['-l', '-c', CHAIN_V2] }`.
   if (e.command === '/bin/sh') {
     if (!Array.isArray(e.args)) return false;
     if (e.args[0] !== '-l' || e.args[1] !== '-c') return false;
@@ -412,7 +423,7 @@ export function buildManagedServerEntry(options: McpInstallOptions = {}): Record
   }
   return {
     command: '/bin/sh',
-    args: ['-l', '-c', CHAIN_V1],
+    args: ['-l', '-c', CHAIN_V2],
   };
 }
 
@@ -420,7 +431,7 @@ export function buildManagedServerEntry(options: McpInstallOptions = {}): Record
  * OpenCode's `opencode.json` uses a distinct entry shape from the chain-shape
  * editors: the server lives under the top-level `mcp` key, and each entry is a
  * typed object — `{ type: 'local', enabled, command }` — where `command` is a
- * SINGLE argv array, not a split `command` + `args`. We reuse the same `CHAIN_V1`
+ * SINGLE argv array, not a split `command` + `args`. We reuse the same `CHAIN_V2`
  * bootstrap (and the same dev-mode resolution) so the resolved server is
  * byte-identical to what `.mcp.json` / `.cursor/mcp.json` / `.codex/config.toml`
  * embed — only the JSON envelope differs. OpenCode names the env map
@@ -454,7 +465,7 @@ function buildOpenCodeEntry(options: McpInstallOptions = {}): Record<string, unk
   return {
     type: 'local',
     enabled: true,
-    command: ['/bin/sh', '-l', '-c', CHAIN_V1],
+    command: ['/bin/sh', '-l', '-c', CHAIN_V2],
   };
 }
 
@@ -463,7 +474,7 @@ function buildOpenCodeEntry(options: McpInstallOptions = {}): Record<string, unk
  *
  * True iff `entry` is structurally IDENTICAL to one of OK's own canonical
  * PUBLISHED managed entries — the closed two-element set of the Unix shape
- * (`{command:'/bin/sh', args:['-l', '-c', CHAIN_V1]}`) and the Windows shape
+ * (`{command:'/bin/sh', args:['-l', '-c', CHAIN_V2]}`) and the Windows shape
  * (`{command:'powershell', args:[…, CHAIN_WIN_V1]}`) — with NO extra keys
  * (an injected `env` on either shape, a different `command`, an appended
  * chain line). Unlike {@link isEntryUpToDate} — deliberately permissive (sentinel

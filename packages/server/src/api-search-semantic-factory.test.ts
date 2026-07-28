@@ -1,10 +1,10 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { Extension } from '@hocuspocus/server';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { createConceptEmbedder } from './embeddings/index.ts';
 import { createServer, type ServerInstance } from './server-factory.ts';
 import { initShadowRepo } from './shadow-repo.ts';
@@ -472,12 +472,28 @@ describe('createServer boot — embeddings key set/clear handlers (Account contr
         expect(before.keyPresent).toBe(false);
         expect(existsSync(secretsPath)).toBe(false);
 
+        // Warm the service (the injected concept embedder is always capable) so
+        // we can observe that set-key re-warms it — the guard against a refactor
+        // silently dropping `reloadCredential()` (key set but search stays
+        // lexical until restart).
+        await searchViaServer(srv, { query: 'auth retries', semantic: true });
+        const warmed = (await callViaServer(srv, 'GET', '/api/semantic-status')) as {
+          ready: boolean;
+        };
+        expect(warmed.ready).toBe(true);
+
         // Set the key via the loopback handler.
         const setRes = (await callViaServer(srv, 'POST', '/api/local-op/embeddings/set-key', {
           key: 'sk-account-ui-key',
         })) as { keyPresent: boolean };
         expect(setRes.keyPresent).toBe(true);
         expect(readFileSync(secretsPath, 'utf-8')).toContain('sk-account-ui-key');
+        // set-key reset the warm state, so the new credential is picked up on the
+        // next search rather than requiring a restart.
+        const afterSet = (await callViaServer(srv, 'GET', '/api/semantic-status')) as {
+          ready: boolean;
+        };
+        expect(afterSet.ready).toBe(false);
 
         // Status reflects it (free file read).
         const after = (await callViaServer(srv, 'GET', '/api/semantic-status')) as {
@@ -485,7 +501,8 @@ describe('createServer boot — embeddings key set/clear handlers (Account contr
           keySource: string | null;
         };
         expect(after.keyPresent).toBe(true);
-        expect(after.keySource).toBe('file');
+        // Written as a project+endpoint key now (not the legacy flat field).
+        expect(after.keySource).toBe('project');
 
         // Clear it.
         const clearRes = (await callViaServer(

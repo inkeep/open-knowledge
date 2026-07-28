@@ -6,11 +6,11 @@
  * suite exercises the full decision tree without spinning up React.
  */
 
-import { describe, expect, test } from 'bun:test';
 import type {
   ShareConstructUrlErrorCode,
   ShareConstructUrlResponse,
 } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { mapShareErrorToToast, requestShareConstructUrl, runShareAction } from './run-share-action';
 
 interface MockDeps {

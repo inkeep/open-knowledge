@@ -4,7 +4,7 @@
  * result cache — sequential calls refetch), that a rejection releases the slot,
  * and the `{ ok, status, body }` shaping (including the not-JSON → null path).
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 import { __resetDocumentListInflightForTests, fetchDocumentListShared } from './documents-fetch';
 
 const realFetch = globalThis.fetch;

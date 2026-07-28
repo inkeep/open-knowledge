@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
+import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { type ConflictEntry, ConflictStore } from './conflict-storage.ts';
 
@@ -370,5 +371,102 @@ describe('ConflictStore resolveConflict()', () => {
 
     store.removeConflict('b.md');
     expect(store.hasConflicts()).toBe(false);
+  });
+});
+
+// ─── resolveConflict() — working-tree variant (pull-only B1) ──────────────────
+
+describe('ConflictStore resolveConflict() — working-tree variant', () => {
+  /**
+   * Init a real git repo at projectDir with `file` committed at `remote`, then
+   * overwrite the working tree with `local` (the uncommitted overlay). Returns
+   * the committed blob SHA (the pin) and the HEAD SHA (to prove no commit runs).
+   */
+  async function seedOverlay(
+    file: string,
+    remote: string,
+    local: string,
+  ): Promise<{ blobSha: string; headSha: string }> {
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@test.com');
+    writeFileSync(join(projectDir, file), remote, 'utf-8');
+    await git.add('.');
+    await git.commit('seed');
+    const blobSha = (await git.raw(['rev-parse', `HEAD:${file}`])).trim();
+    const headSha = (await git.raw(['rev-parse', 'HEAD'])).trim();
+    writeFileSync(join(projectDir, file), local, 'utf-8');
+    return { blobSha, headSha };
+  }
+
+  async function headSha(): Promise<string> {
+    return (await simpleGit(projectDir).raw(['rev-parse', 'HEAD'])).trim();
+  }
+
+  test("'theirs' restores the pinned origin-tip blob without committing", async () => {
+    const { blobSha, headSha: before } = await seedOverlay('a.md', 'REMOTE\n', 'LOCAL\n');
+    const store = new ConflictStore(projectDir, 'main');
+    store.addConflict(makeEntry('a.md', { variant: 'working-tree', theirsSha: blobSha }));
+
+    await store.resolveConflict('a.md', 'theirs');
+
+    expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('REMOTE\n');
+    expect(store.count()).toBe(0);
+    expect(await headSha()).toBe(before); // no commit created
+  });
+
+  test("'mine' keeps the overlay verbatim without committing", async () => {
+    const { blobSha, headSha: before } = await seedOverlay('a.md', 'REMOTE\n', 'LOCAL\n');
+    const store = new ConflictStore(projectDir, 'main');
+    store.addConflict(makeEntry('a.md', { variant: 'working-tree', theirsSha: blobSha }));
+
+    await store.resolveConflict('a.md', 'mine');
+
+    expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('LOCAL\n');
+    expect(store.count()).toBe(0);
+    expect(await headSha()).toBe(before);
+  });
+
+  test("'content' writes the merged bytes without committing", async () => {
+    const { blobSha, headSha: before } = await seedOverlay('a.md', 'REMOTE\n', 'LOCAL\n');
+    const store = new ConflictStore(projectDir, 'main');
+    store.addConflict(makeEntry('a.md', { variant: 'working-tree', theirsSha: blobSha }));
+
+    await store.resolveConflict('a.md', 'content', 'HAND-MERGED\n');
+
+    expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('HAND-MERGED\n');
+    expect(store.count()).toBe(0);
+    expect(await headSha()).toBe(before);
+  });
+
+  test("'delete' honors the local deletion without committing", async () => {
+    const { blobSha, headSha: before } = await seedOverlay('a.md', 'REMOTE\n', 'LOCAL\n');
+    const store = new ConflictStore(projectDir, 'main');
+    store.addConflict(makeEntry('a.md', { variant: 'working-tree', theirsSha: blobSha }));
+
+    await store.resolveConflict('a.md', 'delete');
+
+    expect(existsSync(join(projectDir, 'a.md'))).toBe(false);
+    expect(store.count()).toBe(0);
+    expect(await headSha()).toBe(before);
+  });
+
+  test('addConflict rejects a working-tree entry with no pinned blob', () => {
+    const store = new ConflictStore(projectDir, 'main');
+    expect(() => store.addConflict(makeEntry('a.md', { variant: 'working-tree' }))).toThrow(
+      'no pinned theirs blob',
+    );
+  });
+
+  test("'theirs' still throws for a blob-less entry from a corrupt store", async () => {
+    const store = new ConflictStore(projectDir, 'main');
+    // addConflict now guards this invariant, so a blob-less working-tree entry
+    // can only arrive via a hand-edited / corrupt conflicts.json loaded from
+    // disk. Inject it past the guard to exercise the resolve-time defense.
+    (store as unknown as { conflicts: unknown[] }).conflicts.push(
+      makeEntry('a.md', { variant: 'working-tree' }),
+    );
+    await expect(store.resolveConflict('a.md', 'theirs')).rejects.toThrow('no pinned theirs blob');
   });
 });

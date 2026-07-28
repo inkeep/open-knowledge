@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   CONTENT_CACHE_MAX_ENTRIES,
   deriveContentFields,
@@ -79,7 +79,7 @@ function jsonResponse(payload: unknown): Response {
 function countingFetch(): { docCalls: string[]; backlinkCalls: string[] } {
   const docCalls: string[] = [];
   const backlinkCalls: string[] = [];
-  globalThis.fetch = mock((input: RequestInfo | URL) => {
+  globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
     const url = new URL(String(input), 'http://local');
     if (url.pathname === '/api/document') {
       const docName = url.searchParams.get('docName') ?? '';

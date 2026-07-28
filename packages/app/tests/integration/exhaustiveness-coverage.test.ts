@@ -19,7 +19,7 @@
  * least one case label must be unique to this DU — disambiguates from other
  * DUs that share kind names like `'doc'`).
  */
-import { describe, expect, test } from 'bun:test';
+
 import { join, relative, resolve } from 'node:path';
 import { ProblemTypeSchema } from '@inkeep/open-knowledge-core';
 import {
@@ -31,6 +31,7 @@ import {
   type SwitchStatement,
   SyntaxKind,
 } from 'ts-morph';
+import { describe, expect, test } from 'vitest';
 
 // All ProblemType URN tokens are unique to ProblemType (every member starts
 // with `urn:ok:error:`), so variantLabels and uniqueLabels are the same set.

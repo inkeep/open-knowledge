@@ -143,6 +143,47 @@ test.describe('FR-2 walker URL classifier — WYSIWYG cross-app source-fallback'
     expect(captured.html).not.toContain('src="./x.jpg"');
   });
 
+  test('QA-005b inline image adjacent to marks resolves the image range and keeps the marks', async ({
+    page,
+    baseURL,
+  }) => {
+    // Behavioral pin for the direct-path resolution when the image sits
+    // inside marked text. The mark-interaction semantics of the direct
+    // `posAtDOM(<img>, 0)` path (vs the descriptor-parent path's -1 bias)
+    // only matter when marks surround the image, so this seed puts the
+    // image inside a strong run with prose on both sides.
+    await fetch(`${baseURL}/api/agent-write-md`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        docName,
+        markdown: 'Lead **bold ![alt](./y.png) tail** end.\n',
+        position: 'replace',
+      }),
+    });
+    await expect(async () => {
+      expect(await getYText(page)).toContain('![alt](./y.png)');
+    }).toPass({ timeout: 5_000 });
+    await page.click('.ProseMirror:not(.composer-prosemirror)');
+
+    const captured = await simulateCopyAndRead(page, 'wysiwyg');
+
+    // text/plain is canonical markdown; the serializer splits the strong
+    // run around the image atom, so assert the pieces rather than exact
+    // bytes (that emission path is untouched here).
+    expect(captured.plain).toContain('![alt](./y.png)');
+    expect(captured.plain).toContain('bold');
+    expect(captured.plain).toContain('tail');
+    // The fallback span carries the image's own markdown, not a duplicate
+    // of the surrounding text run.
+    expect(captured.html).toContain('<span class="mdx-inline">');
+    expect(captured.html).toContain('![alt](./y.png)');
+    expect(captured.html).not.toMatch(/<span class="mdx-inline">[^<]*bold/);
+    // The strong mark survives around the swap.
+    expect(captured.html).toMatch(/<(strong|b)[\s>]/);
+    expect(captured.html).not.toContain('src="./y.png"');
+  });
+
   test('QA-009 all-portable selection: walker passes through unchanged (regression check)', async ({
     page,
     baseURL,
@@ -340,6 +381,84 @@ test.describe('FR-6 / FR-7 partial-failure mid-walk continuation', () => {
     // source-fallback shapes.
     const preCount = (captured.html.match(/<pre class="mdx-component">/g) ?? []).length;
     expect(preCount).toBeGreaterThanOrEqual(2);
+  });
+});
+
+test.describe('container-nested leaf — descriptor boundary (over-climb regression)', () => {
+  test('block relative-URL image inside a Callout emits the image source-fallback, not the whole Callout source', async ({
+    page,
+    api,
+    baseURL,
+  }) => {
+    // Regression pin for the descriptor over-climb: a non-portable-URL image
+    // living inside a container descriptor's content hole must contribute only
+    // its OWN source-fallback markdown to the cross-app text/html payload. The
+    // resolver used to climb past the Callout's NodeViewContent boundary and
+    // serialize the entire component at the image's slot.
+    const docName = `test-container-desc-${randomUUID().slice(0, 8)}`;
+    await api.createPage(`${docName}.md`);
+    await page.goto(`/#/${docName}`);
+    await waitForProvider(page);
+    await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
+
+    // Blank-line separation keeps the image a BLOCK image so image-promoter
+    // promotes it to the `CommonMarkImage` jsxComponent NodeView (inline images
+    // stay inline `image` nodes and never render as a nested descriptor leaf).
+    await fetch(`${baseURL}/api/agent-write-md`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        docName,
+        markdown: '<Callout type="note">\n\n![shot](./shot.png)\n\n</Callout>\n',
+        position: 'replace',
+      }),
+    });
+    await expect(async () => {
+      expect(await getYText(page)).toContain('![shot](./shot.png)');
+    }).toPass({ timeout: 5_000 });
+    await page.click('.ProseMirror:not(.composer-prosemirror)');
+
+    // MANDATORY precondition: the seed must produce the real nesting topology —
+    // the image renders as a `.react-renderer.node-jsxComponent` INSIDE the
+    // Callout's `[data-node-view-content]`. Without this, a non-nesting seed
+    // would false-pin (the payload assertion would pass regardless of the fix).
+    const nesting = await expect(async () => {
+      const result = await page.evaluate(() => {
+        const containers = Array.from(
+          document.querySelectorAll('.react-renderer.node-jsxComponent'),
+        );
+        for (const container of containers) {
+          const content = container.querySelector('[data-node-view-content]');
+          if (!content) continue;
+          const innerLeaf = content.querySelector('.react-renderer.node-jsxComponent');
+          if (innerLeaf?.querySelector('img')) {
+            return { nested: true, containers: containers.length };
+          }
+        }
+        return { nested: false, containers: containers.length };
+      });
+      expect(result.nested).toBe(true);
+      return result;
+    }).toPass({ timeout: 5_000 });
+    void nesting;
+
+    const captured = await simulateCopyAndRead(page, 'wysiwyg');
+
+    // text/plain is canonical markdown, which the descriptor resolver never
+    // touches — the image source survives here whether or not the over-climb
+    // is fixed, so this is a content-survival sanity check (it also keeps the
+    // negative text/html assertion below from passing vacuously on an empty
+    // payload), NOT a regression pin. The two text/html assertions ARE the
+    // discriminating pins.
+    expect(captured.plain).toContain('![shot](./shot.png)');
+
+    // The image's slot carries its own source-fallback markdown.
+    expect(captured.html).toContain('![shot](./shot.png)');
+    // The bug: the whole `<Callout …>` source leaked into the image's slot.
+    // A correct payload never serializes the container as source (the Callout
+    // has no non-portable URL of its own), so its MDX open tag must not appear
+    // in either raw or entity-encoded form.
+    expect(captured.html).not.toMatch(/<Callout|&lt;Callout/);
   });
 });
 

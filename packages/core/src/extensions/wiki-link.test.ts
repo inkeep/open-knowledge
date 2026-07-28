@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { getSchema } from '@tiptap/core';
+import { describe, expect, test } from 'vitest';
 import { MarkdownManager } from '../markdown/index.ts';
 import { sharedExtensions } from './shared';
 import {

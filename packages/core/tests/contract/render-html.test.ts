@@ -22,7 +22,7 @@
  * actual behavior, captured by exercising the public functions.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { markdownToHtml, mdastToHtml } from '../../src/index.ts';
 
 describe('markdownToHtml — documented construct render contract', () => {

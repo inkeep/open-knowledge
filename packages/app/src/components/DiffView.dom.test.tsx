@@ -10,8 +10,9 @@
  *
  * Substrate: jsdom via `bun run test:dom`.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import { DiffView } from './DiffView';
 
 describe('DiffView oursOverride (FR3)', () => {

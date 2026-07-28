@@ -1,9 +1,9 @@
-import { describe, expect, test } from 'bun:test';
 import {
   SingleFileNotFoundError,
   SingleFileNotMarkdownError,
   type SingleFileOpenPlan,
 } from '@inkeep/open-knowledge-server';
+import { describe, expect, test } from 'vitest';
 import { runSingleFileOpen, type SingleFileOpenDeps } from './single-file-open.ts';
 
 interface Recorder {

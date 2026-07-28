@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import type { GuardedFetchOptions, GuardedFetchResult } from './guarded-fetch.ts';
 import { buildLinkPreviewMetadata, type GuardedFetch } from './metadata.ts';
 

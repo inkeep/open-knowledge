@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { type ComponentType, lazy, Suspense, useEffect, useState } from 'react';
+import { shouldShowAppMenubar } from '@/components/app-menubar-gate';
 import { useThemeBridge } from '@/hooks/use-theme-bridge';
 import type {
   OkDesktopBridge,
@@ -47,20 +48,29 @@ import { createCloneController } from '@/lib/share/clone-controller';
 import { ipcAuthQueryTransport } from '@/lib/transports/auth-query-transport';
 import { ipcAuthTransport } from '@/lib/transports/auth-transport';
 import { ipcCloneTransport } from '@/lib/transports/clone-transport';
-import { cn } from '@/lib/utils';
 import { AuthModal } from './AuthModal';
 import { BetaBadge } from './BetaBadge';
 import { CloneDialog } from './CloneDialog';
 import { ConsentDialog } from './ConsentDialog';
 import { CreateProjectDialog } from './CreateProjectDialog';
+import { FeedbackFormDialog } from './FeedbackFormDialog';
 import { GithubIcon } from './icons/github';
 import { OkIcon } from './icons/ok';
 import { McpConsentDialog } from './McpConsentDialog';
-import { PackCardGrid } from './PackCardGrid';
+import { iconForPack, PackCardGrid } from './PackCardGrid';
 import { basenameOf } from './project-switcher-recents';
 import { ReportBugDialog } from './ReportBugDialog';
+import { RecentItemContextMenu } from './recent-remove-controls';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
 
 // Cold-path launcher surface: renders nothing until main fires
 // `ok:share:received`. Lazy so its clone / auth-preflight / Q2-picker code
@@ -68,6 +78,10 @@ import { Button } from './ui/button';
 const ShareReceiveDialog = lazy(() =>
   import('./ShareReceiveDialog').then((m) => ({ default: m.ShareReceiveDialog })),
 );
+
+// Lazy: win/linux-only chrome — keeps the menubar (and its radix primitive)
+// out of the eager bundle on web + macOS.
+const AppMenubar = lazy(() => import('./AppMenubar').then((m) => ({ default: m.AppMenubar })));
 
 // Re-exports for tests — keeping the surface here avoids churn in existing
 // test files that import directly from NavigatorApp.tsx and keeps the
@@ -92,10 +106,10 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   const [recents, setRecents] = useState<RecentProject[]>([]);
   const [recentBranches, setRecentBranches] = useState<Map<string, string | null>>(new Map());
   const [loading, setLoading] = useState(true);
-  // Whether the `listRecent()` fetch rejected. A fetch failure must fall back
-  // to the returning-user three-card launcher, NOT the first-run packs view —
-  // otherwise a transient error would show a returning user the first-run
-  // onboarding (`recents` stays `[]` on failure).
+  // Whether the `listRecent()` fetch rejected. A fetch failure leaves `recents`
+  // empty, which must NOT be read as "brand-new user" — otherwise a transient
+  // error would offer first-run scaffolding to someone who already has
+  // projects.
   const [recentsLoadFailed, setRecentsLoadFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Non-null while a project open is in flight. `bridge.project.open` stays
@@ -107,10 +121,11 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [reportBugOpen, setReportBugOpen] = useState(false);
-  // Starter pack chosen on the packs-forward first-run grid, plus the pack
-  // list. Threaded into CreateProjectDialog so it can name the pack as
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  // Starter pack chosen on the first-run pack line (pill or picker), plus the
+  // pack list. Threaded into CreateProjectDialog so it can name the pack as
   // read-only context in its description and seed the fresh project with it;
-  // both clear on dialog close so the blank-create path (secondary row /
+  // both clear on dialog close so the blank-create path (Create new project /
   // File → New project) never inherits a stale selection.
   const [createPackId, setCreatePackId] = useState<OkPackId | undefined>(undefined);
   const [createPacks, setCreatePacks] = useState<OkSeedPackInfo[] | undefined>(undefined);
@@ -194,9 +209,9 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
         console.error('[NavigatorApp] listRecent failed:', err);
         if (!cancelled) {
           setError(err instanceof Error ? err.message : t`Failed to load recent projects.`);
-          // Mark the fetch as failed so the launcher falls back to the
-          // three-card view rather than the first-run packs onboarding (an
-          // empty `recents` on failure would otherwise read as "brand-new user").
+          // Mark the fetch as failed so the launcher keeps the starter-pack
+          // line hidden (an empty `recents` on failure would otherwise read as
+          // "brand-new user" and offer scaffolding to someone who has projects).
           setRecentsLoadFailed(true);
         }
       })
@@ -212,15 +227,32 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   // CreateProjectDialog the "Create new project" card opens. The application
   // menu fires to whichever window is focused, so the Navigator must react to
   // it too — not just the editor window's App-root trigger. Same story for
-  // Help → Report a Bug…, which here opens the report dialog scoped
-  // system-wide (the Navigator has no project).
+  // Help → Report a bug…, which here opens the report dialog scoped
+  // system-wide (the Navigator has no project), and Help → Send feedback…,
+  // which opens the same feedback form the editor window opens.
   useEffect(() => {
     return subscribeLocalMenuAction((action) => {
       if (action === 'new-project') setCreateDialogOpen(true);
       if (action === 'report-bug') setReportBugOpen(true);
+      if (action === 'send-feedback') setFeedbackOpen(true);
       if (action === 'close-active-tab-or-window') window.close();
     });
   }, []);
+
+  // Main prunes a recents entry whose folder vanished when the user opens it
+  // (VS Code "Open Recent" parity). Drop the row from our list so it doesn't
+  // linger; the module-init listener shows the toast, so we don't re-notify.
+  useEffect(() => {
+    return bridge.onRecentRemovedMissing(({ path }) => {
+      setRecents((current) => removeRecentFromList(current, path));
+      setRecentBranches((current) => {
+        if (!current.has(path)) return current;
+        const next = new Map(current);
+        next.delete(path);
+        return next;
+      });
+    });
+  }, [bridge]);
 
   /**
    * Wrap any bridge call in a visible error state. Without this the IPC
@@ -335,7 +367,21 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
         }`}
         data-electron-drag={isElectronHost ? '' : undefined}
         data-testid="nav-chrome-row"
-      />
+      >
+        {/* Windows/Linux custom menubar (windows-linux-port renderer menubar): the Navigator has no
+            EditorHeader row, so without this a first-launch window would
+            have zero menu access there. `pointer-events-auto` re-enables
+            clicks inside the strip's pointer-events-none overlay; the
+            menubar's own no-drag opt-out keeps its triggers clickable
+            within the drag region. Null on darwin + web. */}
+        {shouldShowAppMenubar() && (
+          <div className="pointer-events-auto flex h-full items-center px-2">
+            <Suspense fallback={null}>
+              <AppMenubar />
+            </Suspense>
+          </div>
+        )}
+      </div>
       {openingLabel !== null ? (
         <div
           className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-primary-foreground/85 dark:bg-background/85 backdrop-blur-sm"
@@ -360,21 +406,15 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
             </div>
           </header>
 
-          {/* First run (no recents, load settled) leads with the starter
-              packs; everyone else sees today's three-card launcher unchanged.
-              During loading we render neither so neither the packs grid nor the
-              three-card launcher flashes in before a returning user's recents
-              resolve. */}
-          {loading ? null : !recentsLoadFailed && recents.length === 0 ? (
-            <FirstRunPacksView
-              onPackSelect={onPackSelect}
-              onOpenFolder={onOpenFolder}
-              onOpenFile={onOpenFile}
-              onClone={onClone}
-              onCreate={onCreate}
-            />
-          ) : (
-            <section className="grid shrink-0 sm:grid-cols-2 gap-3">
+          {/* The four doors are the primary actions for everyone — first-run
+              and returning alike. Keeping one layout across both states means
+              nothing a user learned on their first launch moves on their
+              second, and there's no card-vs-packs swap to flash through while
+              `listRecent` resolves. What varies is only what sits BELOW: the
+              starter-pack line for a brand-new user, the Recent list for
+              everyone else. */}
+          <div className="shrink-0 space-y-6">
+            <section className="grid sm:grid-cols-2 gap-3">
               <NavigatorCard
                 title={t`Create new project`}
                 description={t`Start a new OpenKnowledge project.`}
@@ -404,7 +444,17 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
                 Icon={GithubIcon}
               />
             </section>
-          )}
+
+            {/* Brand-new user (no recents, load settled): a subtle pack line
+                takes the slot the Recent list occupies for everyone else. A
+                failed `listRecent` deliberately does NOT qualify — an
+                empty-because-failed fetch would otherwise read as "brand-new
+                user" and offer scaffolding to someone who already has
+                projects. */}
+            {!loading && !recentsLoadFailed && recents.length === 0 ? (
+              <StarterPackRow onPackSelect={onPackSelect} />
+            ) : null}
+          </div>
 
           {error !== null ? (
             <div
@@ -474,6 +524,8 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
       />
 
       <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} systemWide />
+
+      <FeedbackFormDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} source="help_menu" />
 
       <AuthModal
         open={authModalOpen}
@@ -582,7 +634,7 @@ function NavigatorCard({ title, description, onClick, dataTestId, Icon }: Naviga
     >
       <div className="flex items-center gap-2">
         {Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" /> : null}
-        <span className="font-medium text-gray-700 dark:text-foreground text-sm">{title}</span>
+        <span className="font-medium text-foreground text-sm">{title}</span>
       </div>
       <span className="line-clamp-2 text-muted-foreground text-xs leading-snug">{description}</span>
     </Button>
@@ -590,31 +642,37 @@ function NavigatorCard({ title, description, onClick, dataTestId, Icon }: Naviga
 }
 
 /**
- * Packs-forward first-run launcher. Leads with the same starter-pack grid the
- * empty editor shows (6 visible + "Show more" for `okf`/`entity-vault`) so a
- * brand-new user's first action produces a project that already has content in
- * it. Below it, a demoted secondary row keeps the three original doors for
- * people who arrive with their own content. Only mounted when there are no
- * recent projects — returning users never see it.
- *
- * Fetches the pack list here (not in `PackCardGrid`, which can self-fetch) so
- * `onPackSelect` can hand the full list to the create dialog's Select without a
- * second round-trip.
+ * Number of starter packs surfaced as pills before the overflow affordance.
+ * Three keeps the line subordinate to the four primary cards above it; the
+ * rest live one click away behind `+N more`.
  */
-function FirstRunPacksView({
+const PILL_PACK_COUNT = 3;
+
+/**
+ * Subtle starter-pack line shown to brand-new users in the slot the Recent
+ * list occupies for everyone else. The first few packs render as pills in
+ * registry order — fixed, never ranked by recency or popularity, so the row
+ * doesn't rearrange itself between launches — and the remainder open in a
+ * picker dialog.
+ *
+ * `+N more` opens the full grid rather than revealing the rest in place: pack
+ * names alone ("Personal CRM", "Open Knowledge Format") don't tell a first-time
+ * user what they scaffold, so the overflow needs the card grid's descriptions
+ * to be a decidable choice.
+ *
+ * Fetches the pack list here (rather than letting `PackCardGrid` self-fetch) so
+ * both the pills and `onPackSelect` share one round-trip. A failed or empty
+ * fetch renders nothing at all — the four cards above are already a complete
+ * path forward, and a broken-looking stub row would be worse than no row.
+ */
+function StarterPackRow({
   onPackSelect,
-  onOpenFolder,
-  onOpenFile,
-  onClone,
-  onCreate,
 }: {
   onPackSelect: (packId: OkPackId, packs: OkSeedPackInfo[]) => void;
-  onOpenFolder: () => void;
-  onOpenFile: () => void;
-  onClone: () => void;
-  onCreate: () => void;
 }) {
+  const { t } = useLingui();
   const [packs, setPacks] = useState<OkSeedPackInfo[] | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -622,8 +680,6 @@ function FirstRunPacksView({
       try {
         const result = await seedClient().listPacks();
         if (cancelled) return;
-        // `[]` short-circuits PackCardGrid's spinner into its labelled
-        // empty-state; the secondary row below still gives the user a path.
         if (result.ok) {
           setPacks(result.packs);
         } else {
@@ -641,82 +697,77 @@ function FirstRunPacksView({
     };
   }, []);
 
+  // Null (in flight) and empty (fetch failed / registry empty) both render
+  // nothing. No skeleton: this line is secondary, and a placeholder that
+  // resolves to nothing would shift the layout under the user's cursor.
+  if (packs === null || packs.length === 0) return null;
+
+  const pillPacks = packs.slice(0, PILL_PACK_COUNT);
+  const overflowCount = packs.length - pillPacks.length;
+
+  const selectPack = (packId: OkPackId) => {
+    setPickerOpen(false);
+    onPackSelect(packId, packs);
+  };
+
   return (
-    <section className="flex min-h-0 shrink flex-col gap-6" data-testid="nav-first-run">
-      <div className="flex shrink-0 flex-col gap-1">
-        <h2 className="text-xl font-light tracking-tighter text-balance">
-          <Trans>What do you want to build?</Trans>
-        </h2>
-        <p className="text-muted-foreground text-sm">
-          <Trans>
-            Pick a starter pack to scaffold your project with ready-made folders and templates.
-          </Trans>
-        </p>
+    <section
+      className="flex flex-wrap items-center gap-x-3 gap-y-2"
+      data-testid="nav-starter-packs"
+    >
+      <span className="text-muted-foreground text-sm">
+        <Trans>or use a starter pack</Trans>
+      </span>
+      <div className="flex flex-wrap items-center gap-2">
+        {pillPacks.map((pack) => {
+          const Icon = iconForPack(pack.id);
+          return (
+            <Button
+              key={pack.id}
+              type="button"
+              variant="outline"
+              size="sm"
+              className="rounded-full"
+              onClick={() => selectPack(pack.id)}
+              data-testid={`nav-pack-pill-${pack.id}`}
+            >
+              <Icon className="size-3.5 text-muted-foreground" />
+              {pack.name}
+            </Button>
+          );
+        })}
+        {overflowCount > 0 ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="rounded-full"
+            onClick={() => setPickerOpen(true)}
+            // Visible text is a bare count; the accessible name has to say what
+            // the count refers to and what activating it does.
+            aria-label={t`See all ${packs.length} starter packs`}
+            data-testid="nav-pack-more"
+          >
+            <Trans>+{overflowCount} more</Trans>
+          </Button>
+        ) : null}
       </div>
-      {/* Grid scrolls inside its own container so the header + secondary row
-          stay anchored on the default 920×680 Navigator window. The 6 visible
-          packs fit without scrolling; expanding "Show more" can overflow, so
-          this stays a scroll container. The `-m-1 p-1` widens the overflow clip
-          box by the card focus-ring width, then pulls it back, so a focused
-          card's ring on the edge rows isn't shaved off. No `scroll-fade-mask`
-          here: its 1rem edge fade clipped that same ring. */}
-      <div className="-m-1 min-h-0 flex-1 overflow-y-auto subtle-scrollbar p-1">
-        <PackCardGrid
-          packs={packs}
-          onPackSelect={(packId) => onPackSelect(packId, packs ?? [])}
-          collapsedPackIds={['okf', 'entity-vault']}
-        />
-      </div>
-      <div
-        className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1"
-        data-testid="nav-first-run-secondary"
-      >
-        <span className="text-muted-foreground text-sm">
-          <Trans>Have something else in mind?</Trans>
-        </span>
-        <div className="flex flex-wrap items-center gap-x-1 gap-y-1">
-          <Button
-            type="button"
-            variant="link-muted"
-            size="sm"
-            onClick={onOpenFolder}
-            data-testid="nav-first-run-open"
-          >
-            <FolderOpenIcon aria-hidden="true" className="size-3.5" />
-            <Trans>Open folder</Trans>
-          </Button>
-          <Button
-            type="button"
-            variant="link-muted"
-            size="sm"
-            onClick={onOpenFile}
-            data-testid="nav-first-run-open-file"
-          >
-            <FileText aria-hidden="true" className="size-3.5" />
-            <Trans>Open file</Trans>
-          </Button>
-          <Button
-            type="button"
-            variant="link-muted"
-            size="sm"
-            onClick={onClone}
-            data-testid="nav-first-run-clone"
-          >
-            <GithubIcon aria-hidden="true" className="size-3.5" />
-            <Trans>Clone from GitHub</Trans>
-          </Button>
-          <Button
-            type="button"
-            variant="link-muted"
-            size="sm"
-            onClick={onCreate}
-            data-testid="nav-first-run-blank"
-          >
-            <PlusIcon aria-hidden="true" className="size-3.5" />
-            <Trans>Blank project</Trans>
-          </Button>
-        </div>
-      </div>
+
+      <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
+        <DialogContent className="sm:max-w-3xl" data-testid="nav-pack-picker">
+          <DialogHeader>
+            <DialogTitle>
+              <Trans>Starter packs</Trans>
+            </DialogTitle>
+            <DialogDescription>
+              <Trans>Each pack scaffolds your project with ready-made folders and templates.</Trans>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <PackCardGrid packs={packs} onPackSelect={selectPack} />
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
@@ -738,71 +789,65 @@ function RecentRow({
   // Branch chip shows the worktree's own branch, else the project's current branch.
   const rowBranch = isWorktree ? (project.branch ?? branch) : branch;
   return (
-    <li className="group flex items-center justify-between rounded-lg hover:bg-accent">
-      <Button
-        type="button"
-        variant="ghost"
-        onClick={onOpen}
-        disabled={project.missing}
-        className={cn(
-          'h-auto min-w-0 flex-1 justify-between gap-3 py-3.5 pl-4 pr-2 text-left hover:bg-transparent',
-          project.missing && 'opacity-50',
-        )}
-      >
-        <div className="flex min-w-0 items-center gap-3">
-          {/* Uniform folder icon for every row — worktree vs project is conveyed
+    <RecentItemContextMenu path={project.path} onRemoveRecent={onRemove} testIdPrefix="nav-recent">
+      <li className="group flex items-center justify-between rounded-lg hover:bg-accent">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={onOpen}
+          className="h-auto min-w-0 flex-1 justify-between gap-3 py-3.5 pl-4 pr-2 text-left hover:bg-transparent"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            {/* Uniform folder icon for every row — worktree vs project is conveyed
             by the worktree pill + the branch chip, not by the icon. */}
-          <Folder aria-hidden="true" className="size-[18px] shrink-0 text-muted-foreground" />
-          <div className="flex min-w-0 flex-col gap-1 truncate">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="truncate font-medium text-sm text-gray-700 dark:text-foreground">
-                {project.name}
+            <Folder aria-hidden="true" className="size-[18px] shrink-0 text-muted-foreground" />
+            <div className="flex min-w-0 flex-col gap-1 truncate">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-medium text-sm text-gray-700 dark:text-foreground">
+                  {project.name}
+                </span>
+                {isWorktree ? (
+                  <Badge
+                    variant="secondary"
+                    className="shrink-0 gap-1 rounded-full border-transparent bg-green-600/10 px-2 py-0 font-medium text-2xs text-green-800 dark:bg-green-400/10 dark:text-green-400"
+                  >
+                    <GitBranch aria-hidden="true" className="size-2.5" />
+                    <Trans>worktree</Trans>
+                  </Badge>
+                ) : null}
+              </div>
+              <span
+                className="truncate w-full text-muted-foreground text-xs"
+                title={isWorktree ? (project.mainRoot ?? '') : project.path}
+              >
+                {isWorktree ? <Trans>of {basenameOf(project.mainRoot ?? '')}</Trans> : project.path}
               </span>
-              {isWorktree ? (
-                <Badge
-                  variant="secondary"
-                  className="shrink-0 gap-1 rounded-full border-transparent bg-green-600/10 px-2 py-0 font-medium text-2xs text-green-800 dark:bg-green-400/10 dark:text-green-400"
-                >
-                  <GitBranch aria-hidden="true" className="size-2.5" />
-                  <Trans>worktree</Trans>
-                </Badge>
-              ) : null}
             </div>
-            <span
-              className="truncate w-full text-muted-foreground text-xs"
-              title={isWorktree ? (project.mainRoot ?? '') : project.path}
-            >
-              {isWorktree ? <Trans>of {basenameOf(project.mainRoot ?? '')}</Trans> : project.path}
-            </span>
           </div>
-        </div>
-        {project.missing ? (
-          <Badge className="text-2xs rounded-sm" variant="warning">
-            <Trans>Missing</Trans>
-          </Badge>
-        ) : rowBranch != null ? (
-          <span
-            className="flex max-w-[40%] items-center gap-1 text-muted-foreground text-xs"
-            data-testid={`nav-recent-branch-${project.path}`}
-          >
-            <GitBranch aria-hidden="true" className="size-3 shrink-0" />
-            <span className="truncate font-mono">{rowBranch}</span>
-          </span>
-        ) : null}
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        onClick={onRemove}
-        aria-label={t`Remove ${projectName} from recent projects`}
-        title={t`Remove from recent projects`}
-        className="pointer-events-none mr-2 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-        data-testid={`nav-recent-remove-${project.path}`}
-      >
-        <XIcon aria-hidden="true" />
-      </Button>
-    </li>
+          {rowBranch != null ? (
+            <span
+              className="flex max-w-[40%] items-center gap-1 text-muted-foreground text-xs"
+              data-testid={`nav-recent-branch-${project.path}`}
+            >
+              <GitBranch aria-hidden="true" className="size-3 shrink-0" />
+              <span className="truncate font-mono">{rowBranch}</span>
+            </span>
+          ) : null}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={onRemove}
+          aria-label={t`Remove ${projectName} from recent projects`}
+          title={t`Remove from recent projects`}
+          className="pointer-events-none mr-2 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+          data-testid={`nav-recent-remove-${project.path}`}
+        >
+          <XIcon aria-hidden="true" />
+        </Button>
+      </li>
+    </RecentItemContextMenu>
   );
 }
 

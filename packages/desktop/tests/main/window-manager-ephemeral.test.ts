@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import { getLocalDir } from '@inkeep/open-knowledge-server';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
 import {
   type BrowserWindowLike,
@@ -38,35 +38,35 @@ function makeWindow(): FakeWindow {
     for (const h of closeHandlers) h();
   };
   return {
-    focus: mock(() => {}),
-    show: mock(() => {}),
-    restore: mock(() => {}),
-    isMinimized: mock(() => false),
-    isDestroyed: mock(() => destroyed),
-    isVisible: mock(() => true),
-    on: mock((_event: 'closed', cb: () => void) => {
+    focus: vi.fn(() => {}),
+    show: vi.fn(() => {}),
+    restore: vi.fn(() => {}),
+    isMinimized: vi.fn(() => false),
+    isDestroyed: vi.fn(() => destroyed),
+    isVisible: vi.fn(() => true),
+    on: vi.fn((_event: 'closed', cb: () => void) => {
       closeHandlers.push(cb);
     }) as BrowserWindowLike['on'],
-    once: mock(() => {}) as BrowserWindowLike['once'],
-    close: mock(() => {
+    once: vi.fn(() => {}) as BrowserWindowLike['once'],
+    close: vi.fn(() => {
       destroyed = true;
       fireClose();
     }),
-    destroy: mock(() => {
+    destroy: vi.fn(() => {
       destroyed = true;
       fireClose();
     }),
     webContents: {
-      send: mock((channel: string, payload: unknown) => {
+      send: vi.fn((channel: string, payload: unknown) => {
         sent.push({ channel, payload });
       }),
-      once: mock((event: 'dom-ready' | 'did-finish-load', cb: () => void) => {
+      once: vi.fn((event: 'dom-ready' | 'did-finish-load', cb: () => void) => {
         if (event === 'dom-ready') domReadyHandler = cb;
       }),
       isDestroyed: () => destroyed,
     },
-    loadFile: mock(() => Promise.resolve()),
-    loadURL: mock(() => Promise.resolve()),
+    loadFile: vi.fn(() => Promise.resolve()),
+    loadURL: vi.fn(() => Promise.resolve()),
     fireClose,
     fireDomReady: () => domReadyHandler?.(),
     sent,
@@ -350,7 +350,7 @@ describe('createEphemeralWindow', () => {
     env.deps.createWindow = (opts) => {
       env.createWindowOpts.push(opts);
       const w = makeWindow();
-      w.loadFile = mock(() => Promise.reject(new Error('renderer load boom')));
+      w.loadFile = vi.fn(() => Promise.reject(new Error('renderer load boom')));
       env.windows.push(w);
       return w;
     };

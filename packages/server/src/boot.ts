@@ -208,6 +208,7 @@ export interface BootServerOptions
     | 'wipRef'
     | 'destroyTimeoutMs'
     | 'localOpCliArgs'
+    | 'authStreamHeartbeatMs'
     | 'onAgentWrite'
     | 'shadowRepo'
     | 'enableTestRoutes'
@@ -674,6 +675,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     shadowRepo: opts.shadowRepo,
     destroyTimeoutMs: opts.destroyTimeoutMs,
     localOpCliArgs: opts.localOpCliArgs,
+    authStreamHeartbeatMs: opts.authStreamHeartbeatMs,
     onAgentWrite: opts.onAgentWrite,
     lockKind,
     skipStateManifestCheck: opts.skipStateManifestCheck,
@@ -1162,7 +1164,7 @@ export async function restoreLifecycleFromConflictsJson(args: {
 }): Promise<void> {
   const { hocuspocus, projectDir, log } = args;
   let store: ConflictStore;
-  let entries: Array<{ file: string }>;
+  let entries: Array<{ file: string; variant?: 'working-tree' }>;
   try {
     store = new ConflictStore(projectDir);
     entries = store.list();
@@ -1184,6 +1186,11 @@ export async function restoreLifecycleFromConflictsJson(args: {
   // for <path>" indefinitely because conflicts.json + lifecycle disagree
   // with /api/sync/conflicts after the sync engine's own reconcile clears
   // the store).
+  // Working-tree conflicts (pull-only overlays) have no MERGE_HEAD and are never
+  // in the git unmerged index, so the merge-native reconciliation must not treat
+  // them as stale — they are always restored. Only merge-native entries
+  // reconcile against git's index.
+  const isWorkingTree = (e: { variant?: string }): boolean => e.variant === 'working-tree';
   let stillUnmerged: Set<string> | null = null;
   try {
     // Linked-worktree safety: `<projectDir>/.git` is a regular file (not a
@@ -1195,19 +1202,24 @@ export async function restoreLifecycleFromConflictsJson(args: {
     const gitDir = resolveGitDir(projectDir);
     const mergeHeadPath = gitDir ? join(gitDir, 'MERGE_HEAD') : null;
     if (!mergeHeadPath || !existsSync(mergeHeadPath)) {
-      // No merge in progress — every entry is stale.
-      store.clear();
-      console.warn(
-        JSON.stringify({
-          event: 'lifecycle-restore-cleared-stale-conflicts',
-          reason: 'no-merge-head',
-          count: entries.length,
-        }),
-      );
-      return;
+      // No merge in progress — every MERGE-NATIVE entry is stale.
+      const staleMergeNative = entries.filter((e) => !isWorkingTree(e));
+      for (const entry of staleMergeNative) store.removeConflict(entry.file);
+      entries = entries.filter(isWorkingTree);
+      if (staleMergeNative.length > 0) {
+        console.warn(
+          JSON.stringify({
+            event: 'lifecycle-restore-cleared-stale-conflicts',
+            reason: 'no-merge-head',
+            count: staleMergeNative.length,
+          }),
+        );
+      }
+      if (entries.length === 0) return;
+    } else {
+      const pg = simpleGit({ baseDir: projectDir, timeout: { block: 5_000 } });
+      stillUnmerged = new Set(await listNames(pg, ['diff', '--name-only', '--diff-filter=U']));
     }
-    const pg = simpleGit({ baseDir: projectDir, timeout: { block: 5_000 } });
-    stillUnmerged = new Set(await listNames(pg, ['diff', '--name-only', '--diff-filter=U']));
   } catch (err) {
     // Probe failed — fall through and restore everything; the sync
     // engine's own reconcile on `start()` will mop up any stragglers.
@@ -1217,11 +1229,11 @@ export async function restoreLifecycleFromConflictsJson(args: {
     );
   }
 
-  // Prune entries git considers resolved (still-unmerged probe succeeded).
+  // Prune merge-native entries git considers resolved (working-tree entries kept).
   if (stillUnmerged !== null) {
     let pruned = 0;
     for (const entry of entries) {
-      if (!stillUnmerged.has(entry.file)) {
+      if (!isWorkingTree(entry) && !stillUnmerged.has(entry.file)) {
         store.removeConflict(entry.file);
         pruned++;
       }
@@ -1235,7 +1247,7 @@ export async function restoreLifecycleFromConflictsJson(args: {
         }),
       );
     }
-    entries = entries.filter((e) => stillUnmerged?.has(e.file));
+    entries = entries.filter((e) => isWorkingTree(e) || stillUnmerged?.has(e.file));
     if (entries.length === 0) return;
   }
 

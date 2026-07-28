@@ -14,9 +14,10 @@
  * property of the source, not of any executable behavior a unit test
  * could observe.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { join } from 'node:path';
 import { Project, SyntaxKind } from 'ts-morph';
+import { describe, expect, test } from 'vitest';
 
 const SANCTIONED_CALLERS = ['attachValidatedPersistence', 'open'] as const;
 

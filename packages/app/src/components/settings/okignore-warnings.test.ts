@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { checkHeuristicWarnings, WARNING_MESSAGES } from './okignore-warnings';
 
 describe('checkHeuristicWarnings — quiet on uninteresting input', () => {

@@ -21,7 +21,7 @@
  * without relying on two `Date.now()` calls landing in the same millisecond.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   mergeAndPruneRecentLocalAdds,
   mergeRootEntriesAdditive,

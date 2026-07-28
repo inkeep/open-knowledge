@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 /**
  * Ship gate for the terminal's real-PTY output path: the no-precedent

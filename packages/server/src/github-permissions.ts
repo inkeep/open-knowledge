@@ -18,6 +18,7 @@
 
 import type { Counter, Histogram } from '@opentelemetry/api';
 import { getLogger } from './logger.ts';
+import type { OriginTransport } from './share/git-context.ts';
 import { getMeter } from './telemetry.ts';
 
 const log = getLogger('github-permissions');
@@ -36,12 +37,18 @@ type PushPermissionDeniedReason =
   | 'repo-not-found'
   | 'not-authenticated';
 
+// 'ssh-unverified' = anonymous credential resolution over a non-token
+// transport (ssh/git origins). git auths those pushes with SSH keys, so token
+// absence proves nothing about push ability — the probe abstains and lets the
+// real push decide. Distinct from the transient errors so telemetry can tell
+// "we couldn't reach GitHub" apart from "we deliberately didn't ask".
 type PushPermissionUnknownError =
   | 'network'
   | 'timeout'
   | 'rate-limit'
   | 'token-invalid'
-  | 'malformed-response';
+  | 'malformed-response'
+  | 'ssh-unverified';
 
 /**
  * Outcome of a single push-permission probe.
@@ -72,6 +79,14 @@ export interface CheckPushPermissionOptions {
   repo: string;
   /** GitHub host. Defaults to `'github.com'`. */
   host?: string;
+  /**
+   * How the origin URL authenticates a push. Defaults to `'https'` (token
+   * auth — the pre-transport behavior). For `'ssh'`/`'git'` origins an
+   * anonymous probe abstains (`unknown/ssh-unverified`) instead of denying:
+   * no token ⇒ no HTTPS push, but SSH pushes auth with keys the probe
+   * cannot see.
+   */
+  transport?: OriginTransport;
   /** Tier A resolver (`gh` CLI). Defaults to "no gh available". */
   detectGh?: DetectGhFn;
   /** Tier B/C credential store. Omit to skip stored-token resolution. */
@@ -207,6 +222,7 @@ async function runProbe(opts: CheckPushPermissionOptions): Promise<PushPermissio
     owner,
     repo,
     host = 'github.com',
+    transport = 'https',
     detectGh = () => ({ available: false }),
     tokenStore,
     _fetchFn = fetch,
@@ -219,13 +235,30 @@ async function runProbe(opts: CheckPushPermissionOptions): Promise<PushPermissio
     tokenStore,
   );
 
-  // No credential at all → no push, definitionally. Short-circuit to the
+  // No credential resolved. What that MEANS depends on the origin transport:
+  //
+  // HTTPS: no credential → no push, definitionally. Short-circuit to the
   // denied posture WITHOUT a network call: an anonymous `GET /repos` returns
   // 200 with no `permissions` field, which classifies as `unknown` and makes
   // callers fall through to the doomed sync-onboarding + 403-push path. An
   // anonymous receiver opening a public shared repo (read-only by nature) must
   // instead land directly in the suppressed-onboarding, no-push UX.
+  //
+  // SSH/git: pushes auth with SSH keys (or nothing, for git://), so token
+  // absence proves nothing — a self-hosted-forge or github.com-over-SSH user
+  // with working keys and no gh/OK token pushes fine. Abstain (`unknown` is
+  // the lenient posture end-to-end: sync proceeds; a genuinely unauthorized
+  // push surfaces through the existing push-failure path). Also no network
+  // call: forge hosts aren't GitHub, and an anonymous GitHub call decides
+  // nothing.
   if (tokenSource === 'anonymous') {
+    if (transport === 'ssh' || transport === 'git') {
+      log.info(
+        { host, transport },
+        '[permissions] no credential resolved for ssh/git origin — abstaining (push auths with SSH keys, not tokens)',
+      );
+      return { kind: 'unknown', error: 'ssh-unverified' };
+    }
     log.info({ host }, '[permissions] no credential resolved — denying push (read-only)');
     // 'not-authenticated' (not 'no-collaborator'): reconnecting resolves this,
     // so the UI can offer a sign-in affordance rather than a dead-end.
@@ -319,7 +352,7 @@ let _outcomeCounter: Counter | null = null;
 function outcomeCounter(): Counter {
   _outcomeCounter ||= getMeter().createCounter('ok.permissions.probe.outcome_total', {
     description:
-      'Push-permission probe outcomes. Bounded labels: outcome ∈ {allowed,denied,unknown}; denied_reason ∈ {no-collaborator,private-no-access,repo-not-found,not-authenticated,none}; error_class ∈ {network,timeout,rate-limit,token-invalid,malformed-response,none}.',
+      'Push-permission probe outcomes. Bounded labels: outcome ∈ {allowed,denied,unknown}; denied_reason ∈ {no-collaborator,private-no-access,repo-not-found,not-authenticated,none}; error_class ∈ {network,timeout,rate-limit,token-invalid,malformed-response,ssh-unverified,none}.',
   });
   return _outcomeCounter;
 }

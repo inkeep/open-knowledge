@@ -17,7 +17,7 @@
  *   (c) the WYSIWYG edit is applied, and
  *   (d) the FM region is not re-derived into the WYSIWYG body.
  */
-import { describe, expect, test } from 'bun:test';
+
 import {
   MarkdownManager,
   prependFrontmatter,
@@ -26,6 +26,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
 import { __resetBridgeWatchdogForTests } from './bridge-watchdog.ts';

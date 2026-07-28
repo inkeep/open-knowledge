@@ -13,12 +13,12 @@
  * — CM6 `EditorView.domEventHandlers` wiring requires a real DOM.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { JSONContent } from '@tiptap/core';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mdManager, schema } from './test-harness.ts';
 
 // Mock sonner so toast.error doesn't throw in node.
-mock.module('sonner', () => ({ toast: { error: mock(() => {}) } }));
+vi.doMock('sonner', () => ({ toast: { error: vi.fn(() => {}) } }));
 
 // Imported after the mock so the dispatcher module picks up the stub.
 let createHandlePaste: typeof import('../../src/editor/clipboard/handle-paste.ts').createHandlePaste;

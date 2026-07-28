@@ -19,9 +19,9 @@
  * `test:dom` keeps the mock graphs independent per file).
  */
 
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import type { ConfigBinding, OkignoreBinding, WriteScope } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { __resetServerInstanceStoreForTests, setServerInstanceId } from './server-instance-store';
 
 // One captured listener per binding scope so the test can fire the synced
@@ -114,7 +114,7 @@ function makeFakeOkignoreBinding(): OkignoreBinding {
   } as unknown as OkignoreBinding;
 }
 
-mock.module('@/hooks/use-theme-bridge', () => ({
+vi.doMock('@/hooks/use-theme-bridge', () => ({
   useThemeBridge: (bridge: unknown, theme: string) => {
     useThemeBridgeCalls.push([bridge, theme]);
   },
@@ -124,7 +124,7 @@ mock.module('@/hooks/use-theme-bridge', () => ({
 // inside ConfigProvider's effect. Provide a no-op shim so the effect's
 // `setTheme(themeValue)` call inside the merged-config bridge does not
 // throw when run outside a `ThemeProvider`.
-mock.module('next-themes', () => ({
+vi.doMock('next-themes', () => ({
   useTheme: () => ({
     setTheme: (theme: string) => {
       setThemeCalls.push(theme);
@@ -138,7 +138,7 @@ mock.module('next-themes', () => ({
 // to control deterministically). The fake captures the okignore
 // 'synced' handler so test cases can drive it directly; ConfigBinding
 // 'synced' wiring is captured via the bindConfigDoc mock below.
-mock.module('@hocuspocus/provider', () => {
+vi.doMock('@hocuspocus/provider', () => {
   class FakeHocuspocusProvider {
     private readonly record: ProviderRecord;
 
@@ -162,7 +162,7 @@ mock.module('@hocuspocus/provider', () => {
   return { HocuspocusProvider: FakeHocuspocusProvider };
 });
 
-mock.module('@/lib/auth-token', () => ({
+vi.doMock('@/lib/auth-token', () => ({
   buildAuthToken: (...args: readonly unknown[]) => {
     buildAuthTokenCalls.push(args);
     return 'test-auth-token';
@@ -173,7 +173,7 @@ mock.module('@/lib/auth-token', () => ({
 // calls to produce the binding objects it then subscribes to. The fakes
 // return ConfigBindings whose `subscribeSynced` listener is captured per
 // scope so the test can trigger the false→true transition by hand.
-mock.module('@inkeep/open-knowledge-core', () => ({
+vi.doMock('@inkeep/open-knowledge-core', () => ({
   bindConfigDoc: (_provider: unknown, scope: WriteScope) =>
     makeFakeConfigBinding(scope, scope === 'user' ? userHasSyncedSeed : false),
   bindOkignoreDoc: () => makeFakeOkignoreBinding(),
@@ -199,7 +199,7 @@ mock.module('@inkeep/open-knowledge-core', () => ({
 }));
 
 // Module-level toggle for the second case (mount-time pre-synced seed).
-// Bun module mocks resolve once at import time, but the factory closes
+// Vitest module mocks resolve once at import time, but the factory closes
 // over this variable so each test can flip the value via the helper
 // before the dynamic import below.
 let userHasSyncedSeed = false;
@@ -230,14 +230,14 @@ function ConfigContextProbe() {
 }
 
 describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     resetCaptures();
     lastContext = null;
     userHasSyncedSeed = false;
     __resetServerInstanceStoreForTests();
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -394,7 +394,7 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
   });
 
   test('provider disconnect and close callbacks emit structured role logs', async () => {
-    const consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     render(
       <ConfigProvider collabUrl="ws://test.invalid">

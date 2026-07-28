@@ -70,6 +70,9 @@ import {
   createWorkspaceSearchDocument,
   DEFAULT_ATTACHMENT_FOLDER_PATH,
   DEFAULT_DEDUP_MODE,
+  DEFAULT_EMBEDDINGS_BASE_URL,
+  DEFAULT_EMBEDDINGS_MODEL,
+  DEFAULT_LINKS_VALIDATION,
   DEFAULT_LINTER_CONFIG,
   DeadLinksSuccessSchema,
   DeletePathRequestSchema,
@@ -92,6 +95,8 @@ import {
   ForwardLinksSuccessSchema,
   FrontmatterPatchRequestSchema,
   FrontmatterPatchSuccessSchema,
+  FrontmatterSchemasListSuccessSchema,
+  FrontmatterSchemaWriteRequestSchema,
   getHeadingSlug,
   getParseHealth,
   type HeadingEntry,
@@ -103,6 +108,7 @@ import {
   InstallSkillRequestSchema,
   InstallSkillSuccessSchema,
   instantiateDoc,
+  isFrontmatterSchemaAsset,
   isHiddenDocName,
   isManagedArtifactDocName,
   isValidAttachmentFolderPath,
@@ -111,6 +117,7 @@ import {
   LinkGraphSuccessSchema,
   LinkPreviewRequestSchema,
   LinkPreviewResponseSchema,
+  type LinksValidationSetting,
   LintAuditResponseSchema,
   LintConfigResponseSchema,
   LintDocResultSchema,
@@ -118,6 +125,7 @@ import {
   LintFixRequestSchema,
   LintFixResultSchema,
   type LintViolationWarning,
+  LocalOpAuthCancelRequestSchema,
   LocalOpAuthEmptySuccessSchema,
   type LocalOpAuthHostRequest,
   LocalOpAuthHostRequestSchema,
@@ -129,6 +137,8 @@ import {
   LocalOpCloneRequestSchema,
   LocalOpEmbeddingsMutationSuccessSchema,
   LocalOpEmbeddingsSetKeyRequestSchema,
+  type LocalOpEmbeddingsTestResponse,
+  LocalOpEmbeddingsTestResponseSchema,
   LocalOpOkInitRequestSchema,
   LocalOpOkInitResponseSchema,
   lintDocument,
@@ -246,6 +256,8 @@ import {
   UploadRequestSchema,
   unwrapFrontmatterFences,
   updateWorkspaceSearchCorpus,
+  ValidationAuditResponseSchema,
+  type ValidationDiagnostic,
   type WorkspaceSearchCorpus,
   type WorkspaceSearchDocument,
   type WorkspaceSearchIntent,
@@ -287,6 +299,8 @@ import {
   applyAgentMarkdownWrite,
   applyAgentUndo,
   iconFromClientName,
+  prepareAgentMarkdownParse,
+  prepareFrontmatterPatchParse,
   snapshotBlocks,
 } from './agent-sessions.ts';
 import { type NormalizedSummary, normalizeSummary } from './agent-write-summary.ts';
@@ -332,9 +346,10 @@ import {
   type SemanticQueryOutcome,
 } from './embeddings/embeddings-telemetry.ts';
 import {
-  clearEmbeddingsKeyFromAllBackends,
-  EMBEDDINGS_API_KEY_ENV,
   FileEmbeddingsBackend,
+  probeEmbeddingEndpoint,
+  type ResolvedSemanticConfig,
+  resolveEmbeddingsCredential,
   SEMANTIC_MIN_QUERY_LENGTH,
   type SemanticSearchService,
 } from './embeddings/index.ts';
@@ -356,13 +371,28 @@ import {
   recordSkillInstall,
   removeSkillInstall,
 } from './installed-skills-marker.ts';
-import { auditProject, lintAndFixSource, lintDoc } from './lint/audit.ts';
+import { auditProject, collectDocFiles, lintAndFixSource, lintDoc } from './lint/audit.ts';
+import {
+  createEmptyFrontmatterSchemaFile,
+  deleteFrontmatterSchemaFile,
+  removeFrontmatterSchemaField,
+  renameFrontmatterSchemaField,
+  type WriteFrontmatterSchemaResult,
+  writeFrontmatterSchemaField,
+} from './lint/frontmatter-schema-write.ts';
+import {
+  listProjectSchemaFiles,
+  SCHEMA_LIST_CAP,
+  unmatchedAppliesToProblems,
+} from './lint/frontmatter-schemas.ts';
 import { type WriteMarkdownlintResult, writeMarkdownlintRule } from './lint/markdownlint-write.ts';
 import {
   composeEffectiveLinterConfig,
+  composeFrontmatterSchemasConfig,
   resolveEffectiveLinterConfig,
   resolveNativeConfigForDoc,
 } from './lint/resolve-config.ts';
+import { createProjectValidators, runValidationAudit } from './lint/validation-audit.ts';
 import { validateMermaidFences } from './mermaid-validator.ts';
 import {
   extractPageIcon,
@@ -430,6 +460,7 @@ import { reprojectAllManagedSkills } from './skill-reproject.ts';
 import { readSkillInstallStateSnapshot } from './skill-state.ts';
 import { readSkillTargets, writeSkillTargets } from './skill-targets-store.ts';
 import { handleSpawnCursor } from './spawn-cursor-api.ts';
+import { assertRealpathWithinDir } from './symlink-guard.ts';
 import { readUiLock } from './ui-lock.ts';
 import {
   HashingPassThrough,
@@ -471,11 +502,12 @@ import {
   isOrphanMode,
 } from './backlink-index.ts';
 import { getBootTimings } from './boot-timings.ts';
-import { composeAndWriteRawBody, replaceRawBody } from './bridge-intake.ts';
-import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
+import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from './bridge-intake.ts';
+import { isConfigDoc, isLinkIndexExcludedDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import type { ResolveStrategy } from './conflict-storage.ts';
 import type { ContentFilter } from './content-filter.ts';
+import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import {
   docNameToRelativePath,
   forgetDocExtension,
@@ -486,6 +518,7 @@ import {
   SUPPORTED_DOC_EXTENSIONS,
   stripDocExtension,
 } from './doc-extensions.ts';
+import type { DocumentDurabilityState, StoreFailure } from './document-durability-state.ts';
 import {
   type ReconcileBeforeWriteResult,
   reconcileDiskBeforeAgentWrite,
@@ -580,15 +613,8 @@ import {
   incrementSummariesProvided,
   incrementSummariesTruncated,
 } from './metrics.ts';
+import { precomputeParse } from './parse-pool.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
-import {
-  deleteReconciledBase,
-  getActiveBranch,
-  isWithinContentDir,
-  type StoreFailure,
-  safeContentPath,
-  setReconciledBase,
-} from './persistence.ts';
 import {
   appendRenameLogEntry,
   createAncestorShaSetCache,
@@ -1506,8 +1532,9 @@ export interface WalkShowAllOpts extends StreamShowAllOpts {
  * cap covers the shallow levels.
  *
  * Uses `ContentFilter.{isExcluded,isDirExcluded}` with `bypassFilters:true` so
- * `.gitignored` / `.okignored` / content-bearing `BUILTIN_SKIP_DIRS` (`dist/`,
- * `build/`, `coverage/`, …) surface. The `ALWAYS_SKIP_DIRS` floor still prunes
+ * `.gitignored` and content-bearing `BUILTIN_SKIP_DIRS` (`dist/`, `build/`,
+ * `coverage/`, …) surface. `.okignore` remains authoritative because it is the
+ * user's explicit hide list. The `ALWAYS_SKIP_DIRS` floor still prunes
  * `.git/` / `node_modules/` / `.ok/` even under bypass (those trees are
  * unbounded and never hold user markdown — pruning them is the Show All Files
  * OOM guard); `showOk` re-admits `.ok` minus `worktrees`/`local`, the two
@@ -1535,7 +1562,7 @@ export async function* streamShowAllEntries(
   // One opts object for every filter consultation: the dir gates, the
   // `hasChildren` probe, and the file backstop must agree on admission, or a
   // revealed folder probes childless / yields rows its own dir gate pruned.
-  const filterOpts = { bypassFilters: true, showOk } as const;
+  const filterOpts = { bypassFilters: true, respectOkignore: true, showOk } as const;
   showAllWalkInvocations += 1;
   // Running count of yielded entries — the streaming analogue of the buffered
   // `documents.length` cap probe. Shared across the whole traversal so the
@@ -1592,7 +1619,7 @@ export async function* streamShowAllEntries(
       const relPath = relDir ? `${relDir}/${entry.name}` : entry.name;
       const docName = stripDocExtension(relPath);
       if (!collidingDocNames.has(docName)) continue;
-      if (contentFilter.isExcluded(relPath, { bypassFilters: true })) continue;
+      if (contentFilter.isExcluded(relPath, filterOpts)) continue;
       if (!passesDirFilter(relPath)) continue;
 
       if (entry.isSymbolicLink()) {
@@ -1738,8 +1765,9 @@ export async function* streamShowAllEntries(
 
         if (entry.isDirectory()) {
           // bypassFilters:true admits gitignored + content-bearing skip-dirs
-          // (dist/, build/), but the ALWAYS_SKIP_DIRS floor still prunes
-          // .git/, node_modules/, .ok/ here — the Show All Files OOM guard.
+          // (dist/, build/), while respectOkignore:true keeps .okignore
+          // authoritative. The ALWAYS_SKIP_DIRS floor still prunes .git/,
+          // node_modules/, .ok/ here — the Show All Files OOM guard.
           // showOk re-admits .ok minus worktrees/local for the tree reveal.
           if (contentFilter.isDirExcluded(relPath, filterOpts)) continue;
 
@@ -2604,6 +2632,7 @@ async function renameTrackedPathInGit(
 
 export interface ApiExtensionOptions {
   hocuspocus: Hocuspocus;
+  durabilityState: DocumentDurabilityState;
   sessionManager: AgentSessionManager;
   contentDir: string;
   /**
@@ -2700,28 +2729,6 @@ export interface ApiExtensionOptions {
    * is NOT yet ported from origin/main.
    */
   flushContributors?: () => Promise<void>;
-  /**
-   * Read-and-clear the last disk-store failure for a docName. Wired to
-   * `persistence.takeStoreFailure`. A write handler force-flushes the store
-   * then calls this to report disk truth instead of a false success when the
-   * persistence step threw (ENOSPC / EACCES / EROFS, etc.).
-   */
-  takeStoreFailure?: (docName: string) => StoreFailure | null;
-  /**
-   * Read-and-clear whether a docName's most recent agent-triggered store was
-   * reverted by the L3 disk-divergence backstop. Wired to
-   * `persistence.takeStoreDivergence`. A write handler force-flushes the store
-   * then calls this to return `urn:ok:error:disk-divergence` instead of a false
-   * success when disk diverged and the overwrite was aborted (disk won).
-   */
-  takeStoreDivergence?: (docName: string) => boolean;
-  /**
-   * Mark a docName's next store as agent-write-triggered (L3
-   * gate). Wired to `persistence.markAgentWriteStore`. `flushDiskAndDetectOutcome`
-   * calls it immediately before force-flushing, so only agent-handler-forced
-   * stores can disk-wins-revert on divergence (human-editor stores are excluded).
-   */
-  markAgentWriteStore?: (docName: string) => void;
   /** Accessor for the current branch from the HEAD watcher. Returns null when unknown. */
   getCurrentBranch?: () => string | null;
   /**
@@ -2738,7 +2745,7 @@ export interface ApiExtensionOptions {
   contentRoot?: string;
   backlinkIndex?: BacklinkIndex;
   tagIndex?: TagIndex;
-  signalChannel?: (channel: 'files' | 'backlinks' | 'graph') => void;
+  signalChannel?: (channel: 'files' | 'backlinks' | 'graph' | 'lint-config') => void;
   /**
    * Optional. When present, agent write handlers publish per-write attribution
    * entries on `__system__` awareness (`agentFocus` map) with writeKind +
@@ -2775,6 +2782,12 @@ export interface ApiExtensionOptions {
    *          ['open-knowledge'] in production.
    */
   localOpCliArgs?: string[];
+  /**
+   * Keepalive cadence for the streaming auth flows, in ms. Production uses the
+   * 15s default; tests override it so the heartbeat is observable inside a
+   * normal test budget without faking timers around a real HTTP stream.
+   */
+  authStreamHeartbeatMs?: number;
   /**
    * Path to the project's parent git working tree (i.e. the repo root, not
    * the shadow git dir). Used for upload tmp-file placement, git-relative
@@ -2919,12 +2932,25 @@ export interface ApiExtensionOptions {
    */
   embeddingsSecretsFile?: string;
   /**
+   * Resolve the project-local `search.semantic.*` provider knobs, read FRESH so
+   * the Test-connection probe hits whatever is currently persisted — the same
+   * contract as the embedder loader, so a probe and a real embed can never
+   * disagree about which endpoint is configured. Omitted in tests that don't
+   * exercise the probe (the route then reports `no_key`-style unavailability).
+   */
+  readSemanticProviderConfig?: () => ResolvedSemanticConfig;
+  /**
    * Resolve the project's base `contentRules` config (project scope), read FRESH
    * per request so a config edit takes effect without a restart. The lint
    * endpoints inject the native `.markdownlint.*` rules over this base.
    * Omitted in tests → falls back to `DEFAULT_LINTER_CONFIG`.
    */
   getLinterBaseConfig?: () => LinterConfig;
+  /**
+   * Fresh-per-request broken-link posture (`validation.links`). Omitted in
+   * tests → falls back to the default ('warning').
+   */
+  getLinksValidationSetting?: () => LinksValidationSetting;
 }
 
 interface WorkspaceSearchCacheEntry {
@@ -2988,6 +3014,7 @@ function applyDiskEventToLiveAllFilesIndex(
 }
 
 export function createApiExtension(options: ApiExtensionOptions): Extension {
+  const { durabilityState } = options;
   const {
     hocuspocus,
     sessionManager,
@@ -3014,9 +3041,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     shadowRef,
     flushGitCommit,
     flushContributors,
-    takeStoreFailure,
-    takeStoreDivergence,
-    markAgentWriteStore,
     getCurrentBranch,
     getDiskAckSVs,
     contentRoot,
@@ -3028,6 +3052,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     onAgentWrite,
     getSyncEngine,
     localOpCliArgs = ['open-knowledge'],
+    authStreamHeartbeatMs,
     projectDir,
     getPrincipal,
     homeDirOverride,
@@ -3044,7 +3069,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     semanticSearch,
     getSemanticSimilarityFloor,
     embeddingsSecretsFile,
+    readSemanticProviderConfig,
     getLinterBaseConfig,
+    getLinksValidationSetting,
     ephemeral = false,
     linkPreviewFetch,
     getLinkPreviewsEnabled,
@@ -3416,12 +3443,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       // fires (Hocuspocus passes a null transaction origin for agent
       // DirectConnection writes, so the origin can't gate it). `storeDocumentNow`
       // read-and-clears the marker.
-      markAgentWriteStore?.(docName);
+      durabilityState.markAgentWriteStore(docName);
       await hocuspocus.debouncer.executeNow(debounceId);
     }
-    const failure = takeStoreFailure?.(docName) ?? null;
+    const failure = durabilityState.takeStoreFailure(docName);
     if (failure) return { kind: 'failure', failure };
-    if (takeStoreDivergence?.(docName)) return { kind: 'divergence' };
+    if (durabilityState.takeStoreDivergence(docName)) return { kind: 'divergence' };
     return null;
   }
 
@@ -3728,7 +3755,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
     for (const docName of docNames) {
       const document = hocuspocus.documents.get(docName);
-      deleteReconciledBase(docName);
+      durabilityState.deleteReconciledBase(docName);
       // Forget the managed-artifact LKG too (no-op for ordinary docs). The LKG
       // is the verbatim bytes last persisted; leaving it set lets an identical-
       // content re-create after a delete be classed a no-op and never re-land on
@@ -3807,7 +3834,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     tracedMkdirSync(dirname(filePath), { recursive: true });
     writeFileIfContentDiffers(filePath, markdown);
     registerWrite(filePath, contentHash(markdown));
-    setReconciledBase(docName, markdown);
+    durabilityState.setReconciledBase(docName, markdown);
 
     mutateFileIndex?.({ kind: 'update', path: filePath, docName, content: markdown });
   }
@@ -4244,7 +4271,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           span.setAttribute('rename.rewrite_candidates', pendingRewrites.length);
           assertRewriteTargetsNotConflicted(pendingRewrites.map((entry) => entry.docName));
 
-          reconcileDiskBeforeAgentWrite(hocuspocus, sourceDocName, contentDir);
+          reconcileDiskBeforeAgentWrite(durabilityState, hocuspocus, sourceDocName, contentDir);
           if (recentlyRemovedDocs && !isSystemDoc(sourceDocName) && !isConfigDoc(sourceDocName)) {
             recentlyRemovedDocs.setDeleted(sourceDocName);
           }
@@ -4505,7 +4532,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             // losslessly through the rename re-serialize and re-resolves on the
             // next normal load/reconcile. The extension-level resolveEmbed is
             // also shadowed by this function's own options param.
-            reconcileDiskBeforeAgentWrite(hocuspocus, docName, contentDir);
+            reconcileDiskBeforeAgentWrite(durabilityState, hocuspocus, docName, contentDir);
             const content = readCurrentDocumentContent(docName);
             if (typeof content === 'string') {
               snapshotContents.set(docName, content);
@@ -4805,7 +4832,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                 [{ fromDocName, toDocName }],
                 new Map([[fromDocName, renamedSource.markdown]]),
               );
-              setReconciledBase(toDocName, renamedSource.markdown);
+              durabilityState.setReconciledBase(toDocName, renamedSource.markdown);
 
               mutateFileIndex?.({
                 kind: 'rename',
@@ -5175,6 +5202,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // content handlers. Separate FILE_WATCHER_ORIGIN transact before the
         // agent's session.origin transact below.
         const agentWriteReconcile = reconcileDiskBeforeAgentWrite(
+          durabilityState,
           hocuspocus,
           docName,
           contentDir,
@@ -5369,10 +5397,26 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // can't clobber it. Runs its own FILE_WATCHER_ORIGIN transact BEFORE
         // the agent's session.origin transact below — never nested.
         const writeMdReconcile = reconcileDiskBeforeAgentWrite(
+          durabilityState,
           hocuspocus,
           resolvedDocName,
           contentDir,
           options.resolveEmbed,
+        );
+
+        // Off-thread parse precompute (parse-pool): parse the projected
+        // post-write bytes on a worker BEFORE entering the transact so a
+        // large-doc parse does not block concurrent requests. Advisory —
+        // the byte-identity guard in bridge-intake discards it if the doc
+        // moved during this await.
+        const writeMdEmbedResolver = options.resolveEmbed
+          ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
+          : undefined;
+        const writeMdPrecomputed = await prepareAgentMarkdownParse(
+          session.dc.document,
+          body.markdown,
+          position,
+          writeMdEmbedResolver,
         );
 
         const timestamp = new Date().toISOString();
@@ -5406,9 +5450,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               session.dc.document,
               body.markdown,
               position,
-              options.resolveEmbed
-                ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
-                : undefined,
+              writeMdEmbedResolver,
+              writeMdPrecomputed,
             );
 
             const changedBlocks =
@@ -5802,10 +5845,23 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               });
 
               const reconcile = reconcileDiskBeforeAgentWrite(
+                durabilityState,
                 hocuspocus,
                 resolvedDocName,
                 contentDir,
                 options.resolveEmbed,
+              );
+
+              // Off-thread parse precompute — same advisory pattern as the
+              // single-write handler (byte-identity guard in bridge-intake).
+              const entryEmbedResolver = options.resolveEmbed
+                ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
+                : undefined;
+              const entryPrecomputed = await prepareAgentMarkdownParse(
+                session.dc.document,
+                entry.markdown,
+                entry.position ?? 'append',
+                entryEmbedResolver,
               );
 
               let writeDivergence: AgentWriteContentDivergence | undefined;
@@ -5818,9 +5874,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                   session.dc.document,
                   entry.markdown,
                   entry.position ?? 'append',
-                  options.resolveEmbed
-                    ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
-                    : undefined,
+                  entryEmbedResolver,
+                  entryPrecomputed,
                 );
 
                 const changedBlocks =
@@ -6033,11 +6088,20 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // live (disk-reflecting) frontmatter, not a stale loaded copy. Separate
         // FILE_WATCHER_ORIGIN transact BEFORE the agent's session.origin transact.
         const fmReconcile = reconcileDiskBeforeAgentWrite(
+          durabilityState,
           hocuspocus,
           resolvedDocName,
           contentDir,
           options.resolveEmbed,
         );
+
+        // Optimistic off-thread parse precompute (parse-pool): apply the FM
+        // patch to a PRE-transact snapshot and parse the guessed full bytes
+        // on a worker. The in-transact applyPatchToFm below stays
+        // authoritative; the byte-identity guard in bridge-intake discards
+        // a stale guess. No embed resolver here, mirroring the inline call
+        // below.
+        const fmPatchPrecomputed = await prepareFrontmatterPatchParse(session.dc.document, patch);
 
         const timestamp = new Date().toISOString();
 
@@ -6112,7 +6176,13 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                     currentFenced === '' && currentBody !== '' && !currentBody.startsWith('\n');
                   const newFull =
                     result.nextFenced + (needsFenceSeparator ? '\n' : '') + currentBody;
-                  composeAndWriteRawBody(session.dc.document, newFull, 'agent');
+                  composeAndWriteRawBody(
+                    session.dc.document,
+                    newFull,
+                    'agent',
+                    undefined,
+                    fmPatchPrecomputed,
+                  );
                   recordFrontmatterEditSurface('mcp-write');
                   bodyMutated = true;
                 }
@@ -6556,12 +6626,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
         // Show All Files mode — fresh on-demand disk walk via
         // `ContentFilter.{isExcluded,isDirExcluded}` with `bypassFilters:true`.
-        // Returns .gitignored / .okignored / content-bearing `BUILTIN_SKIP_DIRS`
-        // files (`dist/`, `build/`, …), EXCEPT the `ALWAYS_SKIP_DIRS` floor
-        // (`.git/` / `node_modules/` / `.ok/`, pruned even under bypass — the
-        // OOM guard) and synthetic system + config doc names (unbypassable
-        // STOP-rule gate inside ContentFilter). Per-request only — fileIndex
-        // stays populated with the non-bypass set, so the next
+        // Returns .gitignored / content-bearing `BUILTIN_SKIP_DIRS` files
+        // (`dist/`, `build/`, …), while `.okignore` remains authoritative.
+        // The `ALWAYS_SKIP_DIRS` floor (`.git/` / `node_modules/` / `.ok/`) and
+        // synthetic system + config doc names remain unbypassable. Per-request
+        // only — fileIndex stays populated with the non-bypass set, so the next
         // non-`?showAll=true` call serves today's filtered view unchanged.
         if (showAll && contentFilter) {
           // Single-flight: coalesce concurrent identical walks into one. Key by
@@ -7458,11 +7527,44 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // result). Separate FILE_WATCHER_ORIGIN transact BEFORE the agent's
         // session.origin transact below.
         const patchReconcile = reconcileDiskBeforeAgentWrite(
+          durabilityState,
           hocuspocus,
           docName,
           contentDir,
           options.resolveEmbed,
         );
+
+        // Optimistic off-thread parse precompute (parse-pool): splice the
+        // find/replace against a PRE-transact snapshot and parse the guessed
+        // post-patch bytes on a worker. The in-transact splice below stays
+        // the single authoritative compose — if the doc moved during this
+        // await the recomposed bytes differ and the byte-identity guard in
+        // bridge-intake discards the guess (inline parse, prior behavior).
+        const patchEmbedResolver = options.resolveEmbed
+          ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
+          : undefined;
+        let patchPrecomputed: PrecomputedParse | undefined;
+        {
+          const preSnapshot = session.dc.document.getText('source').toString();
+          const { frontmatter: preFm, body: preBody } = stripFrontmatter(preSnapshot);
+          const preFull = prependFrontmatter(preFm, preBody);
+          const prePos =
+            offset == null
+              ? preFull.indexOf(find)
+              : preFull.slice(offset, offset + find.length) === find
+                ? offset
+                : -1;
+          if (prePos !== -1 && prePos >= preFm.length) {
+            const guessFull =
+              preFull.slice(0, prePos) + replace + preFull.slice(prePos + find.length);
+            patchPrecomputed = await prepareAgentMarkdownParse(
+              session.dc.document,
+              stripFrontmatter(guessFull).body,
+              'patch',
+              patchEmbedResolver,
+            );
+          }
+        }
 
         const timestamp = new Date().toISOString();
 
@@ -7563,9 +7665,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               session.dc.document,
               newBody,
               'patch',
-              options.resolveEmbed
-                ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
-                : undefined,
+              patchEmbedResolver,
+              patchPrecomputed,
             );
 
             const changedBlocks =
@@ -8886,6 +8987,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         const rollbackEmbedResolver = options.resolveEmbed
           ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
           : undefined;
+        // Off-thread parse precompute: `markdown` (the target-version bytes)
+        // is fixed before this point, so unlike the compose-based writes the
+        // precompute can never go stale — the byte-identity guard always
+        // matches. A failed precompute degrades to the inline parse.
+        const rollbackPrecomputed = await precomputeParse(markdown, rollbackEmbedResolver);
         // Site A content-divergence gate for rollback — computed INSIDE the
         // transact, matching the write/patch gate. `ytext.toString()` here sees
         // `replaceRawBody`'s atomic post-state before observer settlement fires
@@ -8896,7 +9002,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // `currentState` so the agent recovers without a re-read.
         let rollbackDivergence: AgentWriteContentDivergence | undefined;
         document.transact(() => {
-          replaceRawBody(document, markdown, rollbackEmbedResolver);
+          replaceRawBody(document, markdown, rollbackEmbedResolver, rollbackPrecomputed);
           rollbackDivergence = evaluateContentDivergence(
             document.getText('source').toString(),
             markdown,
@@ -9130,7 +9236,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
    * Gated on `ready` for the same reason `handleDocumentList` is: the
    * boot-time `switchReconciledBaseScope(startupBranch)` lives inside
    * `initAsync` (server-factory.ts), and a renderer that fetches before
-   * it runs would observe the module-level `'main'` default instead of
+   * it runs would observe this server's initial `'main'` default instead of
    * the actual HEAD branch. The renderer's `current-branch-store` is
    * fire-once and only updates from CC1 `branch-switched`, so a stale
    * cold-start fetch sticks until a real cross-branch checkout.
@@ -9160,7 +9266,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       try {
         // Park until `initAsync` has called `switchReconciledBaseScope` with
         // the resolved HEAD branch. Without this gate, a renderer that fetches
-        // during the boot window reads the persistence module's `'main'`
+        // during the boot window reads this server's initial `'main'`
         // default and caches it in `current-branch-store` for the lifetime of
         // the session. Mirrors the `handleDocumentList` gate; `.catch()` keeps
         // the handler responsive on a degraded boot.
@@ -9172,7 +9278,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             );
           });
         }
-        const currentBranch = getActiveBranch();
+        const currentBranch = durabilityState.getActiveBranch();
         // `getDiskAckSVs` is wired by standalone boot; plugin mode (dev
         // server) doesn't have a CC1Broadcaster and omits the field. The
         // schema's `.optional()` keeps the response shape valid in both
@@ -12534,6 +12640,27 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const LOCAL_OP_AUTH_GH_LOGIN_KEY = '/api/local-op/auth/gh-login';
 
   /**
+   * Keepalive cadence for the two streaming auth flows. Between `verification`
+   * and `complete` the device flow writes nothing for as long as the user takes
+   * to authorize — up to the code's ~15-minute life — and a loopback connection
+   * carrying zero bytes is exactly what an idle-connection reaper severs
+   * (AV/EDR SSL-inspection agents, VPN local proxies, some tab-backgrounding).
+   * A periodic no-op line keeps bytes flowing. `{ type: 'ping' }` is not an
+   * `AuthEvent`: consumers skip it, it never terminates the stream, and it does
+   * not touch the code's expiry.
+   */
+  const AUTH_STREAM_HEARTBEAT_MS = authStreamHeartbeatMs ?? 15_000;
+
+  /**
+   * Wall-clock cap on a device-flow child, deliberately longer than the generic
+   * `LOCAL_OP_TIMEOUT_MS`. GitHub issues codes with `expires_in: 899` (~15 min)
+   * and the UI now counts down to that real deadline, so a 10-minute SIGTERM
+   * would kill the flow while the code on the user's screen is still good. The
+   * CLI's own poller gives up first at `expired_token`; this is only a backstop.
+   */
+  const AUTH_DEVICE_FLOW_TIMEOUT_MS = 16 * 60 * 1000;
+
+  /**
    * Default host for the auth relay endpoints when the request omits `host`.
    * Read per-request (not cached): the origin remote can change over the
    * server's lifetime.
@@ -12557,8 +12684,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
    * OK's store) while gh-login runs `gh auth login --web` (gh's OAuth app, works
    * on GHES, token → gh keyring → tier A) — so the caller supplies `makeFlow`.
    * Everything else is identical and lives here once: the concurrency slot with
-   * displace-on-restart, NDJSON streaming, client-disconnect cancel, sync-resume,
-   * and the ownership-guarded slot release.
+   * displace-on-restart, NDJSON streaming, the idle keepalive, disconnect
+   * detach, sync-resume, and the ownership-guarded slot release.
    */
   function streamAuthFlow(cfg: {
     res: ServerResponse;
@@ -12619,6 +12746,28 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     // Wrap raw `error` events in the RFC 9457 streaming envelope.
     const writeStreamError = createStreamingErrorWriter(res, handler);
 
+    // Three-way guard + try-catch matches the writer's race-window defense; a
+    // lost progress event is not crashworthy.
+    const writeLine = (line: string): void => {
+      if (res.writableEnded || res.destroyed) return;
+      try {
+        res.write(line);
+      } catch {
+        /* socket destroyed between guard and write — line lost */
+      }
+    };
+
+    let heartbeat: ReturnType<typeof setInterval> | null = setInterval(() => {
+      writeLine(`${JSON.stringify({ type: 'ping' })}\n`);
+    }, AUTH_STREAM_HEARTBEAT_MS);
+    // A keepalive must never be the reason the process stays up.
+    heartbeat.unref();
+    const stopHeartbeat = (): void => {
+      if (heartbeat === null) return;
+      clearInterval(heartbeat);
+      heartbeat = null;
+    };
+
     const flow = makeFlow((event: AuthEvent) => {
       if (event.type === 'error') {
         writeStreamError(500, 'urn:ok:error:auth-failed', streamErrorMessage, {
@@ -12628,38 +12777,63 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       }
       // On `complete`, resume a SyncEngine parked in `auth-error` so a reconnect
       // restores sync without an app restart. Server-authoritative: works
-      // regardless of which UI surface ran the sign-in.
+      // regardless of which UI surface ran the sign-in — and, since the flow now
+      // outlives its client connection, regardless of whether anyone is still
+      // listening when the token lands.
       resumeSyncOnAuthEvent(event, getSyncEngine);
-      // Three-way guard + try-catch matches the writer's race-window defense; a
-      // lost progress event is not crashworthy.
-      if (!res.writableEnded && !res.destroyed) {
-        try {
-          res.write(`${JSON.stringify(event)}\n`);
-        } catch {
-          /* socket destroyed between guard and write — event lost */
-        }
-      }
+      writeLine(`${JSON.stringify(event)}\n`);
     });
     inFlight.current = flow;
 
-    // Kill the child if the client disconnects so the flow doesn't keep polling
-    // and write a token the user never saw confirmed. Free the slot synchronously
-    // (ownership-guarded) rather than waiting for the SIGTERM'd child to exit —
-    // that window would otherwise 429 a reopen.
+    // A transport disconnect is NOT a cancel, and must not kill the flow.
+    //
+    // On loopback the stream gets severed by things the user never sees — an
+    // AV/EDR inspection agent, a VPN local proxy, a backgrounded tab. Killing
+    // the child there turns a blip into an unrecoverable sign-in: the user
+    // finishes authorizing on github.com and no token is ever stored, with no
+    // way back except starting over for a fresh code. So a disconnect only
+    // stops the writer; the flow runs on to its own timeout (or the code's
+    // expiry) and a reconnecting client picks the outcome up from
+    // `POST /api/local-op/auth/status`.
+    //
+    // What the old kill-on-disconnect protected — don't land a token after the
+    // user backed out — rides on an EXPLICIT signal instead: `POST
+    // /api/local-op/auth/cancel` when the modal closes, or displacement by a
+    // fresh start. That is the lifetime model the IPC twin has always had
+    // (`handleAuthStart` in desktop/src/main/ipc/local-op.ts), where a vanished
+    // renderer never killed the flow either and only `:cancel` did; HTTP was
+    // the outlier purely because a socket close was the only signal it had.
+    //
+    // The slot stays HELD here. Releasing it on disconnect would let a
+    // concurrent start spawn a second device-flow child alongside the live one;
+    // a genuine restart still gets in via the stale-slot displacement above.
     const onClientClose = () => {
-      flow.cancel();
-      if (inFlight.current === flow) {
-        inFlight.current = null;
-        localOpGuard.release(guardKey);
-      }
+      stopHeartbeat();
+      // Log only a GENUINE detach — a flow left running with nobody attached.
+      // An explicit cancel already cleared the slot synchronously before the
+      // client's socket closed, and a displaced flow no longer owns it either,
+      // so this identity check is what separates "an intermediary cut us off"
+      // from routine teardown. Without it this fires on every normal cancel and
+      // the signal is worthless. Completion needs no check: `flow.done.finally`
+      // removes this listener before ending the response.
+      if (inFlight.current !== flow) return;
+      console.warn(
+        JSON.stringify({
+          event: 'ok-local-op:auth-stream-detached',
+          channel: 'auth',
+          transport: 'http',
+          handler,
+        }),
+      );
     };
     res.on('close', onClientClose);
 
     // `flow.done` cannot reject (`proc.done` only resolves; the onEvent callback
     // is throw-safe), so `.finally` needs no IIFE-level try/catch. The release is
-    // ownership-guarded: a displaced/disconnected flow that already freed or
+    // ownership-guarded: a displaced/cancelled flow that already freed or
     // handed off the slot must not release a successor's when its child exits.
     void flow.done.finally(() => {
+      stopHeartbeat();
       res.off('close', onClientClose);
       if (!res.writableEnded && !res.destroyed) {
         try {
@@ -12717,7 +12891,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         runDeviceFlowSubprocess({
           cliArgs: localOpCliArgs,
           host,
-          timeoutMs: LOCAL_OP_TIMEOUT_MS,
+          timeoutMs: AUTH_DEVICE_FLOW_TIMEOUT_MS,
           onEvent,
         }),
     });
@@ -12760,7 +12934,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         concurrentMessage: 'A gh sign-in is already in progress.',
         streamErrorMessage: 'gh sign-in reported an error.',
         makeFlow: (onEvent) =>
-          runGhDeviceLoginSubprocess({ host, ghPath, timeoutMs: LOCAL_OP_TIMEOUT_MS, onEvent }),
+          runGhDeviceLoginSubprocess({
+            host,
+            ghPath,
+            timeoutMs: AUTH_DEVICE_FLOW_TIMEOUT_MS,
+            onEvent,
+          }),
       });
     },
     {
@@ -12768,6 +12947,68 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       method: 'POST',
       preBodyGate: (req, res) =>
         checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AUTH_GH_LOGIN }),
+    },
+  );
+
+  /**
+   * POST /api/local-op/auth/cancel
+   *
+   * Body: { channel?: 'login' | 'gh-login' }
+   * Explicit, user-initiated stop for a streaming sign-in — the intent signal
+   * that a transport disconnect deliberately is not (see `streamAuthFlow`).
+   * SIGTERMs the device-flow child so it can't land a token the user backed out
+   * of, and frees the concurrency slot synchronously so a reopen right behind
+   * the cancel isn't 429'd during the SIGTERM-to-exit window.
+   *
+   * Idempotent by construction: the client fires this on modal close without
+   * knowing whether a flow is still running, so "nothing in flight" is a 200,
+   * not an error.
+   *
+   * Deliberately has no `localOpGuard` slot of its own, unlike its sibling
+   * local-op endpoints. Those guard a subprocess spawn; this one spawns
+   * nothing and does no IO, so the body runs to completion with no `await` in
+   * it — two concurrent cancels cannot interleave, and the second reads a
+   * null slot and no-ops. A guard here would buy nothing and add a failure
+   * mode that inverts the endpoint's purpose: a 429'd cancel leaves the flow
+   * running, which is precisely what the caller asked to stop.
+   */
+  const HANDLE_LOCAL_OP_AUTH_CANCEL = 'local-op-auth-cancel';
+  const handleLocalOpAuthCancel = withValidation(
+    LocalOpAuthCancelRequestSchema,
+    // Wrapped so an unexpected throw still lands as a typed 500. The body
+    // itself has no failure mode — hence no `errorResponse` of its own.
+    catchErrors(
+      async (_req, res, body) => {
+        const target =
+          body.channel === 'gh-login'
+            ? { inFlight: authGhLoginInFlight, guardKey: LOCAL_OP_AUTH_GH_LOGIN_KEY }
+            : { inFlight: authLoginInFlight, guardKey: LOCAL_OP_AUTH_LOGIN_KEY };
+        const flow = target.inFlight.current;
+        if (flow) {
+          flow.cancel();
+          // Free the slot rather than waiting for the SIGTERM'd child to exit,
+          // so a reopen right behind the cancel isn't 429'd during that window.
+          // Ownership-guarded by construction: we clear the same reference we
+          // just read, and the cancelled flow's own `done.finally` re-checks
+          // identity, so its late exit can't free a successor's slot.
+          target.inFlight.current = null;
+          localOpGuard.release(target.guardKey);
+        }
+        successResponse(
+          res,
+          200,
+          LocalOpAuthEmptySuccessSchema,
+          {},
+          { handler: HANDLE_LOCAL_OP_AUTH_CANCEL },
+        );
+      },
+      { handler: HANDLE_LOCAL_OP_AUTH_CANCEL, title: 'Failed to cancel the sign-in.' },
+    ),
+    {
+      handler: HANDLE_LOCAL_OP_AUTH_CANCEL,
+      method: 'POST',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AUTH_CANCEL }),
     },
   );
 
@@ -13543,6 +13784,98 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     // backward-compatible.
     const source = url.searchParams.get('source');
     const pg = simpleGit({ baseDir: projectDir, timeout: { block: 15_000 } });
+
+    // Working-tree-variant conflicts (pull-only B1) have no git index stages:
+    // the branch already fast-forwarded to origin tip and the overlay rides
+    // uncommitted on top. Serve `theirs`/`base` from the pinned tip/base blobs
+    // and `ours` from the live doc (or disk when unloaded). The merge-native
+    // stage path below is untouched for git-merge conflicts.
+    const wtEntry = engine
+      ?.getConflicts()
+      .find((c) => c.file === file && c.variant === 'working-tree');
+    if (wtEntry) {
+      try {
+        // A pinned SHA that fails to read is an unexpected failure (the blob was
+        // reachable when the engine pinned it), NOT an absent blob. Returning ''
+        // would misread it downstream as origin-deleted (`kind: 'modify-delete'`)
+        // and steer the user into a `delete` resolution that removes their own
+        // doc. Discriminate: `undefined` sha = genuinely no pinned blob (the
+        // empty side of a delete/modify); a read failure on a present sha logs
+        // and rethrows to the outer catch → 500, matching the merge-native
+        // `showStage` discipline below.
+        const readBlob = async (sha: string | undefined): Promise<string> => {
+          if (!sha) return '';
+          try {
+            return await pg.raw(['cat-file', 'blob', sha]);
+          } catch (err) {
+            console.warn(
+              JSON.stringify({
+                event: 'conflict-content-readblob-failed',
+                file,
+                detail: err instanceof Error ? err.message : String(err),
+                handler: 'sync-conflict-content',
+              }),
+            );
+            throw err;
+          }
+        };
+        const theirs = await readBlob(wtEntry.theirsSha);
+        const base = await readBlob(wtEntry.baseSha);
+        const docName = stripDocExtension(file);
+        const loaded = hocuspocus.documents.get(docName);
+        let ours = '';
+        let oursPresent = false;
+        let lifecycleStatus: string | null = null;
+        if (loaded) {
+          const rawStatus = loaded.getMap('lifecycle').get('status');
+          lifecycleStatus =
+            typeof rawStatus === 'string' && rawStatus.length > 0 ? rawStatus : null;
+          const ytextOurs = serializeDoc ? serializeDoc(docName) : null;
+          if (ytextOurs !== null) {
+            ours = ytextOurs;
+            oursPresent = true;
+          }
+        } else {
+          // Unloaded doc: the overlay is on disk (absent for a delete overlay).
+          // Realpath-contain the read first — `file` is an origin-controlled
+          // tracked path that could be a symlink escaping the working tree,
+          // disclosing a foreign file. A SymlinkEscapeError propagates to the
+          // outer catch → 500; the inner catch still handles the benign ENOENT
+          // of a genuine delete overlay.
+          assertRealpathWithinDir(join(projectDir, file), projectDir);
+          try {
+            ours = readFileSync(join(projectDir, file), 'utf-8');
+            oursPresent = true;
+          } catch {
+            oursPresent = false;
+          }
+        }
+        // A locally-deleted file the tip modified is a delete/modify shape;
+        // otherwise both sides hold content.
+        const kind: 'both-modified' | 'delete-modify' | 'modify-delete' = !oursPresent
+          ? 'delete-modify'
+          : theirs.length === 0
+            ? 'modify-delete'
+            : 'both-modified';
+        successResponse(
+          res,
+          200,
+          SyncConflictContentSuccessSchema,
+          { file, base, ours, theirs, kind, lifecycleStatus },
+          { handler: 'sync-conflict-content' },
+        );
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to read conflict content.',
+          { handler: 'sync-conflict-content', cause: e },
+        );
+      }
+      return;
+    }
+
     // git stages: 1 = base, 2 = ours, 3 = theirs. Any may be missing for
     // delete/edit or add/add conflicts. Return a discriminated shape so the
     // caller can derive `kind` from stage presence — empty-string content is
@@ -18733,6 +19066,21 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   // click) avoids a lost update. Mirrors the other local-op handlers.
   const LOCAL_OP_EMBEDDINGS_GUARD = '/api/local-op/embeddings';
 
+  // The (project, endpoint) a key op targets — derived ENTIRELY from the
+  // server's own identity + persisted config, NEVER a request body field. The
+  // route is loopback-gated but unauthenticated; letting the body name the
+  // project or endpoint would be a cross-project key-planting primitive. The
+  // body carries key bytes only. The project is this server's project; the
+  // endpoint is whatever the project currently has configured — so the key
+  // binds to exactly the endpoint the next embed will use.
+  function embeddingsKeyScope(): { projectDir: string; baseUrl: string } {
+    const cfg = readSemanticProviderConfig?.();
+    return {
+      projectDir: projectDir ?? contentDir,
+      baseUrl: cfg?.baseUrl ?? DEFAULT_EMBEDDINGS_BASE_URL,
+    };
+  }
+
   const handleLocalOpEmbeddingsSetKey = withValidation(
     LocalOpEmbeddingsSetKeyRequestSchema,
     async (_req, res, body) => {
@@ -18747,7 +19095,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         return;
       }
       try {
-        await new FileEmbeddingsBackend(embeddingsSecretsFile).set(body.key);
+        const { projectDir: pd, baseUrl } = embeddingsKeyScope();
+        await new FileEmbeddingsBackend(embeddingsSecretsFile).setForProject(pd, baseUrl, body.key);
+        // Re-warm on the next search so the new key takes effect without a
+        // restart (the key isn't part of the provider fingerprint).
+        semanticSearch?.reloadCredential();
         successResponse(
           res,
           200,
@@ -18789,7 +19141,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         return;
       }
       try {
-        await clearEmbeddingsKeyFromAllBackends(embeddingsSecretsFile);
+        const { projectDir: pd, baseUrl } = embeddingsKeyScope();
+        await new FileEmbeddingsBackend(embeddingsSecretsFile).clearForProject(pd, baseUrl);
+        semanticSearch?.reloadCredential(); // re-warm so the cleared key takes effect now
         successResponse(
           res,
           200,
@@ -18814,6 +19168,98 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       method: 'POST',
       preBodyGate: (req, res) =>
         checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_EMBEDDINGS_CLEAR_KEY }),
+    },
+  );
+
+  /**
+   * POST /api/local-op/embeddings/test — one live probe embed against the SAVED
+   * endpoint + the resolved key.
+   *
+   * The on-demand answer to "is my custom endpoint actually working". Every
+   * embeddings failure degrades quietly to keyword search, so without this a
+   * wrong URL / key / model looks exactly like a working setup that hasn't
+   * indexed yet. Sends one fixed, content-free probe string — never a page and
+   * never a query — and reports either the detected vector length or a
+   * classified reason.
+   *
+   * Deliberately takes NO endpoint from the request body: it probes what is
+   * persisted, so the route can never be pointed at an arbitrary host, and the
+   * echoed `endpoint`/`model` let the UI notice its own unsaved edit rather
+   * than misread a stale result.
+   */
+  const HANDLE_LOCAL_OP_EMBEDDINGS_TEST = 'local-op-embeddings-test';
+  // Its own guard slot: a probe waits on a remote provider, so sharing the
+  // set/clear mutex would let one slow test block the key controls. Serializing
+  // probes against each other still stops a double-click from double-calling.
+  const LOCAL_OP_EMBEDDINGS_TEST_GUARD = '/api/local-op/embeddings/test';
+
+  const handleLocalOpEmbeddingsTest = withValidation(
+    EmptyRequestSchema,
+    async (_req, res) => {
+      if (!localOpGuard.tryAcquire(LOCAL_OP_EMBEDDINGS_TEST_GUARD)) {
+        errorResponse(
+          res,
+          429,
+          'urn:ok:error:concurrent-operation',
+          'A connection test is already in progress.',
+          { handler: HANDLE_LOCAL_OP_EMBEDDINGS_TEST, extraHeaders: { 'Retry-After': '5' } },
+        );
+        return;
+      }
+      try {
+        // Absent reader = no project-local layer plumbed, which resolves to the
+        // same defaults `readProjectLocalSemanticConfig` would return.
+        const config = readSemanticProviderConfig?.() ?? {
+          baseUrl: DEFAULT_EMBEDDINGS_BASE_URL,
+          model: DEFAULT_EMBEDDINGS_MODEL,
+          dimensions: undefined,
+        };
+        // THE shared resolver, so a passing test guarantees the real embed path
+        // resolves the same credential to the same endpoint (project key → env
+        // on the default host → keyless loopback).
+        const cred = await resolveEmbeddingsCredential(
+          new FileEmbeddingsBackend(embeddingsSecretsFile),
+          projectDir ?? contentDir,
+          config.baseUrl,
+        );
+        const echo = { endpoint: config.baseUrl, model: config.model };
+        // Typed here rather than inline: `successResponse` takes `unknown`, so
+        // this annotation is what statically pins the embedder's classification
+        // to the wire enum — a new `EmbeddingErrorReason` fails to compile
+        // instead of failing schema validation at the wire boundary.
+        const probe =
+          cred.apiKey || cred.keyless
+            ? await probeEmbeddingEndpoint({
+                baseUrl: config.baseUrl,
+                model: config.model,
+                dimensions: config.dimensions,
+                apiKey: cred.apiKey ?? undefined,
+              })
+            : ({ ok: false, reason: 'no_key', status: undefined } as const);
+        const payload: LocalOpEmbeddingsTestResponse = probe.ok
+          ? { ok: true, ...echo, dimensions: probe.dimensions }
+          : { ok: false, ...echo, reason: probe.reason, status: probe.status };
+        successResponse(res, 200, LocalOpEmbeddingsTestResponseSchema, payload, {
+          handler: HANDLE_LOCAL_OP_EMBEDDINGS_TEST,
+          extraHeaders: { 'Cache-Control': 'no-store' },
+        });
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to test the embeddings endpoint.',
+          { handler: HANDLE_LOCAL_OP_EMBEDDINGS_TEST, cause: e },
+        );
+      } finally {
+        localOpGuard.release(LOCAL_OP_EMBEDDINGS_TEST_GUARD);
+      }
+    },
+    {
+      handler: HANDLE_LOCAL_OP_EMBEDDINGS_TEST,
+      method: 'POST',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_EMBEDDINGS_TEST }),
     },
   );
 
@@ -18845,18 +19291,27 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           capable = status.capable;
           embedded = status.embeddedCount;
         }
-        // Key presence is a free, prompt-free read of the 0600 secrets file (+ env
-        // override). The key itself is never returned — only `keyHint`, a redacted
-        // last-4 tail (never the full key), so the UI can show WHICH key is set.
-        // Lets the UI show "no key" the instant the toggle flips, without a warm.
-        const storedKey = await new FileEmbeddingsBackend(embeddingsSecretsFile).get();
-        const envKey = process.env[EMBEDDINGS_API_KEY_ENV] ?? null;
-        const keySource: 'file' | 'env' | null = storedKey ? 'file' : envKey ? 'env' : null;
-        const keyPresent = keySource !== null;
+        // Resolve the SAME credential the embedder would, for this project +
+        // its configured endpoint, so status can't disagree with the real path.
+        // A free, prompt-free file/env read — no warm, no egress. The key itself
+        // is never returned; only `keyHint` (redacted last-4) so the UI can show
+        // WHICH key is set. `keyNotRequired` marks a loopback endpoint that needs
+        // no key at all, so the UI doesn't nag a keyless Ollama/LM Studio user.
+        const statusConfig = readSemanticProviderConfig?.();
+        const statusBaseUrl = statusConfig?.baseUrl ?? DEFAULT_EMBEDDINGS_BASE_URL;
+        const cred = await resolveEmbeddingsCredential(
+          new FileEmbeddingsBackend(embeddingsSecretsFile),
+          projectDir ?? contentDir,
+          statusBaseUrl,
+        );
+        const keyPresent = cred.apiKey !== null;
+        const keyNotRequired = !keyPresent && cred.keyless;
+        const keySource: 'project' | 'file' | 'env' | null = keyPresent
+          ? (cred.source as 'project' | 'file' | 'env')
+          : null;
         // Last 4 chars only, and only when the key is long enough that those 4 are
         // a negligible fraction (real provider keys are 40+ chars); never the key.
-        const resolvedKey = storedKey ?? envKey;
-        const keyHint = resolvedKey && resolvedKey.length >= 8 ? resolvedKey.slice(-4) : null;
+        const keyHint = cred.apiKey && cred.apiKey.length >= 8 ? cred.apiKey.slice(-4) : null;
         // Total embeddable pages = the same filtered set the search corpus uses.
         let total = 0;
         for (const [docName] of getFileIndex()) {
@@ -18868,7 +19323,17 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           res,
           200,
           SemanticIndexStatusSchema,
-          { enabled, keyPresent, keySource, keyHint, ready, capable, embedded, total },
+          {
+            enabled,
+            keyPresent,
+            keyNotRequired,
+            keySource,
+            keyHint,
+            ready,
+            capable,
+            embedded,
+            total,
+          },
           { handler: 'semantic-status', extraHeaders: { 'Cache-Control': 'no-store' } },
         );
       } catch (e) {
@@ -18886,11 +19351,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   // `.markdownlint.*` rules through the markdownlint-config endpoint.
 
   // Content-rule violations on a post-write document, for the agent write/edit
-  // advisory channel. Every enabled lint source rides along — markdownlint
-  // included — so agents see the same violations the editor GUI surfaces.
-  // Whole-doc semantics: pre-existing violations reappear on every write to
-  // the doc, which is why the cap matters. Capped; advisory only — never
-  // gates the write. Empty when linting is disabled.
+  // advisory channel — the full validation plane, not just lint: every enabled
+  // lint source PLUS broken internal links, so an agent that writes a dead
+  // wiki-link hears about it on the write response without a separate `audit`
+  // round-trip. Whole-doc semantics: pre-existing violations reappear on every
+  // write to the doc, which is why the cap matters. Capped; advisory only —
+  // never gates the write. Empty when linting is disabled and links are off.
   const LINT_VIOLATION_CAP = 10;
   async function computeLintViolations(
     source: string,
@@ -18898,15 +19364,50 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   ): Promise<LintViolationWarning[]> {
     const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
     // Advisory-only means advisory-only: by the time this runs the write has
-    // already committed (CRDT + disk + snapshot), so a lint engine crash must
+    // already committed (CRDT + disk + snapshot), so a validation crash must
     // degrade to zero advisories — never bubble into the handler's catch and
     // turn a committed write into a 500 the agent would retry.
     try {
       const effective = resolveEffectiveLinterConfig(contentDir, base, {
         docName,
+        projectDir: projectDir ?? contentDir,
         onProblem: (problem) => log.warn({ problem, docName }, '[lint] native config problem'),
       });
-      return (await lintDocument(source, effective, docName))
+      const lintFindings = await lintDocument(source, effective, docName);
+
+      // Links plane, via the SAME audit validator the Problems panel and the
+      // `audit` tool consume (one canonical predicate, honoring the project's
+      // `validation.links` posture). The live-derived index updates on a
+      // 100 ms debounce AFTER a change, so at this point it does not yet see
+      // the write being advised — refresh this one doc synchronously first
+      // (idempotent: the debounced pass re-applies the same bytes).
+      let linkFindings: ValidationDiagnostic[] = [];
+      const linksSetting = getLinksValidationSetting?.() ?? DEFAULT_LINKS_VALIDATION;
+      if (backlinkIndex && linksSetting !== 'off' && !isLinkIndexExcludedDoc(docName)) {
+        backlinkIndex.updateDocumentFromMarkdown(docName, source);
+        const linksValidator = createProjectValidators({
+          projectDir: projectDir ?? contentDir,
+          contentDir,
+          baseConfig: base,
+          backlinkIndex,
+          linksValidation: linksSetting,
+          admittedDocNames: collectAdmittedDocNames,
+          docFilePathFor: (d) => resolveDocFilePath(contentDir, d),
+        }).find((validator) => validator.id === 'links');
+        if (linksValidator) {
+          const run = await linksValidator.run({
+            targetPath: resolveDocFilePath(contentDir, docName) ?? `${docName}.md`,
+          });
+          linkFindings = run.files.flatMap((file) => file.diagnostics);
+        }
+      }
+
+      return [...lintFindings, ...linkFindings]
+        .sort(
+          (a, b) =>
+            a.range.start.line - b.range.start.line ||
+            a.range.start.character - b.range.start.character,
+        )
         .slice(0, LINT_VIOLATION_CAP)
         .map((d) => ({
           kind: 'lint-violation' as const,
@@ -18917,14 +19418,26 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           // Advisory display units are 1-based; the diagnostic range is 0-based LSP.
           line: d.range.start.line + 1,
           column: d.range.start.character + 1,
+          ...('linkTarget' in d && d.linkTarget !== undefined ? { linkTarget: d.linkTarget } : {}),
         }));
     } catch (err) {
       log.warn(
         { err, docName },
-        '[lint] advisory lint pass failed post-write; omitting advisories',
+        '[lint] advisory validation pass failed post-write; omitting advisories',
       );
       return [];
     }
+  }
+
+  // Zero-match appliesTo detection needs the project's doc list — a content
+  // walk — so only the doc-independent lint-config responses (the surfaces the
+  // Settings frontmatter panel reads) pay for it; per-doc `?doc=` fetches and
+  // the per-write lint path never do.
+  function unmatchedGlobProblems(effective: LinterConfig): string[] {
+    const slice = effective.plugins.frontmatter;
+    if (!slice.enabled || slice.schemas.length === 0) return [];
+    const docFiles = collectDocFiles({ projectDir: projectDir ?? contentDir, contentDir });
+    return unmatchedAppliesToProblems(slice.schemas, docFiles);
   }
 
   const handleGetLintConfig = withValidation(
@@ -18947,7 +19460,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         const native = resolveNativeConfigForDoc(contentDir, docName ?? undefined, (problem) =>
           configProblems.push(problem),
         );
-        const effective = composeEffectiveLinterConfig(base, native);
+        const effective = composeFrontmatterSchemasConfig(
+          projectDir ?? contentDir,
+          composeEffectiveLinterConfig(base, native),
+          (problem) => configProblems.push(problem),
+        );
+        if (docName === null) configProblems.push(...unmatchedGlobProblems(effective));
         successResponse(
           res,
           200,
@@ -19004,13 +19522,23 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       }
       // Past this point the rule IS on disk — a re-read failure must not
       // report the write itself as failed.
+      // Converge every other window on the new rules. Without this a rule
+      // toggle in one window leaves the rest linting against a stale config
+      // until they happen to refetch, which is what the frontmatter sibling
+      // below already avoids.
+      signalChannel?.('lint-config');
       try {
         const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
         const configProblems: string[] = [];
         const native = resolveNativeConfigForDoc(contentDir, undefined, (problem) =>
           configProblems.push(problem),
         );
-        const effective = composeEffectiveLinterConfig(base, native);
+        const effective = composeFrontmatterSchemasConfig(
+          projectDir ?? contentDir,
+          composeEffectiveLinterConfig(base, native),
+          (problem) => configProblems.push(problem),
+        );
+        configProblems.push(...unmatchedGlobProblems(effective));
         successResponse(
           res,
           200,
@@ -19029,6 +19557,158 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       }
     },
     { handler: 'markdownlint-config', method: 'POST' },
+  );
+
+  // Edit one field of a frontmatter schema file (non-destructive merge via
+  // applyFieldConstraint; create-on-first-edit). Responds with the recomputed
+  // effective config, mirroring the markdownlint write.
+  const handleWriteFrontmatterSchema = withValidation(
+    FrontmatterSchemaWriteRequestSchema,
+    async (_req, res, body) => {
+      let writeResult: WriteFrontmatterSchemaResult;
+      try {
+        // Five shapes over one route (schema-refined): delete → remove the
+        // tool-managed file; field + removeField → drop the field; field +
+        // renameTo → rename it; field + constraint → per-field edit;
+        // otherwise create-empty (scaffold the skeleton so a freshly-picked
+        // new schema file exists).
+        const root = resolve(projectDir ?? contentDir);
+        const parentPath = body.parentPath ?? [];
+        writeResult = body.delete
+          ? deleteFrontmatterSchemaFile(root, body.file)
+          : body.field !== undefined && body.removeField
+            ? removeFrontmatterSchemaField(root, body.file, body.field, parentPath)
+            : body.field !== undefined && body.renameTo !== undefined
+              ? renameFrontmatterSchemaField(root, body.file, body.field, body.renameTo, parentPath)
+              : body.field !== undefined && body.constraint !== undefined
+                ? writeFrontmatterSchemaField(
+                    root,
+                    body.file,
+                    body.field,
+                    body.constraint,
+                    parentPath,
+                  )
+                : createEmptyFrontmatterSchemaFile(root, body.file);
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to write the frontmatter schema.',
+          { handler: 'frontmatter-schema', cause: e },
+        );
+        return;
+      }
+      if (writeResult.action === 'refused') {
+        errorResponse(
+          res,
+          409,
+          'urn:ok:error:config-not-writable',
+          `The frontmatter schema (${writeResult.file}) was not written: ${writeResult.reason}.`,
+          { handler: 'frontmatter-schema' },
+        );
+        return;
+      }
+      // `.ok/` is outside the content file-watcher, so schema-file mutations
+      // never reach the tree or other clients through watcher events. `files`
+      // keeps show-OK trees live on create/delete; `lint-config` converges
+      // every other window's effective config (this response only reaches the
+      // requesting client).
+      if (writeResult.action === 'created' || writeResult.action === 'deleted') {
+        signalChannel?.('files');
+      }
+      signalChannel?.('lint-config');
+      try {
+        const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
+        const configProblems: string[] = [];
+        const native = resolveNativeConfigForDoc(contentDir, undefined, (problem) =>
+          configProblems.push(problem),
+        );
+        const effective = composeFrontmatterSchemasConfig(
+          projectDir ?? contentDir,
+          composeEffectiveLinterConfig(base, native),
+          (problem) => configProblems.push(problem),
+        );
+        configProblems.push(...unmatchedGlobProblems(effective));
+        successResponse(
+          res,
+          200,
+          LintConfigResponseSchema,
+          { effective, configFile: native?.file ?? null, configProblems },
+          { handler: 'frontmatter-schema' },
+        );
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'The schema was saved, but the effective config could not be re-read.',
+          { handler: 'frontmatter-schema', cause: e },
+        );
+      }
+    },
+    { handler: 'frontmatter-schema', method: 'POST' },
+  );
+
+  // Enumerate the project's `.ok/schemas/*.json` files (flat, top-level only)
+  // as project-root-relative paths for the mapping picker. A missing dir is
+  // an empty list, not an error; bounded so a pathological schemas dir can't
+  // produce an unbounded response.
+  const handleFrontmatterSchemasList = withValidation(
+    EmptyRequestSchema,
+    async (_req, res) => {
+      try {
+        const root = resolve(projectDir ?? contentDir);
+        // Two discovery sources: the flat tool-created `.ok/schemas/` scan,
+        // plus a filtered content walk for the ecosystem `*.schema.json`
+        // convention anywhere in the project. The walk deliberately does NOT
+        // re-admit `.ok`: the scan above already covers `.ok/schemas/`, and
+        // lifting ContentFilter's always-skip floor here would let this
+        // surface enumerate the rest of OK's internal state to find schemas.
+        const { schemas, truncated } = listProjectSchemaFiles(root);
+        const found = new Set(schemas);
+        let walkTruncated = false;
+        if (contentFilter !== undefined) {
+          const walk = streamShowAllEntries({
+            contentDir,
+            contentFilter,
+            dirFilter: null,
+            maxEntries: 20_000,
+          });
+          let walkResult = await walk.next();
+          while (!walkResult.done) {
+            const entry = walkResult.value;
+            const entryPath = entry.kind === 'asset' ? entry.path : undefined;
+            if (entryPath !== undefined && isFrontmatterSchemaAsset(entryPath)) {
+              const projectRel = relative(root, resolve(contentDir, entryPath));
+              if (!projectRel.startsWith('..') && !isAbsolute(projectRel)) found.add(projectRel);
+            }
+            walkResult = await walk.next();
+          }
+          walkTruncated = walkResult.value.truncated;
+        }
+        const merged = [...found].sort((a, b) => a.localeCompare(b));
+        successResponse(
+          res,
+          200,
+          FrontmatterSchemasListSuccessSchema,
+          {
+            schemas: merged.slice(0, SCHEMA_LIST_CAP),
+            truncated: truncated || walkTruncated || merged.length > SCHEMA_LIST_CAP,
+          },
+          { handler: 'frontmatter-schemas-list' },
+        );
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to list frontmatter schemas.',
+          { handler: 'frontmatter-schemas-list', cause: e },
+        );
+      }
+    },
+    { handler: 'frontmatter-schemas-list', method: 'GET', skipBodyParse: true },
   );
 
   /**
@@ -19065,14 +19745,22 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           return;
         }
         const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
+        const configWarnings: string[] = [];
         const result = await lintDoc({
           projectDir: projectDir ?? contentDir,
           contentDir,
           baseConfig,
           docRelPath,
+          onConfigProblem: (problem) => configWarnings.push(problem),
           liveSourceFor: liveLintSourceFor,
         });
-        successResponse(res, 200, LintDocResultSchema, result, { handler: 'lint' });
+        successResponse(
+          res,
+          200,
+          LintDocResultSchema,
+          configWarnings.length > 0 ? { ...result, warnings: configWarnings } : result,
+          { handler: 'lint' },
+        );
       } catch (e) {
         if (e instanceof SymlinkEscapeError) {
           errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
@@ -19122,6 +19810,66 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       }
     },
     { handler: 'lint-audit', method: 'GET', skipBodyParse: true },
+  );
+
+  // Unified validation audit: every registered project validator (markdownlint
+  // walk + backlink-index dead-link read) merged into one source-tagged plane.
+  // Additive alongside /api/lint/audit and /api/dead-links, which keep their
+  // single-validator contracts.
+  const handleAudit = withValidation(
+    EmptyRequestSchema,
+    async (req, res) => {
+      try {
+        const url = new URL(req.url ?? '', 'http://localhost');
+        const rawTarget = url.searchParams.get('path');
+        let target = rawTarget === null || rawTarget === '' ? undefined : rawTarget;
+        // Absolute paths and traversal must not reach the validators: the
+        // lint walk reads file bytes under this scope, so an unchecked path
+        // is an arbitrary-directory read for any connected caller.
+        if (target !== undefined && !isValidRelativeContentPath(target)) {
+          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid path.', {
+            handler: 'audit',
+          });
+          return;
+        }
+        // `doc` scopes by docName (extension-less). The client freshness path
+        // knows docNames from disk-ack frames, never file extensions, so the
+        // extension resolution has to happen here. A doc indexed from a live
+        // CRDT session may not be on disk yet — fall back to the default
+        // extension so the links validator can still scope to it (mirrors the
+        // links validator's own fallback).
+        const rawDoc = url.searchParams.get('doc');
+        const docParam = rawDoc === null || rawDoc === '' ? undefined : rawDoc;
+        if (docParam !== undefined) {
+          if (target !== undefined || !isValidRelativeContentPath(docParam)) {
+            errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid doc.', {
+              handler: 'audit',
+            });
+            return;
+          }
+          target = resolveDocFilePath(contentDir, docParam) ?? `${docParam}.md`;
+        }
+        const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
+        const validators = createProjectValidators({
+          projectDir: projectDir ?? contentDir,
+          contentDir,
+          baseConfig,
+          liveSourceFor: liveLintSourceFor,
+          backlinkIndex: backlinkIndex ?? null,
+          linksValidation: getLinksValidationSetting?.(),
+          admittedDocNames: collectAdmittedDocNames,
+          docFilePathFor: (docName) => resolveDocFilePath(contentDir, docName),
+        });
+        const result = await runValidationAudit(validators, { targetPath: target });
+        successResponse(res, 200, ValidationAuditResponseSchema, result, { handler: 'audit' });
+      } catch (e) {
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to audit project.', {
+          handler: 'audit',
+          cause: e,
+        });
+      }
+    },
+    { handler: 'audit', method: 'GET', skipBodyParse: true },
   );
 
   const handleLintFix = withValidation(
@@ -19516,9 +20264,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/semantic-status': handleSemanticStatus,
     '/api/lint/config': handleGetLintConfig,
     '/api/lint/markdownlint-config': handleWriteMarkdownlintRule,
+    '/api/lint/frontmatter-schema': handleWriteFrontmatterSchema,
+    '/api/lint/frontmatter-schemas': handleFrontmatterSchemasList,
     '/api/lint': handleLintDoc,
     '/api/lint/audit': handleLintAudit,
     '/api/lint/fix': handleLintFix,
+    '/api/audit': handleAudit,
     '/api/suggest-links': handleSuggestLinks,
     '/api/page-headings': handlePageHeadings,
     '/api/create-page': handleCreatePage,
@@ -19568,11 +20319,13 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     '/api/local-op/auth/status': handleLocalOpAuthStatus,
     '/api/local-op/auth/pat': handleLocalOpAuthPat,
     '/api/local-op/auth/gh-login': handleLocalOpAuthGhLogin,
+    '/api/local-op/auth/cancel': handleLocalOpAuthCancel,
     '/api/local-op/auth/repos': handleLocalOpAuthRepos,
     '/api/local-op/auth/signout': handleLocalOpAuthSignout,
     '/api/local-op/auth/set-identity': handleLocalOpAuthSetIdentity,
     '/api/local-op/embeddings/set-key': handleLocalOpEmbeddingsSetKey,
     '/api/local-op/embeddings/clear-key': handleLocalOpEmbeddingsClearKey,
+    '/api/local-op/embeddings/test': handleLocalOpEmbeddingsTest,
     '/api/installed-agents': handleInstalledAgentsRoute,
     '/api/spawn-cursor': handleSpawnCursorRoute,
     '/api/handoff': handleHandoffDispatchRoute,
@@ -19600,6 +20353,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const MUTATING_ROUTES: ReadonlySet<string> = new Set([
     '/api/upload',
     '/api/lint/markdownlint-config',
+    '/api/lint/frontmatter-schema',
     '/api/lint/fix',
     '/api/create-page',
     '/api/create-folder',

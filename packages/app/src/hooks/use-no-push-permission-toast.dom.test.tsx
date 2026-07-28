@@ -10,9 +10,10 @@
  *
  * Substrate: jsdom via `bun run test:dom`.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { useState } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 // Spy on the toast surface. Pre-import-mock — sets up before the hook
 // module evaluates its `import { toast } from 'sonner'`.
@@ -20,7 +21,7 @@ const toastInfoCalls: string[] = [];
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: {
     info: (msg: string) => {
       toastInfoCalls.push(msg);
@@ -35,7 +36,7 @@ mock.module('sonner', () => ({
 // provide. Stub the macro so `t\`...\`` evaluates to the literal English
 // (the macro normally compiles the template into a `t(...)` call wrapping
 // the source string + a hash; the stub keeps things readable in assertions).
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   useLingui: () => ({
     t: (strings: TemplateStringsArray) => strings.join(''),

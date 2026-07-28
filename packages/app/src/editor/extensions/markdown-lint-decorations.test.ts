@@ -6,12 +6,12 @@
  * source the diagnostics were linted against).
  */
 
-import { describe, expect, test } from 'bun:test';
 import {
   sharedExtensions as coreExtensions,
   type LintDiagnostic,
   MarkdownManager,
 } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import {
   blockIndexForLine,
   computeSourceBlockSpans,

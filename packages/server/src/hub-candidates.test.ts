@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { findHubCandidates } from './hub-candidates.ts';
 
 function makeIndex(docNames: string[]): ReadonlyMap<string, unknown> {

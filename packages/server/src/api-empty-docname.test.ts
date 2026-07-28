@@ -8,15 +8,16 @@
  * mutating handler that read the `test-doc` fallback now answers 400 and
  * creates no `test-doc` session.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { Hocuspocus } from '@hocuspocus/server';
+import { describe, expect, test } from 'vitest';
 import { AgentSessionManager } from './agent-sessions.ts';
-import { createApiExtension } from './api-extension.ts';
+import { createApiExtension } from './api-extension.test-helper.ts';
 
 interface CapturedResponse {
   status: number;

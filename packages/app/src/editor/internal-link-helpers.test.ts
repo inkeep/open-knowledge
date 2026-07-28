@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   activateAssetLink,
   handleChipLinkClick,
@@ -19,15 +19,15 @@ describe('handleChipLinkClick', () => {
     return {
       metaKey: false,
       ctrlKey: false,
-      preventDefault: mock(() => {}),
+      preventDefault: vi.fn(() => {}),
       ...overrides,
     };
   }
 
   it('bare click: navigates same-tab, suppresses native nav, closes the panel', () => {
     const event = makeEvent();
-    const onNavigate = mock((_newTab: boolean) => true);
-    const onClose = mock(() => {});
+    const onNavigate = vi.fn((_newTab: boolean) => true);
+    const onClose = vi.fn(() => {});
 
     handleChipLinkClick(event, onNavigate, onClose);
 
@@ -39,8 +39,8 @@ describe('handleChipLinkClick', () => {
   it('Cmd/Ctrl click: navigates new-tab, suppresses native nav, leaves panel open', () => {
     for (const mod of [{ metaKey: true }, { ctrlKey: true }] as const) {
       const event = makeEvent(mod);
-      const onNavigate = mock((_newTab: boolean) => true);
-      const onClose = mock(() => {});
+      const onNavigate = vi.fn((_newTab: boolean) => true);
+      const onClose = vi.fn(() => {});
 
       handleChipLinkClick(event, onNavigate, onClose);
 
@@ -52,8 +52,8 @@ describe('handleChipLinkClick', () => {
 
   it('handler declines (non-navigable / unsafe scheme): native <a href> proceeds, panel stays open', () => {
     const event = makeEvent();
-    const onNavigate = mock((_newTab: boolean) => false);
-    const onClose = mock(() => {});
+    const onNavigate = vi.fn((_newTab: boolean) => false);
+    const onClose = vi.fn(() => {});
 
     handleChipLinkClick(event, onNavigate, onClose);
 
@@ -80,8 +80,8 @@ describe('activateAssetLink', () => {
   };
 
   it('bare click navigates to the asset preview and does NOT OS-delegate', () => {
-    const navigate = mock((_assetPath: string) => {});
-    const dispatch = mock(async () => {});
+    const navigate = vi.fn((_assetPath: string) => {});
+    const dispatch = vi.fn(async () => {});
 
     activateAssetLink({ ...params, newTab: false }, { navigate, dispatch });
 
@@ -91,8 +91,8 @@ describe('activateAssetLink', () => {
   });
 
   it('Cmd/Ctrl/middle-click OS-delegates (forceOsDelegation) and does NOT navigate', () => {
-    const navigate = mock((_assetPath: string) => {});
-    const dispatch = mock(async () => {});
+    const navigate = vi.fn((_assetPath: string) => {});
+    const dispatch = vi.fn(async () => {});
 
     activateAssetLink({ ...params, newTab: true }, { navigate, dispatch });
 
@@ -122,7 +122,7 @@ describe('activateAssetLink', () => {
   });
 
   it('bare click with no injected deps assigns the canonical asset hash via the default navigate', () => {
-    const assign = mock((_url: string) => {});
+    const assign = vi.fn((_url: string) => {});
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
       value: { location: { assign } },
@@ -163,8 +163,8 @@ describe('navigateToMarkdownTarget — external routing', () => {
   }
 
   it('desktop (bridge present): routes through okDesktop.shell.openExternal, NOT window.open', () => {
-    const openExternal = mock(async (_url: string) => {});
-    const openWindow = mock(() => null);
+    const openExternal = vi.fn(async (_url: string) => {});
+    const openWindow = vi.fn(() => null);
     stubWindow({ okDesktop: { shell: { openExternal } }, open: openWindow });
 
     navigateToMarkdownTarget({ kind: 'external', url: 'https://example.com/watch' });
@@ -175,7 +175,7 @@ describe('navigateToMarkdownTarget — external routing', () => {
   });
 
   it('web (no bridge): falls back to window.open with the new-tab + noopener features', () => {
-    const openWindow = mock(() => null);
+    const openWindow = vi.fn(() => null);
     stubWindow({ okDesktop: undefined, open: openWindow });
 
     navigateToMarkdownTarget({ kind: 'external', url: 'https://example.com/web' });
@@ -189,8 +189,8 @@ describe('navigateToMarkdownTarget — external routing', () => {
   });
 
   it('unsafe scheme is refused: neither the bridge nor window.open fires', () => {
-    const openExternal = mock(async (_url: string) => {});
-    const openWindow = mock(() => null);
+    const openExternal = vi.fn(async (_url: string) => {});
+    const openWindow = vi.fn(() => null);
     stubWindow({ okDesktop: { shell: { openExternal } }, open: openWindow });
 
     navigateToMarkdownTarget({ kind: 'external', url: 'javascript:alert(1)' });

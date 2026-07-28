@@ -6,10 +6,11 @@
  * union-typed `lines_above`/`lines_below` must fall back to the read-only
  * chip while its sibling `include_front_matter` stays editable.
  */
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+
 import { MARKDOWNLINT_RULE_CATALOG, type RuleOptionSpec } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { RULE_OPTION_WIDGET_OVERRIDES, RuleOptionField } from './rule-option-field';
 
 // Radix primitives reach for pointer-capture and scroll APIs the jsdom
@@ -46,7 +47,7 @@ afterEach(() => {
 
 describe('RuleOptionField — boolean', () => {
   test('renders a Switch seeded from the spec default and emits the flipped boolean', async () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     render(
       <RuleOptionField
         ruleId="MD022"
@@ -64,7 +65,7 @@ describe('RuleOptionField — boolean', () => {
   });
 
   test('a set value wins over the spec default and toggles back off', async () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     render(
       <RuleOptionField
         ruleId="MD022"
@@ -159,7 +160,7 @@ describe('RuleOptionField — unsupported fallback (MD022)', () => {
 
 describe('RuleOptionField — integer', () => {
   test('shows the spec default when unset and emits the typed number on blur', () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     render(
       <RuleOptionField
         ruleId="MD013"
@@ -177,7 +178,7 @@ describe('RuleOptionField — integer', () => {
   });
 
   test('a set value wins over the default and Enter commits', () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     render(
       <RuleOptionField
         ruleId="MD013"
@@ -195,7 +196,7 @@ describe('RuleOptionField — integer', () => {
 
   test('honors the schema minimum by clamping the committed value', () => {
     // MD013 line_length carries minimum 1 in the vendored schema.
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     render(
       <RuleOptionField
         ruleId="MD013"
@@ -213,7 +214,7 @@ describe('RuleOptionField — integer', () => {
   });
 
   test('an emptied input reverts to the committed value without emitting', () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     render(
       <RuleOptionField
         ruleId="MD013"
@@ -230,7 +231,7 @@ describe('RuleOptionField — integer', () => {
   });
 
   test('re-committing the unchanged value does not emit', () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     render(
       <RuleOptionField
         ruleId="MD013"
@@ -247,7 +248,7 @@ describe('RuleOptionField — integer', () => {
 
 describe('RuleOptionField — string', () => {
   test('shows the spec default when unset and emits the edited string on blur', () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     render(
       <RuleOptionField
         ruleId="MD001"
@@ -265,7 +266,7 @@ describe('RuleOptionField — string', () => {
   });
 
   test('an emptied string commits (a meaningful markdownlint value)', () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     render(
       <RuleOptionField
         ruleId="MD001"
@@ -283,7 +284,7 @@ describe('RuleOptionField — string', () => {
 
 describe('RuleOptionField — enum', () => {
   test('renders a Select showing the effective value and emits the chosen literal', async () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     render(
       <RuleOptionField
         ruleId="MD003"
@@ -328,7 +329,7 @@ describe('RuleOptionField — string-array', () => {
   test('renders existing entries as pills and commits grammar-free values verbatim', () => {
     // MD043 headings hold values like `## Summary` — spaces and a leading
     // `#` must survive (the frontmatter tag grammar would reject/mangle).
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     render(
       <RuleOptionField
         ruleId="MD043"
@@ -348,7 +349,7 @@ describe('RuleOptionField — string-array', () => {
   });
 
   test('removing a pill emits the shortened array', () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     render(
       <RuleOptionField
         ruleId="MD043"

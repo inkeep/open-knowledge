@@ -1,5 +1,5 @@
 /**
- * Empirical validation of the resilient chain (`CHAIN_V1`). Spawns the chain
+ * Empirical validation of the resilient chain (`CHAIN_V2`). Spawns the chain
  * via `/bin/sh -l -c` with controlled HOME / PATH / bundle-path fixtures and
  * asserts the documented branches fire (and only those branches fire).
  *
@@ -17,7 +17,7 @@
  *
  * Test suite is split in two:
  *
- *   1. **Grammar tests** (`CHAIN_V1 POSIX shell grammar`). Run on every
+ *   1. **Grammar tests** (`CHAIN_V2 POSIX shell grammar`). Run on every
  *      platform. POSIX sh semantics that are platform-independent: `[ -f ]`
  *      directory filter, `[ -x ]` non-executable filter, unmatched-glob
  *      handling, `exec`-replaces-shell exit propagation. These exercise the
@@ -25,19 +25,19 @@
  *      runner ships — `dash` on Linux CI, BSD `sh` on macOS — and catch a
  *      grammar regression that text-level assertions would miss.
  *
- *   2. **Persona tests** (`CHAIN_V1 macOS persona behavior`). Darwin only.
+ *   2. **Persona tests** (`CHAIN_V2 macOS persona behavior`). Darwin only.
  *      Depend on macOS `/etc/profile` → `path_helper` populating PATH with
  *      `/usr/local/bin` + `/opt/homebrew/bin` so a brew-installed Node
  *      surfaces on a login-shell PATH. Linux's `/etc/profile` doesn't run
  *      `path_helper`; the personas don't have Linux equivalents.
  */
 
-import { describe, expect, it } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CHAIN_V1 } from './editors.ts';
+import { describe, expect, it } from 'vitest';
+import { CHAIN_V2 } from './editors.ts';
 
 const SKIP_PERSONA = process.platform !== 'darwin';
 
@@ -102,7 +102,7 @@ function replaceOrThrow(input: string, search: string | RegExp, replacement: str
 
 function instrumentChain(opts: InstrumentOpts = {}): string {
   let chain = replaceOrThrow(
-    CHAIN_V1,
+    CHAIN_V2,
     'exec "$USER_BUNDLE" mcp',
     'echo "HIT:user-bundle:$USER_BUNDLE" && exit 0',
   );
@@ -167,7 +167,7 @@ interface RunOpts {
   home: string;
   /** Override PATH. Pass `null` to inherit. */
   path: string | null;
-  /** Inject a custom chain — defaults to instrumented `CHAIN_V1`. */
+  /** Inject a custom chain — defaults to instrumented `CHAIN_V2`. */
   chainOverride?: string;
 }
 
@@ -191,7 +191,7 @@ function setupTmp(label: string): string {
   return mkdtempSync(join(tmpdir(), `mcp-chain-${label}-`));
 }
 
-describe('CHAIN_V1 POSIX shell grammar (cross-platform)', () => {
+describe('CHAIN_V2 POSIX shell grammar (cross-platform)', () => {
   // Grammar-only tests — assert POSIX sh semantics that hold under both
   // BSD sh (macOS) and dash (Linux). Run unconditionally so CI catches
   // shell-grammar regressions on every push, not only when a dev runs
@@ -297,7 +297,7 @@ describe('CHAIN_V1 POSIX shell grammar (cross-platform)', () => {
       // Desktop installed under ~/Applications the user-local branch
       // would shadow this test.
       let chain = replaceOrThrow(
-        CHAIN_V1,
+        CHAIN_V2,
         'USER_BUNDLE="$HOME/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh"',
         `USER_BUNDLE="${join(tmpHome, 'no-such-user-bundle.sh')}"`,
       );
@@ -321,7 +321,7 @@ describe('CHAIN_V1 POSIX shell grammar (cross-platform)', () => {
   });
 });
 
-describe.skipIf(SKIP_PERSONA)('CHAIN_V1 macOS persona behavior (darwin only)', () => {
+describe.skipIf(SKIP_PERSONA)('CHAIN_V2 macOS persona behavior (darwin only)', () => {
   // Persona tests — depend on macOS `/etc/profile` → `path_helper`
   // populating PATH with `/usr/local/bin` + `/opt/homebrew/bin` on a
   // login shell, AND on a filesystem-fixture-seeded glob path being

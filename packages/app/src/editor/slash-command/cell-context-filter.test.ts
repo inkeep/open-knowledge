@@ -11,15 +11,16 @@
  * production code, not re-implementations.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { sharedExtensions as coreExtensions, MarkdownManager } from '@inkeep/open-knowledge-core';
 import { Editor, type JSONContent } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { CellInsertionGate } from '../extensions/cell-insertion-gate';
 import { SLASH_ITEM_SOURCES } from '../extensions/shared';
 import { buildSlashMenuItems } from '../extensions/slash-command';
 import { isSelectionInTableCell } from '../table-cell-context';
 import { installDomGlobals } from '../walk-currency-test-harness';
+import { applySlashCommandItem } from './apply-item';
 import { getComponentItems, getInlineComponentItems } from './component-items';
 import { getEmbedStarterItems } from './embed-starter-items';
 import { getSlashCommandItems, type SlashCommandItem } from './items';
@@ -206,12 +207,22 @@ describe('component item command with a cell caret no-ops via the gate', () => {
     return item;
   }
 
+  /**
+   * Run an item the way the slash extension does. The range is zero-width at
+   * the caret so the trigger-range delete is a no-op and the only document
+   * change under test is the item's own insert.
+   */
+  function runItem(editor: Editor, item: SlashCommandItem): void {
+    const { from } = editor.state.selection;
+    applySlashCommandItem({ editor, item, range: { from, to: from } });
+  }
+
   test('running the Callout command inside a cell leaves the doc unchanged', () => {
     const editor = mount(mdManager.parse(TABLE_MD) as JSONContent, true);
     editor.commands.setTextSelection(firstCellCaret(editor, 'tableCell'));
     const before = editor.state.doc;
 
-    calloutItem().command(editor);
+    runItem(editor, calloutItem());
 
     expect(editor.state.doc.eq(before)).toBe(true);
     expect(countJsxComponents(editor.state.doc)).toBe(0);
@@ -227,7 +238,7 @@ describe('component item command with a cell caret no-ops via the gate', () => {
     const originalRaf = globalThis.requestAnimationFrame;
     globalThis.requestAnimationFrame = (() => 0) as typeof globalThis.requestAnimationFrame;
     try {
-      calloutItem().command(editor);
+      runItem(editor, calloutItem());
       expect(countJsxComponents(editor.state.doc)).toBe(1);
     } finally {
       globalThis.requestAnimationFrame = originalRaf;

@@ -104,6 +104,11 @@ vi.doMock('@/components/LintConfigEditor', () => ({
     <div data-testid="lint-config-editor" data-asset-path={assetPath} />
   ),
 }));
+vi.doMock('@/components/SchemaConfigEditor', () => ({
+  SchemaConfigEditor: ({ assetPath }: { assetPath: string }) => (
+    <div data-testid="schema-config-editor" data-asset-path={assetPath} />
+  ),
+}));
 
 const { EditorArea } = await import('./EditorArea');
 
@@ -124,13 +129,15 @@ describe('EditorArea — markdownlint config dispatch', () => {
   beforeEach(() => cleanup());
   afterEach(() => cleanup());
 
-  test('routes a root .markdownlint.json to the config editor, not the asset preview', () => {
+  // The config editors are behind `React.lazy`, so the FIRST assertion against
+  // each one has to await the dynamic import; later tests in this file find the
+  // module already resolved and can query synchronously.
+  test('routes a root .markdownlint.json to the config editor, not the asset preview', async () => {
     docCtx = assetCtx('.markdownlint.json');
     renderEditorArea();
 
-    expect(screen.getByTestId('lint-config-editor').getAttribute('data-asset-path')).toBe(
-      '.markdownlint.json',
-    );
+    const editor = await screen.findByTestId('lint-config-editor');
+    expect(editor.getAttribute('data-asset-path')).toBe('.markdownlint.json');
     expect(screen.queryByTestId('asset-preview')).toBeNull();
   });
 
@@ -168,5 +175,37 @@ describe('EditorArea — markdownlint config dispatch', () => {
 
     expect(screen.getByTestId('asset-preview')).toBeDefined();
     expect(screen.queryByTestId('lint-config-editor')).toBeNull();
+  });
+
+  test('routes a tool-managed frontmatter schema to the schema editor', async () => {
+    docCtx = assetCtx('.ok/schemas/doc.schema.json');
+    renderEditorArea();
+
+    const editor = await screen.findByTestId('schema-config-editor');
+    expect(editor.getAttribute('data-asset-path')).toBe('.ok/schemas/doc.schema.json');
+    expect(screen.queryByTestId('asset-preview')).toBeNull();
+    expect(screen.queryByTestId('lint-config-editor')).toBeNull();
+  });
+
+  test('routes a *.schema.json anywhere in the project to the schema editor', () => {
+    docCtx = assetCtx('schemas/doc.schema.json');
+    renderEditorArea();
+    expect(screen.getByTestId('schema-config-editor').getAttribute('data-asset-path')).toBe(
+      'schemas/doc.schema.json',
+    );
+    expect(screen.queryByTestId('asset-preview')).toBeNull();
+  });
+
+  test('leaves a non-JSON file under .ok/schemas and unconventional json on the preview', () => {
+    docCtx = assetCtx('.ok/schemas/notes.md');
+    renderEditorArea();
+    expect(screen.getByTestId('asset-preview')).toBeDefined();
+    expect(screen.queryByTestId('schema-config-editor')).toBeNull();
+    cleanup();
+
+    docCtx = assetCtx('schemas/user-owned.json');
+    renderEditorArea();
+    expect(screen.getByTestId('asset-preview')).toBeDefined();
+    expect(screen.queryByTestId('schema-config-editor')).toBeNull();
   });
 });

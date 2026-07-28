@@ -10,7 +10,7 @@
  *     surfaced as ok-false with diagnostic reason codes.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import {
   type ElectronSkillBridge,
   electronSkillInstaller,
@@ -20,7 +20,7 @@ import {
 describe('electronSkillInstaller', () => {
   test('bridge ok: returns ok with path', async () => {
     const bridge: ElectronSkillBridge = {
-      buildAndOpen: mock(async () => ({ ok: true, path: '/tmp/skill' })),
+      buildAndOpen: vi.fn(async () => ({ ok: true, path: '/tmp/skill' })),
     };
     const installer = electronSkillInstaller(bridge);
 
@@ -30,7 +30,7 @@ describe('electronSkillInstaller', () => {
 
   test('bridge fails: returns ok-false with reason + message', async () => {
     const bridge: ElectronSkillBridge = {
-      buildAndOpen: mock(async () => ({
+      buildAndOpen: vi.fn(async () => ({
         ok: false,
         reason: 'build-failed',
         message: 'no SKILL.md',
@@ -47,7 +47,7 @@ describe('electronSkillInstaller', () => {
 
   test('bridge throws: ok-false with bridge-error reason (IPC channel broken)', async () => {
     const bridge: ElectronSkillBridge = {
-      buildAndOpen: mock(async () => {
+      buildAndOpen: vi.fn(async () => {
         throw new Error('IPC channel closed');
       }),
     };
@@ -68,7 +68,7 @@ describe('httpSkillInstaller', () => {
     body?: unknown;
     throwError?: Error;
   }): typeof fetch {
-    return mock(async () => {
+    return vi.fn(async () => {
       if (response.throwError) throw response.throwError;
       return {
         ok: response.ok ?? true,
@@ -84,7 +84,7 @@ describe('httpSkillInstaller', () => {
 
     await installer.install();
 
-    const [url, init] = (fetchSpy as unknown as ReturnType<typeof mock>).mock.calls[0] as [
+    const [url, init] = (fetchSpy as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [
       string,
       RequestInit,
     ];
@@ -100,7 +100,7 @@ describe('httpSkillInstaller', () => {
 
     await installer.install();
 
-    const [url] = (fetchSpy as unknown as ReturnType<typeof mock>).mock.calls[0] as [string];
+    const [url] = (fetchSpy as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
     expect(url).toBe('http://localhost:5173/api/install-skill');
   });
 
@@ -148,7 +148,7 @@ describe('httpSkillInstaller', () => {
 
   test('non-2xx HTTP response with no body: ok-false falls back to HTTP <status>', async () => {
     const installer = httpSkillInstaller({
-      fetch: mock(
+      fetch: vi.fn(
         async () =>
           ({
             ok: false,
@@ -243,7 +243,7 @@ describe('httpSkillInstaller', () => {
 
   test('response.json() throws: ok-false with parse-error (malformed body)', async () => {
     const installer = httpSkillInstaller({
-      fetch: mock(
+      fetch: vi.fn(
         async () =>
           ({
             ok: true,

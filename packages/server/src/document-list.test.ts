@@ -5,7 +5,7 @@
  * The document list API now reads from the watcher's in-memory file index
  * (populated and filtered by ContentFilter) instead of doing its own readdirSync.
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { safeSubdir } from './api-extension.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 

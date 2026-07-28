@@ -47,6 +47,13 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 export interface AddDraft {
   name: string;
@@ -78,6 +85,14 @@ interface FrontmatterRowProps {
   value: FrontmatterValue;
   /** Declared type — selects which widget renders. */
   declared: FrontmatterType;
+  /**
+   * Schema-derived vocabulary for this field (resolved from the doc's
+   * governing frontmatter schemas). When present and the value is simple,
+   * the free-text widget is replaced by a single-select (`multi: false`) or
+   * a toggleable multi-select (`multi: true`). Commits flow through the same
+   * `onCommit` write path as every other widget.
+   */
+  enumConstraint?: { values: string[]; multi: boolean };
   /** Inline validation error to render below the row. */
   error?: string | null;
   /**
@@ -132,6 +147,7 @@ export function FrontmatterRow({
   keyName,
   value,
   declared,
+  enumConstraint,
   error,
   resetCounter = 0,
   sortableId,
@@ -214,14 +230,32 @@ export function FrontmatterRow({
               </span>
             ) : null}
             <div className="min-w-0 flex-1 @max-[26rem]/prow:order-last @max-[26rem]/prow:mt-0.5 @max-[26rem]/prow:basis-full @max-[26rem]/prow:pl-[3.25rem]">
-              <Widget
-                key={`widget-${resetCounter}`}
-                keyName={keyName}
-                value={value}
-                widgetType={declared}
-                path={rowPath}
-                onCommit={onCommit}
-              />
+              {enumConstraint && !isComplex && !enumConstraint.multi ? (
+                <EnumSelectWidget
+                  key={`widget-${resetCounter}`}
+                  keyName={keyName}
+                  value={value}
+                  values={enumConstraint.values}
+                  onCommit={onCommit}
+                />
+              ) : enumConstraint && !isComplex && enumConstraint.multi ? (
+                <EnumMultiSelectWidget
+                  key={`widget-${resetCounter}`}
+                  keyName={keyName}
+                  value={value}
+                  values={enumConstraint.values}
+                  onCommit={onCommit}
+                />
+              ) : (
+                <Widget
+                  key={`widget-${resetCounter}`}
+                  keyName={keyName}
+                  value={value}
+                  widgetType={declared}
+                  path={rowPath}
+                  onCommit={onCommit}
+                />
+              )}
             </div>
             {badge ? <div className="shrink-0 min-h-7 flex items-center">{badge}</div> : null}
             {onRemove ? (
@@ -760,5 +794,102 @@ export function InheritedBadge({
     >
       <Trans>inherited</Trans>
     </Badge>
+  );
+}
+
+/**
+ * Schema-vocabulary single-select: replaces the free-text widget when the
+ * doc's governing schemas give this field an `enum`. A current value outside
+ * the vocabulary stays selectable (the linter flags it; the panel must not
+ * eat it), and commits ride the standard row write path.
+ */
+function EnumSelectWidget({
+  keyName,
+  value,
+  values,
+  onCommit,
+}: {
+  keyName: string;
+  value: FrontmatterValue;
+  values: string[];
+  onCommit: (next: FrontmatterValue) => void;
+}) {
+  const { t } = useLingui();
+  const current = typeof value === 'string' ? value : '';
+  const options = current !== '' && !values.includes(current) ? [current, ...values] : values;
+  return (
+    <Select value={current} onValueChange={(next) => onCommit(next)}>
+      <SelectTrigger
+        className="h-7 w-full"
+        aria-label={t`Value for ${keyName}`}
+        data-testid="property-enum-select"
+        data-key={keyName}
+      >
+        <SelectValue placeholder={t`Select a value`} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option} value={option}>
+            {option}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/**
+ * Schema-vocabulary multi-select for `array` fields with `items.enum`:
+ * toggleable value chips committing the full array. Values already in the doc
+ * but outside the vocabulary render as chips too, so toggling never silently
+ * drops them.
+ */
+function EnumMultiSelectWidget({
+  keyName,
+  value,
+  values,
+  onCommit,
+}: {
+  keyName: string;
+  value: FrontmatterValue;
+  values: string[];
+  onCommit: (next: FrontmatterValue) => void;
+}) {
+  const { t } = useLingui();
+  const selected = Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+  const extras = selected.filter((entry) => !values.includes(entry));
+  const toggle = (option: string) => {
+    const next = selected.includes(option)
+      ? selected.filter((entry) => entry !== option)
+      : [...selected, option];
+    onCommit(next);
+  };
+  return (
+    <fieldset
+      className="m-0 flex min-h-7 flex-wrap items-center gap-1 border-0 p-0"
+      aria-label={t`Values for ${keyName}`}
+      data-testid="property-enum-multi"
+      data-key={keyName}
+    >
+      {[...values, ...extras].map((option) => {
+        const on = selected.includes(option);
+        return (
+          <Button
+            key={option}
+            type="button"
+            size="sm"
+            variant={on ? 'secondary' : 'outline'}
+            aria-pressed={on}
+            className="h-6 px-2 text-xs"
+            onClick={() => toggle(option)}
+            data-testid={`property-enum-option-${option}`}
+          >
+            {option}
+          </Button>
+        );
+      })}
+    </fieldset>
   );
 }

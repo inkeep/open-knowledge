@@ -4,8 +4,8 @@
  * shaping against a synthetic result (no fs).
  */
 
-import { describe, expect, test } from 'bun:test';
 import { isAbsolute } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import type { LintRunResult } from '../content/lint-runner.ts';
 import { formatLintReport, resolveTarget } from './lint.ts';
 
@@ -94,5 +94,33 @@ describe('resolveTarget', () => {
     const out = resolveTarget('sub/dir', cwd);
     expect(isAbsolute(out)).toBe(true);
     expect(out.includes(`${cwd}/${cwd}`)).toBe(false);
+  });
+});
+
+describe('formatLintReport — frontmatter diagnostics', () => {
+  test('renders the composed frontmatter/<keyword> id with 1-based display line', async () => {
+    const out = formatLintReport(
+      result({
+        fileCount: 1,
+        warningCount: 1,
+        files: [
+          {
+            file: 'docs/guide.md',
+            fixed: false,
+            diagnostics: [
+              {
+                range: { start: { line: 1, character: 0 }, end: { line: 1, character: 15 } },
+                severity: 'warning',
+                source: 'frontmatter',
+                code: 'enum',
+                message: 'Frontmatter property "status" must be one of: draft, review, published',
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(out).toContain('frontmatter/enum');
+    expect(out).toContain('2:1');
   });
 });

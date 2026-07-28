@@ -12,7 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
-import { type ApiHelpers, expect, test } from './_helpers';
+import { type ApiHelpers, expect, primeFullLayout, test } from './_helpers';
 
 const sourceToggle = (page: Page) => page.getByRole('radio', { name: 'Markdown source' });
 
@@ -51,6 +51,14 @@ const DOC = [
 async function seedDoc(api: ApiHelpers, page: Page, baseURL: string): Promise<string> {
   const docName = `outline-${randomUUID().slice(0, 8)}`;
   await api.createPage(`${docName}.md`);
+  // Disable ACP follow-file so the agent-write seed below doesn't auto-scroll
+  // the WYSIWYG editor mid-test — the scroll-landing assertions need a stable
+  // starting viewport. Mirrors outline-toolbar-occlusion.e2e.ts's primed layout.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('ok-acp-follow-file-v1', '0');
+    } catch {}
+  });
   await page.goto(`/#/${docName}`);
   await page.waitForFunction(() => Boolean(window.__activeProvider?.isSynced), null, {
     timeout: 15_000,
@@ -67,8 +75,10 @@ async function seedDoc(api: ApiHelpers, page: Page, baseURL: string): Promise<st
       async () => {
         const r = await fetch(`${baseURL}/api/page-headings?docName=${docName}`);
         if (!r.ok) return 0;
-        const d = (await r.json()) as { ok: boolean; headings?: unknown[] };
-        return d.ok ? (d.headings?.length ?? 0) : 0;
+        // PageHeadingsSuccessSchema is emitted flat under RFC 9457 — no `ok`
+        // field. HTTP r.ok above is the success gate; read headings directly.
+        const d = (await r.json()) as { headings?: unknown[] };
+        return d.headings?.length ?? 0;
       },
       { timeout: 10_000, intervals: [200, 500, 1000] },
     )
@@ -92,13 +102,14 @@ test('outline click scrolls to the matching heading in WYSIWYG mode', async ({
   baseURL,
 }) => {
   await seedDoc(api, page, baseURL ?? '');
+  await primeFullLayout(page);
 
   const outlinePanel = page.locator('#panel-outline');
   await expect(outlinePanel.getByRole('button', { name: 'Third Heading' })).toBeVisible();
 
-  // "Third Heading" lives below a lot of filler, so before the click the
-  // editor scroll container should still be near the top.
-  const scroller = page.locator('.subtle-scrollbar').first();
+  // primeFullLayout parks the scroll at the top; the click must move the
+  // viewport for the scroll-to-heading assertion to be meaningful.
+  const scroller = page.locator('[data-testid="editor-scroll-container"]').first();
   const scrollBefore = await scroller.evaluate((el) => el.scrollTop);
   expect(scrollBefore).toBeLessThan(50);
 
@@ -213,6 +224,12 @@ const DOC_WITH_FENCED_HASH_COMMENT = [
 async function seedFencedDoc(api: ApiHelpers, page: Page, baseURL: string): Promise<string> {
   const docName = `outline-fence-${randomUUID().slice(0, 8)}`;
   await api.createPage(`${docName}.md`);
+  // See seedDoc: keep the agent-write seed from auto-scrolling the editor.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('ok-acp-follow-file-v1', '0');
+    } catch {}
+  });
   await page.goto(`/#/${docName}`);
   await page.waitForFunction(() => Boolean(window.__activeProvider?.isSynced), null, {
     timeout: 15_000,
@@ -228,8 +245,10 @@ async function seedFencedDoc(api: ApiHelpers, page: Page, baseURL: string): Prom
       async () => {
         const r = await fetch(`${baseURL}/api/page-headings?docName=${docName}`);
         if (!r.ok) return 0;
-        const d = (await r.json()) as { ok: boolean; headings?: unknown[] };
-        return d.ok ? (d.headings?.length ?? 0) : 0;
+        // PageHeadingsSuccessSchema is emitted flat under RFC 9457 — no `ok`
+        // field. HTTP r.ok above is the success gate; read headings directly.
+        const d = (await r.json()) as { headings?: unknown[] };
+        return d.headings?.length ?? 0;
       },
       { timeout: 10_000, intervals: [200, 500, 1000] },
     )
@@ -250,6 +269,7 @@ test('outline click lands on the correct heading when `#` appears inside a code 
   baseURL,
 }) => {
   await seedFencedDoc(api, page, baseURL ?? '');
+  await primeFullLayout(page);
 
   const outlinePanel = page.locator('#panel-outline');
   // Before the fix, clicking "Target Section" would scroll to a phantom heading

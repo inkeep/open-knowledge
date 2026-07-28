@@ -30,27 +30,25 @@
  * Skip conditions match the existing `deep-link.e2e.ts` / `external-
  * link.e2e.ts` pattern:
  *   - `OK_DESKTOP_E2E_SMOKE !== '1'` — opt-in gate so unrelated
- *     `bunx playwright test` runs don't try to launch Electron.
+ *     `pnpm exec playwright test` runs don't try to launch Electron.
  *   - `process.platform !== 'darwin'` — driver uses macOS `open(1)` to
  *     fire the deep link, and the chrome stack is darwin-only in v0.
- *   - `out/main/index.js` missing — needs a prior `bun run build:desktop`.
+ *   - `out/main/index.js` missing — needs a prior `pnpm run build:desktop`.
  */
 
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 
 // `--user-data-dir` is the only reliable way to redirect Electron's
 // `app.getPath('userData')` on macOS — `HOME`/`USERPROFILE` env vars don't
@@ -66,10 +64,7 @@ function userDataDirFor(home: string): string {
 test.describe('chrome-modernization theme-sync smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Driver uses macOS open(1) and chrome stack is darwin-only in v0.');
-  test.skip(
-    !BUILD_EXISTS,
-    `Main build missing at ${MAIN_ENTRY} — run "bun run build:desktop" first.`,
-  );
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('cold-launch chrome correct + setThemeSource roundtrips through main', async ({
     captureStderrFor,
@@ -90,10 +85,13 @@ test.describe('chrome-modernization theme-sync smoke', () => {
       '# Theme Sync Smoke\n\nFixture for cold-launch chrome verification.\n',
     );
 
-    const app = await electron.launch({
-      args: [MAIN_ENTRY, `--user-data-dir=${userDataDirFor(projectDir)}`],
-      timeout: 30_000,
-    });
+    const app = await electron.launch(
+      desktopLaunchOptions({
+        target: TARGET,
+        args: [`--user-data-dir=${userDataDirFor(projectDir)}`],
+        timeout: 30_000,
+      }),
+    );
     captureStderrFor(app, { cleanupDirs: [projectDir] });
 
     // Wait for first window (Navigator on cold launch). Confirms whenReady
@@ -211,10 +209,13 @@ test.describe('chrome-modernization theme-sync smoke', () => {
       '# Theme Sync Rapid\n\nFixture for rapid theme change + IPC rejection.\n',
     );
 
-    const app = await electron.launch({
-      args: [MAIN_ENTRY, `--user-data-dir=${userDataDirFor(projectDir)}`],
-      timeout: 30_000,
-    });
+    const app = await electron.launch(
+      desktopLaunchOptions({
+        target: TARGET,
+        args: [`--user-data-dir=${userDataDirFor(projectDir)}`],
+        timeout: 30_000,
+      }),
+    );
     captureStderrFor(app, { cleanupDirs: [projectDir] });
 
     await app.firstWindow({ timeout: 15_000 });
@@ -410,10 +411,13 @@ test.describe('chrome-modernization theme-sync smoke', () => {
       '# Theme Sync RT\n\nFixture for prefers-reduced-transparency propagation.\n',
     );
 
-    const app = await electron.launch({
-      args: [MAIN_ENTRY, `--user-data-dir=${userDataDirFor(projectDir)}`],
-      timeout: 30_000,
-    });
+    const app = await electron.launch(
+      desktopLaunchOptions({
+        target: TARGET,
+        args: [`--user-data-dir=${userDataDirFor(projectDir)}`],
+        timeout: 30_000,
+      }),
+    );
     captureStderrFor(app, { cleanupDirs: [projectDir] });
 
     await app.firstWindow({ timeout: 15_000 });

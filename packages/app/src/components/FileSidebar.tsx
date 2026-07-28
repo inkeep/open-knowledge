@@ -23,6 +23,7 @@ import {
 import { ErrorBoundary } from 'react-error-boundary';
 import { toast } from 'sonner';
 import { ConflictsSection } from '@/components/ConflictsSection';
+import { FeedbackCardMount } from '@/components/FeedbackCard';
 import { FileTree, type FileTreeHandle } from '@/components/FileTree';
 import { defaultInitialDir, hasOkPathSegment } from '@/components/file-tree-utils';
 import { OpenInAgentEmptySpaceSubmenu } from '@/components/handoff/OpenInAgentEmptySpaceSubmenu';
@@ -31,6 +32,7 @@ import {
   useHandoffDispatch,
 } from '@/components/handoff/useHandoffDispatch';
 import { useInstalledAgents } from '@/components/handoff/useInstalledAgents';
+import { NavigationHistoryControls } from '@/components/NavigationHistoryControls';
 import { OnboardingCardMount } from '@/components/OnboardingCard';
 import { ProjectSwitcher } from '@/components/ProjectSwitcher';
 import { onPillRenderError, SidebarSearchBar } from '@/components/SidebarSearchBar';
@@ -38,6 +40,7 @@ import { SkillsSidebarSection } from '@/components/SkillsSidebarSection';
 import { TemplateMenuRows } from '@/components/template-menu-rows';
 import { UpdateNotices } from '@/components/UpdateNotices';
 import { Button } from '@/components/ui/button';
+import { ButtonGroup } from '@/components/ui/button-group';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   ContextMenu,
@@ -60,6 +63,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Kbd } from '@/components/ui/kbd';
 import {
   Sidebar,
   SidebarContent,
@@ -90,6 +94,11 @@ import {
   emitFileTreeMenuActionRename,
 } from '@/lib/file-tree-menu-action-events';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
+import {
+  formatShortcut,
+  formatShortcutLabel,
+  type KeyboardShortcutId,
+} from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { ProfilerBoundary } from '@/lib/perf';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
@@ -144,32 +153,76 @@ export function FileSidebar({ onOpenSearch }: FileSidebarProps) {
 interface ToolbarButtonProps extends ComponentProps<typeof Button> {
   icon: FC<ComponentProps<'svg'>>;
   label: string;
+  shortcutId?: KeyboardShortcutId;
 }
 
-const ToolbarButton: FC<ToolbarButtonProps> = ({ icon: Icon, label, ...props }) => {
+const TOOLBAR_ICON_CLASS_NAME = "[&_svg:not([class*='size-'])]:size-3.5";
+
+const ToolbarTooltipContent: FC<Pick<ToolbarButtonProps, 'label' | 'shortcutId'>> = ({
+  label,
+  shortcutId,
+}) => {
+  return (
+    <TooltipContent>
+      <span>{label}</span>
+      {shortcutId ? (
+        <>
+          {' '}
+          <Kbd aria-label={formatShortcutLabel(shortcutId)}>{formatShortcut(shortcutId)}</Kbd>
+        </>
+      ) : null}
+    </TooltipContent>
+  );
+};
+
+const ToolbarButton: FC<ToolbarButtonProps> = ({
+  className,
+  icon: Icon,
+  label,
+  shortcutId,
+  ...props
+}) => {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label={label} {...props}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={label}
+          className={cn(TOOLBAR_ICON_CLASS_NAME, className)}
+          {...props}
+        >
           <Icon aria-hidden="true" />
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      <ToolbarTooltipContent label={label} shortcutId={shortcutId} />
     </Tooltip>
   );
 };
 
-const ToolbarDropdownTrigger: FC<ToolbarButtonProps> = ({ icon: Icon, label, ...props }) => {
+const ToolbarDropdownTrigger: FC<ToolbarButtonProps> = ({
+  className,
+  icon: Icon,
+  label,
+  shortcutId,
+  ...props
+}) => {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" aria-label={label} {...props}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={label}
+            className={cn(TOOLBAR_ICON_CLASS_NAME, className)}
+            {...props}
+          >
             <Icon aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
       </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      <ToolbarTooltipContent label={label} shortcutId={shortcutId} />
     </Tooltip>
   );
 };
@@ -221,10 +274,10 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
 
   // Detection idiom matches OpenInAgentMenu / FileTree / EditorHeader. In
   // Electron mode the SidebarFooter's ProjectSwitcher already carries the
-  // project's contextual identity, so the SidebarHeader stays minimal — just
-  // action buttons on the right, draggable empty space on the left where the
-  // traffic lights sit. Web mode keeps the 'Files' section label since there's
-  // no ProjectSwitcher and no chrome row to anchor against.
+  // project's contextual identity, so the SidebarHeader stays minimal —
+  // navigation on the right and draggable traffic-light space on the left.
+  // Web mode keeps the 'Files' section label since there's no ProjectSwitcher
+  // and no chrome row to anchor against.
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
 
   // Collapsed sidebar = focus mode: hide the section label so the chrome row
@@ -237,7 +290,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   const isExpanded = sidebarState === 'expanded';
   const isCollapsed = sidebarState === 'collapsed';
   // Single source of truth for the chrome-row opacity gate. Driving both
-  // the SidebarHeader's toolbar row AND the sibling pill row off the same
+  // the SidebarHeader's navigation row AND the sibling pill row off the same
   // boolean makes the lockstep-fade invariant a structural property
   // (one variable, two consumers) instead of a copy-paste relationship
   // between the two className blocks. A refactor that wraps one row in
@@ -747,9 +800,9 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
               data-electron-drag={isElectronHost ? '' : undefined}
               className={cn(
                 // h-12 matches EditorHeader's height so the OS traffic lights are
-                // vertically centered with BOTH toolbars (same midline at y=24px).
+                // vertically centered with both chrome rows (same midline at y=24px).
                 // Without this, the SidebarHeader's natural shorter height puts
-                // its action icons above the EditorHeader's row, and no
+                // its navigation icons above the EditorHeader's row, and no
                 // trafficLightPosition can align with both at once.
                 //
                 // `py-0 px-3` overrides the primitive's inherited `p-2` (8px all
@@ -763,22 +816,16 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                 // change since `justify-end` / `justify-between` already control
                 // horizontal layout).
                 'flex-row h-12 items-center py-0 px-3',
-                // Electron mode has only the action buttons in the header (no
-                // 'Files' label, no project name — ProjectSwitcher in the footer
-                // carries project identity). `justify-between` pins a
-                // non-shrinkable traffic-light reserve (the spacer rendered
-                // below) to the left and the action cluster to the right, so the
-                // cluster sits AFTER the macOS traffic-light region regardless of
-                // how many buttons it holds — the clearance is structural, not a
-                // function of MIN_SIDEBAR_WIDTH tuning. `overflow-x-clip` makes an
-                // over-budget cluster degrade by clipping toward the sidebar
-                // interior instead of sliding left under the OS chrome. Web mode
-                // keeps the same spread: 'Files' label flush left, actions right.
+                // Expanded Electron mode has only history navigation in the
+                // header (ProjectSwitcher in the footer carries identity).
+                // `justify-between` pins the traffic-light reserve left and the
+                // navigation pair right, keeping its clearance structural.
+                // Web mode contains only the 'Files' label.
                 'justify-between',
                 isElectronHost && 'overflow-x-clip',
                 // Fade the header content out when the sidebar starts collapsing
                 // offcanvas. The shadcn primitive slides the entire sidebar left
-                // over 200ms; without an opacity gate the action icons would
+                // over 200ms; without an opacity gate the navigation icons would
                 // visibly cross UNDER the OS-level traffic lights mid-slide
                 // (renderer content always sits beneath the OS chrome).
                 //
@@ -823,10 +870,9 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
             >
               {isElectronHost ? (
                 // Non-shrinkable macOS traffic-light reserve. With the header's
-                // `justify-between` this holds the left edge so the action
-                // cluster can never extend under the OS traffic lights, no matter
-                // the button count or how narrow the sidebar is dragged — the
-                // clearance is structural rather than relying on the
+                // `justify-between` this holds the left edge so the navigation
+                // pair cannot extend under the OS traffic lights — the clearance
+                // is structural rather than relying on the
                 // MIN_SIDEBAR_WIDTH tuning in `ui/sidebar.tsx`. Decorative and
                 // draggable (inherits the header drag region); width is the
                 // shared `--ok-titlebar-reserve-left` token.
@@ -841,142 +887,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                   <Trans>Files</Trans>
                 </span>
               ) : null}
-              <div
-                data-testid="sidebar-toolbar"
-                className={cn(
-                  'flex items-center gap-1',
-                  // Direct-child no-drag opt-out so each toolbar button keeps
-                  // firing its click handler instead of initiating a window
-                  // drag — same [&>*] pattern as EditorHeader's right zone.
-                  // The DropdownMenuTrigger renders via Radix `asChild` so
-                  // its single direct DOM child (the Button) receives the
-                  // no-drag class.
-                  isElectronHost && '[&>*]:[-webkit-app-region:no-drag]',
-                )}
-              >
-                {/*
-                 * Tree view options uses DropdownMenu (click-to-open). The
-                 * earlier hover-to-open HoverCard shape was unreachable from
-                 * keyboard and touch: Radix HoverCard's content root forcibly
-                 * sets `tabindex="-1"` on every tabbable descendant
-                 * (@radix-ui/react-hover-card@dist/index.mjs:172-177), and
-                 * hover cannot be triggered from keyboard/AT/touch at all. A
-                 * DropdownMenu opens on click/Enter/Space, routes arrow-key
-                 * focus between items, and is the shadcn-standard pattern
-                 * for toolbar menus.
-                 *
-                 * The trigger is always visible: the Show group is state-
-                 * independent, so the menu always has content. The Expand/
-                 * Collapse-all commands smart-hide individually when their
-                 * action would no-op (no folders; every folder already
-                 * expanded / collapsed), taking their separator with them.
-                 */}
-                <DropdownMenu>
-                  <ToolbarDropdownTrigger icon={ListCollapse} label={t`Tree view options`} />
-                  <DropdownMenuContent
-                    align="end"
-                    className="min-w-52"
-                    data-testid="tree-options-menu"
-                  >
-                    {showExpandAll ? (
-                      <DropdownMenuItem onSelect={() => tree?.expandAll()}>
-                        <UnfoldVertical aria-hidden="true" />
-                        <Trans>Expand all</Trans>
-                      </DropdownMenuItem>
-                    ) : null}
-                    {showCollapseAll ? (
-                      <DropdownMenuItem onSelect={() => tree?.collapseAll()}>
-                        <FoldVertical aria-hidden="true" />
-                        <Trans>Collapse all</Trans>
-                      </DropdownMenuItem>
-                    ) : null}
-                    {showTreeStateSection ? <DropdownMenuSeparator /> : null}
-                    {/* Labeled `role="group"` so assistive tech announces the
-                          section; the visual DropdownMenuLabel alone is skipped
-                          by arrow-key menu navigation. Items read group-relative
-                          ("Hidden files") because the label carries the "Show";
-                          the unsectioned menu surfaces use the full-form labels. */}
-                    <DropdownMenuGroup aria-label={t`Show`}>
-                      <DropdownMenuLabel>
-                        <Trans>Show</Trans>
-                      </DropdownMenuLabel>
-                      <DropdownMenuCheckboxItem
-                        checked={showHiddenFiles}
-                        onCheckedChange={(checked) =>
-                          patchSidebarVisibility({ showHiddenFiles: checked })
-                        }
-                        disabled={projectLocalBinding === null}
-                        data-testid="tree-options-show-hidden-files"
-                      >
-                        <Trans>Hidden files</Trans>
-                      </DropdownMenuCheckboxItem>
-                      <DropdownMenuCheckboxItem
-                        checked={showOkFolders}
-                        onCheckedChange={(checked) =>
-                          patchSidebarVisibility({ showOkFolders: checked })
-                        }
-                        disabled={projectLocalBinding === null}
-                        data-testid="tree-options-show-ok-folders"
-                      >
-                        <Trans>.ok folders</Trans>
-                      </DropdownMenuCheckboxItem>
-                      <DropdownMenuCheckboxItem
-                        checked={showOnlyMarkdownFiles}
-                        onCheckedChange={(checked) =>
-                          patchSidebarVisibility({ showOnlyMarkdownFiles: checked })
-                        }
-                        disabled={projectLocalBinding === null}
-                        data-testid="tree-options-show-only-markdown-files"
-                      >
-                        <Trans>Only markdown files</Trans>
-                      </DropdownMenuCheckboxItem>
-                      <DropdownMenuCheckboxItem
-                        checked={showSkillsSection}
-                        onCheckedChange={(checked) =>
-                          patchSidebarVisibility({ showSkillsSection: checked })
-                        }
-                        disabled={projectLocalBinding === null}
-                        data-testid="tree-options-show-skills"
-                      >
-                        <Trans>Skills</Trans>
-                      </DropdownMenuCheckboxItem>
-                    </DropdownMenuGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <ToolbarButton
-                  icon={SquarePen}
-                  label={t`New file`}
-                  onClick={() => tree?.startCreating('file', initialCreateDir)}
-                />
-                {activeFolderHasTemplates ? (
-                  // Toolbar opens templates on click (not hover): a hover-only
-                  // flyout off an icon button isn't keyboard/touch reachable.
-                  // Mirrors the Tree view options dropdown above. Picking a
-                  // template runs the same inline-rename create flow as New file.
-                  <DropdownMenu>
-                    <ToolbarDropdownTrigger icon={FilePlus} label={t`New from template`} />
-                    <DropdownMenuContent
-                      align="end"
-                      className="min-w-52"
-                      onCloseAutoFocus={handleCreateMenuCloseAutoFocus}
-                    >
-                      <TemplateMenuRows
-                        parentDir={initialCreateDir}
-                        onSelectTemplate={(templateName) => {
-                          suppressCreateMenuFocusRestoreRef.current = true;
-                          tree?.createFromTemplate(initialCreateDir, templateName);
-                        }}
-                        ItemComponent={DropdownMenuItem}
-                      />
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : null}
-                <ToolbarButton
-                  icon={FolderPlus}
-                  label={t`New folder`}
-                  onClick={() => tree?.startCreating('folder', initialCreateDir)}
-                />
-              </div>
+              {isElectronHost && isExpanded ? <NavigationHistoryControls /> : null}
             </SidebarHeader>
             {/*
              * Pill row lives outside SidebarContent's overflow-auto boundary so
@@ -984,7 +895,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
              * defensive — the sibling itself does NOT opt into drag like
              * SidebarHeader does, but the explicit opt-out survives a future
              * refactor that might place the row inside a drag region. Opacity
-             * fades in lockstep with the toolbar so neither row visibly
+             * fades in lockstep with the header navigation so neither row visibly
              * orphans under the macOS traffic-light region mid-slide.
              *
              * ErrorBoundary scope is intentionally tight: a pill render-throw
@@ -1074,16 +985,146 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                     already each land at 8px, so stacking the group's own 8px
                     on top would double it to 16px. */}
                 <SidebarGroup className="min-h-0 px-0">
-                  <SidebarGroupLabel asChild className="shrink-0">
+                  <SidebarGroupLabel className="shrink-0 gap-1">
                     <CollapsibleTrigger
                       // Marks the project-root header so right-click opens the project-scoped menu.
                       data-sidebar-root-context
-                      className="flex w-full items-center gap-1.5"
+                      className="flex min-w-0 flex-1 items-center gap-1.5"
                     >
                       <FolderOpen className="size-3.5 shrink-0" />
                       <span className="truncate">{projectName}</span>
                       <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/files:rotate-90" />
                     </CollapsibleTrigger>
+                    <ButtonGroup
+                      aria-label={t`Files toolbar`}
+                      data-testid="sidebar-toolbar"
+                      className={cn(isElectronHost && '*:[-webkit-app-region:no-drag]')}
+                    >
+                      {/*
+                       * Tree view options uses DropdownMenu (click-to-open). The
+                       * earlier hover-to-open HoverCard shape was unreachable from
+                       * keyboard and touch: Radix HoverCard's content root forcibly
+                       * sets `tabindex="-1"` on every tabbable descendant
+                       * (@radix-ui/react-hover-card@dist/index.mjs:172-177), and
+                       * hover cannot be triggered from keyboard/AT/touch at all. A
+                       * DropdownMenu opens on click/Enter/Space, routes arrow-key
+                       * focus between items, and is the shadcn-standard pattern
+                       * for toolbar menus.
+                       *
+                       * The trigger is always visible: the Show group is state-
+                       * independent, so the menu always has content. The Expand/
+                       * Collapse-all commands smart-hide individually when their
+                       * action would no-op (no folders; every folder already
+                       * expanded / collapsed), taking their separator with them.
+                       */}
+                      <DropdownMenu>
+                        <ToolbarDropdownTrigger icon={ListCollapse} label={t`Tree view options`} />
+                        <DropdownMenuContent
+                          align="end"
+                          className="min-w-52"
+                          data-testid="tree-options-menu"
+                        >
+                          {showExpandAll ? (
+                            <DropdownMenuItem onSelect={() => tree?.expandAll()}>
+                              <UnfoldVertical aria-hidden="true" />
+                              <Trans>Expand all</Trans>
+                            </DropdownMenuItem>
+                          ) : null}
+                          {showCollapseAll ? (
+                            <DropdownMenuItem onSelect={() => tree?.collapseAll()}>
+                              <FoldVertical aria-hidden="true" />
+                              <Trans>Collapse all</Trans>
+                            </DropdownMenuItem>
+                          ) : null}
+                          {showTreeStateSection ? <DropdownMenuSeparator /> : null}
+                          {/* Labeled `role="group"` so assistive tech announces the
+                              section; the visual DropdownMenuLabel alone is skipped
+                              by arrow-key menu navigation. Items read group-relative
+                              ("Hidden files") because the label carries the "Show";
+                              the unsectioned menu surfaces use the full-form labels. */}
+                          <DropdownMenuGroup aria-label={t`Show`}>
+                            <DropdownMenuLabel>
+                              <Trans>Show</Trans>
+                            </DropdownMenuLabel>
+                            <DropdownMenuCheckboxItem
+                              checked={showHiddenFiles}
+                              onCheckedChange={(checked) =>
+                                patchSidebarVisibility({ showHiddenFiles: checked })
+                              }
+                              disabled={projectLocalBinding === null}
+                              data-testid="tree-options-show-hidden-files"
+                            >
+                              <Trans>Hidden files</Trans>
+                            </DropdownMenuCheckboxItem>
+                            <DropdownMenuCheckboxItem
+                              checked={showOkFolders}
+                              onCheckedChange={(checked) =>
+                                patchSidebarVisibility({ showOkFolders: checked })
+                              }
+                              disabled={projectLocalBinding === null}
+                              data-testid="tree-options-show-ok-folders"
+                            >
+                              <Trans>.ok folders</Trans>
+                            </DropdownMenuCheckboxItem>
+                            <DropdownMenuCheckboxItem
+                              checked={showOnlyMarkdownFiles}
+                              onCheckedChange={(checked) =>
+                                patchSidebarVisibility({ showOnlyMarkdownFiles: checked })
+                              }
+                              disabled={projectLocalBinding === null}
+                              data-testid="tree-options-show-only-markdown-files"
+                            >
+                              <Trans>Only markdown files</Trans>
+                            </DropdownMenuCheckboxItem>
+                            <DropdownMenuCheckboxItem
+                              checked={showSkillsSection}
+                              onCheckedChange={(checked) =>
+                                patchSidebarVisibility({ showSkillsSection: checked })
+                              }
+                              disabled={projectLocalBinding === null}
+                              data-testid="tree-options-show-skills"
+                            >
+                              <Trans>Skills</Trans>
+                            </DropdownMenuCheckboxItem>
+                          </DropdownMenuGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <ToolbarButton
+                        icon={SquarePen}
+                        label={t`New file`}
+                        onClick={() => tree?.startCreating('file', initialCreateDir)}
+                        shortcutId="new-item"
+                      />
+                      {activeFolderHasTemplates ? (
+                        // Toolbar opens templates on click (not hover): a hover-only
+                        // flyout off an icon button isn't keyboard/touch reachable.
+                        // Mirrors the Tree view options dropdown above. Picking a
+                        // template runs the same inline-rename create flow as New file.
+                        <DropdownMenu>
+                          <ToolbarDropdownTrigger icon={FilePlus} label={t`New from template`} />
+                          <DropdownMenuContent
+                            align="end"
+                            className="min-w-52"
+                            onCloseAutoFocus={handleCreateMenuCloseAutoFocus}
+                          >
+                            <TemplateMenuRows
+                              parentDir={initialCreateDir}
+                              onSelectTemplate={(templateName) => {
+                                suppressCreateMenuFocusRestoreRef.current = true;
+                                tree?.createFromTemplate(initialCreateDir, templateName);
+                              }}
+                              ItemComponent={DropdownMenuItem}
+                            />
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : null}
+                      <ToolbarButton
+                        icon={FolderPlus}
+                        label={t`New folder`}
+                        onClick={() => tree?.startCreating('folder', initialCreateDir)}
+                        shortcutId={isElectronHost ? 'new-folder' : undefined}
+                      />
+                    </ButtonGroup>
                   </SidebarGroupLabel>
                   <CollapsibleContent
                     className="flex max-h-[70vh] flex-col overflow-hidden"
@@ -1123,6 +1164,10 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
             <SidebarFooter className="px-0">
               <OnboardingCardMount />
               <UpdateNotices />
+              {/* Self-gates on device-local state (two weeks since first boot,
+                  enough documents) and on the two surfaces above, so it never
+                  stacks a third ask into this footer. */}
+              <FeedbackCardMount />
               {typeof window !== 'undefined' && window.okDesktop ? (
                 <SidebarMenu>
                   <SidebarMenuItem>

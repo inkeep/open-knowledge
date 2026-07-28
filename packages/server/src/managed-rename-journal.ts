@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
 import { getLocalDir } from './config/paths.ts';
+import { safeContentPath } from './content-path.ts';
 import {
   tracedMkdirSync,
   tracedRenameSync,
@@ -9,7 +10,6 @@ import {
   tracedWriteFileSync,
 } from './fs-traced.ts';
 import { getLogger } from './logger.ts';
-import { safeContentPath } from './persistence.ts';
 
 const log = getLogger('managed-rename');
 

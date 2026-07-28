@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { WORKTREES_PARENT_DIR, worktreeRelativeDir } from './worktree-path.ts';
 
 describe('worktreeRelativeDir', () => {

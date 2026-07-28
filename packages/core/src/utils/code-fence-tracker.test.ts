@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { createCodeFenceTracker } from './code-fence-tracker.ts';
 
 function collectNonFence(lines: string[]): string[] {

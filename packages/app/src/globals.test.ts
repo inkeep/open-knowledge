@@ -16,9 +16,10 @@
  * tier. A Playwright Electron e2e (open Sync popover, click EditorHeader,
  * assert popover closed) is the right follow-up.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 const SRC_PATH = join(__dirname, 'globals.css');
 const src = readFileSync(SRC_PATH, 'utf-8');

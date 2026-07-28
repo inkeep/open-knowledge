@@ -6,9 +6,9 @@
  * predicate, not identity-based Set membership with AGENT_WRITE_ORIGIN.
  */
 
-import { describe, expect, test } from 'bun:test';
 import type { LocalTransactionOrigin } from '@hocuspocus/server';
 import { isPairedWriteOrigin } from '@inkeep/open-knowledge-server';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 
 import { attachBridgeInvariantWatcher } from './test-harness';

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 /**
  * Gate wrapper for the real-shell-I/O seam. node-pty does not pump under Bun,

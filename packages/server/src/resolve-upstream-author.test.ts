@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import simpleGit, { type SimpleGit } from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { resolveUpstreamChanges } from './server-factory.ts';
 
 /**

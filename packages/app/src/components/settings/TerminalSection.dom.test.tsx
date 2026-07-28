@@ -6,10 +6,11 @@
  * are mocked; the real shadcn Switch is rendered. Two switches now exist, so
  * every query is scoped by test id.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 type ConsentState = { enabled: boolean | null; synced: boolean };
 type Writer = ((enabled: boolean) => { ok: true } | { ok: false; error: string }) | null;
@@ -29,7 +30,7 @@ const userPatchCalls: unknown[] = [];
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
@@ -38,16 +39,16 @@ mock.module('@lingui/react/macro', () => ({
   }),
 }));
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: { error: () => {} },
 }));
 
-mock.module('@/hooks/use-terminal-enabled', () => ({
+vi.doMock('@/hooks/use-terminal-enabled', () => ({
   useTerminalConsentState: () => consentState,
   useTerminalEnabledWriter: () => writerImpl,
 }));
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({ userConfig, userSynced, userBinding }),
 }));
 

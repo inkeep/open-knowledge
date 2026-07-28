@@ -6,7 +6,7 @@
  * the OTel SDK is enabled. The subject mirrors the `onboarding-telemetry.ts`
  * emitter pattern (same `withSpanSync` + bounded-attribute discipline).
  */
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 interface CapturedSpanCall {
   name: string;
@@ -15,7 +15,7 @@ interface CapturedSpanCall {
 
 const capturedCalls: CapturedSpanCall[] = [];
 
-mock.module('@inkeep/open-knowledge-server', () => ({
+vi.doMock('@inkeep/open-knowledge-server', () => ({
   withSpanSync: <T>(
     name: string,
     options: { attributes?: Record<string, unknown> } | undefined,

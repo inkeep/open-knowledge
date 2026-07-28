@@ -11,11 +11,12 @@
  * without requiring a browser. The CRDT layer (Yjs) and the unified + remark
  * serialization layer (MarkdownManager) are the same in both environments.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { Hocuspocus } from '@hocuspocus/server';
 import { MarkdownManager } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { sharedExtensions } from '../editor/extensions/shared';
 

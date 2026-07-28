@@ -33,8 +33,9 @@
  * the cascade-probe effect's dep-change handling, not in `computeCascade`
  * itself.
  */
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type {
   OkDesktopBridge,
   OkFindEnclosingGitRootResult,
@@ -223,12 +224,12 @@ async function waitForLocation(expected = PARENT) {
 }
 
 describe('CreateProjectDialog cascade staleness (Tier-3 mount)', () => {
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     // The dialog's `defaultProjectsRoot` catch + cascade-probe `catch`
     // arms log via console.warn; suppress to keep test output clean.
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -787,7 +788,7 @@ describe('CreateProjectDialog cascade staleness (Tier-3 mount)', () => {
     // Don't override the implementation — let the real setInterval
     // schedule. The test completes well under 5 s, so the real interval
     // never fires during the test; we drive it manually instead.
-    const setIntervalSpy = spyOn(globalThis, 'setInterval');
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
 
     try {
       render(<CreateProjectDialog open={true} onOpenChange={() => {}} bridge={stub.bridge} />);

@@ -6,15 +6,23 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
 import { __setQuiescentOverrideForTests } from './bridge-quiescence.ts';
+import { DocumentDurabilityState } from './document-durability-state.ts';
 import * as fsTraced from './fs-traced.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
 import {
   classifyDeferredStoreError,
-  createPersistenceExtension,
-  getReconciledBase,
-  setBatchInProgress,
-  switchReconciledBaseScope,
+  createPersistenceExtension as createPersistenceExtensionBase,
+  type PersistenceOptions,
 } from './persistence.ts';
+
+let durabilityState = new DocumentDurabilityState();
+function createPersistenceExtension(options: PersistenceOptions) {
+  return createPersistenceExtensionBase({ ...options, durabilityState });
+}
+const getReconciledBase = (docName: string) => durabilityState.getReconciledBase(docName);
+const setBatchInProgress = (value: boolean) => durabilityState.setBatchInProgress(value);
+const switchReconciledBaseScope = (branch: string) =>
+  durabilityState.switchReconciledBaseScope(branch);
 
 const BROWSER_ORIGIN = {
   source: 'connection',
@@ -88,6 +96,7 @@ describe('batch-gated L1 persistence', () => {
   let tmpDir: string;
 
   beforeEach(() => {
+    durabilityState = new DocumentDurabilityState();
     tmpDir = mkdtempSync(join(tmpdir(), 'ok-deferred-store-'));
     mkdirSync(tmpDir, { recursive: true });
     setBatchInProgress(false);
@@ -95,8 +104,6 @@ describe('batch-gated L1 persistence', () => {
   });
 
   afterEach(() => {
-    setBatchInProgress(false);
-    switchReconciledBaseScope('main');
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -341,6 +348,7 @@ describe('quiescence gate — deferCount cleanup on disk-write error', () => {
   let tmpDir: string;
 
   beforeEach(() => {
+    durabilityState = new DocumentDurabilityState();
     tmpDir = mkdtempSync(join(tmpdir(), 'ok-defer-disk-error-'));
     mkdirSync(tmpDir, { recursive: true });
     setBatchInProgress(false);
@@ -348,8 +356,6 @@ describe('quiescence gate — deferCount cleanup on disk-write error', () => {
   });
 
   afterEach(() => {
-    setBatchInProgress(false);
-    switchReconciledBaseScope('main');
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -475,6 +481,7 @@ describe('Y.Text-is-truth wiring (FR-33 / FR-35)', () => {
   let tmpDir: string;
 
   beforeEach(() => {
+    durabilityState = new DocumentDurabilityState();
     tmpDir = mkdtempSync(join(tmpdir(), 'ok-fr33-wiring-'));
     mkdirSync(tmpDir, { recursive: true });
     setBatchInProgress(false);
@@ -482,8 +489,6 @@ describe('Y.Text-is-truth wiring (FR-33 / FR-35)', () => {
   });
 
   afterEach(() => {
-    setBatchInProgress(false);
-    switchReconciledBaseScope('main');
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -582,6 +587,7 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
   }
 
   beforeEach(() => {
+    durabilityState = new DocumentDurabilityState();
     tmpDir = mkdtempSync(join(tmpdir(), 'ok-fr9-deferred-drain-'));
     mkdirSync(tmpDir, { recursive: true });
     setBatchInProgress(false);
@@ -594,8 +600,6 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
   });
 
   afterEach(() => {
-    setBatchInProgress(false);
-    switchReconciledBaseScope('main');
     warnSpy.mockRestore();
     delete process.env.OK_TELEMETRY_VERBOSE;
     rmSync(tmpDir, { recursive: true, force: true });
@@ -948,15 +952,12 @@ describe('forceStore dispatch (staleness watchdog entry point)', () => {
   let tmpDir: string;
 
   beforeEach(() => {
+    durabilityState = new DocumentDurabilityState();
     tmpDir = mkdtempSync(join(tmpdir(), 'ok-force-store-'));
     mkdirSync(tmpDir, { recursive: true });
-    setBatchInProgress(false);
-    switchReconciledBaseScope('main');
   });
 
   afterEach(() => {
-    setBatchInProgress(false);
-    switchReconciledBaseScope('main');
     rmSync(tmpDir, { recursive: true, force: true });
   });
 

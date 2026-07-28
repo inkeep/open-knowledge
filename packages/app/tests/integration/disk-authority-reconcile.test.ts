@@ -24,10 +24,11 @@
  * The file-watcher loses the reconcile race deterministically in this timing,
  * so L1 — not the watcher — is what preserves both edits.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   agentPatch,
   agentWriteMd,

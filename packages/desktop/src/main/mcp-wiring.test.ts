@@ -1,4 +1,3 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import {
   existsSync as fsExistsSync,
   mkdirSync as fsMkdirSync,
@@ -18,6 +17,7 @@ import {
   type EditorMcpTarget,
   type McpEntryClassification,
 } from '@inkeep/open-knowledge';
+import { afterEach, describe, expect, test } from 'vitest';
 // Imported from cli source, not the @inkeep/open-knowledge build: the classify
 // the fallback test drives must read the TOML engine it overrides, and only the
 // in-repo source shares the engine singleton with setTomlConfigEngineForTesting.

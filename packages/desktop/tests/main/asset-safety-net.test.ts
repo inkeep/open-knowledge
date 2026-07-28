@@ -5,7 +5,7 @@
  * external URLs.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import {
   attachAssetSafetyNet,
   matchAssetUrl,
@@ -136,9 +136,9 @@ function noopOpenExternal(_: string): Promise<void> {
 
 describe('attachAssetSafetyNet — setWindowOpenHandler', () => {
   test('asset URL new-window request → denied + openAsset fires', async () => {
-    const openAsset = mock(async (_: string) => ({ ok: true }) as const);
-    const openExternal = mock(noopOpenExternal);
-    const log = mock((_: unknown) => {});
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
+    const log = vi.fn((_: unknown) => {});
 
     let installedHandler: ((details: { url: string }) => { action: 'allow' | 'deny' }) | null =
       null;
@@ -165,8 +165,8 @@ describe('attachAssetSafetyNet — setWindowOpenHandler', () => {
   });
 
   test('cross-origin https new-window → denied + openExternal fires', async () => {
-    const openAsset = mock(async (_: string) => ({ ok: true }) as const);
-    const openExternal = mock(noopOpenExternal);
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
 
     let installedHandler: ((details: { url: string }) => { action: 'allow' | 'deny' }) | null =
       null;
@@ -188,8 +188,8 @@ describe('attachAssetSafetyNet — setWindowOpenHandler', () => {
   });
 
   test('disallowed scheme new-window (javascript:) → denied + openExternal throw is logged', async () => {
-    const openAsset = mock(async (_: string) => ({ ok: true }) as const);
-    const openExternal = mock(async (_: string) => {
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(async (_: string) => {
       throw new Error('shell.openExternal blocked: scheme-not-allowed: javascript:');
     });
     const logEvents: unknown[] = [];
@@ -224,8 +224,8 @@ describe('attachAssetSafetyNet — setWindowOpenHandler', () => {
   });
 
   test('openAsset refusal (path-escape on pdf) is logged', async () => {
-    const openAsset = mock(async (_: string) => ({ ok: false, reason: 'path-escape' }) as const);
-    const openExternal = mock(noopOpenExternal);
+    const openAsset = vi.fn(async (_: string) => ({ ok: false, reason: 'path-escape' }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
     const logEvents: unknown[] = [];
     const log = (evt: unknown) => {
       logEvents.push(evt);
@@ -257,9 +257,9 @@ describe('attachAssetSafetyNet — setWindowOpenHandler', () => {
     // editorOrigin (apiOrigin) is a separate port. `window.open('#/doc')`
     // resolves to a :5173 route — which must navigate the current window in-app,
     // not leak to the OS browser.
-    const openAsset = mock(async (_: string) => ({ ok: true }) as const);
-    const openExternal = mock(noopOpenExternal);
-    const executeJavaScript = mock(async (_: string) => undefined);
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
+    const executeJavaScript = vi.fn(async (_: string) => undefined);
 
     let installedHandler: ((details: { url: string }) => { action: 'allow' | 'deny' }) | null =
       null;
@@ -294,9 +294,9 @@ describe('attachAssetSafetyNet — setWindowOpenHandler', () => {
   });
 
   test('cross-origin new-window with renderer URL present → still openExternal (not in-app)', async () => {
-    const openAsset = mock(async (_: string) => ({ ok: true }) as const);
-    const openExternal = mock(noopOpenExternal);
-    const executeJavaScript = mock(async (_: string) => undefined);
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
+    const executeJavaScript = vi.fn(async (_: string) => undefined);
 
     let installedHandler: ((details: { url: string }) => { action: 'allow' | 'deny' }) | null =
       null;
@@ -324,8 +324,8 @@ describe('attachAssetSafetyNet — setWindowOpenHandler', () => {
 
 describe('attachAssetSafetyNet — will-navigate', () => {
   test('asset URL navigation → preventDefault + openAsset fires', async () => {
-    const openAsset = mock(async (_: string) => ({ ok: true }) as const);
-    const openExternal = mock(noopOpenExternal);
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
 
     let installedHandler: ((event: { preventDefault: () => void }, url: string) => void) | null =
       null;
@@ -341,7 +341,7 @@ describe('attachAssetSafetyNet — will-navigate', () => {
 
     attachAssetSafetyNet(webContents, { openAsset, openExternal, editorOrigin: ORIGIN });
 
-    const preventDefault = mock(() => {});
+    const preventDefault = vi.fn(() => {});
     installedHandler?.({ preventDefault }, 'http://localhost:5173/notes/meeting.pdf');
     expect(preventDefault).toHaveBeenCalledTimes(1);
     await Promise.resolve();
@@ -351,8 +351,8 @@ describe('attachAssetSafetyNet — will-navigate', () => {
   });
 
   test('same-origin navigation (Vite reload, app bundle) → no preventDefault, no delegation', async () => {
-    const openAsset = mock(async (_: string) => ({ ok: true }) as const);
-    const openExternal = mock(noopOpenExternal);
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
 
     let installedHandler: ((event: { preventDefault: () => void }, url: string) => void) | null =
       null;
@@ -368,7 +368,7 @@ describe('attachAssetSafetyNet — will-navigate', () => {
 
     attachAssetSafetyNet(webContents, { openAsset, openExternal, editorOrigin: ORIGIN });
 
-    const preventDefault = mock(() => {});
+    const preventDefault = vi.fn(() => {});
     installedHandler?.({ preventDefault }, 'http://localhost:5173/');
     expect(preventDefault).not.toHaveBeenCalled();
     await Promise.resolve();
@@ -379,8 +379,8 @@ describe('attachAssetSafetyNet — will-navigate', () => {
   test('same-renderer-origin navigation (distinct from editorOrigin) → no preventDefault, no delegation', async () => {
     // Renderer origin (:5173) differs from editorOrigin (api port) in dev; a
     // top-level navigate to a :5173 route must stay in-app, not openExternal.
-    const openAsset = mock(async (_: string) => ({ ok: true }) as const);
-    const openExternal = mock(noopOpenExternal);
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
 
     let installedHandler: ((event: { preventDefault: () => void }, url: string) => void) | null =
       null;
@@ -401,7 +401,7 @@ describe('attachAssetSafetyNet — will-navigate', () => {
       editorOrigin: 'http://localhost:8765',
     });
 
-    const preventDefault = mock(() => {});
+    const preventDefault = vi.fn(() => {});
     installedHandler?.({ preventDefault }, 'http://localhost:5173/#/people/ray-zaragoza');
     expect(preventDefault).not.toHaveBeenCalled();
     await Promise.resolve();
@@ -416,8 +416,8 @@ describe('attachAssetSafetyNet — will-navigate', () => {
     // same-origin Electron behavior; deferring to Electron's own failure mode
     // is the conservative choice. This test guards against a future refactor
     // that removes the try/catch or flips the fallback.
-    const openAsset = mock(async (_: string) => ({ ok: true }) as const);
-    const openExternal = mock(noopOpenExternal);
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
 
     let installedHandler: ((event: { preventDefault: () => void }, url: string) => void) | null =
       null;
@@ -433,7 +433,7 @@ describe('attachAssetSafetyNet — will-navigate', () => {
 
     attachAssetSafetyNet(webContents, { openAsset, openExternal, editorOrigin: ORIGIN });
 
-    const preventDefault = mock(() => {});
+    const preventDefault = vi.fn(() => {});
     expect(() => installedHandler?.({ preventDefault }, 'not a valid url')).not.toThrow();
     expect(preventDefault).not.toHaveBeenCalled();
     await Promise.resolve();
@@ -442,8 +442,8 @@ describe('attachAssetSafetyNet — will-navigate', () => {
   });
 
   test('cross-origin navigation (pasted https link) → preventDefault + openExternal fires', async () => {
-    const openAsset = mock(async (_: string) => ({ ok: true }) as const);
-    const openExternal = mock(noopOpenExternal);
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
 
     let installedHandler: ((event: { preventDefault: () => void }, url: string) => void) | null =
       null;
@@ -459,7 +459,7 @@ describe('attachAssetSafetyNet — will-navigate', () => {
 
     attachAssetSafetyNet(webContents, { openAsset, openExternal, editorOrigin: ORIGIN });
 
-    const preventDefault = mock(() => {});
+    const preventDefault = vi.fn(() => {});
     installedHandler?.({ preventDefault }, 'https://example.com/page');
     expect(preventDefault).toHaveBeenCalledTimes(1);
     await Promise.resolve();

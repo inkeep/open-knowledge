@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import {
   RENDERER_LOG_MAX_BATCH_BYTES,
   RENDERER_LOG_MAX_ENTRIES,
 } from '@inkeep/open-knowledge-core';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   type ClientLogForwarderHandle,
   installClientLogForwarder,
@@ -71,7 +71,7 @@ function makeFakeDocument(visibilityState = 'visible') {
 }
 
 function makeFetchSpy() {
-  return mock((_url: string, _init?: RequestInit) =>
+  return vi.fn((_url: string, _init?: RequestInit) =>
     Promise.resolve(new Response(null, { status: 200 })),
   );
 }
@@ -160,7 +160,7 @@ describe('installClientLogForwarder', () => {
 
   test('re-entrancy guard: a console call during flush does not recurse', () => {
     let conRef: ConsoleLike | undefined;
-    const fetchSpy = mock((_url: string, _init?: RequestInit) => {
+    const fetchSpy = vi.fn((_url: string, _init?: RequestInit) => {
       conRef?.error('error raised while flushing'); // transitive console during flush
       return Promise.resolve(new Response(null, { status: 200 }));
     });
@@ -230,7 +230,7 @@ describe('installClientLogForwarder', () => {
 
   test('a failed POST is counted and carried as droppedSinceLastFlush on the next batch', async () => {
     let failNext = true;
-    const fetchSpy = mock((_url: string, _init?: RequestInit) =>
+    const fetchSpy = vi.fn((_url: string, _init?: RequestInit) =>
       failNext
         ? Promise.reject(new Error('network down'))
         : Promise.resolve(new Response(null, { status: 200 })),
@@ -253,7 +253,7 @@ describe('installClientLogForwarder', () => {
 
   test('a non-2xx response counts the batch as dropped', async () => {
     let reject = true;
-    const fetchSpy = mock((_url: string, _init?: RequestInit) =>
+    const fetchSpy = vi.fn((_url: string, _init?: RequestInit) =>
       Promise.resolve(new Response(null, { status: reject ? 500 : 200 })),
     );
     const { con } = install(fetchSpy);
@@ -278,7 +278,7 @@ describe('installClientLogForwarder', () => {
     // exercised here: the flush-at-cap drains the queue at exactly the cap, so it
     // never grows past it — the failed-POST path is the real bound.)
     let failNext = true;
-    const fetchSpy = mock((_url: string, _init?: RequestInit) =>
+    const fetchSpy = vi.fn((_url: string, _init?: RequestInit) =>
       failNext
         ? Promise.reject(new Error('network down'))
         : Promise.resolve(new Response(null, { status: 200 })),
@@ -299,7 +299,7 @@ describe('installClientLogForwarder', () => {
 
   test('drop count resets after a delivered batch (field absent when zero)', async () => {
     let failNext = true;
-    const fetchSpy = mock((_url: string, _init?: RequestInit) =>
+    const fetchSpy = vi.fn((_url: string, _init?: RequestInit) =>
       failNext
         ? Promise.reject(new Error('network down'))
         : Promise.resolve(new Response(null, { status: 200 })),

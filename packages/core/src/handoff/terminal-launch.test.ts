@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { MCP_SERVER_NAME } from '../constants/mcp.ts';
 import {
   buildClaudeLaunchCommand,

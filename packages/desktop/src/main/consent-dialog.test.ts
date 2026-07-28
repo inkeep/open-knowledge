@@ -5,11 +5,12 @@
  * Electron runtime, no real fs writes (the probe walk uses real fs to enable
  * an integration assertion against a tmp-dir fixture).
  */
-import { describe, expect, test } from 'bun:test';
+
 import type { Dirent } from 'node:fs';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import type { OnboardingConfirmRequest, OnboardingShowPayload } from '../shared/ipc-channels.ts';
 import {
   type ConsentIpcMainLike,

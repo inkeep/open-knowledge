@@ -6,7 +6,9 @@
  */
 import type {
   PushPermissionWire as GitPushPermission,
+  PullOutcome,
   SyncErrorCode,
+  SyncMode,
 } from '@inkeep/open-knowledge-core';
 import { useEffect, useState } from 'react';
 import { subscribeToDocumentsChanged } from '@/lib/documents-events';
@@ -36,15 +38,34 @@ export interface GitSyncStatus {
   state: GitSyncState;
   lastSyncUtc: string | null;
   lastFetchUtc: string | null;
+  /**
+   * Completion timestamp + bounded outcome of the last pull (background or
+   * one-shot). Optional for version-skew safety — absent from a payload emitted
+   * by an engine that predates the outcome contract. A surface that triggers a
+   * pull reads status first, then waits for `lastPullUtc` to change and reads
+   * `lastPullOutcome`.
+   */
+  lastPullUtc?: string | null;
+  lastPullOutcome?: PullOutcome | null;
   ahead: number;
   behind: number;
   conflictCount: number;
   /** True when a git remote exists, even if sync is dormant/disabled. */
   hasRemote: boolean;
-  /** User's sync toggle preference (false by default — disabled for safety). */
+  /**
+   * True when sync is on at all (both `pull` and `full`), false for `off`.
+   * Read `syncMode` to branch on push capability — this boolean cannot tell
+   * pull-only from full.
+   */
   syncEnabled: boolean;
   /**
-   * Soft signal: the git identity chain (local → global → OAuth)
+   * Project sync mode. Optional for version-skew safety — absent from a status
+   * payload emitted by an engine that predates the field. `full` is the only
+   * mode that pushes.
+   */
+  syncMode?: SyncMode;
+  /**
+   * Soft signal: the git identity chain (merged git config → OAuth)
    * returned null on the last probe. Commits still succeed under a default
    * identity — the UI surfaces a non-blocking nudge to set a real one.
    */

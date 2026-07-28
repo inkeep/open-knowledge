@@ -31,18 +31,16 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 // Quarantine gate — see the header. Allowlisted in the CI no-skip guard so the
 // skip stays gate-visible.
 const IS_CI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
@@ -169,21 +167,24 @@ async function launchApp(s: Seed, opts: LaunchOpts = {}): Promise<ElectronApplic
   // ~/.local/bin). The fake-claude prefix, when present, is prepended.
   const basePath = opts.restrictPath ? '/usr/bin:/bin:/usr/sbin:/sbin' : (process.env.PATH ?? '');
   const PATH = s.pathPrefix ? `${s.pathPrefix}:${basePath}` : basePath;
-  return electron.launch({
-    // No --disable-gpu: blanket software rendering starves CPU on constrained CI
-    // runners. Instead TerminalPanel forces xterm's DOM renderer (not WebGL) when
-    // the e2eSmoke config flag is set (from OK_DESKTOP_E2E_SMOKE=1, below), so
-    // these DOM-based assertions can read the terminal while Electron keeps GPU.
-    args: [MAIN_ENTRY, `--user-data-dir=${s.userDataDir}`, deepLink],
-    timeout: 30_000,
-    env: {
-      ...process.env,
-      HOME: s.tmpHome,
-      PATH,
-      OK_DESKTOP_E2E_SMOKE: '1',
-      OK_RECLAIM_DISABLE: '1',
-    },
-  });
+  return electron.launch(
+    desktopLaunchOptions({
+      target: TARGET,
+      // No --disable-gpu: blanket software rendering starves CPU on constrained CI
+      // runners. Instead TerminalPanel forces xterm's DOM renderer (not WebGL) when
+      // the e2eSmoke config flag is set (from OK_DESKTOP_E2E_SMOKE=1, below), so
+      // these DOM-based assertions can read the terminal while Electron keeps GPU.
+      args: [`--user-data-dir=${s.userDataDir}`, deepLink],
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: s.tmpHome,
+        PATH,
+        OK_DESKTOP_E2E_SMOKE: '1',
+        OK_RECLAIM_DISABLE: '1',
+      },
+    }),
+  );
 }
 
 async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): Promise<Page> {
@@ -288,7 +289,7 @@ function track(...paths: string[]): void {
 test.describe('Docked terminal — live Electron', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Desktop is darwin-only.');
-  test.skip(!BUILD_EXISTS, `Main build missing at ${MAIN_ENTRY} — run "bun run build:desktop".`);
+  test.skip(!TARGET.exists, TARGET.missingReason);
   // Quarantined on CI (shells exit before "running" on the constrained 6-vCPU
   // runner; passes locally). Tracked via the QUARANTINE_ALLOWLIST in the CI
   // no-skip guard, not hidden.

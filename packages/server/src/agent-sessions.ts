@@ -19,6 +19,8 @@
  */
 import type { DirectConnection, Document, Hocuspocus } from '@hocuspocus/server';
 import {
+  applyPatchToFm,
+  detectFmRegion,
   parseFrontmatterYaml,
   prependFrontmatter,
   stripFrontmatter,
@@ -31,6 +33,7 @@ import * as Y from 'yjs';
 import {
   composeAndWriteRawBody,
   deriveFragmentFromYtext,
+  type PrecomputedParse,
   replaceRawBody,
 } from './bridge-intake.ts';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
@@ -44,6 +47,7 @@ import { FrontmatterMalformedError } from './frontmatter-malformed-error.ts';
 import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
 import { getLogger } from './logger.ts';
 import { incrementAgentSessionEvictions } from './metrics.ts';
+import { precomputeParse } from './parse-pool.ts';
 import type { PairedWriteOrigin } from './server-observers.ts';
 import { getMeter, setActiveSpanAttributes, withSpanSync } from './telemetry.ts';
 
@@ -141,6 +145,61 @@ function docNameToFile(docName: string): string {
  * @see PRECEDENTS.md precedent #11(a) (item-preserving cross-CRDT sync)
  * @see PRECEDENTS.md precedent #38 (Y.Text-is-truth contract)
  */
+/**
+ * Off-thread parse precompute for an agent write (see `parse-pool.ts`).
+ * Call BEFORE entering the write transact: composes the projected
+ * post-write bytes from the current Y.Text snapshot and parses them on a
+ * worker thread so a large-doc parse does not block the event loop.
+ *
+ * Purely advisory: returns `undefined` whenever the inline path should run
+ * (small doc, pool unavailable, conflict-gated doc, no-op composition),
+ * and the byte-identity guard in bridge-intake discards the result if the
+ * doc moved during the await — `applyAgentMarkdownWrite` recomposes inside
+ * the transact and stays the single source of applied bytes either way.
+ */
+export async function prepareAgentMarkdownParse(
+  document: Document,
+  markdown: string,
+  position: 'append' | 'prepend' | 'replace' | 'patch',
+  embedResolver?: {
+    resolveEmbed: (basename: string, sourcePath: string) => string | null;
+    sourcePath: string;
+  },
+): Promise<PrecomputedParse | undefined> {
+  // Conflict-gated docs refuse the write in apply; skip the wasted parse.
+  if (isDocInConflict(document)) return undefined;
+  const composed = composeAgentWrite(document.getText('source').toString(), markdown, position);
+  if (composed === undefined) return undefined;
+  return precomputeParse(composed.newContent, embedResolver);
+}
+
+/**
+ * Off-thread parse precompute for the frontmatter-patch handler. Applies
+ * the FM patch to a PRE-transact snapshot and, when it would change the
+ * fenced region, parses the guessed full bytes on the worker pool.
+ * Although only the YAML region changes, the fragment still re-derives
+ * from the full post-patch body — that body parse is the cost this moves
+ * off-thread. The handler's in-transact `applyPatchToFm` splice stays
+ * authoritative (including the fence-separator rule mirrored here); the
+ * byte-identity guard in bridge-intake discards a stale guess.
+ *
+ * Lives here rather than in the handler so `api-extension.ts` keeps
+ * exactly one `applyPatchToFm(` call site per handler — the
+ * presence-pairing structural sweep counts those call sites as handler
+ * entries.
+ */
+export async function prepareFrontmatterPatchParse(
+  document: Document,
+  patch: Parameters<typeof applyPatchToFm>[1],
+): Promise<PrecomputedParse | undefined> {
+  const snapshot = document.getText('source').toString();
+  const { fenced, body } = detectFmRegion(snapshot);
+  const result = applyPatchToFm(fenced, patch);
+  if (!result.ok || result.nextFenced === fenced) return undefined;
+  const needsFenceSeparator = fenced === '' && body !== '' && !body.startsWith('\n');
+  return precomputeParse(result.nextFenced + (needsFenceSeparator ? '\n' : '') + body);
+}
+
 export function applyAgentMarkdownWrite(
   document: Document,
   markdown: string,
@@ -155,6 +214,13 @@ export function applyAgentMarkdownWrite(
     resolveEmbed: (basename: string, sourcePath: string) => string | null;
     sourcePath: string;
   },
+  /**
+   * Optional off-thread parse from `prepareAgentMarkdownParse`, computed
+   * against a pre-transact snapshot. Honored only when the recompose below
+   * produces byte-identical content (the guard lives in bridge-intake); a
+   * doc that moved during the caller's await falls back to inline parse.
+   */
+  precomputed?: PrecomputedParse,
 ): AgentWriteContentDivergence | undefined {
   // Conflict-aware write gate (precedent #38 + this batch's structural
   // refusal contract). Lives OUTSIDE the transact — the check is static on
@@ -176,7 +242,13 @@ export function applyAgentMarkdownWrite(
       },
     },
     () => {
-      const divergence = applyAgentMarkdownWriteInner(document, markdown, position, embedResolver);
+      const divergence = applyAgentMarkdownWriteInner(
+        document,
+        markdown,
+        position,
+        embedResolver,
+        precomputed,
+      );
       if (divergence !== undefined) {
         setActiveSpanAttributes({
           'agent.content_divergent': true,
@@ -208,6 +280,95 @@ export function snapshotBlocks(document: Document): string[] {
     .map((child) => child.toString());
 }
 
+/**
+ * The pure string-composition half of an agent write, shared by the apply
+ * path (inside the caller's transact) and `prepareAgentMarkdownParse`
+ * (before it). Splits the payload, applies the position semantics, and
+ * returns the exact full-document bytes the primitives will apply.
+ * Returns `undefined` for the append/prepend empty-body no-op.
+ *
+ * Split semantics: the agent may send a full document (FM + body) or
+ * body-only; we handle both. On 'replace', an FM in the payload supersedes
+ * the existing FM. On 'prepend'/'append', the payload's FM (if any) is
+ * dropped defensively to avoid producing a document with two FM blocks
+ * (double-FM is a CommonMark invalid state). Stripping FM is orthogonal to
+ * the byte-faithful contract — body bytes survive verbatim, only the
+ * FM-handling logic prevents structural breakage.
+ *
+ * Join semantics: `replace` keeps the payload verbatim (the byte-faithful
+ * primary path is untouched). For append/prepend, the agent's payload
+ * CONTENT still survives verbatim — only the join SEAM is normalized to
+ * exactly one blank-line separator. A prior payload's trailing newline
+ * stored in `currentBody` previously compounded with the `\n\n` separator
+ * into a `\n\n\n` double blank line: the existing body ended with `\n`,
+ * and the separator added two more. Trim trailing newlines off the leading
+ * chunk and leading newlines off the trailing chunk so the seam is always
+ * a single blank line, regardless of which side carried stray newlines.
+ * Within-payload blank lines and the far (non-seam) edge are untouched;
+ * empty-doc detection still uses `currentBody.length > 0`.
+ */
+interface ComposedAgentWrite {
+  existingFm: string;
+  finalFm: string;
+  /** Full document bytes (FM + body) the primitives apply verbatim. */
+  newContent: string;
+}
+
+function composeAgentWrite(
+  currentYText: string,
+  markdown: string,
+  position: 'append' | 'prepend' | 'replace' | 'patch',
+): ComposedAgentWrite | undefined {
+  const { frontmatter: existingFm, body: currentBody } = stripFrontmatter(currentYText);
+  const { frontmatter: payloadFm, body: payloadBody } = stripFrontmatter(markdown);
+
+  // append/prepend with an empty body is a no-op — there is nothing to add,
+  // so return before the write and leave the document byte-unchanged.
+  // Without this guard the `${payloadBody}\n\n${currentBody}` join below
+  // would inject a stray `\n\n` around empty content. A `---`
+  // frontmatter-only payload also lands here: append/prepend drop the
+  // payload FM, leaving an empty body — genuinely nothing to apply.
+  // Deliberate vertical whitespace remains expressible by sending it as
+  // body bytes (e.g. "\n"), which survive verbatim.
+  if ((position === 'append' || position === 'prepend') && payloadBody === '') {
+    return undefined;
+  }
+
+  let finalFm: string;
+  let newBody: string;
+  switch (position) {
+    case 'replace':
+      finalFm = payloadFm || existingFm;
+      newBody = payloadBody;
+      break;
+    // `patch` (the edit find/replace path) composes identically to
+    // `replace` — full recomposed body, same FM supersede — but dispatches to
+    // the INCREMENTAL primitive (composeAndWriteRawBody), not the atomic
+    // replaceRawBody, so a surgical edit stays item-preserving instead of
+    // churning the whole doc. Same byte result, minimal CRDT delta.
+    case 'patch':
+      finalFm = payloadFm || existingFm;
+      newBody = payloadBody;
+      break;
+    case 'prepend':
+      finalFm = existingFm;
+      newBody =
+        currentBody.length > 0
+          ? `${payloadBody.replace(/\n+$/, '')}\n\n${currentBody.replace(/^\n+/, '')}`
+          : payloadBody;
+      break;
+    case 'append':
+      finalFm = existingFm;
+      newBody =
+        currentBody.length > 0
+          ? `${currentBody.replace(/\n+$/, '')}\n\n${payloadBody.replace(/^\n+/, '')}`
+          : payloadBody;
+      break;
+  }
+
+  return { existingFm, finalFm, newContent: prependFrontmatter(finalFm, newBody) };
+}
+
 function applyAgentMarkdownWriteInner(
   document: Document,
   markdown: string,
@@ -216,75 +377,16 @@ function applyAgentMarkdownWriteInner(
     resolveEmbed: (basename: string, sourcePath: string) => string | null;
     sourcePath: string;
   },
+  precomputed?: PrecomputedParse,
 ): AgentWriteContentDivergence | undefined {
   try {
     const ytext = document.getText('source');
     const currentYText = ytext.toString();
-    const { frontmatter: existingFm, body: currentBody } = stripFrontmatter(currentYText);
-
-    // Split the agent's payload into frontmatter + body. The agent may send
-    // a full document (FM + body) or body-only; we handle both. On 'replace',
-    // an FM in the payload supersedes the existing FM. On 'prepend'/'append',
-    // the payload's FM (if any) is dropped defensively to avoid producing a
-    // document with two FM blocks (double-FM is a CommonMark invalid state).
-    // Stripping FM is orthogonal to the byte-faithful contract — body bytes
-    // survive verbatim, only the FM-handling logic prevents structural breakage.
-    const { frontmatter: payloadFm, body: payloadBody } = stripFrontmatter(markdown);
-
-    // append/prepend with an empty body is a no-op — there is nothing to add,
-    // so return before the write and leave the document byte-unchanged.
-    // Without this guard the `${payloadBody}\n\n${currentBody}` join below
-    // would inject a stray `\n\n` around empty content. A `---`
-    // frontmatter-only payload also lands here: append/prepend drop the
-    // payload FM, leaving an empty body — genuinely nothing to apply.
-    // Deliberate vertical whitespace remains expressible by sending it as
-    // body bytes (e.g. "\n"), which survive verbatim.
-    if ((position === 'append' || position === 'prepend') && payloadBody === '') {
+    const composed = composeAgentWrite(currentYText, markdown, position);
+    if (composed === undefined) {
       return;
     }
-
-    // Compose final FM and body. `replace` keeps the payload verbatim (the
-    // byte-faithful primary path is untouched). For append/prepend, the agent's
-    // payload CONTENT still survives verbatim — only the join SEAM is normalized
-    // to exactly one blank-line separator. A prior payload's trailing newline
-    // stored in `currentBody` previously compounded with the `\n\n` separator
-    // into a `\n\n\n` double blank line: the existing body ended
-    // with `\n`, and the separator added two more. Trim trailing newlines off
-    // the leading chunk and leading newlines off the trailing chunk so the seam
-    // is always a single blank line, regardless of which side carried stray
-    // newlines. Within-payload blank lines and the far (non-seam) edge are
-    // untouched; empty-doc detection still uses `currentBody.length > 0`.
-    let finalFm: string;
-    let newBody: string;
-    switch (position) {
-      case 'replace':
-        finalFm = payloadFm || existingFm;
-        newBody = payloadBody;
-        break;
-      // `patch` (the edit find/replace path) composes identically to
-      // `replace` — full recomposed body, same FM supersede — but dispatches to
-      // the INCREMENTAL primitive below (composeAndWriteRawBody), not the atomic
-      // replaceRawBody, so a surgical edit stays item-preserving instead of
-      // churning the whole doc. Same byte result, minimal CRDT delta.
-      case 'patch':
-        finalFm = payloadFm || existingFm;
-        newBody = payloadBody;
-        break;
-      case 'prepend':
-        finalFm = existingFm;
-        newBody =
-          currentBody.length > 0
-            ? `${payloadBody.replace(/\n+$/, '')}\n\n${currentBody.replace(/^\n+/, '')}`
-            : payloadBody;
-        break;
-      case 'append':
-        finalFm = existingFm;
-        newBody =
-          currentBody.length > 0
-            ? `${currentBody.replace(/\n+$/, '')}\n\n${payloadBody.replace(/^\n+/, '')}`
-            : payloadBody;
-        break;
-    }
+    const { existingFm, finalFm, newContent } = composed;
 
     if (finalFm !== existingFm) {
       // Refuse the write when the agent's payload introduces unparseable
@@ -345,11 +447,10 @@ function applyAgentMarkdownWriteInner(
     // position (including `patch`, the edit surgical path) takes the
     // incremental primitive. Two primitives, two intents — see
     // `bridge-intake.ts` file header for the full contrast.
-    const newContent = prependFrontmatter(finalFm, newBody);
     if (position === 'replace') {
-      replaceRawBody(document, newContent, embedResolver);
+      replaceRawBody(document, newContent, embedResolver, precomputed);
     } else {
-      composeAndWriteRawBody(document, newContent, 'agent', embedResolver);
+      composeAndWriteRawBody(document, newContent, 'agent', embedResolver, precomputed);
     }
 
     // Site A content-divergence gate (shared predicate). Read Y.Text

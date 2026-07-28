@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   type BundleReplaceDetectorInput,
   detectBundleReplace,
@@ -16,7 +16,7 @@ import {
  */
 
 afterEach(() => {
-  mock.restore();
+  vi.restoreAllMocks();
 });
 
 function makeInput(
@@ -145,14 +145,14 @@ describe('extractShortVersionFromPlist', () => {
 });
 
 interface WatcherFixtures {
-  showMessageBox: ReturnType<typeof mock>;
-  relaunch: ReturnType<typeof mock>;
-  quit: ReturnType<typeof mock>;
-  setInterval: ReturnType<typeof mock>;
-  clearInterval: ReturnType<typeof mock>;
+  showMessageBox: ReturnType<typeof vi.fn>;
+  relaunch: ReturnType<typeof vi.fn>;
+  quit: ReturnType<typeof vi.fn>;
+  setInterval: ReturnType<typeof vi.fn>;
+  clearInterval: ReturnType<typeof vi.fn>;
   logger: {
-    info: ReturnType<typeof mock>;
-    warn: ReturnType<typeof mock>;
+    info: ReturnType<typeof vi.fn>;
+    warn: ReturnType<typeof vi.fn>;
   };
   /** The callback registered with setInterval — fire to simulate a tick. */
   tickCallback: (() => void) | null;
@@ -162,19 +162,19 @@ interface WatcherFixtures {
 
 function makeFixtures(): WatcherFixtures {
   const fixtures: WatcherFixtures = {
-    showMessageBox: mock(() => Promise.resolve({ response: 0, checkboxChecked: false })),
-    relaunch: mock(() => {}),
-    quit: mock(() => {}),
-    setInterval: mock(() => Symbol('interval')),
-    clearInterval: mock(() => {}),
+    showMessageBox: vi.fn(() => Promise.resolve({ response: 0, checkboxChecked: false })),
+    relaunch: vi.fn(() => {}),
+    quit: vi.fn(() => {}),
+    setInterval: vi.fn(() => Symbol('interval')),
+    clearInterval: vi.fn(() => {}),
     logger: {
-      info: mock(() => {}),
-      warn: mock(() => {}),
+      info: vi.fn(() => {}),
+      warn: vi.fn(() => {}),
     },
     tickCallback: null,
     intervalHandle: null,
   };
-  fixtures.setInterval = mock((cb: () => void, _ms: number) => {
+  fixtures.setInterval = vi.fn((cb: () => void, _ms: number) => {
     fixtures.tickCallback = cb;
     fixtures.intervalHandle = Symbol('interval');
     return fixtures.intervalHandle as unknown as ReturnType<typeof setInterval>;
@@ -204,7 +204,7 @@ describe('startBundleReplaceWatcher', () => {
 
   test('fires the prompt exactly once when an upgrade is detected', async () => {
     const fx = makeFixtures();
-    fx.showMessageBox = mock(() => Promise.resolve({ response: 1, checkboxChecked: false })); // user clicks "Later"
+    fx.showMessageBox = vi.fn(() => Promise.resolve({ response: 1, checkboxChecked: false })); // user clicks "Later"
     startBundleReplaceWatcher({
       infoPlistPath: '/x/Info.plist',
       getCurrentVersion: () => '0.4.1',
@@ -236,7 +236,7 @@ describe('startBundleReplaceWatcher', () => {
     // `.then` chain would silently break this test.
     const fx = makeFixtures();
     let resolveDialog: ((v: { response: number; checkboxChecked: boolean }) => void) | null = null;
-    fx.showMessageBox = mock(
+    fx.showMessageBox = vi.fn(
       () =>
         new Promise<{ response: number; checkboxChecked: boolean }>((r) => {
           resolveDialog = r;
@@ -273,7 +273,7 @@ describe('startBundleReplaceWatcher', () => {
     // failures (window destroyed mid-show, framework error) must not
     // permanently de-arm the session-level prompt.
     const fx = makeFixtures();
-    fx.showMessageBox = mock(() => Promise.reject(new Error('dialog destroyed')));
+    fx.showMessageBox = vi.fn(() => Promise.reject(new Error('dialog destroyed')));
     startBundleReplaceWatcher({
       infoPlistPath: '/x/Info.plist',
       getCurrentVersion: () => '0.4.1',
@@ -308,7 +308,7 @@ describe('startBundleReplaceWatcher', () => {
     // context.
     const fx = makeFixtures();
     let rejectDialog: ((err: Error) => void) | null = null;
-    fx.showMessageBox = mock(
+    fx.showMessageBox = vi.fn(
       () =>
         new Promise<{ response: number; checkboxChecked: boolean }>((_, r) => {
           rejectDialog = r;
@@ -350,7 +350,7 @@ describe('startBundleReplaceWatcher', () => {
     // relaunch+quit on top of the already-in-flight shutdown.
     const fx = makeFixtures();
     let resolveDialog: ((v: { response: number; checkboxChecked: boolean }) => void) | null = null;
-    fx.showMessageBox = mock(
+    fx.showMessageBox = vi.fn(
       () =>
         new Promise<{ response: number; checkboxChecked: boolean }>((r) => {
           resolveDialog = r;
@@ -387,12 +387,12 @@ describe('startBundleReplaceWatcher', () => {
     // the next quit. Reversing the two adjacent calls means the app quits
     // without relaunching.
     const fx = makeFixtures();
-    fx.showMessageBox = mock(() => Promise.resolve({ response: 0, checkboxChecked: false }));
+    fx.showMessageBox = vi.fn(() => Promise.resolve({ response: 0, checkboxChecked: false }));
     const callOrder: string[] = [];
-    fx.relaunch = mock(() => {
+    fx.relaunch = vi.fn(() => {
       callOrder.push('relaunch');
     });
-    fx.quit = mock(() => {
+    fx.quit = vi.fn(() => {
       callOrder.push('quit');
     });
     startBundleReplaceWatcher({
@@ -417,7 +417,7 @@ describe('startBundleReplaceWatcher', () => {
 
   test('"Later" (response 1) leaves the app running and stops the watcher', async () => {
     const fx = makeFixtures();
-    fx.showMessageBox = mock(() => Promise.resolve({ response: 1, checkboxChecked: false }));
+    fx.showMessageBox = vi.fn(() => Promise.resolve({ response: 1, checkboxChecked: false }));
     const handle = startBundleReplaceWatcher({
       infoPlistPath: '/x/Info.plist',
       getCurrentVersion: () => '0.4.1',
@@ -442,7 +442,7 @@ describe('startBundleReplaceWatcher', () => {
 
   test('errors in statSync are swallowed (logged at warn, no crash)', () => {
     const fx = makeFixtures();
-    const throwingStat = mock(() => {
+    const throwingStat = vi.fn(() => {
       throw new Error('EACCES');
     });
     startBundleReplaceWatcher({

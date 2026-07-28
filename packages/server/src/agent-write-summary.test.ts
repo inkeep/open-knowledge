@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { MAX_SUMMARY_LENGTH, normalizeSummary } from './agent-write-summary.ts';
 
 describe('normalizeSummary — classification', () => {

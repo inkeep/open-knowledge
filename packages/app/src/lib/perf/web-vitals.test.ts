@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { getCollector } from './collector';
 import { __resetWebVitalsForTests, initWebVitals } from './web-vitals';
 

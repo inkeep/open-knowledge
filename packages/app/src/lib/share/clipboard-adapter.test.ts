@@ -3,7 +3,7 @@
  * `navigator.clipboard.writeText` fallback.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { isPermissionsPolicyRefusal, scheduleClipboardWrite } from './clipboard-adapter';
 
 interface MockableGlobals {
@@ -72,7 +72,7 @@ describe('scheduleClipboardWrite — Electron IPC bridge path (preferred when av
   });
 
   test('does NOT touch navigator.clipboard when okDesktop bridge is available', async () => {
-    const navWriteText = mock(async () => undefined);
+    const navWriteText = vi.fn(async () => undefined);
     setGlobals({
       windowOkDesktop: {
         clipboard: { writeText: async () => undefined },

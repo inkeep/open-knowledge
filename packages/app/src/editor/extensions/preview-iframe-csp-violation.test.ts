@@ -14,7 +14,7 @@
  * key that {@link parsePreviewCspViolationMessage} can read. The CSP itself is
  * unchanged — `code-block-preview-csp.test.ts` continues to guard its bytes.
  */
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import {
   buildPreviewIframeHeader,
   PREVIEW_CSP_VIOLATION_SAMPLE_CAP,
@@ -40,7 +40,7 @@ function evalBootstrap() {
     listeners[type] ||= [];
     listeners[type].push(fn);
   };
-  const postMessage = mock((_msg: unknown, _origin?: string) => {});
+  const postMessage = vi.fn((_msg: unknown, _origin?: string) => {});
   const documentStub = {
     documentElement: { classList: { add() {}, remove() {} } },
     readyState: 'complete',
@@ -80,7 +80,7 @@ function evalBootstrap() {
 }
 
 /** Pull the latest CSP-violation payload the bootstrap posted to the parent. */
-function latestCspReport(postMessage: ReturnType<typeof mock>) {
+function latestCspReport(postMessage: ReturnType<typeof vi.fn>) {
   const calls = postMessage.mock.calls.filter(
     (c) => parsePreviewCspViolationMessage(c[0]) !== null,
   );

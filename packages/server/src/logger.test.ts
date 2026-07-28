@@ -442,12 +442,12 @@ describe('Logger', () => {
       expect(existsSync(previousPath)).toBe(true);
     });
 
-    it('flushAllFileSinks drains every cached PinoLogger created via the factory', async () => {
-      // Two named loggers obtained through the factory — each PinoLogger
-      // instance owns its own PinoFileSink with a separate RotatingAppender
-      // promise chain, so draining one does not drain the other. Shutdown
-      // must walk every cached instance for log records written in the final
-      // moments before process.exit() to land on disk.
+    it('flushAllFileSinks drains records from every cached PinoLogger before exit', async () => {
+      // Two named loggers obtained through the factory write to the same log
+      // path, so their PinoFileSinks share one per-path rotation chain.
+      // flushAllFileSinks must drain that chain so records written in the final
+      // moments before process.exit() — from any logger — land on disk rather
+      // than being lost with the unflushed async write queue.
       loggerFactory.configure({
         pinoConfig: {
           options: { level: 'info' },

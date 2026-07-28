@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { STARTER_PACK_IDS } from './starter.ts';
 
 // The project skill carries a hand-written starter-pack awareness list (names +

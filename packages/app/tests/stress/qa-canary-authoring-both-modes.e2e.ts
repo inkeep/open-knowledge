@@ -13,9 +13,11 @@
  *
  *  ORACLE NOTE: CM source-mode auto-indents JSX tags on Enter while authoring. The
  *  indented shape is a stable, lossless serialize fixed point, and the bridge never
- *  re-indents (3-layer isolation). Assertions therefore check STRUCTURE + CONTENT
- *  INTEGRITY, never flush-left tags, for authored-from-scratch content; only SEEDED
- *  Steps assert flush-left.
+ *  GLOBALLY re-indents. Assertions therefore check STRUCTURE + CONTENT INTEGRITY,
+ *  never flush-left tags, for authored-from-scratch content; SEEDED Steps guard the
+ *  OUTER container against the global re-indent write-back (a contended drain may
+ *  re-emit the INNER tags at the canonical nested indentation — a lossless fixed
+ *  point, not the corruption class; see the T2/T3 oracle notes).
  */
 
 import { randomUUID } from 'node:crypto';
@@ -24,11 +26,11 @@ import { expect, test, waitForActiveProviderSynced as waitForProvider } from './
 
 const sourceToggle = (page: Page) => page.getByRole('radio', { name: 'Markdown source' });
 const visualToggle = (page: Page) => page.getByRole('radio', { name: 'Visual editor' });
-const INDENTED_STEP = /\n[ \t]+<\/?Step\b/;
 // A GLOBAL re-indent write-back (the bug this suite guards) would indent the
-// OUTER <Steps> container too. The wildcard raw-source box's own commit path may
-// locally re-emit the inner <Step> with standard nested-JSX indentation (lossless,
-// stable fixed point) — that is not the corruption class. Guard the outer tag.
+// OUTER <Steps> container too. Both the wildcard raw-source box's own commit
+// path and a contended freshness re-derive may locally re-emit the inner
+// <Step> with standard nested-JSX indentation (lossless, stable fixed point)
+// — that is not the corruption class. Guard the outer tag.
 const INDENTED_STEPS = /\n[ \t]+<\/?Steps\b/;
 
 const readSource = (page: Page) =>
@@ -115,10 +117,9 @@ test.describe('QA canary — authoring <Steps> across both modes', () => {
     page,
     api,
   }) => {
-    await api.replaceDoc(
-      docName,
-      '## Heading\n\nEditable paragraph.\n\n<Steps>\n\n<Step>\n\nStep body.\n\n</Step>\n\n</Steps>\n\nTrailing paragraph.\n',
-    );
+    const seed =
+      '## Heading\n\nEditable paragraph.\n\n<Steps>\n\n<Step>\n\nStep body.\n\n</Step>\n\n</Steps>\n\nTrailing paragraph.\n';
+    await api.replaceDoc(docName, seed);
     await page.waitForFunction(
       () => document.querySelector('.ProseMirror')?.textContent?.includes('Editable paragraph'),
       null,
@@ -146,10 +147,38 @@ test.describe('QA canary — authoring <Steps> across both modes', () => {
     expect(minWildcard).toBe(before.wildcardCm); // Steps render never unmounted mid-type
     expect(maxFallback).toBe(before.rawFallback); // no parse-error fallback flashed in
     expect(after.h2).toBe(before.h2); // surrounding heading stable
+    // Await the typed burst's settlement into authoritative Y.Text before any
+    // byte assertion: the final keystrokes' server drain can lag the typing
+    // loop under CPU contention, and an early read asserts a mid-flight state
+    // (same settlement idiom as every sibling test in this file).
+    await page.waitForFunction(
+      () =>
+        window.__activeProvider?.document
+          ?.getText('source')
+          ?.toString()
+          ?.includes('Editable paragraph.NEWTEXT'),
+      null,
+      { timeout: 10_000 },
+    );
     const src = await readSource(page);
     expect(src).toContain('Editable paragraph.NEWTEXT'); // edit landed contiguous
-    expect((src.match(/<Step>/g) ?? []).length).toBe(1); // Steps intact
-    expect(src).not.toMatch(INDENTED_STEP); // SEEDED Steps stay flush-left (no bridge re-indent)
+    expect((src.match(/<Step>/g) ?? []).length).toBe(1); // Steps intact, exactly once (no duplication)
+    expect((src.match(/<Steps>/g) ?? []).length).toBe(1); // outer container intact, exactly once
+    // Corruption oracle mirrors T3: reject the GLOBAL re-indent write-back
+    // (the OUTER <Steps> gaining indentation) and content growth/duplication.
+    // A contended drain may re-emit the user-untouched Steps span with the
+    // INNER <Step> at standard nested-JSX indentation — a lossless, stable
+    // serialize fixed point (parses identically, no content change), not the
+    // corruption class. The strict inner flush-left byte-form is byte-stability
+    // of an untouched construct — a bridge-splice concern with its own
+    // dedicated coverage, not this canary's oracle.
+    expect(src).not.toMatch(INDENTED_STEPS); // no write-back re-indent of the outer <Steps>
+    // Slack derivation: the canonical inner re-emit adds at most 2-space
+    // indentation on the 3 inner lines (+6) and drops up to 4 blank-line
+    // newlines (-4) for this seed — 32 is a comfortable ceiling for any
+    // cosmetic re-emit. The bound is defense-in-depth; the count assertions
+    // above are the primary duplication oracle. Same constant as T3's bound.
+    expect(src.length).toBeLessThan(seed.length + 'NEWTEXT'.length + 32); // no growth / duplication
   });
 
   // T3 — WYSIWYG wildcard CM: edit INSIDE the Step's raw-source box (the only

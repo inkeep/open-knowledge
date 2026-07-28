@@ -1,3 +1,19 @@
+// Bug-report sidecar — the durable per-report YAML record backing the retry
+// list. Schema + open-state normalization; the writer/reader/retention live in
+// desktop main.
+export {
+  isKnownReportSidecarState,
+  isReportIdShape,
+  normalizeReportSidecarState,
+  REPORT_ID_PATTERN,
+  REPORT_SIDECAR_SCHEMA_VERSION,
+  REPORT_SIDECAR_STATES,
+  type ReportSidecar,
+  type ReportSidecarAttempt,
+  type ReportSidecarKnownState,
+  ReportSidecarSchema,
+  type ReportSidecarState,
+} from './bug-report-sidecar/schema.ts';
 // Burst-grouping utility
 export {
   type Burst,
@@ -28,6 +44,9 @@ export type {
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
+  OkBugReportDeleteResult,
+  OkBugReportListResult,
+  OkBugReportListRow,
   OkBugReportScreenshot,
   OkBugReportSendFallbackReason,
   OkBugReportSendMetadata,
@@ -80,6 +99,30 @@ export {
   type MenuPlatform,
   type MenuSection,
 } from './commands/command-identity.ts';
+// Sync-mode vocabulary + resolution rules (off/follow/full). Browser+node compatible.
+export {
+  displayActiveMode,
+  hasEverEnabledSync,
+  isSyncActiveMode,
+  isSyncMode,
+  isSyncPaused,
+  modeFromCommittedDefault,
+  modeFromLegacyEnabled,
+  normalizeStoredMode,
+  resolveEffectiveAutoSyncMode,
+  resolveLocalAutoSyncMode,
+  resumeModeOf,
+  STORED_SYNC_ACTIVE_MODES,
+  STORED_SYNC_MODES,
+  type StoredSyncActiveMode,
+  type StoredSyncMode,
+  SYNC_ACTIVE_MODES,
+  SYNC_MODE_CHANGE_SOURCES,
+  SYNC_MODES,
+  type SyncActiveMode,
+  type SyncMode,
+  type SyncModeChangeSource,
+} from './config/auto-sync-mode.ts';
 // Headless config writers + UI ConfigBinding.
 // Browser+node compatible — no Node deps; structural ConfigDocProvider type
 // keeps `@hocuspocus/provider` out of core's runtime deps.
@@ -144,6 +187,7 @@ export {
   DEFAULT_LOGS_MAX_BYTES,
   DEFAULT_SPANS_MAX_BYTES,
   DEFAULT_TELEMETRY_ATTRIBUTE_DENYLIST,
+  isLoopbackEmbeddingsUrl,
   isValidAttachmentFolderPath,
   normalizeAttachmentFolderPath,
 } from './config/schema.ts';
@@ -263,6 +307,13 @@ export {
 } from './constants/preview-theme-tokens.ts';
 export { PRODUCT_NAME } from './constants/product.ts';
 export { DEFAULT_SERVER_HOST } from './constants/server.ts';
+export {
+  isUninstallFeedbackReason,
+  UNINSTALL_FEEDBACK_EMAIL_MAX_LEN,
+  UNINSTALL_FEEDBACK_NOTE_MAX_LEN,
+  UNINSTALL_FEEDBACK_REASONS,
+  type UninstallFeedbackReason,
+} from './constants/uninstall-feedback.ts';
 export {
   ALLOWED_AUDIO_MIME_TYPES,
   ALLOWED_IMAGE_MIME_TYPES,
@@ -434,6 +485,7 @@ export {
   type UrnIpcLookup,
   withSkillPointer,
 } from './handoff/index.ts';
+export { selectFenceChar, widenFenceLength } from './markdown/code-fence.ts';
 export {
   HTML_MAX_BYTES,
   HtmlPayloadTooLargeError,
@@ -444,16 +496,41 @@ export { MarkdownManager, type SerializeCallOptions } from './markdown/index.ts'
 // Markdown linter (the content-rules lint-plugin registry). Browser-safe;
 // consumed by the editor's CodeMirror lint facet + the no-code Settings GUI.
 export {
+  type AppliesToPatternSummary,
+  type AppliesToSummary,
+  applyFieldConstraint,
   applyTextEdits,
+  CANONICAL_SCHEMA_DIALECT_URIS,
+  type CompiledAppliesTo,
   canonicalRuleId,
+  compileAppliesTo,
+  DEFAULT_LINKS_VALIDATION,
   DEFAULT_LINTER_CONFIG,
   DEFAULT_MARKDOWNLINT_CONFIG,
+  DEFAULT_SCHEMA_DIALECT,
   displayCategoryForRule,
+  emptyFrontmatterSchemaText,
+  type FrontmatterFieldConstraint,
+  type FrontmatterSchemaDialect,
+  FrontmatterSchemaEditError,
+  type FrontmatterSchemaMapping,
+  type FrontmatterSchemasListSuccess,
+  FrontmatterSchemasListSuccessSchema,
+  type FrontmatterSchemaWriteRequest,
+  FrontmatterSchemaWriteRequestSchema,
+  type FrontmatterSlice,
   findRuleConfigEntry,
+  findZeroMatchAppliesToPatterns,
   fixDocument,
   fixMarkdownText,
+  frontmatterSchemaCompileError,
+  isFrontmatterSchemaAsset,
   isMarkdownlintJsonConfig,
+  isSupportedSchemaDialect,
+  isToolManagedSchemaPath,
+  LINKS_VALIDATION_SETTINGS,
   LINT_PLUGINS,
+  type LinksValidationSetting,
   type LintAuditResponse,
   LintAuditResponseSchema,
   type LintConfigResponse,
@@ -481,14 +558,28 @@ export {
   type MarkdownlintRuleWriteValue,
   type MarkdownlintSlice,
   type PersistedLinterConfig,
+  type ResolvedFrontmatterSchemaEntry,
   RULE_DISPLAY_CATEGORIES,
   type RuleCatalogEntry,
   type RuleDisplayCategory,
   type RuleOptionSpec,
   type RuleOptionType,
+  removeSchemaField,
+  renameSchemaField,
+  resolveFrontmatterSchemaDialect,
   resolveMarkdownlintConfig,
   runMarkdownlint,
+  type SchemaParentPathSegment,
+  SUPPORTED_SCHEMA_DIALECTS,
+  selectApplicableFrontmatterSchemas,
+  summarizeAppliesTo,
   toEffectiveBase,
+  type ValidationAuditResponse,
+  ValidationAuditResponseSchema,
+  type ValidationDiagnostic,
+  type ValidationDocResult,
+  ValidationDocResultSchema,
+  type ValidationSource,
 } from './markdown/lint/index.ts';
 export { markdownToHtml, mdastToHtml } from './markdown/mdast-to-html.ts';
 export { normalizeDocRelativeAssetUrl } from './markdown/resolve-image-url.ts';
@@ -670,6 +761,8 @@ export {
   EmbedDetectionSchema,
   type EmbedDetectSuccess,
   EmbedDetectSuccessSchema,
+  type EmbeddingsTestFailureReason,
+  EmbeddingsTestFailureReasonSchema,
   EmbedProbeEntrySchema,
   type EmbedProbeEntryWire,
   type EmptyRequest,
@@ -736,6 +829,8 @@ export {
   LinkPreviewResponseSchema,
   type LintViolationWarning,
   LintViolationWarningSchema,
+  type LocalOpAuthCancelRequest,
+  LocalOpAuthCancelRequestSchema,
   type LocalOpAuthEmptySuccess,
   LocalOpAuthEmptySuccessSchema,
   type LocalOpAuthHostRequest,
@@ -754,6 +849,8 @@ export {
   LocalOpEmbeddingsMutationSuccessSchema,
   type LocalOpEmbeddingsSetKeyRequest,
   LocalOpEmbeddingsSetKeyRequestSchema,
+  type LocalOpEmbeddingsTestResponse,
+  LocalOpEmbeddingsTestResponseSchema,
   type LocalOpOkInitFailureReason,
   LocalOpOkInitFailureReasonSchema,
   type LocalOpOkInitRequest,
@@ -788,6 +885,9 @@ export {
   ProblemDetailsSchema,
   type ProblemType,
   ProblemTypeSchema,
+  PULL_OUTCOMES,
+  type PullOutcome,
+  PullOutcomeSchema,
   PushPermissionSchema,
   type PushPermissionWire,
   type RenamedAssetMapping,
@@ -961,6 +1061,8 @@ export {
   SyncConflictsSuccessSchema,
   type SyncErrorCode,
   SyncErrorCodeSchema,
+  SyncModeSchema,
+  type SyncModeWire,
   SyncRemoteSchema,
   type SyncRemoteWire,
   type SyncResolveConflictRequest,
@@ -1063,6 +1165,16 @@ export {
   THEME_PLUGIN_IDS,
   THEME_PLUGINS,
 } from './theme/theme-plugins.ts';
+export type {
+  OkUninstallBridge,
+  UninstallDispatchRequest,
+  UninstallDispatchResult,
+  UninstallIntent,
+  UninstallNoticeChecklistItem,
+  UninstallNoticeScreen,
+  UninstallProjectRow,
+  UninstallScreenSpec,
+} from './uninstall-bridge.ts';
 export {
   HIDDEN_CONFIG_BASENAMES,
   isHiddenDocName,
@@ -1080,6 +1192,15 @@ export {
   parseLoomUrl,
 } from './utils/loom-embed.ts';
 export { type PdfAnchorParts, parsePdfAnchor } from './utils/pdf-anchor.ts';
+export {
+  hasUninstallFeedbackContent,
+  type PostUninstallFeedbackOptions,
+  postUninstallFeedback,
+  type UninstallFeedbackAnswers,
+  type UninstallFeedbackResult,
+  type UninstallFeedbackSource,
+  type UninstallFeedbackSubmission,
+} from './utils/uninstall-feedback-submit.ts';
 export { isVimeoUrl } from './utils/vimeo-embed.ts';
 export {
   type ParsedYouTubeUrl,
@@ -1188,6 +1309,7 @@ export {
   type ToleranceFireRecord,
   type ToleranceTelemetryHook,
   toBridgeInvariantLog,
+  tryLineLevelCombine,
 } from './bridge/index.ts';
 // Two-phase shutdown timing constants — shared by the CLI's idle-shutdown
 // UI-sibling termination and the desktop's `stopAllOwnedServers` auto-

@@ -4,10 +4,11 @@
  * nesting contract (document errors stay with DocumentErrorBoundary).
  * Invocation via `bun run test:dom`.
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+
 import type { OkBugReportCreateResult } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { AppErrorBoundary, CrashReportingBoundary } from './AppErrorBoundary';
 import { DocumentErrorBoundary } from './DocumentErrorBoundary';
 
@@ -90,13 +91,13 @@ function clearBugReportBridge() {
 }
 
 describe('AppErrorBoundary', () => {
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     shouldThrow = false;
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -200,7 +201,7 @@ describe('AppErrorBoundary', () => {
     installBugReportBridge();
     render(
       <AppErrorBoundary>
-        <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={mock(() => {})}>
+        <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={vi.fn(() => {})}>
           <MaybeThrow label="alpha" />
         </DocumentErrorBoundary>
       </AppErrorBoundary>,
@@ -226,11 +227,11 @@ describe('AppErrorBoundary', () => {
 });
 
 describe('CrashReportingBoundary', () => {
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     shouldThrow = false;
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {

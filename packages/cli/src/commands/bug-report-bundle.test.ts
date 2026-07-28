@@ -4,11 +4,11 @@
  * directory is injected so tests never touch the real `~/.ok`.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   collectStandardBundle,
   defaultBugReportZipPath,

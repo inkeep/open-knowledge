@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 describe('EditorArea module', () => {
   test('exports EditorArea component', async () => {

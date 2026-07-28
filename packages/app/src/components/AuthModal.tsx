@@ -1,7 +1,8 @@
 /**
  * AuthModal — GitHub sign-in dialog.
  *
- * Device Flow: shows user_code, polls for completion, 2-minute timeout.
+ * Device Flow: shows user_code and counts down to the deadline GitHub actually
+ * issued (`expires_in`, ~15 min), not a local guess.
  * Calls POST /api/local-op/auth/login (streaming JSONL).
  *
  * Entry patterns (what happens on open):
@@ -125,15 +126,18 @@ interface DeviceFlowPanelProps {
   startFlow: () => AuthTransportHandle;
 }
 
-const DEVICE_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
-
 function DeviceFlowPanel({ onSuccess, startFlow }: DeviceFlowPanelProps) {
   const { t } = useLingui();
   const [userCode, setUserCode] = useState<string | null>(null);
   const [verificationUri, setVerificationUri] = useState('https://github.com/login/device');
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [timeLeft, setTimeLeft] = useState(DEVICE_TIMEOUT_MS);
+  // Wall-clock deadline from the `verification` event's `expires_in`. Driving
+  // the countdown off a local constant instead told users the code died at 2:00
+  // when GitHub had issued it for ~15 minutes, and "Code expired" at 2:00 was
+  // also the point past which a dropped stream could no longer be recovered.
+  const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [timeLeft, setTimeLeft] = useState(0);
   const cancelRef = useRef<(() => void) | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -153,6 +157,7 @@ function DeviceFlowPanel({ onSuccess, startFlow }: DeviceFlowPanelProps) {
         if (event.type === 'verification') {
           setUserCode(event.user_code);
           setVerificationUri(event.verification_uri);
+          setExpiresAt(Date.now() + event.expires_in * 1000);
           setTimeLeft(event.expires_in * 1000);
           void copyToClipboard(event.user_code).then(() => {
             setCopied(true);
@@ -208,13 +213,11 @@ function DeviceFlowPanel({ onSuccess, startFlow }: DeviceFlowPanelProps) {
     };
   }, []);
 
-  // Countdown timer
+  // Countdown to the code's real deadline.
   useEffect(() => {
-    if (!userCode) return;
-    const start = Date.now();
+    if (expiresAt === null) return;
     timerRef.current = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const remaining = DEVICE_TIMEOUT_MS - elapsed;
+      const remaining = expiresAt - Date.now();
       if (remaining <= 0) {
         setTimeLeft(0);
         if (timerRef.current) clearInterval(timerRef.current);
@@ -226,7 +229,7 @@ function DeviceFlowPanel({ onSuccess, startFlow }: DeviceFlowPanelProps) {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [userCode, t]);
+  }, [expiresAt, t]);
 
   const minutesLeft = Math.floor(timeLeft / 60_000);
   const secondsLeft = Math.floor((timeLeft % 60_000) / 1000);

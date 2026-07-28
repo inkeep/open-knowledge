@@ -191,7 +191,10 @@ describe('registerProtocolHandler — setAsDefaultProtocolClient', () => {
     expect(env.app.setAsDefaultProtocolClient).toHaveBeenCalledWith('openknowledge');
   });
 
-  test('does NOT call setAsDefaultProtocolClient in packaged builds', () => {
+  test('does NOT call setAsDefaultProtocolClient in packaged darwin builds', () => {
+    // macOS packaged installs rely on the CFBundleURLTypes binding owned by
+    // LaunchServices — pin platform explicitly: the CI test host is Linux,
+    // where packaged builds DO self-heal (next test).
     const env = makeEnv({ isPackaged: true });
     registerProtocolHandler({
       app: env.app,
@@ -200,9 +203,31 @@ describe('registerProtocolHandler — setAsDefaultProtocolClient', () => {
       sendDeepLink: env.sendDeepLink,
       getAnyReadyWindow: env.getAnyReadyWindow,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+      platform: 'darwin',
     });
     expect(env.app.setAsDefaultProtocolClient).not.toHaveBeenCalled();
   });
+
+  for (const platform of ['win32', 'linux'] as const) {
+    test(`packaged ${platform} builds self-heal the scheme binding per boot`, () => {
+      // Windows resolves openknowledge:// from HKCU\Software\Classes and
+      // Linux from the .desktop database — both user-mutable and
+      // installer-dependent, so packaged builds re-assert at every boot
+      // (windows-linux-port deep-link posture). No before-quit removal.
+      const env = makeEnv({ isPackaged: true });
+      registerProtocolHandler({
+        app: env.app,
+        focusWindowForProject: env.focusWindowForProject,
+        openProject: env.openProject,
+        sendDeepLink: env.sendDeepLink,
+        getAnyReadyWindow: env.getAnyReadyWindow,
+        setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+        platform,
+      });
+      expect(env.app.setAsDefaultProtocolClient).toHaveBeenCalledWith('openknowledge');
+      expect(env.app.on).not.toHaveBeenCalledWith('before-quit', expect.anything());
+    });
+  }
 
   test('logs a warn when setAsDefaultProtocolClient returns false', () => {
     // Per Electron docs the method is non-throwing; `false` signals the OS

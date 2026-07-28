@@ -7,7 +7,7 @@
  * stop polling.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 import { pollUntil } from './test-harness';
 

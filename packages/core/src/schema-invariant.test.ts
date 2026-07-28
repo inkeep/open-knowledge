@@ -17,9 +17,10 @@
  * schema.node() throws. The delete is multi-peer replicated and undo-resistant.
  * Any schema narrowing = silent data loss.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { existsSync, readFileSync } from 'node:fs';
 import { getSchema } from '@tiptap/core';
+import { describe, expect, test } from 'vitest';
 import { sharedExtensions } from './extensions/shared.ts';
 
 // ── Schema shape capture ────────────────────────────────────────────

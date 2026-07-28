@@ -12,7 +12,7 @@
  * Without this symmetry, opening a share link
  * in the Navigator silently drops branch + the fallback signal.
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import type { OkDesktopBridge, OkLocalOpCloneEvent } from '@/lib/desktop-bridge-types';
 import { ipcCloneTransport } from './clone-transport';
 

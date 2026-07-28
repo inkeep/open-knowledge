@@ -6,15 +6,15 @@
  * which already tests its "Get Claude Code" action.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { TERMINAL_CLIS } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
@@ -26,7 +26,7 @@ mock.module('@lingui/react/macro', () => ({
 const { TerminalCliMissingBanner } = await import('./TerminalCliMissingBanner');
 
 function makeBridge() {
-  const openExternal = mock(async (_url: string) => {});
+  const openExternal = vi.fn(async (_url: string) => {});
   return {
     bridge: { shell: { openExternal } } as unknown as OkDesktopBridge,
     openExternal,
@@ -61,7 +61,7 @@ describe('TerminalCliMissingBanner', () => {
 
   test('the dismiss control fires onDismiss without opening docs', async () => {
     const { bridge, openExternal } = makeBridge();
-    const onDismiss = mock(() => {});
+    const onDismiss = vi.fn(() => {});
     render(<TerminalCliMissingBanner cli="codex" bridge={bridge} onDismiss={onDismiss} />);
 
     await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));

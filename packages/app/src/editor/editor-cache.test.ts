@@ -21,12 +21,12 @@
  * code path without module reload).
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Compartment } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { Editor } from '@tiptap/core';
 import { yUndoPluginKey } from '@tiptap/y-tiptap';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import {
   __consumeRenameSnapshot,
@@ -490,7 +490,7 @@ describe('TipTap cache — lifecycle', () => {
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
     // Spy on ydoc.destroy
-    const ydocDestroySpy = mock(h.ydoc.destroy.bind(h.ydoc));
+    const ydocDestroySpy = vi.fn(h.ydoc.destroy.bind(h.ydoc));
     h.ydoc.destroy = ydocDestroySpy;
 
     const result = evictTiptapEditor(h.docName);
@@ -1163,7 +1163,7 @@ describe('CM6 cache — lifecycle', () => {
       container: h.container as unknown as HTMLElement,
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
-    const ydocDestroySpy = mock(h.ydoc.destroy.bind(h.ydoc));
+    const ydocDestroySpy = vi.fn(h.ydoc.destroy.bind(h.ydoc));
     h.ydoc.destroy = ydocDestroySpy;
 
     expect(evictCmEditor(h.docName)).toBe(true);
@@ -1943,15 +1943,15 @@ describe('telemetry marks', () => {
   test('connect telemetry is mutually exclusive: reject emits connect-failed only (no preceding connect)', async () => {
     const rejectingProvider = {
       document: new Y.Doc(),
-      destroy: mock(() => {}),
-      connect: mock(() => Promise.reject(new Error('connect failed'))),
-      disconnect: mock(() => {}),
+      destroy: vi.fn(() => {}),
+      connect: vi.fn(() => Promise.reject(new Error('connect failed'))),
+      disconnect: vi.fn(() => {}),
     } as unknown as HocuspocusProvider;
     const dom = makeNode();
     const editor = {
       editorView: { dom, scrollDOM: dom },
-      commands: { focus: mock(() => {}) },
-      destroy: mock(() => {}),
+      commands: { focus: vi.fn(() => {}) },
+      destroy: vi.fn(() => {}),
     } as unknown as Editor;
     const ytext = rejectingProvider.document.getText('source');
     mountTiptapEditor({

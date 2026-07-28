@@ -5,8 +5,9 @@
  *
  * Substrate: jsdom via `bun run test:dom`.
  */
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
 
 // The Sync now CTA fires a real fetch through `triggerSync`; stub it so the
@@ -14,13 +15,13 @@ import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
 // driven by re-rendering with an updated status, not by this call resolving).
 // A mutable impl lets one test drive a rejected trigger (offline / server down).
 let triggerSyncImpl: () => Promise<void> = () => Promise.resolve();
-mock.module('@/lib/trigger-sync', () => ({ triggerSync: () => triggerSyncImpl() }));
+vi.doMock('@/lib/trigger-sync', () => ({ triggerSync: () => triggerSyncImpl() }));
 
 // "Enable auto-sync" enables in place via the project-local config binding
 // (through useSyncEnabledWriter). Capture the writes so a test can assert the
 // off → on transition instead of a navigation.
 let autoSyncWrites: boolean[] = [];
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     projectLocalBinding: {
       patch: (value: { autoSync?: { enabled?: boolean } }) => {

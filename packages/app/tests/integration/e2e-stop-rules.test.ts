@@ -29,10 +29,10 @@
  *      easing token
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, test } from 'vitest';
 import { DEV_GATED_WINDOW_WRITERS } from './dev-gate-allowlist';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

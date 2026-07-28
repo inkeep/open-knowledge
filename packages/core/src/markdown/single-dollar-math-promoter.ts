@@ -2,7 +2,11 @@ import type { PhrasingContent, Root, Text } from 'mdast';
 import type { InlineMath } from 'mdast-util-math';
 import { SKIP, visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
-import { deriveFragmentPosition } from './promoter-position.ts';
+import {
+  deriveFragmentPosition,
+  escapedValueOffsets,
+  isEscapeDerivedRun,
+} from './promoter-position.ts';
 
 const SINGLE_DOLLAR_MATH_RE = /(?<!\\)\$(?=\S)([^$\n]*?[^\s$])\$(?!\d)/g;
 
@@ -15,11 +19,18 @@ export function singleDollarMathPromoterPlugin() {
       const value = node.value;
       if (value.indexOf('$') === -1) return;
 
+      const escaped = escapedValueOffsets(source, node);
       SINGLE_DOLLAR_MATH_RE.lastIndex = 0;
       const matches: RegExpExecArray[] = [];
       let m: RegExpExecArray | null;
       // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex iteration
       while ((m = SINGLE_DOLLAR_MATH_RE.exec(value)) !== null) {
+        const start = m.index;
+        const end = start + m[0].length;
+        if (isEscapeDerivedRun(escaped, start, 1) || isEscapeDerivedRun(escaped, end - 1, 1)) {
+          SINGLE_DOLLAR_MATH_RE.lastIndex = start + 1;
+          continue;
+        }
         matches.push(m);
       }
       if (matches.length === 0) return;

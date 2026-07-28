@@ -37,11 +37,11 @@
  * `createTestServer` doing exactly the cold-load path the bug reproduced on.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 import { createTestClient, createTestServer, type TestServer } from './test-harness';
 

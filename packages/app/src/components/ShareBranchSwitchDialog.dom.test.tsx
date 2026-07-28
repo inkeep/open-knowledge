@@ -11,7 +11,6 @@
  * AddPropertyRow.dom.test.tsx avoids by stubbing the macro).
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type {
   BranchInfoResponse,
   CheckoutResponse,
@@ -19,6 +18,7 @@ import type {
 } from '@inkeep/open-knowledge-core';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge, OkShareReceivedPayload } from '@/lib/desktop-bridge-types';
 
 // Radix Dialog (focus-trap) reaches for `NodeFilter` + `ResizeObserver`.
@@ -47,7 +47,7 @@ if (globalWithDomShims.ResizeObserver === undefined) {
 // passthrough `t` template tag.
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => children,
   useLingui: () => ({
@@ -65,28 +65,28 @@ mock.module('@lingui/react/macro', () => ({
 }));
 
 // Sonner is loaded by the SUT — stub to mute its real toaster.
-const toastError = mock(() => {});
-mock.module('sonner', () => ({
-  toast: { error: toastError, info: mock(() => {}), success: mock(() => {}) },
+const toastError = vi.fn(() => {});
+vi.doMock('sonner', () => ({
+  toast: { error: toastError, info: vi.fn(() => {}), success: vi.fn(() => {}) },
 }));
 
 // The worktree leg refreshes the window's cached worktree model on create
 // success. Spy at the module seam (same pattern as NewWorktreeDialog.dom.test)
 // so the production store never boots against the absent test bridge.
-const refreshWorktrees = mock(() => {});
-mock.module('@/lib/worktree-store', () => ({ refreshWorktrees }));
+const refreshWorktrees = vi.fn(() => {});
+vi.doMock('@/lib/worktree-store', () => ({ refreshWorktrees }));
 
 const { createShareReceiveStore } = await import('@/lib/share/receive-store');
 const { missDialogStore } = await import('@/lib/share/miss-dialog-store');
 const { ShareBranchSwitchDialog } = await import('./ShareBranchSwitchDialog');
 
 interface BridgeMock {
-  fetchBranchInfo: ReturnType<typeof mock>;
-  runCheckout: ReturnType<typeof mock>;
-  fetchTargetStatus: ReturnType<typeof mock>;
-  awaitBranchSwitched: ReturnType<typeof mock>;
-  open: ReturnType<typeof mock>;
-  checkout: ReturnType<typeof mock>;
+  fetchBranchInfo: ReturnType<typeof vi.fn>;
+  runCheckout: ReturnType<typeof vi.fn>;
+  fetchTargetStatus: ReturnType<typeof vi.fn>;
+  awaitBranchSwitched: ReturnType<typeof vi.fn>;
+  open: ReturnType<typeof vi.fn>;
+  checkout: ReturnType<typeof vi.fn>;
 }
 
 function makeBridge(overrides: Partial<BridgeMock> = {}): {
@@ -96,7 +96,7 @@ function makeBridge(overrides: Partial<BridgeMock> = {}): {
   const calls: BridgeMock = {
     fetchBranchInfo:
       overrides.fetchBranchInfo ??
-      mock(
+      vi.fn(
         async (): Promise<BranchInfoResponse> => ({
           ok: true,
           currentBranch: 'main',
@@ -107,13 +107,14 @@ function makeBridge(overrides: Partial<BridgeMock> = {}): {
         }),
       ),
     runCheckout:
-      overrides.runCheckout ?? mock(async (): Promise<CheckoutResponse> => ({ ok: true })),
-    fetchTargetStatus: overrides.fetchTargetStatus ?? mock(async () => null),
-    awaitBranchSwitched: overrides.awaitBranchSwitched ?? mock(async () => ({ ok: true as const })),
-    open: overrides.open ?? mock(async () => undefined),
+      overrides.runCheckout ?? vi.fn(async (): Promise<CheckoutResponse> => ({ ok: true })),
+    fetchTargetStatus: overrides.fetchTargetStatus ?? vi.fn(async () => null),
+    awaitBranchSwitched:
+      overrides.awaitBranchSwitched ?? vi.fn(async () => ({ ok: true as const })),
+    open: overrides.open ?? vi.fn(async () => undefined),
     checkout:
       overrides.checkout ??
-      mock(async () => ({ ok: true as const, path: '/repo/.ok/worktrees/branch', created: true })),
+      vi.fn(async () => ({ ok: true as const, path: '/repo/.ok/worktrees/branch', created: true })),
   };
   const bridge = {
     project: {
@@ -150,11 +151,11 @@ function missWithFalseOriginHint(): BranchInfoResponse {
 }
 
 function pivotBridge(
-  targetStatus: ReturnType<typeof mock>,
+  targetStatus: ReturnType<typeof vi.fn>,
   extra: Partial<BridgeMock> = {},
 ): { bridge: OkDesktopBridge; calls: BridgeMock } {
   return makeBridge({
-    fetchBranchInfo: mock(async () => missWithFalseOriginHint()),
+    fetchBranchInfo: vi.fn(async () => missWithFalseOriginHint()),
     fetchTargetStatus: targetStatus,
     ...extra,
   });
@@ -219,7 +220,7 @@ describe('ShareBranchSwitchDialog — payload gating', () => {
     const store = createShareReceiveStore();
     const { bridge, calls } = makeBridge({
       // Pending so we observe the loading state before info arrives.
-      fetchBranchInfo: mock(() => new Promise<BranchInfoResponse>(() => {})),
+      fetchBranchInfo: vi.fn(() => new Promise<BranchInfoResponse>(() => {})),
     });
     const payload = projectBranchSwitchPayload();
     const fakeBridgeForStore = {
@@ -255,7 +256,7 @@ describe('ShareBranchSwitchDialog — Cancel discipline (OQ2)', () => {
     const store = createShareReceiveStore();
     const { bridge, calls } = makeBridge({
       // Hold the fetch open so we Cancel during loading state.
-      fetchBranchInfo: mock(() => new Promise<BranchInfoResponse>(() => {})),
+      fetchBranchInfo: vi.fn(() => new Promise<BranchInfoResponse>(() => {})),
     });
     const payload = projectBranchSwitchPayload();
     const fakeBridgeForStore = {
@@ -317,7 +318,7 @@ describe('ShareBranchSwitchDialog — Open-in-current dispatch', () => {
   test('open-current open() reject surfaces a toast — no silent swallow', async () => {
     const store = createShareReceiveStore();
     const { bridge } = makeBridge({
-      open: mock(async () => {
+      open: vi.fn(async () => {
         throw new Error('ipc-timeout');
       }),
     });
@@ -358,7 +359,7 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
   test('dirty conflicts disable Switch and describe the blocking file list', async () => {
     const store = createShareReceiveStore();
     const { bridge } = makeBridge({
-      fetchBranchInfo: mock(
+      fetchBranchInfo: vi.fn(
         async (): Promise<BranchInfoResponse> => ({
           ok: true,
           currentBranch: 'main',
@@ -445,7 +446,7 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
       resolveCc1 = resolve;
     });
     const { bridge, calls } = makeBridge({
-      awaitBranchSwitched: mock(() => cc1Promise),
+      awaitBranchSwitched: vi.fn(() => cc1Promise),
     });
     const payload = projectBranchSwitchPayload();
     const fakeBridgeForStore = {
@@ -512,7 +513,7 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
     const store = createShareReceiveStore();
     // Checkout + CC1 ack succeed; only the final warm-focus open() rejects.
     const { bridge, calls } = makeBridge({
-      open: mock(async () => {
+      open: vi.fn(async () => {
         throw new Error('window-manager-error');
       }),
     });
@@ -551,7 +552,7 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
   test('Switch with runCheckout {ok:false, checkout-failed} toasts and does not navigate', async () => {
     const store = createShareReceiveStore();
     const { bridge, calls } = makeBridge({
-      runCheckout: mock(async () => ({ ok: false as const, reason: 'checkout-failed' as const })),
+      runCheckout: vi.fn(async () => ({ ok: false as const, reason: 'checkout-failed' as const })),
     });
     const payload = projectBranchSwitchPayload();
     const fakeBridgeForStore = {
@@ -583,7 +584,7 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
     const store = createShareReceiveStore();
     // Checkout succeeds; the CC1 recycle never acks within the window.
     const { bridge, calls } = makeBridge({
-      awaitBranchSwitched: mock(async () => ({ ok: false as const })),
+      awaitBranchSwitched: vi.fn(async () => ({ ok: false as const })),
     });
     const payload = projectBranchSwitchPayload();
     const fakeBridgeForStore = {
@@ -639,7 +640,7 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
 
   test('a false origin hint fetches target-status and renders the on-origin verdict', async () => {
     const store = createShareReceiveStore();
-    const targetStatus = mock(async () => ({ verdict: 'on-origin' as const }));
+    const targetStatus = vi.fn(async () => ({ verdict: 'on-origin' as const }));
     const { bridge, calls } = pivotBridge(targetStatus);
     const payload = installAndRender(bridge, store);
 
@@ -655,7 +656,7 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
 
   test('on-origin "Switch and update branch" runs a fast-forward checkout and navigates to the doc', async () => {
     const store = createShareReceiveStore();
-    const { bridge, calls } = pivotBridge(mock(async () => ({ verdict: 'on-origin' as const })));
+    const { bridge, calls } = pivotBridge(vi.fn(async () => ({ verdict: 'on-origin' as const })));
     const payload = installAndRender(bridge, store);
 
     const btn = await screen.findByTestId('share-branch-switch-verdict-switch-update');
@@ -680,7 +681,7 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
   test('renamed offer opens the NEW path with a fast-forward checkout', async () => {
     const store = createShareReceiveStore();
     const { bridge, calls } = pivotBridge(
-      mock(async () => ({ verdict: 'renamed' as const, renamedTo: 'guides/notes.md' })),
+      vi.fn(async () => ({ verdict: 'renamed' as const, renamedTo: 'guides/notes.md' })),
     );
     const payload = installAndRender(bridge, store);
 
@@ -710,7 +711,7 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
   test('deleted verdict hands off to the miss dialog (no switch, dismisses this shell)', async () => {
     missDialogStore.dismiss();
     const store = createShareReceiveStore();
-    const { bridge, calls } = pivotBridge(mock(async () => ({ verdict: 'deleted' as const })));
+    const { bridge, calls } = pivotBridge(vi.fn(async () => ({ verdict: 'deleted' as const })));
     installAndRender(bridge, store);
 
     // A gone-on-the-share-branch target has nothing to switch to — this shell
@@ -733,7 +734,7 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
     missDialogStore.dismiss();
     const store = createShareReceiveStore();
     const { bridge, calls } = pivotBridge(
-      mock(async () => ({ verdict: 'never-on-branch' as const })),
+      vi.fn(async () => ({ verdict: 'never-on-branch' as const })),
     );
     installAndRender(bridge, store);
 
@@ -749,13 +750,13 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
     const store = createShareReceiveStore();
     // The server refuses the fast-forward only when it is requested; a plain
     // switch (no fastForward) succeeds.
-    const runCheckout = mock(async (req: { fastForward?: boolean }) =>
+    const runCheckout = vi.fn(async (req: { fastForward?: boolean }) =>
       req.fastForward
         ? { ok: false as const, reason: 'ff-diverged' as const }
         : { ok: true as const },
     );
     const { bridge, calls } = pivotBridge(
-      mock(async () => ({ verdict: 'on-origin' as const })),
+      vi.fn(async () => ({ verdict: 'on-origin' as const })),
       {
         runCheckout,
       },
@@ -790,7 +791,7 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
 
   test('unknown verdict falls back to today plain switch and does NOT re-probe', async () => {
     const store = createShareReceiveStore();
-    const targetStatus = mock(async () => ({ verdict: 'unknown' as const }));
+    const targetStatus = vi.fn(async () => ({ verdict: 'unknown' as const }));
     const { bridge, calls } = pivotBridge(targetStatus);
     const payload = installAndRender(bridge, store);
 
@@ -817,7 +818,7 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
   test('a missing target with NO origin hint keeps today plain switch (no probe)', async () => {
     const store = createShareReceiveStore();
     const { bridge, calls } = makeBridge({
-      fetchBranchInfo: mock(
+      fetchBranchInfo: vi.fn(
         async (): Promise<BranchInfoResponse> =>
           ({
             ok: true,
@@ -919,7 +920,7 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     test(`Open in worktree renders enabled in variant ${fixture.kind} (${fixture.label})`, async () => {
       const store = createShareReceiveStore();
       const { bridge } = makeBridge({
-        fetchBranchInfo: mock(async () => branchInfoFor(fixture)),
+        fetchBranchInfo: vi.fn(async () => branchInfoFor(fixture)),
       });
       renderDialog(bridge, store);
       await findEnabledWorktreeButton();
@@ -929,7 +930,7 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
   test('variant D routes the dead end to the worktree action: new copy, switch disabled with the conflict list', async () => {
     const store = createShareReceiveStore();
     const { bridge } = makeBridge({
-      fetchBranchInfo: mock(async () =>
+      fetchBranchInfo: vi.fn(async () =>
         branchInfoFor({
           shareTargetExists: false,
           conflictFiles: ['docs/notes.md', 'package.json'],
@@ -962,7 +963,7 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     const store = createShareReceiveStore();
     const existingPath = '/Users/alice/projects/open-knowledge/.ok/worktrees/feat-branch-x';
     const { bridge, calls } = makeBridge({
-      checkout: mock(async () => ({ ok: true as const, path: existingPath, created: false })),
+      checkout: vi.fn(async () => ({ ok: true as const, path: existingPath, created: false })),
     });
     renderDialog(bridge, store);
 
@@ -985,8 +986,8 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     const store = createShareReceiveStore();
     const worktreePath = '/Users/alice/projects/open-knowledge/.ok/worktrees/feat-branch-x';
     const { bridge, calls } = makeBridge({
-      checkout: mock(async () => ({ ok: true as const, path: worktreePath, created: true })),
-      open: mock(async () => {
+      checkout: vi.fn(async () => ({ ok: true as const, path: worktreePath, created: true })),
+      open: vi.fn(async () => {
         throw new Error('window spawn failed');
       }),
     });
@@ -1043,7 +1044,7 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     const store = createShareReceiveStore();
     const worktreePath = '/Users/alice/projects/open-knowledge/.ok/worktrees/feat-branch-x';
     const { bridge, calls } = makeBridge({
-      checkout: mock(async () => ({ ok: true as const, path: worktreePath, created: true })),
+      checkout: vi.fn(async () => ({ ok: true as const, path: worktreePath, created: true })),
     });
     const payload = projectBranchSwitchPayload();
     const fakeBridgeForStore = {
@@ -1094,7 +1095,7 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     const store = createShareReceiveStore();
     let resolveCheckout: (result: WorktreeCreateResult) => void = () => {};
     const { bridge, calls } = makeBridge({
-      checkout: mock(
+      checkout: vi.fn(
         () =>
           new Promise<WorktreeCreateResult>((resolve) => {
             resolveCheckout = resolve;
@@ -1142,7 +1143,7 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
   test('a fetch failure keeps the dialog open with the connection toast so the user can retry', async () => {
     const store = createShareReceiveStore();
     const { bridge, calls } = makeBridge({
-      checkout: mock(async () => ({ ok: false as const, reason: 'fetch-failed' as const })),
+      checkout: vi.fn(async () => ({ ok: false as const, reason: 'fetch-failed' as const })),
     });
     renderDialog(bridge, store);
 
@@ -1170,7 +1171,7 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
   test('a branch deleted upstream dismisses the dialog with the no-longer-exists toast', async () => {
     const store = createShareReceiveStore();
     const { bridge, calls } = makeBridge({
-      checkout: mock(async () => ({ ok: false as const, reason: 'branch-not-found' as const })),
+      checkout: vi.fn(async () => ({ ok: false as const, reason: 'branch-not-found' as const })),
     });
     renderDialog(bridge, store);
 
@@ -1196,7 +1197,7 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     const store = createShareReceiveStore();
     let resolveCheckout: (result: WorktreeCreateResult) => void = () => {};
     const { bridge, calls } = makeBridge({
-      checkout: mock(
+      checkout: vi.fn(
         () =>
           new Promise<WorktreeCreateResult>((resolve) => {
             resolveCheckout = resolve;

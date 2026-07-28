@@ -28,6 +28,7 @@ import {
 } from '@inkeep/open-knowledge';
 import {
   BUG_REPORT_SCREENSHOT_ZIP_NAME,
+  isReportIdShape,
   type OkBugReportCrashAckResult,
   type OkBugReportCreateResult,
   type OkBugReportScreenshot,
@@ -65,6 +66,18 @@ interface OkBugReportCaptureScreenshotRequest {
   kind: 'capture-screenshot';
 }
 
+/** Read the persisted report history (newest first). */
+interface OkBugReportListRequest {
+  kind: 'list';
+}
+
+/** Remove a persisted report (zip + sidecar) by `id`, containment-checked. */
+interface OkBugReportDeleteRequest {
+  kind: 'delete';
+  /** The report's timestamp-basename `id` (== zip basename). */
+  id: string;
+}
+
 export interface OkBugReportSendRequest {
   kind: 'send';
   /** Zip produced by a prior `create` — the exact file the user reviewed is what uploads. */
@@ -83,7 +96,9 @@ export type OkBugReportRequest =
   | OkBugReportCreateRequest
   | OkBugReportSendRequest
   | OkBugReportCrashAckRequest
-  | OkBugReportCaptureScreenshotRequest;
+  | OkBugReportCaptureScreenshotRequest
+  | OkBugReportListRequest
+  | OkBugReportDeleteRequest;
 
 /**
  * Host metadata handed to the bundle collector through its typed
@@ -129,6 +144,14 @@ export interface BugReportCreateDeps {
    * silent omission from the bundle.
    */
   logger?: BundleLogger;
+  /**
+   * Persist the report's `generated` sidecar (and run the retention sweep)
+   * after a bundle is written. Injected so the durable-record write is exercised
+   * by the create tests against a temp bug-reports dir; a create context that
+   * doesn't persist (or a sidecar write that throws) never changes the create
+   * outcome — the zip is already on disk.
+   */
+  onReportGenerated?: (meta: GeneratedReportMeta) => Promise<void>;
 }
 
 /**
@@ -216,6 +239,26 @@ export async function handleBugReportCreate(
       }),
     });
     const { size: zipSizeBytes } = await stat(zipPath);
+    // Persist the durable `generated` record next to the zip. A failure here
+    // must never lose the report (the zip is written) — the writer is fail-soft
+    // and the call is guarded, so create still succeeds if the sidecar can't be
+    // written.
+    if (deps.onReportGenerated) {
+      await deps
+        .onReportGenerated({
+          zipPath,
+          zipBytes: zipSizeBytes,
+          level: request.level,
+          systemWide: summary.systemWide,
+          projectSlug: summary.projectSlug,
+        })
+        .catch((err: unknown) => {
+          deps.logger?.warn(
+            { zipPath, err },
+            'bug-report: failed to persist report sidecar on generate',
+          );
+        });
+    }
     return { ok: true, zipPath, zipSizeBytes, summary };
   } catch (err) {
     // Environmental failure at the fs boundary (unwritable destination, disk
@@ -383,6 +426,14 @@ export interface BugReportSendDeps {
   bugReportsRoot: string;
   /** Transport-timeout overrides (test seam; defaults 30s mint/complete, 120s PUT). */
   timeouts?: Partial<BugReportUploadTimeouts>;
+  /**
+   * Sidecar-state hooks that record the `uploading` → `sent`/`upload-failed`/
+   * `email-drafted` transition, append an attempt, and honor the in-flight lock.
+   * Fires for BOTH the first dialog send and a later list retry (same handler).
+   * Absent leaves the send behavior unchanged (unit tests that only exercise the
+   * transport omit it).
+   */
+  sidecar?: BugReportSendSidecarHooks;
 }
 
 /**
@@ -408,6 +459,62 @@ const COMPLETE_TIMEOUT_MS = 30_000;
  * read can exhaust the process, degrading to the email fallback instead.
  */
 export const MAX_UPLOAD_ZIP_BYTES = 256 * 1024 * 1024;
+
+/**
+ * Hybrid retention caps for `~/.ok/bug-reports/`, co-located with the upload
+ * ceiling because they bound the same on-disk report set. On a confirmed send
+ * the zip is dropped (the sidecar tombstone stays); the remaining UNSENT
+ * bundles are then bounded by a count cap and a total-size budget, and the
+ * sent tombstones by their own count cap. Eviction never removes the newest
+ * unsent bundle or a bundle whose send is in flight. Fixed constants
+ * for v1 — `config.yml` exposure is Future Work.
+ */
+export const MAX_UNSENT_REPORT_COUNT = 10;
+export const MAX_UNSENT_REPORT_BYTES = 1024 * 1024 * 1024;
+export const MAX_SENT_TOMBSTONE_COUNT = 25;
+
+/** Cap on the sidecar's per-report `attempts` history (newest kept). */
+export const MAX_REPORT_ATTEMPTS = 10;
+
+/**
+ * Facts a successful `create` hands to the sidecar writer so it can persist the
+ * report's initial `generated` record (and reconstruct a later retry's send
+ * metadata without a second capture). Keyed to the returned `zipPath`, whose
+ * basename becomes the report `id`.
+ */
+export interface GeneratedReportMeta {
+  zipPath: string;
+  zipBytes: number;
+  level: ReportBundleLevel;
+  systemWide: boolean;
+  projectSlug: string | null;
+}
+
+/**
+ * Terminal outcome of a send attempt, handed to the sidecar writer so it can
+ * record the state transition and append an attempt. `email-drafted` is the
+ * designed no-intake path (nothing uploaded), distinct from `upload-failed`.
+ */
+export type SidecarSendOutcome =
+  | { kind: 'sent'; reference: string }
+  | { kind: 'upload-failed'; reason: string }
+  | { kind: 'email-drafted' };
+
+/**
+ * Sidecar-state hooks injected into `send` so the durable record tracks each
+ * transition and the in-flight lock is honored — implemented by desktop main's
+ * bug-report sidecar store, or a recording double in tests. `onSendStart` marks
+ * the report `uploading` and acquires the in-flight lock, returning
+ * `{ proceed: false }` when this report's send is already in flight (a second
+ * concurrent retry). `onSendResult` records the terminal state, appends an
+ * attempt, releases the lock, and runs retention. Only the actual-upload branch
+ * calls `onSendStart`; every terminal branch (including email-draft) calls
+ * `onSendResult`.
+ */
+export interface BugReportSendSidecarHooks {
+  onSendStart(id: string): Promise<{ proceed: boolean }>;
+  onSendResult(id: string, outcome: SidecarSendOutcome): Promise<void>;
+}
 
 /**
  * Admit a report-transport URL — the intake base or a minted upload URL —
@@ -632,6 +739,32 @@ async function uploadBugReport(
 }
 
 /**
+ * Run a sidecar bookkeeping hook without letting it decide the send's outcome.
+ *
+ * Each hook catches internally and is documented never to throw, so a rejection
+ * crossing back here is a contract violation rather than an expected path — but
+ * swallowing it silently would be worse than the failure it hides. The
+ * post-upload call is the sharp case: an escaped rejection there would skip the
+ * `{ ok: true }` return, leave the in-flight lock held, and refuse every later
+ * retry for the process lifetime. Bookkeeping must never cost the user a send
+ * that already succeeded.
+ */
+async function runSidecarHook(hook: Promise<unknown> | undefined): Promise<void> {
+  if (hook === undefined) return;
+  try {
+    await hook;
+  } catch (err) {
+    logIpcError({
+      event: 'ipc.error',
+      channel: 'ok:bug-report:dispatch',
+      reason: 'sidecar-hook-error',
+      handler: 'handleBugReportSend',
+      cause: err,
+    });
+  }
+}
+
+/**
  * Upload the reviewed zip for the `send` operation. Never throws — every
  * non-success maps to the discriminated `{ok: false}` result whose fallback
  * mailto the dialog offers instead, with `reason: 'email-draft'` reserved for
@@ -647,6 +780,25 @@ export async function handleBugReportSend(
       event: 'ipc.error',
       channel: 'ok:bug-report:dispatch',
       reason: 'invalid-request',
+      handler: 'handleBugReportSend',
+    });
+    return {
+      ok: false,
+      reason: 'send-failed',
+      fallback: { mailtoUrl: buildBugReportMailto(hostFacts) },
+    };
+  }
+  // Basename shape is the same belt-and-suspenders gate `delete` applies via
+  // `resolveContainedId`. Containment below is what actually holds, but
+  // requiring the report-id shape on every renderer-id-driven file operation
+  // keeps the invariant uniform across `send` and `delete` rather than leaving
+  // `send` the one path where an arbitrary basename inside the directory is
+  // admitted.
+  if (!isReportIdShape(basename(request.zipPath))) {
+    logIpcError({
+      event: 'ipc.error',
+      channel: 'ok:bug-report:dispatch',
+      reason: 'zip-path-shape',
       handler: 'handleBugReportSend',
     });
     return {
@@ -731,6 +883,9 @@ export async function handleBugReportSend(
       zipPath: request.zipPath,
     }),
   };
+  // The report id is the zip's basename — the sidecar key the state transitions
+  // are recorded under, for both the first dialog send and a later list retry.
+  const reportId = basename(request.zipPath);
   if (!deps.intakeBaseUrl) {
     // The designed default, not an error: no intake endpoint means the email
     // draft is the transport and no network request was ever attempted. The
@@ -742,7 +897,39 @@ export async function handleBugReportSend(
       reason: 'intake-unconfigured',
       handler: 'handleBugReportSend',
     });
+    await runSidecarHook(deps.sidecar?.onSendResult(reportId, { kind: 'email-drafted' }));
     return { ok: false, reason: 'email-draft', fallback };
+  }
+  if (deps.sidecar) {
+    // Mark the report `uploading` and take the in-flight lock. A second retry
+    // arriving while this send is in flight is refused here rather than
+    // uploading the same bundle twice; the owning send records the terminal
+    // state when it finishes.
+    // A hook that rejects here leaves the lock state unknown. Proceed rather
+    // than refuse: the user asked to send, and silently blocking every send on
+    // a bookkeeping fault is a worse failure than the double-upload this gate
+    // exists to prevent (which needs a genuinely concurrent retry to occur).
+    let gate: { proceed: boolean } = { proceed: true };
+    try {
+      gate = await deps.sidecar.onSendStart(reportId);
+    } catch (err) {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:bug-report:dispatch',
+        reason: 'sidecar-hook-error',
+        handler: 'handleBugReportSend',
+        cause: err,
+      });
+    }
+    if (!gate.proceed) {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:bug-report:dispatch',
+        reason: 'send-in-flight',
+        handler: 'handleBugReportSend',
+      });
+      return { ok: false, reason: 'send-failed', fallback };
+    }
   }
   const wireMetadata: BugReportWireMetadata = { ...metadata, ...hostFacts };
   const outcome = await uploadBugReport(
@@ -751,7 +938,12 @@ export async function handleBugReportSend(
     wireMetadata,
     deps.timeouts,
   );
-  if (outcome.ok) return { ok: true, reference: outcome.reference };
+  if (outcome.ok) {
+    await runSidecarHook(
+      deps.sidecar?.onSendResult(reportId, { kind: 'sent', reference: outcome.reference }),
+    );
+    return { ok: true, reference: outcome.reference };
+  }
   logIpcError({
     event: 'ipc.error',
     channel: 'ok:bug-report:dispatch',
@@ -759,6 +951,9 @@ export async function handleBugReportSend(
     handler: 'handleBugReportSend',
     cause: outcome.cause,
   });
+  await runSidecarHook(
+    deps.sidecar?.onSendResult(reportId, { kind: 'upload-failed', reason: outcome.reason }),
+  );
   return { ok: false, reason: 'send-failed', fallback };
 }
 

@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { DEFAULT_ATTACHMENT_FOLDER_PATH } from '../constants/upload.ts';
+import { DEFAULT_LINKS_VALIDATION, LINKS_VALIDATION_SETTINGS } from '../markdown/lint/types.ts';
 import { THEME_PLUGIN_IDS } from '../theme/theme-plugins.ts';
+import { STORED_SYNC_ACTIVE_MODES, STORED_SYNC_MODES } from './auto-sync-mode.ts';
 import { fieldRegistry } from './field-registry.ts';
 
 // Credential attribute key denylist for the local telemetry file sink. The
@@ -25,7 +27,7 @@ export const DEFAULT_LOGS_MAX_BYTES = 26_214_400;
 
 // Non-secret embeddings-provider defaults. Shared with the server so the live
 // layered config read and the schema `.default()` below cannot drift. The API
-// key is NEVER a config value — it lives only in the OS keyring.
+// key is NEVER a config value — it lives only in `~/.ok/secrets.yml` (0600).
 export const DEFAULT_EMBEDDINGS_BASE_URL = 'https://api.openai.com/v1';
 export const DEFAULT_EMBEDDINGS_MODEL = 'text-embedding-3-small';
 
@@ -42,6 +44,27 @@ export type EmbeddingsBaseUrlProblem = 'invalid-url' | 'insecure-scheme';
  * endpoint at entry instead of letting it surface later as a provider-rejected
  * status. Whitespace is the caller's to trim.
  */
+/**
+ * True when the URL targets the local machine's loopback interface. Checked on
+ * the PARSED hostname (never a substring of the raw URL) so an attacker host
+ * like `http://localhost.evil.com` or `http://127.0.0.1.evil.com` can't pass —
+ * their `hostname` is the full foreign name, not `localhost`/`127.0.0.1`.
+ * The single source of truth for "may be keyless" and "http:// is permitted":
+ * a keyless or plaintext request is only ever allowed to a host that stays on
+ * this machine. Non-URLs are not loopback.
+ */
+export function isLoopbackEmbeddingsUrl(baseUrl: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return false;
+  }
+  // `URL.hostname` returns IPv6 hosts bracketed (`[::1]`), never bare `::1`.
+  const host = url.hostname.toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+}
+
 export function checkEmbeddingsBaseUrl(baseUrl: string): EmbeddingsBaseUrlProblem | null {
   let url: URL;
   try {
@@ -50,10 +73,7 @@ export function checkEmbeddingsBaseUrl(baseUrl: string): EmbeddingsBaseUrlProble
     return 'invalid-url';
   }
   if (url.protocol === 'https:') return null;
-  // `URL.hostname` returns IPv6 hosts bracketed (`[::1]`), never bare `::1`.
-  const host = url.hostname.toLowerCase();
-  const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
-  if (url.protocol === 'http:' && isLoopback) return null;
+  if (url.protocol === 'http:' && isLoopbackEmbeddingsUrl(baseUrl)) return null;
   return 'insecure-scheme';
 }
 
@@ -387,22 +407,41 @@ export const ConfigSchema = z.looseObject({
         .default(true),
     })
     .default({ autoApproveOkTools: true }),
-  // `autoSync.enabled` is a per-machine, per-project preference: each
-  // teammate decides independently whether their machine should auto-pull /
-  // auto-push commits for *this* project. Project scope would bleed across
-  // teammates via git; user scope would force one global toggle for every
-  // OK project. The new `'project-local'` layer at
-  // `<projectDir>/.ok/local/config.yml` (gitignored) is the only correct
-  // home. SettingsPane SyncSection, the SyncStatusBadge popover Switch, and
-  // the AutoSyncOnboardingDialog all write here via the project-local
-  // binding — no special HTTP endpoint.
+  // `autoSync.mode` is a per-machine, per-project preference: each teammate
+  // decides independently whether their machine syncs *this* project, and in
+  // which direction. Project scope would bleed across teammates via git; user
+  // scope would force one global choice for every OK project. The
+  // `'project-local'` layer at `<projectDir>/.ok/local/config.yml` (gitignored)
+  // is the only correct home. SettingsPane SyncSection, the SyncStatusBadge
+  // popover, and the AutoSyncOnboardingDialog all write here via the
+  // project-local binding — no special HTTP endpoint.
   //
-  // `null` is the canonical "unanswered" sentinel: the onboarding modal
-  // gates on `enabled === null`, distinguishing "user has not chosen" from
-  // `true` / `false` (chosen). `looseObject` is retained so legacy
-  // `onboardingResolvedAt` keys still on disk parse without error.
+  // `mode` is the single knob the engine reads to decide whether to push: only
+  // `'full'` pushes, so a `'pull'` follower can never be mistaken for a pusher.
+  // It supersedes the legacy `enabled` boolean, which stays readable for configs
+  // written before `mode` existed — `resolveLocalAutoSyncMode` derives a mode
+  // from `enabled` when no `mode` key is present, so the two shapes coexist with
+  // no migration.
+  //
+  // `null` is the canonical "unanswered" sentinel: the onboarding modal gates on
+  // the resolved mode being `null`, distinguishing "user has not chosen" from a
+  // chosen mode. `looseObject` is retained so legacy keys (e.g.
+  // `onboardingResolvedAt`) and a newer version's extra keys still round-trip.
   autoSync: z
     .looseObject({
+      mode: z
+        .enum(STORED_SYNC_MODES)
+        .register(fieldRegistry, {
+          scope: 'project-local',
+          agentSettable: false,
+          defaultScope: 'project-local',
+          description:
+            "How this machine syncs this project with its git remote: 'off' (no sync), 'follow' (one-directional — pull remote changes, never push your own; 'pull' is accepted as a legacy alias), or 'full' (bidirectional pull and push). null = not chosen yet (onboarding asks). Per-machine (project-local) — not shared. Supersedes the legacy autoSync.enabled boolean.",
+        })
+        .nullable()
+        .default(null),
+      // Legacy per-machine toggle, superseded by `autoSync.mode`. Read only when
+      // `mode` is absent (`true` → full, `false` → off); new writes set `mode`.
       enabled: z
         .boolean()
         .register(fieldRegistry, {
@@ -410,33 +449,48 @@ export const ConfigSchema = z.looseObject({
           agentSettable: false,
           defaultScope: 'project-local',
           description:
-            'Whether this machine auto-pulls and auto-pushes git commits for this project. null = not chosen yet (onboarding asks). Per-machine (project-local) — not shared.',
+            'Legacy per-machine sync toggle, superseded by autoSync.mode. Read only when mode is absent (true = full, false = off). null = not chosen yet. Per-machine (project-local) — not shared.',
         })
         .nullable()
         .default(null),
-      // `autoSync.default` is the COMMITTED (project-scope) seed for a
-      // machine's `autoSync.enabled` on first open: `true` = default auto-sync
-      // on, `false` = default off, `null` = ask (show the onboarding modal). It
-      // travels with the repo via git so a maintainer can pre-answer the prompt
-      // for everyone who clones the project. It is a soft default — a
-      // per-machine `autoSync.enabled` (above) always overrides it, in both the
-      // server's `readProjectAutoSyncEnabled` resolution and the onboarding
-      // gate. Sharing `enabled`'s `boolean | null` value space is deliberate:
-      // `null` reuses the same "unanswered → ask" sentinel; the only difference
-      // between the two leaves is scope (committed vs per-machine).
+      // `autoSync.resumeMode` is per-machine UI memory: when sync is paused
+      // (`mode: 'off'`) after having been enabled, it records which active mode
+      // to resume into (and doubles as the "was enabled, now paused" signal that
+      // keeps the badge visible and the manual Sync action available). Storing
+      // paused as `mode: 'off'` keeps an older app — which ignores this key —
+      // reading the project as not-syncing, so pausing never lets a stale reader
+      // push. Meaningful only while `mode` is `off`; ignored otherwise.
+      resumeMode: z
+        .enum(STORED_SYNC_ACTIVE_MODES)
+        .register(fieldRegistry, {
+          scope: 'project-local',
+          agentSettable: false,
+          defaultScope: 'project-local',
+          description:
+            "When sync is paused (autoSync.mode 'off') after having been enabled, the active mode to resume into ('follow' | 'full'). Per-machine UI memory; ignored while a mode is active. Not shared.",
+        })
+        .optional(),
+      // `autoSync.default` is the COMMITTED (project-scope) seed for a machine's
+      // sync mode on first open. It travels with the repo via git so a
+      // maintainer can pre-answer the prompt for everyone who clones the
+      // project. It is a soft default — a per-machine choice always overrides
+      // it, in both the server's `readProjectAutoSyncMode` resolution and the
+      // onboarding gate. The value space is the mode vocabulary plus the legacy
+      // boolean seed (`true` → full, `false` → off) so committed `default: true`
+      // configs keep working; `null` reuses the "unanswered → ask" sentinel.
       default: z
-        .boolean()
+        .union([z.boolean(), z.enum(STORED_SYNC_MODES)])
         .register(fieldRegistry, {
           scope: 'project',
           agentSettable: false,
           defaultScope: 'project',
           description:
-            "Committed project default for a machine's autoSync.enabled on first open: true = auto-sync on, false = off, null = ask (show the onboarding prompt). Shared via git. A per-machine autoSync.enabled choice overrides it.",
+            "Committed project default for a machine's sync mode on first open: 'off' | 'follow' | 'full', or the legacy boolean (true = full, false = off). null = ask (show the onboarding prompt). Shared via git. A per-machine autoSync.mode choice overrides it.",
         })
         .nullable()
         .default(null),
     })
-    .default({ enabled: null, default: null }),
+    .default({ mode: null, enabled: null, default: null }),
   // `terminal.enabled` is the per-project, per-machine opt-out for the in-app
   // terminal's real OS shell. The terminal is available by default; only an
   // explicit `false` disables it (`null`/absent both read as the default-on
@@ -553,13 +607,14 @@ export const ConfigSchema = z.looseObject({
   // PROJECT-LOCAL scope: semantic search is an additive embeddings signal fused
   // into the MCP `search` tool's lexical ranking. It is per-machine, not
   // project-shared, because enabling it sends content to a third-party
-  // embeddings provider (egress) and needs an API key in the local OS keyring —
+  // embeddings provider (egress) and needs an API key in the local secrets file —
   // each teammate opts in deliberately for their own machine. Project scope
   // would force one teammate's egress choice across collaborators via git; user
   // scope would force it for every project. Default OFF — the feature ships dark.
   //
   // The non-secret provider knobs (baseUrl / model / dimensions) live here; the
-  // API key NEVER does — it lives only in the OS keyring (`ok embeddings set-key`).
+  // API key NEVER does — it lives only in the 0600 `~/.ok/secrets.yml`
+  // (`ok embeddings set-key`), out of the agent-readable project tree.
   search: z
     .looseObject({
       semantic: z
@@ -581,7 +636,7 @@ export const ConfigSchema = z.looseObject({
               agentSettable: false,
               defaultScope: 'project-local',
               description:
-                'Base URL of the OpenAI-compatible embeddings API (default https://api.openai.com/v1). Override for Azure / self-hosted / other providers. The API key is NOT stored here — set it with `ok embeddings set-key` (OS keyring).',
+                'Base URL of the OpenAI-compatible embeddings API (default https://api.openai.com/v1). Override to point at a self-hosted server (Ollama / vLLM / LM Studio) or another provider. The API key is NOT stored here — set it with `ok embeddings set-key` (`~/.ok/secrets.yml`); it is sent to whichever endpoint this names.',
             })
             .default(DEFAULT_EMBEDDINGS_BASE_URL),
           model: z
@@ -603,7 +658,7 @@ export const ConfigSchema = z.looseObject({
               agentSettable: false,
               defaultScope: 'project-local',
               description:
-                "Optional output vector dimensions. Omit to use the model's native size (1536 for text-embedding-3-small). Set a smaller value (text-embedding-3 supports e.g. 512 / 1024) to shrink the on-disk cache, trading a little retrieval quality. Changing it re-embeds the corpus.",
+                "Optional output vector dimensions. Omit (recommended) to detect the model's native size from its first response — that is what lets a non-OpenAI model work without knowing its size up front. Set a smaller value (text-embedding-3 supports e.g. 512 / 1024) to shrink the on-disk cache, trading a little retrieval quality; a server that ignores the request param then fails loudly instead of silently. Changing it re-embeds the corpus.",
             })
             .optional(),
           similarityFloor: z
@@ -671,8 +726,83 @@ export const ConfigSchema = z.looseObject({
           // persists only this toggle.
         })
         .default({ enabled: false }),
+      frontmatter: z
+        .object({
+          enabled: z
+            .boolean()
+            .register(fieldRegistry, {
+              scope: 'project',
+              agentSettable: false,
+              defaultScope: 'project',
+              description:
+                'Whether the frontmatter plugin (JSON-Schema validation of document frontmatter) contributes diagnostics.',
+            })
+            .default(false),
+          // Schema CONTENT is NOT persisted here. Each entry scopes one
+          // standard JSON Schema file (project-root-relative `file`, portable
+          // to any external tool) to a set of docs via `appliesTo`
+          // globs (single or list; leading `!` excludes; absent matches every
+          // doc). Loaded server/CLI-side and injected into the effective
+          // config; entry order carries no precedence — every match validates.
+          schemas: z
+            .array(
+              z.object({
+                appliesTo: z.union([z.string(), z.array(z.string())]).optional(),
+                file: z.string(),
+                // Absent = enabled; the Settings toggle writes false to keep
+                // the mapping (and its appliesTo) without validating.
+                enabled: z.boolean().optional(),
+              }),
+            )
+            .register(fieldRegistry, {
+              scope: 'project',
+              agentSettable: false,
+              defaultScope: 'project',
+              description:
+                'Frontmatter schema mappings: which docs (appliesTo globs) validate against which JSON Schema file (project-root-relative path).',
+            })
+            .default([]),
+        })
+        .default({ enabled: false, schemas: [] }),
     })
-    .default({ markdownlint: { enabled: false } }),
+    .default({
+      markdownlint: { enabled: false },
+      frontmatter: { enabled: false, schemas: [] },
+    }),
+  // Validation-surface behavior (the unified audit plane's non-plugin knobs).
+  // PROJECT scope, like `contentRules`: how broken links are classified and
+  // whether the file tree surfaces problem indicators are team-shared
+  // authoring decisions. Deliberately a SIBLING of `contentRules`, not a child
+  // — `contentRules`' direct children are exactly the lint-plugin slices, a
+  // lockstep contract enforced by `linter-leaf-registry-consistency.test.ts`.
+  validation: z
+    .looseObject({
+      // 'off' hides broken-link findings from the whole plane (audit route,
+      // MCP audit tool, ok audit, Problems panel, tree); 'warning'/'error'
+      // set their severity. Default warning: a broken link is often a typo
+      // or a page-yet-to-be-written, not necessarily an error.
+      links: z
+        .enum(LINKS_VALIDATION_SETTINGS)
+        .register(fieldRegistry, {
+          scope: 'project',
+          agentSettable: false,
+          defaultScope: 'project',
+          description:
+            "How broken internal links are reported on the validation plane: 'off' hides them, 'warning' (default) or 'error' sets their severity.",
+        })
+        .default(DEFAULT_LINKS_VALIDATION),
+      fileTreeIndicators: z
+        .boolean()
+        .register(fieldRegistry, {
+          scope: 'project',
+          agentSettable: false,
+          defaultScope: 'project',
+          description:
+            'Whether the file tree tints and badges files that have validation problems.',
+        })
+        .default(true),
+    })
+    .default({ links: DEFAULT_LINKS_VALIDATION, fileTreeIndicators: true }),
   // PROJECT-LOCAL scope: external link-hover previews send the hovered URL to
   // the destination site to fetch its metadata (egress). Read per-machine from
   // the project-local layer, never a committed/shared config, so one clone's

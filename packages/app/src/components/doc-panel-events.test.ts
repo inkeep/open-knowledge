@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import {
   consumePendingDocPanelTabRequest,
   requestDocPanelTab,
@@ -8,7 +8,7 @@ import {
 describe('doc-panel-events', () => {
   test('dispatches and subscribes tab requests through the shared event name', () => {
     const target = new EventTarget();
-    const onRequest = mock(() => {});
+    const onRequest = vi.fn(() => {});
 
     const unsubscribe = subscribeToDocPanelTabRequests(onRequest, target);
     consumePendingDocPanelTabRequest();

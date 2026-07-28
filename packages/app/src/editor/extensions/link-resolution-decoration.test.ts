@@ -12,10 +12,10 @@
  * and `dispatch`).
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { type Mark, Schema } from '@tiptap/pm/model';
 import { EditorState, type Transaction } from '@tiptap/pm/state';
 import type { DecorationSet, EditorView } from '@tiptap/pm/view';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   __resetPageListCacheForTests,
   type PageListCacheSnapshot,

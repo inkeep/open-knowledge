@@ -16,11 +16,12 @@
  * Exercises `render` + `userEvent` under the jsdom substrate; invocation via
  * `bun run test:dom` from `packages/app/`.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import type { FrontmatterType } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
+import { afterEach, describe, expect, test } from 'vitest';
 import { type AddDraft, AddPropertyRow } from './FrontmatterRow';
 import { DEFAULT_VALUE_FOR_TYPE } from './PropertyWidgets';
 

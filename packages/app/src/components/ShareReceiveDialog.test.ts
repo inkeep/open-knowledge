@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 describe('ShareReceiveDialog module', () => {
   test('exports the named component', async () => {

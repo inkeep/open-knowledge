@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import type { HandoffTarget, InstallState } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import {
   PREFERRED_AGENT_KEY,
   type PreferredAgentStorage,

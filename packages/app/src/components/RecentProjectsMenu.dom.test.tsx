@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { WorktreeSelectorModel } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createContext, type ReactNode, use, useState } from 'react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { RecentProjectEntry } from '@/lib/desktop-bridge-types';
 
 type ItemProps = {
@@ -27,7 +27,7 @@ const SubStateContext = createContext<{ open: boolean; onOpenChange: (o: boolean
   open: false,
   onOpenChange: () => {},
 });
-mock.module('@/components/ui/dropdown-menu', () => ({
+vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuItem: ({ children, onSelect, ...props }: ItemProps) => (
     <div
       role="menuitem"
@@ -117,16 +117,16 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   },
 }));
 
-mock.module('@/components/ui/input-group', () => ({
+vi.doMock('@/components/ui/input-group', () => ({
   InputGroup: ({ children, ...props }: ItemProps) => <div {...props}>{children}</div>,
   InputGroupAddon: ({ children }: { children?: ReactNode }) => <span>{children}</span>,
   InputGroupInput: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
 }));
 
-const refreshWorktrees = mock(() => {});
-mock.module('@/lib/worktree-store', () => ({ refreshWorktrees }));
-const toastError = mock((_msg: string) => {});
-mock.module('sonner', () => ({ toast: { error: toastError, success: mock(() => {}) } }));
+const refreshWorktrees = vi.fn(() => {});
+vi.doMock('@/lib/worktree-store', () => ({ refreshWorktrees }));
+const toastError = vi.fn((_msg: string) => {});
+vi.doMock('sonner', () => ({ toast: { error: toastError, success: vi.fn(() => {}) } }));
 
 function main(path: string, commonDir: string): RecentProjectEntry {
   return {
@@ -169,9 +169,9 @@ function model(
 
 function createBridge() {
   return {
-    project: { open: mock(() => Promise.resolve()) },
+    project: { open: vi.fn(() => Promise.resolve()) },
     worktree: {
-      create: mock(() =>
+      create: vi.fn(() =>
         Promise.resolve({
           ok: true as const,
           path: '/repo/.ok/worktrees/feature-x',
@@ -233,8 +233,8 @@ function renderMenu(
   }> = {},
 ) {
   const bridge = overrides.bridge ?? createBridge();
-  const closeMenu = overrides.closeMenu ?? mock(() => {});
-  const openNewWorktreeWith = overrides.openNewWorktreeWith ?? mock((_name: string) => {});
+  const closeMenu = overrides.closeMenu ?? vi.fn(() => {});
+  const openNewWorktreeWith = overrides.openNewWorktreeWith ?? vi.fn((_name: string) => {});
   render(
     <Host
       bridge={bridge}
@@ -609,7 +609,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
   });
 
   test('the current project flyout offers "Create worktree <query>" when nothing matches; clicking it opens the pre-filled dialog', async () => {
-    const openNewWorktreeWith = mock((_name: string) => {});
+    const openNewWorktreeWith = vi.fn((_name: string) => {});
     renderMenu({
       recents: [
         main('/repo', '/repo/.git'),
@@ -1005,7 +1005,7 @@ describe('RecentProjectsMenu — search (cross-project)', () => {
   test('a failed create-on-demand toasts and does not open a window', async () => {
     toastError.mockClear();
     const bridge = createBridge();
-    bridge.worktree.create = mock(() =>
+    bridge.worktree.create = vi.fn(() =>
       Promise.resolve({ ok: false as const, reason: 'branch-exists' as const }),
     );
     renderMenu({

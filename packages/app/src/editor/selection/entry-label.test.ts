@@ -3,7 +3,7 @@
  * (shared by SelectionAnnouncer + future selection-consuming UI).
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import type { BlockChainEntry } from '../extensions/selection-state-plugin.ts';
 import { getEntryLabel } from './entry-label.ts';
 

@@ -22,7 +22,6 @@
  * native-loader failures.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { type ChildProcess, execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
@@ -31,6 +30,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI_PKG_DIR = resolve(HERE, '..', '..'); // packages/cli

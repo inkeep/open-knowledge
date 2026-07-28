@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { sanitizeFolderName } from './sanitize-folder-name.ts';
 
 describe('sanitizeFolderName', () => {

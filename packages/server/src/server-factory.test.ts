@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -6,7 +5,9 @@ import { join, resolve } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import shellQuote from 'shell-quote';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
+import { applyExternalChange } from './external-change.ts';
 import type {
   CheckPushPermissionOptions,
   DetectGhFn,
@@ -108,6 +109,78 @@ function captureAllLoggers(): {
 }
 
 // ─── Test suite ─────────────────────────────────────────────────────────────
+
+describe('createServer() — document durability state isolation', () => {
+  test('keeps same-named documents, branch scope, batch state, and disk intake per server', async () => {
+    const projectA = await mkdtemp(join(tmpdir(), 'ok-durability-a-'));
+    const projectB = await mkdtemp(join(tmpdir(), 'ok-durability-b-'));
+    const docName = 'same-doc';
+    const diskA = '# Disk A\n';
+    const diskB = '# Disk B\n';
+    let serverA: ServerInstance | null = null;
+    let serverB: ServerInstance | null = null;
+
+    try {
+      writeFileSync(join(projectA, `${docName}.md`), diskA, 'utf-8');
+      writeFileSync(join(projectB, `${docName}.md`), diskB, 'utf-8');
+      serverA = createServer({
+        contentDir: projectA,
+        projectDir: projectA,
+        gitEnabled: false,
+        quiet: true,
+      });
+      serverB = createServer({
+        contentDir: projectB,
+        projectDir: projectB,
+        gitEnabled: false,
+        quiet: true,
+      });
+      await Promise.all([serverA.ready, serverB.ready]);
+
+      const [connectionA, connectionB] = await Promise.all([
+        serverA.hocuspocus.openDirectConnection(docName),
+        serverB.hocuspocus.openDirectConnection(docName),
+      ]);
+
+      expect(serverA.durabilityState).not.toBe(serverB.durabilityState);
+      expect(serverA.durabilityState.getReconciledBase(docName)).toBe(diskA);
+      expect(serverB.durabilityState.getReconciledBase(docName)).toBe(diskB);
+      expect(serverA.hocuspocus.documents.get(docName)?.getText('source').toString()).toBe(diskA);
+      expect(serverB.hocuspocus.documents.get(docName)?.getText('source').toString()).toBe(diskB);
+
+      serverA.durabilityState.switchReconciledBaseScope('feature-a');
+      serverA.durabilityState.setReconciledBase(docName, 'A feature');
+      serverA.durabilityState.setBatchInProgress(true);
+      serverA.durabilityState.beginInFlightFlush(docName, 'A flush');
+
+      expect(serverA.durabilityState.getReconciledBase(docName)).toBe('A feature');
+      expect(serverB.durabilityState.getActiveBranch()).toBe('main');
+      expect(serverB.durabilityState.getReconciledBase(docName)).toBe(diskB);
+      expect(serverA.durabilityState.isBatchInProgress()).toBe(true);
+      expect(serverB.durabilityState.isBatchInProgress()).toBe(false);
+      expect(serverB.durabilityState.peekInFlightFlush(docName)).toBeUndefined();
+
+      const externalA = '# External A\n';
+      applyExternalChange(serverA.durabilityState, serverA.hocuspocus, docName, externalA);
+
+      expect(serverA.hocuspocus.documents.get(docName)?.getText('source').toString()).toBe(
+        externalA,
+      );
+      expect(serverA.durabilityState.getReconciledBase(docName)).toBe(externalA);
+      expect(serverB.hocuspocus.documents.get(docName)?.getText('source').toString()).toBe(diskB);
+      expect(serverB.durabilityState.getReconciledBase(docName)).toBe(diskB);
+
+      await Promise.all([connectionA.disconnect(), connectionB.disconnect()]);
+    } finally {
+      await serverA?.destroy();
+      await serverB?.destroy();
+      await Promise.all([
+        rm(projectA, { recursive: true, force: true }),
+        rm(projectB, { recursive: true, force: true }),
+      ]);
+    }
+  });
+});
 
 describe('createServer().destroy() — graceful shutdown flush', () => {
   let tmpDir: string;
@@ -521,7 +594,7 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
  *     invalid paths) and startHeadWatcher returns a no-op handle on missing
  *     .git. The degraded.push wiring for these subsystems is verified by
  *     the shadow-repo test (same push pattern) + code-level assertions.
- *     mock.module was attempted but leaks across all test files in the same
+ *     vi.doMock was attempted but leaks across all test files in the same
  *     `bun test` process, breaking file-watcher.test.ts.
  */
 
@@ -580,7 +653,7 @@ describe('createServer() degraded signal', () => {
   test('degraded push wiring exists for all three subsystems', () => {
     // Verify at the source level that the degraded.push calls exist in
     // initAsync for file-watcher and head-watcher. This is a code-level
-    // assertion — not as strong as a runtime test, but mock.module leaks
+    // assertion — not as strong as a runtime test, but vi.doMock leaks
     // make runtime testing impractical without process isolation.
     const dir = import.meta.dirname ?? new URL('.', import.meta.url).pathname;
     const src = readFileSync(resolve(dir, 'server-factory.ts'), 'utf-8');
@@ -886,14 +959,14 @@ describe('createServer() — config file watcher (US-007)', () => {
   });
 });
 
-// ─── file-watcher → engine.setEnabled loop ─────────────────────────────────
+// ─── file-watcher → engine.setMode loop ────────────────────────────────────
 //
 // Writing autoSync.enabled to <projectDir>/.ok/local/config.yml externally
-// must propagate via the file watcher to the SyncEngine's syncEnabled flag.
-// Closes the persistence ↔ engine loop end-to-end without going through
-// the client binding.
+// must propagate via the file watcher to the SyncEngine's mode (legacy
+// `enabled: true` derives to `full`). Closes the persistence ↔ engine loop
+// end-to-end without going through the client binding.
 
-describe('createServer() — project-local file watcher → engine.setEnabled', () => {
+describe('createServer() — project-local file watcher → engine.setMode', () => {
   let testProjectDir: string;
   let testHomedir: string;
 
@@ -929,7 +1002,7 @@ describe('createServer() — project-local file watcher → engine.setEnabled', 
 
     // Wait for file-watcher to detect the new file, applyExternalConfigChange
     // to update Y.Text, and the post-change handler to call
-    // syncEngine.setEnabled(readProjectAutoSyncEnabled()).
+    // syncEngine.setMode(readProjectAutoSyncMode()).
     const flipped = await waitFor(() => srv.syncEngine?.getStatus().syncEnabled === true);
     expect(flipped).toBe(true);
 
@@ -983,7 +1056,7 @@ describe('createServer() — project-local file watcher → engine.setEnabled', 
     expect(srv.syncEngine?.getStatus().syncEnabled).toBe(false);
 
     // A maintainer commits autoSync.default: true to <projectDir>/.ok/config.yml.
-    // The committed-config watcher must re-run readProjectAutoSyncEnabled and,
+    // The committed-config watcher must re-run readProjectAutoSyncMode and,
     // because this machine is unanswered, seed the engine from the default.
     mkdirSync(join(testProjectDir, '.ok'), { recursive: true });
     writeFileSync(
@@ -2007,16 +2080,16 @@ describe('createServer() — config-doc admission guard', () => {
   });
 });
 
-// ─── readProjectAutoSyncEnabled precedence + onAutoDisable scope ────────────
+// ─── readProjectAutoSyncMode precedence + onAutoDisable scope ────────────
 //
-// readProjectAutoSyncEnabled reads the per-machine project-local
+// readProjectAutoSyncMode reads the per-machine project-local
 // autoSync.enabled first; when unanswered (null/absent) it falls back to the
 // committed project-scope autoSync.default seed. A committed autoSync.enabled is
 // deliberately ignored (project-local-scoped field → a committed value is a
 // scope mismatch). onAutoDisable persists the auto-off flag to project-local so
 // a teammate's machine never overrides another teammate's preference via git.
 
-describe('createServer() — readProjectAutoSyncEnabled precedence', () => {
+describe('createServer() — readProjectAutoSyncMode precedence', () => {
   let testProjectDir: string;
   let testHomedir: string;
 
@@ -2157,7 +2230,7 @@ describe('createServer() — readProjectAutoSyncEnabled precedence', () => {
   });
 
   test('invalid project-local YAML falls through to committed default (degraded path)', async () => {
-    // Pins the !local.valid branch in readProjectAutoSyncEnabled. A corrupt
+    // Pins the !local.valid branch in readProjectAutoSyncMode. A corrupt
     // project-local file must not silently disable sync — the function logs and
     // falls back to the committed project default so the user keeps working
     // until the corruption is repaired.
@@ -2177,7 +2250,7 @@ describe('createServer() — readProjectAutoSyncEnabled precedence', () => {
 
   test('invalid committed config defaults to disabled (degraded path)', async () => {
     // A corrupt committed `.ok/config.yml` means autoSync.default can't be read,
-    // so sync defaults to disabled (readProjectAutoSyncEnabled logs the
+    // so sync defaults to disabled (readProjectAutoSyncMode logs the
     // correlation). The machine is unanswered, so there is no project-local
     // value to fall back to — mirrors the project-local degraded path.
     seedProjectConfig('autoSync:\n  default: : not-yaml [[[\n');

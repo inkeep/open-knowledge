@@ -8,9 +8,10 @@
  * satisfy the "Never assert raw source text for JSX / classes /
  * imports / hooks / props" rule for the grammar-gate additions.
  */
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { createRef } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { TagPillInput } from './tag-pill-input';
 
@@ -23,7 +24,7 @@ interface RenderOpts {
 }
 
 function renderInput(opts: RenderOpts = {}) {
-  const onChange = opts.onChange ?? mock(() => {});
+  const onChange = opts.onChange ?? vi.fn(() => {});
   const result = render(
     <TooltipProvider>
       <TagPillInput
@@ -75,7 +76,7 @@ describe('TagPillInput — input-side grammar gate', () => {
   });
 
   test('Enter on invalid input does not commit; draft + role="alert" helper appear', () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     const { container } = renderInput({ onChange });
     const input = container.querySelector('input') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'bad!' } });
@@ -91,7 +92,7 @@ describe('TagPillInput — input-side grammar gate', () => {
   });
 
   test('Enter on valid input commits + clears draft + clears any prior rejection state', () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     const { container } = renderInput({ onChange });
     const input = container.querySelector('input') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'showcase' } });
@@ -103,7 +104,7 @@ describe('TagPillInput — input-side grammar gate', () => {
   });
 
   test('comma, Tab, and blur commit non-empty drafts while empty comma is swallowed', () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     const { container } = renderInput({ onChange });
     const input = container.querySelector('input') as HTMLInputElement;
 
@@ -125,7 +126,7 @@ describe('TagPillInput — input-side grammar gate', () => {
   });
 
   test('Backspace on an empty draft removes the last pill', () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     const { container } = renderInput({ value: ['alpha', 'beta'], onChange });
     const input = container.querySelector('input') as HTMLInputElement;
 
@@ -138,7 +139,7 @@ describe('TagPillInput — input-side grammar gate', () => {
   test('Enter on a digit-leading tag like a year (2026) commits', () => {
     // Digit-leading tags are valid in frontmatter even though the inline
     // `#tag` surface rejects them.
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     const { container } = renderInput({ onChange });
     const input = container.querySelector('input') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '2026' } });
@@ -160,7 +161,7 @@ describe('TagPillInput — input-side grammar gate', () => {
   });
 
   test('Escape clears rejection without committing', () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     const { container } = renderInput({ onChange });
     const input = container.querySelector('input') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'bad!' } });
@@ -178,7 +179,7 @@ describe('TagPillInput — input-side grammar gate', () => {
     // YAML parse would silently re-normalize the value (drifting
     // display) and the dedup check would miss a `#showcase` / `showcase`
     // pair.
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     const { container } = renderInput({ onChange });
     const input = container.querySelector('input') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '#showcase' } });
@@ -193,7 +194,7 @@ describe('TagPillInput — input-side grammar gate', () => {
     // Before the normalization fix, an author with `showcase` already
     // in the list could re-add `#showcase` (the raw dedup check would
     // miss it). Pin post-normalize dedup so this regression stays caught.
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     const { container } = renderInput({ value: ['showcase'], onChange });
     const input = container.querySelector('input') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '#showcase' } });
@@ -204,7 +205,7 @@ describe('TagPillInput — input-side grammar gate', () => {
   });
 
   test('duplicate tag silently dedupes (no commit, no rejection state)', () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     const { container } = renderInput({ value: ['showcase'], onChange });
     const input = container.querySelector('input') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'showcase' } });
@@ -221,7 +222,7 @@ describe('TagPillInput — free-text grammar', () => {
   });
 
   function renderFreeText(opts: RenderOpts = {}) {
-    const onChange = opts.onChange ?? mock(() => {});
+    const onChange = opts.onChange ?? vi.fn(() => {});
     const result = render(
       <TooltipProvider>
         <TagPillInput value={opts.value ?? []} onChange={onChange} grammar="free-text" />
@@ -234,7 +235,7 @@ describe('TagPillInput — free-text grammar', () => {
     // markdownlint option lists hold values like MD043's `## Summary`:
     // spaces fail the tag grammar and the leading `#` would be stripped
     // by the frontmatter normalization. Free-text must preserve both.
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     const { container } = renderFreeText({ onChange });
     const input = container.querySelector('input') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '## Summary' } });
@@ -251,7 +252,7 @@ describe('TagPillInput — free-text grammar', () => {
   });
 
   test('still trims, drops empty drafts, and dedupes', () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     const { container } = renderFreeText({ value: ['*'], onChange });
     const input = container.querySelector('input') as HTMLInputElement;
 
@@ -343,7 +344,7 @@ describe('TagPillInput — a11y id wiring (regression: PR #1288 review findings)
   });
 
   test('remove buttons include the tag value in their accessible names', () => {
-    const onChange = mock(() => {});
+    const onChange = vi.fn(() => {});
     const { container } = renderInput({ value: ['showcase', 'docs'], onChange });
 
     fireEvent.click(

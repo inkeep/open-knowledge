@@ -18,7 +18,7 @@
  * pins them so any regression fails CI in seconds rather
  * than waiting for a perf run.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { mark } from '../../src/lib/perf';
 import {
   __resetCardinalityWarnings,

@@ -47,7 +47,12 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 
-const FIXED_GROUP_ANCHOR = '@inkeep/open-knowledge';
+// The fixed release group's anchor package. Its `initialVersions` entry in
+// pre.json is the version the last stable consolidation left behind, so it is
+// also what a stale-anchor check compares against the newest stable tag.
+// Exported so that check reads the same key rather than carrying a copy that
+// can drift.
+export const FIXED_GROUP_ANCHOR = '@inkeep/open-knowledge';
 const PRE_PATH = '.changeset/pre.json';
 const CHANGESET_DIR = '.changeset';
 // Repo this release runs against; derived from the workflow env so it follows

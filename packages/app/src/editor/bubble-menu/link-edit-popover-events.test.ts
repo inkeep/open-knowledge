@@ -4,7 +4,7 @@
  * (the SSR-safe default target path is exercised by the dom suite).
  */
 
-import { expect, test } from 'bun:test';
+import { expect, test } from 'vitest';
 import {
   emitOpenLinkEditPopover,
   subscribeToOpenLinkEditPopover,

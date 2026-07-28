@@ -24,16 +24,27 @@
  *     loop at pre-commit).
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 const HTML = readFileSync(join(__dirname, '..', '..', 'index.html'), 'utf8');
 
 describe('index.html FOUC inline script — electron-mode class', () => {
   test('inline FOUC script adds the electron-mode class to documentElement when window.okDesktop is present', () => {
+    // Braced form: the okDesktop branch now adds electron-mode AND the
+    // per-platform class (electron-platform-<platform>) in one block.
     expect(HTML).toMatch(
-      /if\s*\(\s*window\.okDesktop\s*\)\s*document\.documentElement\.classList\.add\(\s*['"]electron-mode['"]\s*\)/,
+      /if\s*\(\s*window\.okDesktop\s*\)\s*\{\s*document\.documentElement\.classList\.add\(\s*['"]electron-mode['"]\s*\)/,
+    );
+  });
+
+  test('inline FOUC script also stamps the per-platform class (win/linux chrome CSS keys off it)', () => {
+    // globals.css scopes the Windows/Linux window-controls reserve to
+    // html.electron-mode.electron-platform-{win32,linux}; the class must be
+    // present before first paint, in the same okDesktop-gated block.
+    expect(HTML).toMatch(
+      /classList\.add\(\s*`electron-platform-\$\{window\.okDesktop\.platform\}`\s*\)/,
     );
   });
 

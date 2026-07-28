@@ -15,9 +15,9 @@
  * the cap moves with intentional changes to the cap constant, not with
  * incidental channel additions.
  *
- * Mirrors `no-loosely-typed-webcontents-ipc.test.ts`'s shape — a Bun test
- * with grep-walk over the source. Same enforcement guarantee, same `bun
- * run check` gating.
+ * Mirrors `no-loosely-typed-webcontents-ipc.test.ts`'s shape — a Vitest test
+ * with grep-walk over the source. Same enforcement guarantee, same `pnpm
+ * check` gating.
  */
 
 import { readFileSync } from 'node:fs';
@@ -350,8 +350,33 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  * delegating to the existing main-side picker + `openEphemeralFile` (the
  * desktop side of `ok <file>`). Single member; the typed-ipc migration remains
  * the committed end state, with the `ipc-channels.ts` header in lock-step.
+ *
+ * Bumped from 87 to 88 merging the Windows/Linux desktop port: the win/linux
+ * renderer menubar (`ok:menu:dispatch`, the windows-linux-port renderer-menubar
+ * decision): macOS keeps the native menu bar, but win/linux draw it in the
+ * renderer, and every click routes back through main so menu semantics stay
+ * single-sourced. Follows the `ok:sharing:dispatch` discriminated-union
+ * precedent — query / menu-action relay / role / command all share ONE channel,
+ * so the whole custom-menubar surface costs one slot forever. Could not fold
+ * into an existing channel: `ok:menu-action` is an EventChannel (main→renderer
+ * push, wrong direction) and no renderer→main menu surface exists. The typed-ipc
+ * migration remains the committed end state, with the `ipc-channels.ts` header
+ * updated in lock-step.
+ *
+ * Bumped from 88 to 89 for the React self-uninstall window
+ * (`ok:uninstall:dispatch`). The uninstall screens were the last renderer→main
+ * surface still riding a private `ok-desktop-uninstall://` URL scheme
+ * intercepted by `will-navigate`; moving them onto real IPC retires that
+ * channel. Follows the `ok:sharing:dispatch` discriminated-union precedent —
+ * the screen pull plus every intent from all four screens (picker, survey,
+ * progress, notices) share ONE slot, so porting the remaining screens costs no
+ * further channels. Could not fold into an existing channel: no renderer→main
+ * uninstall surface existed, and the sender-validation rule (only a live
+ * uninstall window is answered) is specific to this surface. The typed-ipc
+ * migration remains the committed end state, with the `ipc-channels.ts` header
+ * updated in lock-step.
  */
-const REQUEST_CHANNEL_CAP = 87;
+const REQUEST_CHANNEL_CAP = 89;
 
 /**
  * Extract the body of an interface block by name. Returns the substring

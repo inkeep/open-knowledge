@@ -1,7 +1,7 @@
-import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { inspectLock } from './lock-state.ts';
 
 function freshLockDir(): string {

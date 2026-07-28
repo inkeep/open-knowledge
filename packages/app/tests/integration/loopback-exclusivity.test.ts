@@ -26,8 +26,8 @@
  * packages/server/src/rig-loopback-exclusivity.test.ts.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { createServer } from 'node:http';
+import { afterEach, describe, expect, test } from 'vitest';
 
 import { createTestServer } from './test-harness';
 

@@ -6,7 +6,7 @@
  * each branch independently of any specific consumer.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { parseApiError } from './parse-api-error.ts';
 
 describe('parseApiError', () => {

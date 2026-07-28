@@ -5,11 +5,11 @@
  * and that complex values fall back to the read-only preview.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import { render, screen } from '@testing-library/react';
+import { describe, expect, test, vi } from 'vitest';
 import * as linguiShim from '../../tests/lingui-macro-shim';
 
-mock.module('@lingui/react/macro', () => linguiShim);
+vi.doMock('@lingui/react/macro', () => linguiShim);
 
 const { ReadonlyPropertyPanel } = await import('./ReadonlyPropertyPanel');
 

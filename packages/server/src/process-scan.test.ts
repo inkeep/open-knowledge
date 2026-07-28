@@ -1,6 +1,5 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn, vi } from 'bun:test';
-
 import type { SpawnSyncReturns } from 'node:child_process';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The SUT imports spawnSync/existsSync/readdirSync/lstatSync as named bindings
 // and calls them directly. Vitest cannot redefine a live ESM namespace binding
@@ -21,8 +20,8 @@ let realFs: typeof import('node:fs');
 beforeAll(async () => {
   realCp = await vi.importActual<typeof import('node:child_process')>('node:child_process');
   realFs = await vi.importActual<typeof import('node:fs')>('node:fs');
-  mock.module('node:child_process', () => ({ ...realCp, spawnSync: spawnSyncMock }));
-  mock.module('node:fs', () => ({
+  vi.doMock('node:child_process', () => ({ ...realCp, spawnSync: spawnSyncMock }));
+  vi.doMock('node:fs', () => ({
     ...realFs,
     existsSync: existsSyncMock,
     readdirSync: readdirSyncMock,
@@ -469,7 +468,7 @@ describe('discoverLockDirs', () => {
   });
 
   it('discovers child project locks from the current-directory subtree fallback', async () => {
-    const cwdSpy = spyOn(process, 'cwd');
+    const cwdSpy = vi.spyOn(process, 'cwd');
     const parent = '/Users/mike/Documents/OpenKnowledge';
     const child = `${parent}/garth_nix`;
     const lockDir = `${child}/.ok/local`;
@@ -505,7 +504,7 @@ describe('discoverLockDirs', () => {
   });
 
   it('runs subtree fallback for slash-cwd helpers even when another candidate was found', async () => {
-    const cwdSpy = spyOn(process, 'cwd');
+    const cwdSpy = vi.spyOn(process, 'cwd');
     const parent = '/Users/mike/Documents/OpenKnowledge';
     const directProject = '/Users/mike/direct-notes';
     const directLockDir = `${directProject}/.ok/local`;

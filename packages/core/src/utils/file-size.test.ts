@@ -18,7 +18,7 @@
  *     (matches what the showcase doc displays for sample-local-pdf.pdf)
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { formatFileSize } from './file-size.ts';
 
 describe('formatFileSize', () => {

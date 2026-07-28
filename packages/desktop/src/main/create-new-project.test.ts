@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   chmodSync,
   existsSync,
@@ -12,6 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { ALL_EDITOR_IDS } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   CreateNewProjectError,
   folderState,

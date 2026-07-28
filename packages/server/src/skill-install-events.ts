@@ -33,7 +33,12 @@ export type SkillInstallEventSurface =
   | 'server-build-and-open'
   /** Electron bridge path: `okDesktop.skill.buildAndOpen` → `handleBuildAndOpen` (desktop main). */
   | 'electron-build-and-open'
-  /** Track 1 install: `installUserSkill` → `npx skills add --agent '*' -g`. */
+  /**
+   * Track 1 install: `installUserSkill` copying the user-global bundle into
+   * each detected agent host. The `npx` in the name is historical — the value
+   * is persisted in existing state files and event logs, so it outlives the
+   * subprocess it was named for.
+   */
   | 'cli-npx-skills-add'
   /** Desktop main-process direct invoke of `installUserSkill` (first-launch flow). */
   | 'desktop-direct'

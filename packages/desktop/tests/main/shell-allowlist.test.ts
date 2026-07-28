@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 // Test-only cross-package import. Main-process runtime bundle does NOT include
 // app-layer code (tree-shaken since no production handler imports from app).
 // Relative path over workspace ref
@@ -81,42 +81,42 @@ describe('checkOutboundUrl (D47 outbound scheme allowlist)', () => {
 
 describe('handleShellOpenExternal (preload → main bridge enforcement)', () => {
   test('delegates to openExternal for allowed schemes', async () => {
-    const openExternal = mock(() => Promise.resolve());
+    const openExternal = vi.fn(() => Promise.resolve());
     const handle = handleShellOpenExternal({ openExternal });
     await handle('https://example.com');
     expect(openExternal).toHaveBeenCalledWith('https://example.com');
   });
 
   test('delegates to openExternal for openknowledge:// (our own scheme)', async () => {
-    const openExternal = mock(() => Promise.resolve());
+    const openExternal = vi.fn(() => Promise.resolve());
     const handle = handleShellOpenExternal({ openExternal });
     await handle('openknowledge://open?project=/tmp&doc=x');
     expect(openExternal).toHaveBeenCalledWith('openknowledge://open?project=/tmp&doc=x');
   });
 
   test('rejects file:// with a scheme-not-allowed error (no openExternal call)', async () => {
-    const openExternal = mock(() => Promise.resolve());
+    const openExternal = vi.fn(() => Promise.resolve());
     const handle = handleShellOpenExternal({ openExternal });
     await expect(handle('file:///etc/passwd')).rejects.toThrow(/scheme-not-allowed/);
     expect(openExternal).not.toHaveBeenCalled();
   });
 
   test('rejects javascript: with a scheme-not-allowed error', async () => {
-    const openExternal = mock(() => Promise.resolve());
+    const openExternal = vi.fn(() => Promise.resolve());
     const handle = handleShellOpenExternal({ openExternal });
     await expect(handle('javascript:alert(1)')).rejects.toThrow(/scheme-not-allowed/);
     expect(openExternal).not.toHaveBeenCalled();
   });
 
   test('rejects data: with a scheme-not-allowed error', async () => {
-    const openExternal = mock(() => Promise.resolve());
+    const openExternal = vi.fn(() => Promise.resolve());
     const handle = handleShellOpenExternal({ openExternal });
     await expect(handle('data:text/html,x')).rejects.toThrow(/scheme-not-allowed/);
     expect(openExternal).not.toHaveBeenCalled();
   });
 
   test('rejects malformed URL with invalid-url reason', async () => {
-    const openExternal = mock(() => Promise.resolve());
+    const openExternal = vi.fn(() => Promise.resolve());
     const handle = handleShellOpenExternal({ openExternal });
     await expect(handle('not a url')).rejects.toThrow(/invalid-url/);
     expect(openExternal).not.toHaveBeenCalled();

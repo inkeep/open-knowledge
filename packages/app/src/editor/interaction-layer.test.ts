@@ -12,7 +12,7 @@
  * transitions + event resolver walk semantics.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   createInteractionLayer,
   type InteractionControls,

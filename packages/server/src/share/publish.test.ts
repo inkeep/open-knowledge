@@ -5,7 +5,7 @@
  * are exercised by the integration test at `./publish.integration.test.ts`.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   isValidShareOwnerName,
   isValidShareRepoName,

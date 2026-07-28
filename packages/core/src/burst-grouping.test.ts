@@ -1,7 +1,7 @@
 /**
  * Unit tests for bucketIntoBursts.
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { bucketIntoBursts, type SessionTransaction } from './burst-grouping.ts';
 
 function tx(session_id: string, timestamp: number, agent_type?: string): SessionTransaction {

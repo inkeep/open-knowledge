@@ -16,17 +16,18 @@
  *
  * Runs under `bun run test:dom` (jsdom substrate per precedent #43).
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import {
   expectVisualClassTokens,
   expectVisualClassTokensAbsent,
 } from '@/test-utils/visual-contract';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
@@ -36,7 +37,7 @@ mock.module('@lingui/react/macro', () => ({
 // without a provider — stub the app-default view. `mergedConfig` is a knob so
 // the indicator tests below can flip the only-markdown axis.
 let mergedConfig: { appearance?: { sidebar?: { showOnlyMarkdownFiles?: boolean } } } | null = null;
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     merged: mergedConfig,
     projectLocalBinding: null,
@@ -52,7 +53,7 @@ mock.module('@/lib/config-provider', () => ({
 // pin `mediaKind="pdf"` → Pdf-branch chosen without mounting the real
 // component. Sibling `Pdf.dom.test.tsx` (per `bun run test:dom`'s
 // substrate) is the right place for Pdf's internal coverage.
-mock.module('@/editor/components/Pdf', () => ({
+vi.doMock('@/editor/components/Pdf', () => ({
   Pdf: (props: { src?: string; title?: string; fillContainer?: boolean }) => (
     <div data-testid="pdf-stub" data-src={props.src} data-fill={String(!!props.fillContainer)}>
       pdf:{props.title ?? ''}
@@ -63,12 +64,12 @@ mock.module('@/editor/components/Pdf', () => ({
 const { AssetPreview } = await import('./AssetPreview');
 
 describe('AssetPreview — image loading-state placeholder (PRD-6638)', () => {
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {

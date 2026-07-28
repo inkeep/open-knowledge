@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import simpleGit, { type SimpleGit } from 'simple-git';
+import { afterEach, beforeEach, expect, test } from 'vitest';
 import { __resetContributorsForTests as resetContributorsForTest } from './contributor-tracker.ts';
 import { createServer, type ServerInstance } from './server-factory.ts';
 import { initShadowRepo, type ShadowHandle, shadowGit } from './shadow-repo.ts';

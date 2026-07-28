@@ -39,7 +39,18 @@ export function okBugReportsDir(): string {
 
 export function defaultBugReportZipPath(now: Date = new Date()): string {
   const timestamp = now.toISOString().replace(/[:.]/g, '-');
-  return join(okBugReportsDir(), `${timestamp}-bugreport.zip`);
+  const dir = okBugReportsDir();
+  const base = `${timestamp}-bugreport`;
+  // The ms-precision ISO basename is the report's stable `id` once the retry
+  // list makes it load-bearing, so it must be unique. Two same-millisecond
+  // generations (a crash-invite capture coinciding with a manual report) would
+  // otherwise collide and overwrite one bundle under one id — append a counter
+  // on collision so both survive with distinct ids.
+  let candidate = join(dir, `${base}.zip`);
+  for (let counter = 2; existsSync(candidate); counter += 1) {
+    candidate = join(dir, `${base}-${counter}.zip`);
+  }
+  return candidate;
 }
 
 /** Structural subset of a pino logger, so callers outside the CLI can inject their own. */

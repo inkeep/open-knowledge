@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { Document } from '@hocuspocus/server';
 import { sharedExtensions, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import {
   type AgentDirectConnection,

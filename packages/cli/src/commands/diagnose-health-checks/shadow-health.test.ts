@@ -4,10 +4,10 @@
  * shadow repo; the no-init warn paths use real dirs.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import { makeShadowHealthCheck, type ShadowHealthFacts } from './shadow-health.ts';
 
 let tmpDirs: string[] = [];

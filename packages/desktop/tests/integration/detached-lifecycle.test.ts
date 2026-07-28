@@ -35,7 +35,6 @@
  * signal worth surfacing.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -44,6 +43,7 @@ import { dirname, join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { isProcessAlive } from '@inkeep/open-knowledge-server';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 // Resolve the built CLI relative to this test file so the test runs from
 // anywhere (root, packages/desktop, worktree).

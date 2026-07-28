@@ -17,9 +17,9 @@
  *     (Tab cycle, Esc close) exercises the panel end-to-end.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { builtInComponents, type PropDef } from '@inkeep/open-knowledge-core';
 import { renderToString } from 'react-dom/server';
+import { describe, expect, test } from 'vitest';
 import type { JsxComponentDescriptor } from '../registry/types.ts';
 
 const { countAdvancedSet, PropPanel, persistAdvancedOpenState, readAdvancedOpenState } =
@@ -1161,7 +1161,7 @@ describe('PropPanel — colorPicker branch', () => {
 
 // runUpload unit tests were removed — Bun on Linux fires its
 // unhandled-rejection observer for any rejected promise constructed in
-// the same `mock.module()` scope (regardless of rejection shape: string,
+// the same `vi.doMock()` scope (regardless of rejection shape: string,
 // object, Error, throw-inside-async-body, Promise.reject with synchronous
 // .catch pre-attach, or process.on('unhandledRejection') absorbing
 // handler — all five tried, all five failed). The observer's event

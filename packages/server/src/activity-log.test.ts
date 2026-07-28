@@ -1,7 +1,7 @@
 /**
  * Unit tests for activity-log ring-buffer.
  */
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { captureEffect, type EffectValue } from './activity-log.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';

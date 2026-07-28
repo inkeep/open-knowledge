@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   FIREWORK_COLORS,
   FIREWORK_LEVEL_CONFIG,

@@ -3,13 +3,14 @@
  * brings the dismissed bottom composer back. Identity + lingui are mocked so the
  * test is scoped to the badge's presence + click wiring next to the stats.
  */
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { DocumentStats } from '@/lib/document-stats';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
@@ -22,7 +23,7 @@ mock.module('@lingui/react/macro', () => ({
 }));
 
 // No project/branch identity — keep the footer scoped to stats + badge.
-mock.module('@/hooks/use-editor-footer-identity', () => ({
+vi.doMock('@/hooks/use-editor-footer-identity', () => ({
   useEditorFooterIdentity: () => null,
 }));
 
@@ -47,7 +48,7 @@ describe('EditorFooter (Ask AI reopen badge)', () => {
   });
 
   test('clicking the badge calls onReopen', async () => {
-    const onReopen = mock(() => {});
+    const onReopen = vi.fn(() => {});
     await renderFooter({ onReopen });
 
     fireEvent.click(screen.getByTestId('ask-ai-reopen-badge'));

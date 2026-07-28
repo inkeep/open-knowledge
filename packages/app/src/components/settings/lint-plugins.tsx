@@ -6,13 +6,14 @@
  * future plugin's GUI = one `LINT_PLUGIN_META` entry + its Section in the map.
  */
 import type { ReactNode } from 'react';
-import { MarkdownlintPluginSection } from './LintingSection';
+import { FrontmatterPluginSection, MarkdownlintPluginSection } from './LintingSection';
 import { LINT_PLUGIN_META, type LintPluginMeta } from './lint-plugin-meta';
 
 type PluginSection = () => ReactNode;
 
 const SECTIONS: Record<LintPluginMeta['id'], PluginSection> = {
   markdownlint: MarkdownlintPluginSection,
+  frontmatter: FrontmatterPluginSection,
 };
 
 export interface LintPluginUi extends LintPluginMeta {

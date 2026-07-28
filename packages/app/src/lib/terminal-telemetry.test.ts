@@ -6,13 +6,14 @@
  * surface as a UI crash.
  *
  * The OTel boundary is faked with `spyOn(trace, 'getTracer')` rather than
- * `mock.module('@opentelemetry/api')`: a module mock persists in the shared
+ * `vi.doMock('@opentelemetry/api')`: a module mock persists in the shared
  * unit-test module registry and would clobber the real provider that
  * `lib/perf/otel-spans.test.ts` registers. The spy is installed per-test and
  * restored in `afterEach`, so nothing bleeds into another file's tracer.
  */
-import { afterEach, beforeEach, describe, expect, type Mock, spyOn, test } from 'bun:test';
+
 import { type Tracer, trace } from '@opentelemetry/api';
+import { afterEach, beforeEach, describe, expect, type Mock, test, vi } from 'vitest';
 import { recordShellConsentGranted, recordTerminalOpened } from './terminal-telemetry';
 
 const spanNames: string[] = [];
@@ -22,7 +23,7 @@ let getTracerSpy: Mock<typeof trace.getTracer>;
 beforeEach(() => {
   spanNames.length = 0;
   startSpanThrows = false;
-  getTracerSpy = spyOn(trace, 'getTracer').mockImplementation(
+  getTracerSpy = vi.spyOn(trace, 'getTracer').mockImplementation(
     () =>
       ({
         startSpan: (name: string) => {

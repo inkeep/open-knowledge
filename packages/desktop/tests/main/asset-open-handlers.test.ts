@@ -8,7 +8,7 @@
  * the same handlers through the in-memory IPC bus.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import {
   extractPathExtension,
   openAssetSafely,
@@ -62,7 +62,7 @@ describe('extractPathExtension', () => {
 
 describe('openAssetSafely (FR-A6 + D-A5 + D-A9)', () => {
   test('happy path: contained + exists + non-blocklist → openPath fires', async () => {
-    const openPath = mock(async (_: string) => '');
+    const openPath = vi.fn(async (_: string) => '');
     const canonical = `${PROJECT}/notes/meeting.pdf`;
     const result = await openAssetSafely(
       {
@@ -79,7 +79,7 @@ describe('openAssetSafely (FR-A6 + D-A5 + D-A9)', () => {
   });
 
   test('path traversal (../../etc/passwd) → path-escape', async () => {
-    const openPath = mock(async (_: string) => '');
+    const openPath = vi.fn(async (_: string) => '');
     const result = await openAssetSafely(
       {
         projectPath: PROJECT,
@@ -95,7 +95,7 @@ describe('openAssetSafely (FR-A6 + D-A5 + D-A9)', () => {
   });
 
   test('absolute path from renderer → path-escape', async () => {
-    const openPath = mock(async (_: string) => '');
+    const openPath = vi.fn(async (_: string) => '');
     const result = await openAssetSafely(
       {
         projectPath: PROJECT,
@@ -111,7 +111,7 @@ describe('openAssetSafely (FR-A6 + D-A5 + D-A9)', () => {
   });
 
   test('symlink escape (realpath canonicalizes outside project) → path-escape', async () => {
-    const openPath = mock(async (_: string) => '');
+    const openPath = vi.fn(async (_: string) => '');
     // Simulate: project has `notes/link.pdf` which is a symlink to /etc/passwd
     const result = await openAssetSafely(
       {
@@ -129,7 +129,7 @@ describe('openAssetSafely (FR-A6 + D-A5 + D-A9)', () => {
   });
 
   test('missing file → not-found (ENOENT from realpath)', async () => {
-    const openPath = mock(async (_: string) => '');
+    const openPath = vi.fn(async (_: string) => '');
     const result = await openAssetSafely(
       {
         projectPath: PROJECT,
@@ -145,7 +145,7 @@ describe('openAssetSafely (FR-A6 + D-A5 + D-A9)', () => {
   });
 
   test('non-ENOENT realpath failure → resolve-error', async () => {
-    const openPath = mock(async (_: string) => '');
+    const openPath = vi.fn(async (_: string) => '');
     const result = await openAssetSafely(
       {
         projectPath: PROJECT,
@@ -165,7 +165,7 @@ describe('openAssetSafely (FR-A6 + D-A5 + D-A9)', () => {
   });
 
   test('executable extension (.sh) → extension-blocked even if path is contained + exists', async () => {
-    const openPath = mock(async (_: string) => '');
+    const openPath = vi.fn(async (_: string) => '');
     const canonical = `${PROJECT}/notes/setup.sh`;
     const result = await openAssetSafely(
       {
@@ -182,7 +182,7 @@ describe('openAssetSafely (FR-A6 + D-A5 + D-A9)', () => {
   });
 
   test('uppercase executable extension (.EXE) is still blocked (case-insensitive)', async () => {
-    const openPath = mock(async (_: string) => '');
+    const openPath = vi.fn(async (_: string) => '');
     const canonical = `${PROJECT}/notes/installer.EXE`;
     const result = await openAssetSafely(
       {
@@ -199,7 +199,7 @@ describe('openAssetSafely (FR-A6 + D-A5 + D-A9)', () => {
   });
 
   test('scripted-doc extensions (.html, .svg, .xml) are blocked per stored-XSS defense', async () => {
-    const openPath = mock(async (_: string) => '');
+    const openPath = vi.fn(async (_: string) => '');
     for (const name of ['page.html', 'picture.svg', 'doc.xml', 'email.mhtml']) {
       const canonical = `${PROJECT}/notes/${name}`;
       const result = await openAssetSafely(
@@ -220,7 +220,7 @@ describe('openAssetSafely (FR-A6 + D-A5 + D-A9)', () => {
   test('openPath returning non-empty error string → resolve-error', async () => {
     // shell.openPath returns a non-empty string when the OS handler refuses
     // the dispatch — e.g. "No application is associated with .foo files"
-    const openPath = mock(async (_: string) => 'No handler for .foo');
+    const openPath = vi.fn(async (_: string) => 'No handler for .foo');
     const canonical = `${PROJECT}/notes/file.foo`;
     const result = await openAssetSafely(
       {
@@ -239,7 +239,7 @@ describe('openAssetSafely (FR-A6 + D-A5 + D-A9)', () => {
 
 describe('revealAssetSafely (FR-A6; extension blocklist does NOT apply)', () => {
   test('happy path: contained + exists → showItemInFolder fires on canonical', async () => {
-    const showItemInFolder = mock((_: string) => {});
+    const showItemInFolder = vi.fn((_: string) => {});
     const canonical = `${PROJECT}/notes/meeting.pdf`;
     const result = await revealAssetSafely(
       {
@@ -256,7 +256,7 @@ describe('revealAssetSafely (FR-A6; extension blocklist does NOT apply)', () => 
   });
 
   test('reveal on an executable is ALLOWED (shell.showItemInFolder opens parent only)', async () => {
-    const showItemInFolder = mock((_: string) => {});
+    const showItemInFolder = vi.fn((_: string) => {});
     const canonical = `${PROJECT}/notes/setup.sh`;
     const result = await revealAssetSafely(
       {
@@ -273,7 +273,7 @@ describe('revealAssetSafely (FR-A6; extension blocklist does NOT apply)', () => 
   });
 
   test('path escape still refused', async () => {
-    const showItemInFolder = mock((_: string) => {});
+    const showItemInFolder = vi.fn((_: string) => {});
     const result = await revealAssetSafely(
       {
         projectPath: PROJECT,
@@ -289,7 +289,7 @@ describe('revealAssetSafely (FR-A6; extension blocklist does NOT apply)', () => 
   });
 
   test('missing file → not-found', async () => {
-    const showItemInFolder = mock((_: string) => {});
+    const showItemInFolder = vi.fn((_: string) => {});
     const result = await revealAssetSafely(
       {
         projectPath: PROJECT,

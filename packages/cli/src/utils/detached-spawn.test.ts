@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import type { SpawnOptions } from 'node:child_process';
+import { describe, expect, test } from 'vitest';
 import { spawnDetachedScrubbed } from './detached-spawn.ts';
 
 describe('spawnDetachedScrubbed', () => {

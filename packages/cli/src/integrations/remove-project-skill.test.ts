@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { EDITOR_TARGETS } from '../commands/editors.ts';
 import { removeProjectSkill } from './write-project-skill.ts';
 

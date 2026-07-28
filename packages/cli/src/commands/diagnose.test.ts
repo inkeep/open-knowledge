@@ -4,10 +4,10 @@
  * All subprocess calls and filesystem side effects are injected via deps.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import { runDiagnose } from './diagnose.ts';
 import type { LockState } from './lock-state.ts';
 

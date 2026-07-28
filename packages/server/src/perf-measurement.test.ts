@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 import type { Extension, Hocuspocus } from '@hocuspocus/server';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   captureServerMemorySnapshot,
   installPerfMeasurementHttpRoute,

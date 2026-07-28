@@ -6,11 +6,12 @@
  * must stay `.ok`-free (reveal is a per-request view, never an index rescope),
  * and a plain showAll request keeps today's `.ok`-less listing.
  */
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DocumentListSuccessSchema, SearchSuccessSchema } from '@inkeep/open-knowledge-core';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { createTestServer, type TestServer } from './test-harness';
 
 // Unique body/name tokens so the search-corpus assertions can't false-pass on

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { computeDevApiConfigResponse } from './api-config-handler.ts';
 
 describe('computeDevApiConfigResponse', () => {

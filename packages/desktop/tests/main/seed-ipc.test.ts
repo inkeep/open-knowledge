@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { handleSeedApply, handleSeedPlan } from '../../src/main/ipc/seed.ts';
 
 let testDir: string;

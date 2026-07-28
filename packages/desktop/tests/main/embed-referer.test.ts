@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   EMBED_HOST_PATTERNS,
   EMBED_REFERER,

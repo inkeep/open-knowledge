@@ -2,15 +2,18 @@
  * Git identity resolution chain.
  *
  * Resolves git user.name + user.email for auto-save commits via:
- *   1. Per-worktree git config (.git/worktrees/<name>/config.worktree)
- *   2. Repo-local / common git config (.git/config)
- *   3. Global git config (~/.gitconfig)
- *   4. Stored token entry (login + name/email from OAuth profile)
- *   5. null — caller must prompt
+ *   1. Effective (merged) git config — the identity git itself would commit
+ *      with, read from the project dir
+ *   2. Stored token entry (login + name/email from OAuth profile)
+ *   3. null — caller must prompt
  *
- * Step 1 only fires when `extensions.worktreeConfig` is enabled; otherwise
- * `git config --worktree` errors out in linked worktrees, which the reader
- * surfaces as null and the chain falls through.
+ * Step 1 reads the *merged* config (`git config --get <key>`, no scope flag)
+ * rather than probing `--worktree` / `--local` / `--global` in turn. The merged
+ * read is what git resolves for a commit: it honors the full scope precedence
+ * (system < global < local < worktree) AND — critically — resolves `include` /
+ * `includeIf` directives (e.g. `gitdir:` or `hasconfig:remote.*.url:` identity
+ * switching). Scope-limited reads only see values written literally in that one
+ * file, so an identity supplied through an included config is invisible to them.
  *
  * Uses spawnSync('git', ['config', …]) instead of simple-git so this module
  * has no runtime dependency on simple-git (avoids broken symlink in test env).
@@ -38,33 +41,28 @@ export interface GitIdentityTokenStore {
 /**
  * Injectable git-config reader (real or mock in tests).
  *
+ * Reads the *effective* (merged) config from `projectDir`, i.e. what git
+ * resolves for a commit after applying scope precedence and all `include` /
+ * `includeIf` directives — not a single scope's raw file.
+ *
  * @param projectDir  Absolute path to the git root.
  * @param key         Git config key (e.g. 'user.name').
- * @param scope       'worktree' reads .git/worktrees/<name>/config.worktree (only
- *                    populated when `extensions.worktreeConfig` is enabled);
- *                    'local' reads .git/config; 'global' reads ~/.gitconfig.
  * @returns The trimmed value, or null if not set / not found.
  */
-export type GitConfigReader = (
-  projectDir: string,
-  key: string,
-  scope: 'worktree' | 'local' | 'global',
-) => string | null;
+export type GitConfigReader = (projectDir: string, key: string) => string | null;
 
 // ─── Default reader (production) ─────────────────────────────────────────────
 
 /**
- * Production config reader — spawns `git config --worktree|--local|--global <key>`.
- * Returns null on any error (non-zero exit, missing key, spawn failure). `--worktree`
- * in a linked worktree without `extensions.worktreeConfig` exits 128 (fatal); that
- * still maps to null, which is the correct fall-through for the chain.
+ * Production config reader — spawns `git config --get <key>` (no scope flag) so
+ * git returns the effective merged value: full scope precedence plus resolved
+ * `include` / `includeIf` directives. Returns null on any error (non-zero exit,
+ * missing key, spawn failure).
  */
-const defaultGitConfigReader: GitConfigReader = (projectDir, key, scope) => {
-  const scopeFlag =
-    scope === 'worktree' ? '--worktree' : scope === 'local' ? '--local' : '--global';
+const defaultGitConfigReader: GitConfigReader = (projectDir, key) => {
   const result = spawnSync(
     'git',
-    ['config', scopeFlag, key],
+    ['config', '--get', key],
     withHiddenWindowsConsole({
       cwd: projectDir,
       encoding: 'utf-8',
@@ -158,11 +156,10 @@ function ensureWorktreeConfigExtension(projectDir: string): void {
  * Resolve git identity for auto-save commits.
  *
  * Chain (stops at first complete name+email pair):
- *   1. per-worktree config (`--worktree`; only meaningful when extension on)
- *   2. repo-local / common config (`--local`)
- *   3. global config (`--global`)
- *   4. TokenStore entry (login as name fallback; entry.name preferred)
- *   5. null (caller must prompt)
+ *   1. effective merged git config (`git config --get`; resolves scope
+ *      precedence + `include` / `includeIf` directives)
+ *   2. TokenStore entry (login as name fallback; entry.name preferred)
+ *   3. null (caller must prompt)
  *
  * @param projectDir  Absolute path to the git root.
  * @param tokenStore  Optional credential store for fallback identity.
@@ -175,30 +172,18 @@ export async function resolveGitIdentity(
   host?: string | null,
   _reader: GitConfigReader = defaultGitConfigReader,
 ): Promise<GitIdentity | null> {
-  // ── Step 1: per-worktree config ───────────────────────────────────────────
-  // Harmless on main worktrees / non-git dirs: reader maps any non-zero exit
-  // (incl. "extensions.worktreeConfig not enabled" fatal) to null.
-  const worktreeName = _reader(projectDir, 'user.name', 'worktree');
-  const worktreeEmail = _reader(projectDir, 'user.email', 'worktree');
-  if (worktreeName && worktreeEmail) {
-    return { name: worktreeName, email: worktreeEmail };
+  // ── Step 1: effective merged git config ────────────────────────────────────
+  // The identity git itself commits with. The merged read resolves the full
+  // scope precedence (system < global < local < worktree) and — unlike a
+  // scope-limited read — any identity supplied through an `include` /
+  // `includeIf` directive (gitdir / hasconfig identity switching).
+  const configName = _reader(projectDir, 'user.name');
+  const configEmail = _reader(projectDir, 'user.email');
+  if (configName && configEmail) {
+    return { name: configName, email: configEmail };
   }
 
-  // ── Step 2: repo-local / common config ─────────────────────────────────────
-  const localName = _reader(projectDir, 'user.name', 'local');
-  const localEmail = _reader(projectDir, 'user.email', 'local');
-  if (localName && localEmail) {
-    return { name: localName, email: localEmail };
-  }
-
-  // ── Step 3: global config ──────────────────────────────────────────────────
-  const globalName = _reader(projectDir, 'user.name', 'global');
-  const globalEmail = _reader(projectDir, 'user.email', 'global');
-  if (globalName && globalEmail) {
-    return { name: globalName, email: globalEmail };
-  }
-
-  // ── Step 4: stored token entry ─────────────────────────────────────────────
+  // ── Step 2: stored token entry ─────────────────────────────────────────────
   if (tokenStore && host) {
     const entry = await tokenStore.get(host);
     if (entry) {
@@ -211,7 +196,7 @@ export async function resolveGitIdentity(
     }
   }
 
-  // ── Step 5: unresolved ────────────────────────────────────────────────────
+  // ── Step 3: unresolved ─────────────────────────────────────────────────────
   return null;
 }
 

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { MENU_LABELS } from '../constants/menu-labels.ts';
 import {
   COMMAND_IDENTITIES,

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { createGhTokenSource } from './gh-token-source.ts';
 import type { DetectGhFn } from './github-permissions.ts';
 

@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { GhDetectResult } from '../../auth/gh-detect.ts';
 import { FileBackend } from '../../auth/token-store.ts';
 import { buildStatusPayload, resolveStatusSource } from './status.ts';

@@ -3,11 +3,10 @@
  * Navigator → blank-create affordance → in-app CreateProjectDialog flow and
  * asserts the three end-to-end cascade UX states.
  *
- * Every test seeds zero recents (`seedTmpHome`), so the Navigator opens on the
- * first-run packs-forward view — the blank-create affordance there is
- * `nav-first-run-blank`, NOT the returning-user `nav-create-new` card (which
- * renders only once recents exist). Both fire the same `onCreate` → the same
- * dialog. The cascade states asserted:
+ * Every test seeds zero recents (`seedTmpHome`), which changes only what sits
+ * below the launcher cards (the starter-pack line rather than the Recent
+ * list). `nav-create-new` is the blank-create door in every launcher state.
+ * The cascade states asserted:
  *
  *   1. Free path (happy submit): no banner, Create enabled. After submit,
  *      .ok/config.yml lands at parent/<name> and the editor window opens
@@ -48,20 +47,18 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { typeProjectName } from './_helpers/create-new-dialog';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { clickNavCreateNew } from './_helpers/navigator-actions';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
@@ -103,18 +100,20 @@ async function launchApp(tmpHome: string, opts: LaunchOpts = {}): Promise<Electr
   // app.getPath('userData') on macOS — setting HOME doesn't work because
   // NSHomeDirectory() resolves via getpwuid(), not the env.
   const userDataDir = join(tmpHome, 'Library', 'Application Support', DESKTOP_PRODUCT_NAME);
-  return electron.launch({
-    args: [MAIN_ENTRY, `--user-data-dir=${userDataDir}`],
-    timeout: 30_000,
-    env: {
-      ...process.env,
-      HOME: tmpHome,
-      OK_DESKTOP_E2E_SMOKE: '1',
-      ...(opts.pickedParent !== undefined
-        ? { OK_DESKTOP_TEST_PICKED_PATH: opts.pickedParent }
-        : {}),
-    },
-  });
+  return electron.launch(
+    desktopLaunchOptions({
+      target: TARGET,
+      args: [`--user-data-dir=${userDataDir}`],
+      env: {
+        ...process.env,
+        HOME: tmpHome,
+        OK_DESKTOP_E2E_SMOKE: '1',
+        ...(opts.pickedParent !== undefined
+          ? { OK_DESKTOP_TEST_PICKED_PATH: opts.pickedParent }
+          : {}),
+      },
+    }),
+  );
 }
 
 async function findWindowByMode(
@@ -163,10 +162,7 @@ function trackForCleanup(...paths: string[]): void {
 test.describe('Create-new-project smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Smoke harness is darwin-only.');
-  test.skip(
-    !BUILD_EXISTS,
-    `Main build missing at ${MAIN_ENTRY} — run "bun run build:desktop" first.`,
-  );
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
   test.afterEach(async () => {
     for (const target of cleanupTargets.splice(0)) {

@@ -31,7 +31,7 @@
  * rung); these tests pin the suppression WIRING and the drain's clean
  * convergence.
  */
-import { describe, expect, spyOn, test } from 'bun:test';
+
 import {
   type JSONContent,
   MarkdownManager,
@@ -40,6 +40,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import { updateYFragment } from '@tiptap/y-tiptap';
+import { describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { type SetupServerObserversOpts, setupServerObservers } from './server-observers.ts';
 
@@ -162,7 +163,7 @@ describe('Observer A — freshness suppression on diverged-baseline drains', () 
     // Y.Text write inside the quiescence window defers freshness; a drain
     // after the window re-arms it.
     let clock = 1_000_000;
-    const nowSpy = spyOn(Date, 'now').mockImplementation(() => clock);
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => clock);
     const { manager, serializeOpts } = makeRecordingManager();
     const doc = new Y.Doc();
     const xmlFragment = doc.getXmlFragment('default');

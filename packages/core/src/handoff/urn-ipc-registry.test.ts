@@ -11,7 +11,7 @@
  * wrong reason translations downstream.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { lookupUrnInRegistry } from './urn-ipc-registry.ts';
 
 describe('lookupUrnInRegistry', () => {

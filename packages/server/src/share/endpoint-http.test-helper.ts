@@ -34,7 +34,7 @@ export async function bootEndpointServer(opts: {
 
   const { Hocuspocus } = await import('@hocuspocus/server');
   const { AgentSessionManager } = await import('../agent-sessions.ts');
-  const { createApiExtension } = await import('../api-extension.ts');
+  const { createApiExtension } = await import('../api-extension.test-helper.ts');
 
   const hocuspocus = new Hocuspocus({ quiet: true });
   const sessionManager = new AgentSessionManager(hocuspocus);

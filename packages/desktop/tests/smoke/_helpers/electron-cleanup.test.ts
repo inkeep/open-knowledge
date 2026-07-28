@@ -34,8 +34,8 @@
  * reaper without adding signal beyond the existing assertions.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { type ChildProcess, spawn } from 'node:child_process';
+import { afterEach, describe, expect, test } from 'vitest';
 import { closeAppBounded } from './electron-cleanup';
 
 /**

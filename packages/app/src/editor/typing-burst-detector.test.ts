@@ -7,8 +7,9 @@
  * the substrate behavior: per-burst settle, debounce semantics, mark
  * + histogram emission, multiple-detector isolation.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { getCollector, getHistogramSnapshot } from '../lib/perf/collector';
 import { resetPerfOverrideWarnings } from '../lib/perf/env-override';
 import { attachTypingBurstDetector } from './typing-burst-detector';

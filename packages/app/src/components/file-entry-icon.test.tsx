@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { File, Film, ImageIcon, Volume2 } from 'lucide-react';
+import { describe, expect, test } from 'vitest';
 import { lucideIconToSvgString } from '@/editor/registry/lucide-svg';
 import {
   fileEntryPathIconToSvgString,

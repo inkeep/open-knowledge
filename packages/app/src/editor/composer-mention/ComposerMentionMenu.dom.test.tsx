@@ -14,8 +14,9 @@
  * signal, so they cannot be distinguished at this row (see the component's
  * `mentionItemKind` note).
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { cleanup, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import { ComposerMentionMenu } from './ComposerMentionMenu';
 import type { MentionItem } from './composer-mention';
 

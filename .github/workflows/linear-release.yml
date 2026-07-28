@@ -6,7 +6,7 @@ name: Linear Release
 #   On every OK release cut (beta cadence + stable promotion) this attaches
 #   the Linear issues referenced in the release's commits to a release in the
 #   Linear "OpenKnowledge" scheduled pipeline, and advances that release's
-#   stage: `Beta` on a beta cut, `Stable` + complete on a stable promotion.
+#   stage to `Beta` on a beta cut, then completes it on a stable promotion.
 #   Each attached issue then shows which release it shipped in, in its Linear
 #   sidebar. Uses Linear's first-party CLI via linear/linear-release-action.
 #
@@ -20,14 +20,15 @@ name: Linear Release
 #   release events, and repository_dispatch is the documented exemption (which
 #   is exactly why the desktop-release cascade uses it).
 #
-#   Channel is derived from the tag shape: a `-beta.N` suffix => Beta stage,
-#   a bare vX.Y.Z => Stable stage.
+#   Channel is derived from the tag shape: a `-beta.N` suffix => beta (started
+#   stage `Beta`); a bare vX.Y.Z => stable (completed — the release lands in the
+#   pipeline's completed stage, which is named `Stable`).
 #
 # RELEASE IDENTITY (why betas accumulate into one release)
 #   The Linear release is keyed by the STABLE base version (vX.Y.Z with any
 #   `-beta.N` stripped), so every beta of a cycle syncs its issues into the
-#   SAME release object, and the stable promotion flips that same release to
-#   Stable + complete. Caveat: if a higher bump level lands mid-cycle the base
+#   SAME release object, and the stable promotion completes that same release.
+#   Caveat: if a higher bump level lands mid-cycle the base
 #   version shifts; that is rare, and Linear releases can be renamed/merged.
 #
 # COMMIT SCAN RANGE
@@ -38,14 +39,16 @@ name: Linear Release
 #   set before the stage flip.
 #
 # ONE-TIME SETUP
-#   1. A Linear SCHEDULED pipeline "OpenKnowledge" (team Product) with started
-#      stages named exactly `Beta` and `Stable`. [done]
+#   1. A Linear SCHEDULED pipeline "OpenKnowledge" (team Product) with one
+#      started stage named exactly `Beta`, and the pipeline's built-in
+#      completed stage renamed to `Stable` (so shipped-to-production maps to
+#      Linear's completed lifecycle). [done]
 #   2. The pipeline access key (Linear -> Settings -> Releases -> pipeline)
 #      added as the repo secret LINEAR_ACCESS_KEY on inkeep/open-knowledge.
 #      A pipeline access key is REQUIRED — a personal Linear API key will not
 #      work. Until the secret exists this workflow no-ops (see the guard).
-#   3. Optional: a Linear status automation — when a release reaches Stable /
-#      completes, move its issues to a Done status.
+#   3. Optional: a Linear status automation — on release completion (stage
+#      `Stable`), move its issues to a Done status.
 #   4. Coverage: issues are attached by scanning commit text for Linear
 #      identifiers (e.g. PRD-1234). A ticketed fix whose PR title lacks the
 #      identifier will not be attached — put PRD-#### in the PR title.
@@ -122,9 +125,9 @@ jobs:
             exit 1
           fi
           if [[ "$TAG" == *-beta.* ]]; then
-            CHANNEL=beta; STAGE=Beta
+            CHANNEL=beta
           else
-            CHANNEL=stable; STAGE=Stable
+            CHANNEL=stable
           fi
           # Exclusive lower bound for sync's commit scan = the previous tag in
           # history. Empty on the very first tag ever; the action then falls
@@ -132,12 +135,11 @@ jobs:
           BASE_REF="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
           {
             echo "channel=${CHANNEL}"
-            echo "stage=${STAGE}"
             echo "version=${V}"
             echo "name=v${V}"
             echo "base_ref=${BASE_REF}"
           } >> "$GITHUB_OUTPUT"
-          echo "tag=${TAG} channel=${CHANNEL} version=${V} stage=${STAGE} base_ref=${BASE_REF:-<none>}"
+          echo "tag=${TAG} channel=${CHANNEL} version=${V} base_ref=${BASE_REF:-<none>}"
 
       # Create/find the release keyed by the stable version, name it vX.Y.Z,
       # and attach the Linear issues referenced in <base_ref>..HEAD. Runs on
@@ -152,18 +154,21 @@ jobs:
           name: ${{ steps.derive.outputs.name }}
           base_ref: ${{ steps.derive.outputs.base_ref }}
 
-      # Advance the release to Beta (beta cut) or Stable (stable promotion).
-      - name: Advance release stage
-        if: env.HAS_KEY == 'true'
+      # Beta cut only: advance the release to the started `Beta` stage. A stable
+      # promotion has no started-stage step — reaching stable IS completion, so
+      # the `complete` step below moves the release straight to the completed
+      # `Stable` stage (two-channel model: stable = production = done).
+      - name: Advance to Beta stage (beta cut)
+        if: env.HAS_KEY == 'true' && steps.derive.outputs.channel == 'beta'
         uses: linear/linear-release-action@c0cb8354a362c24c6d3e0948f37fd66d07588e3f # v0
         with:
           access_key: ${{ secrets.LINEAR_ACCESS_KEY }}
           command: update
           version: ${{ steps.derive.outputs.version }}
-          stage: ${{ steps.derive.outputs.stage }}
+          stage: Beta
 
-      # Stable only: mark shipped-to-customers, moving the release to the
-      # pipeline's completed stage (`Released`) and firing any completion-based
+      # Stable promotion only: mark shipped-to-production, moving the release to
+      # the pipeline's completed stage (`Stable`) and firing any completion-based
       # Linear status automations.
       - name: Complete the release (stable only)
         if: env.HAS_KEY == 'true' && steps.derive.outputs.channel == 'stable'

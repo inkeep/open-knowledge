@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { type DocumentListEntry, DocumentListEntrySchema } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import {
   attributeTreeHiddenAxes,
   classifyEmptyTree,

@@ -25,27 +25,27 @@
  * `state.tr.*`, `dispatch`).
  */
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import * as actualCore from '@inkeep/open-knowledge-core';
 import { LinkFidelity, MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { Editor, type Extensions } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import * as actualSonner from 'sonner';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { GfmAutolink } from '../gfm-autolink-plugin.ts';
 import { flushMicrotasksAndTimers, installDomGlobals } from '../walk-currency-test-harness.ts';
 
 // Mock the shared pipeline so tests don't exercise the full rehype stack.
-mock.module('@inkeep/open-knowledge-core', () => {
+vi.doMock('@inkeep/open-knowledge-core', () => {
   return {
     ...actualCore,
-    htmlToMdast: mock((_html: string) => ({ type: 'root', children: [] })),
-    mdastToMarkdown: mock((_tree: unknown) => '**bold**'),
+    htmlToMdast: vi.fn((_html: string) => ({ type: 'root', children: [] })),
+    mdastToMarkdown: vi.fn((_tree: unknown) => '**bold**'),
   };
 });
 
 // Mock sonner to no-op toasts — we don't assert on them here.
-mock.module('sonner', () => ({ ...actualSonner, toast: { error: mock(() => {}) } }));
+vi.doMock('sonner', () => ({ ...actualSonner, toast: { error: vi.fn(() => {}) } }));
 
 // The dispatcher imports the mocked `@inkeep/open-knowledge-core`; bind it after
 // the mock is registered so the stubbed htmlToMdast/mdastToMarkdown take effect
@@ -67,7 +67,7 @@ function fakeDT(data: Record<string, string>): ClipboardEvent {
 
 function fakeMdManager() {
   return {
-    parse: mock((_md: string) => ({
+    parse: vi.fn((_md: string) => ({
       type: 'doc',
       content: [{ type: 'paragraph', content: [{ type: 'text', text: 'parsed' }] }],
     })),
@@ -77,9 +77,9 @@ function fakeMdManager() {
 // Fake PM view: only the fields the dispatcher reads.
 // biome-ignore lint/suspicious/noExplicitAny: narrow fake view for unit test
 function fakeView(opts: { inCodeBlock?: boolean } = {}): any {
-  const dispatch = mock(() => {});
+  const dispatch = vi.fn(() => {});
   const codeBlockType = {
-    create: mock((_attrs: unknown, _content: unknown) => ({
+    create: vi.fn((_attrs: unknown, _content: unknown) => ({
       slice: (_f: number, _t: number) => 'CODE-SLICE',
     })),
   };
@@ -109,16 +109,16 @@ function fakeView(opts: { inCodeBlock?: boolean } = {}): any {
         }),
       },
       tr: {
-        replaceSelectionWith: mock(function (this: unknown, _node: unknown) {
+        replaceSelectionWith: vi.fn(function (this: unknown, _node: unknown) {
           return this;
         }),
-        replaceSelection: mock(function (this: unknown, _slice: unknown) {
+        replaceSelection: vi.fn(function (this: unknown, _slice: unknown) {
           return this;
         }),
-        setMeta: mock(function (this: unknown, _key: unknown, _value: unknown) {
+        setMeta: vi.fn(function (this: unknown, _key: unknown, _value: unknown) {
           return this;
         }),
-        scrollIntoView: mock(function (this: unknown) {
+        scrollIntoView: vi.fn(function (this: unknown) {
           return this;
         }),
       },
@@ -232,7 +232,7 @@ describe('WYSIWYG paste dispatcher — branch routing', () => {
     // continues) is as load-bearing as Branch A's. A narrowed/removed catch
     // would lose the user's clipboard content with an uncaught throw.
     const throwingMd = {
-      parse: mock(() => {
+      parse: vi.fn(() => {
         throw new Error('parse exploded');
       }),
     };
@@ -246,7 +246,7 @@ describe('WYSIWYG paste dispatcher — branch routing', () => {
 
   test('lone-URL cursor paste: a throwing mdManager.parse falls through to plain insert', () => {
     const throwingMd = {
-      parse: mock(() => {
+      parse: vi.fn(() => {
         throw new Error('parse exploded');
       }),
     };

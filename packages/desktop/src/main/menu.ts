@@ -6,7 +6,8 @@
  *     Recent project submenu, Close Window
  *   - Edit: macOS defaults (Undo/Redo/Cut/Copy/Paste/Select All)
  *   - View: Reload / Force Reload / zoom / fullscreen always; Toggle DevTools
- *     gated on `showDevToolsMenu` (dev + beta only) — Electron built-in roles
+ *     gated on `showDevToolsMenu` (dev + beta only) — Electron built-in roles;
+ *     Back / Forward navigation history
  *   - Window: macOS defaults (Minimize / Zoom / Bring to Front)
  *
  * Deferred to later work:
@@ -49,6 +50,8 @@ import type { EditorActiveTargetSnapshot } from '../shared/ipc-channels.ts';
 import { promptForExistingFolder, promptForExistingMarkdownFile } from './dialog-helpers.ts';
 
 export interface MenuDeps {
+  onNavigateBack?(): void;
+  onNavigateForward?(): void;
   /** `app.name` — the running app's name, used for the macOS App menu label. */
   appName: string;
   /**
@@ -82,6 +85,14 @@ export interface MenuDeps {
   getRecentProjects(): ReadonlyArray<{ path: string; name: string }>;
   /** Clear the recent-projects list (File → Recent project → Clear menu). */
   clearRecentProjects(): void;
+  /**
+   * Current recent loose-files list (top-of-LRU first). Optional — when wired
+   * (alongside `openEphemeralFile`), File → Recent files ▸ <row> reopens each
+   * loose file. Absent (unit tests) → no Recent files submenu renders.
+   */
+  getRecentFiles?(): ReadonlyArray<{ path: string; name: string }>;
+  /** Clear the recent loose-files list (File → Recent files → Clear menu). */
+  clearRecentFiles?(): void;
   /** Open an external URL (Help menu). Injected so the `shell` runtime value doesn't cross the module boundary. */
   openExternalUrl(url: string): void;
   /**
@@ -117,13 +128,20 @@ export interface MenuDeps {
    */
   openSettings?(): void;
   /**
-   * Help → Report a Bug… click handler — fires the `report-bug` menu action
+   * Help → Report a bug… click handler — fires the `report-bug` menu action
    * to the focused renderer, which opens the in-app report dialog (editor
    * windows and the Navigator both subscribe). Optional for the same reason
    * as `openInstallSkillDialog` — unit tests build the menu without wiring
    * it; the item itself always renders.
    */
   onReportBug?(): void;
+  /**
+   * Help → Send feedback… click handler — fires the `send-feedback` menu
+   * action to the focused renderer, which opens the same in-app feedback form
+   * the Resources menu and Cmd+K open (editor windows and the Navigator both
+   * subscribe). Optional for the same reason as `onReportBug`.
+   */
+  onSendFeedback?(): void;
   /**
    * "Check for updates…" click handler — fires an out-of-cadence
    * `autoUpdater.checkForUpdates()` via the `ok:update:check-now` IPC.
@@ -368,6 +386,14 @@ interface MenuCommandBinding {
 }
 
 const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
+  'navigate-back': {
+    click: (d) => () => d.onNavigateBack?.(),
+    enabled: (d) => d.onNavigateBack !== undefined,
+  },
+  'navigate-forward': {
+    click: (d) => () => d.onNavigateForward?.(),
+    enabled: (d) => d.onNavigateForward !== undefined,
+  },
   'new-file': { click: (d) => () => d.onNewFile?.(), enabled: (d) => d.onNewFile !== undefined },
   'new-folder': {
     click: (d) => () => d.onNewFolder?.(),
@@ -516,8 +542,9 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
     enabled: (d) => d.onCollapseAll !== undefined,
   },
   'open-github': { click: (d) => () => d.openExternalUrl(OPEN_KNOWLEDGE_GITHUB_URL) },
-  // Report a Bug always renders + is enabled; the click no-ops when unwired.
+  // Report a bug always renders + is enabled; the click no-ops when unwired.
   'report-bug': { click: (d) => () => d.onReportBug?.() },
+  'send-feedback': { click: (d) => () => d.onSendFeedback?.() },
   'install-claude-desktop': {
     click: (d) => () => d.openInstallSkillDialog?.(),
     present: () => SHOW_INSTALL_SKILL,
@@ -673,6 +700,28 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
           },
         ];
 
+  // Recent loose files (File → Open File). Only rendered when `getRecentFiles`
+  // is wired; each row reopens via `openEphemeralFile` (which re-derives
+  // project-vs-ephemeral). Mirrors the Recent project submenu.
+  const recentFiles = deps.getRecentFiles?.() ?? [];
+  const recentFilesSubmenu: MenuItemConstructorOptions[] =
+    recentFiles.length === 0
+      ? [{ label: 'No recent files', enabled: false }]
+      : [
+          ...recentFiles.slice(0, 10).map((row) => ({
+            label: row.name,
+            sublabel: row.path,
+            click: () => {
+              void deps.openEphemeralFile?.(row.path);
+            },
+          })),
+          { type: 'separator' as const },
+          {
+            label: 'Clear menu',
+            click: () => deps.clearRecentFiles?.(),
+          },
+        ];
+
   const template: MenuItemConstructorOptions[] = [
     // macOS application menu (auto-populated with the app name).
     ...(isMac
@@ -719,6 +768,9 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
           label: 'Recent project',
           submenu: recentSubmenu,
         },
+        ...(deps.getRecentFiles !== undefined
+          ? [{ label: 'Recent files', submenu: recentFilesSubmenu }]
+          : []),
         ...leafOf('file-project'),
         { type: 'separator' },
         ...leafOf('file-worktree'),
@@ -758,6 +810,8 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
     {
       label: 'View',
       submenu: [
+        ...leafOf('view-history'),
+        { type: 'separator' as const },
         // Reload / Force Reload ship on every channel; Toggle Developer Tools is
         // gated on `showDevToolsMenu` (dev + beta) — Electron built-in roles.
         { role: 'reload' as const },

@@ -88,6 +88,14 @@ export const CC1_CHANNEL_CONFIG_IGNORE_NESTED_ERROR = 'config-ignore-nested-erro
  * Channels that carry derived-view invalidation hints (file list,
  * backlink graph, hub graph, sync-status). Debounced + seq-incrementing
  * on the server; invalidates TanStack Query caches on the client.
+ *
+ * `lint-config` is NOT the retired pre-pivot `'config'` channel (config
+ * CONTENT refresh is Y.Text-observer-driven — see the note on
+ * `CC1_CHANNEL_CONFIG_VALIDATION_REJECTED`). It invalidates the
+ * DISK-derived effective lint config: `GET /api/lint/config` re-reads
+ * `.ok/config.yml` + native/schema files fresh from disk, so clients must
+ * refetch when the persisted bytes change — a moment the config CRDT
+ * observers fire BEFORE (persistence debounce), not at.
  */
 export const DerivedViewChannelSchema = z.enum([
   'files',
@@ -96,6 +104,7 @@ export const DerivedViewChannelSchema = z.enum([
   'sync-status',
   'session-activity',
   'tags',
+  'lint-config',
 ]);
 export type DerivedViewChannel = z.infer<typeof DerivedViewChannelSchema>;
 

@@ -11,6 +11,7 @@
 import { t } from '@lingui/core/macro';
 import { toast } from 'sonner';
 import { getAgentThreadClient, ThreadChannelUnavailableError } from '@/lib/acp/thread-client';
+import { stageThreadDraft } from '@/lib/acp/thread-draft-staging';
 
 /**
  * One launch per agent may be in flight at a time: creation can take seconds
@@ -25,12 +26,19 @@ const inflightLaunches = new Set<string>();
  * Create a thread for a concrete agent. Agent-level failures stream into the dock
  * as thread status events; the catch fires only when no thread was created at all,
  * so a toast is the sole feedback channel there.
+ *
+ * `stageDraft` seeds the new thread's composer with text the user is meant to
+ * review before sending (a ⌘J selection send, a Problems-panel "Ask AI"). It is
+ * deliberately separate from `prompt`: a prompt runs on creation, a staged draft
+ * waits on the user's send. Passing both is legal but unusual — the prompt runs
+ * and the draft sits under it as the follow-up.
  */
 export function launchAgentThread(
   agent: { source: 'registry' | 'custom'; id: string },
   prompt: string | null,
   docName: string | null,
   titleHint: string | null,
+  stageDraft?: string | null,
 ): void {
   const launchKey = `${agent.source}:${agent.id}`;
   if (inflightLaunches.has(launchKey)) return;
@@ -41,6 +49,19 @@ export function launchAgentThread(
       prompt: prompt ?? undefined,
       docName: docName ?? undefined,
       titleHint: titleHint ?? undefined,
+    })
+    .then((info) => {
+      // Staged only once the server has minted the id the composer is keyed by.
+      // Isolated from the shared catch below: by the time this runs the thread
+      // EXISTS, so letting a staging failure fall through would log "launch
+      // failed" and tell the user to retry a launch that actually succeeded.
+      if (stageDraft != null) {
+        try {
+          stageThreadDraft(info.threadId, stageDraft);
+        } catch (err) {
+          console.error('[agent-threads] draft staging failed for', info.threadId, err);
+        }
+      }
     })
     .catch((err) => {
       console.error('[agent-threads] launch failed:', err);

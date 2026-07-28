@@ -17,7 +17,7 @@
  * presentation attribute like `fill=` / `stroke=` / `color=`.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { PREVIEW_EMBED_STARTERS } from './preview-embed-starters';
 
 /**

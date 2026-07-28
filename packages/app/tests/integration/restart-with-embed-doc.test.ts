@@ -30,12 +30,12 @@
  * sequence; this file disambiguates via descriptive `describe()` label.)
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { afterEach, describe, expect, test } from 'vitest';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import {
   createRestartableServer,

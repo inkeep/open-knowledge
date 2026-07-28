@@ -7,9 +7,10 @@
  * (Bun test env has no DOM globals; we install a minimal `globalThis.document`
  * stub before the suites that exercise the cache-MISS path).
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { Editor } from '@tiptap/core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { getCollector, getHistogramSnapshot } from '../lib/perf/collector';
 import { validatePerfMarkName } from '../lib/perf/mark';

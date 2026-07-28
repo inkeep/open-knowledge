@@ -25,6 +25,10 @@ msgstr ""
 msgid " Your selection has been restored."
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "— except"
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "… earlier output trimmed"
 msgstr ""
@@ -80,10 +84,6 @@ msgstr ""
 
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "(inline)"
-msgstr ""
-
-#: src/components/CommandPalette.tsx
-msgid "(missing)"
 msgstr ""
 
 #: src/editor/components/MirrorSource.tsx
@@ -153,6 +153,11 @@ msgstr ""
 #. placeholder {0}: opts.length
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "{0, plural, one {# option set} other {# options set}}"
+msgstr ""
+
+#. placeholder {0}: activePlugins.length
+#: src/components/ProblemsPanel.tsx
+msgid "{0, plural, one {# plugin} other {# plugins}}"
 msgstr ""
 
 #. placeholder {0}: blocked.length
@@ -225,6 +230,12 @@ msgstr ""
 msgid "{0} needs {1}"
 msgstr ""
 
+#. placeholder {0}: selected.size
+#. placeholder {1}: projects.length
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "{0} of {1} projects selected"
+msgstr ""
+
 #. placeholder {0}: templates.length
 #: src/components/empty-state/CreateView.tsx
 msgid "{0} templates available"
@@ -287,10 +298,6 @@ msgstr ""
 
 #: src/components/EditorTabs.tsx
 msgid "{accessibleLabel} (conflict)"
-msgstr ""
-
-#: src/components/SyncStatusBadge.tsx
-msgid "{ahead, plural, one {# commit ahead} other {# commits ahead}}"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -519,6 +526,10 @@ msgstr ""
 msgid "{packName} was already set up. Nothing to do."
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "{pageCount, plural, one {The full text of your 1 page will be sent to <0>{host}</0> as it is re-embedded.} other {The full text of all {pageCount} pages will be sent to <1>{host}</1> as they are re-embedded.}}"
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "{percent}% used ({left}% left)"
 msgstr ""
@@ -563,6 +574,10 @@ msgstr ""
 
 #: src/components/CreatedItemsList.tsx
 msgid "{skillCount, plural, one {skill} other {skills}}"
+msgstr ""
+
+#: src/components/EnableSyncConfirmDialog.tsx
+msgid "{strandedCommitCount, plural, one {You have 1 change you haven't shared. It will stay on this computer.} other {You have # changes you haven't shared. They will stay on this computer.}}"
 msgstr ""
 
 #: src/components/CreatedItemsList.tsx
@@ -621,6 +636,10 @@ msgstr ""
 msgid "+ Add {addChildName}"
 msgstr ""
 
+#: src/components/NavigatorApp.tsx
+msgid "+{overflowCount} more"
+msgstr ""
+
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "<{componentName}> isn't a known component. Copy the source to use it elsewhere, or delete the block."
 msgstr ""
@@ -667,6 +686,10 @@ msgstr ""
 msgid "A <0>Modified</0> badge marks rules your config sets explicitly — directly, or inherited through <1>extends</1>. Unmarked rules keep their default state."
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "A <0>Modified</0> badge marks schemas your config maps — on or off. Reset removes the mapping from config.yml."
+msgstr ""
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "A branch named {shareBranch} already exists. Open its worktree from the switcher instead."
 msgstr ""
@@ -675,12 +698,16 @@ msgstr ""
 msgid "A branch with that name already exists. Open its worktree from the switcher instead."
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "A document has a conflict — resolve it to keep it up to date."
+msgstr ""
+
 #: src/components/CreateProjectDialog.tsx
 msgid "A folder named <0>{sanitized}</0> already has files here. Pick a different name."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
-msgid "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Check the key in <0>Settings → Account</0> and the embeddings endpoint setting."
+msgid "A key is set, but the embeddings provider rejected it or was unreachable — search fell back to keyword matching. Use <0>Test connection</0> under Custom endpoint to see what went wrong."
 msgstr ""
 
 #: src/components/SeedDialog.tsx
@@ -827,6 +854,10 @@ msgstr ""
 msgid "Activate the previous editor tab."
 msgstr ""
 
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "active"
+msgstr ""
+
 #: src/components/ActivityModeContent.tsx
 msgid "Active"
 msgstr ""
@@ -839,13 +870,18 @@ msgstr ""
 msgid "Activity"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Actual Size"
+msgstr ""
+
 #: src/components/FrontmatterRow.tsx
 #: src/components/ObjectWidget.tsx
 #: src/components/PropertyPanel.tsx
+#: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add"
 msgstr ""
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Add a key"
 msgstr ""
 
@@ -867,6 +903,18 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Add cursors or select matching occurrences through CodeMirror."
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Add description"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Add field"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Add file or folder pattern, e.g. guides/**/*"
 msgstr ""
 
 #: src/components/SeedDialog.tsx
@@ -923,6 +971,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Add the next matching source selection."
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Add value"
 msgstr ""
 
 #. Subtext for the open-knowledge-write-skill skill row
@@ -1018,6 +1070,22 @@ msgstr ""
 msgid "All tags"
 msgstr ""
 
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Allowed element values (empty = any)"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Allowed element values for {field}"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Allowed values (empty = any)"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Allowed values for {field}"
+msgstr ""
+
 #: src/editor/image-upload/index.ts
 msgid "Already at {assetContentPath} — reusing."
 msgstr ""
@@ -1055,11 +1123,28 @@ msgstr ""
 msgid "and more"
 msgstr ""
 
+#: src/components/share-receive-miss-content.tsx
+msgid "Another sync operation is in progress. Try again in a moment."
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "any"
+msgstr ""
+
+#. placeholder {0}: summary.name
+#: src/components/settings/LintingSection.tsx
+msgid "any doc named {0}"
+msgstr ""
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Anyone can see"
 msgstr ""
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "Anything you'd like to add? (optional)"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
 msgid "API key set"
 msgstr ""
 
@@ -1079,6 +1164,14 @@ msgstr ""
 msgid "Application"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Applies to"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Applies to (globs — leading ! excludes; empty means every doc)"
+msgstr ""
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr ""
@@ -1095,9 +1188,8 @@ msgstr ""
 msgid "Approved"
 msgstr ""
 
-#. placeholder {0}: outcome.optionName
 #: src/components/acp/ThreadView.tsx
-msgid "Approved — {0}"
+msgid "Approved — {optionName}"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
@@ -1217,16 +1309,8 @@ msgstr ""
 msgid "Auto-save"
 msgstr ""
 
-#: src/components/settings/SyncSection.tsx
-msgid "Auto-sync is off — your edits stay local until you commit and push manually."
-msgstr ""
-
 #: src/hooks/use-worktree-autosync-notice.tsx
 msgid "Auto-sync is off for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr ""
-
-#: src/components/settings/SyncSection.tsx
-msgid "Auto-sync is on — your commits push and remote changes pull on intervals."
 msgstr ""
 
 #: src/hooks/use-worktree-autosync-notice.tsx
@@ -1238,15 +1322,11 @@ msgid "Auto-sync is paused — sign in to resume."
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
-msgid "Auto-sync is paused — you don't have permission to push to this repo."
+msgid "Auto-sync is paused — you don't have permission to push to this repo. Switch to Follow to keep receiving updates."
 msgstr ""
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Auto-sync periodically fetches, pulls, and pushes commits to your remote git repository so your edits stay in sync across machines."
-msgstr ""
-
-#: src/components/settings/SyncSection.tsx
-msgid "Auto-sync pushes/pulls commits to your git remote on intervals and on save. Toggling on requires confirmation."
 msgstr ""
 
 #. Section label for the automatic, one-click install path
@@ -1266,8 +1346,12 @@ msgstr ""
 msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+#: src/components/NavigationHistoryControls.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
+#: src/lib/keyboard-shortcuts.ts
 msgid "Back"
 msgstr ""
 
@@ -1299,11 +1383,16 @@ msgstr ""
 msgid "Before syncing, set your identity for git commits:"
 msgstr ""
 
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "Before you go, mind sharing why?"
+msgstr ""
+
 #: src/editor/slash-command/items.tsx
 msgid "Below"
 msgstr ""
 
 #: src/components/acp/AgentBetaBadge.tsx
+#: src/components/settings/PluginBetaBadge.tsx
 msgid "Beta"
 msgstr ""
 
@@ -1325,10 +1414,6 @@ msgstr ""
 
 #: src/components/NewItemDialog.tsx
 msgid "Blank note"
-msgstr ""
-
-#: src/components/NavigatorApp.tsx
-msgid "Blank project"
 msgstr ""
 
 #: src/editor/slash-command/component-items.tsx
@@ -1400,6 +1485,10 @@ msgstr ""
 msgid "Bring a remote repository onto this machine."
 msgstr ""
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Broken internal links"
+msgstr ""
+
 #: src/components/GraphPanel.tsx
 msgid "Broken link"
 msgstr ""
@@ -1422,8 +1511,17 @@ msgstr ""
 msgid "Bug report {0}"
 msgstr ""
 
+#: src/components/BugReportHistoryDialog.tsx
+#: src/components/command-palette-commands.ts
+msgid "Bug report history"
+msgstr ""
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Bug reporting needs the OpenKnowledge desktop app."
+msgstr ""
+
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "Bugs, crashes, or it felt unreliable"
 msgstr ""
 
 #: src/components/empty-state/use-create-suggestions.ts
@@ -1456,6 +1554,10 @@ msgstr ""
 
 #: src/components/CommandPalette.tsx
 msgid "By tag"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Cached embeddings belong to the endpoint and model that produced them, so this rebuilds the index from scratch."
 msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
@@ -1500,6 +1602,7 @@ msgstr ""
 #: src/editor/components/CodePreviewEditModal.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
+#: src/uninstall/UninstallPickerScreen.tsx
 msgid "Cancel"
 msgstr ""
 
@@ -1511,8 +1614,20 @@ msgstr ""
 msgid "Cannot upload: no document is open"
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Change provider"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Change the embeddings provider?"
+msgstr ""
+
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Check for updates…"
 msgstr ""
 
 #: src/components/NewWorktreeDialog.tsx
@@ -1523,6 +1638,7 @@ msgstr ""
 msgid "Check out worktree"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Check spelling while typing"
 msgstr ""
@@ -1531,12 +1647,17 @@ msgstr ""
 msgid "Checkbox"
 msgstr ""
 
+#. placeholder {0}: activePlugins.map((plugin) => plugin.label).join(', ')
+#: src/components/ProblemsPanel.tsx
+msgid "Checked by: {0}"
+msgstr ""
+
 #: src/components/BottomComposer.tsx
 msgid "Checking for agents"
 msgstr ""
 
-#: src/components/handoff/EditWithAiPopover.tsx
-msgid "Checking for installed agents"
+#: src/components/SyncStatusBadge.tsx
+msgid "Checking for updates"
 msgstr ""
 
 #: src/components/share-receive-miss-content.tsx
@@ -1609,12 +1730,20 @@ msgstr ""
 msgid "Claude Desktop"
 msgstr ""
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/uninstall/UninstallNoticeScreen.tsx
+msgid "Cleanup log"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
 msgid "Clear"
 msgstr ""
 
 #: src/components/PageHeaderWidgets.tsx
 msgid "Clear {keyName}"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Clear menu"
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
@@ -1691,6 +1820,7 @@ msgid "Cloning..."
 msgstr ""
 
 #: src/components/EditorTabs.tsx
+#: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
@@ -1743,6 +1873,10 @@ msgstr ""
 msgid "Close terminal"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Close Window"
+msgstr ""
+
 #: src/components/GraphLegend.tsx
 msgid "Clusters"
 msgstr ""
@@ -1772,6 +1906,7 @@ msgid "Code copied to clipboard"
 msgstr ""
 
 #: src/components/AuthModal.tsx
+#: src/lib/transports/auth-transport.ts
 msgid "Code expired — please try again"
 msgstr ""
 
@@ -1792,6 +1927,7 @@ msgstr ""
 msgid "Collapse {keyName}"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -1900,6 +2036,10 @@ msgstr ""
 msgid "Config sharing unchanged — see details below."
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Configuration problems"
+msgstr ""
+
 #: src/components/ProblemsPanel.tsx
 msgid "Configuration warnings"
 msgstr ""
@@ -1981,6 +2121,11 @@ msgstr ""
 msgid "Connect your AI tools to OpenKnowledge"
 msgstr ""
 
+#. placeholder {0}: response.dimensions
+#: src/components/settings/SearchSection.tsx
+msgid "Connected — this endpoint returns {0}-dimension vectors."
+msgstr ""
+
 #: src/components/AuthModal.tsx
 #: src/components/settings/AccountSection.tsx
 msgid "Connected as @{login}"
@@ -2016,6 +2161,7 @@ msgid "Connection dropped"
 msgstr ""
 
 #: src/components/AuthModal.tsx
+#: src/lib/transports/auth-transport.ts
 msgid "Connection error — try again"
 msgstr ""
 
@@ -2040,6 +2186,12 @@ msgstr ""
 msgid "Content root"
 msgstr ""
 
+#: src/components/settings/ContentRulesSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Content rules"
+msgstr ""
+
+#: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/LintingSection.tsx
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr ""
@@ -2104,6 +2256,7 @@ msgstr ""
 msgid "Copied!"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/CopyButton.tsx
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -2144,6 +2297,7 @@ msgstr ""
 msgid "Copy full path, No workspace"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/FileTree.tsx
 msgid "Copy path"
 msgstr ""
@@ -2308,7 +2462,7 @@ msgstr ""
 msgid "Couldn't apply the change: {0}"
 msgstr ""
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Couldn't clear the key — please try again."
 msgstr ""
 
@@ -2413,6 +2567,10 @@ msgstr ""
 msgid "Couldn't load this skill's files."
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
+msgid "Couldn't load your bug reports."
+msgstr ""
+
 #. placeholder {0}: result.error
 #: src/components/ManagedArtifactProperties.tsx
 msgid "Couldn't move skill: {0}"
@@ -2438,6 +2596,10 @@ msgstr ""
 msgid "Couldn't open the worktree. Try again."
 msgstr ""
 
+#: src/components/share-receive-miss-content.tsx
+msgid "Couldn't pull from GitHub. Check your connection and sign-in, then retry."
+msgstr ""
+
 #: src/components/ConnectingBanner.tsx
 msgid "Couldn't reach collab server — {errorDetail}. Try <0>ok status</0> or check <1>.ok/local/last-spawn-error.log</1>."
 msgstr ""
@@ -2451,7 +2613,11 @@ msgid "Couldn't reach the agent registry."
 msgstr ""
 
 #: src/components/CommandPalette.tsx
-msgid "Couldn't reach the embeddings provider — press ↵ to retry"
+msgid "Couldn't reach the embeddings provider — retry"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Couldn't reach the endpoint. Check the URL and that the server is up."
 msgstr ""
 
 #: src/components/EditorActivityPool.tsx
@@ -2503,11 +2669,15 @@ msgstr ""
 msgid "Couldn't resume this conversation: {0}"
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Couldn't run the test. Check that OpenKnowledge is still running."
+msgstr ""
+
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
 msgstr ""
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Couldn't save the key — please try again."
 msgstr ""
 
@@ -2517,10 +2687,6 @@ msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Couldn't send the report"
-msgstr ""
-
-#: src/components/handoff/EditWithAiPopover.tsx
-msgid "Couldn't send the selection — please try again."
 msgstr ""
 
 #: src/components/BottomComposer.tsx
@@ -2541,6 +2707,10 @@ msgstr ""
 
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't start the agent thread — please try again."
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
+msgid "Couldn't start the sync. Check your connection, then retry."
 msgstr ""
 
 #. placeholder {0}: result.error
@@ -2577,6 +2747,7 @@ msgstr ""
 #: src/components/CreateProjectDialog.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/NewItemDialog.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/TemplateRow.tsx
 msgid "Create"
 msgstr ""
@@ -2627,6 +2798,10 @@ msgstr ""
 msgid "Create in <0>{dirDisplay}</0>"
 msgstr ""
 
+#: src/components/ProblemsPanel.tsx
+msgid "Create missing page {target}"
+msgstr ""
+
 #: src/components/CreateProjectDialog.tsx
 #: src/components/NavigatorApp.tsx
 msgid "Create new project"
@@ -2637,6 +2812,7 @@ msgid "Create new tag #{tagValue}"
 msgstr ""
 
 #: src/components/GraphPanel.tsx
+#: src/components/ProblemsPanel.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Create page"
@@ -2690,6 +2866,10 @@ msgstr ""
 msgid "Create your first project"
 msgstr ""
 
+#: src/components/ProblemsPanel.tsx
+msgid "Created {target}"
+msgstr ""
+
 #: src/components/FolderTimelineCard.tsx
 msgid "created folder"
 msgstr ""
@@ -2702,6 +2882,7 @@ msgstr ""
 #: src/components/NewItemDialog.tsx
 #: src/components/NewSkillDialog.tsx
 #: src/components/NewTemplateDialog.tsx
+#: src/components/ProblemsPanel.tsx
 msgid "Creating"
 msgstr ""
 
@@ -2730,6 +2911,10 @@ msgstr ""
 msgid "Custom display text"
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Custom endpoint"
+msgstr ""
+
 #: src/editor/slash-command/embed-starter-items.tsx
 msgid "Custom HTML with a live preview pane (sandboxed iframe)."
 msgstr ""
@@ -2745,6 +2930,10 @@ msgstr ""
 
 #: src/components/settings/SettingsDialogBody.tsx
 msgid "Customize how the editor looks and behaves."
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Cut"
 msgstr ""
 
 #: src/components/settings/ColorThemePicker.tsx
@@ -2821,6 +3010,14 @@ msgstr ""
 msgid "Delete Permanently"
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
+msgid "Delete report"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Delete schema file {file}"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Delete selected files or folders"
 msgstr ""
@@ -2837,6 +3034,10 @@ msgstr ""
 msgid "Delete this conversation?"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Deleted {file}"
+msgstr ""
+
 #: src/components/FolderTimelineCard.tsx
 msgid "deleted template"
 msgstr ""
@@ -2850,9 +3051,8 @@ msgstr ""
 msgid "Denied"
 msgstr ""
 
-#. placeholder {0}: outcome.optionName
 #: src/components/acp/ThreadView.tsx
-msgid "Denied — {0}"
+msgid "Denied — {optionName}"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
@@ -2888,6 +3088,10 @@ msgstr ""
 msgid "Description (optional)"
 msgstr ""
 
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Description for {field}"
+msgstr ""
+
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
@@ -2919,6 +3123,10 @@ msgstr ""
 
 #: src/components/settings/AiToolsSection.tsx
 msgid "Detected on this machine"
+msgstr ""
+
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "Detected OpenKnowledge projects"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
@@ -2963,20 +3171,16 @@ msgstr ""
 msgid "Disable {0}"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Disable {file}"
+msgstr ""
+
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Disable external link previews"
 msgstr ""
 
-#: src/components/settings/SyncSection.tsx
-msgid "Disable git auto-sync"
-msgstr ""
-
 #: src/components/settings/SearchSection.tsx
 msgid "Disable semantic search"
-msgstr ""
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Disable sync"
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
@@ -3032,6 +3236,16 @@ msgstr ""
 msgid "Docs"
 msgstr ""
 
+#. placeholder {0}: summary.folder
+#: src/components/settings/LintingSection.tsx
+msgid "docs directly in {0}/"
+msgstr ""
+
+#. placeholder {0}: summary.pattern
+#: src/components/settings/LintingSection.tsx
+msgid "docs matching {0}"
+msgstr ""
+
 #: src/components/CommandPalette.tsx
 msgid "Docs tagged #{tagDocsName}"
 msgstr ""
@@ -3083,6 +3297,10 @@ msgstr ""
 msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
 msgstr ""
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Don't show"
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "done"
 msgstr ""
@@ -3094,6 +3312,10 @@ msgstr ""
 #: src/editor/extensions/MathInlineView.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Done"
+msgstr ""
+
+#: src/uninstall/UninstallNoticeScreen.tsx
+msgid "Done."
 msgstr ""
 
 #. placeholder {0}: item.displayName
@@ -3145,6 +3367,7 @@ msgstr ""
 msgid "Drag item {0} to reorder"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileTree.tsx
 #: src/components/skill-actions.tsx
@@ -3196,10 +3419,16 @@ msgstr ""
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr ""
 
+#: src/components/NavigatorApp.tsx
+msgid "Each pack scaffolds your project with ready-made folders and templates."
+msgstr ""
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Each selected tool gets an OpenKnowledge MCP entry."
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/skill-actions.tsx
 #: src/components/TemplateForm.tsx
 #: src/components/TemplateRow.tsx
@@ -3225,6 +3454,10 @@ msgstr ""
 msgid "Edit markdown link"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Edit schema {file}"
+msgstr ""
+
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Edit source"
 msgstr ""
@@ -3235,10 +3468,6 @@ msgstr ""
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Edit wiki link"
-msgstr ""
-
-#: src/components/handoff/EditWithAiPopover.tsx
-msgid "Edit with AI"
 msgstr ""
 
 #: src/components/TimelinePanel.tsx
@@ -3285,12 +3514,25 @@ msgstr ""
 msgid "Edits at the source land here — no copy-paste drift."
 msgstr ""
 
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Element fields"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Element type"
+msgstr ""
+
 #: src/components/AuthModal.tsx
 msgid "Email"
 msgstr ""
 
 #: src/components/SubscribeForm.tsx
+#: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Email address"
+msgstr ""
+
+#: src/components/BugReportHistory.tsx
+msgid "Emailed"
 msgstr ""
 
 #: src/editor/slash-command/component-items.tsx
@@ -3310,15 +3552,11 @@ msgid "Embed an image with optional alt text."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
-msgid "Embeddings API endpoint"
+msgid "Embeddings API key"
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "Embeddings are computed only when a search runs and are cached locally under <0>.ok/local</0>."
-msgstr ""
-
-#: src/components/settings/EmbeddingsKeySection.tsx
-msgid "Embeddings provider key"
 msgstr ""
 
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -3351,6 +3589,10 @@ msgstr ""
 msgid "Enable {displayName} CLI"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Enable {file}"
+msgstr ""
+
 #: src/components/AutoSyncOnboardingDialog.tsx
 #: src/components/EnableSyncConfirmDialog.tsx
 #: src/components/share-receive-miss-content.tsx
@@ -3362,20 +3604,25 @@ msgstr ""
 msgid "Enable external link previews"
 msgstr ""
 
-#: src/components/settings/SyncSection.tsx
-msgid "Enable git auto-sync"
+#: src/components/AutoSyncOnboardingDialog.tsx
+#: src/components/EnableSyncConfirmDialog.tsx
+msgid "Enable Follow"
+msgstr ""
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Enable Follow?"
 msgstr ""
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Enable git auto-sync?"
 msgstr ""
 
-#: src/components/settings/SearchSection.tsx
-msgid "Enable semantic search"
+#: src/components/ProblemsPanel.tsx
+msgid "Enable plugins"
 msgstr ""
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Enable sync"
+#: src/components/settings/SearchSection.tsx
+msgid "Enable semantic search"
 msgstr ""
 
 #: src/components/TerminalGate.tsx
@@ -3394,8 +3641,16 @@ msgstr ""
 msgid "Ended"
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Endpoint"
+msgstr ""
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Eng specs"
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "Enter"
 msgstr ""
 
 #: src/components/settings/CustomThemeEditor.tsx
@@ -3431,8 +3686,36 @@ msgstr ""
 msgid "Entry"
 msgstr ""
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Error"
+msgstr ""
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "Error:"
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "Escape"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "every doc"
+msgstr ""
+
+#. placeholder {0}: summary.folder
+#: src/components/settings/LintingSection.tsx
+msgid "everything under {0}/"
+msgstr ""
+
+#. placeholder {0}: summary.folder
+#. placeholder {1}: summary.root
+#: src/components/settings/LintingSection.tsx
+msgid "everything under {0}/ folders inside {1}/"
+msgstr ""
+
+#. placeholder {0}: summary.folder
+#: src/components/settings/LintingSection.tsx
+msgid "everything under any {0}/ folder"
 msgstr ""
 
 #: src/components/settings/SharingSection.tsx
@@ -3441,6 +3724,10 @@ msgstr ""
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Exit"
 msgstr ""
 
 #. placeholder {0}: exit.exitCode ?? 0
@@ -3457,6 +3744,7 @@ msgstr ""
 msgid "Expand {keyName}"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -3503,6 +3791,10 @@ msgstr ""
 msgid "failed"
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
+msgid "Failed"
+msgstr ""
+
 #: src/components/ArrayOfObjectsWidget.tsx
 msgid "Failed to add item"
 msgstr ""
@@ -3531,9 +3823,18 @@ msgid "Failed to create folder"
 msgstr ""
 
 #: src/components/LinksPanel.tsx
+#: src/components/ProblemsPanel.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Failed to create page"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Failed to create the schema file"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Failed to delete {file}"
 msgstr ""
 
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -3589,7 +3890,7 @@ msgid "Failed to load backlinks"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
-msgid "Failed to load docs. Press Escape and re-open to retry."
+msgid "Failed to load docs. Press <0>Esc</0> and re-open to retry."
 msgstr ""
 
 #: src/components/FileTree.tsx
@@ -3653,7 +3954,7 @@ msgid "Failed to load skills: {0}"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
-msgid "Failed to load tags. Press Escape and re-open to retry."
+msgid "Failed to load tags. Press <0>Esc</0> and re-open to retry."
 msgstr ""
 
 #: src/components/TemplatesCard.tsx
@@ -3705,8 +4006,14 @@ msgstr ""
 msgid "Failed to parse forward-links error response (HTTP {status})"
 msgstr ""
 
+#: src/components/CommandPalette.tsx
 #: src/components/NavigatorApp.tsx
+#: src/components/ProjectSwitcher.tsx
 msgid "Failed to remove project."
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Failed to remove the field"
 msgstr ""
 
 #: src/components/PropertyPanel.tsx
@@ -3722,6 +4029,10 @@ msgstr ""
 msgid "Failed to rename property"
 msgstr ""
 
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Failed to rename the field"
+msgstr ""
+
 #: src/editor/components/Pdf.tsx
 msgid "Failed to render PDF"
 msgstr ""
@@ -3732,15 +4043,25 @@ msgid "Failed to reorder"
 msgstr ""
 
 #. placeholder {0}: humanFormat(result.error)
+#: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/LintingSection.tsx
 msgid "Failed to save content rules — {0}"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Failed to save the schema field"
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
 msgid "Failed to save theme setting"
 msgstr ""
 
+#: src/lib/transports/auth-transport.ts
+msgid "Failed to start sign-in — try again"
+msgstr ""
+
 #: src/components/AuthModal.tsx
+#: src/lib/transports/auth-transport.ts
 msgid "Failed to store the token — try again"
 msgstr ""
 
@@ -3757,12 +4078,20 @@ msgstr ""
 msgid "Failed to update property"
 msgstr ""
 
+#: src/hooks/use-enable-sync-with-confirm.ts
+msgid "Failed to update sync — {detail}"
+msgstr ""
+
+#: src/hooks/use-enable-sync-with-confirm.ts
+msgid "Failed to update sync mode — {detail}"
+msgstr ""
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Failed to update the auto-approve setting — {detail}"
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
-msgid "Failed to update the embeddings endpoint — {detail}"
+msgid "Failed to update the embeddings provider — {detail}"
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
@@ -3789,6 +4118,19 @@ msgstr ""
 msgid "Fetching"
 msgstr ""
 
+#: src/components/SchemaConfigEditor.tsx
+msgid "Field editing is available for schema files mapped in the Frontmatter schemas plugin"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Field name"
+msgstr ""
+
+#: src/components/SchemaConfigEditor.tsx
+msgid "Fields"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -3811,6 +4153,10 @@ msgstr ""
 
 #: src/components/NewItemDialog.tsx
 msgid "File name"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "File name (created in .ok/schemas/)"
 msgstr ""
 
 #: src/components/TrashFailureModal.tsx
@@ -3847,6 +4193,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Files sidebar"
+msgstr ""
+
+#: src/components/FileSidebar.tsx
+msgid "Files toolbar"
 msgstr ""
 
 #: src/editor/extensions/CodeBlockView.tsx
@@ -3976,6 +4326,28 @@ msgstr ""
 msgid "Folders"
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Follow"
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Follow — updates flow in from your remote; your edits stay on this computer."
+msgstr ""
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Follow fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
+msgstr ""
+
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Follow is on for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr ""
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Follow never pushes or commits your local changes. They stay only on this machine."
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "Follow the agent's edits"
 msgstr ""
@@ -4000,12 +4372,23 @@ msgstr ""
 msgid "Footnote"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Force Reload"
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "Force stop"
 msgstr ""
 
 #: src/components/FeedbackForm.tsx
 msgid "Formatting looked wrong"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+#: src/components/command-palette-commands.ts
+#: src/components/NavigationHistoryControls.tsx
+#: src/lib/keyboard-shortcuts.ts
+msgid "Forward"
 msgstr ""
 
 #: src/components/LinksPanel.tsx
@@ -4028,16 +4411,34 @@ msgstr ""
 msgid "Frontmatter every document created from this template starts with. Values are YAML — a list is <0>[a, b]</0>; <1>{{date}}</1> fills in on create."
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Frontmatter schemas"
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Full"
+msgstr ""
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Full guide"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/FileTree.tsx
 msgid "Full path"
 msgstr ""
 
 #: src/components/skill-actions.tsx
 msgid "Full Path"
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+msgid "Full sync — your commits push and remote changes pull automatically."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Full sync — your edits are committed and pushed to your remote automatically."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -4060,10 +4461,6 @@ msgstr ""
 msgid "Get set up"
 msgstr ""
 
-#: src/components/settings/SyncSection.tsx
-msgid "Git auto-sync"
-msgstr ""
-
 #: src/components/settings/SharingSection.tsx
 #: src/components/SkillsSidebarSection.tsx
 msgid "git configuration is unavailable"
@@ -4081,6 +4478,10 @@ msgstr ""
 msgid "Git needs a helper tool (such as git-lfs) that isn't installed or couldn't be found. Install it, then try again."
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
+msgid "Git sync"
+msgstr ""
+
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub authentication failed. Try signing in again."
 msgstr ""
@@ -4095,6 +4496,10 @@ msgstr ""
 
 #: src/components/McpConsentDialogBody.tsx
 msgid "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Glob patterns this schema applies to"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -4161,10 +4566,6 @@ msgstr ""
 msgid "Hard to use"
 msgstr ""
 
-#: src/components/NavigatorApp.tsx
-msgid "Have something else in mind?"
-msgstr ""
-
 #: src/editor/slash-command/items.tsx
 msgid "Heading 1"
 msgstr ""
@@ -4210,6 +4611,10 @@ msgstr ""
 msgid "Hello, world!"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Help"
+msgstr ""
+
 #. Subtext for the open-knowledge-discovery skill row
 #. Subtext for the open-knowledge-discovery skill row
 #: src/components/McpConsentDialogBody.tsx
@@ -4238,6 +4643,7 @@ msgstr ""
 msgid "Hide advanced"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide document panel"
 msgstr ""
@@ -4246,12 +4652,9 @@ msgstr ""
 msgid "Hide external URL nodes"
 msgstr ""
 
+#: src/components/EditorHeader.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Hide Files"
-msgstr ""
-
-#: src/components/EditorHeader.tsx
-msgid "Hide Files ({sidebarShortcut})"
 msgstr ""
 
 #: src/components/ui/sidebar.tsx
@@ -4271,16 +4674,17 @@ msgid "Hide HTML preview"
 msgstr ""
 
 #: src/components/AgentDiffPane.tsx
+#: src/components/EditorToolbar.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Hide panel"
 msgstr ""
 
 #: src/components/EditorToolbar.tsx
-msgid "Hide panel ({panelShortcut})"
+msgid "Hide panel ({panelShortcutLabel})"
 msgstr ""
 
-#: src/components/EditorToolbar.tsx
-msgid "Hide panel ({panelShortcutLabel})"
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Hide problem indicators"
 msgstr ""
 
 #: src/editor/find-replace/FindReplaceBar.tsx
@@ -4291,6 +4695,7 @@ msgstr ""
 msgid "Hide selection preview"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide sidebar"
 msgstr ""
@@ -4365,6 +4770,14 @@ msgstr ""
 msgid "How to set up {0} (opens in browser)"
 msgstr ""
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "How unresolved wiki-links are reported in the Problems panel, audits, and agent tools."
+msgstr ""
+
+#: src/components/settings/ContentRulesSection.tsx
+msgid "How validation findings surface across the project. These choices are committed to config.yml and shared with every collaborator via git."
+msgstr ""
+
 #: src/editor/slash-command/embed-starter-items.tsx
 msgid "HTML"
 msgstr ""
@@ -4387,6 +4800,14 @@ msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "I already have it locally →"
+msgstr ""
+
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "I'm switching to another tool"
+msgstr ""
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr ""
 
 #: src/components/ConsentDialogBody.tsx
@@ -4630,7 +5051,6 @@ msgstr ""
 msgid "Installing {agentName}…"
 msgstr ""
 
-#: src/components/handoff/EditWithAiPopover.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "Instruction for the AI"
 msgstr ""
@@ -4646,6 +5066,22 @@ msgstr ""
 
 #: src/components/PropertyPanel.tsx
 msgid "Invalid patch payload"
+msgstr ""
+
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "It didn't fit into my workflow"
+msgstr ""
+
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "It was a trial or one-off project"
+msgstr ""
+
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "It was missing a feature I needed"
+msgstr ""
+
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "It was too hard to set up or get started"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -4702,11 +5138,15 @@ msgstr ""
 msgid "Keep original file"
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
+msgid "Keep this project in sync with your git remote. Follow fetches updates without pushing; full sync pushes your commits too. Turning sync on requires confirmation."
+msgstr ""
+
 #: src/components/SeedDialog.tsx
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
 msgstr ""
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Key ending in {keyHint}"
 msgstr ""
 
@@ -4724,10 +5164,6 @@ msgstr ""
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 msgid "Label <0>(visible link text)</0>"
-msgstr ""
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Last sync"
 msgstr ""
 
 #: src/components/ActivityPanelBurstRow.tsx
@@ -4750,6 +5186,10 @@ msgstr ""
 msgid "Let Tab leave the source editor instead of indenting."
 msgstr ""
 
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "Let us follow up by email"
+msgstr ""
+
 #: src/components/SkillProperties.tsx
 msgid "Level"
 msgstr ""
@@ -4764,6 +5204,10 @@ msgstr ""
 
 #: src/components/ProblemsPanel.tsx
 msgid "line {displayLine}"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "link"
 msgstr ""
 
 #: src/editor/bubble-menu/LinkEditPopover.tsx
@@ -4810,6 +5254,14 @@ msgstr ""
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Links & images"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "lint"
+msgstr ""
+
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Lint plugins — which rule families run and their per-rule settings — are configured on their own tab under This project → Plugins."
 msgstr ""
 
 #: src/components/PropertyWidgets.tsx
@@ -4866,6 +5318,10 @@ msgstr ""
 
 #: src/components/EditorSkeleton.tsx
 msgid "Loading document"
+msgstr ""
+
+#: src/components/EditorArea.tsx
+msgid "Loading editor"
 msgstr ""
 
 #: src/components/FileTree.tsx
@@ -4935,6 +5391,10 @@ msgstr ""
 msgid "Loading timeline history"
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
+msgid "Loading your reports"
+msgstr ""
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Loading..."
 msgstr ""
@@ -4953,6 +5413,10 @@ msgstr ""
 
 #: src/components/EditorActivityPool.tsx
 msgid "Local collaboration data for \"{docName}\" could not be cleared. Reload to retry."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Local commits are keeping this copy from updating"
 msgstr ""
 
 #: src/components/settings/SharingSection.tsx
@@ -5079,6 +5543,10 @@ msgstr ""
 msgid "Message not sent: {0}"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Minimize"
+msgstr ""
+
 #: src/editor/components/Mirror.tsx
 msgid "Mirror loading <0>{mirrorRef}</0>"
 msgstr ""
@@ -5099,10 +5567,6 @@ msgstr ""
 msgid "Mirror source <0>api-spec</0>"
 msgstr ""
 
-#: src/components/NavigatorApp.tsx
-msgid "Missing"
-msgstr ""
-
 #: src/components/FeedbackForm.tsx
 msgid "Missing a feature"
 msgstr ""
@@ -5115,7 +5579,21 @@ msgstr ""
 msgid "Missing page: {linkTitle}. Click to create."
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Mode"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Model"
+msgstr ""
+
+#. placeholder {0}: pending?.model
+#: src/components/settings/SearchSection.tsx
+msgid "Model: <0>{0}</0>"
+msgstr ""
+
 #: src/components/FolderOverview.tsx
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Modified"
 msgstr ""
@@ -5126,6 +5604,14 @@ msgstr ""
 
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "More grant options"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "More refusal options"
 msgstr ""
 
 #: src/editor/components/PreviewBlockedNotice.tsx
@@ -5185,6 +5671,7 @@ msgstr ""
 msgid "Move to the previous visual-editor find result."
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Move to Trash"
 msgstr ""
@@ -5269,8 +5756,16 @@ msgstr ""
 msgid "Navigation and suggestions"
 msgstr ""
 
+#: src/components/NavigationHistoryControls.tsx
+msgid "Navigation history"
+msgstr ""
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "Nested .okignore error in {path}"
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Nested fields"
 msgstr ""
 
 #: src/components/FileTree.tsx
@@ -5318,6 +5813,11 @@ msgstr ""
 msgid "New branch <0>{trimmed}</0> will be created from the current commit, in its own worktree under <1>.ok/worktrees/</1>."
 msgstr ""
 
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "New changes from your remote appear in your copy automatically."
+msgstr ""
+
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -5334,6 +5834,7 @@ msgstr ""
 msgid "New file from template \"{displayTitle}\" ({fileName}) in the project root"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -5348,6 +5849,10 @@ msgstr ""
 msgid "New from template"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "New from Template…"
+msgstr ""
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "New ignore pattern"
 msgstr ""
@@ -5357,8 +5862,20 @@ msgstr ""
 msgid "New project"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "New project…"
+msgstr ""
+
 #: src/components/FrontmatterRow.tsx
 msgid "New property name"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "New schema"
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "New session"
 msgstr ""
 
 #: src/components/NewSkillDialog.tsx
@@ -5386,10 +5903,6 @@ msgstr ""
 msgid "New Terminal"
 msgstr ""
 
-#: src/lib/keyboard-shortcuts.ts
-msgid "New terminal tab"
-msgstr ""
-
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "New thread with {0}"
@@ -5399,6 +5912,10 @@ msgstr ""
 #: src/components/NewWorktreeDialog.tsx
 #: src/components/ProjectSwitcher.tsx
 msgid "New worktree"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "New worktree…"
 msgstr ""
 
 #: src/components/TimelineDiffPane.tsx
@@ -5421,6 +5938,10 @@ msgstr ""
 msgid "No <0>.markdownlint.*</0> file yet — every rule runs on the same defaults as the VS Code markdownlint extension: all on, except line length."
 msgstr ""
 
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "No active or recent OpenKnowledge projects were found."
+msgstr ""
+
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "No agents available."
 msgstr ""
@@ -5435,6 +5956,14 @@ msgstr ""
 
 #: src/components/FileSidebar.tsx
 msgid "No AI agents installed"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "No API key is set for this endpoint. Add one above."
+msgstr ""
+
+#: src/components/BugReportHistory.tsx
+msgid "No bug reports yet."
 msgstr ""
 
 #: src/components/ActivityPanelDiffView.tsx
@@ -5530,10 +6059,6 @@ msgstr ""
 msgid "No Incoming"
 msgstr ""
 
-#: src/components/handoff/EditWithAiPopover.tsx
-msgid "No installed agents found"
-msgstr ""
-
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "No language match."
 msgstr ""
@@ -5615,6 +6140,10 @@ msgid "No patterns yet. Type a folder or file name below to start hiding files."
 msgstr ""
 
 #: src/components/ProblemsPanel.tsx
+msgid "No problems found — but no lint plugins are enabled, so only links are checked."
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
 msgid "No problems found."
 msgstr ""
 
@@ -5624,6 +6153,10 @@ msgstr ""
 
 #: src/components/settings/ProjectTemplatesSection.tsx
 msgid "No project templates yet. Create one to make it available everywhere in this project. Folder-scoped templates live on each folder's overview page."
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "No recent projects"
 msgstr ""
 
 #: src/components/ProjectSwitcher.tsx
@@ -5645,6 +6178,14 @@ msgstr ""
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "No rules match your filters."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "No schema files in this project yet — create one to start validating."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "No schemas match your search."
 msgstr ""
 
 #: src/components/settings/SettingsDialogShell.tsx
@@ -5739,6 +6280,24 @@ msgstr ""
 msgid "Not now"
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Not required for a localhost endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
+msgstr ""
+
+#: src/components/BugReportHistory.tsx
+msgid "Not sent"
+msgstr ""
+
+#. placeholder {0}: summary.pattern
+#: src/components/settings/LintingSection.tsx
+msgid "nothing ({0} cannot match a doc)"
+msgstr ""
+
+#. placeholder {0}: summary.pattern
+#: src/components/settings/LintingSection.tsx
+msgid "nothing ({0} is not a valid pattern)"
+msgstr ""
+
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
 msgstr ""
@@ -5796,10 +6355,6 @@ msgstr ""
 msgid "ok ui responded but server.lock has no port yet"
 msgstr ""
 
-#: src/components/settings/SyncSection.tsx
-msgid "On"
-msgstr ""
-
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
 msgstr ""
@@ -5835,6 +6390,7 @@ msgstr ""
 msgid "Only markdown files"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Only modified"
 msgstr ""
@@ -5881,6 +6437,10 @@ msgstr ""
 msgid "Open a doc to share its URL."
 msgstr ""
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Open a new session with your preferred AI. With text selected, stage it there instead of running it."
+msgstr ""
+
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Open a project to edit."
 msgstr ""
@@ -5903,10 +6463,6 @@ msgstr ""
 
 #: src/presence/PresenceBar.tsx
 msgid "Open activity panel for {tooltipName}, editing {realCurrentDoc}"
-msgstr ""
-
-#: src/lib/keyboard-shortcuts.ts
-msgid "Open an additional terminal tab. With text selected, stage it in the new tab's AI input."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -5966,7 +6522,6 @@ msgid "Open emoji picker for {keyName}"
 msgstr ""
 
 #: src/components/AssetPreview.tsx
-#: src/components/NavigatorApp.tsx
 #: src/components/ProjectSwitcher.tsx
 #: src/components/ViewerStatusPane.tsx
 #: src/lib/keyboard-shortcuts.ts
@@ -5978,7 +6533,6 @@ msgstr ""
 msgid "Open file on disk"
 msgstr ""
 
-#: src/components/NavigatorApp.tsx
 #: src/components/ProjectSwitcher.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open folder"
@@ -5987,6 +6541,10 @@ msgstr ""
 #: src/components/command-palette-commands.ts
 #: src/components/NavigatorApp.tsx
 msgid "Open folder on disk"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Open folder…"
 msgstr ""
 
 #: src/components/command-palette-commands.ts
@@ -6088,6 +6646,7 @@ msgstr ""
 msgid "Open visual-editor find with replace controls expanded."
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
@@ -6148,6 +6707,7 @@ msgstr ""
 msgid "OpenKnowledge is using this GitHub account."
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "OpenKnowledge on GitHub"
 msgstr ""
@@ -6187,6 +6747,10 @@ msgstr ""
 
 #: src/components/AuthModal.tsx
 msgid "Or to use browser sign-in instead:"
+msgstr ""
+
+#: src/components/NavigatorApp.tsx
+msgid "or use a starter pack"
 msgstr ""
 
 #: src/components/EmptyEditorState.tsx
@@ -6236,6 +6800,10 @@ msgstr ""
 #: src/components/DocPanel.tsx
 #: src/components/OutlinePanel.tsx
 msgid "Outline"
+msgstr ""
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Overlapping edits"
 msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
@@ -6316,6 +6884,10 @@ msgstr ""
 msgid "Parse failed"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Paste"
+msgstr ""
+
 #: src/components/AuthModal.tsx
 msgid "Paste a personal access token for <0>{host}</0>."
 msgstr ""
@@ -6344,7 +6916,7 @@ msgstr ""
 msgid "Paste was incomplete — {chunksCompleted} of {totalChunks} chunks landed.{restoreSuffix}"
 msgstr ""
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Paste your API key"
 msgstr ""
 
@@ -6372,6 +6944,10 @@ msgstr ""
 msgid "Path suggestions"
 msgstr ""
 
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Pattern (regex)"
+msgstr ""
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "Pattern {patternNumber}"
 msgstr ""
@@ -6386,6 +6962,10 @@ msgstr ""
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Pattern warnings: {summary}"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pause sync"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
@@ -6428,10 +7008,6 @@ msgstr ""
 msgid "Pick a name"
 msgstr ""
 
-#: src/components/NavigatorApp.tsx
-msgid "Pick a starter pack to scaffold your project with ready-made folders and templates."
-msgstr ""
-
 #: src/components/ShareReceiveDialog.tsx
 msgid "Pick the folder where you've cloned it."
 msgstr ""
@@ -6470,6 +7046,10 @@ msgstr ""
 msgid "Plugins"
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted server or another provider. The API key above is for whichever endpoint you set here."
+msgstr ""
+
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Preferences"
@@ -6481,6 +7061,10 @@ msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Preparing share URL..."
+msgstr ""
+
+#: src/uninstall/UninstallApp.tsx
+msgid "Preparing to uninstall OpenKnowledge"
 msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
@@ -6507,6 +7091,10 @@ msgstr ""
 msgid "Previous match"
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
+msgid "Previous reports"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Previous tab"
 msgstr ""
@@ -6525,6 +7113,10 @@ msgstr ""
 
 #: src/components/ConsentDialogBody.tsx
 msgid "probe failed"
+msgstr ""
+
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Problem indicators in the file explorer"
 msgstr ""
 
 #: src/components/DocPanel.tsx
@@ -6634,10 +7226,6 @@ msgstr ""
 msgid "Protected branch — cannot push"
 msgstr ""
 
-#: src/components/HelpPopover.tsx
-msgid "Provide feedback"
-msgstr ""
-
 #: src/components/TemplateForm.tsx
 msgid "provisional"
 msgstr ""
@@ -6670,8 +7258,17 @@ msgstr ""
 msgid "Pull"
 msgstr ""
 
+#: src/components/share-receive-miss-content.tsx
+msgid "Pull latest changes"
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Pulling"
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
+msgid "Pulling the latest changes"
 msgstr ""
 
 #: src/components/AutoSyncEnableWarning.tsx
@@ -6694,12 +7291,20 @@ msgstr ""
 msgid "Quote"
 msgstr ""
 
+#: src/components/FeedbackForm.tsx
+msgid "Rate your experience"
+msgstr ""
+
 #: src/components/AuthModal.tsx
 msgid "Re-authenticate with GitHub"
 msgstr ""
 
 #: src/components/AuthModal.tsx
 msgid "Re-authenticate with GitHub Enterprise Server"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Re-embedding happens as searches run, so coverage restarts at zero and refills."
 msgstr ""
 
 #: src/components/empty-state/use-create-suggestions.ts
@@ -6730,8 +7335,16 @@ msgstr ""
 msgid "Receiving objects"
 msgstr ""
 
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "recent"
+msgstr ""
+
 #: src/components/NavigatorApp.tsx
 msgid "Recent"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Recent project"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
@@ -6758,6 +7371,15 @@ msgstr ""
 msgid "Reconnecting…"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Redo"
+msgstr ""
+
+#. placeholder {0}: row.reference
+#: src/components/BugReportHistory.tsx
+msgid "Reference <0>{0}</0>"
+msgstr ""
+
 #: src/components/ProblemsPanel.tsx
 msgid "Refresh audit"
 msgstr ""
@@ -6780,6 +7402,7 @@ msgstr ""
 msgid "Reject"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/FileTree.tsx
 msgid "Relative path"
 msgstr ""
@@ -6797,6 +7420,7 @@ msgstr ""
 msgid "Release notes"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
@@ -6841,6 +7465,10 @@ msgstr ""
 msgid "Remove {label} from context"
 msgstr ""
 
+#: src/components/recent-remove-controls.tsx
+msgid "Remove {name} from recent projects"
+msgstr ""
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "Remove {patternText}"
 msgstr ""
@@ -6857,7 +7485,12 @@ msgstr ""
 msgid "Remove failed: {error}"
 msgstr ""
 
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Remove field {field}"
+msgstr ""
+
 #: src/components/NavigatorApp.tsx
+#: src/components/recent-remove-controls.tsx
 msgid "Remove from recent projects"
 msgstr ""
 
@@ -6868,6 +7501,11 @@ msgstr ""
 
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Remove link"
+msgstr ""
+
+#. placeholder {0}: project.path
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "Remove OpenKnowledge from {0}"
 msgstr ""
 
 #: src/components/TemplateForm.tsx
@@ -6882,6 +7520,10 @@ msgstr ""
 msgid "Remove the parent <0>.git</0> folder"
 msgstr ""
 
+#: src/lib/install-recent-removed-listener.ts
+msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
+msgstr ""
+
 #. Warning shown when the user unchecks an already-installed skill
 #: src/components/McpConsentDialogBody.tsx
 msgid "Removes this skill from your editors."
@@ -6891,6 +7533,11 @@ msgstr ""
 msgid "Removing"
 msgstr ""
 
+#: src/uninstall/UninstallProgressScreen.tsx
+msgid "Removing OpenKnowledge files…"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileTree.tsx
 #: src/components/skill-actions.tsx
@@ -6987,7 +7634,7 @@ msgstr ""
 msgid "Replace current match from field"
 msgstr ""
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Replace key"
 msgstr ""
 
@@ -6995,10 +7642,15 @@ msgstr ""
 msgid "Replace the active match from the replace field."
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
 #: src/components/ReportBugDialogBody.tsx
 msgid "Report a bug"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Report a bug…"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
@@ -7008,6 +7660,10 @@ msgstr ""
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Report this error"
+msgstr ""
+
+#: src/components/BugReportHistoryDialog.tsx
+msgid "Reports you've generated on this Mac. Retry a send, reveal a file, or delete one you no longer need."
 msgstr ""
 
 #: src/components/settings/AccountSection.tsx
@@ -7026,6 +7682,10 @@ msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Repository not found. It may have been renamed, deleted, or moved."
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Required"
 msgstr ""
 
 #: src/components/handoff/OpenInAgentMenuItem.tsx
@@ -7049,6 +7709,10 @@ msgstr ""
 msgid "Reset {0} to default"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Reset {file} to default"
+msgstr ""
+
 #: src/components/settings/field-controls.tsx
 msgid "Reset {labelText} to default"
 msgstr ""
@@ -7056,6 +7720,10 @@ msgstr ""
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Reset to default"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Reset to default (removes it from config.yml)"
 msgstr ""
 
 #: src/editor/components/Mermaid.tsx
@@ -7170,15 +7838,19 @@ msgstr ""
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Resume sync"
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "Resuming the conversation"
 msgstr ""
 
 #: src/components/ActivityModeContent.tsx
+#: src/components/BugReportHistory.tsx
 #: src/components/ConnectingBanner.tsx
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
-#: src/components/SyncStatusBadge.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Retry"
 msgstr ""
@@ -7203,6 +7875,7 @@ msgstr ""
 msgid "Reveal in File Explorer, {hint}"
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -7272,7 +7945,7 @@ msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr ""
 
 #: src/components/AuthModal.tsx
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 #: src/editor/components/CodePreviewEditModal.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
@@ -7309,8 +7982,12 @@ msgstr ""
 msgid "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
 msgstr ""
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Saving"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "schema {deleteTarget}"
 msgstr ""
 
 #: src/components/NewSkillDialog.tsx
@@ -7327,6 +8004,7 @@ msgid "Screenshot"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
+#: src/components/EditorHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SidebarSearchBar.tsx
 #: src/lib/keyboard-shortcuts.ts
@@ -7338,7 +8016,7 @@ msgid "Search \"{semanticSubmitQuery}\" by meaning"
 msgstr ""
 
 #: src/components/EditorHeader.tsx
-msgid "Search ({searchShortcut})"
+msgid "Search ({searchShortcutLabel})"
 msgstr ""
 
 #: src/components/settings/ConfigureAgentsSection.tsx
@@ -7377,8 +8055,9 @@ msgstr ""
 msgid "Search files, folders, or commands"
 msgstr ""
 
+#. placeholder {0}: formatShortcut('find')
 #: src/components/CommandPalette.tsx
-msgid "Search matches file names, paths, and folders. Open a file to search its body (⌘F)."
+msgid "Search matches file names, paths, and folders. Open a file to search its body <0>{0}</0>."
 msgstr ""
 
 #: src/components/ProjectSwitcher.tsx
@@ -7395,6 +8074,14 @@ msgstr ""
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Search rules by id, alias, or name"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Search schema files by path"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Search schemas"
 msgstr ""
 
 #: src/components/settings/SettingsDialogShell.tsx
@@ -7454,8 +8141,25 @@ msgstr ""
 msgid "See <0>Architecture</0> for the system overview."
 msgstr ""
 
+#. placeholder {0}: packs.length
+#: src/components/NavigatorApp.tsx
+msgid "See all {0} starter packs"
+msgstr ""
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
+msgstr ""
+
+#: src/components/FrontmatterRow.tsx
+msgid "Select a value"
+msgstr ""
+
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "Select all"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Select All"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -7515,7 +8219,7 @@ msgid "Semantic search adds meaning-based ranking to the search tool so conceptu
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
-msgid "Semantic search is on, but no API key is set — search falls back to keyword matching. Add one in <0>Settings → Account</0> (it's stored once for your whole machine)."
+msgid "Semantic search is on, but no API key is set — search falls back to keyword matching. Add one below."
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
@@ -7523,18 +8227,28 @@ msgstr ""
 msgid "Send"
 msgstr ""
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Send report"
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "Send & continue"
 msgstr ""
 
-#: src/components/handoff/EditWithAiPopover.tsx
-msgid "Send to"
+#: src/components/command-palette-commands.ts
+#: src/components/HelpPopover.tsx
+msgid "Send feedback"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Send feedback…"
+msgstr ""
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Send report"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send your report by email"
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Sending"
 msgstr ""
@@ -7543,8 +8257,16 @@ msgstr ""
 msgid "Sending report"
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
+msgid "Sent"
+msgstr ""
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Sent privately to the OpenKnowledge team, along with your note and app version. Never posted publicly."
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>~/.ok/secrets.yml</1>), never in the project."
 msgstr ""
 
 #: src/editor/slash-command/items.tsx
@@ -7593,11 +8315,15 @@ msgid "Set identity"
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
-msgid "Set the auto-sync default for users opening this project for the first time. This setting is committed to your repository."
+msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
 msgstr ""
 
 #: src/components/command-palette-commands.ts
 msgid "Set up OpenKnowledge integrations"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Set up OpenKnowledge integrations…"
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
@@ -7632,6 +8358,10 @@ msgstr ""
 msgid "Settings sections"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Settings…"
+msgstr ""
+
 #. Primary button — begins scaffolding the project
 #: src/components/ConsentDialogBody.tsx
 msgid "Setup"
@@ -7653,6 +8383,10 @@ msgstr ""
 
 #: src/components/ShareButton.tsx
 msgid "Share doc"
+msgstr ""
+
+#: src/components/FeedbackCard.tsx
+msgid "Share feedback"
 msgstr ""
 
 #: src/components/ShareButton.tsx
@@ -7682,10 +8416,6 @@ msgid "Shared"
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
-msgid "Shared auto-sync default"
-msgstr ""
-
-#: src/components/settings/SyncSection.tsx
 msgid "Shared default"
 msgstr ""
 
@@ -7709,6 +8439,7 @@ msgstr ""
 msgid "Show"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Show .ok folders"
@@ -7740,6 +8471,7 @@ msgstr ""
 msgid "Show diagram"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Show document panel"
 msgstr ""
@@ -7752,18 +8484,16 @@ msgstr ""
 msgid "Show fewer"
 msgstr ""
 
+#: src/components/EditorHeader.tsx
 #: src/components/ui/sidebar.tsx
 msgid "Show Files"
-msgstr ""
-
-#: src/components/EditorHeader.tsx
-msgid "Show Files ({sidebarShortcut})"
 msgstr ""
 
 #: src/components/ui/sidebar.tsx
 msgid "Show Files ({sidebarShortcutLabel})"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/NotInSidebarIndicator.tsx
@@ -7774,11 +8504,20 @@ msgstr ""
 msgid "Show HTML preview"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Show in Explorer"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Show in File Manager"
+msgstr ""
+
 #: src/components/PackCardGrid.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "Show less"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Show only markdown files"
@@ -7797,16 +8536,17 @@ msgid "Show or hide terminal"
 msgstr ""
 
 #: src/components/AgentDiffPane.tsx
+#: src/components/EditorToolbar.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Show panel"
 msgstr ""
 
 #: src/components/EditorToolbar.tsx
-msgid "Show panel ({panelShortcut})"
+msgid "Show panel ({panelShortcutLabel})"
 msgstr ""
 
-#: src/components/EditorToolbar.tsx
-msgid "Show panel ({panelShortcutLabel})"
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Show problem indicators"
 msgstr ""
 
 #: src/editor/find-replace/FindReplaceBar.tsx
@@ -7817,10 +8557,12 @@ msgstr ""
 msgid "Show selection preview"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Show sidebar"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Show skills section"
@@ -7871,6 +8613,7 @@ msgid "Sign in to {agentName} first"
 msgstr ""
 
 #: src/components/AuthModal.tsx
+#: src/lib/transports/auth-transport.ts
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr ""
 
@@ -7922,6 +8665,7 @@ msgstr ""
 #. Secondary button — dismisses the dialog without wiring any tools
 #: src/components/AuthModal.tsx
 #: src/components/McpConsentDialogBody.tsx
+#: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Skip"
 msgstr ""
 
@@ -7944,6 +8688,10 @@ msgstr ""
 
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
+msgstr ""
+
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "Something else"
 msgstr ""
 
 #: src/components/AppErrorBoundary.tsx
@@ -7977,6 +8725,7 @@ msgstr ""
 #: src/components/AgentDiffPane.tsx
 #: src/components/LintConfigEditor.tsx
 #: src/components/MermaidFileViewer.tsx
+#: src/components/SchemaConfigEditor.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Source"
 msgstr ""
@@ -8075,6 +8824,10 @@ msgstr ""
 msgid "starter pack"
 msgstr ""
 
+#: src/components/NavigatorApp.tsx
+msgid "Starter packs"
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "Starting {agentName}…"
 msgstr ""
@@ -8119,10 +8872,6 @@ msgstr ""
 
 #: src/components/settings/ProjectTemplatesSection.tsx
 msgid "Stored at <0>.ok/templates/</0> in this project. Available in every folder (folder-scoped templates can override by filename)."
-msgstr ""
-
-#: src/components/settings/EmbeddingsKeySection.tsx
-msgid "Stored on this machine."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -8184,12 +8933,24 @@ msgstr ""
 msgid "Switch project"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Switch project…"
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+msgid "Switch to Follow"
+msgstr ""
+
 #: src/components/settings/SharingSection.tsx
 msgid "Switch to local-only refused"
 msgstr ""
 
 #: src/components/command-palette-commands.ts
 msgid "Switch worktree"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Switch worktree…"
 msgstr ""
 
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -8210,16 +8971,12 @@ msgstr ""
 
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Sync"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync disabled"
-msgstr ""
-
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Sync disabled — you don't have permission to push"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -8230,18 +8987,29 @@ msgstr ""
 msgid "Sync is failing. See the sync status for details."
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
+msgid "Sync is off — your edits stay on this computer until you commit and push manually."
+msgstr ""
+
 #: src/components/SyncStatusBadge.tsx
-msgid "Sync is off — your edits will not sync to the remote repository."
+msgid "Sync is paused. Turn it back on to resume."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Sync mode"
 msgstr ""
 
 #: src/components/share-receive-miss-content.tsx
 #: src/components/ShareFreshnessWarning.tsx
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync now"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync off"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Sync paused"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -8282,6 +9050,10 @@ msgstr ""
 msgid "Synced"
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Synced {lastSyncedRelative}"
+msgstr ""
+
 #: src/components/TimelinePanel.tsx
 msgid "Synced from disk"
 msgstr ""
@@ -8293,6 +9065,10 @@ msgstr ""
 #: src/components/share-receive-miss-content.tsx
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Syncing"
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
+msgid "Syncing your changes"
 msgstr ""
 
 #: src/components/TrashFailureModal.tsx
@@ -8354,6 +9130,10 @@ msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Team Wiki"
+msgstr ""
+
+#: src/components/FeedbackCard.tsx
+msgid "Tell us how it's going"
 msgstr ""
 
 #: src/components/FeedbackForm.tsx
@@ -8444,9 +9224,21 @@ msgstr ""
 msgid "Terminal settings not yet loaded — try again in a moment"
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Test connection"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Testing"
+msgstr ""
+
 #: src/components/PropertyWidgets.tsx
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Text"
+msgstr ""
+
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "Thanks for giving OpenKnowledge a try."
 msgstr ""
 
 #: src/components/SubscribeForm.tsx
@@ -8464,6 +9256,10 @@ msgstr ""
 #: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "That branch is already open in another worktree."
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
 msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
@@ -8507,6 +9303,19 @@ msgstr ""
 msgid "The desktop app isn't responding. Refresh and try again."
 msgstr ""
 
+#. placeholder {0}: summary.target
+#: src/components/settings/LintingSection.tsx
+msgid "the doc {0}"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "The endpoint answered, but not with an OpenAI-compatible embeddings response. Check the base URL."
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "The endpoint didn't respond in time."
+msgstr ""
+
 #: src/components/FileTree.tsx
 msgid "The file is in your Trash; the file-watcher will reconcile."
 msgstr ""
@@ -8537,12 +9346,29 @@ msgstr ""
 msgid "The menu label agents pick this template by (required)."
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "The model id your endpoint serves. Its vector size is detected automatically — clear the field to go back to {DEFAULT_EMBEDDINGS_MODEL}."
+msgstr ""
+
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
 msgstr ""
 
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "The provider is rate-limiting this key. Try again in a moment."
+msgstr ""
+
+#. placeholder {0}: response.status
+#: src/components/settings/SearchSection.tsx
+msgid "The provider rejected the request (HTTP {0}). Check the API key and the model id."
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "The provider rejected the request. Check the API key and the model id."
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
@@ -8555,6 +9381,10 @@ msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "The repository was moved, renamed, or deleted."
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "The schema file does not exist or failed to load — adding a field creates it."
 msgstr ""
 
 #: src/components/TemplateProperties.tsx
@@ -8689,6 +9519,14 @@ msgstr ""
 msgid "This document is already active in the editor. Use Open to collapse the graph."
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."
+msgstr ""
+
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "This field carries additional schema keywords the editor does not show — they are preserved on save."
+msgstr ""
+
 #: src/components/use-viewer-text.ts
 msgid "This file can't be opened in the text editor."
 msgstr ""
@@ -8729,6 +9567,10 @@ msgstr ""
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr ""
 
+#: src/uninstall/UninstallProgressScreen.tsx
+msgid "This may take a moment. Your markdown content is kept."
+msgstr ""
+
 #: src/components/SeedDialog.tsx
 msgid "This pack is already set up here."
 msgstr ""
@@ -8743,6 +9585,10 @@ msgstr ""
 
 #: src/components/ConsentDialogBody.tsx
 msgid "This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "This permanently deletes {deleteTarget} from the project and removes its mapping from config.yml. Docs it validated keep their frontmatter; they just stop being checked."
 msgstr ""
 
 #. placeholder {0}: skill.path
@@ -8796,6 +9642,10 @@ msgstr ""
 msgid "This project's server (v{0}) is newer than this app (v{1})."
 msgstr ""
 
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
+msgstr ""
+
 #. placeholder {0}: skill.bundledVersion ?? ''
 #. placeholder {1}: skill.installedVersion
 #: src/components/SkillUpdateDialog.tsx
@@ -8811,6 +9661,11 @@ msgstr ""
 msgid "This request is no longer active."
 msgstr ""
 
+#. placeholder {0}: rootAdvancedKeywords.join(', ')
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "This schema carries root-level advanced rules the editor does not show ({0}) — they still validate and survive every edit. Open the schema file to see them."
+msgstr ""
+
 #: src/components/settings/SearchSection.tsx
 msgid "This sends content off your machine"
 msgstr ""
@@ -8824,7 +9679,7 @@ msgid "This setting is per-machine and isn't shared with collaborators."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
-msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key set with <0>ok embeddings set-key</0>."
+msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
 msgstr ""
 
 #: src/components/TemplateDeleteDialog.tsx
@@ -8844,6 +9699,10 @@ msgstr ""
 msgid "Timeline"
 msgstr ""
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Tint and badge files that have lint or link problems, without opening them."
+msgstr ""
+
 #: src/components/TemplateProperties.tsx
 msgid "title"
 msgstr ""
@@ -8855,6 +9714,10 @@ msgstr ""
 
 #: src/editor/slash-command/items.tsx
 msgid "To do"
+msgstr ""
+
+#: src/uninstall/UninstallNoticeScreen.tsx
+msgid "To do."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -8879,6 +9742,14 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle bold formatting."
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Toggle Developer Tools"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Toggle Full Screen"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -8910,7 +9781,7 @@ msgid "Toggle strikethrough formatting."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Toggle the bottom terminal panel. With text selected, stage it in the terminal's AI input instead."
+msgid "Toggle the bottom terminal panel. With text selected, stage it for your preferred AI instead."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -8935,6 +9806,14 @@ msgstr ""
 
 #: src/components/GraphPanel.tsx
 msgid "Top linked pages"
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Traverse OpenKnowledge navigation history backward."
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Traverse OpenKnowledge navigation history forward."
 msgstr ""
 
 #: src/components/FileSidebar.tsx
@@ -8987,12 +9866,13 @@ msgstr ""
 msgid "Two-page (odd)"
 msgstr ""
 
+#: src/components/settings/frontmatter-schema-field-editor.tsx
 #: src/components/TemplateForm.tsx
 msgid "Type"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
-msgid "Type a query, then press ↵ to search your pages by meaning."
+msgid "Type a query, then press <0>↵</0> to search your pages by meaning."
 msgstr ""
 
 #: src/editor/components/CodePreviewEditModal.tsx
@@ -9024,6 +9904,7 @@ msgid "Undid the last edit on {docName}"
 msgstr ""
 
 #: src/components/ActivityPanelBurstRow.tsx
+#: src/components/AppMenubar.tsx
 #: src/components/settings/SharingSection.tsx
 msgid "Undo"
 msgstr ""
@@ -9060,12 +9941,21 @@ msgstr ""
 msgid "Uninstall everywhere"
 msgstr ""
 
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "Uninstall OpenKnowledge"
+msgstr ""
+
+#: src/uninstall/UninstallPickerScreen.tsx
+msgid "Uninstall OpenKnowledge?"
+msgstr ""
+
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(removed)
 #: src/components/skill-actions.tsx
 msgid "Uninstalled \"{0}\" from {1}"
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
 #: src/components/FolderTimelineCard.tsx
 msgid "Unknown"
 msgstr ""
@@ -9078,7 +9968,12 @@ msgstr ""
 msgid "Unknown component: {unregisteredComponentName}"
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
+msgid "Unknown date"
+msgstr ""
+
 #: src/components/DocumentErrorBoundary.tsx
+#: src/lib/transports/auth-transport.ts
 msgid "Unknown error"
 msgstr ""
 
@@ -9100,6 +9995,10 @@ msgstr ""
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Unrecognized wiki link"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Up to date"
 msgstr ""
 
 #: src/components/SkillUpdateDialog.tsx
@@ -9145,6 +10044,10 @@ msgstr ""
 msgid "Updated \"{display}\" to {0}."
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Updated {lastSyncedRelative}"
+msgstr ""
+
 #: src/components/FolderTimelineCard.tsx
 msgid "updated folder properties"
 msgstr ""
@@ -9153,7 +10056,12 @@ msgstr ""
 msgid "Updated to Version {version}"
 msgstr ""
 
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Updates flow in"
+msgstr ""
+
 #: src/components/SkillUpdateDialog.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Updating"
 msgstr ""
 
@@ -9205,6 +10113,10 @@ msgstr ""
 msgid "Upstream sync"
 msgstr ""
 
+#: src/components/ShareButton.tsx
+msgid "Use <0>{copyShortcut}</0> to copy the link below, or open OK in the desktop app."
+msgstr ""
+
 #: src/components/NavigatorApp.tsx
 msgid "Use a folder you already have."
 msgstr ""
@@ -9219,10 +10131,6 @@ msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "Use an https:// URL — http:// is only allowed for localhost."
-msgstr ""
-
-#: src/components/ShareButton.tsx
-msgid "Use Cmd/Ctrl+C to copy the link below, or open OK in the desktop app."
 msgstr ""
 
 #: src/components/TemplateProperties.tsx
@@ -9242,10 +10150,6 @@ msgstr ""
 msgid "Use lowercase letters, digits, and hyphens only."
 msgstr ""
 
-#: src/components/settings/SearchSection.tsx
-msgid "Use the default OpenAI endpoint or override it with an OpenAI-compatible base URL for Azure or a self-hosted provider."
-msgstr ""
-
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "User"
@@ -9255,8 +10159,20 @@ msgstr ""
 msgid "User plugins are personal to this device — turn them on or off here. The choice lives in your user config and is never committed to the project. Each enabled plugin gets its own page under Plugins in the settings sidebar."
 msgstr ""
 
-#: src/components/settings/EmbeddingsKeySection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Validate document frontmatter against JSON Schema files, scoped to doc sets by glob."
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Validate document frontmatter against standard JSON Schema files (draft-06, draft-07, 2019-09, or 2020-12). Toggle a schema on to validate the docs its globs match; violations surface as warnings and never block a write. Use Edit to open the schema file."
+msgstr ""
+
+#: src/components/FrontmatterRow.tsx
+msgid "Value for {keyName}"
 msgstr ""
 
 #: src/components/FolderPropertiesCard.tsx
@@ -9264,10 +10180,15 @@ msgstr ""
 msgid "Value is required"
 msgstr ""
 
+#: src/components/FrontmatterRow.tsx
+msgid "Values for {keyName}"
+msgstr ""
+
 #: src/components/CommandPalette.tsx
 msgid "via {viaTags}"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
 msgid "View"
 msgstr ""
@@ -9329,6 +10250,10 @@ msgstr ""
 msgid "Waiting for your approval"
 msgstr ""
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Warning"
+msgstr ""
+
 #: src/components/settings/AccountSection.tsx
 msgid "We couldn't check your GitHub connection."
 msgstr ""
@@ -9357,10 +10282,6 @@ msgstr ""
 msgid "What config sharing covers"
 msgstr ""
 
-#: src/components/NavigatorApp.tsx
-msgid "What do you want to build?"
-msgstr ""
-
 #: src/components/CreatedItemsList.tsx
 msgid "What gets created"
 msgstr ""
@@ -9381,7 +10302,6 @@ msgstr ""
 msgid "What is this knowledge base for?"
 msgstr ""
 
-#: src/components/handoff/EditWithAiPopover.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "What should the AI do? (optional)"
 msgstr ""
@@ -9409,6 +10329,10 @@ msgstr ""
 
 #: src/components/empty-state/empty-state-copy.ts
 msgid "What would you like to create?"
+msgstr ""
+
+#: src/uninstall/UninstallSurveyScreen.tsx
+msgid "What you share is sent to the OpenKnowledge team."
 msgstr ""
 
 #: src/components/HelpPopover.tsx
@@ -9472,6 +10396,10 @@ msgstr ""
 msgid "Will replace existing OpenKnowledge entry"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Window"
+msgstr ""
+
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"
 msgstr ""
@@ -9492,6 +10420,10 @@ msgstr ""
 
 #: src/components/CommandPalette.tsx
 msgid "Workspace Command Palette"
+msgstr ""
+
+#: src/components/EditorHeader.tsx
+msgid "Workspace navigation"
 msgstr ""
 
 #: src/components/NavigatorApp.tsx
@@ -9535,7 +10467,7 @@ msgid "You can attach up to {MAX_ATTACHMENTS} images."
 msgstr ""
 
 #: src/components/AutoSyncOnboardingDialog.tsx
-msgid "You can turn this on later in <0>Settings → Sync</0>."
+msgid "You can change this later in <0>Settings → Sync</0>."
 msgstr ""
 
 #: src/components/DocumentErrorBoundary.tsx
@@ -9554,12 +10486,17 @@ msgstr ""
 msgid "You don't have access to this repository."
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "You don't have permission to push to this repo"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You don't have permission to push to this repo."
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+msgid "You don't have permission to push to this repo. Follow can still keep your copy up to date."
 msgstr ""
 
 #: src/components/ShareFreshnessWarning.tsx
@@ -9603,7 +10540,12 @@ msgid "You're subscribed!"
 msgstr ""
 
 #: src/components/FeedbackForm.tsx
+#: src/uninstall/UninstallSurveyScreen.tsx
 msgid "you@company.com"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Your change is still being saved — run the test again in a moment."
 msgstr ""
 
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -9615,8 +10557,8 @@ msgstr ""
 msgid "Your current version is saved first, so this is reversible."
 msgstr ""
 
-#: src/components/settings/EmbeddingsKeySection.tsx
-msgid "Your embeddings provider API key, used only to create embeddings of your content for semantic search. Stored once for this machine in <0>~/.ok/secrets.yml</0> (readable only by your user account) and shared across all projects. Turn the feature on per project in This project → Search, where you can also override the endpoint."
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Your edits stay on this computer"
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
@@ -9633,7 +10575,15 @@ msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."
 msgstr ""
 
 #: src/components/share-receive-miss-content.tsx
+msgid "Your local copy is behind."
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
 msgid "Your local copy is behind. Pull the latest changes, then open the link again."
+msgstr ""
+
+#: src/components/share-receive-miss-content.tsx
+msgid "Your local copy of branch <0>{branch}</0> is behind."
 msgstr ""
 
 #: src/components/share-receive-miss-content.tsx
@@ -9669,7 +10619,15 @@ msgstr ""
 msgid "Zoom in"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
+msgid "Zoom In"
+msgstr ""
+
 #: src/editor/components/Mermaid.tsx
 #: src/editor/components/Pdf.tsx
 msgid "Zoom out"
+msgstr ""
+
+#: src/components/AppMenubar.tsx
+msgid "Zoom Out"
 msgstr ""

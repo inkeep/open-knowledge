@@ -233,10 +233,10 @@ function globBlocksSkillContent(pattern: string): boolean {
  * useful in no mode. The file-level analogue of `ALWAYS_SKIP_DIRS`: pruned even
  * under `bypassFilters: true`. The seeded `.gitignore` (`init-project.ts`)
  * already keeps these out of the normal index-backed sidebar, but the Show All
- * Files walk runs with `bypassFilters: true` — it skips `.gitignore` /
- * `.okignore` precisely so gitignored content (`dist/`, `build/`, …) surfaces —
- * which would otherwise re-surface `.DS_Store` as a sidebar `asset` row. macOS
- * is the only supported platform, so this is macOS Finder metadata.
+ * Files walk bypasses `.gitignore` and built-in content rules so gitignored
+ * content (`dist/`, `build/`, …) surfaces. Without this floor it would also
+ * re-surface `.DS_Store` as a sidebar `asset` row. macOS is the only supported
+ * platform, so this is macOS Finder metadata.
  */
 const BUILTIN_SKIP_FILES = new Set<string>(['.DS_Store', '.localized']);
 
@@ -589,11 +589,17 @@ export type RebuildResult =
  * true` skips user-configurable rules (`.gitignore` / `.okignore` /
  * `BUILTIN_SKIP_DIRS`) but PRESERVES the synthetic system + config doc gate
  * (STOP rule — even in bypass mode, `__system__` / `__config__` /
- * `__user__` / `__local__` doc names MUST stay hidden). Per-request use
- * only — backs the `?showAll=true` flag on `GET /api/documents`.
+ * `__user__` / `__local__` doc names MUST stay hidden).
  */
 interface ContentFilterReadOpts {
   bypassFilters?: boolean;
+  /**
+   * Keep `.okignore` rules active while bypassing `.gitignore` and
+   * `BUILTIN_SKIP_DIRS`. Used by the all-files sidebar: files normally hidden
+   * by Git/build defaults surface, while the user's explicit OK hide list
+   * remains authoritative.
+   */
+  respectOkignore?: boolean;
   /**
    * Admit `.ok`-segment paths through the always-skip floor — `isExcluded` /
    * `isDirExcluded` only; `isPathIgnored` (the asset-serve gate) keeps the
@@ -682,6 +688,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
   // Captured by the closure-bound API below. Replaced atomically on
   // `rebuildIgnorePatterns()` so live references on consumers stay valid.
   let ig: Ignore;
+  let okignoreIg: Ignore;
   let rootIgnorePatterns: string[];
   let watcherIgnoreGlobs: string[];
   let lastPatternCount = 0;
@@ -702,6 +709,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
     bytes: number;
   } {
     const newIg = ignore();
+    const newOkignoreIg = ignore();
 
     // Always exclude .git directory itself
     newIg.add('.git');
@@ -720,6 +728,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
         const patterns = parseIgnorePatterns(content);
         newRootPatterns.push(...patterns);
         newIg.add(patterns);
+        if (name === '.okignore') newOkignoreIg.add(patterns);
       } catch (err) {
         log.warn({ path, err }, `Failed to read ${name} at ${path}`);
       }
@@ -737,6 +746,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
           const patterns = parseIgnorePatterns(content);
           const prefixed = patterns.map((p) => prefixPattern(p, contentRelPrefix));
           newIg.add(prefixed);
+          if (name === '.okignore') newOkignoreIg.add(prefixed);
         } catch (err) {
           log.warn({ path, err }, `Failed to read ${name} at ${path}`);
         }
@@ -745,7 +755,13 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
 
     // Pass 2b: Recursive nested files
     const bytesAcc = { value: bytes };
-    nestedFileCount += loadNestedIgnoreFiles(contentDir, projectDir, newIg, bytesAcc);
+    nestedFileCount += loadNestedIgnoreFiles(
+      contentDir,
+      projectDir,
+      newIg,
+      newOkignoreIg,
+      bytesAcc,
+    );
     bytes = bytesAcc.value;
 
     // Pass 3: per-clone `.git/info/exclude` + global excludesfile (XDG-default
@@ -768,6 +784,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
 
     // Atomic swap.
     ig = newIg;
+    okignoreIg = newOkignoreIg;
     rootIgnorePatterns = newRootPatterns;
     watcherIgnoreGlobs = newWatcherGlobs;
     lastPatternCount = newRootPatterns.length;
@@ -792,6 +809,12 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
     if (contentOutsideProject) return false;
     const projectRelPath = contentRelPrefix ? `${contentRelPrefix}/${relativePath}` : relativePath;
     return ig.ignores(projectRelPath);
+  }
+
+  function isOkIgnored(relativePath: string): boolean {
+    if (contentOutsideProject) return false;
+    const projectRelPath = contentRelPrefix ? `${contentRelPrefix}/${relativePath}` : relativePath;
+    return okignoreIg.ignores(projectRelPath);
   }
 
   // Single-file mode skips the full-tree refcount walk: it walks the ENTIRE
@@ -901,11 +924,12 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       // inert anyway — this short-circuit is the sole admission gate.
       if (singleDocRelPath !== undefined) return relativePath !== singleDocRelPath;
 
-      // (B) Bypass mode admits everything else (.gitignore + .okignore +
-      // remaining BUILTIN_SKIP_DIRS skipped; extension + sibling-asset gates
-      // also skipped so non-md/non-asset files like `package.json` / `LICENSE`
-      // surface in the sidebar's Show All Files mode).
-      if (opts?.bypassFilters) return false;
+      // (B) Bypass mode admits everything else. The all-files sidebar keeps
+      // `.okignore` active while bypassing Git/build defaults; other bypass
+      // callers retain the original full-bypass behavior.
+      if (opts?.bypassFilters) {
+        return opts.respectOkignore === true && isOkIgnored(relativePath);
+      }
 
       // (1) Configurable path rules — BUILTIN_SKIP_DIRS + ignore patterns.
       if (isRejectedByConfigurableRules(relativePath)) return true;
@@ -962,12 +986,15 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       if (singleDocRelPath !== undefined) {
         return !isSingleDocAncestorDir(relativePath, singleDocRelPath);
       }
-      // Bypass then admits every OTHER directory (Show All Files still surfaces
-      // .gitignored content like `dist/` / `build/`). System-reserved doc names
-      // never appear as real disk directories, so there's no parallel STOP-rule
-      // gate here — the file-level `isReservedDocName` catches any leak at the
-      // file (Hocuspocus document) admission boundary.
-      if (opts?.bypassFilters) return false;
+      // Bypass then admits every OTHER directory. The all-files sidebar keeps
+      // `.okignore` active while still surfacing `.gitignored` content like
+      // `dist/` / `build/`.
+      if (opts?.bypassFilters) {
+        return (
+          opts.respectOkignore === true &&
+          (isOkIgnored(relativePath) || isOkIgnored(`${relativePath}/`))
+        );
+      }
       // Fast-path: built-in skips are always excluded regardless of ignore-file config.
       // Check ALL path segments, not just the top — handles nested `.ok/` (per-folder
       // metadata directories), nested `node_modules/`, nested `dist/`, etc.
@@ -1045,6 +1072,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       // Snapshot for rollback. dirCount is too large to snapshot — we re-walk
       // it from the rolled-back ig instance if rebuild fails partway.
       const prevIg = ig;
+      const prevOkignoreIg = okignoreIg;
       const prevRootPatterns = rootIgnorePatterns;
       const prevWatcherGlobs = watcherIgnoreGlobs;
       const prevPatternCount = lastPatternCount;
@@ -1099,6 +1127,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
           // closure are restored so subsequent isExcluded / isDirExcluded
           // calls behave as if the rebuild never happened.
           ig = prevIg;
+          okignoreIg = prevOkignoreIg;
           rootIgnorePatterns = prevRootPatterns;
           watcherIgnoreGlobs = prevWatcherGlobs;
           lastPatternCount = prevPatternCount;
@@ -1220,6 +1249,7 @@ function loadNestedIgnoreFiles(
   dir: string,
   projectDir: string,
   ig: Ignore,
+  okignoreIg: Ignore,
   bytesAcc: { value: number },
 ): number {
   let entries: import('node:fs').Dirent[];
@@ -1256,6 +1286,7 @@ function loadNestedIgnoreFiles(
         const patterns = parseIgnorePatterns(content);
         const prefixed = patterns.map((p) => prefixPattern(p, relToProject));
         ig.add(prefixed);
+        if (name === '.okignore') okignoreIg.add(prefixed);
         count++;
       } catch (err) {
         log.warn({ path: filePath, err }, `Failed to read nested ${name} at ${filePath}`);
@@ -1263,7 +1294,7 @@ function loadNestedIgnoreFiles(
     }
 
     // Recurse into subdirectory
-    count += loadNestedIgnoreFiles(dirPath, projectDir, ig, bytesAcc);
+    count += loadNestedIgnoreFiles(dirPath, projectDir, ig, okignoreIg, bytesAcc);
   }
 
   return count;
@@ -1284,6 +1315,7 @@ async function initContentDirStateAsync(
   relPath: string,
   projectDir: string,
   ig: Ignore,
+  okignoreIg: Ignore,
   contentRelPrefix: string,
   contentOutsideProject: boolean,
   dirCount: Map<string, number>,
@@ -1315,7 +1347,9 @@ async function initContentDirStateAsync(
           if (!existsSync(filePath)) continue;
           try {
             const patterns = parseIgnorePatterns(await readFileAsync(filePath, 'utf-8'));
-            ig.add(patterns.map((p) => prefixPattern(p, relToProject)));
+            const prefixed = patterns.map((p) => prefixPattern(p, relToProject));
+            ig.add(prefixed);
+            if (name === '.okignore') okignoreIg.add(prefixed);
           } catch (err) {
             log.warn({ path: filePath, err }, `Failed to read nested ${name} at ${filePath}`);
           }
@@ -1328,6 +1362,7 @@ async function initContentDirStateAsync(
         childRel,
         projectDir,
         ig,
+        okignoreIg,
         contentRelPrefix,
         contentOutsideProject,
         dirCount,
@@ -1359,6 +1394,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
 
   // Mutable bindings — swapped atomically by rebuildIgnorePatterns().
   let ig = ignore();
+  let okignoreIg = ignore();
   let watcherIgnoreGlobs: string[] = [];
 
   const dirCount = new Map<string, number>();
@@ -1375,6 +1411,12 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
     if (contentOutsideProject) return false;
     const projectRelPath = contentRelPrefix ? `${contentRelPrefix}/${relativePath}` : relativePath;
     return ig.ignores(projectRelPath);
+  }
+
+  function isOkIgnored(relativePath: string): boolean {
+    if (contentOutsideProject) return false;
+    const projectRelPath = contentRelPrefix ? `${contentRelPrefix}/${relativePath}` : relativePath;
+    return okignoreIg.ignores(projectRelPath);
   }
 
   // Mirror of the sync variant's STOP-rule + configurable-rules split.
@@ -1398,6 +1440,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
 
   async function buildAndSwapPatternState(): Promise<void> {
     const newIg = ignore();
+    const newOkignoreIg = ignore();
     newIg.add('.git');
     const newRootPatterns: string[] = [];
 
@@ -1409,6 +1452,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
         const patterns = parseIgnorePatterns(await readFileAsync(path, 'utf-8'));
         newRootPatterns.push(...patterns);
         newIg.add(patterns);
+        if (name === '.okignore') newOkignoreIg.add(patterns);
       } catch (err) {
         log.warn({ path, err }, `Failed to read ${name} at ${path}`);
       }
@@ -1420,7 +1464,9 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
         if (!existsSync(path)) continue;
         try {
           const patterns = parseIgnorePatterns(await readFileAsync(path, 'utf-8'));
-          newIg.add(patterns.map((p) => prefixPattern(p, contentRelPrefix)));
+          const prefixed = patterns.map((p) => prefixPattern(p, contentRelPrefix));
+          newIg.add(prefixed);
+          if (name === '.okignore') newOkignoreIg.add(prefixed);
         } catch (err) {
           log.warn({ path, err }, `Failed to read ${name} at ${path}`);
         }
@@ -1450,6 +1496,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
         '',
         projectDir,
         newIg,
+        newOkignoreIg,
         contentRelPrefix,
         contentOutsideProject,
         newDirCount,
@@ -1458,6 +1505,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
 
     // Atomic swap.
     ig = newIg;
+    okignoreIg = newOkignoreIg;
     watcherIgnoreGlobs = newRootPatterns.filter(
       (p) => p.length > 0 && !p.startsWith('!') && !p.startsWith('#') && !globBlocksSkillContent(p),
     );
@@ -1495,7 +1543,9 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       if (isAlwaysSkipFile(relativePath)) return true;
       // Single-file scope — admit ONLY the one target doc (see sync variant).
       if (singleDocRelPath !== undefined) return relativePath !== singleDocRelPath;
-      if (opts?.bypassFilters) return false;
+      if (opts?.bypassFilters) {
+        return opts.respectOkignore === true && isOkIgnored(relativePath);
+      }
       if (isRejectedByConfigurableRules(relativePath)) return true;
       if (isSupportedDocFile(relativePath)) return false;
       const ext = extname(relativePath).slice(1).toLowerCase();
@@ -1525,7 +1575,12 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       if (singleDocRelPath !== undefined) {
         return !isSingleDocAncestorDir(relativePath, singleDocRelPath);
       }
-      if (opts?.bypassFilters) return false;
+      if (opts?.bypassFilters) {
+        return (
+          opts.respectOkignore === true &&
+          (isOkIgnored(relativePath) || isOkIgnored(`${relativePath}/`))
+        );
+      }
       for (const segment of relativePath.split('/')) {
         if (BUILTIN_SKIP_DIRS.has(segment)) return true;
       }
@@ -1590,6 +1645,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
 
     async rebuildIgnorePatterns(): Promise<RebuildResult> {
       const prevIg = ig;
+      const prevOkignoreIg = okignoreIg;
       const prevWatcherGlobs = watcherIgnoreGlobs;
       const prevDirCount = new Map(dirCount);
       const startedAt = Date.now();
@@ -1625,6 +1681,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
           };
         } catch (err) {
           ig = prevIg;
+          okignoreIg = prevOkignoreIg;
           watcherIgnoreGlobs = prevWatcherGlobs;
           dirCount.clear();
           for (const [k, v] of prevDirCount) dirCount.set(k, v);

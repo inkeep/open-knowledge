@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { getCollector, recordMark, recordVital } from './collector';
 
 // Bun's test runner doesn't provide a DOM (env-override.test.ts shares

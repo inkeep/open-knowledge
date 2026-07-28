@@ -13,8 +13,10 @@ import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { Check, FileText, Folder, GitBranch, Hash, Loader2, Sparkles } from 'lucide-react';
 import {
   type Dispatch,
+  lazy,
   type KeyboardEvent as ReactKeyboardEvent,
   type SetStateAction,
+  Suspense,
   useDeferredValue,
   useEffect,
   useRef,
@@ -55,6 +57,7 @@ import {
   TAG_QUERY_PREFIX,
   type TagDocEntry,
 } from '@/components/command-palette-tag-search';
+import { FeedbackFormDialog } from '@/components/FeedbackFormDialog';
 import { FileEntryIcon } from '@/components/file-entry-icon';
 import { defaultInitialDir } from '@/components/file-tree-utils';
 import { NewItemDialog } from '@/components/NewItemDialog';
@@ -70,6 +73,7 @@ import {
   CommandList,
   CommandShortcut,
 } from '@/components/ui/command';
+import { Kbd } from '@/components/ui/kbd';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import type { TagSummaryEntry } from '@/editor/extensions/tag-suggestion';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
@@ -80,7 +84,11 @@ import { hashFromDocName } from '@/lib/doc-hash';
 import { runWithToast as runWithToastBase } from '@/lib/error-state';
 import { openExternalUrl as openExternalUrlViaHost } from '@/lib/external-link';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
-import { formatShortcut, matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
+import {
+  formatShortcut,
+  formatShortcutLabel,
+  matchesKeyboardShortcut,
+} from '@/lib/keyboard-shortcuts';
 import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 import { useWorkspace } from '@/lib/use-workspace';
@@ -90,6 +98,11 @@ import { refreshWorktrees } from '@/lib/worktree-store';
 import { buildHandoffInput, useHandoffDispatch } from './handoff/useHandoffDispatch';
 import { useInstalledAgents } from './handoff/useInstalledAgents';
 import { basenameOf } from './project-switcher-recents';
+import { RecentItemContextMenu, RecentRemoveButton } from './recent-remove-controls';
+
+// Lazy so the report-history list + its bridge wiring stay out of the main
+// chunk until the user opens the ⌘K "Bug report history" entry (desktop-only).
+const BugReportHistoryDialog = lazy(() => import('@/components/BugReportHistoryDialog'));
 
 const COMMAND_PALETTE_SEARCH_TIMEOUT_MS = 3000;
 // Re-poll cadence while the server reports the search index is still warming
@@ -238,7 +251,8 @@ function SearchHint({
     >
       {mode === 'name-only' ? (
         <Trans>
-          Search matches file names, paths, and folders. Open a file to search its body (⌘F).
+          Search matches file names, paths, and folders. Open a file to search its body{' '}
+          <Kbd aria-label={formatShortcutLabel('find')}>{formatShortcut('find')}</Kbd>.
         </Trans>
       ) : mode === 'truncated' ? (
         <Trans>
@@ -340,6 +354,11 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const [seedDialogOpen, setSeedDialogOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [reportBugOpen, setReportBugOpen] = useState(false);
+  const [reportBugHistoryOpen, setReportBugHistoryOpen] = useState(false);
+  // Defer mounting the (lazy) history dialog until it is first opened, so its
+  // chunk + the `bugReport.list()` fetch don't run on every palette open.
+  const [historyEverOpened, setHistoryEverOpened] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   // Tag-mode state. Loaded lazily on first `tag:` keystroke; cached for
   // the lifetime of the palette session (cleared on close in the open-
   // toggle effect). Loading flag drives the `tag-list` placeholder UI;
@@ -725,6 +744,18 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     }, fallback);
   };
 
+  // Remove a single recent (VS Code Open Recent per-row remove). Unlike
+  // `runAction`, this keeps the palette OPEN so the user can prune several in a
+  // row; the bridge call also clears the entry's session / window-bounds /
+  // last-opened keys, and we optimistically drop the row here.
+  const onRemoveRecent = (path: string) => {
+    if (!bridge) return;
+    void runWithToast(async () => {
+      await bridge.project.removeRecent(path);
+      setProjectRecents((cur) => cur.filter((r) => r.path !== path));
+    }, t`Failed to remove project.`);
+  };
+
   // Open a worktree from the palette. An existing
   // worktree opens its window directly; a branch without one is created on
   // demand, then opened — mirroring the ProjectSwitcher submenu. `refresh` after
@@ -872,6 +903,11 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     openSeedDialog: () => setSeedDialogOpen(true),
     openCreateProjectDialog: () => setCreateProjectOpen(true),
     openReportBugDialog: () => setReportBugOpen(true),
+    openBugReportHistory: () => {
+      setHistoryEverOpened(true);
+      setReportBugHistoryOpen(true);
+    },
+    openFeedbackDialog: () => setFeedbackOpen(true),
   };
   const visibleFixedCommands = inExclusiveMode
     ? []
@@ -1177,10 +1213,13 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                     data-testid="command-palette-semantic-submit"
                   >
                     {semanticView.submit.kind === 'retry' ? (
-                      <span className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                      <>
                         <Sparkles />
-                        <Trans>Couldn't reach the embeddings provider — press ↵ to retry</Trans>
-                      </span>
+                        <span className="min-w-0 flex-1 truncate text-amber-700 dark:text-amber-400">
+                          <Trans>Couldn't reach the embeddings provider — retry</Trans>
+                        </span>
+                        <CommandShortcut>↵</CommandShortcut>
+                      </>
                     ) : (
                       <>
                         <Sparkles />
@@ -1196,7 +1235,10 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
 
               {semanticView.notice === 'empty' ? (
                 <CommandEmpty data-testid="command-palette-semantic-empty">
-                  <Trans>Type a query, then press ↵ to search your pages by meaning.</Trans>
+                  <Trans>
+                    Type a query, then press <Kbd aria-label={t`Enter`}>↵</Kbd> to search your pages
+                    by meaning.
+                  </Trans>
                 </CommandEmpty>
               ) : null}
               {semanticView.notice === 'searching' ? (
@@ -1281,7 +1323,10 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
               ) : null}
               {tagsListStatus === 'error' ? (
                 <CommandEmpty>
-                  <Trans>Failed to load tags. Press Escape and re-open to retry.</Trans>
+                  <Trans>
+                    Failed to load tags. Press <Kbd aria-label={t`Escape`}>Esc</Kbd> and re-open to
+                    retry.
+                  </Trans>
                 </CommandEmpty>
               ) : null}
               {showTagListEmpty ? (
@@ -1317,7 +1362,10 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
               ) : null}
               {tagDocsStatus === 'error' ? (
                 <CommandEmpty>
-                  <Trans>Failed to load docs. Press Escape and re-open to retry.</Trans>
+                  <Trans>
+                    Failed to load docs. Press <Kbd aria-label={t`Escape`}>Esc</Kbd> and re-open to
+                    retry.
+                  </Trans>
                 </CommandEmpty>
               ) : null}
               {showTagDocsEmpty ? (
@@ -1462,43 +1510,50 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                   const worktreeOf =
                     isWorktree && row.mainRoot !== undefined ? basenameOf(row.mainRoot) : null;
                   return (
-                    <CommandItem
+                    <RecentItemContextMenu
                       key={row.path}
-                      value={`${row.name} ${row.path} recent project`}
-                      disabled={row.missing}
-                      onSelect={() =>
-                        runAction(
-                          () =>
-                            bridge.project.open({
-                              path: row.path,
-                              target: 'new-window',
-                              entryPoint: 'recents',
-                            }),
-                          t`Failed to open project.`,
-                        )
-                      }
-                      data-testid={`command-palette-recent-${row.path}`}
-                      className="items-start"
+                      path={row.path}
+                      onRemoveRecent={onRemoveRecent}
+                      testIdPrefix="command-palette-recent"
                     >
-                      <RowIcon className="mt-0.5" />
-                      <div className="flex min-w-0 flex-col gap-1">
-                        <span className="truncate font-medium">{row.name}</span>
-                        {worktreeOf !== null ? (
-                          <span className="truncate text-muted-foreground text-xs">
-                            <Trans>worktree of {worktreeOf}</Trans>
-                          </span>
-                        ) : null}
-                        <span className="truncate text-muted-foreground text-xs">
-                          {row.path}
-                          {row.missing ? (
-                            <>
-                              {'  '}
-                              <Trans>(missing)</Trans>
-                            </>
-                          ) : null}
-                        </span>
+                      <div className="group/recent relative flex items-center">
+                        <CommandItem
+                          value={`${row.name} ${row.path} recent project`}
+                          onSelect={() =>
+                            runAction(
+                              () =>
+                                bridge.project.open({
+                                  path: row.path,
+                                  target: 'new-window',
+                                  entryPoint: 'recents',
+                                }),
+                              t`Failed to open project.`,
+                            )
+                          }
+                          data-testid={`command-palette-recent-${row.path}`}
+                          className="flex-1 items-start pr-8"
+                        >
+                          <RowIcon className="mt-0.5" />
+                          <div className="flex min-w-0 flex-col gap-1">
+                            <span className="truncate font-medium">{row.name}</span>
+                            {worktreeOf !== null ? (
+                              <span className="truncate text-muted-foreground text-xs">
+                                <Trans>worktree of {worktreeOf}</Trans>
+                              </span>
+                            ) : null}
+                            <span className="truncate text-muted-foreground text-xs">
+                              {row.path}
+                            </span>
+                          </div>
+                        </CommandItem>
+                        <RecentRemoveButton
+                          path={row.path}
+                          name={row.name}
+                          onRemoveRecent={onRemoveRecent}
+                          testIdPrefix="command-palette-recent"
+                        />
                       </div>
-                    </CommandItem>
+                    </RecentItemContextMenu>
                   );
                 })}
             </CommandGroup>
@@ -1588,6 +1643,28 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
       {/* Desktop-only — the registry gates the launching "Report a bug" command
           on `bridge !== null`, so the dialog only mounts when the bridge exists. */}
       {bridge ? <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} /> : null}
+      {/* Desktop-only — the registry gates the launching "Bug report history"
+          command on the same bridge presence. Lazy + deferred until first
+          opened. The empty-state CTA hands off to the compose dialog. */}
+      {bridge && historyEverOpened ? (
+        <Suspense fallback={null}>
+          <BugReportHistoryDialog
+            open={reportBugHistoryOpen}
+            onOpenChange={setReportBugHistoryOpen}
+            onReportABug={() => {
+              setReportBugHistoryOpen(false);
+              setReportBugOpen(true);
+            }}
+          />
+        </Suspense>
+      ) : null}
+      {/* Host-agnostic — the feedback form POSTs to the hosted intake route, so
+          the "Send feedback" command (and this dialog) exist on web too. */}
+      <FeedbackFormDialog
+        open={feedbackOpen}
+        onOpenChange={setFeedbackOpen}
+        source="command_palette"
+      />
     </>
   );
 }

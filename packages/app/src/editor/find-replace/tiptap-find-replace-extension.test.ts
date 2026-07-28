@@ -1,7 +1,7 @@
-import { describe, expect, test } from 'bun:test';
 import { Schema } from '@tiptap/pm/model';
 import { EditorState } from '@tiptap/pm/state';
 import type { DecorationSet } from '@tiptap/pm/view';
+import { describe, expect, test } from 'vitest';
 import {
   createReplaceAllFindMatchesTransaction,
   findNextActiveIndexAfterReplacement,

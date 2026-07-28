@@ -5,7 +5,7 @@
  * module boundary so the assertions are independent of whether the OTel SDK
  * is enabled.
  */
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { EntryPoint } from '../shared/entry-point.ts';
 
 interface CapturedSpanCall {
@@ -15,7 +15,7 @@ interface CapturedSpanCall {
 
 const capturedCalls: CapturedSpanCall[] = [];
 
-mock.module('@inkeep/open-knowledge-server', () => ({
+vi.doMock('@inkeep/open-knowledge-server', () => ({
   withSpanSync: <T>(
     name: string,
     options: { attributes?: Record<string, unknown> } | undefined,

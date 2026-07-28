@@ -8,7 +8,7 @@
  * `_electron` smoke (terminal-window.e2e.ts); this is the gate-run rung.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 import { createTerminalManager, type PtyUtilityLike } from '../../src/main/terminal-manager.ts';
 import {
   getTerminalWindowContext,

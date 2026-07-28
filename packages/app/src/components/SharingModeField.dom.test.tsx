@@ -1,18 +1,20 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ReactNode, useState } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
-import { type SharingMode, SharingModeField } from './SharingModeField';
+import type { SharingMode } from './SharingModeField';
 
-mock.module('@lingui/core/macro', () => ({ ...actualLinguiMacro, msg: renderLinguiTemplate }));
+vi.doMock('@lingui/core/macro', () => ({ ...actualLinguiMacro, msg: renderLinguiTemplate }));
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
+
+const { SharingModeField } = await import('./SharingModeField');
 
 /** Controlled wrapper so clicks actually move the selection. */
 function Harness({

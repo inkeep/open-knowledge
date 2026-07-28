@@ -34,6 +34,8 @@ const DESCRIPTION = [
   '- `embedPatterns` — copy-ready ` ```html preview ` starters (chart, stat cards, custom SVG, interactive control) already wired to the theme tokens, so an embed tracks light/dark with no hand-picked colors.',
   '- `tokens` — the CSS custom properties injected into every preview iframe; reference them as `var(--chart-1)`, `var(--foreground)`, … inside an `html preview` embed. **Inside SVG, route theme tokens through `style="..."` rather than presentation attributes** — `<circle style="fill: var(--chart-1)">` works; `<circle fill="var(--chart-1)">` silently falls back to black in Safari / older Chromium because CSS `var()` is not a valid SVG `<paint>` value per the W3C spec.',
   '',
+  '**These delimiters are live syntax in ordinary prose, not just inside the constructs above:** `==highlight==`, `$inline math$` / `$$block math$$`, `%%comment%%` and `<!-- comment -->` (both hidden from readers), `~~strikethrough~~`. An accidental pair silently formats — or, for the comment forms, HIDES — the text between it. To keep a pair literal, either wrap it in an inline code span (`` `==x==` ``, `` `$5` ``), which always works and reads as code, or backslash-escape either delimiter (`\\==x\\==`, `\\$5`, `\\%\\%note\\%\\%`, `\\<!-- note -->`) to keep it as running prose. `~~` is the exception: escape both tildes (`\\~\\~x\\~\\~`), because a one-sided `\\~~x~~` renders right but gets rewritten to the two-sided form on save.',
+  '',
   'External resources load directly: the preview iframe has open network access, so an embed can load external stylesheets, `fetch` live data, or pull map tiles / remote images / web fonts over `https:`. The iframe is a sandboxed null-origin frame — an embed can reach the network but never the knowledge base, cookies, or auth.',
   '',
   'Pass `components: [ids]` to ALSO get the full JSX-form prop schema for specific canonicals (e.g. `palette({ components: ["Callout", "Tabs"] })`) — merged from the former `get_components`.',
@@ -161,7 +163,26 @@ const AUTHORING_FORMS: readonly AuthoringFormSeed[] = [
     description: 'LaTeX math, rendered with KaTeX.',
     authoring: 'markdown',
     example: 'Inline: $E = mc^2$\n\nBlock:\n\n$$\n\\int_0^1 x^2 \\, dx\n$$',
-    guidance: 'Write LaTeX in `$…$` (inline) or `$$…$$` (block) — OK auto-promotes it to Math.',
+    guidance:
+      'Write LaTeX in `$…$` (inline) or `$$…$$` (block) — OK auto-promotes it to Math. `$` is live in ordinary prose too, so a currency pair like `Cost $5$ each` parses as math; write `` `$5` `` or `\\$5` to keep a literal dollar sign.',
+  },
+  {
+    id: 'Highlight',
+    fallbackDisplayName: 'Highlight',
+    description: 'Marked / highlighted inline text.',
+    authoring: 'markdown',
+    example: 'The ==key phrase== stands out.',
+    guidance:
+      'Write `==text==` — OK auto-promotes it to a highlight. `==` is live anywhere in prose, so to show a literal pair use an inline code span (`` `==x==` ``) or escape either side (`\\==x\\==`).',
+  },
+  {
+    id: 'Comment',
+    fallbackDisplayName: 'Comment',
+    description: 'Author-only note, hidden from the rendered document.',
+    authoring: 'markdown',
+    example: '%%Not shown to readers.%%\n\n<!-- Also not shown to readers. -->',
+    guidance:
+      'Write `%%text%%` or `<!-- text -->` — both render hidden and are dropped from the clipboard. Because they are live in prose, an accidental pair HIDES the text between it; to show a literal pair use an inline code span (`` `%%x%%` ``) or escape either side (`\\%\\%x\\%\\%`).',
   },
   {
     id: 'wiki-embed',

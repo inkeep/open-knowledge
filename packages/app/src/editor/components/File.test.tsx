@@ -13,7 +13,7 @@
  *   - Empty / undefined input → `''` (renderer falls back to "Untitled file")
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { basenameFromUrl } from './File.tsx';
 
 describe('basenameFromUrl', () => {

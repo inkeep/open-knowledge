@@ -42,7 +42,7 @@ import {
   withFileLock,
 } from '@inkeep/open-knowledge-core/server';
 import type * as Y from 'yjs';
-import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './external-change.ts';
+import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 import { tracedAtomicFs, tracedMkdir } from './fs-traced.ts';
 import { getLogger } from './logger.ts';
 

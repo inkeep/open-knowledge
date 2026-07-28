@@ -9,7 +9,7 @@
  * detection) belong in a future integration test that spins up a bare git repo.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 // This suite runs in CI despite oven-sh/bun#11892 (Bun fails to kill/reap
 // spawned child processes on GitHub Actions runners; still open upstream).
@@ -21,16 +21,29 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 // narrow to a targeted skip of the specific live-git describe blocks —
 // do not restore a blanket process.env.CI gate.
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
+import { promisify } from 'node:util';
+import { LOCAL_DIR, type SyncMode, SyncStatusSchema } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { classifyGitError } from './error-classification.ts';
 import { listNames } from './git-paths.ts';
-import type { DetectGhFn } from './github-permissions.ts';
-import type { SyncState } from './sync-engine.ts';
-import { SyncEngine } from './sync-engine.ts';
+import type { DetectGhFn, ProbeTokenStore } from './github-permissions.ts';
+import { getLogger } from './logger.ts';
+import { classifyFastForwardRefusal, SyncEngine, type SyncState } from './sync-engine.ts';
+
+const execFileAsync = promisify(execFile);
 
 // ─── Minimal ContentFilter stub ───────────────────────────────────────────────
 
@@ -38,6 +51,32 @@ const stubContentFilter = {
   isExcluded: (_path: string) => false,
   isDirExcluded: (_path: string) => false,
 };
+
+// Capture the engine's structured pino telemetry so a test can assert the
+// bounded field shape of a log emitted by a real cycle. `getLogger` caches by
+// name, so the spy intercepts the same instance the module captured at import.
+interface CapturedLog {
+  data: Record<string, unknown>;
+  msg: string;
+}
+function captureSyncLogs(): { entries: CapturedLog[]; restore: () => void } {
+  const entries: CapturedLog[] = [];
+  const logger = getLogger('sync-engine');
+  const record =
+    (defaultMsg: string) =>
+    (data: unknown, msg?: string): void => {
+      entries.push({ data: (data ?? {}) as Record<string, unknown>, msg: msg ?? defaultMsg });
+    };
+  const infoSpy = vi.spyOn(logger, 'info').mockImplementation(record('') as never);
+  const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(record('') as never);
+  return {
+    entries,
+    restore: () => {
+      infoSpy.mockRestore();
+      warnSpy.mockRestore();
+    },
+  };
+}
 
 // ─── Temp dir fixtures ────────────────────────────────────────────────────────
 
@@ -59,12 +98,15 @@ afterEach(() => {
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
-function makeEngine(opts: { syncEnabled?: boolean; onStateChange?: (s: SyncState) => void } = {}) {
+function makeEngine(
+  opts: { syncEnabled?: boolean; mode?: SyncMode; onStateChange?: (s: SyncState) => void } = {},
+) {
   return new SyncEngine({
     projectDir,
     contentDir,
     contentFilter: stubContentFilter,
     syncEnabled: opts.syncEnabled,
+    mode: opts.mode,
     onStateChange: opts.onStateChange,
   });
 }
@@ -112,12 +154,17 @@ function fakeProbe(...sequence: Array<import('./github-permissions.ts').PushPerm
   return rec;
 }
 
-function makeProbeEngine(opts: { syncEnabled?: boolean; fakeProbe: FakeProbeRecorder['fn'] }) {
+function makeProbeEngine(opts: {
+  syncEnabled?: boolean;
+  mode?: SyncMode;
+  fakeProbe: FakeProbeRecorder['fn'];
+}) {
   return new SyncEngine({
     projectDir,
     contentDir,
     contentFilter: stubContentFilter,
     syncEnabled: opts.syncEnabled,
+    mode: opts.mode,
     checkPushPermissionFn: opts.fakeProbe,
   });
 }
@@ -625,6 +672,36 @@ describe('SyncEngine ConflictStore admission (content-only)', () => {
         };
         expect(parsed.conflicts ?? []).toEqual([]);
       }
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a commit failure after auto-resolving a non-content conflict reports error, not success', async () => {
+    await setupDivergence('modify');
+    // A failing pre-commit hook rejects the merge-completion `git commit --no-edit`
+    // after `.mcp.json` auto-resolves cleanly. simple-git does NOT throw on that
+    // non-zero exit, so the engine must confirm the merge actually completed
+    // (MERGE_HEAD cleared) rather than reporting a successful pull over a
+    // half-merged tree.
+    const hookPath = join(projectDir, '.git', 'hooks', 'pre-commit');
+    writeFileSync(hookPath, '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    chmodSync(hookPath, 0o755);
+
+    const engine = makeEngineForConflict();
+    try {
+      await engine.start();
+      const outcome = await engine.pullOnce();
+
+      // The commit was rejected and the merge aborted: the outcome must be the
+      // error class (not 'succeeded'), pullError must surface it, and no
+      // half-merged residue may remain.
+      expect(outcome).toBe('error');
+      const status = engine.getStatus();
+      expect(status.lastPullOutcome).toBe('error');
+      expect(status.pullError ?? '').not.toBe('');
+      expect(status.state).toBe('idle');
+      expect(existsSync(join(projectDir, '.git', 'MERGE_HEAD'))).toBe(false);
     } finally {
       await engine.destroy();
     }
@@ -1148,6 +1225,94 @@ describe('SyncEngine backoff thresholds via persisted state', () => {
   });
 });
 
+// ─── Auth-conditional pull cadence ──────────────────────────────────────────
+
+describe('SyncEngine pull-only cadence (auth-conditional)', () => {
+  // The scheduled pull delay carries ±15% jitter, so assert on the tier band
+  // (base 30s vs the anonymous 180s floor) rather than an exact value.
+  const AUTHENTICATED_BAND = { min: 30 * 0.85 * 1000, max: 30 * 1.15 * 1000 };
+  const ANONYMOUS_BAND = { min: 180 * 0.85 * 1000, max: 180 * 1.15 * 1000 };
+
+  type CadenceInternals = {
+    refreshAuthTier(): Promise<void>;
+    effectivePullDelayMs(): number;
+  };
+
+  function makeCadenceEngine(opts: {
+    mode: SyncMode;
+    detectGh?: DetectGhFn;
+    tokenStore?: ProbeTokenStore | null;
+  }) {
+    return new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      mode: opts.mode,
+      pullIntervalSeconds: 30,
+      pushIntervalSeconds: 99999,
+      detectGh: opts.detectGh,
+      tokenStore: opts.tokenStore,
+    });
+  }
+
+  /** Resolve the auth tier, then read the delay the engine would schedule. */
+  async function scheduledPullDelayMs(engine: SyncEngine): Promise<number> {
+    const internals = engine as unknown as CadenceInternals;
+    await internals.refreshAuthTier();
+    return internals.effectivePullDelayMs();
+  }
+
+  test('an anonymous follower schedules pulls at the gentle cadence', async () => {
+    const engine = makeCadenceEngine({ mode: 'follow' }); // no gh, no token store
+    const delayMs = await scheduledPullDelayMs(engine);
+    expect(delayMs).toBeGreaterThanOrEqual(ANONYMOUS_BAND.min);
+    expect(delayMs).toBeLessThanOrEqual(ANONYMOUS_BAND.max);
+  });
+
+  test('a gh-authenticated follower keeps the responsive cadence', async () => {
+    const engine = makeCadenceEngine({
+      mode: 'follow',
+      detectGh: () => ({ available: true, token: 'gh-token' }),
+    });
+    const delayMs = await scheduledPullDelayMs(engine);
+    expect(delayMs).toBeGreaterThanOrEqual(AUTHENTICATED_BAND.min);
+    expect(delayMs).toBeLessThanOrEqual(AUTHENTICATED_BAND.max);
+  });
+
+  test('a follower authenticated only through the token store keeps the responsive cadence', async () => {
+    const engine = makeCadenceEngine({
+      mode: 'follow',
+      tokenStore: { get: async () => ({ token: 'store-token' }) },
+    });
+    const delayMs = await scheduledPullDelayMs(engine);
+    expect(delayMs).toBeGreaterThanOrEqual(AUTHENTICATED_BAND.min);
+    expect(delayMs).toBeLessThanOrEqual(AUTHENTICATED_BAND.max);
+  });
+
+  test('a token-store read failure degrades to the gentle cadence', async () => {
+    const engine = makeCadenceEngine({
+      mode: 'follow',
+      tokenStore: {
+        get: async () => {
+          throw new Error('EACCES');
+        },
+      },
+    });
+    const delayMs = await scheduledPullDelayMs(engine);
+    expect(delayMs).toBeGreaterThanOrEqual(ANONYMOUS_BAND.min);
+    expect(delayMs).toBeLessThanOrEqual(ANONYMOUS_BAND.max);
+  });
+
+  test('full-sync cadence is untouched even with no credentials', async () => {
+    // A credential-less full-sync engine must still schedule at the base
+    // interval: the anonymous floor applies only to pull-only followers.
+    const engine = makeCadenceEngine({ mode: 'full' });
+    const delayMs = await scheduledPullDelayMs(engine);
+    expect(delayMs).toBeGreaterThanOrEqual(AUTHENTICATED_BAND.min);
+    expect(delayMs).toBeLessThanOrEqual(AUTHENTICATED_BAND.max);
+  });
+});
+
 // ─── Lifecycle edge cases ───────────────────────────────────────────────────
 
 describe('SyncEngine lifecycle edge cases', () => {
@@ -1597,6 +1762,39 @@ describe('SyncEngine push-permission probe', () => {
     expect(persisted).toBe(false);
   });
 
+  test('passes the origin transport through to the probe (ssh origin)', async () => {
+    await initGitWithOrigin('git@git.example.com:acme/kb.git');
+    const probe = fakeProbe({ kind: 'unknown', error: 'ssh-unverified' });
+    const engine = makeProbeEngine({ syncEnabled: false, fakeProbe: probe.fn });
+    await engine.start();
+    await waitForPushPermissionResolved(engine);
+    expect(probe.opts[0]).toMatchObject({
+      owner: 'acme',
+      repo: 'kb',
+      host: 'git.example.com',
+      transport: 'ssh',
+    });
+  });
+
+  test('ssh-unverified probe result does NOT pause the engine (self-hosted forge over SSH)', async () => {
+    // The regression behind the forge sync pause: an SSH-origin user with no
+    // gh/OK token used to land in denied/not-authenticated → pausedReason=
+    // 'no-push-permission' → disabled, with a GitHub Sign-in button that can
+    // never help. The abstaining probe result must leave sync running.
+    await initGitWithOrigin('git@git.example.com:acme/kb.git');
+    const probe = fakeProbe({ kind: 'unknown', error: 'ssh-unverified' });
+    const engine = makeProbeEngine({ syncEnabled: true, fakeProbe: probe.fn });
+    await engine.start();
+    await waitForPushPermissionResolved(engine);
+    const status = engine.getStatus();
+    expect(status.pushPermission).toEqual({
+      checkStatus: 'unknown',
+      unknownError: 'ssh-unverified',
+    });
+    expect(status.state).toBe('idle');
+    expect(status.pausedReason).not.toBe('no-push-permission');
+  });
+
   test('records `unknown` without changing state', async () => {
     await initGitWithOrigin();
     const probe = fakeProbe({ kind: 'unknown', error: 'network' });
@@ -1987,5 +2185,1765 @@ describe('SyncEngine gh-token credential relay', () => {
     );
     internal.gitHandle();
     expect(detect.calls()).toBe(2);
+  });
+});
+
+// ─── Sync mode representation ─────────────────────────────────────────────────
+
+describe('SyncEngine sync mode', () => {
+  test('constructing with a mode reports it in status', () => {
+    expect(makeEngine({ mode: 'follow' }).getStatus().syncMode).toBe('follow');
+    expect(makeEngine({ mode: 'full' }).getStatus().syncMode).toBe('full');
+    expect(makeEngine({ mode: 'off' }).getStatus().syncMode).toBe('off');
+  });
+
+  test('syncEnabled is true for pull and full, false for off', () => {
+    // syncEnabled is the "is sync on at all" boolean; both directional modes are
+    // "on". Consumers that must branch on push capability read syncMode instead.
+    expect(makeEngine({ mode: 'follow' }).getStatus().syncEnabled).toBe(true);
+    expect(makeEngine({ mode: 'full' }).getStatus().syncEnabled).toBe(true);
+    expect(makeEngine({ mode: 'off' }).getStatus().syncEnabled).toBe(false);
+  });
+
+  test('legacy syncEnabled option maps to a mode (true→full, else off)', () => {
+    expect(makeEngine({ syncEnabled: true }).getStatus().syncMode).toBe('full');
+    expect(makeEngine({ syncEnabled: false }).getStatus().syncMode).toBe('off');
+    expect(makeEngine({}).getStatus().syncMode).toBe('off');
+  });
+
+  test('setEnabled adapter maps to a mode (true→full, false→off)', async () => {
+    const engine = makeEngine({ mode: 'off' });
+    try {
+      await engine.setEnabled(true);
+      expect(engine.getStatus().syncMode).toBe('full');
+      await engine.setEnabled(false);
+      expect(engine.getStatus().syncMode).toBe('off');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('setMode records the new mode', async () => {
+    const engine = makeEngine({ mode: 'off' });
+    try {
+      await engine.setMode('follow');
+      expect(engine.getStatus().syncMode).toBe('follow');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('setMode is a no-op on a same-value call', async () => {
+    const states: SyncState[] = [];
+    const engine = makeEngine({ mode: 'off', onStateChange: (s) => states.push(s) });
+    try {
+      await engine.setMode('off');
+      expect(states).toEqual([]);
+      expect(engine.getStatus().syncMode).toBe('off');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('getStatus() output conforms to the wire schema and carries syncMode', () => {
+    // getStatus() is exactly what the /api/sync/status handler serializes
+    // (successResponse validates it against SyncStatusSchema), so parsing it
+    // against that schema pins the server-output ↔ wire-contract seam.
+    const parsed = SyncStatusSchema.safeParse(makeEngine({ mode: 'follow' }).getStatus());
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.syncMode).toBe('follow');
+  });
+});
+
+// ─── Pull-only mode ───────────────────────────────────────────────────────────
+//
+// A pull-only project fetches and fast-forwards but is never pushed for. These
+// tests use real bare-origin + clone fixtures so the fetch/FF path runs for
+// real, and pin the two push-side guarantees: (1) the push cycle never runs, so
+// protected-branch — a push-only pause — is unreachable; (2) a denied push probe
+// does not park the engine (pull-only expects to lack push).
+//
+// Under pull-only the legacy dirty-tree merge path does not run: the FF-only B1
+// cycle below replaces it, never committing or stashing on the user's behalf, so
+// the dirty-merge that produces the self-heal pause cannot arise for this mode.
+
+describe('SyncEngine pull-only mode', () => {
+  async function seedBareOrigin(): Promise<string> {
+    const bareDir = join(tmpDir, 'bare.git');
+    mkdirSync(bareDir, { recursive: true });
+    await simpleGit(bareDir).init(true);
+    await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+    return bareDir;
+  }
+
+  test('pull cycle fast-forwards the clone to origin tip and updates the working tree', async () => {
+    const bareDir = await seedBareOrigin();
+
+    // A sister seeds origin, the project clones it, then the sister advances
+    // origin by one commit — leaving the project one commit behind.
+    const sisterDir = join(tmpDir, 'sister');
+    mkdirSync(sisterDir, { recursive: true });
+    const sister = simpleGit(sisterDir);
+    await sister.init(['--initial-branch=main']);
+    await sister.raw('config', 'user.name', 'Sister');
+    await sister.raw('config', 'user.email', 'sister@test.com');
+    writeFileSync(join(sisterDir, 'doc.md'), 'v1\n', 'utf-8');
+    await sister.add('.');
+    await sister.commit('seed');
+    await sister.addRemote('origin', bareDir);
+    await sister.push('origin', 'main');
+
+    rmSync(projectDir, { recursive: true, force: true });
+    await simpleGit(tmpDir).clone(bareDir, projectDir);
+    mkdirSync(okDir, { recursive: true });
+
+    writeFileSync(join(sisterDir, 'doc.md'), 'v1\nv2\n', 'utf-8');
+    await sister.add('.');
+    await sister.commit('advance');
+    await sister.push('origin', 'main');
+    const originTip = (await sister.revparse(['HEAD'])).trim();
+
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      mode: 'follow',
+    });
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      expect(readFileSync(join(projectDir, 'doc.md'), 'utf-8')).toBe('v1\nv2\n');
+      // A fast-forward creates no commit and leaves no merge in progress.
+      expect(existsSync(join(projectDir, '.git', 'MERGE_HEAD'))).toBe(false);
+      expect(engine.getStatus().state).toBe('idle');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('never pushes local commits (push cycle is gated off)', async () => {
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@test.com');
+    writeFileSync(join(projectDir, 'README.md'), '# seed\n');
+    await git.add('.');
+    await git.commit('seed');
+
+    const bareDir = await seedBareOrigin();
+    await git.addRemote('origin', bareDir);
+    await git.push(['--set-upstream', 'origin', 'main']);
+    const originBefore = (await git.revparse(['origin/main'])).trim();
+
+    // A local commit the project has not pushed. Full sync would push it; a
+    // pull-only project must leave it local.
+    writeFileSync(join(projectDir, 'README.md'), '# seed\n\nlocal edit\n');
+    await git.add('.');
+    await git.commit('local commit not pushed');
+    expect((await git.revparse(['HEAD'])).trim()).not.toBe(originBefore);
+
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      mode: 'follow',
+    });
+    try {
+      await engine.start();
+      // Both a direct push trigger and a full sync (push-then-pull) must leave
+      // origin untouched — the push gate makes the push cycle a no-op.
+      await engine.trigger('push');
+      await engine.trigger('sync');
+
+      expect((await git.revparse(['origin/main'])).trim()).toBe(originBefore);
+      const status = engine.getStatus();
+      expect(status.lastPushedSha).toBeNull();
+      // protected-branch is a push-rejection pause; with the push cycle gated
+      // off it can never be classified, so it is structurally unreachable here.
+      expect(status.pausedReason).not.toBe('protected-branch');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a denied push probe keeps the engine pulling (no pause)', async () => {
+    await initGitWithOrigin();
+    const probe = fakeProbe({ kind: 'denied', reason: 'no-collaborator' });
+    const engine = makeProbeEngine({ mode: 'follow', fakeProbe: probe.fn });
+    try {
+      await engine.start();
+      await waitForPushPermissionResolved(engine);
+      const status = engine.getStatus();
+      expect(status.pushPermission).toEqual({
+        checkStatus: 'denied',
+        deniedReason: 'no-collaborator',
+      });
+      // Pull-only expects to lack push — denial is its normal condition, so the
+      // engine stays idle and keeps its scheduled pulls rather than parking.
+      expect(status.state).not.toBe('disabled');
+      expect(status.pausedReason).not.toBe('no-push-permission');
+      expect(status.syncMode).toBe('follow');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a denied push probe still pauses a full-sync engine (unchanged behavior)', async () => {
+    await initGitWithOrigin();
+    const probe = fakeProbe({ kind: 'denied', reason: 'no-collaborator' });
+    const engine = makeProbeEngine({ mode: 'full', fakeProbe: probe.fn });
+    try {
+      await engine.start();
+      await waitForPushPermissionResolved(engine);
+      const status = engine.getStatus();
+      expect(status.state).toBe('disabled');
+      expect(status.pausedReason).toBe('no-push-permission');
+    } finally {
+      await engine.destroy();
+    }
+  });
+});
+
+// ─── Pull-only B1 fast-forward cycle ───────────────────────────────────────────
+//
+// The B1 cycle fast-forwards a pull-only clone to origin's tip while any
+// uncommitted local edits ride along as a working-tree overlay, and it never
+// commits, merges, stashes, or leaves a MERGE_HEAD. These tests drive the real
+// git fetch/FF path against bare-origin + clone fixtures and pin the overlay
+// matrix from the spike: non-overlap rides through, byte-identical converges,
+// same-file overlap keeps-mine on the new tip, and — the asymmetric git guard —
+// a locally-deleted file the tip modifies is NOT resurrected.
+
+describe('SyncEngine pull-only B1 fast-forward cycle', () => {
+  async function seedBareOrigin(): Promise<string> {
+    const bareDir = join(tmpDir, 'bare.git');
+    mkdirSync(bareDir, { recursive: true });
+    await simpleGit(bareDir).init(true);
+    await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+    return bareDir;
+  }
+
+  /**
+   * Seed origin from a sister clone, clone it into `projectDir`, then advance
+   * origin — leaving the project one commit behind. `advance` values: a string
+   * rewrites the file, `null` deletes it on origin. Returns origin's tip SHA and
+   * the sister handle (so a caller can advance origin further).
+   */
+  async function cloneBehindOrigin(opts: {
+    seed: Record<string, string>;
+    advance: Record<string, string | null>;
+  }): Promise<{ originTip: string; bareDir: string }> {
+    const bareDir = await seedBareOrigin();
+    const sisterDir = join(tmpDir, 'sister');
+    mkdirSync(sisterDir, { recursive: true });
+    const sister = simpleGit(sisterDir);
+    await sister.init(['--initial-branch=main']);
+    await sister.raw('config', 'user.name', 'Sister');
+    await sister.raw('config', 'user.email', 'sister@test.com');
+    for (const [f, c] of Object.entries(opts.seed)) writeFileSync(join(sisterDir, f), c, 'utf-8');
+    await sister.add('.');
+    await sister.commit('seed');
+    await sister.addRemote('origin', bareDir);
+    await sister.push('origin', 'main');
+
+    rmSync(projectDir, { recursive: true, force: true });
+    await simpleGit(tmpDir).clone(bareDir, projectDir);
+    mkdirSync(okDir, { recursive: true });
+
+    for (const [f, c] of Object.entries(opts.advance)) {
+      if (c === null) rmSync(join(sisterDir, f), { force: true });
+      else writeFileSync(join(sisterDir, f), c, 'utf-8');
+    }
+    await sister.raw(['add', '-A']);
+    await sister.commit('advance');
+    await sister.push('origin', 'main');
+    return { originTip: (await sister.revparse(['HEAD'])).trim(), bareDir };
+  }
+
+  function makePullEngine(
+    opts: {
+      onContentConflictsResolved?: (files: string[]) => void | Promise<void>;
+      onContentConflictsDetected?: (files: string[]) => void | Promise<void>;
+    } = {},
+  ) {
+    return new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      mode: 'follow',
+      onContentConflictsResolved: opts.onContentConflictsResolved,
+      onContentConflictsDetected: opts.onContentConflictsDetected,
+    });
+  }
+
+  /** No commit, no merge in progress, no stash — the B1 no-side-effect contract. */
+  async function assertNoGitResidue(): Promise<void> {
+    expect(existsSync(join(projectDir, '.git', 'MERGE_HEAD'))).toBe(false);
+    const stashList = await simpleGit(projectDir).raw(['stash', 'list']);
+    expect(stashList.trim()).toBe('');
+  }
+
+  test('non-overlapping local edit survives the fast-forward', async () => {
+    // Local uncommitted edit to a.md; origin advances b.md. The FF brings b.md
+    // and leaves a.md's overlay untouched.
+    const { originTip } = await cloneBehindOrigin({
+      seed: { 'a.md': 'A1\n', 'b.md': 'B1\n' },
+      advance: { 'b.md': 'B1\nB2\n' },
+    });
+    writeFileSync(join(projectDir, 'a.md'), 'A1\nLOCAL\n', 'utf-8');
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      expect(readFileSync(join(projectDir, 'b.md'), 'utf-8')).toBe('B1\nB2\n');
+      expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('A1\nLOCAL\n');
+      // git status shows only the overlay file dirty.
+      expect(await listNames(project, ['diff-index', '--name-only', 'HEAD'])).toEqual(['a.md']);
+      await assertNoGitResidue();
+      expect(engine.getStatus().state).toBe('idle');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a byte-identical overlay converges silently', async () => {
+    // The local edit equals origin's incoming bytes. git's FF guard would refuse
+    // (it compares worktree-vs-HEAD, not vs the tip), so the cycle must restore
+    // and let the FF re-materialise the identical bytes — leaving a clean tree.
+    const { originTip } = await cloneBehindOrigin({
+      seed: { 'a.md': 'v1\n' },
+      advance: { 'a.md': 'v1\nv2\n' },
+    });
+    writeFileSync(join(projectDir, 'a.md'), 'v1\nv2\n', 'utf-8');
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('v1\nv2\n');
+      // Converged: the file matches the new tip, so the tree is clean.
+      expect(await listNames(project, ['diff-index', '--name-only', 'HEAD'])).toEqual([]);
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a locally-deleted content file the tip modifies is restored from origin', async () => {
+    // Pull-only follows upstream: a locally-deleted content doc the tip modified
+    // yields to the remote's change and is restored at origin's version (nothing
+    // authored is lost — the local side was a deletion). Not conflicted, not gone.
+    const { originTip } = await cloneBehindOrigin({
+      seed: { 'a.md': 'C1\n', 'keep.md': 'K1\n' },
+      advance: { 'a.md': 'C1\nC2\n', 'keep.md': 'K1\nK2\n' },
+    });
+    rmSync(join(projectDir, 'a.md'), { force: true });
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      // Restored at origin's version — the deletion yielded to upstream.
+      expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('C1\nC2\n');
+      // The non-overlapping origin change still landed.
+      expect(readFileSync(join(projectDir, 'keep.md'), 'utf-8')).toBe('K1\nK2\n');
+      expect(engine.getConflicts()).toEqual([]);
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a locally-deleted NON-content file the tip modifies stays deleted', async () => {
+    // The follow-upstream restore is scoped to content docs. A non-content file
+    // (config/asset) deleted locally keeps its deletion even when origin edits it.
+    const { originTip } = await cloneBehindOrigin({
+      seed: { 'cfg.json': '{"a":1}\n', 'keep.md': 'K1\n' },
+      advance: { 'cfg.json': '{"a":2}\n', 'keep.md': 'K1\nK2\n' },
+    });
+    rmSync(join(projectDir, 'cfg.json'), { force: true });
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      // Deletion preserved for the non-content file; the .md change still landed.
+      expect(existsSync(join(projectDir, 'cfg.json'))).toBe(false);
+      expect(readFileSync(join(projectDir, 'keep.md'), 'utf-8')).toBe('K1\nK2\n');
+      expect(engine.getConflicts()).toEqual([]);
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('same-file overlap keeps the local edit while the branch reaches origin tip', async () => {
+    // Local and origin both rewrite a.md's first line (a genuine overlap); origin
+    // also advances b.md (non-overlapping). The branch fast-forwards to the tip,
+    // b.md updates, and a.md keeps the local overlay — with no commit created.
+    const { originTip } = await cloneBehindOrigin({
+      seed: { 'a.md': 'line1\nline2\n', 'b.md': 'B1\n' },
+      advance: { 'a.md': 'ORIGIN1\nline2\n', 'b.md': 'B1\nB2\n' },
+    });
+    writeFileSync(join(projectDir, 'a.md'), 'LOCAL1\nline2\n', 'utf-8');
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      expect(readFileSync(join(projectDir, 'b.md'), 'utf-8')).toBe('B1\nB2\n');
+      // keep-mine: the local overlay rides on the advanced tip.
+      expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('LOCAL1\nline2\n');
+      expect(await listNames(project, ['diff-index', '--name-only', 'HEAD'])).toEqual(['a.md']);
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('checkpoints the overlay before the reset, capturing the pre-reset bytes', async () => {
+    // Same-file overlap: the cycle resets a.md to HEAD before the FF, then
+    // re-writes the overlay. The checkpoint must fire BEFORE the reset, while the
+    // local bytes are still on disk, so a crash in the reset->rewrite window
+    // leaves them recoverable on the shadow timeline.
+    const { originTip } = await cloneBehindOrigin({
+      seed: { 'a.md': 'line1\nline2\n' },
+      advance: { 'a.md': 'ORIGIN1\nline2\n' },
+    });
+    writeFileSync(join(projectDir, 'a.md'), 'LOCAL1\nline2\n', 'utf-8');
+
+    const seen: Array<{ paths: number; bytesAtCheckpoint: string }> = [];
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      mode: 'follow',
+      checkpointBeforeOverlayRestore: ({ paths }) => {
+        seen.push({ paths, bytesAtCheckpoint: readFileSync(join(projectDir, 'a.md'), 'utf-8') });
+      },
+    });
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0]?.paths).toBe(1);
+      // Ordering proof: the overlay was still on disk when the checkpoint ran.
+      expect(seen[0]?.bytesAtCheckpoint).toBe('LOCAL1\nline2\n');
+      // The cycle still completed normally.
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('LOCAL1\nline2\n');
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('does not checkpoint when the pull has no overlapping edit', async () => {
+    // Non-overlapping overlay (local a.md, origin advances b.md): no reset, no
+    // crash window, so no checkpoint is owed.
+    const { originTip } = await cloneBehindOrigin({
+      seed: { 'a.md': 'A1\n', 'b.md': 'B1\n' },
+      advance: { 'b.md': 'B1\nB2\n' },
+    });
+    writeFileSync(join(projectDir, 'a.md'), 'A1\nLOCAL\n', 'utf-8');
+
+    let calls = 0;
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      mode: 'follow',
+      checkpointBeforeOverlayRestore: () => {
+        calls += 1;
+      },
+    });
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      expect(calls).toBe(0);
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a failing overlay checkpoint does not abort the cycle', async () => {
+    // The checkpoint is a best-effort safety net: a failure forfeits only the
+    // crash-window recovery, so the pull must still fast-forward and keep-mine.
+    const { originTip } = await cloneBehindOrigin({
+      seed: { 'a.md': 'line1\nline2\n' },
+      advance: { 'a.md': 'ORIGIN1\nline2\n' },
+    });
+    writeFileSync(join(projectDir, 'a.md'), 'LOCAL1\nline2\n', 'utf-8');
+
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      mode: 'follow',
+      checkpointBeforeOverlayRestore: () => {
+        throw new Error('shadow unavailable');
+      },
+    });
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('LOCAL1\nline2\n');
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('refuses to write an overlay through a symlink escaping the repo, and surfaces the failure', async () => {
+    // A git remote is untrusted: it can turn a tracked content file the follower
+    // also edited into a symlink pointing outside the working tree. After the FF
+    // materialises the link, re-applying the overlay must refuse (realpath
+    // escape) rather than following it out of the repo — and must surface an
+    // error, not report a clean pull.
+    const bareDir = await seedBareOrigin();
+    const sisterDir = join(tmpDir, 'sister');
+    mkdirSync(sisterDir, { recursive: true });
+    const sister = simpleGit(sisterDir);
+    await sister.init(['--initial-branch=main']);
+    await sister.raw('config', 'user.name', 'Sister');
+    await sister.raw('config', 'user.email', 'sister@test.com');
+    writeFileSync(join(sisterDir, 'a.md'), 'A1\n', 'utf-8');
+    await sister.add('.');
+    await sister.commit('seed');
+    await sister.addRemote('origin', bareDir);
+    await sister.push('origin', 'main');
+
+    rmSync(projectDir, { recursive: true, force: true });
+    await simpleGit(tmpDir).clone(bareDir, projectDir);
+    mkdirSync(okDir, { recursive: true });
+
+    // Follower edits a.md locally — the overlay the cycle will try to re-apply.
+    writeFileSync(join(projectDir, 'a.md'), 'A1\nLOCAL\n', 'utf-8');
+
+    // Origin replaces a.md with a symlink to a file OUTSIDE the repo.
+    const escapeTarget = join(tmpDir, 'escape-target.txt');
+    writeFileSync(escapeTarget, 'PRECIOUS\n', 'utf-8');
+    rmSync(join(sisterDir, 'a.md'), { force: true });
+    symlinkSync(escapeTarget, join(sisterDir, 'a.md'));
+    await sister.raw(['add', '-A']);
+    await sister.commit('a.md -> escape');
+    await sister.push('origin', 'main');
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      // Containment: the out-of-repo file was NOT overwritten with the overlay.
+      expect(readFileSync(escapeTarget, 'utf-8')).toBe('PRECIOUS\n');
+      // Surfaced as an error outcome — not a clean 'succeeded'/'conflict' idle.
+      expect(engine.getStatus().lastPullOutcome).toBe('error');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('diverged local history pauses instead of merging', async () => {
+    // A local commit ahead of origin cannot fast-forward. Pull-only refuses to
+    // merge/commit it — the branch stays put and a bounded paused reason surfaces.
+    const { bareDir } = await cloneBehindOrigin({
+      seed: { 'a.md': 'v1\n' },
+      advance: { 'a.md': 'v1\nORIGIN\n' },
+    });
+    const project = simpleGit(projectDir);
+    await project.raw('config', 'user.name', 'Follower');
+    await project.raw('config', 'user.email', 'follower@test.com');
+    writeFileSync(join(projectDir, 'a.md'), 'v1\nLOCAL COMMIT\n', 'utf-8');
+    await project.add('.');
+    await project.commit('local commit ahead');
+    const localTip = (await project.revparse(['HEAD'])).trim();
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      // Branch unchanged (not fast-forwarded onto origin), no merge commit made.
+      expect((await project.revparse(['HEAD'])).trim()).toBe(localTip);
+      expect(engine.getStatus().pausedReason).toBe('diverged-local-commits');
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+    expect(bareDir).toContain('bare.git'); // fixture sanity
+  });
+
+  test('different-line edits to the same file auto-combine with no conflict', async () => {
+    // Local edits the first line; origin edits the third line. diff3 combines
+    // them into one overlay with no prompt.
+    const { originTip } = await cloneBehindOrigin({
+      seed: { 'a.md': 'L1\nL2\nL3\n' },
+      advance: { 'a.md': 'L1\nL2\nORIGIN3\n' },
+    });
+    writeFileSync(join(projectDir, 'a.md'), 'LOCAL1\nL2\nL3\n', 'utf-8');
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      // Both edits present in the combined overlay.
+      expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('LOCAL1\nL2\nORIGIN3\n');
+      expect(engine.getConflicts()).toEqual([]);
+      expect(engine.getStatus().state).toBe('idle');
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('same-line collision raises a pinned working-tree conflict and never forks', async () => {
+    const { originTip } = await cloneBehindOrigin({
+      seed: { 'a.md': 'line1\nline2\n' },
+      advance: { 'a.md': 'ORIGIN1\nline2\n' },
+    });
+    writeFileSync(join(projectDir, 'a.md'), 'LOCAL1\nline2\n', 'utf-8');
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      const project = simpleGit(projectDir);
+      // Branch reached origin tip; local overlay kept on disk; no commit.
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('LOCAL1\nline2\n');
+      await assertNoGitResidue();
+
+      const conflicts = engine.getConflicts();
+      expect(conflicts).toHaveLength(1);
+      expect(conflicts[0]?.file).toBe('a.md');
+      expect(conflicts[0]?.variant).toBe('working-tree');
+      expect(conflicts[0]?.theirsSha).toMatch(/^[0-9a-f]{40}$/);
+      expect(conflicts[0]?.baseSha).toMatch(/^[0-9a-f]{40}$/);
+      // The engine stays idle, not paused, so the rest of the repo keeps pulling.
+      expect(engine.getStatus().state).toBe('idle');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a non-content overlap keeps the local edit without raising a conflict', async () => {
+    // A `.json` config is not an OK content doc, so a same-line overlap keeps the
+    // local edit verbatim (never line-merged) and is never surfaced as a conflict
+    // the user has no editor to resolve.
+    const { originTip } = await cloneBehindOrigin({
+      seed: { 'config.json': '{"a":1}\n' },
+      advance: { 'config.json': '{"a":2}\n' },
+    });
+    writeFileSync(join(projectDir, 'config.json'), '{"a":3}\n', 'utf-8');
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      expect(readFileSync(join(projectDir, 'config.json'), 'utf-8')).toBe('{"a":3}\n');
+      expect(engine.getConflicts()).toEqual([]);
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a locally-deleted content file the tip modifies is restored, not conflicted', async () => {
+    const { originTip } = await cloneBehindOrigin({
+      seed: { 'a.md': 'C1\n' },
+      advance: { 'a.md': 'C1\nC2\n' },
+    });
+    rmSync(join(projectDir, 'a.md'), { force: true });
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      // Pull-only accepts the remote's change: the file is restored at origin's
+      // version with no conflict raised.
+      expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('C1\nC2\n');
+      expect(engine.getConflicts()).toEqual([]);
+      expect(engine.getStatus().state).toBe('idle');
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  /** Advance origin again from the sister clone; returns the new tip SHA. */
+  async function advanceOriginFrom(files: Record<string, string | null>): Promise<string> {
+    const sisterDir = join(tmpDir, 'sister');
+    const sister = simpleGit(sisterDir);
+    for (const [f, c] of Object.entries(files)) {
+      if (c === null) rmSync(join(sisterDir, f), { force: true });
+      else writeFileSync(join(sisterDir, f), c, 'utf-8');
+    }
+    await sister.raw(['add', '-A']);
+    await sister.commit('advance again');
+    await sister.push('origin', 'main');
+    return (await sister.revparse(['HEAD'])).trim();
+  }
+
+  test('an unresolved collision re-pins theirs to the latest tip on each pull', async () => {
+    await cloneBehindOrigin({
+      seed: { 'a.md': 'line1\nline2\n' },
+      advance: { 'a.md': 'ORIGIN1\nline2\n' },
+    });
+    writeFileSync(join(projectDir, 'a.md'), 'LOCAL1\nline2\n', 'utf-8');
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+      const firstPin = engine.getConflicts()[0]?.theirsSha;
+      expect(firstPin).toMatch(/^[0-9a-f]{40}$/);
+
+      // Origin re-edits the same conflicting line; the collision persists.
+      const tip2 = await advanceOriginFrom({ 'a.md': 'ORIGIN1b\nline2\n' });
+      await engine.trigger('pull');
+
+      const conflicts = engine.getConflicts();
+      expect(conflicts).toHaveLength(1);
+      // theirs re-pinned to the new tip's blob (resolver never shows stale content).
+      expect(conflicts[0]?.theirsSha).not.toBe(firstPin);
+      expect((await simpleGit(projectDir).revparse(['HEAD'])).trim()).toBe(tip2);
+      expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('LOCAL1\nline2\n');
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a collision auto-dissolves when upstream converges to the local overlay', async () => {
+    await cloneBehindOrigin({
+      seed: { 'a.md': 'line1\nline2\n' },
+      advance: { 'a.md': 'ORIGIN1\nline2\n' },
+    });
+    writeFileSync(join(projectDir, 'a.md'), 'LOCAL1\nline2\n', 'utf-8');
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+      expect(engine.getConflicts()).toHaveLength(1);
+
+      // Upstream moves to match the local overlay — the collision disappears.
+      const tip2 = await advanceOriginFrom({ 'a.md': 'LOCAL1\nline2\n' });
+      await engine.trigger('pull');
+
+      expect(engine.getConflicts()).toEqual([]);
+      expect((await simpleGit(projectDir).revparse(['HEAD'])).trim()).toBe(tip2);
+      // Converged: file matches the tip, tree clean.
+      expect(await listNames(simpleGit(projectDir), ['diff-index', '--name-only', 'HEAD'])).toEqual(
+        [],
+      );
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('notifies the resolved callback when a collision auto-dissolves', async () => {
+    // onContentConflictsResolved is what clears an open document's conflict
+    // lifecycle marker; a dropped or mis-pathed call leaves the conflict badge
+    // stuck. Mirror of the auto-dissolve test, asserting the callback fires.
+    await cloneBehindOrigin({
+      seed: { 'a.md': 'line1\nline2\n' },
+      advance: { 'a.md': 'ORIGIN1\nline2\n' },
+    });
+    writeFileSync(join(projectDir, 'a.md'), 'LOCAL1\nline2\n', 'utf-8');
+
+    const resolved: string[][] = [];
+    const engine = makePullEngine({
+      onContentConflictsResolved: (files) => {
+        resolved.push([...files]);
+      },
+    });
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+      expect(engine.getConflicts()).toHaveLength(1);
+
+      // Upstream moves to match the local overlay — the collision dissolves.
+      await advanceOriginFrom({ 'a.md': 'LOCAL1\nline2\n' });
+      await engine.trigger('pull');
+
+      expect(engine.getConflicts()).toEqual([]);
+      expect(resolved).toEqual([['a.md']]);
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a fast-forward refusal restores the overlay bytes (mineRestore guard)', async () => {
+    // The overlapping paths are reset to HEAD before the fast-forward; if the FF
+    // then refuses (a divergence the ahead-check missed), mineRestore must put
+    // the user's uncommitted bytes back rather than leave HEAD's version on disk.
+    await cloneBehindOrigin({
+      seed: { 'a.md': 'line1\nline2\n' },
+      advance: { 'a.md': 'ORIGIN1\nline2\n' },
+    });
+    writeFileSync(join(projectDir, 'a.md'), 'LOCAL1\nline2\n', 'utf-8');
+    const headBefore = (await simpleGit(projectDir).revparse(['HEAD'])).trim();
+
+    const engine = makePullEngine();
+    // Force the FF to refuse after the overlay was reset to HEAD — the TOCTOU
+    // path where ahead === 0 at plan time but the FF still can't advance.
+    const ffSpy = vi
+      .spyOn(engine as unknown as { fastForwardOnly: () => Promise<unknown> }, 'fastForwardOnly')
+      .mockResolvedValue({
+        ok: false,
+        refusal: 'divergence',
+        stderr: '',
+        exitCode: 128,
+        timedOut: false,
+      });
+    try {
+      await engine.start();
+      const outcome = await engine.pullOnce();
+
+      expect(ffSpy).toHaveBeenCalled();
+      // The overlay bytes are restored — not silently replaced with HEAD.
+      expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('LOCAL1\nline2\n');
+      expect(outcome).toBe('refused');
+      expect(engine.getStatus().pausedReason).toBe('diverged-local-commits');
+      // The FF never happened, so HEAD stayed put.
+      expect((await simpleGit(projectDir).revparse(['HEAD'])).trim()).toBe(headBefore);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('resolving take-theirs writes the tip version and clears the conflict without committing', async () => {
+    await cloneBehindOrigin({
+      seed: { 'a.md': 'line1\nline2\n' },
+      advance: { 'a.md': 'ORIGIN1\nline2\n' },
+    });
+    writeFileSync(join(projectDir, 'a.md'), 'LOCAL1\nline2\n', 'utf-8');
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+      const tip = (await simpleGit(projectDir).revparse(['HEAD'])).trim();
+      expect(engine.getConflicts()).toHaveLength(1);
+
+      await engine.resolveConflict('a.md', 'theirs');
+
+      expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('ORIGIN1\nline2\n');
+      expect(engine.getConflicts()).toEqual([]);
+      // Branch unchanged (still at origin tip); resolution never commits.
+      expect((await simpleGit(projectDir).revparse(['HEAD'])).trim()).toBe(tip);
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('resolving keep-mine leaves the overlay and clears the conflict without committing', async () => {
+    await cloneBehindOrigin({
+      seed: { 'a.md': 'line1\nline2\n' },
+      advance: { 'a.md': 'ORIGIN1\nline2\n' },
+    });
+    writeFileSync(join(projectDir, 'a.md'), 'LOCAL1\nline2\n', 'utf-8');
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+      const tip = (await simpleGit(projectDir).revparse(['HEAD'])).trim();
+
+      await engine.resolveConflict('a.md', 'mine');
+
+      expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('LOCAL1\nline2\n');
+      expect(engine.getConflicts()).toEqual([]);
+      expect((await simpleGit(projectDir).revparse(['HEAD'])).trim()).toBe(tip);
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a non-content overlap is never auto-committed in pull mode', async () => {
+    // The merge-native path auto-resolves non-content conflicts with `--theirs`
+    // and `git commit --no-edit`. Pull-only must never reach that commit: a
+    // non-content overlap keeps the local edit with the branch exactly at the
+    // origin tip (no extra commit).
+    const { originTip } = await cloneBehindOrigin({
+      seed: { '.mcp.json': '{"v":1}\n', 'a.md': 'A1\n' },
+      advance: { '.mcp.json': '{"v":2}\n', 'a.md': 'A1\nA2\n' },
+    });
+    writeFileSync(join(projectDir, '.mcp.json'), '{"v":3}\n', 'utf-8');
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+
+      const project = simpleGit(projectDir);
+      // HEAD is exactly origin's tip — no auto-resolve commit was minted.
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      expect(readFileSync(join(projectDir, '.mcp.json'), 'utf-8')).toBe('{"v":3}\n');
+      expect(engine.getConflicts()).toEqual([]);
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('reconcileConflictsFromGit leaves working-tree conflicts intact', async () => {
+    // The batch-end reconcile keys on MERGE_HEAD, which a working-tree conflict
+    // never has — it must not wipe the pull-only overlay ledger.
+    await cloneBehindOrigin({
+      seed: { 'a.md': 'line1\nline2\n' },
+      advance: { 'a.md': 'ORIGIN1\nline2\n' },
+    });
+    writeFileSync(join(projectDir, 'a.md'), 'LOCAL1\nline2\n', 'utf-8');
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+      expect(engine.getConflicts()).toHaveLength(1);
+
+      await engine.reconcileConflictsFromGit();
+      expect(engine.getConflicts()).toHaveLength(1);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a persisted working-tree conflict survives boot and keeps the engine idle', async () => {
+    // A prior run left a working-tree conflict in conflicts.json. On restart the
+    // engine must retain it (no MERGE_HEAD required) and stay idle — a paused
+    // 'conflict' state would stop the follower pulling the rest of the repo.
+    await cloneBehindOrigin({
+      seed: { 'a.md': 'v1\n' },
+      advance: { 'a.md': 'v1\nv2\n' },
+    });
+    const blob = (await simpleGit(projectDir).raw(['rev-parse', 'HEAD:a.md'])).trim();
+    writeFileSync(
+      join(okDir, 'conflicts.json'),
+      JSON.stringify({
+        version: 1,
+        branch: 'main',
+        conflicts: [
+          {
+            file: 'a.md',
+            detectedAt: new Date().toISOString(),
+            variant: 'working-tree',
+            theirsSha: blob,
+            baseSha: blob,
+          },
+        ],
+      }),
+      'utf-8',
+    );
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      expect(engine.getConflicts().map((c) => c.file)).toEqual(['a.md']);
+      expect(engine.getStatus().state).toBe('idle');
+    } finally {
+      await engine.destroy();
+    }
+  });
+});
+
+// ─── Pull-only mode transitions (stranded-commit conversion) ───────────────────
+//
+// Entering pull-only with local commits ahead of origin folds those commits into
+// a working-tree overlay and realigns the branch: a `--mixed` reset moves the ref
+// without touching the working tree, so on-screen content is byte-identical and
+// nothing is committed on the user's behalf. These tests use real bare-origin +
+// clone fixtures so the reset, fast-forward, and push all run for real.
+
+describe('SyncEngine pull-only mode transitions', () => {
+  async function seedBareOrigin(): Promise<string> {
+    const bareDir = join(tmpDir, 'bare.git');
+    mkdirSync(bareDir, { recursive: true });
+    await simpleGit(bareDir).init(true);
+    await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+    return bareDir;
+  }
+
+  /** Seed origin from a sister clone and clone it into projectDir. */
+  async function seedAndClone(seed: Record<string, string>): Promise<{
+    seedTip: string;
+    bareDir: string;
+    sister: ReturnType<typeof simpleGit>;
+    sisterDir: string;
+  }> {
+    const bareDir = await seedBareOrigin();
+    const sisterDir = join(tmpDir, 'sister');
+    mkdirSync(sisterDir, { recursive: true });
+    const sister = simpleGit(sisterDir);
+    await sister.init(['--initial-branch=main']);
+    await sister.raw('config', 'user.name', 'Sister');
+    await sister.raw('config', 'user.email', 'sister@test.com');
+    for (const [f, c] of Object.entries(seed)) writeFileSync(join(sisterDir, f), c, 'utf-8');
+    await sister.add('.');
+    await sister.commit('seed');
+    await sister.addRemote('origin', bareDir);
+    await sister.push('origin', 'main');
+    const seedTip = (await sister.revparse(['HEAD'])).trim();
+
+    rmSync(projectDir, { recursive: true, force: true });
+    await simpleGit(tmpDir).clone(bareDir, projectDir);
+    mkdirSync(okDir, { recursive: true });
+    const project = simpleGit(projectDir);
+    await project.raw('config', 'user.name', 'Follower');
+    await project.raw('config', 'user.email', 'follower@test.com');
+    return { seedTip, bareDir, sister, sisterDir };
+  }
+
+  async function advanceOrigin(
+    sister: ReturnType<typeof simpleGit>,
+    sisterDir: string,
+    files: Record<string, string | null>,
+  ): Promise<string> {
+    for (const [f, c] of Object.entries(files)) {
+      if (c === null) rmSync(join(sisterDir, f), { force: true });
+      else writeFileSync(join(sisterDir, f), c, 'utf-8');
+    }
+    await sister.raw(['add', '-A']);
+    await sister.commit('advance');
+    await sister.push('origin', 'main');
+    return (await sister.revparse(['HEAD'])).trim();
+  }
+
+  /** Commit local edits in projectDir, returning the new HEAD sha. */
+  async function commitLocal(files: Record<string, string>, msg: string): Promise<string> {
+    const project = simpleGit(projectDir);
+    for (const [f, c] of Object.entries(files)) writeFileSync(join(projectDir, f), c, 'utf-8');
+    await project.add('.');
+    await project.commit(msg);
+    return (await project.revparse(['HEAD'])).trim();
+  }
+
+  function makeEngineMode(
+    mode: SyncMode,
+    checkpoint?: (ctx: { branch: string; ahead: number }) => void | Promise<void>,
+  ) {
+    return new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      mode,
+      pullIntervalSeconds: 99999,
+      pushIntervalSeconds: 99999,
+      checkpointBeforeStrandedConversion: checkpoint,
+    });
+  }
+
+  /** Poll until projectDir's HEAD reaches `sha` (event-driven, not a fixed wait). */
+  async function waitForHead(sha: string, timeoutMs = 5000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    const project = simpleGit(projectDir);
+    while ((await project.revparse(['HEAD'])).trim() !== sha) {
+      if (Date.now() > deadline) throw new Error(`HEAD did not reach ${sha} within ${timeoutMs}ms`);
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+
+  async function assertNoGitResidue(): Promise<void> {
+    expect(existsSync(join(projectDir, '.git', 'MERGE_HEAD'))).toBe(false);
+    const stashList = await simpleGit(projectDir).raw(['stash', 'list']);
+    expect(stashList.trim()).toBe('');
+  }
+
+  test('a failed stranded-commit conversion surfaces the divergence instead of a clean idle', async () => {
+    await seedAndClone({ 'a.md': 'A1\n' });
+    // Two committed-but-unpushed edits (ahead 2, behind 0).
+    await commitLocal({ 'a.md': 'A1\nLOCAL2\n' }, 'local 1');
+    await commitLocal({ 'a.md': 'A1\nLOCAL2\nLOCAL3\n' }, 'local 2');
+    // A stale index.lock makes the `git reset --mixed` inside the conversion
+    // fail. setMode still continues to idle + a scheduled pull, and the ahead-only
+    // shape (behind 0) means that pull reports up-to-date without re-surfacing the
+    // divergence — so the conversion failure itself must set a paused reason,
+    // otherwise the badge shows a clean idle over unpushable stranded commits.
+    writeFileSync(join(projectDir, '.git', 'index.lock'), '', 'utf-8');
+
+    const engine = makeEngineMode('full');
+    try {
+      await engine.setMode('follow');
+      expect(engine.getStatus().pausedReason).toBe('diverged-local-commits');
+    } finally {
+      rmSync(join(projectDir, '.git', 'index.lock'), { force: true });
+      await engine.destroy();
+    }
+  });
+
+  test('full→pull downgrade folds ahead-only commits into an overlay at origin tip', async () => {
+    const { seedTip } = await seedAndClone({ 'a.md': 'A1\n' });
+    // Two committed-but-unpushed edits: ahead 2, behind 0 (push access revoked).
+    await commitLocal({ 'a.md': 'A1\nLOCAL2\n' }, 'local 1');
+    const localTip = await commitLocal({ 'a.md': 'A1\nLOCAL2\nLOCAL3\n' }, 'local 2');
+
+    const engine = makeEngineMode('full');
+    try {
+      await engine.setMode('follow');
+
+      const project = simpleGit(projectDir);
+      // Branch realigned to origin tip (the seed IS the merge base for ahead-only).
+      expect((await project.revparse(['HEAD'])).trim()).toBe(seedTip);
+      // Docs byte-identical: the committed content now rides as an overlay.
+      expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('A1\nLOCAL2\nLOCAL3\n');
+      expect(await listNames(project, ['diff-index', '--name-only', 'HEAD'])).toEqual(['a.md']);
+      // Zero local commits remain on the branch.
+      expect((await project.raw(['rev-list', '--count', 'origin/main..HEAD'])).trim()).toBe('0');
+      // Recoverable in history: the reset left ORIG_HEAD at the pre-conversion tip.
+      expect((await project.revparse(['ORIG_HEAD'])).trim()).toBe(localTip);
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('enable-time divergence converts then fast-forwards to origin tip', async () => {
+    // Local commit edits a.md (ahead 1); origin independently advanced b.md
+    // (behind 1) — a true divergence. Conversion lands on the merge base with the
+    // local edit as overlay; the next pull carries the branch to origin's tip and
+    // brings the non-overlapping origin change.
+    const { sister, sisterDir } = await seedAndClone({ 'a.md': 'A1\n', 'b.md': 'B1\n' });
+    const originTip = await advanceOrigin(sister, sisterDir, { 'b.md': 'B1\nB2\n' });
+    await commitLocal({ 'a.md': 'A1\nLOCAL\n' }, 'local edit');
+
+    const engine = makeEngineMode('off');
+    try {
+      await engine.setMode('follow');
+      await waitForHead(originTip);
+
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      // Local edit survives as overlay; origin's non-overlapping change landed.
+      expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('A1\nLOCAL\n');
+      expect(readFileSync(join(projectDir, 'b.md'), 'utf-8')).toBe('B1\nB2\n');
+      expect(await listNames(project, ['diff-index', '--name-only', 'HEAD'])).toEqual(['a.md']);
+      expect((await project.raw(['rev-list', '--count', 'origin/main..HEAD'])).trim()).toBe('0');
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('the checkpoint fires before the branch ref moves', async () => {
+    const { seedTip } = await seedAndClone({ 'a.md': 'A1\n' });
+    const localTip = await commitLocal({ 'a.md': 'A1\nLOCAL\n' }, 'local edit');
+
+    let checkpointAhead = 0;
+    let headAtCheckpoint: string | null = null;
+    const engine = makeEngineMode('off', async ({ ahead }) => {
+      checkpointAhead = ahead;
+      // HEAD is still at the local tip when the checkpoint runs — the reset that
+      // realigns the branch happens after, so the snapshot captures the stranded
+      // content, not the post-reset state.
+      headAtCheckpoint = (await simpleGit(projectDir).revparse(['HEAD'])).trim();
+    });
+    try {
+      await engine.setMode('follow');
+
+      expect(checkpointAhead).toBe(1);
+      expect(headAtCheckpoint).toBe(localTip);
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(seedTip);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('off→pull with no ahead commits enables plainly (no conversion)', async () => {
+    const { seedTip } = await seedAndClone({ 'a.md': 'A1\n' });
+
+    let checkpointCalled = false;
+    const engine = makeEngineMode('off', () => {
+      checkpointCalled = true;
+    });
+    try {
+      await engine.setMode('follow');
+
+      expect(checkpointCalled).toBe(false);
+      // Branch untouched (no stranded commits to realign around).
+      expect((await simpleGit(projectDir).revparse(['HEAD'])).trim()).toBe(seedTip);
+      expect(engine.getStatus().syncMode).toBe('follow');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('off→full keeps ahead commits (full mode pushes them, never converts)', async () => {
+    await seedAndClone({ 'a.md': 'A1\n' });
+    const localTip = await commitLocal({ 'a.md': 'A1\nLOCAL\n' }, 'local edit');
+
+    let checkpointCalled = false;
+    const engine = makeEngineMode('off', () => {
+      checkpointCalled = true;
+    });
+    try {
+      await engine.setMode('full');
+
+      // Full mode leaves the commits on the branch to push — no overlay conversion.
+      expect(checkpointCalled).toBe(false);
+      expect((await simpleGit(projectDir).revparse(['HEAD'])).trim()).toBe(localTip);
+      await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('pull→full upgrade pushes the overlay content on the next cycle', async () => {
+    const { bareDir } = await seedAndClone({ 'a.md': 'A1\n' });
+    // A pull-only overlay: an uncommitted local edit riding on origin's tip.
+    writeFileSync(join(projectDir, 'a.md'), 'A1\nOVERLAY\n', 'utf-8');
+
+    const engine = makeEngineMode('follow');
+    try {
+      await engine.setMode('full');
+      await engine.trigger('push');
+
+      // The overlay was committed and pushed — origin now carries its content.
+      const originContent = await simpleGit(bareDir).raw(['show', 'main:a.md']);
+      expect(originContent).toBe('A1\nOVERLAY\n');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('probeUnpushedCommitCount reports the stranded count with and without an upstream', async () => {
+    await seedAndClone({ 'a.md': 'A1\n' });
+    await commitLocal({ 'a.md': 'A1\nL1\n' }, 'local 1');
+    await commitLocal({ 'a.md': 'A1\nL1\nL2\n' }, 'local 2');
+
+    const engine = makeEngineMode('off');
+    try {
+      // refreshRemote sets hasRemote without triggering a conversion (mode stays off).
+      await engine.refreshRemote();
+      expect(await engine.probeUnpushedCommitCount()).toBe(2);
+
+      // With no configured upstream, the count comes from the rev-list fallback.
+      await simpleGit(projectDir).raw(['branch', '--unset-upstream']);
+      expect(await engine.probeUnpushedCommitCount()).toBe(2);
+    } finally {
+      await engine.destroy();
+    }
+  });
+});
+
+// ─── Fast-forward refusal classifier ───────────────────────────────────────────
+//
+// classifyFastForwardRefusal keys on git's exit code + stderr severity token.
+// Both are version- and locale-sensitive, so these tests feed it the OUTPUT of
+// a real `git merge --ff-only` against the shipped git build (LANG=C, matching
+// the sync git env) rather than a hand-written string.
+
+describe('classifyFastForwardRefusal (pinned against real git)', () => {
+  async function realFfRefusal(): Promise<{ code: number | null; stderr: string }> {
+    try {
+      await execFileAsync(
+        'git',
+        ['-c', 'core.autocrlf=false', 'merge', '--ff-only', 'origin/main'],
+        {
+          cwd: projectDir,
+          env: { ...process.env, LANG: 'C', LC_ALL: 'C' },
+        },
+      );
+      throw new Error('expected fast-forward to refuse');
+    } catch (e) {
+      const err = e as { code?: number | string; stderr?: string };
+      return {
+        code: typeof err.code === 'number' ? err.code : null,
+        stderr: typeof err.stderr === 'string' ? err.stderr : String(e),
+      };
+    }
+  }
+
+  async function seedBareOrigin(): Promise<string> {
+    const bareDir = join(tmpDir, 'bare.git');
+    mkdirSync(bareDir, { recursive: true });
+    await simpleGit(bareDir).init(true);
+    await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+    return bareDir;
+  }
+
+  async function cloneBehind(advance: string): Promise<void> {
+    const bareDir = await seedBareOrigin();
+    const sisterDir = join(tmpDir, 'sister');
+    mkdirSync(sisterDir, { recursive: true });
+    const sister = simpleGit(sisterDir);
+    await sister.init(['--initial-branch=main']);
+    await sister.raw('config', 'user.name', 'Sister');
+    await sister.raw('config', 'user.email', 'sister@test.com');
+    writeFileSync(join(sisterDir, 'a.md'), 'l1\nl2\n', 'utf-8');
+    await sister.add('.');
+    await sister.commit('seed');
+    await sister.addRemote('origin', bareDir);
+    await sister.push('origin', 'main');
+    rmSync(projectDir, { recursive: true, force: true });
+    await simpleGit(tmpDir).clone(bareDir, projectDir);
+    mkdirSync(okDir, { recursive: true });
+    writeFileSync(join(sisterDir, 'a.md'), advance, 'utf-8');
+    await sister.add('.');
+    await sister.commit('advance');
+    await sister.push('origin', 'main');
+    // The clone's origin/main still points at the seed until it fetches; update
+    // it so the direct `git merge --ff-only origin/main` below sees the advance.
+    await simpleGit(projectDir).fetch('origin');
+  }
+
+  test('an overlapping dirty edit classifies as overlay-overlap', async () => {
+    await cloneBehind('ORIGIN1\nl2\n');
+    // Local uncommitted edit to the same file the incoming tip changed.
+    writeFileSync(join(projectDir, 'a.md'), 'LOCAL1\nl2\n', 'utf-8');
+    const { code, stderr } = await realFfRefusal();
+    expect(code).toBe(1);
+    expect(classifyFastForwardRefusal({ exitCode: code, stderr })).toBe('overlay-overlap');
+  });
+
+  test('diverged history classifies as divergence', async () => {
+    await cloneBehind('ORIGIN1\nl2\n');
+    const project = simpleGit(projectDir);
+    await project.raw('config', 'user.name', 'Follower');
+    await project.raw('config', 'user.email', 'follower@test.com');
+    writeFileSync(join(projectDir, 'a.md'), 'LOCAL_COMMIT\nl2\n', 'utf-8');
+    await project.add('.');
+    await project.commit('local ahead');
+    const { code, stderr } = await realFfRefusal();
+    expect(code).toBe(128);
+    expect(classifyFastForwardRefusal({ exitCode: code, stderr })).toBe('divergence');
+  });
+});
+
+// ─── One-shot pull (op 'pull') ──────────────────────────────────────────────
+//
+// `trigger('pull')` (the spec-B contract) runs a single pull in every mode and
+// records a bounded outcome. Unlike a background cycle it also runs for an
+// off/null project — fetching + fast-forwarding via the B1 variant without ever
+// committing or leaving the project enabled. Every path writes lastPullUtc +
+// lastPullOutcome so a downstream surface can detect a fresh result by change.
+
+describe("SyncEngine one-shot pull (op 'pull')", () => {
+  async function seedBareOrigin(): Promise<string> {
+    const bareDir = join(tmpDir, 'bare.git');
+    mkdirSync(bareDir, { recursive: true });
+    await simpleGit(bareDir).init(true);
+    await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+    return bareDir;
+  }
+
+  /**
+   * Seed origin from a sister clone, clone it into projectDir, then optionally
+   * advance origin so the project is one commit behind. Returns origin's tip SHA
+   * and the bare dir (so a caller can read origin's ref).
+   */
+  async function cloneFromOrigin(opts: {
+    seed: Record<string, string>;
+    advance?: Record<string, string>;
+  }): Promise<{ originTip: string; bareDir: string }> {
+    const bareDir = await seedBareOrigin();
+    const sisterDir = join(tmpDir, 'sister');
+    mkdirSync(sisterDir, { recursive: true });
+    const sister = simpleGit(sisterDir);
+    await sister.init(['--initial-branch=main']);
+    await sister.raw('config', 'user.name', 'Sister');
+    await sister.raw('config', 'user.email', 'sister@test.com');
+    for (const [f, c] of Object.entries(opts.seed)) writeFileSync(join(sisterDir, f), c, 'utf-8');
+    await sister.add('.');
+    await sister.commit('seed');
+    await sister.addRemote('origin', bareDir);
+    await sister.push('origin', 'main');
+
+    rmSync(projectDir, { recursive: true, force: true });
+    await simpleGit(tmpDir).clone(bareDir, projectDir);
+    mkdirSync(okDir, { recursive: true });
+
+    if (opts.advance) {
+      for (const [f, c] of Object.entries(opts.advance)) {
+        writeFileSync(join(sisterDir, f), c, 'utf-8');
+      }
+      await sister.add('.');
+      await sister.commit('advance');
+      await sister.push('origin', 'main');
+    }
+    return { originTip: (await sister.revparse(['HEAD'])).trim(), bareDir };
+  }
+
+  function makeEngineFor(mode: SyncMode) {
+    return new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      mode,
+    });
+  }
+
+  async function assertNoGitResidue(): Promise<void> {
+    expect(existsSync(join(projectDir, '.git', 'MERGE_HEAD'))).toBe(false);
+    expect((await simpleGit(projectDir).raw(['stash', 'list'])).trim()).toBe('');
+  }
+
+  test('mode off: a one-shot pull fast-forwards without enabling the project', async () => {
+    const { originTip, bareDir } = await cloneFromOrigin({
+      seed: { 'doc.md': 'v1\n' },
+      advance: { 'doc.md': 'v1\nv2\n' },
+    });
+    const originRefBefore = (await simpleGit(bareDir).revparse(['main'])).trim();
+
+    const engine = makeEngineFor('off');
+    try {
+      await engine.start();
+      expect(engine.getStatus().state).toBe('disabled');
+
+      const outcome = await engine.pullOnce();
+
+      expect(outcome).toBe('succeeded');
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      expect(readFileSync(join(projectDir, 'doc.md'), 'utf-8')).toBe('v1\nv2\n');
+      // Never enabled: mode stays off and the engine returns to its inactive
+      // resting state instead of looking like a running sync.
+      const status = engine.getStatus();
+      expect(status.syncMode).toBe('off');
+      expect(status.state).toBe('disabled');
+      expect(status.lastPullOutcome).toBe('succeeded');
+      expect(typeof status.lastPullUtc).toBe('string');
+      // No commit made on the user's behalf (B1 variant) and no push to origin.
+      await assertNoGitResidue();
+      expect((await simpleGit(bareDir).revparse(['main'])).trim()).toBe(originRefBefore);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('an already-current project reports up-to-date', async () => {
+    await cloneFromOrigin({ seed: { 'doc.md': 'v1\n' } }); // no advance — clone sits at tip
+    const engine = makeEngineFor('follow');
+    try {
+      await engine.start();
+      const outcome = await engine.pullOnce();
+      expect(outcome).toBe('up-to-date');
+      expect(typeof engine.getStatus().lastPullUtc).toBe('string');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a same-line collision reports conflict', async () => {
+    await cloneFromOrigin({
+      seed: { 'doc.md': 'line1\nline2\n' },
+      advance: { 'doc.md': 'ORIGIN1\nline2\n' },
+    });
+    writeFileSync(join(projectDir, 'doc.md'), 'LOCAL1\nline2\n', 'utf-8');
+    const engine = makeEngineFor('follow');
+    try {
+      await engine.start();
+      const outcome = await engine.pullOnce();
+      expect(outcome).toBe('conflict');
+      expect(engine.getStatus().conflictCount).toBe(1);
+      expect(engine.getStatus().lastPullOutcome).toBe('conflict');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a concurrent one-shot is refused (single-flight)', async () => {
+    await cloneFromOrigin({
+      seed: { 'doc.md': 'v1\n' },
+      advance: { 'doc.md': 'v1\nv2\n' },
+    });
+    const engine = makeEngineFor('follow');
+    try {
+      await engine.start();
+      // The first call holds the in-flight guard across its first await; the
+      // second observes it and refuses without racing the working tree.
+      const first = engine.pullOnce();
+      const second = await engine.pullOnce();
+      expect(second).toBe('refused');
+      expect(await first).toBe('succeeded');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('an unreachable remote reports error-class', async () => {
+    await cloneFromOrigin({ seed: { 'doc.md': 'v1\n' } });
+    // Repoint origin at a nonexistent path so the fetch fails.
+    await simpleGit(projectDir).raw(
+      'config',
+      'remote.origin.url',
+      join(tmpDir, 'nonexistent-bare.git'),
+    );
+    const engine = makeEngineFor('follow');
+    try {
+      await engine.start();
+      const outcome = await engine.pullOnce();
+      expect(outcome).toBe('error');
+      const status = engine.getStatus();
+      expect(status.lastPullOutcome).toBe('error');
+      expect(`${status.pullError ?? ''}${status.pullErrorCode ?? ''}`).not.toBe('');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test("trigger('pull') records the outcome in status", async () => {
+    await cloneFromOrigin({
+      seed: { 'doc.md': 'v1\n' },
+      advance: { 'doc.md': 'v1\nv2\n' },
+    });
+    const engine = makeEngineFor('follow');
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+      const status = engine.getStatus();
+      expect(status.lastPullOutcome).toBe('succeeded');
+      expect(typeof status.lastPullUtc).toBe('string');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('lastPullUtc is null before the first pull and set after (change-detection)', async () => {
+    await cloneFromOrigin({
+      seed: { 'doc.md': 'v1\n' },
+      advance: { 'doc.md': 'v1\nv2\n' },
+    });
+    const engine = makeEngineFor('off');
+    try {
+      await engine.start();
+      expect(engine.getStatus().lastPullUtc).toBeNull();
+      expect(engine.getStatus().lastPullOutcome).toBeNull();
+      await engine.pullOnce();
+      expect(engine.getStatus().lastPullUtc).not.toBeNull();
+      expect(engine.getStatus().lastPullOutcome).toBe('succeeded');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('refuses when there is no remote', async () => {
+    // A repo with commits but no origin — nothing to pull from.
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Solo');
+    await git.raw('config', 'user.email', 'solo@test.com');
+    writeFileSync(join(projectDir, 'doc.md'), 'v1\n', 'utf-8');
+    await git.add('.');
+    await git.commit('seed');
+    const engine = makeEngineFor('off');
+    try {
+      await engine.start();
+      const outcome = await engine.pullOnce();
+      expect(outcome).toBe('refused');
+      expect(engine.getStatus().lastPullOutcome).toBe('refused');
+    } finally {
+      await engine.destroy();
+    }
+  });
+});
+
+describe('SyncEngine telemetry', () => {
+  async function seedBareOrigin(): Promise<string> {
+    const bareDir = join(tmpDir, 'bare.git');
+    mkdirSync(bareDir, { recursive: true });
+    await simpleGit(bareDir).init(true);
+    await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+    return bareDir;
+  }
+
+  async function cloneFromOrigin(opts: {
+    seed: Record<string, string>;
+    advance?: Record<string, string>;
+  }): Promise<void> {
+    const bareDir = await seedBareOrigin();
+    const sisterDir = join(tmpDir, 'sister');
+    mkdirSync(sisterDir, { recursive: true });
+    const sister = simpleGit(sisterDir);
+    await sister.init(['--initial-branch=main']);
+    await sister.raw('config', 'user.name', 'Sister');
+    await sister.raw('config', 'user.email', 'sister@test.com');
+    for (const [f, c] of Object.entries(opts.seed)) writeFileSync(join(sisterDir, f), c, 'utf-8');
+    await sister.add('.');
+    await sister.commit('seed');
+    await sister.addRemote('origin', bareDir);
+    await sister.push('origin', 'main');
+
+    rmSync(projectDir, { recursive: true, force: true });
+    await simpleGit(tmpDir).clone(bareDir, projectDir);
+    mkdirSync(okDir, { recursive: true });
+
+    if (opts.advance) {
+      for (const [f, c] of Object.entries(opts.advance)) {
+        writeFileSync(join(sisterDir, f), c, 'utf-8');
+      }
+      await sister.add('.');
+      await sister.commit('advance');
+      await sister.push('origin', 'main');
+    }
+  }
+
+  function makeEngineFor(mode: SyncMode) {
+    return new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      mode,
+    });
+  }
+
+  test('setMode logs the mode change with its source', async () => {
+    await cloneFromOrigin({ seed: { 'doc.md': 'v1\n' } });
+    const engine = makeEngineFor('off');
+    const cap = captureSyncLogs();
+    try {
+      await engine.start();
+      await engine.setMode('full', 'committed-default');
+      const entry = cap.entries.find((e) => e.msg === '[sync] mode changed');
+      expect(entry).toBeDefined();
+      expect(entry?.data).toMatchObject({ from: 'off', to: 'full', source: 'committed-default' });
+    } finally {
+      cap.restore();
+      await engine.destroy();
+    }
+  });
+
+  test('an unchanged setMode emits no mode-change log', async () => {
+    await cloneFromOrigin({ seed: { 'doc.md': 'v1\n' } });
+    const engine = makeEngineFor('follow');
+    const cap = captureSyncLogs();
+    try {
+      await engine.start();
+      await engine.setMode('follow'); // same value — idempotent early-return
+      expect(cap.entries.some((e) => e.msg === '[sync] mode changed')).toBe(false);
+    } finally {
+      cap.restore();
+      await engine.destroy();
+    }
+  });
+
+  test('a one-shot pull logs its mode and outcome on success', async () => {
+    await cloneFromOrigin({ seed: { 'doc.md': 'v1\n' }, advance: { 'doc.md': 'v1\nv2\n' } });
+    const engine = makeEngineFor('off');
+    const cap = captureSyncLogs();
+    try {
+      await engine.start();
+      await engine.pullOnce();
+      const entry = cap.entries.find((e) => e.msg === '[sync] one-shot pull complete');
+      expect(entry).toBeDefined();
+      expect(entry?.data).toMatchObject({ mode: 'off', outcome: 'succeeded' });
+    } finally {
+      cap.restore();
+      await engine.destroy();
+    }
+  });
+
+  test('a refused one-shot pull still logs the refused outcome', async () => {
+    // No remote: the one-shot refuses rather than silently no-op'ing.
+    const engine = makeEngineFor('off');
+    const cap = captureSyncLogs();
+    try {
+      await engine.start();
+      await engine.pullOnce();
+      const entry = cap.entries.find((e) => e.msg === '[sync] one-shot pull complete');
+      expect(entry?.data).toMatchObject({ mode: 'off', outcome: 'refused' });
+    } finally {
+      cap.restore();
+      await engine.destroy();
+    }
+  });
+
+  test('a B1 pull logs conflict-lifecycle counts and the overlay-stock gauge', async () => {
+    await cloneFromOrigin({
+      seed: { 'docA.md': 'line1\nline2\n', 'docB.md': 'b1\nb2\nb3\n', 'docC.md': 'c\n' },
+      advance: { 'docA.md': 'ORIGIN1\nline2\n', 'docB.md': 'b1\nb2\nORIGIN3\n' },
+    });
+    // Three local overlays: a same-line collision (docA — line1 both sides), a
+    // different-line auto-combine (docB — local line1, origin line3, unchanged
+    // line2 anchoring the merge), and a non-overlapping local-only edit (docC)
+    // that rides through the fast-forward.
+    writeFileSync(join(projectDir, 'docA.md'), 'LOCAL1\nline2\n', 'utf-8');
+    writeFileSync(join(projectDir, 'docB.md'), 'LOCAL1\nb2\nb3\n', 'utf-8');
+    writeFileSync(join(projectDir, 'docC.md'), 'c\nlocal-extra\n', 'utf-8');
+    const engine = makeEngineFor('follow');
+    const cap = captureSyncLogs();
+    try {
+      await engine.start();
+      await engine.pullOnce();
+      const entry = cap.entries.find(
+        (e) => e.msg === '[sync] pull-only: fast-forwarded to origin tip',
+      );
+      expect(entry).toBeDefined();
+      expect(entry?.data).toMatchObject({
+        created: 1,
+        autoCombined: 1,
+        autoDissolved: 0,
+        overlayStock: 3,
+      });
+    } finally {
+      cap.restore();
+      await engine.destroy();
+    }
+  });
+
+  test('resolving a working-tree conflict logs the chosen strategy', async () => {
+    await cloneFromOrigin({
+      seed: { 'doc.md': 'line1\nline2\n' },
+      advance: { 'doc.md': 'ORIGIN1\nline2\n' },
+    });
+    writeFileSync(join(projectDir, 'doc.md'), 'LOCAL1\nline2\n', 'utf-8');
+    const engine = makeEngineFor('follow');
+    const cap = captureSyncLogs();
+    try {
+      await engine.start();
+      await engine.pullOnce(); // same-line collision → working-tree conflict entry
+      expect(engine.getStatus().conflictCount).toBe(1);
+      await engine.resolveConflict('doc.md', 'theirs');
+      const entry = cap.entries.find(
+        (e) => e.msg === '[sync] pull-only: conflict resolved by choice',
+      );
+      expect(entry).toBeDefined();
+      expect(entry?.data).toMatchObject({ choice: 'theirs' });
+    } finally {
+      cap.restore();
+      await engine.destroy();
+    }
   });
 });

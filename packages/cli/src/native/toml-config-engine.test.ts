@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { createTomlConfigEngine, type NativeTomlBinding } from './toml-config-engine.ts';
 
 // A config value that exercises the whole point of the native engine: a 64-bit

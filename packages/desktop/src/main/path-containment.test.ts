@@ -7,8 +7,8 @@
  * suite is their only coverage.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { isPathWithinDir } from '@inkeep/open-knowledge-server';
+import { describe, expect, test } from 'vitest';
 import { isPathWithinProject, validateSpawnPath } from './path-containment.ts';
 
 describe('validateSpawnPath — posix', () => {

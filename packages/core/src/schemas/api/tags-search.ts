@@ -906,7 +906,13 @@ export const SemanticIndexStatusSchema = z
   .object({
     enabled: z.boolean(),
     keyPresent: z.boolean(),
-    keySource: z.enum(['file', 'env']).nullable(),
+    /**
+     * True when the configured endpoint is loopback (localhost) and so needs no
+     * key — the UI shows "not required" instead of nagging for one. Only
+     * meaningful when `!keyPresent`.
+     */
+    keyNotRequired: z.boolean(),
+    keySource: z.enum(['project', 'file', 'env']).nullable(),
     /**
      * A redacted tail (the last few characters) of the resolved key, so the UI
      * can show WHICH key is stored without the key ever being returned in full.

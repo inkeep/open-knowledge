@@ -4,7 +4,7 @@
  * pass/fail branches.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { makeMacosCodesigCheck } from './macos-codesig.ts';
 
 const ctx = { cwd: '/tmp/macos-codesig-test' };

@@ -20,10 +20,11 @@
  * a nonexistent dir → ENOENT): this exercises present-but-broken git (nonzero
  * exit), the failure mode the report and the fix turn on.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import {
   __resetResolveOnPathCacheForTests,
   __seedResolveOnPathCacheForTests,

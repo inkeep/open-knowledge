@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import { cleanup } from '@testing-library/react';
 import { Editor } from '@tiptap/core';
 import { NodeSelection } from '@tiptap/pm/state';
+import { afterEach, describe, expect, test } from 'vitest';
 import { sharedExtensions } from './shared';
 
 describe('sharedExtensions module graph', () => {

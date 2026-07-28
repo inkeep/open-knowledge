@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createContentFilter } from '@inkeep/open-knowledge-server';
+import { afterEach, describe, expect, test } from 'vitest';
 import { SyncEngine } from '../../../server/src/sync-engine.ts';
 import { createTestServer, type TestServer } from './test-harness';
 

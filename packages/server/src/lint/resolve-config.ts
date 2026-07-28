@@ -11,6 +11,7 @@
 
 import { dirname, join } from 'node:path';
 import type { LinterConfig, MarkdownlintRuleSetting } from '@inkeep/open-knowledge-core';
+import { resolveFrontmatterSchemas } from './frontmatter-schemas.ts';
 import {
   type DiscoveredMarkdownlintConfig,
   resolveNativeMarkdownlintConfig,
@@ -23,6 +24,13 @@ export interface ResolveLinterConfigOptions {
    * docName works too). Omitted → root-level resolution.
    */
   docName?: string;
+  /**
+   * The project root (the folder containing `.ok/`) — frontmatter schema
+   * `file` paths resolve against it, NOT `contentDir`, so mappings keep
+   * working when `content.dir` scopes docs to a subfolder. Omitted →
+   * `contentDir` (the two coincide unless `content.dir` is set).
+   */
+  projectDir?: string;
   /** Receives each resolution problem, tagged with the governing file. */
   onProblem?: (problem: string) => void;
 }
@@ -62,13 +70,41 @@ export function composeEffectiveLinterConfig(
   };
 }
 
+/**
+ * Inject loaded frontmatter schemas into the effective config. Doc-independent
+ * (the mapping is project-wide; per-doc `appliesTo` filtering happens in the
+ * plugin), so callers that lint many docs — the audit — pre-compose ONCE and
+ * the per-doc pass skips the disk reads: entries that already carry a `key`
+ * are treated as resolved.
+ */
+export function composeFrontmatterSchemasConfig(
+  projectDir: string,
+  config: LinterConfig,
+  onProblem?: (problem: string) => void,
+): LinterConfig {
+  const slice = config.plugins.frontmatter;
+  if (!slice.enabled || slice.schemas.length === 0) return config;
+  const alreadyResolved = slice.schemas.every((entry) => entry.key !== undefined);
+  if (alreadyResolved) return config;
+  const { entries, problems } = resolveFrontmatterSchemas(projectDir, slice.schemas);
+  if (onProblem) for (const problem of problems) onProblem(problem);
+  return {
+    ...config,
+    plugins: {
+      ...config.plugins,
+      frontmatter: { ...slice, schemas: entries },
+    },
+  };
+}
+
 export function resolveEffectiveLinterConfig(
   contentDir: string,
   base: LinterConfig,
   opts: ResolveLinterConfigOptions = {},
 ): LinterConfig {
-  return composeEffectiveLinterConfig(
+  const withNative = composeEffectiveLinterConfig(
     base,
     resolveNativeConfigForDoc(contentDir, opts.docName, opts.onProblem),
   );
+  return composeFrontmatterSchemasConfig(opts.projectDir ?? contentDir, withNative, opts.onProblem);
 }

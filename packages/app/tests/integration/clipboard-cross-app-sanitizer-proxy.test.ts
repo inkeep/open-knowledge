@@ -16,7 +16,7 @@
  * Runs in `bun test`.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Walker output fixtures (one per descriptor) — what the walker would emit

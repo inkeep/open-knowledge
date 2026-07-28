@@ -13,4 +13,7 @@ export interface LintPluginMeta {
   label: string;
 }
 
-export const LINT_PLUGIN_META: LintPluginMeta[] = [{ id: 'markdownlint', label: 'markdownlint' }];
+export const LINT_PLUGIN_META: LintPluginMeta[] = [
+  { id: 'markdownlint', label: 'markdownlint' },
+  { id: 'frontmatter', label: 'Frontmatter schemas' },
+];

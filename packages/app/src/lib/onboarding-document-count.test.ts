@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import type { DocumentListSuccess } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { countVisibleEntries } from './onboarding-document-count';
 
 type Entry = DocumentListSuccess['documents'][number];

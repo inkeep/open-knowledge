@@ -6,13 +6,13 @@
  * patch). Uses a real-Y.Doc fake provider — same pattern `SourceEditor` uses.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import * as linguiShim from '../../tests/lingui-macro-shim';
 
-mock.module('@lingui/react/macro', () => linguiShim);
+vi.doMock('@lingui/react/macro', () => linguiShim);
 
 const { TemplateProperties } = await import('./TemplateProperties');
 
@@ -53,7 +53,7 @@ describe('TemplateProperties (CRDT)', () => {
 
   test('committing a changed name fires onRename (a git-mv rename), not a patch', () => {
     const { provider, ytext } = makeProvider(SOURCE);
-    const onRename = mock((_next: string) => {});
+    const onRename = vi.fn((_next: string) => {});
     render(
       <TemplateProperties provider={provider} name="meeting" folder="notes" onRename={onRename} />,
     );

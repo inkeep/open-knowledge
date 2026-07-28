@@ -30,10 +30,10 @@
  * Test scenarios credited to inkeep/open-knowledge#613 by @blokboy.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { Editor, Extension, type JSONContent } from '@tiptap/core';
 import { Plugin, TextSelection } from '@tiptap/pm/state';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { installDomGlobals } from './walk-currency-test-harness';
 
 const mdManager = new MarkdownManager({ extensions: sharedExtensions });

@@ -4,7 +4,7 @@
  * `trashItem`, asset opens, bug-report send). Lives in its own leaf module —
  * importing only `node:path` — so validation-only consumers don't drag in the
  * rest of the handler surface (and its `@inkeep/open-knowledge-server`
- * dependency, which several sibling test suites replace via `mock.module`).
+ * dependency, which several sibling test suites replace via `vi.doMock`).
  */
 
 import { posix as pathPosix, win32 as pathWin32 } from 'node:path';

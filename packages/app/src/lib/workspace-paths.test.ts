@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { docNameToRelativePath, joinWorkspacePath } from './workspace-paths';
 
 describe('joinWorkspacePath', () => {

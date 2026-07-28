@@ -12,8 +12,8 @@
  *   and produces a closure the decoration plugin can call many times.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { toWikiLinkSlug } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { buildPagesBySlugIndex, type PageListCacheSnapshot } from '../page-list-cache';
 import {
   computeLinkResolutionAttrs,

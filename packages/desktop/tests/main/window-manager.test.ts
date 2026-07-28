@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
 import {
   type BrowserWindowLike,
@@ -33,14 +33,14 @@ function makeUtility(pid: number): MockUtility {
   let exitHandler: ((c: number | null) => void) | null = null;
   return {
     pid,
-    postMessage: mock(() => {}),
-    on: mock((event: 'message' | 'exit', cb: (msg: unknown) => void) => {
+    postMessage: vi.fn(() => {}),
+    on: vi.fn((event: 'message' | 'exit', cb: (msg: unknown) => void) => {
       if (event === 'message') messageHandler = cb;
       else if (event === 'exit') exitHandler = cb as (c: number | null) => void;
     }) as UtilityProcessLike['on'],
-    once: mock(() => {}),
-    removeListener: mock(() => {}),
-    kill: mock(() => true),
+    once: vi.fn(() => {}),
+    removeListener: vi.fn(() => {}),
+    kill: vi.fn(() => true),
     fire: (msg) => messageHandler?.(msg),
     fireExit: (code) => exitHandler?.(code),
   };
@@ -65,39 +65,39 @@ function makeWindow(opts?: { minimized?: boolean; focused?: boolean }): BrowserW
     for (const h of closeHandlers) h();
   };
   return {
-    focus: mock(() => {}),
-    show: mock(() => {
+    focus: vi.fn(() => {}),
+    show: vi.fn(() => {
       visible = true;
     }),
-    restore: mock(() => {
+    restore: vi.fn(() => {
       minimized = false;
     }),
-    isMinimized: mock(() => minimized),
-    moveTop: mock(() => {}),
-    isFocused: mock(() => opts?.focused ?? false),
-    isDestroyed: mock(() => destroyed),
-    isVisible: mock(() => visible),
-    on: mock((_event: 'closed', cb: () => void) => {
+    isMinimized: vi.fn(() => minimized),
+    moveTop: vi.fn(() => {}),
+    isFocused: vi.fn(() => opts?.focused ?? false),
+    isDestroyed: vi.fn(() => destroyed),
+    isVisible: vi.fn(() => visible),
+    on: vi.fn((_event: 'closed', cb: () => void) => {
       closeHandlers.push(cb);
     }) as BrowserWindowLike['on'],
-    once: mock((_event: 'ready-to-show', _cb: () => void) => {}) as BrowserWindowLike['once'],
-    close: mock(() => {
+    once: vi.fn((_event: 'ready-to-show', _cb: () => void) => {}) as BrowserWindowLike['once'],
+    close: vi.fn(() => {
       destroyed = true;
       fireClose();
     }),
-    destroy: mock(() => {
+    destroy: vi.fn(() => {
       destroyed = true;
       fireClose();
     }),
     webContents: {
-      send: mock(() => {}),
-      once: mock((event: 'dom-ready' | 'did-finish-load', cb: () => void) => {
+      send: vi.fn(() => {}),
+      once: vi.fn((event: 'dom-ready' | 'did-finish-load', cb: () => void) => {
         if (event === 'dom-ready') domReadyHandler = cb;
         else if (event === 'did-finish-load') didFinishLoadHandler = cb;
       }),
     },
-    loadFile: mock(() => Promise.resolve()),
-    loadURL: mock(() => Promise.resolve()),
+    loadFile: vi.fn(() => Promise.resolve()),
+    loadURL: vi.fn(() => Promise.resolve()),
     fireClose,
     markDestroyed: () => {
       destroyed = true;
@@ -124,8 +124,8 @@ interface TestEnv {
   }>;
   forkUtilityArgs: string[][];
   timers: Array<{ cb: () => void; ms: number }>;
-  killProbe: ReturnType<typeof mock>;
-  activateApp: ReturnType<typeof mock>;
+  killProbe: ReturnType<typeof vi.fn>;
+  activateApp: ReturnType<typeof vi.fn>;
   showGateRegistrations: ShowGateRegistration[];
   deps: WindowManagerDeps;
 }
@@ -140,8 +140,8 @@ function buildEnv(): TestEnv {
   }> = [];
   const forkUtilityArgs: string[][] = [];
   const timers: Array<{ cb: () => void; ms: number }> = [];
-  const killProbe = mock(() => {});
-  const activateApp = mock(() => {});
+  const killProbe = vi.fn(() => {});
+  const activateApp = vi.fn(() => {});
   const showGateRegistrations: ShowGateRegistration[] = [];
   // Test stub for the show-gate — captures register() calls and immediately
   // signals the dual-signal contract so existing tests that rely on `show()`
@@ -534,7 +534,7 @@ describe('WindowManager', () => {
   });
 
   test('liveness probe is silent if pid is truly gone (probe throws)', async () => {
-    env.killProbe = mock(() => {
+    env.killProbe = vi.fn(() => {
       throw new Error('No such process');
     });
     env.deps.killProbe = env.killProbe;
@@ -553,7 +553,7 @@ describe('WindowManager', () => {
   });
 
   test('runClean (when provided) is called before forking utility', async () => {
-    const runClean = mock(() => Promise.resolve());
+    const runClean = vi.fn(() => Promise.resolve());
     env.deps.runClean = runClean;
     const wm = new WindowManager(env.deps);
     const promise = wm.createProjectWindow({ projectPath: '/tmp/clean-run' });
@@ -589,7 +589,7 @@ describe('WindowManager', () => {
     // (ERR_IPC_CHANNEL_CLOSED in production).
     const utility = env.utilities[0];
     if (!utility) throw new Error('utility missing');
-    utility.postMessage = mock(() => {
+    utility.postMessage = vi.fn(() => {
       throw new Error('ERR_IPC_CHANNEL_CLOSED');
     });
 
@@ -717,7 +717,7 @@ describe('WindowManager', () => {
 
     test('attaches to live same-host lock — no utility forked', async () => {
       enableAttachProbe();
-      const runClean = mock(() => Promise.resolve());
+      const runClean = vi.fn(() => Promise.resolve());
       env.deps.runClean = runClean;
 
       const wm = new WindowManager(env.deps);
@@ -764,7 +764,7 @@ describe('WindowManager', () => {
     });
 
     function driftSends(w: ReturnType<typeof makeWindow>): unknown[] {
-      return (w.webContents.send as ReturnType<typeof mock>).mock.calls.filter(
+      return (w.webContents.send as ReturnType<typeof vi.fn>).mock.calls.filter(
         (c: unknown[]) => c[0] === 'ok:server-version-drift',
       );
     }
@@ -849,7 +849,7 @@ describe('WindowManager', () => {
         protocolVersion: 1,
         runtimeVersion: '0.8.2',
       };
-      const killProbe = mock((_pid: number, signal: string) => {
+      const killProbe = vi.fn((_pid: number, signal: string) => {
         if (signal === 'SIGTERM') killed = true;
       });
       enableAttachProbe({
@@ -886,7 +886,7 @@ describe('WindowManager', () => {
       // The recreated window confirms the restart on did-finish-load.
       newWindow.fireDidFinishLoad();
       const restartedSends = (
-        newWindow.webContents.send as ReturnType<typeof mock>
+        newWindow.webContents.send as ReturnType<typeof vi.fn>
       ).mock.calls.filter((c: unknown[]) => c[0] === 'ok:server-restarted');
       expect(restartedSends.length).toBe(1);
       expect((restartedSends[0] as unknown[])[1]).toEqual({ appRuntime: '0.8.2' });
@@ -895,7 +895,7 @@ describe('WindowManager', () => {
     test('restartAttachedServer returns eperm without recreating when the kill is blocked', async () => {
       const lockWithPid = { ...liveLock, pid: 7777, protocolVersion: 1, runtimeVersion: '0.8.0' };
       env.deps.readServerLock = () => lockWithPid;
-      env.deps.killProbe = mock(() => {
+      env.deps.killProbe = vi.fn(() => {
         const err = new Error('operation not permitted') as NodeJS.ErrnoException;
         err.code = 'EPERM';
         throw err;
@@ -920,7 +920,7 @@ describe('WindowManager', () => {
         readServerLock: () => (killed ? null : oldLock),
         isProcessAlive: (pid) => (pid === 5555 ? !killed : true),
       });
-      env.deps.killProbe = mock((_pid: number, signal: string) => {
+      env.deps.killProbe = vi.fn((_pid: number, signal: string) => {
         if (signal === 'SIGTERM') killed = true;
       });
       env.deps.spawnDetachedServer = async () => {
@@ -936,7 +936,7 @@ describe('WindowManager', () => {
       const outcome = await wm.restartAttachedServer('/tmp/dragon');
       expect(outcome).toEqual({ ok: false, reason: 'other' });
       // The originating window was not closed and remains the project's window.
-      expect((originating.close as ReturnType<typeof mock>).mock.calls.length).toBe(0);
+      expect((originating.close as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
       expect(originating.isDestroyed?.()).toBe(false);
       expect(wm.getContextForBrowserWindow(originating as BrowserWindowLike)?.projectPath).toBe(
         '/tmp/dragon',
@@ -948,7 +948,7 @@ describe('WindowManager', () => {
     test('reclaimForeignServerInDev terminates a foreign server and spawns fresh via utility-fork, SILENTLY (no notice)', async () => {
       env.deps.reclaimForeignServerInDev = true;
       let killed = false;
-      const killProbe = mock((_pid: number, signal: string) => {
+      const killProbe = vi.fn((_pid: number, signal: string) => {
         if (signal === 'SIGTERM') killed = true;
       });
       env.deps.killProbe = killProbe;
@@ -982,14 +982,14 @@ describe('WindowManager', () => {
       // reaches the renderer (the "started a fresh server" notice is gone).
       w.fireDomReady();
       w.fireDidFinishLoad();
-      const lifecycleSends = (w.webContents.send as ReturnType<typeof mock>).mock.calls.filter(
+      const lifecycleSends = (w.webContents.send as ReturnType<typeof vi.fn>).mock.calls.filter(
         (c: unknown[]) => c[0] === 'ok:server-restarted',
       );
       expect(lifecycleSends.length).toBe(0);
     });
 
     test('without reclaimForeignServerInDev (production default), a foreign server is attached — no termination, no notice', async () => {
-      const killProbe = mock(() => {});
+      const killProbe = vi.fn(() => {});
       env.deps.killProbe = killProbe;
       enableAttachProbe();
       const wm = new WindowManager(env.deps);
@@ -1001,7 +1001,7 @@ describe('WindowManager', () => {
       const w = env.windows[0];
       if (!w) throw new Error('no window created');
       w.fireDidFinishLoad();
-      const lifecycleSends = (w.webContents.send as ReturnType<typeof mock>).mock.calls.filter(
+      const lifecycleSends = (w.webContents.send as ReturnType<typeof vi.fn>).mock.calls.filter(
         (c: unknown[]) => c[0] === 'ok:server-restarted',
       );
       expect(lifecycleSends.length).toBe(0);
@@ -1026,7 +1026,7 @@ describe('WindowManager', () => {
         protocolVersion: 1,
         runtimeVersion: '0.8.2',
       };
-      const killProbe = mock((_pid: number, signal: string) => {
+      const killProbe = vi.fn((_pid: number, signal: string) => {
         if (signal === 'SIGTERM') killed = true;
       });
       enableAttachProbe({
@@ -1054,7 +1054,7 @@ describe('WindowManager', () => {
       w.fireDomReady();
       expect(driftSends(w).length).toBe(0);
       w.fireDidFinishLoad();
-      const restartedSends = (w.webContents.send as ReturnType<typeof mock>).mock.calls.filter(
+      const restartedSends = (w.webContents.send as ReturnType<typeof vi.fn>).mock.calls.filter(
         (c: unknown[]) => c[0] === 'ok:server-restarted',
       );
       expect(restartedSends.length).toBe(0);
@@ -1076,7 +1076,7 @@ describe('WindowManager', () => {
         protocolVersion: 1,
         runtimeVersion: '0.8.2',
       };
-      const killProbe = mock((_pid: number, signal: string) => {
+      const killProbe = vi.fn((_pid: number, signal: string) => {
         if (signal === 'SIGTERM') killed = true;
       });
       enableAttachProbe({
@@ -1100,7 +1100,7 @@ describe('WindowManager', () => {
       env.deps.selfProtocolVersion = 1;
       env.deps.selfRuntimeVersion = '0.8.2';
       env.deps.isFirstLaunchAfterUpgrade = () => true;
-      const killProbe = mock(() => {});
+      const killProbe = vi.fn(() => {});
       env.deps.killProbe = killProbe;
       enableAttachProbe({
         readServerLock: () => ({ ...liveLock, protocolVersion: 1, runtimeVersion: '0.8.2' }),
@@ -1124,7 +1124,7 @@ describe('WindowManager', () => {
       env.deps.selfProtocolVersion = 1;
       env.deps.selfRuntimeVersion = '0.8.2';
       // isFirstLaunchAfterUpgrade left unset (undefined).
-      const killProbe = mock(() => {});
+      const killProbe = vi.fn(() => {});
       env.deps.killProbe = killProbe;
       enableAttachProbe({
         readServerLock: () => ({ ...liveLock, protocolVersion: 1, runtimeVersion: '0.8.0' }),
@@ -1140,7 +1140,7 @@ describe('WindowManager', () => {
       // The manual version-drift prompt fires; no auto-restart confirmation.
       expect(driftSends(w).length).toBe(1);
       w.fireDidFinishLoad();
-      const restartedSends = (w.webContents.send as ReturnType<typeof mock>).mock.calls.filter(
+      const restartedSends = (w.webContents.send as ReturnType<typeof vi.fn>).mock.calls.filter(
         (c: unknown[]) => c[0] === 'ok:server-restarted',
       );
       expect(restartedSends.length).toBe(0);
@@ -1154,7 +1154,7 @@ describe('WindowManager', () => {
       env.deps.selfProtocolVersion = 1;
       env.deps.selfRuntimeVersion = '0.8.2';
       env.deps.isFirstLaunchAfterUpgrade = () => true;
-      env.deps.killProbe = mock(() => {
+      env.deps.killProbe = vi.fn(() => {
         const err = new Error('operation not permitted') as NodeJS.ErrnoException;
         err.code = 'EPERM';
         throw err;
@@ -1174,7 +1174,7 @@ describe('WindowManager', () => {
       // The manual version-drift prompt is the fallback remedy.
       expect(driftSends(w).length).toBe(1);
       w.fireDidFinishLoad();
-      const restartedSends = (w.webContents.send as ReturnType<typeof mock>).mock.calls.filter(
+      const restartedSends = (w.webContents.send as ReturnType<typeof vi.fn>).mock.calls.filter(
         (c: unknown[]) => c[0] === 'ok:server-restarted',
       );
       expect(restartedSends.length).toBe(0);
@@ -1185,7 +1185,7 @@ describe('WindowManager', () => {
       // but the pid guard must hold if a future build does: a same-session
       // reopen that attaches to OUR OWN detached server must not be reclaimed.
       env.deps.reclaimForeignServerInDev = true;
-      const killProbe = mock(() => {});
+      const killProbe = vi.fn(() => {});
       env.deps.killProbe = killProbe;
       const ownLock = { ...liveLock, pid: 6666, port: 60000 };
       let spawned = false;
@@ -1214,7 +1214,7 @@ describe('WindowManager', () => {
 
     test('reclaim falls back to attaching when terminating the foreign server fails (eperm)', async () => {
       env.deps.reclaimForeignServerInDev = true;
-      env.deps.killProbe = mock(() => {
+      env.deps.killProbe = vi.fn(() => {
         const err = new Error('operation not permitted') as NodeJS.ErrnoException;
         err.code = 'EPERM';
         throw err;
@@ -1229,7 +1229,7 @@ describe('WindowManager', () => {
       const w = env.windows[0];
       if (!w) throw new Error('no window created');
       w.fireDidFinishLoad();
-      const restartedSends = (w.webContents.send as ReturnType<typeof mock>).mock.calls.filter(
+      const restartedSends = (w.webContents.send as ReturnType<typeof vi.fn>).mock.calls.filter(
         (c: unknown[]) => c[0] === 'ok:server-restarted',
       );
       expect(restartedSends.length).toBe(0);
@@ -1237,7 +1237,7 @@ describe('WindowManager', () => {
 
     test('stale lock (pid dead) falls through to spawn mode', async () => {
       enableAttachProbe({ isProcessAlive: () => false });
-      const runClean = mock(() => Promise.resolve());
+      const runClean = vi.fn(() => Promise.resolve());
       env.deps.runClean = runClean;
 
       const wm = new WindowManager(env.deps);
@@ -1421,7 +1421,7 @@ describe('WindowManager', () => {
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
 
-        const spawn = mock(() => Promise.resolve({ pid: 88001 }));
+        const spawn = vi.fn(() => Promise.resolve({ pid: 88001 }));
         env.deps.spawnDetachedServer = spawn;
 
         const wm = new WindowManager(env.deps);
@@ -1561,7 +1561,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        const spawn = mock(() => Promise.resolve({ pid: 91001 }));
+        const spawn = vi.fn(() => Promise.resolve({ pid: 91001 }));
         env.deps.spawnDetachedServer = spawn;
 
         const wm = new WindowManager(env.deps);
@@ -1582,7 +1582,7 @@ describe('WindowManager', () => {
         env.deps.isProcessAlive = () => true;
         env.deps.hostname = () => 'my-host';
         env.deps.probeWsUpgrade = () => Promise.resolve(true);
-        const spawn = mock(() => Promise.resolve({ pid: 99 }));
+        const spawn = vi.fn(() => Promise.resolve({ pid: 99 }));
         env.deps.spawnDetachedServer = spawn;
 
         const wm = new WindowManager(env.deps);
@@ -1680,7 +1680,7 @@ describe('WindowManager', () => {
       function makeKeepaliveMock() {
         const calls: Array<{ lockDir: string }> = [];
         const handles: Array<{ closed: boolean }> = [];
-        const create = mock((opts: { lockDir: string }) => {
+        const create = vi.fn((opts: { lockDir: string }) => {
           calls.push(opts);
           const handle = { closed: false };
           handles.push(handle);
@@ -1964,7 +1964,7 @@ describe('WindowManager', () => {
     });
 
     test('WS-upgrade probe failure falls through to spawn mode', async () => {
-      const probe = mock(() => Promise.resolve(false));
+      const probe = vi.fn(() => Promise.resolve(false));
       enableAttachProbe({ probeWsUpgrade: probe });
       const wm = new WindowManager(env.deps);
       const p = wm.createProjectWindow({ projectPath: '/tmp/dragon' });
@@ -1977,7 +1977,7 @@ describe('WindowManager', () => {
     });
 
     test('WS-upgrade probe rejection (thrown error) falls through to spawn mode', async () => {
-      const probe = mock(() => Promise.reject(new Error('socket refused')));
+      const probe = vi.fn(() => Promise.reject(new Error('socket refused')));
       enableAttachProbe({ probeWsUpgrade: probe });
       const wm = new WindowManager(env.deps);
       const p = wm.createProjectWindow({ projectPath: '/tmp/dragon' });
@@ -2162,7 +2162,7 @@ describe('WindowManager — pendingDeepLinkTarget dom-ready gate (M4 US-007 / Fi
         baseOnce(event, cb);
       }) as typeof w.webContents.once;
       const baseLoadFile = w.loadFile as () => Promise<void>;
-      w.loadFile = mock(async () => {
+      w.loadFile = vi.fn(async () => {
         onceCalledBeforeLoadResolved = domReadyRegistrations > 0;
         return baseLoadFile();
       }) as typeof w.loadFile;
@@ -2184,9 +2184,9 @@ describe('WindowManager — pendingDeepLinkTarget dom-ready gate (M4 US-007 / Fi
     if (!window) throw new Error('expected window to be created');
 
     // dom-ready callback sends the deep-link event.
-    expect((window.webContents.send as ReturnType<typeof mock>).mock.calls.length).toBe(0);
+    expect((window.webContents.send as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
     window.fireDomReady();
-    const sendCalls = (window.webContents.send as ReturnType<typeof mock>).mock.calls;
+    const sendCalls = (window.webContents.send as ReturnType<typeof vi.fn>).mock.calls;
     const deepLinkCall = sendCalls.find((c) => c[0] === 'ok:deep-link');
     expect(deepLinkCall).toBeDefined();
     expect(deepLinkCall?.[1]).toEqual({
@@ -2206,7 +2206,7 @@ describe('WindowManager — pendingDeepLinkTarget dom-ready gate (M4 US-007 / Fi
     const window = env.windows[0];
     if (!window) throw new Error('expected window to be created');
     window.fireDomReady();
-    const sendCalls = (window.webContents.send as ReturnType<typeof mock>).mock.calls;
+    const sendCalls = (window.webContents.send as ReturnType<typeof vi.fn>).mock.calls;
     expect(sendCalls.find((c) => c[0] === 'ok:deep-link')).toBeUndefined();
   });
 
@@ -2237,7 +2237,7 @@ describe('WindowManager — pendingDeepLinkTarget dom-ready gate (M4 US-007 / Fi
     const window = env.windows[0];
     if (!window) throw new Error('expected window to be created');
     window.fireDomReady();
-    const sendCalls = (window.webContents.send as ReturnType<typeof mock>).mock.calls;
+    const sendCalls = (window.webContents.send as ReturnType<typeof vi.fn>).mock.calls;
     const deepLinkCall = sendCalls.find((c) => c[0] === 'ok:deep-link');
     expect(deepLinkCall).toBeDefined();
     expect(deepLinkCall?.[1]).toEqual({
@@ -2264,7 +2264,7 @@ describe('WindowManager — pendingDeepLinkTarget dom-ready gate (M4 US-007 / Fi
     const window = env.windows[0];
     if (!window) throw new Error('expected window to be created');
     window.fireDomReady();
-    const sendCalls = (window.webContents.send as ReturnType<typeof mock>).mock.calls;
+    const sendCalls = (window.webContents.send as ReturnType<typeof vi.fn>).mock.calls;
     const deepLinkCall = sendCalls.find((c) => c[0] === 'ok:deep-link');
     expect(deepLinkCall?.[1]).toEqual({
       doc: 'docs/page.md',
@@ -2299,7 +2299,7 @@ describe('WindowManager — pendingDeepLinkTarget dom-ready gate (M4 US-007 / Fi
     const window = env.windows[0];
     if (!window) throw new Error('expected window to be created');
     window.fireDomReady();
-    const sendCalls = (window.webContents.send as ReturnType<typeof mock>).mock.calls;
+    const sendCalls = (window.webContents.send as ReturnType<typeof vi.fn>).mock.calls;
     const deepLinkCall = sendCalls.find((c) => c[0] === 'ok:deep-link');
     expect(deepLinkCall?.[1]).toEqual({
       doc: 'attached/note',
@@ -2324,7 +2324,7 @@ describe('WindowManager — pendingDeepLinkTarget dom-ready gate (M4 US-007 / Fi
     const window = env.windows[0];
     if (!window) throw new Error('expected window to be created');
     window.fireDomReady();
-    const sendCalls = (window.webContents.send as ReturnType<typeof mock>).mock.calls;
+    const sendCalls = (window.webContents.send as ReturnType<typeof vi.fn>).mock.calls;
     const deepLinkCall = sendCalls.find((c) => c[0] === 'ok:deep-link');
     expect(deepLinkCall?.[1]).toEqual({
       doc: 'docs',
@@ -2360,7 +2360,7 @@ describe('WindowManager — pendingShareBranchSwitch dom-ready gate (US-004)', (
         baseOnce(event, cb);
       }) as typeof w.webContents.once;
       const baseLoadFile = w.loadFile as () => Promise<void>;
-      w.loadFile = mock(async () => {
+      w.loadFile = vi.fn(async () => {
         onceCalledBeforeLoadResolved = domReadyRegistrations > 0;
         return baseLoadFile();
       }) as typeof w.loadFile;
@@ -2393,13 +2393,13 @@ describe('WindowManager — pendingShareBranchSwitch dom-ready gate (US-004)', (
 
     // No send fires until dom-ready signal arrives.
     expect(
-      (window.webContents.send as ReturnType<typeof mock>).mock.calls.find(
+      (window.webContents.send as ReturnType<typeof vi.fn>).mock.calls.find(
         (c) => c[0] === 'ok:share:received',
       ),
     ).toBeUndefined();
 
     window.fireDomReady();
-    const shareCall = (window.webContents.send as ReturnType<typeof mock>).mock.calls.find(
+    const shareCall = (window.webContents.send as ReturnType<typeof vi.fn>).mock.calls.find(
       (c) => c[0] === 'ok:share:received',
     );
     expect(shareCall).toBeDefined();
@@ -2426,7 +2426,7 @@ describe('WindowManager — pendingShareBranchSwitch dom-ready gate (US-004)', (
     const window = env.windows[0];
     if (!window) throw new Error('expected window to be created');
     window.fireDomReady();
-    const sendCalls = (window.webContents.send as ReturnType<typeof mock>).mock.calls;
+    const sendCalls = (window.webContents.send as ReturnType<typeof vi.fn>).mock.calls;
     expect(sendCalls.find((c) => c[0] === 'ok:share:received')).toBeUndefined();
   });
 
@@ -2452,7 +2452,7 @@ describe('WindowManager — pendingShareBranchSwitch dom-ready gate (US-004)', (
         baseOnce(event, cb);
       }) as typeof w.webContents.once;
       const baseLoadFile = w.loadFile as () => Promise<void>;
-      w.loadFile = mock(async () => {
+      w.loadFile = vi.fn(async () => {
         onceCalledBeforeLoadResolved = domReadyRegistrations > 0;
         return baseLoadFile();
       }) as typeof w.loadFile;
@@ -2495,7 +2495,7 @@ describe('WindowManager — pendingShareBranchSwitch dom-ready gate (US-004)', (
     const window = env.windows[0];
     if (!window) throw new Error('expected window to be created');
     window.fireDomReady();
-    const shareCall = (window.webContents.send as ReturnType<typeof mock>).mock.calls.find(
+    const shareCall = (window.webContents.send as ReturnType<typeof vi.fn>).mock.calls.find(
       (c) => c[0] === 'ok:share:received',
     );
     expect(shareCall).toBeDefined();

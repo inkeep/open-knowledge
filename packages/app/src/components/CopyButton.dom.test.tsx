@@ -15,8 +15,9 @@
  *
  * Substrate: jsdom via `bun run test:dom`.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 // CopyButton mounts a Radix Tooltip (focus-scope) which reaches for DOM globals
 // the shared jsdom-preload does not expose. Hoist the needed shims — same

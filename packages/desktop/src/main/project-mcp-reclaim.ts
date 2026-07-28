@@ -15,6 +15,7 @@ import {
   truncatePriorEntry,
 } from '@inkeep/open-knowledge';
 import type { McpWiringEditorId } from '../shared/ipc-channels.ts';
+import { classifyInstallShape } from './install-shape.ts';
 
 interface ProjectMcpReclaimLogger {
   event(payload: { event: string; [key: string]: unknown }): void;
@@ -70,6 +71,8 @@ interface CheckAndRepairProjectMcpOpts {
   executablePath: string;
   isPackaged: boolean;
   platform: 'darwin' | 'win32' | 'linux' | string;
+  /** Env for install-shape classification (AppImage detection). Defaults to `process.env`. */
+  env?: Record<string, string | undefined>;
   cli: ProjectMcpReclaimCliSurface;
   forceEnv?: string | null | undefined;
   reclaimDisableEnv?: string | null | undefined;
@@ -90,9 +93,15 @@ export async function checkAndRepairProjectMcpOnProjectOpen(
     logger = DEFAULT_LOGGER,
   } = opts;
   if (reclaimDisableEnv === '1') return { status: 'skipped', reason: 'reclaim-disabled' };
-  if (platform !== 'darwin') return { status: 'skipped', reason: 'platform' };
   if (!isPackaged && forceEnv !== '1') return { status: 'skipped', reason: 'dev-mode' };
-  if (!/\.app\/Contents\/MacOS\/[^/]+$/.test(executablePath)) {
+  // Supported packaged layouts only (darwin bundle / NSIS / linux dir —
+  // install-shape.ts). AppImage declines: its ephemeral mount path must
+  // never be persisted into user or project config.
+  const installShape = classifyInstallShape(platform, executablePath, opts.env ?? process.env);
+  if (installShape.kind === 'appimage') {
+    return { status: 'skipped', reason: 'appimage-ephemeral' };
+  }
+  if (installShape.kind === 'unsupported') {
     return { status: 'skipped', reason: 'bad-executable-path' };
   }
 

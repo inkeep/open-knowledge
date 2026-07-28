@@ -1,10 +1,10 @@
-import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { createApiExtension } from './api-extension.ts';
+import { describe, expect, test } from 'vitest';
+import { createApiExtension } from './api-extension.test-helper.ts';
 import { getLocalDir } from './config/paths.ts';
 import { acquireServerLock } from './server-lock.ts';
 

@@ -5,11 +5,11 @@
  * `unzip` rather than adding a parser dep.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import { collectReportBundle as collectReportBundleFromIndex } from './index.ts';
 import { collectReportBundle } from './report-bundle.ts';
 

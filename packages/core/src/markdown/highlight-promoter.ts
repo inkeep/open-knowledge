@@ -3,7 +3,11 @@ import type { MdxJsxTextElement } from 'mdast-util-mdx';
 import { SKIP, visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
 import type { MarkMdast } from './mdast-augmentation.ts';
-import { deriveFragmentPosition } from './promoter-position.ts';
+import {
+  deriveFragmentPosition,
+  escapedValueOffsets,
+  isEscapeDerivedRun,
+} from './promoter-position.ts';
 
 const HIGHLIGHT_RE = /(?<!=)==(?=\S)([^\n]*?[^\s=])==(?!=)/g;
 
@@ -59,8 +63,16 @@ function sliceTextNode(source: Text, from: number, to: number): Text {
   return out;
 }
 
-function promoteCrossChildren(parent: Parent): void {
+function promoteCrossChildren(parent: Parent, source: string): void {
   const children = parent.children as PhrasingContent[];
+  const escapeSets = new Map<Text, ReadonlySet<number> | null>();
+  const escapesOf = (node: Text): ReadonlySet<number> | null => {
+    const cached = escapeSets.get(node);
+    if (cached !== undefined) return cached;
+    const set = escapedValueOffsets(source, node);
+    escapeSets.set(node, set);
+    return set;
+  };
   let outerI = 0;
   while (outerI < children.length) {
     const openChild = children[outerI];
@@ -74,6 +86,7 @@ function promoteCrossChildren(parent: Parent): void {
     for (let n = 0; n <= openValue.length - 2; n++) {
       if (openValue.charCodeAt(n) !== 61 || openValue.charCodeAt(n + 1) !== 61) continue; // 61 = '='
       if (n > 0 && openValue.charCodeAt(n - 1) === 61) continue;
+      if (isEscapeDerivedRun(escapesOf(openChild), n, 2)) continue;
       let charAfter: string | null;
       if (n + 2 < openValue.length) {
         charAfter = openValue.charAt(n + 2);
@@ -97,6 +110,7 @@ function promoteCrossChildren(parent: Parent): void {
 
     for (let n2 = openPos + 3; n2 <= openValue.length - 2; n2++) {
       if (openValue.charCodeAt(n2) !== 61 || openValue.charCodeAt(n2 + 1) !== 61) continue;
+      if (isEscapeDerivedRun(escapesOf(openChild), n2, 2)) continue;
       const before = openValue.charAt(n2 - 1);
       if (/[\s=]/.test(before)) continue;
       let after: string | null;
@@ -120,6 +134,7 @@ function promoteCrossChildren(parent: Parent): void {
       if (sib.type === 'text') {
         for (let n2 = 0; n2 <= sib.value.length - 2; n2++) {
           if (sib.value.charCodeAt(n2) !== 61 || sib.value.charCodeAt(n2 + 1) !== 61) continue;
+          if (isEscapeDerivedRun(escapesOf(sib), n2, 2)) continue;
           let before: string | null;
           if (n2 > 0) {
             before = sib.value.charAt(n2 - 1);
@@ -192,11 +207,11 @@ function promoteCrossChildren(parent: Parent): void {
   }
 }
 
-function walkPromote(node: Nodes): void {
+function walkPromote(node: Nodes, source: string): void {
   if ('children' in node && Array.isArray(node.children)) {
-    promoteCrossChildren(node as Parent);
+    promoteCrossChildren(node as Parent, source);
     for (const child of node.children) {
-      walkPromote(child as Nodes);
+      walkPromote(child as Nodes, source);
     }
   }
 }
@@ -210,11 +225,18 @@ export function highlightPromoterPlugin() {
       const value = node.value;
       if (value.indexOf('==') === -1) return;
 
+      const escaped = escapedValueOffsets(source, node);
       HIGHLIGHT_RE.lastIndex = 0;
       const matches: RegExpExecArray[] = [];
       let m: RegExpExecArray | null;
       // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex iteration
       while ((m = HIGHLIGHT_RE.exec(value)) !== null) {
+        const start = m.index;
+        const end = start + m[0].length;
+        if (isEscapeDerivedRun(escaped, start, 2) || isEscapeDerivedRun(escaped, end - 2, 2)) {
+          HIGHLIGHT_RE.lastIndex = start + 1;
+          continue;
+        }
         matches.push(m);
       }
       if (matches.length === 0) return;
@@ -254,7 +276,7 @@ export function highlightPromoterPlugin() {
       return [SKIP, index + replacements.length];
     });
 
-    walkPromote(tree);
+    walkPromote(tree, source);
 
     visit(tree, 'mdxJsxTextElement', (node: MdxJsxTextElement, index, parent) => {
       if (parent === undefined || index === undefined || index === null) return;

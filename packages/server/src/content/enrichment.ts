@@ -15,7 +15,12 @@
 import type { Dirent } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { basename, relative, resolve } from 'node:path';
-import { OK_DIR, parseFrontmatterRecord } from '@inkeep/open-knowledge-core';
+import {
+  compileAppliesTo,
+  type FrontmatterSchemaMapping,
+  OK_DIR,
+  parseFrontmatterRecord,
+} from '@inkeep/open-knowledge-core';
 import { getLogger } from '../logger.ts';
 import { resolveWithinRoot } from '../mcp/tools/path-safety.ts';
 import { httpGet } from '../mcp/tools/shared.ts';
@@ -130,6 +135,13 @@ export interface DirectoryMeta {
    */
   templates_available?: TemplateEntry[];
   /**
+   * Frontmatter schema files that could govern docs in this folder (resolved
+   * server-side from the enabled frontmatter plugin's `appliesTo` mappings —
+   * the agent never evaluates a glob). Covers the new-file gap: a read of the
+   * folder advertises the contract before the first write.
+   */
+  schemas_applicable?: string[];
+  /**
    * Recursive subfolder enrichment. Populated when a caller (e.g.
    * an `exec` recursive listing) asks for subtree visibility — each entry
    * carries its own `title`/`description`/`tags` + `templates_available` so
@@ -214,6 +226,12 @@ export interface EnrichedMeta {
    * multi-path output, where the counts are not fully resolved.
    */
   graphRole: GraphRole | null;
+  /**
+   * Frontmatter schema files governing this doc, resolved server-side via the
+   * enabled frontmatter plugin's `appliesTo` mappings. Absent when the plugin
+   * is off, no mapping matches, or the doc sits outside the content root.
+   */
+  schemas_applicable?: string[];
 }
 
 /** Coarse classification of a document by its link counts. */
@@ -248,6 +266,68 @@ interface EnrichPathDeps {
   serverUrl?: string | undefined;
   /** History depth for rich mode; defaults to 5. */
   historyDepth?: number;
+  /**
+   * Content root (`resolve(projectDir, content.dir)`) — `appliesTo` globs
+   * match content-relative doc paths, while enrichment paths are
+   * project-relative. Defaults to `projectDir` when omitted.
+   */
+  contentDir?: string;
+  /**
+   * The enabled frontmatter plugin's schema mappings. When present, doc and
+   * folder enrichment advertise which schema files govern each path
+   * (`schemas_applicable`) — the read-time serving surface that lets an agent
+   * learn a doc's contract without parsing config or evaluating globs itself.
+   */
+  frontmatterSchemas?: FrontmatterSchemaMapping[];
+}
+
+/**
+ * Schema files whose `appliesTo` matches this doc (project-relative path is
+ * rebased to content-relative before matching). Unique, mapping order.
+ *
+ * Applies the same selection triad as `selectApplicableFrontmatterSchemas` in
+ * core — skip disabled, match `appliesTo`, dedup — but over the PERSISTED
+ * mappings rather than resolved entries, because enrichment advertises which
+ * files govern a doc without loading their content. Keep the two in step: a
+ * change to what "governs" means belongs in both, and only the core one is
+ * covered by the validator's own tests.
+ */
+function schemasApplicableToDoc(
+  deps: Pick<EnrichPathDeps, 'projectDir' | 'contentDir' | 'frontmatterSchemas'>,
+  relPath: string,
+): string[] {
+  const mappings = deps.frontmatterSchemas;
+  if (!mappings || mappings.length === 0) return [];
+  const contentDir = deps.contentDir ?? deps.projectDir;
+  const contentRel = relative(contentDir, resolve(deps.projectDir, relPath));
+  if (contentRel.startsWith('..')) return [];
+  const files: string[] = [];
+  for (const mapping of mappings) {
+    if (mapping.enabled === false) continue;
+    if (!compileAppliesTo(mapping.appliesTo).matches(contentRel)) continue;
+    if (!files.includes(mapping.file)) files.push(mapping.file);
+  }
+  return files;
+}
+
+/**
+ * Schema files that could govern docs created in this folder: an entry is
+ * advertised when its globs match a placeholder direct child of the folder.
+ * A prefix-feasibility check — entries whose positive globs only match
+ * specific literal names (an index/log alternation) or deeper descendants are
+ * not advertised at the folder level; they still advertise on the docs
+ * themselves. (The obvious glob example can't appear here: a globstar
+ * followed by a slash inside a block comment would close the comment.)
+ */
+function schemasApplicableToFolder(
+  deps: Pick<EnrichPathDeps, 'projectDir' | 'contentDir' | 'frontmatterSchemas'>,
+  relPath: string,
+): string[] {
+  // U+2042 asterism as the placeholder child name — matched by wildcard
+  // segments, never by a literal doc name.
+  const placeholder = '⁂';
+  const probe = relPath === '' ? placeholder : `${relPath}/${placeholder}`;
+  return schemasApplicableToDoc(deps, probe);
 }
 
 interface EnrichPathOptions {
@@ -467,6 +547,9 @@ export async function enrichPath(
   const rich = options.includeRichFields === true;
 
   const fmPromise = readFrontmatter(absPath);
+  const applicableSchemas = schemasApplicableToDoc(deps, relPath);
+  const schemasField =
+    applicableSchemas.length > 0 ? { schemas_applicable: applicableSchemas } : {};
 
   if (!rich) {
     const fm = await fmPromise;
@@ -486,6 +569,7 @@ export async function enrichPath(
       projectHistory: null,
       projectHistorySource: null,
       graphRole: null,
+      ...schemasField,
     };
   }
 
@@ -520,6 +604,7 @@ export async function enrichPath(
     projectHistory: project.commits,
     projectHistorySource: project.source,
     graphRole: computeGraphRole(backlinks?.length ?? null, forwardLinks?.length ?? null),
+    ...schemasField,
   };
 }
 
@@ -601,7 +686,7 @@ async function scanDirectory(absDir: string, projectDir: string): Promise<DirSca
  */
 export async function enrichDirectory(
   relPathInput: string,
-  deps: Pick<EnrichPathDeps, 'projectDir'>,
+  deps: Pick<EnrichPathDeps, 'projectDir' | 'contentDir' | 'frontmatterSchemas'>,
 ): Promise<DirectoryMeta> {
   // See `enrichPath` for the rationale — same `..`/absolute-path escape
   // class via `node:fs`-direct readdir / stat.
@@ -651,6 +736,9 @@ export async function enrichDirectory(
   const templates = resolveTemplatesAvailable(deps.projectDir, relPath);
   if (templates.length > 0) result.templates_available = templates;
 
+  const folderSchemas = schemasApplicableToFolder(deps, relPath);
+  if (folderSchemas.length > 0) result.schemas_applicable = folderSchemas;
+
   return result;
 }
 
@@ -667,7 +755,7 @@ export async function enrichDirectory(
 export async function enrichDirectoryRecursive(
   relPathInput: string,
   depth: number,
-  deps: Pick<EnrichPathDeps, 'projectDir'>,
+  deps: Pick<EnrichPathDeps, 'projectDir' | 'contentDir' | 'frontmatterSchemas'>,
 ): Promise<DirectoryMeta> {
   const top = await enrichDirectory(relPathInput, deps);
   if (depth <= 1) return top;

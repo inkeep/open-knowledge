@@ -6,8 +6,8 @@
  * and the `share/publish.test.ts` shape.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import type { SharePublishOwner } from '@inkeep/open-knowledge-core';
+import { describe, expect, test, vi } from 'vitest';
 import {
   buildSamlSsoAuthorizeUrl,
   canSubmitPublish,
@@ -147,7 +147,7 @@ describe('presentPublishError', () => {
 
 describe('fetchPublishOwners', () => {
   test('parses a happy-path body and returns owners array', async () => {
-    const fakeFetch = mock(async () =>
+    const fakeFetch = vi.fn(async () =>
       makeJsonResponse({
         ok: true,
         owners: [
@@ -170,7 +170,7 @@ describe('fetchPublishOwners', () => {
   });
 
   test('parses an auth-required error body', async () => {
-    const fakeFetch = mock(async () =>
+    const fakeFetch = vi.fn(async () =>
       makeJsonResponse({ ok: false, error: 'auth-required' }),
     ) as unknown as typeof fetch;
 
@@ -179,13 +179,13 @@ describe('fetchPublishOwners', () => {
   });
 
   test('throws on non-2xx transport status', async () => {
-    const fakeFetch = mock(async () => makeJsonResponse({}, 500)) as unknown as typeof fetch;
+    const fakeFetch = vi.fn(async () => makeJsonResponse({}, 500)) as unknown as typeof fetch;
 
     await expect(fetchPublishOwners(fakeFetch)).rejects.toThrow('owners transport 500');
   });
 
   test('throws on response shape mismatch', async () => {
-    const fakeFetch = mock(async () =>
+    const fakeFetch = vi.fn(async () =>
       makeJsonResponse({ ok: true, owners: 'not-an-array' }),
     ) as unknown as typeof fetch;
 
@@ -196,7 +196,7 @@ describe('fetchPublishOwners', () => {
 describe('fetchPublishNameCheck', () => {
   test('builds URL with URL-encoded query params and returns body', async () => {
     let capturedUrl: string | null = null;
-    const fakeFetch = mock(async (url: string) => {
+    const fakeFetch = vi.fn(async (url: string) => {
       capturedUrl = url;
       return makeJsonResponse({ ok: true, available: true });
     }) as unknown as typeof fetch;
@@ -207,7 +207,7 @@ describe('fetchPublishNameCheck', () => {
   });
 
   test('parses taken response', async () => {
-    const fakeFetch = mock(async () =>
+    const fakeFetch = vi.fn(async () =>
       makeJsonResponse({ ok: true, available: false }),
     ) as unknown as typeof fetch;
 
@@ -216,7 +216,7 @@ describe('fetchPublishNameCheck', () => {
   });
 
   test('throws on non-2xx transport status', async () => {
-    const fakeFetch = mock(async () => makeJsonResponse({}, 503)) as unknown as typeof fetch;
+    const fakeFetch = vi.fn(async () => makeJsonResponse({}, 503)) as unknown as typeof fetch;
 
     await expect(fetchPublishNameCheck('me', 'x', fakeFetch)).rejects.toThrow(
       'name-check transport 503',
@@ -326,7 +326,7 @@ describe('canSubmitPublish', () => {
 describe('submitPublishRequest', () => {
   test('POSTs JSON body and returns happy-path response', async () => {
     let capturedInit: RequestInit | undefined;
-    const fakeFetch = mock(async (_url: string, init?: RequestInit) => {
+    const fakeFetch = vi.fn(async (_url: string, init?: RequestInit) => {
       capturedInit = init;
       return makeJsonResponse({
         ok: true,
@@ -370,7 +370,7 @@ describe('submitPublishRequest', () => {
       'no-project',
     ] as const;
     for (const error of codes) {
-      const fakeFetch = mock(async () =>
+      const fakeFetch = vi.fn(async () =>
         makeJsonResponse({ ok: false, error }),
       ) as unknown as typeof fetch;
 
@@ -387,7 +387,7 @@ describe('submitPublishRequest', () => {
   });
 
   test('throws on non-2xx transport status', async () => {
-    const fakeFetch = mock(async () => makeJsonResponse({}, 502)) as unknown as typeof fetch;
+    const fakeFetch = vi.fn(async () => makeJsonResponse({}, 502)) as unknown as typeof fetch;
 
     await expect(
       submitPublishRequest({ owner: 'me', name: 'x', visibility: 'private' }, fakeFetch),
@@ -395,7 +395,7 @@ describe('submitPublishRequest', () => {
   });
 
   test('throws on response shape mismatch', async () => {
-    const fakeFetch = mock(async () =>
+    const fakeFetch = vi.fn(async () =>
       makeJsonResponse({ ok: true /* missing other fields */ }),
     ) as unknown as typeof fetch;
 

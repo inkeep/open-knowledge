@@ -9,13 +9,13 @@
  * covered separately in `git-preflight-boot.test.ts`.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { context, metrics, trace } from '@opentelemetry/api';
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { GitNotAvailableError, GitTooOldError, type InstallGuidance } from './git-preflight.ts';
 import {
   emitPreflightFailureSpan,

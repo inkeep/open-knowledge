@@ -27,6 +27,8 @@ import type {
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
+  OkBugReportDeleteResult,
+  OkBugReportListResult,
   OkBugReportScreenshot,
   OkBugReportSendMetadata,
   OkBugReportSendResult,
@@ -174,6 +176,16 @@ export interface OkDesktopConfig {
    * the desktop + app copies (the core mirror keeps the minimal config shape).
    */
   readonly startupTraceparent?: string;
+  /**
+   * Whether an interactive PTY can be spawned in this install — the terminal
+   * dock's plain-terminal-tab capability gate. `false` on Windows/Linux
+   * (node-pty is not bundled there; the terminal dock is dark off-mac), so
+   * the renderer hides the terminal affordances instead of surfacing a spawn
+   * failure. Gates only the pty-tab surface — future non-pty dock content
+   * (e.g. ACP threads) must not key off this. Lockstep with the app-side
+   * `OkDesktopConfig`.
+   */
+  readonly ptyAvailable: boolean;
 }
 
 /** Menu-action IDs fired by main → renderer on user menu selection. */
@@ -193,6 +205,9 @@ export type OkMenuAction =
   | 'version-history'
   | 'focus-search'
   | 'focus-command-palette'
+  // Navigation history.
+  | 'navigate-back'
+  | 'navigate-forward'
   // File menu state-aware items. Renderer subscribes via the existing
   // `onMenuAction` bridge surface; routing through the same channel
   // avoids inventing a new IPC for what is conceptually "user picked a menu
@@ -229,10 +244,13 @@ export type OkMenuAction =
   // create dialog; `switch-worktree` opens the sidebar worktree switcher.
   | 'new-worktree'
   | 'switch-worktree'
-  // Help → Report a Bug… — opens the in-app bug-report dialog. Both window
+  // Help → Report a bug… — opens the in-app bug-report dialog. Both window
   // types subscribe: editor windows report project-scoped, the Navigator
   // reports system-wide.
-  | 'report-bug';
+  | 'report-bug'
+  // Help → Send feedback… — opens the in-app feedback form, the same one
+  // the Resources menu and the Cmd+K palette open. Both window types subscribe.
+  | 'send-feedback';
 
 /** Returned by `onProjectSwitched` / `onMenuAction`. Call to detach the listener. */
 type OkUnsubscribe = () => void;
@@ -834,6 +852,64 @@ export interface OkEditorViewMenuStateSnapshot {
 }
 
 /**
+ * Windows/Linux renderer-menubar dispatch payloads (the windows-linux-port
+ * renderer-menubar decision). macOS keeps the native menu bar; win/linux draw it in the
+ * renderer and route every click through main via `menu.dispatch` so menu
+ * semantics stay single-sourced: `menu-action` relays through the same
+ * dispatch path the native menu items use, `role` maps onto Electron's
+ * built-in menu roles, `command` covers the main-side click handlers
+ * (navigator, folder picker, settings, updater…), and `query` returns the
+ * aggregated state the native menu renders from. Same shapes as
+ * `MenuDispatch*` in `ipc-channels.ts` — duplicated for the
+ * module-resolution reason the wider `OkDesktopBridge` is duplicated.
+ */
+export type OkMenuDispatchRole =
+  | 'undo'
+  | 'redo'
+  | 'cut'
+  | 'copy'
+  | 'paste'
+  | 'selectAll'
+  | 'reload'
+  | 'forceReload'
+  | 'toggleDevTools'
+  | 'resetZoom'
+  | 'zoomIn'
+  | 'zoomOut'
+  | 'toggleFullScreen'
+  | 'minimize'
+  | 'close'
+  | 'quit';
+
+export type OkMenuDispatchCommand =
+  | 'open-navigator'
+  | 'open-folder-dialog'
+  | 'clear-recent-projects'
+  | 'open-settings'
+  | 'check-for-updates'
+  | 'reconfigure-mcp-wiring'
+  | 'open-github'
+  | 'toggle-spell-check';
+
+export type OkMenuDispatchRequest =
+  | { readonly kind: 'query' }
+  | { readonly kind: 'menu-action'; readonly action: OkMenuAction }
+  | { readonly kind: 'command'; readonly command: OkMenuDispatchCommand }
+  | { readonly kind: 'open-recent-project'; readonly path: string }
+  | { readonly kind: 'role'; readonly role: OkMenuDispatchRole };
+
+/** `query` result — the same aggregated state the native menu renders from. */
+export interface OkMenuRendererSnapshot {
+  readonly recentProjects: ReadonlyArray<{ readonly path: string; readonly name: string }>;
+  readonly spellCheckEnabled: boolean;
+  readonly showDevToolsMenu: boolean;
+  readonly canCheckForUpdates: boolean;
+  readonly canReconfigureMcpWiring: boolean;
+  readonly activeTarget: OkEditorActiveTargetSnapshot;
+  readonly viewMenuState: OkEditorViewMenuStateSnapshot;
+}
+
+/**
  * Payload for `onServerVersionDrift` — the desktop attached to a server whose
  * version differs from the running app's (most often a prior version's
  * detached server still alive after an auto-update).
@@ -852,6 +928,15 @@ export interface OkServerVersionDriftInfo {
 /** Payload for `onServerRestarted` — fired on the freshly-spawned window after a successful restart. */
 export interface OkServerRestartedInfo {
   readonly appRuntime: string;
+}
+
+/**
+ * Payload for `onRecentRemovedMissing` — fired on the window that initiated a
+ * recents open when the target folder was gone and its stale entry was pruned.
+ */
+export interface OkRecentRemovedMissingInfo {
+  readonly path: string;
+  readonly projectName: string;
 }
 
 /**
@@ -1061,6 +1146,13 @@ export interface OkDesktopBridge {
    * server now matches the app.
    */
   onServerRestarted(cb: (info: OkServerRestartedInfo) => void): OkUnsubscribe;
+  /**
+   * Subscribe to `ok:project:recent-removed-missing` — fired on the window that
+   * initiated a recents open of a folder that no longer exists. The stale entry
+   * has already been pruned from the recents list; the renderer surfaces a
+   * lightweight toast (and, in the Navigator, drops the row from its list).
+   */
+  onRecentRemovedMissing(cb: (info: OkRecentRemovedMissingInfo) => void): OkUnsubscribe;
   /**
    * Restart the project's server to match this app's version: terminate the
    * attached (not-owned) server and recreate the window against a fresh
@@ -1571,6 +1663,10 @@ export interface OkDesktopBridge {
       metadata: OkBugReportSendMetadata;
     }): Promise<OkBugReportSendResult>;
     crashAck(request: { eventId: string }): Promise<OkBugReportCrashAckResult>;
+    /** The persisted report history (newest first) read from the sidecars. */
+    list(): Promise<OkBugReportListResult>;
+    /** Remove a persisted report's zip + sidecar by `id` (containment-checked). */
+    delete(id: string): Promise<OkBugReportDeleteResult>;
     onCrashDetected(cb: (event: OkBugReportCrashDetectedEvent) => void): OkUnsubscribe;
   };
 
@@ -1894,6 +1990,18 @@ export interface OkDesktopBridge {
      * windows — matches the active-target singleton model.
      */
     notifyViewMenuStateChanged(state: Partial<OkEditorViewMenuStateSnapshot>): void;
+  };
+
+  /**
+   * Windows/Linux renderer-menubar dispatch surface (windows-linux-port
+   * renderer-menubar decision). macOS keeps the native menu bar and never calls this; on
+   * win/linux the renderer-drawn menu bar routes every click through main
+   * so menu semantics live in one place. `query` resolves the aggregated
+   * `OkMenuRendererSnapshot`; every other kind performs the action
+   * main-side and resolves undefined.
+   */
+  menu: {
+    dispatch(request: OkMenuDispatchRequest): Promise<OkMenuRendererSnapshot | undefined>;
   };
 
   /**

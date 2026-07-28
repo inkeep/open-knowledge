@@ -15,13 +15,17 @@
  *    both platform branches is classified palette-command / OS-role / reserved.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { COMMAND_IDENTITIES, type MenuPlatform } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { PALETTE_COMMANDS } from '@/components/command-palette-commands';
 import { APP_RESERVED_IDS, PALETTE_COMMAND_IDS } from '@/lib/command-menu-parity.test-helper';
-import { formatShortcut, type KeyboardShortcutId } from '@/lib/keyboard-shortcuts';
+import {
+  formatShortcut,
+  type KeyboardShortcutId,
+  type ShortcutPlatform,
+} from '@/lib/keyboard-shortcuts';
 import { OK_MENU_ACTIONS } from '@/lib/ok-menu-actions';
 import {
   buildMenuTemplate,
@@ -71,6 +75,8 @@ const OS_ROLE_EXEMPT = new Set<string>([
 // state-aware View toggles contribute both their Show/Hide variants). "Full path"
 // / "Relative path" are the Copy-path submenu leaves the palette flattens.
 const PALETTE_COMMAND_LABELS = new Set<string>([
+  'Back',
+  'Forward',
   'New file',
   'New folder',
   'New from template',
@@ -107,7 +113,8 @@ const PALETTE_COMMAND_LABELS = new Set<string>([
   'New Terminal',
   'Kill Terminal',
   'OpenKnowledge on GitHub',
-  'Report a Bug',
+  'Report a bug',
+  'Send feedback',
   // Present already; not a single registry command but reachable from the palette
   // as its own surface (Install for Claude, gated behind SHOW_INSTALL_SKILL).
   'Install for Claude Chat & Cowork (desktop app)',
@@ -136,8 +143,11 @@ function makeFullDeps(): MenuDeps {
     openInstallSkillDialog: noop,
     openSettings: noop,
     onReportBug: noop,
+    onSendFeedback: noop,
     onCheckForUpdates: noop,
     onUninstall: noop,
+    onNavigateBack: noop,
+    onNavigateForward: noop,
     activeTarget: { kind: 'doc', target: 'doc.md' } as MenuDeps['activeTarget'],
     onNewFile: noop,
     onNewFolder: noop,
@@ -312,6 +322,8 @@ describe('command-menu parity ratchet', () => {
     // makeFullDeps sets the panels visible, so the state-aware View toggle
     // renders its "Hide …" variant.
     expect(labels.has('Check for updates')).toBe(true);
+    expect(labels.has('Back')).toBe(true);
+    expect(labels.has('Forward')).toBe(true);
     expect(labels.has('Move to Trash')).toBe(true);
     expect(labels.has('Hide sidebar')).toBe(true);
     expect(labels.has('New Terminal')).toBe(true);
@@ -322,7 +334,18 @@ describe('command-menu parity ratchet', () => {
   // binding must agree. Guards the live drift between menu.ts's hand-typed
   // accelerators and the shortcut registry (they share no import); the id-spaces
   // differ, so this map bridges menu label → shortcut id.
-  const MENU_SHORTCUT_PAIRS: Array<{ menuLabel: string; shortcutId: KeyboardShortcutId }> = [
+  interface MenuShortcutPair {
+    menuLabel: string;
+    shortcutId: KeyboardShortcutId;
+  }
+
+  const NAVIGATION_HISTORY_SHORTCUT_PAIRS: readonly MenuShortcutPair[] = [
+    { menuLabel: 'Back', shortcutId: 'navigate-back' },
+    { menuLabel: 'Forward', shortcutId: 'navigate-forward' },
+  ];
+
+  const MENU_SHORTCUT_PAIRS: readonly MenuShortcutPair[] = [
+    ...NAVIGATION_HISTORY_SHORTCUT_PAIRS,
     { menuLabel: 'New file', shortcutId: 'new-item' },
     { menuLabel: 'New folder', shortcutId: 'new-folder' },
     { menuLabel: 'Switch project', shortcutId: 'switch-project' },
@@ -344,26 +367,47 @@ describe('command-menu parity ratchet', () => {
     if (/CmdOrCtrl|Cmd|Ctrl|⌘|⌃/.test(s)) tokens.add('MOD');
     if (/Shift|⇧/.test(s)) tokens.add('SHIFT');
     if (/Alt|Option|⌥/.test(s)) tokens.add('ALT');
-    let base = s.replace(/CmdOrCtrl|Cmd|Ctrl|Shift|Alt|Option/g, '').replace(/[⌘⌃⇧⌥+\s]/g, '');
+    let base = s
+      .replaceAll('←', 'Left')
+      .replaceAll('→', 'Right')
+      .replaceAll('↑', 'Up')
+      .replaceAll('↓', 'Down')
+      .replace(/CmdOrCtrl|Cmd|Ctrl|Shift|Alt|Option/g, '')
+      .replace(/[⌘⌃⇧⌥+\s]/g, '');
     if (/^(Delete|Backspace|⌫)$/i.test(base)) base = 'DEL';
     tokens.add(`KEY:${base.toUpperCase()}`);
     return [...tokens].sort().join(',');
   }
 
-  test('Ratchet D: menu accelerators agree with the keyboard-shortcut registry', () => {
-    const accelByLabel = new Map<string, string>();
-    for (const leaf of collectLeavesForPlatform('darwin')) {
-      if (leaf.accelerator) accelByLabel.set(normalizeLabel(leaf.label), leaf.accelerator);
-    }
-    const mismatches: Array<{ menuLabel: string; accelerator?: string; shortcut: string }> = [];
-    for (const { menuLabel, shortcutId } of MENU_SHORTCUT_PAIRS) {
-      const accelerator = accelByLabel.get(menuLabel);
-      const shortcut = formatShortcut(shortcutId, 'mac');
+  function expectMenuShortcutParity(
+    pairs: readonly MenuShortcutPair[],
+    menuPlatform: NodeJS.Platform,
+    shortcutPlatform: ShortcutPlatform,
+  ): void {
+    const mismatches: Array<{
+      menuLabel: string;
+      accelerator?: string;
+      shortcut: string;
+    }> = [];
+    const leaves = collectLeavesForPlatform(menuPlatform);
+    for (const pair of pairs) {
+      const accelerator = leaves.find(
+        (leaf) => normalizeLabel(leaf.label) === pair.menuLabel,
+      )?.accelerator;
+      const shortcut = formatShortcut(pair.shortcutId, shortcutPlatform);
       if (accelerator === undefined || chordTokens(accelerator) !== chordTokens(shortcut)) {
-        mismatches.push({ menuLabel, accelerator, shortcut });
+        mismatches.push({ menuLabel: pair.menuLabel, accelerator, shortcut });
       }
     }
     expect(mismatches).toEqual([]);
+  }
+
+  test('Ratchet D: menu accelerators agree with the keyboard-shortcut registry', () => {
+    expectMenuShortcutParity(MENU_SHORTCUT_PAIRS, 'darwin', 'mac');
+  });
+
+  test('Ratchet D: Windows/Linux navigation accelerators agree with the shortcut registry', () => {
+    expectMenuShortcutParity(NAVIGATION_HISTORY_SHORTCUT_PAIRS, 'win32', 'windowsLinux');
   });
 
   // Exactly one bridge.onMenuAction listener (the bus forwarder) — no subscriber
@@ -378,6 +422,7 @@ describe('command-menu parity ratchet', () => {
       'components/ProjectSwitcher.tsx',
       'components/CreateProjectMenuTrigger.tsx',
       'components/ReportBugMenuTrigger.tsx',
+      'components/FeedbackMenuTrigger.tsx',
       'components/NavigatorApp.tsx',
       'editor/DocumentContext.tsx',
     ];
@@ -429,6 +474,43 @@ describe('command-menu parity ratchet', () => {
 describe('command identity registry (Phase 2b)', () => {
   const OK_MENU_ACTION_SET = new Set<string>(OK_MENU_ACTIONS);
 
+  test('navigation-history commands pair actions with ordered platform placements', () => {
+    const historyCommands = COMMAND_IDENTITIES.filter((command) =>
+      ['navigate-back', 'navigate-forward'].includes(command.id),
+    );
+
+    expect(
+      historyCommands.map(({ id, menuActionId, shortcutId, shortcutDesktopOnly, menu }) => ({
+        id,
+        menuActionId,
+        shortcutId,
+        shortcutDesktopOnly,
+        menu,
+      })),
+    ).toEqual([
+      {
+        id: 'navigate-back',
+        menuActionId: 'navigate-back',
+        shortcutId: 'navigate-back',
+        shortcutDesktopOnly: true,
+        menu: [
+          { section: 'view-history', order: 0, platform: 'mac', accelerator: 'Cmd+[' },
+          { section: 'view-history', order: 0, platform: 'other', accelerator: 'Alt+Left' },
+        ],
+      },
+      {
+        id: 'navigate-forward',
+        menuActionId: 'navigate-forward',
+        shortcutId: 'navigate-forward',
+        shortcutDesktopOnly: true,
+        menu: [
+          { section: 'view-history', order: 1, platform: 'mac', accelerator: 'Cmd+]' },
+          { section: 'view-history', order: 1, platform: 'other', accelerator: 'Alt+Right' },
+        ],
+      },
+    ]);
+  });
+
   test('every registry menuActionId is a real OkMenuAction', () => {
     const bad = COMMAND_IDENTITIES.flatMap((cmd) =>
       cmd.menuActionId && !OK_MENU_ACTION_SET.has(cmd.menuActionId) ? [cmd.id] : [],
@@ -453,6 +535,8 @@ describe('command identity registry (Phase 2b)', () => {
       'settings',
       'install-claude-desktop',
       'report-bug',
+      'bug-report-history',
+      'send-feedback',
       'check-for-updates',
       'set-up-integrations',
       'toggle-spell-check',

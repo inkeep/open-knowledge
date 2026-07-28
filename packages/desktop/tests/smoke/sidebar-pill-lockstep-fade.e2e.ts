@@ -2,9 +2,12 @@
  * Sidebar search pill Electron-mode lockstep-fade smoke.
  *
  * Drives the real Electron binary via Playwright's `_electron` API and
- * verifies the Electron-only opacity gate on FileSidebar's chrome row:
+ * verifies navigation-control placement and the Electron-only opacity gate:
  *
- *   - The h-12 toolbar row carries `opacity-0` when the sidebar is
+ *   - Expanded mode renders exactly one Back/Forward pair in SidebarHeader.
+ *   - Collapsed mode moves that pair to EditorHeader without duplication.
+ *   - Both placements traverse the real browser-history stack.
+ *   - The h-12 sidebar chrome row carries `opacity-0` when the sidebar is
  *     collapsed (`shouldFadeChrome && 'opacity-0'`).
  *   - The new sidebar-search-pill row, sibling between SidebarHeader and
  *     SidebarContent, also carries `opacity-0` under the same condition.
@@ -24,41 +27,55 @@
  * Skip conditions match the existing desktop smoke pattern:
  *   - `OK_DESKTOP_E2E_SMOKE !== '1'` — opt-in gate.
  *   - `process.platform !== 'darwin'` — driver uses macOS `open(1)`.
- *   - `out/main/index.js` missing — needs a prior `bun run build:desktop`.
+ *   - `out/main/index.js` missing — needs a prior `pnpm build:desktop`.
  */
 
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 
 function userDataDirFor(home: string): string {
   return join(home, 'electron-userdata');
 }
 
+async function expectDocument(
+  page: import('@playwright/test').Page,
+  docName: string,
+  marker: string,
+): Promise<void> {
+  await expect
+    .poll(async () => decodeURIComponent(await page.evaluate(() => window.location.hash)))
+    .toBe(`#/${docName}`);
+  await expect(
+    page.locator('.ProseMirror:not(.composer-prosemirror)', { hasText: marker }),
+  ).toBeVisible({ timeout: 15_000 });
+}
+
 test.describe('sidebar search pill — Electron lockstep-fade smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'Driver uses macOS open(1) and chrome stack is darwin-only in v0.');
-  test.skip(
-    !BUILD_EXISTS,
-    `Main build missing at ${MAIN_ENTRY} — run "bun run build:desktop" first.`,
-  );
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
-  test('expanded → neither row opacity-0; collapsed → BOTH rows opacity-0 (lockstep)', async ({
+  test('navigation controls relocate on collapse while sidebar chrome fades in lockstep', async ({
     captureStderrFor,
   }) => {
+    // Cold launch, deep-link window creation, and both expanded/collapsed
+    // history passes total ~167s of inner timeout budget.
+    test.setTimeout(180_000);
     const docName = `sidebar-pill-${randomUUID()}`;
+    const secondDocName = `sidebar-pill-second-${randomUUID()}`;
+    const firstMarker = 'Sidebar Pill Lockstep Fade Smoke';
+    const secondMarker = 'Sidebar Pill Navigation Second';
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-sidebar-pill-'));
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
     writeFileSync(
@@ -67,13 +84,20 @@ test.describe('sidebar search pill — Electron lockstep-fade smoke', () => {
     );
     writeFileSync(
       join(projectDir, `${docName}.md`),
-      '# Sidebar Pill Lockstep Fade Smoke\n\nFixture for chrome-row collapse verification.\n',
+      `# ${firstMarker}\n\nFixture for chrome-row collapse verification.\n`,
+    );
+    writeFileSync(
+      join(projectDir, `${secondDocName}.md`),
+      `# ${secondMarker}\n\nFixture for browser-history traversal.\n`,
     );
 
-    const app = await electron.launch({
-      args: [MAIN_ENTRY, `--user-data-dir=${userDataDirFor(projectDir)}`],
-      timeout: 30_000,
-    });
+    const app = await electron.launch(
+      desktopLaunchOptions({
+        target: TARGET,
+        args: [`--user-data-dir=${userDataDirFor(projectDir)}`],
+        timeout: 30_000,
+      }),
+    );
     captureStderrFor(app, { cleanupDirs: [projectDir] });
 
     // Wait for Navigator (cold-launch first window).
@@ -109,22 +133,43 @@ test.describe('sidebar search pill — Electron lockstep-fade smoke', () => {
       () => typeof window !== 'undefined' && window.okDesktop != null,
     );
     expect(isElectronHost).toBe(true);
+    await expectDocument(page, docName, firstMarker);
 
     // Wait for the sidebar to render in expanded state — pill must be
     // present + visible in the DOM before the collapse toggle works.
     const pill = page.getByRole('button', { name: /^Search/ });
     await pill.waitFor({ state: 'visible', timeout: 10_000 });
 
-    // The toolbar row is the inner div that holds the ToolbarButtons,
-    // and the pill row is its sibling div between SidebarHeader and
-    // SidebarContent. Locate both via stable structural selectors.
-    //
-    // Toolbar row: an `[data-slot="sidebar-header"]` is the parent;
-    // the toolbar inner div is its direct child carrying the
-    // `[&>*]:[-webkit-app-region:no-drag]` class fragment in Electron
-    // mode. We read the SidebarHeader itself — the opacity gate is on
-    // the header element's own className, applied via the
-    // `shouldFadeChrome && 'opacity-0'` line in FileSidebar.tsx.
+    const sidebarHeader = page.locator('[data-slot="sidebar-header"]');
+    const editorHeader = page.locator('[data-slot="sidebar-inset"] > header');
+    const backButtons = page.getByRole('button', { name: 'Back', exact: true });
+    const forwardButtons = page.getByRole('button', { name: 'Forward', exact: true });
+    const sidebarBack = sidebarHeader.getByRole('button', { name: 'Back', exact: true });
+    const sidebarForward = sidebarHeader.getByRole('button', { name: 'Forward', exact: true });
+    const headerBack = editorHeader.getByRole('button', { name: 'Back', exact: true });
+    const headerForward = editorHeader.getByRole('button', { name: 'Forward', exact: true });
+
+    // Expanded placement: SidebarHeader owns the only Back/Forward pair.
+    await expect(sidebarBack).toHaveCount(1);
+    await expect(sidebarForward).toHaveCount(1);
+    await expect(headerBack).toHaveCount(0);
+    await expect(headerForward).toHaveCount(0);
+    await expect(backButtons).toHaveCount(1);
+    await expect(forwardButtons).toHaveCount(1);
+
+    // Build a real two-document history stack through the file tree, then
+    // traverse it with the expanded SidebarHeader controls.
+    await page
+      .locator('[data-slot="sidebar-container"]')
+      .getByRole('treeitem', { name: `${secondDocName}.md`, exact: true })
+      .click();
+    await expectDocument(page, secondDocName, secondMarker);
+    await sidebarBack.click();
+    await expectDocument(page, docName, firstMarker);
+    await sidebarForward.click();
+    await expectDocument(page, secondDocName, secondMarker);
+
+    // SidebarHeader and the pill row are the two fade-gated chrome surfaces.
     const collectFadeState = async () => {
       return page.evaluate(() => {
         const header = document.querySelector('[data-slot="sidebar-header"]') as HTMLElement | null;
@@ -218,5 +263,20 @@ test.describe('sidebar search pill — Electron lockstep-fade smoke', () => {
     expect(collapsed.pillRowHasOpacity0).toBe(true);
     expect(collapsed.headerHasTransition).toBe(true);
     expect(collapsed.pillRowHasTransition).toBe(true);
+
+    // Collapsed placement: the off-canvas SidebarHeader pair unmounts and the
+    // EditorHeader pair becomes the only history control surface.
+    await expect(sidebarBack).toHaveCount(0);
+    await expect(sidebarForward).toHaveCount(0);
+    await expect(headerBack).toHaveCount(1);
+    await expect(headerForward).toHaveCount(1);
+    await expect(backButtons).toHaveCount(1);
+    await expect(forwardButtons).toHaveCount(1);
+
+    // The relocated pair drives the same browser history.
+    await headerBack.click();
+    await expectDocument(page, docName, firstMarker);
+    await headerForward.click();
+    await expectDocument(page, secondDocName, secondMarker);
   });
 });

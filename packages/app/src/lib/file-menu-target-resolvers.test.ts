@@ -10,7 +10,7 @@
  * project / asset) doesn't silently land the menu pick on the wrong path.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   buildSendToAiInputForActiveTarget,
   resolveActiveTargetAbsPath,

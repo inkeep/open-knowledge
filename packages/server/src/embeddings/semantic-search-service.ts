@@ -28,7 +28,12 @@
 import type { WorkspaceSearchDocument } from '@inkeep/open-knowledge-core';
 import { getLogger } from '../logger.ts';
 import { CHUNK_CONFIG_ID, chunkDocument } from './chunking.ts';
-import { cosineSimilarity, type Embedder } from './embedder.ts';
+import {
+  cosineSimilarity,
+  type Embedder,
+  EmbeddingDimsMismatchError,
+  EmbeddingProviderError,
+} from './embedder.ts';
 import { hashContent, VectorCache } from './vector-cache.ts';
 
 const log = getLogger('embeddings');
@@ -56,6 +61,27 @@ const EMBED_BATCH_CHUNK_LIMIT = 96;
  * hammer the API doc-by-doc. The next search re-drives the pass.
  */
 const MAX_CONSECUTIVE_EMBED_FAILURES = 5;
+
+/**
+ * How many times one process will throw away the cached corpus because the
+ * provider's vector length changed. Rebuilding is paid egress, so a gateway
+ * flapping between two models must not be able to bill for it in a loop; after
+ * the budget is spent the mismatch is logged loudly and search degrades to
+ * lexical until a restart.
+ */
+export const MAX_DIMS_DRIFT_RESETS = 2;
+
+/**
+ * Raised inside an embed pass when a provider call reported a vector length
+ * that doesn't match the one in force. Caught by the pass itself — never
+ * propagated to a caller.
+ */
+class DimsMismatchSignal extends Error {
+  readonly name = 'DimsMismatchSignal';
+  constructor(readonly cause: EmbeddingDimsMismatchError) {
+    super(cause.message);
+  }
+}
 
 export interface SemanticSearchStatus {
   /** Config flag. */
@@ -98,6 +124,8 @@ export class SemanticSearchService {
   private warmPromise: Promise<void> | null = null;
   private embedChain: Promise<void> = Promise.resolve();
   private queuedDocs: readonly WorkspaceSearchDocument[] | null = null;
+  /** Process-lifetime budget spent on {@link MAX_DIMS_DRIFT_RESETS}. */
+  private dimsDriftResets = 0;
 
   constructor(options: SemanticSearchServiceOptions) {
     this.loadEmbedder = options.loadEmbedder;
@@ -130,6 +158,11 @@ export class SemanticSearchService {
   applyConfig(input: { enabled: boolean; providerFingerprint: string }): void {
     if (input.providerFingerprint !== this.providerFingerprint) {
       this.providerFingerprint = input.providerFingerprint;
+      // A different provider deserves its own drift budget — the previous one
+      // having flapped says nothing about this one. Reset it HERE and not in
+      // `resetWarm`, which drift recovery itself calls: refunding the budget on
+      // every recovery would leave the bound doing nothing at all.
+      this.dimsDriftResets = 0;
       this.resetWarm();
     }
     if (input.enabled === this.enabled) return;
@@ -146,6 +179,62 @@ export class SemanticSearchService {
     this.capable = false;
     this.embedder = null;
     this.cache = null;
+  }
+
+  /**
+   * Re-resolve the embeddings credential on the next search. The key is read at
+   * warm time, NOT part of the provider fingerprint, so a live warm won't pick
+   * up a key that was set / cleared after it — leaving "I added a key but search
+   * stays lexical". The set/clear-key handlers call this so the change takes
+   * effect on the next search with no restart. Cheap: the cache re-hydrates from
+   * disk on re-warm (same fingerprint → no re-embed).
+   */
+  reloadCredential(): void {
+    this.resetWarm();
+  }
+
+  /**
+   * Respond to the provider returning a different vector length than the cached
+   * corpus was built at — a model swapped behind an alias, or a size detected
+   * before a restart that no longer holds.
+   *
+   * Only meaningful when the size was auto-detected. With `dimensions`
+   * explicitly configured a mismatch means the server is ignoring the request
+   * param; rebuilding would burn the same egress and land in the same place, so
+   * that case stays a plain (surfaced) failure.
+   *
+   * Recovery is: throw the corpus away and drop the warm state. The next opt-in
+   * search re-warms against a cold cache, the embedder re-detects, and coverage
+   * refills — the same one-search-later recovery a run of embed failures gets.
+   * Returns whether it acted.
+   */
+  private recoverFromDimsDrift(cache: VectorCache, err: EmbeddingDimsMismatchError): boolean {
+    if (cache.identityDims !== 'auto') return false;
+    if (this.cache !== cache) return false; // already replaced under us
+    if (this.dimsDriftResets >= MAX_DIMS_DRIFT_RESETS) {
+      // Give up for the rest of the process rather than pay for another
+      // rebuild. Dropping `capable` is what makes that stick: every later
+      // search short-circuits at the top of `queryScores`/`runEmbedPass`
+      // instead of re-reaching the provider and re-logging this same line.
+      log.error(
+        { expected: err.expected, got: err.got },
+        '[embeddings] provider vector length keeps changing — disabling semantic search until restart',
+      );
+      this.capable = false;
+      // Nothing will read these vectors again this process, and they can be
+      // a large resident allocation. Memory only — the disk store survives for
+      // a re-hydrate after a restart or a provider change.
+      cache.clearMemory();
+      return false;
+    }
+    this.dimsDriftResets += 1;
+    log.warn(
+      { expected: err.expected, got: err.got },
+      '[embeddings] provider vector length changed — discarding cached vectors and re-embedding',
+    );
+    cache.discard();
+    this.resetWarm();
+    return true;
   }
 
   /** Lazy, single-flight key resolution + client construction + cache hydration. */
@@ -169,14 +258,21 @@ export class SemanticSearchService {
         return;
       }
       this.embedder = embedder;
-      this.cache = new VectorCache({
+      const cache = new VectorCache({
         cacheDir: this.cacheDir,
         providerId: embedder.providerId,
         modelId: embedder.modelId,
         dims: embedder.dims,
         chunkConfigId: CHUNK_CONFIG_ID,
       });
-      await this.cache.init();
+      await cache.init();
+      // Manifest-first: with `dimensions` unset, the length that matters is the
+      // one the stored vectors were written at. Handing it to the embedder now
+      // means the first response of this run is CHECKED against it — a provider
+      // that changed shape while we were down surfaces as a mismatch instead of
+      // quietly re-pinning and scoring two sizes against each other.
+      if (cache.dims !== null) embedder.pinDims?.(cache.dims);
+      this.cache = cache;
       this.capable = true;
       this.ready = true;
     } catch (err) {
@@ -209,7 +305,10 @@ export class SemanticSearchService {
 
   private async runEmbedPass(documents: readonly WorkspaceSearchDocument[]): Promise<void> {
     await this.ensureWarm();
-    if (!this.enabled || !this.embedder || !this.cache) return;
+    // `capable` also carries the give-up state drift recovery sets once its
+    // budget is spent, so this stops the pass re-paying the provider for a
+    // mismatch already ruled unrecoverable.
+    if (!this.enabled || !this.capable || !this.embedder || !this.cache) return;
     const cache = this.cache;
     const embedder = this.embedder;
     const pageDocs = documents.filter((d) => d.kind === 'page');
@@ -239,6 +338,11 @@ export class SemanticSearchService {
     let consecutiveFailures = 0;
 
     const storeDoc = (p: Pending, vectors: Float32Array[]): void => {
+      // A cold auto cache learns its length here — the embedder has already
+      // held every vector in the call to one size, so the first is definitive.
+      // (A blank doc stores zero vectors and teaches us nothing.)
+      const observed = vectors[0]?.length;
+      if (observed !== undefined) cache.pinDims(observed);
       cache.store(p.doc.id, p.contentHash, p.doc.modifiedTs, vectors);
     };
 
@@ -256,6 +360,10 @@ export class SemanticSearchService {
         consecutiveFailures = 0;
         return true;
       } catch (batchErr) {
+        // A length mismatch isn't one bad document — it says everything cached
+        // is the wrong size. Let it out to the pass rather than spending the
+        // per-doc failure budget re-asking the provider the same question.
+        if (batchErr instanceof EmbeddingDimsMismatchError) throw new DimsMismatchSignal(batchErr);
         if (group.length === 1) {
           log.warn(
             { docId: group[0].doc.id, err: errMsg(batchErr) },
@@ -272,6 +380,7 @@ export class SemanticSearchService {
             storeDoc(p, v);
             consecutiveFailures = 0;
           } catch (docErr) {
+            if (docErr instanceof EmbeddingDimsMismatchError) throw new DimsMismatchSignal(docErr);
             log.warn(
               { docId: p.doc.id, err: errMsg(docErr) },
               '[embeddings] failed to embed document',
@@ -286,18 +395,33 @@ export class SemanticSearchService {
 
     let batch: Pending[] = [];
     let batchChunks = 0;
-    for (const p of pending) {
-      if (!this.enabled) break;
-      batch.push(p);
-      batchChunks += Math.max(1, p.chunks.length);
-      if (batchChunks >= EMBED_BATCH_CHUNK_LIMIT) {
-        const carryOn = await embedGroup(batch);
-        batch = [];
-        batchChunks = 0;
-        if (!carryOn) break;
+    try {
+      for (const p of pending) {
+        if (!this.enabled) break;
+        batch.push(p);
+        batchChunks += Math.max(1, p.chunks.length);
+        if (batchChunks >= EMBED_BATCH_CHUNK_LIMIT) {
+          const carryOn = await embedGroup(batch);
+          batch = [];
+          batchChunks = 0;
+          if (!carryOn) break;
+        }
       }
+      if (batch.length > 0 && this.enabled) await embedGroup(batch);
+    } catch (err) {
+      if (!(err instanceof DimsMismatchSignal)) throw err;
+      // The mismatched vectors were never stored (the embedder threw before
+      // returning them), so what is cached is self-consistent — just the wrong
+      // size now. Recovery discards it; a configured-dimensions mismatch has
+      // nothing to recover and is only logged.
+      if (!this.recoverFromDimsDrift(cache, err.cause)) {
+        log.warn(
+          { err: err.cause },
+          '[embeddings] provider returned an unexpected vector length — stopping this embed pass',
+        );
+      }
+      return;
     }
-    if (batch.length > 0 && this.enabled) await embedGroup(batch);
 
     // If the feature was disabled (or the provider fingerprint changed) while a
     // batch was in flight, `applyConfig`/`resetWarm` cleared + nulled `this.cache`
@@ -322,27 +446,53 @@ export class SemanticSearchService {
     documents: readonly WorkspaceSearchDocument[],
   ): Promise<Map<string, number> | null> {
     if (!this.enabled || !this.capable || !this.ready) return null;
-    if (!this.embedder || !this.cache) return null;
-    if (this.cache.embeddedCount === 0) return null;
+    // Capture both before the await: a config change or a drift recovery can
+    // swap them mid-flight, and this path must never throw.
+    const cache = this.cache;
+    const embedder = this.embedder;
+    if (!embedder || !cache) return null;
+    if (cache.embeddedCount === 0) return null;
     const trimmed = query.trim();
     if (!trimmed) return null;
 
     let queryVec: Float32Array | undefined;
     try {
-      [queryVec] = await this.embedder.embed([trimmed], { role: 'query' });
+      [queryVec] = await embedder.embed([trimmed], { role: 'query' });
     } catch (err) {
-      // Provider error / timeout on the query path is non-fatal: degrade to BM25.
-      log.warn({ err }, '[embeddings] query embed failed — degrading to lexical');
+      // A length mismatch on the query path is how an alias swap surfaces when
+      // the corpus itself hasn't changed: every embed pass is a no-op
+      // reconcile, so nothing else would ever notice, and semantic search would
+      // stay silently dead. Recovery rebuilds; anything else just degrades.
+      if (err instanceof EmbeddingDimsMismatchError) {
+        // Recovery declines when the size was explicitly configured (nothing to
+        // rebuild) or the budget is spent. Log it either way — otherwise a
+        // query-first mismatch degrades to lexical leaving no trail at all,
+        // while the same mismatch on the embed path is logged.
+        if (!this.recoverFromDimsDrift(cache, err)) {
+          log.warn(
+            { err, expected: err.expected, got: err.got },
+            '[embeddings] query vector length does not match the cached corpus — degrading to lexical',
+          );
+        }
+      } else {
+        log.warn(
+          { err, reason: err instanceof EmbeddingProviderError ? err.reason : undefined },
+          '[embeddings] query embed failed — degrading to lexical',
+        );
+      }
       return null;
     }
     if (!queryVec) return null;
 
     const scores = new Map<string, number>();
     for (const doc of documents) {
-      const vectors = this.cache.getVectors(doc.id);
+      const vectors = cache.getVectors(doc.id);
       if (!vectors || vectors.length === 0) continue;
       let best = Number.NEGATIVE_INFINITY;
       for (const chunk of vectors) {
+        // `cosineSimilarity` truncates to the shorter vector, so a length
+        // mismatch would score as a plausible number rather than an error.
+        if (chunk.length !== queryVec.length) continue;
         const cos = cosineSimilarity(queryVec, chunk);
         if (cos > best) best = cos;
       }

@@ -351,7 +351,7 @@ export function resolveNavigationTarget(
  * Hash-driven navigation lands on the folder overview even when an
  * `index.md` (or legacy folder note) exists. A folder-overview tab opened
  * via `openTarget({kind:'folder', ...})` writes its hash silently via
- * `history.replaceState`; if `NavigationHandler`'s effect re-fires (page
+ * `history.pushState`; if `NavigationHandler`'s effect re-fires (page
  * list populating, tab close re-assigning the hash) and the resolver
  * promotes `folder` → `folder-index`, the deps-driven re-resolution opens
  * a doc tab on top of the folder tab. Wikilinks + graph/links nav still

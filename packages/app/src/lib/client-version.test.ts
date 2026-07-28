@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   BROWSER_RUNTIME_VERSION,
   browserClientVersionHeaders,

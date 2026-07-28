@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import {
   mkdirSync,
   mkdtempSync,
@@ -11,12 +10,13 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { parse as parseJsonc } from 'jsonc-parser';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildPiExtensionSource } from '../integrations/pi-extension.ts';
 import {
   createTomlConfigEngine,
   setTomlConfigEngineForTesting,
 } from '../native/toml-config-engine.ts';
-import { CHAIN_V1, EDITOR_TARGETS, type EditorId, type EditorMcpTarget } from './editors.ts';
+import { CHAIN_V2, EDITOR_TARGETS, type EditorId, type EditorMcpTarget } from './editors.ts';
 import { writeEditorMcpConfig } from './init.ts';
 
 // Cross-harness acceptance consolidation for the only-additive write guarantee.
@@ -31,11 +31,11 @@ import { writeEditorMcpConfig } from './init.ts';
 // editor must NOT exhibit (a text splice provably corrupts an inline-table
 // config into a duplicate-key file and deletes siblings on dotted-key forms).
 
-const PUBLISHED_CHAIN_ENTRY = { command: '/bin/sh', args: ['-l', '-c', CHAIN_V1] };
+const PUBLISHED_CHAIN_ENTRY = { command: '/bin/sh', args: ['-l', '-c', CHAIN_V2] };
 const OPENCODE_ENTRY = {
   type: 'local',
   enabled: true,
-  command: ['/bin/sh', '-l', '-c', CHAIN_V1],
+  command: ['/bin/sh', '-l', '-c', CHAIN_V2],
 };
 
 function targetForFile(id: EditorId, configPath: string): EditorMcpTarget {

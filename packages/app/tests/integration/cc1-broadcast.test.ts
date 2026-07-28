@@ -1,4 +1,3 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { existsSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
@@ -10,6 +9,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { applyExternalChange, BacklinkIndex, reconcile } from '@inkeep/open-knowledge-server';
 import * as encoding from 'lib0/encoding';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestServer, pollUntil, type TestServer, waitForSync } from './test-harness';
@@ -414,7 +414,12 @@ describe('CC1 broadcast — L1 integration', () => {
     const beforeTextLen = systemDoc?.getText('source').length ?? 0;
 
     expect(() =>
-      applyExternalChange(server.instance.hocuspocus, SYSTEM_DOC_NAME, '# should be ignored'),
+      applyExternalChange(
+        server.instance.durabilityState,
+        server.instance.hocuspocus,
+        SYSTEM_DOC_NAME,
+        '# should be ignored',
+      ),
     ).not.toThrow();
 
     const afterXmlLen = systemDoc?.getXmlFragment('default').length ?? 0;

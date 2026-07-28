@@ -9,7 +9,7 @@
  * https-prepended.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { detectClipboardPrefillUrl, detectLoneGfmUrl, detectLoneTrustedUrl } from './lone-url.ts';
 
 describe('detectLoneGfmUrl — cursor-paste policy (GFM shapes only)', () => {

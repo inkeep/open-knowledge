@@ -14,8 +14,9 @@
  * Uses a manual scheduler + virtual clock (same pattern as idle-shutdown
  * and ui safety-net) so tests are deterministic — no real wall-clock waits.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { setTimeout as wait } from 'node:timers/promises';
+import { describe, expect, test } from 'vitest';
 import type { FetchApiConfigResult } from './api-config';
 import { runCollabUrlPoll, TERMINAL_AFTER_MS } from './use-collab-url';
 

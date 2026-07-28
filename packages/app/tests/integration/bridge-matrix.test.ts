@@ -13,11 +13,11 @@
  * Each test uses a per-test unique docName via createTestClient(port).
  */
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { markUserTyping } from '../../src/editor/observers';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';

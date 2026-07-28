@@ -7,8 +7,8 @@
  * `warning` field never carries render entries.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { AdvisoryWarning } from '@inkeep/open-knowledge-core';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestServer, getServerState, type TestServer } from './test-harness.ts';
 
@@ -238,6 +238,62 @@ describe('content-rule (lint) violations on the agent write path', () => {
       const md010 = lint.find((w) => w.kind === 'lint-violation' && w.code === 'MD010');
       expect(md010?.kind === 'lint-violation' && md010.source).toBe('markdownlint');
       expect(md010?.kind === 'lint-violation' && md010.line).toBe(7);
+    } finally {
+      writeFileSync(cfgPath, '', 'utf-8');
+    }
+  });
+
+  test('a dead link written by THIS write rides warnings[] immediately (no index-debounce race)', async () => {
+    const docName = uniqueDoc('rw-dead-link');
+    // The live-derived index updates 100 ms AFTER a change; the advisory is
+    // computed synchronously in the handler. This asserts the write path
+    // refreshes the index for the written doc before validating, so the very
+    // write that introduces the dead link is the one that reports it.
+    const target = `rw-ghost-${crypto.randomUUID().slice(0, 8)}`;
+    const { status, body } = await writeMd(`# Doc\n\nSee [[${target}]].\n`, docName);
+    expect(status).toBe(200);
+    const dead = (body.warnings ?? []).find(
+      (w) => w.kind === 'lint-violation' && w.code === 'dead-link',
+    );
+    expect(dead).toBeDefined();
+    if (dead?.kind !== 'lint-violation') throw new Error('narrowed above');
+    expect(dead.source).toBe('links');
+    // Default posture: warnings (validation.links).
+    expect(dead.severity).toBe('warning');
+    expect(dead.message).toContain(target);
+    // The unresolved target rides verbatim so the agent can create the page.
+    expect(dead.linkTarget).toBe(target);
+    // Line is exact (0-based range 2 → 1-based display 3).
+    expect(dead.line).toBe(3);
+  });
+
+  test('a resolving link and validation.links=off both yield no dead-link advisory', async () => {
+    const existing = uniqueDoc('rw-existing');
+    await writeMd('# Exists\n', existing);
+    const linker = uniqueDoc('rw-good-link');
+    const good = await writeMd(`# Doc\n\nSee [[${existing}]].\n`, linker);
+    expect(good.status).toBe(200);
+    expect(
+      (good.body.warnings ?? []).some((w) => w.kind === 'lint-violation' && w.code === 'dead-link'),
+    ).toBe(false);
+
+    // With the project posture off, even a genuinely dead link stays silent —
+    // the setting is read fresh per request.
+    const { writeFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const cfgPath = join(server.contentDir, '.ok', 'config.yml');
+    writeFileSync(cfgPath, 'validation:\n  links: off\n', 'utf-8');
+    try {
+      const silenced = await writeMd(
+        '# Doc\n\nSee [[definitely-missing-target]].\n',
+        uniqueDoc('rw-off'),
+      );
+      expect(silenced.status).toBe(200);
+      expect(
+        (silenced.body.warnings ?? []).some(
+          (w) => w.kind === 'lint-violation' && w.code === 'dead-link',
+        ),
+      ).toBe(false);
     } finally {
       writeFileSync(cfgPath, '', 'utf-8');
     }

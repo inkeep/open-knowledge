@@ -15,17 +15,20 @@
  * Invocation: `bun run test:dom` from `packages/app/`.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Schema } from '@tiptap/pm/model';
 import type { Editor } from '@tiptap/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { subscribeToOpenAskAiComposer } from '@/components/ask-ai-composer-events';
-import { subscribeToActiveTerminalInput } from '@/components/handoff/terminal-input-events';
+import {
+  type ActiveTerminalInputDetail,
+  subscribeToActiveTerminalInput,
+} from '@/components/handoff/terminal-input-events';
 import { setEditorDocName } from '../extensions/doc-context.ts';
 
-mock.module('sonner', () => ({ toast: { error: () => {}, success: () => {} } }));
+vi.doMock('sonner', () => ({ toast: { error: () => {}, success: () => {} } }));
 
 // The click handler defers its action to the next animation frame; jsdom under
 // bun does not always define rAF, so polyfill it to a microtask and flush via
@@ -92,7 +95,7 @@ let openRequests = 0;
 let unsubscribe: (() => void) | null = null;
 // Capture text routed to the active-terminal input channel (TerminalSessionsHost's
 // subscriber path in production).
-let terminalInputs: string[] = [];
+let terminalInputs: ActiveTerminalInputDetail[] = [];
 let unsubscribeTerminal: (() => void) | null = null;
 
 function renderButton({
@@ -131,8 +134,8 @@ beforeEach(() => {
   unsubscribe = subscribeToOpenAskAiComposer(() => {
     openRequests += 1;
   });
-  unsubscribeTerminal = subscribeToActiveTerminalInput((text) => {
-    terminalInputs.push(text);
+  unsubscribeTerminal = subscribeToActiveTerminalInput((detail) => {
+    terminalInputs.push(detail);
   });
 });
 
@@ -217,10 +220,13 @@ describe('EditWithAiBubbleButton', () => {
     // (tested in core); here we assert the grounding is present. Dispatch is
     // deferred a frame, so flush it before asserting.
     await waitFor(() => expect(terminalInputs).toHaveLength(1));
-    const [prompt] = terminalInputs;
-    expect(prompt).toContain('@specs/foo/SPEC.md');
-    expect(prompt).toContain('A passage.');
-    expect(prompt).not.toBe('A passage.');
+    const [detail] = terminalInputs;
+    expect(detail.text).toContain('@specs/foo/SPEC.md');
+    expect(detail.text).toContain('A passage.');
+    expect(detail.text).not.toBe('A passage.');
+    // A composed, self-contained Ask AI instruction RUNS on a fresh session
+    // (submit), unlike the ⌘J selection send which stages unsent.
+    expect(detail.submit).toBe(true);
     expect(openRequests).toBe(0);
   });
 

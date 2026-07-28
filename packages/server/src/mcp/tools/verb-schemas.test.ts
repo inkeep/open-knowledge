@@ -5,7 +5,7 @@
  * accept. These tests pin the wire-level acceptance so a future schema
  * rewrite can't silently re-introduce the "flat-only" contract.
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { SUPPORTED_DOC_EXTENSIONS } from '../../doc-extensions.ts';
 import { DocExtensionArg, FrontmatterArg, resolveSkillFilePath } from './verb-schemas.ts';
 

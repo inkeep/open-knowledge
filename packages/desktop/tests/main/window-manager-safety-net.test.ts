@@ -25,8 +25,8 @@
  * of the factory's own logic.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import { getLocalDir } from '@inkeep/open-knowledge-server';
+import { describe, expect, test, vi } from 'vitest';
 import type { AssetOpenResult } from '../../src/main/asset-allowlist.ts';
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
 import {
@@ -52,14 +52,14 @@ function makeUtility(pid: number): MockUtility {
   let exitHandler: ((c: number | null) => void) | null = null;
   return {
     pid,
-    postMessage: mock(() => {}),
-    on: mock((event: 'message' | 'exit', cb: (msg: unknown) => void) => {
+    postMessage: vi.fn(() => {}),
+    on: vi.fn((event: 'message' | 'exit', cb: (msg: unknown) => void) => {
       if (event === 'message') messageHandler = cb;
       else if (event === 'exit') exitHandler = cb as (c: number | null) => void;
     }) as UtilityProcessLike['on'],
-    once: mock(() => {}),
-    removeListener: mock(() => {}),
-    kill: mock(() => true),
+    once: vi.fn(() => {}),
+    removeListener: vi.fn(() => {}),
+    kill: vi.fn(() => true),
     fire: (msg) => messageHandler?.(msg),
     fireExit: (code) => exitHandler?.(code),
   };
@@ -81,41 +81,41 @@ function makeWindow(): SafetyNetWindow {
   let destroyed = false;
   let visible = false;
   const win: SafetyNetWindow = {
-    focus: mock(() => {}),
-    show: mock(() => {
+    focus: vi.fn(() => {}),
+    show: vi.fn(() => {
       visible = true;
     }),
-    restore: mock(() => {}),
-    isMinimized: mock(() => false),
-    moveTop: mock(() => {}),
-    isFocused: mock(() => false),
-    isDestroyed: mock(() => destroyed),
-    isVisible: mock(() => visible),
-    on: mock((_event: 'closed', cb: () => void) => {
+    restore: vi.fn(() => {}),
+    isMinimized: vi.fn(() => false),
+    moveTop: vi.fn(() => {}),
+    isFocused: vi.fn(() => false),
+    isDestroyed: vi.fn(() => destroyed),
+    isVisible: vi.fn(() => visible),
+    on: vi.fn((_event: 'closed', cb: () => void) => {
       closeHandlers.push(cb);
     }) as BrowserWindowLike['on'],
-    once: mock((_event: 'ready-to-show', _cb: () => void) => {}) as BrowserWindowLike['once'],
-    close: mock(() => {
+    once: vi.fn((_event: 'ready-to-show', _cb: () => void) => {}) as BrowserWindowLike['once'],
+    close: vi.fn(() => {
       destroyed = true;
       for (const h of closeHandlers) h();
     }),
-    destroy: mock(() => {
+    destroy: vi.fn(() => {
       destroyed = true;
       for (const h of closeHandlers) h();
     }),
     webContents: {
-      send: mock(() => {}),
-      once: mock(() => {}),
-      executeJavaScript: mock(() => Promise.resolve(undefined)),
-      setWindowOpenHandler: mock((handler: WindowOpenHandler) => {
+      send: vi.fn(() => {}),
+      once: vi.fn(() => {}),
+      executeJavaScript: vi.fn(() => Promise.resolve(undefined)),
+      setWindowOpenHandler: vi.fn((handler: WindowOpenHandler) => {
         win.windowOpenHandler = handler;
       }),
-      on: mock((event: 'will-navigate', handler: WillNavigateHandler) => {
+      on: vi.fn((event: 'will-navigate', handler: WillNavigateHandler) => {
         if (event === 'will-navigate') win.willNavigateHandler = handler;
       }),
     } as unknown as BrowserWindowLike['webContents'],
-    loadFile: mock(() => Promise.resolve()),
-    loadURL: mock(() => Promise.resolve()),
+    loadFile: vi.fn(() => Promise.resolve()),
+    loadURL: vi.fn(() => Promise.resolve()),
     fireClose: () => {
       for (const h of closeHandlers) h();
     },
@@ -128,8 +128,8 @@ function makeWindow(): SafetyNetWindow {
 interface TestEnv {
   utilities: MockUtility[];
   windows: SafetyNetWindow[];
-  openExternal: ReturnType<typeof mock>;
-  openAsset: ReturnType<typeof mock>;
+  openExternal: ReturnType<typeof vi.fn>;
+  openAsset: ReturnType<typeof vi.fn>;
   deps: WindowManagerDeps;
 }
 
@@ -144,8 +144,8 @@ function buildEnv(): TestEnv {
   // The two boundary delegates the safety net needs. `openAsset` is 2-arg
   // (`projectPath`, `relPath`) — matching `WindowManagerDeps.safetyNet.openAsset`
   // and the `attachSafetyNet` call `net.openAsset(assetRoot, relPath)`.
-  const openExternal = mock(async (_url: string): Promise<void> => {});
-  const openAsset = mock(
+  const openExternal = vi.fn(async (_url: string): Promise<void> => {});
+  const openAsset = vi.fn(
     async (_projectPath: string, _relPath: string): Promise<AssetOpenResult> => ({ ok: true }),
   );
   const deps: WindowManagerDeps = {
@@ -163,7 +163,7 @@ function buildEnv(): TestEnv {
     rendererEntryPath: '/fake/renderer/index.html',
     appVersion: '9.9.9-test',
     setTimeout: () => null,
-    killProbe: mock(() => {}),
+    killProbe: vi.fn(() => {}),
     showGate,
     // The ephemeral / detached-spawn deps are wired PER-TEST (createEphemeral
     // and restart only). Leaving them off the base keeps the spawn test on the
@@ -215,7 +215,7 @@ const EXTERNAL_URL = 'https://example.com/watch';
  */
 async function expectExternalSafetyNet(
   window: SafetyNetWindow,
-  openExternal: ReturnType<typeof mock>,
+  openExternal: ReturnType<typeof vi.fn>,
 ): Promise<void> {
   // The factory installed a window-open handler on the created window.
   expect(window.windowOpenHandler).not.toBeNull();
@@ -292,7 +292,7 @@ describe('WindowManager factory attaches the external-link safety net', () => {
     env.deps.isProcessAlive = (pid) => (pid === 5555 ? !killed : true);
     env.deps.hostname = () => 'my-host';
     env.deps.probeWsUpgrade = () => Promise.resolve(true);
-    env.deps.killProbe = mock((_pid: number, signal: number | NodeJS.Signals) => {
+    env.deps.killProbe = vi.fn((_pid: number, signal: number | NodeJS.Signals) => {
       if (signal === 'SIGTERM') killed = true;
     });
     env.deps.spawnDetachedServer = async () => {

@@ -8,9 +8,9 @@
  * DOM Range over a static value display.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { act, cleanup, render } from '@testing-library/react';
 import { useRef } from 'react';
+import { afterEach, describe, expect, test } from 'vitest';
 import { getSelectionContext, publishSelectionContext } from '@/editor/selection-context';
 import { usePublishFrontmatterSelection } from './use-selection-context';
 

@@ -9,8 +9,9 @@
  * outside every project, so an editor window hit `out-of-project` and a
  * Navigator window hit `no-project-bound`.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { showItemInFolder } from './ipc-handlers.ts';
 
 const BUG_REPORTS = '/Users/tester/.ok/bug-reports';

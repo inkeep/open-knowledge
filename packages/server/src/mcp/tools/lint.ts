@@ -22,7 +22,11 @@ import { z } from 'zod';
 import type { AgentIdentity } from '../agent-identity.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
+  AUDIT_FILE_CAP,
+  AUDIT_FILE_DIAGNOSTIC_CAP,
   agentIdentityFields,
+  countSummary,
+  formatDiagnosticLine,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpGet,
   httpPost,
@@ -46,15 +50,6 @@ export const DESCRIPTION = [
   '',
   'To auto-fix, pass `fix: true` with `document`: the fix lands through the collaborative document — attributed to you and reflected in the live preview, same as the editor. It fixes auto-fixable rules (e.g. hard tabs, trailing spaces); violations that resist auto-fix need content edits via the `edit`/`write` tools. (`ok lint --fix` from a shell remains the headless/CI path, but it writes on disk unattributed — prefer `fix: true` when the server is running.)',
 ].join('\n');
-
-/**
- * Audit output caps, mirroring the advisory channel's per-write violation cap:
- * a whole-project audit can carry thousands of diagnostics, which would flood
- * the calling agent's context. Totals stay uncapped; scoping via `path`
- * recovers omitted detail.
- */
-export const AUDIT_FILE_CAP = 10;
-export const AUDIT_FILE_DIAGNOSTIC_CAP = 10;
 
 /**
  * Trailing hint for a single-doc lint, quantified by the fixability the wire
@@ -97,6 +92,7 @@ interface LintDiagnosticPayload {
 interface LintDocPayload {
   file?: string;
   diagnostics?: LintDiagnosticPayload[];
+  warnings?: string[];
 }
 
 interface LintFixPayload {
@@ -163,7 +159,9 @@ export function register(server: ServerInstance, deps: LintDeps): void {
         warnings: z
           .array(z.string())
           .optional()
-          .describe('Audit only: non-fatal issues (unreadable files/dirs).'),
+          .describe(
+            'Non-fatal issues: unreadable files/dirs (audit) and lint-config problems such as broken frontmatter schema files (audit + single doc).',
+          ),
         omittedFileCount: z
           .number()
           .optional()
@@ -260,19 +258,27 @@ async function lintSingleDoc(document: string, url: string, cwd: string) {
   const { ok: _ok, ...rest } = result;
   const data = rest as LintDocPayload;
   const diagnostics = data.diagnostics ?? [];
+  const configWarnings = data.warnings ?? [];
   const errorCount = diagnostics.filter((d) => d.severity === 'error').length;
   const warningCount = diagnostics.length - errorCount;
   const file = { file: data.file ?? normalized.docName, diagnostics };
-  const structured = { files: [file], errorCount, warningCount, cwd };
+  const structured = {
+    files: [file],
+    errorCount,
+    warningCount,
+    ...(configWarnings.length > 0 ? { warnings: configWarnings } : {}),
+    cwd,
+  };
 
   const header =
     diagnostics.length === 0
       ? `No problems in ${file.file}.`
       : `${file.file}: ${countSummary(errorCount, warningCount)}`;
   const lines = diagnostics.map(formatDiagnosticLine);
+  const warningLines = configWarnings.map((w) => `  ⚠ ${w}`);
   const fixableCount = diagnostics.filter((d) => (d.fixes?.length ?? 0) > 0).length;
   const footer = diagnostics.length > 0 ? [singleDocFixHint(fixableCount, diagnostics.length)] : [];
-  return textPlusStructured([header, ...lines, ...footer].join('\n'), structured);
+  return textPlusStructured([header, ...lines, ...warningLines, ...footer].join('\n'), structured);
 }
 
 async function lintAudit(path: string | undefined, url: string, cwd: string) {
@@ -335,20 +341,4 @@ async function lintAudit(path: string | undefined, url: string, cwd: string) {
     [header, ...fileBlocks, ...footer, AUDIT_FIX_HINT].join('\n'),
     structured,
   );
-}
-
-function formatDiagnosticLine(d: LintDiagnosticPayload): string {
-  const marker = d.severity === 'error' ? '✘' : '⚠';
-  const startLine = d.range?.start?.line;
-  // Text output is human-facing: display 1-based lines from the 0-based range.
-  const where = startLine !== undefined ? `line ${startLine + 1}` : 'line ?';
-  const flatId = d.source !== undefined && d.code !== undefined ? `${d.source}/${d.code}` : '?';
-  return `  ${marker} ${where} ${flatId}: ${d.message ?? ''}`.trimEnd();
-}
-
-function countSummary(errorCount: number, warningCount: number): string {
-  const parts: string[] = [];
-  if (errorCount > 0) parts.push(`${errorCount} error${errorCount === 1 ? '' : 's'}`);
-  if (warningCount > 0) parts.push(`${warningCount} warning${warningCount === 1 ? '' : 's'}`);
-  return parts.length > 0 ? parts.join(', ') : 'no problems';
 }

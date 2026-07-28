@@ -1,10 +1,10 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 
 describe('EditorActivityPool source lazy boundary', () => {
   test('does not import SourceEditor until the lazy loader runs', async () => {
     let sourceEditorModuleLoads = 0;
 
-    mock.module('@/editor/SourceEditor', () => {
+    vi.doMock('@/editor/SourceEditor', () => {
       sourceEditorModuleLoads += 1;
       return {
         SourceEditor: () => null,

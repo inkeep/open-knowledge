@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { FuseV1Options, getCurrentFuseWire } from '@electron/fuses';
 import { notarize } from '@electron/notarize';
+import { resolveElectronBinary } from './resolve-electron-binary.mjs';
 import { expectedFuseState, fuseStateName, targetFuses } from './target-fuses.mjs';
 
 /**
@@ -192,28 +193,39 @@ async function verifyFuses(electronBinary, expected) {
 export default async function afterSign(context) {
   const { appOutDir, packager, electronPlatformName } = context;
 
+  const appName = packager.appInfo.productFilename;
+  const electronBinary = resolveElectronBinary(electronPlatformName, appOutDir, packager);
+
+  if (!existsSync(electronBinary)) {
+    throw new Error(`[afterSign] packed Electron binary not found at ${electronBinary}`);
+  }
+
+  // Always verify fuses, on EVERY platform (D9) — the paranoid post-flip
+  // check runs regardless of whether we're about to notarize/sign. The
+  // unsigned darwin path still has an ad-hoc re-sign (via `flipFuses`'
+  // `resetAdHocDarwinSignature: true`) and electron-builder may still
+  // invoke codesign with `identity=null` between afterPack and afterSign —
+  // any of those steps could silently perturb fuse state. On Windows this
+  // is the load-bearing guard the header warns about: signtool has shipped
+  // silent fuse-clobber regressions (electron-builder #9428), so once Azure
+  // Artifact Signing is wired the verify runs after the signature lands.
+  // Verify-before-notarize means all paths share the same defense-in-depth
+  // guarantee; verify-after-notarize would miss bugs on the unsigned path
+  // where local developers exercise the pipeline most.
+  await verifyFuses(electronBinary, targetFuses);
+
+  // Notarization (and its staple/validate follow-ups) is Apple-only.
   if (electronPlatformName !== 'darwin') {
-    console.log(`[afterSign] skipping on platform "${electronPlatformName}"`);
+    console.log(
+      `[afterSign] fuse verification done; no notarize step on platform "${electronPlatformName}"`,
+    );
     return;
   }
 
-  const appName = packager.appInfo.productFilename;
   const appPath = join(appOutDir, `${appName}.app`);
-  const electronBinary = join(appPath, 'Contents', 'MacOS', appName);
-
   if (!existsSync(appPath)) {
     throw new Error(`[afterSign] .app bundle not found at ${appPath}`);
   }
-
-  // Always verify fuses — the paranoid post-flip check runs regardless of
-  // whether we're about to notarize. The unsigned path still has an
-  // ad-hoc re-sign (via `flipFuses`' `resetAdHocDarwinSignature: true`) and
-  // electron-builder may still invoke codesign with `identity=null` between
-  // afterPack and afterSign — any of those steps could silently perturb
-  // fuse state. Verify-before-notarize means both paths share the same
-  // defense-in-depth guarantee; verify-after-notarize would miss bugs on
-  // the unsigned path where local developers exercise the pipeline most.
-  await verifyFuses(electronBinary, targetFuses);
 
   const credentials = resolveNotarizeCredentials();
 

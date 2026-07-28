@@ -19,9 +19,9 @@
  *    it, and follow-up typing never merges into the mark's undo step.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { Editor } from '@tiptap/core';
 import { ySyncPluginKey } from '@tiptap/y-tiptap';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import {
   firstLinkAttrs,

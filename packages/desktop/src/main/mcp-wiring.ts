@@ -55,6 +55,7 @@ import type {
 } from '../shared/ipc-channels.ts';
 import { createHandler } from '../shared/ipc-handler.ts';
 import { type SendableWebContents, sendToRenderer } from '../shared/ipc-send.ts';
+import { classifyInstallShape } from './install-shape.ts';
 import { logIpcError } from './ipc-log.ts';
 
 const MCP_STATUS_DIR_NAME = '.ok';
@@ -386,12 +387,14 @@ const DEFAULT_LOGGER: McpWiringLogger = {
 interface RunMcpWiringOpts {
   /** `app.isPackaged` — dev-mode contamination guard. */
   isPackaged: boolean;
-  /** `app.getPath('exe')` — must end in `.app/Contents/MacOS/<name>`. */
+  /** `app.getPath('exe')` — must match a supported packaged layout (`install-shape.ts`). */
   executablePath: string;
   /** `os.homedir()` in production; an isolated tmpdir under Playwright smoke. */
   home: string;
-  /** `process.platform` — this flow is macOS-only today. */
+  /** `process.platform` — darwin / win32 / linux all wire; AppImage declines. */
   platform: 'darwin' | 'win32' | 'linux' | string;
+  /** Env for install-shape classification (AppImage detection). Defaults to `process.env`. */
+  env?: Record<string, string | undefined>;
   ipcMain: IpcMainLike;
   cli: McpWiringCliSurface;
   /** Value of `process.env.OK_M6B_FORCE` — `'1'` bypasses the packaged gate for dev smokes. */
@@ -467,10 +470,15 @@ export function checkAndRepairMcpWiringOnStartup(
   } = opts;
   if (reclaimDisableEnv === '1')
     return Promise.resolve({ status: 'skipped', reason: 'reclaim-disabled' });
-  if (platform !== 'darwin') return Promise.resolve({ status: 'skipped', reason: 'platform' });
   if (!isPackaged && forceEnv !== '1')
     return Promise.resolve({ status: 'skipped', reason: 'dev-mode' });
-  if (!/\.app\/Contents\/MacOS\/[^/]+$/.test(executablePath)) {
+  const installShape = classifyInstallShape(platform, executablePath, opts.env ?? process.env);
+  // AppImage: the chain entries would embed the ephemeral squashfs mount
+  // path — guaranteed-dead config by next launch. Decline, like PATH install.
+  if (installShape.kind === 'appimage') {
+    return Promise.resolve({ status: 'skipped', reason: 'appimage-ephemeral' });
+  }
+  if (installShape.kind === 'unsupported') {
     return Promise.resolve({ status: 'skipped', reason: 'bad-executable-path' });
   }
   // User-scope sweep: only editors with a user-global config surface.
@@ -650,12 +658,6 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
     return inertHandle;
   }
 
-  // macOS-only today. Windows / Linux parity deferred.
-  if (platform !== 'darwin') {
-    logger.info('skip — platform is not darwin', { platform });
-    return inertHandle;
-  }
-
   // Dev-mode contamination guard. In `electron-vite dev`,
   // `app.getPath('exe')` points at the dev Electron binary and `extraResources`
   // are not mounted. `OK_M6B_FORCE=1` is an explicit opt-in for developer
@@ -665,11 +667,19 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
     return inertHandle;
   }
 
-  // If executablePath doesn't match `.app/Contents/MacOS/<name>`, this is a
-  // dev environment. Abort rather than contaminating real user MCP configs.
-  if (!/\.app\/Contents\/MacOS\/[^/]+$/.test(executablePath)) {
-    logger.warn('skip — executablePath does not match .app/Contents/MacOS/<name> shape', {
+  // If executablePath doesn't match a supported packaged layout, this is a
+  // dev environment (or an AppImage, whose ephemeral mount path must never
+  // be persisted into MCP configs). Abort rather than contaminating real
+  // user MCP configs.
+  const firstLaunchShape = classifyInstallShape(platform, executablePath, opts.env ?? process.env);
+  if (firstLaunchShape.kind === 'appimage') {
+    logger.info('skip — AppImage launch (ephemeral mount path; MCP wiring declines)');
+    return inertHandle;
+  }
+  if (firstLaunchShape.kind === 'unsupported') {
+    logger.warn('skip — executablePath does not match a supported packaged install layout', {
       executablePath,
+      platform,
     });
     return inertHandle;
   }

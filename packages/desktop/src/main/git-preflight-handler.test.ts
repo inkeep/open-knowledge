@@ -16,12 +16,12 @@
  * mocks; the production wiring lives in `main/index.ts`.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import {
   GitNotAvailableError,
   GitTooOldError,
   type InstallGuidance,
 } from '@inkeep/open-knowledge-server';
+import { describe, expect, test, vi } from 'vitest';
 import { ensureGitAvailable, type MessageBoxOptions } from './git-preflight-handler.ts';
 
 const LINUX_GUIDANCE: InstallGuidance = {
@@ -59,7 +59,7 @@ const MAC_GUIDANCE: InstallGuidance = {
 function showMessageBoxSequence(responses: readonly number[]) {
   const remaining = [...responses];
   const calls: MessageBoxOptions[] = [];
-  const fn = mock(async (opts: MessageBoxOptions) => {
+  const fn = vi.fn(async (opts: MessageBoxOptions) => {
     calls.push(opts);
     const next = remaining.shift();
     if (next === undefined) {
@@ -72,14 +72,14 @@ function showMessageBoxSequence(responses: readonly number[]) {
 
 describe('ensureGitAvailable', () => {
   test("returns 'ok' on first-try success without showing dialog", async () => {
-    const assertGitAvailable = mock(() => ({
+    const assertGitAvailable = vi.fn(() => ({
       ok: true as const,
       version: '2.45.0',
       resolvedPath: '/usr/bin/git',
       source: 'PATH' as const,
     }));
     const { fn: showMessageBox, calls } = showMessageBoxSequence([]);
-    const openExternal = mock(async () => {});
+    const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
@@ -96,14 +96,14 @@ describe('ensureGitAvailable', () => {
 
   test("Quit on first dialog returns 'aborted' without further preflight", async () => {
     let calls = 0;
-    const assertGitAvailable = mock(() => {
+    const assertGitAvailable = vi.fn(() => {
       calls += 1;
       throw new GitNotAvailableError('linux', LINUX_GUIDANCE);
     });
     const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
       2, // BUTTON_QUIT
     ]);
-    const openExternal = mock(async () => {});
+    const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
@@ -130,14 +130,14 @@ describe('ensureGitAvailable', () => {
   });
 
   test('Open Install Page opens URL and re-shows dialog; Quit ends loop', async () => {
-    const assertGitAvailable = mock(() => {
+    const assertGitAvailable = vi.fn(() => {
       throw new GitNotAvailableError('darwin', MAC_GUIDANCE);
     });
     const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
       0, // BUTTON_OPEN_INSTALL_PAGE
       2, // BUTTON_QUIT
     ]);
-    const openExternal = mock(async (_url: string) => {});
+    const openExternal = vi.fn(async (_url: string) => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
@@ -155,7 +155,7 @@ describe('ensureGitAvailable', () => {
 
   test("Retry → success returns 'recovered'", async () => {
     let attempts = 0;
-    const assertGitAvailable = mock(() => {
+    const assertGitAvailable = vi.fn(() => {
       attempts += 1;
       if (attempts === 1) {
         throw new GitNotAvailableError('linux', LINUX_GUIDANCE);
@@ -170,7 +170,7 @@ describe('ensureGitAvailable', () => {
     const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
       1, // BUTTON_RETRY
     ]);
-    const openExternal = mock(async () => {});
+    const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
@@ -185,7 +185,7 @@ describe('ensureGitAvailable', () => {
   });
 
   test('Retry → still-missing re-shows dialog; user can Quit to end', async () => {
-    const assertGitAvailable = mock(() => {
+    const assertGitAvailable = vi.fn(() => {
       throw new GitNotAvailableError('linux', LINUX_GUIDANCE);
     });
     const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
@@ -193,7 +193,7 @@ describe('ensureGitAvailable', () => {
       1, // BUTTON_RETRY
       2, // BUTTON_QUIT
     ]);
-    const openExternal = mock(async () => {});
+    const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
@@ -208,13 +208,13 @@ describe('ensureGitAvailable', () => {
   });
 
   test('GitTooOldError variant: dialog title + message reflect the too-old shape', async () => {
-    const assertGitAvailable = mock(() => {
+    const assertGitAvailable = vi.fn(() => {
       throw new GitTooOldError('linux', '2.20.0', '2.31.0', '/usr/bin/git', LINUX_GUIDANCE);
     });
     const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
       2, // BUTTON_QUIT
     ]);
-    const openExternal = mock(async () => {});
+    const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
@@ -231,14 +231,14 @@ describe('ensureGitAvailable', () => {
   });
 
   test("non-typed error from preflight shows error dialog before 'aborted'", async () => {
-    const assertGitAvailable = mock(() => {
+    const assertGitAvailable = vi.fn(() => {
       throw new Error('something completely different');
     });
     const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
       0, // The unknown-error dialog has a single 'Quit' button at index 0.
     ]);
-    const openExternal = mock(async () => {});
-    const warn = mock((_msg: string, _obj?: unknown) => {});
+    const openExternal = vi.fn(async () => {});
+    const warn = vi.fn((_msg: string, _obj?: unknown) => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
@@ -267,7 +267,7 @@ describe('ensureGitAvailable', () => {
 
   test('retry that throws non-typed error shows error dialog before aborted', async () => {
     let attempts = 0;
-    const assertGitAvailable = mock(() => {
+    const assertGitAvailable = vi.fn(() => {
       attempts += 1;
       if (attempts === 1) {
         throw new GitNotAvailableError('linux', LINUX_GUIDANCE);
@@ -278,8 +278,8 @@ describe('ensureGitAvailable', () => {
       1, // BUTTON_RETRY on the typed-error dialog
       0, // Quit on the unknown-error dialog that follows the failed retry
     ]);
-    const openExternal = mock(async () => {});
-    const warn = mock((_msg: string, _obj?: unknown) => {});
+    const openExternal = vi.fn(async () => {});
+    const warn = vi.fn((_msg: string, _obj?: unknown) => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
@@ -303,17 +303,17 @@ describe('ensureGitAvailable', () => {
   });
 
   test('openExternal failure surfaces the URL in the next dialog detail', async () => {
-    const assertGitAvailable = mock(() => {
+    const assertGitAvailable = vi.fn(() => {
       throw new GitNotAvailableError('darwin', MAC_GUIDANCE);
     });
     const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
       0, // BUTTON_OPEN_INSTALL_PAGE (openExternal throws)
       2, // BUTTON_QUIT
     ]);
-    const openExternal = mock(async (_url: string) => {
+    const openExternal = vi.fn(async (_url: string) => {
       throw new Error('no XDG default browser configured');
     });
-    const warn = mock((_msg: string, _obj?: unknown) => {});
+    const warn = vi.fn((_msg: string, _obj?: unknown) => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
@@ -333,7 +333,7 @@ describe('ensureGitAvailable', () => {
   });
 
   test('openExternal success after prior failure clears the URL hint', async () => {
-    const assertGitAvailable = mock(() => {
+    const assertGitAvailable = vi.fn(() => {
       throw new GitNotAvailableError('darwin', MAC_GUIDANCE);
     });
     const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
@@ -342,13 +342,13 @@ describe('ensureGitAvailable', () => {
       2, // BUTTON_QUIT
     ]);
     let attempts = 0;
-    const openExternal = mock(async (_url: string) => {
+    const openExternal = vi.fn(async (_url: string) => {
       attempts += 1;
       if (attempts === 1) {
         throw new Error('browser unavailable');
       }
     });
-    const warn = mock((_msg: string, _obj?: unknown) => {});
+    const warn = vi.fn((_msg: string, _obj?: unknown) => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
@@ -367,7 +367,7 @@ describe('ensureGitAvailable', () => {
 
   test('openExternal failure does not abort the loop; user can still Retry', async () => {
     let attempts = 0;
-    const assertGitAvailable = mock(() => {
+    const assertGitAvailable = vi.fn(() => {
       attempts += 1;
       if (attempts === 1) {
         throw new GitNotAvailableError('darwin', MAC_GUIDANCE);
@@ -383,10 +383,10 @@ describe('ensureGitAvailable', () => {
       0, // BUTTON_OPEN_INSTALL_PAGE (openExternal throws)
       1, // BUTTON_RETRY (preflight succeeds)
     ]);
-    const openExternal = mock(async (_url: string) => {
+    const openExternal = vi.fn(async (_url: string) => {
       throw new Error('browser unavailable');
     });
-    const warn = mock((_msg: string, _obj?: unknown) => {});
+    const warn = vi.fn((_msg: string, _obj?: unknown) => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
@@ -404,7 +404,7 @@ describe('ensureGitAvailable', () => {
   });
 
   test('out-of-range dialog response is treated as Quit (defensive)', async () => {
-    const assertGitAvailable = mock(() => {
+    const assertGitAvailable = vi.fn(() => {
       throw new GitNotAvailableError('linux', LINUX_GUIDANCE);
     });
     const { fn: showMessageBox } = showMessageBoxSequence([
@@ -414,8 +414,8 @@ describe('ensureGitAvailable', () => {
       // default.
       -1,
     ]);
-    const openExternal = mock(async () => {});
-    const warn = mock((_msg: string, _obj?: unknown) => {});
+    const openExternal = vi.fn(async () => {});
+    const warn = vi.fn((_msg: string, _obj?: unknown) => {});
 
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
@@ -431,13 +431,13 @@ describe('ensureGitAvailable', () => {
   });
 
   test('handler does NOT require a log dep (no-op default)', async () => {
-    const assertGitAvailable = mock(() => {
+    const assertGitAvailable = vi.fn(() => {
       throw new GitNotAvailableError('linux', LINUX_GUIDANCE);
     });
     const { fn: showMessageBox } = showMessageBoxSequence([
       2, // BUTTON_QUIT
     ]);
-    const openExternal = mock(async () => {});
+    const openExternal = vi.fn(async () => {});
 
     // No `log` passed — handler should not throw.
     const outcome = await ensureGitAvailable({

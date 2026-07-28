@@ -29,21 +29,19 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { typeProjectName } from './_helpers/create-new-dialog';
 import { captureAppProcess, closeAppBounded } from './_helpers/electron-cleanup';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { clickNavCreateNew } from './_helpers/navigator-actions';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
 /**
@@ -86,18 +84,21 @@ interface LaunchOpts {
 
 async function launchApp(tmpHome: string, opts: LaunchOpts = {}): Promise<ElectronApplication> {
   const userDataDir = join(tmpHome, 'Library', 'Application Support', DESKTOP_PRODUCT_NAME);
-  return electron.launch({
-    args: [MAIN_ENTRY, `--user-data-dir=${userDataDir}`],
-    timeout: 30_000,
-    env: {
-      ...process.env,
-      HOME: tmpHome,
-      OK_DESKTOP_E2E_SMOKE: '1',
-      ...(opts.pickedParent !== undefined
-        ? { OK_DESKTOP_TEST_PICKED_PATH: opts.pickedParent }
-        : {}),
-    },
-  });
+  return electron.launch(
+    desktopLaunchOptions({
+      target: TARGET,
+      args: [`--user-data-dir=${userDataDir}`],
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: tmpHome,
+        OK_DESKTOP_E2E_SMOKE: '1',
+        ...(opts.pickedParent !== undefined
+          ? { OK_DESKTOP_TEST_PICKED_PATH: opts.pickedParent }
+          : {}),
+      },
+    }),
+  );
 }
 
 async function findWindowByMode(
@@ -146,7 +147,7 @@ function trackForCleanup(...paths: string[]): void {
 test.describe('QA extended create-new-project', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run.');
   test.skip(!DARWIN, 'Darwin-only.');
-  test.skip(!BUILD_EXISTS, 'Run "bun run build:desktop" first.');
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
   test.afterEach(async () => {
     for (const target of cleanupTargets.splice(0)) {

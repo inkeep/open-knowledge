@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
+import { z } from 'zod';
 import {
   ConfigSchema,
   checkEmbeddingsBaseUrl,
@@ -213,5 +214,126 @@ describe('contentRules forward compatibility', () => {
     });
     // The known slice still defaults alongside the unknown one (off by default).
     expect(parsed.contentRules.markdownlint).toEqual({ enabled: false });
+  });
+});
+
+describe('autoSync.mode (canonical per-machine sync knob)', () => {
+  test('defaults to null (unanswered) when the whole block is absent', () => {
+    expect(ConfigSchema.parse({}).autoSync).toEqual({ mode: null, enabled: null, default: null });
+  });
+
+  test('accepts each sync mode', () => {
+    for (const mode of ['off', 'pull', 'full'] as const) {
+      expect(ConfigSchema.parse({ autoSync: { mode } }).autoSync.mode).toBe(mode);
+    }
+  });
+
+  test('accepts an explicit null', () => {
+    expect(ConfigSchema.parse({ autoSync: { mode: null } }).autoSync.mode).toBeNull();
+  });
+
+  test('rejects a value outside the mode vocabulary', () => {
+    expect(ConfigSchema.safeParse({ autoSync: { mode: 'sideways' } }).success).toBe(false);
+    expect(ConfigSchema.safeParse({ autoSync: { mode: true } }).success).toBe(false);
+  });
+
+  test('the legacy enabled boolean still parses (derived to a mode only at read time)', () => {
+    expect(ConfigSchema.parse({ autoSync: { enabled: true } }).autoSync.enabled).toBe(true);
+    expect(ConfigSchema.parse({ autoSync: { enabled: false } }).autoSync.enabled).toBe(false);
+    expect(ConfigSchema.parse({ autoSync: { enabled: null } }).autoSync.enabled).toBeNull();
+  });
+});
+
+describe('autoSync.default (committed seed widened to the mode vocabulary)', () => {
+  test('accepts the mode strings', () => {
+    for (const mode of ['off', 'pull', 'full'] as const) {
+      expect(ConfigSchema.parse({ autoSync: { default: mode } }).autoSync.default).toBe(mode);
+    }
+  });
+
+  test('still accepts the legacy boolean seed', () => {
+    expect(ConfigSchema.parse({ autoSync: { default: true } }).autoSync.default).toBe(true);
+    expect(ConfigSchema.parse({ autoSync: { default: false } }).autoSync.default).toBe(false);
+  });
+
+  test('accepts an explicit null (ask)', () => {
+    expect(ConfigSchema.parse({ autoSync: { default: null } }).autoSync.default).toBeNull();
+  });
+
+  test('rejects a value outside the boolean|mode union', () => {
+    expect(ConfigSchema.safeParse({ autoSync: { default: 'sideways' } }).success).toBe(false);
+    expect(ConfigSchema.safeParse({ autoSync: { default: 3 } }).success).toBe(false);
+  });
+});
+
+describe('autoSync forward/backward compatibility (looseObject round-trip)', () => {
+  test('unknown autoSync sub-keys survive parse instead of being stripped', () => {
+    const parsed = ConfigSchema.parse({
+      autoSync: { mode: 'pull', onboardingResolvedAt: '2026-01-01', inheritedFrom: 'root' },
+    });
+    expect(parsed.autoSync.mode).toBe('pull');
+    // looseObject retains keys the schema doesn't model (worktree-inherit flags,
+    // legacy onboarding stamps) so they round-trip on write-back.
+    expect((parsed.autoSync as Record<string, unknown>).onboardingResolvedAt).toBe('2026-01-01');
+    expect((parsed.autoSync as Record<string, unknown>).inheritedFrom).toBe('root');
+  });
+
+  test('an older mode-unaware schema reads a mode-only config as sync-off, never pushing', () => {
+    // A newer OK can write autoSync.mode into a config an older OK never learned
+    // about. The old schema (mode-unaware, enabled-only) must read that config as
+    // UNANSWERED and never silently enable push. Snapshot the pre-change schema +
+    // boot resolution so the guarantee is pinned even after the real schema moves.
+    const legacyAutoSync = z
+      .looseObject({
+        enabled: z.boolean().nullable().default(null),
+        default: z.boolean().nullable().default(null),
+      })
+      .default({ enabled: null, default: null });
+    const legacySchema = z.looseObject({ autoSync: legacyAutoSync });
+
+    const parsed = legacySchema.parse({ autoSync: { mode: 'pull' } });
+    // The mode key is preserved (looseObject) but invisible to the old schema.
+    expect((parsed.autoSync as Record<string, unknown>).mode).toBe('pull');
+    expect(parsed.autoSync.enabled).toBeNull();
+    expect(parsed.autoSync.default).toBeNull();
+
+    // Pre-change boot resolution: per-machine enabled wins, else committed
+    // default === true. With both null, sync is OFF and the engine never pushes.
+    const legacyBootResolvesEnabled =
+      parsed.autoSync.enabled !== null && parsed.autoSync.enabled !== undefined
+        ? parsed.autoSync.enabled === true
+        : parsed.autoSync.default === true;
+    expect(legacyBootResolvesEnabled).toBe(false);
+  });
+
+  test('a committed default:"pull" fails an older schema wholesale — the accepted skew cost', () => {
+    // `autoSync.mode` and `autoSync.default` have OPPOSITE forward-compat
+    // profiles. `mode` is a NEW key an old looseObject passes through silently;
+    // `default` is a KNOWN, type-checked leaf (boolean-only in the old schema),
+    // so a committed default:'pull' is rejected — and because it's a leaf of the
+    // whole config, that failure fails the ENTIRE parse, so a mode-unaware app
+    // boots on schema defaults for that file. This whole-config reset is the
+    // deliberately-accepted cost of the single-knob config design: the
+    // no-silent-push guarantee still holds (the fallback default is null → off),
+    // and the residual is that a skewed collaborator falls back to defaults
+    // until they update. Pin the asymmetry so the two keys stay documented.
+    const legacyAutoSync = z
+      .looseObject({
+        enabled: z.boolean().nullable().default(null),
+        default: z.boolean().nullable().default(null),
+      })
+      .default({ enabled: null, default: null });
+    const legacySchema = z.looseObject({ autoSync: legacyAutoSync });
+
+    // The new `mode` key parses cleanly via looseObject (invisible to the old
+    // schema)...
+    expect(legacySchema.safeParse({ autoSync: { mode: 'pull' } }).success).toBe(true);
+    // ...but a committed `default: 'pull'` is rejected, failing the whole parse.
+    expect(legacySchema.safeParse({ autoSync: { default: 'pull' } }).success).toBe(false);
+
+    // The all-defaults fallback a rejecting app boots on has `default: null`, so
+    // boot resolution is OFF — no silent push on the skewed version.
+    const legacyDefaults = legacySchema.parse({});
+    expect(legacyDefaults.autoSync.default).toBeNull();
   });
 });

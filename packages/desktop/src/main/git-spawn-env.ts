@@ -14,8 +14,14 @@
  * (`detectMissingGitHelper`, the add-error / branch-gone matchers) survives a
  * non-English host locale — same discipline as the server's `buildGitEnv`.
  *
- * Computed lazily and cached: the augmentation stats well-known directories,
- * and PATH/homedir don't change within a process lifetime.
+ * Only the PATH augmentation is cached (it stats well-known directories, and
+ * PATH/homedir don't change within a process lifetime). The env object itself
+ * is rebuilt from live `process.env` on every call: startup corrects
+ * `SSH_AUTH_SOCK` once via the login-shell harvest (`shell-env.ts` /
+ * `applyHarvestedAuthSock`), and a cached snapshot taken before that point
+ * would pin every later git spawn to launchd's default-agent socket. For the
+ * same reason, callers must not freeze this function's result into
+ * module-level constants — call it per spawn.
  */
 
 import { existsSync, statSync } from 'node:fs';
@@ -23,7 +29,7 @@ import { homedir } from 'node:os';
 import { delimiter } from 'node:path';
 import { augmentGitSpawnPath } from '@inkeep/open-knowledge-core';
 
-let cached: Record<string, string | undefined> | null = null;
+let cachedPath: string | null = null;
 
 /** True iff `dir` exists and is a directory (symlinks followed). */
 function isDir(dir: string): boolean {
@@ -40,18 +46,18 @@ function isDir(dir: string): boolean {
  * share-fetch arm's `GIT_TERMINAL_PROMPT=0`).
  */
 export function gitSpawnEnv(): Record<string, string | undefined> {
-  if (cached === null) {
-    cached = {
-      ...process.env,
-      LANG: 'C',
-      LC_ALL: 'C',
-      PATH: augmentGitSpawnPath(process.env.PATH, {
-        platform: process.platform,
-        homeDir: homedir(),
-        isDir,
-        delimiter,
-      }),
-    };
+  if (cachedPath === null) {
+    cachedPath = augmentGitSpawnPath(process.env.PATH, {
+      platform: process.platform,
+      homeDir: homedir(),
+      isDir,
+      delimiter,
+    });
   }
-  return cached;
+  return {
+    ...process.env,
+    LANG: 'C',
+    LC_ALL: 'C',
+    PATH: cachedPath,
+  };
 }

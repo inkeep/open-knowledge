@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { RecentlyRemovedDocs, type RemovalEntry } from './recently-removed-docs.ts';
 
 describe('RecentlyRemovedDocs — basic shape', () => {

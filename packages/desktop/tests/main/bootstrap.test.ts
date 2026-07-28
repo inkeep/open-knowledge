@@ -12,7 +12,7 @@
  * by call-order tracking against the injected deps.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { runBootstrap } from '../../src/main/bootstrap.ts';
 import { emptyState } from '../../src/main/state-store.ts';
 import type { OkThemeSource } from '../../src/shared/bridge-contract.ts';

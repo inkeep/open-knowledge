@@ -13,7 +13,7 @@
  * surface for `file:` / `blob:` / `intent:` / future schemes.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { LinkFidelity } from './link-fidelity.ts';
 
 const opts = LinkFidelity.config.addOptions?.call({ parent: undefined } as never) as {

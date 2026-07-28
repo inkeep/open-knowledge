@@ -19,19 +19,13 @@
  * stages-of-merge `ours` is consumed by line-diff UIs that already
  * tolerate one-newline drift).
  */
-import {
-  describe as _bunDescribe,
-  afterEach,
-  beforeEach,
-  expect,
-  setDefaultTimeout,
-  test,
-} from 'bun:test';
+
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prependFrontmatter, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
+import { describe as _bunDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { __resetQuiescenceForTests } from './bridge-quiescence.ts';
 import { resetMetrics } from './metrics.ts';
 import { createServer } from './server-factory.ts';
@@ -61,7 +55,7 @@ function reconstructSerializeDoc(
 // process reaping bug surfaces here under Ubuntu Bun).
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
-setDefaultTimeout(20_000);
+vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 });
 
 interface Fixture {
   tmpDir: string;

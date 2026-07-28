@@ -6,7 +6,7 @@
  * tmpdir fixtures, then the guard is run once against the REAL repo assets so
  * `bun run check` fails on any production drift.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import {
   existsSync,
   mkdirSync,
@@ -18,6 +18,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   BUNDLE_IDS,
   buildPackSkills,

@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
 import {
   describe as _bunDescribe,
   afterAll,
@@ -6,21 +9,16 @@ import {
   beforeEach,
   expect,
   test,
-} from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+} from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
+import { DESCRIPTION, type LintDeps, register } from './lint.ts';
+import type { ServerInstance } from './shared.ts';
 import {
   AUDIT_FILE_CAP,
   AUDIT_FILE_DIAGNOSTIC_CAP,
-  DESCRIPTION,
-  type LintDeps,
-  register,
-} from './lint.ts';
-import type { ServerInstance } from './shared.ts';
-import { HOCUSPOCUS_NOT_RUNNING_ERROR } from './shared.ts';
+  HOCUSPOCUS_NOT_RUNNING_ERROR,
+} from './shared.ts';
 
 // Skip-on-CI gate (oven-sh/bun#11892): same git-child-reaping issue the sibling
 // MCP tool tests guard against on ubuntu-latest GHA runners.

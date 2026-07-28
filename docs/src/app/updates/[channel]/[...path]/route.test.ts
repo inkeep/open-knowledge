@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 
 type CaptureOpts = {
   event: string;
@@ -7,7 +7,7 @@ type CaptureOpts = {
 };
 let _lastCapture: CaptureOpts | null = null;
 
-mock.module('../../../../lib/track.ts', () => ({
+vi.doMock('../../../../lib/track.ts', () => ({
   captureServerEvent: (opts: CaptureOpts) => {
     _lastCapture = opts;
   },
@@ -20,7 +20,7 @@ const BETA_DMG_URL =
 // Mutable so a test can flip the beta resolver from a fresh tag to a fallback.
 type BetaRedirect = { kind: string; url: string; cause?: string };
 let _betaRedirect: BetaRedirect = { kind: 'fresh', url: BETA_DMG_URL };
-mock.module('../../../../lib/download-links.ts', () => ({
+vi.doMock('../../../../lib/download-links.ts', () => ({
   createBetaResolver: () => () => Promise.resolve(_betaRedirect),
 }));
 

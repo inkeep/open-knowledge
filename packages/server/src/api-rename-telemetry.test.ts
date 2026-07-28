@@ -6,7 +6,7 @@
  * call, mistypes the attribute keys, or fires on a 400-validation path
  * would silently degrade observability without these assertions.
  */
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -21,7 +21,11 @@ import {
   MeterProvider,
   PeriodicExportingMetricReader,
 } from '@opentelemetry/sdk-metrics';
-import { __resetRenameTelemetryForTesting, createApiExtension } from './api-extension.ts';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import {
+  __resetRenameTelemetryForTesting,
+  createApiExtension,
+} from './api-extension.test-helper.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { swapContributors } from './contributor-tracker.ts';
 import type { FileIndexEntry } from './file-watcher.ts';

@@ -126,6 +126,7 @@ export type MenuSection =
   | 'view-panels'
   | 'view-visibility'
   | 'view-tree'
+  | 'view-history'
   | 'terminal'
   | 'help-install'
   | 'help-links'
@@ -156,9 +157,8 @@ export interface CommandMenuPlacement {
   /**
    * Literal native-menu label, for the handful of menu strings that are NOT in
    * the shared `MENU_LABELS` parity contract: menu-only leaves (Uninstall, New
-   * Terminal Window) and two leaves whose native label predates the app's
-   * sentence-case convention and stays byte-identical here (Report a Bug,
-   * Install…(desktop app)). Takes precedence over `menuLabelKey`.
+   * Terminal Window) and the install leaf, whose native label renders
+   * "…(desktop app)" lowercase. Takes precedence over `menuLabelKey`.
    */
   readonly menuLabelText?: string;
 }
@@ -221,6 +221,35 @@ export interface CommandIdentity {
  * Menu-only commands are interleaved near their menu neighbors.
  */
 export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
+  // ── Commands group (palette) / View-history (menu) ─────────────────────────
+  {
+    id: 'navigate-back',
+    menuActionId: 'navigate-back',
+    labelKey: 'back',
+    keywords: ['previous history'],
+    shortcutId: 'navigate-back',
+    shortcutDesktopOnly: true,
+    availability: { host: 'desktop' },
+    palette: { group: 'commands', visibility: 'search-only' },
+    menu: [
+      { section: 'view-history', order: 0, platform: 'mac', accelerator: 'Cmd+[' },
+      { section: 'view-history', order: 0, platform: 'other', accelerator: 'Alt+Left' },
+    ],
+  },
+  {
+    id: 'navigate-forward',
+    menuActionId: 'navigate-forward',
+    labelKey: 'forward',
+    keywords: ['next history'],
+    shortcutId: 'navigate-forward',
+    shortcutDesktopOnly: true,
+    availability: { host: 'desktop' },
+    palette: { group: 'commands', visibility: 'search-only' },
+    menu: [
+      { section: 'view-history', order: 1, platform: 'mac', accelerator: 'Cmd+]' },
+      { section: 'view-history', order: 1, platform: 'other', accelerator: 'Alt+Right' },
+    ],
+  },
   // ── Commands group (palette) / File-create (menu) ───────────────────────────
   {
     id: 'new-file',
@@ -361,7 +390,30 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     keywords: ['bug report issue feedback problem'],
     availability: { host: 'desktop' },
     palette: { group: 'project', visibility: 'always' },
-    menu: [{ section: 'help-links', order: 1, ellipsis: true, menuLabelText: 'Report a Bug' }],
+    menu: [{ section: 'help-links', order: 1, ellipsis: true }],
+  },
+  {
+    // Palette-only sibling of report-bug (no `menu` placement): the persisted
+    // history/retry list for reports that were generated but never accepted by
+    // the intake. Desktop-only for the same reason report-bug is — the sidecar
+    // store and the retry upload both live behind the Electron bridge.
+    id: 'bug-report-history',
+    labelKey: 'bugReportHistory',
+    keywords: ['bug report history previous reports past retry resend'],
+    availability: { host: 'desktop' },
+    palette: { group: 'project', visibility: 'always' },
+  },
+  {
+    // Sibling of report-bug, but host-agnostic: the feedback form POSTs to the
+    // hosted intake route, so it works in the web host too (unlike the bug
+    // report, whose bundle create + upload lives behind the Electron bridge).
+    id: 'send-feedback',
+    menuActionId: 'send-feedback',
+    labelKey: 'sendFeedback',
+    keywords: ['feedback', 'suggestion', 'idea', 'rate', 'survey', 'contact'],
+    availability: {},
+    palette: { group: 'project', visibility: 'always' },
+    menu: [{ section: 'help-links', order: 2, ellipsis: true }],
   },
   // ── File group (palette) / File-item + worktree (menu) ──────────────────────
   {

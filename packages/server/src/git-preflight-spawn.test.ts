@@ -34,12 +34,12 @@
  * invoked from a fresh subprocess.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 
 /**
  * Path of the server-package root (where `package.json` lives). The

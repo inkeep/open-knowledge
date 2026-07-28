@@ -20,7 +20,7 @@
  * requires `document` and `window`; the integration tier substrate
  * deliberately omits jsdom, so Tiptap-mount tests live here.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 // `cleanup` is imported to satisfy the dom-test-filename-stop-rule
 // contract (every `*.dom.test.tsx` file must value-import from
 // `@testing-library/react`). It is invoked in `afterEach` so any
@@ -29,6 +29,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 // render through RTL.
 import { cleanup } from '@testing-library/react';
 import { Editor } from '@tiptap/core';
+import { afterEach, describe, expect, test } from 'vitest';
 import { setEditorSourceMode } from '../../src/editor/extensions/editor-mode-context';
 import { sharedExtensions } from '../../src/editor/extensions/shared';
 

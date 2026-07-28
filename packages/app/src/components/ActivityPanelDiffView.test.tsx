@@ -8,9 +8,10 @@
  *   - Valid unified-diff input → react-diff-view's Diff component is rendered.
  *   - Unparseable input doesn't crash (fallback to <pre> or placeholder).
  */
-import { describe, expect, test } from 'bun:test';
+
 import { createPatch } from 'diff';
 import type { ReactElement, ReactNode } from 'react';
+import { describe, expect, test } from 'vitest';
 import { ActivityPanelDiffView } from './ActivityPanelDiffView';
 
 type ElementWithProps = ReactElement<{

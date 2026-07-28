@@ -4,11 +4,11 @@
  * pass-with-HEAD branch.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MalformedGitPointerError } from '@inkeep/open-knowledge-server';
+import { afterEach, describe, expect, test } from 'vitest';
 import { makeShadowRepoCheck } from './shadow-repo.ts';
 
 let tmpDirs: string[] = [];

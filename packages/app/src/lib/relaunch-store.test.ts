@@ -1,11 +1,10 @@
 /**
  * Runtime guards for `relaunch-store.ts`. The store is a module-level
  * singleton, so this file owns one fake `window.okDesktop` bridge and avoids
- * `mock.module(...)` (Bun module mocks are process-global and can leak into
- * later module-load tests). Mirrors `update-notices-store.test.ts`.
+ * module mocking. Mirrors `update-notices-store.test.ts`.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const store = await import('./relaunch-store');
 
@@ -16,14 +15,14 @@ function makeBridge() {
   let relaunching: RelaunchingCb = () => {};
   let relaunchFailed: RelaunchFailedCb = () => {};
   const bridge = {
-    onUpdateRelaunching: mock((cb: RelaunchingCb) => {
+    onUpdateRelaunching: vi.fn((cb: RelaunchingCb) => {
       relaunching = cb;
       // Real unsubscribe: detach severs the callback so later fires are no-ops.
       return () => {
         relaunching = () => {};
       };
     }),
-    onUpdateRelaunchFailed: mock((cb: RelaunchFailedCb) => {
+    onUpdateRelaunchFailed: vi.fn((cb: RelaunchFailedCb) => {
       relaunchFailed = cb;
       return () => {
         relaunchFailed = () => {};

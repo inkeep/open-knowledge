@@ -10,7 +10,7 @@
  * Layout (plain `fs`, NOT sqlite — must run under both Bun and Electron real-Node,
  * and `bun:sqlite` is Bun-only):
  *   embeddings/
- *     manifest.json            { schemaVersion, modelId, dims, chunkConfigId, entries }
+ *     manifest.json            { schemaVersion, providerId, modelId, dims, identityDims, chunkConfigId, entries }
  *     vec/<contentHash>.bin    Float32 blob, length = chunkCount * dims
  *
  * Content-addressed: a blob is named by the SHA-256 of the document content, so
@@ -24,6 +24,13 @@
  * dims, or chunking config change — that is what keeps a vector produced by one
  * provider/model from silently scoring against another's query (a mismatch is a
  * silent retrieval failure, not a loud one).
+ *
+ * Dims come in two flavours that must not be conflated. `identityDims` is what
+ * the user configured (a number, or `'auto'` when they left it to the
+ * provider), and it is the only one in the identity check. `dims` is the length
+ * actually observed — pinned from the manifest on restart or from the first
+ * embed, and compared for drift. Folding the observed length into the identity
+ * would make an auto cache invalidate itself on every restart.
  *
  * Vectors are stored in platform-native Float32 byte order. The cache is
  * machine-local and never transported, so endianness is always self-consistent.
@@ -58,9 +65,34 @@ interface ManifestFile {
   schemaVersion: number;
   providerId: string;
   modelId: string;
+  /** The concrete vector length these blobs were written at. */
   dims: number;
+  /**
+   * The dims component of the cache IDENTITY: the configured size, or `'auto'`
+   * when the config leaves it to the provider. Absent in manifests written
+   * before the split (see `manifestIdentityDims`).
+   */
+  identityDims?: number | 'auto';
   chunkConfigId: string;
   entries: Record<string, ManifestEntry>;
+}
+
+/** What the identity-dims component of a cache fingerprint can be. */
+export type IdentityDims = number | 'auto';
+
+/**
+ * Identity dims for a manifest, tolerating the pre-split shape.
+ *
+ * A legacy manifest carries only `dims`, which was simultaneously the identity
+ * and the value. Reading it back as `'auto'` when we are in auto mode is sound
+ * — every stored vector was length-checked against that exact `dims` at write
+ * time, so adopting them is the same guarantee a fresh detection would give —
+ * and it is what keeps the upgrade from charging every existing user a full
+ * re-embed.
+ */
+function manifestIdentityDims(manifest: ManifestFile, want: IdentityDims): IdentityDims {
+  if (manifest.identityDims !== undefined) return manifest.identityDims;
+  return want === 'auto' ? 'auto' : manifest.dims;
 }
 
 interface VectorCacheOptions {
@@ -68,7 +100,11 @@ interface VectorCacheOptions {
   cacheDir: string | null;
   providerId: string;
   modelId: string;
-  dims: number;
+  /**
+   * Configured vector length, or `null` for auto — the length is then pinned
+   * from the manifest on restart, or from the first embed on a cold cache.
+   */
+  dims: number | null;
   chunkConfigId: string;
 }
 
@@ -114,7 +150,14 @@ export class VectorCache {
   private readonly manifestPath: string | null;
   readonly providerId: string;
   readonly modelId: string;
-  readonly dims: number;
+  /**
+   * The dims component of this cache's identity — a number when configured,
+   * `'auto'` when the provider decides. What gates the wipe. Deliberately NOT
+   * the detected length: an auto cache whose identity moved with the detected
+   * value would fail its own identity check on every restart and re-embed the
+   * whole corpus each boot.
+   */
+  readonly identityDims: IdentityDims;
   readonly chunkConfigId: string;
 
   /** docId → manifest entry (contentHash + mtime stamp). */
@@ -125,6 +168,8 @@ export class VectorCache {
   private readonly persistedHashes = new Set<string>();
   /** Whether in-memory state has diverged from disk since the last persist. */
   private dirty = false;
+  /** Concrete vector length; `null` until an auto cache pins one. */
+  private pinnedDims: number | null;
 
   constructor(options: VectorCacheOptions) {
     this.cacheDir = options.cacheDir;
@@ -132,8 +177,33 @@ export class VectorCache {
     this.manifestPath = options.cacheDir ? join(options.cacheDir, MANIFEST_NAME) : null;
     this.providerId = options.providerId;
     this.modelId = options.modelId;
-    this.dims = options.dims;
+    this.identityDims = options.dims ?? 'auto';
+    this.pinnedDims = options.dims;
     this.chunkConfigId = options.chunkConfigId;
+  }
+
+  /** Vector length in use, or `null` when auto and nothing is pinned yet. */
+  get dims(): number | null {
+    return this.pinnedDims;
+  }
+
+  /**
+   * Record the length the provider actually returned, so `persist` knows what
+   * these blobs are. Only ever fires on a cold auto cache: the embedder rejects
+   * any response of a different size, so a change arrives as an error rather
+   * than as a second pin.
+   */
+  pinDims(dims: number): void {
+    this.pinnedDims ??= dims;
+  }
+
+  /** Throw the store away, memory AND disk, e.g. its vectors are the wrong size now. */
+  discard(): void {
+    this.entries.clear();
+    this.vectorsByHash.clear();
+    this.persistedHashes.clear();
+    this.wipeDisk();
+    this.dirty = false;
   }
 
   /**
@@ -159,7 +229,7 @@ export class VectorCache {
       manifest.schemaVersion === MANIFEST_SCHEMA_VERSION &&
       manifest.providerId === this.providerId &&
       manifest.modelId === this.modelId &&
-      manifest.dims === this.dims &&
+      manifestIdentityDims(manifest, this.identityDims) === this.identityDims &&
       manifest.chunkConfigId === this.chunkConfigId;
 
     if (!identityMatches) {
@@ -174,6 +244,15 @@ export class VectorCache {
     }
     if (!manifest) return; // unreachable once identity matched; narrows for TS
 
+    // Manifest-first: an auto cache takes its length from what was actually
+    // written, not from a re-detection. Without this the restart path has no
+    // length to deserialize with and would re-embed the whole corpus.
+    if (this.pinnedDims === null) {
+      if (!Number.isInteger(manifest.dims) || manifest.dims <= 0) return;
+      this.pinnedDims = manifest.dims;
+    }
+    const dims = this.pinnedDims;
+
     for (const [docId, entry] of Object.entries(manifest.entries)) {
       if (!entry?.contentHash) continue;
       this.entries.set(docId, { contentHash: entry.contentHash, mtimeMs: entry.mtimeMs ?? 0 });
@@ -182,7 +261,7 @@ export class VectorCache {
           const blobPath = join(this.vecDir, `${entry.contentHash}.bin`);
           if (existsSync(blobPath)) {
             const bytes = await readFile(blobPath);
-            this.vectorsByHash.set(entry.contentHash, deserializeVectors(bytes, this.dims));
+            this.vectorsByHash.set(entry.contentHash, deserializeVectors(bytes, dims));
             this.persistedHashes.add(entry.contentHash);
           }
         } catch (err) {
@@ -271,6 +350,12 @@ export class VectorCache {
   async persist(): Promise<void> {
     if (!this.cacheDir || !this.manifestPath || !this.vecDir) return;
     if (!this.dirty) return; // nothing changed since last persist — skip the write
+    const dims = this.pinnedDims;
+    // Nothing has been embedded yet (or every doc in the corpus is blank, which
+    // stores zero vectors), so there is no length to write and any entries are
+    // empty ones that cost nothing to reconcile again next boot. Writing a null
+    // length would poison the next init's deserialize.
+    if (dims === null) return;
     try {
       await tracedMkdir(this.vecDir, { recursive: true });
       const referenced = new Set<string>();
@@ -288,7 +373,8 @@ export class VectorCache {
         schemaVersion: MANIFEST_SCHEMA_VERSION,
         providerId: this.providerId,
         modelId: this.modelId,
-        dims: this.dims,
+        dims,
+        identityDims: this.identityDims,
         chunkConfigId: this.chunkConfigId,
         entries: Object.fromEntries(this.entries),
       };

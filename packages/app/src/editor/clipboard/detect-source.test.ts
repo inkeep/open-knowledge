@@ -6,7 +6,7 @@
  * `.getData(key)`, so a plain object suffices.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { detectSource } from './detect-source.ts';
 
 function fakeDT(data: Record<string, string>): DataTransfer {

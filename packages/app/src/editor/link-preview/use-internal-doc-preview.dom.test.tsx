@@ -12,18 +12,18 @@
  * the hook itself run for real.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, render } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const realDataLayer = await import('./internal-doc-preview.ts');
 
-mock.module('./internal-doc-preview.ts', () => ({
+vi.doMock('./internal-doc-preview.ts', () => ({
   ...realDataLayer,
   loadDocContent: (docName: string) => Promise.resolve(`# Heading\n\nBody of ${docName}.`),
   loadBacklinkCount: (docName: string) => Promise.resolve(docName === 'a.md' ? 3 : 5),
 }));
 
-mock.module('../../components/PageListContext', () => ({
+vi.doMock('../../components/PageListContext', () => ({
   usePageList: () => ({
     pageTitles: new Map<string, string>([
       ['a.md', 'Doc A'],

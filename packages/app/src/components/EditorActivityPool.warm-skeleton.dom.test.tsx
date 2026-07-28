@@ -18,9 +18,10 @@
  *
  * Runs under `bun run test:dom` (jsdom substrate).
  */
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+
 import { cleanup, render, screen } from '@testing-library/react';
 import { Suspense, useEffect, useLayoutEffect, useState } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   __consumeRenameSnapshot,
   __resetRenameSnapshotStore,
@@ -92,13 +93,13 @@ const baseSnap = (html: string): RenameSnapshot => ({ html, scrollTop: 0, select
 // ---------------------------------------------------------------------------
 
 describe('WarmContentFallback DOM geometry', () => {
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     __resetRenameSnapshotStore();
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -144,13 +145,13 @@ describe('WarmContentFallback DOM geometry', () => {
 });
 
 describe('rename-snapshot store → warm-fallback selection contract', () => {
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     __resetRenameSnapshotStore();
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -218,8 +219,8 @@ describe('rename-snapshot store → warm-fallback selection contract', () => {
 
 describe('warm-fallback scroll restoration', () => {
   let scrollContainer: HTMLDivElement;
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     __resetRenameSnapshotStore();
@@ -237,8 +238,8 @@ describe('warm-fallback scroll restoration', () => {
     scrollContainer.appendChild(inner);
     document.body.appendChild(scrollContainer);
 
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -284,8 +285,8 @@ describe('warm-fallback scroll restoration', () => {
 
 describe('captureRenameSnapshots — scrollTop capture (DOM)', () => {
   let scrollContainer: HTMLDivElement;
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     __resetRenameSnapshotStore();
@@ -297,8 +298,8 @@ describe('captureRenameSnapshots — scrollTop capture (DOM)', () => {
     inner.style.height = '5000px';
     scrollContainer.appendChild(inner);
     document.body.appendChild(scrollContainer);
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {

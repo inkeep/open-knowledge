@@ -41,6 +41,7 @@ import {
   Activity,
   lazy,
   type ReactNode,
+  type RefObject,
   Suspense,
   useEffect,
   useLayoutEffect,
@@ -64,6 +65,14 @@ import { EditorSkeleton } from './EditorSkeleton';
 import { PageHeader } from './PageHeader';
 import { usePageList } from './PageListContext';
 import { PropertyPanel } from './PropertyPanel';
+import {
+  computeRestoreTarget,
+  hasLandedAt,
+  isExternalScroll,
+  measureAnchor,
+  RESTORE_BACKSTOP_MS,
+  shouldRecordScrollPosition,
+} from './scroll-restore';
 import { Button } from './ui/button';
 
 // Lazy-loaded: the skill/template identity panel (+ SkillProperties /
@@ -481,15 +490,62 @@ interface ActivityEntryProps {
  *   (re-clamping scrollTop to 0), and the editor hydrates content
  *   asynchronously after `'create'` — neither a single synchronous write
  *   nor a one-shot ResizeObserver retry survives that race. The poll
- *   ends on the first user-scroll-intent signal (wheel / touchstart) or
- *   a 2 s safety timeout.
+ *   ends on the first user-scroll-intent signal (wheel / touchstart /
+ *   mousedown / keydown), on an external scrollTop write (outline click,
+ *   find-in-doc — anything we didn't write), or a hard wall-clock
+ *   backstop. There is deliberately no early "settled" finalizer: a
+ *   finalized restore never corrects again, so finalizing ahead of a late
+ *   layout shift (contended hydration, panel settle, font swap) is how
+ *   transient churn used to freeze into a permanently wrong position.
+ *
+ *   Anchor measurements are validity-guarded (see scroll-restore.ts): a
+ *   mounted-but-hidden anchor (a Suspense fallback window during a slow
+ *   reveal) yields NO target for that frame rather than a degenerate
+ *   viewport-origin measurement that self-amplifies per applied frame.
  */
+
+/**
+ * Per-document scroll position, stored as a BODY OFFSET (scrollTop minus the
+ * above-body anchor height) and keyed by `docName`. Two reasons it lives at
+ * module scope, not in a per-instance ref:
+ *   1. Survives the editor's REMOUNT on navigate-back — the fresh
+ *      ScrollPreservingContainer instance re-reads the same value instead of
+ *      losing it (the per-instance ref was the bug: a remount dropped it and
+ *      then re-captured churn from the resize).
+ *   2. Body-relative — a Properties-panel height change (collapse/expand, even
+ *      globally on another doc) never invalidates it, because the offset is
+ *      measured from the top of the body, not the top of the scroller.
+ * Restore = currentAnchor + storedOffset, so it always lands on the same body
+ * content regardless of the panel's current height.
+ *
+ * Entries are deliberately kept PAST Activity eviction (so revisiting a
+ * pooled-out doc still restores scroll), so there is no per-eviction cleanup —
+ * but to keep a very long session from growing the map without bound,
+ * `rememberDocScrollOffset` caps it at `MAX_TRACKED_DOC_SCROLL`, dropping the
+ * least-recently-written entry (re-insert-on-write makes the order LRU).
+ */
+const MAX_TRACKED_DOC_SCROLL = 256;
+const docScrollBodyOffset = new Map<string, number>();
+function rememberDocScrollOffset(docName: string, offset: number): void {
+  docScrollBodyOffset.delete(docName); // re-insert last → LRU order for eviction
+  docScrollBodyOffset.set(docName, offset);
+  if (docScrollBodyOffset.size > MAX_TRACKED_DOC_SCROLL) {
+    const oldest = docScrollBodyOffset.keys().next().value;
+    if (oldest !== undefined) docScrollBodyOffset.delete(oldest);
+  }
+}
+
 function ScrollPreservingContainer({
   isActive,
+  docName,
   initialScrollTop,
+  bodyAnchorRef,
   children,
 }: {
   isActive: boolean;
+  /** The document this scroller belongs to — the key under which its scroll
+   *  body-offset persists across remounts (see `docScrollBodyOffset`). */
+  docName: string;
   /**
    * Seed value for `savedScrollTop` at mount. Used by the warm-skeleton
    * rename-restore path: when the new ActivityEntry mounts post-rename
@@ -501,6 +557,17 @@ function ScrollPreservingContainer({
    * recovery).
    */
   initialScrollTop?: number;
+  /**
+   * Ref to a zero-height marker at the TOP of the document body (below the
+   * page header + the variable-height Properties section). Scroll is restored
+   * relative to this anchor's position within the scroll content, not a raw
+   * pixel offset — so a height change ABOVE it while this doc is hidden (the
+   * globally-shared Properties panel collapsing on another doc's toggle) does
+   * not shift the restored position. Optional: without a captured anchor the
+   * restore falls back to the raw saved scrollTop (compensation delta 0), so
+   * existing behavior is unchanged whenever nothing above the body moved.
+   */
+  bodyAnchorRef?: RefObject<HTMLElement | null>;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -508,23 +575,50 @@ function ScrollPreservingContainer({
   // subsequent re-renders that re-pass a stale or zero `initialScrollTop`
   // do NOT overwrite a saved value the user has since scrolled away from.
   const savedScrollTop = useRef<number>(initialScrollTop ?? 0);
+  // Anchor position captured at the same instant as `savedScrollTop`, so the
+  // pair describes one consistent layout. `null` = never captured (fresh mount
+  // / warm rename-restore) → no compensation.
+  const savedAnchorPos = useRef<number | null>(null);
 
-  // Continuously track scrollTop via scroll listener so we always have the
-  // latest user position — independent of Activity mode transitions.
-  // `display:none` zeros scrollTop before any layout effect could read it,
-  // so we MUST capture via scroll events to have a real value to restore.
+  // Mirror `isActive` into a ref so the (once-installed) scroll listener reads
+  // the current value. Only a GENUINE user scroll — doc visible, not mid-restore
+  // — should record position; the restore's own programmatic writes and the
+  // panel-resize churn on reveal fire scroll events too, and recording those was
+  // corrupting the saved position (the `799.5` in the diagnostics).
+  const isActiveRef = useRef(isActive);
+  const isRestoringRef = useRef(false);
+  useEffect(() => {
+    isActiveRef.current = isActive;
+  }, [isActive]);
+
+  // Track scrollTop via a scroll listener so we always have the latest user
+  // position — `display:none` zeros scrollTop before any layout effect could
+  // read it, so we MUST capture via scroll events.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const onScroll = () => {
-      // Only record non-zero values — a content collapse under display:none
-      // can fire a spurious scroll event with scrollTop=0 that we must NOT
-      // persist (it would overwrite the real saved value).
-      if (el.scrollTop > 0) savedScrollTop.current = el.scrollTop;
+      // Ignore non-user scroll: hidden (post-reveal churn / spurious 0s) and
+      // restore-in-progress (our own writes + panel-resize adjustments).
+      if (!isActiveRef.current || isRestoringRef.current) return;
+      if (el.scrollTop > 0) {
+        const anchor = measureAnchor(el, bodyAnchorRef?.current);
+        // A hidden (zero-rect) anchor means layout is mid-transition — any
+        // scroll event on such a frame is churn, not user position. Recording
+        // it would corrupt the save the same way it corrupts the restore.
+        if (!shouldRecordScrollPosition(anchor)) return;
+        savedScrollTop.current = el.scrollTop;
+        savedAnchorPos.current = anchor.kind === 'measured' ? anchor.contentPos : null;
+        // Persist the body-relative offset per doc so it survives a remount and
+        // stays valid across Properties-panel height changes.
+        if (anchor.kind === 'measured') {
+          rememberDocScrollOffset(docName, el.scrollTop - anchor.contentPos);
+        }
+      }
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
-  }, []);
+  }, [bodyAnchorRef, docName]);
 
   // Restore scrollTop when `isActive` flips to true. Two stages:
   //   1. Synchronous best-effort write — cheap when content is already
@@ -541,51 +635,150 @@ function ScrollPreservingContainer({
   // and does not change when scrollHeight grows inside it. Polling reads
   // scrollHeight directly each frame — the signal we actually need.
   //
-  // Stop conditions: wheel / touchstart from the user (unambiguous
-  // scroll-intent signals — click-to-place-caret produces neither), or
-  // a 2 s safety timeout that covers the large-doc cold-mount + CRDT
-  // hydration window in dev.
+  // Stop conditions: user scroll intent (wheel / touchstart / mousedown on
+  // the scroller for scrollbar drags / keydown for keyboard scrolling), an
+  // EXTERNAL scroll write (outline-click scrollIntoView, find-in-doc — any
+  // scrollTop move we didn't make; see isExternalScroll), or the
+  // `RESTORE_BACKSTOP_MS` hard backstop. There is deliberately NO
+  // "settled" heuristic and NO short wall-clock finalizer: both finalize
+  // before a late layout shift above the body (contended hydration, panel
+  // settling, font swap), and a finalized restore never corrects again —
+  // that is exactly how transient churn froze into a permanently wrong
+  // position. Tracking until someone else takes over the scroll is the
+  // contract ("the same body content at the same viewport position"). Cost:
+  // a few rect reads per frame (getClientRects + two getBoundingClientRect),
+  // cheap while layout is clean — reads only force reflow after a write.
+  //
+  // CSS scroll anchoring is suspended while the loop runs: it is the one
+  // other browser-side scrollTop mover, and with it off, any move we
+  // didn't write is a reliable takeover signal.
   useLayoutEffect(() => {
     if (!isActive) return;
     const el = ref.current;
     if (!el) return;
-    const target = savedScrollTop.current;
-    if (target === 0) return;
+    const rawTarget = savedScrollTop.current;
+
+    // Restore keeps the BODY offset — how far into the document body we were
+    // scrolled — constant, instead of a raw pixel scrollTop, and recomputes the
+    // target from the CURRENT anchor on every apply so it tracks the Properties
+    // panel settling to its post-toggle height. Prefer the per-doc offset
+    // (`docScrollBodyOffset`) so it survives the editor's remount on
+    // navigate-back; fall back to this instance's captured pair, then the raw
+    // scroll (fresh mount / warm rename-restore) so existing behavior is intact.
+    const sharedOffset = docScrollBodyOffset.get(docName);
+    const instanceOffset =
+      savedAnchorPos.current !== null ? rawTarget - savedAnchorPos.current : null;
+    const bodyOffset: number | null = sharedOffset ?? instanceOffset;
+    if (rawTarget === 0 && bodyOffset === null) return; // nothing to restore
+    // Null = no valid layout evidence this frame (anchor mounted but hidden,
+    // e.g. a Suspense fallback window) — hold: no write this frame.
+    const computeTarget = (): number | null =>
+      computeRestoreTarget(rawTarget, bodyOffset, measureAnchor(el, bodyAnchorRef?.current));
+    // Suppress scroll capture while we drive the restore — our own writes and
+    // the panel-resize adjustments would otherwise be recorded as user scroll.
+    isRestoringRef.current = true;
+    // Suspend CSS scroll anchoring for the loop's lifetime (restored in
+    // finish). Two agents adjusting scrollTop for the same content shifts
+    // fight each other, and with anchoring off, any scrollTop move we did
+    // not write is a reliable someone-else-took-over signal.
+    const priorOverflowAnchor = el.style.overflowAnchor;
+    el.style.overflowAnchor = 'none';
 
     const startTs = performance.now();
     let phase2Marked = false;
+    // True once the restore has landed on target at least once (Phase 1 or
+    // Phase 2) — gates the `yielded` mark so a healthy restore followed by
+    // user interaction doesn't read as an incomplete one.
+    let hasLandedOnce = false;
 
     // Stage 1 — synchronous best-effort write. Mark phase1-success when it
     // lands AND content is sized; do NOT short-circuit: the Suspense
     // warm-fallback → real-editor swap can still collapse scrollHeight and
     // re-clamp scrollTop, so Stage 2's poll must remain armed.
-    el.scrollTop = target;
-    if (el.scrollTop === target && el.scrollHeight > target) {
-      mark('ok/scroll-restore/phase1-success', {
-        target,
-        elapsedMs: performance.now() - startTs,
-      });
+    let target = computeTarget();
+    if (target !== null) {
+      el.scrollTop = target;
+      if (hasLandedAt(el.scrollTop, target) && el.scrollHeight > target) {
+        hasLandedOnce = true;
+        mark('ok/scroll-restore/phase1-success', {
+          target,
+          elapsedMs: performance.now() - startTs,
+        });
+      }
     }
+    // The scrollTop as we left it — the baseline the external-scroll
+    // detector compares against next frame.
+    let prevScrollTop = el.scrollTop;
 
-    // Stage 2 — bounded per-frame re-apply.
+    // Stage 2 — per-frame tracking until user intent, external scroll, or
+    // backstop.
     let done = false;
     let raf = 0;
     const finish = () => {
       if (done) return;
       done = true;
+      isRestoringRef.current = false; // re-enable user-scroll capture
+      el.style.overflowAnchor = priorOverflowAnchor;
       cancelAnimationFrame(raf);
       clearTimeout(safetyTimer);
-      el.removeEventListener('wheel', onUserInterrupt);
-      el.removeEventListener('touchstart', onUserInterrupt);
+      el.removeEventListener('wheel', yieldToUser);
+      el.removeEventListener('touchstart', yieldToUser);
+      el.removeEventListener('mousedown', yieldToUser);
+      el.removeEventListener('keydown', yieldToUser);
     };
-    const onUserInterrupt = () => finish();
-    el.addEventListener('wheel', onUserInterrupt, { passive: true });
-    el.addEventListener('touchstart', onUserInterrupt, { passive: true });
+    // Any user input yields, deliberately including EVERY key: once the user
+    // is interacting, enforcing a restore target against them is worse than
+    // a small residual offset they are already overriding. Caret-driven
+    // scrolls would also be caught next frame by the external-scroll check;
+    // the listeners just yield a frame sooner.
+    const yieldToUser = () => {
+      if (!hasLandedOnce) {
+        // A restore that never landed and then yielded is otherwise
+        // invisible (no phase1/phase2-success, no abandoned) — surface it so
+        // operators can distinguish "user took over" from "never ran".
+        mark('ok/scroll-restore/yielded', {
+          reason: 'user',
+          elapsedMs: performance.now() - startTs,
+          finalScrollTop: el.scrollTop,
+        });
+      }
+      finish();
+    };
+    el.addEventListener('wheel', yieldToUser, { passive: true });
+    el.addEventListener('touchstart', yieldToUser, { passive: true });
+    // mousedown covers scrollbar drags (they begin with a mousedown on the
+    // scroller and produce neither wheel nor touchstart); keydown covers
+    // keyboard scrolling once focus is inside.
+    el.addEventListener('mousedown', yieldToUser);
+    el.addEventListener('keydown', yieldToUser);
     const tick = () => {
       if (done) return;
-      if (el.scrollTop !== target && el.scrollHeight > target) {
+      // An UPWARD scrollTop move we didn't write = someone else owns the
+      // scroll now (outline-click scrollIntoView, find-in-doc). Yield
+      // immediately — enforcing a stale target over an intentional scroll is
+      // worse than any restore imprecision. Downward moves are shrink-clamps
+      // to re-apply over (possibly against a transient collapsed height);
+      // downward user takeovers arrive via the intent listeners above.
+      if (isExternalScroll(prevScrollTop, el.scrollTop)) {
+        if (!hasLandedOnce) {
+          mark('ok/scroll-restore/yielded', {
+            reason: 'external',
+            elapsedMs: performance.now() - startTs,
+            finalScrollTop: el.scrollTop,
+          });
+        }
+        finish();
+        return;
+      }
+      // Recompute from the current anchor so the target follows the Properties
+      // section as it settles to its post-toggle height (see computeTarget).
+      // A null target is a degenerate frame (anchor hidden): hold — writing
+      // through invalid evidence is how a transient hidden window used to
+      // become a permanently wrong scroll position.
+      target = computeTarget();
+      if (target !== null && !hasLandedAt(el.scrollTop, target) && el.scrollHeight > target) {
         el.scrollTop = target;
-        if (el.scrollTop === target && !phase2Marked) {
+        if (hasLandedAt(el.scrollTop, target) && !phase2Marked) {
           // At-most-once per restore session: phase2-success fires on the
           // first re-apply that lands, not every frame thereafter.
           mark('ok/scroll-restore/phase2-success', {
@@ -593,37 +786,44 @@ function ScrollPreservingContainer({
             elapsedMs: performance.now() - startTs,
           });
           phase2Marked = true;
+          hasLandedOnce = true;
         }
       }
+      prevScrollTop = el.scrollTop;
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     const safetyTimer = setTimeout(() => {
       if (done) return;
-      // Fire `abandoned` based on final DOM state, not a historical
-      // success flag. The Phase 1 sync write can land then later be
-      // re-clamped to 0 by the Suspense warm-fallback → real-editor
-      // swap; if Stage 2 doesn't recover from that re-clamp within the
-      // 2 s window, the final state is wrong and the production
-      // telemetry must surface it. Also gated on
-      // `scrollHeight > target` so we don't emit `abandoned` when the
-      // doc legitimately shrunk below the saved target (content
-      // changed; restoration was not possible). User-scroll exits via
-      // `onUserInterrupt → finish` which clears the timer, so a
-      // scroll-away cannot trigger a false `abandoned` here.
-      if (el.scrollTop !== target && el.scrollHeight > target) {
+      // Fire `abandoned` based on final DOM state, not a historical success
+      // flag. Gated on `scrollHeight > target` so we don't emit `abandoned`
+      // when the doc legitimately shrunk below the saved target (content
+      // changed; restoration was not possible). A null target here means the
+      // anchor never became measurable again — that IS abandonment. User
+      // scroll exits via `yieldToUser → finish` which clears the timer,
+      // so a scroll-away cannot trigger a false `abandoned`.
+      const finalTarget = computeTarget();
+      if (
+        finalTarget === null ||
+        (!hasLandedAt(el.scrollTop, finalTarget) && el.scrollHeight > finalTarget)
+      ) {
+        // `target` stays numeric across the ok/scroll-restore family (a
+        // mixed number|string field silently NaNs any numeric aggregation);
+        // the unmeasurable-anchor case is carried by `anchorMeasurable`
+        // with `target` omitted.
         mark('ok/scroll-restore/abandoned', {
-          target,
+          ...(finalTarget !== null ? { target: finalTarget } : {}),
+          anchorMeasurable: finalTarget !== null,
           elapsedMs: performance.now() - startTs,
           scrollHeight: el.scrollHeight,
           finalScrollTop: el.scrollTop,
         });
       }
       finish();
-    }, 2000);
+    }, RESTORE_BACKSTOP_MS);
 
     return finish;
-  }, [isActive]);
+  }, [isActive, bodyAnchorRef, docName]);
 
   return (
     <div
@@ -803,6 +1003,12 @@ function ActivityEntry({
     return target;
   });
 
+  // Zero-height marker at the top of the document body (rendered just below the
+  // page header + Properties section). ScrollPreservingContainer restores scroll
+  // relative to this anchor so a height change above it — the shared Properties
+  // panel collapsing while this doc is hidden — doesn't shift the restored spot.
+  const bodyAnchorRef = useRef<HTMLDivElement>(null);
+
   // Defer-mount gating for large docs.
   //
   // Small/medium docs keep pre-mount-both (precedent #18(b) default): mode swap
@@ -958,7 +1164,12 @@ function ActivityEntry({
           rationale. Hoisting the scroller to EditorArea would make scroll
           state cross-document and collapse scrollHeight on hidden-mode
           effect cleanup. */}
-      <ScrollPreservingContainer isActive={isActive} initialScrollTop={warmSnapshot?.scrollTop}>
+      <ScrollPreservingContainer
+        isActive={isActive}
+        docName={entry.docName}
+        initialScrollTop={warmSnapshot?.scrollTop}
+        bodyAnchorRef={bodyAnchorRef}
+      >
         {recoveryView ? (
           <ServerRestartRecoveryPanel view={recoveryView} />
         ) : (
@@ -1052,6 +1263,11 @@ function ActivityEntry({
                             <PropertyPanel provider={entry.provider} />
                           </>
                         ))}
+                      {/* Body-top anchor for scroll-restore compensation (see
+                          ScrollPreservingContainer.bodyAnchorRef). Zero height,
+                          non-interactive — everything above it (page header +
+                          Properties) is the variable region it measures. */}
+                      <div ref={bodyAnchorRef} aria-hidden className="h-0" />
                       <div className="relative flex-1">
                         {gate.renderSource ? (
                           <div className={isSourceMode ? 'h-full' : 'ok-mode-hidden h-full'}>

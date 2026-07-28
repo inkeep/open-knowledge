@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import {
   type BetaRedirect,
   DMG_ASSET_NAME,
@@ -15,7 +15,7 @@ let _redirect: BetaRedirect = { kind: 'fresh', url: TEST_DMG_URL };
 
 // Mock must be registered before route.ts is loaded so the module-scope
 // `createBetaResolver()` call in route.ts uses the injected resolver.
-mock.module('../../../lib/download-links.ts', () => ({
+vi.doMock('../../../lib/download-links.ts', () => ({
   createBetaResolver: () => () => Promise.resolve(_redirect),
   toRedirectResponse: (r: BetaRedirect): Response =>
     new Response(null, {
@@ -33,7 +33,7 @@ type CaptureOpts = {
   properties?: Record<string, string | undefined>;
 };
 let _lastCapture: CaptureOpts | null = null;
-mock.module('../../../lib/track.ts', () => ({
+vi.doMock('../../../lib/track.ts', () => ({
   captureServerEvent: (opts: CaptureOpts) => {
     _lastCapture = opts;
   },

@@ -27,9 +27,9 @@
  * here and is the more realistic DNS-rebinding attack shape.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { rmSync } from 'node:fs';
 import { sep } from 'node:path';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { fetchWithHostHeader } from './host-header-request.test-helper';
 import { createTestServer, type TestServer } from './test-harness';

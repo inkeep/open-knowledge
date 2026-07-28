@@ -3,11 +3,11 @@
  * alive / foreign-host / dead-pid / corrupt) and the no-lockdir case.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProcessLockMetadata } from '@inkeep/open-knowledge-server';
+import { afterEach, describe, expect, test } from 'vitest';
 import type { LockState } from '../lock-state.ts';
 import { makeServerLockCheck } from './server-lock.ts';
 

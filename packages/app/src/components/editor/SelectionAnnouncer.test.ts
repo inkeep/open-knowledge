@@ -8,9 +8,9 @@
  * message shape the E2E harness only asserts partially.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { Schema } from '@tiptap/pm/model';
 import { EditorState, NodeSelection } from '@tiptap/pm/state';
+import { describe, expect, test } from 'vitest';
 import type { BlockSelection } from '../../editor/extensions/selection-state-plugin.ts';
 import { formatSelectionMessage } from './SelectionAnnouncer.tsx';
 

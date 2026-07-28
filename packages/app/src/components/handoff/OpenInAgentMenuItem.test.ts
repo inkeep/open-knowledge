@@ -8,8 +8,8 @@
  *   - `computeRowHint` short inline status copy
  */
 
-import { describe, expect, test } from 'bun:test';
 import type { InstallState, TargetData } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { KNOWN_TARGETS } from '@/lib/handoff/targets';
 
 function targetById(id: TargetData['id']): TargetData {

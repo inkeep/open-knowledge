@@ -6,10 +6,10 @@
  * isolation.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { bindTestUiLock } from './preview-url-test-helpers.ts';
 import { DESCRIPTION, register } from './search.ts';
@@ -66,7 +66,7 @@ afterEach(() => {
 });
 
 function mockFetchOk(payload: Record<string, unknown>): void {
-  globalThis.fetch = mock(async (_url: string, _init?: RequestInit) => {
+  globalThis.fetch = vi.fn(async (_url: string, _init?: RequestInit) => {
     return new Response(JSON.stringify(payload), {
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -83,7 +83,7 @@ function mockFetchProblem(
   status: number,
   payload: { type: string; title: string; detail?: string; instance?: string },
 ): void {
-  globalThis.fetch = mock(async (_url: string, _init?: RequestInit) => {
+  globalThis.fetch = vi.fn(async (_url: string, _init?: RequestInit) => {
     return new Response(JSON.stringify({ ...payload, status }), {
       status,
       headers: { 'content-type': 'application/problem+json' },
@@ -142,7 +142,7 @@ describe('search MCP tool — registration', () => {
 describe('search MCP tool — happy path', () => {
   test('forwards query / intent / scopes / limit to POST /api/search and normalizes the response', async () => {
     const captured: { url?: string; init?: RequestInit } = {};
-    globalThis.fetch = mock(async (url: string, init?: RequestInit) => {
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
       captured.url = String(url);
       captured.init = init;
       return new Response(
@@ -239,7 +239,7 @@ describe('search MCP tool — happy path', () => {
 
   test("default intent is 'full_text' when caller omits it (D4)", async () => {
     const captured: { body?: string } = {};
-    globalThis.fetch = mock(async (_url: string, init?: RequestInit) => {
+    globalThis.fetch = vi.fn(async (_url: string, init?: RequestInit) => {
       captured.body = String(init?.body);
       return new Response(JSON.stringify({ ok: true, results: [] }), {
         status: 200,
@@ -262,7 +262,7 @@ describe('search MCP tool — happy path', () => {
 
   test('semantic:false is forwarded as the per-call lexical override', async () => {
     const captured: { body?: string } = {};
-    globalThis.fetch = mock(async (_url: string, init?: RequestInit) => {
+    globalThis.fetch = vi.fn(async (_url: string, init?: RequestInit) => {
       captured.body = String(init?.body);
       return new Response(JSON.stringify({ ok: true, results: [] }), {
         status: 200,
@@ -364,7 +364,7 @@ describe('search MCP tool — happy path', () => {
 
   test("scopes:['file'] is forwarded to /api/search (Zod accepts 'file')", async () => {
     const captured: { body?: string } = {};
-    globalThis.fetch = mock(async (_url: string, init?: RequestInit) => {
+    globalThis.fetch = vi.fn(async (_url: string, init?: RequestInit) => {
       captured.body = String(init?.body);
       return new Response(JSON.stringify({ ok: true, results: [] }), {
         status: 200,

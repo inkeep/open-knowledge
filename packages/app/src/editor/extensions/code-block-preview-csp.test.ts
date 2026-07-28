@@ -11,7 +11,7 @@
  * was reviewed.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { buildPreviewIframeHeader } from './preview-iframe-header';
 
 /** Pull the raw CSP string out of the `<meta>` tag (no `"` appears inside it). */

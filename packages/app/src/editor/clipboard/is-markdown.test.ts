@@ -6,7 +6,7 @@
  * scales with line count: min(3, floor(lineCount / 5)), floored at 1.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { isMarkdown } from './is-markdown.ts';
 
 describe('isMarkdown — signal-count heuristic', () => {

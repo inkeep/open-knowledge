@@ -1,6 +1,6 @@
 /**
  * DOM mount test for ReportBugMenuTrigger — the App-root surface that opens
- * ReportBugDialog when the `report-bug` menu action fires (Help → Report a Bug…).
+ * ReportBugDialog when the `report-bug` menu action fires (Help → Report a bug…).
  *
  * Pins the user-visible contract: the dialog is closed until the menu action
  * fires, opens on `report-bug`, and ignores unrelated menu actions. The trigger
@@ -10,8 +10,9 @@
  *
  * Invocation: `bun run test:dom` from `packages/app/`.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   __resetLocalMenuActionBusForTests,
   emitLocalMenuAction,

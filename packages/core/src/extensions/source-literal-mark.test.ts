@@ -12,7 +12,7 @@
  * visible text.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { isValidSourceLiteralRaw } from './source-literal-mark.ts';
 
 describe('isValidSourceLiteralRaw — legitimate cases', () => {

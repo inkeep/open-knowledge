@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, test } from 'vitest';
 import { requireNativeConfigModule } from './load-native-config.ts';
 
 /** Run `fn` with OK_DEBUG_NATIVE set and stderr captured; restore both after. */

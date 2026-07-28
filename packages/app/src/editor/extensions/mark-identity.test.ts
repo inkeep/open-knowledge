@@ -8,9 +8,9 @@
  * (InternalLink port).
  */
 
-import { describe, expect, test } from 'bun:test';
 import { type Mark, Schema } from '@tiptap/pm/model';
 import { EditorState } from '@tiptap/pm/state';
+import { describe, expect, test } from 'vitest';
 import {
   computeMarkIdentity,
   diffMarkIdentity,

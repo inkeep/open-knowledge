@@ -13,7 +13,7 @@
  * (the markers are absent because the writes were refused, not because
  * content was corrupted).
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   buildOracleEExpectations,
   markerPrefixOf,

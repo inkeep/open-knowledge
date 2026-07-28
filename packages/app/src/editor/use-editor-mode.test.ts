@@ -15,7 +15,7 @@
  * surface so the Playwright tier focuses on user-facing behavior.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   EDITOR_MODE_VALUES,
   type EditorModeValue,
@@ -30,30 +30,30 @@ import {
 // ---------------------------------------------------------------------------
 
 interface FakeStorage {
-  getItem: ReturnType<typeof mock>;
-  setItem: ReturnType<typeof mock>;
+  getItem: ReturnType<typeof vi.fn>;
+  setItem: ReturnType<typeof vi.fn>;
 }
 
 function storageWith(value: string | null): FakeStorage {
   return {
-    getItem: mock(() => value),
-    setItem: mock(() => undefined),
+    getItem: vi.fn(() => value),
+    setItem: vi.fn(() => undefined),
   };
 }
 
 function storageThatThrowsOnGet(err: Error = new Error('privacy mode')): FakeStorage {
   return {
-    getItem: mock(() => {
+    getItem: vi.fn(() => {
       throw err;
     }),
-    setItem: mock(() => undefined),
+    setItem: vi.fn(() => undefined),
   };
 }
 
 function storageThatThrowsOnSet(err: Error = new Error('quota exceeded')): FakeStorage {
   return {
-    getItem: mock(() => null),
-    setItem: mock(() => {
+    getItem: vi.fn(() => null),
+    setItem: vi.fn(() => {
       throw err;
     }),
   };
@@ -110,10 +110,10 @@ describe('isEditorModeValue — type guard', () => {
 // ---------------------------------------------------------------------------
 
 describe('readPersistedMode — localStorage read with validation', () => {
-  let warnSpy: ReturnType<typeof spyOn> | undefined;
+  let warnSpy: ReturnType<typeof vi.spyOn> | undefined;
 
   beforeEach(() => {
-    warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   });
 
   afterEach(() => {
@@ -195,9 +195,9 @@ describe('readInitialMode — precedence: window global > storage > default', ()
   // `readPersistedMode` which now logs a bracket-prefix warn. Suppress
   // it here so we don't leak warn output into CI logs; dedicated tests
   // above verify the warn's message + shape.
-  let warnSpy: ReturnType<typeof spyOn> | undefined;
+  let warnSpy: ReturnType<typeof vi.spyOn> | undefined;
   beforeEach(() => {
-    warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   });
   afterEach(() => {
     warnSpy?.mockRestore();
@@ -263,10 +263,10 @@ describe('readInitialMode — precedence: window global > storage > default', ()
 // ---------------------------------------------------------------------------
 
 describe('persistMode — localStorage write with error swallow + warn logging', () => {
-  let warnSpy: ReturnType<typeof spyOn> | undefined;
+  let warnSpy: ReturnType<typeof vi.spyOn> | undefined;
 
   beforeEach(() => {
-    warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   });
 
   afterEach(() => {

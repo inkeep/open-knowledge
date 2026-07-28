@@ -3,20 +3,20 @@
  *
  * Same testing-library-free convention as Math.test.tsx: `renderToString`
  * from `react-dom/server` is the substrate. Mermaid renders via `useEffect`
- * + an async lazy import + the mermaid-wysiwyg canvas view, so under
+ * + an async lazy import + the visimer canvas view, so under
  * `renderToString` the component lands in its initial placeholder state
  * (the effect fires only on real mount). Live SVG output is exercised via
  * the Playwright visual-regression suite; canvas behavior (selection,
- * popovers, in-place edits) is owned by the `mermaid-wysiwyg` package's
+ * popovers, in-place edits) is owned by the `visimer` package's
  * own test suite.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import { renderToString } from 'react-dom/server';
+import { describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import * as actualLinguiReactMacro from '../../../tests/lingui-macro-shim';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiReactMacro,
   Trans: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),

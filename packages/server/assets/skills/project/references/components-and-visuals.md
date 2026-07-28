@@ -10,7 +10,11 @@ OK auto-promotes markdown-native syntax into themed canonical components at pars
 | Collapsible section | `<details><summary>Title</summary>` … `</details>` | themed Accordion |
 | Diagram | a ` ```mermaid ` fenced block (flowchart, sequence, class, state, ER, gantt, pie) — label-text pitfalls + escapes: `palette({ components: ["Mermaid"] })`; parse failures come back as `warnings` entries on write/edit | Mermaid diagram |
 | Math | `$x$` inline, `$$…$$` block | KaTeX Math |
+| Highlight | `==text==` | highlight mark |
+| Author-only comment (hidden from readers) | `%%text%%` or `<!-- text -->` | comment mark |
 | Inline a doc or asset | `![[file]]` | wiki embed |
+
+**These delimiters are live in ordinary prose.** `==`, `$`, `$$`, `%%`, `<!--` … `-->` and `~~` format — or hide — whatever sits between them, wherever they appear, not only where you meant them as syntax. To show a literal pair, wrap it in an inline code span (`` `==x==` ``, `` `$5` ``), which always works and reads as code; or backslash-escape a delimiter to keep it as running prose. Escaping either side is enough for `==`, `$`, `%%` and `<!--`: `\==x\==`, `\$5`, `\%\%note\%\%`, `\<!-- note -->`. For `~~`, escape both tildes (`\~\~x\~\~`) — a one-sided `\~~x~~` renders right but gets rewritten to the two-sided form on save. Watch `%%` and `<!-- -->` in particular: an accidental pair doesn't restyle the text, it hides it.
 
 `Tabs` is the lone canonical with **no** markdown-native form — write the JSX directly (`<Tabs><Tab label="…">…</Tab></Tabs>`). For any canonical's full JSX prop schema, call `palette({ components: [ids] })`. If no canonical fits, any `<TagName>…</TagName>` falls through as raw MDX — but prefer a canonical when one matches.
 

@@ -13,6 +13,7 @@ export { simulateCopyAndRead, simulateCutAndRead } from './clipboard.ts';
 export { resetContentToFixtureBaseline } from './content-reset.ts';
 export {
   focusEditor,
+  primeFullLayout,
   selectAllAndWaitForSelection,
   selectText,
   waitForPmSelectionInNode,

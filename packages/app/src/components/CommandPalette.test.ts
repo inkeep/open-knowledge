@@ -11,7 +11,7 @@
  * DOM-level command visibility, routing, and overlay-prop contracts live in
  * `CommandPalette.dom.test.tsx`.
  */
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 
 describe('CommandPalette module', () => {
   test('Component module imports cleanly', async () => {
@@ -24,14 +24,14 @@ describe('CommandPalette module', () => {
 describe('CommandPalette.runWithToast (IPC rejection → toast feedback)', () => {
   test('success: no toast.error fires', async () => {
     const { runWithToast } = await import('./CommandPalette');
-    const toastApi = { error: mock(() => {}) };
+    const toastApi = { error: vi.fn(() => {}) };
     await runWithToast(() => Promise.resolve(), 'Command failed.', toastApi);
     expect(toastApi.error).not.toHaveBeenCalled();
   });
 
   test('Error rejection: toast.error fires with Error.message', async () => {
     const { runWithToast } = await import('./CommandPalette');
-    const toastApi = { error: mock(() => {}) };
+    const toastApi = { error: vi.fn(() => {}) };
     await runWithToast(
       () => Promise.reject(new Error('utility failed to boot')),
       'Command failed.',
@@ -42,21 +42,21 @@ describe('CommandPalette.runWithToast (IPC rejection → toast feedback)', () =>
 
   test('non-Error rejection: toast.error fires with fallback', async () => {
     const { runWithToast } = await import('./CommandPalette');
-    const toastApi = { error: mock(() => {}) };
+    const toastApi = { error: vi.fn(() => {}) };
     await runWithToast(() => Promise.reject('network dropped'), 'Command failed.', toastApi);
     expect(toastApi.error).toHaveBeenCalledWith('Command failed.');
   });
 
   test('empty-message Error: toast.error fires with fallback', async () => {
     const { runWithToast } = await import('./CommandPalette');
-    const toastApi = { error: mock(() => {}) };
+    const toastApi = { error: vi.fn(() => {}) };
     await runWithToast(() => Promise.reject(new Error('')), 'Command failed.', toastApi);
     expect(toastApi.error).toHaveBeenCalledWith('Command failed.');
   });
 
   test('does not re-throw on rejection (runAction continues)', async () => {
     const { runWithToast } = await import('./CommandPalette');
-    const toastApi = { error: mock(() => {}) };
+    const toastApi = { error: vi.fn(() => {}) };
     let afterAwait = false;
     await runWithToast(() => Promise.reject(new Error('x')), 'Command failed.', toastApi);
     afterAwait = true;
@@ -68,7 +68,7 @@ describe('CommandPalette.runWithToast (IPC rejection → toast feedback)', () =>
     // first to clear stale state; our adapter must filter the null rather
     // than passing it to toast.error(null).
     const { runWithToast } = await import('./CommandPalette');
-    const toastApi = { error: mock(() => {}) };
+    const toastApi = { error: vi.fn(() => {}) };
     await runWithToast(() => Promise.resolve(), 'Command failed.', toastApi);
     expect(toastApi.error).not.toHaveBeenCalled();
   });

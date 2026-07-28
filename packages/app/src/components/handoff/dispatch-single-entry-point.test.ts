@@ -23,9 +23,9 @@
  * tests, and fails a PR at the exact file that introduced the direct import.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 // `import.meta.url` → `…/packages/app/src/components/handoff/…`. Walk up two
 // levels to land on `packages/app/src/`, the new scope root.

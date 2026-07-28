@@ -14,7 +14,7 @@
  * double-consume a single flag. Mirrors `auto-open-flag.test.ts`.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   _resetPendingLinkEditForTest,
   consumePendingLinkEdit,

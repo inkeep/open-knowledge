@@ -1,5 +1,5 @@
-import { afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { cleanup, render } from '@testing-library/react';
+import { afterEach, beforeAll, describe, expect, test } from 'vitest';
 import {
   applyColorThemeToDom,
   COLOR_THEME_ATTRIBUTE,

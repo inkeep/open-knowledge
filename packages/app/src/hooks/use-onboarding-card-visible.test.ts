@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { evaluateFreshProject } from './use-onboarding-card-visible';
 
@@ -22,7 +22,7 @@ function rejectingBridge(): OkDesktopBridge {
 }
 
 function mockDocumentsResponse(body: unknown, status = 200): void {
-  globalThis.fetch = mock(() =>
+  globalThis.fetch = vi.fn(() =>
     Promise.resolve(new Response(JSON.stringify(body), { status })),
   ) as never;
 }
@@ -49,7 +49,7 @@ describe('evaluateFreshProject', () => {
   });
 
   test('a second switchable project → null (does not fetch documents)', async () => {
-    const fetchSpy = mock(() => Promise.resolve(new Response('{}', { status: 200 })));
+    const fetchSpy = vi.fn(() => Promise.resolve(new Response('{}', { status: 200 })));
     globalThis.fetch = fetchSpy as never;
     expect(
       await evaluateFreshProject(bridgeWith([{ path: CURRENT_PATH }, { path: '/other/project' }])),
@@ -85,7 +85,7 @@ describe('evaluateFreshProject', () => {
   });
 
   test('freshly created but a second project exists → null (hasOtherProject wins)', async () => {
-    const fetchSpy = mock(() => Promise.resolve(new Response('{}', { status: 200 })));
+    const fetchSpy = vi.fn(() => Promise.resolve(new Response('{}', { status: 200 })));
     globalThis.fetch = fetchSpy as never;
     expect(
       await evaluateFreshProject(

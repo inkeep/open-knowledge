@@ -136,11 +136,21 @@ const EXEMPT_HANDLERS = new Set([
   // content — same rationale as `handleFolderConfig`. No agent identity needed.
   'handleGetLintConfig',
   'handleWriteMarkdownlintRule',
+  // Project-config write (frontmatter schema file), not agent-authored content —
+  // same class as handleWriteMarkdownlintRule.
+  'handleWriteFrontmatterSchema',
+  // `/api/lint/frontmatter-schemas` (GET) — read-only enumeration of the
+  // project's `.ok/schemas/*.json` files for the mapping picker. No writes.
+  'handleFrontmatterSchemasList',
   // `/api/lint` (GET) + `/api/lint/audit` (GET) — read-only lint of a single doc
   // / the whole project. No writes, no agent identity — same rationale as the
   // other read handlers below.
   'handleLintDoc',
   'handleLintAudit',
+  // `/api/audit` (GET) — read-only unified validation audit (markdownlint +
+  // dead links) over the project or a sub-path. No writes, no agent identity —
+  // same rationale as `handleLintAudit`.
+  'handleAudit',
   // `/api/template/import` — imports an existing doc as a template. Same
   // project-config posture as `handleTemplate`; it DOES thread
   // `extractActorIdentity` (folder timeline) + `extractAgentIdentity` (template
@@ -232,12 +242,19 @@ const EXEMPT_HANDLERS = new Set([
   // thread.
   'handleLocalOpAuthPat',
   'handleLocalOpAuthGhLogin',
+  // POST /api/local-op/auth/cancel — user-initiated stop for an in-flight
+  // device flow. Terminates a subprocess on the local machine; writes nothing.
+  'handleLocalOpAuthCancel',
   // POST /api/local-op/embeddings/{set-key,clear-key} — loopback-gated writes of
   // the machine-global embeddings key to ~/.ok/secrets.yml. Operate on the local
   // user's credential file, not agent-authored content — same rationale as the
   // sibling local-op auth handlers. No agent identity to thread.
   'handleLocalOpEmbeddingsSetKey',
   'handleLocalOpEmbeddingsClearKey',
+  // POST /api/local-op/embeddings/test — one probe embed of a fixed string
+  // against the configured endpoint. Reads config + the credential file and
+  // writes nothing; no document content, so no identity to thread.
+  'handleLocalOpEmbeddingsTest',
   'handleTestReset',
   // POST /api/test-flush-git — test-routes-only L2 git-flush drain; mutates
   // no document content (commits what persistence already wrote), so there

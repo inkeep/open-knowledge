@@ -5,7 +5,7 @@
  * `/api/local-op/auth/signout` error envelope rather than a hand-mocked body.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { httpAuthQueryTransport } from '@/lib/transports/auth-query-transport';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
 import { createTestServer, type TestServer } from '../test-harness';

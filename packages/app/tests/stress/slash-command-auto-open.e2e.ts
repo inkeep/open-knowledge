@@ -16,13 +16,13 @@
  * surfaces.
  */
 
-import { expect, test, waitForActiveProviderSynced, waitForSlashMenuFirstOption } from './_helpers';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-const PROP_PANEL_TIMEOUT = 1_000;
+import {
+  expect,
+  focusEditor,
+  test,
+  waitForActiveProviderSynced,
+  waitForSlashMenuFirstOption,
+} from './_helpers';
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -45,7 +45,7 @@ test('SLASH-AUTOOPEN-IMG: slash-inserting Image auto-opens its PropPanel', async
 
   // `[data-prop-panel]` is rendered only when the Popover's `open` state is true,
   // which the consumer toggles via the auto-open useEffect in JsxComponentView.
-  await expect(page.locator('[data-prop-panel]')).toBeVisible({ timeout: PROP_PANEL_TIMEOUT });
+  await expect(page.locator('[data-prop-panel]')).toBeVisible();
 });
 
 test('SLASH-AUTOOPEN-VIDEO: slash-inserting Video auto-opens its PropPanel', async ({
@@ -63,7 +63,7 @@ test('SLASH-AUTOOPEN-VIDEO: slash-inserting Video auto-opens its PropPanel', asy
   await waitForSlashMenuFirstOption(page, 'video');
   await page.keyboard.press('Enter');
 
-  await expect(page.locator('[data-prop-panel]')).toBeVisible({ timeout: PROP_PANEL_TIMEOUT });
+  await expect(page.locator('[data-prop-panel]')).toBeVisible();
 });
 
 test('SLASH-AUTOOPEN-CALLOUT: slash-inserting Callout auto-opens its PropPanel', async ({
@@ -84,7 +84,7 @@ test('SLASH-AUTOOPEN-CALLOUT: slash-inserting Callout auto-opens its PropPanel',
   await waitForSlashMenuFirstOption(page, 'callout');
   await page.keyboard.press('Enter');
 
-  await expect(page.locator('[data-prop-panel]')).toBeVisible({ timeout: PROP_PANEL_TIMEOUT });
+  await expect(page.locator('[data-prop-panel]')).toBeVisible();
 });
 
 test('SLASH-AUTOOPEN-IMG-MULTI: slash-inserting Image with a prior Image auto-opens the NEW one', async ({
@@ -105,37 +105,86 @@ test('SLASH-AUTOOPEN-IMG-MULTI: slash-inserting Image with a prior Image auto-op
   // Wait for the seeded img NodeView to mount.
   await expect(page.locator('[data-jsx-component]')).toHaveCount(1);
 
-  // Land cursor at end of doc (in the trailing empty paragraph).
+  // Land cursor at end of doc (in the trailing empty paragraph). Typing the
+  // trigger before the caret has actually moved there types '/image' at a stale
+  // position, where the suggestion never matches — prove the move landed first.
   await page.click('.ProseMirror:not(.composer-prosemirror)');
   await page.keyboard.press('ControlOrMeta+End');
+  await focusEditor(page);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        interface WindowEditor {
+          state: {
+            doc: { childCount: number };
+            selection: { $from: { depth: number; index: (depth: number) => number } };
+          };
+        }
+        const ed = (window as unknown as { __activeEditor?: WindowEditor }).__activeEditor;
+        if (!ed) return false;
+        const { $from } = ed.state.selection;
+        return $from.depth >= 1 && $from.index(0) === ed.state.doc.childCount - 1;
+      }),
+    )
+    .toBe(true);
 
   await page.keyboard.type('/image');
   await waitForSlashMenuFirstOption(page, 'image');
   await page.keyboard.press('Enter');
 
   await expect(page.locator('[data-jsx-component]')).toHaveCount(2);
-  await expect(page.locator('[data-prop-panel]')).toBeVisible({ timeout: PROP_PANEL_TIMEOUT });
+  // The insert must ADD a node, never replace the one already in the document.
+  // The count above catches destruction only by arithmetic; this names it.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          interface PmNode {
+            type: { name: string };
+            attrs: { componentName?: string; props?: Record<string, unknown> };
+          }
+          interface WindowEditor {
+            state: { doc: { descendants: (cb: (n: PmNode) => boolean | undefined) => void } };
+          }
+          const ed = (window as unknown as { __activeEditor?: WindowEditor }).__activeEditor;
+          if (!ed) return null;
+          const srcs: unknown[] = [];
+          ed.state.doc.descendants((n) => {
+            if (n.type.name === 'jsxComponent' && n.attrs.componentName === 'img') {
+              srcs.push(n.attrs.props?.src ?? null);
+            }
+            return true;
+          });
+          return srcs;
+        }),
+      {
+        message:
+          'the pre-existing image node was destroyed by the slash insert (its src is no longer in the document)',
+      },
+    )
+    .toContain('prior-marker.png');
+  await expect(page.locator('[data-prop-panel]')).toBeVisible();
 
   // The selected (and thus auto-opened) node must be the NEW img — not the
   // pre-existing one. Read the PM NodeSelection's node attrs directly: the
   // new img has default props (empty src), the prior has 'prior-marker.png'.
-  const selectedSrc = await page.evaluate(() => {
-    const ed = (window as unknown as { __activeEditor?: { state: { selection: unknown } } })
-      .__activeEditor;
-    if (!ed) return null;
-    const sel = ed.state.selection as {
-      node?: { attrs: { componentName?: string; props?: Record<string, unknown> } };
-    };
-    if (!sel.node) return null;
-    return {
-      componentName: sel.node.attrs.componentName,
-      src: sel.node.attrs.props?.src ?? null,
-    };
-  });
-
-  expect(selectedSrc).not.toBeNull();
-  expect(selectedSrc?.componentName).toBe('img');
-  expect(selectedSrc?.src).not.toBe('prior-marker.png');
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const ed = (window as unknown as { __activeEditor?: { state: { selection: unknown } } })
+          .__activeEditor;
+        if (!ed) return null;
+        const sel = ed.state.selection as {
+          node?: { attrs: { componentName?: string; props?: Record<string, unknown> } };
+        };
+        if (!sel.node) return null;
+        return {
+          componentName: sel.node.attrs.componentName,
+          isPriorImage: sel.node.attrs.props?.src === 'prior-marker.png',
+        };
+      }),
+    )
+    .toEqual({ componentName: 'img', isPriorImage: false });
 });
 
 test('PLACEHOLDER-RENDERS-FRESH: slash-inserted img shows placeholder + auto-opens panel', async ({
@@ -157,10 +206,8 @@ test('PLACEHOLDER-RENDERS-FRESH: slash-inserted img shows placeholder + auto-ope
   await waitForSlashMenuFirstOption(page, 'image');
   await page.keyboard.press('Enter');
 
-  await expect(page.locator('[data-descriptor-placeholder]')).toBeVisible({
-    timeout: PROP_PANEL_TIMEOUT,
-  });
-  await expect(page.locator('[data-prop-panel]')).toBeVisible({ timeout: PROP_PANEL_TIMEOUT });
+  await expect(page.locator('[data-descriptor-placeholder]')).toBeVisible();
+  await expect(page.locator('[data-prop-panel]')).toBeVisible();
 });
 
 test('PLACEHOLDER-CLICK-OPENS-PANEL: clicking placeholder NodeSelects + reopens PropPanel', async ({
@@ -181,26 +228,31 @@ test('PLACEHOLDER-CLICK-OPENS-PANEL: clicking placeholder NodeSelects + reopens 
   await waitForSlashMenuFirstOption(page, 'image');
   await page.keyboard.press('Enter');
 
-  await expect(page.locator('[data-prop-panel]')).toBeVisible({ timeout: PROP_PANEL_TIMEOUT });
+  await expect(page.locator('[data-prop-panel]')).toBeVisible();
 
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-prop-panel]')).toBeHidden({ timeout: PROP_PANEL_TIMEOUT });
+  await expect(page.locator('[data-prop-panel]')).toBeHidden();
   await expect(page.locator('[data-descriptor-placeholder]')).toBeVisible();
 
   await page.locator('[data-descriptor-placeholder]').click();
-  await expect(page.locator('[data-prop-panel]')).toBeVisible({ timeout: PROP_PANEL_TIMEOUT });
+  await expect(page.locator('[data-prop-panel]')).toBeVisible();
 
-  // Verify PM selection is now a NodeSelection on the img specifically.
-  const selected = await page.evaluate(() => {
-    const ed = (window as unknown as { __activeEditor?: { state: { selection: unknown } } })
-      .__activeEditor;
-    if (!ed) return null;
-    const sel = ed.state.selection as {
-      node?: { attrs: { componentName?: string } };
-    };
-    return sel.node?.attrs.componentName ?? null;
-  });
-  expect(selected).toBe('img');
+  // Verify PM selection is now a NodeSelection on the img specifically. The
+  // click handler's setNodeSelection and the popover open are separate
+  // dispatches, so the panel being visible does not prove the selection landed.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const ed = (window as unknown as { __activeEditor?: { state: { selection: unknown } } })
+          .__activeEditor;
+        if (!ed) return null;
+        const sel = ed.state.selection as {
+          node?: { attrs: { componentName?: string } };
+        };
+        return sel.node?.attrs.componentName ?? null;
+      }),
+    )
+    .toBe('img');
 });
 
 test('PLACEHOLDER-FILL-DISMISSES: filling src dismisses placeholder, real img renders', async ({
@@ -221,9 +273,7 @@ test('PLACEHOLDER-FILL-DISMISSES: filling src dismisses placeholder, real img re
   await waitForSlashMenuFirstOption(page, 'image');
   await page.keyboard.press('Enter');
 
-  await expect(page.locator('[data-descriptor-placeholder]')).toBeVisible({
-    timeout: PROP_PANEL_TIMEOUT,
-  });
+  await expect(page.locator('[data-descriptor-placeholder]')).toBeVisible();
   // The autofocused input is the src field (htmlImgProps[0] has autoFocus: true).
   const autofocusedInput = page.locator('[data-prop-autofocus]');
   await expect(autofocusedInput).toBeVisible();
@@ -261,9 +311,7 @@ test('PLACEHOLDER-CONTAINER-EXCLUDED: slash-inserting /callout does NOT show pla
 
   // Wait for the Callout NodeView to mount before asserting placeholder absence
   // — without this, the assertion races the slash-insert dispatch.
-  await expect(page.locator('[data-jsx-component][data-component-type="callout"]')).toBeVisible({
-    timeout: PROP_PANEL_TIMEOUT,
-  });
+  await expect(page.locator('[data-jsx-component][data-component-type="callout"]')).toBeVisible();
   await expect(page.locator('[data-descriptor-placeholder]')).toHaveCount(0);
 });
 
@@ -287,9 +335,7 @@ test('PLACEHOLDER-CHROME-VISIBLE: chrome bar (gear, delete) renders alongside th
   await waitForSlashMenuFirstOption(page, 'image');
   await page.keyboard.press('Enter');
 
-  await expect(page.locator('[data-descriptor-placeholder]')).toBeVisible({
-    timeout: PROP_PANEL_TIMEOUT,
-  });
+  await expect(page.locator('[data-descriptor-placeholder]')).toBeVisible();
 
   // Close the auto-opened panel so the chrome bar's gear button isn't hidden by
   // the popover overlay during the assertion.
@@ -325,7 +371,7 @@ test('PLACEHOLDER-DOM-SHAPE: placeholder is a div (not button) and is full-width
   await page.keyboard.press('Enter');
 
   const placeholder = page.locator('[data-descriptor-placeholder]');
-  await expect(placeholder).toBeVisible({ timeout: PROP_PANEL_TIMEOUT });
+  await expect(placeholder).toBeVisible();
 
   const shape = await placeholder.evaluate((el) => {
     const wrapper = el.closest('[data-jsx-component]');
@@ -376,7 +422,7 @@ test('PLACEHOLDER-CLOSE-ADVANCES-CARET: PM selection lands past the image after 
   await waitForSlashMenuFirstOption(page, 'image');
   await page.keyboard.press('Enter');
 
-  await expect(page.locator('[data-prop-panel]')).toBeVisible({ timeout: PROP_PANEL_TIMEOUT });
+  await expect(page.locator('[data-prop-panel]')).toBeVisible();
 
   // Fill src so the placeholder dismisses to a real <img> element (the path
   // that handleOpenChange's caret-advance is calibrated for).
@@ -386,47 +432,47 @@ test('PLACEHOLDER-CLOSE-ADVANCES-CARET: PM selection lands past the image after 
   // Close the panel via Escape — Radix dispatches onOpenChange(false), our
   // handleOpenChange schedules the rAF caret-advance.
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-prop-panel]')).toBeHidden({ timeout: PROP_PANEL_TIMEOUT });
+  await expect(page.locator('[data-prop-panel]')).toBeHidden();
 
-  // Wait for the rAF + PM transaction to commit, then read selection state.
-  // Two frames of slack absorbs Radix's own focus-restore animation frame
-  // plus our handler's deferred dispatch.
-  await page.evaluate(
-    () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
-  );
-
-  const result = await page.evaluate(() => {
-    interface PmNode {
-      type: { name: string };
-      nodeSize: number;
-      attrs: { componentName?: string };
-    }
-    interface WindowEditor {
-      state: {
-        selection: { from: number };
-        doc: PmNode & {
-          descendants: (cb: (n: PmNode, p: number) => boolean | undefined) => void;
+  // Poll the state the deferred dispatch produces rather than counting frames:
+  // Radix's focus restore and our handler's rAF both have to land, and how many
+  // frames that takes is a property of the machine, not of the contract. The
+  // caret must end up AT or PAST the img's end boundary, never inside the img's
+  // range [imgPos, imgEnd).
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        interface PmNode {
+          type: { name: string };
+          nodeSize: number;
+          attrs: { componentName?: string };
+        }
+        interface WindowEditor {
+          state: {
+            selection: { from: number };
+            doc: PmNode & {
+              descendants: (cb: (n: PmNode, p: number) => boolean | undefined) => void;
+            };
+          };
+        }
+        const ed = (window as unknown as { __activeEditor?: WindowEditor }).__activeEditor;
+        if (!ed) return null;
+        let imgPos = -1;
+        let imgSize = 0;
+        ed.state.doc.descendants((n, p) => {
+          if (n.type.name === 'jsxComponent' && n.attrs.componentName === 'img' && imgPos === -1) {
+            imgPos = p;
+            imgSize = n.nodeSize;
+          }
+          return true;
+        });
+        return {
+          imgFound: imgPos >= 0,
+          caretPastImgEnd: imgPos >= 0 && ed.state.selection.from >= imgPos + imgSize,
         };
-      };
-    }
-    const ed = (window as unknown as { __activeEditor?: WindowEditor }).__activeEditor;
-    if (!ed) return null;
-    let imgPos = -1;
-    let imgSize = 0;
-    ed.state.doc.descendants((n, p) => {
-      if (n.type.name === 'jsxComponent' && n.attrs.componentName === 'img' && imgPos === -1) {
-        imgPos = p;
-        imgSize = n.nodeSize;
-      }
-    });
-    return { selectionFrom: ed.state.selection.from, imgPos, imgEnd: imgPos + imgSize };
-  });
-
-  expect(result).not.toBeNull();
-  expect(result?.imgPos).toBeGreaterThanOrEqual(0);
-  // Caret should be AT or PAST the img's end boundary — not inside the
-  // img's range [imgPos, imgEnd).
-  expect(result?.selectionFrom).toBeGreaterThanOrEqual(result?.imgEnd ?? 0);
+      }),
+    )
+    .toEqual({ imgFound: true, caretPastImgEnd: true });
 });
 
 test('PLACEHOLDER-CLOSE-RETURNS-DOM-FOCUS: typing after Escape lands keystrokes in the editor', async ({
@@ -448,19 +494,27 @@ test('PLACEHOLDER-CLOSE-RETURNS-DOM-FOCUS: typing after Escape lands keystrokes 
   await waitForSlashMenuFirstOption(page, 'image');
   await page.keyboard.press('Enter');
 
-  await expect(page.locator('[data-prop-panel]')).toBeVisible({ timeout: PROP_PANEL_TIMEOUT });
+  await expect(page.locator('[data-prop-panel]')).toBeVisible();
 
   const srcInput = page.locator('[data-prop-panel] input#prop-src');
   await srcInput.fill('https://example.com/test.png');
 
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-prop-panel]')).toBeHidden({ timeout: PROP_PANEL_TIMEOUT });
+  await expect(page.locator('[data-prop-panel]')).toBeHidden();
 
-  // Two rAFs settle the onCloseAutoFocus setTimeout(0) tick (editor.view.focus())
-  // + the handleOpenChange rAF (PM selection advance).
-  await page.evaluate(
-    () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
-  );
+  // The sentinel can only land in the editor once DOM focus is back on the
+  // contenteditable, which the onCloseAutoFocus setTimeout(0) tick restores.
+  // Poll for that state instead of assuming it fits in a fixed frame budget —
+  // typing early would send the keystrokes to document.body and lose them.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const ed = (window as unknown as { __activeEditor?: { view: { dom: HTMLElement } } })
+          .__activeEditor;
+        return ed ? ed.view.dom.contains(document.activeElement) : false;
+      }),
+    )
+    .toBe(true);
 
   // Sentinel chosen long enough that partial keystrokes are detectable, with
   // characters PM won't intercept as a shortcut.
@@ -473,40 +527,40 @@ test('PLACEHOLDER-CLOSE-RETURNS-DOM-FOCUS: typing after Escape lands keystrokes 
   // Asserting both pins the contract: typing is routed to the editor AND the
   // PM caret position is past the img so the text doesn't insert in the wrong
   // location.
-  const result = await page.evaluate((sentinel) => {
-    interface PmNode {
-      type: { name: string };
-      nodeSize: number;
-      attrs: { componentName?: string };
-    }
-    interface WindowEditor {
-      state: {
-        doc: PmNode & {
-          textContent: string;
-          descendants: (cb: (n: PmNode, p: number) => boolean | undefined) => void;
+  await expect
+    .poll(() =>
+      page.evaluate((sentinel) => {
+        interface PmNode {
+          type: { name: string };
+          nodeSize: number;
+          attrs: { componentName?: string };
+        }
+        interface WindowEditor {
+          state: {
+            doc: PmNode & {
+              textContent: string;
+              descendants: (cb: (n: PmNode, p: number) => boolean | undefined) => void;
+            };
+          };
+          view: { dom: HTMLElement };
+        }
+        const ed = (window as unknown as { __activeEditor?: WindowEditor }).__activeEditor;
+        if (!ed) return null;
+        const focusInEditor = ed.view.dom.contains(document.activeElement);
+        const docText = ed.state.doc.textContent;
+        let imgPos = -1;
+        ed.state.doc.descendants((n, p) => {
+          if (n.type.name === 'jsxComponent' && n.attrs.componentName === 'img' && imgPos === -1) {
+            imgPos = p;
+          }
+          return true;
+        });
+        return {
+          focusInEditor,
+          sentinelInDoc: docText.includes(sentinel),
+          imgFound: imgPos >= 0,
         };
-      };
-      view: { dom: HTMLElement };
-    }
-    const ed = (window as unknown as { __activeEditor?: WindowEditor }).__activeEditor;
-    if (!ed) return null;
-    const focusInEditor = ed.view.dom.contains(document.activeElement);
-    const docText = ed.state.doc.textContent;
-    let imgPos = -1;
-    ed.state.doc.descendants((n, p) => {
-      if (n.type.name === 'jsxComponent' && n.attrs.componentName === 'img' && imgPos === -1) {
-        imgPos = p;
-      }
-    });
-    return {
-      focusInEditor,
-      sentinelInDoc: docText.includes(sentinel),
-      imgFound: imgPos >= 0,
-    };
-  }, SENTINEL);
-
-  expect(result).not.toBeNull();
-  expect(result?.imgFound).toBe(true);
-  expect(result?.focusInEditor).toBe(true);
-  expect(result?.sentinelInDoc).toBe(true);
+      }, SENTINEL),
+    )
+    .toEqual({ focusInEditor: true, sentinelInDoc: true, imgFound: true });
 });

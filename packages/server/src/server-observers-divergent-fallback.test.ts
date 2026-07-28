@@ -40,10 +40,11 @@
  * NODE_ENV=test watchdog gates throw at doc load on the injected divergence,
  * which would mask the silent-destruction behavior these tests pin.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { __resetBridgeWatchdogForTests } from './bridge-watchdog.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';

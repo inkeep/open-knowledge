@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { emitDocumentsChanged } from '@/lib/documents-events';
 import {
   createOnboardingCardStore,
@@ -20,7 +20,7 @@ function freshStore(): OnboardingCardStore {
 }
 
 function mockDocuments(documents: unknown[]): void {
-  globalThis.fetch = mock(() =>
+  globalThis.fetch = vi.fn(() =>
     Promise.resolve(new Response(JSON.stringify({ documents }), { status: 200 })),
   ) as never;
 }
@@ -54,7 +54,7 @@ describe('useOnboardingFileCompletion', () => {
   });
 
   test('ignores non-files channels — no extra fetch on graph/backlinks updates', async () => {
-    const fetchMock = mock(() =>
+    const fetchMock = vi.fn(() =>
       Promise.resolve(new Response(JSON.stringify({ documents: [] }), { status: 200 })),
     );
     globalThis.fetch = fetchMock as never;
@@ -80,7 +80,7 @@ describe('useOnboardingFileCompletion', () => {
   });
 
   test('does not mark the step while the project stays empty', async () => {
-    const fetchMock = mock(() =>
+    const fetchMock = vi.fn(() =>
       Promise.resolve(new Response(JSON.stringify({ documents: [] }), { status: 200 })),
     );
     globalThis.fetch = fetchMock as never;
@@ -97,7 +97,7 @@ describe('useOnboardingFileCompletion', () => {
   });
 
   test('skips subscribing and fetching when the file step is already complete', async () => {
-    const fetchMock = mock(() =>
+    const fetchMock = vi.fn(() =>
       Promise.resolve(new Response(JSON.stringify({ documents: [] }), { status: 200 })),
     );
     globalThis.fetch = fetchMock as never;

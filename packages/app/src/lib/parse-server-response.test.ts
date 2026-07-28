@@ -8,7 +8,7 @@
  * the contract deserves dedicated coverage.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
 import { parseServerResponse, parseSuccessOrWarn } from './parse-server-response.ts';
 

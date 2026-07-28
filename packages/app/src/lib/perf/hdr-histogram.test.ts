@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { HDR_HISTOGRAM_SENTINEL, Histogram } from './hdr-histogram';
 
 /**

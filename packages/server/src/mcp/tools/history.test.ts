@@ -6,7 +6,7 @@ import {
   beforeEach,
   expect,
   test,
-} from 'bun:test';
+} from 'vitest';
 import { bindTestUiLock } from './preview-url-test-helpers.ts';
 
 // Skip-on-CI gate (oven-sh/bun#11892): simple-git fixture pattern in MCP

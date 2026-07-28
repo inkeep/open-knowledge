@@ -25,6 +25,8 @@ import type {
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
+  OkBugReportDeleteResult,
+  OkBugReportListResult,
   OkBugReportScreenshot,
   OkBugReportSendMetadata,
   OkBugReportSendResult,
@@ -191,6 +193,16 @@ export interface OkDesktopConfig {
    * the core mirror — see `OkDesktopConfig` there.
    */
   readonly startupTraceparent?: string;
+  /**
+   * Whether an interactive PTY can be spawned in this install — the terminal
+   * dock's plain-terminal-tab capability gate. `false` on Windows/Linux
+   * (node-pty is not bundled there; the terminal dock is dark off-mac), so
+   * the renderer hides the terminal affordances instead of surfacing a spawn
+   * failure. Gates only the pty-tab surface — future non-pty dock content
+   * (e.g. ACP threads) must not key off this. Lockstep with the desktop-side
+   * `OkDesktopConfig`.
+   */
+  readonly ptyAvailable: boolean;
 }
 
 export type OkMenuAction =
@@ -209,6 +221,9 @@ export type OkMenuAction =
   | 'version-history'
   | 'focus-search'
   | 'focus-command-palette'
+  // Navigation history.
+  | 'navigate-back'
+  | 'navigate-forward'
   // File menu state-aware items. See bridge-contract.ts for
   // rationale; mirrored here per the OkDesktopBridge 3-way-mirror invariant.
   | 'new-from-template'
@@ -236,10 +251,13 @@ export type OkMenuAction =
   // create dialog; `switch-worktree` opens the sidebar worktree switcher.
   | 'new-worktree'
   | 'switch-worktree'
-  // Help → Report a Bug… — opens the in-app bug-report dialog. Both window
+  // Help → Report a bug… — opens the in-app bug-report dialog. Both window
   // types subscribe: editor windows report project-scoped, the Navigator
   // reports system-wide.
-  | 'report-bug';
+  | 'report-bug'
+  // Help → Send feedback… — opens the in-app feedback form, the same one
+  // the Resources menu and the Cmd+K palette open. Both window types subscribe.
+  | 'send-feedback';
 
 type OkUnsubscribe = () => void;
 
@@ -728,6 +746,64 @@ export interface OkEditorViewMenuStateSnapshot {
 }
 
 /**
+ * Windows/Linux renderer-menubar dispatch payloads (the windows-linux-port
+ * renderer-menubar decision). macOS keeps the native menu bar; win/linux draw it in the
+ * renderer and route every click through main via `menu.dispatch` so menu
+ * semantics stay single-sourced: `menu-action` relays through the same
+ * dispatch path the native menu items use, `role` maps onto Electron's
+ * built-in menu roles, `command` covers the main-side click handlers
+ * (navigator, folder picker, settings, updater…), and `query` returns the
+ * aggregated state the native menu renders from. Same shapes as
+ * `MenuDispatch*` in `ipc-channels.ts` — duplicated for the
+ * module-resolution reason the wider `OkDesktopBridge` is duplicated.
+ */
+export type OkMenuDispatchRole =
+  | 'undo'
+  | 'redo'
+  | 'cut'
+  | 'copy'
+  | 'paste'
+  | 'selectAll'
+  | 'reload'
+  | 'forceReload'
+  | 'toggleDevTools'
+  | 'resetZoom'
+  | 'zoomIn'
+  | 'zoomOut'
+  | 'toggleFullScreen'
+  | 'minimize'
+  | 'close'
+  | 'quit';
+
+export type OkMenuDispatchCommand =
+  | 'open-navigator'
+  | 'open-folder-dialog'
+  | 'clear-recent-projects'
+  | 'open-settings'
+  | 'check-for-updates'
+  | 'reconfigure-mcp-wiring'
+  | 'open-github'
+  | 'toggle-spell-check';
+
+export type OkMenuDispatchRequest =
+  | { readonly kind: 'query' }
+  | { readonly kind: 'menu-action'; readonly action: OkMenuAction }
+  | { readonly kind: 'command'; readonly command: OkMenuDispatchCommand }
+  | { readonly kind: 'open-recent-project'; readonly path: string }
+  | { readonly kind: 'role'; readonly role: OkMenuDispatchRole };
+
+/** `query` result — the same aggregated state the native menu renders from. */
+export interface OkMenuRendererSnapshot {
+  readonly recentProjects: ReadonlyArray<{ readonly path: string; readonly name: string }>;
+  readonly spellCheckEnabled: boolean;
+  readonly showDevToolsMenu: boolean;
+  readonly canCheckForUpdates: boolean;
+  readonly canReconfigureMcpWiring: boolean;
+  readonly activeTarget: OkEditorActiveTargetSnapshot;
+  readonly viewMenuState: OkEditorViewMenuStateSnapshot;
+}
+
+/**
  * Result shape for `bridge.debug?.keyringSmoke()` — mirrors
  * `KeyringSmokeResult` in `packages/desktop/src/utility/keyring-smoke.ts`
  * and `OkKeyringSmokeResult` in `packages/core/src/desktop-bridge.ts`.
@@ -887,6 +963,10 @@ export interface OkDesktopBridge {
   onServerVersionDrift(cb: (info: OkServerVersionDriftInfo) => void): OkUnsubscribe;
   /** Subscribe to `ok:server-restarted`. Canonical JSDoc in `bridge-contract.ts`. */
   onServerRestarted(cb: (info: { readonly appRuntime: string }) => void): OkUnsubscribe;
+  /** Subscribe to `ok:project:recent-removed-missing`. Canonical JSDoc in `bridge-contract.ts`. */
+  onRecentRemovedMissing(
+    cb: (info: { readonly path: string; readonly projectName: string }) => void,
+  ): OkUnsubscribe;
   /** Restart the project's server to match this app's version. Canonical JSDoc in `bridge-contract.ts`. */
   restartServer(projectPath: string): Promise<OkServerRestartOutcome>;
   /**
@@ -1196,6 +1276,8 @@ export interface OkDesktopBridge {
       metadata: OkBugReportSendMetadata;
     }): Promise<OkBugReportSendResult>;
     crashAck(request: { eventId: string }): Promise<OkBugReportCrashAckResult>;
+    list(): Promise<OkBugReportListResult>;
+    delete(id: string): Promise<OkBugReportDeleteResult>;
     onCrashDetected(cb: (event: OkBugReportCrashDetectedEvent) => void): OkUnsubscribe;
   };
 
@@ -1395,6 +1477,18 @@ export interface OkDesktopBridge {
      * JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
      */
     notifyViewMenuStateChanged(state: Partial<OkEditorViewMenuStateSnapshot>): void;
+  };
+
+  /**
+   * Windows/Linux renderer-menubar dispatch surface (windows-linux-port
+   * renderer-menubar decision). macOS keeps the native menu bar and never calls this; on
+   * win/linux the renderer-drawn menu bar routes every click through main
+   * so menu semantics live in one place. `query` resolves the aggregated
+   * `OkMenuRendererSnapshot`; every other kind performs the action
+   * main-side and resolves undefined.
+   */
+  menu: {
+    dispatch(request: OkMenuDispatchRequest): Promise<OkMenuRendererSnapshot | undefined>;
   };
   /**
    * Startup-instrumentation push surface. The renderer reports its two

@@ -22,12 +22,13 @@
  * bootstrap + lifecycle cleanup, with the existing `bumpPresenceTs`
  * heartbeat keeping the entry fresh during the open WS.
  */
-import { afterAll, describe, expect, test } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
+import { afterAll, describe, expect, test } from 'vitest';
 import { WebSocket as WsClient } from 'ws';
 import { toBroadcasterKey } from './agent-id.ts';
 import { type BootedServer, bootServer } from './boot.ts';

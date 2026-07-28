@@ -1,18 +1,20 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-mock.module('./EditorBreadcrumb', () => ({
+vi.doMock('./EditorBreadcrumb', () => ({
   EditorBreadcrumb: ({ docName }: { docName: string | null }) => (
     <span data-testid="editor-breadcrumb-probe">{docName}</span>
   ),
@@ -21,7 +23,7 @@ mock.module('./EditorBreadcrumb', () => ({
 // The breadcrumb cell's NotInSidebarIndicator reads merged config through the
 // context hook, which throws without a provider — stub the app-default view
 // (no toggles set, binding absent) so the toolbar mounts standalone.
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     merged: null,
     projectLocalBinding: null,
@@ -77,6 +79,23 @@ describe('EditorToolbar runtime layout', () => {
     const sourceButton = screen.getByRole('radio', { name: 'Markdown source' });
     const middleCell = sourceButton.closest('.pointer-events-auto.flex.justify-center');
     expect(middleCell).toBeTruthy();
+  });
+
+  test('renders the document-panel shortcut as a Kbd keycap', async () => {
+    const user = userEvent.setup();
+    await renderToolbar();
+
+    await user.hover(
+      screen.getByRole('button', {
+        name: `Hide panel (${formatShortcutLabel('toggle-document-panel')})`,
+      }),
+    );
+    const tooltip = await screen.findByRole('tooltip', {
+      name: `Hide panel ${formatShortcutLabel('toggle-document-panel')}`,
+    });
+    expect(tooltip.querySelector('[data-slot="kbd"]')?.textContent).toBe(
+      formatShortcut('toggle-document-panel'),
+    );
   });
 
   test('a tree-hidden doc gets the not-in-sidebar indicator beside the breadcrumb', async () => {

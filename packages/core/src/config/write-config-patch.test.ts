@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
   mkdirSync,
@@ -10,6 +9,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { isKnownConfigError } from './errors.ts';
 import { resolveConfigPath, writeConfigPatch } from './write-config-patch.ts';
 
@@ -188,6 +188,34 @@ describe('writeConfigPatch — project-local scope', () => {
     const after = readFileSync(projectLocalConfigPath(), 'utf-8');
     expect(after).toContain('enabled: true');
     expect(after).not.toContain('enabled: false');
+  });
+
+  test('preserves unknown autoSync sub-keys on a mode write-back (looseObject round-trip)', async () => {
+    // A newer version's extra autoSync keys (worktree-inheritance flags, legacy
+    // onboarding stamps) must survive a surgical patch to a sibling field rather
+    // than being stripped — the surgical yaml write touches only the patched path.
+    mkdirSync(join(testDir, '.ok', 'local'), { recursive: true });
+    writeFileSync(
+      projectLocalConfigPath(),
+      'autoSync:\n  mode: pull\n  inheritedFrom: root\n  inheritedNoticePending: true\n',
+      'utf-8',
+    );
+
+    const result = await writeConfigPatch({
+      cwd: testDir,
+      scope: 'project-local',
+      patch: { autoSync: { mode: 'off' } },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected success');
+    expect(result.appliedPaths).toContain('autoSync.mode');
+
+    const onDisk = readFileSync(projectLocalConfigPath(), 'utf-8');
+    expect(onDisk).toContain('mode: off');
+    expect(onDisk).not.toContain('mode: pull');
+    // Sibling keys the schema does not model round-trip verbatim.
+    expect(onDisk).toContain('inheritedFrom: root');
+    expect(onDisk).toContain('inheritedNoticePending: true');
   });
 
   test('does NOT touch the project file at <cwd>/.ok/config.yml', async () => {

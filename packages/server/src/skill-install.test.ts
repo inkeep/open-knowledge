@@ -1,24 +1,31 @@
 /**
- * Unit tests for installUserSkill.
+ * Unit tests for installUserSkill + buildAndOpenSkill.
  *
- * Subprocess invocation is mocked via the injectable `spawn` option.
- * Each test uses a fresh `mkdtempSync`-backed HOME so the sidecar write path
- * touches only the tmpdir — never the real `~/`.
+ * `installUserSkill` writes directly (no subprocess), so these tests assert
+ * against real files under a fresh `mkdtempSync`-backed HOME — never the real
+ * `~/`. `buildAndOpenSkill` still shells out for the OS file association, and
+ * mocks it via the injectable `spawnFn`.
  */
-import { beforeEach, describe, expect, test } from 'bun:test';
+
 import type { SpawnOptions } from 'node:child_process';
-import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PassThrough } from 'node:stream';
+import { HOSTS_WITH_USER_SKILL_DIR } from '@inkeep/open-knowledge-core';
+import { beforeEach, describe, expect, test } from 'vitest';
 
 import {
   buildAndOpenSkill,
-  type InstallUserSkillOptions,
+  detectUserSkillHosts,
   installUserSkill,
-  quoteForWindowsShell,
   type SkillInstallLogger,
   type SpawnLike,
 } from './skill-install.ts';
@@ -26,71 +33,6 @@ import {
 async function readServerVersion(): Promise<string> {
   const raw = await readFile(new URL('../package.json', import.meta.url), 'utf-8');
   return (JSON.parse(raw) as { version: string }).version;
-}
-
-/**
- * Build a fake ChildProcess that scripts one emit() lifecycle — enough to
- * exercise `installUserSkill`'s listener contract without spawning a real
- * subprocess.
- */
-interface FakeChildScript {
-  /** Bytes to push to the stderr stream before exit. */
-  stderr?: string;
-  /** How the process terminates. */
-  outcome: { kind: 'exit'; code: number } | { kind: 'error'; error: Error } | { kind: 'hang' };
-}
-
-function makeFakeChild(script: FakeChildScript): ReturnType<SpawnLike> {
-  const child = new EventEmitter() as unknown as ReturnType<SpawnLike>;
-  const stderr = new PassThrough();
-  Object.assign(child, {
-    stderr,
-    stdout: new PassThrough(),
-    stdin: null,
-    kill: (_sig?: NodeJS.Signals | number) => {
-      // Mirror real ChildProcess: kill triggers an exit/error event unless we've already settled.
-      return true;
-    },
-  });
-
-  queueMicrotask(() => {
-    if (script.stderr) stderr.emit('data', Buffer.from(script.stderr, 'utf-8'));
-    if (script.outcome.kind === 'exit') {
-      (child as unknown as EventEmitter).emit('exit', script.outcome.code, null);
-    } else if (script.outcome.kind === 'error') {
-      (child as unknown as EventEmitter).emit('error', script.outcome.error);
-    }
-    // 'hang' — emit nothing. installUserSkill should hit its timeout.
-  });
-
-  return child;
-}
-
-interface CapturedSpawn {
-  command: string;
-  args: readonly string[];
-  opts: SpawnOptions;
-}
-
-function makeSpawnFake(script: FakeChildScript): {
-  spawn: SpawnLike;
-  calls: CapturedSpawn[];
-} {
-  const calls: CapturedSpawn[] = [];
-  const spawn: SpawnLike = (command, args, opts) => {
-    calls.push({ command, args, opts });
-    return makeFakeChild(script);
-  };
-  return { spawn, calls };
-}
-
-function makeThrowingSpawn(err: Error): { spawn: SpawnLike; calls: CapturedSpawn[] } {
-  const calls: CapturedSpawn[] = [];
-  const spawn: SpawnLike = (command, args, opts) => {
-    calls.push({ command, args, opts });
-    throw err;
-  };
-  return { spawn, calls };
 }
 
 interface RecordedLog {
@@ -112,7 +54,19 @@ function freshHome(): string {
   return mkdtempSync(join(tmpdir(), 'ok-skill-install-'));
 }
 
-// Track-1 active path: `~/.ok/skill-state/cli-hosts`.
+/** Create a host's dotdir so `detectUserSkillHosts` counts it as installed. */
+function installHost(home: string, hostDir: string): void {
+  mkdirSync(join(home, hostDir), { recursive: true });
+}
+
+/** Every host dir OK knows about — the candidate set detection filters. */
+const ALL_HOST_DIRS = HOSTS_WITH_USER_SKILL_DIR.map((h) => h.hostDir);
+
+/** Top-level entries a run created under HOME, sorted. */
+function homeEntries(home: string): string[] {
+  return readdirSync(home).sort();
+}
+
 // State lives at `~/.ok/skill-state.yml` as a single YAML document.
 const YAML_REL = ['.ok', 'skill-state.yml'] as const;
 function yamlPathFor(home: string): string {
@@ -126,10 +80,14 @@ function centralSkillDirFor(home: string): string {
   return join(home, ...CENTRAL_SKILL_REL);
 }
 
+function hostSkillDirFor(home: string, hostDir: string): string {
+  return join(home, hostDir, 'skills', 'open-knowledge-discovery');
+}
+
 /**
- * Pretend the `skills` CLI already wrote the central source. Pairs with
+ * Pretend a prior install already wrote the central source. Pairs with
  * writeSidecar to simulate a real prior install — without both, the
- * skip-current gate now correctly rejects the sidecar as stale.
+ * skip-current gate correctly rejects the sidecar as stale.
  */
 function writeCentralSkill(home: string): void {
   const dir = centralSkillDirFor(home);
@@ -142,11 +100,7 @@ function findWarn(records: RecordedLog[], event: string): RecordedLog | undefine
   return records.find((r) => r.level === 'warn' && (r.data as { event?: string }).event === event);
 }
 
-/**
- * Pretend a pre-split `open-knowledge` user-global skill dir exists at one
- * host. `installUserSkill` only spawns the legacy `npx skills remove` when
- * such a dir is on disk — a fresh machine skips the subprocess entirely.
- */
+/** Pretend a pre-split `open-knowledge` user-global skill dir exists at one host. */
 function writeLegacyUserSkill(home: string, hostDir = '.claude'): void {
   const dir = join(home, hostDir, 'skills', 'open-knowledge');
   mkdirSync(dir, { recursive: true });
@@ -214,331 +168,278 @@ function readInstallEvents(home: string): Array<Record<string, unknown>> {
     .map((l) => JSON.parse(l) as Record<string, unknown>);
 }
 
-describe('quoteForWindowsShell', () => {
-  test('quotes whitespace-bearing args, escaping inner double-quotes', () => {
-    expect(quoteForWindowsShell('C:\\Users\\John Doe\\skills\\discovery')).toBe(
-      '"C:\\Users\\John Doe\\skills\\discovery"',
-    );
-    expect(quoteForWindowsShell('a "b" c')).toBe('"a \\"b\\" c"');
-  });
+// ─── Scope discipline (issue #820) ─────────────────────────────────────────
+//
+// The regression this suite exists to prevent: `ok init` once shelled out to
+// `npx skills add … --agent '*'`, which bypassed that CLI's host detection and
+// created a skill dir in every one of the ~75 hosts it knows — 51 of them for
+// tools the reporter had never installed. OK writes agent INSTRUCTIONS, so a
+// dir for an absent tool is a scope-of-consent violation, not just clutter.
+// These tests pin the contract: writes land ONLY in detected hosts, and a home
+// with no agent host gets nothing at all.
 
-  test('passes whitespace-free args through untouched (flags + the literal *)', () => {
-    expect(quoteForWindowsShell('*')).toBe('*');
-    expect(quoteForWindowsShell('--agent')).toBe('--agent');
-    expect(quoteForWindowsShell('C:\\Users\\mike\\skills\\discovery')).toBe(
-      'C:\\Users\\mike\\skills\\discovery',
-    );
-  });
-});
-
-describe('installUserSkill — Windows npx.cmd shim', () => {
-  // On Windows `npx` is `npx.cmd`; Node's spawn cannot exec it without a shell.
-  // The injected `platform` lets us assert the shell shim on a POSIX runner.
-  test('platform "win32" spawns npx with shell:true', async () => {
+describe('installUserSkill — scope discipline', () => {
+  test('no agent host detected → returns "no-hosts" and writes NO skill dirs', async () => {
     const home = freshHome();
-    const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
+    const { logger, records } = makeRecordingLogger();
 
-    const result = await installUserSkill({ home, spawn, platform: 'win32' });
+    const result = await installUserSkill({ home, logger });
+
+    expect(result).toBe('no-hosts');
+    // Only OK's own state dir may appear — no host dotdirs, no `.agents`.
+    expect(homeEntries(home)).toEqual(['.ok']);
+    expect(existsSync(centralSkillDirFor(home))).toBe(false);
+    expect(
+      records.some((r) => (r.data as { event?: string }).event === 'skill-install.no-hosts'),
+    ).toBe(true);
+  });
+
+  test('never creates a dotdir for a host that is not installed', async () => {
+    const home = freshHome();
+    installHost(home, '.claude');
+
+    await installUserSkill({ home });
+
+    // `.claude` (installed) + `.agents` (central store) + `.ok` (state) only.
+    expect(homeEntries(home)).toEqual(['.agents', '.claude', '.ok']);
+    for (const hostDir of ALL_HOST_DIRS.filter((d) => d !== '.claude')) {
+      expect(existsSync(join(home, hostDir))).toBe(false);
+    }
+  });
+
+  test('writes to every detected host, and only those', async () => {
+    const home = freshHome();
+    installHost(home, '.claude');
+    installHost(home, '.cursor');
+
+    const result = await installUserSkill({ home });
 
     expect(result).toBe('installed');
-    expect(calls[0]?.command).toBe('npx');
-    expect(calls[0]?.opts.shell).toBe(true);
-    // The literal `*` must still reach npx (no whitespace → not quoted).
-    expect(calls[0]?.args).toContain('*');
+    expect(existsSync(join(hostSkillDirFor(home, '.claude'), 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(hostSkillDirFor(home, '.cursor'), 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(centralSkillDirFor(home), 'SKILL.md'))).toBe(true);
+    for (const hostDir of ALL_HOST_DIRS.filter((d) => d !== '.claude' && d !== '.cursor')) {
+      expect(existsSync(hostSkillDirFor(home, hostDir))).toBe(false);
+    }
   });
 
-  test('non-Windows platform spawns without a shell', async () => {
+  test('"no-hosts" is recorded as skip-current with an explicit reason', async () => {
     const home = freshHome();
-    const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
 
-    await installUserSkill({ home, spawn, platform: 'linux' });
+    await installUserSkill({ home });
 
-    expect(calls[0]?.opts.shell ?? false).toBe(false);
+    const events = readInstallEvents(home);
+    expect(events.at(-1)?.outcome).toBe('skip-current');
+    expect(events.at(-1)?.reason).toBe('no-hosts');
+  });
+
+  test('detectUserSkillHosts reports only the hosts present on disk', () => {
+    const home = freshHome();
+    expect(detectUserSkillHosts(home)).toEqual([]);
+    installHost(home, '.codex');
+    expect(detectUserSkillHosts(home).map((h) => h.hostDir)).toEqual(['.codex']);
   });
 });
 
 describe('installUserSkill — fresh install', () => {
-  test('no sidecar + subprocess exits 0 → adds discovery, returns "installed"', async () => {
+  test('no sidecar + a detected host → writes the bundle, returns "installed"', async () => {
     const home = freshHome();
-    const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
+    installHost(home, '.claude');
     const { logger, records } = makeRecordingLogger();
 
-    const result = await installUserSkill({ home, logger, spawn });
+    const result = await installUserSkill({ home, logger });
 
     expect(result).toBe('installed');
-    // Fresh machine — no legacy `open-knowledge` dir — so one spawn: the `add`.
-    expect(calls.length).toBe(1);
-    expect(calls[0]?.command).toBe('npx');
-    expect(calls[0]?.args).toEqual([
-      '-y',
-      'skills@~1.5.0',
-      'add',
-      expect.stringContaining('assets/skills/discovery') as unknown as string,
-      '--agent',
-      '*',
-      '-g',
-      '-y',
-      '--copy',
-    ]);
-    // The rich `project` bundle never installs at user scope.
-    expect(calls[0]?.args.some((a) => /assets\/skills\/project/.test(a))).toBe(false);
-    expect((calls[0]?.opts.env as NodeJS.ProcessEnv)?.HOME).toBe(home);
     expect(readSidecarIfExists(home)).toBe(`${currentVersion}\n`);
-    expect(records.some((r) => r.level === 'info' && /installed/i.test(r.message))).toBe(true);
-  });
-
-  test('fresh machine with no legacy dir → npx skills remove is NOT spawned', async () => {
-    const home = freshHome();
-    const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
-
-    await installUserSkill({ home, spawn });
-
-    expect(calls.some((c) => c.args.includes('remove'))).toBe(false);
+    // The success log names real paths rather than asserting unverified detection.
+    const installed = records.find(
+      (r) => (r.data as { event?: string }).event === 'skill-install.installed',
+    );
+    expect(installed?.message).toContain(hostSkillDirFor(home, '.claude'));
   });
 
   test('install event carries bundle: "discovery"', async () => {
     const home = freshHome();
-    const { spawn } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
+    installHost(home, '.claude');
 
-    await installUserSkill({ home, spawn });
+    await installUserSkill({ home });
 
     const events = readInstallEvents(home);
-    const installed = events.find((e) => e.outcome === 'installed');
-    expect(installed?.bundle).toBe('discovery');
-    expect(installed?.target).toBe('cli-hosts');
+    expect(events.at(-1)?.bundle).toBe('discovery');
+    expect(events.at(-1)?.outcome).toBe('installed');
+  });
+
+  test('a shrinking bundle leaves no orphaned files from a prior version', async () => {
+    const home = freshHome();
+    installHost(home, '.claude');
+    const dest = hostSkillDirFor(home, '.claude');
+    mkdirSync(dest, { recursive: true });
+    writeFileSync(join(dest, 'STALE.md'), '# from an older bundle\n', 'utf-8');
+
+    await installUserSkill({ home });
+
+    expect(existsSync(join(dest, 'STALE.md'))).toBe(false);
+    expect(existsSync(join(dest, 'SKILL.md'))).toBe(true);
   });
 });
 
 describe('installUserSkill — legacy migration', () => {
-  test('pre-split open-knowledge dir present → npx skills remove runs before the add', async () => {
+  test('pre-split open-knowledge dir is removed before the discovery bundle lands', async () => {
     const home = freshHome();
+    installHost(home, '.claude');
     writeLegacyUserSkill(home, '.claude');
-    const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
 
-    const result = await installUserSkill({ home, spawn });
+    const result = await installUserSkill({ home });
 
     expect(result).toBe('installed');
-    // Two subprocesses: the legacy `remove`, then the `add`.
-    expect(calls.length).toBe(2);
-    expect(calls[0]?.args).toEqual([
-      '-y',
-      'skills@~1.5.0',
-      'remove',
-      '--agent',
-      '*',
-      '-g',
-      'open-knowledge',
-    ]);
-    expect(calls[1]?.args).toContain('add');
+    expect(existsSync(join(home, '.claude', 'skills', 'open-knowledge'))).toBe(false);
+    expect(existsSync(join(hostSkillDirFor(home, '.claude'), 'SKILL.md'))).toBe(true);
   });
 
-  test('legacy remove exiting non-zero is logged + swallowed; install still proceeds', async () => {
+  test('a pre-split dir in the central store is swept too', async () => {
     const home = freshHome();
-    writeLegacyUserSkill(home, '.cursor');
-    // The shared fake scripts every spawn — both `remove` and `add` exit 1.
-    // The non-zero `remove` must NOT abort the install; only the `add` gates it.
-    const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 1 } });
+    installHost(home, '.claude');
+    writeLegacyUserSkill(home, '.agents');
+
+    await installUserSkill({ home });
+
+    expect(existsSync(join(home, '.agents', 'skills', 'open-knowledge'))).toBe(false);
+  });
+
+  test('fresh machine with no legacy dir → migration is a no-op', async () => {
+    const home = freshHome();
+    installHost(home, '.claude');
     const { logger, records } = makeRecordingLogger();
 
-    const result = await installUserSkill({ home, logger, spawn });
+    await installUserSkill({ home, logger });
 
-    // `add` failed (exit 1) → 'failed'; the run did not throw, and the
-    // legacy-remove failure surfaced as its own swallowed warning.
-    expect(result).toBe('failed');
-    expect(calls[0]?.args).toContain('remove');
-    expect(findWarn(records, 'skill-install.legacy-remove-failed')).toBeDefined();
+    expect(findWarn(records, 'skill-install.legacy-remove-failed')).toBeUndefined();
   });
 });
 
 describe('installUserSkill — idempotency (skip-current)', () => {
-  test('sidecar matches current version + central skill present → subprocess NOT invoked, returns "skip-current"', async () => {
+  test('sidecar matches current version + central skill present → returns "skip-current"', async () => {
     const home = freshHome();
-    writeSidecar(home, `${currentVersion}\n`);
+    installHost(home, '.claude');
+    writeSidecar(home, currentVersion);
     writeCentralSkill(home);
-    const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
 
-    const result = await installUserSkill({ home, spawn });
+    const result = await installUserSkill({ home });
 
     expect(result).toBe('skip-current');
-    expect(calls.length).toBe(0);
-    expect(readSidecarIfExists(home)).toBe(`${currentVersion}\n`);
+    // Untouched: the gate short-circuits before any host write.
+    expect(existsSync(hostSkillDirFor(home, '.claude'))).toBe(false);
   });
 
-  test('force bypasses the skip-current gate → subprocess IS invoked even when the version matches', async () => {
+  test('force bypasses the skip-current gate', async () => {
     const home = freshHome();
-    writeSidecar(home, `${currentVersion}\n`);
+    installHost(home, '.claude');
+    writeSidecar(home, currentVersion);
     writeCentralSkill(home);
-    const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
 
-    // `ok init` passes force so one bundle's shared-key version write can't
-    // freeze another bundle's content on an upgrade-then-reinit.
-    const result = await installUserSkill({ home, spawn, force: true });
+    const result = await installUserSkill({ home, force: true });
 
     expect(result).toBe('installed');
-    expect(calls.length).toBe(1);
+    expect(existsSync(join(hostSkillDirFor(home, '.claude'), 'SKILL.md'))).toBe(true);
   });
 
   test('sidecar without trailing newline still matches (tolerant parse)', async () => {
     const home = freshHome();
+    installHost(home, '.claude');
     writeSidecar(home, currentVersion);
     writeCentralSkill(home);
-    const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
 
-    const result = await installUserSkill({ home, spawn });
-    expect(result).toBe('skip-current');
-    expect(calls.length).toBe(0);
+    expect(await installUserSkill({ home })).toBe('skip-current');
   });
 
-  test('sidecar matches but central skill dir is missing → reinstall fires, sidecar rewritten', async () => {
+  test('sidecar matches but central skill dir is missing → reinstall fires', async () => {
     const home = freshHome();
-    writeSidecar(home, `${currentVersion}\n`);
-    // Deliberately do NOT call writeCentralSkill — simulates `npx skills remove -g`
-    // having nuked the skill while leaving the sidecar intact.
-    const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
-    const { logger, records } = makeRecordingLogger();
+    installHost(home, '.claude');
+    writeSidecar(home, currentVersion);
 
-    const result = await installUserSkill({ home, logger, spawn });
+    const result = await installUserSkill({ home });
 
     expect(result).toBe('installed');
-    // Fresh machine, no legacy dir — one spawn: the `add`.
-    expect(calls.length).toBe(1);
-    expect(readSidecarIfExists(home)).toBe(`${currentVersion}\n`);
-    const reinstallLog = records.find(
-      (r) =>
-        r.level === 'info' &&
-        (r.data as { event?: string }).event === 'skill-install.reinstall-missing',
-    );
-    expect(reinstallLog).toBeDefined();
+    expect(existsSync(join(centralSkillDirFor(home), 'SKILL.md'))).toBe(true);
+  });
+
+  test('the gate runs before detection — no host + matching sidecar still skips', async () => {
+    const home = freshHome();
+    writeSidecar(home, currentVersion);
+    writeCentralSkill(home);
+
+    expect(await installUserSkill({ home })).toBe('skip-current');
   });
 });
 
 describe('installUserSkill — stale sidecar', () => {
-  test('sidecar version differs from package version → subprocess invoked, sidecar rewritten', async () => {
+  test('sidecar version differs from package version → reinstall, sidecar rewritten', async () => {
     const home = freshHome();
-    writeSidecar(home, '0.0.1\n');
-    const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
+    installHost(home, '.claude');
+    writeSidecar(home, '0.0.1-stale');
+    writeCentralSkill(home);
 
-    const result = await installUserSkill({ home, spawn });
+    const result = await installUserSkill({ home });
 
     expect(result).toBe('installed');
-    expect(calls.length).toBe(1);
     expect(readSidecarIfExists(home)).toBe(`${currentVersion}\n`);
+  });
+
+  test('empty sidecar → treated as fresh install', async () => {
+    const home = freshHome();
+    installHost(home, '.claude');
+    writeSidecar(home, '');
+
+    expect(await installUserSkill({ home })).toBe('installed');
+  });
+
+  test('malformed sidecar content → treated as fresh install', async () => {
+    const home = freshHome();
+    installHost(home, '.claude');
+    mkdirSync(join(home, '.ok'), { recursive: true });
+    writeFileSync(yamlPathFor(home), 'not: [valid', 'utf-8');
+
+    expect(await installUserSkill({ home })).toBe('installed');
   });
 });
 
 describe('installUserSkill — failure modes', () => {
-  test('subprocess non-zero exit → warning logged, sidecar NOT written, returns "failed"', async () => {
+  test('every destination write failing → warning logged, sidecar NOT written, returns "failed"', async () => {
     const home = freshHome();
-    const { spawn } = makeSpawnFake({
-      stderr: 'no compatible agents detected',
-      outcome: { kind: 'exit', code: 1 },
-    });
+    installHost(home, '.claude');
     const { logger, records } = makeRecordingLogger();
 
-    const result = await installUserSkill({ home, logger, spawn });
+    // Make both destinations unwritable by planting a FILE where the writer
+    // needs a directory — `mkdirSync` then fails with ENOTDIR/EEXIST.
+    writeFileSync(join(home, '.agents'), 'not a dir\n', 'utf-8');
+    writeFileSync(join(home, '.claude', 'skills'), 'not a dir\n', 'utf-8');
+
+    const result = await installUserSkill({ home, logger });
 
     expect(result).toBe('failed');
     expect(readSidecarIfExists(home)).toBeNull();
-    const warnRecord = findWarn(records, 'skill-install.failed');
-    expect(warnRecord).toBeDefined();
-    expect(warnRecord?.data).toMatchObject({
-      event: 'skill-install.failed',
-      reason: 'nonzero-exit',
-      exitCode: 1,
-    });
+    expect(findWarn(records, 'skill-install.failed')).toBeDefined();
   });
 
-  test('subprocess hangs past timeout → killed, warning logged, returns "failed"', async () => {
+  test('a partial failure still installs the survivors and records the version', async () => {
     const home = freshHome();
-    const { spawn } = makeSpawnFake({ outcome: { kind: 'hang' } });
+    installHost(home, '.claude');
+    installHost(home, '.cursor');
     const { logger, records } = makeRecordingLogger();
 
-    const result = await installUserSkill({ home, logger, spawn, timeoutMs: 25 });
+    // Only the cursor destination is blocked.
+    writeFileSync(join(home, '.cursor', 'skills'), 'not a dir\n', 'utf-8');
 
-    expect(result).toBe('failed');
-    expect(readSidecarIfExists(home)).toBeNull();
-    const warnRecord = findWarn(records, 'skill-install.failed');
-    expect(warnRecord?.data).toMatchObject({ event: 'skill-install.failed', reason: 'timeout' });
-  });
-
-  test('spawn throws ENOENT (npx missing) → warning logged, returns "failed"', async () => {
-    const home = freshHome();
-    const enoent = Object.assign(new Error('spawn npx ENOENT'), { code: 'ENOENT' });
-    const { spawn } = makeThrowingSpawn(enoent);
-    const { logger, records } = makeRecordingLogger();
-
-    const result = await installUserSkill({ home, logger, spawn });
-
-    expect(result).toBe('failed');
-    expect(readSidecarIfExists(home)).toBeNull();
-    const warnRecord = findWarn(records, 'skill-install.failed');
-    expect(warnRecord?.data).toMatchObject({
-      event: 'skill-install.failed',
-      reason: 'spawn-error',
-    });
-  });
-
-  test('child emits "error" (ENOENT surfaced async) → warning logged, returns "failed"', async () => {
-    const home = freshHome();
-    const { spawn } = makeSpawnFake({
-      outcome: { kind: 'error', error: new Error('spawn ENOENT') },
-    });
-    const { logger, records } = makeRecordingLogger();
-
-    const result = await installUserSkill({ home, logger, spawn });
-
-    expect(result).toBe('failed');
-    expect(readSidecarIfExists(home)).toBeNull();
-    const warnRecord = findWarn(records, 'skill-install.failed');
-    expect(warnRecord?.data).toMatchObject({
-      event: 'skill-install.failed',
-      reason: 'spawn-error',
-    });
-  });
-});
-
-describe('installUserSkill — sidecar tolerant parse', () => {
-  test('empty sidecar → treated as fresh install, subprocess invoked', async () => {
-    const home = freshHome();
-    writeSidecar(home, '');
-    const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
-
-    const result = await installUserSkill({ home, spawn });
+    const result = await installUserSkill({ home, logger });
 
     expect(result).toBe('installed');
-    expect(calls.length).toBe(1);
-  });
-
-  test('malformed sidecar content → treated as fresh install, subprocess invoked', async () => {
-    const home = freshHome();
-    writeSidecar(home, 'not-a-version-string\n');
-    const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
-
-    const result = await installUserSkill({ home, spawn });
-
-    expect(result).toBe('installed');
-    expect(calls.length).toBe(1);
+    expect(existsSync(join(hostSkillDirFor(home, '.claude'), 'SKILL.md'))).toBe(true);
     expect(readSidecarIfExists(home)).toBe(`${currentVersion}\n`);
+    expect(
+      records.some((r) => (r.data as { event?: string }).event === 'skill-install.partial'),
+    ).toBe(true);
   });
 });
-
-describe('installUserSkill — HOME propagates to subprocess env', () => {
-  test('opts.home is passed as HOME env var to spawn', async () => {
-    const home = freshHome();
-    const { spawn, calls } = makeSpawnFake({ outcome: { kind: 'exit', code: 0 } });
-    const opts: InstallUserSkillOptions = { home, spawn };
-
-    await installUserSkill(opts);
-
-    expect((calls[0]?.opts.env as NodeJS.ProcessEnv)?.HOME).toBe(host(calls).HOME);
-  });
-});
-
-// `host` shim suppresses an unused-import flag — `calls[0]?.opts.env` carries
-// the HOME spec asserts; this scoped helper localizes the access pattern.
-function host(calls: ReadonlyArray<{ opts: { env?: NodeJS.ProcessEnv } }>): NodeJS.ProcessEnv {
-  return (calls[0]?.opts.env ?? {}) as NodeJS.ProcessEnv;
-}
 
 // ─── buildAndOpenSkill ─────────────────────────────────────────────────────
 //
@@ -789,5 +690,43 @@ describe('buildAndOpenSkill — install-state gate', () => {
       noOpen: true,
     });
     expect(second.status).toBe('skip-current');
+  });
+});
+
+describe('installUserSkill — home guard', () => {
+  // Every path, including the recursive `rmSync` inside `replaceSkillDir`,
+  // is built with `join(home, …)`, which is RELATIVE when home is. Returns
+  // rather than throws: the function's contract is never-throws.
+  test.each([
+    '',
+    '.',
+    'relative/home',
+  ])('a non-absolute home (%j) fails without writing anything', async (bogus) => {
+    const { logger, records } = makeRecordingLogger();
+    expect(await installUserSkill({ home: bogus, logger })).toBe('failed');
+    expect(findWarn(records, 'skill-install.failed')?.data).toMatchObject({
+      reason: 'home-not-absolute',
+    });
+    // Not even the event log. `report` appends to `<home>/.ok/`, which for a
+    // relative home lands in the process cwd — the first cut of this guard ran
+    // AFTER `report` and littered the repo with `packages/server/.ok/` and
+    // `packages/server/relative/home/.ok/`. Same bug class as the guard itself,
+    // one layer over.
+    expect(existsSync(join(process.cwd(), bogus, '.ok'))).toBe(false);
+  });
+
+  test('a relative home cannot touch a matching tree in the cwd', async () => {
+    const box = freshHome();
+    const decoy = join(box, '.claude', 'skills', 'open-knowledge-discovery');
+    mkdirSync(decoy, { recursive: true });
+    writeFileSync(join(decoy, 'SKILL.md'), '# mine\n', 'utf-8');
+    const prev = process.cwd();
+    process.chdir(box);
+    try {
+      expect(await installUserSkill({ home: '' })).toBe('failed');
+      expect(existsSync(join(decoy, 'SKILL.md'))).toBe(true);
+    } finally {
+      process.chdir(prev);
+    }
   });
 });

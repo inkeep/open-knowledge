@@ -23,7 +23,7 @@
  * sanitizer-proxy fixture tests and the e2e copy tests.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { buildSourceModeHtml, handleCopyOrCut, handlePaste } from './source-clipboard.ts';
 
 interface FakeElement {

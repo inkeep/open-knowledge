@@ -110,7 +110,6 @@ import {
   buildTrashAbsPath,
   canonicalizeAssetTargetForDelete,
   type FileTreeTarget,
-  planRenameCleanupCalls,
   type RenamedAssetMapping,
   type RenamedDocExtensionMapping,
   type RenamedDocMapping,
@@ -131,6 +130,10 @@ import {
   resolveKeyboardDeleteTargets,
   selectedTreePathsToDeleteTargets,
 } from '@/components/file-tree-path-helpers';
+import {
+  applyProblemIndicators,
+  FILE_TREE_PROBLEM_CSS,
+} from '@/components/file-tree-problem-indicators';
 import {
   applyRenameInputAffordance,
   FILE_TREE_RENAME_INPUT_CSS,
@@ -192,7 +195,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { asDirectoryHandle, useSelectionMirror } from '@/components/use-selection-mirror';
 import { getEditorForDoc } from '@/editor/active-editor';
 import { useDocumentContext } from '@/editor/DocumentContext';
-import { captureRenameSnapshots } from '@/editor/editor-cache';
 import { assetTabId, docTabId, folderTabId, remapPathForFolderRenames } from '@/editor/editor-tabs';
 import { useConflicts } from '@/hooks/use-conflicts';
 import { useFolderConfig } from '@/hooks/use-folder-config';
@@ -202,7 +204,7 @@ import {
   hashFromAssetPath,
   hashFromDocName,
   hashFromFolderPath,
-  replaceHashWithoutNavigation,
+  pushHashWithoutNavigation,
 } from '@/lib/doc-hash';
 import { emitDocumentsChanged, subscribeToDocumentsChanged } from '@/lib/documents-events';
 import {
@@ -229,6 +231,7 @@ import {
 } from '@/lib/show-all-stream';
 import { OK_SIDEBAR_DRAG_MIME, serializeSidebarDragPayload } from '@/lib/sidebar-drag';
 import { cn } from '@/lib/utils';
+import { getValidationSnapshot, subscribeToValidationStore } from '@/lib/validation-store';
 import { joinWorkspacePath } from '@/lib/workspace-paths';
 import { mergeRootEntriesAdditive, spliceLazyFolderChildren } from './file-tree-merge';
 import { OpenInAgentContextSubmenu } from './handoff/OpenInAgentContextSubmenu';
@@ -395,7 +398,7 @@ const FILE_TREE_CREATION_CLEARED_CSS = `
 // markdown icon stays gray when its row is selected. The full styling block lives
 // alongside the badge-injection processor in file-tree-extension-badge.ts so the
 // CSS + DOM-mutation contract stays in one place.
-const FILE_TREE_UNSAFE_CSS = `${FILE_TREE_EXT_BADGE_CSS}\n${FILE_TREE_RENAME_INPUT_CSS}\n${FILE_TREE_ROOT_DROP_CSS}\n${FILE_TREE_EXTERNAL_FILE_DROP_CSS}\n${FILE_TREE_CREATION_CLEARED_CSS}\n${FILE_TREE_INDENT_GUIDE_CSS}\n${FILE_TREE_STICKY_HEADER_CSS}`;
+const FILE_TREE_UNSAFE_CSS = `${FILE_TREE_EXT_BADGE_CSS}\n${FILE_TREE_PROBLEM_CSS}\n${FILE_TREE_RENAME_INPUT_CSS}\n${FILE_TREE_ROOT_DROP_CSS}\n${FILE_TREE_EXTERNAL_FILE_DROP_CSS}\n${FILE_TREE_CREATION_CLEARED_CSS}\n${FILE_TREE_INDENT_GUIDE_CSS}\n${FILE_TREE_STICKY_HEADER_CSS}`;
 
 interface PendingCreate {
   kind: 'file' | 'folder';
@@ -1170,13 +1173,11 @@ export function FileTree({
     activeTarget,
     closeTabs,
     closeDocument,
-    closeAndClearForRename,
-    getPoolActiveDocName,
-    poolHas,
     isNewTabActive,
     openTarget,
     prewarm,
-    remapTabsForRename,
+    reconcileLocalRemoval,
+    reconcileLocalRename,
   } = useDocumentContext();
   const { notifySidebarFileSelected } = useSidebar();
   const { resolvedTheme } = useTheme();
@@ -1268,13 +1269,13 @@ export function FileTree({
       openTarget(navigationTargetForDocument(target.docName, target.size), {
         tabBehavior: 'replace-active',
       });
-      replaceHashWithoutNavigation(hashFromDocName(target.docName));
+      pushHashWithoutNavigation(hashFromDocName(target.docName));
     } else if (target.kind === 'folder') {
       openTarget(
         { kind: 'folder', target: target.folderPath, folderPath: target.folderPath },
         { tabBehavior: 'replace-active' },
       );
-      replaceHashWithoutNavigation(hashFromFolderPath(target.folderPath));
+      pushHashWithoutNavigation(hashFromFolderPath(target.folderPath));
     } else {
       const currentEntries = target.entries ?? documentsRef.current;
       const entry = currentEntries.find(
@@ -1290,7 +1291,7 @@ export function FileTree({
         },
         { tabBehavior: 'replace-active' },
       );
-      replaceHashWithoutNavigation(hashFromAssetPath(target.assetPath));
+      pushHashWithoutNavigation(hashFromAssetPath(target.assetPath));
     }
     notifySidebarFileSelected();
   }
@@ -1313,7 +1314,7 @@ export function FileTree({
         },
         { tabBehavior: 'replace-active' },
       );
-      replaceHashWithoutNavigation(action.hash);
+      pushHashWithoutNavigation(action.hash);
       notifySidebarFileSelected();
       return;
     }
@@ -1335,7 +1336,7 @@ export function FileTree({
     });
     if (okTarget?.kind === 'asset') {
       openTarget(okTarget, { tabBehavior: 'replace-active' });
-      replaceHashWithoutNavigation(hashFromAssetPath(okTarget.assetPath));
+      pushHashWithoutNavigation(hashFromAssetPath(okTarget.assetPath));
       notifySidebarFileSelected();
       return;
     }
@@ -2600,24 +2601,18 @@ export function FileTree({
             remapPathForFolderRenames(currentActiveAssetPath, renamedFolders))
         : null);
 
-    captureRenameSnapshots(renamed);
-    // Wipe IDB for ends that need it. `planRenameCleanupCalls` gates the
-    // `to` clear behind whether the server-push `onRenameRedirect` path has
-    // already done the close+clear+reopen. The full rationale (race shape,
-    // why the `from` clear stays) is documented at the helper's site in
-    // `file-tree-operations.ts`.
-    const cleanupDocNames = [
-      ...planRenameCleanupCalls(renamed, getPoolActiveDocName(), poolHas),
-      ...docToAssetRenames.keys(),
-    ];
-    await Promise.all(cleanupDocNames.map((docName) => closeAndClearForRename(docName)));
+    await reconcileLocalRename({
+      renamed,
+      renamedFolders,
+      renamedAssets,
+      additionalRemovedDocNames: [...docToAssetRenames.keys()],
+    });
     for (const entry of renamed) {
       addPage(entry.toDocName);
     }
     for (const entry of assetToDocRenames.values()) {
       addPage(entry);
     }
-    remapTabsForRename(renamed, renamedFolders, renamedAssets);
 
     let nextDocumentsForRename: FileEntry[] | null = null;
     setDocuments((current) => {
@@ -3417,6 +3412,39 @@ export function FileTree({
     return () => observer.disconnect();
   }, [loading, documents.length]);
 
+  // Tint + badge rows whose docs have validation problems, from the shared
+  // validation store. Same shadow-root + MutationObserver pattern as the
+  // extension badge above, plus a store subscription so tint updates arrive
+  // without a DOM mutation (e.g. a project audit landing while the tree is
+  // idle). Our own attribute writes are outside the `data-item-path` filter
+  // and the badge write is value-gated, so the observer stays quiescent.
+  const problemIndicatorsEnabled = merged?.validation?.fileTreeIndicators !== false;
+  useEffect(() => {
+    if (loading || documents.length === 0) return;
+    const shadow = fileTreeHostRef.current?.querySelector(FILE_TREE_TAG_NAME)?.shadowRoot;
+    if (!shadow) return;
+    if (!problemIndicatorsEnabled) {
+      // One clearing pass strips any tint/badges left from before the toggle
+      // flipped off; no observer or store subscription while disabled.
+      applyProblemIndicators(shadow, new Map());
+      return;
+    }
+    const apply = () => applyProblemIndicators(shadow, getValidationSnapshot());
+    apply();
+    const observer = new MutationObserver(apply);
+    observer.observe(shadow, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['data-item-path'],
+    });
+    const unsubscribe = subscribeToValidationStore(apply);
+    return () => {
+      observer.disconnect();
+      unsubscribe();
+    };
+  }, [loading, documents.length, problemIndicatorsEnabled]);
+
   // Select Pierre's rename-input stem while keeping the extension visible and
   // editable. Kept separate from the badge observer because the watched event
   // (childList: the rename input mounting) is structurally different from the
@@ -3584,18 +3612,14 @@ export function FileTree({
       ...tabsToClose.assetPaths,
       ...successfulTargets.filter((target) => target.kind === 'asset').map((target) => target.path),
     ]);
-    closeTabs(
-      [
+    await reconcileLocalRemoval({
+      tabIdsToClose: [
         ...[...deleted].map((docName) => docTabId(docName)),
         ...[...deletedFolders].map((folderPath) => folderTabId(folderPath)),
         ...[...deletedAssets].map((assetPath) => assetTabId(assetPath)),
       ],
-      { force: true },
-    );
-    // Clear IDB for each deleted docName so a same-browser delete-then-recreate
-    // (or a sibling rename that lands on this docName) cannot resurrect content
-    // from stale IndexedDB rows.
-    await Promise.all([...deleted].map((docName) => closeAndClearForRename(docName)));
+      docNamesToClear: [...deleted],
+    });
 
     for (const target of successfulTargets) {
       const treePath =

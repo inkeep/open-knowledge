@@ -96,6 +96,28 @@ function gitEnrichmentDirs(platform: NodeJS.Platform): readonly string[] {
   return fallbackPaths(platform).map((p) => dn(p));
 }
 
+/** Match the search-path env var name in any case — Windows uses `Path`, POSIX `PATH`. */
+function isPathKey(key: string): boolean {
+  return /^path$/i.test(key);
+}
+
+/**
+ * Read the search-path value from an env map case-insensitively. Windows'
+ * `process.env` exposes the variable as `Path`, so a direct `env.PATH` read
+ * misses it and returns `undefined` — which silently collapses the spawned
+ * server's PATH to only the git-enrichment dirs, dropping `C:\Windows\System32`.
+ * Every server-side spawn of a System32 tool then fails ENOENT: `reg` (handoff
+ * install-detection), `rundll32` (protocol-URL dispatch), and `cmd.exe`/`where`
+ * (Cursor spawn) — surfacing as "Open with Claude/Cursor silently does nothing"
+ * on the Windows desktop.
+ */
+function readEnvPath(env: Readonly<Record<string, string | undefined>>): string | undefined {
+  for (const key of Object.keys(env)) {
+    if (isPathKey(key)) return env[key];
+  }
+  return undefined;
+}
+
 /**
  * Prepend `gitEnrichmentDirs(platform)` to the inherited PATH and de-duplicate,
  * preserving the original PATH order at the tail. Closes the Cursor-class
@@ -180,16 +202,32 @@ export function resolveDetachedSpawnArgs(
       : []),
   ];
 
+  // Read the inherited PATH case-insensitively (Windows key is `Path`) and emit
+  // exactly one canonical `PATH` key: strip every case-variant from the spread
+  // so libuv never has to break a `Path`-vs-`PATH` tie — otherwise the child can
+  // inherit the un-enriched original PATH (losing the git dirs) or, worse, the
+  // git-only PATH (losing System32). See `readEnvPath` for the failure it fixes.
+  const inheritedPath = readEnvPath(env);
+  const envWithoutPath: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (!isPathKey(key)) envWithoutPath[key] = value;
+  }
+
   const opts: SpawnOptions = {
     env: {
-      ...env,
-      PATH: buildEnrichedPath(platform, env.PATH),
+      ...envWithoutPath,
+      PATH: buildEnrichedPath(platform, inheritedPath),
       ELECTRON_RUN_AS_NODE: '1',
       OK_LOCK_KIND: 'interactive',
     },
     detached: true,
     stdio: ['ignore', 'ignore', spawnErrorLogFd],
     cwd: projectRoot,
+    // Repo-wide every-spawn discipline. Node ignores windowsHide when
+    // `detached: true` (nodejs/node#21825), but the spawned binary is
+    // Electron (GUI subsystem — allocates no console), so no console window
+    // appears either way; verify on the Windows VM (A3 spike).
+    windowsHide: true,
   };
 
   return { file, args, opts };

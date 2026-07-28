@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta name="color-scheme" content="light dark" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Uninstall OpenKnowledge</title>
+  <!--
+    Theme stamp. Unlike index.html this reads NOTHING local — not
+    localStorage (a distinct `file://` document cannot see the editor
+    renderer's persisted next-themes value) and not `prefers-color-scheme`
+    (the OS preference is not the app's theme when the user has overridden
+    it). The main process resolves the app's appearance and passes it in the
+    `theme` query, which this applies synchronously so the first painted
+    frame is already correct. Producer: `resolveUninstallEntryTarget` in
+    packages/desktop/src/main/uninstall-window.ts — keep the key in sync.
+    Absent or unrecognized value means light, so a directly-opened file still
+    renders deterministically.
+
+    Single-line script body — biome's HTML formatter reindents inline-script
+    content on every pass, producing an infinite deny-loop at pre-commit.
+  -->
+  <script>(() => { try { if (new URLSearchParams(location.search).get('theme') === 'dark') document.documentElement.classList.add('dark'); } catch {} })();</script>
+  <!--
+    Paints the window background from the same `--sidebar` token the app chrome
+    uses, so the frame between window-show and React's first paint isn't a
+    white flash. Placeholders are substituted at build time by
+    chromeTokensVitePlugin (same plugin, same values as index.html).
+
+    Single-line style body — same biome HTML-formatter constraint as the
+    script above.
+  -->
+  <style>html { background-color: __OK_CHROME_BG_LIGHT__ } html.dark { background-color: __OK_CHROME_BG_DARK__ }</style>
+</head>
+
+<body class="antialiased">
+  <div id="root"></div>
+  <script type="module" src="/src/uninstall/main.tsx"></script>
+</body>
+
+</html>

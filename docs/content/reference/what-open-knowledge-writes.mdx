@@ -124,7 +124,7 @@ On each launch and project open, the app also runs **repair sweeps**: it rewrite
 | `~/.ok/skills/<name>/` | Your global-scope authored skills (kept by `ok uninstall` unless `--purge-content`) | No |
 | `~/.ok/stats.jsonl` | Local "open with AI" handoff stats — local-only, no phone-home | No |
 | `~/.ok/mcp-status.json` | First-launch MCP consent record | No |
-| `~/.ok/logs/`, `~/.ok/bug-reports/` | Desktop and CLI logs, and bug-report bundles from `ok bug-report` and the app's **Help → Report a Bug…** dialog (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`) | No |
+| `~/.ok/logs/`, `~/.ok/bug-reports/` | Desktop and CLI logs, and bug-report bundles from `ok bug-report` and the app's **Help → Report a bug…** dialog (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`) | No |
 | `~/.ok/bin/`, `~/.ok/env.sh` | `PATH` shim (see [Shell and `PATH`](#shell-and-path) above) | No |
 
 **Auth tokens** (for GitHub sync, sharing, and cloning) are stored in the macOS **Keychain** under the service name `open-knowledge`. The `~/.ok/auth.yml` file is only a fallback for headless environments where the Keychain isn't reachable; when the Keychain becomes available, the token is migrated into it and the file copy is removed.
@@ -137,20 +137,15 @@ The **Install for Claude Chat & Cowork** command (command palette or Help menu) 
 
 ### Installing the package
 
-Installing `@inkeep/open-knowledge` from npm (or invoking it with `npx`) drops the two CLI binaries plus a bundled native addon, and runs a `postinstall` step that registers a small "discovery" skill so the AI editors on your machine know OpenKnowledge exists.
+Installing `@inkeep/open-knowledge` from npm (or invoking it with `npx`) drops the two CLI binaries plus a bundled native addon. **Nothing is written to your home directory at install time** — no lifecycle scripts run, and no skills are registered until you run `ok init`.
 
 | Path | What it is | Scope |
 | --- | --- | --- |
 | `ok`, `open-knowledge` (on your `PATH`) | The two CLI binaries (identical entry point) | Outside-project (npm global/bin) |
 | `<pkg>/dist/native/` | Bundled native TOML-editing addon, shipped inside the package | Outside-project (package dir) |
-| `~/.agents/skills/open-knowledge-discovery/` | The **discovery skill** — a short instruction file that teaches any agent host how to find and initialize OpenKnowledge. Installed via `npx skills add … --agent '*' -g` | Outside-project (home dir) |
-| `~/.ok/skill-state.yml` | Records which skill version is installed, so the step is skipped next time | Outside-project (home dir) |
-| `~/.ok/skill-install-events.jsonl` | Append-only local log of skill-install attempts | Outside-project (home dir) |
-
-The `postinstall` step is **non-fatal** (install always succeeds even if it fails) and **version-gated** (it does nothing if the current version is already installed). It installs the discovery skill for every detected agent host: the shared `~/.agents/skills/` directory and each detected editor's user-level skills folder (`~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`). The only network access is npm fetching the `skills` helper.
 
 <Callout type="info" title="Opt out">
-  Install with `npm install --ignore-scripts` to skip the `postinstall` skill step entirely. You can always add the skills later from `ok init`.
+  Installing the package writes nothing outside its own directory, so there is nothing to opt out of here. The user-global skills are installed by `ok init`, and `ok init --no-skills` declines them.
 </Callout>
 
 ### `ok init`
@@ -182,6 +177,20 @@ With `--scope user` or `both` (the default), `ok init` also registers the `open-
 | `~/.gemini/config/mcp_config.json` | Antigravity (only when `~/.gemini/` exists) — shared by the IDE and the `agy` CLI | Outside-project (editor config) |
 | `~/.lmstudio/mcp.json` | LM Studio (only when installed; also checks `~/.cache/lm-studio/mcp.json`) | Outside-project (editor config) |
 | `~/.hermes/config.yaml` | Hermes (only when `~/.hermes/` exists) | Outside-project (editor config) |
+
+`ok init` also installs the user-global **discovery skill** — a short instruction file that teaches an agent host how to find and initialize OpenKnowledge — so it is available in every project. It is written **only** into the skills directories of agent hosts already present in your home directory, plus the shared `~/.agents/skills/` hub those hosts read. If none of them is present, nothing is written at all.
+
+| Path | What it is | Scope |
+| --- | --- | --- |
+| `~/.agents/skills/open-knowledge-*/` | Shared hub read natively by Codex, OpenCode, and Cursor | Outside-project (home dir) |
+| `~/.claude/skills/open-knowledge-*/` | Written only when `~/.claude/` already exists | Outside-project (home dir) |
+| `~/.cursor/skills/open-knowledge-*/` | Written only when `~/.cursor/` already exists | Outside-project (home dir) |
+| `~/.codex/skills/open-knowledge-*/` | Written only when `~/.codex/` already exists | Outside-project (home dir) |
+| `~/.opencode/skills/open-knowledge-*/` | Written only when `~/.opencode/` already exists | Outside-project (home dir) |
+| `~/.ok/skill-state.yml` | Records which skill version is installed, so the step is skipped next time | Outside-project (home dir) |
+| `~/.ok/skill-install-events.jsonl` | Append-only local log of skill-install attempts | Outside-project (home dir) |
+
+The install is **non-fatal** (`ok init` still exits 0 if it fails), **version-gated** (a no-op when the current version is already installed), and needs **no network access**. Decline it with `ok init --no-skills`, or choose individual bundles with `--skills <ids>`; the decision is remembered in `~/.ok/skill-state.yml` and honored by every later install path. `ok repair-skills` re-runs it.
 
 Pi is the exception: it has no user-level MCP config (it has no MCP support at all), so its integration is only ever the project-scoped bridge extension above.
 
@@ -239,7 +248,7 @@ Disable all three with `OK_RECLAIM_DISABLE=1`.
 | `~/.ok/skills/<name>/` | Your global-scope authored skills (kept by `ok uninstall` unless `--purge-content`) | No |
 | `~/.ok/stats.jsonl` | Local "open with AI" handoff stats — local-only, no phone-home | No |
 | `~/.ok/logs/` | CLI logs (`cli.<date>.log`), size- and age-capped | No |
-| `~/.ok/bug-reports/` | Bug-report bundles from `ok bug-report` — the desktop app's **Help → Report a Bug…** dialog writes here too (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`) | No |
+| `~/.ok/bug-reports/` | Bug-report bundles from `ok bug-report` — the desktop app's **Help → Report a bug…** dialog writes here too (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`) | No |
 
 **Auth tokens** (for GitHub sync, sharing, and cloning) are stored in your operating system's secure credential store when one is available — the macOS **Keychain** (service `open-knowledge`), or the platform equivalent (Windows Credential Manager, Linux Secret Service) — falling back to a `0600` `~/.ok/auth.yml` file on headless systems (a Linux server, CI) where none is reachable.
 
@@ -271,7 +280,8 @@ By default, **nothing.** Everything above is written to your own disk. The only 
 | What | When | Where it goes |
 | --- | --- | --- |
 | Diagnostic bundle | Only when you run `ok diagnose bundle` (you can inspect it first) | Wherever you send it |
-| In-app bug report | Only when you click **Send** in the desktop app's **Help → Report a Bug…** dialog — it builds a secret-redacted zip you can reveal and inspect first, and nothing is sent without that explicit click. After a crash, the same dialog adds an **off-by-default** "Include crash dump" checkbox: a crash dump is a memory snapshot that can contain document content and can't be redacted, and it is only ever attached when you check that box | By default, Send makes no network request — it opens a prefilled email draft to support@inkeep.com that you send yourself, naming the zip to attach. Only when an operator has configured a bug-report intake endpoint ([`OK_BUG_REPORT_INTAKE_URL`](/docs/reference/configuration#environment-variables)) does Send upload the zip there, falling back to the same email draft if the upload fails |
+| In-app bug report | Only when you click **Send** in the desktop app's **Help → Report a bug…** dialog — it builds a secret-redacted zip you can reveal and inspect first, and nothing is sent without that explicit click. After a crash, the same dialog adds an **off-by-default** "Include crash dump" checkbox: a crash dump is a memory snapshot that can contain document content and can't be redacted, and it is only ever attached when you check that box | By default, Send makes no network request — it opens a prefilled email draft to support@inkeep.com that you send yourself, naming the zip to attach. Only when an operator has configured a bug-report intake endpoint ([`OK_BUG_REPORT_INTAKE_URL`](/docs/reference/configuration#environment-variables)) does Send upload the zip there, falling back to the same email draft if the upload fails |
+| Uninstall feedback | Only after an uninstall has already succeeded, and only if you pick a reason, type a note, or give an email address on the optional "Before you go" screen (desktop app) or prompt (`ok uninstall`). Skipping it, `--yes`, `--json`, and any non-interactive run send nothing | `openknowledge.ai/api/feedback` — the reason you picked, your note, your email address if you gave one, plus the app version and platform. It files one ticket for the team; nothing from your notes is included |
 | Semantic search embeddings | Only when you enable [semantic search](/docs/reference/configuration#semantic-search) **and** set a key — off by default | Your configured embeddings provider (OpenAI by default) |
 | GitHub sync / share | When you sync, clone, publish, or share | GitHub |
 | Update check | Automatically — on launch and periodically while the desktop app runs | OpenKnowledge update service (`openknowledge.ai/updates`), which redirects to GitHub; sends the app version and channel |

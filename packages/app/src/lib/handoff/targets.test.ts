@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { KNOWN_TARGETS, VISIBLE_TARGETS } from './targets.ts';
 
 describe('KNOWN_TARGETS', () => {

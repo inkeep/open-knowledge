@@ -11,7 +11,7 @@ import { applyClaGate } from './cla-gate.mjs';
 // Sibling bridge copies:
 // - public/agents/.github/scripts/bridge-public-pr-to-monorepo.mjs
 // - public/agents-optional-local-dev/.github/scripts/bridge-public-pr-to-monorepo.mjs
-// - public/mermaid-wysiwyg/.github/scripts/bridge-public-pr-to-monorepo.mjs
+// - public/visimer/.github/scripts/bridge-public-pr-to-monorepo.mjs
 // The Open Knowledge copy additionally imports a co-located `cla-gate.mjs` for
 // contributor-CLA enforcement — an OK-only divergence. That module ships to the
 // same repo via Copybara, so the import resolves on the mirror; the "no shared

@@ -14,18 +14,27 @@ export {
   DEFAULT_EMBEDDINGS_DIMENSIONS,
   EMBEDDINGS_API_KEY_ENV,
   type Embedder,
+  type EmbeddingsCredentialSource,
   type EmbeddingsKeyStore,
   loadOpenAiEmbedder,
   normalizeProviderId,
+  probeEmbeddingEndpoint,
+  type ResolvedEmbeddingsCredential,
+  resolveEmbeddingsCredential,
 } from './embedder.ts';
 export {
-  clearEmbeddingsKeyFromAllBackends,
+  canonicalProjectKey,
+  clearAllEmbeddingsKeys,
   createEmbeddingsSecretStore,
   describeStoredEmbeddingsKey,
+  type EmbeddingsKeyPresence,
   type EmbeddingsKeyReader,
+  type EmbeddingsKeySource,
+  type EmbeddingsProjectListing,
   type EmbeddingsSecretStore,
   FileEmbeddingsBackend,
   makeLazyEmbeddingsKeyStore,
+  type ResolvedEmbeddingsKey,
   secretsFilePath,
 } from './secrets-store.ts';
 export {

@@ -7,7 +7,7 @@
  * `profile.ts` require a real CDP session (exercised via scenario runs).
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   aggregateTrace,
   type CdpTraceEvent,

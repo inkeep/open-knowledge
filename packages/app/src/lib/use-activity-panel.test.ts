@@ -9,8 +9,8 @@
  * prefix-normalization and presence-shape filtering.
  */
 
-import { describe, expect, test } from 'bun:test';
 import type { AgentPresenceEntry } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { computeWritingDocs } from './use-activity-panel';
 
 type AgentPresenceMap = Record<string, AgentPresenceEntry>;

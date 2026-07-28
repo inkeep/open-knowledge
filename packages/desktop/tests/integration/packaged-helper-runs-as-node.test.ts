@@ -49,7 +49,6 @@
  * Or via the okdesk function (see ~/.zshrc).
  */
 
-import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -58,6 +57,7 @@ import {
   HELPER_BUNDLE_NAME,
   HELPER_EXECUTABLE_NAME,
 } from '@inkeep/open-knowledge-core/helper-bundle';
+import { describe, expect, test } from 'vitest';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(HERE, '../..');

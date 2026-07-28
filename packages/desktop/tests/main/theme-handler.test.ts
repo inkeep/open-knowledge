@@ -13,7 +13,7 @@
  *     (or a non-typed IPC fallback) would land here.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { applyThemeSource, isOkThemeSource } from '../../src/main/theme-handler.ts';
 import type { OkThemeSource } from '../../src/shared/bridge-contract.ts';
 

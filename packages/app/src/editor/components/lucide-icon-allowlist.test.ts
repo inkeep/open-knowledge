@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   LUCIDE_ICON_ALLOWLIST,
   LUCIDE_ICON_ENTRIES,

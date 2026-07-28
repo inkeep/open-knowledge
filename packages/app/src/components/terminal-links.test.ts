@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import type { PageListCacheSnapshot } from '../editor/page-list-cache';
 import {
   classifyTarget,

@@ -18,7 +18,6 @@
  * (the realpath-before-detection + dedup logic is not a server concern).
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import {
   mkdirSync,
   mkdtempSync,
@@ -31,6 +30,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
+import { afterEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { fetchWithHostHeader } from './host-header-request.test-helper';
 import { createTestClient, createTestServer, pollUntil, wait } from './test-harness';

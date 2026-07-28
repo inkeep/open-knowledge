@@ -3,10 +3,15 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import * as Y from 'yjs';
 import { useDocumentContext } from '@/editor/DocumentContext';
+import { emitLintConfigChanged } from '@/editor/lint-config-client';
 import { dispatchCC1Stateless, SYSTEM_DOC_NAME } from '@/lib/cc1';
 import { emitConfigIgnoreNestedError } from '@/lib/config-ignore-nested-error-events';
 import { emitConfigValidationRejected } from '@/lib/config-validation-events';
-import { emitDocumentsChanged, subscribeToDocumentsChanged } from '@/lib/documents-events';
+import {
+  emitDocPersisted,
+  emitDocumentsChanged,
+  subscribeToDocumentsChanged,
+} from '@/lib/documents-events';
 import { createSyncedReconnectGate } from '@/lib/server-info-refresh';
 
 export function SystemDocSubscriber() {
@@ -66,6 +71,10 @@ export function SystemDocSubscriber() {
           },
           onDiskAck: (p) => {
             handlersRef.current.observeDiskAck(p.docName, p.sv);
+            // Relay the docName for validation freshness: disk-ack is the one
+            // per-doc CC1 channel, so it is the "this doc changed" signal the
+            // per-doc re-validate keys off.
+            emitDocPersisted(p.docName);
           },
           onDerivedView: (p) => {
             emitDocumentsChanged([p.ch]);
@@ -97,6 +106,13 @@ export function SystemDocSubscriber() {
       if (channels.includes('files') || channels.includes('graph')) {
         void queryClient.invalidateQueries({ queryKey: ['orphans'] });
         void queryClient.invalidateQueries({ queryKey: ['hubs'] });
+      }
+      // Server-side signal that the DISK-derived effective lint config
+      // changed (project config.yml persisted, or a schema file was
+      // written/deleted by any client). Re-fetch + re-lint through the same
+      // window event local writes use.
+      if (channels.includes('lint-config')) {
+        emitLintConfigChanged();
       }
     });
 

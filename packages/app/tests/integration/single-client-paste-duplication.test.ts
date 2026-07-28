@@ -11,7 +11,7 @@
  * paragraphs into the fragment) to pin the server/bridge contract independent
  * of any editor surface.
  */
-import { afterAll, beforeAll, expect, test } from 'bun:test';
+import { afterAll, beforeAll, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {

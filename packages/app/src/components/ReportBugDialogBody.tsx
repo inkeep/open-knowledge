@@ -34,6 +34,7 @@ import {
   TriangleAlertIcon,
 } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { BugReportPreviousReports } from '@/components/BugReportHistory';
 import { CopyButton } from '@/components/CopyButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -364,7 +365,7 @@ function ReportBugDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md" showCloseButton={!sending}>
+      <DialogContent className="sm:max-w-xl" showCloseButton={!sending}>
         {phase.step === 'compose' && (
           <>
             <DialogHeader>
@@ -596,6 +597,13 @@ function ReportBugDialog({
                   </div>
                 )}
               </div>
+              {/* A lightweight disclosure of prior reports so a user can resend
+                  one they already made without regenerating. Only in the plain
+                  flow — the crash variants stay focused on the report at hand,
+                  and it renders nothing until there is history to show. */}
+              {crashInvite === undefined && crashContext === undefined ? (
+                <BugReportPreviousReports />
+              ) : null}
             </DialogBody>
             <DialogFooter>
               <Button

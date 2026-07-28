@@ -1,0 +1,234 @@
+name: Point release
+
+# On-demand point release on inkeep/open-knowledge: ship the current stable plus
+# ONE self-contained fix to the npm `latest` channel, leaving everything still
+# soaking behind it exactly where it is.
+#
+# Why the lane exists. A stable tag lands on a main SHA, and on one linear
+# history there is no commit that is "last stable plus this one fix" without
+# also being a prefix of everything else merged since. So when a critical fix
+# has to reach users now, the ordinary promotion path offers only two options:
+# wait out the 24h soak, or ship the entire unsoaked pile. This workflow builds
+# the missing commit instead — it detaches at the last stable tag and applies
+# the fix there — so the release contains that fix and nothing else.
+#
+# Two modes. `cherry-pick` ships a forward fix. `revert` undoes a bad commit
+# already inside the current stable; it exists because the desktop auto-updater
+# is roll-forward only, so a bad unattended stable cannot be recalled, only
+# superseded.
+#
+# Dry run is the default, and that default is the safety model. A dry run
+# resolves the last stable, builds the synthetic commit locally, computes the
+# version and runs every guard, then stops before the first remote mutation —
+# no tag, no Release, no dispatch. Arming a real run means unchecking dry_run
+# deliberately, having read the plan a dry run printed.
+#
+# All decision logic lives in .github/scripts/point-release-plan.mjs, which is
+# unit-tested; this file only supplies credentials, a full-history checkout and
+# a committer identity. Keeping the guards in tested JavaScript rather than
+# inline bash matters more here than elsewhere: this lane skips the soak, so its
+# preconditions are the only thing between a mistaken input and an unvalidated
+# release on the channel every default install follows.
+#
+# Cascade. On a real run the script tags, creates a DRAFT Release, and dispatches
+# the same three consumers the ordinary promotion does — release.yml (npm
+# publish), desktop-release.yml (signed DMG, which also flips the draft to
+# published), and main-reset on agents-private (changeset consolidation). Their
+# input contracts are untouched: this is a different way to reach the existing
+# cascade, not a second one.
+#
+# Token model, inherited from promote-stable.yml. The synthetic commit carries
+# the LAST STABLE's .github/workflows/ tree, which differs from main whenever any
+# workflow changed since — so pushing a tag at that commit is a workflow-touching
+# push and the App-token policy refuses it without `workflows: write`. The tag
+# push therefore runs under an INTERNAL_CI_APP installation token holding that
+# grant, not under GITHUB_TOKEN, which cannot be granted `workflows` at all
+# (it is not a valid permissions: key). See promote-stable.yml's header for the
+# full rejection signature and the one-time installation grant it requires.
+#
+# Concurrency group is shared with release.yml and promote-stable.yml so a point
+# release never races a beta cut or an ordinary promotion.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "cherry-pick a forward fix onto the current stable, or revert a bad commit already in it."
+        required: true
+        type: choice
+        options:
+          - cherry-pick
+          - revert
+        default: cherry-pick
+      fix_refs:
+        description: "Commit SHA(s) to apply, comma- or space-separated. Each must already be on main."
+        required: true
+        type: string
+      anchor_delta_ids:
+        description: "Changeset id(s) for main-reset to consolidate. Revert mode has none of its own — name one here or the main-reset dispatch is skipped and the anchor stays behind."
+        required: false
+        type: string
+      dry_run:
+        description: "Compute and print the plan without touching anything remote. Uncheck to actually ship."
+        required: false
+        type: boolean
+        default: true
+      dispatched_by:
+        description: "URL of the run that dispatched this release (run-to-run link). Blank for manual runs."
+        required: false
+        type: string
+
+permissions:
+  # Every identity-asserting call (tag push, Release creation, repository_dispatch)
+  # runs under an App-minted token, not this one; see the token-model comment
+  # above. contents: write keeps the workflow-default GITHUB_TOKEN usable for the
+  # ordinary checkout. npm publishing is delegated to release.yml over
+  # repository_dispatch, so no id-token is needed here — the dispatched run keeps
+  # its own OIDC identity, which is what npm Trusted Publishing binds against.
+  contents: write
+  # Read-only: lets the plan script resolve the newest green native-config
+  # prebuild run, which its provenance guard checks the synthetic commit against.
+  actions: read
+
+concurrency:
+  group: ok-release-cadence
+  cancel-in-progress: false
+
+jobs:
+  point-release:
+    name: ${{ inputs.dry_run && 'Plan' || 'Ship' }} point release (${{ inputs.mode }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Generate GitHub App token
+        # See the token-model comment at the top of this file. The minted token
+        # only clears the App-token workflow-change policy if this App's
+        # installation on this repo carries `workflows: write`.
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          # Public client ID for inkeep-internal-ci (non-secret; supersedes the deprecated app-id input).
+          client-id: Iv23liNt1mrrdgVKHn8K
+          private-key: ${{ secrets.INTERNAL_CI_APP_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Full history AND all tags. Three separate things need it: resolving
+          # the newest stable tag, diffing .changeset/*.md between that tag and
+          # the synthetic commit, and walking ancestry to prove each fix ref is
+          # already on main.
+          fetch-depth: 0
+          # Persist the App token into .git/config so the later `git push origin
+          # <tag>` runs as the App. Without this the push falls back to
+          # GITHUB_TOKEN and hits the workflow-change policy on any stable whose
+          # .github/workflows/ tree differs from main HEAD.
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+
+      - name: Prepare git for the synthetic commit
+        run: |
+          set -euo pipefail
+          # The refs-on-main guard asks whether each fix ref is an ancestor of
+          # origin/main. Checkout only creates the remote-tracking ref for the
+          # branch the run was dispatched from, so fetch main explicitly rather
+          # than let a non-default-branch dispatch turn the guard into a git
+          # error about a missing ref.
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+
+          # cherry-pick and revert both write a commit, and a runner has no
+          # committer identity configured, so without this the apply step fails
+          # with git's "please tell me who you are" before any guard is reached.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Detect bridge App for cross-repo dispatch
+        # main-reset runs on agents-private, and neither GITHUB_TOKEN nor the
+        # INTERNAL_CI_APP token can write there. The "Inkeep OK Release Bridge"
+        # App supplies that credential. Absence is not an error: the release
+        # still ships and the plan warns the operator to run main-reset by hand.
+        # Secrets are unreadable in `if:` expressions, so the presence check runs
+        # as a step and gates the mint through an output.
+        id: bridge-check
+        env:
+          OK_RELEASE_BRIDGE_APP_ID: ${{ secrets.OK_RELEASE_BRIDGE_APP_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${OK_RELEASE_BRIDGE_APP_ID:-}" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "OK_RELEASE_BRIDGE_APP_ID not set — the main-reset dispatch will be skipped; run it manually on agents-private."
+          fi
+
+      - name: Mint cross-repo dispatch token (bridge App)
+        if: steps.bridge-check.outputs.configured == 'true'
+        id: bridge-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          # Public client ID for inkeep-ok-release-bridge (non-secret; supersedes the deprecated app-id input).
+          client-id: Iv23lii4qS2FAc6tkzfI
+          private-key: ${{ secrets.OK_RELEASE_BRIDGE_APP_PRIVATE_KEY }}
+          # The bridge App is installed on agents-private, not on the repo this
+          # workflow runs on; owner + repositories scope the token to it.
+          owner: inkeep
+          repositories: agents-private
+
+      - name: Run the point release
+        id: plan
+        env:
+          # Every value reaches the shell through env rather than direct ${{ }}
+          # substitution: an expression is expanded textually before bash parses
+          # the line, so a crafted input would run as shell. Defense-in-depth,
+          # since dispatching this workflow already needs repo write access.
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          # Empty when the bridge App is absent; the script reads that as
+          # "no cross-repo credential" and skips the main-reset dispatch.
+          BRIDGE_GH_TOKEN: ${{ steps.bridge-token.outputs.token }}
+          BRIDGE_CONFIGURED: ${{ steps.bridge-check.outputs.configured }}
+          MODE: ${{ inputs.mode }}
+          FIX_REFS: ${{ inputs.fix_refs }}
+          ANCHOR_DELTA_IDS: ${{ inputs.anchor_delta_ids }}
+          # The script arms a real run only on the literal string "false", so any
+          # other value — including an unset variable — stays a dry run.
+          DRY_RUN: ${{ inputs.dry_run }}
+          DISPATCHED_BY: ${{ inputs.dispatched_by }}
+        # Writes the plan as JSON to stdout and dry_run / point_release_tag /
+        # point_release_version / latest_stable_tag / synthetic_sha / delta_ids /
+        # main_reset_dispatched to GITHUB_OUTPUT. Exit 2 is a guard refusing
+        # (a named precondition said no); exit 1 is an infra failure. Either way
+        # nothing remote has been touched — every mutation happens after the
+        # last guard. Logic + tests: .github/scripts/point-release-plan.{mjs,test.mjs}.
+        run: node .github/scripts/point-release-plan.mjs
+
+      - name: Summarize
+        env:
+          DRY_RUN: ${{ steps.plan.outputs.dry_run }}
+          POINT_RELEASE_TAG: ${{ steps.plan.outputs.point_release_tag }}
+          LATEST_STABLE_TAG: ${{ steps.plan.outputs.latest_stable_tag }}
+          SYNTHETIC_SHA: ${{ steps.plan.outputs.synthetic_sha }}
+          DELTA_IDS: ${{ steps.plan.outputs.delta_ids }}
+          MAIN_RESET_DISPATCHED: ${{ steps.plan.outputs.main_reset_dispatched }}
+          MODE: ${{ inputs.mode }}
+          FIX_REFS: ${{ inputs.fix_refs }}
+        run: |
+          set -euo pipefail
+          {
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "### Point release plan — DRY RUN, nothing was pushed"
+            else
+              echo "### Point release ${POINT_RELEASE_TAG} shipped"
+            fi
+            echo "- Tag: \`${POINT_RELEASE_TAG}\` at \`${SYNTHETIC_SHA}\`"
+            echo "- Over stable: \`${LATEST_STABLE_TAG}\`"
+            echo "- Mode: \`${MODE}\` of \`${FIX_REFS}\`"
+            echo "- Changeset delta for main-reset: \`${DELTA_IDS}\` (dispatched: ${MAIN_RESET_DISPATCHED})"
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo ""
+              echo "Re-run with **dry_run unchecked** to ship this plan."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

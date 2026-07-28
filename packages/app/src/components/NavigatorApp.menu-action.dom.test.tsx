@@ -13,8 +13,9 @@
  *
  * Invocation: `bun run test:dom` from `packages/app/`.
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import {
   __resetLocalMenuActionBusForTests,
@@ -23,14 +24,14 @@ import {
 
 // `next-themes` is consumed at the top of NavigatorApp; provide a stable
 // stub so the test mount doesn't require a ThemeProvider.
-mock.module('next-themes', () => ({
+vi.doMock('next-themes', () => ({
   useTheme: () => ({ theme: 'system' }),
 }));
 
 // `useThemeBridge` drives the cold-launch show-gate via real IPC calls
 // (setThemeSource / signalThemeApplied). Stub to a no-op so the bridge stub
 // doesn't need those methods.
-mock.module('@/hooks/use-theme-bridge', () => ({
+vi.doMock('@/hooks/use-theme-bridge', () => ({
   useThemeBridge: () => {},
 }));
 
@@ -66,7 +67,8 @@ type MenuActionLike =
   | 'new-doc'
   | 'toggle-sidebar'
   | 'close-active-tab-or-window'
-  | 'report-bug';
+  | 'report-bug'
+  | 'send-feedback';
 
 interface NavigatorBridgeStub {
   bridge: OkDesktopBridge;
@@ -89,6 +91,7 @@ function makeNavigatorBridge(): NavigatorBridgeStub {
       mode: 'navigator',
     },
     onMenuAction: () => () => {},
+    onRecentRemovedMissing: () => () => {},
     project: {
       listRecent: async () => [],
       removeRecent: async () => undefined,
@@ -129,15 +132,15 @@ function makeNavigatorBridge(): NavigatorBridgeStub {
 }
 
 describe('NavigatorApp new-project menu-action subscription', () => {
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     // CreateProjectDialog's defaultProjectsRoot catch arm logs via
     // console.warn on unhappy paths; NavigatorApp's listRecent catch logs
     // via console.error. Suppress both to keep output clean.
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -210,8 +213,30 @@ describe('NavigatorApp new-project menu-action subscription', () => {
     expect(screen.getByText(/No project is open/)).not.toBeNull();
   });
 
+  test('send-feedback menu action opens the feedback form', async () => {
+    // The Help menu fires to whichever window is focused, so the Navigator
+    // owns this path whenever it is the focused window — the editor-window
+    // FeedbackMenuTrigger never runs here.
+    const stub = makeNavigatorBridge();
+    render(<NavigatorApp bridge={stub.bridge} />);
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    stub.fire('send-feedback');
+
+    await waitFor(
+      () => {
+        expect(
+          screen.queryByRole('dialog', { name: 'How do you like OpenKnowledge?' }),
+        ).not.toBeNull();
+      },
+      { timeout: ASYNC_TIMEOUT_MS },
+    );
+  });
+
   test('close-active-tab-or-window menu action closes the navigator window', async () => {
-    const closeSpy = spyOn(window, 'close').mockImplementation(() => {});
+    const closeSpy = vi.spyOn(window, 'close').mockImplementation(() => {});
     const stub = makeNavigatorBridge();
     render(<NavigatorApp bridge={stub.bridge} />);
 

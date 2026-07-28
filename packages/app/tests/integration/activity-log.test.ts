@@ -5,9 +5,10 @@
  * entries, that the ring-buffer eviction caps at 50 entries, and that concurrent
  * sessions produce distinct per-session entries.
  */
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+
 import { randomUUID } from 'node:crypto';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { EffectValue } from '../../../../packages/server/src/activity-log.ts';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {

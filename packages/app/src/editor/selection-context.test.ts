@@ -5,9 +5,10 @@
  * The source extractor reads only `view.state`, so a bare `EditorState` (no DOM)
  * exercises it.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { EditorState } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   getSelectionContext,
   INLINE_SELECTION_MAX_CHARS,

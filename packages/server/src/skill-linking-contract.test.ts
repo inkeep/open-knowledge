@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 /**
  * Guards the link-authoring contract in the bundled project skill so a later

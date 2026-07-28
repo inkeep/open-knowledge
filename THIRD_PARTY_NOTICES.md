@@ -6247,15 +6247,15 @@ Copyright (c) 1991 - 1995, Stichting Mathematisch Centrum Amsterdam,
 
 The packages below are authored and published by Inkeep and are licensed under GPL-3.0-or-later, the same license as OpenKnowledge itself (see the repository LICENSE for the full text). They are listed for completeness; they are not third-party material.
 
-### `@inkeep/mermaid-wysiwyg-core@0.1.0`
-Homepage: https://github.com/inkeep/mermaid-wysiwyg#readme
+### `@visimer/core@0.1.0`
+Homepage: https://github.com/inkeep/visimer#readme
 
-Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+Copyright (c) 2026 Inkeep
 
-### `@inkeep/mermaid-wysiwyg-dom@0.1.0`
-Homepage: https://github.com/inkeep/mermaid-wysiwyg#readme
+### `@visimer/dom@0.1.0`
+Homepage: https://github.com/inkeep/visimer#readme
 
-Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+Copyright (c) 2026 Inkeep
 
 ---
 
@@ -6266,7 +6266,6 @@ The following MIT-licensed packages are patched in this repository via pnpm's `p
 | Package | Patch file |
 | --- | --- |
 | `@handlewithcare/remark-prosemirror@0.1.5` | `patches/@handlewithcare%2Fremark-prosemirror@0.1.5.patch` |
-| `@inkeep/mermaid-wysiwyg-dom@0.1.0` | `patches/@inkeep%2Fmermaid-wysiwyg-dom@0.1.0.patch` |
 | `@pierre/trees@1.0.0-beta.4` | `patches/@pierre%2Ftrees@1.0.0-beta.4.patch` |
 | `@tiptap/extension-drag-handle@3.22.3` | `patches/@tiptap%2Fextension-drag-handle@3.22.3.patch` |
 | `@tiptap/y-tiptap@3.0.3` | `patches/@tiptap%2Fy-tiptap@3.0.3.patch` |

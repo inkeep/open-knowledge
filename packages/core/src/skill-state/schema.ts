@@ -7,7 +7,8 @@
  *
  * Two actively-written targets at v0:
  *   - `claude-cowork` — Track 2: `.skill` zip + Claude Desktop manual upload
- *   - `cli-hosts`     — Track 1: `npx skills add --agent '*' -g`
+ *   - `cli-hosts`     — Track 1: user-global bundle copied into each detected
+ *                       agent host (`installUserSkill`)
  *
  * Per-target metadata at v0:
  *   - `version`     — semver-ish string (regex-validated)

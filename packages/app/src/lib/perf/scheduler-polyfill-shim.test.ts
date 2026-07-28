@@ -8,7 +8,7 @@
 // './scheduler-polyfill-shim'`, the consumer (mount-promise.ts at the
 // construction-mount yield-point) sees a callable `scheduler.yield()`.
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import './scheduler-polyfill-shim';
 
 describe('scheduler-polyfill-shim install side-effect', () => {

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { propertiesToFrontmatter } from './properties-frontmatter.ts';
 
 const KEYS = new Set(['Status', 'Owner', 'Priority', 'White-Paper / E-Book?', 'Target Metric']);

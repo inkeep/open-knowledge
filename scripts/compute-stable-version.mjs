@@ -25,13 +25,28 @@
  * clean `merge-base --is-ancestor` false exits non-zero (retry next tick) rather
  * than folding an infra error into a promote/no-op decision.
  *
+ * Second mode: node scripts/compute-stable-version.mjs --anchor-guard
+ * See `evaluateAnchorGuard` below. Appends anchor_ok / anchor_version /
+ * latest_stable_version / anchor_drift to $GITHUB_OUTPUT. Exit 0 when level,
+ * 2 when drifted, 1 on an infra/format error — the drifted and broken cases
+ * carry different exit codes so a caller can tell "wait for the reset" from
+ * "something is wrong". The mode is additive; the beta-tag contract above is
+ * unchanged, because sibling workflows already depend on it.
+ *
+ * Third mode: node scripts/compute-stable-version.mjs --point-release <mode> <sha>
+ * See `computePointReleaseVersion` below. The point-release lane builds a
+ * synthetic commit that no tag names, so it cannot ask the beta-tag mode for a
+ * version. Appends point_release_version / point_release_tag / bump /
+ * added_ids / removed_ids / latest_stable_version / latest_stable_sha to
+ * $GITHUB_OUTPUT. Also additive.
+ *
  * The pure core (`computeStablePromotion`) takes its git boundary as an injected
  * dependency so tests need no live repo (mirrors promote-stable-auto.mjs).
  */
 import { spawnSync } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { bumpSemver, maxBumpType, parseFrontmatterBumpType } from './compute-next-beta.mjs';
+import { FIXED_GROUP_ANCHOR, bumpSemver, maxBumpType, parseFrontmatterBumpType } from './compute-next-beta.mjs';
 
 const BETA_TAG_RE = /^v\d+\.\d+\.\d+-beta\.\d+$/;
 const STABLE_TAG_RE = /^v\d+\.\d+\.\d+$/;
@@ -128,9 +143,159 @@ export function computeStablePromotion(betaTag, git) {
   };
 }
 
-// --- workflow-runtime wiring (real git boundary) ---
+/**
+ * The stable version a POINT RELEASE lands on: one bump over the current
+ * stable, computed from the changeset delta of an arbitrary synthetic commit
+ * instead of a beta tag.
+ *
+ * Why this is a second entry point rather than a widened `computeStablePromotion`.
+ * That function's input is a beta TAG, and two of its branches are correct for
+ * the soak lane and wrong here. A point release builds its own commit that no
+ * tag names, so there is nothing to `revParse`. And in revert mode the added
+ * changeset delta is legitimately empty, which the promotion path reads as
+ * "nothing to promote" and declines. The version arithmetic underneath is the
+ * same set difference, so it is reused; the decision wrapped around it is not.
+ *
+ * Where the bump comes from depends on `mode`:
+ *   'cherry-pick' — max bump across the changesets the picked fix brought in,
+ *                   the same rule the soak lane applies.
+ *   'revert'      — the constant 'patch'. A revert restores already-shipped
+ *                   behavior and adds no changeset, so there is no frontmatter
+ *                   to read and nothing that could justify minor or major.
+ *
+ * `removedIds` is reported, never acted on here. A revert dropping a still
+ * pending changeset from the synthetic tree is expected; the same in
+ * cherry-pick mode means the operator picked a ref that undoes pending work,
+ * and the caller's delta guard needs both halves of the difference to say so.
+ *
+ * A missing or malformed `latestStableTag` throws instead of bootstrapping.
+ * There is no bootstrap shape here by construction: a point release is a patch
+ * OVER an existing stable, so no stable at all means the wrong lane, not a
+ * first release.
+ *
+ * Returns { version, tag, latestStableVersion, addedIds, removedIds, bump }.
+ */
+export function computePointReleaseVersion({ syntheticSha, latestStableTag, latestStableSha, mode }, git) {
+  if (mode !== 'cherry-pick' && mode !== 'revert') {
+    // An unrecognized mode would otherwise fall through to the cherry-pick
+    // branch and read frontmatter off changesets a revert never added.
+    throw new Error(`Point-release mode '${mode}' is not one of: cherry-pick, revert.`);
+  }
+  const sha = String(syntheticSha ?? '').trim();
+  if (sha === '') throw new Error('Point-release requires a synthetic commit sha.');
+  const stableSha = String(latestStableSha ?? '').trim();
+  if (stableSha === '') throw new Error('Point-release requires the latest stable commit sha.');
+  const stableTag = String(latestStableTag ?? '').trim();
+  if (!STABLE_TAG_RE.test(stableTag)) {
+    throw new Error(`latest stable tag '${latestStableTag}' is not in the expected vX.Y.Z format.`);
+  }
 
-function runGit(args) {
+  const latestStableVersion = stableTag.slice(1);
+  const stableIdList = git.changesetIds(stableSha);
+  const syntheticIdList = git.changesetIds(sha);
+  const stableIds = new Set(stableIdList);
+  const syntheticIds = new Set(syntheticIdList);
+  const addedIds = syntheticIdList.filter((id) => !stableIds.has(id));
+  const removedIds = stableIdList.filter((id) => !syntheticIds.has(id));
+
+  const bump = mode === 'revert' ? 'patch' : maxBumpType(addedIds.map((id) => git.bumpTypeOf(sha, id)));
+  const version = bumpSemver(latestStableVersion, bump);
+  return { version, tag: `v${version}`, latestStableVersion, addedIds, removedIds, bump };
+}
+
+/**
+ * Is the changeset anchor still level with the newest stable tag?
+ *
+ * The anchor is `pre.json#initialVersions[<fixed group anchor>]`, which a
+ * stable promotion's main-reset advances once it has consolidated that
+ * promotion's changesets. Between the tag landing and the reset landing, the
+ * anchor is BEHIND the newest stable, and any version computed off it in that
+ * window lands on a version that is already taken or already shipped. The
+ * window is real: the reset travels back through a merge queue and a mirror
+ * round-trip, so it can stay open for a long time.
+ *
+ * This function only reports; it never sleeps and never retries. Callers
+ * inside the shared release-cadence concurrency group must REFUSE on `ok:
+ * false` (exit non-zero, holding no lock) rather than wait, because waiting
+ * there holds the lock every beta cut and every other promotion needs, which
+ * would stall the very fast path a stale anchor is delaying. Waiting belongs
+ * in an evaluator that carries its own concurrency group and can simply
+ * decline this tick and re-evaluate on the next one.
+ *
+ * `latestStableTag` of "" means no stable exists yet. That is the bootstrap
+ * shape the promotion path already handles, and there is no drift to detect
+ * against a stable that does not exist, so it passes.
+ *
+ * Malformed inputs THROW rather than returning `ok: false`: an unreadable
+ * anchor is an infrastructure problem, and reporting it as drift would send an
+ * operator to look for a pending main-reset that does not exist.
+ *
+ * Returns { ok, anchorVersion, latestStableVersion, drift, reason } where
+ * drift is 'none' | 'behind' | 'ahead' | 'bootstrap'.
+ */
+export function evaluateAnchorGuard({ anchorVersion, latestStableTag }) {
+  const anchor = String(anchorVersion ?? '').trim();
+  if (!/^\d+\.\d+\.\d+$/.test(anchor)) {
+    throw new Error(`anchor version '${anchorVersion}' is not a bare X.Y.Z version.`);
+  }
+  const tag = String(latestStableTag ?? '').trim();
+  if (tag === '') {
+    return {
+      ok: true,
+      anchorVersion: anchor,
+      latestStableVersion: '',
+      drift: 'bootstrap',
+      reason: `No stable tag exists yet; the anchor (${anchor}) cannot be stale against it.`,
+    };
+  }
+  if (!STABLE_TAG_RE.test(tag)) {
+    throw new Error(`latest stable tag '${latestStableTag}' is not in the expected vX.Y.Z format.`);
+  }
+  const latestStableVersion = tag.slice(1);
+  if (anchor === latestStableVersion) {
+    return {
+      ok: true,
+      anchorVersion: anchor,
+      latestStableVersion,
+      drift: 'none',
+      reason: `Anchor ${anchor} matches the newest stable ${tag}.`,
+    };
+  }
+  // Direction is worth naming: behind is the ordinary pending-reset case an
+  // operator waits out, ahead means the anchor advanced past a stable that was
+  // never tagged, which is a different investigation.
+  const drift = compareVersions(anchor, latestStableVersion) < 0 ? 'behind' : 'ahead';
+  return {
+    ok: false,
+    anchorVersion: anchor,
+    latestStableVersion,
+    drift,
+    reason:
+      drift === 'behind'
+        ? `Anchor ${anchor} is behind the newest stable ${tag}; a main-reset consolidation is still pending.`
+        : `Anchor ${anchor} is ahead of the newest stable ${tag}; a consolidation advanced without a matching stable tag.`,
+  };
+}
+
+function compareVersions(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if (pa[i] !== pb[i]) return pa[i] < pb[i] ? -1 : 1;
+  }
+  return 0;
+}
+
+// --- workflow-runtime wiring (real git boundary) ---
+//
+// `runGit`, `realGit` and `readAnchorVersion` are exported because
+// .github/scripts/point-release-plan.mjs builds its own boundary on top of
+// them. Keeping one implementation matters most for `isAncestor` and
+// `changesetIds`: a second copy that read a clean "not an ancestor" and an
+// infra failure the same way would let a release path decide confidently on a
+// git error.
+
+export function runGit(args) {
   const res = spawnSync('git', args, { encoding: 'utf8' });
   if (res.status !== 0) {
     throw new Error(`git ${args.join(' ')} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`);
@@ -138,7 +303,7 @@ function runGit(args) {
   return String(res.stdout || '');
 }
 
-const realGit = {
+export const realGit = {
   revParse: (ref) => runGit(['rev-parse', '--verify', `${ref}^{commit}`]).trim(),
   newestStableTag: () => {
     for (const line of runGit(['tag', '--list', 'v*', '--sort=-version:refname']).split('\n')) {
@@ -168,7 +333,113 @@ const realGit = {
   bumpTypeOf: (sha, id) => parseFrontmatterBumpType(runGit(['show', `${sha}:.changeset/${id}.md`])),
 };
 
+// Both sides must be read from the same clone, and that clone has to be the
+// release repo: the anchor is the mirrored pre.json in the checked-out tree,
+// while the stable tags only exist where releases are cut. Run this in the
+// source monorepo instead and `newestStableTag` returns a different product's
+// `v*` tags, so the guard refuses on every invocation.
+export function readAnchorVersion() {
+  const pre = JSON.parse(readFileSync('.changeset/pre.json', 'utf8'));
+  // Outside pre mode `initialVersions` is whatever the last cycle left behind,
+  // which would read as a plausible anchor and yield a confident wrong verdict.
+  if (pre.mode !== 'pre') {
+    throw new Error(`Expected .changeset/pre.json mode=pre, got mode=${pre.mode}; the anchor is not meaningful.`);
+  }
+  const anchor = pre.initialVersions?.[FIXED_GROUP_ANCHOR];
+  if (!anchor) throw new Error(`No initialVersion for ${FIXED_GROUP_ANCHOR} in .changeset/pre.json`);
+  return anchor;
+}
+
+function anchorGuardMain() {
+  let result;
+  try {
+    result = evaluateAnchorGuard({
+      anchorVersion: readAnchorVersion(),
+      latestStableTag: realGit.newestStableTag(),
+    });
+  } catch (err) {
+    console.error(`::error::compute-stable-version --anchor-guard: ${err.message}`);
+    process.exit(1);
+  }
+
+  console.log(JSON.stringify(result));
+
+  if (process.env.GITHUB_OUTPUT) {
+    appendFileSync(
+      process.env.GITHUB_OUTPUT,
+      [
+        `anchor_ok=${result.ok ? 'true' : 'false'}`,
+        `anchor_version=${result.anchorVersion}`,
+        `latest_stable_version=${result.latestStableVersion}`,
+        `anchor_drift=${result.drift}`,
+        '',
+      ].join('\n'),
+    );
+  }
+
+  if (!result.ok) {
+    // Refuse, do not wait: this mode is called from inside the shared
+    // release-cadence group, where sleeping would block every other cut.
+    console.error(`::error::${result.reason}`);
+    process.exit(2);
+  }
+  log(result.reason);
+}
+
+function pointReleaseMain() {
+  let result;
+  try {
+    const latestStableTag = realGit.newestStableTag();
+    if (!latestStableTag) {
+      throw new Error('No stable tag exists in this clone; a point release is a patch over an existing stable.');
+    }
+    result = computePointReleaseVersion(
+      {
+        syntheticSha: process.argv[4],
+        latestStableTag,
+        latestStableSha: realGit.revParse(latestStableTag),
+        mode: process.argv[3],
+      },
+      realGit,
+    );
+  } catch (err) {
+    console.error(`::error::compute-stable-version --point-release: ${err.message}`);
+    process.exit(1);
+  }
+
+  log(
+    `Point release -> ${result.tag} (${result.bump} over v${result.latestStableVersion}; ` +
+      `${result.addedIds.length} added, ${result.removedIds.length} removed changesets).`,
+  );
+  console.log(JSON.stringify(result));
+
+  if (process.env.GITHUB_OUTPUT) {
+    appendFileSync(
+      process.env.GITHUB_OUTPUT,
+      [
+        `point_release_version=${result.version}`,
+        `point_release_tag=${result.tag}`,
+        `latest_stable_version=${result.latestStableVersion}`,
+        `bump=${result.bump}`,
+        `added_ids=${JSON.stringify(result.addedIds)}`,
+        `removed_ids=${JSON.stringify(result.removedIds)}`,
+        '',
+      ].join('\n'),
+    );
+  }
+}
+
 function main() {
+  if (process.argv[2] === '--anchor-guard') {
+    anchorGuardMain();
+    return;
+  }
+
+  if (process.argv[2] === '--point-release') {
+    pointReleaseMain();
+    return;
+  }
+
   const betaTag = process.argv[2];
   if (!betaTag) {
     log('::error::compute-stable-version: missing beta tag argument (usage: compute-stable-version.mjs <vX.Y.Z-beta.N>).');

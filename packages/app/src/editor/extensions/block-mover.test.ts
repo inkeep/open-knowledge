@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test';
 import { Schema } from '@tiptap/pm/model';
 import { EditorState, TextSelection } from '@tiptap/pm/state';
+import { describe, expect, test } from 'vitest';
 import { currentTopLevelBlock, moveBlockDown, moveBlockUp } from './block-mover';
 
 const schema = new Schema({

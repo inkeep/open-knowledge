@@ -19,9 +19,9 @@
  * and false-positive widenings (above 3).
  */
 
-import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper';
 
 // __dirname → packages/app/tests/lint-plugins/. Repo root is 4 levels up.

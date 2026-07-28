@@ -411,9 +411,12 @@ class LoggerFactory {
    * RotatingAppender chain that must be awaited separately.
    *
    * Each PinoLogger constructed via the factory owns its own PinoFileSink
-   * instance (logger.ts's buildInstance() allocates one per logger), so the
-   * factory must walk every cached entry — draining any single logger does
-   * not drain the others. No-op when nothing has a sink wired.
+   * instance (logger.ts's buildInstance() allocates one per logger). Sinks
+   * targeting the same log path share one per-path rotation chain (see
+   * RotatingAppender), so draining any one of them also drains the others on
+   * that path; walking every cached entry stays correct and additionally
+   * covers sinks that target different paths. No-op when nothing has a sink
+   * wired.
    */
   async flushAllFileSinks(): Promise<void> {
     const drains: Promise<void>[] = [];

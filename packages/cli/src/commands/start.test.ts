@@ -26,6 +26,7 @@ import {
   shouldConnectToExistingServer,
   spawnOkUi,
   startCommand,
+  teardownUiSibling,
   tryDescribeLockCollision,
   type UiSpawnDecision,
   withEphemeralTempDirReap,
@@ -343,6 +344,78 @@ describe('buildIdleShutdownHandler', () => {
     });
     await onShutdown();
     expect(events).toEqual(['destroy']);
+  });
+});
+
+describe('teardownUiSibling (signal-driven ok start teardown)', () => {
+  test('SIGTERMs the owned sibling and returns once it exits within grace', async () => {
+    const events: string[] = [];
+    let alive = true;
+    await teardownUiSibling({
+      readUiLock: () => ({ pid: 1234, port: 3000 }),
+      spawnedUiPid: () => 1234,
+      isAlive: () => alive,
+      killPid: (pid, sig) => {
+        events.push(`kill:${pid}:${sig}`);
+        if (sig === 'SIGTERM') alive = false;
+      },
+      sigtermGraceMs: 100,
+      sigtermPollIntervalMs: 5,
+      sleep: async () => {},
+      reason: 'shutdown',
+    });
+    expect(events).toEqual(['kill:1234:SIGTERM']);
+  });
+
+  test('escalates to SIGKILL when the owned sibling ignores SIGTERM', async () => {
+    const events: string[] = [];
+    await teardownUiSibling({
+      readUiLock: () => ({ pid: 1234, port: 3000 }),
+      spawnedUiPid: () => 1234,
+      isAlive: () => true,
+      killPid: (pid, sig) => events.push(`kill:${pid}:${sig}`),
+      sigtermGraceMs: 20,
+      sigtermPollIntervalMs: 5,
+      sleep: async () => {},
+      reason: 'shutdown',
+    });
+    expect(events).toEqual(['kill:1234:SIGTERM', 'kill:1234:SIGKILL']);
+  });
+
+  // The regression guard: on the signal path too, a live ui.lock holder that is
+  // NOT the pid we spawned must be left untouched. This is the exact incident
+  // (a stale/idle server SIGTERMing a live desktop-spawned or other-session
+  // server that merely holds ui.lock) the spawnedUiPid guard exists to prevent.
+  test('leaves a live ui.lock holder alone when it is not the spawned sibling', async () => {
+    const events: string[] = [];
+    const infos: object[] = [];
+    await teardownUiSibling({
+      readUiLock: () => ({ pid: 9999, port: 3000 }),
+      spawnedUiPid: () => 1234,
+      isAlive: () => true,
+      killPid: (pid, sig) => events.push(`kill:${pid}:${sig}`),
+      log: { info: (obj) => infos.push(obj), warn: () => {}, error: () => {} },
+      reason: 'shutdown',
+    });
+    expect(events).toEqual([]);
+    expect(infos.find((entry) => (entry as { pid?: number }).pid === 9999)).toBeDefined();
+  });
+
+  // Defense-in-depth: even if a null ownPid reaches teardownUiSibling (the
+  // signal handler's `!== null` guard means it normally can't), a live lock
+  // holder routes through the ownership-guard "leave it alone" branch — a null
+  // ownPid never equals a real pid — so nothing is killed.
+  test('leaves a live lock holder alone when ownPid is null (routes through the ownership guard)', async () => {
+    const events: string[] = [];
+    await teardownUiSibling({
+      readUiLock: () => ({ pid: 52425, port: 64430 }),
+      spawnedUiPid: () => null,
+      isAlive: () => true,
+      killPid: (pid, sig) => events.push(`kill:${pid}:${sig}`),
+      log: { info: () => {}, warn: () => {}, error: () => {} },
+      reason: 'shutdown',
+    });
+    expect(events).toEqual([]);
   });
 });
 

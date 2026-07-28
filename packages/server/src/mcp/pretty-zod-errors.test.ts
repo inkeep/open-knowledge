@@ -14,9 +14,10 @@
  * see in the chat surface (`McpError.message`), not how the formatter is
  * structured internally. Keeps the test resilient to formatter changes.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
+import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
 import { installPrettyZodErrors } from './pretty-zod-errors.ts';
 

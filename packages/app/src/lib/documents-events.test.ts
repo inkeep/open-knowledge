@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 import { emitDocumentsChanged, subscribeToDocumentsChanged } from './documents-events';
 
 const originalWindow = globalThis.window;

@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import { act, cleanup, renderHook } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   __resetViewMenuStateForTests,
   setViewMenuState,

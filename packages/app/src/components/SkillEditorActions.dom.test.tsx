@@ -8,12 +8,12 @@
  * pill reverts from the optimistic "Draft" back to server-truth "Installed".
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { describe, expect, test, vi } from 'vitest';
 import * as linguiShim from '../../tests/lingui-macro-shim';
 
-mock.module('@lingui/react/macro', () => linguiShim);
+vi.doMock('@lingui/react/macro', () => linguiShim);
 
 const installedEntry = {
   scope: 'project' as const,
@@ -24,13 +24,13 @@ const installedEntry = {
   hosts: ['claude'],
 };
 
-const uninstall = mock(async () => ({ ok: false as const, error: 'boom' }));
-const install = mock(async () => ({ ok: false as const, error: 'boom' }));
+const uninstall = vi.fn(async () => ({ ok: false as const, error: 'boom' }));
+const install = vi.fn(async () => ({ ok: false as const, error: 'boom' }));
 
-mock.module('@/hooks/use-skills', () => ({
+vi.doMock('@/hooks/use-skills', () => ({
   useSkills: () => ({ status: 'ready', data: [installedEntry] }),
 }));
-mock.module('@/components/skill-actions', () => ({
+vi.doMock('@/components/skill-actions', () => ({
   useSkillActions: () => ({
     installingName: null,
     install,

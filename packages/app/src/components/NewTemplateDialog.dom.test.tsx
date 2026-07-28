@@ -12,9 +12,10 @@
  * can pin the foundational invariant the shift rides on: a dismiss press must
  * not perturb the form's validation state.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { NewTemplateDialog } from './NewTemplateDialog';
 
 // Radix Dialog (focus-trap) reaches for DOM globals the shared jsdom preload

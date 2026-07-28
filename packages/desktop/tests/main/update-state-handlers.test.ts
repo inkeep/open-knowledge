@@ -8,7 +8,7 @@
  * dep on `ok:state:query`.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import {
   type AppState,
   emptyState,
@@ -51,7 +51,7 @@ function makeRig(overrides?: {
     setAppState: (s) => {
       rig.state = s;
     },
-    saveAppState: mock((next: AppState) => {
+    saveAppState: vi.fn((next: AppState) => {
       rig.saveCalls.push(next);
       return rig.saveResult;
     }),

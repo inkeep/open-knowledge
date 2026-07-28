@@ -24,7 +24,6 @@
  * string is byte-identical to what the PTY receives).
  */
 
-import { describe, expect, test } from 'bun:test';
 import {
   assembleHandoffPrompt,
   buildCliLaunchArgString,
@@ -34,6 +33,7 @@ import {
   TERMINAL_CLI_IDS,
   TERMINAL_INLINE_PROMPT_BUDGET,
 } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import type { HandoffDispatchInput } from './useHandoffDispatch';
 
 /** The composer's truncation marker (`INSTRUCTION_TRUNCATION_MARKER` in

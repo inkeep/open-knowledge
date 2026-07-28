@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { readBootSessionUuid } from './boot-session.ts';
 
 const onDarwin = process.platform === 'darwin' ? test : test.skip;

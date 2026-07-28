@@ -1,6 +1,12 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { pushHashWithoutNavigation } from '@/lib/doc-hash';
+import { matchesKeyboardShortcut, type ShortcutEventLike } from '@/lib/keyboard-shortcuts';
+import {
+  __resetLocalMenuActionBusForTests,
+  emitLocalMenuAction,
+} from '@/lib/local-menu-action-bus';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 
 type NavigationTarget =
@@ -22,7 +28,7 @@ let openTabs: string[] = [];
 let loading = false;
 let singleFileMode = false;
 let tabSessionLoaded = true;
-let fetchApiConfigMock = mock(() =>
+let fetchApiConfigMock = vi.fn(() =>
   Promise.resolve({
     status: 'ok' as const,
     config: {
@@ -33,21 +39,23 @@ let fetchApiConfigMock = mock(() =>
     },
   }),
 );
-let clearTargetMock = mock(() => {});
-let syncOpenTabsWithKnownTargetsMock = mock(() => {});
-let openTargetTransitionMock = mock((_: NavigationTarget) => {});
-let resolveNavigationTargetMock = mock(
+let clearTargetMock = vi.fn(() => {});
+let syncOpenTabsWithKnownTargetsMock = vi.fn(() => {});
+let openTargetTransitionMock = vi.fn(
+  (_: NavigationTarget, _options?: { tabBehavior?: 'append' | 'replace-active' }) => {},
+);
+let resolveNavigationTargetMock = vi.fn(
   (docName: string): NavigationTarget => ({ kind: 'doc', target: docName, docName }),
 );
-let downgradeFolderIndexForHashNavMock = mock((target: NavigationTarget) => target);
-let withLargeFileOpenGuardMock = mock((target: NavigationTarget) => target);
+let downgradeFolderIndexForHashNavMock = vi.fn((target: NavigationTarget) => target);
+let withLargeFileOpenGuardMock = vi.fn((target: NavigationTarget) => target);
 
-mock.module('@/lib/perf', () => ({
+vi.doMock('@/lib/perf', () => ({
   mark: () => {},
   ProfilerBoundary: ({ children }: { children: ReactNode }) => children,
 }));
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   DocumentProvider: ({ children }: { children: ReactNode }) => (
     <div data-testid="document-provider">{children}</div>
   ),
@@ -67,7 +75,7 @@ mock.module('@/editor/DocumentContext', () => ({
   }),
 }));
 
-mock.module('@/components/PageListContext', () => ({
+vi.doMock('@/components/PageListContext', () => ({
   PageListProvider: ({ children }: { children: ReactNode }) => (
     <div data-testid="page-list-provider">{children}</div>
   ),
@@ -83,7 +91,7 @@ mock.module('@/components/PageListContext', () => ({
   }),
 }));
 
-mock.module('@/components/navigation-targets', () => ({
+vi.doMock('@/components/navigation-targets', () => ({
   resolveNavigationTarget: (...args: Parameters<typeof resolveNavigationTargetMock>) =>
     resolveNavigationTargetMock(...args),
   downgradeFolderIndexForHashNav: (target: NavigationTarget) =>
@@ -91,91 +99,99 @@ mock.module('@/components/navigation-targets', () => ({
   withLargeFileOpenGuard: (target: NavigationTarget) => withLargeFileOpenGuardMock(target),
 }));
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   ConfigProvider: ({ children }: { children: ReactNode }) => (
     <div data-testid="config-provider">{children}</div>
   ),
+  // ValidationFreshness (mounted in the App body) gates on the merged config;
+  // null merged reads as every default (indicators on).
+  useConfigContext: () => ({ merged: null }),
 }));
 
 // AppBody reads `merged.appearance.preview.autoOpen` to compose the
 // "Open in terminal" launch prompt; the ConfigProvider above is a passthrough
 // so the real context is never set. Stub the hook to the cold-start shape.
-mock.module('@/lib/config-context', () => ({
+vi.doMock('@/lib/config-context', () => ({
   useConfigContext: () => ({ merged: null }),
 }));
 
-mock.module('@/lib/api-config', () => ({
+vi.doMock('@/lib/api-config', () => ({
   fetchApiConfig: (...args: Parameters<typeof fetchApiConfigMock>) => fetchApiConfigMock(...args),
 }));
 
 // ConfigProviderHost mounts the app-lifetime server keepalive; stub it so this
 // chrome-focused test doesn't open a real WebSocket. Behavior is covered by
 // use-server-keepalive.dom.test.tsx.
-mock.module('@/lib/use-server-keepalive', () => ({
+vi.doMock('@/lib/use-server-keepalive', () => ({
   useServerKeepalive: () => {},
 }));
 
-mock.module('@/lib/single-file-mode', () => ({
+vi.doMock('@/lib/single-file-mode', () => ({
   SingleFileModeProvider: ({ children }: { children: ReactNode }) => (
     <div data-testid="single-file-mode-provider">{children}</div>
   ),
   useSingleFileMode: () => singleFileMode,
 }));
 
-mock.module('@/components/ConnectingBanner', () => ({
+vi.doMock('@/components/ConnectingBanner', () => ({
   ConnectingBanner: () => <div data-testid="connecting-banner" />,
 }));
 
-mock.module('@/components/SystemDocSubscriber', () => ({
+vi.doMock('@/components/SystemDocSubscriber', () => ({
   SystemDocSubscriber: () => <div data-testid="system-doc-subscriber" />,
 }));
 
-mock.module('@/components/McpConsentDialog', () => ({
+vi.doMock('@/components/McpConsentDialog', () => ({
   McpConsentDialog: () => <div data-testid="mcp-consent-dialog" />,
 }));
 
-mock.module('@/components/CommandPalette', () => ({
+vi.doMock('@/components/CommandPalette', () => ({
   CommandPalette: ({ open }: { open: boolean }) => (
     <div data-testid="command-palette" data-open={String(open)} />
   ),
 }));
 
-mock.module('@/components/AuthModal', () => ({
+vi.doMock('@/components/AuthModal', () => ({
   AuthModal: ({ open }: { open: boolean }) => (
     <div data-testid="auth-modal" data-open={String(open)} />
   ),
 }));
 
-mock.module('@/components/InstallInClaudeDesktopDialog', () => ({
+vi.doMock('@/components/InstallInClaudeDesktopDialog', () => ({
   InstallInClaudeDesktopDialog: ({ open }: { open: boolean }) => (
     <div data-testid="install-dialog" data-open={String(open)} />
   ),
 }));
 
-mock.module('@/components/CreateProjectMenuTrigger', () => ({
+vi.doMock('@/components/CreateProjectMenuTrigger', () => ({
   CreateProjectMenuTrigger: () => <div data-testid="create-project-menu-trigger" />,
 }));
 
-mock.module('@/components/ReportBugMenuTrigger', () => ({
+vi.doMock('@/components/ReportBugMenuTrigger', () => ({
   ReportBugMenuTrigger: () => <div data-testid="report-bug-menu-trigger" />,
 }));
 
-mock.module('@/components/ShareBranchSwitchDialog', () => ({
+vi.doMock('@/components/FeedbackMenuTrigger', () => ({
+  FeedbackMenuTrigger: () => <div data-testid="feedback-menu-trigger" />,
+}));
+
+vi.doMock('@/components/ShareBranchSwitchDialog', () => ({
   ShareBranchSwitchDialog: () => <div data-testid="share-branch-switch-dialog" />,
 }));
 
-mock.module('@/components/ShareReceiveMissDialog', () => ({
+vi.doMock('@/components/ShareReceiveMissDialog', () => ({
   ShareReceiveMissDialog: () => <div data-testid="share-receive-miss-dialog" />,
 }));
 
-mock.module('@/components/NewItemDialog', () => ({
-  isNewItemShortcut: () => false,
+vi.doMock('@/components/NewItemDialog', () => ({
+  isNewItemShortcut: (event: ShortcutEventLike) =>
+    matchesKeyboardShortcut(event, 'new-item', 'mac'),
   NewItemDialog: ({ open, initialDir }: { open: boolean; initialDir: string }) => (
     <div data-testid="new-item-dialog" data-open={String(open)} data-initial-dir={initialDir} />
   ),
 }));
 
-mock.module('@/components/FileSidebar', () => ({
+vi.doMock('@/components/FileSidebar', () => ({
   FileSidebar: ({ onOpenSearch }: { onOpenSearch: () => void }) => (
     <button type="button" data-testid="file-sidebar" onClick={onOpenSearch}>
       Sidebar
@@ -183,11 +199,11 @@ mock.module('@/components/FileSidebar', () => ({
   ),
 }));
 
-mock.module('@/components/EditorPane', () => ({
+vi.doMock('@/components/EditorPane', () => ({
   EditorPane: () => <main data-testid="editor-pane" />,
 }));
 
-mock.module('@/components/ui/sidebar', () => ({
+vi.doMock('@/components/ui/sidebar', () => ({
   SidebarProvider: ({ children, className }: { children: ReactNode; className?: string }) => (
     <section data-testid="sidebar-provider" className={className}>
       {children}
@@ -200,19 +216,19 @@ mock.module('@/components/ui/sidebar', () => ({
   ),
 }));
 
-mock.module('@/components/ShareReceiveDialog', () => ({
+vi.doMock('@/components/ShareReceiveDialog', () => ({
   ShareReceiveDialog: () => <div data-testid="share-receive-dialog" />,
 }));
 
-mock.module('@/lib/share/clone-controller', () => ({
+vi.doMock('@/lib/share/clone-controller', () => ({
   createCloneController: () => ({}),
 }));
 
-mock.module('@/lib/transports/auth-query-transport', () => ({
+vi.doMock('@/lib/transports/auth-query-transport', () => ({
   httpAuthQueryTransport: () => ({}),
 }));
 
-mock.module('@/lib/transports/clone-transport', () => ({
+vi.doMock('@/lib/transports/clone-transport', () => ({
   httpCloneTransport: () => ({}),
 }));
 
@@ -221,7 +237,13 @@ const { App } = await import('./App');
 function createBridge() {
   return {
     editor: {
-      notifyActiveTargetChanged: mock(() => {}),
+      notifyActiveTargetChanged: vi.fn(() => {}),
+    },
+    // The real preload always exposes `config`; App reads `config.ptyAvailable`
+    // to gate the terminal-launch provider (mac-only PTY). Mirror that shape so
+    // the gate resolves instead of dereferencing undefined.
+    config: {
+      ptyAvailable: true,
     },
   };
 }
@@ -243,6 +265,7 @@ function setHash(hash: string) {
 describe('App runtime wiring', () => {
   beforeEach(() => {
     cleanup();
+    __resetLocalMenuActionBusForTests();
     Reflect.deleteProperty(window, 'okDesktop');
     setHash('');
     activeTarget = null;
@@ -257,7 +280,7 @@ describe('App runtime wiring', () => {
     loading = false;
     singleFileMode = false;
     tabSessionLoaded = true;
-    fetchApiConfigMock = mock(() =>
+    fetchApiConfigMock = vi.fn(() =>
       Promise.resolve({
         status: 'ok' as const,
         config: {
@@ -268,19 +291,23 @@ describe('App runtime wiring', () => {
         },
       }),
     );
-    globalThis.fetch = mock(() => Promise.resolve(new Response(null, { status: 204 }))) as never;
-    clearTargetMock = mock(() => {});
-    syncOpenTabsWithKnownTargetsMock = mock(() => {});
-    openTargetTransitionMock = mock((_: NavigationTarget) => {});
-    resolveNavigationTargetMock = mock(
+    globalThis.fetch = vi.fn(() => Promise.resolve(new Response(null, { status: 204 }))) as never;
+    clearTargetMock = vi.fn(() => {});
+    syncOpenTabsWithKnownTargetsMock = vi.fn(() => {});
+    openTargetTransitionMock = vi.fn(
+      (_: NavigationTarget, _options?: { tabBehavior?: 'append' | 'replace-active' }) => {},
+    );
+    resolveNavigationTargetMock = vi.fn(
       (docName: string): NavigationTarget => ({ kind: 'doc', target: docName, docName }),
     );
-    downgradeFolderIndexForHashNavMock = mock((target: NavigationTarget) => target);
-    withLargeFileOpenGuardMock = mock((target: NavigationTarget) => target);
+    downgradeFolderIndexForHashNavMock = vi.fn((target: NavigationTarget) => target);
+    withLargeFileOpenGuardMock = vi.fn((target: NavigationTarget) => target);
   });
 
   afterEach(() => {
     cleanup();
+    __resetLocalMenuActionBusForTests();
+    vi.restoreAllMocks();
   });
 
   test('imports and mounts the app shell providers and core surfaces', () => {
@@ -321,6 +348,22 @@ describe('App runtime wiring', () => {
     expect(window.location.hash).toBe('#settings');
   });
 
+  test('does not claim Cmd+Shift+N from the desktop new-folder accelerator', () => {
+    renderApp({ bridge: createBridge() });
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'N',
+      metaKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(window, event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(screen.getByTestId('new-item-dialog').getAttribute('data-open')).toBe('false');
+  });
+
   test('hash navigation opens the downgraded folder-index target, not the pre-downgrade result', async () => {
     const resolved: NavigationTarget = {
       kind: 'folder-index',
@@ -333,8 +376,8 @@ describe('App runtime wiring', () => {
       target: 'reports',
       folderPath: 'reports',
     };
-    resolveNavigationTargetMock = mock(() => resolved);
-    downgradeFolderIndexForHashNavMock = mock(() => downgraded);
+    resolveNavigationTargetMock = vi.fn(() => resolved);
+    downgradeFolderIndexForHashNavMock = vi.fn(() => downgraded);
     setHash('#/reports/');
 
     renderApp();
@@ -348,7 +391,7 @@ describe('App runtime wiring', () => {
 
   test('hash navigation keeps an open extension-qualified markdown tab exact', async () => {
     openTabs = ['docs/guide.mdx'];
-    resolveNavigationTargetMock = mock(() => ({
+    resolveNavigationTargetMock = vi.fn(() => ({
       kind: 'doc',
       target: 'docs/guide',
       docName: 'docs/guide',
@@ -365,6 +408,119 @@ describe('App runtime wiring', () => {
       });
     });
     expect(resolveNavigationTargetMock).not.toHaveBeenCalled();
+  });
+
+  test('navigation-history subscription cleans up before remount and invokes each action once', () => {
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+    const forward = vi.spyOn(window.history, 'forward').mockImplementation(() => {});
+    renderApp();
+    cleanup();
+    renderApp();
+
+    emitLocalMenuAction('navigate-back');
+    expect(back).toHaveBeenCalledOnce();
+    expect(forward).not.toHaveBeenCalled();
+
+    emitLocalMenuAction('navigate-forward');
+    expect(back).toHaveBeenCalledOnce();
+    expect(forward).toHaveBeenCalledOnce();
+  });
+
+  test('history traversal reuses the active tab across same-tab page navigation', async () => {
+    setHash('#/page-a');
+    renderApp();
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith({
+        kind: 'doc',
+        target: 'page-a',
+        docName: 'page-a',
+      });
+    });
+
+    // File-tree navigation opens in the active tab and records the URL with
+    // pushState, so NavigationHandler sees only the later history traversal.
+    pushHashWithoutNavigation('#/page-b');
+    pushHashWithoutNavigation('#/page-c');
+    openTargetTransitionMock.mockClear();
+
+    window.history.back();
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe('#/page-b');
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        {
+          kind: 'doc',
+          target: 'page-b',
+          docName: 'page-b',
+        },
+        { tabBehavior: 'replace-active' },
+      );
+    });
+
+    openTargetTransitionMock.mockClear();
+    window.history.back();
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe('#/page-a');
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        {
+          kind: 'doc',
+          target: 'page-a',
+          docName: 'page-a',
+        },
+        { tabBehavior: 'replace-active' },
+      );
+    });
+
+    openTargetTransitionMock.mockClear();
+    window.history.forward();
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe('#/page-b');
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(
+        {
+          kind: 'doc',
+          target: 'page-b',
+          docName: 'page-b',
+        },
+        { tabBehavior: 'replace-active' },
+      );
+    });
+  });
+
+  test('direct hash navigation preserves the active tab', async () => {
+    setHash('#/page-a');
+    renderApp();
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith({
+        kind: 'doc',
+        target: 'page-a',
+        docName: 'page-a',
+      });
+    });
+
+    openTargetTransitionMock.mockClear();
+    window.history.pushState(null, '', `${window.location.pathname}#/page-b`);
+    window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith({
+        kind: 'doc',
+        target: 'page-b',
+        docName: 'page-b',
+      });
+    });
+    expect(openTargetTransitionMock).not.toHaveBeenCalledWith(
+      {
+        kind: 'doc',
+        target: 'page-b',
+        docName: 'page-b',
+      },
+      { tabBehavior: 'replace-active' },
+    );
   });
 
   test('active doc and folder targets are pushed to the desktop bridge', async () => {

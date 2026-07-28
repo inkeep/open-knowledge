@@ -9,8 +9,9 @@
  * Runs under `bun run test:dom` (jsdom). Asserts rendered DOM (a probe shows the
  * resolved boolean), never source text.
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { SingleFileModeProvider, useSingleFileMode } from './single-file-mode.tsx';
 
 function Probe() {
@@ -22,7 +23,7 @@ const originalDesktop = (globalThis as { window?: { okDesktop?: unknown } }).win
 
 afterEach(() => {
   cleanup();
-  mock.restore();
+  vi.restoreAllMocks();
   // Restore any okDesktop we stubbed so cross-test state doesn't leak.
   if (typeof window !== 'undefined') {
     (window as { okDesktop?: unknown }).okDesktop = originalDesktop;
@@ -44,7 +45,7 @@ describe('SingleFileModeProvider — desktop bridge channel', () => {
   });
 
   test('reads singleFile synchronously from the bridge config (no fetch)', () => {
-    const fetchSpy = spyOn(globalThis, 'fetch');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
     render(
       <SingleFileModeProvider>
         <Probe />
@@ -62,7 +63,7 @@ describe('SingleFileModeProvider — browser /api/config channel', () => {
   });
 
   test('resolves singleFile:true from /api/config', async () => {
-    spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({
           collabUrl: null,
@@ -87,7 +88,7 @@ describe('SingleFileModeProvider — browser /api/config channel', () => {
   });
 
   test('stays project mode when /api/config reports singleFile:false', async () => {
-    spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({
           collabUrl: null,
@@ -111,7 +112,7 @@ describe('SingleFileModeProvider — browser /api/config channel', () => {
   });
 
   test('a /api/config error leaves project mode (no chrome stripped on a flaky endpoint)', async () => {
-    spyOn(globalThis, 'fetch').mockResolvedValue(new Response('nope', { status: 500 }));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('nope', { status: 500 }));
     render(
       <SingleFileModeProvider>
         <Probe />

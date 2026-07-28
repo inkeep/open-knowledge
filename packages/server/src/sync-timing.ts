@@ -29,3 +29,33 @@ export function computeRemainingMs(
   const nextMs = lastMs + intervalSeconds * 1000;
   return Math.max(0, nextMs - now);
 }
+
+/**
+ * Minimum seconds between pull cycles for an anonymous (unauthenticated)
+ * pull-only follower. A single follower polling is far under GitHub's
+ * per-client guidance; the real exposure is aggregate read pressure across
+ * every anonymous follower of one public repo, and that population is the
+ * least accountable and least freshness-sensitive, so it polls at a gentler
+ * floor than signed-in followers. Hard-coded by design — cadence is not a
+ * config knob.
+ */
+export const ANONYMOUS_PULL_MIN_SECONDS = 180;
+
+/** Which credential tier a pull-only follower will fetch as. */
+export type PullAuthTier = 'authenticated' | 'anonymous';
+
+/**
+ * Base pull interval (seconds) for a pull-only follower given its auth tier.
+ * Signed-in followers keep the responsive base interval; anonymous followers
+ * are floored to {@link ANONYMOUS_PULL_MIN_SECONDS} (a base already above the
+ * floor is preserved). The caller applies jitter and backoff on top, so both
+ * tiers keep the same ±15% spread and failure backoff.
+ */
+export function pullIntervalSecondsForAuthTier(
+  baseIntervalSeconds: number,
+  tier: PullAuthTier,
+): number {
+  return tier === 'anonymous'
+    ? Math.max(ANONYMOUS_PULL_MIN_SECONDS, baseIntervalSeconds)
+    : baseIntervalSeconds;
+}

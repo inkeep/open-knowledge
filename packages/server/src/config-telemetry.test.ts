@@ -9,7 +9,7 @@
  * Bounded enum attributes only — Zod issue paths land in span events, not
  * attributes (cardinality discipline).
  */
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -28,6 +28,7 @@ import {
   type ReadableSpan,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { applyExternalConfigChange, storeConfigDoc } from './config-persistence.ts';
 

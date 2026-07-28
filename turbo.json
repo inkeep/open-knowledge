@@ -13,7 +13,12 @@
       "dependsOn": ["^build"],
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["OK_INSTANCE", "OK_AUTO_INSTANCE"]
+      "passThroughEnv": [
+        "OK_INSTANCE",
+        "OK_AUTO_INSTANCE",
+        "OK_UNINSTALL_UI_PREVIEW",
+        "OK_FEEDBACK_INTAKE_ORIGIN"
+      ]
     },
     "build:desktop:dir": {
       "dependsOn": ["build:desktop"],

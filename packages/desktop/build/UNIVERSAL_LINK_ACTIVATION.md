@@ -25,7 +25,7 @@ Run these commands locally on macOS before shipping the next DMG that carries Un
 ### 1. Build dry-run (no codesigning required)
 
 ```sh
-cd public/open-knowledge && bun run build:desktop
+cd public/open-knowledge && pnpm build:desktop
 ```
 
 Should succeed without `CSC_LINK` / `CSC_KEY_PASSWORD` / `APPLE_ID` / `APPLE_TEAM_ID` env vars set. The afterSign pipeline at `scripts/afterSign.mjs` no-ops when codesigning credentials are absent (`build:mac:unsigned` path), so the entitlement + profile additions don't break the unsigned build.
@@ -52,7 +52,7 @@ The `"*"` wildcard for `com.apple.developer.associated-domains` is the most perm
 ### 3. Signed build verification (when codesigning identity is available)
 
 ```sh
-cd public/open-knowledge && bun run build:desktop  # with CSC_LINK + CSC_KEY_PASSWORD set
+cd public/open-knowledge && pnpm build:desktop  # with CSC_LINK + CSC_KEY_PASSWORD set
 codesign -d --entitlements - 'packages/desktop/dist-desktop/mac-arm64/OpenKnowledge.app' 2>&1 | head -40
 ```
 

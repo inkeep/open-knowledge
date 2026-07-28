@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
+import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
 import { fieldRegistry } from './field-registry.ts';
 import { ConfigSchema } from './schema.ts';
@@ -99,6 +99,31 @@ const FIXTURES: Fixture[] = [
   {
     name: 'telemetry.localSink.attributeDenylist rejects non-string entries',
     input: { telemetry: { localSink: { attributeDenylist: [42] } } },
+    shouldAccept: false,
+  },
+  {
+    name: 'autoSync.mode=pull accepted',
+    input: { autoSync: { mode: 'pull' } },
+    shouldAccept: true,
+  },
+  {
+    name: 'autoSync.mode=sideways rejected',
+    input: { autoSync: { mode: 'sideways' } },
+    shouldAccept: false,
+  },
+  {
+    name: 'autoSync.default=full (mode string) accepted',
+    input: { autoSync: { default: 'full' } },
+    shouldAccept: true,
+  },
+  {
+    name: 'autoSync.default=true (legacy boolean seed) accepted',
+    input: { autoSync: { default: true } },
+    shouldAccept: true,
+  },
+  {
+    name: 'autoSync.default=3 (outside boolean|mode union) rejected',
+    input: { autoSync: { default: 3 } },
     shouldAccept: false,
   },
   {

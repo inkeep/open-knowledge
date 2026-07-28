@@ -11,7 +11,6 @@ import { useInstalledClis } from '@/hooks/use-installed-clis';
 import { useNoPushPermissionToast } from '@/hooks/use-no-push-permission-toast';
 import { useWorktreeAutoSyncNotice } from '@/hooks/use-worktree-autosync-notice';
 import { useConfigContext } from '@/lib/config-provider';
-import { resolveDefaultCli } from '@/lib/default-cli-resolver';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import {
@@ -19,17 +18,16 @@ import {
   type TerminalDockPosition,
   writeTerminalDock,
 } from '@/lib/terminal-dock-store';
-import { readPreferBareTerminal } from '@/lib/terminal-new-tab-store';
 import { recordTerminalOpened } from '@/lib/terminal-telemetry';
-import { loadStickyAgent } from '@/lib/unified-agent-store';
 import { setViewMenuState } from '@/lib/view-menu-state-store';
 import { AuthModal } from './AuthModal';
 import { AutoSyncOnboardingDialog } from './AutoSyncOnboardingDialog';
-import { shouldShowAutoSyncOnboarding } from './auto-sync-onboarding-gate';
+import { resolveAutoSyncOnboarding } from './auto-sync-onboarding-gate';
 import { type PanelTab, TABS } from './DocPanel';
 import { EditorArea, type TerminalPlacement } from './EditorArea';
 import { EditorHeader } from './EditorHeader';
 import { composeTerminalSelectionPaste } from './handoff/compose-terminal-selection';
+import { requestPreferredSession } from './handoff/preferred-session-events';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
 import { subscribeToTerminalLaunchRequests } from './handoff/terminal-launch-events';
 import {
@@ -112,17 +110,23 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   const desktopBridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
   // The terminal feature (dock + header New chat / toggle) needs not just a
   // desktop bridge but one that actually exposes the `terminal` surface — a
-  // session-only bridge (some E2E hosts) has none. Gate every terminal
-  // affordance on this so a control that can't launch never renders.
-  const terminalAvailable = desktopBridge != null && desktopBridge.terminal != null;
+  // session-only bridge (some E2E hosts) has none — AND a host that can
+  // actually spawn a PTY: `config.ptyAvailable` is false on Windows/Linux
+  // (node-pty is not bundled there; terminal dock dark off-mac), where a
+  // rendered affordance would only surface a spawn failure. Gate every
+  // terminal affordance on both so a control that can't launch never renders.
+  const terminalAvailable =
+    desktopBridge != null &&
+    desktopBridge.terminal != null &&
+    desktopBridge.config.ptyAvailable === true;
   const [terminalVisible, setTerminalVisible] = useState(false);
   // Which launchable CLIs are on PATH (desktop probe, cached ~60s in main).
-  // Feeds the New-chat default-CLI auto-pick. Starts empty, so resolveDefaultCli
-  // degrades to claude until the probe resolves. Shared with the Ask-X bubble.
+  // Handed to the sessions host, which folds it into its launcher resolution.
+  // Shared with the Ask-X bubble.
   const installedClis = useInstalledClis();
-  // Whether the terminal currently holds any session (reported up by the host).
-  // The header's New chat button reads this to decide between bootstrapping a
-  // first chat and merely revealing an already-populated dock.
+  // Whether the dock currently holds any session (reported up by the host).
+  // Keeps the edge reveal tab available on a host with no terminal once threads
+  // are open, so a hidden dock is still reachable there.
   const [hasSessions, setHasSessions] = useState(false);
   // Gates the View-menu visibility push (below) until the mount-time dock-state
   // restore has read main's retained per-window visibility. Without the gate the
@@ -177,37 +181,27 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   // the dock would then dedup away as a repeat.
   const launchNonceRef = useRef(0);
 
-  // Header + tab-strip "New chat": launch a CLI with NO prompt (a blank session).
-  // Resolve the CLI from the sticky pick + installed set unless the caller names
-  // one, reveal the dock, and thread a promptless one-shot intent through the
-  // same nonce-dedup + hide-clear path as "Open in terminal". Distinct from the
-  // prompt-composing `subscribeToTerminalLaunchRequests` path below — New chat
-  // needs no doc scope. `stagePaste` (the ⌘J/⇧⌘J selection-send) rides the
-  // intent so the session panel writes it into the freshly-launched CLI's input
-  // once its TUI settles — never submitted, and `prompt` stays null so nothing
-  // auto-runs (see the TerminalLaunchIntent JSDoc for the bake gate).
-  function launchNewChat(cli?: TerminalCli, stagePaste?: string) {
-    const resolvedCli = cli ?? resolveDefaultCli(loadStickyAgent(), installedClis);
+  // "New chat" with the preferred AI: reveal the dock and let the host resolve
+  // and open it. The host's `launchSelectedNewTab` spans all three families
+  // (in-app agent / CLI / bare shell) and honors the Configure-agents toggles;
+  // resolving a CLI here instead could only ever produce a CLI, never the in-app
+  // agent a user may prefer.
+  function launchNewChat() {
     setTerminalVisible(true);
-    launchNonceRef.current += 1;
-    setTerminalLaunch({
-      prompt: null,
-      cli: resolvedCli,
-      nonce: launchNonceRef.current,
-      stagePaste,
-    });
+    requestPreferredSession();
   }
 
-  // Reveal the sessions dock and, if no session exists yet, seed a first one.
-  // Drives the edge "Show sessions" reveal tab; leaves the right doc-panel
-  // untouched (the two coexist). On a terminal surface the seed honors the sticky
-  // pick: for a CLI, launch a chat under the default CLI; when the last pick was a
-  // bare "Terminal", skip the CLI launch and let the host's reveal-from-empty
-  // fallback seed a bare shell. On the web host (no terminal) the host's
-  // reveal-from-empty seed handles the sticky agent instead.
+  // Reveal the sessions dock; the host seeds it when it opens empty. Drives the
+  // edge "Show sessions" reveal tab and the View → Show Terminal item; leaves the
+  // right doc-panel untouched (the two coexist).
+  //
+  // Seeding is deliberately NOT done here. The host's `seedOnReveal` resolves the
+  // whole preferred-AI space (in-app agent / CLI / bare shell, enablement-aware);
+  // this pane can only see the CLI slice. Launching from here would set a launch
+  // intent that PREEMPTS that seed, forcing a CLI on a user whose preferred AI is
+  // an in-app agent.
   function revealTerminal() {
     setTerminalVisible(true);
-    if (terminalAvailable && !hasSessions && !readPreferBareTerminal()) launchNewChat();
   }
 
   const syncStatus = useGitSyncStatus();
@@ -217,9 +211,10 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   const { activeDocName } = useDocumentContext();
 
   // Onboarding modal: open once per machine per project when every gate
-  // input aligns. Decision logic lives in `shouldShowAutoSyncOnboarding`
-  // so each input has its own row in the helper's truth table.
-  const showAutoSyncOnboarding = shouldShowAutoSyncOnboarding({
+  // input aligns. Decision logic lives in `resolveAutoSyncOnboarding`, which
+  // also forks the prompt variant on the push-permission probe (denied →
+  // pull-only), so each input has its own row in the helper's truth table.
+  const autoSyncOnboardingVariant = resolveAutoSyncOnboarding({
     autoSyncOnboardingDismissed,
     hasRemote: syncStatus?.hasRemote,
     projectLocalSynced,
@@ -244,23 +239,19 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     return () => window.removeEventListener(RAW_MDX_NAV_EVENT, onRawMdxNav);
   }, [activeDocName]);
 
-  // Whether the ACTIVE terminal tab is a running AI CLI (reported up by the host).
-  // The ⌘J selection-send reads this to inject-into-running-CLI vs launch-new-CLI.
-  const activeSessionIsCliRef = useRef(false);
-
-  // ⌘J / ⇧⌘J with an editor selection STAGE that selection into an AI CLI's input
-  // in the terminal instead of toggling — never submitted, so the user can add
+  // ⌘J / ⇧⌘J with an editor selection STAGE that selection into the user's
+  // preferred AI instead of toggling — never submitted, so the user can add
   // context and send it themselves. Reads the debounced selection snapshot for the
   // active doc + current mode (the same registry BottomComposer reads — no editor
   // instance needed, so it works even from the OS-captured ⌘J menu accelerator)
   // and composes the same grounded prompt the Ask-AI selection button sends.
-  //   - ⌘J into a tab that is ALREADY running a CLI → write the passage straight
-  //     into its input (no screen wipe) via the reuse channel, and focus it.
-  //   - otherwise (⇧⌘J, or ⌘J into a bare shell / closed terminal) → launch a NEW
-  //     promptless CLI tab and stage the passage into its input once it is up.
-  //     (Baking the prompt as a CLI arg would auto-run it; a raw write into a bare
-  //     shell would mangle a multi-line prompt — staging into a live CLI avoids
-  //     both.)
+  //
+  // Where it lands is the HOST's call, not this pane's: it owns both the live
+  // session state and the preferred-AI resolution, so ⌘J reuses a running CLI or
+  // an open agent thread, and otherwise launches whichever AI the user prefers.
+  // Resolving here instead would limit ⌘J to the CLI slice this pane can see,
+  // ignoring a preferred in-app agent.
+  //
   // Returns true when a selection was staged (caller skips the toggle / new-tab
   // fallback). No-ops on the web host (no terminal).
   function sendSelectionToTerminal(newTab: boolean): boolean {
@@ -271,17 +262,14 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     // Trailing soft newlines (\n, not \r — no submit) drop the CLI input caret
     // onto a blank line below the staged passage.
     const staged = `${composeTerminalSelectionPaste(activeDocName, selectionMarkdown)}\n\n`;
-    if (!newTab && activeSessionIsCliRef.current) {
-      setTerminalVisible(true);
-      requestActiveTerminalInput(staged);
-    } else {
-      launchNewChat(undefined, staged);
-    }
+    setTerminalVisible(true);
+    // Raw selected material, not an instruction — written and left for the user
+    // to extend and send, on a CLI and on an agent thread alike.
+    requestActiveTerminalInput(staged, { newTab, submit: false });
     return true;
   }
   // Effect Events so the once-bound key/menu listeners below read the current
-  // closures (fresh activeDocName / editorMode / installedClis) without
-  // re-subscribing.
+  // closures (fresh activeDocName / editorMode) without re-subscribing.
   const sendSelectionToTerminalEvent = useEffectEvent(sendSelectionToTerminal);
   const launchNewChatEvent = useEffectEvent(() => launchNewChat());
 
@@ -318,11 +306,13 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, []);
 
-  // ⇧⌘J / Ctrl+Shift+J: open an ADDITIONAL terminal tab. With a selection, send it
-  // to a NEW CLI tab (always new, never reusing the active one); otherwise open a
-  // new chat with the preferred CLI (the "+ New chat" default). Renderer-owned on
-  // both hosts (no menu item claims ⇧⌘J), capture-phase so a focused xterm can't
-  // swallow it. No-ops on the web host (no terminal surface).
+  // ⇧⌘J / Ctrl+Shift+J: open a fresh session with the preferred AI. With a
+  // selection, that selection is staged into the new session (always fresh, never
+  // reusing the active tab); otherwise the host opens a promptless one. Both paths
+  // resolve to whichever AI the user prefers (in-app agent / CLI / bare shell),
+  // not a hardcoded CLI. Renderer-owned on both hosts (no menu item claims ⇧⌘J),
+  // capture-phase so a focused xterm can't swallow it. No-ops on the web host (no
+  // terminal surface).
   useEffect(() => {
     if (!terminalAvailable) return;
     function handleKeyDown(event: KeyboardEvent) {
@@ -334,18 +324,28 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, [terminalAvailable]);
 
-  // "Open in terminal" launch — a handoff-menu click fires a window event with
-  // the composed prompt. Open the dock (the terminal is allowed by default; the
-  // gate only blocks a project explicitly opted out) AND carry the prompt to the
-  // session as a fresh one-shot intent. The nonce comes from the monotonic ref,
-  // so every click is a strictly increasing, never-reused intent: each one opens
-  // its own tab and the dock can dedup re-renders by nonce without dropping a
-  // genuinely new launch. Desktop-only; the web host never renders the entry point.
+  // CLI launch — "Open in terminal" from a handoff menu, or the sessions host
+  // resolving an Ask AI / selection send to a CLI. Open the dock (the terminal is
+  // allowed by default; the gate only blocks a project explicitly opted out) AND
+  // carry the text to the session as a fresh one-shot intent. The nonce comes from
+  // the monotonic ref, so every click is a strictly increasing, never-reused
+  // intent: each one opens its own tab and the dock can dedup re-renders by nonce
+  // without dropping a genuinely new launch.
+  //
+  // `stage` picks which slot the text lands in, and the two are mutually
+  // exclusive: `prompt` is baked as a CLI arg and RUNS, `stagePaste` is written
+  // into the input and waits. A raw selection send must never auto-run, so it
+  // stages.
   useEffect(() => {
-    return subscribeToTerminalLaunchRequests((prompt, cli) => {
+    return subscribeToTerminalLaunchRequests((text, cli, { stage }) => {
       setTerminalVisible(true);
       launchNonceRef.current += 1;
-      setTerminalLaunch({ prompt, cli, nonce: launchNonceRef.current });
+      setTerminalLaunch({
+        prompt: stage ? null : text,
+        cli,
+        nonce: launchNonceRef.current,
+        stagePaste: stage ? text : undefined,
+      });
     });
   }, []);
 
@@ -499,7 +499,9 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
           (terminals + agent threads) docks WITHIN EditorArea — bottom, or its own
           right column past the doc panels; EditorArea owns that layout. The live
           session host is mounted below (above EditorArea) so a dock move never
-          remounts it. */}
+          remounts it. `terminalAvailable` folds in `ptyAvailable`, so on
+          Windows/Linux (no bundled node-pty) the bridge passes as null and the
+          dock behaves web-like — thread tabs only, no terminal-kind affordances. */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-w-0 flex-1 flex-col">
           <EditorArea
@@ -507,7 +509,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
             onModeChange={handleModeChange}
             activeTab={activeTab}
             onActiveTabChange={setActiveTab}
-            terminalBridge={desktopBridge}
+            terminalBridge={terminalAvailable ? desktopBridge : null}
             terminalVisible={terminalVisible}
             onTerminalVisibleChange={setTerminalVisible}
             terminalDock={terminalDock}
@@ -519,11 +521,11 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
       </div>
       {/* The sessions dock host mounts UNCONDITIONALLY — a shell and an agent are
           just tabs of a different kind, and agents are server-hosted, so the dock
-          is host-agnostic (web = thread tabs only). Terminal-kind affordances gate
-          on the bridge inside the host. */}
+          is host-agnostic (web = thread tabs only, as is win/linux where pty is
+          unavailable). Terminal-kind affordances gate on the bridge inside the host. */}
       <Suspense fallback={null}>
         <TerminalSessionsHost
-          bridge={desktopBridge}
+          bridge={terminalAvailable ? desktopBridge : null}
           visible={terminalVisible}
           onVisibleChange={setTerminalVisible}
           launch={terminalLaunch}
@@ -535,9 +537,6 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
           dockPosition={terminalDock}
           onToggleDock={toggleTerminalDock}
           onHasSessionsChange={setHasSessions}
-          onActiveSessionCliChange={(isCli) => {
-            activeSessionIsCliRef.current = isCli;
-          }}
         />
       </Suspense>
       <AuthModal
@@ -549,7 +548,8 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         }}
       />
       <AutoSyncOnboardingDialog
-        open={showAutoSyncOnboarding}
+        open={autoSyncOnboardingVariant !== null}
+        variant={autoSyncOnboardingVariant ?? 'full'}
         onResolved={() => setAutoSyncOnboardingDismissed(true)}
       />
       <TagDialog />

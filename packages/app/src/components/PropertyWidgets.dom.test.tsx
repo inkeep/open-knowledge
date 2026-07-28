@@ -10,8 +10,9 @@
  * boundary — feed it `value` + an `onCommit` spy and the grammar gate
  * becomes a pure-React assertion.
  */
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+
 import { cleanup, fireEvent, render } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ListWidget, TextWidget } from './PropertyWidgets';
 
@@ -20,7 +21,7 @@ function renderWidget(opts: {
   value: string[];
   onCommit?: (next: string[]) => void;
 }) {
-  const onCommit = opts.onCommit ?? mock(() => {});
+  const onCommit = opts.onCommit ?? vi.fn(() => {});
   // TooltipProvider wraps the tree because invalid tag chips render
   // inside a Radix Tooltip — production has a root provider; test
   // substrate has to opt in.
@@ -105,7 +106,7 @@ describe('ListWidget — input-side grammar gate (tags field only)', () => {
   });
 
   test('addChip rejects invalid input on Enter — no onCommit fires; draft persists', () => {
-    const onCommit = mock(() => {});
+    const onCommit = vi.fn(() => {});
     const { container } = renderWidget({ keyName: 'tags', value: [], onCommit });
     const input = container.querySelector('[data-testid="list-chip-input"]') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'bad!' } });
@@ -124,7 +125,7 @@ describe('ListWidget — input-side grammar gate (tags field only)', () => {
   });
 
   test('addChip accepts a valid tag on Enter — commits + clears draft + no rejection state', () => {
-    const onCommit = mock(() => {});
+    const onCommit = vi.fn(() => {});
     const { container } = renderWidget({ keyName: 'tags', value: [], onCommit });
     const input = container.querySelector('[data-testid="list-chip-input"]') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'showcase' } });
@@ -139,7 +140,7 @@ describe('ListWidget — input-side grammar gate (tags field only)', () => {
   test('addChip accepts a digit-leading tag like a year (2026)', () => {
     // Digit-leading tags are valid in frontmatter even though the inline
     // `#tag` surface rejects them — a year is a legitimate tag.
-    const onCommit = mock(() => {});
+    const onCommit = vi.fn(() => {});
     const { container } = renderWidget({ keyName: 'tags', value: [], onCommit });
     const input = container.querySelector('[data-testid="list-chip-input"]') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '2026' } });
@@ -164,7 +165,7 @@ describe('ListWidget — input-side grammar gate (tags field only)', () => {
   });
 
   test('Escape clears rejection state without committing', () => {
-    const onCommit = mock(() => {});
+    const onCommit = vi.fn(() => {});
     const { container } = renderWidget({ keyName: 'tags', value: [], onCommit });
     const input = container.querySelector('[data-testid="list-chip-input"]') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'bad!' } });
@@ -182,7 +183,7 @@ describe('ListWidget — input-side grammar gate (tags field only)', () => {
     // would either render as invalid on the next paint (renderer's
     // `FRONTMATTER_TAG_VALUE_RE` rejects bare `#`) or silently re-
     // normalize on the next on-disk YAML round-trip.
-    const onCommit = mock(() => {});
+    const onCommit = vi.fn(() => {});
     const { container } = renderWidget({ keyName: 'tags', value: [], onCommit });
     const input = container.querySelector('[data-testid="list-chip-input"]') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '#showcase' } });
@@ -197,7 +198,7 @@ describe('ListWidget — input-side grammar gate (tags field only)', () => {
     // Generic list fields (`aliases`, `categories`, …) commit values
     // verbatim — the `#`-strip is scoped to `isTagsField` since
     // other fields don't share the tag grammar's tolerance.
-    const onCommit = mock(() => {});
+    const onCommit = vi.fn(() => {});
     const { container } = renderWidget({ keyName: 'aliases', value: [], onCommit });
     const input = container.querySelector('[data-testid="list-chip-input"]') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '#literal' } });
@@ -207,7 +208,7 @@ describe('ListWidget — input-side grammar gate (tags field only)', () => {
   });
 
   test('a non-tag list field commits any string — grammar gate stays scoped', () => {
-    const onCommit = mock(() => {});
+    const onCommit = vi.fn(() => {});
     const { container } = renderWidget({ keyName: 'aliases', value: [], onCommit });
     const input = container.querySelector('[data-testid="list-chip-input"]') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '2026' } });
@@ -228,7 +229,7 @@ function renderTextWidget(opts: {
   value: string;
   onCommit?: (next: string) => void;
 }) {
-  const onCommit = opts.onCommit ?? mock(() => {});
+  const onCommit = opts.onCommit ?? vi.fn(() => {});
   const result = render(
     <TooltipProvider>
       <TextWidget keyName={opts.keyName} value={opts.value} onCommit={onCommit} />

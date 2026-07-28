@@ -1,19 +1,15 @@
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { isMacOS } from '@tiptap/core';
-import { type ReactNode, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { publishSelectionContext } from '@/editor/selection-context';
 import type { EditorSurface } from '@/editor/selection-stats';
+import { subscribeToPreferredSessionRequests } from './handoff/preferred-session-events';
 import { subscribeToActiveTerminalInput } from './handoff/terminal-input-events';
 
 // The doc the mocked DocumentContext reports (see the useDocumentContext mock).
 const TEST_DOC = 'docs/notes';
-
-// Controls what the mocked TerminalSessionsHost reports via
-// `onActiveSessionCliChange` — i.e. whether the active terminal tab is a running
-// AI CLI (drives EditorPane's ⌘J inject-vs-launch decision).
-let mockActiveIsCli = false;
 
 // Seed / clear the shared selection snapshot registry EditorPane reads for the
 // ⌘J / ⇧⌘J selection-paste path. Seed both body surfaces so the test is
@@ -34,12 +30,32 @@ function clearSelection(): void {
   publishSelectionContext(TEST_DOC, 'source', null);
 }
 
-// Collect the raw-inject requests EditorPane dispatches to a running CLI (the
-// host that consumes them is mocked here).
-function captureActiveTerminalInput(): { texts: string[]; stop: () => void } {
+// Collect the Ask-AI passages EditorPane dispatches to the sessions host (which
+// owns reuse-vs-launch and preferred-AI resolution; mocked here). `newTab` rides
+// along so ⌘J (reuse when sensible) stays distinguishable from ⇧⌘J (always fresh).
+function captureActiveTerminalInput(): {
+  texts: string[];
+  details: { text: string; newTab: boolean; submit: boolean }[];
+  stop: () => void;
+} {
   const texts: string[] = [];
-  const stop = subscribeToActiveTerminalInput((text) => texts.push(text));
-  return { texts, stop };
+  const details: { text: string; newTab: boolean; submit: boolean }[] = [];
+  const stop = subscribeToActiveTerminalInput((detail) => {
+    texts.push(detail.text);
+    details.push({ text: detail.text, newTab: detail.newTab, submit: detail.submit });
+  });
+  return { texts, details, stop };
+}
+
+// Count the promptless "open my preferred AI" requests EditorPane dispatches
+// (⇧⌘J with no selection). The host resolves which AI that is.
+function capturePreferredSessionRequests(): { readonly count: number; stop: () => void } {
+  const state = { count: 0, stop: () => {} };
+  const unsubscribe = subscribeToPreferredSessionRequests(() => {
+    state.count += 1;
+  });
+  state.stop = unsubscribe;
+  return state;
 }
 
 function shiftJKeydownInit(): KeyboardEventInit {
@@ -68,11 +84,12 @@ let projectLocalSynced = false;
 let projectSynced = false;
 let projectLocalConfig: { autoSync?: { enabled?: boolean | null } } | null = null;
 let projectConfig: { autoSync?: { default?: boolean | null } } | null = null;
+let pushPermissionCheckStatus: 'allowed' | 'denied' | 'unknown' | undefined = 'allowed';
 
 vi.doMock('@/hooks/use-git-sync-status', () => ({
   useGitSyncStatus: () => ({
     hasRemote,
-    pushPermission: { checkStatus: 'allowed' },
+    pushPermission: { checkStatus: pushPermissionCheckStatus },
   }),
 }));
 
@@ -124,18 +141,11 @@ vi.doMock('./TerminalSessionsHost', () => ({
     bridge,
     visible,
     launch,
-    onActiveSessionCliChange,
   }: {
     bridge?: unknown;
     visible?: boolean;
     launch?: { nonce: number; stagePaste?: string } | null;
-    onActiveSessionCliChange?: (isCli: boolean) => void;
   }) => {
-    // Report the test-controlled CLI-active state up, as the real host does from
-    // its active session's launch descriptor.
-    useEffect(() => {
-      onActiveSessionCliChange?.(mockActiveIsCli);
-    }, [onActiveSessionCliChange]);
     return (
       <div
         data-testid="terminal-dock"
@@ -163,11 +173,20 @@ vi.doMock('@/editor/components/TagDialog', () => ({
 }));
 
 vi.doMock('./AutoSyncOnboardingDialog', () => ({
-  AutoSyncOnboardingDialog: ({ open, onResolved }: { open: boolean; onResolved: () => void }) => (
+  AutoSyncOnboardingDialog: ({
+    open,
+    variant,
+    onResolved,
+  }: {
+    open: boolean;
+    variant: string;
+    onResolved: () => void;
+  }) => (
     <button
       type="button"
       data-testid="auto-sync-onboarding"
       data-open={String(open)}
+      data-variant={variant}
       onClick={onResolved}
     >
       Auto sync onboarding
@@ -192,6 +211,7 @@ describe('EditorPane auto-sync onboarding gate', () => {
     projectSynced = false;
     projectLocalConfig = null;
     projectConfig = null;
+    pushPermissionCheckStatus = 'allowed';
   });
 
   test('exports the EditorPane component', async () => {
@@ -204,6 +224,21 @@ describe('EditorPane auto-sync onboarding gate', () => {
     projectSynced = true;
     projectLocalSynced = true;
     projectLocalConfig = { autoSync: { enabled: null } };
+    projectConfig = { autoSync: { default: null } };
+
+    await renderEditorPane();
+
+    expect(screen.getByTestId('auto-sync-onboarding').getAttribute('data-open')).toBe('true');
+  });
+
+  test('opens when autoSync carries neither a mode nor a legacy enabled value', async () => {
+    hasRemote = true;
+    projectSynced = true;
+    projectLocalSynced = true;
+    // Neither key set → the resolved local mode is null (unanswered), so the
+    // prompt fires — the mode resolver treats absent the same as the null
+    // sentinel, unlike the old literal `enabled === null` check.
+    projectLocalConfig = { autoSync: {} };
     projectConfig = { autoSync: { default: null } };
 
     await renderEditorPane();
@@ -255,14 +290,6 @@ describe('EditorPane auto-sync onboarding gate', () => {
       { autoSync: { default: null } },
     ],
     [
-      'enabled undefined is not the unanswered sentinel',
-      true,
-      true,
-      true,
-      { autoSync: {} },
-      { autoSync: { default: null } },
-    ],
-    [
       'committed default off suppresses the prompt',
       true,
       true,
@@ -284,6 +311,34 @@ describe('EditorPane auto-sync onboarding gate', () => {
     projectLocalSynced = nextSynced;
     projectLocalConfig = nextProjectLocalConfig;
     projectConfig = nextProjectConfig;
+
+    await renderEditorPane();
+
+    expect(screen.getByTestId('auto-sync-onboarding').getAttribute('data-open')).toBe('false');
+  });
+
+  test('a denied push probe opens the pull-only variant', async () => {
+    hasRemote = true;
+    projectSynced = true;
+    projectLocalSynced = true;
+    projectLocalConfig = { autoSync: { enabled: null } };
+    projectConfig = { autoSync: { default: null } };
+    pushPermissionCheckStatus = 'denied';
+
+    await renderEditorPane();
+
+    const dialog = screen.getByTestId('auto-sync-onboarding');
+    expect(dialog.getAttribute('data-open')).toBe('true');
+    expect(dialog.getAttribute('data-variant')).toBe('follow');
+  });
+
+  test('an unknown push probe keeps the prompt closed', async () => {
+    hasRemote = true;
+    projectSynced = true;
+    projectLocalSynced = true;
+    projectLocalConfig = { autoSync: { enabled: null } };
+    projectConfig = { autoSync: { default: null } };
+    pushPermissionCheckStatus = 'unknown';
 
     await renderEditorPane();
 
@@ -326,6 +381,10 @@ function makeOkDesktopStub(
       for (const cb of menuHandlers) cb(action);
     },
     stub: {
+      // The terminal affordances gate on the host's pty capability
+      // (`config.ptyAvailable`, false on win/linux where node-pty isn't
+      // bundled) — these tests model the capable macOS host.
+      config: { ptyAvailable: true },
       onMenuAction(cb: (action: string) => void) {
         menuHandlers.push(cb);
         return () => {
@@ -357,7 +416,6 @@ describe('EditorPane terminal dock wiring', () => {
     delete (window as { okDesktop?: unknown }).okDesktop;
     terminalOpenedCalls.length = 0;
     clearSelection();
-    mockActiveIsCli = false;
   });
 
   test('web host mounts the sessions host (host-agnostic) with no desktop bridge', async () => {
@@ -509,6 +567,7 @@ describe('EditorPane terminal dock wiring', () => {
     // collapsed (the whole feature dead).
     let retainedDockVisible = true;
     (window as { okDesktop?: unknown }).okDesktop = {
+      config: { ptyAvailable: true },
       onMenuAction: () => () => {},
       editor: {
         notifyViewMenuStateChanged(state: { terminalVisible?: boolean }) {
@@ -572,43 +631,58 @@ describe('EditorPane terminal dock wiring', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
-  test('desktop: ⇧⌘J with no selection opens a new chat (launch intent, no staged text)', async () => {
+  test('desktop: ⇧⌘J with no selection asks the host for a preferred-AI session', async () => {
     (window as { okDesktop?: unknown }).okDesktop = makeOkDesktopStub().stub;
     await renderEditorPane();
     const input = captureActiveTerminalInput();
+    const preferred = capturePreferredSessionRequests();
 
     act(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', shiftJKeydownInit()));
     });
     input.stop();
+    preferred.stop();
 
-    // launchNewChat: the dock reveals + a promptless launch intent, nothing staged.
+    // The dock reveals and the host is asked to open the user's preferred AI.
+    // EditorPane deliberately names no CLI: resolving here could only ever yield
+    // a CLI, which is what made ⇧⌘J ignore a preferred ACP agent.
     const dock = screen.getByTestId('terminal-dock');
     expect(dock.getAttribute('data-visible')).toBe('true');
-    expect(dock.getAttribute('data-launch-nonce')).toBe('1');
-    expect(dock.getAttribute('data-launch-stage')).toBe('none');
+    expect(preferred.count).toBe(1);
+    expect(dock.getAttribute('data-launch-nonce')).toBe('none');
     expect(input.texts).toEqual([]);
   });
 
-  test('desktop: ⇧⌘J with a selection launches a NEW CLI tab with the passage STAGED (not sent)', async () => {
+  test('desktop: ⇧⌘J with a selection sends the passage to the host as a NEW session', async () => {
     (window as { okDesktop?: unknown }).okDesktop = makeOkDesktopStub().stub;
     await renderEditorPane();
     seedSelection('some highlighted text');
     const input = captureActiveTerminalInput();
+    const preferred = capturePreferredSessionRequests();
 
     act(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', shiftJKeydownInit()));
     });
     input.stop();
+    preferred.stop();
 
-    // A launch intent that STAGES the passage (no raw inject, nothing auto-run).
+    // The passage rides the Ask-AI channel with `newTab` set, so the host opens a
+    // fresh session in whichever family the user prefers instead of reusing one.
+    // Nothing is auto-run and no CLI is named here.
     const dock = screen.getByTestId('terminal-dock');
     expect(dock.getAttribute('data-visible')).toBe('true');
-    expect(dock.getAttribute('data-launch-nonce')).toBe('1');
-    expect(dock.getAttribute('data-launch-stage')).toContain('some highlighted text');
-    // Trailing soft newlines land the CLI caret on a blank line below the passage.
-    expect(dock.getAttribute('data-launch-stage')?.endsWith('\n\n')).toBe(true);
-    expect(input.texts).toEqual([]);
+    expect(input.details).toHaveLength(1);
+    expect(input.details[0]?.newTab).toBe(true);
+    expect(input.details[0]?.text).toContain('some highlighted text');
+    // Raw selected material, never an instruction: `submit` stays false so a
+    // fresh session writes it and waits. A true here would auto-run a passage the
+    // user only highlighted.
+    expect(input.details[0]?.submit).toBe(false);
+    // Trailing soft newlines land the caret on a blank line below the passage.
+    expect(input.details[0]?.text.endsWith('\n\n')).toBe(true);
+    // A selection send is not a promptless "new chat" request.
+    expect(preferred.count).toBe(0);
+    expect(dock.getAttribute('data-launch-nonce')).toBe('none');
   });
 
   test('desktop: ⇧⌘J claims the event (preventDefault)', async () => {
@@ -631,8 +705,7 @@ describe('EditorPane terminal dock wiring', () => {
     expect(screen.getByTestId('terminal-dock').getAttribute('data-launch-nonce')).toBe('none');
   });
 
-  test('desktop: ⌘J with a selection injects into the ACTIVE running CLI (no toggle, no launch)', async () => {
-    mockActiveIsCli = true;
+  test('desktop: ⌘J with a selection sends the passage to the host for reuse (no toggle, no launch)', async () => {
     const desk = makeOkDesktopStub();
     (window as { okDesktop?: unknown }).okDesktop = desk.stub;
     await renderEditorPane();
@@ -643,35 +716,20 @@ describe('EditorPane terminal dock wiring', () => {
     act(() => desk.dispatchMenuAction('toggle-terminal'));
     input.stop();
 
-    // Active tab is a running CLI → write the passage into it (reuse), reveal, no
-    // launch intent.
+    // ⌘J means "continue where I am when that makes sense", so `newTab` is unset
+    // and the host decides: a running CLI or an open agent thread takes the
+    // passage, otherwise it launches the preferred AI. EditorPane reveals the dock
+    // and stages nothing itself — whether the active tab is a CLI, a bare shell, or
+    // an agent thread is knowledge only the host has.
     const dock = screen.getByTestId('terminal-dock');
-    expect(input.texts).toHaveLength(1);
-    expect(input.texts[0]).toContain('run the build');
-    // Trailing soft newlines land the CLI caret on a blank line below the passage.
-    expect(input.texts[0]?.endsWith('\n\n')).toBe(true);
+    expect(input.details).toHaveLength(1);
+    expect(input.details[0]?.newTab).toBe(false);
+    expect(input.details[0]?.text).toContain('run the build');
+    expect(input.details[0]?.submit).toBe(false);
+    // Trailing soft newlines land the caret on a blank line below the passage.
+    expect(input.details[0]?.text.endsWith('\n\n')).toBe(true);
     expect(dock.getAttribute('data-launch-nonce')).toBe('none');
     expect(dock.getAttribute('data-visible')).toBe('true');
-  });
-
-  test('desktop: ⌘J with a selection but a bare-shell active tab STAGES into a new CLI instead', async () => {
-    mockActiveIsCli = false;
-    const desk = makeOkDesktopStub();
-    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
-    await renderEditorPane();
-    seedSelection('run the build');
-    const input = captureActiveTerminalInput();
-
-    act(() => desk.dispatchMenuAction('toggle-terminal'));
-    input.stop();
-
-    // No running CLI in the active tab → launch a new CLI and STAGE the passage
-    // into it, rather than typing a multi-line prompt into a bare shell.
-    const dock = screen.getByTestId('terminal-dock');
-    expect(input.texts).toEqual([]);
-    expect(dock.getAttribute('data-launch-nonce')).toBe('1');
-    expect(dock.getAttribute('data-launch-stage')).toContain('run the build');
-    expect(dock.getAttribute('data-launch-stage')?.endsWith('\n\n')).toBe(true);
   });
 
   test('desktop: ⌘J with no selection still toggles and stages nothing', async () => {

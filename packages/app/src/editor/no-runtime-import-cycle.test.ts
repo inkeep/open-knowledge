@@ -25,10 +25,11 @@
  * EVERY lib→editor value edge that closes a cycle is gone, so cutting just one edge of a
  * multi-edge entanglement cannot green this test while a residual lib↔editor value cycle remains.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Project } from 'ts-morph';
+import { describe, expect, test } from 'vitest';
 
 const HERE = dirname(fileURLToPath(import.meta.url)); // packages/app/src/editor
 const APP_SRC = dirname(HERE); // packages/app/src

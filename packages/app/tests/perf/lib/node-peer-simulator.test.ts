@@ -16,7 +16,7 @@
  *     but we DO assert relative count ordering at a fixed window).
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 import { createNodePeerSimulator, type NodePeerSimulatorHandle } from './node-peer-simulator.ts';
 
 const DUMMY_PORT = 1;

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { MarkdownManager } from '../markdown/index.ts';
 import { sharedExtensions } from './shared';
 

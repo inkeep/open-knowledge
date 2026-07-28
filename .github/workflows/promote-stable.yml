@@ -17,13 +17,25 @@ name: Promote stable
 #      committed jq override, so the tag name is the only authoritative
 #      source of the cycle version.
 #   3. Tags vX.Y.Z (no suffix) at the SAME SHA as the beta tag.
-#   4. Creates a non-prerelease GitHub Release at vX.Y.Z. desktop-release.yml
-#      fires automatically and builds the stable DMG with
+#   4. Creates a non-prerelease GitHub Release at vX.Y.Z as a DRAFT.
+#      desktop-release.yml fires automatically and builds the stable DMG with
 #      --config.extraMetadata.version=X.Y.Z (override since the legacy commit
 #      still has -beta.N in package.json).
-#   5. Promotes npm `latest` dist-tag using a transient package.json#version
+#   5. desktop-release.yml smokes that DMG, promotes the draft to published,
+#      and only then dispatches publish-stable to release.yml, which promotes
+#      the npm `latest` dist-tag using a transient package.json#version
 #      override (same primitive as D11/D13 of the spec — mutation lives only
 #      for the workflow run, not committed).
+#
+# Cascade order changed in the DMG-smoke-gate work: this workflow used to
+# dispatch publish-stable itself, immediately after creating the draft
+# Release and BEFORE desktop-release.yml had built anything. npm `latest`
+# could therefore move for a release whose DMG later failed to build at all.
+# The dispatch now lives in desktop-release.yml, downstream of the DMG smoke
+# verdict, so a broken stable artifact can never reach npm. A macOS build is
+# deliberately NOT added here: this workflow holds the shared
+# `ok-release-cadence` lock at WORKFLOW level, so a 15-75 min build here
+# would block every beta cut for the duration.
 #
 # After a successful cut this dispatches main-reset.yml on
 # inkeep/agents-private (via the "Inkeep OK Release Bridge" App) to advance
@@ -410,55 +422,6 @@ jobs:
               --notes-file "$BODY_FILE"
           fi
 
-      - name: Trigger release.yml to publish stable to npm
-        if: steps.ver.outputs.skip != 'true'
-        # Same-repo repository_dispatch into release.yml. release.yml
-        # listens for event_type=publish-stable, checks out the stable
-        # tag, applies the transient package.json#version override, and
-        # runs `pnpm exec changeset publish --tag latest --provenance` via
-        # npm Trusted Publishing OIDC.
-        #
-        # Why we delegate to release.yml instead of publishing here:
-        # npm Trusted Publishing only allows ONE trusted-publisher entry
-        # per package. Centralizing the publish call in release.yml
-        # means the npmjs.com TP entry only authorizes one workflow
-        # filename. promote-stable.yml owns tag + Release creation; npm
-        # publishing lives in release.yml.
-        #
-        # Dispatch runs under the App-minted token so the sender identity
-        # is consistent with the rest of this workflow. The dispatched
-        # release.yml run gets its own OIDC identity (workflow=release.yml)
-        # which is what the npm TP entry binds against — the sender is
-        # not part of the TP claim, so swapping it from GITHUB_TOKEN to
-        # the App token does not affect publish auth.
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          STABLE_TAG: ${{ steps.ver.outputs.stable_tag }}
-          STABLE_VERSION: ${{ steps.ver.outputs.stable_version }}
-        run: |
-          set -euo pipefail
-          SELF_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          payload=$(jq -nc \
-            --arg ref "$STABLE_TAG" \
-            --arg version "$STABLE_VERSION" \
-            --arg by "$SELF_URL" \
-            '{event_type: "publish-stable", client_payload: {ref: $ref, version: $version, dispatched_by: $by}}')
-          gh api -X POST "repos/${GITHUB_REPOSITORY}/dispatches" --input - <<<"$payload"
-          echo "Dispatched publish-stable to release.yml (ref=${STABLE_TAG}, version=${STABLE_VERSION})."
-          # Best-effort forward-link to the release.yml run we just triggered.
-          CHILD=""
-          for _ in 1 2 3 4 5 6; do
-            CHILD=$(gh run list --workflow=release.yml --event=repository_dispatch --limit 8 --json url,createdAt \
-              --jq "[.[] | select(.createdAt >= \"$SINCE\")] | sort_by(.createdAt) | last | .url // empty" 2>/dev/null || true)
-            [[ -n "$CHILD" ]] && break
-            sleep 3
-          done
-          {
-            echo "### Dispatched release.yml (npm publish)"
-            if [[ -n "$CHILD" ]]; then echo "- Run: ${CHILD}"; else echo "- (run link unresolved; open release.yml)"; fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Trigger desktop-release.yml to build + upload stable DMG
         if: steps.ver.outputs.skip != 'true'
         # The `gh release create` above creates the release as `--draft`
@@ -472,6 +435,11 @@ jobs:
         # cascade workflow events; the token swap in this PR does not
         # remove the need for the explicit dispatch — the draft state
         # is the load-bearing reason.)
+        #
+        # This is now the ONLY cascade dispatch this workflow makes for the
+        # release itself: desktop-release.yml smokes the DMG it builds, and
+        # only then dispatches publish-stable to release.yml. This workflow
+        # deliberately no longer touches npm.
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           STABLE_TAG: ${{ steps.ver.outputs.stable_tag }}
@@ -497,6 +465,7 @@ jobs:
           {
             echo "### Dispatched desktop-release.yml (signed DMG)"
             if [[ -n "$CHILD" ]]; then echo "- Run: ${CHILD}"; else echo "- (run link unresolved; open desktop-release.yml)"; fi
+            echo "- That run smokes the DMG, promotes the draft Release, then dispatches publish-stable to release.yml for npm. npm \`latest\` does NOT move until the smoke passes."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Detect bridge App for cross-repo dispatch

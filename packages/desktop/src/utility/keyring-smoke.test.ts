@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import { runKeyringSmoke } from './keyring-smoke.ts';
 
 interface FakeEntryCalls {
@@ -77,7 +77,7 @@ describe('runKeyringSmoke', () => {
   });
 
   test('load failure: loadKeyring throws, no Entry methods invoked', async () => {
-    const loadKeyring = mock(() => Promise.reject(new Error('module not found')));
+    const loadKeyring = vi.fn(() => Promise.reject(new Error('module not found')));
     const result = await runKeyringSmoke({ loadKeyring });
     expect(result.ok).toBe(false);
     expect(result.error).toBe('module not found');

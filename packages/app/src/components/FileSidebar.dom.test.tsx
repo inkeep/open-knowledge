@@ -1,6 +1,16 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { type ReactNode, useEffect } from 'react';
+import userEvent from '@testing-library/user-event';
+import {
+  cloneElement,
+  isValidElement,
+  type MouseEventHandler,
+  type ReactElement,
+  type ReactNode,
+  useEffect,
+} from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import {
   expectVisualClassTokens,
@@ -9,6 +19,19 @@ import {
 
 function PassThrough({ children }: { children?: ReactNode }) {
   return <>{children}</>;
+}
+
+function TriggerPassThrough({
+  children,
+  asChild: _asChild,
+  ...props
+}: {
+  children?: ReactNode;
+  asChild?: boolean;
+  [key: string]: unknown;
+}) {
+  if (!isValidElement(children)) return children;
+  return cloneElement(children as ReactElement<Record<string, unknown>>, props);
 }
 
 function ElementPassThrough({
@@ -36,7 +59,7 @@ function Button({
   children?: ReactNode;
   asChild?: boolean;
   onCheckedChange?: unknown;
-  onClick?: () => void;
+  onClick?: MouseEventHandler<HTMLButtonElement>;
   onSelect?: () => void;
   size?: unknown;
   variant?: unknown;
@@ -45,8 +68,8 @@ function Button({
   return (
     <button
       type="button"
-      onClick={() => {
-        onClick?.();
+      onClick={(event) => {
+        onClick?.(event);
         onSelect?.();
       }}
       {...props}
@@ -93,16 +116,16 @@ let pillRenderErrors: unknown[][] = [];
 const treeListeners = new Set<() => void>();
 
 const treeCalls = {
-  collapseAll: mock(() => {}),
-  createFromTemplate: mock((_parentDir: string, _templateName: string) => {}),
-  expandAll: mock(() => {}),
-  startCreating: mock((_kind: 'file' | 'folder', _parentDir: string) => {}),
-  startCreatingFromTemplate: mock((_parentDir: string) => {}),
+  collapseAll: vi.fn(() => {}),
+  createFromTemplate: vi.fn((_parentDir: string, _templateName: string) => {}),
+  expandAll: vi.fn(() => {}),
+  startCreating: vi.fn((_kind: 'file' | 'folder', _parentDir: string) => {}),
+  startCreatingFromTemplate: vi.fn((_parentDir: string) => {}),
 };
-const projectLocalPatch = mock((_patch: unknown) => projectPatchResult);
-const showItemInFolderMock = mock((_path: string) => Promise.resolve());
-const notifyViewMenuStateChangedMock = mock((_snapshot: unknown) => {});
-const onOpenSearch = mock(() => {});
+const projectLocalPatch = vi.fn((_patch: unknown) => projectPatchResult);
+const showItemInFolderMock = vi.fn((_path: string) => Promise.resolve());
+const notifyViewMenuStateChangedMock = vi.fn((_snapshot: unknown) => {});
+const onOpenSearch = vi.fn(() => {});
 
 function setFolderState(next: FolderState) {
   folderState = next;
@@ -127,17 +150,17 @@ function installBridge() {
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children?: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-mock.module('@/lib/perf', () => ({
+vi.doMock('@/lib/perf', () => ({
   ProfilerBoundary: PassThrough,
 }));
 
-mock.module('@/components/FileTree', () => ({
+vi.doMock('@/components/FileTree', () => ({
   FileTree: ({ ref }: { ref?: (handle: unknown) => void }) => {
     useEffect(() => {
       const handle = {
@@ -160,22 +183,22 @@ mock.module('@/components/FileTree', () => ({
   },
 }));
 
-mock.module('@/components/ConflictsSection', () => ({
+vi.doMock('@/components/ConflictsSection', () => ({
   ConflictsSection: () => <div data-testid="conflicts-section" />,
 }));
 
 // Heavy sidebar child (pulls in skill-actions → dropdown submenu + handoff
 // builders). Not under test here; stubbed like FileTree/ConflictsSection so the
 // sidebar's own behavior tests don't depend on the skills subtree's deep graph.
-mock.module('@/components/SkillsSidebarSection', () => ({
+vi.doMock('@/components/SkillsSidebarSection', () => ({
   SkillsSidebarSection: () => <div data-testid="skills-sidebar-section" />,
 }));
 
-mock.module('@/components/ProjectSwitcher', () => ({
+vi.doMock('@/components/ProjectSwitcher', () => ({
   ProjectSwitcher: () => <button type="button">Project switcher</button>,
 }));
 
-mock.module('@/components/SidebarSearchBar', () => ({
+vi.doMock('@/components/SidebarSearchBar', () => ({
   SidebarSearchBar: ({ onClick }: { onClick: () => void }) => {
     if (sidebarSearchThrows) throw new Error('search pill render failed');
     return (
@@ -189,18 +212,18 @@ mock.module('@/components/SidebarSearchBar', () => ({
   },
 }));
 
-mock.module('@/components/UpdateNotices', () => ({
+vi.doMock('@/components/UpdateNotices', () => ({
   UpdateNotices: () => <div data-testid="update-notices" />,
 }));
 
-mock.module('@/components/handoff/OpenInAgentEmptySpaceSubmenu', () => ({
+vi.doMock('@/components/handoff/OpenInAgentEmptySpaceSubmenu', () => ({
   OpenInAgentEmptySpaceSubmenu: (props: { input: unknown }) => {
     openInAgentSubmenuProps.push(props);
     return <div data-testid="open-in-agent-empty-space-submenu" />;
   },
 }));
 
-mock.module('@/components/handoff/useHandoffDispatch', () => ({
+vi.doMock('@/components/handoff/useHandoffDispatch', () => ({
   buildFolderHandoffInput: () => ({ docContext: null, docPath: '', folderRelativePath: 'docs' }),
   buildHandoffInput: () => ({
     docContext: { docName: 'docs/current' },
@@ -208,18 +231,18 @@ mock.module('@/components/handoff/useHandoffDispatch', () => ({
   }),
   buildProjectScopedHandoffInput: ({ workspace: inputWorkspace }: { workspace: unknown }) =>
     inputWorkspace ? { docContext: null, docPath: '', projectDir: '/tmp/open-knowledge' } : null,
-  useHandoffDispatch: () => ({ dispatch: mock(() => Promise.resolve({ ok: true })) }),
+  useHandoffDispatch: () => ({ dispatch: vi.fn(() => Promise.resolve({ ok: true })) }),
 }));
 
-mock.module('@/components/handoff/useInstalledAgents', () => ({
+vi.doMock('@/components/handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({ states: { codex: { installed: true } } }),
 }));
 
-mock.module('@/components/ui/button', () => ({
+vi.doMock('@/components/ui/button', () => ({
   Button,
 }));
 
-mock.module('@/components/ui/context-menu', () => ({
+vi.doMock('@/components/ui/context-menu', () => ({
   ContextMenu: PassThrough,
   ContextMenuContent: ({ children }: { children?: ReactNode }) => <div role="menu">{children}</div>,
   ContextMenuItem: ({
@@ -278,7 +301,7 @@ mock.module('@/components/ui/context-menu', () => ({
   ContextMenuTrigger: PassThrough,
 }));
 
-mock.module('@/components/ui/dropdown-menu', () => ({
+vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: PassThrough,
   DropdownMenuCheckboxItem: ({
     checked,
@@ -320,10 +343,10 @@ mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenuItem: Button,
   DropdownMenuLabel: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   DropdownMenuSeparator: () => <hr data-testid="dropdown-menu-separator" />,
-  DropdownMenuTrigger: PassThrough,
+  DropdownMenuTrigger: TriggerPassThrough,
 }));
 
-mock.module('@/components/ui/sidebar', () => ({
+vi.doMock('@/components/ui/sidebar', () => ({
   Sidebar: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
     <aside data-testid="sidebar" {...props}>
       {children}
@@ -355,13 +378,7 @@ mock.module('@/components/ui/sidebar', () => ({
   useSidebar: () => ({ state: sidebarState }),
 }));
 
-mock.module('@/components/ui/tooltip', () => ({
-  Tooltip: PassThrough,
-  TooltipContent: ({ children }: { children?: ReactNode }) => <div role="tooltip">{children}</div>,
-  TooltipTrigger: PassThrough,
-}));
-
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName,
     activeTarget,
@@ -392,7 +409,7 @@ function templateEntries(folderPath: string | null) {
   ];
 }
 
-mock.module('@/hooks/use-folder-config', () => ({
+vi.doMock('@/hooks/use-folder-config', () => ({
   useFolderConfig: (folderPath: string | null) => ({
     state: {
       status: 'ready',
@@ -401,7 +418,7 @@ mock.module('@/hooks/use-folder-config', () => ({
   }),
 }));
 
-mock.module('@/lib/config-provider', () => ({
+vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     merged: mergedConfig,
     projectLocalBinding: projectLocalBindingNull
@@ -412,11 +429,11 @@ mock.module('@/lib/config-provider', () => ({
   }),
 }));
 
-mock.module('@/lib/use-workspace', () => ({
+vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => workspace,
 }));
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: {
     error: (...args: unknown[]) => toastErrors.push(args),
     success: (...args: unknown[]) => toastSuccesses.push(args),
@@ -425,7 +442,9 @@ mock.module('sonner', () => ({
 
 async function renderSidebar() {
   const { FileSidebar } = await import('./FileSidebar');
-  return render(<FileSidebar onOpenSearch={onOpenSearch} />);
+  return render(<FileSidebar onOpenSearch={onOpenSearch} />, {
+    wrapper: ({ children }) => <TooltipProvider delayDuration={0}>{children}</TooltipProvider>,
+  });
 }
 
 describe('FileSidebar runtime behavior', () => {
@@ -466,7 +485,7 @@ describe('FileSidebar runtime behavior', () => {
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: {
-        writeText: mock(() => Promise.resolve()),
+        writeText: vi.fn(() => Promise.resolve()),
       },
     });
   });
@@ -479,11 +498,13 @@ describe('FileSidebar runtime behavior', () => {
     });
   });
 
-  test('web mode keeps the Files label, spread toolbar layout, search entry, and no Electron chrome classes', async () => {
+  test('web mode keeps only the Files label in the header and omits navigation history', async () => {
     await renderSidebar();
 
     const header = screen.getByTestId('sidebar-header');
     expect(screen.getByText('Files')).toBeTruthy();
+    expect(header.children).toHaveLength(1);
+    expect(screen.queryByTestId('navigation-history-controls')).toBeNull();
     expectVisualClassTokens(header.className, ['justify-between']);
     expectVisualClassTokensAbsent(header.className, [
       '[-webkit-app-region:drag]',
@@ -498,7 +519,8 @@ describe('FileSidebar runtime behavior', () => {
     expect(onOpenSearch).toHaveBeenCalledTimes(1);
   });
 
-  test('Electron mode moves identity to the footer and applies drag/no-drag chrome treatment', async () => {
+  test('expanded Electron header contains only the traffic-light reserve and one navigation pair', async () => {
+    const user = userEvent.setup();
     installBridge();
     await renderSidebar();
 
@@ -525,16 +547,34 @@ describe('FileSidebar runtime behavior', () => {
       'shrink-0',
       'self-stretch',
     ]);
-    expectVisualClassTokens(toolbar.className, ['[&>*]:[-webkit-app-region:no-drag]']);
+    expectVisualClassTokens(toolbar.className, ['*:[-webkit-app-region:no-drag]']);
     expectVisualClassTokens(pillRow.className, ['[-webkit-app-region:no-drag]']);
     expect(screen.getByTestId('sidebar-rail').getAttribute('data-enable-toggle')).toBe('false');
+
+    const navigation = screen.getByTestId('navigation-history-controls');
+    expect(header.children).toHaveLength(2);
+    expect(header.children.item(0)).toBe(reserve);
+    expect(header.children.item(1)).toBe(navigation);
+    expect(within(header).getAllByRole('button')).toHaveLength(2);
+    expect(within(header).getByRole('button', { name: 'Back' })).toBeTruthy();
+    expect(within(header).getByRole('button', { name: 'Forward' })).toBeTruthy();
+    expect(header.contains(toolbar)).toBe(false);
+
+    await user.hover(screen.getByRole('button', { name: 'New folder' }));
+    const newFolderTooltip = await screen.findByRole('tooltip', {
+      name: `New folder ${formatShortcutLabel('new-folder')}`,
+    });
+    expect(newFolderTooltip.querySelector('[data-slot="kbd"]')?.textContent).toBe(
+      formatShortcut('new-folder'),
+    );
   });
 
-  test('collapsed Electron sidebar fades the toolbar and search pill in lockstep', async () => {
+  test('collapsed Electron sidebar removes navigation and fades the header and search pill in lockstep', async () => {
     installBridge();
     sidebarState = 'collapsed';
     await renderSidebar();
 
+    expect(screen.queryByTestId('navigation-history-controls')).toBeNull();
     expectVisualClassTokens(screen.getByTestId('sidebar-header').className, [
       'opacity-0',
       'motion-safe:transition-opacity',
@@ -548,6 +588,52 @@ describe('FileSidebar runtime behavior', () => {
       'motion-safe:duration-100',
       'motion-safe:ease-out',
     ]);
+  });
+
+  test('project-root label keeps the trigger and four-action toolbar as siblings', async () => {
+    const user = userEvent.setup();
+    await renderSidebar();
+
+    const trigger = document.querySelector('[data-sidebar-root-context]') as HTMLElement;
+    const toolbar = screen.getByTestId('sidebar-toolbar');
+    expect(trigger).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Files toolbar' })).toBe(toolbar);
+    expect(trigger.parentElement).toBe(toolbar.parentElement);
+    expect(trigger.contains(toolbar)).toBe(false);
+    expectVisualClassTokens(trigger.className, ['min-w-0', 'flex-1']);
+    expect(within(toolbar).getByRole('button', { name: 'Tree view options' })).toBeTruthy();
+    expect(within(toolbar).getByRole('button', { name: 'New file' })).toBeTruthy();
+    expect(within(toolbar).getByRole('button', { name: 'New from template' })).toBeTruthy();
+    expect(within(toolbar).getByRole('button', { name: 'New folder' })).toBeTruthy();
+    for (const label of ['Tree view options', 'New file', 'New from template', 'New folder']) {
+      expectVisualClassTokens(within(toolbar).getByRole('button', { name: label }).className, [
+        "[&_svg:not([class*='size-'])]:size-3.5",
+      ]);
+    }
+
+    await user.hover(within(toolbar).getByRole('button', { name: 'New file' }));
+    const newFileTooltip = await screen.findByRole('tooltip', {
+      name: `New file ${formatShortcutLabel('new-item')}`,
+    });
+    expect(newFileTooltip.querySelector('[data-slot="kbd"]')?.textContent).toBe(
+      formatShortcut('new-item'),
+    );
+    cleanup();
+    await renderSidebar();
+    await user.hover(screen.getByRole('button', { name: 'Tree view options' }));
+    expect(
+      (await screen.findByRole('tooltip', { name: 'Tree view options' })).querySelector(
+        '[data-slot="kbd"]',
+      ),
+    ).toBeNull();
+    cleanup();
+    await renderSidebar();
+    await user.hover(screen.getByRole('button', { name: 'New folder' }));
+    expect(
+      (await screen.findByRole('tooltip', { name: 'New folder' })).querySelector(
+        '[data-slot="kbd"]',
+      ),
+    ).toBeNull();
   });
 
   test('toolbar actions use the active folder while tree-state actions smart-hide no-op menu items', async () => {
@@ -906,7 +992,7 @@ describe('FileSidebar runtime behavior', () => {
 
   test('search pill render failures are contained to the pill row and reset when sidebar state changes', async () => {
     const originalConsoleError = console.error;
-    console.error = mock(() => {}) as never;
+    console.error = vi.fn(() => {}) as never;
     try {
       sidebarSearchThrows = true;
       const rendered = await renderSidebar();

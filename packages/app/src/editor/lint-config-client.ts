@@ -6,14 +6,15 @@
  */
 
 import {
-  type LintAuditResponse,
-  LintAuditResponseSchema,
+  type FrontmatterFieldConstraint,
+  FrontmatterSchemasListSuccessSchema,
   type LintConfigResponse,
   LintConfigResponseSchema,
   type LinterConfig,
   type LintFixResult,
   LintFixResultSchema,
   type MarkdownlintRuleWriteValue,
+  type SchemaParentPathSegment,
 } from '@inkeep/open-knowledge-core';
 import { useEffect, useState } from 'react';
 
@@ -61,29 +62,6 @@ export async function fetchEffectiveLintConfig(docName: string): Promise<LinterC
 }
 
 /**
- * GET a project-wide (or sub-path) lint audit. Returns every in-scope doc that
- * has at least one diagnostic, plus file/error/warning counts. null on failure.
- */
-export async function runLintAudit(targetPath?: string): Promise<LintAuditResponse | null> {
-  try {
-    const query = targetPath ? `?path=${encodeURIComponent(targetPath)}` : '';
-    const res = await fetch(`/api/lint/audit${query}`);
-    if (!res.ok) return null;
-    const body = await res.json().catch(() => null);
-    const parsed = LintAuditResponseSchema.safeParse(body);
-    if (!parsed.success) {
-      // Mirror the sibling `fetchLintConfig` logging so a client/server schema
-      // drift window leaves a diagnostic trail instead of a silent null.
-      console.warn('[lint] audit response failed schema validation', parsed.error.issues);
-      return null;
-    }
-    return parsed.data;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * POST a whole-doc auto-fix. The body carries no agent identity on purpose:
  * a UI-initiated deterministic fix is the principal's write (the human
  * clicked the button), and the server resolves a bare body to the loaded
@@ -108,7 +86,7 @@ export async function fixLintDoc(
     const body = await res.json().catch(() => null);
     const parsed = LintFixResultSchema.safeParse(body);
     if (!parsed.success) {
-      // Mirror the sibling fetchLintConfig/runLintAudit logging so a
+      // Mirror the sibling fetchLintConfig/runValidationAudit logging so a
       // client/server schema drift leaves a diagnostic trail instead of a
       // silent failure.
       console.warn('[lint] fix response failed schema validation', parsed.error.issues);
@@ -154,6 +132,180 @@ export async function writeMarkdownlintRule(
   } catch {
     return { ok: false, errorDetail: null };
   }
+}
+
+/**
+ * POST one request to the frontmatter schema write endpoint (the five shapes
+ * the request schema refines: per-field edit, removeField, renameTo,
+ * create-empty, delete). `undefined` members drop out of the JSON body.
+ * Returns the recomputed effective config on success.
+ */
+async function postFrontmatterSchema(body: {
+  file: string;
+  delete?: true;
+  field?: string;
+  constraint?: FrontmatterFieldConstraint;
+  removeField?: true;
+  renameTo?: string;
+  parentPath?: readonly SchemaParentPathSegment[];
+}): Promise<
+  { ok: true; response: LintConfigResponse } | { ok: false; errorDetail: string | null }
+> {
+  try {
+    const res = await fetch('/api/lint/frontmatter-schema', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errBody = (await res.json().catch(() => null)) as { title?: unknown } | null;
+      return {
+        ok: false,
+        errorDetail: typeof errBody?.title === 'string' ? errBody.title : null,
+      };
+    }
+    const parsed = LintConfigResponseSchema.safeParse(await res.json().catch(() => null));
+    return parsed.success ? { ok: true, response: parsed.data } : { ok: false, errorDetail: null };
+  } catch {
+    return { ok: false, errorDetail: null };
+  }
+}
+
+/** Empty parentPath drops off the wire (the schema treats absent as the root). */
+function wireParentPath(
+  parentPath: readonly SchemaParentPathSegment[],
+): readonly SchemaParentPathSegment[] | undefined {
+  return parentPath.length > 0 ? parentPath : undefined;
+}
+
+/**
+ * POST one field-constraint change to a frontmatter schema file (create-on-
+ * first-edit; non-destructive merge — advanced keywords survive). Returns the
+ * recomputed effective config. Callers pair a success with
+ * `emitLintConfigChanged()` so open editors re-lint.
+ */
+export async function writeFrontmatterSchemaField(
+  file: string,
+  field: string,
+  constraint: FrontmatterFieldConstraint,
+  parentPath: readonly SchemaParentPathSegment[] = [],
+): Promise<{ ok: true; response: LintConfigResponse } | { ok: false; errorDetail: string | null }> {
+  return postFrontmatterSchema({ file, field, constraint, parentPath: wireParentPath(parentPath) });
+}
+
+/**
+ * GET the project's existing frontmatter schema files (`.ok/schemas/*.json`,
+ * project-root-relative) for the mapping file-picker. Empty list on any
+ * failure (server down, no `.ok/schemas/` yet) — the picker degrades to plain
+ * free-text entry.
+ */
+async function listFrontmatterSchemas(): Promise<string[]> {
+  try {
+    const res = await fetch('/api/lint/frontmatter-schemas');
+    if (!res.ok) return [];
+    const body = await res.json().catch(() => null);
+    const parsed = FrontmatterSchemasListSuccessSchema.safeParse(body);
+    if (!parsed.success) {
+      console.warn(
+        '[lint] frontmatter-schemas response failed schema validation',
+        parsed.error.issues,
+      );
+      return [];
+    }
+    return parsed.data.schemas;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * POST a create-empty request to the schema write endpoint (no field) —
+ * scaffolds `<file>` with the default-dialect skeleton if it doesn't exist yet, so
+ * the picker's "create new schema" lands a real, valid file. Idempotent
+ * server-side (an existing file is left untouched). Emits
+ * `emitLintConfigChanged()` on success so the picker list + open editors refresh.
+ */
+export async function createEmptyFrontmatterSchema(
+  file: string,
+): Promise<{ ok: true } | { ok: false; errorDetail: string | null }> {
+  const result = await postFrontmatterSchema({ file });
+  if (result.ok) emitLintConfigChanged();
+  return result;
+}
+
+/**
+ * POST a remove-field request — drops the field's properties entry and
+ * required membership from the schema file. Callers pair a success with
+ * `emitLintConfigChanged()`.
+ */
+export async function removeFrontmatterSchemaField(
+  file: string,
+  field: string,
+  parentPath: readonly SchemaParentPathSegment[] = [],
+): Promise<{ ok: true } | { ok: false; errorDetail: string | null }> {
+  return postFrontmatterSchema({
+    file,
+    field,
+    removeField: true,
+    parentPath: wireParentPath(parentPath),
+  });
+}
+
+/**
+ * POST a rename-field request — carries the field's full property object
+ * (including keywords the GUI does not model) and its required membership to
+ * the new name. The server refuses a rename onto an existing field. Callers
+ * pair a success with `emitLintConfigChanged()`.
+ */
+export async function renameFrontmatterSchemaField(
+  file: string,
+  field: string,
+  renameTo: string,
+  parentPath: readonly SchemaParentPathSegment[] = [],
+): Promise<{ ok: true } | { ok: false; errorDetail: string | null }> {
+  return postFrontmatterSchema({ file, field, renameTo, parentPath: wireParentPath(parentPath) });
+}
+
+/**
+ * POST a delete request to the schema write endpoint — removes a schema file
+ * (`*.schema.json` anywhere, or `.ok/schemas/*.json`; the server refuses
+ * anything else). Idempotent server-side. Emits `emitLintConfigChanged()` on
+ * success so the browser list + open editors refresh.
+ */
+export async function deleteFrontmatterSchema(
+  file: string,
+): Promise<{ ok: true } | { ok: false; errorDetail: string | null }> {
+  const result = await postFrontmatterSchema({ file, delete: true });
+  if (result.ok) emitLintConfigChanged();
+  return result;
+}
+
+/**
+ * Live list of the project's `.ok/schemas/*.json` files for the mapping
+ * picker. Refetches on mount and on any `lint-config-changed` event (e.g.
+ * after `createEmptyFrontmatterSchema` writes a new file); `refresh` lets a
+ * caller re-pull on demand (e.g. when the picker popover opens).
+ */
+export function useFrontmatterSchemaFiles(): { schemas: string[]; refresh: () => void } {
+  const [schemas, setSchemas] = useState<string[]>([]);
+  const refresh = () => {
+    void listFrontmatterSchemas().then(setSchemas);
+  };
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      void listFrontmatterSchemas().then((next) => {
+        if (!cancelled) setSchemas(next);
+      });
+    };
+    load();
+    const unsub = subscribeToLintConfigChanged(load);
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, []);
+  return { schemas, refresh };
 }
 
 /**

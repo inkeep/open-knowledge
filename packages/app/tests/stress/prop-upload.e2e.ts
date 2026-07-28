@@ -34,10 +34,9 @@
  * unified `/api/upload` endpoint is accept-all and the prior
  * magic-byte-mismatch rejection no longer applies.
  *
- * This file is NOT in the CI `test:e2e` file list
- * (`packages/app/package.json` dispatches a fixed subset for PR-tier runs);
- * generic `bunx playwright test` invocations run it for pre-push coverage,
- * and the nightly E2E stability surveillance picks up flakes.
+ * This file is in the CI `test:e2e` file list (`packages/app/package.json`),
+ * so it runs on every PR; the nightly E2E stability surveillance also picks up
+ * flakes.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -183,8 +182,15 @@ for (const kind of ['img', 'video', 'audio'] as const) {
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
     await waitForActiveProviderSynced(page);
 
-    // Initial src is the seeded placeholder.
-    expect(await readSrc(page, c.tag)).toBe(c.initialSrc);
+    // Initial src is the seeded placeholder, rendered as a server-absolute
+    // URL: raw JSX media src passes through normalizeDocRelativeMediaRenderProps
+    // -> normalizeDocRelativeAssetUrl, which roots a doc-relative src at the
+    // contentDir. These docs live at root, so `initial.ext` -> `/initial.ext`.
+    // This normalized value is also the baseline waitForSrcChange must compare
+    // against; passing the raw `initial.ext` would make it short-circuit on the
+    // raw-vs-normalized delta before the upload replaces the src.
+    const normalizedInitialSrc = `/${c.initialSrc}`;
+    expect(await readSrc(page, c.tag)).toBe(normalizedInitialSrc);
 
     const panel = await openPropPanel(page);
     const fileInput = panel.locator('[data-prop-upload-input]').first();
@@ -196,7 +202,7 @@ for (const kind of ['img', 'video', 'audio'] as const) {
       mimeType: c.payloads[0].mimeType,
       buffer: c.payloads[0].buffer,
     });
-    const srcAfterFirst = await waitForSrcChange(page, c.tag, c.initialSrc);
+    const srcAfterFirst = await waitForSrcChange(page, c.tag, normalizedInitialSrc);
     expect(srcAfterFirst).not.toBe(c.initialSrc);
     // Server returns the contentDir-relative `path` (POSIX-normalized, no
     // leading slash from `relative()`); the upload-file.ts client helper
@@ -270,7 +276,13 @@ test('UPLOAD-IMG-SUBDIR-01: subdir-doc upload renders <img> that fetches the ass
   await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
   await waitForActiveProviderSynced(page);
 
-  expect(await readSrc(page, 'img')).toBe(cases.img.initialSrc);
+  // The doc lives under `sidebar-folder/`, so the doc-relative `initial.png`
+  // normalizes to the server-absolute `/sidebar-folder/initial.png` at render
+  // time (normalizeDocRelativeAssetUrl joins the doc's directory). This is also
+  // the waitForSrcChange baseline (see UPLOAD-*-01 for why the raw src would
+  // short-circuit the wait).
+  const normalizedInitialSrc = `/sidebar-folder/${cases.img.initialSrc}`;
+  expect(await readSrc(page, 'img')).toBe(normalizedInitialSrc);
 
   const panel = await openPropPanel(page);
   const fileInput = panel.locator('[data-prop-upload-input]').first();
@@ -282,7 +294,7 @@ test('UPLOAD-IMG-SUBDIR-01: subdir-doc upload renders <img> that fetches the ass
     buffer: cases.img.payloads[0].buffer,
   });
 
-  const newSrc = await waitForSrcChange(page, 'img', cases.img.initialSrc);
+  const newSrc = await waitForSrcChange(page, 'img', normalizedInitialSrc);
   expect(newSrc).not.toBe(cases.img.initialSrc);
 
   // Subdir is threaded through `path` (contentDir-relative, no leading
@@ -332,7 +344,10 @@ test('UPLOAD-IMG-ERR: 0-byte upload → 400 No file received → toast.error →
   await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
   await waitForActiveProviderSynced(page);
 
-  expect(await readSrc(page, 'img')).toBe(cases.img.initialSrc);
+  // Root doc: the seeded `initial.png` renders as the server-absolute
+  // `/initial.png` (doc-relative normalization).
+  const normalizedInitialSrc = `/${cases.img.initialSrc}`;
+  expect(await readSrc(page, 'img')).toBe(normalizedInitialSrc);
 
   const panel = await openPropPanel(page);
   const fileInput = panel.locator('[data-prop-upload-input]').first();
@@ -356,5 +371,5 @@ test('UPLOAD-IMG-ERR: 0-byte upload → 400 No file received → toast.error →
 
   // src must NOT have changed — the rejection short-circuited before
   // `onUploaded(url)` could run.
-  expect(await readSrc(page, 'img')).toBe(cases.img.initialSrc);
+  expect(await readSrc(page, 'img')).toBe(normalizedInitialSrc);
 });

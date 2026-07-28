@@ -49,7 +49,6 @@
  *       could silently merge/corrupt the round-trip with nothing noticing.
  */
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { MarkdownManager } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
@@ -57,6 +56,7 @@ import { AllSelection, EditorState, type TextSelection } from '@tiptap/pm/state'
 import { CellSelection, TableMap } from '@tiptap/pm/tables';
 import { EditorView } from '@tiptap/pm/view';
 import { JSDOM } from 'jsdom';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { sharedExtensions } from '../extensions/shared';
 import {
   reflectCheckboxCheckedState,

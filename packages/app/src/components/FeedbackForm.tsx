@@ -3,7 +3,7 @@ import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Paperclip, ThumbsDown, ThumbsUp, X } from 'lucide-react';
-import { type FC, useEffect, useRef, useState } from 'react';
+import { type FC, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -85,11 +85,27 @@ const AttachmentImagePreview: FC<{ file: File }> = ({ file }) => {
 export const FeedbackForm = ({
   onSuccess,
   source = 'resources_menu',
+  compact,
+  title,
+  onDismiss,
+  className,
 }: {
   /** Called after a confirmed submit (e.g. to close the dialog). */
   onSuccess?: () => void;
   /** Which in-app surface opened the form; sent for analytics attribution. */
   source?: string;
+  /**
+   * Tighten spacing and type for narrow surfaces — the sidebar footer card sits
+   * at `--sidebar-width` (~256px), where the dialog's rhythm overflows. Mirrors
+   * `SubscribeForm`'s `compactSubmit` seam: additive and default-off, so the
+   * dialog rendering is byte-identical to before.
+   */
+  compact?: boolean;
+  /** Heading rendered above the form. Omitted surfaces supply their own (the dialog uses DialogTitle). */
+  title?: ReactNode;
+  /** When provided, renders a close (X) button beside the title. */
+  onDismiss?: () => void;
+  className?: string;
 }) => {
   const { t } = useLingui();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -133,6 +149,16 @@ export const FeedbackForm = ({
   });
 
   const rating = useWatch({ control: form.control, name: 'rating' });
+
+  /**
+   * Compact surfaces reveal the rest of the form only once a rating is picked.
+   * `rating` is required by the schema, so showing the message box, the email
+   * opt-in, and Send before it is answered offers a control that cannot
+   * succeed — on the sidebar card, which the user never asked for, that dead
+   * end costs more than the reveal does. The dialog is opened deliberately and
+   * has no height pressure, so it stays fully expanded.
+   */
+  const showBeyondRating = !compact || rating != null;
   const shareEmail = useWatch({ control: form.control, name: 'shareEmail' });
 
   // Attachments are driven directly off form state (not a FormField) so the
@@ -187,7 +213,27 @@ export const FeedbackForm = ({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className={cn(compact ? 'space-y-3' : 'space-y-5', className)}
+      >
+        {(title || onDismiss) && (
+          <div className="flex items-start justify-between gap-2">
+            {title ? <p className="font-medium text-1sm">{title}</p> : <span />}
+            {onDismiss ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={onDismiss}
+                aria-label={t`Close`}
+                className="-mr-1.5 -mt-1 size-7 shrink-0 text-muted-foreground opacity-60"
+              >
+                <X className="size-4" />
+              </Button>
+            ) : null}
+          </div>
+        )}
         {/* Rating — single choice, drives whether the reason pills show. */}
         <FormField
           control={form.control}
@@ -199,6 +245,11 @@ export const FeedbackForm = ({
                   type="single"
                   variant="outline"
                   spacing={2}
+                  // The Good/Not great options carry their own labels; the group
+                  // itself needs a name so a screen reader announces what the
+                  // radios are for. The visible heading is a plain <p>, not a
+                  // programmatic label, so this can't be aria-labelledby to it.
+                  aria-label={t`Rate your experience`}
                   value={field.value ?? ''}
                   onValueChange={(value) => {
                     if (!value) return;
@@ -211,14 +262,22 @@ export const FeedbackForm = ({
                 >
                   <ToggleGroupItem
                     value="positive"
-                    className={`h-auto flex-1 justify-center gap-2 py-2 ${selectedStateClassName}`}
+                    className={cn(
+                      'h-auto flex-1 justify-center py-2',
+                      compact ? 'gap-1.5 text-xs' : 'gap-2',
+                      selectedStateClassName,
+                    )}
                   >
                     <ThumbsUp className="size-4" />
                     <Trans>Good</Trans>
                   </ToggleGroupItem>
                   <ToggleGroupItem
                     value="negative"
-                    className={`h-auto flex-1 justify-center gap-2 py-2 ${selectedStateClassName}`}
+                    className={cn(
+                      'h-auto flex-1 justify-center py-2',
+                      compact ? 'gap-1.5 text-xs' : 'gap-2',
+                      selectedStateClassName,
+                    )}
                   >
                     <ThumbsDown className="size-4" />
                     <Trans>Not great</Trans>
@@ -229,181 +288,191 @@ export const FeedbackForm = ({
             </FormItem>
           )}
         />
-        <div className="space-y-3">
-          {/* Reason pills — only shown when the "Not great" rating is selected. */}
-          {rating === 'negative' && (
-            <FormField
-              control={form.control}
-              name="reasons"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    <Trans>What got in the way?</Trans>
-                  </FormLabel>
-                  <FormControl>
-                    <ToggleGroup
-                      type="multiple"
-                      variant="outline"
-                      spacing={2}
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      className="w-full flex-wrap justify-start"
-                    >
-                      {REASONS.map((reason) => (
-                        <ToggleGroupItem
-                          key={reason.value}
-                          value={reason.value}
-                          className={pillClassName}
+        {showBeyondRating && (
+          <>
+            <div className="space-y-3">
+              {/* Reason pills — only shown when the "Not great" rating is selected. */}
+              {rating === 'negative' && (
+                <FormField
+                  control={form.control}
+                  name="reasons"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        <Trans>What got in the way?</Trans>
+                      </FormLabel>
+                      <FormControl>
+                        <ToggleGroup
+                          type="multiple"
+                          variant="outline"
+                          spacing={2}
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          className="w-full flex-wrap justify-start"
                         >
-                          {t(reason.label)}
-                        </ToggleGroupItem>
-                      ))}
-                    </ToggleGroup>
-                  </FormControl>
-                </FormItem>
+                          {REASONS.map((reason) => (
+                            <ToggleGroupItem
+                              key={reason.value}
+                              value={reason.value}
+                              className={pillClassName}
+                            >
+                              {t(reason.label)}
+                            </ToggleGroupItem>
+                          ))}
+                        </ToggleGroup>
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
               )}
-            />
-          )}
 
-          {/* Message with the attach button tucked into its bottom-left corner —
+              {/* Message with the attach button tucked into its bottom-left corner —
             a real sibling button positioned over the textarea, not inside it —
             and the attachment previews rendered below. */}
-          <div className="space-y-2">
-            <FormField
-              control={form.control}
-              name="message"
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <div className="relative">
-                      <Textarea
-                        {...field}
-                        placeholder={t`Tell us more (optional)`}
-                        className="min-h-20 resize-none pb-9"
-                      />
-                      <Tooltip>
-                        {/* Disabled buttons emit no pointer events, so the tooltip
+              <div className="space-y-2">
+                <FormField
+                  control={form.control}
+                  name="message"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <div className="relative">
+                          <Textarea
+                            {...field}
+                            placeholder={t`Tell us more (optional)`}
+                            className={cn('resize-none pb-9', compact ? 'min-h-16' : 'min-h-20')}
+                          />
+                          <Tooltip>
+                            {/* Disabled buttons emit no pointer events, so the tooltip
                           trigger sits on a wrapping span (shadcn's documented
                           pattern); the button itself is truly disabled at the cap. */}
-                        <TooltipTrigger asChild>
-                          <span
-                            className={cn(
-                              'absolute bottom-1.5 left-1.5 inline-flex',
-                              atMaxAttachments && 'cursor-not-allowed',
-                            )}
-                          >
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              disabled={atMaxAttachments}
-                              onClick={() => fileInputRef.current?.click()}
-                              className="size-7 text-muted-foreground"
-                            >
-                              <Paperclip className="size-4" />
-                              <span className="sr-only">
-                                <Trans>Attach images</Trans>
+                            <TooltipTrigger asChild>
+                              <span
+                                className={cn(
+                                  'absolute bottom-1.5 left-1.5 inline-flex',
+                                  atMaxAttachments && 'cursor-not-allowed',
+                                )}
+                              >
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  disabled={atMaxAttachments}
+                                  onClick={() => fileInputRef.current?.click()}
+                                  className="size-7 text-muted-foreground"
+                                >
+                                  <Paperclip className="size-4" />
+                                  <span className="sr-only">
+                                    <Trans>Attach images</Trans>
+                                  </span>
+                                </Button>
                               </span>
-                            </Button>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {atMaxAttachments ? (
-                            <Trans>Maximum {MAX_ATTACHMENTS} attachments</Trans>
-                          ) : (
-                            <Trans>Attach images</Trans>
-                          )}
-                        </TooltipContent>
-                      </Tooltip>
-                      <Input
-                        ref={fileInputRef}
-                        type="file"
-                        accept={ACCEPTED_IMAGE_TYPES.join(',')}
-                        multiple
-                        className="hidden"
-                        onChange={(e) => {
-                          setAttachments(mergeAttachments(attachments, e.target.files));
-                          // Reset so re-picking the same file re-fires onChange.
-                          e.target.value = '';
-                        }}
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {atMaxAttachments ? (
+                                <Trans>Maximum {MAX_ATTACHMENTS} attachments</Trans>
+                              ) : (
+                                <Trans>Attach images</Trans>
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                          <Input
+                            ref={fileInputRef}
+                            type="file"
+                            accept={ACCEPTED_IMAGE_TYPES.join(',')}
+                            multiple
+                            className="hidden"
+                            onChange={(e) => {
+                              setAttachments(mergeAttachments(attachments, e.target.files));
+                              // Reset so re-picking the same file re-fires onChange.
+                              e.target.value = '';
+                            }}
+                          />
+                        </div>
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
+                {attachments.length > 0 && (
+                  <AttachmentGroup>
+                    {attachments.map((file, index) => (
+                      <Attachment key={`${file.name}:${file.size}`} size="xs">
+                        <AttachmentMedia variant="image">
+                          <AttachmentImagePreview file={file} />
+                        </AttachmentMedia>
+                        <AttachmentContent>
+                          <AttachmentTitle>{file.name}</AttachmentTitle>
+                          <AttachmentDescription>{formatFileSize(file.size)}</AttachmentDescription>
+                        </AttachmentContent>
+                        <AttachmentActions>
+                          <AttachmentAction
+                            type="button"
+                            aria-label={t`Remove ${file.name}`}
+                            onClick={() =>
+                              setAttachments(attachments.filter((_, i) => i !== index))
+                            }
+                          >
+                            <X className="size-3.5" />
+                          </AttachmentAction>
+                        </AttachmentActions>
+                      </Attachment>
+                    ))}
+                  </AttachmentGroup>
+                )}
+
+                {attachmentsError?.message && (
+                  <p className="text-destructive text-sm">{attachmentsError.message}</p>
+                )}
+              </div>
+            </div>
+            <div className="space-y-2">
+              {/* Email opt-in — the address field only appears once checked. */}
+              <FormField
+                control={form.control}
+                name="shareEmail"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center gap-2 space-y-0">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={(checked) => field.onChange(checked === true)}
                       />
-                    </div>
-                  </FormControl>
-                </FormItem>
+                    </FormControl>
+                    <FormLabel className="font-normal">
+                      <Trans>Share your email for followups</Trans>
+                    </FormLabel>
+                  </FormItem>
+                )}
+              />
+
+              {shareEmail && (
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Input {...field} type="email" placeholder={t`you@company.com`} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               )}
-            />
+            </div>
 
-            {attachments.length > 0 && (
-              <AttachmentGroup>
-                {attachments.map((file, index) => (
-                  <Attachment key={`${file.name}:${file.size}`} size="xs">
-                    <AttachmentMedia variant="image">
-                      <AttachmentImagePreview file={file} />
-                    </AttachmentMedia>
-                    <AttachmentContent>
-                      <AttachmentTitle>{file.name}</AttachmentTitle>
-                      <AttachmentDescription>{formatFileSize(file.size)}</AttachmentDescription>
-                    </AttachmentContent>
-                    <AttachmentActions>
-                      <AttachmentAction
-                        type="button"
-                        aria-label={t`Remove ${file.name}`}
-                        onClick={() => setAttachments(attachments.filter((_, i) => i !== index))}
-                      >
-                        <X className="size-3.5" />
-                      </AttachmentAction>
-                    </AttachmentActions>
-                  </Attachment>
-                ))}
-              </AttachmentGroup>
-            )}
-
-            {attachmentsError?.message && (
-              <p className="text-destructive text-sm">{attachmentsError.message}</p>
-            )}
-          </div>
-        </div>
-        <div className="space-y-2">
-          {/* Email opt-in — the address field only appears once checked. */}
-          <FormField
-            control={form.control}
-            name="shareEmail"
-            render={({ field }) => (
-              <FormItem className="flex flex-row items-center gap-2 space-y-0">
-                <FormControl>
-                  <Checkbox
-                    checked={field.value}
-                    onCheckedChange={(checked) => field.onChange(checked === true)}
-                  />
-                </FormControl>
-                <FormLabel className="font-normal">
-                  <Trans>Share your email for followups</Trans>
-                </FormLabel>
-              </FormItem>
-            )}
-          />
-
-          {shareEmail && (
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <Input {...field} type="email" placeholder={t`you@company.com`} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          )}
-        </div>
-
-        <div className="flex justify-end">
-          <Button type="submit" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? <Trans>Sending</Trans> : <Trans>Send</Trans>}
-          </Button>
-        </div>
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                size={compact ? 'sm' : 'default'}
+                disabled={form.formState.isSubmitting}
+              >
+                {form.formState.isSubmitting ? <Trans>Sending</Trans> : <Trans>Send</Trans>}
+              </Button>
+            </div>
+          </>
+        )}
       </form>
     </Form>
   );

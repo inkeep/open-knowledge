@@ -31,9 +31,9 @@
  * (b) remove the RTL value import (keeping `import type` is fine).
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 const PACKAGE_APP_ROOT = resolve(import.meta.dir, '../..');
 const SCAN_ROOTS = ['src', 'tests'] as const;

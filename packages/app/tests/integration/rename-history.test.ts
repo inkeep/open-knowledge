@@ -15,10 +15,11 @@
  * `packages/server/src/api-rename-crash-injection.test.ts` — they exercise
  * the exact ordering invariant + boot recovery + sweepLazyPopOrphans path.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   loadRenameLogIndex,
   type RenameLogEntry,

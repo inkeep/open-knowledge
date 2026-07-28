@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { HeadingEntry } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { __resetDocumentListInflightForTests } from '@/lib/documents-fetch';
 import {
   autocompleteBoost,
@@ -309,7 +309,7 @@ describe('fetchPages', () => {
 
   /** Stub `/api/pages` + `/api/documents` with caller-supplied JSON bodies. */
   function stubFetch(pagesBody: unknown, documentsBody: unknown) {
-    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       const body = url.startsWith('/api/pages') ? pagesBody : documentsBody;
       return new Response(JSON.stringify(body), {
@@ -622,7 +622,7 @@ describe('loadWikiLinkContext', () => {
     forward?: { status?: number; body: unknown };
     back?: { status?: number; body: unknown };
   }) {
-    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       const route = url.startsWith('/api/forward-links')
         ? routes.forward
@@ -643,7 +643,7 @@ describe('loadWikiLinkContext', () => {
 
   test('returns an empty context for a null docName without fetching', async () => {
     let called = false;
-    globalThis.fetch = mock(async () => {
+    globalThis.fetch = vi.fn(async () => {
       called = true;
       return new Response('{}', { status: 200 });
     }) as typeof globalThis.fetch;

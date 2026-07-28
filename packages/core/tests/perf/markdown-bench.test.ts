@@ -24,11 +24,11 @@
  *     in the output so future runs are comparable even across machines.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { cpus, hostname, totalmem } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, test } from 'vitest';
 import { sharedExtensions } from '../../src/extensions/shared.ts';
 import {
   loadPerfFixture,

@@ -12,9 +12,9 @@
  * shape back to the in-process `SpawnCursorOutcome` discriminated union.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
+import { describe, expect, test, vi } from 'vitest';
 import {
   type HandleSpawnCursorDeps,
   handleSpawnCursor,
@@ -128,7 +128,7 @@ describe('handleSpawnCursor — body validation', () => {
 
 describe('handleSpawnCursor — path containment', () => {
   test('rejects paths outside contentDir → 403 path-escape', async () => {
-    const spawnDetached = mock(async () => ({ ok: true }) as SpawnCursorOutcome);
+    const spawnDetached = vi.fn(async () => ({ ok: true }) as SpawnCursorOutcome);
     const { res, captured } = makeRes();
     await handleSpawnCursor(
       makeReq('POST', { path: '/etc/passwd' }),
@@ -140,7 +140,7 @@ describe('handleSpawnCursor — path containment', () => {
   });
 
   test('rejects parent traversal → 403 path-escape', async () => {
-    const spawnDetached = mock(async () => ({ ok: true }) as SpawnCursorOutcome);
+    const spawnDetached = vi.fn(async () => ({ ok: true }) as SpawnCursorOutcome);
     const { res, captured } = makeRes();
     await handleSpawnCursor(
       makeReq('POST', { path: '/Users/who/dragons/../../etc' }),
@@ -180,7 +180,7 @@ describe('handleSpawnCursor — path containment', () => {
 
 describe('handleSpawnCursor — binary resolution', () => {
   test('resolveCursorBinary returns null → 422 cursor-not-installed', async () => {
-    const spawnDetached = mock(async () => ({ ok: true }) as SpawnCursorOutcome);
+    const spawnDetached = vi.fn(async () => ({ ok: true }) as SpawnCursorOutcome);
     const { res, captured } = makeRes();
     await handleSpawnCursor(
       makeReq('POST', { path: VALID_PATH }),
@@ -194,7 +194,7 @@ describe('handleSpawnCursor — binary resolution', () => {
 
 describe('handleSpawnCursor — spawn dispatch', () => {
   test('macOS .app bundle path routes through /usr/bin/open -a', async () => {
-    const spawnDetached = mock(
+    const spawnDetached = vi.fn(
       async (_exec: string, _args: ReadonlyArray<string>) => ({ ok: true }) as SpawnCursorOutcome,
     );
     const { res, captured } = makeRes();
@@ -218,7 +218,7 @@ describe('handleSpawnCursor — spawn dispatch', () => {
   });
 
   test('non-bundle exec path is invoked directly with [path] argv', async () => {
-    const spawnDetached = mock(
+    const spawnDetached = vi.fn(
       async (_exec: string, _args: ReadonlyArray<string>) => ({ ok: true }) as SpawnCursorOutcome,
     );
     const { res, captured } = makeRes();
@@ -296,7 +296,7 @@ describe('handleSpawnCursor — spawn dispatch', () => {
 describe('handleSpawnCursor — Cursor binary discovery (per-platform)', () => {
   test('macOS: bundle-path probe finds the shim without `which`', async () => {
     let whichCalled = false;
-    const spawnDetached = mock(async (exec: string, _args: ReadonlyArray<string>) => {
+    const spawnDetached = vi.fn(async (exec: string, _args: ReadonlyArray<string>) => {
       // /Applications/Cursor.app exists in production tests on developer
       // Macs; we mock the resolver to return its bundle path explicitly so
       // the test is hermetic regardless of the host machine's installs.
@@ -329,7 +329,7 @@ describe('handleSpawnCursor — Cursor binary discovery (per-platform)', () => {
       'C:\\Users\\who\\AppData\\Local\\Programs\\cursor\\resources\\app\\bin\\cursor.cmd';
     let capturedExec = '';
     let capturedArgs: ReadonlyArray<string> = [];
-    const spawnDetached = mock(async (exec: string, args: ReadonlyArray<string>) => {
+    const spawnDetached = vi.fn(async (exec: string, args: ReadonlyArray<string>) => {
       // A bare `spawn('cursor.cmd', …, {shell:false})` throws EINVAL on Windows;
       // the invocation must wrap the shim in `cmd.exe /d /c`.
       capturedExec = exec;
@@ -358,7 +358,7 @@ describe('handleSpawnCursor — Cursor binary discovery (per-platform)', () => {
     // canonical bundle path — the production resolver skips bundle probing
     // entirely on linux and goes straight to `which`. Tests stub
     // `resolveCursorBinary` directly to mirror that contract.
-    const spawnDetached = mock(
+    const spawnDetached = vi.fn(
       async (_exec: string, _args: ReadonlyArray<string>) => ({ ok: true }) as SpawnCursorOutcome,
     );
     const { res, captured } = makeRes();

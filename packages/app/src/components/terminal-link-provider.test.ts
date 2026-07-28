@@ -1,5 +1,5 @@
-import { describe, expect, mock, test } from 'bun:test';
 import type { ILink, ILinkProvider } from '@xterm/xterm';
+import { describe, expect, test, vi } from 'vitest';
 import type { CheckTargetExistsResult } from '@/lib/desktop-bridge-types';
 import type { PageListCacheSnapshot } from '../editor/page-list-cache';
 import {
@@ -16,7 +16,7 @@ function snapshot(partial: Partial<PageListCacheSnapshot> = {}): PageListCacheSn
 
 function makeProvider(overrides: Partial<TerminalFileLinkProviderDeps> = {}) {
   const activated: TerminalLinkTarget[] = [];
-  const checkTargetExists = mock(
+  const checkTargetExists = vi.fn(
     async (_kind: 'doc' | 'folder', _path: string): Promise<CheckTargetExistsResult> => 'exists',
   );
   const deps: TerminalFileLinkProviderDeps = {
@@ -159,7 +159,7 @@ describe('createTerminalFileLinkProvider', () => {
     // `packages/app` (no trailing slash, no extension) classifies as an asset, so
     // the file probe (`checkTargetExists('doc')` → isFile) misses on a real
     // directory. The provider retries as a folder rather than dropping the link.
-    const checkTargetExists = mock(
+    const checkTargetExists = vi.fn(
       async (kind: 'doc' | 'folder'): Promise<CheckTargetExistsResult> =>
         kind === 'folder' ? 'exists' : 'missing',
     );
@@ -178,7 +178,7 @@ describe('createTerminalFileLinkProvider', () => {
   test('a missing path WITH an extension does not waste a folder retry', async () => {
     // The folder fallback is gated on extension-less tokens; `gone/file.md` is a
     // file by shape, so a miss is final (one probe, no folder retry).
-    const checkTargetExists = mock(async (): Promise<CheckTargetExistsResult> => 'missing');
+    const checkTargetExists = vi.fn(async (): Promise<CheckTargetExistsResult> => 'missing');
     const { provider } = makeProvider({
       readLogicalLine: row('open gone/file.md'),
       checkTargetExists,

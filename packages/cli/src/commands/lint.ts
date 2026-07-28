@@ -14,7 +14,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { type Config, resolveContentDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
-import { type FileLintResult, type LintRunResult, runLint } from '../content/lint-runner.ts';
+import { type LintRunResult, runLint } from '../content/lint-runner.ts';
 import { getInvocationCwd } from '../project-anchor.ts';
 import { accent, dim, error as red, success, warning as yellow } from '../ui/colors.ts';
 
@@ -75,8 +75,38 @@ function hasProblems(result: LintRunResult): boolean {
   return result.errorCount > 0 || result.warningCount > 0;
 }
 
+/**
+ * Structural report input: the fields the renderer actually reads. Wire
+ * payloads type `source`/`severity` as plain strings (loose by design so a
+ * new validator doesn't fail an older client's schema), so the renderer must
+ * not require the narrower in-process `LintDiagnostic` — `ok audit` feeds
+ * `/api/audit`'s unified plane through this same formatter.
+ */
+interface ReportDiagnostic {
+  range: { start: { line: number; character: number } };
+  severity: string;
+  source: string;
+  code: string;
+  message: string;
+}
+
+interface ReportFile {
+  file: string;
+  fixed: boolean;
+  diagnostics: ReportDiagnostic[];
+}
+
+export interface LintReportInput {
+  files: ReportFile[];
+  warnings: string[];
+  fileCount: number;
+  errorCount: number;
+  warningCount: number;
+  fixedCount: number;
+}
+
 /** Render one file's heading + its diagnostics as report lines. */
-function renderFileBlock(file: FileLintResult): string[] {
+function renderFileBlock(file: ReportFile): string[] {
   const lines: string[] = [accent(file.file) + (file.fixed ? dim(' (fixed)') : '')];
   for (const d of file.diagnostics) {
     // Report locations are 1-based (editor convention); ranges are 0-based LSP.
@@ -89,7 +119,7 @@ function renderFileBlock(file: FileLintResult): string[] {
 }
 
 /** Render an eslint/markdownlint-style grouped report. */
-export function formatLintReport(result: LintRunResult): string {
+export function formatLintReport(result: LintReportInput): string {
   const lines: string[] = [];
   for (const file of result.files) {
     if (file.diagnostics.length > 0) lines.push(...renderFileBlock(file));

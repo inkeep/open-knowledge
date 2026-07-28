@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   __resetLocalMenuActionBusForTests,
   subscribeLocalMenuAction,
@@ -39,6 +39,7 @@ let seedDialogProps: Array<{ open: boolean }> = [];
 let newItemDialogProps: Array<{ open: boolean; kind: string; initialDir: string }> = [];
 let createProjectDialogProps: Array<{ open: boolean; bridge: unknown }> = [];
 let reportBugDialogProps: Array<{ open: boolean }> = [];
+let feedbackDialogProps: Array<{ open: boolean; source?: string }> = [];
 let commandDialogProps: CommandDialogProps[] = [];
 let refreshInstallStatesCalls = 0;
 const refreshInstallStates = () => {
@@ -57,7 +58,7 @@ const COMMAND_PALETTE_POLL_GRACE_MS = 1400;
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children?: ReactNode }) => <>{children}</>,
   Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
@@ -66,7 +67,7 @@ mock.module('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-mock.module('@/components/ui/command', () => ({
+vi.doMock('@/components/ui/command', () => ({
   CommandDialog: (props: CommandDialogProps) => {
     commandDialogProps.push(props);
     return props.open ? (
@@ -119,13 +120,13 @@ mock.module('@/components/ui/command', () => ({
   ),
 }));
 
-mock.module('@/components/doc-panel-events', () => ({
+vi.doMock('@/components/doc-panel-events', () => ({
   requestDocPanelTab: (tab: string) => {
     requestDocPanelTabCalls.push(tab);
   },
 }));
 
-mock.module('@/components/NewItemDialog', () => ({
+vi.doMock('@/components/NewItemDialog', () => ({
   NewItemDialog: (props: { open: boolean; kind: string; initialDir: string }) => {
     newItemDialogProps.push(props);
     return (
@@ -134,14 +135,14 @@ mock.module('@/components/NewItemDialog', () => ({
   },
 }));
 
-mock.module('@/components/SeedDialog', () => ({
+vi.doMock('@/components/SeedDialog', () => ({
   SeedDialog: (props: { open: boolean }) => {
     seedDialogProps.push(props);
     return <div data-open={String(props.open)} data-testid="seed-dialog" />;
   },
 }));
 
-mock.module('@/components/CreateProjectDialog', () => ({
+vi.doMock('@/components/CreateProjectDialog', () => ({
   CreateProjectDialog: (props: { open: boolean; bridge: unknown }) => {
     createProjectDialogProps.push(props);
     return (
@@ -154,14 +155,27 @@ mock.module('@/components/CreateProjectDialog', () => ({
   },
 }));
 
-mock.module('@/components/ReportBugDialog', () => ({
+vi.doMock('@/components/ReportBugDialog', () => ({
   ReportBugDialog: (props: { open: boolean }) => {
     reportBugDialogProps.push(props);
     return <div data-open={String(props.open)} data-testid="report-bug-dialog" />;
   },
 }));
 
-mock.module('@/components/PageListContext', () => ({
+vi.doMock('@/components/FeedbackFormDialog', () => ({
+  FeedbackFormDialog: (props: { open: boolean; source?: string }) => {
+    feedbackDialogProps.push(props);
+    return (
+      <div
+        data-open={String(props.open)}
+        data-source={props.source}
+        data-testid="feedback-form-dialog"
+      />
+    );
+  },
+}));
+
+vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => ({
     pages: new Set<string>(),
     pageTitles: new Map<string, string>(),
@@ -172,49 +186,49 @@ mock.module('@/components/PageListContext', () => ({
   }),
 }));
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName,
     activeTarget,
   }),
 }));
 
-mock.module('@/lib/use-workspace', () => ({
+vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => workspaceValue,
 }));
 
-mock.module('./handoff/useInstalledAgents', () => ({
+vi.doMock('./handoff/useInstalledAgents', () => ({
   useInstalledAgents: () => ({
     states: installedAgentStates,
     refresh: refreshInstallStates,
   }),
 }));
 
-mock.module('./handoff/useHandoffDispatch', () => ({
+vi.doMock('./handoff/useHandoffDispatch', () => ({
   buildHandoffInput: ({ docName, workspace }: { docName: string | null; workspace: unknown }) =>
     docName && workspace ? { docName, workspace } : null,
   useHandoffDispatch: () => ({
-    dispatch: mock(() => Promise.resolve()),
+    dispatch: vi.fn(() => Promise.resolve()),
   }),
 }));
 
-mock.module('@/components/command-palette-tag-search', () => ({
+vi.doMock('@/components/command-palette-tag-search', () => ({
   TAG_QUERY_PREFIX: 'tag:',
   parseTagPaletteQuery: () => ({ kind: 'normal' }),
   filterTagList: () => [],
-  fetchTagsList: mock(() => Promise.resolve([])),
-  fetchDocsForTag: mock(() => Promise.resolve([])),
+  fetchTagsList: vi.fn(() => Promise.resolve([])),
+  fetchDocsForTag: vi.fn(() => Promise.resolve([])),
 }));
 
 // The cached worktree model is read via useWorktrees (backed by window.okDesktop,
 // not the bridge prop). Default null so the existing suite sees no Worktrees
 // group; the dedicated test sets a model.
 let worktreeModelMock: import('@inkeep/open-knowledge-core').WorktreeSelectorModel | null = null;
-mock.module('@/hooks/use-worktrees', () => ({
+vi.doMock('@/hooks/use-worktrees', () => ({
   useWorktrees: () => worktreeModelMock,
 }));
-const refreshWorktreesMock = mock(() => {});
-mock.module('@/lib/worktree-store', () => ({ refreshWorktrees: refreshWorktreesMock }));
+const refreshWorktreesMock = vi.fn(() => {});
+vi.doMock('@/lib/worktree-store', () => ({ refreshWorktrees: refreshWorktreesMock }));
 
 function recent(name: string, path = `/projects/${name.toLowerCase()}`) {
   return { name, path: path.replaceAll(' ', '-') };
@@ -227,24 +241,25 @@ function createBridge() {
       projectPath: '/projects/current',
     },
     project: {
-      listRecent: mock(() =>
+      listRecent: vi.fn(() =>
         Promise.resolve([
           recent('Current', '/projects/current'),
           recent('Alpha', '/projects/alpha'),
           recent('Omega', '/archive/omega-project'),
         ]),
       ),
-      open: mock(() => Promise.resolve()),
-      openFile: mock(() => Promise.resolve()),
+      open: vi.fn(() => Promise.resolve()),
+      openFile: vi.fn(() => Promise.resolve()),
+      removeRecent: vi.fn(() => Promise.resolve()),
     },
     dialog: {
-      openFolder: mock(() => Promise.resolve('/chosen/folder')),
+      openFolder: vi.fn(() => Promise.resolve('/chosen/folder')),
     },
     navigator: {
-      open: mock(() => Promise.resolve()),
+      open: vi.fn(() => Promise.resolve()),
     },
     worktree: {
-      create: mock(() =>
+      create: vi.fn(() =>
         Promise.resolve({
           ok: true as const,
           path: '/projects/current/.ok/worktrees/feature-x',
@@ -254,16 +269,16 @@ function createBridge() {
     },
     // Surfaces the backfilled bridge-invoke commands reach.
     update: {
-      checkNow: mock(() => Promise.resolve()),
+      checkNow: vi.fn(() => Promise.resolve()),
     },
     mcpWiring: {
-      reconfigure: mock(() => Promise.resolve(true)),
+      reconfigure: vi.fn(() => Promise.resolve(true)),
     },
     spellcheck: {
-      toggle: mock(() => Promise.resolve(true)),
+      toggle: vi.fn(() => Promise.resolve(true)),
     },
     shell: {
-      openExternal: mock(() => Promise.resolve()),
+      openExternal: vi.fn(() => Promise.resolve()),
     },
   };
 }
@@ -277,7 +292,7 @@ async function renderPalette({
 } = {}) {
   activeDocName = docName;
   activeTarget = docName ? { kind: 'doc', docName } : null;
-  const onOpenChange = mock(() => {});
+  const onOpenChange = vi.fn(() => {});
   const { CommandPalette } = await import('./CommandPalette');
   render(<CommandPalette bridge={bridge as never} open={true} onOpenChange={onOpenChange} />);
   await waitFor(() => expect(screen.getByRole('dialog')).not.toBeNull());
@@ -302,12 +317,13 @@ describe('CommandPalette DOM behavior', () => {
     newItemDialogProps = [];
     createProjectDialogProps = [];
     reportBugDialogProps = [];
+    feedbackDialogProps = [];
     commandDialogProps = [];
     refreshInstallStatesCalls = 0;
     worktreeModelMock = null;
     refreshWorktreesMock.mockClear();
     window.location.hash = '';
-    globalThis.fetch = mock(() =>
+    globalThis.fetch = vi.fn(() =>
       Promise.resolve(new Response(JSON.stringify({ results: [] }), { status: 200 })),
     ) as never;
   });
@@ -380,6 +396,29 @@ describe('CommandPalette DOM behavior', () => {
 
     await setQuery('manage');
     expect(screen.queryByTestId('command-palette-switch-project')).toBeNull();
+  });
+
+  test('the per-row × prunes a recent, keeps the palette open, and does not open it', async () => {
+    const bridge = createBridge();
+    const { onOpenChange } = await renderPalette({ bridge });
+    await waitFor(() => expect(bridge.project.listRecent).toHaveBeenCalledTimes(1));
+
+    // The × is a sibling of the recent's option row. Clicking it must prune via
+    // removeRecent and NOT fall through to the row's open onSelect (the
+    // stopPropagation contract) — unlike clicking the row, which opens + closes.
+    fireEvent.click(screen.getByTestId('command-palette-recent-remove-/projects/alpha'));
+    await waitFor(() =>
+      expect(bridge.project.removeRecent).toHaveBeenCalledWith('/projects/alpha'),
+    );
+    expect(bridge.project.open).not.toHaveBeenCalled();
+
+    // Optimistic drop of that row, and the palette stays open (runWithToast, not
+    // runAction) so the user can prune several in a row.
+    await waitFor(() =>
+      expect(screen.queryByTestId('command-palette-recent-/projects/alpha')).toBeNull(),
+    );
+    expect(screen.queryByTestId('command-palette-recent-/archive/omega-project')).not.toBeNull();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 
   test('new-folder shortcut is desktop-only while new-file shortcut is always visible', async () => {
@@ -482,6 +521,31 @@ describe('CommandPalette DOM behavior', () => {
     expect(reportBugDialogProps.at(-1)?.open).toBe(true);
   });
 
+  test('send-feedback command renders on both hosts and opens FeedbackFormDialog', async () => {
+    // Host-agnostic, unlike report-a-bug: the form POSTs to the hosted intake
+    // route, so the row is present with no bridge.
+    const web = await renderPalette({ bridge: null });
+
+    await setQuery('feedback');
+    const webRow = screen.getByTestId('command-palette-send-feedback');
+    expect(webRow.textContent).toContain('Send feedback');
+
+    fireEvent.click(webRow);
+
+    expect(web.onOpenChange).toHaveBeenCalledWith(false);
+    await waitFor(() => {
+      expect(screen.getByTestId('feedback-form-dialog').getAttribute('data-open')).toBe('true');
+    });
+    // Attribution: the palette identifies itself so intake can tell which
+    // surface the feedback came from.
+    expect(feedbackDialogProps.at(-1)?.source).toBe('command_palette');
+
+    cleanup();
+    await renderPalette({ bridge: createBridge() });
+    await setQuery('suggestion');
+    expect(screen.getByTestId('command-palette-send-feedback')).not.toBeNull();
+  });
+
   test('starter-pack command is searchable, participates in empty-state aggregation, and opens SeedDialog after closing', async () => {
     const { onOpenChange } = await renderPalette({ bridge: null });
 
@@ -539,7 +603,7 @@ describe('CommandPalette DOM behavior', () => {
   test('a query typed during cold load auto-fires the body search once the page list loads', async () => {
     pageListLoading = true;
     const { CommandPalette } = await import('./CommandPalette');
-    const onOpenChange = mock(() => {});
+    const onOpenChange = vi.fn(() => {});
     const { rerender } = render(
       <CommandPalette bridge={null} open={true} onOpenChange={onOpenChange} />,
     );
@@ -568,7 +632,7 @@ describe('CommandPalette DOM behavior', () => {
     // First /api/search answers warming; later answers ready with a hit. Any
     // non-search fetch (e.g. the semantic-capability probe) stays the default.
     let searchCalls = 0;
-    globalThis.fetch = mock((input: unknown) => {
+    globalThis.fetch = vi.fn((input: unknown) => {
       if (input === '/api/search') {
         searchCalls += 1;
         const body =
@@ -598,7 +662,7 @@ describe('CommandPalette DOM behavior', () => {
   });
 
   test('closing the palette mid-warming stops the poll (no further /api/search calls)', async () => {
-    globalThis.fetch = mock((input: unknown) => {
+    globalThis.fetch = vi.fn((input: unknown) => {
       if (input === '/api/search') {
         return Promise.resolve(
           new Response(JSON.stringify({ results: [], ready: false }), { status: 200 }),
@@ -608,7 +672,7 @@ describe('CommandPalette DOM behavior', () => {
     }) as never;
 
     const { CommandPalette } = await import('./CommandPalette');
-    const onOpenChange = mock(() => {});
+    const onOpenChange = vi.fn(() => {});
     const { rerender } = render(
       <CommandPalette bridge={null} open={true} onOpenChange={onOpenChange} />,
     );
@@ -633,7 +697,7 @@ describe('CommandPalette DOM behavior', () => {
 
   test('a transient error while warming keeps polling and recovers, never showing "Search failed."', async () => {
     let call = 0;
-    globalThis.fetch = mock((input: unknown) => {
+    globalThis.fetch = vi.fn((input: unknown) => {
       if (input === '/api/search') {
         call += 1;
         if (call === 1) {
@@ -891,7 +955,7 @@ describe('Cmd+K menu-parity backfill', () => {
     activeTarget = { kind: 'doc', docName: 'docs/active' };
     pageListLoading = false;
     window.location.hash = '';
-    globalThis.fetch = mock(() =>
+    globalThis.fetch = vi.fn(() =>
       Promise.resolve(new Response(JSON.stringify({ results: [] }), { status: 200 })),
     ) as never;
     // Panels visible + a live terminal so the state-aware View toggles render
@@ -916,6 +980,8 @@ describe('Cmd+K menu-parity backfill', () => {
   // Each id-backed backfill row renders under a matching query and emits its
   // OkMenuAction id on the bus when selected.
   const ID_BACKED: Array<{ testid: string; query: string; id: string }> = [
+    { testid: 'command-palette-navigate-back', query: 'back', id: 'navigate-back' },
+    { testid: 'command-palette-navigate-forward', query: 'forward', id: 'navigate-forward' },
     {
       testid: 'command-palette-new-from-template',
       query: 'new from template',
@@ -978,6 +1044,18 @@ describe('Cmd+K menu-parity backfill', () => {
     });
   }
 
+  test('navigation-history rows expose their native platform shortcuts on desktop', async () => {
+    await renderPalette({ bridge: createBridge() });
+
+    await setQuery('back');
+    expect(screen.getByTestId('command-palette-navigate-back').textContent).toMatch(/⌘ \[|Alt ←/);
+
+    await setQuery('forward');
+    expect(screen.getByTestId('command-palette-navigate-forward').textContent).toMatch(
+      /⌘ \]|Alt →/,
+    );
+  });
+
   // Ratchet C completeness: every id classified as a palette command (shared with
   // the id-classification ratchet via command-menu-parity.test-helper) must be
   // covered by a rendered id-backed row above OR a pre-existing palette surface.
@@ -986,7 +1064,7 @@ describe('Cmd+K menu-parity backfill', () => {
   // unreachable" gap that the id ratchets alone cannot see.
   test('Ratchet C: every classified palette-command id renders a row or is a pre-existing surface', async () => {
     // Imported dynamically: the helper pulls in the command registry, and a
-    // static import would evaluate the registry before the `mock.module`
+    // static import would evaluate the registry before the `vi.doMock`
     // calls above register — freezing real module bindings (e.g.
     // doc-panel-events) into it for every test in this file.
     const { PALETTE_COMMAND_IDS, PRE_EXISTING_PALETTE_IDS } = await import(
@@ -1030,7 +1108,7 @@ describe('Cmd+K menu-parity backfill', () => {
   });
 
   test('AC1: OpenKnowledge on GitHub falls back to window.open on the web host', async () => {
-    const openSpy = mock(() => null);
+    const openSpy = vi.fn(() => null);
     const originalOpen = window.open;
     window.open = openSpy as unknown as typeof window.open;
     try {
@@ -1052,8 +1130,8 @@ describe('Cmd+K menu-parity backfill', () => {
     // a null prop bridge must take the web `window.open` path and must not
     // reach through to an ambient `window.okDesktop` global. Guards the
     // injected-bridge seam the shared opener relies on.
-    const openSpy = mock(() => null);
-    const ambientOpenExternal = mock(() => Promise.resolve());
+    const openSpy = vi.fn(() => null);
+    const ambientOpenExternal = vi.fn(() => Promise.resolve());
     const originalOpen = window.open;
     window.open = openSpy as unknown as typeof window.open;
     (window as { okDesktop?: unknown }).okDesktop = {
@@ -1089,6 +1167,10 @@ describe('Cmd+K menu-parity backfill', () => {
     expect(screen.queryByTestId('command-palette-check-for-updates')).toBeNull();
     await setQuery('rename');
     expect(screen.queryByTestId('command-palette-rename')).toBeNull();
+    await setQuery('back');
+    expect(screen.queryByTestId('command-palette-navigate-back')).toBeNull();
+    await setQuery('forward');
+    expect(screen.queryByTestId('command-palette-navigate-forward')).toBeNull();
   });
 
   test('AC5: the sidebar toggle label reflects view-menu-state', async () => {

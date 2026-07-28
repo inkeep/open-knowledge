@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { resolveFileTreeSelection, resolveFileTreeSelectionAction } from './file-tree-selection';
 
 describe('resolveFileTreeSelection', () => {

@@ -26,7 +26,7 @@
  * accidental removal / priority bump / typo'd key name — that's structural.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { sharedExtensions } from './shared';
 import { TabFocusTrap } from './tab-focus-trap';
 

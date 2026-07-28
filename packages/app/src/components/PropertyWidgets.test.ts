@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { format } from 'date-fns';
+import { describe, expect, test } from 'vitest';
 import { parseFromInput } from './PropertyWidgets';
 
 describe('PropertyWidgets — parseFromInput', () => {

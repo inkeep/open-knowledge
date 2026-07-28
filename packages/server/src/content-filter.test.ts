@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -13,6 +12,7 @@ import {
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
 import ignore from 'ignore';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   type ContentFilter,
   createContentFilter,
@@ -598,13 +598,13 @@ describe('ContentFilter', () => {
   });
 
   describe('always-skip floor survives bypassFilters (Show All Files OOM guard)', () => {
-    // `?showAll=true` passes `{ bypassFilters: true }` so the sidebar can
-    // surface .gitignored / .okignored content. The floor is the hard limit on
-    // that bypass: `.git/`, `node_modules/`, `.ok/` (+ legacy state dirs) are
-    // NEVER traversed or admitted, because walking them on a repo-root content
-    // dir (a multi-GB `.git` object store, thousands of nested `node_modules`)
-    // makes the recursive `?showAll=true` walk unbounded and exhausts the heap.
-    const BYPASS = { bypassFilters: true } as const;
+    // `?showAll=true` bypasses Git/build filters while preserving `.okignore`.
+    // The floor remains the hard limit on that bypass: `.git/`, `node_modules/`,
+    // `.ok/` (+ legacy state dirs) are NEVER traversed or admitted, because
+    // walking them on a repo-root content dir (a multi-GB `.git` object store,
+    // thousands of nested `node_modules`) makes the recursive walk unbounded
+    // and exhausts the heap.
+    const BYPASS = { bypassFilters: true, respectOkignore: true } as const;
 
     function assertFloor(filter: ContentFilter) {
       // Directories on the floor are pruned even under bypass — this prune is
@@ -1406,7 +1406,7 @@ describe('ContentFilter', () => {
       // process — but mockImplementationOnce ensures only the next call
       // throws. We trigger that call by entering rebuildIgnorePatterns.
       const sampleProto = Object.getPrototypeOf(ignore());
-      const addSpy = spyOn(sampleProto, 'add').mockImplementationOnce(() => {
+      const addSpy = vi.spyOn(sampleProto, 'add').mockImplementationOnce(() => {
         throw new Error('forced ignore.add failure');
       });
 
@@ -1438,7 +1438,7 @@ describe('ContentFilter', () => {
 
       // Force the rebuild to fail.
       const sampleProto = Object.getPrototypeOf(ignore());
-      const addSpy = spyOn(sampleProto, 'add').mockImplementationOnce(() => {
+      const addSpy = vi.spyOn(sampleProto, 'add').mockImplementationOnce(() => {
         throw new Error('boom');
       });
 
@@ -1453,6 +1453,12 @@ describe('ContentFilter', () => {
         // State must reflect the OLD .okignore (drafts/), not the new one (archive/).
         expect(filter.isExcluded('drafts/x.md')).toBe(true);
         expect(filter.isExcluded('archive/x.md')).toBe(false);
+        expect(
+          filter.isExcluded('drafts/x.md', {
+            bypassFilters: true,
+            respectOkignore: true,
+          }),
+        ).toBe(true);
         // watcherGlobs reflects the OLD patterns.
         expect(filter.getWatcherIgnoreGlobs()).toContain('drafts/');
         expect(filter.getWatcherIgnoreGlobs()).not.toContain('archive/');
@@ -1539,7 +1545,7 @@ describe('ContentFilter', () => {
       const filter = createContentFilter({ projectDir, contentDir: projectDir });
 
       const sampleProto = Object.getPrototypeOf(ignore());
-      const addSpy = spyOn(sampleProto, 'add').mockImplementationOnce(() => {
+      const addSpy = vi.spyOn(sampleProto, 'add').mockImplementationOnce(() => {
         throw new Error('boom');
       });
 
@@ -1651,6 +1657,21 @@ describe('ContentFilter', () => {
 
       expect(filter.isExcluded('drafts/wip.md')).toBe(true);
       expect(filter.isExcluded('drafts/wip.md', { bypassFilters: true })).toBe(false);
+    });
+
+    test('respectOkignore keeps .okignore patterns active while admitting .gitignored files', () => {
+      writeFileSync(join(projectDir, '.gitignore'), 'dist/\n');
+      writeFileSync(join(projectDir, '.okignore'), 'drafts/\n');
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+
+      expect(filter.isExcluded('dist/out.md', { bypassFilters: true })).toBe(false);
+      expect(filter.isExcluded('drafts/wip.md', { bypassFilters: true })).toBe(false);
+
+      const showAllOpts = { bypassFilters: true, respectOkignore: true } as const;
+      expect(filter.isExcluded('dist/out.md', showAllOpts)).toBe(false);
+      expect(filter.isExcluded('drafts/wip.md', showAllOpts)).toBe(true);
+      expect(filter.isDirExcluded('dist', showAllOpts)).toBe(false);
+      expect(filter.isDirExcluded('drafts', showAllOpts)).toBe(true);
     });
 
     test('admits content-bearing BUILTIN_SKIP_DIRS (dist) in bypass mode', () => {

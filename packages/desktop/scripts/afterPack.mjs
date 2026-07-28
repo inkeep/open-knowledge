@@ -3,6 +3,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, writeFileSync } from 'n
 import { dirname, join } from 'node:path';
 import { FuseV1Options, FuseVersion, flipFuses } from '@electron/fuses';
 import { ensureNodePtySpawnHelperExecutable } from './ensure-node-pty-exec.mjs';
+import { resolveElectronBinary } from './resolve-electron-binary.mjs';
 import { targetFuses } from './target-fuses.mjs';
 
 /**
@@ -32,13 +33,12 @@ import { targetFuses } from './target-fuses.mjs';
 export default async function afterPack(context) {
   const { appOutDir, packager, electronPlatformName } = context;
 
-  // electron-builder runs afterPack once per target platform. We only flip
-  // fuses on macOS for now. When Windows/Linux builds arrive in a later
-  // milestone, widen this guard.
-  if (electronPlatformName !== 'darwin') {
-    console.log(`[afterPack] skipping fuses on platform "${electronPlatformName}"`);
-    return;
-  }
+  // Fuses flip on EVERY platform (D9). An off-darwin build without the flip
+  // would ship with RunAsNode still at Electron's default — but also without
+  // the NODE_OPTIONS/asar-integrity hardening, and any drift between
+  // platforms here would surface as "works on mac, silently broken CLI on
+  // win/linux". Only the darwin-specific steps below (helper bundle,
+  // node-pty spawn-helper chmod) stay gated.
 
   // Universal builds: electron-builder packs arm64 and x64 into separate
   // `mac-universal-<arch>-temp` dirs, fires afterPack on each, then calls
@@ -58,12 +58,12 @@ export default async function afterPack(context) {
   }
 
   const appName = packager.appInfo.productFilename;
-  const electronBinary = join(appOutDir, `${appName}.app`, 'Contents', 'MacOS', appName);
+  const electronBinary = resolveElectronBinary(electronPlatformName, appOutDir, packager);
 
   if (!existsSync(electronBinary)) {
     throw new Error(
       `[afterPack] Electron binary not found at ${electronBinary}. ` +
-        `Expected electron-builder to have packed the .app before afterPack ran.`,
+        `Expected electron-builder to have packed the app before afterPack ran.`,
     );
   }
 
@@ -76,7 +76,10 @@ export default async function afterPack(context) {
   try {
     await flipFuses(electronBinary, {
       version: FuseVersion.V1,
-      resetAdHocDarwinSignature: true,
+      // Darwin-only concern: electron ships with an ad-hoc signature that
+      // the flip would invalidate. Harmless no-op elsewhere, but keep it
+      // scoped so the intent is legible.
+      resetAdHocDarwinSignature: electronPlatformName === 'darwin',
       ...targetFuses,
     });
   } catch (err) {
@@ -92,6 +95,19 @@ export default async function afterPack(context) {
   }
 
   console.log('[afterPack] fuses flipped successfully; electron-builder will re-sign next');
+
+  // Everything below is darwin-only: the LSUIElement helper bundle exists to
+  // suppress the macOS Dock "exec" placeholder (no Dock/LaunchServices
+  // concept on win/linux — resolve-detached-spawn-args.ts uses
+  // parentExecPath directly there), and the node-pty spawn-helper chmod is
+  // moot off-mac (the terminal dock is dark on win/linux per D7; node-pty is
+  // excluded from those packages via win.files/linux.files).
+  if (electronPlatformName !== 'darwin') {
+    console.log(
+      `[afterPack] fuses done; skipping darwin-only helper-bundle + node-pty steps on "${electronPlatformName}"`,
+    );
+    return;
+  }
 
   // Detached-server helper bundle: clone the Electron Helper stub binary
   // into our `OpenKnowledge Server.app/Contents/MacOS/` slot. electron-

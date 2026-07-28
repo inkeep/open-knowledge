@@ -11,11 +11,12 @@
  *     active-editor registry, so `getEditorForDoc` keeps returning the real
  *     document editor (which selection-as-passage reads from).
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { Content, JSONContent } from '@tiptap/core';
 import { Editor } from '@tiptap/core';
 import { createRef } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { fileEntryPathIconToSvgString } from '@/components/file-entry-icon';
 import { getEditorForDoc, registerEditor, unregisterEditor } from './active-editor';
 import { ComposerMentionInput, type ComposerMentionInputHandle } from './ComposerMentionInput';
@@ -38,12 +39,12 @@ function mentionNode(path: string, label = path): Content {
   return { type: 'composerMention', attrs: { path, label } };
 }
 
-let consoleErrorSpy: ReturnType<typeof spyOn>;
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   // The editor's async mount emits act() warnings under jsdom; real failures
   // still surface as missing-element assertion failures.
-  consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -126,7 +127,7 @@ describe('ComposerMentionInput (component)', () => {
   });
 
   test('Enter calls onSubmit; Shift+Enter does not', () => {
-    const onSubmit = mock(() => {});
+    const onSubmit = vi.fn(() => {});
     render(
       <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={onSubmit} />,
     );
@@ -313,14 +314,14 @@ describe('ComposerMentionInput (component)', () => {
  * the load-bearing branch: submit-vs-defer keyed on plugin `active` state.
  */
 describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
-  let fetchSpy: ReturnType<typeof spyOn>;
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     // The suggestion's async `items` step calls `fetch('/api/pages')`; jsdom has
     // no backend, so stub it to an empty corpus. The plugin's `active` state
     // does not depend on the fetch resolving — it is computed synchronously from
     // the inserted `@`-trigger — so the empty corpus does not affect the assertion.
-    fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
       async () =>
         new Response(JSON.stringify({ pages: [], documents: [] }), {
           status: 200,
@@ -347,7 +348,7 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
   }
 
   test('Enter submits while the popup is closed', () => {
-    const onSubmit = mock(() => {});
+    const onSubmit = vi.fn(() => {});
     render(
       <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={onSubmit} />,
     );
@@ -360,7 +361,7 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
   });
 
   test('Enter does NOT submit while the @-popup is open (defers to the suggestion plugin)', () => {
-    const onSubmit = mock(() => {});
+    const onSubmit = vi.fn(() => {});
     render(
       <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={onSubmit} />,
     );
@@ -376,7 +377,7 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
   });
 
   test('Enter resumes submitting once the popup closes', () => {
-    const onSubmit = mock(() => {});
+    const onSubmit = vi.fn(() => {});
     render(
       <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={onSubmit} />,
     );

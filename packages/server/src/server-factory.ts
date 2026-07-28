@@ -21,15 +21,21 @@ import {
   type ConfigIssue,
   createBasenameIndex,
   DEFAULT_ATTACHMENT_FOLDER_PATH,
+  DEFAULT_LINKS_VALIDATION,
   DEFAULT_LINTER_CONFIG,
   DOCUMENT_OPEN_BYTE_LIMIT,
   humanFormat,
   isKnownConfigError,
+  type LinksValidationSetting,
   type LinterConfig,
   type MarkdownManager,
+  modeFromCommittedDefault,
   type PersistedLinterConfig,
   type Principal,
   parseGlobalSkillBundleDoc,
+  resolveLocalAutoSyncMode,
+  type SyncMode,
+  type SyncModeChangeSource,
   toEffectiveBase,
 } from '@inkeep/open-knowledge-core';
 import {
@@ -72,14 +78,19 @@ import {
 } from './config-file-watcher.ts';
 import { applyExternalConfigChange } from './config-persistence.ts';
 import { isDocInConflict } from './conflict-errors.ts';
-import { createConflictLifecycleSeedExtension } from './conflict-lifecycle-seed.ts';
+import {
+  createConflictLifecycleSeedExtension,
+  entryMatchesDocName,
+} from './conflict-lifecycle-seed.ts';
 import { resolveProjectTemplates } from './content/templates-resolver.ts';
 import { type ContentFilter, createContentFilter } from './content-filter.ts';
+import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import { dropPendingDocs, recordContributor } from './contributor-tracker.ts';
+import { applyDiskContentToDoc } from './disk-content-intake.ts';
 import { docNameToRelativePath, getDocExtension, stripDocExtension } from './doc-extensions.ts';
 import { runDocLineageGuard } from './doc-lineage-guard.ts';
+import { DocumentDurabilityState } from './document-durability-state.ts';
 import {
-  DEFAULT_EMBEDDINGS_DIMENSIONS,
   type Embedder,
   type EmbeddingsKeyStore,
   loadOpenAiEmbedder,
@@ -90,7 +101,6 @@ import {
   secretsFilePath,
 } from './embeddings/index.ts';
 import {
-  applyDiskContentToDoc,
   applyExternalChange,
   FILE_WATCHER_ORIGIN,
   serializeYDocSource,
@@ -138,20 +148,9 @@ import {
   incrementUpstreamImport,
   setRecentlyRemovedDocsSize,
 } from './metrics.ts';
+import { destroyParsePool } from './parse-pool.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
-import {
-  createPersistenceExtension,
-  deleteReconciledBase,
-  getActiveBranch,
-  getReconciledBase,
-  isBatchInProgress,
-  isWithinContentDir,
-  type PersistenceOptions,
-  safeContentPath,
-  setBatchInProgress,
-  setReconciledBase,
-  switchReconciledBaseScope,
-} from './persistence.ts';
+import { createPersistenceExtension, type PersistenceOptions } from './persistence.ts';
 import {
   createPersistenceStalenessWatchdog,
   type StalenessWatchdogHandle,
@@ -189,6 +188,7 @@ import {
   SERVICE_WRITER,
   type ShadowHandle,
   type ShadowRef,
+  safetyCheckpoint,
   saveInMemoryCheckpoint,
   shadowGit,
 } from './shadow-repo.ts';
@@ -252,6 +252,12 @@ export interface ServerOptions {
    */
   localOpCliArgs?: string[];
   /**
+   * Keepalive cadence for the streaming auth flows, in ms. Defaults to 15s in
+   * `createApiExtension`; tests shorten it so an idle stream's heartbeat is
+   * observable inside a normal test budget.
+   */
+  authStreamHeartbeatMs?: number;
+  /**
    * Server kind written into the lock metadata. `interactive` (default) for
    * user-facing boots; `mcp-spawned` for the MCP detach-spawn path. Desktop
    * attach validation refuses to attach to non-interactive locks.
@@ -311,6 +317,15 @@ export interface ServerOptions {
    * Mirrors `SyncEngineOptions.checkPushPermissionFn`.
    */
   checkPushPermissionFn?: (opts: CheckPushPermissionOptions) => Promise<PushPermission>;
+  /**
+   * Seconds between the SyncEngine's background pull/push cycles. Production
+   * leaves these undefined so the engine uses its own defaults (30 s pull /
+   * 60 s push). The integration harness passes a large value so a sync-wired
+   * test drives cycles explicitly via `trigger()` without a background timer
+   * racing the scenario. Same DI rationale as `debounce` / `commitDebounceMs`.
+   */
+  pullIntervalSeconds?: number;
+  pushIntervalSeconds?: number;
   /**
    * Read-only accessor for the embeddings API key (the CLI's 0600
    * `~/.ok/secrets.yml` file), injected from the CLI / desktop wiring layer.
@@ -380,6 +395,7 @@ export interface ServerInstance {
    * server Y.Doc. Part of the CRDT server-restart recovery defense.
    */
   readonly serverInstanceId: string;
+  readonly durabilityState: DocumentDurabilityState;
   destroy: () => Promise<void>;
   /** Resolves when async init (shadow repo, file watcher subscription) is complete. */
   ready: Promise<void>;
@@ -581,12 +597,23 @@ export function createServer(options: ServerOptions): ServerInstance {
     contentRoot,
     destroyTimeoutMs = 10_000,
     localOpCliArgs,
+    authStreamHeartbeatMs,
     skipStateManifestCheck = false,
     singleDocRelPath,
     ephemeral = false,
   } = options;
 
   const log = getLogger('server');
+  const durabilityState = new DocumentDurabilityState();
+  const getActiveBranch = () => durabilityState.getActiveBranch();
+  const getReconciledBase = (docName: string) => durabilityState.getReconciledBase(docName);
+  const setReconciledBase = (docName: string, content: string) =>
+    durabilityState.setReconciledBase(docName, content);
+  const deleteReconciledBase = (docName: string) => durabilityState.deleteReconciledBase(docName);
+  const switchReconciledBaseScope = (branch: string) =>
+    durabilityState.switchReconciledBaseScope(branch);
+  const setBatchInProgress = (value: boolean) => durabilityState.setBatchInProgress(value);
+  const isBatchInProgress = () => durabilityState.isBatchInProgress();
 
   function readProjectAttachmentFolderPath(): string {
     const project = readConfigSafely({
@@ -613,18 +640,20 @@ export function createServer(options: ServerOptions): ServerInstance {
     return project.value.content.attachmentFolderPath ?? DEFAULT_ATTACHMENT_FOLDER_PATH;
   }
 
-  function readProjectAutoSyncEnabled(): boolean {
+  function readProjectAutoSyncMode(): { mode: SyncMode; source: SyncModeChangeSource } {
     const local = readConfigSafely({
       absPath: resolveConfigPath('project-local', projectDir),
       sideline: false,
       warn: (message) => log.warn({ message }, '[config] could not read project-local config'),
     });
-    const localEnabled = local.value.autoSync?.enabled;
-    if (localEnabled !== null && localEnabled !== undefined) {
+    const localMode = resolveLocalAutoSyncMode(local.value.autoSync);
+    if (localMode !== null) {
       // This machine has answered (or the engine auto-disabled on a denied
       // push probe) — the per-machine choice always wins over the committed
-      // default.
-      return localEnabled === true;
+      // default. `full` pushes; `pull` fetches one-directionally; `off` stays
+      // inactive. The prompt/Settings/paused-notice surfaces all write this same
+      // per-machine mode, so they collapse to the `config` telemetry source.
+      return { mode: localMode, source: 'config' };
     }
     // The file was present but failed validation — readConfigSafely already
     // logged the parse/schema detail. Surface the fallback decision so a
@@ -639,8 +668,9 @@ export function createServer(options: ServerOptions): ServerInstance {
     // Unanswered on this machine: consult the committed project default
     // (`autoSync.default`), which a maintainer ships in `.ok/config.yml` to
     // pre-answer the onboarding prompt for everyone who clones the project.
-    // `true` seeds sync on; `false`/`null`/absent leaves it off here (and when
-    // the committed default is `null`/absent the onboarding gate prompts).
+    // A `pull`/`full` (or legacy `true`) seed engages that mode; `off`/`false`/
+    // `null`/absent leaves the engine off here (and when the committed default
+    // is `null`/absent the onboarding gate prompts).
     //
     // We deliberately do NOT read a committed `autoSync.enabled`: that field is
     // project-local-scoped, so a committed value is a scope mismatch. The app
@@ -662,7 +692,12 @@ export function createServer(options: ServerOptions): ServerInstance {
         '[config] committed autoSync.default unavailable (project config invalid) — defaulting to disabled',
       );
     }
-    return project.value.autoSync?.default === true;
+    // `null` (never answered anywhere) resolves to `off` for the engine; the
+    // onboarding prompt is a UI-layer concern that reads config directly.
+    return {
+      mode: modeFromCommittedDefault(project.value.autoSync?.default) ?? 'off',
+      source: 'committed-default',
+    };
   }
 
   // Project-scope base linter config, read FRESH per request so a config edit
@@ -678,6 +713,18 @@ export function createServer(options: ServerOptions): ServerInstance {
     // native `.markdownlint.*` file.
     const persisted = project.value.contentRules as PersistedLinterConfig | undefined;
     return persisted ? toEffectiveBase(persisted) : DEFAULT_LINTER_CONFIG;
+  }
+
+  // Same fresh-per-request contract as `readLinterBaseConfig`: the broken-link
+  // posture (`validation.links`) must apply to the next audit without a restart.
+  function readLinksValidationSetting(): LinksValidationSetting {
+    const project = readConfigSafely({
+      absPath: resolveConfigPath('project', projectDir),
+      sideline: false,
+      warn: (message) =>
+        log.warn({ message }, '[config] could not read project config for link validation'),
+    });
+    return project.value.validation?.links ?? DEFAULT_LINKS_VALIDATION;
   }
 
   // Project-local-only read (shared with `ok embeddings status` so they can't
@@ -716,8 +763,12 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   // Provider identity for the cache key + the service's re-warm trigger. A change
   // here (provider/model/dims) re-loads the embedder and invalidates the cache.
+  // Unset `dimensions` is its own stable identity, NOT the OpenAI default: the
+  // length is whatever the provider returns, and substituting a number here
+  // would disagree with the length the cache actually persisted — re-wiping and
+  // re-embedding the corpus on every restart.
   function semanticProviderFingerprint(cfg: ResolvedSemanticConfig): string {
-    return `${normalizeProviderId(cfg.baseUrl)}|${cfg.model}|${cfg.dimensions ?? DEFAULT_EMBEDDINGS_DIMENSIONS}`;
+    return `${normalizeProviderId(cfg.baseUrl)}|${cfg.model}|${cfg.dimensions ?? 'auto'}`;
   }
 
   // Re-apply a just-persisted config to the live in-process consumers by
@@ -732,20 +783,21 @@ export function createServer(options: ServerOptions): ServerInstance {
   //
   // Both entry points can fire for the same change (producer notify + watcher
   // echo), so every consumer notified here MUST be idempotent on a same-value
-  // re-apply: `SyncEngine.setEnabled` and `SemanticSearchService.applyConfig`
+  // re-apply: `SyncEngine.setMode` and `SemanticSearchService.applyConfig`
   // both early-return when the value is unchanged. A future non-idempotent
   // consumer added here would double-fire.
   function applyPersistedConfigToConsumers(configDocName: string): void {
-    let appliedAutoSyncEnabled: boolean | undefined;
+    let appliedAutoSyncMode: SyncMode | undefined;
     if (
       configDocName === CONFIG_DOC_NAME_PROJECT ||
       configDocName === CONFIG_DOC_NAME_PROJECT_LOCAL
     ) {
-      appliedAutoSyncEnabled = readProjectAutoSyncEnabled();
-      void syncEngine?.setEnabled(appliedAutoSyncEnabled).catch((err) => {
+      const resolved = readProjectAutoSyncMode();
+      appliedAutoSyncMode = resolved.mode;
+      void syncEngine?.setMode(resolved.mode, resolved.source).catch((err) => {
         log.warn(
-          { err, enabled: appliedAutoSyncEnabled, docName: configDocName },
-          '[sync] failed to apply autoSync.enabled from config',
+          { err, mode: resolved.mode, docName: configDocName },
+          '[sync] failed to apply autoSync mode from config',
         );
       });
     }
@@ -760,10 +812,20 @@ export function createServer(options: ServerOptions): ServerInstance {
       enabled: semCfg.enabled,
       providerFingerprint: semanticProviderFingerprint(semCfg),
     });
+    // The effective lint config is derived from the on-disk `.ok/config.yml`
+    // (readLinterBaseConfig reads fresh per request) — clients that refetched
+    // on the CRDT patch raced the persistence debounce and may hold a stale
+    // compose (e.g. a problems banner for a just-removed schema mapping).
+    // This persist is the moment the disk read converges; the signal is a
+    // debounced pure hint, so the producer-notify + watcher-echo double-fire
+    // this function documents is safe.
+    if (configDocName === CONFIG_DOC_NAME_PROJECT) {
+      cc1Broadcaster?.signal('lint-config');
+    }
     log.info(
       {
         docName: configDocName,
-        autoSyncEnabled: appliedAutoSyncEnabled,
+        autoSyncMode: appliedAutoSyncMode,
         semanticEnabled: semCfg.enabled,
       },
       '[config] applied persisted config to in-process consumers',
@@ -926,6 +988,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         const cfg = readSemanticSearchConfig();
         return loadOpenAiEmbedder({
           keyStore: options.embeddingsKeyStore ?? null,
+          projectDir,
           config: { baseUrl: cfg.baseUrl, model: cfg.model, dimensions: cfg.dimensions },
         });
       }),
@@ -960,7 +1023,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     rejectReady = rej;
   });
 
-  function signalChannel(channel: 'files' | 'backlinks' | 'graph' | 'tags'): void {
+  function signalChannel(channel: 'files' | 'backlinks' | 'graph' | 'tags' | 'lint-config'): void {
     cc1Broadcaster?.signal(channel);
   }
 
@@ -1268,7 +1331,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       mdManager: options.mdManager,
     };
 
-    persistence = createPersistenceExtension(persistenceOpts);
+    persistence = createPersistenceExtension({ ...persistenceOpts, durabilityState });
 
     hocuspocus = new Hocuspocus({
       quiet,
@@ -1317,6 +1380,9 @@ export function createServer(options: ServerOptions): ServerInstance {
       stalenessWatchdog = createPersistenceStalenessWatchdog({
         getLoadedDocuments: () => hp.documents,
         forceStore: (document, documentName) => persistence.forceStore(document, documentName),
+        getBase: (documentName) => durabilityState.getReconciledBase(documentName),
+        isBatchActive: () => durabilityState.isBatchInProgress(),
+        peekInFlight: (documentName) => durabilityState.peekInFlightFlush(documentName),
         // Realpath symlink-escape gate + open-byte-limit cap, matching the
         // load-path read discipline. Not atomic — three syscalls — but
         // ENOENT from any of them maps to `null` (out-of-band delete)
@@ -1745,6 +1811,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
     const apiExtension = createApiExtension({
       hocuspocus,
+      durabilityState,
       sessionManager,
       contentDir,
       contentFilter,
@@ -1762,9 +1829,6 @@ export function createServer(options: ServerOptions): ServerInstance {
       shadowRef,
       flushGitCommit: () => persistence.flushPendingGitCommit(),
       flushContributors: () => persistence.flushContributors(),
-      takeStoreFailure: (docName: string) => persistence.takeStoreFailure(docName),
-      takeStoreDivergence: (docName: string) => persistence.takeStoreDivergence(docName),
-      markAgentWriteStore: (docName: string) => persistence.markAgentWriteStore(docName),
       getCurrentBranch: () => headWatcher?.getLastKnownBranch() ?? null,
       // CC1 broadcaster is initialized after persistence but captured by
       // closure reference (same pattern as `onAgentCommit` + `onDiskFlush`
@@ -1781,6 +1845,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       onAgentWrite: options.onAgentWrite,
       getSyncEngine: () => syncEngine,
       localOpCliArgs,
+      authStreamHeartbeatMs,
       projectDir,
       resolveEmbed,
       getPrincipal: () => loadedPrincipal,
@@ -1800,8 +1865,10 @@ export function createServer(options: ServerOptions): ServerInstance {
       semanticSearch,
       getSemanticSimilarityFloor: () => readSemanticSearchConfig().similarityFloor,
       getLinterBaseConfig: () => readLinterBaseConfig(),
+      getLinksValidationSetting: () => readLinksValidationSetting(),
       getLinkPreviewsEnabled: readLinkPreviewsEnabled,
       embeddingsSecretsFile: secretsFilePath(configHomedirOverride),
+      readSemanticProviderConfig: readSemanticSearchConfig,
       ephemeral,
       onReferencedAssetsCacheInvalidator: (invalidate) => {
         invalidateReferencedAssetsCache = invalidate;
@@ -1919,7 +1986,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   /** Apply markdown content to Y.Doc — delegates to the shared throwing helper. */
   const applyToDoc = (docName: string, content: string): void =>
-    applyExternalChange(hocuspocus, docName, content, resolveEmbed, resolveSize);
+    applyExternalChange(durabilityState, hocuspocus, docName, content, resolveEmbed, resolveSize);
 
   /**
    * Clear the conflict status set by `case 'conflict'` once a subsequent
@@ -1929,6 +1996,22 @@ export function createServer(options: ServerOptions): ServerInstance {
    */
   function clearLifecycleConflict(document: Document): void {
     if (!isDocInConflict(document)) return;
+    // Never clear while the engine still holds a standing conflict for this doc.
+    // A B1 pull-only conflict pull fast-forwards the working tree via a raw git
+    // write (outside `writeTracker`), which the file-watcher re-emits as an
+    // `update`. That reconcile computes `noop` (base==ours==theirs, the conflict
+    // content already applied) and would otherwise wipe the `lifecycle.status`
+    // the pull just set — desyncing the editor→resolver swap from the
+    // ConflictStore, so the resolver vanishes (and never reappears on reopen)
+    // while the conflict is still unresolved. Clearing is correct only once the
+    // engine agrees the conflict is gone (resolve / auto-dissolve).
+    if (
+      syncEngine
+        ?.getConflicts()
+        .some((entry) => entryMatchesDocName(entry, document.name, projectDir, contentDir))
+    ) {
+      return;
+    }
     const lifecycleMap = document.getMap('lifecycle');
     lifecycleMap.delete('status');
     lifecycleMap.delete('reason');
@@ -2765,6 +2848,22 @@ export function createServer(options: ServerOptions): ServerInstance {
             log.error({ err }, '[server] shutdown phase-2 agent session drain failed');
           }
 
+          // Phase 2b: parse-pool teardown rides the session drain — with
+          // sessions closed no new precompute dispatches from this server.
+          // destroyParsePool is reset-not-shutdown: another live server in
+          // the same process (test rigs, dev restarts) respawns workers
+          // lazily on its next write, and any in-flight task it loses falls
+          // back to the inline parse.
+          try {
+            await destroyParsePool();
+          } catch (err) {
+            phaseErrors.push({
+              phase: 'parse-pool-teardown',
+              error: err instanceof Error ? err.message : String(err),
+            });
+            log.error({ err }, '[server] shutdown phase-2b parse pool teardown failed');
+          }
+
           // Phase 3: drain L1 (Y.Doc → markdown → disk) via afterUnloadDocument hook
           try {
             await flushAllStoresAndWait(destroyTimeoutMs);
@@ -3465,13 +3564,8 @@ export function createServer(options: ServerOptions): ServerInstance {
       degraded.push('ignore-files-watcher');
     }
 
-    // Reset branch-scoped state to match THIS project's current HEAD before
-    // anything reads/writes it. `persistence.activeBranch` and the
-    // `BacklinkIndex.activeBranch` are mutable state; in single-process test
-    // runners these leak across test files, so a prior test that
-    // triggered `switchReconciledBaseScope` leaves state at the wrong branch
-    // for the next server's reads. Detecting the actual HEAD here and
-    // normalizing both scopes in lock-step closes the leak.
+    // Align this server's branch-scoped durability state and backlink index
+    // with the project's current HEAD before either is read or written.
     const startupBranch = readProjectHeadState(projectDir).branch ?? 'main';
     switchReconciledBaseScope(startupBranch);
     backlinkIndex.switchBranch(startupBranch);
@@ -4215,15 +4309,44 @@ export function createServer(options: ServerOptions): ServerInstance {
       }
     }
 
+    // Clear the conflict lifecycle on a resolved / auto-dissolved working-tree
+    // conflict. Keep-mine resolution and upstream auto-dissolve may not change
+    // disk bytes, so the file-watcher's `case 'update'` clear can't be relied on.
+    function clearLoadedContentConflicts(files: string[]): void {
+      for (const file of files) {
+        try {
+          const absPath = join(projectDir, file);
+          const contentRelPath = toPosix(relative(contentDir, absPath));
+          if (contentRelPath.startsWith('..')) continue;
+          const document = hocuspocus.documents.get(stripDocExtension(contentRelPath));
+          if (document) clearLifecycleConflict(document);
+        } catch (err) {
+          log.warn({ err, file }, '[sync] failed to clear resolved content conflict');
+        }
+      }
+    }
+
     // Start SyncEngine: remote detection + auto-sync.
     const syncCredentialArgs = buildSyncCredentialArgs(localOpCliArgs);
+    const bootAutoSyncMode = readProjectAutoSyncMode();
+    if (bootAutoSyncMode.mode !== 'off') {
+      // A never-asked machine booting into a committed-default mode is the main
+      // way pull-only activates silently; log it (with the resolution source) so
+      // committed-default activations are observable alongside runtime changes.
+      log.info(
+        { mode: bootAutoSyncMode.mode, source: bootAutoSyncMode.source },
+        '[sync] mode active at boot',
+      );
+    }
     try {
       syncEngine = new SyncEngine({
         projectDir,
         contentDir,
         contentFilter,
         contentRoot,
-        syncEnabled: readProjectAutoSyncEnabled(),
+        mode: bootAutoSyncMode.mode,
+        pullIntervalSeconds: options.pullIntervalSeconds,
+        pushIntervalSeconds: options.pushIntervalSeconds,
         credentialArgs: syncCredentialArgs,
         cc1Broadcaster,
         // Push-permission probe auth seam — production callers (CLI `ok start`)
@@ -4251,6 +4374,33 @@ export function createServer(options: ServerOptions): ServerInstance {
           log.info({ state }, `[sync] state → ${state}`);
         },
         onContentConflictsDetected: markLoadedContentConflicts,
+        onContentConflictsResolved: clearLoadedContentConflicts,
+        // Snapshot the working tree to the recoverable timeline before a
+        // pull-only transition realigns the branch over stranded local commits,
+        // so their content survives on the timeline, not just the reflog.
+        checkpointBeforeStrandedConversion: async ({ branch, ahead }) => {
+          const shadow = shadowRef.current;
+          if (!shadow) return;
+          await safetyCheckpoint(
+            shadow,
+            contentRoot ?? '',
+            { action: 'pull-only-stranded-conversion', context: { ahead } },
+            branch,
+          );
+        },
+        // Before a pull-only fast-forward resets an overlapping uncommitted edit
+        // to HEAD, snapshot the working tree so the pre-reset bytes survive on
+        // the shadow timeline through the reset→re-write window.
+        checkpointBeforeOverlayRestore: async ({ branch, paths }) => {
+          const shadow = shadowRef.current;
+          if (!shadow) return;
+          await safetyCheckpoint(
+            shadow,
+            contentRoot ?? '',
+            { action: 'pull-only-overlay-restore', context: { paths } },
+            branch,
+          );
+        },
         onAutoDisable: async (reason) => {
           log.warn({ reason }, '[sync] auto-disabled — persisting to project-local config');
           const result = await writeConfigPatch({
@@ -4314,6 +4464,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   return {
     hocuspocus,
+    durabilityState,
     sessionManager,
     cc1Broadcaster,
     agentFocusBroadcaster,

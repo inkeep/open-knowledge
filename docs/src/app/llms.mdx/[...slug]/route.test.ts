@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 
 const overviewPage = {
   url: '/docs/get-started/overview',
@@ -11,7 +11,7 @@ const overviewPage = {
 
 // `getPage` returns the fixture for the overview slug, undefined otherwise —
 // lets us exercise both the 200 and the notFound paths.
-mock.module('@/lib/source', () => ({
+vi.doMock('@/lib/source', () => ({
   source: {
     getPage: (slug: string[]) =>
       slug.join('/') === 'get-started/overview' ? overviewPage : undefined,
@@ -21,7 +21,7 @@ mock.module('@/lib/source', () => ({
 
 // notFound() throws a sentinel in the App Router; mirror that so the handler's
 // `if (!page) notFound()` branch is observable in a unit test.
-mock.module('next/navigation', () => ({
+vi.doMock('next/navigation', () => ({
   notFound: () => {
     throw new Error('NEXT_HTTP_ERROR_FALLBACK;404');
   },

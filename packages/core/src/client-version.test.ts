@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   CLIENT_RUNTIME_VERSION_FALLBACK,
   CLIENT_VERSION_HEADER,

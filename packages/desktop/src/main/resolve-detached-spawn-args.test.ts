@@ -97,6 +97,37 @@ describe('resolveDetachedSpawnArgs', () => {
     expect(segments).toContain('C:\\Windows\\System32');
   });
 
+  // Regression: on real Windows `process.env` exposes the search path as `Path`,
+  // NOT `PATH`. A case-sensitive `env.PATH` read returned undefined, collapsing
+  // the spawned server's PATH to git dirs only — dropping C:\Windows\System32,
+  // which made `reg` (handoff install-detect) and `rundll32` (protocol dispatch)
+  // fail ENOENT. Result: "Open with Claude/Cursor" silently no-ops on desktop.
+  test('win32 → inherited PATH is read case-insensitively (`Path` key) so System32 survives', () => {
+    const { opts } = resolveDetachedSpawnArgs(
+      makeInput({
+        platform: 'win32',
+        env: { Path: 'C:\\Windows;C:\\Windows\\System32', SystemRoot: 'C:\\Windows' },
+      }),
+    );
+    const segments = (opts.env?.PATH ?? '').split(';');
+    expect(segments).toContain('C:\\Windows\\System32');
+    expect(segments).toContain('C:\\Windows');
+    expect(segments[0]).toBe('C:\\Program Files\\Git\\cmd');
+  });
+
+  // The child must receive exactly one search-path key. Two case-variants
+  // (`Path` from the inherited spread + `PATH` from enrichment) leave libuv to
+  // pick one non-deterministically — either drops enrichment or System32.
+  test('win32 → emits exactly one canonical PATH key (no `Path`/`PATH` collision)', () => {
+    const { opts } = resolveDetachedSpawnArgs(
+      makeInput({ platform: 'win32', env: { Path: 'C:\\Windows\\System32', FOO: 'bar' } }),
+    );
+    const pathKeys = Object.keys(opts.env ?? {}).filter((k) => /^path$/i.test(k));
+    expect(pathKeys).toEqual(['PATH']);
+    expect(opts.env?.PATH?.split(';')).toContain('C:\\Windows\\System32');
+    expect(opts.env?.FOO).toBe('bar');
+  });
+
   test('enriched PATH deduplicates dirs already present in inherited PATH', () => {
     // `/usr/bin` and `/snap/bin` appear in both the Linux fallback set and
     // the inherited PATH — each must appear exactly once in the enriched

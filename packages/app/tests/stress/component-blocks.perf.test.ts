@@ -15,7 +15,7 @@
  * under a future policy flip it would produce PR-red on correct code.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { sharedExtensions } from '../../../../packages/core/src/extensions/shared.ts';
 import { MarkdownManager } from '../../../../packages/core/src/markdown/index.ts';

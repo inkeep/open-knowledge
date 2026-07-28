@@ -39,9 +39,9 @@
  * so any future re-introduction has a complete inventory to walk.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { stripCommentsAndStrings } from './parse-timeouts';
 
 const SMOKE_DIR = join(__dirname, '..');

@@ -1,6 +1,5 @@
-import { describe, expect, mock, test } from 'bun:test';
-
 import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
+import { describe, expect, test, vi } from 'vitest';
 
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
@@ -86,7 +85,7 @@ describe('createCrashInviteStore — invitation delivery', () => {
     const fb = fakeBridge();
     const store = createCrashInviteStore();
     store.install({ bridge: fb.bridge });
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     store.subscribe(listener);
 
     fb.emit(crashEvent);
@@ -99,7 +98,7 @@ describe('createCrashInviteStore — invitation delivery', () => {
     const store = createCrashInviteStore();
     store.install({ bridge: fb.bridge });
     fb.emit(crashEvent);
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     store.subscribe(listener);
 
     store.dismiss();

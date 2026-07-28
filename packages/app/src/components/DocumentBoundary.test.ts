@@ -12,8 +12,8 @@
  * dev-mode double-invoke of the component body.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { HocuspocusProvider } from '@hocuspocus/provider';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { __resetSyncPromiseCache, syncPromise } from '@/editor/sync-promise';
 import { DocumentBoundary } from './DocumentBoundary';
 

@@ -16,8 +16,8 @@
  * The fake-page mocks expose just the two methods the helper touches.
  */
 
-import { describe, expect, test } from 'bun:test';
 import type { Page } from '@playwright/test';
+import { describe, expect, test } from 'vitest';
 import {
   installLongtaskObserver,
   type LongTaskRecord,

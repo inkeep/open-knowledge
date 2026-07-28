@@ -32,10 +32,10 @@
  * in the repo use.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 /**
  * Versions the nested-box copy behavior was verified working at. A resolved

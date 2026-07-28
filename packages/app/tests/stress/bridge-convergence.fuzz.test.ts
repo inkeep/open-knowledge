@@ -39,13 +39,13 @@
  * asserts a corresponding op kind exists in the generator.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { chunkedYTextInsert } from '@inkeep/open-knowledge-core';
 import { applyExternalChange, isPairedWriteOrigin } from '@inkeep/open-knowledge-server';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 
 import {
@@ -427,7 +427,12 @@ async function applyOp(
       // doc.
       writeFileSync(join(server.contentDir, `${docName}.md`), op.newContent, 'utf-8');
       try {
-        applyExternalChange(server.instance.hocuspocus, docName, op.newContent);
+        applyExternalChange(
+          server.instance.durabilityState,
+          server.instance.hocuspocus,
+          docName,
+          op.newContent,
+        );
       } catch {
         // Non-fatal — no-op early-returns when the doc is unloaded; the
         // bridge-merge transact race re-throw is survivable for the fuzz.

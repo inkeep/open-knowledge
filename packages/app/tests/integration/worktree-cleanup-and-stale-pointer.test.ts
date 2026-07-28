@@ -8,12 +8,12 @@
  * downstream in `mkdirSync`.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { bootServer, ConfigSchema } from '@inkeep/open-knowledge-server';
+import { afterEach, describe, expect, test } from 'vitest';
 import { createLinkedWorktree, type LinkedWorktreeHandle } from './worktree-test-harness.ts';
 
 const TEST_CONFIG = ConfigSchema.parse({});

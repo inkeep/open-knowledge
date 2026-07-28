@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import { ignoreToastInteractOutside } from './toast-outside-guard';
 
 // The guard's only DOM touch is `event.target.closest('[data-sonner-toaster]')`,
@@ -6,7 +6,7 @@ import { ignoreToastInteractOutside } from './toast-outside-guard';
 type GuardEvent = Parameters<ReturnType<typeof ignoreToastInteractOutside>>[0];
 
 function makeEvent(insideToaster: boolean) {
-  const preventDefault = mock(() => {});
+  const preventDefault = vi.fn(() => {});
   const event = {
     target: {
       closest: (selector: string) =>
@@ -19,7 +19,7 @@ function makeEvent(insideToaster: boolean) {
 
 describe('ignoreToastInteractOutside', () => {
   test('interaction inside the toaster is neutralized and does not reach the consumer', () => {
-    const consumer = mock(() => {});
+    const consumer = vi.fn(() => {});
     const { event, preventDefault } = makeEvent(true);
 
     ignoreToastInteractOutside(consumer)(event);
@@ -29,7 +29,7 @@ describe('ignoreToastInteractOutside', () => {
   });
 
   test('interaction outside the toaster falls through to the consumer untouched', () => {
-    const consumer = mock(() => {});
+    const consumer = vi.fn(() => {});
     const { event, preventDefault } = makeEvent(false);
 
     ignoreToastInteractOutside(consumer)(event);

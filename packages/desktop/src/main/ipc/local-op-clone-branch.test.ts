@@ -18,8 +18,9 @@
  * subprocess. Each mock invocation captures `branch` + `onEvent` so we can
  * assert both the spawn-time wire and the runtime event forwarding.
  */
-import { describe, expect, mock, test } from 'bun:test';
+
 import type { CloneEvent } from '@inkeep/open-knowledge-server';
+import { describe, expect, test, vi } from 'vitest';
 
 interface CloneSpawn {
   url: string;
@@ -30,7 +31,7 @@ interface CloneSpawn {
 
 const cloneSpawns: CloneSpawn[] = [];
 
-mock.module('@inkeep/open-knowledge-server', () => ({
+vi.doMock('@inkeep/open-knowledge-server', () => ({
   runAuthStatusSubprocess: () => Promise.resolve({ authenticated: false, host: 'github.com' }),
   runAuthReposSubprocess: () => Promise.resolve({ ok: false, error: 'unused' }),
   runDeviceFlowSubprocess: () => ({ done: Promise.resolve(), cancel: () => {} }),

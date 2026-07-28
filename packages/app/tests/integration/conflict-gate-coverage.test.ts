@@ -119,11 +119,21 @@ const EXEMPT_HANDLERS = new Set([
   // apply — same posture as `handleFolderConfig`.
   'handleGetLintConfig',
   'handleWriteMarkdownlintRule',
+  // No Y.Doc target (schema-file write to disk) — the conflict gate is N/A,
+  // same class as handleWriteMarkdownlintRule.
+  'handleWriteFrontmatterSchema',
+  // `/api/lint/frontmatter-schemas` (GET) — read-only enumeration of
+  // `.ok/schemas/*.json`. No Y.Doc target; conflict gate does not apply.
+  'handleFrontmatterSchemasList',
   // `/api/lint` (GET) + `/api/lint/audit` (GET) — read-only lint of one doc /
   // the project. No Y.Doc target (reads from disk), so the per-doc conflict gate
   // does not apply.
   'handleLintDoc',
   'handleLintAudit',
+  // `/api/audit` (GET) — read-only unified validation audit (markdownlint +
+  // dead links). No Y.Doc target (reads disk + the in-memory backlink index),
+  // so the per-doc conflict gate does not apply.
+  'handleAudit',
   // `/api/templates` — project-wide flat enumeration of every template
   // (read-only). Walks `<folder>/.ok/templates/*.md`; no Y.Doc target,
   // so the per-doc conflict gate does not apply.
@@ -186,10 +196,15 @@ const EXEMPT_HANDLERS = new Set([
   // gate doesn't apply.
   'handleLocalOpAuthPat',
   'handleLocalOpAuthGhLogin',
+  // Stops an in-flight device-flow subprocess. Terminates a child and frees a
+  // concurrency slot — no Y.Doc target at all.
+  'handleLocalOpAuthCancel',
   // Loopback-gated writes of the machine-global embeddings key to the user's
-  // secrets file — no Y.Doc mutation, so the conflict-refusal gate doesn't apply.
+  // secrets file, plus the read-only endpoint probe — no Y.Doc mutation, so the
+  // conflict-refusal gate doesn't apply.
   'handleLocalOpEmbeddingsSetKey',
   'handleLocalOpEmbeddingsClearKey',
+  'handleLocalOpEmbeddingsTest',
   'handleSpawnCursorRoute',
   'handleHandoffDispatchRoute',
   'handleInstallSkill',

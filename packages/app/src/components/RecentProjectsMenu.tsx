@@ -55,6 +55,7 @@ import {
   type RecentRepoGroup,
   type WorktreeFlyoutEntry,
 } from './project-switcher-recents';
+import { RecentItemContextMenu, RecentRemoveButton } from './recent-remove-controls';
 
 interface RecentProjectsMenuProps {
   bridge: OkDesktopBridge;
@@ -68,6 +69,8 @@ interface RecentProjectsMenuProps {
   closeMenu: () => void;
   /** Swallows the Electron open-click fall-through (see ProjectSwitcher). */
   guardStaleSelect: (event: Event) => boolean;
+  /** Remove a recent project from the (single) recents list. */
+  onRemoveRecent: (path: string) => void;
   /**
    * Hoisted "which project row's worktree flyout is open" (its `project.path`),
    * or null. Lives in ProjectSwitcher so only one flyout is open at a time and
@@ -92,6 +95,7 @@ export function RecentProjectsMenu({
   worktreeModel,
   closeMenu,
   guardStaleSelect,
+  onRemoveRecent,
   flyoutPath,
   setFlyoutPath,
   openNewWorktreeWith,
@@ -162,6 +166,7 @@ export function RecentProjectsMenu({
           void createAndOpenBranch(branch);
         }}
         guardStaleSelect={guardStaleSelect}
+        onRemoveRecent={onRemoveRecent}
       />
     );
   }
@@ -193,6 +198,7 @@ export function RecentProjectsMenu({
           }}
           onPickFlyoutEntry={onPickFlyoutEntry}
           guardStaleSelect={guardStaleSelect}
+          onRemoveRecent={onRemoveRecent}
           openNewWorktreeWith={openNewWorktreeWith}
         />
       ))}
@@ -209,6 +215,7 @@ function GroupRow({
   onPickProject,
   onPickFlyoutEntry,
   guardStaleSelect,
+  onRemoveRecent,
   openNewWorktreeWith,
 }: {
   group: RecentRepoGroup;
@@ -219,6 +226,7 @@ function GroupRow({
   onPickProject: () => void;
   onPickFlyoutEntry: (entry: WorktreeFlyoutEntry) => void;
   guardStaleSelect: (event: Event) => boolean;
+  onRemoveRecent: (path: string) => void;
   openNewWorktreeWith: (name: string) => void;
 }) {
   const projectIsCurrent = group.project.path === currentPath;
@@ -236,21 +244,35 @@ function GroupRow({
 
   if (openedWorktreeCount === 0) {
     return (
-      <DropdownMenuItem
-        onSelect={(e) => {
-          if (guardStaleSelect(e)) return;
-          onPickProject();
-        }}
-        className="flex w-full min-w-0 flex-col items-start gap-0.5"
-        data-testid={`project-switcher-recent-${group.project.path}`}
-        data-current={projectIsCurrent ? 'true' : undefined}
+      <RecentItemContextMenu
+        path={group.project.path}
+        onRemoveRecent={onRemoveRecent}
+        testIdPrefix="project-switcher-recent"
       >
-        <ProjectLabel
-          name={group.project.name}
-          path={group.project.path}
-          current={projectIsCurrent}
-        />
-      </DropdownMenuItem>
+        <div className="group/recent relative flex items-center">
+          <DropdownMenuItem
+            onSelect={(e) => {
+              if (guardStaleSelect(e)) return;
+              onPickProject();
+            }}
+            className="flex w-full min-w-0 flex-col items-start gap-0.5 pr-8"
+            data-testid={`project-switcher-recent-${group.project.path}`}
+            data-current={projectIsCurrent ? 'true' : undefined}
+          >
+            <ProjectLabel
+              name={group.project.name}
+              path={group.project.path}
+              current={projectIsCurrent}
+            />
+          </DropdownMenuItem>
+          <RecentRemoveButton
+            path={group.project.path}
+            name={group.project.name}
+            onRemoveRecent={onRemoveRecent}
+            testIdPrefix="project-switcher-recent"
+          />
+        </div>
+      </RecentItemContextMenu>
     );
   }
 
@@ -663,6 +685,7 @@ function SearchResults({
   onPickEntry,
   onPickBranch,
   guardStaleSelect,
+  onRemoveRecent,
 }: {
   recents: readonly RecentProjectEntry[];
   currentPath: string;
@@ -671,6 +694,7 @@ function SearchResults({
   onPickEntry: (entry: RecentProjectEntry) => void;
   onPickBranch: (branch: string) => void;
   guardStaleSelect: (event: Event) => boolean;
+  onRemoveRecent: (path: string) => void;
 }) {
   const { t } = useLingui();
   const matches = (text: string): boolean => text.toLowerCase().includes(query);
@@ -711,17 +735,31 @@ function SearchResults({
   return (
     <>
       {projectMatches.map((r) => (
-        <DropdownMenuItem
+        <RecentItemContextMenu
           key={r.path}
-          onSelect={(e) => {
-            if (guardStaleSelect(e)) return;
-            onPickEntry(r);
-          }}
-          className="flex w-full min-w-0 flex-col items-start gap-0.5"
-          data-testid={`project-switcher-recent-${r.path}`}
+          path={r.path}
+          onRemoveRecent={onRemoveRecent}
+          testIdPrefix="project-switcher-recent"
         >
-          <ProjectLabel name={r.name} path={r.path} current={r.path === currentPath} />
-        </DropdownMenuItem>
+          <div className="group/recent relative flex items-center">
+            <DropdownMenuItem
+              onSelect={(e) => {
+                if (guardStaleSelect(e)) return;
+                onPickEntry(r);
+              }}
+              className="flex w-full min-w-0 flex-col items-start gap-0.5 pr-8"
+              data-testid={`project-switcher-recent-${r.path}`}
+            >
+              <ProjectLabel name={r.name} path={r.path} current={r.path === currentPath} />
+            </DropdownMenuItem>
+            <RecentRemoveButton
+              path={r.path}
+              name={r.name}
+              onRemoveRecent={onRemoveRecent}
+              testIdPrefix="project-switcher-recent"
+            />
+          </div>
+        </RecentItemContextMenu>
       ))}
       {openedWorktreeMatches.map((r) => (
         <DropdownMenuItem

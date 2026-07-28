@@ -27,7 +27,7 @@ import { AccountSection } from './AccountSection';
 import { AiToolsSection } from './AiToolsSection';
 import { AttachmentsSection } from './AttachmentsSection';
 import { ConfigureAgentsSection } from './ConfigureAgentsSection';
-import { EmbeddingsKeySection } from './EmbeddingsKeySection';
+import { ContentRulesSection } from './ContentRulesSection';
 import { SectionSkeleton } from './field-controls';
 import { HotkeysSection } from './HotkeysSection';
 import { IntegrationsSection } from './IntegrationsSection';
@@ -97,15 +97,10 @@ export function SettingsDialogBody({
     return <HotkeysSection />;
   }
   if (activeId === 'account') {
-    // Two machine-global credentials live here: the GitHub account and the
-    // embeddings provider key (the latter shared across all projects; semantic
-    // search is enabled per-project in This project → Search).
-    return (
-      <div className="space-y-8">
-        <AccountSection />
-        <EmbeddingsKeySection />
-      </div>
-    );
+    // The GitHub account credential. The embeddings API key moved to This
+    // project → Search, next to the endpoint it belongs to (keys are per-project
+    // now, not machine-global).
+    return <AccountSection />;
   }
   if (activeId === 'sync') {
     // When there's no git remote, SyncSection renders a setup CTA (the
@@ -125,6 +120,11 @@ export function SettingsDialogBody({
     // Project-scope plugins management (This project → Plugins): toggle the
     // project's content-rule plugins + the audit pointer.
     return <ProjectPluginsManageSection />;
+  }
+  if (activeId === 'content-rules') {
+    // Validation-surface knobs that are not lint plugins (This project →
+    // Content rules): broken-link posture + file-tree problem indicators.
+    return <ContentRulesSection />;
   }
   if (activeId === 'user-plugins-manage') {
     // User-scope plugins management (User → Plugins): toggle personal plugins

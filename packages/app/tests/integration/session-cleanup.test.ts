@@ -8,9 +8,9 @@
  * @see packages/server/src/agent-sessions.ts — closeAllForAgent
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import { swapContributors } from '@inkeep/open-knowledge-server';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import type { TestServer } from './test-harness';
 import { agentWriteMd, createTestServer } from './test-harness';

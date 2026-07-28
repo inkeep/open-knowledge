@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import { execFile } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { afterEach, describe, expect, test } from 'vitest';
 
 import {
   fastForwardBranchToOrigin,

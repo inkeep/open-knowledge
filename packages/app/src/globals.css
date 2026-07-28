@@ -121,16 +121,17 @@
 @source "../../../node_modules/streamdown/dist/*.js";
 
 /*
- * index.html is the only place the `antialiased` body class is used, and it
- * sits outside the src glob above. Under packages/app's own `bun run dev` /
- * `vite build` it's covered by the Vite HTML entry, but electron-vite dev
- * (CWD=packages/desktop; the app's vite.config.ts is not used) relies solely
- * on these @source
- * directives — without this line `.antialiased` is never emitted there and
+ * The HTML entries are the only place the `antialiased` body class is used,
+ * and they sit outside the src glob above. Under packages/app's own
+ * `bun run dev` / `vite build` they're covered by the Vite HTML entries, but
+ * electron-vite dev (CWD=packages/desktop; the app's vite.config.ts is not
+ * used) relies solely on these @source
+ * directives — without these lines `.antialiased` is never emitted there and
  * desktop-dev text renders heavier than production. Keep in sync with the
- * class in index.html.
+ * classes in index.html / uninstall.html.
  */
 @source "../index.html";
+@source "../uninstall.html";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -2931,6 +2932,27 @@ html.electron-mode {
   --ok-titlebar-reserve-left: 78px;
 }
 
+/*
+  Windows/Linux chrome (electron-platform-* classes come from the FOUC
+  script alongside electron-mode, read off `window.okDesktop.platform`).
+  No traffic lights on these platforms — collapse the left reserve back to
+  the 1rem base padding. The OS window controls instead float top-RIGHT via
+  Electron's titleBarOverlay (Window Controls Overlay), so reserve the right
+  edge of the chrome row for them. The `titlebar-area-*` env() vars are live
+  exactly when WCO is enabled; the fallbacks make the reserve 0 on darwin,
+  web, and any WCO-less window. Consumers use the precedent-#49 fallback
+  form `mr-[var(--ok-titlebar-reserve-right,0px)]`.
+*/
+html.electron-mode.electron-platform-win32,
+html.electron-mode.electron-platform-linux {
+  --ok-titlebar-reserve-left: 1rem;
+  --ok-titlebar-reserve-right: calc(
+    100vw -
+    env(titlebar-area-x, 0px) -
+    env(titlebar-area-width, 100vw)
+  );
+}
+
 html.electron-mode body {
   background-color: oklch(from var(--sidebar) l c h / 0.85);
 }
@@ -5172,6 +5194,17 @@ html.electron-mode [data-slot="sidebar-inner"] {
 .dark .cm-editor .cm-lintRange-error {
   --lint-error-color: oklch(72% 0.18 25);
 }
+/* File-tree problem-indicator tokens (file-tree-problem-indicators.ts). The
+   editor's --lint-*-color tokens are scoped under .dark .cm-editor / .dark
+   .ProseMirror and never reach the tree's shadow root, so the tree gets its
+   own inheritable pair: light mode rides the var() fallback literals inside
+   the shadow CSS (same values as the editor's light fallbacks); this .dark
+   block carries the dark overrides across the shadow boundary via custom-
+   property inheritance. Values mirror the editor's dark lint palette. */
+.dark {
+  --ok-tree-problem-warning: oklch(80% 0.13 80);
+  --ok-tree-problem-error: oklch(72% 0.18 25);
+}
 /* Diagnostic tooltip + lint panel onto OK popover tokens. */
 .cm-tooltip.cm-tooltip-lint,
 .cm-panel.cm-panel-lint {
@@ -5255,18 +5288,11 @@ html.electron-mode [data-slot="sidebar-inner"] {
 .ok-lint-tooltip-message {
   white-space: pre-line;
 }
-.ok-lint-tooltip-fix {
-  align-self: flex-start;
-  margin-top: 0.25rem;
-  padding: 0.125rem 0.5rem;
-  border-radius: 0.25rem;
-  font-weight: 600;
-  cursor: pointer;
-  color: var(--color-fd-primary-foreground, #fff);
-  background: var(--color-fd-primary, oklch(55% 0.2 255));
-}
-.ok-lint-tooltip-fix:hover {
-  filter: brightness(1.08);
+/* Fix button styling comes from the shadcn buttonVariants recipe applied in
+   markdown-lint-decorations.ts; this guard keeps the recipe's inline-flex from
+   overriding the `hidden` attribute on the imperative DOM element. */
+.ok-lint-tooltip-fix[hidden] {
+  display: none;
 }
 .ok-lint-tooltip[hidden] {
   display: none;

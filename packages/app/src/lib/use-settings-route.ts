@@ -58,6 +58,20 @@ export function openAgentSettings(): void {
   if (window.location.hash !== target) window.location.hash = target;
 }
 
+/** Sidebar item id for the This project → Plugins manage section. */
+const PROJECT_PLUGINS_SECTION = 'plugins-manage';
+
+/**
+ * Open Settings straight to This project → Plugins — the Problems panel's
+ * "enable plugins" pointer funnels through here so the deep-link literal is
+ * single-sourced (mirrors `openAgentSettings`).
+ */
+export function openProjectPluginsSettings(): void {
+  if (typeof window === 'undefined') return;
+  const target = settingsSectionHash(PROJECT_PLUGINS_SECTION);
+  if (window.location.hash !== target) window.location.hash = target;
+}
+
 interface SettingsRouteState {
   /** True when the dialog is open (hash is `#settings` or `#settings/<id>`). */
   open: boolean;

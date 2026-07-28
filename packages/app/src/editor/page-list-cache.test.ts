@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { toWikiLinkSlug } from '@inkeep/open-knowledge-core';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   __resetPageListCacheForTests,
   buildPageIconsIndex,
@@ -151,7 +151,7 @@ describe('setPageListCache', () => {
       folderPaths: new Set(),
     };
     setPageListCache(snap);
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     subscribePageListCache(listener);
     listener.mockClear();
     setPageListCache(snap);
@@ -166,20 +166,20 @@ describe('subscribePageListCache', () => {
       folderPaths: new Set(),
     };
     setPageListCache(snap);
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     subscribePageListCache(listener);
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith(snap);
   });
 
   it('does NOT fire immediately when cache is null at subscribe time', () => {
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     subscribePageListCache(listener);
     expect(listener).not.toHaveBeenCalled();
   });
 
   it('fires on subsequent content-changing setPageListCache calls', () => {
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     subscribePageListCache(listener);
     const first: PageListCacheSnapshot = {
       pages: new Set(['a']),
@@ -198,7 +198,7 @@ describe('subscribePageListCache', () => {
   });
 
   it('does NOT fire on content-equal setPageListCache calls', () => {
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     subscribePageListCache(listener);
     setPageListCache({ pages: new Set(['a']), folderPaths: new Set() });
     listener.mockClear();
@@ -207,7 +207,7 @@ describe('subscribePageListCache', () => {
   });
 
   it('unsubscribe stops subsequent notifications', () => {
-    const listener = mock(() => {});
+    const listener = vi.fn(() => {});
     const unsubscribe = subscribePageListCache(listener);
     unsubscribe();
     setPageListCache({ pages: new Set(['a']), folderPaths: new Set() });
@@ -216,7 +216,7 @@ describe('subscribePageListCache', () => {
 
   it('is safe to unsubscribe inside a listener (no double-fire on next change)', () => {
     let unsubscribe: (() => void) | null = null;
-    const listener = mock(() => {
+    const listener = vi.fn(() => {
       unsubscribe?.();
     });
     unsubscribe = subscribePageListCache(listener);
@@ -228,8 +228,8 @@ describe('subscribePageListCache', () => {
   });
 
   it('supports multiple independent subscribers', () => {
-    const a = mock(() => {});
-    const b = mock(() => {});
+    const a = vi.fn(() => {});
+    const b = vi.fn(() => {});
     subscribePageListCache(a);
     subscribePageListCache(b);
     setPageListCache({ pages: new Set(['x']), folderPaths: new Set() });
@@ -244,10 +244,10 @@ describe('subscribePageListCache', () => {
       captured.push(args);
     };
     try {
-      const bad = mock(() => {
+      const bad = vi.fn(() => {
         throw new Error('boom');
       });
-      const good = mock(() => {});
+      const good = vi.fn(() => {});
       subscribePageListCache(bad);
       subscribePageListCache(good);
       setPageListCache({ pages: new Set(['x']), folderPaths: new Set() });

@@ -11,7 +11,7 @@
  *   collabUrl === null + grace   → 'retrying'
  *   collabUrl === null + !grace  → 'hidden' (flash prevention)
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { computeBannerMode, describeError, isNoCollabServerError } from './ConnectingBanner';
 
 describe('computeBannerMode', () => {

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { isWithinDir, toPosix } from './path-utils.ts';
 
 // These exercise the Windows (`\`-separated) branch on a POSIX CI runner — the

@@ -1,5 +1,6 @@
 import {
   detectEmbeddedHostFromBrowser,
+  isFrontmatterSchemaAsset,
   isMarkdownlintJsonConfig,
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -26,7 +27,6 @@ import { EditorSkeleton } from '@/components/EditorSkeleton';
 import { EmptyEditorState } from '@/components/EmptyEditorState';
 import { FolderOverview } from '@/components/FolderOverview';
 import { LargeFileEditorState } from '@/components/LargeFileEditorState';
-import { LintConfigEditor } from '@/components/LintConfigEditor';
 import { MountStalledAffordance } from '@/components/MountStalledAffordance';
 import { PropertyProvider, useProperties } from '@/components/PropertyContext';
 import { ShareReceiveMissPanel } from '@/components/ShareReceiveMissPanel';
@@ -80,6 +80,31 @@ const LazyActivityModeContent = lazy(async () => {
   const mod = await import('@/components/ActivityModeContent');
   return { default: mod.ActivityModeContent };
 });
+
+// The two config-file editors render only when a `.markdownlint.*` or
+// `*.schema.json` file is opened — rare next to ordinary document editing — so
+// they stay out of the main chunk rather than loading for every session.
+const LazyLintConfigEditor = lazy(async () => {
+  const mod = await import('@/components/LintConfigEditor');
+  return { default: mod.LintConfigEditor };
+});
+
+const LazySchemaConfigEditor = lazy(async () => {
+  const mod = await import('@/components/SchemaConfigEditor');
+  return { default: mod.SchemaConfigEditor };
+});
+
+function ConfigEditorFallback() {
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      className="flex h-full items-center justify-center text-sm text-muted-foreground"
+    >
+      <Trans>Loading editor</Trans>
+    </div>
+  );
+}
 
 // The full-pane version diffs are overlays that only paint on user action (open
 // a Timeline/agent diff), so they're code-split off the eager editor bundle —
@@ -909,7 +934,18 @@ function EditorAreaInner({
     // DocumentBoundary-wrapped: the config is served over HTTP, not a pooled
     // CRDT doc. Keyed by path so navigating between configs remounts + resets.
     viewContent = (
-      <LintConfigEditor key={activeTarget.assetPath} assetPath={activeTarget.assetPath} />
+      <Suspense fallback={<ConfigEditorFallback />}>
+        <LazyLintConfigEditor key={activeTarget.assetPath} assetPath={activeTarget.assetPath} />
+      </Suspense>
+    );
+  } else if (activeTarget?.kind === 'asset' && isFrontmatterSchemaAsset(activeTarget.assetPath)) {
+    // A tool-managed frontmatter schema opens in the dedicated schema editor
+    // (a Source/Fields toggle) — same REST-backed sibling shape as the
+    // markdownlint branch above, keyed by path for the same remount reset.
+    viewContent = (
+      <Suspense fallback={<ConfigEditorFallback />}>
+        <LazySchemaConfigEditor key={activeTarget.assetPath} assetPath={activeTarget.assetPath} />
+      </Suspense>
     );
   } else if (activeTarget?.kind === 'asset') {
     // `key={assetPath}` forces a fresh `AssetPreview` instance on every asset

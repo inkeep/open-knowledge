@@ -167,6 +167,11 @@ export function SettingsDialogShell({
   // The docked terminal is desktop-only (the real shell has no web host), so
   // its per-project revoke toggle only appears under the Electron preload.
   const isOkDesktopHost = typeof window !== 'undefined' && window.okDesktop != null;
+  // The Terminal settings section configures the pty-backed dock, which is
+  // dark on hosts that can't spawn a PTY (Windows/Linux — node-pty is not
+  // bundled there). Same capability gate as the dock affordances themselves.
+  const terminalSettingsAvailable =
+    isOkDesktopHost && window.okDesktop?.config.ptyAvailable === true;
 
   // One sidebar item per ENABLED project-scope plugin. These populate the
   // "Project plugins" sidebar group; the manage page (which toggles membership)
@@ -217,8 +222,9 @@ export function SettingsDialogShell({
         { id: 'sync', label: t`Sync` },
         { id: 'search', label: t`Search` },
         { id: 'plugins-manage', label: t`Plugins` },
+        { id: 'content-rules', label: t`Content rules` },
         ...(isFileProtocolRenderer ? [] : [{ id: 'link-previews', label: t`Link previews` }]),
-        ...(isOkDesktopHost ? [{ id: 'terminal', label: t`Terminal` }] : []),
+        ...(terminalSettingsAvailable ? [{ id: 'terminal', label: t`Terminal` }] : []),
         // Per-project MCP wiring + runtime skill — desktop-only because the
         // install actors live in the Electron main process (like Terminal).
         ...(isOkDesktopHost ? [{ id: 'project-ai-tools', label: t`AI tools` }] : []),
@@ -361,16 +367,20 @@ function SettingsSidebar({
       {/* cmdk surface wraps ONLY the search input + results — its roving focus
           never touches the plain-button group nav below (which keeps its
           aria-current + disabled-group semantics). The popover-styled base
-          classes are reset so it sits flush as a plain sidebar search box. */}
+          classes are reset; the input wrapper is boxed like a shadcn Input
+          (its stock border-b divider only ever bordered the box bottom here)
+          and the results render flush on the sidebar background, like the
+          group nav they replace while searching. */}
       <Command
         shouldFilter={false}
-        className="h-auto w-full shrink-0 rounded-md border bg-transparent sm:mb-3"
+        className="h-auto w-full shrink-0 bg-transparent sm:mb-3 [&_[data-slot=command-input-wrapper]]:h-9 [&_[data-slot=command-input-wrapper]]:rounded-lg [&_[data-slot=command-input-wrapper]]:border [&_[data-slot=command-input-wrapper]]:border-input"
         data-testid="settings-search"
       >
         <CommandInput
           value={searchQuery}
           onValueChange={onSearchChange}
           placeholder={t`Search settings`}
+          className="py-0"
           data-testid="settings-search-input"
         />
         {/* Polite result-count announcement — cmdk's listbox semantics don't
@@ -380,7 +390,7 @@ function SettingsSidebar({
           {query !== '' ? <Plural value={results.length} one="# result" other="# results" /> : null}
         </span>
         {query !== '' ? (
-          <CommandList data-testid="settings-search-results">
+          <CommandList data-testid="settings-search-results" className="mt-1.5">
             <CommandEmpty data-testid="settings-search-empty">
               <Trans>No settings found</Trans>
             </CommandEmpty>

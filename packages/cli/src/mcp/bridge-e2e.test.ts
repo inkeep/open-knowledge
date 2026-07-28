@@ -1,4 +1,3 @@
-import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -14,6 +13,7 @@ import {
   type McpHttpHandler,
   RUNTIME_VERSION,
 } from '@inkeep/open-knowledge-server';
+import { afterEach, expect, test } from 'vitest';
 import { bridgeStdioToHttpMcp } from './shim.ts';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';

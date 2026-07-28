@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   createSubscribeCardStore,
   type SubscribeCardStorage,
@@ -10,17 +10,17 @@ import {
 } from '@/lib/subscribe-card-store';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-const submitSubscribe = mock(
+const submitSubscribe = vi.fn(
   async (_email: string) =>
     ({ ok: true }) as Awaited<ReturnType<typeof import('@/lib/subscribe').submitSubscribe>>,
 );
-mock.module('@/lib/subscribe', () => ({ submitSubscribe }));
+vi.doMock('@/lib/subscribe', () => ({ submitSubscribe }));
 
 function memoryStorage(): SubscribeCardStorage {
   const map = new Map<string, string>();
@@ -47,8 +47,8 @@ async function renderCard(
   const { SubscribeCard } = await import('./SubscribeCard');
   const props = {
     version: '1.4.0',
-    onOpenReleaseNotes: mock(() => {}),
-    onClose: mock(() => {}),
+    onOpenReleaseNotes: vi.fn(() => {}),
+    onClose: vi.fn(() => {}),
     store: makeStore(),
     autoDismissMs: 5,
     ...overrides,
@@ -87,14 +87,14 @@ describe('SubscribeCard (combined release-notes + subscribe)', () => {
   });
 
   test('clicking Release notes opens the release notes', async () => {
-    const onOpenReleaseNotes = mock(() => {});
+    const onOpenReleaseNotes = vi.fn(() => {});
     await renderCard({ onOpenReleaseNotes });
     await userEvent.click(screen.getByRole('button', { name: 'Release notes' }));
     expect(onOpenReleaseNotes).toHaveBeenCalledTimes(1);
   });
 
   test('dismissing closes the card and stops the prompt for good', async () => {
-    const onClose = mock(() => {});
+    const onClose = vi.fn(() => {});
     const store = makeStore();
     await renderCard({ store, onClose });
     await userEvent.click(screen.getByRole('button', { name: 'Close' }));
@@ -104,7 +104,7 @@ describe('SubscribeCard (combined release-notes + subscribe)', () => {
 
   test('a confirmed subscribe marks subscribed, collapses socials, then auto-dismisses', async () => {
     submitSubscribe.mockResolvedValue({ ok: true });
-    const onClose = mock(() => {});
+    const onClose = vi.fn(() => {});
     const store = makeStore();
     await renderCard({ store, onClose, autoDismissMs: 5 });
 

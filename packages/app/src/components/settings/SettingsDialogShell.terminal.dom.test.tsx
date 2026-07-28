@@ -68,10 +68,14 @@ vi.doMock('@/lib/handoff/use-claude-desktop-integration', () => ({
 
 const { SettingsDialogShell } = await import('./SettingsDialogShell');
 
-function setDesktopHost(present: boolean) {
+function setDesktopHost(present: boolean, opts: { ptyAvailable?: boolean } = {}) {
   const w = window as unknown as { okDesktop?: unknown };
-  if (present) w.okDesktop = {};
-  else {
+  if (present) {
+    // The Terminal section additionally gates on the host's pty capability
+    // (`config.ptyAvailable`, false on win/linux where node-pty isn't
+    // bundled) — model the capable macOS host by default.
+    w.okDesktop = { config: { ptyAvailable: opts.ptyAvailable ?? true } };
+  } else {
     w.okDesktop = undefined;
   }
 }
@@ -91,6 +95,12 @@ describe('SettingsDialogShell terminal nav item (desktop-only)', () => {
 
   test('hides the Terminal section on the web host (no okDesktop bridge)', () => {
     setDesktopHost(false);
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+    expect(screen.queryByTestId('settings-sidebar-item-terminal')).toBeNull();
+  });
+
+  test('hides the Terminal section on a pty-less Electron host (win/linux)', () => {
+    setDesktopHost(true, { ptyAvailable: false });
     render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
     expect(screen.queryByTestId('settings-sidebar-item-terminal')).toBeNull();
   });

@@ -488,6 +488,13 @@ function sliceToMarkdown(slice: Slice, schema: Schema, mdManager: MarkdownManage
  * mark-interaction semantics than the direct `posAtDOM(<img>, 0)` path
  * the bare PM image node uses. Skipping these wrappers preserves
  * the direct-leaf clipboard behavior while still mounting the Zoom UI.
+ * The opt-out neutralizes the node view's WHOLE wrapper stack: tiptap
+ * always renders a `.react-renderer` element immediately around the
+ * NodeViewWrapper, so when the annotated wrapper is skipped, its direct
+ * `.react-renderer` parent (the same node view's outer wrapper) is
+ * skipped too. A genuine enclosing descriptor always interposes its own
+ * NodeViewWrapper between its `.react-renderer` and any nested content,
+ * so nested descriptors above the stack still match.
  *
  * Exported only for unit-test reach; the production caller is
  * `buildWalkerEnv` below.
@@ -495,13 +502,32 @@ function sliceToMarkdown(slice: Slice, schema: Schema, mdManager: MarkdownManage
 export function findDescriptorRoot(live: Element): Element | null {
   let descriptorRoot: Element | null = null;
   let cur: Element | null = live;
+  let optedOutWrapper: Element | null = null;
   while (cur && !cur.classList.contains('ProseMirror')) {
+    // Stop at a container's NodeViewContent boundary: everything at or above
+    // `[data-node-view-content]` belongs to the ENCLOSING container's PM node,
+    // not the leaf being resolved. Any descriptor wrapper above this point is
+    // the container's own `.react-renderer`; adopting it would make PM position
+    // the whole container at the leaf's slot. The descriptor already recorded
+    // below the boundary is the leaf's own root, so stop the climb here.
+    if (cur.hasAttribute('data-node-view-content')) break;
     // Opt-out: live-editor render wrappers around bare inline PM atoms
     // (e.g., `ImageInlineZoom`'s `<Zoom>` wrap). The PM node IS the leaf
     // `<img>` — there is no descriptor here, even though tiptap stamps
     // `data-node-view-wrapper` on the NodeViewWrapper. Skip these so
     // `posAtDOM(<img>, 0)` stays the resolution path.
     if (cur.hasAttribute('data-clipboard-inline-leaf')) {
+      optedOutWrapper = cur;
+      cur = cur.parentElement;
+      continue;
+    }
+    // tiptap always renders a `.react-renderer` immediately around the
+    // same node view's NodeViewWrapper. When that wrapper opted out, its
+    // DIRECT `.react-renderer` parent belongs to the same node view and
+    // must be neutralized too — a genuine enclosing descriptor always
+    // interposes its own NodeViewWrapper, so this containment check
+    // cannot swallow real nested descriptors.
+    if (optedOutWrapper?.parentElement === cur && cur.classList.contains('react-renderer')) {
       cur = cur.parentElement;
       continue;
     }
@@ -510,10 +536,14 @@ export function findDescriptorRoot(live: Element): Element | null {
       cur.hasAttribute('data-node-view-wrapper') ||
       cur.hasAttribute('data-jsx-component')
     ) {
-      // Keep climbing — for nested descriptors, the OUTERMOST is the one
-      // PM positions in its parent's content. For example, `CommonMarkImage`
-      // is a `JsxComponent` rendered as `.react-renderer.node-jsxComponent`
-      // wrapping `[data-node-view-wrapper data-jsx-component]`.
+      // Keep climbing — for nested descriptors OF THE SAME node view, the
+      // OUTERMOST is the one PM positions in its parent's content. For example,
+      // `CommonMarkImage` is a `JsxComponent` rendered as
+      // `.react-renderer.node-jsxComponent` wrapping
+      // `[data-node-view-wrapper data-jsx-component]`. This "outermost wins"
+      // holds only WITHIN one node view; the climb terminates at the first
+      // `[data-node-view-content]` boundary (above), so a container descriptor
+      // hosting the leaf in its content hole is never adopted.
       descriptorRoot = cur;
     }
     cur = cur.parentElement;
@@ -567,7 +597,10 @@ function buildWalkerEnv(view: EditorView, mdManager: MarkdownManager): WalkerEnv
       try {
         const parent = descriptorRoot?.parentElement;
         if (parent && descriptorRoot) {
-          const idx = Array.from(parent.children).indexOf(descriptorRoot);
+          // posAtDOM's offset counts CHILDNODES (text nodes included), not
+          // element children — an element-only index misaddresses any
+          // descriptor with a non-element preceding sibling.
+          const idx = Array.prototype.indexOf.call(parent.childNodes, descriptorRoot);
           pos = view.posAtDOM(parent, idx, -1);
         } else {
           pos = view.posAtDOM(live, 0);

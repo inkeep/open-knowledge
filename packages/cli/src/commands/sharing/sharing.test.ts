@@ -8,11 +8,11 @@
  * mechanics are pinned in `../../sharing/git-exclude.test.ts`.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { sharingShareCommand } from './share.ts';
 import { sharingStatusCommand } from './status.ts';
 import { sharingUnshareCommand } from './unshare.ts';

@@ -24,8 +24,6 @@ import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { gitSpawnEnv } from './git-spawn-env.ts';
 
-const GIT_ENV = gitSpawnEnv();
-
 const execFileAsync = promisify(execFile);
 
 export interface RecentGitInfo {
@@ -61,7 +59,7 @@ export function readWorktreeBranch(projectPath: string): string | null {
     const out = String(
       execFileSync('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], {
         cwd: projectPath,
-        env: GIT_ENV,
+        env: gitSpawnEnv(),
       }),
     ).trim();
     return out.length > 0 ? out : null;
@@ -84,7 +82,7 @@ export async function readWorktreeBranchAsync(projectPath: string): Promise<stri
   try {
     const { stdout } = await execFileAsync('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], {
       cwd: projectPath,
-      env: GIT_ENV,
+      env: gitSpawnEnv(),
     });
     const out = stdout.trim();
     return out.length > 0 ? out : null;
@@ -145,7 +143,7 @@ const REV_PARSE_ARGS = [
 function computeRecentGit(realPath: string): RecentGitInfo {
   let out: string;
   try {
-    out = String(execFileSync('git', [...REV_PARSE_ARGS], { cwd: realPath, env: GIT_ENV }));
+    out = String(execFileSync('git', [...REV_PARSE_ARGS], { cwd: realPath, env: gitSpawnEnv() }));
   } catch {
     return EMPTY;
   }
@@ -157,7 +155,7 @@ async function computeRecentGitAsync(realPath: string): Promise<RecentGitInfo> {
   try {
     const { stdout } = await execFileAsync('git', [...REV_PARSE_ARGS], {
       cwd: realPath,
-      env: GIT_ENV,
+      env: gitSpawnEnv(),
     });
     out = stdout;
   } catch {

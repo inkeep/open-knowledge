@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { validatePatchScopes } from './validate-patch-scopes.ts';
 
 describe('validatePatchScopes', () => {

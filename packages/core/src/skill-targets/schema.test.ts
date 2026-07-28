@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { PROJECT_SKILL_EDITOR_IDS } from '../constants/editors.ts';
 import { parseSkillTargets, SkillTargetEditorSchema } from './schema.ts';
 

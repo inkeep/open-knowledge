@@ -9,7 +9,7 @@
  * Uses injectable yieldFn so tests don't depend on rAF/timers.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   ChunkedInsertError,
   chunkedYTextInsert,

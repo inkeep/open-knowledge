@@ -7,12 +7,13 @@
  * the pool's LRU logic, Map management, and eviction ordering are all
  * exercised without needing a running Hocuspocus server.
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+
 import { randomUUID } from 'node:crypto';
 import { setTimeout as wait } from 'node:timers/promises';
 import { Compartment } from '@codemirror/state';
 import { PROTOCOL_VERSION } from '@inkeep/open-knowledge-core';
 import { parseHocuspocusAuthToken } from '@inkeep/open-knowledge-server';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { buildAuthToken } from '../lib/auth-token';
 import { __resetCardinalityWarnings, getCollector } from '../lib/perf/collector';
@@ -397,7 +398,7 @@ describe('ProviderPool onEvict subscription', () => {
     });
     // Suppress the warn so the test output stays clean.
     const originalWarn = console.warn;
-    console.warn = mock(() => {});
+    console.warn = vi.fn(() => {});
     try {
       pool.close('doc1');
     } finally {
@@ -495,7 +496,7 @@ describe('ProviderPool dispose', () => {
 });
 
 describe('ProviderPool setupObservers init-throw recovery (S4)', () => {
-  // Instead of mock.module (which leaks to other test files in the same bun test
+  // Instead of vi.doMock (which leaks to other test files in the same bun test
   // process), we sabotage the provider's Y.Doc to force a throw inside the onSynced
   // try block. Overriding doc.getXmlFragment to throw triggers the catch before
   // setupObservers is called — same code path, same recovery behavior.
@@ -519,7 +520,7 @@ describe('ProviderPool setupObservers init-throw recovery (S4)', () => {
     };
 
     // Silence the expected console.error so test output stays readable
-    const errorSpy = mock(() => {});
+    const errorSpy = vi.fn(() => {});
     const origError = console.error;
     console.error = errorSpy;
 
@@ -569,7 +570,7 @@ describe('ProviderPool setupObservers init-throw recovery (S4)', () => {
     entry.provider.document.getXmlFragment = () => {
       throw new Error('synthetic init failure');
     };
-    const errorSpy = mock(() => {});
+    const errorSpy = vi.fn(() => {});
     const origError = console.error;
     console.error = errorSpy;
     entry.provider.emit('synced', { state: true });
@@ -1262,7 +1263,7 @@ describe('ProviderPool doc-lineage epoch records', () => {
     store.set(ENVELOPE_KEY, makeEnvelope(TEST_SERVER_INSTANCE_ID, { doc1: 'epoch-1' }));
     pool = new ProviderPool(3, DUMMY_WS, {
       storage: stub,
-      persistenceFactory: mock(makePersistenceStub),
+      persistenceFactory: vi.fn(makePersistenceStub),
     });
     pool.setExpectedServerInstanceId(TEST_SERVER_INSTANCE_ID);
     const entry = pool.open('doc1');
@@ -1275,7 +1276,7 @@ describe('ProviderPool doc-lineage epoch records', () => {
     store.set(ENVELOPE_KEY, makeEnvelope(TEST_SERVER_INSTANCE_ID, { doc1: 'epoch-1' }));
     pool = new ProviderPool(3, DUMMY_WS, {
       storage: stub,
-      persistenceFactory: mock(makePersistenceStub),
+      persistenceFactory: vi.fn(makePersistenceStub),
     });
     // No setExpectedServerInstanceId — the envelope cannot be validated, and
     // a lineage claim must never race the instance-unknown boot window.
@@ -1289,7 +1290,7 @@ describe('ProviderPool doc-lineage epoch records', () => {
     store.set(ENVELOPE_KEY, makeEnvelope('dead-instance', { doc1: 'epoch-1' }));
     pool = new ProviderPool(3, DUMMY_WS, {
       storage: stub,
-      persistenceFactory: mock(makePersistenceStub),
+      persistenceFactory: vi.fn(makePersistenceStub),
     });
     pool.setExpectedServerInstanceId(TEST_SERVER_INSTANCE_ID);
     const entry = pool.open('doc1');
@@ -1302,7 +1303,7 @@ describe('ProviderPool doc-lineage epoch records', () => {
     store.set(ENVELOPE_KEY, makeEnvelope(TEST_SERVER_INSTANCE_ID, { doc1: 'epoch-1' }, 'feature'));
     pool = new ProviderPool(3, DUMMY_WS, {
       storage: stub,
-      persistenceFactory: mock(makePersistenceStub),
+      persistenceFactory: vi.fn(makePersistenceStub),
     });
     // Pool never observes a branch — its scope normalizes to `_unknown_`,
     // which must not consume a `feature`-scoped envelope.
@@ -1316,7 +1317,7 @@ describe('ProviderPool doc-lineage epoch records', () => {
     const { stub, store } = makeStubStorage();
     pool = new ProviderPool(3, DUMMY_WS, {
       storage: stub,
-      persistenceFactory: mock(makePersistenceStub),
+      persistenceFactory: vi.fn(makePersistenceStub),
     });
     pool.setExpectedServerInstanceId(TEST_SERVER_INSTANCE_ID);
     const docName = uniqueDocName('pp-lineage-record');
@@ -1340,7 +1341,7 @@ describe('ProviderPool doc-lineage epoch records', () => {
     // A fresh pool over the same storage (new tab) claims the epoch.
     const pool2 = new ProviderPool(3, DUMMY_WS, {
       storage: stub,
-      persistenceFactory: mock(makePersistenceStub),
+      persistenceFactory: vi.fn(makePersistenceStub),
     });
     try {
       pool2.setExpectedServerInstanceId(TEST_SERVER_INSTANCE_ID);
@@ -1358,7 +1359,7 @@ describe('ProviderPool doc-lineage epoch records', () => {
     store.set(ENVELOPE_KEY, makeEnvelope(TEST_SERVER_INSTANCE_ID, { [docName]: 'epoch-dead' }));
     pool = new ProviderPool(3, DUMMY_WS, {
       storage: stub,
-      persistenceFactory: mock(makePersistenceStub),
+      persistenceFactory: vi.fn(makePersistenceStub),
     });
     pool.setExpectedServerInstanceId(TEST_SERVER_INSTANCE_ID);
     const entry = pool.open(docName);
@@ -1367,7 +1368,7 @@ describe('ProviderPool doc-lineage epoch records', () => {
     expect(tokenOf(entry).expectedDocLineageEpoch).toBe('epoch-dead');
 
     // Silence the expected structured recovery warn.
-    const warnSpy = mock(() => {});
+    const warnSpy = vi.fn(() => {});
     const origWarn = console.warn;
     console.warn = warnSpy;
     entry.provider.emit('authenticationFailed', { reason: 'doc-lineage-mismatch' });
@@ -1402,7 +1403,7 @@ describe('ProviderPool doc-lineage epoch records', () => {
     const { stub } = makeStubStorage();
     pool = new ProviderPool(3, DUMMY_WS, {
       storage: stub,
-      persistenceFactory: mock(makePersistenceStub),
+      persistenceFactory: vi.fn(makePersistenceStub),
     });
     const docName = uniqueDocName('pp-lineage-deferred');
 
@@ -1425,7 +1426,7 @@ describe('ProviderPool doc-lineage epoch records', () => {
     entry.provider.document.getMap('lifecycle').set('epoch', 'epoch-live');
     entry.provider.emit('synced', { state: true });
 
-    const warnSpy = mock(() => {});
+    const warnSpy = vi.fn(() => {});
     const origWarn = console.warn;
     console.warn = warnSpy;
     // Learning the instance id triggers the deferred attach, whose guard
@@ -1472,7 +1473,7 @@ describe('ProviderPool doc-lineage epoch records', () => {
     );
     pool = new ProviderPool(3, DUMMY_WS, {
       storage: stub,
-      persistenceFactory: mock(makePersistenceStub),
+      persistenceFactory: vi.fn(makePersistenceStub),
     });
     pool.setExpectedServerInstanceId(TEST_SERVER_INSTANCE_ID);
     const renamedEntry = pool.open(renamedDoc);
@@ -1513,9 +1514,9 @@ describe('ProviderPool stored-state validation spine', () => {
   function captureWarns(): {
     lines: () => string[];
     restore: () => void;
-    spy: ReturnType<typeof spyOn>;
+    spy: ReturnType<typeof vi.spyOn>;
   } {
-    const spy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     return {
       lines: () =>
         spy.mock.calls
@@ -1529,10 +1530,10 @@ describe('ProviderPool stored-state validation spine', () => {
   test('refuses stored rows whose in-band epoch differs from the live lineage', async () => {
     const warns = captureWarns();
     try {
-      const peek = mock(async () => 'epoch-dead');
+      const peek = vi.fn(async () => 'epoch-dead');
       pool = new ProviderPool(3, DUMMY_WS, {
         storage: null,
-        persistenceFactory: mock(makePersistenceStub),
+        persistenceFactory: vi.fn(makePersistenceStub),
         peekStoredLineageEpoch: peek,
       });
       pool.setExpectedServerInstanceId(TEST_SERVER_INSTANCE_ID);
@@ -1572,10 +1573,10 @@ describe('ProviderPool stored-state validation spine', () => {
   test('refuses stored epoch-bearing rows when the live doc carries no epoch post-sync', async () => {
     const warns = captureWarns();
     try {
-      const peek = mock(async () => 'epoch-dead');
+      const peek = vi.fn(async () => 'epoch-dead');
       pool = new ProviderPool(3, DUMMY_WS, {
         storage: null,
-        persistenceFactory: mock(makePersistenceStub),
+        persistenceFactory: vi.fn(makePersistenceStub),
         peekStoredLineageEpoch: peek,
       });
       pool.setExpectedServerInstanceId(TEST_SERVER_INSTANCE_ID);
@@ -1607,8 +1608,8 @@ describe('ProviderPool stored-state validation spine', () => {
   });
 
   test('attaches when the stored epoch matches the live lineage, then backfills the cache', async () => {
-    const flushSpy = mock(async () => {});
-    const persistenceFactory = mock(
+    const flushSpy = vi.fn(async () => {});
+    const persistenceFactory = vi.fn(
       () =>
         ({
           whenSynced: Promise.resolve(undefined as never),
@@ -1618,7 +1619,7 @@ describe('ProviderPool stored-state validation spine', () => {
           flushFullState: flushSpy,
         }) as unknown as ClientPersistenceProvider,
     );
-    const peek = mock(async () => 'epoch-live');
+    const peek = vi.fn(async () => 'epoch-live');
     pool = new ProviderPool(3, DUMMY_WS, {
       storage: null,
       persistenceFactory,
@@ -1640,8 +1641,8 @@ describe('ProviderPool stored-state validation spine', () => {
   });
 
   test('attaches immediately when the stored rows carry nothing to validate (null peek)', async () => {
-    const persistenceFactory = mock(makePersistenceStub);
-    const peek = mock(async () => null);
+    const persistenceFactory = vi.fn(makePersistenceStub);
+    const peek = vi.fn(async () => null);
     pool = new ProviderPool(3, DUMMY_WS, {
       storage: null,
       persistenceFactory,
@@ -1660,8 +1661,8 @@ describe('ProviderPool stored-state validation spine', () => {
   });
 
   test('record-present entry that has not synced waits for sync before validating', async () => {
-    const persistenceFactory = mock(makePersistenceStub);
-    const peek = mock(async () => 'epoch-x');
+    const persistenceFactory = vi.fn(makePersistenceStub);
+    const peek = vi.fn(async () => 'epoch-x');
     pool = new ProviderPool(3, DUMMY_WS, {
       storage: null,
       persistenceFactory,
@@ -1699,13 +1700,13 @@ describe('ProviderPool stored-state validation spine', () => {
 
   test('a re-dispatch onto an entry with an in-flight spine run is a no-op (attach ownership)', async () => {
     let resolvePeek: (value: string | null) => void = () => {};
-    const peek = mock(
+    const peek = vi.fn(
       () =>
         new Promise<string | null>((resolve) => {
           resolvePeek = resolve;
         }),
     );
-    const persistenceFactory = mock(makePersistenceStub);
+    const persistenceFactory = vi.fn(makePersistenceStub);
     pool = new ProviderPool(3, DUMMY_WS, {
       storage: null,
       persistenceFactory,
@@ -1730,8 +1731,8 @@ describe('ProviderPool stored-state validation spine', () => {
   test('a rejecting peek leaves the entry cacheless and emits the attach-failed arm', async () => {
     const warns = captureWarns();
     try {
-      const persistenceFactory = mock(makePersistenceStub);
-      const peek = mock(async (): Promise<string | null> => {
+      const persistenceFactory = vi.fn(makePersistenceStub);
+      const peek = vi.fn(async (): Promise<string | null> => {
         throw new Error('idb exploded');
       });
       pool = new ProviderPool(3, DUMMY_WS, {
@@ -1769,9 +1770,9 @@ describe('ProviderPool stored-state validation spine', () => {
   test('a wedged peek decays into the attach-failed arm after the timeout', async () => {
     const warns = captureWarns();
     try {
-      const persistenceFactory = mock(makePersistenceStub);
+      const persistenceFactory = vi.fn(makePersistenceStub);
       // Never settles — the cross-tab-blocked-delete wedge shape.
-      const peek = mock(() => new Promise<string | null>(() => {}));
+      const peek = vi.fn(() => new Promise<string | null>(() => {}));
       pool = new ProviderPool(3, DUMMY_WS, {
         storage: null,
         persistenceFactory,
@@ -1805,8 +1806,8 @@ describe('ProviderPool stored-state validation spine', () => {
   test('a throwing factory on the matched-epoch arm emits attach-failed and leaves the entry cacheless', async () => {
     const warns = captureWarns();
     try {
-      const peek = mock(async () => 'epoch-live');
-      const persistenceFactory = mock((): ClientPersistenceProvider => {
+      const peek = vi.fn(async () => 'epoch-live');
+      const persistenceFactory = vi.fn((): ClientPersistenceProvider => {
         throw new Error('factory exploded');
       });
       pool = new ProviderPool(3, DUMMY_WS, {
@@ -1842,7 +1843,7 @@ describe('ProviderPool stored-state validation spine', () => {
   test('a failing backfill emits the structured attach-failed event with phase backfill', async () => {
     const warns = captureWarns();
     try {
-      const persistenceFactory = mock(
+      const persistenceFactory = vi.fn(
         () =>
           ({
             whenSynced: Promise.resolve(undefined as never),
@@ -1854,7 +1855,7 @@ describe('ProviderPool stored-state validation spine', () => {
             },
           }) as unknown as ClientPersistenceProvider,
       );
-      const peek = mock(async () => null);
+      const peek = vi.fn(async () => null);
       pool = new ProviderPool(3, DUMMY_WS, {
         storage: null,
         persistenceFactory,
@@ -1982,7 +1983,7 @@ describe("ProviderPool authenticationFailed handling (US-002 / 'server-instance-
   });
 
   test('second mismatch event is a no-op after cache is cleared (idempotence)', async () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
       pool = new ProviderPool(3, DUMMY_WS, { storage: null });
       pool.setExpectedServerInstanceId('server-old');
@@ -2040,7 +2041,7 @@ describe("ProviderPool authenticationFailed handling (US-002 / 'server-instance-
     pool.setActive('doc1');
 
     let resolveClear: () => void = () => {};
-    persistence.clearData = mock(
+    persistence.clearData = vi.fn(
       () =>
         new Promise<void>((resolve) => {
           resolveClear = resolve;
@@ -2078,7 +2079,7 @@ describe("ProviderPool authenticationFailed handling (US-002 / 'server-instance-
   });
 
   test('active doc clearData failure exposes targeted recovery failure state', async () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
       pool = new ProviderPool(3, DUMMY_WS);
       pool.setExpectedServerInstanceId('server-old');
@@ -2088,7 +2089,7 @@ describe("ProviderPool authenticationFailed handling (US-002 / 'server-instance-
       const persistence = await awaitAttachedPersistence(entry);
       pool.setActive('doc1');
       const originalProvider = entry.provider;
-      persistence.clearData = mock(() => Promise.reject(new Error('idb blocked')));
+      persistence.clearData = vi.fn(() => Promise.reject(new Error('idb blocked')));
 
       entry.provider.emit('authenticationFailed', { reason: 'server-instance-mismatch' });
       await wait(50);
@@ -2136,7 +2137,7 @@ describe("ProviderPool authenticationFailed handling (US-002 / 'server-instance-
   });
 
   test('active doc clearData timeout exposes targeted timeout state', async () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
       pool = new ProviderPool(3, DUMMY_WS, { clearDataTimeoutMs: 5 });
       pool.setExpectedServerInstanceId('server-old');
@@ -2145,7 +2146,7 @@ describe("ProviderPool authenticationFailed handling (US-002 / 'server-instance-
       if (!entry) throw new Error('expected entry');
       const persistence = await awaitAttachedPersistence(entry);
       pool.setActive('doc1');
-      persistence.clearData = mock(() => new Promise<void>(() => {}));
+      persistence.clearData = vi.fn(() => new Promise<void>(() => {}));
 
       entry.provider.emit('authenticationFailed', { reason: 'server-instance-mismatch' });
       await wait(30);
@@ -2507,22 +2508,22 @@ describe('ProviderPool → V2 editor cache eviction coupling (Critical #2)', () 
     const fakeCmDom = makeFakeNode();
     const fakeEditor = {
       editorView: { dom: fakeTipDom, scrollDOM: fakeTipDom },
-      commands: { focus: mock(() => {}) },
-      destroy: mock(() => {}),
+      commands: { focus: vi.fn(() => {}) },
+      destroy: vi.fn(() => {}),
     } as unknown as import('@tiptap/core').Editor;
     const fakeView = {
       dom: fakeCmDom,
       scrollDOM: fakeCmDom,
-      focus: mock(() => {}),
-      destroy: mock(() => {}),
+      focus: vi.fn(() => {}),
+      destroy: vi.fn(() => {}),
     } as unknown as import('@codemirror/view').EditorView;
     const makeProv = () =>
       ({
-        destroy: mock(() => {}),
-        document: { destroy: mock(() => {}) } as unknown as import('yjs').Doc,
+        destroy: vi.fn(() => {}),
+        document: { destroy: vi.fn(() => {}) } as unknown as import('yjs').Doc,
         awareness: null,
       }) as unknown as import('@hocuspocus/provider').HocuspocusProvider;
-    const fakeYDoc = { destroy: mock(() => {}) } as unknown as import('yjs').Doc;
+    const fakeYDoc = { destroy: vi.fn(() => {}) } as unknown as import('yjs').Doc;
     const fakeYText = { toString: () => '' } as unknown as import('yjs').Text;
 
     cacheModule.mountTiptapEditor({
@@ -2571,22 +2572,22 @@ describe('ProviderPool → V2 editor cache eviction coupling (Critical #2)', () 
     const fakeCmDom = makeFakeNode();
     const fakeEditor = {
       editorView: { dom: fakeTipDom, scrollDOM: fakeTipDom },
-      commands: { focus: mock(() => {}) },
-      destroy: mock(() => {}),
+      commands: { focus: vi.fn(() => {}) },
+      destroy: vi.fn(() => {}),
     } as unknown as import('@tiptap/core').Editor;
     const fakeView = {
       dom: fakeCmDom,
       scrollDOM: fakeCmDom,
-      focus: mock(() => {}),
-      destroy: mock(() => {}),
+      focus: vi.fn(() => {}),
+      destroy: vi.fn(() => {}),
     } as unknown as import('@codemirror/view').EditorView;
     const makeProv = () =>
       ({
-        destroy: mock(() => {}),
-        document: { destroy: mock(() => {}) } as unknown as import('yjs').Doc,
+        destroy: vi.fn(() => {}),
+        document: { destroy: vi.fn(() => {}) } as unknown as import('yjs').Doc,
         awareness: null,
       }) as unknown as import('@hocuspocus/provider').HocuspocusProvider;
-    const fakeYDoc = { destroy: mock(() => {}) } as unknown as import('yjs').Doc;
+    const fakeYDoc = { destroy: vi.fn(() => {}) } as unknown as import('yjs').Doc;
     const fakeYText = { toString: () => '' } as unknown as import('yjs').Text;
     cacheModule.mountTiptapEditor({
       docName: 'doc-recycle-regression',
@@ -2626,16 +2627,16 @@ describe('ProviderPool → V2 editor cache eviction coupling (Critical #2)', () 
     cacheModule.__resetCacheForTests();
     const makeProv = () =>
       ({
-        destroy: mock(() => {}),
-        document: { destroy: mock(() => {}) } as unknown as import('yjs').Doc,
+        destroy: vi.fn(() => {}),
+        document: { destroy: vi.fn(() => {}) } as unknown as import('yjs').Doc,
         awareness: null,
       }) as unknown as import('@hocuspocus/provider').HocuspocusProvider;
     const makeFakeEditor = () => {
       const dom = makeFakeNode();
       return {
         editorView: { dom, scrollDOM: dom },
-        commands: { focus: mock(() => {}) },
-        destroy: mock(() => {}),
+        commands: { focus: vi.fn(() => {}) },
+        destroy: vi.fn(() => {}),
       } as unknown as import('@tiptap/core').Editor;
     };
     const fakeYText = { toString: () => '' } as unknown as import('yjs').Text;
@@ -2645,7 +2646,7 @@ describe('ProviderPool → V2 editor cache eviction coupling (Critical #2)', () 
       container: makeFakeNode() as unknown as HTMLElement,
       factory: () => ({
         editor: makeFakeEditor(),
-        ydoc: { destroy: mock(() => {}) } as unknown as import('yjs').Doc,
+        ydoc: { destroy: vi.fn(() => {}) } as unknown as import('yjs').Doc,
         ytext: fakeYText,
         provider: makeProv(),
       }),
@@ -2655,7 +2656,7 @@ describe('ProviderPool → V2 editor cache eviction coupling (Critical #2)', () 
       container: makeFakeNode() as unknown as HTMLElement,
       factory: () => ({
         editor: makeFakeEditor(),
-        ydoc: { destroy: mock(() => {}) } as unknown as import('yjs').Doc,
+        ydoc: { destroy: vi.fn(() => {}) } as unknown as import('yjs').Doc,
         ytext: fakeYText,
         provider: makeProv(),
       }),
@@ -2690,8 +2691,8 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
     return {
       whenSynced: Promise.resolve(undefined as never),
       synced: true,
-      destroy: mock(async () => {}),
-      clearData: mock(async () => {}),
+      destroy: vi.fn(async () => {}),
+      clearData: vi.fn(async () => {}),
       flushFullState: async () => {},
     } as ClientPersistenceProvider;
   }
@@ -2716,12 +2717,12 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
   });
 
   test('deferred persistence attach continues after one entry throws', async () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
       const badDoc = uniqueDocName('pp-deferred-throw');
       const goodDoc = uniqueDocName('pp-deferred-ok');
       const goodPersistence = stubPersistence();
-      const persistenceFactory = mock(({ docName }: { docName: string }) => {
+      const persistenceFactory = vi.fn(({ docName }: { docName: string }) => {
         if (docName === badDoc) {
           throw new Error('idb unavailable');
         }
@@ -2781,7 +2782,7 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
     const attached = await awaitAttachedPersistence(entry);
 
     const order: string[] = [];
-    const persistenceSpy = mock(async () => {
+    const persistenceSpy = vi.fn(async () => {
       order.push('persistence');
     });
     attached.destroy = persistenceSpy;
@@ -2811,7 +2812,7 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
     entry.observerCleanup = () => {};
 
     const order: string[] = [];
-    const persistenceSpy = mock(async () => {
+    const persistenceSpy = vi.fn(async () => {
       order.push('persistence');
     });
     attached.destroy = persistenceSpy;
@@ -2847,7 +2848,7 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
     if (!entry2) throw new Error('expected entry on doc2');
     const attached2 = await awaitAttachedPersistence(entry2);
 
-    const destroySpy = mock(async () => {});
+    const destroySpy = vi.fn(async () => {});
     attached2.destroy = destroySpy;
 
     // Opening doc3 at capacity evicts doc2 (doc1 is active + protected)
@@ -2868,8 +2869,8 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
     const p1 = await awaitAttachedPersistence(e1);
     const p2 = await awaitAttachedPersistence(e2);
 
-    const spy1 = mock(async () => {});
-    const spy2 = mock(async () => {});
+    const spy1 = vi.fn(async () => {});
+    const spy2 = vi.fn(async () => {});
     p1.destroy = spy1;
     p2.destroy = spy2;
 
@@ -2887,7 +2888,7 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
     if (!entry) throw new Error('expected entry');
     const attached = await awaitAttachedPersistence(entry);
 
-    const clearSpy = mock(async () => {});
+    const clearSpy = vi.fn(async () => {});
     attached.clearData = clearSpy;
 
     await pool.closeAndClearPersistence(docName);
@@ -3035,8 +3036,8 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
     pool.setActive(doc1);
     e1.observerCleanup = () => {};
 
-    const clearSpy1 = mock(async () => {});
-    const clearSpy2 = mock(async () => {});
+    const clearSpy1 = vi.fn(async () => {});
+    const clearSpy2 = vi.fn(async () => {});
     p1.clearData = clearSpy1;
     p2.clearData = clearSpy2;
 
@@ -3086,9 +3087,9 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
     const preProvider2 = e2.provider;
     const preProvider3 = e3.provider;
 
-    const clearOk1 = mock(async () => {});
-    const clearFail = mock(() => Promise.reject(new Error('idb-clear-blocked')));
-    const clearOk2 = mock(async () => {});
+    const clearOk1 = vi.fn(async () => {});
+    const clearFail = vi.fn(() => Promise.reject(new Error('idb-clear-blocked')));
+    const clearOk2 = vi.fn(async () => {});
     p1.clearData = clearOk1;
     p2.clearData = clearFail;
     p3.clearData = clearOk2;
@@ -3137,8 +3138,8 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
     ea.observerCleanup = () => {};
     eb.observerCleanup = () => {};
 
-    pa.clearData = mock(async () => {});
-    pb.clearData = mock(() => new Promise<void>(() => {}));
+    pa.clearData = vi.fn(async () => {});
+    pb.clearData = vi.fn(() => new Promise<void>(() => {}));
 
     ea.provider.emit('authenticationFailed', { reason: 'server-instance-mismatch' });
     await wait(60);
@@ -3182,15 +3183,15 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
   describe('pendingClears dedup + deferred-attach', () => {
     interface ControllableStub {
       stub: ClientPersistenceProvider;
-      clearSpy: ReturnType<typeof mock>;
+      clearSpy: ReturnType<typeof vi.fn>;
     }
 
     function makeControllableStub(clearImpl: () => Promise<void>): ControllableStub {
-      const clearSpy = mock(clearImpl);
+      const clearSpy = vi.fn(clearImpl);
       const stub = {
         whenSynced: Promise.resolve(undefined as never),
         synced: true,
-        destroy: mock(async () => {}),
+        destroy: vi.fn(async () => {}),
         clearData: clearSpy,
         flushFullState: async () => {},
       } as unknown as ClientPersistenceProvider;
@@ -3213,8 +3214,8 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
             resolveClear = resolve;
           }),
       );
-      const persistenceFactory = mock(() => stub);
-      const deleteDbSpy = spyOn(indexedDB, 'deleteDatabase');
+      const persistenceFactory = vi.fn(() => stub);
+      const deleteDbSpy = vi.spyOn(indexedDB, 'deleteDatabase');
 
       pool = new ProviderPool(3, DUMMY_WS, { persistenceFactory, clearDataTimeoutMs: 30_000 });
       pool.setObservedBranch('main');
@@ -3253,7 +3254,7 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
       );
       const fresh = makeControllableStub(async () => {});
       let callCount = 0;
-      const persistenceFactory = mock(() => {
+      const persistenceFactory = vi.fn(() => {
         callCount += 1;
         return callCount === 1 ? cleared.stub : fresh.stub;
       });
@@ -3296,7 +3297,7 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
             rejectClear = reject;
           }),
       );
-      const persistenceFactory = mock(() => cleared.stub);
+      const persistenceFactory = vi.fn(() => cleared.stub);
 
       pool = new ProviderPool(3, DUMMY_WS, { persistenceFactory, clearDataTimeoutMs: 30_000 });
       pool.setExpectedServerInstanceId(TEST_SERVER_INSTANCE_ID);
@@ -3311,7 +3312,7 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
       if (!entry2) throw new Error('expected entry2');
       expect(entry2.persistence).toBeNull();
 
-      const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       try {
         rejectClear(new Error('idb-clear-blocked'));
         // closeAndClearPersistence's public API swallows the reject; the
@@ -3341,7 +3342,7 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
       );
       const fresh = makeControllableStub(async () => {});
       let callCount = 0;
-      const persistenceFactory = mock(() => {
+      const persistenceFactory = vi.fn(() => {
         callCount += 1;
         return callCount === 1 ? cleared.stub : fresh.stub;
       });
@@ -3382,7 +3383,7 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
       const ok2 = makeControllableStub(async () => {});
       const stubs = [ok1.stub, fail.stub, ok2.stub];
       let idx = 0;
-      const persistenceFactory = mock(() => {
+      const persistenceFactory = vi.fn(() => {
         const s = stubs[idx];
         idx += 1;
         return s;
@@ -3401,7 +3402,7 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
         await awaitAttachedPersistence(entry);
       }
 
-      const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       try {
         await Promise.all(docs.map((d) => pool.closeAndClearPersistence(d)));
         // Each entry's clearData was attempted.
@@ -3425,7 +3426,7 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
       const failedStub = makeControllableStub(() => Promise.reject(new Error('idb-blocked')));
       const freshStub = makeControllableStub(async () => {});
       let factoryCallCount = 0;
-      const persistenceFactory = mock(() => {
+      const persistenceFactory = vi.fn(() => {
         factoryCallCount += 1;
         return factoryCallCount === 1 ? failedStub.stub : freshStub.stub;
       });
@@ -3439,8 +3440,8 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
       if (!entry1) throw new Error('expected entry1');
       await awaitAttachedPersistence(entry1);
 
-      const deleteDbSpy = spyOn(indexedDB, 'deleteDatabase');
-      const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+      const deleteDbSpy = vi.spyOn(indexedDB, 'deleteDatabase');
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       try {
         const baselineDeleteCalls = deleteDbSpy.mock.calls.length;
 
@@ -3737,7 +3738,7 @@ describe('ProviderPool handleServerInstanceMismatch baseline-selection', () => {
   // mid-drain duplication).
 
   test('handleServerInstanceMismatch uses lastDiskAckedSV when present', async () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
       pool = new ProviderPool(3, DUMMY_WS);
       pool.setExpectedServerInstanceId('server-old');
@@ -3828,7 +3829,7 @@ describe('ProviderPool handleServerInstanceMismatch baseline-selection', () => {
   });
 
   test('handleServerInstanceMismatch skips buffer replay when both watermark SVs are null', async () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
       pool = new ProviderPool(3, DUMMY_WS);
       pool.setExpectedServerInstanceId('server-old');
@@ -3889,7 +3890,7 @@ describe('ProviderPool handleServerInstanceMismatch baseline-selection', () => {
  */
 describe('ProviderPool structured mismatch telemetry', () => {
   test('replay applies corrupt buffer emits ok-buffer-replay-failed with bounded fields', async () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
       pool = new ProviderPool(3, DUMMY_WS);
       pool.setExpectedServerInstanceId('epoch-replay-telemetry');
@@ -3962,7 +3963,7 @@ describe('ProviderPool structured mismatch telemetry', () => {
   });
 
   test('epoch mismatch envelope uses active doc plus branch and stale instance claim', async () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
       pool = new ProviderPool(3, DUMMY_WS);
       pool.setExpectedServerInstanceId('stale-epoch-telemetry');
@@ -4237,7 +4238,7 @@ describe('ProviderPool authenticationFailed: rename-redirect / doc-deleted', () 
       sendToken: () => Promise<void>;
       emit: (e: string, p: unknown) => void;
     };
-    const sendTokenSpy = spyOn(provider, 'sendToken').mockResolvedValue();
+    const sendTokenSpy = vi.spyOn(provider, 'sendToken').mockResolvedValue();
     // Discard any sendToken calls from the provider's own `onOpen` boot
     // path so the assertion below only counts the close-handler-driven
     // call. The pool's interest is in the handler's behavior, not the
@@ -4260,9 +4261,9 @@ describe('ProviderPool authenticationFailed: rename-redirect / doc-deleted', () 
       sendToken: () => Promise<void>;
       emit: (e: string, p: unknown) => void;
     };
-    const sendTokenSpy = spyOn(provider, 'sendToken').mockRejectedValue(
-      new Error('synthetic transport-closed failure'),
-    );
+    const sendTokenSpy = vi
+      .spyOn(provider, 'sendToken')
+      .mockRejectedValue(new Error('synthetic transport-closed failure'));
     sendTokenSpy.mockClear();
     const warns: string[] = [];
     const originalWarn = console.warn;
@@ -4305,7 +4306,7 @@ describe('ProviderPool authenticationFailed: rename-redirect / doc-deleted', () 
     // the synchronous burst behavior without racing against microtask
     // resolution.
     const neverResolve = new Promise<void>(() => {});
-    const sendTokenSpy = spyOn(provider, 'sendToken').mockReturnValue(neverResolve);
+    const sendTokenSpy = vi.spyOn(provider, 'sendToken').mockReturnValue(neverResolve);
     sendTokenSpy.mockClear();
     provider.emit('close', { event: { code: 1000, reason: 'first' } });
     provider.emit('close', { event: { code: 1000, reason: 'second' } });

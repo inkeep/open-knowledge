@@ -23,9 +23,9 @@
  *      its own focus / commit lifecycle).
  */
 
-import { describe, expect, test } from 'bun:test';
 import type { NodeViewProps } from '@tiptap/core';
 import { renderToString } from 'react-dom/server';
+import { describe, expect, test } from 'vitest';
 import { TagView } from './TagView.tsx';
 
 /**

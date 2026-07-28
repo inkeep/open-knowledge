@@ -3,7 +3,7 @@ name: open-knowledge-write-skill
 description: "Use when the user wants to create, author, write, or design a new Agent Skill (a SKILL.md) — for OpenKnowledge or for their editors — including requests like 'help me write a skill', 'make a skill that…', 'turn this workflow into a skill', or improving an existing skill's triggering and discipline. Also use when capturing reusable agent guidance that should live as an installable skill rather than a one-off prompt. Covers choosing scope (project vs global), the SKILL.md frontmatter contract, progressive-disclosure structure, evaluating the skill, and installing it into the user's editors."
 compatibility: "OpenKnowledge project recommended (uses the `write` / `edit` / `install` MCP verbs). Authoring + validation are pure file ops; live preview + eval want a running server (`ok start`)."
 metadata:
-  version: "0.35.6"
+  version: "0.41.1"
   author: "Inkeep"
   repository: "https://github.com/inkeep/open-knowledge"
 ---
@@ -81,7 +81,7 @@ Before writing the skill, run the scenario WITHOUT it and capture what the agent
 does wrong — verbatim, including its rationalizations ("the test is trivial so I
 skipped it"). Those rationalizations are the exact loopholes the skill body must
 close. If you have a running server, use the agent simulator
-(`cd packages/app && bun run src/server/agent-sim.ts`) as the executor; otherwise
+(`cd packages/app && pnpm exec tsx src/server/agent-sim.ts`) as the executor; otherwise
 reason through the baseline transcript with the user. Skip this stage for plain
 reference skills.
 

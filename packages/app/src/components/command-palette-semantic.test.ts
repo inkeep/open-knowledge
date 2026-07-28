@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { computeSemanticModeView, type SemanticModeState } from './command-palette-semantic';
 
 function view(over: Partial<SemanticModeState>) {

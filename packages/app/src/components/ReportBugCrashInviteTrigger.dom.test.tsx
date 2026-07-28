@@ -11,10 +11,11 @@
  *
  * Invocation: `bun run test:dom` from `packages/app/`.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, test } from 'vitest';
 import { crashInviteStore } from '@/lib/crash-invite-store';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { ReportBugCrashInviteTrigger } from './ReportBugCrashInviteTrigger';

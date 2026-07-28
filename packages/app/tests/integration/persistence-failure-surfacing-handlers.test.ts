@@ -9,8 +9,9 @@
  * surfacing path through the production server boot. Sibling of
  * `persistence-failure-surfacing.test.ts` (which covers agent-write-md).
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { randomUUID } from 'node:crypto';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   agentPatch,
   agentWriteMd,

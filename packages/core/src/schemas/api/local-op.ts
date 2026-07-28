@@ -141,6 +141,61 @@ export type LocalOpEmbeddingsMutationSuccess = z.infer<
 >;
 
 /**
+ * Why a live embeddings connection probe failed.
+ *
+ * The six provider-call outcomes mirror the server's `EmbeddingErrorReason`
+ * classification 1:1 (a compile-time assertion in `api-extension.ts` keeps the
+ * two in step), plus two states resolvable before any request leaves the
+ * machine: no key configured, and a base URL the plaintext-key guard refuses.
+ */
+export const EmbeddingsTestFailureReasonSchema = z.enum([
+  'no_key',
+  'invalid_endpoint',
+  'rate_limit',
+  'timeout',
+  'http_error',
+  'network',
+  'dims_mismatch',
+  'malformed_response',
+]) satisfies StandardSchemaV1;
+export type EmbeddingsTestFailureReason = z.infer<typeof EmbeddingsTestFailureReasonSchema>;
+
+/**
+ * Response body for `POST /api/local-op/embeddings/test` — one tiny probe embed
+ * of a fixed innocuous string (never user content) against the SAVED endpoint +
+ * the resolved key, discriminated on `ok`. Both branches return HTTP 200: a
+ * provider that rejects us is a successful test with a negative result, not a
+ * server error.
+ *
+ * `endpoint` / `model` echo what was actually probed, so the UI can tell the
+ * user their just-typed change hasn't reached the server yet instead of
+ * reporting a result for the previous endpoint. `dimensions` is the detected
+ * vector length — the readout that replaces a manual dimensions field.
+ * `status` carries the provider's HTTP status when there was one; no provider
+ * response body is ever echoed.
+ */
+export const LocalOpEmbeddingsTestResponseSchema = z.discriminatedUnion('ok', [
+  z
+    .object({
+      ok: z.literal(true),
+      endpoint: z.string().min(1),
+      model: z.string().min(1),
+      dimensions: z.number().int().positive(),
+    })
+    .loose(),
+  z
+    .object({
+      ok: z.literal(false),
+      endpoint: z.string().min(1),
+      model: z.string().min(1),
+      reason: EmbeddingsTestFailureReasonSchema,
+      status: z.number().int().optional(),
+    })
+    .loose(),
+]) satisfies StandardSchemaV1;
+export type LocalOpEmbeddingsTestResponse = z.infer<typeof LocalOpEmbeddingsTestResponseSchema>;
+
+/**
  * Request body for `POST /api/local-op/auth/set-identity`. `name` and `email`
  * REQUIRED non-empty (after `.trim()` — empty-after-trim values fail schema
  * via `.refine`). The handler writes these to repo-local git config.
@@ -168,8 +223,28 @@ export const LocalOpAuthStatusSuccessSchema = z
 export type LocalOpAuthStatusSuccess = z.infer<typeof LocalOpAuthStatusSuccessSchema>;
 
 /**
- * Success body for `POST /api/local-op/auth/signout` and
- * `POST /api/local-op/auth/set-identity`. Empty object — clients only branch
+ * Request body for `POST /api/local-op/auth/cancel` — the explicit,
+ * user-initiated stop for a streaming device-flow sign-in. `channel` picks
+ * which of the two streaming flows to cancel (`/auth/login` vs
+ * `/auth/gh-login`), since each holds its own concurrency slot. Defaults to
+ * `login`, the flow every non-enterprise client runs.
+ *
+ * This exists because a transport disconnect is deliberately NOT treated as a
+ * cancel: on loopback the stream can be severed by an inspection proxy or a
+ * backgrounded tab, and killing the flow there strands a sign-in the user is
+ * still completing on github.com. Intent needs its own signal.
+ */
+export const LocalOpAuthCancelRequestSchema = z
+  .object({
+    channel: z.enum(['login', 'gh-login']).default('login'),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type LocalOpAuthCancelRequest = z.infer<typeof LocalOpAuthCancelRequestSchema>;
+
+/**
+ * Success body for `POST /api/local-op/auth/signout`,
+ * `POST /api/local-op/auth/set-identity`, and
+ * `POST /api/local-op/auth/cancel`. Empty object — clients only branch
  * on HTTP status (200 = success). `.loose()` for forward-compat (e.g., a
  * future `signedOutAt: ISO` echo).
  */

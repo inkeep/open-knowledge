@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createContentFilter } from '@inkeep/open-knowledge-server';
+import { afterEach, describe, expect, test } from 'vitest';
 import { SyncEngine } from '../../../server/src/sync-engine.ts';
 
 const tmpRoots: string[] = [];

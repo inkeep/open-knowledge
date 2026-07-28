@@ -10,12 +10,12 @@
  *       `dispatch-error` with detail `'no DOM available'` rather than throwing.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import { openExternal } from './open-external.ts';
 
 function makeElectron(openImpl: (url: string) => Promise<void>) {
   return {
-    shell: { openExternal: mock(openImpl) },
+    shell: { openExternal: vi.fn(openImpl) },
   };
 }
 
@@ -52,15 +52,15 @@ describe('openExternal — Electron host', () => {
 
 describe('openExternal — web host (anchor-click)', () => {
   function makeFakeDoc(): Document {
-    const body: { appendChild: ReturnType<typeof mock> } = { appendChild: mock(() => {}) };
+    const body: { appendChild: ReturnType<typeof vi.fn> } = { appendChild: vi.fn(() => {}) };
     const anchor = {
       href: '',
       rel: '',
-      click: mock(() => {}),
-      remove: mock(() => {}),
+      click: vi.fn(() => {}),
+      remove: vi.fn(() => {}),
     };
     const doc = {
-      createElement: mock((_tag: string) => anchor),
+      createElement: vi.fn((_tag: string) => anchor),
       body,
       __anchor: anchor,
     };
@@ -83,10 +83,10 @@ describe('openExternal — web host (anchor-click)', () => {
     const anchor = {
       href: '',
       rel: '',
-      click: mock(() => {
+      click: vi.fn(() => {
         throw new Error('browser-blocked');
       }),
-      remove: mock(() => {}),
+      remove: vi.fn(() => {}),
     };
     const doc = {
       createElement: () => anchor,
@@ -104,7 +104,7 @@ describe('openExternal — host selection', () => {
   test('Electron path takes precedence when okDesktop is provided (doc is ignored)', async () => {
     const okDesktop = makeElectron(async () => {});
     const doc = {
-      createElement: mock(() => {
+      createElement: vi.fn(() => {
         throw new Error('should-not-be-called');
       }),
       body: { appendChild: () => {} },

@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import type { AgentPresenceEntry } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import {
   AGENT_PRESENCE_STALE_MS,
   type AgentPresenceAwareness,

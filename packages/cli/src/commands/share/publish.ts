@@ -36,6 +36,7 @@ import simpleGit, { type SimpleGit, type SimpleGitOptions } from 'simple-git';
 import type { TokenStore } from '../../auth/token-store.ts';
 import { resolveReposToken } from '../auth/repos.ts';
 import { validateGitHubHost } from '../auth/validate-host.ts';
+import { buildCloneEnv, buildCloneGitOptions } from '../clone.ts';
 
 interface PublishOptions {
   host: string;
@@ -198,26 +199,31 @@ async function probeOwnerKind(octokit: Octokit, ownerLogin: string): Promise<'us
 
 // ─── simple-git plumbing ──────────────────────────────────────────────────────
 
-type CredentialHelperUnsafeGitOptions = SimpleGitOptions & {
-  unsafe?: NonNullable<SimpleGitOptions['unsafe']> & {
-    allowUnsafeCredentialHelper?: boolean;
-  };
-};
-
 /**
- * Build a simple-git instance bound to `projectDir`. We never set a
- * credential.helper on the persisted origin remote — the token-bearing URL
- * is passed inline only when invoking `git push`. The unsafe flag exists
- * because simple-git 3.36 gates credential.helper behind a runtime-only
- * option not exposed by its typings; setting it here keeps the API ready
- * for the (not-currently-used) gh delegation path.
+ * Build a simple-git instance bound to `projectDir`, sharing `clone.ts`'s
+ * env + options plumbing. We never set a credential.helper on the persisted
+ * origin remote — the token-bearing URL is passed inline only when invoking
+ * `git push`.
+ *
+ * The child env comes from `buildCloneEnv` — simple-git's `.env(obj)`
+ * REPLACES the child environment (see `git-handle.ts`), and the bare
+ * `{ GIT_TERMINAL_PROMPT: '0' }` this used to pass strips the vars git
+ * needs to function. POSIX hosts survived that by accident (execvp's
+ * default PATH finds /usr/bin/git; passwd-db HOME fallback finds config);
+ * on Windows the stripped child loses `USERPROFILE`/`SystemRoot`/`PATH` —
+ * no global config, no HTTPS transport — AND loses the `GIT_AUTHOR_*`
+ * identity fallback this command sets for pristine machines, so the
+ * initial commit dies with "Please tell me who you are" and the wizard
+ * surfaces a half-published repo (VM-verified). The spread keeps the
+ * ambient CLI env authoritative with prompt/locale overrides on top;
+ * `buildCloneGitOptions` carries the unsafe flags that let simple-git
+ * accept an env containing the user's PAGER/EDITOR/SSH vars (publish
+ * never launches any of them).
  */
 function makeGit(projectDir: string): SimpleGit {
-  const opts: Partial<CredentialHelperUnsafeGitOptions> = {
-    baseDir: projectDir,
-    unsafe: { allowUnsafeCredentialHelper: true },
-  };
-  return simpleGit(opts as Partial<SimpleGitOptions>).env({ GIT_TERMINAL_PROMPT: '0' });
+  return simpleGit(buildCloneGitOptions(projectDir, []) as Partial<SimpleGitOptions>).env(
+    buildCloneEnv(),
+  );
 }
 
 /**

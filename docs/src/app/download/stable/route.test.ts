@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import { STABLE_DMG_URL } from '../../../lib/download-links.ts';
 
 type CaptureOpts = {
@@ -10,7 +10,7 @@ type CaptureOpts = {
 // Spy on the capture so we can assert the event without a PostHog round-trip.
 // Registered before route.ts loads so its `@/lib/track` import resolves here.
 let _lastCapture: CaptureOpts | null = null;
-mock.module('../../../lib/track.ts', () => ({
+vi.doMock('../../../lib/track.ts', () => ({
   captureServerEvent: (opts: CaptureOpts) => {
     _lastCapture = opts;
   },

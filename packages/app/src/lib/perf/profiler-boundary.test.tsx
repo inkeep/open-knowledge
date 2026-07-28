@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
 import { renderToString } from 'react-dom/server';
+import { beforeEach, describe, expect, test } from 'vitest';
 import { getCollector } from './collector';
 import { ProfilerBoundary } from './profiler-boundary';
 

@@ -1,4 +1,3 @@
-import { afterEach, describe, expect, it } from 'bun:test';
 import {
   chmodSync,
   existsSync,
@@ -11,7 +10,8 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { parse as parseJsonc } from 'jsonc-parser';
-import { CHAIN_V1, EDITOR_TARGETS, type EditorId, type EditorMcpTarget } from './editors.ts';
+import { afterEach, describe, expect, it } from 'vitest';
+import { CHAIN_V2, EDITOR_TARGETS, type EditorId, type EditorMcpTarget } from './editors.ts';
 import { readExistingMcpEntry, writeEditorMcpConfig } from './init.ts';
 
 // Redirect a real editor target at a temp file so the surgical write path runs
@@ -34,11 +34,11 @@ function write(id: EditorId, configPath: string) {
   });
 }
 
-const PUBLISHED_CHAIN_ENTRY = { command: '/bin/sh', args: ['-l', '-c', CHAIN_V1] };
+const PUBLISHED_CHAIN_ENTRY = { command: '/bin/sh', args: ['-l', '-c', CHAIN_V2] };
 const OPENCODE_ENTRY = {
   type: 'local',
   enabled: true,
-  command: ['/bin/sh', '-l', '-c', CHAIN_V1],
+  command: ['/bin/sh', '-l', '-c', CHAIN_V2],
 };
 
 function parseConfig(raw: string): Record<string, unknown> {

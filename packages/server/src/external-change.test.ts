@@ -18,9 +18,9 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
+import { DocumentDurabilityState } from './document-durability-state.ts';
 import { applyExternalChange, createExternalChangeHandler } from './external-change.ts';
 import { getLogger } from './logger.ts';
-import { getReconciledBase, setReconciledBase } from './persistence.ts';
 
 type Conn = Awaited<ReturnType<Hocuspocus['openDirectConnection']>>;
 
@@ -32,14 +32,16 @@ function getDoc(conn: Conn): Y.Doc {
 
 describe('applyExternalChange — throwing helper', () => {
   let hp: Hocuspocus;
+  let durabilityState: DocumentDurabilityState;
 
   beforeEach(() => {
     hp = new Hocuspocus({ quiet: true });
+    durabilityState = new DocumentDurabilityState();
   });
 
   test('(a) document-missing early return — no throw, no mutations', () => {
     expect(() => {
-      applyExternalChange(hp, 'nonexistent-doc', '# Hello\n\nWorld\n');
+      applyExternalChange(durabilityState, hp, 'nonexistent-doc', '# Hello\n\nWorld\n');
     }).not.toThrow();
     expect(hp.documents.get('nonexistent-doc')).toBeUndefined();
   });
@@ -51,7 +53,7 @@ describe('applyExternalChange — throwing helper', () => {
 
     const fullContent = '---\ntitle: Test\ntags: [a, b]\n---\n# Hello\n\nParagraph text.\n';
 
-    applyExternalChange(hp, docName, fullContent);
+    applyExternalChange(durabilityState, hp, docName, fullContent);
 
     // Y.Text contains the FULL content (FM region IS the FM source of truth).
     const ytext = doc.getText('source');
@@ -77,7 +79,7 @@ describe('applyExternalChange — throwing helper', () => {
     const doc = getDoc(conn);
 
     const content = '---\ntitle: Stable\nstatus: draft\n---\n# Body\n';
-    applyExternalChange(hp, docName, content);
+    applyExternalChange(durabilityState, hp, docName, content);
 
     let textMutations = 0;
     const ytext = doc.getText('source');
@@ -86,7 +88,7 @@ describe('applyExternalChange — throwing helper', () => {
     };
     ytext.observe(observer);
 
-    applyExternalChange(hp, docName, content);
+    applyExternalChange(durabilityState, hp, docName, content);
 
     ytext.unobserve(observer);
     expect(textMutations).toBe(0);
@@ -100,7 +102,7 @@ describe('applyExternalChange — throwing helper', () => {
     const doc = getDoc(conn);
 
     const malformed = '---\ntitle: [unterminated\nstatus: published\n---\n# Body\n';
-    applyExternalChange(hp, docName, malformed);
+    applyExternalChange(durabilityState, hp, docName, malformed);
 
     // Y.Text holds the malformed bytes verbatim — no defensive revert.
     expect(doc.getText('source').toString()).toBe(malformed);
@@ -123,7 +125,7 @@ describe('applyExternalChange — throwing helper', () => {
     const doc = getDoc(conn);
 
     const onDisk = '---\ntags:\n  - characters\n  - air-nomads\n---\n\n# Aang\n';
-    applyExternalChange(hp, docName, onDisk);
+    applyExternalChange(durabilityState, hp, docName, onDisk);
 
     const ytext = doc.getText('source').toString();
     // FM region byte-identical to disk (preserves indent + scalar style).
@@ -148,7 +150,7 @@ describe('applyExternalChange — throwing helper', () => {
     const conn = await hp.openDirectConnection(docName);
     const doc = getDoc(conn);
 
-    applyExternalChange(hp, docName, '---\n');
+    applyExternalChange(durabilityState, hp, docName, '---\n');
 
     const ytext = doc.getText('source').toString();
     // Under contract: ytext holds the raw disk bytes — `---\n` survives.
@@ -164,7 +166,7 @@ describe('applyExternalChange — throwing helper', () => {
 
     const content = '# Hello\n\nWorld\n';
 
-    applyExternalChange(hp, docName, content);
+    applyExternalChange(durabilityState, hp, docName, content);
     expect(doc.getText('source').toString()).toBe(content);
 
     let textMutations = 0;
@@ -174,7 +176,7 @@ describe('applyExternalChange — throwing helper', () => {
     };
     ytext.observe(observer);
 
-    applyExternalChange(hp, docName, content);
+    applyExternalChange(durabilityState, hp, docName, content);
 
     ytext.unobserve(observer);
     expect(textMutations).toBe(0);
@@ -199,7 +201,7 @@ describe('applyExternalChange — throwing helper', () => {
       }
     });
 
-    applyExternalChange(hp, docName, '# Test\n');
+    applyExternalChange(durabilityState, hp, docName, '# Test\n');
 
     expect(capturedOrigin).toEqual({
       source: 'local',
@@ -232,10 +234,10 @@ describe('applyExternalChange — throwing helper', () => {
     const doc = getDoc(conn);
 
     // Establish initial state via a successful apply.
-    applyExternalChange(hp, docName, '# Original\n');
-    setReconciledBase(docName, '# Original\n');
+    applyExternalChange(durabilityState, hp, docName, '# Original\n');
+    durabilityState.setReconciledBase(docName, '# Original\n');
     expect(doc.getText('source').toString()).toBe('# Original\n');
-    expect(getReconciledBase(docName)).toBe('# Original\n');
+    expect(durabilityState.getReconciledBase(docName)).toBe('# Original\n');
 
     // Wrap doc.transact so it runs the inner mutations normally, then
     // throws after — simulating "applyFastDiff succeeded, updateYFragment
@@ -250,7 +252,7 @@ describe('applyExternalChange — throwing helper', () => {
     }) as typeof doc.transact;
 
     expect(() => {
-      applyExternalChange(hp, docName, '# After-Mutation\n');
+      applyExternalChange(durabilityState, hp, docName, '# After-Mutation\n');
     }).toThrow(/synthetic/);
 
     // ytext WAS mutated by applyFastDiff before the synthetic throw.
@@ -259,7 +261,7 @@ describe('applyExternalChange — throwing helper', () => {
     // the fix, reconciledBase would still equal '# Original\n' (the post-
     // transact setReconciledBase('# After-Mutation\n') is skipped on
     // throw), and persistence would see ytext ≠ reconciledBase and write.
-    expect(getReconciledBase(docName)).toBe('# After-Mutation\n');
+    expect(durabilityState.getReconciledBase(docName)).toBe('# After-Mutation\n');
 
     doc.transact = originalTransact as typeof doc.transact;
     await conn.disconnect();
@@ -268,16 +270,18 @@ describe('applyExternalChange — throwing helper', () => {
 
 describe('createExternalChangeHandler — error-swallowing factory', () => {
   let hp: Hocuspocus;
+  let durabilityState: DocumentDurabilityState;
 
   beforeEach(() => {
     hp = new Hocuspocus({ quiet: true });
+    durabilityState = new DocumentDurabilityState();
   });
 
   test('factory wrapper catches and logs when applyExternalChange throws', async () => {
     const errorSpy = vi.spyOn(getLogger('file-watcher'), 'error');
 
     try {
-      const handler = createExternalChangeHandler(hp);
+      const handler = createExternalChangeHandler(durabilityState, hp);
       const docName = 'test-throw-path';
       const conn = await hp.openDirectConnection(docName);
 
@@ -314,7 +318,7 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
     const errorSpy = vi.spyOn(getLogger('file-watcher'), 'error');
 
     try {
-      const handler = createExternalChangeHandler(hp);
+      const handler = createExternalChangeHandler(durabilityState, hp);
       const docName = 'test-bridge-violation-rethrow';
       const conn = await hp.openDirectConnection(docName);
 
@@ -359,7 +363,7 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
     console.error = errorSpy;
 
     try {
-      const handler = createExternalChangeHandler(hp);
+      const handler = createExternalChangeHandler(durabilityState, hp);
       const docName = 'test-merge-loss-rethrow';
       const conn = await hp.openDirectConnection(docName);
 

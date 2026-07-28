@@ -1,18 +1,18 @@
-import { afterEach, beforeEach, describe, expect, jest, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 const preloadCalls: string[] = [];
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
-mock.module('@/components/settings/SettingsDialogBodyLazy', () => ({
+vi.doMock('@/components/settings/SettingsDialogBodyLazy', () => ({
   SettingsDialogBodyLazy: {
     preload: () => {
       preloadCalls.push('preload');
@@ -32,17 +32,17 @@ async function renderSettingsButton() {
 
 function flushPendingPreloadTimers() {
   act(() => {
-    jest.runOnlyPendingTimers();
+    vi.runOnlyPendingTimers();
   });
 }
 
 describe('SettingsButton runtime behavior', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
     cleanup();
     preloadCalls.length = 0;
     window.location.hash = '';

@@ -61,7 +61,7 @@ export type McpRemoveOutcome =
  * BOTH the chain shape (`{command:'/bin/sh', args:['-l','-c', <chain>]}` used by
  * claude / claude-desktop / cursor / codex) AND the OpenCode shape
  * (`{type:'local', enabled, command:['/bin/sh', …]}`), keyed on the
- * `# ok-mcp-v1` version sentinel embedded in the resolver chain. A foreign
+ * `# ok-mcp-v2` version sentinel embedded in the resolver chain. A foreign
  * server that merely shares the `open-knowledge` key lacks that sentinel and is
  * NOT matched, so it is preserved.
  *

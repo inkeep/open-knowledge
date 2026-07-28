@@ -21,7 +21,6 @@
  * command directly removes that confound.
  */
 
-import { describe, expect, test } from 'bun:test';
 import {
   joinBackward,
   joinForward,
@@ -29,6 +28,7 @@ import {
   selectNodeForward,
 } from '@tiptap/pm/commands';
 import { EditorState, NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { describe, expect, test } from 'vitest';
 import { mdManager, schema } from './test-harness';
 
 type PmCommand = (state: EditorState, dispatch?: (tr: EditorState['tr']) => void) => boolean;

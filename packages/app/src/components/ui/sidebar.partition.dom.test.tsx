@@ -15,8 +15,9 @@
  *
  * Substrate: jsdom (precedent #43); invocation via `bunx turbo run test:dom`.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { readPins, SIDEBAR_PINS_KEY } from '@/lib/sidebar-pin-store';
 import {
   Sidebar,

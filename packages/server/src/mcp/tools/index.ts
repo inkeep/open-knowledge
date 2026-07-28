@@ -1,7 +1,7 @@
 /**
  * MCP tool registry.
  *
- * Reads:     exec, search, history, links, skills, config, palette, preview_url, share_link
+ * Reads:     exec, search, history, links, skills, config, palette, preview_url, share_link, lint, audit
  * Writes:    write, edit, delete, move, checkpoint, restore_version
  * Conflicts: conflicts, resolve_conflict
  * Workflow:  workflow (kind: ingest | research | consolidate | discover)
@@ -38,6 +38,7 @@ import { createEnsureSingleFileSession } from '../../ensure-single-file-session.
 import type { AgentIdentity } from '../agent-identity.ts';
 import { getCurrentMcpLogger, type McpLogger } from '../logger.ts';
 import { createLoggedServer } from '../tool-logging.ts';
+import { register as registerAudit } from './audit.ts';
 import { register as registerCheckpoint } from './checkpoint.ts';
 import { register as registerConfig } from './config.ts';
 import { register as registerConflicts } from './conflicts.ts';
@@ -153,6 +154,14 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     config: opts.config,
     resolveCwd: named('lint'),
     identityRef: opts.identityRef,
+  });
+  // Unified validation audit — one read-only call spanning every content
+  // validator (markdownlint + link resolution) via `GET /api/audit`. Broken
+  // links validate here; the `links` tool stays the navigation/graph reader.
+  registerAudit(registrationServer, {
+    serverUrl: opts.serverUrl,
+    config: opts.config,
+    resolveCwd: named('audit'),
   });
 
   // CRUD verbs — polymorphic over document / folder / template / asset

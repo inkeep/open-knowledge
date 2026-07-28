@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, test } from 'vitest';
 import { buildClaudeUrl } from './claude-url.ts';
 import { composeEmptySpacePrompt } from './prompt-composer.ts';
 import type { HandoffPayload } from './types.ts';

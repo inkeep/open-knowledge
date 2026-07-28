@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, test } from 'vitest';
 import { buildCodexUrl } from './codex-url.ts';
 import { composeEmptySpacePrompt } from './prompt-composer.ts';
 import type { HandoffPayload } from './types.ts';

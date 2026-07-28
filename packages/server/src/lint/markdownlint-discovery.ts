@@ -15,6 +15,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { MarkdownlintRuleSetting } from '@inkeep/open-knowledge-core';
 import { type ParseError, parse as parseJsonc, printParseErrorCode } from 'jsonc-parser';
 import { parse as parseYaml } from 'yaml';
+import { isInside } from './fs-safety.ts';
 
 /** markdownlint's native config filenames, in precedence order (first found wins). */
 const MARKDOWNLINT_CANDIDATE_FILES = [
@@ -129,11 +130,6 @@ export function readOwnNativeRules(
 
 /** Max `extends` chain depth — cycles are caught separately; this bounds pathology. */
 const MAX_EXTENDS_DEPTH = 10;
-
-function isInside(path: string, root: string): boolean {
-  const rel = relative(root, path);
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
-}
 
 /**
  * Load one native config file and flatten its `extends` chain (child keys win

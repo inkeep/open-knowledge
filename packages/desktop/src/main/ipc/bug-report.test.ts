@@ -29,6 +29,11 @@ import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import {
+  createBugReportSidecarStore,
+  readReportSidecar,
+  sidecarPathForId,
+} from '../bug-report-sidecar.ts';
 import { createCrashDetection } from '../crash-detection.ts';
 import { handleShellOpenExternal } from '../shell-allowlist.ts';
 import {
@@ -423,11 +428,15 @@ const SEND_METADATA = {
   note: 'the editor froze',
 };
 
-/** Non-UTF-8 byte pattern so the PUT byte-identity assertion is meaningful. */
+/**
+ * Non-UTF-8 byte pattern so the PUT byte-identity assertion is meaningful. The
+ * basename carries the report-id shape `defaultBugReportZipPath` produces,
+ * since `send` gates on it the same way `delete` does.
+ */
 function makeZipFixture(bugReportsRoot: string): string {
   const bytes = Buffer.alloc(2048);
   for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 37 + 11) % 256;
-  const zipPath = join(bugReportsRoot, 'report.zip');
+  const zipPath = join(bugReportsRoot, '2026-07-15T18-30-00-000Z-bugreport.zip');
   writeFileSync(zipPath, bytes);
   return zipPath;
 }
@@ -497,7 +506,7 @@ describe('handleBugReportSend — upload happy path', () => {
     const [mint, put, complete] = stub.requests;
     expect(mint?.headers['content-type']).toBe('application/json');
     expect(JSON.parse(mint?.body.toString('utf8') ?? '')).toEqual({
-      filename: 'report.zip',
+      filename: '2026-07-15T18-30-00-000Z-bugreport.zip',
       sizeBytes: 2048,
       contentType: 'application/zip',
       metadata: { ...SEND_METADATA, ...SEND_HOST },
@@ -1336,5 +1345,145 @@ describe('handleBugReportCrashAck', () => {
 
     // The handler's contract: malformed renderer input never mutates the store.
     expect(acked).toEqual([]);
+  });
+});
+
+describe('bug-report sidecar wiring — create writes the record, send tracks state', () => {
+  const REPORT_ID = '2026-07-15T18-30-00-000Z-bugreport.zip';
+
+  /**
+   * A create rig whose output lands in a shared bug-reports dir with a real
+   * report basename, wired to a live sidecar store — so the generated sidecar
+   * and the send transitions are asserted against the on-disk file.
+   */
+  function makeSidecarRig() {
+    const dir = makeTmpDir('ok-bugreport-sidecar-wiring-');
+    const store = createBugReportSidecarStore({ dir });
+    const zipPath = join(dir, REPORT_ID);
+    const createDeps: BugReportCreateDeps = {
+      projectDir: makeProjectDir(),
+      desktopMeta: DESKTOP_META,
+      outputPath: zipPath,
+      userLogsDir: makeTmpDir(),
+      onReportGenerated: store.recordGenerated,
+    };
+    return { dir, store, zipPath, createDeps };
+  }
+
+  test('create persists a generated sidecar next to the zip', async () => {
+    const { dir, createDeps, zipPath } = makeSidecarRig();
+
+    const result = await handleBugReportCreate(createDeps, { kind: 'create', level: 'standard' });
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(result.zipPath).toBe(zipPath);
+
+    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    expect(sidecar?.id).toBe(REPORT_ID);
+    expect(sidecar?.state).toBe('generated');
+    expect(sidecar?.bundleLevel).toBe('standard');
+    expect(sidecar?.zipBytes).toBe(result.zipSizeBytes);
+  });
+
+  test('a successful send flips the sidecar to sent + reference and reclaims the zip', async () => {
+    const { dir, store, createDeps, zipPath } = makeSidecarRig();
+    await handleBugReportCreate(createDeps, { kind: 'create', level: 'standard' });
+    const stub = await startIntakeStub();
+
+    const result = await handleBugReportSend(
+      { ...makeSendDeps(stub.url, dir), sidecar: store.sendHooks },
+      { kind: 'send', zipPath, metadata: SEND_METADATA },
+    );
+
+    expect(result).toEqual({ ok: true, reference: 'OK-1042' });
+    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    expect(sidecar?.state).toBe('sent');
+    expect(sidecar?.reference).toBe('OK-1042');
+    expect(sidecar?.zipDeleted).toBe(true);
+    expect(sidecar?.attempts?.at(-1)).toMatchObject({ transport: 'upload', outcome: 'success' });
+    // Retention reclaimed the confirmed-sent zip.
+    expect(existsSync(zipPath)).toBe(false);
+  });
+
+  test('a failed send records upload-failed and keeps the zip for a later retry', async () => {
+    const { dir, store, createDeps, zipPath } = makeSidecarRig();
+    await handleBugReportCreate(createDeps, { kind: 'create', level: 'standard' });
+    const stub = await startIntakeStub({ mintStatus: 500 });
+
+    const result = await handleBugReportSend(
+      { ...makeSendDeps(stub.url, dir), sidecar: store.sendHooks },
+      { kind: 'send', zipPath, metadata: SEND_METADATA },
+    );
+
+    expect(result.ok).toBe(false);
+    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    expect(sidecar?.state).toBe('upload-failed');
+    expect(sidecar?.lastError?.reason).toContain('mint-rejected');
+    expect(existsSync(zipPath)).toBe(true);
+
+    // The list now surfaces the failed report as retryable.
+    const listed = await store.list();
+    if (!listed.ok) throw new Error('expected ok');
+    const row = listed.reports.find((r) => r.id === REPORT_ID);
+    expect(row?.state).toBe('upload-failed');
+    expect(row?.retryable).toBe(true);
+  });
+
+  test('a send refused by the in-flight lock never reaches the intake', async () => {
+    const { dir, store, createDeps, zipPath } = makeSidecarRig();
+    await handleBugReportCreate(createDeps, { kind: 'create', level: 'standard' });
+    const stub = await startIntakeStub();
+    // Take the lock as the owning send would, then drive a second send for the
+    // same report through the handler — the double-upload this gate prevents.
+    const owner = await store.sendHooks.onSendStart(REPORT_ID);
+    expect(owner.proceed).toBe(true);
+
+    const result = await handleBugReportSend(
+      { ...makeSendDeps(stub.url, dir), sidecar: store.sendHooks },
+      { kind: 'send', zipPath, metadata: SEND_METADATA },
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected refusal');
+    expect(result.reason).toBe('send-failed');
+    // The refusal must happen BEFORE any network work: the bundle is uploaded
+    // exactly once no matter how many retries race.
+    expect(stub.requests).toHaveLength(0);
+    // The owning send still holds the report; the refusal left it untouched.
+    expect((await readReportSidecar(sidecarPathForId(dir, REPORT_ID)))?.state).toBe('uploading');
+  });
+
+  test('a zip inside the reports dir with a non-report basename is refused', async () => {
+    const { dir, store, createDeps } = makeSidecarRig();
+    await handleBugReportCreate(createDeps, { kind: 'create', level: 'standard' });
+    const stub = await startIntakeStub();
+    // Contained, readable, but not a report basename — the same shape gate
+    // `delete` applies, so no renderer-supplied path skips it on the send side.
+    const strayPath = join(dir, 'not-a-report.zip');
+    writeFileSync(strayPath, Buffer.alloc(64));
+
+    const result = await handleBugReportSend(
+      { ...makeSendDeps(stub.url, dir), sidecar: store.sendHooks },
+      { kind: 'send', zipPath: strayPath, metadata: SEND_METADATA },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(stub.requests).toHaveLength(0);
+  });
+
+  test('the unconfigured (no-intake) send path records email-drafted', async () => {
+    const { dir, store, createDeps, zipPath } = makeSidecarRig();
+    await handleBugReportCreate(createDeps, { kind: 'create', level: 'standard' });
+
+    const result = await handleBugReportSend(
+      { ...makeSendDeps(undefined, dir), sidecar: store.sendHooks },
+      { kind: 'send', zipPath, metadata: SEND_METADATA },
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected fallback');
+    expect(result.reason).toBe('email-draft');
+    expect((await readReportSidecar(sidecarPathForId(dir, REPORT_ID)))?.state).toBe(
+      'email-drafted',
+    );
   });
 });

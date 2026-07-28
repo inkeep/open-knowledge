@@ -11,7 +11,7 @@
  * tasks with marks distributed across them, half-open boundary discipline.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { correlateLongtasksWithMarks } from './correlate-longtasks.ts';
 
 describe('correlateLongtasksWithMarks', () => {

@@ -9,7 +9,7 @@
  * skips the row-height clamp, this test fails before render-time regressions
  * show up in dogfood.
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   createFileTreeStyle,
   FILE_TREE_DENSITY_OPTIONS,

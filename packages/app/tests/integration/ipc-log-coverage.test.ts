@@ -32,7 +32,6 @@
  * to a boundary handler that owns the structured-log emission.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import {
@@ -43,6 +42,7 @@ import {
   type SourceFile,
   SyntaxKind,
 } from 'ts-morph';
+import { describe, expect, test } from 'vitest';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../..');
 const MAIN_ROOT = join(REPO_ROOT, 'packages/desktop/src/main');

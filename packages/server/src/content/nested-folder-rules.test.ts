@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { nestedOkPath, parentFolderOf, readFolderFrontmatter } from './nested-folder-rules.ts';
 
 describe('readFolderFrontmatter — self-only (no cascade)', () => {

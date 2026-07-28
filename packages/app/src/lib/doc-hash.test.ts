@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import {
   anchorFromHash,
   assetPathFromHash,
@@ -9,6 +9,10 @@ import {
   hashFromFolderPath,
   hashFromSkillFile,
   isContentRootHash,
+  isManagedHashHistoryState,
+  markCurrentHashHistoryEntry,
+  pushHashWithoutNavigation,
+  replaceHashWithoutNavigation,
   type SkillFileHashTarget,
   skillFileFromHash,
 } from './doc-hash';
@@ -138,6 +142,119 @@ describe('hashFromFolderPath', () => {
 
   test('encodes anchor with special characters', () => {
     expect(hashFromFolderPath('docs/guide', 'hello world')).toBe('#/docs/guide/#hello%20world');
+  });
+});
+
+describe('pushHashWithoutNavigation', () => {
+  function installWindow(hash: string) {
+    const pushState = vi.fn();
+    const replaceState = vi.fn();
+    const previousWindow = globalThis.window;
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        location: {
+          hash,
+          pathname: '/app',
+          search: '?workspace=ok',
+        },
+        history: {
+          pushState,
+          replaceState,
+          state: { preserved: 'value' },
+        },
+      },
+    });
+    return {
+      pushState,
+      replaceState,
+      restore: () => {
+        if (previousWindow === undefined) {
+          Reflect.deleteProperty(globalThis, 'window');
+          return;
+        }
+        Object.defineProperty(globalThis, 'window', {
+          configurable: true,
+          value: previousWindow,
+        });
+      },
+    };
+  }
+
+  test('pushes a distinct hash while preserving the current path and query', () => {
+    const { pushState, restore } = installWindow('#/old');
+    try {
+      pushHashWithoutNavigation('#/new');
+    } finally {
+      restore();
+    }
+
+    expect(pushState).toHaveBeenCalledOnce();
+    expect(pushState).toHaveBeenCalledWith(
+      expect.objectContaining({ preserved: 'value' }),
+      '',
+      '/app?workspace=ok#/new',
+    );
+    expect(isManagedHashHistoryState(pushState.mock.calls[0]?.[0])).toBe(true);
+  });
+
+  test('does not push when the hash is already current', () => {
+    const { pushState, restore } = installWindow('#/current');
+    try {
+      pushHashWithoutNavigation('#/current');
+    } finally {
+      restore();
+    }
+
+    expect(pushState).not.toHaveBeenCalled();
+  });
+
+  test('marks the current entry while preserving existing history state', () => {
+    const { replaceState, restore } = installWindow('#/current');
+    try {
+      markCurrentHashHistoryEntry();
+    } finally {
+      restore();
+    }
+
+    expect(replaceState).toHaveBeenCalledOnce();
+    expect(replaceState).toHaveBeenCalledWith(expect.objectContaining({ preserved: 'value' }), '');
+    expect(isManagedHashHistoryState(replaceState.mock.calls[0]?.[0])).toBe(true);
+  });
+
+  test('does not mark an entry that is already managed', () => {
+    const { replaceState, restore } = installWindow('#/current');
+    try {
+      markCurrentHashHistoryEntry();
+      const managedState = replaceState.mock.calls[0]?.[0];
+      Object.defineProperty(window.history, 'state', {
+        configurable: true,
+        value: managedState,
+      });
+      replaceState.mockClear();
+
+      markCurrentHashHistoryEntry();
+    } finally {
+      restore();
+    }
+
+    expect(replaceState).not.toHaveBeenCalled();
+  });
+
+  test('replaces the current hash while preserving managed history state', () => {
+    const { replaceState, restore } = installWindow('#/current');
+    try {
+      replaceHashWithoutNavigation('');
+    } finally {
+      restore();
+    }
+
+    expect(replaceState).toHaveBeenCalledWith(
+      expect.objectContaining({ preserved: 'value' }),
+      '',
+      '/app?workspace=ok',
+    );
+    expect(isManagedHashHistoryState(replaceState.mock.calls[0]?.[0])).toBe(true);
   });
 });
 

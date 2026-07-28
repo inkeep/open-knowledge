@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import {
   chmodSync,
   existsSync,
@@ -10,11 +9,12 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTomlConfigEngine,
   setTomlConfigEngineForTesting,
 } from '../native/toml-config-engine.ts';
-import { CHAIN_V1, EDITOR_TARGETS, type EditorMcpTarget } from './editors.ts';
+import { CHAIN_V2, EDITOR_TARGETS, type EditorMcpTarget } from './editors.ts';
 import { writeEditorMcpConfig } from './init.ts';
 
 // Drive the real write spine (native toml_edit addon) against a temp Codex
@@ -33,7 +33,7 @@ function writeCodex(configPath: string) {
   });
 }
 
-const PUBLISHED_CHAIN_ENTRY = { command: '/bin/sh', args: ['-l', '-c', CHAIN_V1] };
+const PUBLISHED_CHAIN_ENTRY = { command: '/bin/sh', args: ['-l', '-c', CHAIN_V2] };
 
 // Independent CAPABLE parse for data-equality. Bun.TOML.parse is itself weak —
 // it rejects microsecond datetimes and is lossy on 64-bit integers, the very
@@ -179,7 +179,7 @@ describe('surgical TOML MCP write', () => {
     expect(parsed.mcp_servers.other).toEqual({ command: 'node' });
     expect(parsed.mcp_servers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
     const body = parsed.mcp_servers['open-knowledge'].args[2] as string;
-    expect(body).toBe(CHAIN_V1);
+    expect(body).toBe(CHAIN_V2);
     expect(body).not.toContain('\r');
   });
 
@@ -272,7 +272,7 @@ describe('surgical TOML MCP write', () => {
     expect(after).not.toContain('STALE');
     const parsed = parseToml(after);
     expect(parsed.mcp_servers.other).toEqual({ command: 'other-cmd' });
-    expect(parsed.mcp_servers['open-knowledge'].args).toEqual(['-l', '-c', CHAIN_V1]);
+    expect(parsed.mcp_servers['open-knowledge'].args).toEqual(['-l', '-c', CHAIN_V2]);
   });
 
   it('is a byte-identical no-op on an unchanged config (idempotent)', () => {

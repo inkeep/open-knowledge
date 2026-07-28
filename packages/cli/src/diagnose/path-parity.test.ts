@@ -12,13 +12,13 @@
  * asserting equivalence — when they drift, this test fails.
  */
 
-import { describe, expect, test } from 'bun:test';
 import {
   logsCurrentPath as serverLogsCurrentPath,
   logsPreviousPath as serverLogsPreviousPath,
   spansCurrentPath as serverSpansCurrentPath,
   spansPreviousPath as serverSpansPreviousPath,
 } from '@inkeep/open-knowledge-server';
+import { describe, expect, test } from 'vitest';
 import { _pathHelpersForTests } from './bundle.ts';
 
 describe('CLI bundle path helpers — parity with server telemetry-file-sink', () => {

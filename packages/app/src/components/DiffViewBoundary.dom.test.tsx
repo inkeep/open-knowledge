@@ -9,25 +9,26 @@
  *
  * Substrate: jsdom via `bun run test:dom`.
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 
 // `sonner` toasts fire DOM portals; we don't need to render them here.
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: { error: () => {}, success: () => {}, info: () => {} },
 }));
 
 // `next-themes` is consumed by DiffView for the CM6 theme. Provide a no-op
 // so the test mount doesn't require a ThemeProvider.
-mock.module('next-themes', () => ({
+vi.doMock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'light' }),
 }));
 
 // `subscribeToDocumentsChanged` is consumed by `useConflicts` (needed for the
 // extension-aware file path lookup). The DOM tests don't need CC1 fan-out, so
 // return a no-op unsubscriber.
-mock.module('@/lib/documents-events', () => ({
+vi.doMock('@/lib/documents-events', () => ({
   subscribeToDocumentsChanged: () => () => {},
 }));
 
@@ -98,7 +99,7 @@ function lastResolveBody(): { file?: string; strategy?: string } {
 }
 
 describe('DiffViewBoundary (Tier-3 mount)', () => {
-  let consoleWarnSpy: ReturnType<typeof spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     fetchCalls.length = 0;
@@ -141,7 +142,7 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
       }
       return Promise.resolve(new Response('not found', { status: 404 }));
     };
-    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {

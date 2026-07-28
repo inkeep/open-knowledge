@@ -1,11 +1,10 @@
-import { describe, expect, test } from 'bun:test';
-
 import type {
   BranchInfoResponse,
   CheckoutResponse,
   ShareTargetStatusResponse,
 } from '@inkeep/open-knowledge-core';
 import { RUNTIME_VERSION } from '@inkeep/open-knowledge-server';
+import { describe, expect, test } from 'vitest';
 
 import {
   type BranchInfoProxyDeps,

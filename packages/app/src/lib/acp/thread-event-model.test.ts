@@ -144,6 +144,57 @@ describe('buildThreadRenderModel', () => {
     expect(perm.resolved).toEqual({ optionId: 'allow', auto: false });
   });
 
+  test('links a permission to the call it gates, whichever event lands first', () => {
+    const request = ev({
+      kind: 'permission_request',
+      requestId: 'p1',
+      toolCall: { toolCallId: 'c1', title: 'Write file', kind: 'edit' } as never,
+      options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+      ts: 1,
+    });
+    const call = ev({
+      kind: 'session_update',
+      update: { sessionUpdate: 'tool_call', toolCallId: 'c1', title: 'Write file' } as never,
+      ts: 2,
+    });
+    const resolve = ev({
+      kind: 'permission_resolved',
+      requestId: 'p1',
+      optionId: 'allow',
+      auto: false,
+      ts: 3,
+    });
+
+    // Agents ask first and stream the call after; some do the reverse. Either
+    // order has to end up merged, or the outcome shows twice or not at all.
+    for (const events of [
+      [request, call, resolve],
+      [call, request, resolve],
+    ] satisfies ThreadEvent[][]) {
+      const model = buildThreadRenderModel(events);
+      const perm = model.items.find((i) => i.kind === 'permission');
+      if (perm?.kind !== 'permission') throw new Error('unreachable');
+      expect(perm.toolCallId).toBe('c1');
+      expect(perm.mergedIntoToolCall).toBe(true);
+      expect(model.permissionsByToolCall.c1?.resolved).toEqual({ optionId: 'allow', auto: false });
+    }
+  });
+
+  test('leaves a permission unmerged when its call never appears', () => {
+    const events: ThreadEvent[] = [
+      ev({
+        kind: 'permission_request',
+        requestId: 'p1',
+        toolCall: { toolCallId: 'c-missing', title: 'Write file', kind: 'edit' } as never,
+        options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+        ts: 1,
+      }),
+    ];
+    const perm = buildThreadRenderModel(events).items.find((i) => i.kind === 'permission');
+    if (perm?.kind !== 'permission') throw new Error('unreachable');
+    expect(perm.mergedIntoToolCall).toBe(false);
+  });
+
   test('keeps the latest plan as a checklist', () => {
     const events: ThreadEvent[] = [
       ev({
@@ -388,6 +439,16 @@ describe('resolvePermissionOutcome', () => {
 
   test('pending request has no outcome yet', () => {
     expect(resolvePermissionOutcome(permission(null))).toBeNull();
+  });
+
+  test('an option whose kind is neither allow nor reject is dismissed, not approved', () => {
+    // Runtime defense-in-depth behind `PinPermissionOptionKind`: if a later ACP
+    // release adds a kind and the pin is updated without revisiting this, the
+    // label must not read "Approved" for an answer we can't classify. `as never`
+    // is the only way past the union the typelock guards.
+    const item = permission({ optionId: 'escalate', auto: false });
+    item.options = [{ optionId: 'escalate', name: 'Escalate', kind: 'escalate_once' as never }];
+    expect(resolvePermissionOutcome(item)).toEqual({ kind: 'dismissed' });
   });
 
   test('an allow option approves (auto and manual)', () => {

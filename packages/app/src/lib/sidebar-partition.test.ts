@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   LEFT_COLLAPSE_THRESHOLD,
   RIGHT_COLLAPSE_THRESHOLD,

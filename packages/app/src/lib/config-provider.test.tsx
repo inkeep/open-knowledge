@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 describe('ConfigProvider module surface', () => {
   test('exports ConfigProvider component and useConfigContext hook', async () => {

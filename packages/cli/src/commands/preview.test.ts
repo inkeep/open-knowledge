@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { type Config, ConfigSchema } from '@inkeep/open-knowledge-server';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { OK_DIR } from '../constants.ts';
 import { formatPreviewBlock, previewContent } from '../content/preview.ts';
 

@@ -8,8 +8,9 @@
  * contained, the app survives. Throw injection follows the MaybeThrow
  * (precedent #43(d)); invocation via `bun run test:dom`.
  */
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+
 import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { SettingsDialogErrorBoundary } from './SettingsDialogErrorBoundary';
 
 let throwError: Error | null = null;
@@ -20,11 +21,11 @@ function MaybeThrow() {
 }
 
 describe('SettingsDialogErrorBoundary (Tier-3 mount)', () => {
-  let consoleErrorSpy: ReturnType<typeof spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     throwError = null;
-    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {

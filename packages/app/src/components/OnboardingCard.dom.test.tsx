@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 // Stub the animated mascot — its rAF/SVG internals aren't under test here.
-mock.module('@/components/OkBlob', () => ({
+vi.doMock('@/components/OkBlob', () => ({
   OkBlob: () => <span data-testid="ok-blob" />,
 }));
 
@@ -31,7 +31,7 @@ function freshStore(): OnboardingCardStore {
 let originalFetch: typeof globalThis.fetch;
 beforeEach(() => {
   originalFetch = globalThis.fetch;
-  globalThis.fetch = mock(() =>
+  globalThis.fetch = vi.fn(() =>
     Promise.resolve(new Response(JSON.stringify({ documents: [] }), { status: 200 })),
   ) as never;
 });

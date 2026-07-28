@@ -1,11 +1,10 @@
 /**
  * Runtime guards for `update-notices-store.ts`. The store is a module-level
  * singleton, so this file owns one fake `window.okDesktop` bridge and avoids
- * `mock.module(...)` entirely. Bun module mocks are process-global and can
- * leak into later module-load tests.
+ * module mocking entirely.
  */
 
-import { afterAll, describe, expect, mock, test } from 'bun:test';
+import { afterAll, describe, expect, test, vi } from 'vitest';
 
 const store = await import('./update-notices-store');
 
@@ -16,7 +15,7 @@ afterAll(() => {
 
 describe('update-notices-store install-time runtime wiring', () => {
   test('installs subscribers once and surfaces boot schema-incompatibility state through the store', async () => {
-    const queryMock = mock(() =>
+    const queryMock = vi.fn(() =>
       Promise.resolve({
         channel: 'latest',
         schemaIncompatibility: {
@@ -26,28 +25,28 @@ describe('update-notices-store install-time runtime wiring', () => {
         },
       }),
     );
-    const downloadedUnsub = mock(() => {});
-    const relaunchingUnsub = mock(() => {});
-    const relaunchFailedUnsub = mock(() => {});
-    const whatsNewUnsub = mock(() => {});
-    const whatsNewDismissedUnsub = mock(() => {});
-    const stuckHintUnsub = mock(() => {});
+    const downloadedUnsub = vi.fn(() => {});
+    const relaunchingUnsub = vi.fn(() => {});
+    const relaunchFailedUnsub = vi.fn(() => {});
+    const whatsNewUnsub = vi.fn(() => {});
+    const whatsNewDismissedUnsub = vi.fn(() => {});
+    const stuckHintUnsub = vi.fn(() => {});
     const bridge = {
-      onUpdateDownloaded: mock(() => downloadedUnsub),
-      onUpdateRelaunching: mock(() => relaunchingUnsub),
-      onUpdateRelaunchFailed: mock(() => relaunchFailedUnsub),
-      onWhatsNew: mock(() => whatsNewUnsub),
-      onWhatsNewDismissed: mock(() => whatsNewDismissedUnsub),
-      onUpdateStuckHint: mock(() => stuckHintUnsub),
+      onUpdateDownloaded: vi.fn(() => downloadedUnsub),
+      onUpdateRelaunching: vi.fn(() => relaunchingUnsub),
+      onUpdateRelaunchFailed: vi.fn(() => relaunchFailedUnsub),
+      onWhatsNew: vi.fn(() => whatsNewUnsub),
+      onWhatsNewDismissed: vi.fn(() => whatsNewDismissedUnsub),
+      onUpdateStuckHint: vi.fn(() => stuckHintUnsub),
       update: {
-        relaunchNow: mock(() => Promise.resolve(undefined)),
-        dismissWhatsNew: mock(() => Promise.resolve(undefined)),
+        relaunchNow: vi.fn(() => Promise.resolve(undefined)),
+        dismissWhatsNew: vi.fn(() => Promise.resolve(undefined)),
       },
       state: {
         query: queryMock,
-        resetIncompatible: mock(() => Promise.resolve(undefined)),
+        resetIncompatible: vi.fn(() => Promise.resolve(undefined)),
       },
-      shell: { openExternal: mock(() => Promise.resolve(undefined)) },
+      shell: { openExternal: vi.fn(() => Promise.resolve(undefined)) },
     };
     const testWindow = {} as Window & typeof globalThis;
     Object.defineProperty(globalThis, 'window', {

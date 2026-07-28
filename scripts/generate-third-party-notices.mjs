@@ -269,8 +269,8 @@ function readNoticeText(pkgDir) {
  * instead of the fail-closed audit bucket.
  */
 const FIRST_PARTY_GPL_PACKAGES = new Set([
-  '@inkeep/mermaid-wysiwyg-core',
-  '@inkeep/mermaid-wysiwyg-dom',
+  '@visimer/core',
+  '@visimer/dom',
 ]);
 
 const SPDX_OVERRIDES = {

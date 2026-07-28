@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   _clearTerminalSessionRegistry,
   findIdleMatchingSession,

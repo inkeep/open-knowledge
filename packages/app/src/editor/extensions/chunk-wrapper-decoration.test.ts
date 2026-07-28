@@ -11,10 +11,10 @@
  * no live editor or DOM mount required.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { Schema } from '@tiptap/pm/model';
 import { EditorState, type Plugin } from '@tiptap/pm/state';
 import type { DecorationSet } from '@tiptap/pm/view';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   __resetFirstEmitForTesting,
   chunkWrapperDecorationKey,

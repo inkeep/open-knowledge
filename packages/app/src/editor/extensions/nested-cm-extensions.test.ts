@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test';
 import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
+import { describe, expect, test } from 'vitest';
 import { createNestedCMExtensions } from './nested-cm-extensions';
 
 function hasLineWrapping(state: EditorState): boolean {

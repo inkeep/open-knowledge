@@ -4,7 +4,6 @@
  * make every advisory family visible to text-only MCP consumers.
  */
 
-import { describe, expect, test } from 'bun:test';
 import type {
   AdvisoryWarning,
   BrokenLink,
@@ -12,6 +11,7 @@ import type {
   RenderWarning,
   WriteWarning,
 } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import {
   formatAdvisoryBriefs,
   formatAdvisoryLines,

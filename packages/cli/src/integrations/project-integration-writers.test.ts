@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
   mkdirSync,
@@ -10,6 +9,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { EDITOR_TARGETS, type EditorId } from '../commands/editors.ts';
 import {
   applyProjectIntegrations,
@@ -69,7 +69,7 @@ describe('mcpConfigWriter', () => {
     const written = JSON.parse(readFileSync(cursorMcp, 'utf-8'));
     expect(written.mcpServers['open-knowledge'].command).toBe('/bin/sh');
     expect(written.mcpServers['open-knowledge'].args.slice(0, 2)).toEqual(['-l', '-c']);
-    expect(written.mcpServers['open-knowledge'].args[2]).toContain('# ok-mcp-v1');
+    expect(written.mcpServers['open-knowledge'].args[2]).toContain('# ok-mcp-v2');
   });
 
   test('reports "skipped-unsupported" for an editor without projectConfigPath', () => {

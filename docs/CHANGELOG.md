@@ -1,5 +1,131 @@
 # @inkeep/open-knowledge-docs
 
+## 0.0.49
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.41.1
+
+## 0.0.48
+
+### Patch Changes
+
+- Updated dependencies [86e58ac]
+  - @inkeep/open-knowledge-core@0.41.0
+
+## 0.0.47
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.40.0
+
+## 0.0.46
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.39.5
+
+## 0.0.45
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.39.4
+
+## 0.0.44
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.39.3
+
+## 0.0.43
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.39.2
+
+## 0.0.42
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.39.1
+
+## 0.0.41
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.39.0
+
+## 0.0.40
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.38.4
+
+## 0.0.39
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.38.3
+
+## 0.0.38
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.38.2
+
+## 0.0.37
+
+### Patch Changes
+
+- Updated dependencies [1b25773]
+  - @inkeep/open-knowledge-core@0.38.1
+
+## 0.0.36
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.38.0
+
+## 0.0.35
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.37.3
+
+## 0.0.34
+
+### Patch Changes
+
+- 86b9804: **Feat:** share links now work with GitHub Enterprise Server remotes
+  (PRD-7351). The construct side threads the origin host into the share URL,
+  and the receive pipeline carries the host as part of the repo identity end
+  to end — so a GHES `owner/repo` share never resolves to a same-named
+  github.com clone. Because a decoded deep link is untrusted input, a share
+  pointing at a non-github.com host is gated: it proceeds silently only for a
+  host the recipient is already authenticated to, otherwise the app prompts to
+  open the link in a browser instead. The web splash renders enterprise shares
+  with the host shown prominently.
+- Updated dependencies [86b9804]
+  - @inkeep/open-knowledge-core@0.37.2
+
+## 0.0.33
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.37.1
+
+## 0.0.32
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.37.0
+
+## 0.0.31
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.36.0
+
 ## 0.0.30
 
 ### Patch Changes

@@ -64,7 +64,7 @@ import { getLogger } from './desktop-logger.ts';
 
 /**
  * Version-INDEPENDENT prefix of OK's MCP chain sentinels. Every OK MCP entry —
- * unix (`# ok-mcp-v1`, `CHAIN_VERSION_SENTINEL`) and Windows (`# ok-mcp-win-v1`,
+ * unix (`# ok-mcp-v2`, `CHAIN_VERSION_SENTINEL`) and Windows (`# ok-mcp-win-v1`,
  * `CHAIN_WIN_VERSION_SENTINEL`, both in the CLI's `editors.ts`) — embeds a line
  * starting with this prefix, verbatim, regardless of format (JSON or TOML), and
  * `# ok-mcp-win-…` also contains it, so one prefix covers both platforms.

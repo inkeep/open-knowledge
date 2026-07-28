@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Hocuspocus } from '@hocuspocus/server';
 import { type AgentPresenceEntry, SYSTEM_DOC_NAME } from '@inkeep/open-knowledge-core';
+import { beforeEach, describe, expect, test } from 'vitest';
 import { AgentPresenceBroadcaster } from './agent-presence.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
 
@@ -303,7 +303,7 @@ describe('AgentPresenceBroadcaster', () => {
   // moves setPresence back out of the try (which would re-open the stuck-
   // writing race).
   //
-  // Why at the broadcaster level: `mock.module` leaks across test files in
+  // Why at the broadcaster level: `vi.doMock` leaks across test files in
   // the same `bun test` process, so a
   // direct handler-unit test that forces `applyAgentMarkdownWrite` to throw
   // is impractical without process isolation. Instead, these tests encode
@@ -406,7 +406,7 @@ describe('AgentPresenceBroadcaster', () => {
 
   test('structural: every agent write handler pairs setPresence("writing") + touchMode("idle")', () => {
     // Source-level regression guard. Runtime equivalence is infeasible
-    // because `mock.module` leaks across test files
+    // because `vi.doMock` leaks across test files
     // ; this test reads the handler source and
     // asserts the try/finally shape. The runtime broadcaster-level tests
     // prove the pattern IS race-safe.

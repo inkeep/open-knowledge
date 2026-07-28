@@ -39,7 +39,6 @@
  * for the same cross-file leak class.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getMetrics, resetMetrics } from '@inkeep/open-knowledge-server';
@@ -50,6 +49,7 @@ import {
   type ReadableSpan,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   awaitFileWatcherIndexed,
   createTestClient,

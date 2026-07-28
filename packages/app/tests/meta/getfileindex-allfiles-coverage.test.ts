@@ -18,9 +18,10 @@
  * for the dangerous call, walk back to the enclosing function, require either
  * allowlist OR a structural guard in the local window.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 const SERVER_SRC_ROOT = join(import.meta.dirname, '../../../server/src');
 const API_EXT_PATH = join(SERVER_SRC_ROOT, 'api-extension.ts');

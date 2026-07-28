@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { BranchSwitchedClearFailedLogSchema, handleBranchSwitched } from './branch-invalidation';
 import { ProviderPool } from './provider-pool';
 
@@ -52,8 +52,8 @@ describe('handleBranchSwitched', () => {
     const p1 = await awaitAttachedPersistence(e1);
     const p2 = await awaitAttachedPersistence(e2);
 
-    const clear1 = mock(() => Promise.resolve());
-    const clear2 = mock(() => Promise.resolve());
+    const clear1 = vi.fn(() => Promise.resolve());
+    const clear2 = vi.fn(() => Promise.resolve());
     p1.clearData = clear1;
     p2.clearData = clear2;
 
@@ -85,12 +85,12 @@ describe('handleBranchSwitched', () => {
         resolve();
       }, 20);
     });
-    p1.clearData = mock(() => clearPromise);
-    p2.clearData = mock(() => Promise.resolve());
+    p1.clearData = vi.fn(() => clearPromise);
+    p2.clearData = vi.fn(() => Promise.resolve());
 
     let recycleObservedClearResolved = false;
     const originalRecycle = pool.recycleAllEntries.bind(pool);
-    pool.recycleAllEntries = mock(() => {
+    pool.recycleAllEntries = vi.fn(() => {
       recycleObservedClearResolved = clearResolved;
       originalRecycle();
     });
@@ -113,8 +113,8 @@ describe('handleBranchSwitched', () => {
     const p1 = await awaitAttachedPersistence(e1);
     const p2 = await awaitAttachedPersistence(e2);
 
-    const clear1 = mock(() => Promise.resolve());
-    const clear2 = mock(() => Promise.resolve());
+    const clear1 = vi.fn(() => Promise.resolve());
+    const clear2 = vi.fn(() => Promise.resolve());
     p1.clearData = clear1;
     p2.clearData = clear2;
 
@@ -148,15 +148,15 @@ describe('handleBranchSwitched', () => {
     if (!e1) throw new Error('pool.open returned null');
     const p1 = await awaitAttachedPersistence(e1);
 
-    p1.clearData = mock(() => Promise.reject(new Error('simulated-idb-quota-exhausted')));
+    p1.clearData = vi.fn(() => Promise.reject(new Error('simulated-idb-quota-exhausted')));
 
     const originalRecycle = pool.recycleAllEntries.bind(pool);
-    const recycleSpy = mock(() => {
+    const recycleSpy = vi.fn(() => {
       originalRecycle();
     });
     pool.recycleAllEntries = recycleSpy;
 
-    const logSpy = mock((_msg: string) => {});
+    const logSpy = vi.fn((_msg: string) => {});
     const originalWarn = console.warn;
     console.warn = logSpy as unknown as typeof console.warn;
     try {
@@ -176,7 +176,7 @@ describe('handleBranchSwitched', () => {
 
   test('is a no-op when the pool has no entries', async () => {
     pool = new ProviderPool(3, DUMMY_WS);
-    const recycleSpy = mock(() => {});
+    const recycleSpy = vi.fn(() => {});
     pool.recycleAllEntries = recycleSpy;
 
     await handleBranchSwitched(pool, 'feature');

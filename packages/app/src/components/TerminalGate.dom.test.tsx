@@ -9,9 +9,10 @@
  * writer; the mount is held until the binding syncs so an opted-out project
  * never flashes the shell.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+
 import { act, cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
 type ConsentState = { enabled: boolean | null; synced: boolean };
@@ -24,7 +25,7 @@ const toastErrors: string[] = [];
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
@@ -33,18 +34,18 @@ mock.module('@lingui/react/macro', () => ({
   }),
 }));
 
-mock.module('sonner', () => ({
+vi.doMock('sonner', () => ({
   toast: { error: (message: string) => toastErrors.push(message) },
 }));
 
-mock.module('@/hooks/use-terminal-enabled', () => ({
+vi.doMock('@/hooks/use-terminal-enabled', () => ({
   useTerminalConsentState: () => consentState,
   useTerminalEnabledWriter: () => writerImpl,
 }));
 
 // biome-ignore lint/suspicious/noExplicitAny: captured mock-component props, asserted structurally
 let lastPanelProps: Record<string, any> | null = null;
-mock.module('./TerminalPanel', () => ({
+vi.doMock('./TerminalPanel', () => ({
   // biome-ignore lint/suspicious/noExplicitAny: test stub
   TerminalPanel: (props: any) => {
     lastPanelProps = props;
@@ -87,9 +88,9 @@ describe('TerminalGate', () => {
   });
 
   test('forwards onClose, onTitleChange, launch, onPtyId, and adoptPtyId to the mounted terminal panel', async () => {
-    const onClose = mock(() => {});
-    const onTitleChange = mock((_title: string) => {});
-    const onPtyId = mock((_ptyId: string | null) => {});
+    const onClose = vi.fn(() => {});
+    const onTitleChange = vi.fn((_title: string) => {});
+    const onPtyId = vi.fn((_ptyId: string | null) => {});
     const launch = { prompt: 'work on docs/notes', nonce: 1 };
     consentState = { enabled: null, synced: true };
     render(

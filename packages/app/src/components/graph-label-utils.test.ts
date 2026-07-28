@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 import { buildGraphLabelDescriptors, pickGraphLabelText } from './graph-label-utils';
 

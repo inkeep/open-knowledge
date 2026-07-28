@@ -1,7 +1,7 @@
-import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { inspectConfigPaths } from './inspect-config-paths.ts';
 
 function makeTempProject(): { cwd: string; home: string } {

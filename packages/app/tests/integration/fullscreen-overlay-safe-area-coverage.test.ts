@@ -36,9 +36,9 @@
  * scanners. Fast, no I/O beyond filesystem walk, deterministic in headless CI.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 const APP_SRC = join(import.meta.dir, '..', '..', 'src');
 const REPO_RELATIVE_PREFIX = 'packages/app/src';

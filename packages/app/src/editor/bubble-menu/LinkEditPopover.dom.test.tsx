@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { isMacOS } from '@tiptap/core';
 import type { Editor } from '@tiptap/react';
 import { act } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
   _resetPendingLinkEditForTest,
@@ -11,7 +11,7 @@ import {
 import { markIdentityKey } from '../extensions/mark-identity';
 import { emitOpenLinkEditPopover } from './link-edit-popover-events';
 
-mock.module('@/components/PageListContext', () => ({
+vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => ({
     folderPaths: new Set(['guides']),
     loading: false,
@@ -70,10 +70,10 @@ function makeEditor({
     // The claim reads the non-throwing `editorView` field (never the `view`
     // throwing proxy); mirror the real Editor by exposing both.
     editorView: { hasFocus: () => viewFocused },
-    getAttributes: mock((name: string) => (name === 'link' ? { href } : {})),
-    isActive: mock((name: string) => name === 'link' && active),
-    on: mock(() => {}),
-    off: mock(() => {}),
+    getAttributes: vi.fn((name: string) => (name === 'link' ? { href } : {})),
+    isActive: vi.fn((name: string) => name === 'link' && active),
+    on: vi.fn(() => {}),
+    off: vi.fn(() => {}),
     chain: () => chain,
   } as unknown as Editor;
 }
@@ -97,7 +97,7 @@ function cmdKEvent(init: KeyboardEventInit = {}): KeyboardEvent {
 }
 
 function stubClipboardRead(impl: () => Promise<string>) {
-  const readText = mock(impl);
+  const readText = vi.fn(impl);
   const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
@@ -142,8 +142,8 @@ describe('LinkEditPopover', () => {
   });
 
   test('applies a trimmed URL with Enter and dismisses the input', () => {
-    const setLink = mock((_attrs: { href: string }) => {});
-    const unsetLink = mock(() => {});
+    const setLink = vi.fn((_attrs: { href: string }) => {});
+    const unsetLink = vi.fn(() => {});
     renderPopover(makeEditor({ active: false, onSetLink: setLink, onUnsetLink: unsetLink }));
 
     fireEvent.mouseDown(screen.getByRole('button', { name: 'Insert link' }));
@@ -157,8 +157,8 @@ describe('LinkEditPopover', () => {
   });
 
   test('submitting an empty active collapsed link unsets it', async () => {
-    const setLink = mock((_attrs: { href: string }) => {});
-    const unsetLink = mock(() => {});
+    const setLink = vi.fn((_attrs: { href: string }) => {});
+    const unsetLink = vi.fn(() => {});
     renderPopover(
       makeEditor({
         href: '',
@@ -180,8 +180,8 @@ describe('LinkEditPopover', () => {
   });
 
   test('empty inactive input is a no-op and still dismisses', async () => {
-    const setLink = mock((_attrs: { href: string }) => {});
-    const unsetLink = mock(() => {});
+    const setLink = vi.fn((_attrs: { href: string }) => {});
+    const unsetLink = vi.fn(() => {});
     renderPopover(makeEditor({ active: false, onSetLink: setLink, onUnsetLink: unsetLink }));
 
     fireEvent.mouseDown(screen.getByRole('button', { name: 'Insert link' }));
@@ -272,7 +272,7 @@ describe('LinkEditPopover ⌘K dual-role claim', () => {
   test('routes a caret inside a tracked link to the chip edit spine, not the popover', () => {
     // Real mark-identity state needs a live PM view; stub the plugin state so
     // the caret resolves to a stable id (same idiom as component-items tests).
-    const getStateSpy = spyOn(markIdentityKey, 'getState').mockReturnValue({
+    const getStateSpy = vi.spyOn(markIdentityKey, 'getState').mockReturnValue({
       byId: new Map([
         [
           'm7',

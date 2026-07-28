@@ -17,7 +17,7 @@
  * origin name that doesn't match one of the three buckets fails loudly with
  * a message naming the file:line and the unrecognized origin.
  */
-import { beforeAll, describe, expect, test } from 'bun:test';
+
 import { join, relative } from 'node:path';
 import {
   type CallExpression,
@@ -27,6 +27,7 @@ import {
   type SourceFile,
   SyntaxKind,
 } from 'ts-morph';
+import { beforeAll, describe, expect, test } from 'vitest';
 
 // ─── Allowlists ──────────────────────────────────────────────
 

@@ -5,10 +5,10 @@
  * use `\` separators.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, posix, win32 } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { __testing, resolveBundledSkillDir } from './build-skill-zip.ts';
 
 const { computeWrapperFolderName, extractMetadataVersion, toPosixZipPath } = __testing;

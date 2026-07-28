@@ -15,7 +15,7 @@
  * this file's (it's minutes-long). These tests are sub-second.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { sharedExtensions } from '../../src/extensions/shared.ts';
 import { MarkdownManager } from '../../src/markdown/index.ts';
 import {

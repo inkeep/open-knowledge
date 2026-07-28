@@ -7,8 +7,8 @@
  * is on the cache-seeded first frame, not a resolved re-check.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { getLastKnownSignedIn, setLastKnownSignedIn } from '@/lib/auth-state-cache';
 import type { AuthQueryTransport } from '@/lib/transports/auth-query-transport';
 import { CloneDialog } from './CloneDialog';

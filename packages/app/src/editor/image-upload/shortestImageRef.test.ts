@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { shortestImageRef } from './index.ts';
 
 describe('shortestImageRef — F8 4-case rewrite', () => {

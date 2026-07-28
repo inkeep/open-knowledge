@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   DEFAULT_DOC_PANEL_WIDTH,
   DOC_PANEL_WIDTH_KEY,

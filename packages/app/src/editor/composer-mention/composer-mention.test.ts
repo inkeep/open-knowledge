@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import type { PageItem } from '../extensions/wiki-link-suggestion';
 import { createMentionCorpus, pageItemToPath } from './composer-mention';
 

@@ -31,8 +31,8 @@
  * parser doesn't preserve.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { MarkdownManager } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { sharedExtensions } from '../extensions/shared';
 import { buildMediaJsxNodeData } from './index.ts';
 

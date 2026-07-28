@@ -38,6 +38,33 @@ function mergeThreeWayImpl(baseline: string, userText: string, agentText: string
   return parts.join('\n');
 }
 
+export function tryLineLevelCombine(
+  base: string,
+  mine: string,
+  theirs: string,
+): { clean: true; merged: string } | { clean: false } {
+  if (base === mine) return { clean: true, merged: theirs };
+  if (base === theirs) return { clean: true, merged: mine };
+  if (mine === theirs) return { clean: true, merged: mine };
+
+  const regions = diff3Merge(mine.split('\n'), base.split('\n'), theirs.split('\n'));
+  const parts: string[] = [];
+  for (const region of regions) {
+    if ('ok' in region && region.ok) {
+      parts.push(region.ok.join('\n'));
+    } else {
+      return { clean: false };
+    }
+  }
+  const merged = parts.join('\n');
+  try {
+    assertContentPreservation(base, mine, theirs, merged);
+  } catch {
+    return { clean: false };
+  }
+  return { clean: true, merged };
+}
+
 export type BridgeMergeContentLossSide = 'user' | 'agent';
 
 export type BridgeMergeContentLossWhich = 'substring' | 'order' | 'growth';

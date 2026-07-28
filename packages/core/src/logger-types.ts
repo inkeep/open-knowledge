@@ -1,3 +1,5 @@
+import type { ReportSidecarState } from './bug-report-sidecar/schema.ts';
+
 export type Loggable =
   | string
   | number
@@ -204,3 +206,69 @@ export type OkBugReportCrashDetectedEvent =
  * renderer payload.
  */
 export type OkBugReportCrashAckResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * One row in the persisted bug-report history, projected from a report sidecar
+ * plus main-derived facts. `state` is the OPEN sidecar state (`'unknown'` for a
+ * degraded/legacy/corrupt row). `zipPath` is main-derived (never renderer
+ * influenced) and re-validated for containment before any retry/reveal; the
+ * renderer passes it straight back to `send` / reveal without composing a path.
+ *
+ * `systemWide` / `projectSlug` are carried so a retry reconstructs the exact
+ * `OkBugReportSendMetadata` without a second capture. `retryable` is
+ * `true` only when the report is neither `sent` nor mid-`uploading` and its zip
+ * is still on disk. `degraded` is `true` for a synthesized row (no sidecar, a
+ * corrupt sidecar, or an unknown state) so the list can render it plainly
+ * instead of failing.
+ */
+export interface OkBugReportListRow {
+  id: string;
+  createdAt: string;
+  bundleLevel: ReportBundleLevel | 'unknown';
+  /**
+   * Derived from the sidecar's single-source state list, so a state added to
+   * `REPORT_SIDECAR_STATES` propagates here instead of silently drifting.
+   */
+  state: ReportSidecarState;
+  zipBytes: number;
+  zipDeleted: boolean;
+  zipExists: boolean;
+  systemWide: boolean;
+  projectSlug: string | null;
+  /**
+   * State-coupled: present only when `state === 'sent'`. Not modelled as a
+   * discriminated union because `state` is an OPEN enum — enumerating arms
+   * here would reintroduce the drift that deriving `state` removes.
+   */
+  reference?: string;
+  /** State-coupled: present only when `state === 'upload-failed'`. */
+  lastError?: { reason: string; at: string };
+  attemptsCount: number;
+  note?: string;
+  /** Main-derived absolute zip path; re-validated for containment on use. */
+  zipPath: string;
+  retryable: boolean;
+  degraded: boolean;
+}
+
+/**
+ * Result of the desktop `ok:bug-report:dispatch` list operation — the persisted
+ * report history, newest first. Never thrown across the IPC boundary; a scan
+ * failure resolves to `{ ok: false }` so the list renders an error state.
+ */
+export type OkBugReportListResult =
+  | { ok: true; reports: OkBugReportListRow[] }
+  | { ok: false; reason: string };
+
+/**
+ * Result of the desktop `ok:bug-report:dispatch` delete operation. Removes a
+ * report's zip and sidecar by `id` after a containment + id-shape check. Never
+ * thrown across the IPC boundary.
+ *   - `id-invalid`  — the id failed the timestamp-basename shape / containment gate.
+ *   - `in-flight`   — the report's own send is currently in progress in this process.
+ *   - `not-found`   — no zip and no sidecar for the id.
+ *   - `io-error`    — a filesystem removal failed.
+ */
+export type OkBugReportDeleteResult =
+  | { ok: true }
+  | { ok: false; reason: 'id-invalid' | 'in-flight' | 'not-found' | 'io-error' };

@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, test } from 'bun:test';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { renderToString } from 'react-dom/server';
+import { afterEach, describe, expect, test } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { PropertyProvider } from './PropertyContext';
 import { PropertyPanel } from './PropertyPanel';

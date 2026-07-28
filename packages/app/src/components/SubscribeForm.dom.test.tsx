@@ -1,21 +1,21 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-const submitSubscribe = mock(
+const submitSubscribe = vi.fn(
   async (_email: string) =>
     ({ ok: true }) as Awaited<ReturnType<typeof import('@/lib/subscribe').submitSubscribe>>,
 );
-mock.module('@/lib/subscribe', () => ({ submitSubscribe }));
+vi.doMock('@/lib/subscribe', () => ({ submitSubscribe }));
 
 async function renderForm(onSuccess?: () => void) {
   const { SubscribeForm } = await import('./SubscribeForm');
@@ -39,7 +39,7 @@ describe('SubscribeForm', () => {
   });
 
   test('submits a valid email and shows the success view', async () => {
-    const onSuccess = mock(() => {});
+    const onSuccess = vi.fn(() => {});
     submitSubscribe.mockResolvedValue({ ok: true });
     await renderForm(onSuccess);
 

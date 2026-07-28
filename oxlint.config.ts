@@ -16,6 +16,12 @@ const restrictedSyntax = [
     message:
       "Do not use `typeof window !== 'undefined'` inside useLayoutEffect; useLayoutEffect already runs client-side.",
   },
+  {
+    selector:
+      "CallExpression[callee.object.name='vi'][callee.property.name='doMock'] Literal[value='@/components/ui/tooltip'], CallExpression[callee.object.name='vi'][callee.property.name='mock'] Literal[value='@/components/ui/tooltip']",
+    message:
+      'Do not mock tooltip primitives. Import TooltipProvider and wrap the rendered component instead.',
+  },
 ];
 
 // Test files execute as ES modules, where a CommonJS `require()` is not
@@ -61,6 +67,17 @@ export default defineConfig({
       },
     ],
     'eslint-js/no-restricted-syntax': ['error', ...restrictedSyntax],
+    'no-restricted-imports': [
+      'error',
+      {
+        paths: [
+          {
+            name: 'bun:test',
+            message: 'Import test APIs directly from vitest.',
+          },
+        ],
+      },
+    ],
     // TODO(oxlint): enable in priority order as each backlog is audited.
     // Correctness rules catch async/control-flow bugs; graduate these first.
     'typescript/no-floating-promises': 'off',

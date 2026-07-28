@@ -9,9 +9,9 @@
  * never triggers a rule.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { MathInline } from '@inkeep/open-knowledge-core';
 import type { Editor } from '@tiptap/core';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { mountCollabEditor, mountLightEditor, readUndoManager } from './editor-rig.test-helper';
 import { MathInputRule } from './math-input-rule';

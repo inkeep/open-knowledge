@@ -43,6 +43,7 @@ const EXPECTED_TOOLS = [
   'preview_url',
   'share_link',
   'lint',
+  'audit',
   // Writes — CRUD verbs + version
   'write',
   'edit',
@@ -127,7 +128,7 @@ function captureRegistered(): string[] {
   return names;
 }
 
-describe('registerAllTools — full tool surface (SPEC.md §9.1 / AC8 + install + skills + lint)', () => {
+describe('registerAllTools — full tool surface (SPEC.md §9.1 / AC8 + install + skills + lint + audit)', () => {
   test('registers exactly the expected number of tools', () => {
     const names = captureRegistered();
     expect(names.length).toBe(EXPECTED_TOOLS.length);
@@ -173,7 +174,8 @@ describe('registerAllTools — full tool surface (SPEC.md §9.1 / AC8 + install 
  * / `resolve_conflict` all mutate KB content, but the shadow repo versions every
  * write, so `history` + `restore_version` recover them. `lint` joins them: its
  * `fix: true` mode is a recoverable, shadow-versioned content write (report-only
- * otherwise). `exec` is read-only (sandboxed allowlist). `install` is NOT here — it projects executable skill
+ * otherwise). `audit` is a pure read (unified lint + link validation report; no
+ * fix shape). `exec` is read-only (sandboxed allowlist). `install` is NOT here — it projects executable skill
  * scripts into the agent's own config dir, which no KB version history undoes.
  */
 const OK_AUTO_APPROVED_TOOLS = [
@@ -193,6 +195,7 @@ const OK_AUTO_APPROVED_TOOLS = [
   'resolve_conflict',
   'workflow',
   'lint',
+  'audit',
 ] as const;
 
 describe('docked-terminal auto-approve classification', () => {

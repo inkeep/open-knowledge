@@ -45,6 +45,7 @@
  * ytext bytes, silently reverting the write.
  */
 import { applyFastDiff, stripFrontmatter } from '@inkeep/open-knowledge-core';
+import type { JSONContent } from '@tiptap/core';
 import { updateYFragment } from '@tiptap/y-tiptap';
 import type * as Y from 'yjs';
 import { mdManager, schema } from './md-manager.ts';
@@ -76,6 +77,43 @@ interface EmbedResolverContext {
  * via `applyRenameMap`).
  */
 type EmbedResolverArg = EmbedResolverContext | false | undefined;
+
+/**
+ * Off-thread parse result a caller computed BEFORE entering its
+ * `doc.transact` (see `parse-pool.ts`). The primitives honor it only when
+ * `rawContent` byte-matches the bytes being applied in this call — the
+ * guard makes staleness structurally impossible: a doc that moved between
+ * the precompute and the transact fails the byte compare and the primitive
+ * parses inline exactly as it always has. Callers therefore never need to
+ * re-validate a precompute themselves.
+ */
+export interface PrecomputedParse {
+  /** Exact full-document bytes (frontmatter + body) the parse came from. */
+  rawContent: string;
+  /** `mdManager.parseWithFallback(stripFrontmatter(rawContent).body, ...)` output. */
+  parsedJson: JSONContent;
+}
+
+/**
+ * Byte-guarded parse: use the precompute when it matches the bytes being
+ * applied, else parse inline (the pre-pool behavior, unchanged).
+ */
+function parseBodyWithPrecompute(
+  document: Y.Doc,
+  rawContent: string,
+  embedResolver: EmbedResolverArg,
+  precomputed: PrecomputedParse | undefined,
+): JSONContent {
+  const { body } = stripFrontmatter(rawContent);
+  if (precomputed !== undefined && precomputed.rawContent === rawContent) {
+    return precomputed.parsedJson;
+  }
+  return withSpanSync(
+    'md.parseWithFallback',
+    { attributes: { 'body.bytes': body.length, 'doc.name': document.guid } },
+    () => mdManager.parseWithFallback(body, buildParseOpts(embedResolver)),
+  );
+}
 
 function buildParseOpts(embedResolver: EmbedResolverArg):
   | {
@@ -148,6 +186,7 @@ export function composeAndWriteRawBody(
   rawContent: string,
   surface: ComposeWriteSurface,
   embedResolver?: EmbedResolverArg,
+  precomputed?: PrecomputedParse,
 ): void {
   withSpanSync(
     'bridge.composeAndWriteRawBody',
@@ -166,12 +205,7 @@ export function composeAndWriteRawBody(
       // Fragment derives from BODY (without FM): the markdown parser only handles
       // body markdown. FM lives in the YAML region of Y.Text directly — the
       // fragment side never carries it.
-      const { body } = stripFrontmatter(rawContent);
-      const parsedJson = withSpanSync(
-        'md.parseWithFallback',
-        { attributes: { 'body.bytes': body.length, 'doc.name': document.guid } },
-        () => mdManager.parseWithFallback(body, buildParseOpts(embedResolver)),
-      );
+      const parsedJson = parseBodyWithPrecompute(document, rawContent, embedResolver, precomputed);
       const pmNode = schema.nodeFromJSON(parsedJson);
 
       // Y.Text gets the raw bytes FIRST, then fragment derives. The order matters:
@@ -226,6 +260,7 @@ export function replaceRawBody(
   document: Y.Doc,
   rawContent: string,
   embedResolver?: EmbedResolverArg,
+  precomputed?: PrecomputedParse,
 ): void {
   withSpanSync(
     'bridge.replaceRawBody',
@@ -239,8 +274,7 @@ export function replaceRawBody(
       const xmlFragment = document.getXmlFragment('default');
       const ytext = document.getText('source');
 
-      const { body } = stripFrontmatter(rawContent);
-      const parsedJson = mdManager.parseWithFallback(body, buildParseOpts(embedResolver));
+      const parsedJson = parseBodyWithPrecompute(document, rawContent, embedResolver, precomputed);
       const pmNode = schema.nodeFromJSON(parsedJson);
 
       const currentText = ytext.toString();

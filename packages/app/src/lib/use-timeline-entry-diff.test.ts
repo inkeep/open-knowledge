@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { computeTimelineDiff, timelineEntryCacheKey } from './use-timeline-entry-diff';
 
 describe('timelineEntryCacheKey', () => {

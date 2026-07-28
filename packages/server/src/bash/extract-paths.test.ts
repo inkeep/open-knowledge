@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { extractReferencedPaths } from './extract-paths.ts';
 import type { Stage } from './parse-command.ts';
 

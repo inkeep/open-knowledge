@@ -15,8 +15,8 @@
  * helpers — assert through queries on the rendered DOM after `render`.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import { PropertyInlineLinks } from './PropertyInlineLinks';
 
 afterEach(() => {

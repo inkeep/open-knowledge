@@ -16,9 +16,9 @@
  *     without spinning up a Hocuspocus client.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { Schema } from '@tiptap/pm/model';
 import { EditorState, NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { describe, expect, test } from 'vitest';
 import {
   assertBridgeIdInvariant,
   BridgeIdPlugin,

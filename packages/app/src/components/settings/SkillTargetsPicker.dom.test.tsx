@@ -6,12 +6,12 @@
  * to `/api/skill-targets`.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => children,
   useLingui: () => ({
@@ -27,8 +27,8 @@ mock.module('@lingui/react/macro', () => ({
   }),
 }));
 
-mock.module('sonner', () => ({
-  toast: { error: mock(() => {}), info: mock(() => {}), success: mock(() => {}) },
+vi.doMock('sonner', () => ({
+  toast: { error: vi.fn(() => {}), info: vi.fn(() => {}), success: vi.fn(() => {}) },
 }));
 
 const { SkillTargetsPicker } = await import('./SkillTargetsPicker');
@@ -41,7 +41,7 @@ afterEach(() => {
 
 describe('SkillTargetsPicker', () => {
   test('renders a checkbox per editor reflecting the committed set', async () => {
-    global.fetch = mock(async () => ({
+    global.fetch = vi.fn(async () => ({
       ok: true,
       status: 200,
       json: async () => ({ targets: ['claude'], configured: true }),
@@ -58,7 +58,7 @@ describe('SkillTargetsPicker', () => {
 
   test('toggling an editor PUTs the updated target set', async () => {
     const calls: Array<{ url: string; method?: string; body?: string }> = [];
-    global.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString();
       calls.push({ url, method: init?.method, body: init?.body as string | undefined });
       if (init?.method === 'PUT') {

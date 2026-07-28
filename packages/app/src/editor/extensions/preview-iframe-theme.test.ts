@@ -11,8 +11,9 @@
  * reporter present, and — load-bearing for the no-reload toggle — the two
  * per-theme headers differing by exactly the baked initial-class statement.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { PREVIEW_THEME_TOKENS } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import {
   buildPreviewIframeHeader,
   buildPreviewThemeMessage,

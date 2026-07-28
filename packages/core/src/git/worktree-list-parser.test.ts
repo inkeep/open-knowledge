@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { type BridgeWorktreeEntry, parseWorktreeListPorcelain } from './worktree-list-parser.ts';
 
 describe('parseWorktreeListPorcelain', () => {

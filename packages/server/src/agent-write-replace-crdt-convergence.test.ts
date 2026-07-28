@@ -38,8 +38,9 @@
  * pinning the byte shape is Yjs-version-fragile. A separate product
  * decision will choose Layer 2 recovery policy.
  */
-import { describe, expect, test } from 'bun:test';
+
 import type { Document } from '@hocuspocus/server';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { AGENT_WRITE_ORIGIN, applyAgentMarkdownWrite } from './agent-sessions.ts';
 

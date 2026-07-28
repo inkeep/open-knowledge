@@ -8,7 +8,7 @@
  * keeps the item.
  *
  * jsdom's window.location is unforgeable, so the test stubs the
- * `isFileProtocolPage` helper seam instead — the same mock.module capability
+ * `isFileProtocolPage` helper seam instead — the same vi.doMock capability
  * faking the terminal desktop-only test uses for the Electron bridge.
  */
 

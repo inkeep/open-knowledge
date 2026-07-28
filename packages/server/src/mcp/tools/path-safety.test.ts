@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { resolveWithinRoot } from './path-safety.ts';
 
 describe('resolveWithinRoot — accepts inputs contained in root', () => {

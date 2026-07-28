@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   cosineSimilarity,
   createOpenAiEmbedder,
   EMBEDDINGS_API_KEY_ENV,
   EmbeddingDimsMismatchError,
+  type EmbeddingProviderError,
   loadOpenAiEmbedder,
   normalizeInPlace,
   normalizeProviderId,
@@ -188,10 +189,10 @@ describe('createOpenAiEmbedder', () => {
     expect(caught).not.toBeNull();
   });
 
-  test('throws EmbeddingDimsMismatchError when the provider returns the wrong size', async () => {
+  test('throws EmbeddingDimsMismatchError when a CONFIGURED size is not honored', async () => {
     const { fetchImpl } = stubFetch([{ json: embeddingsResponse(1, 768) }]);
     const embedder = createOpenAiEmbedder(
-      { baseUrl: 'https://x/v1', model: 'm', apiKey: KEY }, // declares default 1536
+      { baseUrl: 'https://x/v1', model: 'm', dimensions: 1536, apiKey: KEY },
       { fetchImpl, sleep: noSleep },
     );
     let caught: unknown = null;
@@ -199,6 +200,121 @@ describe('createOpenAiEmbedder', () => {
       caught = e;
     });
     expect(caught).toBeInstanceOf(EmbeddingDimsMismatchError);
+    expect((caught as EmbeddingDimsMismatchError).reason).toBe('dims_mismatch');
+  });
+
+  // The bug this whole feature exists for: a custom model whose native size
+  // isn't 1536 used to fail every single response and degrade to keyword-only.
+  test('with no configured size, adopts whatever length the provider returns', async () => {
+    const { fetchImpl } = stubFetch([{ json: embeddingsResponse(1, 1024) }]);
+    const embedder = createOpenAiEmbedder(
+      { baseUrl: 'https://x/v1', model: 'custom-1024', apiKey: KEY },
+      { fetchImpl, sleep: noSleep },
+    );
+    expect(embedder.dims).toBeNull();
+    const [vector] = await embedder.embed(['q'], { role: 'document' });
+    expect(vector.length).toBe(1024);
+    expect(embedder.dims).toBe(1024);
+  });
+
+  test('once auto-detected, a later response of a different size is rejected', async () => {
+    const { fetchImpl } = stubFetch([
+      { json: embeddingsResponse(1, 1024) },
+      { json: embeddingsResponse(1, 1536) },
+    ]);
+    const embedder = createOpenAiEmbedder(
+      { baseUrl: 'https://x/v1', model: 'aliased', apiKey: KEY },
+      { fetchImpl, sleep: noSleep },
+    );
+    await embedder.embed(['first'], { role: 'document' });
+    await expect(embedder.embed(['second'], { role: 'document' })).rejects.toThrow(
+      EmbeddingDimsMismatchError,
+    );
+  });
+
+  // A gateway can fail over between two models mid-call; the caller would
+  // otherwise store a mix of lengths under one cache entry, and cosine
+  // similarity truncates to the shorter vector rather than erroring.
+  test('holds every batch of one call to the first batch’s size', async () => {
+    const { fetchImpl } = stubFetch([
+      { json: embeddingsResponse(2, 1024) },
+      { json: embeddingsResponse(1, 1536) },
+    ]);
+    const embedder = createOpenAiEmbedder(
+      { baseUrl: 'https://x/v1', model: 'flapping', apiKey: KEY },
+      { fetchImpl, sleep: noSleep, maxBatchSize: 2 },
+    );
+    await expect(embedder.embed(['a', 'b', 'c'], { role: 'document' })).rejects.toThrow(
+      EmbeddingDimsMismatchError,
+    );
+  });
+
+  test('pinDims adopts a previous run’s size so the first response is checked', async () => {
+    const { fetchImpl } = stubFetch([{ json: embeddingsResponse(1, 1536) }]);
+    const embedder = createOpenAiEmbedder(
+      { baseUrl: 'https://x/v1', model: 'aliased', apiKey: KEY },
+      { fetchImpl, sleep: noSleep },
+    );
+    embedder.pinDims?.(1024);
+    expect(embedder.dims).toBe(1024);
+    await expect(embedder.embed(['q'], { role: 'document' })).rejects.toThrow(
+      EmbeddingDimsMismatchError,
+    );
+  });
+
+  test('a ragged response leaves no size pinned behind it', async () => {
+    const ragged = {
+      data: [
+        { index: 0, embedding: [1, 0, 0] },
+        { index: 1, embedding: [1, 0] },
+      ],
+    };
+    const { fetchImpl } = stubFetch([{ json: ragged }, { json: embeddingsResponse(1, 1024) }]);
+    const embedder = createOpenAiEmbedder(
+      { baseUrl: 'https://x/v1', model: 'm', apiKey: KEY },
+      { fetchImpl, sleep: noSleep },
+    );
+    await expect(embedder.embed(['a', 'b'], { role: 'document' })).rejects.toThrow();
+    expect(embedder.dims).toBeNull();
+    await embedder.embed(['c'], { role: 'document' });
+    expect(embedder.dims).toBe(1024);
+  });
+
+  // The likeliest custom-endpoint misconfiguration: a base URL that lands on a
+  // proxy's HTML error page or a site root and answers 200 with markup.
+  test('a 200 carrying non-JSON is a fatal config error, not a retryable network fault', async () => {
+    let calls = 0;
+    const fetchImpl = (() => {
+      calls += 1;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON at position 0')),
+        text: () => Promise.resolve('<html>...</html>'),
+      } as Response);
+    }) as unknown as typeof fetch;
+    const embedder = createOpenAiEmbedder(
+      { baseUrl: 'https://x/v1', model: 'm', apiKey: KEY },
+      { fetchImpl, sleep: noSleep },
+    );
+    let caught: unknown = null;
+    await embedder.embed(['q'], { role: 'document' }).catch((e) => {
+      caught = e;
+    });
+    expect((caught as EmbeddingProviderError).reason).toBe('malformed_response');
+    expect(calls).toBe(1); // fatal — never retried
+  });
+
+  test('with no key, sends NO Authorization header (keyless loopback)', async () => {
+    const { fetchImpl, calls } = stubFetch([{ json: embeddingsResponse(1, 768) }]);
+    const embedder = createOpenAiEmbedder(
+      { baseUrl: 'http://localhost:11434/v1', model: 'nomic-embed-text' },
+      { fetchImpl, sleep: noSleep },
+    );
+    await embedder.embed(['q'], { role: 'document' });
+    expect(calls[0].authHeader).toBeUndefined();
+    // Never the string "Bearer undefined".
+    expect(JSON.stringify(calls[0])).not.toContain('Bearer');
   });
 
   test('empty input does not hit the network', async () => {
@@ -226,33 +342,66 @@ describe('normalizeProviderId', () => {
 
 describe('loadOpenAiEmbedder', () => {
   const config = { baseUrl: 'https://api.openai.com/v1', model: 'text-embedding-3-small' };
-
-  test('returns null with no key store and no env var', async () => {
-    const embedder = await loadOpenAiEmbedder({ keyStore: null, config });
-    expect(embedder).toBeNull();
+  const CUSTOM = 'https://my-vllm.internal/v1';
+  const projectDir = '/tmp/proj';
+  /** A store stub that returns `key` for any (project, endpoint) lookup. */
+  const stubStore = (key: string | null) => ({
+    resolveForProject: () => Promise.resolve({ key, source: key ? 'project' : null }),
   });
 
-  test('uses the key store when present', async () => {
-    const keyStore = { get: () => Promise.resolve('sk-from-keyring') };
-    const embedder = await loadOpenAiEmbedder({ keyStore, config });
+  test('returns null with no key store and no env var', async () => {
+    expect(await loadOpenAiEmbedder({ keyStore: null, projectDir, config })).toBeNull();
+  });
+
+  test("uses the store's resolved project key", async () => {
+    const embedder = await loadOpenAiEmbedder({
+      keyStore: stubStore('sk-project-key'),
+      projectDir,
+      config,
+    });
     expect(embedder).not.toBeNull();
     expect(embedder?.modelId).toBe('text-embedding-3-small');
-    expect(embedder?.dims).toBe(1536);
+    expect(embedder?.dims).toBeNull(); // no configured size — the provider decides
     expect(embedder?.providerId).toBe('https://api.openai.com/v1');
   });
 
-  test('falls back to the env var when the store has no key', async () => {
+  test('env var is used ONLY for the default OpenAI endpoint', async () => {
     process.env[EMBEDDINGS_API_KEY_ENV] = 'sk-from-env';
-    const keyStore = { get: () => Promise.resolve(null) };
-    const embedder = await loadOpenAiEmbedder({ keyStore, config });
-    expect(embedder).not.toBeNull();
+    // Default host + no stored key → env applies.
+    expect(
+      await loadOpenAiEmbedder({ keyStore: stubStore(null), projectDir, config }),
+    ).not.toBeNull();
+    // A CUSTOM endpoint must NOT inherit the machine-wide env key.
+    expect(
+      await loadOpenAiEmbedder({
+        keyStore: stubStore(null),
+        projectDir,
+        config: { ...config, baseUrl: CUSTOM },
+      }),
+    ).toBeNull();
   });
 
   test('a throwing key store degrades to the env fallback (never throws)', async () => {
-    const keyStore = { get: () => Promise.reject(new Error('keyring exploded')) };
-    expect(await loadOpenAiEmbedder({ keyStore, config })).toBeNull();
+    const keyStore = { resolveForProject: () => Promise.reject(new Error('store exploded')) };
+    expect(await loadOpenAiEmbedder({ keyStore, projectDir, config })).toBeNull();
     process.env[EMBEDDINGS_API_KEY_ENV] = 'sk-env';
-    expect(await loadOpenAiEmbedder({ keyStore, config })).not.toBeNull();
+    expect(await loadOpenAiEmbedder({ keyStore, projectDir, config })).not.toBeNull();
+  });
+
+  test('a keyless LOOPBACK endpoint loads without any key; a custom one does not', async () => {
+    const loopback = await loadOpenAiEmbedder({
+      keyStore: stubStore(null),
+      projectDir,
+      config: { baseUrl: 'http://localhost:11434/v1', model: 'nomic-embed-text' },
+    });
+    expect(loopback).not.toBeNull(); // keyless is allowed for loopback
+
+    const custom = await loadOpenAiEmbedder({
+      keyStore: stubStore(null),
+      projectDir,
+      config: { baseUrl: CUSTOM, model: 'm' },
+    });
+    expect(custom).toBeNull(); // non-loopback + no key → unready
   });
 });
 

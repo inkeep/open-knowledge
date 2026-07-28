@@ -15,6 +15,15 @@ name: native-config prebuild
 on:
   workflow_dispatch:
   push:
+    # branches: [main] is load-bearing, not cosmetic. Without it the `push`
+    # event also matches TAG pushes, and a freshly-created tag (every release
+    # cuts a vX.Y.Z tag on the mirror) is a new ref with no prior state to
+    # diff, so GitHub cannot evaluate the `paths` filter and runs the workflow
+    # unconditionally — the full 8-target matrix re-ran on every release
+    # regardless of whether native-config changed. A branch filter excludes
+    # tag refs (tags never match `branches`), keeping this scoped to actual
+    # native-config source changes on main.
+    branches: [main]
     paths:
       - "packages/native-config/**"
       - ".github/workflows/native-config-prebuild.yml"
@@ -131,9 +140,15 @@ jobs:
       - name: Build addon
         working-directory: packages/native-config
         shell: bash
-        # Appends the per-target flags to the package's own
-        # `napi build --platform --release` script.
-        run: pnpm run build -- --target ${{ matrix.settings.target }} ${{ matrix.settings.napiFlags }}
+        # Invoke napi directly instead of `pnpm run build -- <flags>`: pnpm
+        # forwards the `--` separator literally, so the per-target flags landed
+        # after it (`napi build --platform --release -- --target … --use-napi-cross`)
+        # and napi passes everything past `--` straight through to `cargo build`,
+        # which rejects `--use-napi-cross` ("unexpected argument"). --target,
+        # --use-napi-cross and -x are all `napi build` flags and must sit before
+        # any separator. Keep --platform --release in sync with the package's own
+        # `build` script.
+        run: pnpm exec napi build --platform --release --target ${{ matrix.settings.target }} ${{ matrix.settings.napiFlags }}
 
       - name: Upload binding
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

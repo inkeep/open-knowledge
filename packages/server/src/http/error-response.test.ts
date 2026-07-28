@@ -5,8 +5,8 @@
  * re-expose the original crash risk that motivated the fix.
  */
 
-import { describe, expect, spyOn, test } from 'bun:test';
 import type { ServerResponse } from 'node:http';
+import { describe, expect, test, vi } from 'vitest';
 import { loggerFactory } from '../logger.ts';
 import {
   createStreamingErrorWriter,
@@ -57,7 +57,7 @@ describe('errorResponse — defense-in-depth branches', () => {
     // but silently drop the diagnostic event — operators relying on
     // `api.error.double-write` for alerting would never see the bug.
     const log = loggerFactory.getLogger('http');
-    const errorSpy = spyOn(log, 'error');
+    const errorSpy = vi.spyOn(log, 'error');
     errorSpy.mockClear();
 
     const { res, writeHeadCalls, endCalls } = makeMockRes({ headersSent: true });
@@ -100,8 +100,8 @@ describe('errorResponse — defense-in-depth branches', () => {
     // Both regressions break monitoring contracts that the structured
     // `api.error` event powers downstream.
     const log = loggerFactory.getLogger('http');
-    const warnSpy = spyOn(log, 'warn');
-    const errorSpy = spyOn(log, 'error');
+    const warnSpy = vi.spyOn(log, 'warn');
+    const errorSpy = vi.spyOn(log, 'error');
     warnSpy.mockClear();
     errorSpy.mockClear();
 
@@ -288,7 +288,7 @@ describe('errorResponse — defense-in-depth branches', () => {
     // Caller-supplied instance UUID is preserved across the fallback for
     // grep correlation between the structured log and the wire envelope.
     const log = loggerFactory.getLogger('http');
-    const errorSpy = spyOn(log, 'error');
+    const errorSpy = vi.spyOn(log, 'error');
     errorSpy.mockClear();
 
     const { res, writeHeadCalls, endCalls } = makeMockRes();

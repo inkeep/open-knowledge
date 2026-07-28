@@ -302,6 +302,84 @@ describe('checkPushPermission — token resolution', () => {
     expect(calls).toHaveLength(0);
   });
 
+  test('anonymous + transport ssh → unknown/ssh-unverified with NO HTTP call', async () => {
+    // Self-hosted forge (Gitea/Forgejo) pushed over SSH: no gh/OK token can
+    // ever exist for that host, but the push auths with SSH keys. The probe
+    // must abstain, not deny — denying pauses sync for a fully working setup.
+    const { fetch, calls } = mockFetch(() => jsonResponse(200, {}));
+    const { store } = fakeStore(null);
+    const result = await checkPushPermission({
+      owner: 'acme',
+      repo: 'kb',
+      host: 'git.example.com',
+      transport: 'ssh',
+      detectGh: ghUnavailable(),
+      tokenStore: store,
+      _fetchFn: fetch,
+    });
+    expect(result).toEqual({ kind: 'unknown', error: 'ssh-unverified' });
+    expect(calls).toHaveLength(0);
+  });
+
+  test('anonymous + transport git → unknown/ssh-unverified (unauthenticated protocol, tokens irrelevant)', async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(200, {}));
+    const result = await checkPushPermission({
+      owner: 'acme',
+      repo: 'kb',
+      host: 'git.example.com',
+      transport: 'git',
+      _fetchFn: fetch,
+    });
+    expect(result).toEqual({ kind: 'unknown', error: 'ssh-unverified' });
+    expect(calls).toHaveLength(0);
+  });
+
+  test('anonymous + explicit transport https → denied/not-authenticated unchanged', async () => {
+    // HTTPS pushes auth with tokens; no token ⇒ the push cannot succeed, so
+    // the signed-out denial (and its Sign-in affordance) stays correct —
+    // including for GHES over HTTPS.
+    const { fetch, calls } = mockFetch(() => jsonResponse(200, {}));
+    const result = await checkPushPermission({
+      owner: 'acme',
+      repo: 'kb',
+      host: 'ghes.acme.test',
+      transport: 'https',
+      _fetchFn: fetch,
+    });
+    expect(result).toEqual({ kind: 'denied', reason: 'not-authenticated' });
+    expect(calls).toHaveLength(0);
+  });
+
+  test('anonymous + github.com over SSH is lenient too (deliberate)', async () => {
+    // A github.com user with SSH keys and no gh CLI / stored token pushes
+    // fine; keying leniency on transport (not host) un-breaks them as well.
+    const { fetch, calls } = mockFetch(() => jsonResponse(200, {}));
+    const result = await checkPushPermission({
+      owner: 'inkeep',
+      repo: 'open-knowledge',
+      host: 'github.com',
+      transport: 'ssh',
+      _fetchFn: fetch,
+    });
+    expect(result).toEqual({ kind: 'unknown', error: 'ssh-unverified' });
+    expect(calls).toHaveLength(0);
+  });
+
+  test('transport ssh with a resolved credential still probes normally', async () => {
+    // Transport only gates the ANONYMOUS branch. With a token the API answer
+    // is authoritative regardless of how git would transport the push.
+    const { fetch, calls } = mockFetch(() => jsonResponse(200, { permissions: { push: true } }));
+    const result = await checkPushPermission({
+      owner: 'inkeep',
+      repo: 'open-knowledge',
+      transport: 'ssh',
+      detectGh: ghAvailable(),
+      _fetchFn: fetch,
+    });
+    expect(result).toEqual({ kind: 'allowed' });
+    expect(calls).toHaveLength(1);
+  });
+
   test('gh detection is scoped to the requested host', async () => {
     const seenHosts: Array<string | undefined> = [];
     const detectGh: DetectGhFn = (host) => {

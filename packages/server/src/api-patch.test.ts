@@ -8,8 +8,9 @@
  * Core invariant: a patch only mutates the matched character span — everything
  * else in Y.Text survives untouched, regardless of what other writes have landed.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { Hocuspocus } from '@hocuspocus/server';
+import { describe, expect, test } from 'vitest';
 import type * as Y from 'yjs';
 import { AGENT_WRITE_ORIGIN } from './agent-sessions.ts';
 

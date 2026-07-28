@@ -7,7 +7,7 @@
  * without sinking the listing. `isNdjsonResponse` gates streaming vs the
  * buffered JSON fallback.
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   consumeShowAllStream,
   isNdjsonResponse,

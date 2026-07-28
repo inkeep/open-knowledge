@@ -15,7 +15,7 @@
  *   - Idempotent: 200 + empty array when fileIndex no longer has the entries
  *   - Validation: reserved docName, invalid path, malformed body all 400
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import {
   existsSync,
   mkdirSync,
@@ -30,7 +30,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import type { Principal } from '@inkeep/open-knowledge-core';
-import { createApiExtension } from './api-extension.ts';
+import { afterEach, describe, expect, test } from 'vitest';
+import { createApiExtension } from './api-extension.test-helper.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import type { FileIndexEntry, FolderIndexEntry } from './file-watcher.ts';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';

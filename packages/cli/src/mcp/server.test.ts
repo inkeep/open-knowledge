@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { sanitizeClientName } from '@inkeep/open-knowledge-server';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   countWorktrees,
   findProjectDir,

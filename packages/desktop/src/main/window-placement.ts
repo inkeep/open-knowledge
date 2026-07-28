@@ -6,7 +6,11 @@
  * exercise multi-monitor topologies directly.
  */
 
-import type { PersistedWindowBounds } from './state-store.ts';
+import {
+  type PersistedWindowBounds,
+  type RestoredWindow,
+  windowRestoreKey,
+} from './state-store.ts';
 
 export interface PlacementRect {
   x: number;
@@ -77,15 +81,19 @@ export function resolveRestoredPlacement(input: {
 }
 
 /**
- * Stable ascending sort of project paths by focus sequence — least recently
- * focused first, MOST recently focused last. Paths with no recorded focus
- * (never focused this session) sort first, keeping their relative order.
+ * Stable ascending sort of restore-snapshot windows by focus sequence — least
+ * recently focused first, MOST recently focused last. Windows with no recorded
+ * focus (never focused this session) sort first, keeping their relative order.
  * Orders the `pendingWindowRestore` snapshot so the restoring boot can raise
- * the last entry and land the user in the window they were working in.
+ * the last entry and land the user in the window they were working in. Keys
+ * each window via `windowRestoreKey` (project path or canonical file path), the
+ * same key `projectFocusSeq` records focus under.
  */
-export function sortByFocusSequence(
-  paths: readonly string[],
+export function sortWindowsByFocusSequence(
+  windows: readonly RestoredWindow[],
   focusSeq: ReadonlyMap<string, number>,
-): string[] {
-  return [...paths].sort((a, b) => (focusSeq.get(a) ?? 0) - (focusSeq.get(b) ?? 0));
+): RestoredWindow[] {
+  return [...windows].sort(
+    (a, b) => (focusSeq.get(windowRestoreKey(a)) ?? 0) - (focusSeq.get(windowRestoreKey(b)) ?? 0),
+  );
 }

@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
   mkdirSync,
@@ -18,6 +17,7 @@ import {
   type ConfigValidationError,
   isKnownConfigError,
 } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import {
   CONFIG_FILE_WATCHER_ORIGIN,

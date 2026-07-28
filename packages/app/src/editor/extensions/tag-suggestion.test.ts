@@ -7,7 +7,7 @@
  * and the case-sensitivity of the duplicate check.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { buildTagSuggestionItems, type TagSummaryEntry, tagMatcher } from './tag-suggestion.ts';
 
 const tags = (entries: Array<[string, number]>): TagSummaryEntry[] =>

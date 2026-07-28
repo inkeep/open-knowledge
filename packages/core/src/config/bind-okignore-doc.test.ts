@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { bindOkignoreDoc, type OkignoreDocProvider } from './bind-okignore-doc.ts';
 import { isKnownConfigError } from './errors.ts';

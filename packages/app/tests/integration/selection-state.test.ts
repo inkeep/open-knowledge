@@ -21,10 +21,10 @@
  * convention).
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { setTimeout as wait } from 'node:timers/promises';
 import { EditorState, NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
   type BlockSelection,
   deriveBlockSelection,

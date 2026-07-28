@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { CLIENT_RUNTIME_VERSION_FALLBACK } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import {
   classifyServerVersion,
   computeFirstLaunchAfterUpgrade,

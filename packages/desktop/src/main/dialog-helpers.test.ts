@@ -4,7 +4,7 @@
  * `OK_DESKTOP_E2E_SMOKE=1` so a stray env var on a developer's shell can't
  * bypass the real picker.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   promptForExistingFolder,
   promptForExistingMarkdownFile,
@@ -28,7 +28,7 @@ describe('promptForExistingFolder', () => {
   });
 
   test('OS picker uses openDirectory + createDirectory + showHiddenFiles (macOS: New Folder button + dot-dirs visible for `.claude/worktrees`)', async () => {
-    const showOpenDialog = mock(async () => ({ canceled: false, filePaths: ['/picked'] }));
+    const showOpenDialog = vi.fn(async () => ({ canceled: false, filePaths: ['/picked'] }));
     const result = await promptForExistingFolder({ showOpenDialog });
     expect(result).toBe('/picked');
     expect(showOpenDialog).toHaveBeenCalledWith({
@@ -37,26 +37,26 @@ describe('promptForExistingFolder', () => {
   });
 
   test('OS picker returns null on cancel', async () => {
-    const showOpenDialog = mock(async () => ({ canceled: true, filePaths: [] }));
+    const showOpenDialog = vi.fn(async () => ({ canceled: true, filePaths: [] }));
     expect(await promptForExistingFolder({ showOpenDialog })).toBe(null);
   });
 
   test('OS picker returns null on empty filePaths', async () => {
-    const showOpenDialog = mock(async () => ({ canceled: false, filePaths: [] }));
+    const showOpenDialog = vi.fn(async () => ({ canceled: false, filePaths: [] }));
     expect(await promptForExistingFolder({ showOpenDialog })).toBe(null);
   });
 
   test('test seam returns env path when both gates set, never calls OS picker', async () => {
     process.env.OK_DESKTOP_E2E_SMOKE = '1';
     process.env.OK_DESKTOP_TEST_PICKED_PATH = '/tmp/seam';
-    const showOpenDialog = mock(async () => ({ canceled: false, filePaths: ['/never/used'] }));
+    const showOpenDialog = vi.fn(async () => ({ canceled: false, filePaths: ['/never/used'] }));
     expect(await promptForExistingFolder({ showOpenDialog })).toBe('/tmp/seam');
     expect(showOpenDialog).not.toHaveBeenCalled();
   });
 
   test('test seam ignored when OK_DESKTOP_E2E_SMOKE missing — production safety', async () => {
     process.env.OK_DESKTOP_TEST_PICKED_PATH = '/tmp/should-not-fire';
-    const showOpenDialog = mock(async () => ({ canceled: false, filePaths: ['/real/pick'] }));
+    const showOpenDialog = vi.fn(async () => ({ canceled: false, filePaths: ['/real/pick'] }));
     expect(await promptForExistingFolder({ showOpenDialog })).toBe('/real/pick');
     expect(showOpenDialog).toHaveBeenCalled();
   });
@@ -64,13 +64,13 @@ describe('promptForExistingFolder', () => {
   test('test seam ignored when OK_DESKTOP_TEST_PICKED_PATH empty', async () => {
     process.env.OK_DESKTOP_E2E_SMOKE = '1';
     process.env.OK_DESKTOP_TEST_PICKED_PATH = '';
-    const showOpenDialog = mock(async () => ({ canceled: false, filePaths: ['/real/pick'] }));
+    const showOpenDialog = vi.fn(async () => ({ canceled: false, filePaths: ['/real/pick'] }));
     expect(await promptForExistingFolder({ showOpenDialog })).toBe('/real/pick');
     expect(showOpenDialog).toHaveBeenCalled();
   });
 
   test('defaultPath threads through to showOpenDialog', async () => {
-    const showOpenDialog = mock(async () => ({ canceled: false, filePaths: ['/picked'] }));
+    const showOpenDialog = vi.fn(async () => ({ canceled: false, filePaths: ['/picked'] }));
     await promptForExistingFolder({ showOpenDialog }, { defaultPath: '/project/root' });
     expect(showOpenDialog).toHaveBeenCalledWith({
       properties: ['openDirectory', 'createDirectory', 'showHiddenFiles'],
@@ -79,7 +79,7 @@ describe('promptForExistingFolder', () => {
   });
 
   test('omits defaultPath when not provided', async () => {
-    const showOpenDialog = mock(async () => ({ canceled: false, filePaths: ['/picked'] }));
+    const showOpenDialog = vi.fn(async () => ({ canceled: false, filePaths: ['/picked'] }));
     await promptForExistingFolder({ showOpenDialog });
     expect(showOpenDialog).toHaveBeenCalledWith({
       properties: ['openDirectory', 'createDirectory', 'showHiddenFiles'],
@@ -133,7 +133,7 @@ describe('promptForExistingMarkdownFile', () => {
   });
 
   test('OS picker uses openFile + a md/mdx filter', async () => {
-    const showOpenDialog = mock(async () => ({ canceled: false, filePaths: ['/notes/x.md'] }));
+    const showOpenDialog = vi.fn(async () => ({ canceled: false, filePaths: ['/notes/x.md'] }));
     const result = await promptForExistingMarkdownFile({ showOpenDialog });
     expect(result).toBe('/notes/x.md');
     expect(showOpenDialog).toHaveBeenCalledWith({
@@ -143,25 +143,25 @@ describe('promptForExistingMarkdownFile', () => {
   });
 
   test('OS picker returns null on cancel', async () => {
-    const showOpenDialog = mock(async () => ({ canceled: true, filePaths: [] }));
+    const showOpenDialog = vi.fn(async () => ({ canceled: true, filePaths: [] }));
     expect(await promptForExistingMarkdownFile({ showOpenDialog })).toBe(null);
   });
 
   test('OS picker returns null on empty filePaths', async () => {
-    const showOpenDialog = mock(async () => ({ canceled: false, filePaths: [] }));
+    const showOpenDialog = vi.fn(async () => ({ canceled: false, filePaths: [] }));
     expect(await promptForExistingMarkdownFile({ showOpenDialog })).toBe(null);
   });
 
   test('test seam returns env path when both gates set, never calls OS picker', async () => {
     process.env.OK_DESKTOP_E2E_SMOKE = '1';
     process.env.OK_DESKTOP_TEST_PICKED_PATH = '/tmp/seam.md';
-    const showOpenDialog = mock(async () => ({ canceled: false, filePaths: ['/never/used.md'] }));
+    const showOpenDialog = vi.fn(async () => ({ canceled: false, filePaths: ['/never/used.md'] }));
     expect(await promptForExistingMarkdownFile({ showOpenDialog })).toBe('/tmp/seam.md');
     expect(showOpenDialog).not.toHaveBeenCalled();
   });
 
   test('defaultPath threads through to showOpenDialog', async () => {
-    const showOpenDialog = mock(async () => ({ canceled: false, filePaths: ['/notes/x.md'] }));
+    const showOpenDialog = vi.fn(async () => ({ canceled: false, filePaths: ['/notes/x.md'] }));
     await promptForExistingMarkdownFile({ showOpenDialog }, { defaultPath: '/notes' });
     expect(showOpenDialog).toHaveBeenCalledWith({
       properties: ['openFile'],

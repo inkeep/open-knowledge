@@ -13,9 +13,9 @@
  * wiring requires a real DOM. Hence `.dom.test.tsx`.
  */
 
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { ALLOWED_IMAGE_MIME_TYPES, type PropDef } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { JsxComponentDescriptor } from '../registry/types.ts';
 
 // Radix Popover focus-trap reaches for these jsdom-missing pieces (the
@@ -59,7 +59,7 @@ const stubPageListValue = {
   refetch: () => {},
   addPage: () => {},
 };
-mock.module('@/components/PageListContext', () => ({
+vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => stubPageListValue,
   useOptionalPageList: () => stubPageListValue,
 }));
@@ -93,7 +93,7 @@ describe('PropPanel — Enter on a single-line string input dismisses', () => {
     // string, no `accept` allowlist → renders as the plain `<Input>`
     // branch. Pressing Enter inside it should hand control back to the
     // owner so the popover closes.
-    const onDismiss = mock(() => {});
+    const onDismiss = vi.fn(() => {});
     const d = makeDescriptor([
       { name: 'label', type: 'string', required: true, autoFocus: true, defaultValue: 'Tab' },
     ]);
@@ -132,7 +132,7 @@ describe('PropPanel — Enter on a single-line string input dismisses', () => {
     // breaks Enter for every string prop marked `advanced: true` (e.g.
     // `<Tab id>`). Mirror the common-tier guard above so regressions
     // can't slip back in.
-    const onDismiss = mock(() => {});
+    const onDismiss = vi.fn(() => {});
     const d = makeDescriptor([
       { name: 'label', type: 'string', required: true, defaultValue: 'Tab' },
       { name: 'id', type: 'string', required: false, advanced: true },
@@ -161,7 +161,7 @@ describe('PropPanel — Enter on a single-line string input dismisses', () => {
     // Tab, Escape, ArrowDown, character keys, etc. should not reach
     // onDismiss. Otherwise typing a label would close the popover after
     // one keystroke.
-    const onDismiss = mock(() => {});
+    const onDismiss = vi.fn(() => {});
     const d = makeDescriptor([
       { name: 'label', type: 'string', required: true, autoFocus: true, defaultValue: 'Tab' },
     ]);
@@ -186,7 +186,7 @@ describe('PropPanel — Enter on a single-line string input dismisses', () => {
     // contract as the plain Input branch. Without this, Embed sizing
     // props are an exception to the form-submit contract the rest of
     // PropPanel honors.
-    const onDismiss = mock(() => {});
+    const onDismiss = vi.fn(() => {});
     const d = makeDescriptor([
       { name: 'width', type: 'string', required: false, cssLengthInput: true },
     ]);
@@ -203,7 +203,7 @@ describe('PropPanel — Enter on a single-line string input dismisses', () => {
     // Pins Enter parity on the number variant — same single-line
     // contract. Without this, a user typing an Image width/height
     // pixel value would press Enter and have nothing happen.
-    const onDismiss = mock(() => {});
+    const onDismiss = vi.fn(() => {});
     const d = makeDescriptor([{ name: 'width', type: 'number', required: false }]);
     const { container } = render(
       <PropPanel descriptor={d} values={{}} onChange={() => {}} onDismiss={onDismiss} />,
@@ -227,7 +227,7 @@ describe('PropPanel — Enter on a single-line string input dismisses', () => {
     // takes the `onSubmit` branch (highlighted-suggestion-pick wins
     // over dismiss when the popover is open with items).
     stubAssetPaths.clear();
-    const onDismiss = mock(() => {});
+    const onDismiss = vi.fn(() => {});
     const d = makeDescriptor([
       {
         name: 'src',

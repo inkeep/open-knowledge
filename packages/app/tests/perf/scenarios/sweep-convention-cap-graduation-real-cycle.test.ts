@@ -19,8 +19,8 @@
  * a verdict-update PR.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { chromium } from '@playwright/test';
+import { describe, expect, test } from 'vitest';
 import {
   buildProductionCycleDriver,
   type CycleOutcome,

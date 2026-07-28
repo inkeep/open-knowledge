@@ -12,6 +12,35 @@
     <true/>
     <key>com.apple.security.files.bookmarks.app-scope</key>
     <true/>
+    <!--
+        Microphone. This app never opens an audio device itself — the
+        entitlement exists for CLI tools the user runs in the docked
+        terminal (agent CLIs with voice input, etc.).
+
+        macOS TCC does not evaluate the process making the request. It walks
+        up to the RESPONSIBLE process — the top-level .app bundle — and
+        checks that bundle's entitlements and usage description. So a mic
+        request from a PTY grandchild is authorized here, on the main
+        binary, and nowhere else. The child needs no entitlement of its own.
+
+        Under Hardened Runtime this key is what makes the app eligible to
+        prompt at all; without it tccd denies silently, no dialog appears,
+        and the app never lists in Privacy & Security > Microphone. It is a
+        Hardened Runtime entitlement, not an App Sandbox one — the sandbox
+        spelling (`device.microphone`) is only needed alongside it when
+        `com.apple.security.app-sandbox` is present, which it is not here.
+
+        Deliberately absent from `entitlements.mac.inherit.plist`: under the
+        responsible-process model helpers do not need it, and helper
+        over-entitlement has caused an AMFI launch failure here before. The
+        allowlist assertion in `tests/unit/entitlements-helper-split.test.ts`
+        fails on any helper key not in its required set, so adding it there
+        stays a conscious decision. Paired with `NSMicrophoneUsageDescription`
+        under `mac.extendInfo` in `electron-builder.yml` — the entitlement
+        authorizes the prompt, that string is what the prompt says.
+    -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
     <key>com.apple.developer.associated-domains</key>
     <array>
         <string>applinks:openknowledge.ai</string>

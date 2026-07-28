@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { CC1_CONTRACT_VERSION } from '../constants/cc1.ts';
 import {
   CC1_CHANNEL_CONFIG_IGNORE_NESTED_ERROR,

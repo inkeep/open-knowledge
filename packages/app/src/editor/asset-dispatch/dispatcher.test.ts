@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { dispatchAssetClick } from './dispatcher.ts';
 import { AssetViewerRegistry, assetViewerRegistry } from './registry.ts';
 import type { AssetClickContext } from './types.ts';
@@ -20,7 +20,7 @@ describe('dispatchAssetClick', () => {
   });
 
   test('empty registry + no desktop bridge → web fallback fires with url', async () => {
-    const openUrl = mock((_: string) => {});
+    const openUrl = vi.fn((_: string) => {});
     await dispatchAssetClick(ctx({ url: './meeting.pdf' }), {
       desktopBridge: undefined,
       openUrl,
@@ -30,8 +30,8 @@ describe('dispatchAssetClick', () => {
   });
 
   test('registered viewer for ext fires with the context', async () => {
-    const openUrl = mock((_: string) => {});
-    const viewer = { exts: ['pdf'] as const, render: mock(() => {}) };
+    const openUrl = vi.fn((_: string) => {});
+    const viewer = { exts: ['pdf'] as const, render: vi.fn(() => {}) };
     const r = new AssetViewerRegistry();
     r.register(viewer);
 
@@ -44,8 +44,8 @@ describe('dispatchAssetClick', () => {
   });
 
   test('Cmd/Ctrl+click bypasses a registered viewer (D-A6)', async () => {
-    const openUrl = mock((_: string) => {});
-    const viewer = { exts: ['pdf'] as const, render: mock(() => {}) };
+    const openUrl = vi.fn((_: string) => {});
+    const viewer = { exts: ['pdf'] as const, render: vi.fn(() => {}) };
     const r = new AssetViewerRegistry();
     r.register(viewer);
 
@@ -60,8 +60,8 @@ describe('dispatchAssetClick', () => {
   });
 
   test('desktop bridge present → openAsset fires with projectRelPath', async () => {
-    const openAsset = mock(async (_: string) => ({ ok: true }) as const);
-    const openUrl = mock((_: string) => {});
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openUrl = vi.fn((_: string) => {});
     const desktopBridge = {
       shell: { openAsset },
     } as unknown as NonNullable<typeof window.okDesktop>;
@@ -77,8 +77,8 @@ describe('dispatchAssetClick', () => {
   });
 
   test('Cmd+click with desktop bridge present → openAsset still fires (Cmd only skips registry)', async () => {
-    const openAsset = mock(async (_: string) => ({ ok: true }) as const);
-    const viewer = { exts: ['pdf'] as const, render: mock(() => {}) };
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const viewer = { exts: ['pdf'] as const, render: vi.fn(() => {}) };
     const r = new AssetViewerRegistry();
     r.register(viewer);
     const desktopBridge = {
@@ -98,11 +98,11 @@ describe('dispatchAssetClick', () => {
     // A blocked extension (html, svg, sh, ...) exists on disk but OK won't hand
     // it to `shell.openPath`. The file is real, so reveal it rather than failing
     // silently.
-    const openAsset = mock(
+    const openAsset = vi.fn(
       async (_: string) => ({ ok: false, reason: 'extension-blocked' }) as const,
     );
-    const revealAsset = mock(async (_: string) => ({ ok: true }) as const);
-    const openUrl = mock((_: string) => {});
+    const revealAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openUrl = vi.fn((_: string) => {});
     const desktopBridge = {
       shell: { openAsset, revealAsset },
     } as unknown as NonNullable<typeof window.okDesktop>;
@@ -119,14 +119,14 @@ describe('dispatchAssetClick', () => {
   });
 
   test('non-blocked refusal (resolve-error) is logged, does not reveal or fall through to web', async () => {
-    const openAsset = mock(async (_: string) => ({ ok: false, reason: 'resolve-error' }) as const);
-    const revealAsset = mock(async (_: string) => ({ ok: true }) as const);
-    const openUrl = mock((_: string) => {});
+    const openAsset = vi.fn(async (_: string) => ({ ok: false, reason: 'resolve-error' }) as const);
+    const revealAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openUrl = vi.fn((_: string) => {});
     const desktopBridge = {
       shell: { openAsset, revealAsset },
     } as unknown as NonNullable<typeof window.okDesktop>;
 
-    const consoleWarn = mock((..._args: unknown[]) => {});
+    const consoleWarn = vi.fn((..._args: unknown[]) => {});
     const origWarn = console.warn;
     console.warn = consoleWarn as unknown as typeof console.warn;
     try {
@@ -145,10 +145,10 @@ describe('dispatchAssetClick', () => {
   });
 
   test('dispatcher uses the module-level singleton registry when no deps passed', async () => {
-    const viewer = { exts: ['pdf'] as const, render: mock(() => {}) };
+    const viewer = { exts: ['pdf'] as const, render: vi.fn(() => {}) };
     assetViewerRegistry.register(viewer);
 
-    const openUrl = mock((_: string) => {});
+    const openUrl = vi.fn((_: string) => {});
     await dispatchAssetClick(ctx(), { desktopBridge: undefined, openUrl });
 
     expect(viewer.render).toHaveBeenCalledTimes(1);

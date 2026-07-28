@@ -1,4 +1,3 @@
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,6 +5,7 @@ import {
   HELPER_BUNDLE_NAME,
   HELPER_EXECUTABLE_NAME,
 } from '@inkeep/open-knowledge-core/helper-bundle';
+import { describe, expect, test } from 'vitest';
 
 /**
  * Cross-reference regression guard: the FIVE independent sites that all

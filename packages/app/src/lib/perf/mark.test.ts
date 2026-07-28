@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { __resetCardinalityWarnings, getCollector, getHistogramSnapshot } from './collector';
 import { mark, validatePerfMarkName } from './mark';
 
@@ -126,7 +126,7 @@ describe('mark.count', () => {
   });
 
   test('warns once when prop key cardinality exceeds 100 distinct values', () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
       // Up to 100 distinct values stays quiet.
       for (let i = 0; i < 100; i += 1) {
@@ -151,7 +151,7 @@ describe('mark.count', () => {
   });
 
   test('warns in dev when name fails the regex', () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
       mark.count('Bad/Name/Here');
       const found = warnSpy.mock.calls.some((args) => String(args[0]).includes('mark.count name'));
@@ -194,7 +194,7 @@ describe('mark.histogram', () => {
   });
 
   test('warns in dev when name fails the regex', () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
       mark.histogram('Bad/Name', {}, 1);
       const found = warnSpy.mock.calls.some((args) =>

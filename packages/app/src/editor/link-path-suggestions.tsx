@@ -1,4 +1,5 @@
 import { autoUpdate, computePosition, flip, offset, shift, size } from '@floating-ui/dom';
+import { isExternalHref } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 import {
   type ComponentProps,
@@ -114,25 +115,45 @@ export function LinkPathSuggestionInput({
   const panelRef = useRef<HTMLDivElement | null>(null);
   const listId = useId();
 
-  const emptyTriggered = value.trim() === '';
-  const suggestionValue = emptyTriggered ? '/' : value;
-  const suggestions = buildLinkPathSuggestions({
-    value: suggestionValue,
-    pages,
-    folderPaths,
-    assetPaths,
-    includeAssets,
-  });
+  const trimmedValue = value.trim();
+  const emptyTriggered = trimmedValue === '';
+  const slashTriggered = isSlashPathSuggestionValue(value);
+  // Suggest for any internal path target — a bare name matches by basename like
+  // the command palette, not just a leading-slash path. Suppress for an
+  // external URL or a bare in-doc anchor, which are valid targets that must not
+  // pop a page list.
+  const pathTargetTriggered = !isExternalHref(trimmedValue) && !trimmedValue.startsWith('#');
+  const suggestionTriggered = emptyTriggered || pathTargetTriggered;
+  const suggestionValue = emptyTriggered ? '' : value;
+  // Only score the page list when a suggestion could actually show — avoids
+  // re-scoring the whole KB on every keystroke of a URL, and keeps URL-shaped
+  // input out of the matcher.
+  const suggestions = suggestionTriggered
+    ? buildLinkPathSuggestions({
+        value: suggestionValue,
+        pages,
+        folderPaths,
+        assetPaths,
+        includeAssets,
+      })
+    : [];
   const suggestionsKey = suggestions
     .map((suggestion) => `${suggestion.kind}:${suggestion.path}`)
     .join('\u0000');
-  const slashTriggered = isSlashPathSuggestionValue(value);
-  const suggestionTriggered = emptyTriggered || slashTriggered;
   const showSuggestionOptions = suggestions.length > 0;
   const showSuggestions =
     focused && !dismissed && suggestionTriggered && (showSuggestionOptions || loading);
+  // The "no matching paths" empty-state is louder than a silent field, so only
+  // surface it on a strong path signal — an empty browse or an explicit leading
+  // slash. A bare name that matches nothing stays silent, so typing/pasting a
+  // scheme-less URL (e.g. example.com) into the dual-purpose field never flashes
+  // an empty page list.
   const showNoMatches =
-    focused && !dismissed && suggestionTriggered && !loading && !showSuggestionOptions;
+    focused &&
+    !dismissed &&
+    (emptyTriggered || slashTriggered) &&
+    !loading &&
+    !showSuggestionOptions;
   const showSuggestionPanel = showSuggestions || showNoMatches;
   const activeIndex = Math.min(highlightedIndex, Math.max(suggestions.length - 1, 0));
   const activeId = showSuggestionOptions ? `${listId}-option-${activeIndex}` : undefined;
@@ -297,7 +318,9 @@ export function LinkPathSuggestionInput({
               onClick={() => selectSuggestion(suggestion)}
             >
               {suggestionIcon(suggestion)}
-              <span className="min-w-0 flex-1 truncate">/{suggestion.path}</span>
+              <span className="min-w-0 flex-1 truncate" title={`/${suggestion.path}`}>
+                /{suggestion.path}
+              </span>
               <span className="shrink-0 text-muted-foreground text-xs">{kindLabel}</span>
             </Button>
           );

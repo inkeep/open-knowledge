@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { commitWip, initShadowRepo, type WriterIdentity } from '@inkeep/open-knowledge-server';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { computeGraphRole, enrichDirectory, enrichPath } from './enrichment.ts';
 
 let tmpDir: string;
@@ -289,5 +289,81 @@ describe('computeGraphRole', () => {
   test('leaf with a few links in one direction only', () => {
     expect(computeGraphRole(0, 2)).toBe('leaf');
     expect(computeGraphRole(2, 0)).toBe('leaf');
+  });
+});
+
+describe('schemas_applicable — read-time schema advertisement', () => {
+  const MAPPINGS = [
+    { appliesTo: ['docs/**', '!**/{index,log}'], file: '.ok/schemas/doc.schema.json' },
+    { appliesTo: 'specs/**', file: '.ok/schemas/spec.schema.json' },
+  ];
+
+  test('a doc matching one mapping advertises that schema file', async () => {
+    const project = await bootstrapProject();
+    mkdirSync(resolve(project, 'docs'), { recursive: true });
+    writeFileSync(resolve(project, 'docs', 'guide.md'), '---\ntitle: G\n---\n');
+    const meta = await enrichPath('docs/guide.md', {
+      projectDir: project,
+      frontmatterSchemas: MAPPINGS,
+    });
+    expect(meta.schemas_applicable).toEqual(['.ok/schemas/doc.schema.json']);
+  });
+
+  test('a disabled mapping is not advertised', async () => {
+    // A parked mapping still resolves (the schema editor reads it) but must
+    // not reach agents, or a toggled-off schema would read as governing.
+    const project = await bootstrapProject();
+    mkdirSync(resolve(project, 'docs'), { recursive: true });
+    writeFileSync(resolve(project, 'docs', 'guide.md'), '---\ntitle: G\n---\n');
+    const meta = await enrichPath('docs/guide.md', {
+      projectDir: project,
+      frontmatterSchemas: [
+        { appliesTo: 'docs/**', file: '.ok/schemas/doc.schema.json', enabled: false },
+      ],
+    });
+    expect(meta.schemas_applicable).toBeUndefined();
+  });
+
+  test('a doc matching no mapping (negated name) has no advertisement', async () => {
+    const project = await bootstrapProject();
+    mkdirSync(resolve(project, 'docs'), { recursive: true });
+    writeFileSync(resolve(project, 'docs', 'index.md'), '---\ntitle: I\n---\n');
+    const meta = await enrichPath('docs/index.md', {
+      projectDir: project,
+      frontmatterSchemas: MAPPINGS,
+    });
+    expect(meta.schemas_applicable).toBeUndefined();
+  });
+
+  test('no mappings passed (plugin disabled) means no advertisement', async () => {
+    const project = await bootstrapProject();
+    writeFileSync(resolve(project, 'a.md'), '# A\n');
+    const meta = await enrichPath('a.md', { projectDir: project });
+    expect(meta.schemas_applicable).toBeUndefined();
+  });
+
+  test('folder-level advertisement covers the new-file gap', async () => {
+    const project = await bootstrapProject();
+    mkdirSync(resolve(project, 'docs'), { recursive: true });
+    const dir = await enrichDirectory('docs', {
+      projectDir: project,
+      frontmatterSchemas: MAPPINGS,
+    });
+    expect(dir.schemas_applicable).toEqual(['.ok/schemas/doc.schema.json']);
+    const other = await enrichDirectory('', { projectDir: project, frontmatterSchemas: MAPPINGS });
+    expect(other.schemas_applicable).toBeUndefined();
+  });
+
+  test('content.dir rebasing: appliesTo matches content-relative paths', async () => {
+    const project = await bootstrapProject();
+    const contentDir = resolve(project, 'kb');
+    mkdirSync(resolve(contentDir, 'docs'), { recursive: true });
+    writeFileSync(resolve(contentDir, 'docs', 'guide.md'), '---\ntitle: G\n---\n');
+    const meta = await enrichPath('kb/docs/guide.md', {
+      projectDir: project,
+      contentDir,
+      frontmatterSchemas: MAPPINGS,
+    });
+    expect(meta.schemas_applicable).toEqual(['.ok/schemas/doc.schema.json']);
   });
 });

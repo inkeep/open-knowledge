@@ -22,12 +22,12 @@
  * auto-focused placeholder input handles the rest, no popover plumbing).
  */
 
-import { describe, expect, spyOn, test } from 'bun:test';
 import {
   builtInComponents,
   getAgentCanonicalDescriptors,
   getCanonicalDescriptors,
 } from '@inkeep/open-knowledge-core';
+import { describe, expect, test, vi } from 'vitest';
 import {
   _resetPendingLinkEditForTest,
   consumePendingLinkEdit,
@@ -331,21 +331,22 @@ describe('getInlineComponentItems — inline-atom slash entries', () => {
     }) as typeof globalThis.requestAnimationFrame;
 
     try {
-      const editor = {
+      const state = { selection: { from: 1 } };
+      const ctx = {
         // No markIdentity plugin in this mock → getState() returns undefined,
         // so the command inserts the chip then returns before scheduling rAF.
-        state: { selection: { from: 1 } },
+        state,
+        editor: { state },
+        afterCommit: (fn: () => void) => fn(),
         chain: () => ({
-          focus: () => ({
-            insertContent: (content: typeof insertedContent) => ({
-              run: () => {
-                insertedContent = content;
-              },
-            }),
+          insertContent: (content: typeof insertedContent) => ({
+            run: () => {
+              insertedContent = content;
+            },
           }),
         }),
       };
-      link.command(editor as never);
+      link.command(ctx as never);
       expect(insertedContent?.type).toBe('text');
       expect(insertedContent?.text).toBe('link');
       expect(insertedContent?.marks).toEqual([{ type: 'link', attrs: { href: '' } }]);
@@ -365,7 +366,7 @@ describe('getInlineComponentItems — inline-atom slash entries', () => {
     // Stub the mark-identity plugin state so findLinkMarkIdAt resolves the
     // freshly inserted link mark (spanning the insert position) to a stable
     // id — exercising the production happy path without a live PM view.
-    const getStateSpy = spyOn(markIdentityKey, 'getState').mockReturnValue({
+    const getStateSpy = vi.spyOn(markIdentityKey, 'getState').mockReturnValue({
       byId: new Map([['m7', { id: 'm7', markType: 'link', from: 1, to: 5, attrs: { href: '' } }]]),
       counter: 7,
     } as never);
@@ -381,15 +382,16 @@ describe('getInlineComponentItems — inline-atom slash entries', () => {
     }) as typeof globalThis.requestAnimationFrame;
 
     try {
-      const editor = {
-        state: { selection: { from: 1 } },
+      const state = { selection: { from: 1 } };
+      const ctx = {
+        state,
+        editor: { state },
+        afterCommit: (fn: () => void) => fn(),
         chain: () => ({
-          focus: () => ({
-            insertContent: () => ({ run: () => {} }),
-          }),
+          insertContent: () => ({ run: () => {} }),
         }),
       };
-      link.command(editor as never);
+      link.command(ctx as never);
 
       // findLinkMarkIdAt resolved 'm7' and the command flagged it for
       // auto-edit — consume confirms the flag is present (and drains it).
@@ -413,7 +415,7 @@ describe('getInlineComponentItems — inline-atom slash entries', () => {
     let chainFocusCalled = false;
     let inserted = false;
     let insertedValue: string | undefined;
-    const editor = {
+    const ctx = {
       chain: () => ({
         focus: () => {
           chainFocusCalled = true;
@@ -436,7 +438,7 @@ describe('getInlineComponentItems — inline-atom slash entries', () => {
     };
     const tag = getInlineComponentItems().find((item) => item.name === 'component-Tag');
     if (!tag) throw new Error('Tag entry missing');
-    tag.command(editor as never);
+    tag.command(ctx as never);
     expect(inserted).toBe(true);
     expect(insertedValue).toBe('');
     // Pin the no-leading-focus invariant: the slash command must NOT

@@ -56,7 +56,8 @@ test.describe('rename-consolidation — browser-fidelity outcomes', () => {
     }, baseURL);
 
     expect(renameRes.status).toBe(200);
-    expect(renameRes.body.ok).toBe(true);
+    // The RFC 9457 success envelope carries no `ok` field; HTTP 200 is the
+    // success signal and the schema body is emitted flat.
     expect(renameRes.body.renamed).toEqual([{ fromDocName: 'auth', toDocName: 'sso' }]);
     expect(Array.isArray(renameRes.body.rewrittenDocs)).toBe(true);
     expect(renameRes.body.rewrittenDocs.length).toBeGreaterThan(0);
@@ -127,7 +128,6 @@ test.describe('rename-consolidation — browser-fidelity outcomes', () => {
     }, baseURL);
 
     expect(renameRes.status).toBe(200);
-    expect(renameRes.body.ok).toBe(true);
     expect(renameRes.body.renamed).toHaveLength(3);
     const renamedFromPaths = renameRes.body.renamed
       .map((r: { fromDocName: string }) => r.fromDocName)
@@ -184,7 +184,6 @@ test.describe('rename-consolidation — browser-fidelity outcomes', () => {
       return { status: r.status, body: await r.json() };
     }, baseURL);
     expect(renameRes.status).toBe(200);
-    expect(renameRes.body.ok).toBe(true);
     expect(renameRes.body.renamed).toEqual([{ fromDocName: 'auth-doc', toDocName: 'sso-doc' }]);
 
     // Tree updates: 'sso-doc.md' visible.
@@ -203,7 +202,7 @@ test.describe('rename-consolidation — browser-fidelity outcomes', () => {
     }, baseURL);
     expect([200, 400]).toContain(historyRes.status);
     if (historyRes.status === 200) {
-      expect(historyRes.body?.ok).toBe(true);
+      // HistorySuccessSchema is emitted flat under RFC 9457 — no `ok` field.
       expect(Array.isArray(historyRes.body?.entries)).toBe(true);
     }
   });

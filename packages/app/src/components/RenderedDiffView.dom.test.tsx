@@ -12,8 +12,9 @@
  *
  * Invocation: `bun run test:dom src/components/RenderedDiffView.dom.test.tsx`.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { cleanup, render, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   countRenderedDiffAnchors,
   RENDERED_DIFF_CHANGE_SELECTOR,

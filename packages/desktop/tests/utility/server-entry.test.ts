@@ -1,10 +1,10 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { ConfigSchema } from '@inkeep/open-knowledge-server';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { KeyringSmokeResult } from '../../src/utility/keyring-smoke.ts';
 import {
   type PreparedBootEnvironment,
@@ -25,41 +25,41 @@ import {
  */
 
 interface MockParentPort {
-  on: ReturnType<typeof mock>;
-  postMessage: ReturnType<typeof mock>;
+  on: ReturnType<typeof vi.fn>;
+  postMessage: ReturnType<typeof vi.fn>;
   /** Helper — fire a message into the registered handler. */
   fire: (msg: unknown) => void;
 }
 
 function mockParentPort(): MockParentPort {
   let handler: ((event: { data: unknown }) => void) | null = null;
-  const on = mock((_event: 'message', h: (event: { data: unknown }) => void) => {
+  const on = vi.fn((_event: 'message', h: (event: { data: unknown }) => void) => {
     handler = h;
   });
   return {
     on,
-    postMessage: mock(() => {}),
+    postMessage: vi.fn(() => {}),
     fire: (msg: unknown) => handler?.({ data: msg }),
   };
 }
 
 interface MockEnv {
   parentPort: MockParentPort;
-  exit: ReturnType<typeof mock>;
-  killProbe: ReturnType<typeof mock>;
+  exit: ReturnType<typeof vi.fn>;
+  killProbe: ReturnType<typeof vi.fn>;
   signalHandlers: Map<string, () => void>;
   intervals: Array<{ cb: () => void; ms: number }>;
-  intervalCancel: ReturnType<typeof mock>;
+  intervalCancel: ReturnType<typeof vi.fn>;
 }
 
 function buildEnv(): MockEnv {
   const env: MockEnv = {
     parentPort: mockParentPort(),
-    exit: mock(() => {}),
-    killProbe: mock(() => {}),
+    exit: vi.fn(() => {}),
+    killProbe: vi.fn(() => {}),
     signalHandlers: new Map(),
     intervals: [],
-    intervalCancel: mock(() => {}),
+    intervalCancel: vi.fn(() => {}),
   };
   return env;
 }
@@ -81,7 +81,7 @@ function makeFakePrepared(overrides?: Partial<PreparedBootEnvironment>): Prepare
 }
 
 function fakePrepare(returnValue?: PreparedBootEnvironment) {
-  return mock(() => Promise.resolve(returnValue ?? makeFakePrepared()));
+  return vi.fn(() => Promise.resolve(returnValue ?? makeFakePrepared()));
 }
 
 describe('setupUtility (IPC handshake + lifecycle)', () => {
@@ -94,11 +94,11 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
   test('on init message: imports server, calls bootServer with M1 opt-outs, posts ready', async () => {
     const fakeBooted = {
       port: 51234,
-      destroy: mock(() => Promise.resolve()),
+      destroy: vi.fn(() => Promise.resolve()),
       degraded: [] as readonly string[],
     };
-    const bootServer = mock(() => Promise.resolve(fakeBooted));
-    const importServer = mock(() =>
+    const bootServer = vi.fn(() => Promise.resolve(fakeBooted));
+    const importServer = vi.fn(() =>
       Promise.resolve({ bootServer } as unknown as typeof import('@inkeep/open-knowledge-server')),
     );
     const prepared = makeFakePrepared({ contentDir: '/fake/test-project', contentRoot: undefined });
@@ -112,7 +112,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
       prepareBootEnvironment: fakePrepare(prepared),
     });
@@ -150,7 +150,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
   });
 
   test('on init failure: posts error and exits non-zero', async () => {
-    const importServer = mock(() => Promise.reject(new Error('boot failed')));
+    const importServer = vi.fn(() => Promise.reject(new Error('boot failed')));
     const handle = setupUtility({
       parentPort: env.parentPort,
       importServer,
@@ -160,7 +160,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
     });
 
@@ -176,10 +176,10 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
   test('parent-death poll: triggers shutdown on EPERM/ESRCH', async () => {
     const fakeBooted = {
       port: 51234,
-      destroy: mock(() => Promise.resolve()),
+      destroy: vi.fn(() => Promise.resolve()),
       degraded: [] as readonly string[],
     };
-    const bootServer = mock(() => Promise.resolve(fakeBooted));
+    const bootServer = vi.fn(() => Promise.resolve(fakeBooted));
 
     const handle = setupUtility({
       parentPort: env.parentPort,
@@ -197,7 +197,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
       parentPollMs: 100,
       prepareBootEnvironment: fakePrepare(),
@@ -216,9 +216,9 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
   });
 
   test('shutdown IPC: drains booted server then exits 0', async () => {
-    const destroy = mock(() => Promise.resolve());
+    const destroy = vi.fn(() => Promise.resolve());
     const fakeBooted = { port: 51234, destroy, degraded: [] as readonly string[] };
-    const bootServer = mock(() => Promise.resolve(fakeBooted));
+    const bootServer = vi.fn(() => Promise.resolve(fakeBooted));
 
     const handle = setupUtility({
       parentPort: env.parentPort,
@@ -232,7 +232,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
       prepareBootEnvironment: fakePrepare(),
     });
@@ -255,9 +255,9 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
   });
 
   test('SIGTERM handler triggers same shutdown path as IPC', async () => {
-    const destroy = mock(() => Promise.resolve());
+    const destroy = vi.fn(() => Promise.resolve());
     const fakeBooted = { port: 51234, destroy, degraded: [] as readonly string[] };
-    const bootServer = mock(() => Promise.resolve(fakeBooted));
+    const bootServer = vi.fn(() => Promise.resolve(fakeBooted));
 
     const handle = setupUtility({
       parentPort: env.parentPort,
@@ -271,7 +271,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
       prepareBootEnvironment: fakePrepare(),
     });
@@ -292,9 +292,9 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
   });
 
   test('shutdown is idempotent — multiple calls drain once', async () => {
-    const destroy = mock(() => Promise.resolve());
+    const destroy = vi.fn(() => Promise.resolve());
     const fakeBooted = { port: 51234, destroy, degraded: [] as readonly string[] };
-    const bootServer = mock(() => Promise.resolve(fakeBooted));
+    const bootServer = vi.fn(() => Promise.resolve(fakeBooted));
 
     const handle = setupUtility({
       parentPort: env.parentPort,
@@ -308,7 +308,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
       prepareBootEnvironment: fakePrepare(),
     });
@@ -331,8 +331,8 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       durationMs: 12,
       timestamp: '2026-04-21T00:00:00.000Z',
     };
-    const runSmoke = mock(() => Promise.resolve(smokeResult));
-    const writeSmokeResult = mock(() => Promise.resolve());
+    const runSmoke = vi.fn(() => Promise.resolve(smokeResult));
+    const writeSmokeResult = vi.fn(() => Promise.resolve());
 
     setupUtility({
       parentPort: env.parentPort,
@@ -344,7 +344,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
       runSmoke,
       env: {
@@ -375,8 +375,8 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       durationMs: 5,
       timestamp: '2026-04-21T00:00:00.000Z',
     };
-    const runSmoke = mock(() => Promise.resolve(smokeResult));
-    const writeSmokeResult = mock(() => Promise.resolve());
+    const runSmoke = vi.fn(() => Promise.resolve(smokeResult));
+    const writeSmokeResult = vi.fn(() => Promise.resolve());
 
     setupUtility({
       parentPort: env.parentPort,
@@ -388,7 +388,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
       runSmoke,
       env: {
@@ -416,8 +416,8 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       durationMs: 8,
       timestamp: '2026-04-21T00:00:00.000Z',
     };
-    const runSmoke = mock(() => Promise.resolve(smokeResult));
-    const writeSmokeResult = mock(() => Promise.resolve());
+    const runSmoke = vi.fn(() => Promise.resolve(smokeResult));
+    const writeSmokeResult = vi.fn(() => Promise.resolve());
 
     setupUtility({
       parentPort: env.parentPort,
@@ -429,7 +429,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
       runSmoke,
       env: { OK_DEBUG_KEYRING_SMOKE: '1' },
@@ -452,7 +452,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
   });
 
   test('boot auto-smoke: env unset → no smoke runs, listener registered immediately', async () => {
-    const runSmoke = mock(() =>
+    const runSmoke = vi.fn(() =>
       Promise.resolve({ ok: true, timestamp: 'x' } as KeyringSmokeResult),
     );
 
@@ -466,7 +466,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
       runSmoke,
       env: {},
@@ -485,8 +485,8 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       durationMs: 3,
       timestamp: '2026-04-21T00:00:00.000Z',
     };
-    const runSmoke = mock(() => Promise.resolve(smokeResult));
-    const writeSmokeResult = mock(() => Promise.reject(new Error('EACCES')));
+    const runSmoke = vi.fn(() => Promise.resolve(smokeResult));
+    const writeSmokeResult = vi.fn(() => Promise.reject(new Error('EACCES')));
 
     setupUtility({
       parentPort: env.parentPort,
@@ -498,7 +498,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
       runSmoke,
       env: {
@@ -526,13 +526,13 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       durationMs: 7,
       timestamp: '2026-04-21T00:00:00.000Z',
     };
-    const runSmoke = mock(() => Promise.resolve(smokeResult));
+    const runSmoke = vi.fn(() => Promise.resolve(smokeResult));
 
     setupUtility({
       parentPort: env.parentPort,
       importServer: () =>
         Promise.resolve({
-          bootServer: mock(() => Promise.resolve({})),
+          bootServer: vi.fn(() => Promise.resolve({})),
         } as unknown as typeof import('@inkeep/open-knowledge-server')),
       exit: env.exit,
       parentPid: 99999,
@@ -540,7 +540,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
       runSmoke,
     });
@@ -559,10 +559,10 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
   test('degraded subsystems are reported via separate IPC after ready', async () => {
     const fakeBooted = {
       port: 51234,
-      destroy: mock(() => Promise.resolve()),
+      destroy: vi.fn(() => Promise.resolve()),
       degraded: ['shadow-repo'] as readonly string[],
     };
-    const bootServer = mock(() => Promise.resolve(fakeBooted));
+    const bootServer = vi.fn(() => Promise.resolve(fakeBooted));
 
     const handle = setupUtility({
       parentPort: env.parentPort,
@@ -576,7 +576,7 @@ describe('setupUtility (IPC handshake + lifecycle)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
       prepareBootEnvironment: fakePrepare(),
     });
@@ -610,10 +610,10 @@ describe('handleInit boot prelude (FR-16/17/18/19/22/24)', () => {
     });
     const fakeBooted = {
       port: 4242,
-      destroy: mock(() => Promise.resolve()),
+      destroy: vi.fn(() => Promise.resolve()),
       degraded: [] as readonly string[],
     };
-    const bootServer = mock(() => Promise.resolve(fakeBooted));
+    const bootServer = vi.fn(() => Promise.resolve(fakeBooted));
 
     const handle = setupUtility({
       parentPort: env.parentPort,
@@ -627,7 +627,7 @@ describe('handleInit boot prelude (FR-16/17/18/19/22/24)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
       prepareBootEnvironment: fakePrepare(prepared),
     });
@@ -653,10 +653,10 @@ describe('handleInit boot prelude (FR-16/17/18/19/22/24)', () => {
     const prepare = fakePrepare();
     const fakeBooted = {
       port: 4242,
-      destroy: mock(() => Promise.resolve()),
+      destroy: vi.fn(() => Promise.resolve()),
       degraded: [] as readonly string[],
     };
-    const bootServer = mock(() => Promise.resolve(fakeBooted));
+    const bootServer = vi.fn(() => Promise.resolve(fakeBooted));
 
     const handle = setupUtility({
       parentPort: env.parentPort,
@@ -670,7 +670,7 @@ describe('handleInit boot prelude (FR-16/17/18/19/22/24)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
       prepareBootEnvironment: prepare,
     });
@@ -697,11 +697,11 @@ describe('handleInit boot prelude (FR-16/17/18/19/22/24)', () => {
   test('OK_DEBUG_DESKTOP_BOOT_TRACE=1 logs the resolved config trace', async () => {
     const fakeBooted = {
       port: 4242,
-      destroy: mock(() => Promise.resolve()),
+      destroy: vi.fn(() => Promise.resolve()),
       degraded: [] as readonly string[],
     };
-    const bootServer = mock(() => Promise.resolve(fakeBooted));
-    const warnSpy = mock(() => {});
+    const bootServer = vi.fn(() => Promise.resolve(fakeBooted));
+    const warnSpy = vi.fn(() => {});
     const originalWarn = console.warn;
     console.warn = warnSpy;
     try {
@@ -717,7 +717,7 @@ describe('handleInit boot prelude (FR-16/17/18/19/22/24)', () => {
         onSignal: (sig, h) => env.signalHandlers.set(sig, h),
         setInterval: (cb, ms) => {
           env.intervals.push({ cb, ms });
-          return { unref: mock(() => {}), clear: env.intervalCancel };
+          return { unref: vi.fn(() => {}), clear: env.intervalCancel };
         },
         prepareBootEnvironment: fakePrepare(
           makeFakePrepared({
@@ -759,10 +759,10 @@ describe('handleInit boot prelude (FR-16/17/18/19/22/24)', () => {
     const prepared = makeFakePrepared({ config, configValid: false });
     const fakeBooted = {
       port: 4242,
-      destroy: mock(() => Promise.resolve()),
+      destroy: vi.fn(() => Promise.resolve()),
       degraded: [] as readonly string[],
     };
-    const bootServer = mock(() => Promise.resolve(fakeBooted));
+    const bootServer = vi.fn(() => Promise.resolve(fakeBooted));
 
     const handle = setupUtility({
       parentPort: env.parentPort,
@@ -776,7 +776,7 @@ describe('handleInit boot prelude (FR-16/17/18/19/22/24)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
       prepareBootEnvironment: fakePrepare(prepared),
     });
@@ -827,7 +827,7 @@ describe('resolveContentDir (FR-17 unit)', () => {
   });
 
   test('".." escape falls back to ipcFallback (defense-in-depth)', () => {
-    const warnSpy = mock(() => {});
+    const warnSpy = vi.fn(() => {});
     const originalWarn = console.warn;
     console.warn = warnSpy;
     try {
@@ -844,7 +844,7 @@ describe('resolveContentDir (FR-17 unit)', () => {
   });
 
   test('absolute content.dir outside projectDir falls back to ipcFallback', () => {
-    const warnSpy = mock(() => {});
+    const warnSpy = vi.fn(() => {});
     const originalWarn = console.warn;
     console.warn = warnSpy;
     try {
@@ -890,10 +890,10 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
 
     const fakeBooted = {
       port: 4242,
-      destroy: mock(() => Promise.resolve()),
+      destroy: vi.fn(() => Promise.resolve()),
       degraded: [] as readonly string[],
     };
-    const bootServer = mock(() => Promise.resolve(fakeBooted));
+    const bootServer = vi.fn(() => Promise.resolve(fakeBooted));
 
     const handle = setupUtility({
       parentPort: env.parentPort,
@@ -907,7 +907,7 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
     });
 
@@ -936,10 +936,10 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
     // Pre-state: no .git/, no .ok/. The prelude must materialize both.
     const fakeBooted = {
       port: 4242,
-      destroy: mock(() => Promise.resolve()),
+      destroy: vi.fn(() => Promise.resolve()),
       degraded: [] as readonly string[],
     };
-    const bootServer = mock(() => Promise.resolve(fakeBooted));
+    const bootServer = vi.fn(() => Promise.resolve(fakeBooted));
 
     const handle = setupUtility({
       parentPort: env.parentPort,
@@ -953,7 +953,7 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
     });
 
@@ -991,12 +991,12 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
 
     const fakeBooted = {
       port: 4242,
-      destroy: mock(() => Promise.resolve()),
+      destroy: vi.fn(() => Promise.resolve()),
       degraded: [] as readonly string[],
     };
-    const bootServer = mock(() => Promise.resolve(fakeBooted));
+    const bootServer = vi.fn(() => Promise.resolve(fakeBooted));
 
-    const warnSpy = mock(() => {});
+    const warnSpy = vi.fn(() => {});
     const originalWarn = console.warn;
     console.warn = warnSpy;
     try {
@@ -1012,7 +1012,7 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
         onSignal: (sig, h) => env.signalHandlers.set(sig, h),
         setInterval: (cb, ms) => {
           env.intervals.push({ cb, ms });
-          return { unref: mock(() => {}), clear: env.intervalCancel };
+          return { unref: vi.fn(() => {}), clear: env.intervalCancel };
         },
       });
 
@@ -1056,10 +1056,10 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
 
     const fakeBooted = {
       port: 4242,
-      destroy: mock(() => Promise.resolve()),
+      destroy: vi.fn(() => Promise.resolve()),
       degraded: [] as readonly string[],
     };
-    const bootServer = mock(() => Promise.resolve(fakeBooted));
+    const bootServer = vi.fn(() => Promise.resolve(fakeBooted));
 
     const handle = setupUtility({
       parentPort: env.parentPort,
@@ -1073,7 +1073,7 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
       onSignal: (sig, h) => env.signalHandlers.set(sig, h),
       setInterval: (cb, ms) => {
         env.intervals.push({ cb, ms });
-        return { unref: mock(() => {}), clear: env.intervalCancel };
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
       },
     });
 

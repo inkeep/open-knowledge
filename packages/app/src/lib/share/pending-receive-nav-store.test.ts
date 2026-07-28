@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
 import {
   createPendingReceiveNavStore,

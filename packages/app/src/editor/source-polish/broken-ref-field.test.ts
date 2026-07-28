@@ -1,7 +1,7 @@
-import { describe, expect, test } from 'bun:test';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { EditorState } from '@codemirror/state';
 import { GFM } from '@lezer/markdown';
+import { describe, expect, test } from 'vitest';
 import { scanBrokenRefs } from './broken-ref-field';
 
 function createState(doc: string): EditorState {

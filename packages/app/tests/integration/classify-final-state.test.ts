@@ -6,7 +6,7 @@
  * pinned here against hand-built client states: a future inversion of the
  * pass/fail decision reddens reliably instead of probabilistically.
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { classifyFinalState, serializeFragment } from './test-harness';
 

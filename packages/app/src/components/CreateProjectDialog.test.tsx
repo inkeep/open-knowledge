@@ -11,7 +11,7 @@
  * `CreateProjectDialog.runtime.dom.test.tsx`; cascade effect behavior lives
  * in `CreateProjectDialog.cascade-staleness.dom.test.tsx`.
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   basenamePreview,
   CreateProjectDialog,

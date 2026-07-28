@@ -37,8 +37,8 @@
  * `walk-currency-test-harness.ts` for the install/restore contract.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { Editor } from '@tiptap/core';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type * as Y from 'yjs';
 import { buildPatternDConstructorOptions } from './TiptapEditor';
 import {

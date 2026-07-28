@@ -38,10 +38,10 @@
  * test just enforces what the engineer commits.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { describe, expect, test } from 'vitest';
 import { withTempDir } from '../../temp-dir.test-helper.ts';
 import { computeLeakRateMbPerCycle } from '../lib/cell-measurement.ts';
 import {

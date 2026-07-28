@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { type FetchFn, isGitHubRepoPublic } from './visibility.ts';
 
 function mockFetch(handler: (url: string, init?: RequestInit) => Response | Promise<Response>): {

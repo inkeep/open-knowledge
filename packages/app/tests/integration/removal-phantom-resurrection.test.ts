@@ -32,7 +32,6 @@
  * concurrently within a process, shared docNames cross-pollinate).
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
   mkdirSync,
@@ -49,6 +48,7 @@ import {
   parseAuthRejectionWire,
   resetMetrics,
 } from '@inkeep/open-knowledge-server';
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestServer, type TestServer } from './test-harness';
 

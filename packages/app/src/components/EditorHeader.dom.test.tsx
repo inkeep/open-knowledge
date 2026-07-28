@@ -1,14 +1,16 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import userEvent from '@testing-library/user-event';
+import type { ComponentProps, ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import {
   expectVisualClassTokens,
   expectVisualClassTokensAbsent,
 } from '@/test-utils/visual-contract';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
   useLingui: () => ({
@@ -21,27 +23,33 @@ let activeDocName: string | null = 'docs/notes';
 let activeTarget: unknown = { kind: 'doc' };
 let sidebarState: 'expanded' | 'collapsed' = 'expanded';
 let isDraggingRail = false;
+let singleFile = false;
 // Captures the `input` prop EditorHeader hands to ShareButton.
 let lastShareInput: unknown;
+const onOpenSearch = vi.fn(() => {});
 
-mock.module('@/editor/DocumentContext', () => ({
+vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({ activeDocName, activeTarget }),
 }));
 
-mock.module('@/components/ui/sidebar', () => ({
+vi.doMock('@/lib/single-file-mode', () => ({
+  useSingleFileMode: () => singleFile,
+}));
+
+vi.doMock('@/components/ui/sidebar', () => ({
   useSidebar: () => ({ state: sidebarState, isDraggingRail }),
-  SidebarTrigger: ({ className }: { className?: string }) => (
-    <button type="button" data-testid="sidebar-trigger" className={className}>
+  SidebarTrigger: ({ className, ...props }: ComponentProps<'button'>) => (
+    <button type="button" data-testid="sidebar-trigger" className={className} {...props}>
       sidebar
     </button>
   ),
 }));
 
-mock.module('./EditorTabs', () => ({
+vi.doMock('./EditorTabs', () => ({
   EditorTabs: () => <div data-testid="editor-tabs" />,
 }));
 
-mock.module('./ShareButton', () => ({
+vi.doMock('./ShareButton', () => ({
   ShareButton: ({ input }: { input: unknown }) => {
     lastShareInput = input;
     return (
@@ -52,29 +60,29 @@ mock.module('./ShareButton', () => ({
   },
 }));
 
-mock.module('./PublishToGitHubDialog', () => ({
+vi.doMock('./PublishToGitHubDialog', () => ({
   PublishToGitHubDialog: ({ open }: { open: boolean }) => (
     <div data-testid="publish-dialog" data-open={String(open)} />
   ),
 }));
 
-mock.module('./SyncStatusBadge', () => ({
+vi.doMock('./SyncStatusBadge', () => ({
   SyncStatusBadge: () => <div data-testid="sync-status-badge" />,
 }));
 
-mock.module('@/presence/PresenceBar', () => ({
+vi.doMock('@/presence/PresenceBar', () => ({
   PresenceBar: () => <div data-testid="presence-bar" />,
 }));
 
-mock.module('./BetaBadge', () => ({
+vi.doMock('./BetaBadge', () => ({
   BetaBadge: () => <div data-testid="beta-badge" />,
 }));
 
-mock.module('./SettingsButton', () => ({
+vi.doMock('./SettingsButton', () => ({
   SettingsButton: () => <button type="button">Settings</button>,
 }));
 
-mock.module('./HelpPopover', () => ({
+vi.doMock('./HelpPopover', () => ({
   HelpPopover: () => <button type="button">Resources</button>,
 }));
 
@@ -88,8 +96,8 @@ function setElectronHost(enabled: boolean) {
 async function renderHeader() {
   const { EditorHeader } = await import('./EditorHeader');
   render(
-    <TooltipProvider>
-      <EditorHeader />
+    <TooltipProvider delayDuration={0}>
+      <EditorHeader onOpenSearch={onOpenSearch} />
     </TooltipProvider>,
   );
   return document.querySelector('header') as HTMLElement;
@@ -103,7 +111,9 @@ describe('EditorHeader runtime behavior', () => {
     activeTarget = { kind: 'doc' };
     sidebarState = 'expanded';
     isDraggingRail = false;
+    singleFile = false;
     lastShareInput = undefined;
+    onOpenSearch.mockClear();
   });
 
   test('exports the EditorHeader component', async () => {
@@ -131,9 +141,52 @@ describe('EditorHeader runtime behavior', () => {
     expectVisualClassTokensAbsent(screen.getByTestId('sidebar-trigger').className, [
       '[-webkit-app-region:no-drag]',
     ]);
+    expect(screen.queryByTestId('navigation-history-controls')).toBeNull();
   });
 
-  test('Electron collapsed-sidebar host enables drag region and traffic-light reserve', async () => {
+  test('renders the expanded Files shortcut as a Kbd keycap', async () => {
+    const user = userEvent.setup();
+    await renderHeader();
+
+    await user.hover(screen.getByTestId('sidebar-trigger'));
+    const tooltip = await screen.findByRole('tooltip', {
+      name: `Hide Files ${formatShortcutLabel('toggle-files-sidebar')}`,
+    });
+    expect(tooltip.querySelector('[data-slot="kbd"]')?.textContent).toBe(
+      formatShortcut('toggle-files-sidebar'),
+    );
+  });
+
+  test('renders collapsed Files and Search shortcuts as Kbd keycaps with spoken button text', async () => {
+    const user = userEvent.setup();
+    sidebarState = 'collapsed';
+    await renderHeader();
+
+    const filesButton = screen.getByTestId('sidebar-trigger');
+    await user.hover(filesButton);
+    const filesTooltip = await screen.findByRole('tooltip', {
+      name: `Show Files ${formatShortcutLabel('toggle-files-sidebar')}`,
+    });
+    expect(filesTooltip.querySelector('[data-slot="kbd"]')?.textContent).toBe(
+      formatShortcut('toggle-files-sidebar'),
+    );
+    cleanup();
+    await renderHeader();
+
+    const searchButton = screen.getByRole('button', {
+      name: `Search (${formatShortcutLabel('command-palette')})`,
+    });
+    await user.hover(searchButton);
+    const searchTooltip = await screen.findByRole('tooltip', {
+      name: `Search ${formatShortcutLabel('command-palette')}`,
+    });
+    expect(searchTooltip.querySelector('[data-slot="kbd"]')?.textContent).toBe(
+      formatShortcut('command-palette'),
+    );
+    expect(searchButton).not.toBeNull();
+  });
+
+  test('Electron collapsed-sidebar host groups workspace navigation without a Search-to-Back separator', async () => {
     setElectronHost(true);
     sidebarState = 'collapsed';
     const header = await renderHeader();
@@ -147,8 +200,26 @@ describe('EditorHeader runtime behavior', () => {
     expectVisualClassTokens(screen.getByTestId('sidebar-trigger').className, [
       '[-webkit-app-region:no-drag]',
     ]);
+    const leftZone = header.children.item(0) as HTMLElement;
+    const workspaceNavigation = screen.getByRole('group', { name: 'Workspace navigation' });
+    const search = screen.getByRole('button', { name: /^Search/ });
+    const navigation = screen.getByTestId('navigation-history-controls');
+    const separator = leftZone.querySelector('[data-slot="separator"]') as HTMLElement;
+    expect(workspaceNavigation.contains(screen.getByTestId('sidebar-trigger'))).toBe(true);
+    expect(workspaceNavigation.contains(search)).toBe(true);
+    expect(workspaceNavigation.contains(navigation)).toBe(true);
+    expect(workspaceNavigation.querySelector('[data-slot="button-group-separator"]')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Back' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Forward' })).toHaveLength(1);
+    expect(
+      search.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      navigation.compareDocumentPosition(separator) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expectVisualClassTokens(navigation.className, ['[-webkit-app-region:no-drag]']);
     const rightZone = header.children.item(1) as HTMLElement;
-    expectVisualClassTokens(rightZone.className, ['[&>*]:[-webkit-app-region:no-drag]']);
+    expectVisualClassTokens(rightZone.className, ['*:[-webkit-app-region:no-drag]']);
   });
 
   test('Electron expanded sidebar keeps drag region but does not reserve traffic-light padding', async () => {
@@ -158,6 +229,7 @@ describe('EditorHeader runtime behavior', () => {
 
     expectVisualClassTokens(header.className, ['[-webkit-app-region:drag]']);
     expectVisualClassTokensAbsent(header.className, ['pl-[var(--ok-titlebar-reserve-left,1rem)]']);
+    expect(screen.queryByTestId('navigation-history-controls')).toBeNull();
   });
 
   test('rail drag keeps the reserve but drops the padding transition so it snaps with the sidebar', async () => {
@@ -172,6 +244,17 @@ describe('EditorHeader runtime behavior', () => {
 
     expectVisualClassTokens(header.className, ['pl-[var(--ok-titlebar-reserve-left,1rem)]']);
     expectVisualClassTokensAbsent(header.className, ['motion-safe:transition-[padding]']);
+  });
+
+  test('single-file mode omits collapsed navigation history with the rest of project chrome', async () => {
+    setElectronHost(true);
+    sidebarState = 'collapsed';
+    singleFile = true;
+    await renderHeader();
+
+    expect(screen.queryByTestId('sidebar-trigger')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Search/ })).toBeNull();
+    expect(screen.queryByTestId('navigation-history-controls')).toBeNull();
   });
 
   test('renders tabs and action cluster without project or asset-title chrome', async () => {

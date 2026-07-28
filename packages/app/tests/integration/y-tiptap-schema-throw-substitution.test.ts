@@ -38,9 +38,9 @@
  *   or WebSocket plumbing.
  */
 
-import { describe, expect, test } from 'bun:test';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { initProseMirrorDoc } from '@tiptap/y-tiptap';
+import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 
 import { schema } from './test-harness';

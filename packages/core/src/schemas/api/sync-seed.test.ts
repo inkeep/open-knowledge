@@ -1,13 +1,16 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   ConflictEntrySchema,
   InstallSkillSuccessSchema,
   ProblemTypeSchema,
+  PullOutcomeSchema,
+  PushPermissionSchema,
   SeedApplyRequestSchema,
   SeedApplySuccessSchema,
   SeedPlanSuccessSchema,
   SyncConflictContentSuccessSchema,
   SyncConflictsSuccessSchema,
+  SyncModeSchema,
   SyncRemoteSchema,
   SyncResolveConflictRequestSchema,
   SyncResolveConflictSuccessSchema,
@@ -54,6 +57,34 @@ describe('SyncStateSchema', () => {
   });
   test('rejects unknown state', () => {
     expect(SyncStateSchema.safeParse('exploding').success).toBe(false);
+  });
+});
+
+describe('SyncModeSchema', () => {
+  test('accepts every documented mode', () => {
+    for (const m of ['off', 'follow', 'full']) {
+      expect(SyncModeSchema.safeParse(m).success).toBe(true);
+    }
+  });
+  test('rejects unknown mode', () => {
+    expect(SyncModeSchema.safeParse('bidirectional').success).toBe(false);
+    // A boolean is not a mode — this is the field that replaced the legacy
+    // `enabled` boolean on the wire.
+    expect(SyncModeSchema.safeParse(true).success).toBe(false);
+  });
+});
+
+describe('PullOutcomeSchema', () => {
+  test('accepts every documented outcome', () => {
+    for (const o of ['succeeded', 'up-to-date', 'conflict', 'refused', 'error']) {
+      expect(PullOutcomeSchema.safeParse(o).success).toBe(true);
+    }
+  });
+  test('rejects an unknown outcome', () => {
+    // `error-class` (hyphenated) is the retired near-miss — the canonical value
+    // is now `error`, so a producer emitting the old long form must fail here.
+    expect(PullOutcomeSchema.safeParse('error-class').success).toBe(false);
+    expect(PullOutcomeSchema.safeParse('pending').success).toBe(false);
   });
 });
 
@@ -120,6 +151,75 @@ describe('SyncStatusSchema', () => {
         remote: { label: 'gitlab.com/team/notes', webUrl: null },
       }).success,
     ).toBe(true);
+  });
+  test('accepts a populated syncMode', () => {
+    for (const m of ['off', 'follow', 'full'] as const) {
+      expect(SyncStatusSchema.safeParse({ ...validStatus, syncMode: m }).success).toBe(true);
+    }
+  });
+  test('syncMode is additive: a status without it still parses', () => {
+    // Optional for version-skew safety — a payload from an engine predating the
+    // field must not fail validation on a newer client.
+    expect('syncMode' in validStatus).toBe(false);
+    expect(SyncStatusSchema.safeParse(validStatus).success).toBe(true);
+  });
+  test('rejects an invalid syncMode', () => {
+    expect(SyncStatusSchema.safeParse({ ...validStatus, syncMode: 'sideways' }).success).toBe(
+      false,
+    );
+  });
+  test('accepts a populated lastPullUtc + lastPullOutcome', () => {
+    expect(
+      SyncStatusSchema.safeParse({
+        ...validStatus,
+        lastPullUtc: '2026-07-22T04:00:00.000Z',
+        lastPullOutcome: 'succeeded',
+      }).success,
+    ).toBe(true);
+  });
+  test('lastPullUtc/lastPullOutcome are additive: a status without them still parses', () => {
+    // Optional for version-skew safety — a payload from an engine predating the
+    // one-shot-outcome contract must not fail validation on a newer client.
+    expect('lastPullUtc' in validStatus).toBe(false);
+    expect('lastPullOutcome' in validStatus).toBe(false);
+    expect(SyncStatusSchema.safeParse(validStatus).success).toBe(true);
+  });
+  test('accepts null lastPullUtc/lastPullOutcome (no pull yet)', () => {
+    expect(
+      SyncStatusSchema.safeParse({ ...validStatus, lastPullUtc: null, lastPullOutcome: null })
+        .success,
+    ).toBe(true);
+  });
+  test('rejects an invalid lastPullOutcome', () => {
+    expect(
+      SyncStatusSchema.safeParse({ ...validStatus, lastPullOutcome: 'error-class' }).success,
+    ).toBe(false);
+  });
+});
+
+describe('PushPermissionSchema', () => {
+  test('parses every unknown variant including ssh-unverified', () => {
+    for (const unknownError of [
+      'network',
+      'timeout',
+      'rate-limit',
+      'token-invalid',
+      'malformed-response',
+      'ssh-unverified',
+    ]) {
+      const parsed = PushPermissionSchema.safeParse({ checkStatus: 'unknown', unknownError });
+      expect(parsed.success).toBe(true);
+    }
+  });
+  test('round-trips the ssh-unverified member', () => {
+    const wire = { checkStatus: 'unknown' as const, unknownError: 'ssh-unverified' as const };
+    const parsed = PushPermissionSchema.parse(wire);
+    expect(parsed).toEqual(wire);
+  });
+  test('rejects an unlisted unknownError code', () => {
+    expect(
+      PushPermissionSchema.safeParse({ checkStatus: 'unknown', unknownError: 'bogus' }).success,
+    ).toBe(false);
   });
 });
 

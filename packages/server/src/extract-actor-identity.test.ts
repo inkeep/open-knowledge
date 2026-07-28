@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import type { Principal } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { extractActorIdentity } from './extract-actor-identity.ts';
 
 const fixturePrincipal: Principal = {

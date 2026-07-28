@@ -7,13 +7,13 @@
  * provider — the same pattern `SourceEditor.dom.test.tsx` uses.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import * as linguiShim from '../../tests/lingui-macro-shim';
 
-mock.module('@lingui/react/macro', () => linguiShim);
+vi.doMock('@lingui/react/macro', () => linguiShim);
 
 const { SkillProperties } = await import('./SkillProperties');
 const { PropertyProvider } = await import('./PropertyContext');
@@ -51,7 +51,7 @@ describe('SkillProperties (CRDT)', () => {
 
   test('committing a changed name fires onRename (a git-mv rename), not a patch', () => {
     const { provider, ytext } = makeProvider(SOURCE);
-    const onRename = mock((_next: string) => {});
+    const onRename = vi.fn((_next: string) => {});
     renderPanel(<SkillProperties provider={provider} name="foo" onRename={onRename} />);
     const nameInput = screen.getByTestId('skill-name-input');
     fireEvent.change(nameInput, { target: { value: 'bar' } });
@@ -63,7 +63,7 @@ describe('SkillProperties (CRDT)', () => {
 
   test('an unchanged name does not fire onRename', () => {
     const { provider } = makeProvider(SOURCE);
-    const onRename = mock((_next: string) => {});
+    const onRename = vi.fn((_next: string) => {});
     renderPanel(<SkillProperties provider={provider} name="foo" onRename={onRename} />);
     const nameInput = screen.getByTestId('skill-name-input');
     fireEvent.blur(nameInput);

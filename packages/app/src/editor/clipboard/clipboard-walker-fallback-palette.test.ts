@@ -8,7 +8,7 @@
  * appends as a no-op — Activity-hidden copies would lose the descriptor
  * entirely.
  *
- * bun-test has no DOM (`document.createElement` is unavailable), so the
+ * the vitest node environment has no DOM (`document.createElement` is unavailable), so the
  * DOM-shape behavior of the palette functions is covered by Playwright
  * E2E. This file pins the **structural** contracts that are testable
  * without a DOM:
@@ -19,14 +19,18 @@
  * - `TYPE_TO_TONE` shape pins the supported callout type set.
  */
 
-import { describe, expect, test } from 'bun:test';
+import type { Node as PmNode } from '@tiptap/pm/model';
+import { JSDOM } from 'jsdom';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { classifyUrlPortability } from './clipboard-sanitize.ts';
 import {
   PALETTE_DESCRIPTOR_NAMES,
+  paletteFor,
   paletteUrlReason,
   TYPE_TO_TONE,
   toneForType,
 } from './clipboard-walker-fallback-palette.ts';
+import { nonPortableDescriptorNames } from './non-portable-descriptors.test-helper.ts';
 
 describe('PALETTE_DESCRIPTOR_NAMES — registry coverage', () => {
   test('covers every canonical descriptor', () => {
@@ -57,7 +61,36 @@ describe('PALETTE_DESCRIPTOR_NAMES — registry coverage', () => {
     // Hard count anchor. If a descriptor is added or removed, this
     // failing test becomes the prompt to also update the palette switch
     // and PALETTE_DESCRIPTOR_NAMES together.
-    expect(PALETTE_DESCRIPTOR_NAMES.length).toBe(10);
+    expect(PALETTE_DESCRIPTOR_NAMES.length).toBe(12);
+  });
+});
+
+describe('PALETTE_DESCRIPTOR_NAMES — registry-derived non-portable coverage', () => {
+  // The non-portable-render descriptors are the ones the source fallback
+  // (`sourceFallbackFormFor`) canonicalizes: their live React render is
+  // KaTeX / mermaid SVG, which pastes as garbage cross-app. The palette
+  // path must cover every descriptor whose RENDER identity is one of those
+  // canonicals, not just the canonically-named ones — a compat descriptor
+  // authored as `$$…$$` (`DollarMath`) or ` ```math ` (`MathFence`) renders
+  // as `<Math>` and so must resolve to a palette entry too. Deriving the
+  // expectation from the registry (rather than a frozen literal list) is
+  // what makes a newly-added non-portable compat descriptor fail loudly
+  // instead of silently dropping out of the Activity-hidden payload.
+  // Set + predicate are shared with the walker-path guard via
+  // non-portable-descriptors.test-helper.ts.
+
+  test('every descriptor that renders as a non-portable canonical has a palette name', () => {
+    const descriptorNames = nonPortableDescriptorNames();
+
+    // Sanity: the registry must actually carry the two math compat rows,
+    // otherwise this test would vacuously pass.
+    expect(descriptorNames).toEqual(
+      expect.arrayContaining(['Math', 'MermaidFence', 'DollarMath', 'MathFence']),
+    );
+
+    for (const name of descriptorNames) {
+      expect([...PALETTE_DESCRIPTOR_NAMES], name).toContain(name);
+    }
   });
 });
 
@@ -109,9 +142,62 @@ describe('toneForType — type-to-tone lookup with prototype-pollution guard', (
 // the palette-side surface — a thin `null|reason` wrapper over
 // `classifyUrlPortability` that gives the palette tests a pure assertion
 // target without needing a DOM (palette functions themselves create real
-// `<img>`/`<video>`/`<audio>` elements, which bun-test cannot exercise).
+// `<img>`/`<video>`/`<audio>` elements, which the vitest node environment
+// cannot exercise).
 // DOM-shape coverage of the actual swap happens in the cross-app
 // sanitizer-proxy fixture tests and Playwright E2E.
+
+// ─── paletteFor — codeBlock route (Activity-hidden preview fallback) ────
+//
+// A preview-active `html`/`xml` code block is a native PM node (not a
+// jsxComponent), so `paletteFor` routes it through
+// `nonPortableRenderSourceFallback` via a pre-switch `codeBlock` guard.
+// That guard is the ONLY thing keeping the Activity-hidden path from
+// dropping the block (a codeBlock that reached the `!== 'jsxComponent'`
+// check returns null). This describe block pins the route so removing the
+// guard fails here. `nonPortableRenderSourceFallback` builds a `<pre>`, so a
+// real DOM is installed for these cases only.
+
+function stubCodeBlock(args: { language: string; meta?: string; textContent?: string }): PmNode {
+  return {
+    type: { name: 'codeBlock' },
+    attrs: { language: args.language, meta: args.meta ?? '' },
+    textContent: args.textContent ?? '',
+  } as unknown as PmNode;
+}
+
+describe('paletteFor — preview-active codeBlock route', () => {
+  let dom: JSDOM;
+  const prevDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  beforeAll(() => {
+    dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
+    Object.defineProperty(globalThis, 'document', {
+      value: dom.window.document,
+      configurable: true,
+      writable: true,
+    });
+  });
+  afterAll(() => {
+    if (prevDocument) Object.defineProperty(globalThis, 'document', prevDocument);
+    else Reflect.deleteProperty(globalThis as unknown as Record<string, unknown>, 'document');
+    dom.window.close();
+  });
+
+  test('preview-active html codeBlock → non-null clean source (guard present)', () => {
+    const el = paletteFor(
+      stubCodeBlock({ language: 'html', meta: 'preview', textContent: '<h1>Hi</h1>' }),
+    );
+    expect(el).not.toBeNull();
+    expect(el?.textContent ?? '').toContain('<h1>Hi</h1>');
+    // Clean fenced source, not the live iframe render.
+    expect(el?.querySelector('iframe')).toBeNull();
+  });
+
+  test('non-preview codeBlock → null (portable clean-clone path)', () => {
+    const el = paletteFor(stubCodeBlock({ language: 'html', textContent: '<h1>Hi</h1>' }));
+    expect(el).toBeNull();
+  });
+});
 
 describe('paletteUrlReason — portability decision', () => {
   test('returns null for fragment-only refs', () => {

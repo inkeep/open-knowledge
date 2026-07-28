@@ -11,6 +11,8 @@ import { msg, t } from '@lingui/core/macro';
 import {
   Blocks,
   Bug,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Download,
   Eye,
@@ -21,7 +23,9 @@ import {
   FolderPlus,
   FoldVertical,
   GitBranch,
+  History,
   LayoutGrid,
+  MessageSquare,
   Network,
   Package,
   PanelLeft,
@@ -117,6 +121,9 @@ export interface PaletteCommandContext {
   openSeedDialog(): void;
   openCreateProjectDialog(): void;
   openReportBugDialog(): void;
+  /** Close the palette and open the persisted report history / retry list. */
+  openBugReportHistory(): void;
+  openFeedbackDialog(): void;
 }
 
 /** Render-order buckets; the palette renders each group under its own heading. */
@@ -160,6 +167,8 @@ export interface PaletteCommand {
  * palette in lockstep with the native menu's `MENU_LABELS` source.
  */
 const PALETTE_COMMAND_LABELS = {
+  back: msg`Back`,
+  forward: msg`Forward`,
   newFile: msg`New file`,
   newFolder: msg`New folder`,
   openGraph: msg`Open graph`,
@@ -171,6 +180,8 @@ const PALETTE_COMMAND_LABELS = {
   settings: msg`Settings`,
   installClaudeDesktop: msg`Install for Claude Chat & Cowork (Desktop App)`,
   reportBug: msg`Report a bug`,
+  bugReportHistory: msg`Bug report history`,
+  sendFeedback: msg`Send feedback`,
   newFromTemplate: msg`New from template`,
   rename: msg`Rename`,
   duplicate: msg`Duplicate`,
@@ -209,6 +220,8 @@ export { PALETTE_COMMAND_LABELS };
  *  `toPaletteCommand` throws at module load if an id is missing, rather than
  *  silently substituting a wrong default. */
 const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
+  'navigate-back': ChevronLeft,
+  'navigate-forward': ChevronRight,
   'new-file': FilePlus2,
   'new-folder': FolderPlus,
   'open-graph': Network,
@@ -220,6 +233,8 @@ const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   settings: Settings,
   'install-claude-desktop': Download,
   'report-bug': Bug,
+  'bug-report-history': History,
+  'send-feedback': MessageSquare,
   'new-from-template': FilePlus2,
   rename: Pencil,
   duplicate: Copy,
@@ -308,6 +323,14 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
   'report-bug': (ctx) => {
     ctx.closePalette();
     ctx.openReportBugDialog();
+  },
+  'bug-report-history': (ctx) => {
+    ctx.closePalette();
+    ctx.openBugReportHistory();
+  },
+  'send-feedback': (ctx) => {
+    ctx.closePalette();
+    ctx.openFeedbackDialog();
   },
   'check-for-updates': (ctx) =>
     ctx.runAction(async () => {

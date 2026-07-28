@@ -23,7 +23,6 @@
  * (real HTTP + listen-on-0 + fetch).
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -34,6 +33,7 @@ import {
   INLINE_RENDERABLE_EXTENSIONS,
 } from '@inkeep/open-knowledge-core';
 import sirv from 'sirv';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createAssetServeMiddleware } from './asset-serve-middleware.ts';
 import { createContentFilter } from './content-filter.ts';
 import { listenOnLoopback } from './loopback-rig-test-helpers.ts';

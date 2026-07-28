@@ -16,7 +16,7 @@ import { appVitestConfig } from './vitest.config';
 // ResizeObserver, scrollIntoView, MessageChannel).
 //
 // `isolate: true` (the forks-pool default, pinned explicitly) gives each file a
-// fresh module registry so a `mock.module(...)` in one .dom.test.tsx cannot leak
+// fresh module registry so a `vi.doMock(...)` in one .dom.test.tsx cannot leak
 // into the next — the parity-critical property the retired `--isolate` flag
 // provided (oven-sh/bun#12823).
 const jsdomSetupPath = fileURLToPath(new URL('./tests/dom/jsdom-preload.ts', import.meta.url));

@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { EditorSelection } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { Config } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { subscribeToOpenAskAiComposer } from '@/components/ask-ai-composer-events';
@@ -111,7 +111,7 @@ describe('SourceEditor word-wrap preference wiring', () => {
     unsubscribeComposer = subscribeToOpenAskAiComposer(() => {
       composerOpenRequests += 1;
     });
-    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/pages') return Response.json({ pages: [] });
       if (url === '/api/documents') return Response.json({ documents: [] });
@@ -241,7 +241,7 @@ describe('SourceEditor word-wrap preference wiring', () => {
 
 describe('SourceEditor outline navigation', () => {
   beforeEach(() => {
-    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/pages') return Response.json({ pages: [] });
       if (url === '/api/documents') return Response.json({ documents: [] });

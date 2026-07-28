@@ -11,9 +11,9 @@
  * the markInputRule contract.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { getSchema } from '@tiptap/core';
 import { EditorState } from '@tiptap/pm/state';
+import { describe, expect, test } from 'vitest';
 import {
   EMPHASIS_STAR_INPUT_RE,
   EMPHASIS_UNDERSCORE_INPUT_RE,

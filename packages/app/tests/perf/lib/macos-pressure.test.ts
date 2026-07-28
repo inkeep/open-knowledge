@@ -13,7 +13,7 @@
  * the platform discriminator path runs without touching the binary.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   isPressureLevel,
   type PressureLevel,

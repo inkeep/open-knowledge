@@ -11,7 +11,7 @@
  *     scaffolded JSON when calibration fails.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import type { TempoQueryResult } from '../lib/tempo-client.ts';
 import {
   analyzeCalibration,

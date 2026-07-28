@@ -31,10 +31,10 @@
  *     same gate blocking the signed-DMG scenarios. Not executable from this test file.
  *
  * Skip gates mirror `deep-link.e2e.ts`:
- *   - `OK_DESKTOP_E2E_SMOKE !== '1'` — opt-in so `bunx playwright test` on the
+ *   - `OK_DESKTOP_E2E_SMOKE !== '1'` — opt-in so `pnpm exec playwright test` on the
  *     whole repo doesn't try to launch Electron in headless CI.
  *   - `process.platform !== 'darwin'` — gates on darwin.
- *   - `out/main/index.js` missing — `bun run build:desktop` must have run.
+ *   - `out/main/index.js` missing — `pnpm run build:desktop` must have run.
  */
 
 import {
@@ -47,18 +47,16 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { expect, test } from './_helpers/smoke-test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAIN_ENTRY = resolve(__dirname, '..', '..', 'out', 'main', 'index.js');
+const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
-const BUILD_EXISTS = existsSync(MAIN_ENTRY);
 
 interface LaunchOpts {
   tmpHome: string;
@@ -76,17 +74,25 @@ function userDataDirFor(tmpHome: string): string {
 }
 
 async function launchApp({ tmpHome, extraEnv }: LaunchOpts): Promise<ElectronApplication> {
-  return electron.launch({
-    args: [MAIN_ENTRY, `--user-data-dir=${userDataDirFor(tmpHome)}`],
-    timeout: 30_000,
-    env: {
-      ...process.env,
-      HOME: tmpHome,
-      OK_M6B_FORCE: '1',
-      OK_DESKTOP_E2E_SMOKE: '1',
-      ...extraEnv,
-    },
-  });
+  return electron.launch(
+    desktopLaunchOptions({
+      target: TARGET,
+      args: [`--user-data-dir=${userDataDirFor(tmpHome)}`],
+      env: {
+        ...process.env,
+        HOME: tmpHome,
+        // A no-op when the target is packaged (the bypass reads
+        // `app.isPackaged || OK_M6B_FORCE === '1'`), so it is safe in both
+        // modes. Notably NOT paired with OK_RECLAIM_DISABLE:
+        // `runMcpWiringOnFirstLaunch` returns an inert handle on that variable
+        // before it ever reaches the packaged gate, which would make every
+        // consent-dialog assertion below vacuous.
+        OK_M6B_FORCE: '1',
+        OK_DESKTOP_E2E_SMOKE: '1',
+        ...extraEnv,
+      },
+    }),
+  );
 }
 
 function createTmpHome(prefix: string): string {
@@ -165,10 +171,7 @@ function forceRemove(pathsToRestore: readonly string[], dir: string): void {
 test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'M6b is macOS-only in v0 (D51 / D-M6-R7).');
-  test.skip(
-    !BUILD_EXISTS,
-    `Main build missing at ${MAIN_ENTRY} — run "bun run build:desktop" first.`,
-  );
+  test.skip(!TARGET.exists, TARGET.missingReason);
 
   // Cold-start `openknowledge://` delivery to a deep-link-opened editor
   // window as the FIRST window. Deferred until signed DMG enables Launch
@@ -233,7 +236,7 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       // to every byte of the chain text. Byte-exact verification lives in the
       // CLI unit tests (`editors.test.ts`).
       expect(typeof okEntry?.args?.[2]).toBe('string');
-      expect(okEntry?.args?.[2]).toContain('# ok-mcp-v1');
+      expect(okEntry?.args?.[2]).toContain('# ok-mcp-v2');
     } finally {
       forceRemove([], tmpHome);
     }

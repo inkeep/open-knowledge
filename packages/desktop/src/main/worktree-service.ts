@@ -46,14 +46,15 @@ import { seedWorktreeProjectSetup } from './worktree-setup-inherit.ts';
 
 const execFileAsync = promisify(execFile);
 
-/** English-stable, PATH-augmented git env — see `git-spawn-env.ts`. */
-const GIT_ENV = gitSpawnEnv();
-
-/** Fetch spawn env: `GIT_ENV` plus `GIT_TERMINAL_PROMPT=0`, mirroring the
- *  server's git discipline — desktop main has no terminal to answer a
+/** Fetch spawn env: `gitSpawnEnv()` plus `GIT_TERMINAL_PROMPT=0`, mirroring
+ *  the server's git discipline — desktop main has no terminal to answer a
  *  credential prompt, so a credentialed remote must fail fast (into the
- *  `fetch-failed` arm) instead of stalling until the timeout kill. */
-const FETCH_GIT_ENV = { ...GIT_ENV, GIT_TERMINAL_PROMPT: '0' } as const;
+ *  `fetch-failed` arm) instead of stalling until the timeout kill. Built per
+ *  call, never frozen at module level: `gitSpawnEnv()` must reflect the
+ *  startup `SSH_AUTH_SOCK` harvest (see `git-spawn-env.ts`). */
+function fetchGitEnv(): Record<string, string | undefined> {
+  return { ...gitSpawnEnv(), GIT_TERMINAL_PROMPT: '0' };
+}
 
 /** Default bound for the share-checkout fetch — matches the server's
  *  fast-forward fetch bound so a stalled network degrades to a typed
@@ -171,7 +172,7 @@ export async function createWorktree(args: CreateWorktreeArgs): Promise<Worktree
   const addArgs = buildAddArgs(args, worktreePath);
 
   try {
-    await execFileAsync('git', addArgs, { cwd: args.anchorPath, env: GIT_ENV });
+    await execFileAsync('git', addArgs, { cwd: args.anchorPath, env: gitSpawnEnv() });
   } catch (err) {
     return { ok: false, ...classifyAddError(err) };
   }
@@ -291,7 +292,7 @@ async function refExists(anchorPath: string, ref: string): Promise<boolean> {
   try {
     await execFileAsync('git', ['show-ref', '--verify', '--quiet', ref], {
       cwd: anchorPath,
-      env: GIT_ENV,
+      env: gitSpawnEnv(),
       timeout: 5_000,
     });
     return true;
@@ -320,7 +321,7 @@ async function fetchShareBranch(
   try {
     await execFileAsync('git', ['fetch', 'origin', branch], {
       cwd: anchorPath,
-      env: FETCH_GIT_ENV,
+      env: fetchGitEnv(),
       timeout: timeoutMs,
     });
     return null;
@@ -392,7 +393,7 @@ async function listLocalBranches(anchorPath: string): Promise<string[]> {
     const { stdout } = await execFileAsync(
       'git',
       ['for-each-ref', '--format=%(refname:short)', 'refs/heads/'],
-      { cwd: anchorPath, env: GIT_ENV },
+      { cwd: anchorPath, env: gitSpawnEnv() },
     );
     return parseBranchList(String(stdout));
   } catch {
@@ -415,7 +416,7 @@ async function listRemoteBranches(anchorPath: string): Promise<string[]> {
     const { stdout } = await execFileAsync(
       'git',
       ['for-each-ref', '--format=%(refname:short)', 'refs/remotes/'],
-      { cwd: anchorPath, env: GIT_ENV },
+      { cwd: anchorPath, env: gitSpawnEnv() },
     );
     // `refname:short` renders a `<remote>/HEAD` pointer as `<remote>` (no
     // trailing `/HEAD`) — drop any ref with no slash (a bare remote name), plus
@@ -455,7 +456,7 @@ async function computeBehindCounts(
         const { stdout } = await execFileAsync(
           'git',
           ['rev-list', '--count', `${branch}..${upstream}`],
-          { cwd: anchorPath, env: GIT_ENV },
+          { cwd: anchorPath, env: gitSpawnEnv() },
         );
         const n = Number.parseInt(String(stdout).trim(), 10);
         if (Number.isFinite(n) && n >= 0) out[branch] = n;
@@ -506,7 +507,7 @@ function ensureWorktreesExcluded(anchorPath: string): void {
 /** Synchronous git read that returns the trimmed stdout, or null on failure. */
 function execFileSyncTrim(cmd: string, cmdArgs: string[], cwd: string): string | null {
   try {
-    return String(execFileSync(cmd, cmdArgs, { cwd, env: GIT_ENV })).trim();
+    return String(execFileSync(cmd, cmdArgs, { cwd, env: gitSpawnEnv() })).trim();
   } catch {
     return null;
   }

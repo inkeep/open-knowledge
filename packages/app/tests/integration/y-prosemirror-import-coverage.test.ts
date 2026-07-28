@@ -28,9 +28,9 @@
  * the surface this test scans.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { describe, expect, test } from 'vitest';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../..');
 const RENDERER_ROOT = join(REPO_ROOT, 'packages/app/src');

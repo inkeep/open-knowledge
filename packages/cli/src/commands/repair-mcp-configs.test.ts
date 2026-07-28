@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildManagedServerEntry, resolveClaudeCodeConfigPath } from './editors.ts';
 import { type RepairLogEvent, repairMcpConfigs } from './repair-mcp-configs.ts';
 

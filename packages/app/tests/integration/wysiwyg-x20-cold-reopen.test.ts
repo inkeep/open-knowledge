@@ -17,12 +17,11 @@
  * drop `sourceRaw` and corrupt the disk bytes on the next serialize).
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { afterEach, describe, expect, test } from 'vitest';
 import type * as Y from 'yjs';
 import {
   agentWriteMd,

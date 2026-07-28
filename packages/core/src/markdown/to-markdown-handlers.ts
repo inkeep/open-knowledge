@@ -3,6 +3,7 @@ import type { MdxJsxAttribute, MdxJsxExpressionAttribute, MdxJsxFlowElement } fr
 import type { Handle, Info, State } from 'mdast-util-to-markdown';
 import { classifyCharacter } from 'micromark-util-classify-character';
 import { isValidSourceLiteralRaw } from '../extensions/source-literal-mark.ts';
+import { widenFenceLength } from './code-fence.ts';
 import { TO_MARKDOWN_EXT } from './remark-mdx-agnostic.ts';
 import { isInlineWhitespaceNumericCharRef } from './whitespace-char-ref.ts';
 
@@ -272,14 +273,7 @@ export const toMarkdownHandlers = {
     }
     const fenceChar = node.data?.sourceFenceChar;
     const char = fenceChar === '~' ? '~' : '`';
-    let len = Math.max(3, node.data?.sourceFenceLength ?? 3);
-    const fenceRunRe = new RegExp(`^ {0,3}(\\${char}+)[ \\t]*$`);
-    for (const line of value.split('\n')) {
-      const run = fenceRunRe.exec(line);
-      if (run && run[1].length >= len) {
-        len = run[1].length + 1;
-      }
-    }
+    const len = widenFenceLength(char, value, node.data?.sourceFenceLength ?? 3);
     const closingCaptured = node.data?.sourceClosingFenceLength;
     const closeLen =
       typeof closingCaptured === 'number' && closingCaptured > len ? closingCaptured : len;

@@ -1,7 +1,7 @@
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ConfigSchema, resolveLeafSchema } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { getEnumOptions } from '../components/settings/schema-walker';
 import {
   buildCustomThemeCss,

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { isEmbedUrlRewritable, rewriteEmbedUrl } from './embed-url-rewrite.ts';
 
 describe('rewriteEmbedUrl — YouTube', () => {

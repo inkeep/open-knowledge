@@ -1,14 +1,14 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { ALL_EDITOR_IDS, EDITOR_LABELS } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 // Spy on the sonner toast surface so the empty-name submit can be asserted
 // deterministically (the e2e can't reliably catch the transient portal toast
 // in Electron). Mock before importing the component so its `toast` binding
 // resolves to the spy.
-const toastErrorSpy = mock((_message: string) => {});
-mock.module('sonner', () => ({
+const toastErrorSpy = vi.fn((_message: string) => {});
+vi.doMock('sonner', () => ({
   toast: { error: toastErrorSpy, success: () => {}, warning: () => {}, message: () => {} },
 }));
 
@@ -84,27 +84,27 @@ function makeBridge() {
 
   const bridge = {
     fs: {
-      defaultProjectsRoot: mock(() => defaultRootImpl()),
-      findEnclosingProjectRoot: mock(() => Promise.resolve(null)),
-      findEnclosingGitRoot: mock(() => Promise.resolve(null)),
-      folderState: mock((path: string) => {
+      defaultProjectsRoot: vi.fn(() => defaultRootImpl()),
+      findEnclosingProjectRoot: vi.fn(() => Promise.resolve(null)),
+      findEnclosingGitRoot: vi.fn(() => Promise.resolve(null)),
+      folderState: vi.fn((path: string) => {
         folderStateCalls.push(path);
         return folderStateImpl(path);
       }),
-      removeGitFolder: mock(() => Promise.resolve()),
+      removeGitFolder: vi.fn(() => Promise.resolve()),
     },
     dialog: {
-      openFolder: mock((options?: unknown) => {
+      openFolder: vi.fn((options?: unknown) => {
         openFolderArgs.push(options);
         return Promise.resolve(pickedParent);
       }),
     },
     project: {
-      recordCreateNewBannerShown: mock((banner: string) => {
+      recordCreateNewBannerShown: vi.fn((banner: string) => {
         bannerCalls.push(banner);
         return Promise.resolve();
       }),
-      createNew: mock(
+      createNew: vi.fn(
         (payload: {
           parent: string;
           name: string;
@@ -116,7 +116,7 @@ function makeBridge() {
           return createNewImpl();
         },
       ),
-      open: mock(() => Promise.resolve()),
+      open: vi.fn(() => Promise.resolve()),
     },
   } as unknown as OkDesktopBridge;
 
@@ -142,7 +142,7 @@ function makeBridge() {
 }
 
 async function renderDialog(stub = makeBridge()) {
-  const onOpenChange = mock(() => {});
+  const onOpenChange = vi.fn(() => {});
   render(<CreateProjectDialog open={true} onOpenChange={onOpenChange} bridge={stub.bridge} />);
   await screen.findByTestId('create-project-dialog');
   return { ...stub, onOpenChange };
@@ -256,7 +256,7 @@ describe('CreateProjectDialog runtime wiring', () => {
     // Guard it: expand once, close, reopen, and assert the sharing control is
     // gone again (not left mounted from the prior expand).
     const stub = makeBridge();
-    const onOpenChange = mock(() => {});
+    const onOpenChange = vi.fn(() => {});
     const { rerender } = render(
       <CreateProjectDialog open={true} onOpenChange={onOpenChange} bridge={stub.bridge} />,
     );
@@ -371,7 +371,7 @@ describe('CreateProjectDialog runtime wiring', () => {
     // desktop integration tests call `runCreateNew` directly — neither
     // exercises the real dialog → bridge payload with a pack).
     const stub = makeBridge();
-    const onOpenChange = mock(() => {});
+    const onOpenChange = vi.fn(() => {});
     render(
       <CreateProjectDialog
         open={true}

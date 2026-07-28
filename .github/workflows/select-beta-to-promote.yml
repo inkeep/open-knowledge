@@ -37,15 +37,35 @@ name: Select beta to promote
 # trigger is an additive fast-path so an already-eligible beta promotes promptly
 # when a Copybara mirror commit lands in-hours.
 #
-# Weekend latency: the cron is Mon-Fri, so a beta that crosses 24h over the
-# weekend promotes on the next weekday tick — a Friday-published beta can be up
-# to ~71h online before its Monday-morning promotion. This is the intended "no
-# weekend promotions" behavior; workflow_dispatch (which bypasses the hours gate)
-# is the escape hatch for an urgent out-of-hours promotion.
+# Weekend latency: the in-script gate is Mon-Fri, so a beta that crosses 24h
+# over the weekend promotes on the next weekday tick — a Friday-published beta
+# can be up to ~71h online before its Monday-morning promotion. This is the
+# intended "no weekend promotions" behavior for the standard soak tier;
+# workflow_dispatch (which bypasses the hours gate) is the escape hatch for an
+# urgent out-of-hours promotion.
+#
+# SOAK TIERS. Two are defined; only one is reachable today.
+#   standard — 24h online, dispatched inside the window above. Every promotion
+#              uses this.
+#   fast     — 1h online, around the clock, for a cut that is BOTH patch-only
+#              AND carries a linked bug fix. Both conjuncts are load-bearing:
+#              patch-only alone covers most stable transitions, so on its own it
+#              would be a blanket soak reduction rather than a bug lane.
+# This is a different axis from the DMG-smoke fast tier below, which asks
+# whether an under-soaked beta may promote early on a clean smoke. The two are
+# reported as separate step outputs (`soak_tier` and `tier`) and are not wired
+# to each other.
+#
+# The fast SOAK tier is NOT ARMED. `FAST_TIER_ARMED` on the select step is a
+# literal "false", so the script computes and logs the tier it would choose and
+# then always reports soak_tier=standard. SOAK_SECONDS stays 86400 on every path
+# and the dispatched target is always the 24h selection, so which betas promote
+# and when is unchanged. Arming is an owner decision — the "Soak tiers" section
+# of RELEASES.md is the operator-facing record.
 #
 # DST correctness: GitHub Actions cron is UTC and ignores daylight saving, so a
-# hard-coded "9am ET" would drift an hour twice a year. The cron fires hourly
-# across the UTC band that brackets the ET/PT window year-round; the
+# hard-coded "9am ET" would drift an hour twice a year. The cron therefore does
+# not encode the window at all — it fires around the clock, and the
 # AUTHORITATIVE business-hours decision is made in-script against the
 # America/New_York clock (see the "Business-hours gate" step), so the window
 # stays exact through DST transitions. 4pm PT == 7pm ET == 19:00 ET, so the ET
@@ -58,19 +78,29 @@ name: Select beta to promote
 # check skips when a promote-stable run is already in_progress/queued, and
 # (3) the script stops at the first already-shipped beta (commit contained in the
 # latest stable) and never selects one whose changes are already released.
+#
+# FAST TIER (FR5a), BUILT BUT UNARMED: a second job smokes an under-soaked
+# beta's DMG and, only on a clean smoke, dispatches promote-stable early. It is
+# gated on `fast_tier_candidate`, which the selection script writes empty today,
+# so it never runs and adds zero per-tick cost. A fail or an error verdict only
+# ever declines the early promotion — the 24h path is untouched and the gate can
+# never block a release. Arming steps are documented in RELEASES.md.
 
 on:
   schedule:
-    # Hourly at :17 (off the :00 scheduler spike), 13:00-23:59 UTC, Mon-Fri.
-    # This UTC band brackets the ET/PT window across DST (9am ET = 13:00 UTC
-    # under EDT / 14:00 UTC under EST; 4pm PT = 23:00 UTC under PDT / 00:00 UTC
-    # under PST). The in-script ET gate is authoritative and rejects any tick
-    # outside 09:00-19:00 ET for the current DST state, so band-edge over-firing
-    # is a clean no-op. Ticks land at :17, so up to ~1h can elapse before a
-    # newly-soaked beta is noticed, and the final ~40 min before the window
-    # closes falls between the last in-window tick and the boundary; both are
-    # covered by the next in-window tick or the push fast-path.
-    - cron: "17 13-23 * * 1-5"
+    # Every 10 minutes, around the clock. A strict superset of the previous
+    # hourly :17 weekday-band tick, so nothing that used to fire stops firing.
+    # Two reasons for the widening: a 1h fast-tier soak only means ~1h if the
+    # evaluator looks more often than hourly, and the soak-tier decision has to
+    # be observable at every hour of every day, not only inside the window. The
+    # offsets stay off :00 to avoid the scheduler spike.
+    #
+    # Cron here is UTC and DST-blind BY DESIGN — it no longer encodes the window
+    # at all. The AUTHORITATIVE business-hours decision is still made in-script
+    # against the America/New_York clock (see the "Business-hours gate" step), so
+    # the window stays exact through DST transitions and an out-of-window tick is
+    # a clean evaluate-and-no-op.
+    - cron: "7,17,27,37,47,57 * * * *"
   # Fast-path: re-evaluate the gate when Copybara mirrors a commit to main so an
   # already-eligible beta promotes promptly in-hours. Additive to the schedule;
   # the same in-script business-hours + soak gate applies.
@@ -106,6 +136,14 @@ jobs:
     name: Evaluate 24h soak + business-hours gate
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      # Seam for the FR5a fast tier. The selection script writes this EMPTY
+      # today — `main()` supplies no fast-tier predicate, so nothing ever
+      # qualifies and the macOS smoke leg below never runs. Per-tick cost of the
+      # fast tier is therefore exactly zero. Arming it is a documented operator
+      # step in RELEASES.md, not a side effect of merging.
+      fast_tier_candidate: ${{ steps.select.outputs.fast_tier_candidate }}
+      tier: ${{ steps.select.outputs.tier }}
     steps:
       - name: Business-hours gate (America/New_York)
         id: hours
@@ -133,8 +171,12 @@ jobs:
             echo "open=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Checkout / setup-node / select deliberately carry NO hours gate. The
+      # soak-tier decision has to be computed and logged on every tick,
+      # including outside the window, and gating the selector on the clock
+      # would make that impossible. Only the dispatch step below is gated, so
+      # an out-of-window tick evaluates and then does nothing.
       - name: Checkout (need full tag history for beta resolution)
-        if: steps.hours.outputs.open == 'true'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
@@ -144,25 +186,41 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node
-        if: steps.hours.outputs.open == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
 
       - name: Select the beta to promote
         id: select
-        if: steps.hours.outputs.open == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SOAK_SECONDS: "86400" # 24h online soak
-        # Writes target= to GITHUB_OUTPUT (empty target => no-op). Exits non-zero
-        # (fails the job) on any non-404 gh/git infra error — a fail-loud
-        # retry-next-tick, never a silent skip. Logic + tests:
-        # .github/scripts/select-beta-to-promote.{mjs,test.mjs}.
+          SOAK_SECONDS: "86400" # 24h online soak — the ONLY soak that can set target
+          # THE ARMING SWITCH, and the only edit that turns the fast soak tier
+          # on. While this is "false" the script computes and logs the tier it
+          # would choose but always returns soak_tier=standard, so promotion
+          # keeps using the 24h soak above and this workflow behaves exactly as
+          # it did before the tier existed. Flipping it to "true" requires a
+          # reviewed PR — read the "Soak tiers" section of RELEASES.md first:
+          # arming has prerequisites, and it is an owner decision.
+          FAST_TIER_ARMED: "false"
+          # Optional. Absent (the current state) the bug-link lookup reports
+          # "unresolvable" and the tier degrades to standard, which is the
+          # expected steady state until an operator provisions the secret.
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+        # Writes target=, tier=, soak_tier= (plus the predicate inputs) to
+        # GITHUB_OUTPUT; an empty target => no-op. Exits non-zero (fails the job)
+        # on any non-404 gh/git infra error — a fail-loud retry-next-tick, never
+        # a silent skip. The soak-tier predicate is the one deliberate
+        # exception: it degrades to the slower tier rather than failing the tick.
+        # Logic + tests: .github/scripts/select-beta-to-promote.{mjs,test.mjs}.
         run: node .github/scripts/select-beta-to-promote.mjs
 
+      # The hours gate is soak-tier-conditional: a fast-tier cut may dispatch
+      # outside the window, a standard-tier cut may not. With the tier unarmed
+      # the script can never emit soak_tier=fast, so this reduces to the previous
+      # condition — `open == 'true' && target != ''` — on every tick.
       - name: Guard against an in-flight promotion, then dispatch
-        if: steps.hours.outputs.open == 'true' && steps.select.outputs.target != ''
+        if: (steps.hours.outputs.open == 'true' || steps.select.outputs.soak_tier == 'fast') && steps.select.outputs.target != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET: ${{ steps.select.outputs.target }}
@@ -211,3 +269,167 @@ jobs:
             if [[ -n "$CHILD" ]]; then echo "- Run: ${CHILD}"; else echo "- (run link unresolved; open the promote-stable workflow)"; fi
           } >> "$GITHUB_STEP_SUMMARY"
           if [[ -n "$CHILD" ]]; then echo "::notice::promote-stable run: ${CHILD}"; fi
+
+  # FR5a — selection-time DMG smoke for the fast tier.
+  #
+  # INERT BY DEFAULT. `fast_tier_candidate` is always empty (see the evaluate
+  # job's outputs), so this job is skipped on every tick and the fast tier costs
+  # nothing. It exists so arming is a configuration change rather than a code
+  # change.
+  #
+  # This job NEVER blocks a release. It cannot fail the 24h path: the evaluate
+  # job has already dispatched (or not) by the time this runs, on its own
+  # decision, and this job only ever ADDS an early promotion. A fail or an error
+  # verdict simply means no fast-tier dispatch happens and the beta waits out
+  # its normal 24h soak on a later tick.
+  #
+  # Interrupt-safe by construction. The workflow's concurrency group is
+  # `cancel-in-progress: true`, so a tick can be superseded mid-run at any
+  # point. This job holds no state a killed run could corrupt: it downloads to
+  # the runner's scratch, mounts through the helper (which detaches on SIGTERM),
+  # and its only effect is the final dispatch. Re-running reaches the same
+  # decision from the same inputs.
+  smoke-fast-tier-candidate:
+    name: Smoke the fast-tier candidate's DMG
+    needs: evaluate
+    if: needs.evaluate.outputs.fast_tier_candidate != ''
+    # Apple Silicon: the DMG is a Universal build, but launching it needs macOS.
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: Download the candidate's DMG
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE: ${{ needs.evaluate.outputs.fast_tier_candidate }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/fast-tier-dmg"
+          gh release download "$CANDIDATE" --pattern '*.dmg' --dir "${RUNNER_TEMP}/fast-tier-dmg"
+
+      - name: Smoke the DMG
+        id: smoke
+        env:
+          CANDIDATE: ${{ needs.evaluate.outputs.fast_tier_candidate }}
+        run: |
+          set -uo pipefail
+          DMG="$(find "${RUNNER_TEMP}/fast-tier-dmg" -maxdepth 1 -name '*.dmg' | head -1)"
+          if [[ -z "$DMG" ]]; then
+            echo "verdict=error" >> "$GITHUB_OUTPUT"
+            echo "::warning::No .dmg downloaded for ${CANDIDATE}; refusing the fast tier (the 24h path is unaffected)."
+            exit 0
+          fi
+          # The driver exits non-zero on fail and error. `|| true` is correct
+          # here and only here: this job must never fail, and the verdict it
+          # wrote to GITHUB_OUTPUT is the signal the dispatch below reads.
+          node .github/scripts/smoke-packaged-dmg.mjs "$DMG" || true
+
+      - name: Dispatch promote-stable for the smoke-proven candidate
+        if: steps.smoke.outputs.verdict == 'pass'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE: ${{ needs.evaluate.outputs.fast_tier_candidate }}
+        run: |
+          set -euo pipefail
+          # Same in-flight guard the 24h path uses — don't double-fire while a
+          # promotion is already running.
+          active=$(gh run list --workflow=promote-stable.yml --json status \
+            --jq '[.[] | select(.status=="in_progress" or .status=="queued")] | length')
+          if [[ "$active" -gt 0 ]]; then
+            echo "::notice::A promote-stable run is already in_progress/queued (${active}); skipping the fast-tier dispatch."
+            exit 0
+          fi
+          SELF_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh workflow run promote-stable.yml -f beta_tag="$CANDIDATE" -f dispatched_by="$SELF_URL"
+          echo "::notice::Fast tier: dispatched promote-stable for ${CANDIDATE} after its DMG smoked clean."
+
+      - name: Record a fast-tier refusal
+        if: steps.smoke.outputs.verdict != 'pass'
+        env:
+          CANDIDATE: ${{ needs.evaluate.outputs.fast_tier_candidate }}
+          VERDICT: ${{ steps.smoke.outputs.verdict }}
+        run: |
+          echo "::notice::Fast tier refused for ${CANDIDATE} (verdict=${VERDICT:-unknown}). The 24h tier is unaffected; this beta promotes normally once it has soaked."
+
+  # Aggregate silent-failure alarm.
+  #
+  # The per-cut alert in desktop-release.yml covers a gate that BITES. This
+  # covers the failure mode nobody notices: a gate that is quietly
+  # always-refusing, or a fast tier that has gone inert. Both look exactly like
+  # a calm week.
+  #
+  # Silent by default and by design. With the fast tier unarmed the smoke job
+  # never runs, the derived history is empty, and the evaluator reports no
+  # alarm — an intentionally disarmed tier is not a broken one, and an alarm
+  # that fired continuously while the tier was off would train responders to
+  # ignore it.
+  #
+  # Schedule-only: the alarm is about a trend, so evaluating it on every push
+  # would add noise without adding signal. Stateless — it derives history from
+  # this workflow's own run records and writes nothing back.
+  aggregate-smoke-alarm:
+    name: Aggregate DMG-smoke alarm
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+
+      - name: Evaluate the aggregate alarm
+        id: alarm
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/evaluate-smoke-alarm.mjs
+
+      # Routed to the same channels as the per-cut smoke alert, not to a
+      # workflow annotation alone — an annotation on a scheduled job nobody
+      # opens is indistinguishable from silence.
+      - name: Page the release channel
+        if: steps.alarm.outputs.alarm == 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          REASONS: ${{ steps.alarm.outputs.reasons }}
+        run: |
+          set -uo pipefail
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          TEXT="🚨 DMG SMOKE GATE ALARM — ${REASONS}. Investigate before trusting the fast tier. ${RUN_URL}"
+          payload="$(jq -nc --arg t "$TEXT" '{content: $t, text: $t}')"
+          post() {
+            local webhook="$1" label="$2"
+            if [[ -z "$webhook" ]]; then
+              echo "::notice::${label} webhook not set — skipping the ${label} aggregate alarm."
+              return 0
+            fi
+            if curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$webhook"; then
+              echo "Posted the ${label} aggregate alarm."
+            else
+              echo "::warning::${label} aggregate alarm failed to POST — the alarm condition still holds."
+            fi
+          }
+          post "${SLACK_WEBHOOK_URL:-}" Slack
+          post "${DISCORD_WEBHOOK_URL:-}" Discord
+          echo "::warning::DMG smoke gate alarm: ${REASONS}"

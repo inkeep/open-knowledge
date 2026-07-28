@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as actualServerPkg from '@inkeep/open-knowledge-server';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { resolveContentConfig } from './hocuspocus-plugin.ts';
 
 const createdDirs: string[] = [];
@@ -72,13 +72,13 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
   afterEach(() => {
     if (origEnv !== undefined) process.env.OK_TEST_CONTENT_DIR = origEnv;
     else delete process.env.OK_TEST_CONTENT_DIR;
-    // `mock.module(...)` writes process-global module state in bun:test and
+    // `vi.doMock(...)` writes process-global module state in bun:test and
     // does NOT auto-restore between test files. Sibling tests in this codebase
     // document the leak explicitly (`server-factory.test.ts`,
     // `agent-presence.test.ts`, `provider-pool.test.ts`,
     // `local-op-security.test.ts`). Restore to keep the global module table
     // clean for any test that may later import `@inkeep/open-knowledge-server`.
-    mock.restore();
+    vi.restoreAllMocks();
   });
 
   test('registers asset + api middlewares synchronously, no post-hook returned', async () => {
@@ -96,9 +96,9 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
     const innerAssetFn = (..._args: unknown[]) => {
       innerAssetCalls += 1;
     };
-    const createAssetServeMiddlewareSpy = mock(() => innerAssetFn);
+    const createAssetServeMiddlewareSpy = vi.fn(() => innerAssetFn);
 
-    mock.module('@inkeep/open-knowledge-server', () => ({
+    vi.doMock('@inkeep/open-knowledge-server', () => ({
       ...actualServerPkg,
       createAssetServeMiddleware: createAssetServeMiddlewareSpy,
       createServer: () => ({

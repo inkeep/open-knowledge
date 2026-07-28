@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import type { LintDiagnostic } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 import { composeLintFixTerminalPaste } from './compose-lint-fix-prompt.ts';
 
 function diag(over: Partial<LintDiagnostic> = {}): LintDiagnostic {

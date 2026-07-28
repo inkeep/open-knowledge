@@ -1,0 +1,65 @@
+// no-uninstall-forbidden-import — "connects to nothing" first-hop feedback.
+//
+// The self-uninstall window's survey and completion screens render AFTER
+// `ok uninstall --yes` has stopped the local Hocuspocus server and removed
+// `~/.ok`, so the uninstall entry must never reach the editor, the CRDT stack,
+// the provider pool, or the server bootstrap. It also must eager-load (no
+// dynamic `import()`) so those screens paint from memory once teardown is
+// under way.
+//
+// This rule is SHALLOW, first-hop feedback only — it sees a forbidden specifier
+// written directly in an in-scope file. The authoritative gate is the
+// transitive-module-graph test
+// (`packages/desktop/tests/unit/uninstall-module-graph.test.ts`), which also
+// catches a forbidden module reached indirectly through a shared `@/lib` /
+// `@/components/ui` module, and re-export (`export … from`) edges this rule
+// cannot express in GritQL.
+//
+// `@inkeep/open-knowledge-core` (shared types + feedback constants, no server
+// deps) is deliberately allowed; only the editor / CRDT / provider-pool /
+// Hocuspocus-server surface is forbidden.
+//
+// Scoped via `overrides[].plugins` to `packages/app/src/uninstall/**`. Suppress
+// a legitimate exception (none expected) with:
+//   // biome-ignore lint/plugin/no-uninstall-forbidden-import: <reason>
+//
+// See PRECEDENTS.md #42 (GritQL plugins are the canonical custom-enforcement
+// mechanism).
+
+language js
+
+// The regex matches the source string literal. Biome's node-text regex needs the
+// `.*['\"]…['\"].*` wrapper (bare `['\"]…['\"]` does not match), same shape as
+// `no-resolved-value-theme-source.grit`. `[^'\"]*` for in-string segments so a
+// match can't cross the closing quote; `(/[^'\"]*)?` keeps exact-package names
+// from prefix-matching (`yjs` yes, `yjs-not-real` no). One top-level `or` — each
+// branch registers its own diagnostic (a `.grit` file is a single pattern).
+or {
+    `import $clause from $src` as $node where {
+        $src <: r"(?s).*['\"](?:@/editor/[^'\"]*|@inkeep/open-knowledge-server[^'\"]*|@hocuspocus/[^'\"]*|@tiptap/y-tiptap[^'\"]*|@tiptap/extension-collaboration[^'\"]*|yjs(?:/[^'\"]*)?|y-protocols(?:/[^'\"]*)?|y-prosemirror(?:/[^'\"]*)?|y-codemirror\.next(?:/[^'\"]*)?|y-indexeddb(?:/[^'\"]*)?)['\"].*",
+        register_diagnostic(
+            span = $node,
+            message = "Forbidden module in the uninstall entry — the uninstall window must connect to nothing (survey/completion run after the server is stopped and ~/.ok is removed). Drop this editor / CRDT / provider-pool / Hocuspocus-server import; keep only shared types + constants from @inkeep/open-knowledge-core. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-uninstall-forbidden-importgrit"
+        )
+    },
+    `import * as $ns from $src` as $node where {
+        $src <: r"(?s).*['\"](?:@/editor/[^'\"]*|@inkeep/open-knowledge-server[^'\"]*|@hocuspocus/[^'\"]*|@tiptap/y-tiptap[^'\"]*|@tiptap/extension-collaboration[^'\"]*|yjs(?:/[^'\"]*)?|y-protocols(?:/[^'\"]*)?|y-prosemirror(?:/[^'\"]*)?|y-codemirror\.next(?:/[^'\"]*)?|y-indexeddb(?:/[^'\"]*)?)['\"].*",
+        register_diagnostic(
+            span = $node,
+            message = "Forbidden module in the uninstall entry — the uninstall window must connect to nothing (survey/completion run after the server is stopped and ~/.ok is removed). Drop this editor / CRDT / provider-pool / Hocuspocus-server import; keep only shared types + constants from @inkeep/open-knowledge-core. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-uninstall-forbidden-importgrit"
+        )
+    },
+    `import $src` as $node where {
+        $src <: r"(?s).*['\"](?:@/editor/[^'\"]*|@inkeep/open-knowledge-server[^'\"]*|@hocuspocus/[^'\"]*|@tiptap/y-tiptap[^'\"]*|@tiptap/extension-collaboration[^'\"]*|yjs(?:/[^'\"]*)?|y-protocols(?:/[^'\"]*)?|y-prosemirror(?:/[^'\"]*)?|y-codemirror\.next(?:/[^'\"]*)?|y-indexeddb(?:/[^'\"]*)?)['\"].*",
+        register_diagnostic(
+            span = $node,
+            message = "Forbidden module in the uninstall entry — the uninstall window must connect to nothing (survey/completion run after the server is stopped and ~/.ok is removed). Drop this editor / CRDT / provider-pool / Hocuspocus-server import; keep only shared types + constants from @inkeep/open-knowledge-core. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-uninstall-forbidden-importgrit"
+        )
+    },
+    `import($arg)` as $node where {
+        register_diagnostic(
+            span = $node,
+            message = "Dynamic import under src/uninstall — the uninstall screens must eager-load so the completion/failure screens paint from memory after teardown starts removing files. Use a static import. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-uninstall-forbidden-importgrit"
+        )
+    }
+}

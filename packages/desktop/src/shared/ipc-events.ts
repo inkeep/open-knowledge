@@ -22,6 +22,7 @@ import type {
   OkMenuAction,
   OkPtyData,
   OkPtyExit,
+  OkRecentRemovedMissingInfo,
   OkServerRestartedInfo,
   OkServerVersionDriftInfo,
   OkShareReceivedPayload,
@@ -38,6 +39,14 @@ export interface EventChannels {
   'ok:project:switching': { payload: { projectPath: string } };
   /** After a project switch: renderer re-exposes `window.okDesktop.config` + fires `onProjectSwitched` subscribers. */
   'ok:project:switched': { payload: OkDesktopConfig };
+  /**
+   * A renderer-initiated open of a recents entry whose folder was gone: after
+   * the stale entry is lazy-pruned from the single canonical recents list, the
+   * originating window gets a lightweight "removed because missing" toast.
+   * One-way, fire-and-forget; internal callers with no originating window
+   * (boot restore, native File → Open Recent) prune silently and never send.
+   */
+  'ok:project:recent-removed-missing': { payload: OkRecentRemovedMissingInfo };
   /** Main → renderer menu-action dispatch (File → New Doc, Edit → Toggle Sidebar, etc.). */
   'ok:menu-action': { payload: OkMenuAction };
   /**

@@ -14,20 +14,20 @@
  * to a branch that would re-insert the refused content elsewhere.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { sharedExtensions as coreExtensions, MarkdownManager } from '@inkeep/open-knowledge-core';
 import { Editor, type JSONContent } from '@tiptap/core';
 import { Fragment, type Node as ProseMirrorNode, Slice } from '@tiptap/pm/model';
 import { dropPoint, ReplaceAroundStep } from '@tiptap/pm/transform';
 import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import * as actualSonner from 'sonner';
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { installDomGlobals } from '../walk-currency-test-harness';
 import { CellInsertionGate } from './cell-insertion-gate';
 
 // The paste dispatcher pulls the degrade-path toast (sonner) into its import
 // graph; stub it so module load stays inert in the jsdom env. The gate's no-op
 // path never degrades, so the stub is never invoked.
-mock.module('sonner', () => ({ ...actualSonner, toast: { error: mock(() => {}) } }));
+vi.doMock('sonner', () => ({ ...actualSonner, toast: { error: vi.fn(() => {}) } }));
 
 const mdManager = new MarkdownManager({ extensions: coreExtensions });
 

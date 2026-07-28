@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'vitest';
 import { makeTree } from './migrate/notion/mktree.test-helper.ts';
 import { migrateCommand } from './migrate.ts';
 

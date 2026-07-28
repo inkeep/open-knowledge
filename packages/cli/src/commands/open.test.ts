@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { createRealOpenDeps, type OpenDeps, runOpen } from './open.ts';
 
 function makeDeps(overrides: Partial<OpenDeps> = {}): {

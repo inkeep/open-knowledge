@@ -8,13 +8,14 @@
  * Harness mirrors `api-pages.test.ts`: createApiExtension with stub
  * hocuspocus/sessionManager, dispatch through `onRequest`.
  */
-import { describe, expect, test } from 'bun:test';
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { createApiExtension } from './api-extension.ts';
+import { describe, expect, test } from 'vitest';
+import { createApiExtension } from './api-extension.test-helper.ts';
 
 function makeReq(url: string): IncomingMessage {
   const readable = Readable.from(Buffer.from('')) as unknown as IncomingMessage;

@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { PassThrough } from 'node:stream';
 import type { SkillInstallEvent } from '@inkeep/open-knowledge-server';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { EDITOR_TARGETS } from './editors.ts';
 import {
   __testing,
@@ -19,6 +20,7 @@ const {
   PROJECT_SKILL_DIR_NAME,
   repairSkillsResultExitCode,
   formatRepairSkillsResult,
+  confirmLegacyCleanup,
 } = __testing;
 
 function mkScratch(tag: string): { root: string; home: string; project: string; bundles: string } {
@@ -1282,6 +1284,9 @@ describe('formatRepairSkillsResult — done-branch stdout formatting', () => {
   it('renders per-sweep counts when both sweeps ran to done', () => {
     const out = formatRepairSkillsResult({
       status: 'done',
+      legacySwept: [],
+      legacyCleanupDeclined: false,
+      legacyCleanupFailed: false,
       project: {
         outcome: 'done',
         entries: [
@@ -1333,6 +1338,9 @@ describe('formatRepairSkillsResult — done-branch stdout formatting', () => {
   it('renders skip reason when the user sweep version-skips', () => {
     const out = formatRepairSkillsResult({
       status: 'done',
+      legacySwept: [],
+      legacyCleanupDeclined: false,
+      legacyCleanupFailed: false,
       project: { outcome: 'done', entries: [] },
       user: { outcome: 'skipped', reason: 'version-current' },
     });
@@ -1384,7 +1392,14 @@ describe('repairSkillsResultExitCode (PR feedback: standalone exit code mapping)
             ? [{ kind: 'central', path: '/tmp/x', outcome: 'failed', error: 'simulated' }]
             : [{ kind: 'central', path: '/tmp/x', outcome: 'written' }],
         };
-    return { status: 'done', project, user };
+    return {
+      status: 'done',
+      project,
+      user,
+      legacySwept: [],
+      legacyCleanupDeclined: false,
+      legacyCleanupFailed: false,
+    };
   }
 
   it('reclaim-disabled skip exits 0', () => {
@@ -1545,5 +1560,189 @@ describe('repairSkills — symlink-escape guard (parity with writeProjectSkill)'
     expect(claude?.error).toMatch(/outside the project directory/i);
     // The escape target's contents are untouched — guard fired BEFORE any rm.
     expect(existsSync(witnessFile)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pre-0.42 cleanup consent (issue #820)
+// ---------------------------------------------------------------------------
+//
+// The cleanup deletes from `$HOME`. Doing that without showing the user the
+// paths first would repeat the original mistake, so consent is a hard gate:
+// no confirmer, no deletion.
+
+describe('legacy fan-out cleanup — consent gate', () => {
+  function plantLegacy(home: string): string {
+    const dir = join(home, '.zencoder', 'skills', USER_SKILL_DIR_NAME);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'SKILL.md'), '# stale\n', 'utf-8');
+    return dir;
+  }
+
+  /** Version-skip deps: the user sweep is irrelevant to these tests. */
+  function quietDeps(bundles: string): RepairSkillsDeps {
+    return depsBuilder({
+      projectBundleDir: bundles,
+      discoveryBundleDir: bundles,
+      bundledVersion: '9.9.9',
+      recordedVersion: '9.9.9',
+      writtenVersions: [],
+    });
+  }
+
+  it('deletes nothing when no confirmer is wired', async () => {
+    const { home, project, bundles } = mkScratch('legacy-noconfirm');
+    const legacy = plantLegacy(home);
+
+    const result = await repairSkills({
+      projectDir: project,
+      home,
+      deps: quietDeps(bundles),
+      logger: () => {},
+    });
+
+    expect(result.status).toBe('done');
+    if (result.status !== 'done') return;
+    expect(result.legacySwept).toEqual([]);
+    expect(result.legacyCleanupDeclined).toBe(true);
+    expect(existsSync(legacy)).toBe(true);
+  });
+
+  it('deletes nothing when the user declines', async () => {
+    const { home, project, bundles } = mkScratch('legacy-decline');
+    const legacy = plantLegacy(home);
+
+    const result = await repairSkills({
+      projectDir: project,
+      home,
+      deps: quietDeps(bundles),
+      logger: () => {},
+      confirmLegacyCleanup: async () => false,
+    });
+
+    if (result.status !== 'done') throw new Error('expected done');
+    expect(result.legacySwept).toEqual([]);
+    expect(result.legacyCleanupDeclined).toBe(true);
+    expect(existsSync(legacy)).toBe(true);
+    expect(formatRepairSkillsResult(result)).toContain('Cleanup: declined');
+  });
+
+  it('deletes the skill AND the emptied agent home when the user accepts', async () => {
+    const { home, project, bundles } = mkScratch('legacy-accept');
+    plantLegacy(home);
+
+    const result = await repairSkills({
+      projectDir: project,
+      home,
+      deps: quietDeps(bundles),
+      logger: () => {},
+      confirmLegacyCleanup: async () => true,
+    });
+
+    if (result.status !== 'done') throw new Error('expected done');
+    expect(result.legacyCleanupDeclined).toBe(false);
+    expect(existsSync(join(home, '.zencoder'))).toBe(false);
+    expect(formatRepairSkillsResult(result)).toContain('Cleanup: removed');
+  });
+
+  it('never asks when there is nothing to clean up', async () => {
+    const { home, project, bundles } = mkScratch('legacy-none');
+    let asked = false;
+
+    await repairSkills({
+      projectDir: project,
+      home,
+      deps: quietDeps(bundles),
+      logger: () => {},
+      confirmLegacyCleanup: async () => {
+        asked = true;
+        return true;
+      },
+    });
+
+    expect(asked).toBe(false);
+  });
+
+  it('the confirmer is handed the exact paths, so the prompt can list them', async () => {
+    const { home, project, bundles } = mkScratch('legacy-plan');
+    const legacy = plantLegacy(home);
+    let seen: { skillDirs: string[]; emptyDirs: string[] } | null = null;
+
+    await repairSkills({
+      projectDir: project,
+      home,
+      deps: quietDeps(bundles),
+      logger: () => {},
+      confirmLegacyCleanup: async (plan) => {
+        seen = { skillDirs: [...plan.skillDirs], emptyDirs: [...plan.emptyDirs] };
+        return false;
+      },
+    });
+
+    expect(seen).not.toBeNull();
+    expect(seen?.skillDirs).toEqual([legacy]);
+    expect(seen?.emptyDirs).toEqual([join(home, '.zencoder', 'skills'), join(home, '.zencoder')]);
+  });
+});
+
+describe('confirmLegacyCleanup — prompt behaviour', () => {
+  const plan = { skillDirs: ['/h/.zencoder/skills/open-knowledge-discovery'], emptyDirs: [] };
+
+  it('--yes approves without prompting', async () => {
+    expect(await confirmLegacyCleanup(plan, { yes: true })).toBe(true);
+  });
+
+  it('declines on a non-TTY rather than deleting unattended', async () => {
+    const piped = new PassThrough() as unknown as NodeJS.ReadableStream & { isTTY?: boolean };
+    piped.isTTY = false;
+    expect(await confirmLegacyCleanup(plan, { yes: false, input: piped })).toBe(false);
+  });
+
+  it('a bare Enter declines — deletion is never the default', async () => {
+    expect(await confirmLegacyCleanup(plan, { yes: false, input: fakeTty('') })).toBe(false);
+  });
+
+  it('accepts an explicit y', async () => {
+    expect(await confirmLegacyCleanup(plan, { yes: false, input: fakeTty('y') })).toBe(true);
+  });
+
+  function fakeTty(answer: string): NodeJS.ReadableStream & { isTTY?: boolean } {
+    const stream = new PassThrough() as unknown as NodeJS.ReadableStream & { isTTY?: boolean };
+    stream.isTTY = true;
+    queueMicrotask(() => {
+      (stream as unknown as PassThrough).write(`${answer}\n`);
+    });
+    return stream;
+  }
+});
+
+describe('legacy cleanup — an internal failure is never reported as a decline', () => {
+  // Approving and then hitting a re-validation error is a bug on our side.
+  // Rendering it as "declined" would tell the user they chose this, which is
+  // the same dishonest reporting this PR exists to remove.
+  it('renders a distinct failed line, not the decline line', () => {
+    const base = formatRepairSkillsResult({
+      status: 'done',
+      legacySwept: [],
+      legacyCleanupDeclined: false,
+      legacyCleanupFailed: true,
+      project: { outcome: 'done', entries: [] },
+      user: { outcome: 'done', version: '9.9.9', entries: [] },
+    } as unknown as RepairSkillsResult);
+    expect(base).toContain('Cleanup: failed');
+    expect(base).not.toContain('Cleanup: declined');
+  });
+
+  it('a genuine decline still reads as declined', () => {
+    const out = formatRepairSkillsResult({
+      status: 'done',
+      legacySwept: [],
+      legacyCleanupDeclined: true,
+      legacyCleanupFailed: false,
+      project: { outcome: 'done', entries: [] },
+      user: { outcome: 'done', version: '9.9.9', entries: [] },
+    } as unknown as RepairSkillsResult);
+    expect(out).toContain('Cleanup: declined');
+    expect(out).not.toContain('Cleanup: failed');
   });
 });

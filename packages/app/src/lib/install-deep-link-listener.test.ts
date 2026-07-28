@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { normalizeTargetPath } from '@/components/navigation-targets';
 import { missDialogStore } from '@/lib/share/miss-dialog-store';
 import { pendingReceiveNavStore } from '@/lib/share/pending-receive-nav-store';
@@ -25,27 +25,27 @@ function makeBridge(overrides: Partial<OkDesktopBridge> = {}): OkDesktopBridge &
       projectName: 'project',
       mode: 'editor',
     } as OkDesktopConfig,
-    onProjectSwitched: mock(() => () => {}),
-    onMenuAction: mock(() => () => {}),
-    onDeepLink: mock((cb: (evt: DeepLinkPayload) => void) => {
+    onProjectSwitched: vi.fn(() => () => {}),
+    onMenuAction: vi.fn(() => () => {}),
+    onDeepLink: vi.fn((cb: (evt: DeepLinkPayload) => void) => {
       handler = cb;
-      return mock(() => {
+      return vi.fn(() => {
         handler = null;
       });
     }),
     dialog: {
-      openFolder: mock(() => Promise.resolve(null)),
+      openFolder: vi.fn(() => Promise.resolve(null)),
     },
     shell: {
-      openExternal: mock(() => Promise.resolve()),
+      openExternal: vi.fn(() => Promise.resolve()),
     },
     clipboard: {
-      writeText: mock(() => Promise.resolve()),
+      writeText: vi.fn(() => Promise.resolve()),
     },
     project: {
-      listRecent: mock(() => Promise.resolve([])),
-      removeRecent: mock(() => Promise.resolve()),
-      getSessionState: mock(() =>
+      listRecent: vi.fn(() => Promise.resolve([])),
+      removeRecent: vi.fn(() => Promise.resolve()),
+      getSessionState: vi.fn(() =>
         Promise.resolve({
           openTabs: [],
           pinnedTabIds: [],
@@ -54,9 +54,9 @@ function makeBridge(overrides: Partial<OkDesktopBridge> = {}): OkDesktopBridge &
           updatedAt: null,
         }),
       ),
-      setSessionState: mock(() => Promise.resolve()),
-      open: mock(() => Promise.resolve()),
-      close: mock(() => Promise.resolve()),
+      setSessionState: vi.fn(() => Promise.resolve()),
+      open: vi.fn(() => Promise.resolve()),
+      close: vi.fn(() => Promise.resolve()),
     },
     platform: 'darwin',
     appVersion: '0.0.0',
@@ -69,7 +69,7 @@ function makeBridge(overrides: Partial<OkDesktopBridge> = {}): OkDesktopBridge &
 
 describe('installDeepLinkListener (M4 US-007)', () => {
   test('no-op when bridge is undefined (web / CLI distribution)', () => {
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     const result = installDeepLinkListener({ bridge: undefined, setHash });
     expect(result).toBeUndefined();
     expect(setHash.mock.calls.length).toBe(0);
@@ -77,16 +77,16 @@ describe('installDeepLinkListener (M4 US-007)', () => {
 
   test('registers onDeepLink when bridge is present', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     const unsubscribe = installDeepLinkListener({ bridge, setHash });
     expect(unsubscribe).toBeDefined();
-    expect((bridge.onDeepLink as ReturnType<typeof mock>).mock.calls.length).toBe(1);
+    expect((bridge.onDeepLink as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
     expect(setHash.mock.calls.length).toBe(0);
   });
 
   test('updates hash to #/<doc> on deep-link event', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'intro.md' });
     expect(setHash.mock.calls[0]).toEqual(['#/intro.md']);
@@ -94,7 +94,7 @@ describe('installDeepLinkListener (M4 US-007)', () => {
 
   test('URL-encodes doc names with spaces / unicode', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'My Doc — 2026.md' });
     expect(setHash.mock.calls[0]?.[0]).toBe('#/My%20Doc%20%E2%80%94%202026.md');
@@ -107,18 +107,18 @@ describe('installDeepLinkListener (M4 US-007)', () => {
     // consumer `docNameFromHash` (packages/app/src/lib/doc-hash.ts) splits on
     // `/` then decodes each segment, reconstructing `docs/a` cleanly.
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'notes/meeting-2026' });
     expect(setHash.mock.calls[0]?.[0]).toBe('#/notes%2Fmeeting-2026');
   });
 
   test('returns bridge unsubscribe so callers can detach on teardown', () => {
-    const detach = mock(() => {});
+    const detach = vi.fn(() => {});
     const bridge = makeBridge({
-      onDeepLink: mock(() => detach),
+      onDeepLink: vi.fn(() => detach),
     });
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     const unsubscribe = installDeepLinkListener({ bridge, setHash });
     unsubscribe?.();
     expect(detach.mock.calls.length).toBe(1);
@@ -126,7 +126,7 @@ describe('installDeepLinkListener (M4 US-007)', () => {
 
   test('appends ?branch=<encoded> when branch is present in payload', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'intro.md', branch: 'main' });
     expect(setHash.mock.calls[0]?.[0]).toBe('#/intro.md?branch=main');
@@ -134,7 +134,7 @@ describe('installDeepLinkListener (M4 US-007)', () => {
 
   test('URL-encodes slashed branch names like feat/foo', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'docs/page.md', branch: 'feat/foo' });
     expect(setHash.mock.calls[0]?.[0]).toBe('#/docs%2Fpage.md?branch=feat%2Ffoo');
@@ -142,7 +142,7 @@ describe('installDeepLinkListener (M4 US-007)', () => {
 
   test('treats null branch identically to absent branch (back-compat)', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'intro.md', branch: null });
     expect(setHash.mock.calls[0]?.[0]).toBe('#/intro.md');
@@ -150,7 +150,7 @@ describe('installDeepLinkListener (M4 US-007)', () => {
 
   test('treats undefined branch identically to absent branch (back-compat)', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'intro.md', branch: undefined });
     expect(setHash.mock.calls[0]?.[0]).toBe('#/intro.md');
@@ -161,7 +161,7 @@ describe('installDeepLinkListener (M4 US-007)', () => {
     // `branch` at all (the field is genuinely missing, not just undefined)
     // must produce the unchanged `#/<doc>` hash.
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     const legacyPayload = { doc: 'intro.md' } as { doc: string; branch?: string | null };
     bridge.fireDeepLink(legacyPayload);
@@ -170,7 +170,7 @@ describe('installDeepLinkListener (M4 US-007)', () => {
 
   test('encodes branch with unicode characters', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'page.md', branch: '日本語' });
     expect(setHash.mock.calls[0]?.[0]).toBe('#/page.md?branch=%E6%97%A5%E6%9C%AC%E8%AA%9E');
@@ -178,7 +178,7 @@ describe('installDeepLinkListener (M4 US-007)', () => {
 
   test('explicit kind:doc behaves identically to legacy (omitted kind)', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'intro.md', kind: 'doc', branch: 'main' });
     expect(setHash.mock.calls[0]?.[0]).toBe('#/intro.md?branch=main');
@@ -188,7 +188,7 @@ describe('installDeepLinkListener (M4 US-007)', () => {
 describe('installDeepLinkListener — folder + content-root shares (US-010)', () => {
   test('folder event navigates to the trailing-slash folder hash', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'docs/sub', kind: 'folder' });
     expect(setHash.mock.calls[0]?.[0]).toBe('#/docs/sub/');
@@ -196,7 +196,7 @@ describe('installDeepLinkListener — folder + content-root shares (US-010)', ()
 
   test('content-root folder event (empty doc) navigates to the root hash #/', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: '', kind: 'folder' });
     expect(setHash.mock.calls[0]?.[0]).toBe('#/');
@@ -204,7 +204,7 @@ describe('installDeepLinkListener — folder + content-root shares (US-010)', ()
 
   test('folder event does NOT append ?branch= (branch resolved upstream)', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'docs/sub', kind: 'folder', branch: 'feat/x' });
     expect(setHash.mock.calls[0]?.[0]).toBe('#/docs/sub/');
@@ -219,7 +219,7 @@ describe('installDeepLinkListener — share-receive miss guard arming', () => {
 
   test('arms the miss guard before navigating a doc share', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'notes/plan', branch: 'feature' });
     // Path is the resolver's normalized form so it matches the missing
@@ -233,7 +233,7 @@ describe('installDeepLinkListener — share-receive miss guard arming', () => {
 
   test('arms with a null branch for a branch-less legacy doc share', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'intro' });
     expect(pendingReceiveNavStore.getSnapshot()?.branch).toBeNull();
@@ -241,7 +241,7 @@ describe('installDeepLinkListener — share-receive miss guard arming', () => {
 
   test('arms with the folder kind for a folder share', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'docs/sub', kind: 'folder' });
     expect(pendingReceiveNavStore.getSnapshot()?.kind).toBe('folder');
@@ -253,7 +253,7 @@ describe('installDeepLinkListener — share-receive miss guard arming', () => {
   // path. The in-tab pendingReceiveNav panel is not armed on this leg.
   test('arms the miss dialog without navigating when main flags the target missing', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'notes/plan', branch: 'feature', targetMissing: true });
     expect(setHash.mock.calls.length).toBe(0);
@@ -267,7 +267,7 @@ describe('installDeepLinkListener — share-receive miss guard arming', () => {
 
   test('arms the miss dialog for a missing folder target without navigating', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
+    const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'docs/sub', kind: 'folder', targetMissing: true });
     expect(setHash.mock.calls.length).toBe(0);
@@ -340,8 +340,8 @@ describe('deriveShareReceiveToast (FR9)', () => {
 describe('installDeepLinkListener — FR9 toast emission', () => {
   test('emits toast with branch + path when share is multi-candidate', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
-    const emitToast = mock(() => {});
+    const setHash = vi.fn(() => {});
+    const emitToast = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash, emitToast });
     bridge.fireDeepLink({ doc: 'docs/x.md', branch: 'feat-bar', multiCandidate: true });
     expect(emitToast.mock.calls).toHaveLength(1);
@@ -354,8 +354,8 @@ describe('installDeepLinkListener — FR9 toast emission', () => {
 
   test('suppresses toast when share has no branch (legacy)', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
-    const emitToast = mock(() => {});
+    const setHash = vi.fn(() => {});
+    const emitToast = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash, emitToast });
     bridge.fireDeepLink({ doc: 'docs/x.md' });
     expect(emitToast.mock.calls).toHaveLength(0);
@@ -363,8 +363,8 @@ describe('installDeepLinkListener — FR9 toast emission', () => {
 
   test('suppresses toast for single-clone (P4) — multiCandidate is false', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
-    const emitToast = mock(() => {});
+    const setHash = vi.fn(() => {});
+    const emitToast = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash, emitToast });
     bridge.fireDeepLink({ doc: 'docs/x.md', branch: 'feat-bar', multiCandidate: false });
     expect(emitToast.mock.calls).toHaveLength(0);
@@ -372,8 +372,8 @@ describe('installDeepLinkListener — FR9 toast emission', () => {
 
   test('suppresses toast when multiCandidate is absent (legacy emitter)', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
-    const emitToast = mock(() => {});
+    const setHash = vi.fn(() => {});
+    const emitToast = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash, emitToast });
     bridge.fireDeepLink({ doc: 'docs/x.md', branch: 'feat-bar' });
     expect(emitToast.mock.calls).toHaveLength(0);
@@ -381,8 +381,8 @@ describe('installDeepLinkListener — FR9 toast emission', () => {
 
   test('suppresses the confirmation toast on a known-missing target (miss dialog is the surface)', () => {
     const bridge = makeBridge();
-    const setHash = mock(() => {});
-    const emitToast = mock(() => {});
+    const setHash = vi.fn(() => {});
+    const emitToast = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash, emitToast });
     // multiCandidate would normally emit "Opened on branch X"; a missing target
     // shows the verdict dialog without navigating, so the confirmation is

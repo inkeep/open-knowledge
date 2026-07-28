@@ -20,9 +20,9 @@
  * excluded.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper.ts';
 
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');

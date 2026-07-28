@@ -28,13 +28,13 @@
  * works around).
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { EditorState, TextSelection, type Transaction } from '@tiptap/pm/state';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mdManager, schema } from './test-harness';
 
 // paste-failure-toast pulls in sonner; stub it so module load + any
 // degradation path is inert in the node test runtime.
-mock.module('sonner', () => ({ toast: { error: mock(() => {}) } }));
+vi.doMock('sonner', () => ({ toast: { error: vi.fn(() => {}) } }));
 
 // Imported after the sonner mock so the dispatcher's transitive sonner import
 // resolves to the stub.

@@ -28,7 +28,8 @@ import {
   writeFileSync as fsWriteFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, resolve as resolvePath } from 'node:path';
+import { dirname, join, relative, resolve as resolvePath } from 'node:path';
+import { createInterface } from 'node:readline/promises';
 import {
   BUNDLE_SKILL_NAME,
   type BundleId,
@@ -44,15 +45,15 @@ import {
   writeTargetVersion,
 } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
-import { removeUserGlobalSkillBundle } from '../integrations/skill-teardown.ts';
-import { assertProjectPathSafe } from '../integrations/write-project-skill.ts';
 import {
-  CHAIN_VERSION_SENTINEL,
-  CHAIN_WIN_VERSION_SENTINEL,
-  EDITOR_TARGETS,
-  type EditorId,
-  HOSTS_WITH_USER_SKILL_DIR,
-} from './editors.ts';
+  applyLegacyFanoutSweep,
+  type LegacyFanoutSweepPlan,
+  planLegacyFanoutSweep,
+  removeUserGlobalSkillBundle,
+} from '../integrations/skill-teardown.ts';
+import { assertProjectPathSafe } from '../integrations/write-project-skill.ts';
+import { accent, dim, warning } from '../ui/colors.ts';
+import { EDITOR_TARGETS, type EditorId, HOSTS_WITH_USER_SKILL_DIR } from './editors.ts';
 
 // `HOSTS_WITH_USER_SKILL_DIR` is the canonical core constant (derived from
 // PROJECT_SKILL_EDITOR_IDS + EDITOR_PROJECT_SKILL_ROOT), shared with the desktop
@@ -167,6 +168,17 @@ export interface RepairSkillsContext {
   deps?: RepairSkillsDeps;
   /** Override fs primitives for tests. */
   fs?: RepairSkillsFsOps;
+  /**
+   * Decide whether to delete the directories a pre-0.42 fan-out left behind
+   * (issue #820). Called ONLY when there is something to remove, with the exact
+   * plan. Returning false leaves every path in place.
+   *
+   * Required to delete anything: with no confirmer the sweep is skipped, so a
+   * caller that never wired consent can't quietly remove files from `$HOME`.
+   * `repairSkillsCommand` supplies an interactive prompt (or an auto-yes under
+   * `--yes`); tests inject a stub.
+   */
+  confirmLegacyCleanup?: (plan: LegacyFanoutSweepPlan) => Promise<boolean>;
 }
 
 export type ProjectSkillOutcome = 'no-token' | 'reclaimed' | 'created' | 'failed';
@@ -216,6 +228,22 @@ export type RepairSkillsResult =
       status: 'done';
       project: ProjectSweepResult;
       user: UserSweepResult;
+      /**
+       * Paths removed from hosts a pre-0.42 fan-out reached but OK never
+       * supported (issue #820) — OK's skill dirs plus any agent home left empty
+       * by their removal. Empty on a machine that never ran an affected
+       * version, on every run after the first, and whenever the user declines.
+       */
+      legacySwept: string[];
+      /** True when a cleanup was available and the user (or `--yes`) declined it. */
+      legacyCleanupDeclined: boolean;
+      /**
+       * True when the user APPROVED the cleanup but it refused to run — a
+       * re-validation failure, i.e. a bug. Kept separate from
+       * `legacyCleanupDeclined` so the summary never reports our failure as
+       * the user's choice.
+       */
+      legacyCleanupFailed: boolean;
     };
 
 function defaultLogger(event: RepairSkillsLogEvent): void {
@@ -362,22 +390,27 @@ function installUserBundleToHostDirs(
 }
 
 /**
- * True iff `configPath` exists and its bytes contain either platform's chain
- * sentinel (`# ok-mcp-v1` / `# ok-mcp-win-v1`) — proof the editor is wired
- * for this OK project. The sentinel is the first line of every managed MCP
+ * True iff `configPath` exists and its bytes contain the version-independent
+ * chain-sentinel family prefix (`# ok-mcp-`) — proof the editor is wired for
+ * this OK project. The sentinel is the first line of every managed MCP
  * entry's resilient-chain body and is substring-present in both the JSON and
- * TOML on-disk forms, so a plain `includes` check is format-agnostic. Both
- * sentinels are accepted on every platform — a shared project config written
- * on the other OS still proves the editor is wired. A read error (torn /
- * unreadable config) classifies as "not wired" rather than throwing, so one
- * bad config never blocks the other hosts.
+ * TOML on-disk forms, so a plain `includes` check is format-agnostic. The
+ * prefix covers both platforms' sentinels and every version: "wired at all"
+ * must survive a sentinel bump (a project wired under `# ok-mcp-v1` is still
+ * wired after the chain moves to `v2` — the entry upgrades lazily via the
+ * repair sweep). Same shape as `OK_MCP_MARKER_PREFIX` in the desktop's
+ * `worktree-setup-inherit.ts`. A read error (torn / unreadable config)
+ * classifies as "not wired" rather than throwing, so one bad config never
+ * blocks the other hosts.
  */
+const OK_MCP_MARKER_PREFIX = '# ok-mcp-';
+
 function editorWiredForOk(configPath: string | undefined, fs: RepairSkillsFsOps): boolean {
   if (!configPath) return false;
   try {
     if (!fs.existsSync(configPath)) return false;
     const bytes = fs.readFileSync(configPath).toString('utf8');
-    return bytes.includes(CHAIN_VERSION_SENTINEL) || bytes.includes(CHAIN_WIN_VERSION_SENTINEL);
+    return bytes.includes(OK_MCP_MARKER_PREFIX);
   } catch {
     return false;
   }
@@ -749,8 +782,40 @@ export async function repairSkills(ctx: RepairSkillsContext): Promise<RepairSkil
 
   const project = runProjectSweep(ctx.projectDir, deps, fs, logger);
   const user = await runUserSweep(home, deps, fs, logger);
+  // Explicit-invocation only, and consent-gated even then. `ok init` must never
+  // delete from $HOME unasked — that would answer one scope violation with
+  // another — and neither may this command without showing its work first.
+  const legacyPlan = planLegacyFanoutSweep(home);
+  let legacySwept: string[] = [];
+  let legacyCleanupDeclined = false;
+  let legacyCleanupFailed = false;
+  if (legacyPlan.skillDirs.length > 0 || legacyPlan.emptyDirs.length > 0) {
+    const approved = ctx.confirmLegacyCleanup ? await ctx.confirmLegacyCleanup(legacyPlan) : false;
+    if (approved) {
+      try {
+        legacySwept = applyLegacyFanoutSweep(home, legacyPlan);
+      } catch (err) {
+        // `apply` re-validates the plan and throws rather than delete anything
+        // it can't account for. That means a bug, not a user problem — surface
+        // it as its own outcome (never as a decline) and carry on, because the
+        // install is this command's real job.
+        legacyCleanupFailed = true;
+        logger({
+          event: 'legacy-fanout-cleanup-refused',
+          scope: 'user',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      for (const path of legacySwept) {
+        logger({ event: 'legacy-fanout-path-removed', scope: 'user', path });
+      }
+    } else {
+      legacyCleanupDeclined = true;
+      logger({ event: 'legacy-fanout-cleanup-declined', scope: 'user' });
+    }
+  }
 
-  return { status: 'done', project, user };
+  return { status: 'done', project, user, legacySwept, legacyCleanupDeclined, legacyCleanupFailed };
 }
 
 /**
@@ -813,6 +878,13 @@ function formatRepairSkillsResult(result: RepairSkillsResult): string {
   } else {
     lines.push(`  User: skipped (${result.user.reason}).`);
   }
+  if (result.legacySwept.length > 0) {
+    lines.push(`  Cleanup: removed ${result.legacySwept.length} path(s) from a pre-0.42 install.`);
+  } else if (result.legacyCleanupFailed) {
+    lines.push('  Cleanup: failed — see logs; pre-0.42 directories left in place.');
+  } else if (result.legacyCleanupDeclined) {
+    lines.push('  Cleanup: declined — pre-0.42 directories left in place.');
+  }
   return lines.join('\n');
 }
 
@@ -825,16 +897,97 @@ export function repairSkillsCommand(): Command {
     .description(
       'Refresh bundled SKILL.md files for installed AI editors (project-local + user-global). Runs automatically during `ok start`; this command forces an explicit sweep.',
     )
-    .action(async () => {
+    .option(
+      '-y, --yes',
+      'Skip the confirmation prompt for removing directories left by a pre-0.42 install.',
+    )
+    .action(async (opts: { yes?: boolean }) => {
       const result = await repairSkills({
         projectDir: resolvePath(process.cwd()),
         reclaimDisableEnv: process.env.OK_RECLAIM_DISABLE ?? null,
+        confirmLegacyCleanup: (plan) => confirmLegacyCleanup(plan, { yes: opts.yes === true }),
       });
       process.stdout.write(`${formatRepairSkillsResult(result)}\n`);
       // process.exitCode (not process.exit) so any pending stdout/stderr
       // flushes still complete before Node tears down.
       process.exitCode = repairSkillsResultExitCode(result);
     });
+}
+
+/**
+ * Show exactly what the pre-0.42 cleanup would delete and ask before doing it.
+ *
+ * Two things the user must be able to see BEFORE consenting, because the whole
+ * point of issue #820 was software touching `$HOME` beyond what the user
+ * pictured: every path is listed (not just a count), and each agent home is
+ * labelled with WHY it is going — it holds nothing but OK's own skill, so it is
+ * empty the moment that skill is removed.
+ *
+ * Non-interactive (piped/CI) without `--yes` declines rather than proceeding:
+ * an unattended run must never delete from a home directory on a default.
+ */
+async function confirmLegacyCleanup(
+  plan: LegacyFanoutSweepPlan,
+  opts: { yes: boolean; input?: NodeJS.ReadableStream & { isTTY?: boolean } },
+): Promise<boolean> {
+  const home = homedir();
+  const show = (p: string) => `~/${relative(home, p)}`;
+  const input = opts.input ?? process.stdin;
+
+  const lines: string[] = [
+    '',
+    accent(
+      'A previous version of OpenKnowledge installed its skill into agent tools you may never have used.',
+    ),
+    dim(
+      '(Versions before 0.42 wrote to every host a third-party installer knew about — see issue #820.)',
+    ),
+  ];
+  if (plan.skillDirs.length > 0) {
+    lines.push(
+      '',
+      `${accent('Remove OpenKnowledge skills:')} ${plan.skillDirs.length}`,
+      ...plan.skillDirs.map((p) => `  ${show(p)}`),
+    );
+  }
+  if (plan.emptyDirs.length > 0) {
+    // Wording depends on whether skills are going too. A machine swept by an
+    // earlier build already has them gone, and telling that user these dirs
+    // are empty "once the above are gone" would describe a step not happening.
+    const heading =
+      plan.skillDirs.length > 0
+        ? 'Then remove these, which hold nothing else once the above are gone:'
+        : 'Remove these empty directories, left behind by that install:';
+    lines.push(
+      '',
+      `${accent(heading)} ${plan.emptyDirs.length}`,
+      ...plan.emptyDirs.map((p) => `  ${show(p)}`),
+    );
+  }
+  lines.push(
+    '',
+    dim('Nothing outside these paths is touched. A directory that still holds anything is kept.'),
+  );
+  process.stdout.write(`${lines.join('\n')}\n`);
+
+  if (opts.yes) return true;
+  if (!input.isTTY) {
+    process.stdout.write(
+      `${warning('Not a terminal — skipping cleanup. Re-run with `ok repair-skills --yes` to remove these.')}\n`,
+    );
+    return false;
+  }
+
+  const rl = createInterface({ input, output: process.stdout });
+  try {
+    const answer = (await rl.question(`\n${accent('Remove them?')} ${dim('[y/N] ')}`))
+      .trim()
+      .toLowerCase();
+    // Default NO — deletion is never the answer to an empty Enter.
+    return answer === 'y' || answer === 'yes';
+  } finally {
+    rl.close();
+  }
 }
 
 export const __testing = {
@@ -844,4 +997,5 @@ export const __testing = {
   CENTRAL_USER_SKILL_REL,
   formatRepairSkillsResult,
   repairSkillsResultExitCode,
+  confirmLegacyCleanup,
 };

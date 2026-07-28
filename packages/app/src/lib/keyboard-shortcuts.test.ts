@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import {
   formatShortcut,
   formatShortcutBindingLabel,
@@ -30,6 +30,10 @@ describe('keyboard shortcut registry', () => {
     expect(formatShortcut('tab-next', 'mac')).toBe('⌃ Tab');
     expect(formatShortcut('tab-previous', 'mac')).toBe('⌃⇧ Tab');
     expect(formatShortcut('tab-reopen-closed', 'mac')).toBe('⇧⌘ T');
+    expect(formatShortcut('navigate-back', 'mac')).toBe('⌘ [');
+    expect(formatShortcut('navigate-back', 'windowsLinux')).toBe('Alt ←');
+    expect(formatShortcut('navigate-forward', 'mac')).toBe('⌘ ]');
+    expect(formatShortcut('navigate-forward', 'windowsLinux')).toBe('Alt →');
   });
 
   test('formats spoken shortcut labels for accessible names', () => {
@@ -48,6 +52,41 @@ describe('keyboard shortcut registry', () => {
       'Control Shift Left Bracket or Control Shift Right Bracket',
     );
     expect(formatShortcutLabel('tab-next', 'mac')).toBe('Control Tab');
+    expect(formatShortcutLabel('navigate-back', 'mac')).toBe('Command Left Bracket');
+    expect(formatShortcutLabel('navigate-back', 'windowsLinux')).toBe('Alt Left Arrow');
+    expect(formatShortcutLabel('navigate-forward', 'mac')).toBe('Command Right Bracket');
+    expect(formatShortcutLabel('navigate-forward', 'windowsLinux')).toBe('Alt Right Arrow');
+  });
+
+  test('navigation-history accelerators are native-only and never renderer-matched', () => {
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: false, key: '[' },
+        'navigate-back',
+        'mac',
+      ),
+    ).toBe(false);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: false, altKey: true, key: 'ArrowLeft' },
+        'navigate-back',
+        'windowsLinux',
+      ),
+    ).toBe(false);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: false, key: ']' },
+        'navigate-forward',
+        'mac',
+      ),
+    ).toBe(false);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: false, altKey: true, key: 'ArrowRight' },
+        'navigate-forward',
+        'windowsLinux',
+      ),
+    ).toBe(false);
   });
 
   test('matches settings shortcut exactly and excludes Alt combinations', () => {

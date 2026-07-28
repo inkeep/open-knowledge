@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { HocuspocusAuthRejection } from './auth-token-schema.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';

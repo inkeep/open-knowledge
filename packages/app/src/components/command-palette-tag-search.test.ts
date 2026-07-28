@@ -11,7 +11,7 @@
  *   - returns the full list (no cap — host CommandList scrolls)
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import type { TagSummaryEntry } from '../editor/extensions/tag-suggestion.ts';
 import { filterTagList, parseTagPaletteQuery } from './command-palette-tag-search.ts';
 

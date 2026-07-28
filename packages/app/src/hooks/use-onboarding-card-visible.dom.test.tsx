@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   createOnboardingCardStore,
   type OnboardingCardStorage,
@@ -31,7 +31,7 @@ function clearDesktopHost(): void {
 }
 
 function mockDocuments(documents: unknown[]): void {
-  globalThis.fetch = mock(() =>
+  globalThis.fetch = vi.fn(() =>
     Promise.resolve(new Response(JSON.stringify({ documents }), { status: 200 })),
   ) as never;
 }
@@ -54,7 +54,7 @@ afterEach(() => {
 describe('useOnboardingCardVisible', () => {
   test('no desktop host → never visible, never activates', async () => {
     clearDesktopHost();
-    const fetchMock = mock(() =>
+    const fetchMock = vi.fn(() =>
       Promise.resolve(new Response(JSON.stringify({ documents: [] }), { status: 200 })),
     );
     globalThis.fetch = fetchMock as never;
@@ -78,7 +78,7 @@ describe('useOnboardingCardVisible', () => {
   });
 
   test('established session (other project present) → stays hidden', async () => {
-    const listRecent = mock(() => Promise.resolve([{ path: CURRENT_PATH }, { path: '/other' }]));
+    const listRecent = vi.fn(() => Promise.resolve([{ path: CURRENT_PATH }, { path: '/other' }]));
     (window as unknown as { okDesktop: unknown }).okDesktop = {
       project: { listRecent },
       config: { projectPath: CURRENT_PATH },
@@ -95,7 +95,7 @@ describe('useOnboardingCardVisible', () => {
   });
 
   test('dismissed store → hidden and skips evaluation', async () => {
-    const fetchMock = mock(() =>
+    const fetchMock = vi.fn(() =>
       Promise.resolve(new Response(JSON.stringify({ documents: [] }), { status: 200 })),
     );
     globalThis.fetch = fetchMock as never;
@@ -125,7 +125,7 @@ describe('useOnboardingCardVisible', () => {
   });
 
   test('completed store → hidden forever', async () => {
-    const fetchMock = mock(() =>
+    const fetchMock = vi.fn(() =>
       Promise.resolve(new Response(JSON.stringify({ documents: [] }), { status: 200 })),
     );
     globalThis.fetch = fetchMock as never;
@@ -143,7 +143,7 @@ describe('useOnboardingCardVisible', () => {
     // cleanup sets `cancelled`, so a resolution after unmount must NOT activate —
     // otherwise it would latch a card for a project the user already left.
     let resolveRecents!: (r: Array<{ path: string }>) => void;
-    const listRecent = mock(
+    const listRecent = vi.fn(
       () =>
         new Promise<Array<{ path: string }>>((res) => {
           resolveRecents = res;

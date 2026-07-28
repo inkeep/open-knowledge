@@ -11,7 +11,7 @@
  * name that explains why it's load-bearing.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { composeTabId, slugifyTabId } from './tabs.tsx';
 
 describe('slugifyTabId', () => {

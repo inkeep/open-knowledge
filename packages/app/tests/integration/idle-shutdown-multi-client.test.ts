@@ -6,7 +6,6 @@
  * deferred to process exit).
  */
 
-import { afterAll, beforeAll, expect, test } from 'bun:test';
 import {
   existsSync,
   mkdirSync,
@@ -27,6 +26,7 @@ import {
   ConfigSchema,
   ensureProjectGit,
 } from '@inkeep/open-knowledge-server';
+import { afterAll, beforeAll, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { waitForSync } from './test-harness.ts';

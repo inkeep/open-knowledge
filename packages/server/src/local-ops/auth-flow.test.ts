@@ -5,7 +5,7 @@
  * Fixture subprocesses spawned via `process.execPath -e <script>` so the tests
  * don't require the project CLI on PATH.
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { runDeviceFlowSubprocess } from './auth-flow.ts';
 import type { AuthEvent } from './types.ts';
 

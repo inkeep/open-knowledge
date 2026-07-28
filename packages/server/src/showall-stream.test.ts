@@ -26,7 +26,7 @@ import {
   streamShowAllEntries,
   walkContentDirForShowAll,
 } from './api-extension.ts';
-import { createContentFilter } from './content-filter.ts';
+import { createContentFilter, createContentFilterAsync } from './content-filter.ts';
 import { getLogger } from './logger.ts';
 
 function makeFlatFixture(fileCount: number): string {
@@ -178,6 +178,96 @@ describe('streamShowAllEntries — abort + laziness', () => {
 function entryPath(e: DocumentListEntry): string {
   return e.kind === 'document' ? e.docName : e.path;
 }
+
+describe('streamShowAllEntries — .okignore', () => {
+  test('root patterns hide matching folders from the all-files sidebar', async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-okignore-')));
+    mkdirSync(join(dir, 'src', 'adapters'), { recursive: true });
+    writeFileSync(join(dir, 'src', 'main.rs'), 'fn main() {}\n');
+    writeFileSync(join(dir, 'src', 'adapters', 'mod.rs'), 'pub mod adapter;\n');
+    mkdirSync(join(dir, 'example'));
+    writeFileSync(join(dir, 'example', 'demo.rs'), 'fn demo() {}\n');
+    mkdirSync(join(dir, 'target'));
+    writeFileSync(join(dir, 'target', 'debug.bin'), 'build output\n');
+    mkdirSync(join(dir, 'generated'));
+    writeFileSync(join(dir, 'generated', 'output.rs'), 'pub fn generated() {}\n');
+    writeFileSync(join(dir, 'Cargo.toml'), '[package]\nname = "demo"\n');
+    writeFileSync(join(dir, '.gitignore'), '/generated/\n');
+
+    const contentFilter = createContentFilter({ projectDir: dir, contentDir: dir });
+    writeFileSync(join(dir, '.okignore'), '/src/\n/example/\n');
+    expect((await contentFilter.rebuildIgnorePatterns()).ok).toBe(true);
+
+    const { entries } = await drain(
+      streamShowAllEntries({
+        contentDir: dir,
+        contentFilter,
+        dirFilter: null,
+        maxEntries: 50_000,
+        maxDepth: 1,
+      }),
+    );
+    const paths = entries.map(entryPath);
+
+    expect(paths).not.toContain('src');
+    expect(paths).not.toContain('example');
+    expect(paths).toContain('target');
+    expect(paths).toContain('generated');
+    expect(paths).toContain('Cargo.toml');
+  });
+
+  test('async content filters apply the same all-files hide rules', async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-okignore-async-')));
+    mkdirSync(join(dir, 'src'));
+    writeFileSync(join(dir, 'src', 'main.rs'), 'fn main() {}\n');
+    mkdirSync(join(dir, 'target'));
+    writeFileSync(join(dir, 'target', 'debug.bin'), 'build output\n');
+    writeFileSync(join(dir, '.okignore'), '/src/\n');
+
+    const contentFilter = await createContentFilterAsync({
+      projectDir: dir,
+      contentDir: dir,
+    });
+    const { entries } = await drain(
+      streamShowAllEntries({
+        contentDir: dir,
+        contentFilter,
+        dirFilter: null,
+        maxEntries: 50_000,
+        maxDepth: 1,
+      }),
+    );
+    const paths = entries.map(entryPath);
+
+    expect(paths).not.toContain('src');
+    expect(paths).toContain('target');
+  });
+
+  test('nested .okignore patterns hide matching folders from the all-files sidebar', async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-okignore-nested-')));
+    mkdirSync(join(dir, 'docs', 'drafts'), { recursive: true });
+    writeFileSync(join(dir, 'docs', 'drafts', 'wip.md'), '# Draft\n');
+    writeFileSync(join(dir, 'docs', 'guide.md'), '# Guide\n');
+    writeFileSync(join(dir, 'docs', '.okignore'), 'drafts/\n');
+
+    const contentFilter = createContentFilter({ projectDir: dir, contentDir: dir });
+    const { entries } = await drain(
+      streamShowAllEntries({
+        contentDir: dir,
+        contentFilter,
+        dirFilter: null,
+        maxEntries: 50_000,
+        maxDepth: 2,
+      }),
+    );
+    const paths = entries.map(entryPath);
+
+    expect(paths).toContain('docs');
+    expect(paths).toContain('docs/guide');
+    expect(paths).not.toContain('docs/drafts');
+    expect(paths).not.toContain('docs/drafts/wip');
+  });
+});
 
 describe('streamShowAllEntries — level-order emission (PRD-6858)', () => {
   // Root with several subtrees, each individually larger than the cap. Under

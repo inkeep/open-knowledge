@@ -8,10 +8,11 @@
  * BacklinkIndex — so the assertions deliberately read the write response
  * directly with no quiescence flush (freshness).
  */
-import { afterAll, beforeAll, expect, test } from 'bun:test';
+
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { afterAll, beforeAll, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { awaitFileWatcherIndexed, createTestServer, type TestServer } from './test-harness.ts';
 

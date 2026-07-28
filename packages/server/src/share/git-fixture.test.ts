@@ -5,9 +5,10 @@
  * faithful before the handler tests depend on it. Synchronous `execFileSync`
  * git keeps this unskipped on CI (oven-sh/bun#11892 only bites async children).
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { afterEach, describe, expect, test } from 'vitest';
 import { createGitTriangle, type GitTriangle } from './git-fixture.test-helper.ts';
 
 const triangles: GitTriangle[] = [];

@@ -1,13 +1,4 @@
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  spyOn,
-  test,
-} from 'bun:test';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readNumericOverride, resetPerfOverrideWarnings } from './env-override';
 
 // Bun's test runner doesn't provide a DOM (repo convention — see
@@ -18,7 +9,7 @@ const hadWindow = typeof (globalThis as { window?: unknown }).window !== 'undefi
 
 describe('readNumericOverride', () => {
   const originalEnv = { ...import.meta.env };
-  let warnSpy: ReturnType<typeof spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeAll(() => {
     if (!hadWindow) {
@@ -44,7 +35,7 @@ describe('readNumericOverride', () => {
         delete (import.meta.env as Record<string, unknown>)[key];
       }
     }
-    warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   });
 
   afterEach(() => {

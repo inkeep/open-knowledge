@@ -20,6 +20,7 @@ import { join, resolve } from 'node:path';
 import { findEnclosingProjectRoot, withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import checkbox from '@inquirer/checkbox';
 import { Command } from 'commander';
+import { PACKAGE_VERSION } from '../constants.ts';
 import { desktopUserDataDir, readDesktopRecentProjects } from '../integrations/desktop-state.ts';
 import { readPathInstallMarker } from '../integrations/path-shim.ts';
 import { accent, dim, error as errorColor, info, success, warning } from '../ui/colors.ts';
@@ -32,6 +33,7 @@ import {
   removalOutcomeToJson,
   removalPlanToJson,
 } from './removal-render.ts';
+import { promptUninstallFeedback, type UninstallFeedbackPromptDeps } from './uninstall-feedback.ts';
 
 // ---------------------------------------------------------------------------
 // Install-method detection (detect + instruct; never self-delete)
@@ -268,6 +270,8 @@ interface UninstallDeps {
    * exercised end-to-end without touching the real OS keychain.
    */
   runRemovalDeps?: RunRemovalDeps;
+  /** Prompt + transport seams for the post-confirm churn survey. */
+  feedback?: Pick<UninstallFeedbackPromptDeps, 'collect' | 'submit'>;
 }
 
 export interface UninstallOptions {
@@ -281,7 +285,10 @@ export interface UninstallOptions {
   json?: boolean;
   purgeContent?: boolean;
   allProjects?: boolean;
+  /** Whether stdout is a terminal. */
   isTTY?: boolean;
+  /** Whether stdin is a terminal — only the feedback prompt reads from it. */
+  isStdinTTY?: boolean;
   argv1?: string;
   confirmStream?: NodeJS.ReadableStream;
   deps?: UninstallDeps;
@@ -291,6 +298,13 @@ export interface UninstallResult {
   status: 'dry-run' | 'cancelled' | 'done' | 'failed';
   message: string;
   exitCode: number;
+  /**
+   * The churn survey, deferred so the caller runs it AFTER printing `message` —
+   * a departing user sees the "files removed" confirmation before being asked
+   * why. Present only on a successful removal (the sole case that surveys), and
+   * the caller must await it so the POST flushes before the process exits.
+   */
+  runFeedbackAfterReport?: () => Promise<void>;
 }
 
 const URL_SCHEME_NOTE = dim(
@@ -390,6 +404,26 @@ export async function runUninstall(opts: UninstallOptions = {}): Promise<Uninsta
 
   const outcome = await runRemoval(plan, opts.deps?.runRemovalDeps);
 
+  // Survey the departing user — but only on a successful removal (a failed, and
+  // maybe retried, run isn't a departure worth asking about), and deferred to
+  // the caller so the "files removed" report prints BEFORE the "why are you
+  // leaving?" prompt. The caller awaits it, so the POST still flushes before the
+  // process exits.
+  const runFeedbackAfterReport =
+    outcome.failed.length === 0
+      ? async (): Promise<void> => {
+          await promptUninstallFeedback({
+            stdinIsTTY: opts.isStdinTTY,
+            stdoutIsTTY: opts.isTTY,
+            yes: opts.yes,
+            json: opts.json,
+            appVersion: PACKAGE_VERSION,
+            platform,
+            ...opts.deps?.feedback,
+          });
+        }
+      : undefined;
+
   const parts = [
     opts.json
       ? JSON.stringify(removalOutcomeToJson('uninstall', outcome), null, 2)
@@ -409,6 +443,7 @@ export async function runUninstall(opts: UninstallOptions = {}): Promise<Uninsta
     status: outcome.failed.length > 0 ? 'failed' : 'done',
     message: parts.join('\n'),
     exitCode: outcome.failed.length > 0 ? 1 : 0,
+    runFeedbackAfterReport,
   };
 }
 
@@ -444,6 +479,10 @@ export function uninstallCommand(): Command {
           allProjects: options.allProjects,
         });
         process.stdout.write(`${result.message}\n`);
+        // After the report is on screen (so "files removed" lands before the
+        // survey), run the deferred churn prompt and await it so the POST
+        // flushes before the process exits.
+        await result.runFeedbackAfterReport?.();
         if (result.exitCode !== 0) process.exitCode = result.exitCode;
       },
     );

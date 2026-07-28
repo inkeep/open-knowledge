@@ -40,10 +40,12 @@ export const APP_RESERVED_IDS = new Map<string, string>([
 //   new-project → the registry "New project" row (opens CreateProjectDialog)
 //   send-to-ai  → the bespoke per-target "Open with AI" group
 //   report-bug  → the registry "Report a bug" row (opens ReportBugDialog)
+//   send-feedback → the registry "Send feedback" row (opens FeedbackFormDialog)
 export const PRE_EXISTING_PALETTE_IDS = new Set<string>([
   'new-doc',
   'new-folder',
   'new-project',
   'send-to-ai',
   'report-bug',
+  'send-feedback',
 ]);

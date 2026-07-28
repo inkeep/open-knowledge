@@ -1,8 +1,8 @@
 import './idb-preload';
-import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { afterEach, describe, expect, test } from 'vitest';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import {
   assertNoClientIdDrift,

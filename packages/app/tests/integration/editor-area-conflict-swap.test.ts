@@ -18,9 +18,10 @@
  * endpoint — requires a real `git merge` in progress and is covered by the
  * sync-engine boundary tests, not here.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import { createTestClient, createTestServer, pollUntil, type TestServer } from './test-harness';
 
 const BASE_CONTENT = '# Base\n\nBase paragraph.\n';

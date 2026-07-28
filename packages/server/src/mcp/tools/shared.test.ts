@@ -12,7 +12,7 @@
  * tests in CI would let regressions like the 2xx-with-`type`+`title`
  * misclassification slip through.
  */
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { z } from 'zod';
 
 import { type Config, ConfigSchema } from '../../config/schema.ts';

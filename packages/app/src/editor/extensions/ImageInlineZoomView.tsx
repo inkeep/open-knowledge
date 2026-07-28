@@ -17,7 +17,9 @@
  * `findDescriptorRoot` (see `clipboard/serialize.ts`): the PM node IS
  * the bare `<img>` atom, not a descriptor, so position resolution must
  * stay on the direct-leaf `posAtDOM(<img>, 0)` path that the un-wrapped
- * image used.
+ * image used. The opt-out neutralizes this node view's whole wrapper
+ * stack: the outer `.react-renderer` span tiptap renders directly around
+ * this wrapper is skipped too.
  *
  * Doc-relative `src` is resolved against the document's folder here, the
  * same render-time normalization the block path applies in

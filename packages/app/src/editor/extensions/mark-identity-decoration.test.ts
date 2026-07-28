@@ -8,10 +8,10 @@
  * editor needed.
  */
 
-import { describe, expect, test } from 'bun:test';
 import { type Mark, Schema } from '@tiptap/pm/model';
 import { EditorState, type Plugin } from '@tiptap/pm/state';
 import type { DecorationSet } from '@tiptap/pm/view';
+import { describe, expect, test } from 'vitest';
 import { markIdentityPlugin } from './mark-identity';
 import {
   MARK_ID_DATA_ATTR,

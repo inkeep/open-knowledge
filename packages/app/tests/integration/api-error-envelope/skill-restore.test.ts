@@ -8,12 +8,12 @@
  * and committed to the shadow repo (anonymous writes record nothing).
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
   HistorySuccessSchema,
   SkillGetSuccessSchema,
   SkillRestoreSuccessSchema,
 } from '@inkeep/open-knowledge-core';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
 // Project skills are content docs, so their version history comes from the
 // unified document-history path (`/api/history?docName=.ok/skills/<name>/SKILL`),

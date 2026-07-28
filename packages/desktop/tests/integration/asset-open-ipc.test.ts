@@ -25,8 +25,8 @@
  * `handoff-ipc.test.ts`, extended with injected FS / shell-open deps.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import type { IpcMain, IpcMainInvokeEvent, IpcRenderer } from 'electron';
+import { describe, expect, test, vi } from 'vitest';
 import { openAssetSafely, revealAssetSafely } from '../../src/main/asset-allowlist.ts';
 import { createHandler } from '../../src/shared/ipc-handler.ts';
 import { createInvoker } from '../../src/shared/ipc-invoke.ts';
@@ -78,7 +78,7 @@ function makeResolver(existingPaths: string[]): (path: string) => string {
 describe("'ok:shell:open-asset' round-trip", () => {
   test('happy path: renderer invoke → main handler → shell.openPath fires; result has ok:true', async () => {
     const { handle, invoke } = setupRig();
-    const openPath = mock(async (_: string) => '');
+    const openPath = vi.fn(async (_: string) => '');
     const canonical = `${PROJECT}/notes/meeting.pdf`;
 
     handle('ok:shell:open-asset', async (_event, relPath) =>
@@ -101,7 +101,7 @@ describe("'ok:shell:open-asset' round-trip", () => {
 
   test('path escape from renderer surfaces as result-object refusal (not Promise rejection)', async () => {
     const { handle, invoke } = setupRig();
-    const openPath = mock(async (_: string) => '');
+    const openPath = vi.fn(async (_: string) => '');
 
     handle('ok:shell:open-asset', async (_event, relPath) =>
       openAssetSafely(
@@ -125,7 +125,7 @@ describe("'ok:shell:open-asset' round-trip", () => {
 
   test('executable extension rejected across the IPC boundary', async () => {
     const { handle, invoke } = setupRig();
-    const openPath = mock(async (_: string) => '');
+    const openPath = vi.fn(async (_: string) => '');
     const canonical = `${PROJECT}/notes/setup.sh`;
 
     handle('ok:shell:open-asset', async (_event, relPath) =>
@@ -148,7 +148,7 @@ describe("'ok:shell:open-asset' round-trip", () => {
 
   test('not-found refusal distinguished from resolve-error', async () => {
     const { handle, invoke } = setupRig();
-    const openPath = mock(async (_: string) => '');
+    const openPath = vi.fn(async (_: string) => '');
 
     handle('ok:shell:open-asset', async (_event, relPath) =>
       openAssetSafely(
@@ -171,7 +171,7 @@ describe("'ok:shell:open-asset' round-trip", () => {
 describe("'ok:shell:reveal-asset' round-trip", () => {
   test('happy path: shell.showItemInFolder fires on canonical path', async () => {
     const { handle, invoke } = setupRig();
-    const showItemInFolder = mock((_: string) => {});
+    const showItemInFolder = vi.fn((_: string) => {});
     const canonical = `${PROJECT}/notes/meeting.pdf`;
 
     handle('ok:shell:reveal-asset', async (_event, relPath) =>
@@ -194,7 +194,7 @@ describe("'ok:shell:reveal-asset' round-trip", () => {
 
   test('reveal on an executable is allowed (content handler is not dispatched)', async () => {
     const { handle, invoke } = setupRig();
-    const showItemInFolder = mock((_: string) => {});
+    const showItemInFolder = vi.fn((_: string) => {});
     const canonical = `${PROJECT}/notes/setup.sh`;
 
     handle('ok:shell:reveal-asset', async (_event, relPath) =>

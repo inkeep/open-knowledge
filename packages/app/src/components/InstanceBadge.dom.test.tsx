@@ -1,18 +1,10 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { cleanup, render, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-mock.module('@lingui/react/macro', () => ({
+vi.doMock('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
-}));
-
-// Tooltip is decorative chrome; pass its parts through so the badge renders
-// without a TooltipProvider ancestor.
-mock.module('@/components/ui/tooltip', () => ({
-  Tooltip: ({ children }: { children: ReactNode }) => <>{children}</>,
-  TooltipTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
-  TooltipContent: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 function setOkDesktop(value: { instanceLabel: string | null } | undefined): void {
@@ -21,7 +13,11 @@ function setOkDesktop(value: { instanceLabel: string | null } | undefined): void
 
 async function renderInstanceBadge(className?: string) {
   const { InstanceBadge } = await import('./InstanceBadge');
-  return render(<InstanceBadge className={className} />);
+  return render(
+    <TooltipProvider>
+      <InstanceBadge className={className} />
+    </TooltipProvider>,
+  );
 }
 
 describe('InstanceBadge runtime behavior', () => {

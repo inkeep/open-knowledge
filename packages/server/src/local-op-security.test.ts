@@ -1,10 +1,10 @@
-import { afterAll, beforeAll, describe, expect, mock, test, vi } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import type * as fs from 'node:fs';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 
 // node:fs is mocked so realpathSync/lstatSync can be redirected per test: vitest
 // cannot redefine a live ESM namespace binding the way bun's spyOn did. The SUT
@@ -26,7 +26,7 @@ beforeAll(async () => {
   realFs = await vi.importActual<typeof import('node:fs')>('node:fs');
   realpathSyncMock.mockImplementation(realFs.realpathSync as (...args: never[]) => unknown);
   lstatSyncMock.mockImplementation(realFs.lstatSync as (...args: never[]) => unknown);
-  mock.module('node:fs', () => ({
+  vi.doMock('node:fs', () => ({
     ...realFs,
     realpathSync: realpathSyncMock,
     lstatSync: lstatSyncMock,
@@ -221,9 +221,8 @@ describe('isSafeLocalPath', () => {
 //
 // Tests inject a tmp dir as `home` so symlink scenarios can be exercised
 // without touching the developer's actual home. The public `isSafeLocalPath`
-// is a thin wrapper over `isPathWithinHome(_, homedir())`; mocking `homedir()`
-// is unreliable in Bun (no `$HOME` honoring after first call; `mock.module`
-// leaks across files per server-factory.test.ts).
+// is a thin wrapper over `isPathWithinHome(_, homedir())`; exercising the
+// parameterized function keeps these cases independent of the real home path.
 
 describe('isPathWithinHome — symlink containment', () => {
   let fakeHome: string;

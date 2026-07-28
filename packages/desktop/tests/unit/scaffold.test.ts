@@ -1,8 +1,8 @@
-import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
+import { describe, expect, test } from 'vitest';
 
 /**
  * Scaffold placeholder test. Validates that the desktop package can

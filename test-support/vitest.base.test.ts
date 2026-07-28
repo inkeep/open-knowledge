@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { importMetaDirPlugin } from './vitest.base';
 
 type TransformFn = (code: string) => { code: string } | null;

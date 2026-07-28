@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DEFAULT_EMBEDDINGS_BASE_URL } from '@inkeep/open-knowledge-core';
+import { DEFAULT_EMBEDDINGS_BASE_URL, DEFAULT_EMBEDDINGS_MODEL } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { embeddingsCommand } from './index.ts';
 
 function readLocalConfig(dir: string): string {
@@ -84,5 +84,35 @@ describe('ok embeddings set-url / clear-url', () => {
     await run('clear-url', '--cwd', dir);
     expect(process.exitCode).toBe(0);
     expect(readLocalConfig(dir)).toContain(DEFAULT_EMBEDDINGS_BASE_URL);
+  });
+
+  // The other half of pointing at your own server: a custom endpoint is only
+  // usable once you can name the model it serves, and this persona is often
+  // headless with no Settings UI to reach for.
+  test('set-model writes a free-text model id to project-local config', async () => {
+    await run('set-model', 'nomic-embed-text', '--cwd', dir);
+    expect(process.exitCode).toBe(0);
+    expect(readLocalConfig(dir)).toContain('nomic-embed-text');
+  });
+
+  test('set-model trims surrounding whitespace before writing', async () => {
+    await run('set-model', '  nomic-embed-text  ', '--cwd', dir);
+    expect(process.exitCode).toBe(0);
+    expect(readLocalConfig(dir)).toContain('nomic-embed-text');
+    expect(readLocalConfig(dir)).not.toContain('  nomic-embed-text');
+  });
+
+  test('set-model rejects an empty model id without writing (exit 1)', async () => {
+    await run('set-model', '   ', '--cwd', dir);
+    expect(process.exitCode).toBe(1);
+    expect(stderr).toContain('cannot be empty');
+    expect(readLocalConfig(dir)).toBe('');
+  });
+
+  test('clear-model resets the model to the default', async () => {
+    await run('set-model', 'nomic-embed-text', '--cwd', dir);
+    await run('clear-model', '--cwd', dir);
+    expect(process.exitCode).toBe(0);
+    expect(readLocalConfig(dir)).toContain(DEFAULT_EMBEDDINGS_MODEL);
   });
 });

@@ -19,10 +19,11 @@
  *      response carries the renamed[] / rewrittenDocs[] / previewUrls{}
  *      (folder) or previewUrl (file) shape consumers depend on.
  */
-import { afterEach, describe, expect, test } from 'bun:test';
+
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ConfigSchema } from '@inkeep/open-knowledge-server';
+import { afterEach, describe, expect, test } from 'vitest';
 import { register as registerMove } from '../../../server/src/mcp/tools/move';
 import type { ServerInstance } from '../../../server/src/mcp/tools/shared';
 import { awaitFileWatcherIndexed, createRestartableServer } from './test-harness';

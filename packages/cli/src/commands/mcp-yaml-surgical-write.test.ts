@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, it } from 'bun:test';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
-import { CHAIN_V1, EDITOR_TARGETS, type EditorMcpTarget } from './editors.ts';
+import { CHAIN_V2, EDITOR_TARGETS, type EditorMcpTarget } from './editors.ts';
 import { writeEditorMcpConfig } from './init.ts';
 import { removeOwnMcpEntry } from './mcp-config-removal.ts';
 
@@ -40,7 +40,7 @@ function writeHermes(configPath: string) {
   });
 }
 
-const PUBLISHED_CHAIN_ENTRY = { command: '/bin/sh', args: ['-l', '-c', CHAIN_V1] };
+const PUBLISHED_CHAIN_ENTRY = { command: '/bin/sh', args: ['-l', '-c', CHAIN_V2] };
 
 describe('surgical YAML MCP write', () => {
   afterEach(() => {

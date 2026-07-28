@@ -33,6 +33,7 @@ import { type Config, ConfigSchema, trustSystemCertificates } from '@inkeep/open
  * Config loaded via preAction hook: CLI > ENV > project > user > Zod defaults.
  */
 import { Command } from 'commander';
+import { auditCommand } from './commands/audit.ts';
 import { authCommand } from './commands/auth/index.ts';
 import { bugReportCommand } from './commands/bug-report.ts';
 import { cleanCommand } from './commands/clean.ts';
@@ -181,7 +182,7 @@ program.action(async () => {
   const decision = detectDesktop(createRealDetectDeps());
 
   if (decision.available) {
-    launchDesktop({ spawn });
+    launchDesktop({ spawn }, decision);
     return;
   }
 
@@ -231,6 +232,10 @@ program.addCommand(preview);
 // lint command — headless markdown linting (whole project, a folder, or a file)
 program.addCommand(lintCommand(() => resolvedConfig));
 
+// audit command — unified validation audit (lint + broken internal links) via
+// the running project server; CLI sibling of the `audit` MCP tool
+program.addCommand(auditCommand(() => resolvedConfig));
+
 // ui command — serves the React editor (sibling of `start`).
 const ui = uiCommand(() => resolvedConfig);
 program.addCommand(ui);
@@ -272,7 +277,7 @@ program.addCommand(authCommand(getCliLogger));
 
 // embeddings command group — set-key / clear-key / status for semantic search.
 // A sibling of `auth` (which is GitHub-specific); manages the embeddings
-// provider key in the OS keyring + the per-machine capability status.
+// provider key in `~/.ok/secrets.yml` + the per-machine capability status.
 program.addCommand(embeddingsCommand());
 
 // clone command — git clone + auto-start

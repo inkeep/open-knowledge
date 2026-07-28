@@ -20,8 +20,9 @@
  *
  * Invocation: `bun run test:dom` from `packages/app/`.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 interface PageListCachePayload {
   pages: Set<string>;
@@ -32,13 +33,13 @@ interface PageListCachePayload {
   pageIcons: ReadonlyMap<string, string>;
 }
 
-const setPageListCacheMock = mock((_payload: PageListCachePayload) => {});
+const setPageListCacheMock = vi.fn((_payload: PageListCachePayload) => {});
 
-mock.module('@/lib/documents-events', () => ({
+vi.doMock('@/lib/documents-events', () => ({
   subscribeToDocumentsChanged: () => () => {},
 }));
 
-mock.module('@/editor/page-list-cache', () => ({
+vi.doMock('@/editor/page-list-cache', () => ({
   buildPageIconsIndex: (pageMeta: ReadonlyMap<string, { icon?: string }>) => {
     const icons = new Map<string, string>();
     for (const [docName, meta] of pageMeta) {

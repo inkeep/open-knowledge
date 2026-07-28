@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { releaseShadowOpGate, ShadowOpGate, shadowOpGateFor } from './shadow-op-gate.ts';
 
 /** A promise whose settle order we can observe alongside manual triggers. */

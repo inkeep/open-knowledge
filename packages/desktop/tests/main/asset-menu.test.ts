@@ -4,8 +4,8 @@
  * integration with an injected Menu ctor.
  */
 
-import { describe, expect, mock, test } from 'bun:test';
 import type { BrowserWindow, Menu, MenuItemConstructorOptions } from 'electron';
+import { describe, expect, test, vi } from 'vitest';
 import {
   buildAssetMenuTemplate,
   popAssetMenu,
@@ -27,9 +27,9 @@ describe('revealMenuLabel — platform-specific Reveal text', () => {
 describe('buildAssetMenuTemplate', () => {
   function makeActions() {
     return {
-      reveal: mock(() => {}),
-      openInDefault: mock(() => {}),
-      copyLink: mock(() => {}),
+      reveal: vi.fn(() => {}),
+      openInDefault: vi.fn(() => {}),
+      copyLink: vi.fn(() => {}),
     };
   }
 
@@ -104,9 +104,9 @@ describe('buildAssetMenuTemplate', () => {
 
 describe('popAssetMenu', () => {
   test('builds template + pops via injected Menu ctor', () => {
-    const popup = mock((_: unknown) => {});
+    const popup = vi.fn((_: unknown) => {});
     const menuInstance = { popup } as unknown as ReturnType<typeof Menu.buildFromTemplate>;
-    const buildFromTemplate = mock((_: MenuItemConstructorOptions[]) => menuInstance);
+    const buildFromTemplate = vi.fn((_: MenuItemConstructorOptions[]) => menuInstance);
     const fakeWindow = { id: 42, isDestroyed: () => false } as unknown as BrowserWindow;
 
     popAssetMenu(
@@ -130,9 +130,9 @@ describe('popAssetMenu', () => {
   });
 
   test('destroyed window → no build, no popup (right-click racing window close)', () => {
-    const popup = mock((_: unknown) => {});
+    const popup = vi.fn((_: unknown) => {});
     const menuInstance = { popup } as unknown as ReturnType<typeof Menu.buildFromTemplate>;
-    const buildFromTemplate = mock((_: MenuItemConstructorOptions[]) => menuInstance);
+    const buildFromTemplate = vi.fn((_: MenuItemConstructorOptions[]) => menuInstance);
     const fakeWindow = { id: 42, isDestroyed: () => true } as unknown as BrowserWindow;
 
     popAssetMenu(

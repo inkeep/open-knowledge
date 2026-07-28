@@ -1,5 +1,7 @@
+import { type RestoredWindow, windowRestoreKey } from './state-store.ts';
+
 export interface BootRestoreInput {
-  pendingRestore: string[] | null;
+  pendingRestore: RestoredWindow[] | null;
   lastOpenedProject: string | null;
   optionHeld: boolean;
   pathExists: (p: string) => boolean;
@@ -17,7 +19,7 @@ export interface BootRestoreInput {
 }
 
 export type BootRestoreDecision =
-  | { clearSnapshot: boolean; action: 'restore'; projects: string[] }
+  | { clearSnapshot: boolean; action: 'restore'; windows: RestoredWindow[] }
   | { clearSnapshot: boolean; action: 'lastOpened'; project: string }
   | { clearSnapshot: boolean; action: 'navigator' }
   | { clearSnapshot: boolean; action: 'none' };
@@ -33,11 +35,19 @@ export type BootRestoreDecision =
 export function bootRestoreDecision(input: BootRestoreInput): BootRestoreDecision {
   const { pendingRestore, lastOpenedProject, optionHeld, pathExists, urlLaunch } = input;
   const clearSnapshot = pendingRestore !== null;
+  // Filter each entry by whether its target still exists on disk — a project
+  // folder or loose file deleted/moved since the snapshot is silently skipped
+  // (`windowRestoreKey` is the project path or the canonical file path). The
+  // file→project re-derivation + duplicate collapse happens in
+  // `resolveRestoreActions` (called at open time from `index.ts`); the pure
+  // decision only survivor-filters.
   const restorable =
-    pendingRestore !== null && !optionHeld ? pendingRestore.filter(pathExists) : [];
+    pendingRestore !== null && !optionHeld
+      ? pendingRestore.filter((w) => pathExists(windowRestoreKey(w)))
+      : [];
 
   if (restorable.length > 0) {
-    return { clearSnapshot, action: 'restore', projects: restorable };
+    return { clearSnapshot, action: 'restore', windows: restorable };
   }
   if (urlLaunch) {
     return { clearSnapshot, action: 'none' };
@@ -51,6 +61,47 @@ export function bootRestoreDecision(input: BootRestoreInput): BootRestoreDecisio
     return { clearSnapshot, action: 'lastOpened', project: lastOpenedProject };
   }
   return { clearSnapshot, action: 'navigator' };
+}
+
+/**
+ * Resolve a restore snapshot into the ordered, de-duplicated set of windows to
+ * open. Each `file` entry is re-derived via `resolveFileTarget` — matching
+ * `openEphemeralFile`'s own logic, a loose file whose realpath now sits inside a
+ * project collapses onto that project (a `project` action); a file that can't be
+ * resolved (missing / non-markdown) returns null and is skipped. Entries that
+ * collapse onto the same key de-dupe, with the LATER (more recently focused)
+ * occurrence winning position, so `orderedKeys`'s last entry is the window to
+ * raise after restore.
+ *
+ * Pure: the filesystem / project derivation is injected, so the collapse +
+ * ordering — the load-bearing duplicate-window guard — is unit-testable without
+ * Electron. `index.ts` passes a `resolveFileTarget` that wraps
+ * `prepareSingleFileOpen`.
+ */
+export function resolveRestoreActions(
+  windows: readonly RestoredWindow[],
+  resolveFileTarget: (filePath: string) => RestoredWindow | null,
+): { orderedKeys: string[]; actionByKey: Map<string, RestoredWindow> } {
+  const orderedKeys: string[] = [];
+  const actionByKey = new Map<string, RestoredWindow>();
+  for (const w of windows) {
+    let action: RestoredWindow;
+    if (w.kind === 'file') {
+      const resolved = resolveFileTarget(w.filePath);
+      if (resolved === null) continue;
+      action = resolved;
+    } else {
+      action = w;
+    }
+    const key = windowRestoreKey(action);
+    // Later (more-recent) duplicate wins position: move the key to the end so
+    // the raise target stays the most-recently-focused window.
+    const existingIdx = orderedKeys.indexOf(key);
+    if (existingIdx !== -1) orderedKeys.splice(existingIdx, 1);
+    orderedKeys.push(key);
+    actionByKey.set(key, action);
+  }
+  return { orderedKeys, actionByKey };
 }
 
 /**

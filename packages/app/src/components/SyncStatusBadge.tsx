@@ -7,7 +7,14 @@
  * Click opens a popover with last-sync details and action buttons.
  */
 
-import type { PushPermissionWire, SyncErrorCode } from '@inkeep/open-knowledge-core';
+import {
+  isSyncActiveMode,
+  isSyncPaused,
+  type PushPermissionWire,
+  resolveLocalAutoSyncMode,
+  type SyncErrorCode,
+  type SyncMode,
+} from '@inkeep/open-knowledge-core';
 import { plural, t } from '@lingui/core/macro';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import {
@@ -16,14 +23,12 @@ import {
   Cloud,
   CloudOff,
   LogIn,
+  Pause,
   RefreshCw,
   UserCog,
 } from 'lucide-react';
 import { useConflicts } from '@/hooks/use-conflicts';
-import {
-  useEnableSyncWithConfirm,
-  useSyncEnabledWriter,
-} from '@/hooks/use-enable-sync-with-confirm';
+import { useBadgeSyncControls } from '@/hooks/use-enable-sync-with-confirm';
 import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
 import { useGitSyncStatusDetailed } from '@/hooks/use-git-sync-status';
 import { useConfigContext } from '@/lib/config-provider';
@@ -33,6 +38,7 @@ import { EnableSyncConfirmDialog } from './EnableSyncConfirmDialog';
 import { Button } from './ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Switch } from './ui/switch';
+import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -42,9 +48,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
  * stream drives the visible state, so a rejected trigger (offline / server
  * down) needs no UI handling — but it gets a breadcrumb rather than being
  * swallowed silently, so a "Sync now did nothing" report is triageable.
+ *
+ * A following (pull-only) project uses the `pull` op so the trigger runs the
+ * one-directional cycle; full sync uses `sync` (fetch + merge + push).
  */
-function triggerSyncFromBadge(): void {
-  triggerSync('sync').catch((err) => {
+function triggerSyncFromBadge(op: 'sync' | 'pull' = 'sync'): void {
+  triggerSync(op).catch((err) => {
     console.warn(
       '[sync-badge] manual sync trigger failed',
       err instanceof Error ? err.message : err,
@@ -67,15 +76,41 @@ function formatRelative(iso: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
+// ── mode-aware state derivation ───────────────────────────────────────────────
+
+/** True when the project follows upstream one-directionally (pull-only). */
+function isFollowingMode(status: GitSyncStatus): boolean {
+  return status.syncMode === 'follow';
+}
+
+/**
+ * The state the badge renders. A pull-only engine deliberately holds `idle`
+ * while a same-line collision waits in the conflict ledger — that keeps the rest
+ * of the repo fast-forwarding, but a following project must still surface the
+ * collision, so promote it to `conflict` on the badge. Full sync sets the
+ * `conflict` state directly, so this never changes what it renders.
+ */
+export function displayState(status: GitSyncStatus): GitSyncStatus['state'] {
+  if (isFollowingMode(status) && status.state === 'idle' && status.conflictCount > 0) {
+    return 'conflict';
+  }
+  return status.state;
+}
+
 // ── inner: icon + color per state ────────────────────────────────────────────
 
 interface BadgeIconProps {
   status: GitSyncStatus;
+  /** True when the user paused a previously-enabled project (config-driven). */
+  paused?: boolean;
 }
 
-function BadgeIcon({ status }: BadgeIconProps) {
+function BadgeIcon({ status, paused }: BadgeIconProps) {
   const cls = 'size-3.5';
-  switch (status.state) {
+  // Paused is a config state the engine's `state` can't express (it reads as
+  // disabled/dormant), so it wins the icon.
+  if (paused) return <Pause className={`${cls} text-muted-foreground`} />;
+  switch (displayState(status)) {
     case 'dormant':
       // Available: remote exists but sync not yet enabled
       return <Cloud className={`${cls} text-muted-foreground`} />;
@@ -104,9 +139,11 @@ function BadgeIcon({ status }: BadgeIconProps) {
 }
 
 function badgeLabel(status: GitSyncStatus): string {
-  switch (status.state) {
+  switch (displayState(status)) {
     case 'idle':
-      if (status.ahead > 0) return `↑${status.ahead}`;
+      // A following project never pushes, so "ahead" is not an actionable
+      // signal — only surface how far behind upstream the copy is.
+      if (!isFollowingMode(status) && status.ahead > 0) return `↑${status.ahead}`;
       if (status.behind > 0) return `↓${status.behind}`;
       return '';
     case 'fetching':
@@ -126,16 +163,18 @@ function badgeLabel(status: GitSyncStatus): string {
 
 // ── popover content ───────────────────────────────────────────────────────────
 
-function stateLabel(state: GitSyncStatus['state']): string {
+function stateLabel(state: GitSyncStatus['state'], following = false): string {
   switch (state) {
     case 'dormant':
       return t`No git remote`;
     case 'idle':
-      return t`Synced`;
+      // A following project tracks upstream one-directionally, so "Synced"
+      // (which implies a two-way exchange) would overstate what happened.
+      return following ? t`Up to date` : t`Synced`;
     case 'fetching':
-      return t`Fetching`;
+      return following ? t`Checking for updates` : t`Fetching`;
     case 'pulling':
-      return t`Pulling`;
+      return following ? t`Updating` : t`Pulling`;
     case 'pushing':
       return t`Pushing`;
     case 'conflict':
@@ -161,6 +200,10 @@ export function formatPausedReason(reason: string): string {
       return t`Resolve conflict in your terminal`;
     case 'detached-head':
       return t`Detached HEAD — checkout a branch to resume`;
+    case 'diverged-local-commits':
+      // Pull-only reaches this when local commits sit ahead of origin: it never
+      // pushes or merges to reconcile them, so updates stall until they're gone.
+      return t`Local commits are keeping this copy from updating`;
     case 'auth-error':
       return t`Reconnect required`;
     case 'protected-branch':
@@ -393,16 +436,37 @@ export function shouldOfferSignInAgain(pushPermission: PushPermissionWire | unde
 export function shouldDisableSyncSwitch(
   projectLocalSynced: boolean | undefined,
   pushPermissionCheckStatus: 'allowed' | 'denied' | 'unknown' | undefined,
+  currentMode?: SyncMode,
 ): boolean {
   if (!projectLocalSynced) return true;
+  // A following (pull-only) project never pushes, so a denied push probe is
+  // irrelevant to it — the toggle (whose only action is turning sync off) stays
+  // enabled. A denied probe still disables an off/full project, where enabling
+  // reaches the push-requiring full mode.
+  if (currentMode === 'follow') return false;
   if (pushPermissionCheckStatus === 'denied') return true;
   return false;
 }
 
-function tooltipLabel(status: GitSyncStatus): string {
-  if (!status.syncEnabled) return t`Sync off`;
-  if (status.state === 'idle') {
+export function tooltipLabel(status: GitSyncStatus, paused = false): string {
+  if (paused) return t`Sync paused`;
+  const following = isFollowingMode(status);
+  // A following project is always on, so it never reads as "Sync off" — that
+  // label is reserved for a genuinely disabled (mode off) project.
+  if (!status.syncEnabled && !following) return t`Sync off`;
+  const state = displayState(status);
+  if (state === 'conflict' && status.conflictCount > 0) {
+    const { conflictCount } = status;
+    return plural(conflictCount, { one: '# conflict', other: '# conflicts' });
+  }
+  if (state === 'idle') {
     const { ahead, behind } = status;
+    if (following) {
+      // "ahead" is not actionable for a project that never pushes; only how far
+      // behind upstream it is (before a pull completes) is worth surfacing.
+      if (behind > 0) return t`${behind} behind`;
+      return t`Up to date`;
+    }
     if (ahead > 0 && behind > 0) {
       return t`${ahead} ahead, ${behind} behind`;
     }
@@ -410,11 +474,7 @@ function tooltipLabel(status: GitSyncStatus): string {
     if (behind > 0) return t`${behind} behind`;
     return t`Synced`;
   }
-  if (status.state === 'conflict' && status.conflictCount > 0) {
-    const { conflictCount } = status;
-    return plural(conflictCount, { one: '# conflict', other: '# conflicts' });
-  }
-  return stateLabel(status.state);
+  return stateLabel(state, following);
 }
 
 interface PopoverBodyProps {
@@ -425,112 +485,163 @@ interface PopoverBodyProps {
 
 function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
   const { t } = useLingui();
-  const { ahead, behind, conflictCount } = status;
+  const { behind, conflictCount } = status;
   const { projectLocalConfig, projectLocalSynced } = useConfigContext();
-  const enabled = projectLocalConfig?.autoSync?.enabled ?? false;
+  const autoSync = projectLocalConfig?.autoSync;
+  const {
+    active,
+    paused,
+    everEnabled,
+    toggleMode,
+    confirmOpen,
+    setConfirmOpen,
+    pendingMode,
+    strandedCommitCount,
+    onToggleActive,
+    onModeSelect,
+    onConfirm,
+  } = useBadgeSyncControls(autoSync, status.ahead);
+  const localMode = resolveLocalAutoSyncMode(autoSync) ?? 'off';
+  // `following` (status-driven) is the ACTIVE pull state; the paused branch is
+  // config-driven since the engine reports a paused project as disabled.
+  const following = isFollowingMode(status);
+  const state = displayState(status);
   const lastSyncedRelative = formatRelative(status.lastSyncUtc);
-  const writer = useSyncEnabledWriter();
-  const { confirmOpen, setConfirmOpen, onToggleRequest, onConfirm } =
-    useEnableSyncWithConfirm(writer);
+  // The Full/Follow control appears only for a user who can actually choose —
+  // a genuine read-only collaborator can only follow, so it's hidden for them
+  // (a signed-out user may gain push after auth, so they keep it).
+  const genuineReadOnly =
+    status.pushPermission?.checkStatus === 'denied' &&
+    status.pushPermission.deniedReason !== 'not-authenticated';
+  const canChooseMode = !genuineReadOnly;
   // The "Review conflicts" affordance navigates to the first conflicted file
   // (so the editor-area DiffViewBoundary mounts via the lifecycle observer).
-  // There is no side-sheet to open — the sidebar Conflicts section is the
-  // project-level list, the editor-area DiffView is the resolution surface.
   const { conflicts } = useConflicts();
   const firstConflict = conflicts[0] ?? null;
+
+  const showConflictButton = !paused && state === 'conflict' && firstConflict !== null;
+  const showAuthButton = !paused && state === 'auth-error';
+  const showSyncButton =
+    everEnabled && !showConflictButton && !showAuthButton && (paused || state !== 'dormant');
+  // A manual sync from a full-active project pushes too; every other case
+  // (following, or paused) pulls only.
+  const manualSyncOp: 'sync' | 'pull' = active && localMode === 'full' ? 'sync' : 'pull';
 
   return (
     <div className="flex flex-col gap-3.5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <BadgeIcon status={status} />
-          <span className="text-1sm font-medium truncate">{stateLabel(status.state)}</span>
+          <BadgeIcon status={status} paused={paused} />
+          <span className="text-1sm font-medium truncate">
+            {paused ? t`Sync paused` : stateLabel(state, following)}
+          </span>
         </div>
         <Switch
-          checked={enabled}
-          disabled={shouldDisableSyncSwitch(projectLocalSynced, status.pushPermission?.checkStatus)}
-          onCheckedChange={onToggleRequest}
-          aria-label={
-            status.pushPermission?.checkStatus === 'denied'
-              ? t`Sync disabled — you don't have permission to push`
-              : enabled
-                ? t`Disable sync`
-                : t`Enable sync`
-          }
+          checked={active}
+          disabled={!projectLocalSynced}
+          onCheckedChange={onToggleActive}
+          aria-label={active ? t`Pause sync` : t`Resume sync`}
         />
       </div>
       <EnableSyncConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         onConfirm={onConfirm}
+        variant={pendingMode ?? 'full'}
+        strandedCommitCount={strandedCommitCount}
       />
 
-      {computeSyncErrorLines(status).map((line) => (
-        <p key={line.key} className="text-xs text-destructive">
-          {line.direction === 'push' ? (
-            <>
-              <span className="font-medium">{t`Push`}: </span>
-              {line.message}
-            </>
-          ) : line.direction === 'pull' ? (
-            <>
-              <span className="font-medium">{t`Pull`}: </span>
-              {line.message}
-            </>
-          ) : (
-            line.message
-          )}
+      {paused ? (
+        <p className="text-xs text-muted-foreground" data-testid="sync-popover-paused-line">
+          <Trans>Sync is paused. Turn it back on to resume.</Trans>
         </p>
-      ))}
-      {shouldOfferReconnect(status.pushPermission) ? (
-        // Signed-out denial (no credential resolved) — reconnecting resumes
-        // sync, so offer it here. Takes precedence over the button-less
-        // `pausedReason`/`denied` branches below, which is exactly the stuck
-        // state (sync was enabled, then the credential went away). The genuine
-        // read-only-collaborator denial keeps the button-less copy.
-        <div className="flex items-start gap-2">
-          <p className="text-xs text-muted-foreground flex-1 min-w-0">
-            <Trans>You're signed out — sign in to resume syncing.</Trans>
-          </p>
-          {onSignIn && (
-            <Button variant="outline" size="xs" className="self-start" onClick={onSignIn}>
-              <Trans>Sign in</Trans>
-            </Button>
-          )}
-        </div>
-      ) : status.pausedReason ? (
-        <p className="text-xs text-muted-foreground">{formatPausedReason(status.pausedReason)}</p>
-      ) : status.pushPermission?.checkStatus === 'denied' ? (
-        <p className="text-xs text-muted-foreground">
-          {formatPushPermissionDenied(status.pushPermission.deniedReason)}
-        </p>
-      ) : shouldOfferSignInAgain(status.pushPermission) ? (
-        // Probe-401 branch: surface a "Sign in again" affordance without
-        // disabling sync — the probe couldn't reach a verdict, so the user's
-        // existing sync preference is preserved while they re-authenticate.
-        // The button reuses `onSignIn`, the same handler wired for the
-        // `auth-error` state below.
-        <div className="flex items-start gap-2">
-          <p className="text-xs text-muted-foreground flex-1 min-w-0">
-            <Trans>Your GitHub session expired — sign in again to verify push access.</Trans>
-          </p>
-          {onSignIn && (
-            <Button variant="outline" size="xs" className="self-start" onClick={onSignIn}>
-              <Trans>Sign in</Trans>
-            </Button>
-          )}
-        </div>
-      ) : null}
+      ) : (
+        <>
+          {computeSyncErrorLines(status).map((line) => (
+            <p key={line.key} className="text-xs text-destructive">
+              {line.direction === 'push' ? (
+                <>
+                  <span className="font-medium">{t`Push`}: </span>
+                  {line.message}
+                </>
+              ) : line.direction === 'pull' ? (
+                <>
+                  <span className="font-medium">{t`Pull`}: </span>
+                  {line.message}
+                </>
+              ) : (
+                line.message
+              )}
+            </p>
+          ))}
+          {!following && shouldOfferReconnect(status.pushPermission) ? (
+            // Signed-out denial (no credential resolved) — reconnecting resumes
+            // sync, so offer it here. Takes precedence over the button-less
+            // `pausedReason`/`denied` branches below.
+            <div className="flex items-start gap-2">
+              <p className="text-xs text-muted-foreground flex-1 min-w-0">
+                <Trans>You're signed out — sign in to resume syncing.</Trans>
+              </p>
+              {onSignIn && (
+                <Button variant="outline" size="xs" className="self-start" onClick={onSignIn}>
+                  <Trans>Sign in</Trans>
+                </Button>
+              )}
+            </div>
+          ) : status.pausedReason ? (
+            <p className="text-xs text-muted-foreground">
+              {formatPausedReason(status.pausedReason)}
+            </p>
+          ) : following ? (
+            // A follower never pushes, so the push-permission verdict is
+            // irrelevant — say what the project IS (the mode).
+            <p className="text-xs text-muted-foreground" data-testid="sync-popover-mode-line">
+              <Trans>
+                Follow — updates flow in from your remote; your edits stay on this computer.
+              </Trans>
+            </p>
+          ) : active ? (
+            <p className="text-xs text-muted-foreground" data-testid="sync-popover-mode-line">
+              <Trans>
+                Full sync — your edits are committed and pushed to your remote automatically.
+              </Trans>
+            </p>
+          ) : status.pushPermission?.checkStatus === 'denied' ? (
+            <p className="text-xs text-muted-foreground">
+              {formatPushPermissionDenied(status.pushPermission.deniedReason)}
+            </p>
+          ) : shouldOfferSignInAgain(status.pushPermission) ? (
+            // Probe-401 branch: surface a "Sign in again" affordance without
+            // disabling sync — the probe couldn't reach a verdict.
+            <div className="flex items-start gap-2">
+              <p className="text-xs text-muted-foreground flex-1 min-w-0">
+                <Trans>Your GitHub session expired — sign in again to verify push access.</Trans>
+              </p>
+              {onSignIn && (
+                <Button variant="outline" size="xs" className="self-start" onClick={onSignIn}>
+                  <Trans>Sign in</Trans>
+                </Button>
+              )}
+            </div>
+          ) : null}
+        </>
+      )}
 
-      {status.state === 'conflict' && (
+      {!paused && state === 'conflict' && (
         <p className="text-xs text-amber-700 dark:text-amber-400">
-          <Trans>Sync paused — resolve conflicts to resume.</Trans>
+          {following ? (
+            // A follower keeps fast-forwarding the rest of the repo while a single
+            // document waits on resolution, so it is never globally "paused".
+            <Trans>A document has a conflict — resolve it to keep it up to date.</Trans>
+          ) : (
+            <Trans>Sync paused — resolve conflicts to resume.</Trans>
+          )}
         </p>
       )}
 
-      <div className="text-xs text-muted-foreground space-y-2">
+      <div className="text-xs text-muted-foreground space-y-2 border-t pt-3">
         {status.remote && (
-          <div className="flex items-baseline gap-2">
+          <div className="flex items-baseline justify-between gap-2">
             <span className="w-20 shrink-0 font-mono uppercase tracking-wide text-2xs">
               <Trans>Repository</Trans>
             </span>
@@ -550,20 +661,7 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
             )}
           </div>
         )}
-        {enabled && status.state !== 'dormant' && (
-          <div className="flex items-baseline gap-2">
-            <span className="w-20 shrink-0 font-mono uppercase tracking-wide text-2xs">
-              <Trans>Last sync</Trans>
-            </span>
-            <span className="text-foreground">{lastSyncedRelative}</span>
-          </div>
-        )}
-        {status.ahead > 0 && (
-          <div>
-            <Plural value={ahead} one="# commit ahead" other="# commits ahead" />
-          </div>
-        )}
-        {status.behind > 0 && (
+        {active && !following && status.behind > 0 && (
           <div>
             <Plural value={behind} one="# commit behind" other="# commits behind" />
           </div>
@@ -573,14 +671,37 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
             <Plural value={conflictCount} one="# file conflicted" other="# files conflicted" />
           </div>
         )}
-        {!enabled && (
-          <div>
-            <Trans>Sync is off — your edits will not sync to the remote repository.</Trans>
+        {canChooseMode && (
+          <div className="flex items-center justify-between gap-2 pt-0.5">
+            <span className="w-20 shrink-0 font-mono uppercase tracking-wide text-2xs">
+              <Trans>Mode</Trans>
+            </span>
+            <ToggleGroup
+              type="single"
+              variant="segmented"
+              size="sm"
+              spacing={1}
+              className="bg-muted p-0.5 data-[size=sm]:rounded-[10px]"
+              value={toggleMode}
+              onValueChange={(v) => {
+                // Radix emits '' on re-press (deselect) — keep exactly one mode.
+                if (isSyncActiveMode(v)) onModeSelect(v);
+              }}
+              aria-label={t`Sync mode`}
+              data-testid="sync-popover-mode-toggle"
+            >
+              <ToggleGroupItem value="full" data-testid="sync-popover-mode-full">
+                <Trans>Full</Trans>
+              </ToggleGroupItem>
+              <ToggleGroupItem value="follow" data-testid="sync-popover-mode-follow">
+                <Trans>Follow</Trans>
+              </ToggleGroupItem>
+            </ToggleGroup>
           </div>
         )}
       </div>
 
-      {status.identityUnresolved && onSetIdentity && (
+      {!paused && status.identityUnresolved && onSetIdentity && (
         <div className="flex items-start gap-2 rounded-md border border-dashed p-2">
           <UserCog className="size-3.5 mt-0.5 text-muted-foreground shrink-0" />
           <div className="flex flex-col gap-1.5 min-w-0">
@@ -597,42 +718,55 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-1 pt-1">
-        {enabled &&
-          status.state !== 'dormant' &&
-          status.state !== 'disabled' &&
-          status.state !== 'auth-error' &&
-          status.state !== 'conflict' && (
-            <Button variant="outline" size="xs" onClick={triggerSyncFromBadge}>
-              <Trans>Sync now</Trans>
-            </Button>
+      {(showSyncButton ||
+        showAuthButton ||
+        showConflictButton ||
+        (active && state !== 'dormant')) && (
+        <div className="flex items-center justify-between gap-2 pt-1">
+          {active && state !== 'dormant' ? (
+            // A follower pulls only, so "Synced" (two-way) would overstate it —
+            // it reads "Updated"; full sync reads "Synced".
+            <span className="text-xs text-muted-foreground" data-testid="sync-popover-last-sync">
+              {following ? t`Updated ${lastSyncedRelative}` : t`Synced ${lastSyncedRelative}`}
+            </span>
+          ) : (
+            <span />
           )}
-        {enabled && status.state === 'auth-error' && (
-          <Button variant="outline" size="xs" onClick={onSignIn}>
-            <Trans>Sign in</Trans>
-          </Button>
-        )}
-        {enabled && status.state === 'offline' && (
-          <Button variant="outline" size="xs" onClick={triggerSyncFromBadge}>
-            <Trans>Retry</Trans>
-          </Button>
-        )}
-        {enabled && status.state === 'conflict' && firstConflict && (
-          <Button
-            variant="outline"
-            size="xs"
-            onClick={() => {
-              if (typeof window === 'undefined') return;
-              const nextHash = hashFromDocName(filePathToDocName(firstConflict.file));
-              if (window.location.hash !== nextHash) {
-                window.location.hash = nextHash;
-              }
-            }}
-          >
-            <Trans>Review conflicts</Trans>
-          </Button>
-        )}
-      </div>
+          <div className="flex flex-wrap justify-end gap-1">
+            {showSyncButton && (
+              // One label for every mode ("Sync"); the op pushes only when full
+              // and active, and pulls otherwise (following, or a paused one-shot).
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => triggerSyncFromBadge(manualSyncOp)}
+              >
+                <Trans>Sync</Trans>
+              </Button>
+            )}
+            {showAuthButton && (
+              <Button variant="outline" size="xs" onClick={onSignIn}>
+                <Trans>Sign in</Trans>
+              </Button>
+            )}
+            {showConflictButton && firstConflict && (
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => {
+                  if (typeof window === 'undefined') return;
+                  const nextHash = hashFromDocName(filePathToDocName(firstConflict.file));
+                  if (window.location.hash !== nextHash) {
+                    window.location.hash = nextHash;
+                  }
+                }}
+              >
+                <Trans>Review conflicts</Trans>
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -649,6 +783,17 @@ interface SyncStatusBadgeProps {
 export function SyncStatusBadge({ onSignIn, onSetIdentity }: SyncStatusBadgeProps = {}) {
   const { t } = useLingui();
   const { status, fetchError } = useGitSyncStatusDetailed();
+  const { projectLocalConfig } = useConfigContext();
+  // Paused = the user turned off a previously-enabled project. It's config-only
+  // (the engine reports it as disabled/dormant), so the badge reads it here to
+  // stay visible and render the paused icon/label.
+  const paused = isSyncPaused(projectLocalConfig?.autoSync);
+  // The local config is the source of truth for user intent; the server status
+  // lags a resume by a beat. When the config already resolves to an active mode
+  // (follow/full) but the engine still reports the pre-resume `disabled`, keep
+  // the badge visible so the resume doesn't unmount it — unmounting closes the
+  // popover and flickers the icon until the status catches up.
+  const localWantsSync = isSyncActiveMode(resolveLocalAutoSyncMode(projectLocalConfig?.autoSync));
 
   // Surface a lightweight connectivity warning when the server has been
   // reachable before (we have a prior status) but the last refresh failed.
@@ -692,11 +837,24 @@ export function SyncStatusBadge({ onSignIn, onSetIdentity }: SyncStatusBadgeProp
   // protected-branch) so the user can see *why* sync stopped — without it,
   // the only signal would be a missing badge. Manual disable clears
   // `pausedReason`; auto-disable sets it. (Unsafe states like auth-error /
-  // conflict / offline already render — they need attention.)
-  if (status.state === 'disabled' && !status.pausedReason) return null;
+  // conflict / offline already render — they need attention.) A following
+  // (pull-only) project is always on, so it must always show its state.
+  // A paused project (config: was enabled, now off) stays visible so the user
+  // isn't stranded in Settings to resume — the engine reports it as disabled.
+  if (
+    status.state === 'disabled' &&
+    !status.pausedReason &&
+    status.syncMode !== 'follow' &&
+    !paused &&
+    !localWantsSync
+  ) {
+    return null;
+  }
 
-  const label = badgeLabel(status);
-  const syncStateLabel = stateLabel(status.state);
+  const label = paused ? '' : badgeLabel(status);
+  const syncStateLabel = paused
+    ? t`Sync paused`
+    : stateLabel(displayState(status), isFollowingMode(status));
   const showIdentityDot = Boolean(status.identityUnresolved);
 
   return (
@@ -714,7 +872,7 @@ export function SyncStatusBadge({ onSignIn, onSetIdentity }: SyncStatusBadgeProp
                   : t`Sync status: ${syncStateLabel}`
               }
             >
-              <BadgeIcon status={status} />
+              <BadgeIcon status={status} paused={paused} />
               {label && (
                 <span className="absolute -top-0.5 -right-0.5 text-[9px] leading-none font-medium bg-background border rounded-full px-0.5">
                   {label}
@@ -729,9 +887,9 @@ export function SyncStatusBadge({ onSignIn, onSetIdentity }: SyncStatusBadgeProp
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>{tooltipLabel(status)}</TooltipContent>
+        <TooltipContent>{tooltipLabel(status, paused)}</TooltipContent>
       </Tooltip>
-      <PopoverContent align="end" className="w-64 p-3">
+      <PopoverContent align="end" className="w-80 p-3">
         <PopoverBody status={status} onSignIn={onSignIn} onSetIdentity={onSetIdentity} />
       </PopoverContent>
     </Popover>

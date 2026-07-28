@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { setImmediate } from 'node:timers/promises';
+import { describe, expect, test } from 'vitest';
 import { createRefreshScheduler } from './refresh-scheduler';
 
 describe('createRefreshScheduler', () => {

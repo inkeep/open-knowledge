@@ -2,6 +2,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { Hocuspocus } from '@hocuspocus/server';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
+import { DocumentDurabilityState } from './document-durability-state.ts';
 import { applyExternalChange } from './external-change.ts';
 import { createLiveDerivedIndexExtension } from './live-derived-index.ts';
 import { getLogger } from './logger.ts';
@@ -37,9 +38,11 @@ function makeOnChangePayload(
 
 describe('createLiveDerivedIndexExtension', () => {
   let hp: Hocuspocus;
+  let durabilityState: DocumentDurabilityState;
 
   beforeEach(() => {
     hp = new Hocuspocus({ quiet: true });
+    durabilityState = new DocumentDurabilityState();
   });
 
   test('skips file-watcher origin transactions', async () => {
@@ -53,7 +56,7 @@ describe('createLiveDerivedIndexExtension', () => {
     const conn = await hp.openDirectConnection('skip-file-watcher');
     const doc = getDoc(conn);
 
-    applyExternalChange(hp, 'skip-file-watcher', '# Hello\n\n[[beta]]\n');
+    applyExternalChange(durabilityState, hp, 'skip-file-watcher', '# Hello\n\n[[beta]]\n');
     await extension.onChange?.(
       makeOnChangePayload(hp, doc, 'skip-file-watcher', {
         source: 'local',
@@ -78,7 +81,12 @@ describe('createLiveDerivedIndexExtension', () => {
     const conn = await hp.openDirectConnection('debounced-doc');
     const doc = getDoc(conn);
 
-    applyExternalChange(hp, 'debounced-doc', '---\ntitle: Debounced\n---\n# Hello\n\n[[beta]]\n');
+    applyExternalChange(
+      durabilityState,
+      hp,
+      'debounced-doc',
+      '---\ntitle: Debounced\n---\n# Hello\n\n[[beta]]\n',
+    );
     const payload = makeOnChangePayload(hp, doc, 'debounced-doc', {
       source: 'local',
       context: { origin: 'agent-write' },
@@ -112,7 +120,7 @@ describe('createLiveDerivedIndexExtension', () => {
     const conn = await hp.openDirectConnection('tag-derived-doc');
     const doc = getDoc(conn);
 
-    applyExternalChange(hp, 'tag-derived-doc', '# Hello\n\nA #typescript note.\n');
+    applyExternalChange(durabilityState, hp, 'tag-derived-doc', '# Hello\n\nA #typescript note.\n');
     const payload = makeOnChangePayload(hp, doc, 'tag-derived-doc', {
       source: 'local',
       context: { origin: 'agent-write' },
@@ -137,7 +145,7 @@ describe('createLiveDerivedIndexExtension', () => {
     const conn = await hp.openDirectConnection('unload-doc');
     const doc = getDoc(conn);
 
-    applyExternalChange(hp, 'unload-doc', '# Hello\n');
+    applyExternalChange(durabilityState, hp, 'unload-doc', '# Hello\n');
     await extension.onChange?.(
       makeOnChangePayload(hp, doc, 'unload-doc', {
         source: 'local',
@@ -166,8 +174,8 @@ describe('createLiveDerivedIndexExtension', () => {
     const firstDoc = getDoc(first);
     const secondDoc = getDoc(second);
 
-    applyExternalChange(hp, 'destroy-a', '# A\n');
-    applyExternalChange(hp, 'destroy-b', '# B\n');
+    applyExternalChange(durabilityState, hp, 'destroy-a', '# A\n');
+    applyExternalChange(durabilityState, hp, 'destroy-b', '# B\n');
     await extension.onChange?.(
       makeOnChangePayload(hp, firstDoc, 'destroy-a', {
         source: 'local',
@@ -210,7 +218,7 @@ describe('createLiveDerivedIndexExtension', () => {
     // lands raw bytes in both ytext and fragment. Under contract, ytext keeps
     // the CRLF; fragment is derived via parse(body) so its serialize output
     // would emit LF.
-    applyExternalChange(hp, 'crlf-doc', '# Title\r\n\r\nLine A\r\nLine B\r\n');
+    applyExternalChange(durabilityState, hp, 'crlf-doc', '# Title\r\n\r\nLine A\r\nLine B\r\n');
     await extension.onChange?.(
       makeOnChangePayload(hp, doc, 'crlf-doc', {
         source: 'local',
@@ -242,7 +250,7 @@ describe('createLiveDerivedIndexExtension', () => {
     const conn = await hp.openDirectConnection('thematic-doc');
     const doc = getDoc(conn);
 
-    applyExternalChange(hp, 'thematic-doc', '---\n# Title\n');
+    applyExternalChange(durabilityState, hp, 'thematic-doc', '---\n# Title\n');
     await extension.onChange?.(
       makeOnChangePayload(hp, doc, 'thematic-doc', {
         source: 'local',
@@ -272,7 +280,12 @@ describe('createLiveDerivedIndexExtension', () => {
     const conn = await hp.openDirectConnection('autolink-doc');
     const doc = getDoc(conn);
 
-    applyExternalChange(hp, 'autolink-doc', '# Page\n\nVisit <https://example.com> for info\n');
+    applyExternalChange(
+      durabilityState,
+      hp,
+      'autolink-doc',
+      '# Page\n\nVisit <https://example.com> for info\n',
+    );
     await extension.onChange?.(
       makeOnChangePayload(hp, doc, 'autolink-doc', {
         source: 'local',
@@ -303,7 +316,7 @@ describe('createLiveDerivedIndexExtension', () => {
     const errorSpy = vi.spyOn(getLogger('live-derived-index'), 'error');
 
     try {
-      applyExternalChange(hp, 'error-doc', '# Error\n');
+      applyExternalChange(durabilityState, hp, 'error-doc', '# Error\n');
       await extension.onChange?.(
         makeOnChangePayload(hp, doc, 'error-doc', {
           source: 'local',

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { CASCADE_OFFSET_PX, cascadePosition } from './cascade-position.ts';
 
 const WORK_AREA = { x: 0, y: 25, width: 1920, height: 1055 };

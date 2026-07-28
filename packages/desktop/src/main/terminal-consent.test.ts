@@ -11,11 +11,11 @@
  * (the symptom that shipped when the default was 750ms).
  */
 
-import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveConfigPath } from '@inkeep/open-knowledge-core/server';
+import { describe, expect, test } from 'vitest';
 import {
   isTerminalConsented,
   isTerminalConsentedWithGrace,

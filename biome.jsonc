@@ -4,6 +4,7 @@
     "./biome-plugins/microcopy-ellipsis.grit",
     "./biome-plugins/no-loosely-typed-webcontents-ipc.grit",
     "./biome-plugins/no-resolved-value-theme-source.grit",
+    "./biome-plugins/no-split-suggestion-dispatch.grit",
     "./biome-plugins/no-unportaled-editor-content.grit"
   ],
   "assist": { "actions": { "source": { "organizeImports": "on" } } },
@@ -123,6 +124,22 @@
       "plugins": ["./biome-plugins/require-windowshide-on-spawn.grit"]
     },
     {
+      // Scope discipline for user-global Agent Skill installs (issue #820).
+      // OK writes these dirs itself, gated on `detectUserSkillHosts`; shelling
+      // out to the `skills` CLI with `--agent '*'` bypasses host detection and
+      // creates config dirs for tools the user never installed. Scoped to
+      // server + cli (where the user-global install lives). Tests are NOT
+      // excluded — a test reintroducing the invocation is as load-bearing as
+      // production code, and the suite asserts through the filesystem, never
+      // through argv.
+      "includes": [
+        "packages/server/src/**/*.ts",
+        "packages/cli/src/**/*.ts",
+        "biome-plugins/__fixtures__/no-blind-agent-host-fanout.fixture.tsx"
+      ],
+      "plugins": ["./biome-plugins/no-blind-agent-host-fanout.grit"]
+    },
+    {
       // One-shot `expect(await locator.count())` reads never retry and are
       // the canonical hidden-flake assertion shape (2026-06 e2e audit).
       // Scoped to the browser e2e suites (all three dirs the e2e-stop-rules
@@ -136,6 +153,29 @@
         "biome-plugins/__fixtures__/playwright-prefer-to-have-count.fixture.tsx"
       ],
       "plugins": ["./biome-plugins/playwright-prefer-to-have-count.grit"]
+    },
+    {
+      // "Connects to nothing" first-hop feedback. The self-uninstall window's
+      // survey/completion screens render after `ok uninstall --yes` stops the
+      // local Hocuspocus server and removes ~/.ok, so the uninstall entry must
+      // never import the editor / CRDT / provider-pool / Hocuspocus-server
+      // surface, and must eager-load (no dynamic import). This is SHALLOW
+      // first-hop feedback; the authoritative gate is the transitive-graph test
+      // at packages/desktop/tests/unit/uninstall-module-graph.test.ts, which
+      // also catches indirect and re-export pull-ins GritQL can't express.
+      // @inkeep/open-knowledge-core (shared types + constants) is allowed.
+      // Test files are excluded: the invariant is about the SHIPPED entry graph,
+      // and a dom test legitimately does `await import('./main')` to prove the
+      // entry paints (a dynamic import the eager-load rule would otherwise flag).
+      "includes": [
+        "packages/app/src/uninstall/**/*.ts",
+        "packages/app/src/uninstall/**/*.tsx",
+        "!packages/app/src/uninstall/**/*.test.ts",
+        "!packages/app/src/uninstall/**/*.test.tsx",
+        "!packages/app/src/uninstall/**/*.dom.test.tsx",
+        "biome-plugins/__fixtures__/no-uninstall-forbidden-import.fixture.tsx"
+      ],
+      "plugins": ["./biome-plugins/no-uninstall-forbidden-import.grit"]
     },
     {
       // UI primitives discipline (see PR #937 retrospective). Scoped to

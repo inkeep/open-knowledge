@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
 import { type CollisionDetection, KeyboardCode, type Modifier } from '@dnd-kit/core';
+import { describe, expect, test } from 'vitest';
 import {
   createTabReorderModifier,
   DRAGGING_TAB_Z_INDEX,

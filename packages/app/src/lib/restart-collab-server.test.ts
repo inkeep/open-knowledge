@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { restartCollabServer, restartServerFailureMessage } from './restart-collab-server';
 
@@ -19,9 +19,9 @@ describe('restartServerFailureMessage', () => {
 describe('restartCollabServer', () => {
   function makeBridge(outcome: Awaited<ReturnType<OkDesktopBridge['restartServer']>>): {
     bridge: Pick<OkDesktopBridge, 'restartServer' | 'config'>;
-    restartServer: ReturnType<typeof mock>;
+    restartServer: ReturnType<typeof vi.fn>;
   } {
-    const restartServer = mock(async () => outcome);
+    const restartServer = vi.fn(async () => outcome);
     return {
       bridge: {
         restartServer,

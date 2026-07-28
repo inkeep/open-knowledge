@@ -55,9 +55,9 @@ export default {
     '.{agents,codex}/skills/**': ['files'],
     'biome-plugins/__fixtures__/**': ['files'],
     'scripts/compute-next-beta.mjs': ['files'],
+    'scripts/build-slack-release-payload.mjs': ['files'],
     'scripts/assert-smoke-not-vacuous.mjs': ['files'],
     'scripts/assert-app-built.mjs': ['files'],
-    'scripts/check-no-new-bun-test-imports.mjs': ['files'],
     'docs/src/lib/share-splash.ts': ['exports', 'types'],
     'packages/app/src/components/PublishToGitHubDialog.tsx': ['types'],
     'packages/app/src/components/ShareButton.tsx': ['types'],
@@ -120,12 +120,12 @@ export default {
       entry: ['src/**/*.test.{ts,tsx}'],
     },
     'packages/server': {
-      entry: ['src/**/*.test.ts'],
+      entry: ['src/**/*.test.ts', 'src/parse-worker.ts'],
       project: 'src/**',
       ignoreDependencies: ['@types/shell-quote'],
     },
     'packages/cli': {
-      entry: ['src/**/*.test.ts', 'scripts/*.ts', 'tests/**/*.ts'],
+      entry: ['src/**/*.test.ts', 'scripts/*.ts', 'tests/**/*.ts', 'src/parse-worker.ts'],
       ignoreDependencies: [
         '@inkeep/open-knowledge-app', // the CLI's `build:assets` script runs `cp -r ../app/dist dist/public`
       ],
