@@ -4774,11 +4774,10 @@ function registerIpcHandlers() {
     if (request.kind === 'send') {
       return handleBugReportSend(
         {
-          // Packaged builds default to the production intake so a shipped app
-          // uploads; `OK_BUG_REPORT_INTAKE_URL` overrides, dev stays on email.
+          // Every build defaults to the production intake so Send uploads (dev
+          // included); `OK_BUG_REPORT_INTAKE_URL` overrides.
           intakeBaseUrl: resolveBugReportIntakeUrl({
             envUrl: process.env.OK_BUG_REPORT_INTAKE_URL,
-            packaged: app.isPackaged,
           }),
           appVersion: app.getVersion(),
           platform: `${process.platform} ${osRelease()}`,

@@ -454,33 +454,22 @@ function makeSendRig(intakeBaseUrl: string | undefined): {
 }
 
 describe('resolveBugReportIntakeUrl', () => {
-  test('an explicit env URL always wins, packaged or not', () => {
+  test('an explicit env URL always wins', () => {
     const envUrl = 'https://intake.example.test';
-    expect(resolveBugReportIntakeUrl({ envUrl, packaged: true })).toBe(envUrl);
-    expect(resolveBugReportIntakeUrl({ envUrl, packaged: false })).toBe(envUrl);
+    expect(resolveBugReportIntakeUrl({ envUrl })).toBe(envUrl);
   });
 
-  test('a packaged build with no env falls back to the production intake', () => {
-    expect(resolveBugReportIntakeUrl({ envUrl: undefined, packaged: true })).toBe(
-      DEFAULT_BUG_REPORT_INTAKE_URL,
-    );
-  });
-
-  test('an unpackaged build with no env stays undefined (email fallback, no accidental upload)', () => {
-    expect(resolveBugReportIntakeUrl({ envUrl: undefined, packaged: false })).toBeUndefined();
+  test('no env falls back to the production intake (dev included — PRD-7611)', () => {
+    expect(resolveBugReportIntakeUrl({ envUrl: undefined })).toBe(DEFAULT_BUG_REPORT_INTAKE_URL);
   });
 
   test('an empty or whitespace env value is treated as unset', () => {
-    expect(resolveBugReportIntakeUrl({ envUrl: '', packaged: true })).toBe(
-      DEFAULT_BUG_REPORT_INTAKE_URL,
-    );
-    expect(resolveBugReportIntakeUrl({ envUrl: '   ', packaged: false })).toBeUndefined();
+    expect(resolveBugReportIntakeUrl({ envUrl: '' })).toBe(DEFAULT_BUG_REPORT_INTAKE_URL);
+    expect(resolveBugReportIntakeUrl({ envUrl: '   ' })).toBe(DEFAULT_BUG_REPORT_INTAKE_URL);
   });
 
   test('a surrounding-whitespace env value is trimmed', () => {
-    expect(resolveBugReportIntakeUrl({ envUrl: '  https://x.test  ', packaged: true })).toBe(
-      'https://x.test',
-    );
+    expect(resolveBugReportIntakeUrl({ envUrl: '  https://x.test  ' })).toBe('https://x.test');
   });
 });
 

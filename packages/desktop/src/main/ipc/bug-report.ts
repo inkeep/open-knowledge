@@ -376,40 +376,39 @@ export async function handleBugReportCaptureScreenshot(
 const SUPPORT_EMAIL = 'support@inkeep.com';
 
 /**
- * Production intake origin baked into packaged builds — the apex routes
- * `/api/bug-report` to the private intake (see the desktop README's bug-report
- * table). Mirrors how the auto-updater (`proxyFeed.base`) and share-handoff
- * (`PROD_BASE`) hardcode `openknowledge.ai` as the shipped default rather than
- * relying on a runtime env var a GUI-launched app never receives.
+ * Production intake origin used by every build when `OK_BUG_REPORT_INTAKE_URL`
+ * is unset — the apex routes `/api/bug-report` to the private intake (see the
+ * desktop README's bug-report table). Mirrors how the auto-updater
+ * (`proxyFeed.base`) and share-handoff (`PROD_BASE`) hardcode `openknowledge.ai`
+ * as the shipped default rather than relying on a runtime env var a
+ * GUI-launched app never receives.
  */
 export const DEFAULT_BUG_REPORT_INTAKE_URL = 'https://openknowledge.ai';
 
 /**
  * Resolve the intake base URL for the `send` wiring. An explicit
- * `OK_BUG_REPORT_INTAKE_URL` always wins; otherwise a packaged build falls back
- * to the production origin so a shipped app actually uploads instead of silently
- * dropping every Send to the email draft. Unpackaged builds (dev / test /
- * Playwright) resolve to `undefined` and keep the email fallback, so a dev run
- * never uploads to the production intake by accident. An empty / whitespace env
- * value is treated as unset.
+ * `OK_BUG_REPORT_INTAKE_URL` always wins; otherwise EVERY build — packaged or an
+ * unpackaged dev run — falls back to the production origin, so a report filed
+ * from a dev build uploads rather than stranding its bundle on disk. Send is
+ * always an explicit user action, and automated tests exercise the handler with
+ * an explicit `intakeBaseUrl` (or a stub env), so nothing uploads to production
+ * without a person clicking Send. An empty / whitespace env value is treated as
+ * unset. To keep a dev machine off the production intake, point the env at a
+ * local stub.
  */
-export function resolveBugReportIntakeUrl(args: {
-  envUrl: string | undefined;
-  packaged: boolean;
-}): string | undefined {
+export function resolveBugReportIntakeUrl(args: { envUrl: string | undefined }): string {
   const trimmed = args.envUrl?.trim();
-  if (trimmed !== undefined && trimmed !== '') return trimmed;
-  return args.packaged ? DEFAULT_BUG_REPORT_INTAKE_URL : undefined;
+  return trimmed !== undefined && trimmed !== '' ? trimmed : DEFAULT_BUG_REPORT_INTAKE_URL;
 }
 
 export interface BugReportSendDeps {
   /**
    * Intake endpoint origin (e.g. `https://openknowledge.ai`). Wired from
-   * `resolveBugReportIntakeUrl`: an explicit `OK_BUG_REPORT_INTAKE_URL`, else the
-   * packaged production default, else `undefined`. Absent (unpackaged with no
-   * override) means send makes no network attempt and resolves to the email
-   * fallback with `reason: 'email-draft'`, which the dialog renders as the email
-   * flow rather than a failure.
+   * `resolveBugReportIntakeUrl`, which always yields the env override or the
+   * production default — so in production this is never absent. It stays
+   * optional because the handler's email-draft path (`reason: 'email-draft'`, no
+   * network attempted) is still reachable by a direct caller/test passing
+   * `undefined`; the dialog renders that as the email flow, not a failure.
    */
   intakeBaseUrl: string | undefined;
   /** App version (`app.getVersion()`), stamped into the report metadata by main. */
