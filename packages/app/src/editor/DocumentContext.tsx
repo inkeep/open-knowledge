@@ -567,6 +567,45 @@ function sameNavigationTarget(
   return navigationTargetKey(a) === navigationTargetKey(b);
 }
 
+/**
+ * Structural equality for two pool snapshots, so a notify that changes nothing
+ * a consumer can observe does not re-render the provider.
+ *
+ * `lastAccessedAt` is deliberately excluded. It never reaches the DOM — its
+ * only job is to order `poolEntries`, and that ordering is already encoded in
+ * the array itself (`takeSnapshot` sorts MRU-first, and `computeActivityMountList`
+ * re-sorts by the same key). Comparing it would defeat the bailout entirely,
+ * because `ProviderPool.open()` bumps it on every cache hit.
+ *
+ * Without this guard the provider re-renders on every pool mutation, which
+ * hands every context consumer a fresh callback identity. An effect that both
+ * calls one of those callbacks and depends on it — `NavigationHandler` in
+ * `App.tsx` is the load-bearing one — then closes into a self-feeding cycle
+ * that terminates only at React's nested-update limit.
+ */
+function sameSnapshot(a: Snapshot, b: Snapshot): boolean {
+  if (a === b) return true;
+  if (
+    a.activeDocName !== b.activeDocName ||
+    a.activeProvider !== b.activeProvider ||
+    a.syncState !== b.syncState ||
+    // Reference comparison is sufficient: the pool only reassigns
+    // `serverRestartRecoveryState` on an actual transition.
+    a.serverRestartRecovery !== b.serverRestartRecovery ||
+    a.poolEntries.length !== b.poolEntries.length
+  ) {
+    return false;
+  }
+  return a.poolEntries.every((entry, index) => {
+    const other = b.poolEntries[index];
+    return (
+      entry.docName === other.docName &&
+      entry.provider === other.provider &&
+      entry.poolEventId === other.poolEventId
+    );
+  });
+}
+
 function takeSnapshot(p: ProviderPool): Snapshot {
   const active = p.getActive();
   // Project mutable pool entries to immutable read-only snapshots, sorted MRU-first.
@@ -1022,8 +1061,17 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     setTabIdentityResolved(false);
     const p = getPool(collabUrl);
 
+    // Reuses the previous snapshot when nothing observable changed, so a pool
+    // notify that only touched LRU bookkeeping doesn't re-render the shell.
+    const commitSnapshot = () => {
+      setSnapshot((current) => {
+        const next = takeSnapshot(p);
+        return sameSnapshot(current, next) ? current : next;
+      });
+    };
+
     // Sync initial state
-    setSnapshot(takeSnapshot(p));
+    commitSnapshot();
 
     // Late-join branch backstop. Auth-token `expectedBranch` claim
     // mismatch (server is on branch B, client claims branch A) routes
@@ -1120,7 +1168,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     });
 
     // Subscribe to pool changes
-    p.setOnChange(() => setSnapshot(takeSnapshot(p)));
+    p.setOnChange(commitSnapshot);
 
     // Fetch principal and wire tab identity so HocuspocusProvider includes
     // {principalId, tabSessionId} in its auth token. The server's
