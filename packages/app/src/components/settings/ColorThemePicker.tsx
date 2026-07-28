@@ -5,6 +5,7 @@ import {
   type ColorTheme,
   type CustomThemeSeed,
   customThemeKind,
+  defaultThemeTokens,
   expandCustomSeed,
   expandPalette,
   resolveCustomSeed,
@@ -20,6 +21,13 @@ interface ColorThemePickerProps {
   onSelect: (id: string) => void;
   /** The user's custom-theme seed (partial), used to paint the Custom tile preview. */
   customSeed?: SeedInput;
+  /**
+   * Light or dark for the Default tile — the mode `appearance.theme` resolves to,
+   * NOT the mode the active palette forces. Picking a dark IDE palette must not
+   * repaint the Default preview dark: the tile advertises what switching back to
+   * `default` would look like.
+   */
+  defaultMode?: 'light' | 'dark';
   /** Forwarded id (from the settings form's `<FormControl>` Slot) onto the radio group root. */
   id?: string;
   'aria-label'?: string;
@@ -45,27 +53,34 @@ function swatchFromTokens(t: Record<string, string>): SwatchColors {
   };
 }
 
-function swatchColors(theme: ColorTheme, customSeed: SeedInput): SwatchColors {
+function swatchColors(
+  theme: ColorTheme,
+  customSeed: SeedInput,
+  defaultMode: 'light' | 'dark',
+): SwatchColors {
   if (theme.id === 'custom') {
     return swatchFromTokens(expandPalette(expandCustomSeed(resolveCustomSeed(customSeed))));
   }
   if (!theme.base) {
-    // `default` tracks the user's live theme — read the cascaded CSS vars so the
-    // tile reflects their current light/dark appearance.
-    return {
-      chrome: 'var(--sidebar)',
-      surface: 'var(--background)',
-      bar: 'var(--primary)',
-      line: 'var(--border)',
-      dots: ['var(--chart-2)', 'var(--chart-4)', 'var(--chart-3)'],
-    };
+    // `default` has no authored palette — it IS the base stylesheet. Reading the
+    // cascaded `var(--…)` here would inherit whichever palette is currently
+    // applied to `<html>`, so paint the base tokens as literals instead.
+    return swatchFromTokens(defaultThemeTokens(defaultMode));
   }
   return swatchFromTokens(expandPalette(theme.base));
 }
 
 /** A miniature editor-window preview, à la the Vivaldi theme tiles. */
-function ThemeSwatch({ theme, customSeed }: { theme: ColorTheme; customSeed: SeedInput }) {
-  const c = swatchColors(theme, customSeed);
+function ThemeSwatch({
+  theme,
+  customSeed,
+  defaultMode,
+}: {
+  theme: ColorTheme;
+  customSeed: SeedInput;
+  defaultMode: 'light' | 'dark';
+}) {
+  const c = swatchColors(theme, customSeed, defaultMode);
   return (
     <div
       aria-hidden
@@ -122,6 +137,7 @@ export function ColorThemePicker({
   value,
   onSelect,
   customSeed,
+  defaultMode = 'light',
   id,
   'aria-label': ariaLabel,
   'aria-describedby': ariaDescribedby,
@@ -147,7 +163,7 @@ export function ColorThemePicker({
             'data-checked:border-primary',
           )}
         >
-          <ThemeSwatch theme={theme} customSeed={customSeed} />
+          <ThemeSwatch theme={theme} customSeed={customSeed} defaultMode={defaultMode} />
           <div className="flex items-center justify-between px-0.5">
             <span className="text-1sm font-medium text-foreground">{theme.label}</span>
             <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">

@@ -11,11 +11,14 @@
  */
 
 import {
+  CHROME_BG_DARK,
+  CHROME_BG_LIGHT,
   type ColorThemeBase,
   colorThemeMode,
   expandPalette,
   generateColorThemesCss,
   isDarkTheme,
+  PREVIEW_THEME_TOKENS,
   resolveThemePlugin,
   THEME_PLUGINS,
   type ThemePlugin,
@@ -32,6 +35,49 @@ export {
   THEME_PLUGINS as COLOR_THEMES,
 };
 export type ColorTheme = ThemePlugin;
+
+// ---------------------------------------------------------------------------
+// Default theme — the base `:root` / `.dark` palette (`colorTheme: 'default'`).
+//
+// `default` carries no `ColorThemeBase`: its palette is the app's own stylesheet.
+// A preview of it therefore can't read `var(--background)` & co., because a
+// selected palette overrides exactly those custom properties on `<html>` and the
+// preview inherits the override — the preview would mirror whatever theme is
+// active instead of showing what `default` looks like. So resolve the handful of
+// tokens a preview needs to literals, sourced from the chrome-background
+// constants (`CHROME_BG_*`) and the preview-token snapshot
+// (`PREVIEW_THEME_TOKENS`) — both generated from, and drift-checked against,
+// `globals.css`.
+// ---------------------------------------------------------------------------
+
+/** Literal light/dark values per `globals.css` preview token, keyed by token name. */
+const PREVIEW_TOKEN_BY_NAME = new Map(PREVIEW_THEME_TOKENS.map((token) => [token.name, token]));
+
+function baseToken(name: string, mode: 'light' | 'dark'): string {
+  const token = PREVIEW_TOKEN_BY_NAME.get(name);
+  if (!token) throw new Error(`color-themes: ${name} is not a generated base-theme token`);
+  return token[mode];
+}
+
+/**
+ * The subset of `expandPalette`-shaped tokens describing the default theme in a
+ * given light/dark mode, so a preview can paint it the same way it paints a
+ * built-in palette. `--sidebar` comes from the chrome constants (the same token
+ * the window chrome uses); the rest from the preview-token set. Syntax colors
+ * map onto the chart palette — the base theme's own `--syntax-*` tokens resolve
+ * through Tailwind color vars, which don't survive as literals here.
+ */
+export function defaultThemeTokens(mode: 'light' | 'dark'): Record<string, string> {
+  return {
+    sidebar: mode === 'dark' ? CHROME_BG_DARK : CHROME_BG_LIGHT,
+    background: baseToken('--background', mode),
+    primary: baseToken('--primary', mode),
+    border: baseToken('--border', mode),
+    'syntax-string': baseToken('--chart-2', mode),
+    'syntax-keyword': baseToken('--chart-4', mode),
+    'syntax-atom': baseToken('--chart-3', mode),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Custom theme — the user's own palette (`appearance.colorTheme: 'custom'`).

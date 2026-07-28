@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { COLOR_THEMES } from '@/lib/color-themes';
+import { COLOR_THEMES, defaultThemeTokens } from '@/lib/color-themes';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 vi.doMock('@lingui/react/macro', () => ({
@@ -9,9 +9,28 @@ vi.doMock('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-async function renderPicker(value: string, onSelect: (id: string) => void) {
+async function renderPicker(
+  value: string,
+  onSelect: (id: string) => void,
+  defaultMode?: 'light' | 'dark',
+) {
   const { ColorThemePicker } = await import('./ColorThemePicker');
-  return render(<ColorThemePicker value={value} onSelect={onSelect} aria-label="Color theme" />);
+  return render(
+    <ColorThemePicker
+      value={value}
+      onSelect={onSelect}
+      defaultMode={defaultMode}
+      aria-label="Color theme"
+    />,
+  );
+}
+
+/** Every inline `style` attribute inside a tile's preview, concatenated. */
+function swatchStyles(themeLabel: RegExp): string {
+  const tile = screen.getByRole('radio', { name: themeLabel });
+  return Array.from(tile.querySelectorAll<HTMLElement>('[style]'))
+    .map((el) => el.getAttribute('style') ?? '')
+    .join(' ');
 }
 
 describe('ColorThemePicker', () => {
@@ -45,6 +64,32 @@ describe('ColorThemePicker', () => {
     await renderPicker('default', (id) => picks.push(id));
     fireEvent.click(screen.getByRole('radio', { name: /Catppuccin Frappé/ }));
     expect(picks).toEqual(['catppuccin-frappe']);
+  });
+
+  test('paints the Default tile from literal base tokens, not cascaded CSS vars', async () => {
+    // The regression: the preview used to read `var(--sidebar)` & co. Those are
+    // exactly the properties a selected palette overrides on <html>, so the
+    // Default tile inherited the override and mirrored the chosen theme.
+    await renderPicker('default', () => {});
+    const styles = swatchStyles(/Default/);
+    expect(styles).not.toContain('var(--');
+    const tokens = defaultThemeTokens('light');
+    expect(styles).toContain(tokens.background);
+    expect(styles).toContain(tokens.primary);
+    expect(styles).toContain(tokens['syntax-keyword']);
+  });
+
+  test('follows defaultMode for the Default tile only', async () => {
+    await renderPicker('default', () => {}, 'light');
+    const lightDefault = swatchStyles(/Default/);
+    const lightDracula = swatchStyles(/Dracula/);
+    cleanup();
+    await renderPicker('default', () => {}, 'dark');
+    // The base palette flips with the user's light/dark mode; an authored
+    // palette is mode-independent.
+    expect(swatchStyles(/Default/)).not.toBe(lightDefault);
+    expect(swatchStyles(/Default/)).toContain(defaultThemeTokens('dark').background);
+    expect(swatchStyles(/Dracula/)).toBe(lightDracula);
   });
 
   test('tags themes by their forced mode: default is Auto, Latte is Light, the rest Dark', async () => {

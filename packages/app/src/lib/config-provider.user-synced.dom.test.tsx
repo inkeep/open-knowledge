@@ -196,6 +196,19 @@ vi.doMock('@inkeep/open-knowledge-core', () => ({
   isDarkTheme: (id?: string) => Boolean(id) && id !== 'default' && id !== 'custom',
   resolveThemePlugin: (id?: string) => ({ id: id ?? 'default', label: 'Default', kind: 'system' }),
   THEME_PLUGINS: [],
+  // The base-theme tokens `defaultThemeTokens` composes for the Default tile's
+  // preview. Values are placeholders — no assertion here reads them; they only
+  // need to cover the token names the preview looks up.
+  CHROME_BG_LIGHT: '#fafafa',
+  CHROME_BG_DARK: '#171717',
+  PREVIEW_THEME_TOKENS: [
+    { name: '--background', light: '#ffffff', dark: '#0a0a0a' },
+    { name: '--primary', light: '#2563eb', dark: '#69a3ff' },
+    { name: '--border', light: '#e5e5e5', dark: '#2a2a2a' },
+    { name: '--chart-2', light: '#16a34a', dark: '#4ade80' },
+    { name: '--chart-3', light: '#ca8a04', dark: '#facc15' },
+    { name: '--chart-4', light: '#7c3aed', dark: '#a78bfa' },
+  ],
 }));
 
 // Module-level toggle for the second case (mount-time pre-synced seed).

@@ -243,6 +243,7 @@ export {
   SYSTEM_DOC_NAME,
   skillLiveDocName,
 } from './constants/cc1.ts';
+export { CHROME_BG_DARK, CHROME_BG_LIGHT } from './constants/chrome.ts';
 export {
   CODE_FILE_BARE_NAMES_TO_LANGUAGE,
   CODE_FILE_EXTENSIONS_TO_LANGUAGE,

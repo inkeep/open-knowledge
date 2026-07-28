@@ -279,19 +279,33 @@ function FieldControlBody({
   // <ThemeProvider> is mounted (e.g. in unit harnesses), and the app always
   // mounts one in `main.tsx`. The actual flip is gated to the theme field in
   // the enum-toggle branch below, so non-theme controls are unaffected.
-  const { setTheme } = useTheme();
+  // `systemTheme` is the OS preference, independent of the mode a palette
+  // forces — it's what `appearance.theme: 'system'` resolves to.
+  const { setTheme, systemTheme } = useTheme();
   // Optional: the theme-tiles control reads the custom-theme seed from config,
   // but FieldControlBody also renders in provider-less unit harnesses.
   const merged = useConfigContextOptional()?.merged ?? null;
   if (field.control === 'theme-tiles') {
     const { id: forwardedId, ...wrapperSlotProps } = slotForwarded;
     const customSeed = merged?.appearance?.customTheme;
+    // The Default tile previews the base palette in the user's own light/dark
+    // mode. Source it from `appearance.theme` (falling back to the OS for
+    // 'system'/unset), never from next-themes' resolved mode — that one carries
+    // whatever the selected palette forced.
+    const configuredMode = merged?.appearance?.theme;
+    const defaultMode =
+      configuredMode === 'light' || configuredMode === 'dark'
+        ? configuredMode
+        : systemTheme === 'dark'
+          ? 'dark'
+          : 'light';
     return (
       <ColorThemePicker
         {...wrapperSlotProps}
         id={forwardedId}
         value={typeof ctl.value === 'string' ? ctl.value : 'default'}
         customSeed={customSeed}
+        defaultMode={defaultMode}
         aria-label={t(field.label)}
         onSelect={(next) => {
           // Optimistic apply: paint the palette overlay synchronously and flip

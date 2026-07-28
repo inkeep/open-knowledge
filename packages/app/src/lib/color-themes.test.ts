@@ -10,6 +10,7 @@ import {
   type CustomThemeSeed,
   customThemeKind,
   DEFAULT_CUSTOM_SEED,
+  defaultThemeTokens,
   expandCustomSeed,
   expandPalette,
   generateColorThemesCss,
@@ -85,6 +86,41 @@ describe('expandPalette', () => {
       'syntax-string',
     ]) {
       expect(tokens[required], required).toBeTruthy();
+    }
+  });
+});
+
+describe('defaultThemeTokens', () => {
+  // The tokens a theme preview reads off `expandPalette` output. `default` has
+  // no palette to expand, so these come from the base stylesheet instead — and
+  // must be literals, since a preview can't read `var(--…)` out from under an
+  // active palette override.
+  const SWATCH_TOKENS = [
+    'sidebar',
+    'background',
+    'primary',
+    'border',
+    'syntax-string',
+    'syntax-keyword',
+    'syntax-atom',
+  ];
+
+  test('resolves every token a swatch reads, with no var() indirection left', () => {
+    for (const mode of ['light', 'dark'] as const) {
+      const tokens = defaultThemeTokens(mode);
+      expect(Object.keys(tokens).sort()).toEqual([...SWATCH_TOKENS].sort());
+      for (const [name, value] of Object.entries(tokens)) {
+        expect(value, `${mode} ${name}`).toBeTruthy();
+        expect(value, `${mode} ${name}`).not.toContain('var(');
+      }
+    }
+  });
+
+  test('light and dark differ on every surface token', () => {
+    const light = defaultThemeTokens('light');
+    const dark = defaultThemeTokens('dark');
+    for (const name of ['sidebar', 'background', 'primary', 'border']) {
+      expect(dark[name], name).not.toBe(light[name]);
     }
   });
 });
