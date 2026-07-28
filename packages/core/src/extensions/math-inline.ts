@@ -45,6 +45,7 @@ declare module '@tiptap/core' {
  */
 export const MathInline = Node.create({
   name: 'mathInline',
+  marks: '_', // legal mark carrier; see wiki-link.ts
   group: 'inline',
   inline: true,
   atom: true,

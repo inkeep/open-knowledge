@@ -11,6 +11,7 @@
 import HardBreak from '@tiptap/extension-hard-break';
 
 export const HardBreakFidelity = HardBreak.extend({
+  marks: '_', // legal mark carrier; see wiki-link.ts
   priority: 60,
 
   addAttributes() {

@@ -58,6 +58,13 @@ export function renderWikiLink(attrs: Pick<WikiLinkAttrs, 'target' | 'alias' | '
 
 export const WikiLink = Node.create({
   name: 'wikiLink',
+  // Legal carrier for any mark this inline leaf preserves through the Yjs bridge
+  // (the reserved ymark: encoding is mark-agnostic). An inline leaf gets an empty
+  // mark set by default, leaving allowsMarkType() false, which desyncs menus and
+  // input-rules from the marks the node actually carries. Use '_' (all marks), not
+  // a named set: a named set makes prosemirror-model's gatherMarks throw in any
+  // partial schema that omits those marks (e.g. a focused test's minimal schema).
+  marks: '_',
   group: 'inline',
   inline: true,
   atom: true,

@@ -129,6 +129,7 @@ export function findFootnoteDefinitionInsertPos(doc: FootnoteWalkableDoc): numbe
 
 export const FootnoteReference = Node.create({
   name: 'footnoteReference',
+  marks: '_', // legal mark carrier; see wiki-link.ts
   group: 'inline',
   inline: true,
   atom: true,

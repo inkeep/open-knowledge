@@ -1,8 +1,18 @@
 diff --git a/dist/y-tiptap.cjs b/dist/y-tiptap.cjs
-index 4dd5b4df7c0c589f4781807bf775f791e216e92a..e8dcb7c7a3419e0e03c49cafd98736421c3e4b7f 100644
+index 4dd5b4df7c0c589f4781807bf775f791e216e92a..9d5c37c6e92d6db1b13c2af7946361f0d6e4058d 100644
 --- a/dist/y-tiptap.cjs
 +++ b/dist/y-tiptap.cjs
-@@ -891,10 +891,22 @@ const createNodeFromYElement = (
+@@ -887,14 +887,31 @@ const createNodeFromYElement = (
+           : { type: 'added' };
+       }
+     }
+-    const node = schema.node(el.nodeName, attrs, children);
++    // Reserved mark keys are separated back out and rehydrated as the node's
++    // own marks. Yjs attribute iteration order diverges between peers, but PM's
++    // Mark.setFrom sorts by type.rank, so both peers reconstruct the same set.
++    const split = splitYAttrs(attrs);
++    const nodeMarks = attributesToMarks(split.marks, schema);
++    const node = schema.node(el.nodeName, split.plain, children, nodeMarks.length ? nodeMarks : undefined);
      meta.mapping.set(el, node);
      return node
    } catch (e) {
@@ -29,7 +39,7 @@ index 4dd5b4df7c0c589f4781807bf775f791e216e92a..e8dcb7c7a3419e0e03c49cafd9873642
      meta.mapping.delete(el);
      return null
    }
-@@ -926,10 +938,10 @@ const createTextNodesFromYText = (
+@@ -926,10 +943,10 @@ const createTextNodesFromYText = (
        nodes.push(schema.text(delta.insert, attributesToMarks(delta.attributes, schema)));
      }
    } catch (e) {
@@ -44,11 +54,134 @@ index 4dd5b4df7c0c589f4781807bf775f791e216e92a..e8dcb7c7a3419e0e03c49cafd9873642
      return null
    }
    // @ts-ignore
+@@ -968,6 +985,15 @@ const createTypeFromElementNode = (node, meta) => {
+       type.setAttribute(key, val);
+     }
+   }
++  // Marks live on the node, not in node.attrs, so they need their own pass.
++  // The spread is load-bearing: ProseMirror builds mark.attrs with
++  // Object.create(null), and Yjs's typeMapSet dispatches on value.constructor,
++  // which is undefined for a null-prototype object and falls through to
++  // 'Unexpected content type'.
++  const ymarks = marksToAttributes(node.marks || [], meta);
++  for (const key in ymarks) {
++    type.setAttribute(YMARK_PREFIX + key, { ...ymarks[key] });
++  }
+   type.insert(
+     0,
+     normalizePNodeContent(node).map((n) =>
+@@ -1067,6 +1093,56 @@ const equalYTextPText = (ytext, ptexts) => {
+     )
+ };
+ 
++/**
++ * Marks carried ON an element node are persisted as reserved attributes, so an
++ * element round-trips as faithfully as a marked text run already does. The
++ * prefix is the whole namespace: any key starting with it is a mark and every
++ * other key is a node attribute, so a new mark type needs no registration.
++ * One reserved key per mark rather than one map for all of them, so that two
++ * peers marking the same node concurrently keep both marks instead of the
++ * whole map being resolved last-writer-wins.
++ */
++const YMARK_PREFIX = 'ymark:';
++
++/**
++ * @param {Object<string, any>} yattrs
++ */
++const splitYAttrs = (yattrs) => {
++  const plain = {};
++  const marks = {};
++  for (const key in yattrs) {
++    if (key.startsWith(YMARK_PREFIX)) {
++      marks[key.slice(YMARK_PREFIX.length)] = yattrs[key];
++    } else {
++      plain[key] = yattrs[key];
++    }
++  }
++  return { plain, marks }
++};
++
++/**
++ * Mirror of equalYTextPText's mark comparison, for marks carried on an element
++ * node. Takes no `meta` because three of equalYTypePNode's call sites (the
++ * recursive one and updateYFragment's two edge scans) do not have one in hand.
++ *
++ * @param {Object<string, any>} ymarkAttrs
++ * @param {Array<any>} pmarks
++ */
++const equalYMarks = (ymarkAttrs, pmarks) => {
++  const keys = Object.keys(ymarkAttrs);
++  if (keys.length !== pmarks.length) {
++    return false
++  }
++  return keys.every((yattrname) => {
++    const markname = yattr2markname(yattrname);
++    const pmark = pmarks.find((mark) => mark.type.name === markname);
++    if (!pmark) {
++      return false
++    }
++    return equalAttrs(ymarkAttrs[yattrname], pmark.attrs)
++  })
++};
++
+ /**
+  * @param {Y.XmlElement|Y.XmlText|Y.XmlHook} ytype
+  * @param {any|Array<any>} pnode
+@@ -1077,8 +1153,13 @@ const equalYTypePNode = (ytype, pnode) => {
+     matchNodeName(ytype, pnode)
+   ) {
+     const normalizedContent = normalizePNodeContent(pnode);
++    // Split before comparing: a reserved mark key is absent from pnode.attrs by
++    // construction, so leaving it in would make equalAttrs false on every
++    // comparison forever and rewrite the element on every drain.
++    const split = splitYAttrs(ytype.getAttributes());
+     return ytype._length === normalizedContent.length &&
+-      equalAttrs(ytype.getAttributes(), pnode.attrs) &&
++      equalYMarks(split.marks, pnode.marks) &&
++      equalAttrs(split.plain, pnode.attrs) &&
+       ytype.toArray().every((ychild, i) =>
+         equalYTypePNode(ychild, normalizedContent[i])
+       )
+@@ -1263,7 +1344,23 @@ const updateYFragment = (y, yDomFragment, pNode, meta) => {
+     }
+     // remove all keys that are no longer in pAttrs
+     for (const key in yDomAttrs) {
+-      if (pAttrs[key] === undefined) {
++      if (pAttrs[key] === undefined && !key.startsWith(YMARK_PREFIX)) {
++        yDomFragment.removeAttribute(key);
++      }
++    }
++    // Reconcile the marks carried on this element. The equality guard keeps the
++    // writes conditional: rewriting an unchanged attribute replaces the Y Item,
++    // which silently degrades Y.UndoManager attribution because that rides on
++    // Item identity (item-preservation invariant).
++    const pMarkAttrs = marksToAttributes(pNode.marks || [], meta);
++    for (const key in pMarkAttrs) {
++      const yMarkAttr = yDomAttrs[YMARK_PREFIX + key];
++      if (yMarkAttr === undefined || !equalAttrs(yMarkAttr, pMarkAttrs[key])) {
++        yDomFragment.setAttribute(YMARK_PREFIX + key, { ...pMarkAttrs[key] });
++      }
++    }
++    for (const key in yDomAttrs) {
++      if (key.startsWith(YMARK_PREFIX) && pMarkAttrs[key.slice(YMARK_PREFIX.length)] === undefined) {
+         yDomFragment.removeAttribute(key);
+       }
+     }
 diff --git a/dist/y-tiptap.js b/dist/y-tiptap.js
-index 1cddd60120846234225be3c6768fd2da8410fc5c..c53665aef4003bdb769050caf6e8eb6fe465d7d1 100644
+index 1cddd60120846234225be3c6768fd2da8410fc5c..005101815c6207fd7ecafa0cc042067a3441a2d6 100644
 --- a/dist/y-tiptap.js
 +++ b/dist/y-tiptap.js
-@@ -857,10 +857,22 @@ const createNodeFromYElement = (
+@@ -853,14 +853,31 @@ const createNodeFromYElement = (
+           : { type: 'added' };
+       }
+     }
+-    const node = schema.node(el.nodeName, attrs, children);
++    // Reserved mark keys are separated back out and rehydrated as the node's
++    // own marks. Yjs attribute iteration order diverges between peers, but PM's
++    // Mark.setFrom sorts by type.rank, so both peers reconstruct the same set.
++    const split = splitYAttrs(attrs);
++    const nodeMarks = attributesToMarks(split.marks, schema);
++    const node = schema.node(el.nodeName, split.plain, children, nodeMarks.length ? nodeMarks : undefined);
      meta.mapping.set(el, node);
      return node
    } catch (e) {
@@ -75,7 +208,7 @@ index 1cddd60120846234225be3c6768fd2da8410fc5c..c53665aef4003bdb769050caf6e8eb6f
      meta.mapping.delete(el);
      return null
    }
-@@ -892,10 +904,10 @@ const createTextNodesFromYText = (
+@@ -892,10 +909,10 @@ const createTextNodesFromYText = (
        nodes.push(schema.text(delta.insert, attributesToMarks(delta.attributes, schema)));
      }
    } catch (e) {
@@ -90,3 +223,116 @@ index 1cddd60120846234225be3c6768fd2da8410fc5c..c53665aef4003bdb769050caf6e8eb6f
      return null
    }
    // @ts-ignore
+@@ -934,6 +951,15 @@ const createTypeFromElementNode = (node, meta) => {
+       type.setAttribute(key, val);
+     }
+   }
++  // Marks live on the node, not in node.attrs, so they need their own pass.
++  // The spread is load-bearing: ProseMirror builds mark.attrs with
++  // Object.create(null), and Yjs's typeMapSet dispatches on value.constructor,
++  // which is undefined for a null-prototype object and falls through to
++  // 'Unexpected content type'.
++  const ymarks = marksToAttributes(node.marks || [], meta);
++  for (const key in ymarks) {
++    type.setAttribute(YMARK_PREFIX + key, { ...ymarks[key] });
++  }
+   type.insert(
+     0,
+     normalizePNodeContent(node).map((n) =>
+@@ -1033,6 +1059,56 @@ const equalYTextPText = (ytext, ptexts) => {
+     )
+ };
+ 
++/**
++ * Marks carried ON an element node are persisted as reserved attributes, so an
++ * element round-trips as faithfully as a marked text run already does. The
++ * prefix is the whole namespace: any key starting with it is a mark and every
++ * other key is a node attribute, so a new mark type needs no registration.
++ * One reserved key per mark rather than one map for all of them, so that two
++ * peers marking the same node concurrently keep both marks instead of the
++ * whole map being resolved last-writer-wins.
++ */
++const YMARK_PREFIX = 'ymark:';
++
++/**
++ * @param {Object<string, any>} yattrs
++ */
++const splitYAttrs = (yattrs) => {
++  const plain = {};
++  const marks = {};
++  for (const key in yattrs) {
++    if (key.startsWith(YMARK_PREFIX)) {
++      marks[key.slice(YMARK_PREFIX.length)] = yattrs[key];
++    } else {
++      plain[key] = yattrs[key];
++    }
++  }
++  return { plain, marks }
++};
++
++/**
++ * Mirror of equalYTextPText's mark comparison, for marks carried on an element
++ * node. Takes no `meta` because three of equalYTypePNode's call sites (the
++ * recursive one and updateYFragment's two edge scans) do not have one in hand.
++ *
++ * @param {Object<string, any>} ymarkAttrs
++ * @param {Array<any>} pmarks
++ */
++const equalYMarks = (ymarkAttrs, pmarks) => {
++  const keys = Object.keys(ymarkAttrs);
++  if (keys.length !== pmarks.length) {
++    return false
++  }
++  return keys.every((yattrname) => {
++    const markname = yattr2markname(yattrname);
++    const pmark = pmarks.find((mark) => mark.type.name === markname);
++    if (!pmark) {
++      return false
++    }
++    return equalAttrs(ymarkAttrs[yattrname], pmark.attrs)
++  })
++};
++
+ /**
+  * @param {Y.XmlElement|Y.XmlText|Y.XmlHook} ytype
+  * @param {any|Array<any>} pnode
+@@ -1043,8 +1119,13 @@ const equalYTypePNode = (ytype, pnode) => {
+     matchNodeName(ytype, pnode)
+   ) {
+     const normalizedContent = normalizePNodeContent(pnode);
++    // Split before comparing: a reserved mark key is absent from pnode.attrs by
++    // construction, so leaving it in would make equalAttrs false on every
++    // comparison forever and rewrite the element on every drain.
++    const split = splitYAttrs(ytype.getAttributes());
+     return ytype._length === normalizedContent.length &&
+-      equalAttrs(ytype.getAttributes(), pnode.attrs) &&
++      equalYMarks(split.marks, pnode.marks) &&
++      equalAttrs(split.plain, pnode.attrs) &&
+       ytype.toArray().every((ychild, i) =>
+         equalYTypePNode(ychild, normalizedContent[i])
+       )
+@@ -1229,7 +1310,23 @@ const updateYFragment = (y, yDomFragment, pNode, meta) => {
+     }
+     // remove all keys that are no longer in pAttrs
+     for (const key in yDomAttrs) {
+-      if (pAttrs[key] === undefined) {
++      if (pAttrs[key] === undefined && !key.startsWith(YMARK_PREFIX)) {
++        yDomFragment.removeAttribute(key);
++      }
++    }
++    // Reconcile the marks carried on this element. The equality guard keeps the
++    // writes conditional: rewriting an unchanged attribute replaces the Y Item,
++    // which silently degrades Y.UndoManager attribution because that rides on
++    // Item identity (item-preservation invariant).
++    const pMarkAttrs = marksToAttributes(pNode.marks || [], meta);
++    for (const key in pMarkAttrs) {
++      const yMarkAttr = yDomAttrs[YMARK_PREFIX + key];
++      if (yMarkAttr === undefined || !equalAttrs(yMarkAttr, pMarkAttrs[key])) {
++        yDomFragment.setAttribute(YMARK_PREFIX + key, { ...pMarkAttrs[key] });
++      }
++    }
++    for (const key in yDomAttrs) {
++      if (key.startsWith(YMARK_PREFIX) && pMarkAttrs[key.slice(YMARK_PREFIX.length)] === undefined) {
+         yDomFragment.removeAttribute(key);
+       }
+     }

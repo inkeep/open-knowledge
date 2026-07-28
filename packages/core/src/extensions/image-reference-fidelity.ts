@@ -16,6 +16,7 @@ import { Node } from '@tiptap/core';
 
 export const ImageReferenceFidelity = Node.create({
   name: 'imageReference',
+  marks: '_', // legal mark carrier; see wiki-link.ts
   group: 'inline',
   inline: true,
   atom: true,

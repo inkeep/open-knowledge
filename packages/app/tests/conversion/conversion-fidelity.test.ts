@@ -213,6 +213,177 @@ describe('tree round-trip: pmJSON → updateYFragment → yXmlFragmentToProsemir
   }
 });
 
+// ─── 2b. Marked inline leaf nodes: byte-exact across chains 1 and 2 ───
+
+/**
+ * An inline *leaf* node is an inline node with no inline content, so ProseMirror
+ * computes an empty mark set for it. Parsed markdown can still hand such a node
+ * a mark (`**[[Page]]**` yields a `wikiLink` carrying `strong`), and only the
+ * tree round-trip can lose it: chain 1 never leaves mdast/PM, chain 2 stores the
+ * node as a Y.XmlElement.
+ *
+ * The `stable`/token-containment oracle the blocks above use cannot see this
+ * class at all — mark delimiters are not word tokens, so a dropped `**` matches
+ * every token it is asked about. These cases pin exact bytes on both chains
+ * instead, and pinning chain 1 alongside chain 2 keeps the reference honest: if
+ * both move together the expectation is wrong, not the bridge.
+ *
+ * The negative controls pin the class boundary. `[a](b)` is a link *mark* on
+ * text, `[[]]` never forms a node, and an inline wiki embed materializes as
+ * link-marked text, so none of them route a mark through an element node.
+ */
+const MARKED_INLINE_LEAF: Array<{ name: string; input: string; expected: string }> = [
+  // Marked inline leaf nodes — the mark must survive both chains.
+  { name: 'strong + wikilink', input: '**[[Page]]**\n', expected: '**[[Page]]**\n' },
+  {
+    name: 'strong + wikilink with alias',
+    input: '**[[Page|Alias]]**\n',
+    expected: '**[[Page|Alias]]**\n',
+  },
+  {
+    name: 'strong + wikilink with anchor',
+    input: '**[[Page#Section]]**\n',
+    expected: '**[[Page#Section]]**\n',
+  },
+  { name: 'emphasis + wikilink', input: '*[[Page]]*\n', expected: '*[[Page]]*\n' },
+  { name: 'strikethrough + wikilink', input: '~~[[Page]]~~\n', expected: '~~[[Page]]~~\n' },
+
+  // Multi-mark leaves (count > 1). Each mark serializes to its own
+  // `ymark:<hash>` Y-attribute; the per-key encoding is what keeps a second
+  // mark from clobbering the first under last-write-wins. A single-key design
+  // would round-trip these with only one mark surviving.
+  {
+    name: 'strong + emphasis + wikilink',
+    input: '***[[Page]]***\n',
+    expected: '***[[Page]]***\n',
+  },
+  {
+    name: 'strong + strikethrough + wikilink',
+    input: '**~~[[Page]]~~**\n',
+    expected: '**~~[[Page]]~~**\n',
+  },
+  { name: 'strong + emphasis + tag', input: '***#mytag***\n', expected: '***#mytag***\n' },
+  {
+    name: 'strong + wikilink mid-paragraph',
+    input: 'lead **[[Page]]** trail\n',
+    expected: 'lead **[[Page]]** trail\n',
+  },
+  { name: 'strong + image', input: '**![alt](file.png)**\n', expected: '**![alt](file.png)**\n' },
+  { name: 'strong + inline math', input: '**$x = 1$**\n', expected: '**$x = 1$**\n' },
+  { name: 'strong + tag', input: '**#mytag**\n', expected: '**#mytag**\n' },
+  {
+    name: 'strong + hard break (backslash)',
+    input: '**alpha\\\nbravo**\n',
+    expected: '**alpha\\\nbravo**\n',
+  },
+  {
+    name: 'strong + hard break (two spaces)',
+    input: '**alpha  \nbravo**\n',
+    expected: '**alpha  \nbravo**\n',
+  },
+  {
+    name: 'strong + image reference',
+    input: '**![alt][ref]**\n\n[ref]: file.png\n',
+    expected: '**![alt][ref]**\n\n[ref]: file.png\n',
+  },
+  {
+    name: 'strong + footnote reference',
+    input: '**[^1]**\n\n[^1]: a note\n',
+    expected: '**[^1]**\n\n[^1]: a note\n',
+  },
+  { name: 'strong + inline JSX', input: '**<Icon />**\n', expected: '**<Icon />**\n' },
+
+  // Negative controls — outside the class, must stay byte-identical.
+  {
+    name: 'control: strong + inline link',
+    input: '**[a](https://example.com)**\n',
+    expected: '**[a](https://example.com)**\n',
+  },
+  { name: 'control: strong + empty wikilink', input: '**[[]]**\n', expected: '**[[]]**\n' },
+  {
+    name: 'control: strong + inline wiki embed',
+    input: '**![[embed.png]]**\n',
+    expected: '**![[embed.png]]**\n',
+  },
+  { name: 'control: bare wikilink', input: '[[Page]]\n', expected: '[[Page]]\n' },
+  { name: 'control: strong on text', input: '**alpha**\n', expected: '**alpha**\n' },
+  { name: 'control: bare image', input: '![alt](file.png)\n', expected: '![alt](file.png)\n' },
+  { name: 'control: bare inline math', input: '$x = 1$\n', expected: '$x = 1$\n' },
+  { name: 'control: bare tag', input: '#mytag is here\n', expected: '#mytag is here\n' },
+  { name: 'control: bare inline JSX', input: '<Icon />\n', expected: '<Icon />\n' },
+  { name: 'control: bare hard break', input: 'alpha\\\nbravo\n', expected: 'alpha\\\nbravo\n' },
+  {
+    name: 'control: bare image reference',
+    input: '![alt][ref]\n\n[ref]: file.png\n',
+    expected: '![alt][ref]\n\n[ref]: file.png\n',
+  },
+  {
+    name: 'control: bare footnote reference',
+    input: '[^1]\n\n[^1]: a note\n',
+    expected: '[^1]\n\n[^1]: a note\n',
+  },
+  // No mark forms, so both chains escape the literal delimiters instead. A
+  // fix must not start synthesizing a mark where the parser saw none.
+  {
+    name: 'control: non-flanking delimiter run',
+    input: '** [[Page]]**\n',
+    expected: '\\*\\* [[Page]]\\*\\*\n',
+  },
+  {
+    name: 'control: mismatched delimiters',
+    input: '**[[Page]]__\n',
+    expected: '\\*\\*[[Page]]\\_\\_\n',
+  },
+];
+
+describe('marked inline leaf nodes: byte-exact through chains 1 and 2', () => {
+  for (const { name, input, expected } of MARKED_INLINE_LEAF) {
+    test.concurrent(name, () => {
+      expect(mdRoundTrip(input)).toBe(expected);
+      expect(treeRoundTrip(input)).toBe(expected);
+    });
+  }
+});
+
+describe('marked inline leaf nodes: in-place fragment update', () => {
+  /**
+   * A fresh fragment only exercises the create path. Reusing one fragment across
+   * successive updates is what drives updateYFragment's attribute reconciliation
+   * and the equality check that decides whether a node is touched at all, which
+   * is the path a live editor session actually takes.
+   *
+   */
+  test('a reused fragment gains, keeps and loses a mark on an inline leaf', () => {
+    const doc = new Y.Doc();
+    const fragment = doc.getXmlFragment('default');
+    const meta = { mapping: new Map(), isOMark: new Map() };
+
+    const applyMd = (md: string): string => {
+      updateYFragment(doc, fragment, schema.nodeFromJSON(mdManager.parse(md)), meta);
+      return mdManager.serialize(yXmlFragmentToProseMirrorRootNode(fragment, schema).toJSON());
+    };
+
+    try {
+      expect(applyMd('[[Page]]\n\nsibling\n')).toBe('[[Page]]\n\nsibling\n');
+      expect(applyMd('**[[Page]]**\n\nsibling\n')).toBe('**[[Page]]**\n\nsibling\n');
+      // Only the sibling changes. The marked paragraph must compare equal and be
+      // left alone rather than swept as a stale attribute.
+      expect(applyMd('**[[Page]]**\n\nsibling edited\n')).toBe('**[[Page]]**\n\nsibling edited\n');
+      // The marked node's own attributes change while the mark stays. The
+      // reconciliation reads a snapshot of the attributes taken before the
+      // stale-attribute sweep, so sweeping the mark here would leave the
+      // snapshot claiming it is still present and the mark would never be
+      // rewritten.
+      expect(applyMd('**[[Other]]**\n\nsibling edited\n')).toBe(
+        '**[[Other]]**\n\nsibling edited\n',
+      );
+      expect(applyMd('[[Other]]\n\nsibling edited\n')).toBe('[[Other]]\n\nsibling edited\n');
+    } finally {
+      doc.destroy();
+    }
+  });
+});
+
 // Observer round-trip and full-stack chain blocks removed.
 // Layer A (mdManager) === Layer B (Y.Doc observer path) on all 118 constructs.
 // These chains tested a proven pass-through.
