@@ -4,6 +4,7 @@
     "./biome-plugins/microcopy-ellipsis.grit",
     "./biome-plugins/no-loosely-typed-webcontents-ipc.grit",
     "./biome-plugins/no-resolved-value-theme-source.grit",
+    "./biome-plugins/no-split-suggestion-dispatch.grit",
     "./biome-plugins/no-unportaled-editor-content.grit"
   ],
   "assist": { "actions": { "source": { "organizeImports": "on" } } },

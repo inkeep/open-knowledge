@@ -9,9 +9,9 @@
  */
 
 import { PREVIEW_EMBED_STARTERS } from '@inkeep/open-knowledge-core';
-import type { Editor } from '@tiptap/react';
 import { describe, expect, test } from 'vitest';
 import { getEmbedStarterItems } from './embed-starter-items';
+import type { SlashCommandContext } from './items';
 
 interface InsertedNode {
   type: string;
@@ -19,11 +19,10 @@ interface InsertedNode {
   content: Array<{ type: string; text: string }>;
 }
 
-/** Minimal editor double that captures the `insertContent` payload. */
-function makeEditor(): { editor: Editor; getInserted: () => InsertedNode | undefined } {
+/** Minimal command-context double that captures the `insertContent` payload. */
+function makeContext(): { ctx: SlashCommandContext; getInserted: () => InsertedNode | undefined } {
   let inserted: InsertedNode | undefined;
   const chain = {
-    focus: () => chain,
     insertContent: (node: InsertedNode) => {
       inserted = node;
       return chain;
@@ -31,7 +30,7 @@ function makeEditor(): { editor: Editor; getInserted: () => InsertedNode | undef
     run: () => true,
   };
   return {
-    editor: { chain: () => chain } as unknown as Editor,
+    ctx: { chain: () => chain } as unknown as SlashCommandContext,
     getInserted: () => inserted,
   };
 }
@@ -58,8 +57,8 @@ describe('getEmbedStarterItems', () => {
 
   test('every command inserts a code block that opens in HTML preview mode', () => {
     for (const item of getEmbedStarterItems()) {
-      const { editor, getInserted } = makeEditor();
-      item.command(editor);
+      const { ctx, getInserted } = makeContext();
+      item.command(ctx);
       const node = getInserted();
       expect(node?.type).toBe('codeBlock');
       expect(node?.attrs).toEqual({ language: 'html', meta: 'preview' });
@@ -74,8 +73,8 @@ describe('getEmbedStarterItems', () => {
     const items = getEmbedStarterItems();
     for (const starter of PREVIEW_EMBED_STARTERS) {
       const item = items.find((i) => i.name === `embed-starter-${starter.id}`);
-      const { editor, getInserted } = makeEditor();
-      item?.command(editor);
+      const { ctx, getInserted } = makeContext();
+      item?.command(ctx);
       expect(getInserted()?.content[0]?.text).toBe(starter.html);
     }
   });
@@ -83,8 +82,8 @@ describe('getEmbedStarterItems', () => {
   test('blank-HTML inserts a seeded Hello-world body so the preview shows something on first paint', () => {
     const blank = getEmbedStarterItems().find((i) => i.name === 'embed-starter-html');
     expect(blank).toBeDefined();
-    const { editor, getInserted } = makeEditor();
-    blank?.command(editor);
+    const { ctx, getInserted } = makeContext();
+    blank?.command(ctx);
     const text = getInserted()?.content[0]?.text ?? '';
     expect(text).toContain('Hello, world!');
     // The seed nudges the author toward editing — without it the iframe

@@ -1,0 +1,64 @@
+// no-split-suggestion-dispatch — one-transaction suggestion insertion (precedent #58).
+//
+// A `@tiptap/suggestion` surface that deletes its trigger range and then
+// inserts content MUST land both in ONE dispatched transaction. Dispatching
+// the trigger-delete on its own opens a window: `view.dispatch` runs
+// `updateState` synchronously, and anything it fires re-entrantly during the
+// delete's own dispatch (a plugin `appendTransaction`, a plugin-view or
+// NodeView update, an `editor.on('transaction')` listener, or the
+// y-prosemirror binding reacting to the just-applied delete) can dispatch a
+// transaction that remaps the selection onto an adjacent `selectable: true`
+// node — the follow-up insert then REPLACES that node. Silent data loss, no
+// error, load-dependent (reads as e2e flake).
+//
+// The rule fires INSIDE a `Suggestion({ ... })` config on the two
+// bare-trigger-delete dispatch shapes:
+//
+//   1. `....deleteRange(range).run()` — a chain whose FINAL step before
+//      `.run()` is the delete. A compliant atomic chain always continues past
+//      the delete (`.deleteRange(range).insertContent(...).run()`, or the
+//      slash boundary's `.deleteRange(range).command(...).run()`), so the
+//      receiver of its `.run()` is never the `deleteRange` call itself.
+//   2. `editor.commands.deleteRange(range)` — the `commands.*` form always
+//      dispatches immediately, so inside a suggestion `command` it is a
+//      standalone trigger-delete transaction by construction.
+//
+// Fix: compose delete + insert into one chain, or route through a boundary
+// like `applySlashCommandItem` (`packages/app/src/editor/slash-command/
+// apply-item.ts`) when items need post-commit work (`afterCommit`).
+//
+// Does NOT catch (documented honestly):
+//   - A split where the delete chain carries an unrelated non-content step
+//     before `.run()` (e.g. `.deleteRange(r).focus().run()`) — the receiver
+//     of `.run()` is then not the `deleteRange` call. Focus-first ordering
+//     (`.focus().deleteRange(r).run()`) IS caught (shape 1).
+//   - A second dispatch made by the ITEM the command delegates to (an
+//     `item.command(editor)` that runs its own `editor.chain().run()`).
+//     Lint can't see through the delegation; the runtime pins in
+//     `suggestion-atomicity.dom.test.tsx` + `slash-command-atomicity.dom.test.tsx`
+//     assert the exactly-one-doc-changing-transaction invariant end to end.
+//   - A raw `view.dispatch(tr.delete(...))` inside a Suggestion config —
+//     no occurrence today; add a shape if one appears.
+//
+// Suppress a legitimate exception (a Suggestion surface that deletes its
+// trigger WITHOUT ever inserting — none exists today) with:
+//   // biome-ignore lint/plugin/no-split-suggestion-dispatch: <reason>
+
+language js
+
+or {
+    `Suggestion($config)` where {
+        $config <: contains `$chain.deleteRange($range).run()` as $bare,
+        register_diagnostic(
+            span = $bare,
+            message = "Split suggestion dispatch: this chain dispatches the trigger-range delete on its own. Compose the delete and the insert into ONE chain (`.deleteRange(range).insertContent(...).run()`) or route through an applySlashCommandItem-style boundary so the item contributes steps to the same transaction (precedent #58). A separately dispatched delete lets a re-entrant transaction remap the selection and the follow-up insert silently replace an adjacent node. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-split-suggestion-dispatchgrit"
+        )
+    },
+    `Suggestion($config)` where {
+        $config <: contains `$editor.commands.deleteRange($range)` as $cmd,
+        register_diagnostic(
+            span = $cmd,
+            message = "Split suggestion dispatch: `commands.deleteRange` dispatches the trigger-range delete immediately as its own transaction. Compose the delete and the insert into ONE chain (`.deleteRange(range).insertContent(...).run()`) or route through an applySlashCommandItem-style boundary so the item contributes steps to the same transaction (precedent #58). See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-split-suggestion-dispatchgrit"
+        )
+    }
+}

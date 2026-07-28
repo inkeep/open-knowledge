@@ -5,7 +5,8 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { Trans } from '@lingui/react/macro';
-import type { Editor } from '@tiptap/react';
+import type { EditorState } from '@tiptap/pm/state';
+import type { ChainedCommands, Editor } from '@tiptap/react';
 import {
   Code2,
   Heading1,
@@ -22,6 +23,53 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { setPendingAutoOpen } from './component-items';
+
+/**
+ * What an item's `command` receives when the slash menu runs it.
+ *
+ * The trigger-range delete and the item's insert must land as ONE
+ * transaction. If they land as two, a transaction dispatched re-entrantly
+ * during the delete's own dispatch (a plugin `appendTransaction`, a view
+ * update, or the collab binding reacting to the delete) can move the
+ * selection onto an adjacent selectable node, and the insert then replaces
+ * that node instead of inserting a new one — the user's existing content
+ * silently vanishes.
+ *
+ * So an item must build its steps on `chain()` and read pre-insert document
+ * state from `state`, never from `editor.chain()` / `editor.state`: the
+ * former dispatches a second transaction, the latter is the stale
+ * pre-deleteRange document.
+ *
+ * Caveat on "one transaction": an item whose insert triggers a plugin
+ * `appendTransaction` (mark identity, autolinking) still produces a follow-on
+ * transaction from that plugin. The contract is that the item contributes no
+ * dispatch of its own, not that the editor sees exactly one transaction for
+ * every item.
+ */
+export interface SlashCommandContext {
+  /**
+   * Builds the item's insert. Non-dispatching — its `.run()` commits nothing
+   * on its own; the steps join the handler's single transaction.
+   */
+  chain: () => ChainedCommands;
+
+  /**
+   * Chainable state: the document AFTER the trigger-range delete and BEFORE
+   * the item's own steps. This is what pre-insert reads (positions, sibling
+   * scans) must be computed against.
+   */
+  state: EditorState;
+
+  /** For non-transactional needs: plugin state, side-channel setters, DOM. */
+  editor: Editor;
+
+  /**
+   * Schedules work to run once the transaction has committed, against the
+   * live `editor.state`. Post-insert node lookups and selection moves belong
+   * here — inside the chain the insert has not been applied to the editor yet.
+   */
+  afterCommit: (fn: () => void) => void;
+}
 
 /**
  * A slash command menu item.
@@ -48,11 +96,12 @@ export interface SlashCommandItem {
   category: string;
 
   /**
-   * Command to execute when the item is selected. The extension deletes
-   * the trigger range (`/query`) before calling this, so commands can
-   * directly insert or toggle content without worrying about cleanup.
+   * Command to execute when the item is selected. The extension deletes the
+   * trigger range (`/query`) before calling this, so commands can directly
+   * insert or toggle content without worrying about cleanup — but they must
+   * build on `ctx.chain()` so the delete and the insert stay atomic.
    */
-  command: (editor: Editor) => void;
+  command: (ctx: SlashCommandContext) => void;
 
   /** Alternative search terms (e.g., `['h1']` for "Heading 1") */
   aliases?: string[];
@@ -97,7 +146,7 @@ export function getSlashCommandItems(): SlashCommandItem[] {
       label: t`Heading 1`,
       icon: Heading1,
       category: 'basic',
-      command: (editor) => editor.chain().focus().toggleHeading({ level: 1 }).run(),
+      command: ({ chain }) => chain().toggleHeading({ level: 1 }).run(),
       aliases: ['h1'],
       preview: {
         description: t`Big section heading.`,
@@ -113,7 +162,7 @@ export function getSlashCommandItems(): SlashCommandItem[] {
       label: t`Heading 2`,
       icon: Heading2,
       category: 'basic',
-      command: (editor) => editor.chain().focus().toggleHeading({ level: 2 }).run(),
+      command: ({ chain }) => chain().toggleHeading({ level: 2 }).run(),
       aliases: ['h2'],
       preview: {
         description: t`Medium section heading.`,
@@ -129,7 +178,7 @@ export function getSlashCommandItems(): SlashCommandItem[] {
       label: t`Heading 3`,
       icon: Heading3,
       category: 'basic',
-      command: (editor) => editor.chain().focus().toggleHeading({ level: 3 }).run(),
+      command: ({ chain }) => chain().toggleHeading({ level: 3 }).run(),
       aliases: ['h3'],
       preview: {
         description: t`Small section heading.`,
@@ -145,7 +194,7 @@ export function getSlashCommandItems(): SlashCommandItem[] {
       label: t`Bullet List`,
       icon: List,
       category: 'basic',
-      command: (editor) => editor.chain().focus().toggleBulletList().run(),
+      command: ({ chain }) => chain().toggleBulletList().run(),
       aliases: ['ul', 'unordered'],
       preview: {
         description: t`Unordered list of items.`,
@@ -166,7 +215,7 @@ export function getSlashCommandItems(): SlashCommandItem[] {
       label: t`Ordered List`,
       icon: ListOrdered,
       category: 'basic',
-      command: (editor) => editor.chain().focus().toggleOrderedList().run(),
+      command: ({ chain }) => chain().toggleOrderedList().run(),
       aliases: ['ol', 'numbered'],
       preview: {
         description: t`Numbered list of items.`,
@@ -187,7 +236,7 @@ export function getSlashCommandItems(): SlashCommandItem[] {
       label: t`Task List`,
       icon: ListTodo,
       category: 'basic',
-      command: (editor) => editor.chain().focus().toggleTaskList().run(),
+      command: ({ chain }) => chain().toggleTaskList().run(),
       aliases: ['todo', 'checklist', 'checkbox'],
       preview: {
         description: t`Checklist with checkboxes.`,
@@ -214,7 +263,7 @@ export function getSlashCommandItems(): SlashCommandItem[] {
       label: t`Quote`,
       icon: Quote,
       category: 'basic',
-      command: (editor) => editor.chain().focus().toggleBlockquote().run(),
+      command: ({ chain }) => chain().toggleBlockquote().run(),
       aliases: ['quote'],
       preview: {
         description: t`Indented blockquote for citations.`,
@@ -236,7 +285,7 @@ export function getSlashCommandItems(): SlashCommandItem[] {
       // schema default — the y-tiptap bridge would otherwise migrate
       // parsed-from-disk bare fences. See `extensions/code-block.ts`'s
       // top-of-file comment for the bridge mechanics.
-      command: (editor) => editor.chain().focus().toggleCodeBlock({ language: 'js' }).run(),
+      command: ({ chain }) => chain().toggleCodeBlock({ language: 'js' }).run(),
       aliases: ['code', 'fence'],
       preview: {
         description: t`Fenced code block with monospace text.`,
@@ -253,8 +302,7 @@ export function getSlashCommandItems(): SlashCommandItem[] {
       label: t`Table`,
       icon: Table2,
       category: 'insert',
-      command: (editor) =>
-        editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+      command: ({ chain }) => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
       aliases: ['grid'],
       preview: {
         description: t`Grid of rows and columns with a header row.`,
@@ -291,7 +339,7 @@ export function getSlashCommandItems(): SlashCommandItem[] {
       label: t`Separator`,
       icon: Minus,
       category: 'insert',
-      command: (editor) => editor.chain().focus().setHorizontalRule().run(),
+      command: ({ chain }) => chain().setHorizontalRule().run(),
       aliases: ['hr', 'divider', 'rule'],
       preview: {
         description: t`Horizontal rule that divides sections.`,
@@ -322,7 +370,7 @@ export function getSlashCommandItems(): SlashCommandItem[] {
       // wrong direction.
       icon: Superscript,
       category: 'insert',
-      command: (editor) => {
+      command: ({ chain, state }) => {
         // Identifier allocation: max existing integer identifier + 1.
         // Shared with the bubble-menu Footnote entry (see
         // `bubble-menu/FootnoteBubbleButton.tsx`) — both surfaces collect
@@ -330,7 +378,7 @@ export function getSlashCommandItems(): SlashCommandItem[] {
         // pick the next ID via the same `nextFootnoteIdentifier` rule, so
         // they produce the same auto-numbering sequence. Non-integer
         // existing IDs (e.g. `[^note]`) are ignored.
-        const next = nextFootnoteIdentifier(collectFootnoteIdentifiers(editor.state.doc));
+        const next = nextFootnoteIdentifier(collectFootnoteIdentifiers(state.doc));
         // Single chain so a single Ctrl+Z undoes both insertions atomically.
         // Targeting: insert AFTER any existing `footnoteDefinition` blocks
         // via the shared helper. Without this, each `/footnote` invocation
@@ -340,10 +388,8 @@ export function getSlashCommandItems(): SlashCommandItem[] {
         // the serialized markdown. The reference is an inline atom
         // (nodeSize = 1), so step 2 shifts the helper's pre-chain anchor
         // by +1.
-        const insertAt = findFootnoteDefinitionInsertPos(editor.state.doc) + 1;
-        editor
-          .chain()
-          .focus()
+        const insertAt = findFootnoteDefinitionInsertPos(state.doc) + 1;
+        chain()
           .insertFootnoteReference(next)
           .insertContentAt(insertAt, {
             type: 'footnoteDefinition',
@@ -391,12 +437,14 @@ export function getSlashCommandItems(): SlashCommandItem[] {
       label: t`Inline Math`,
       icon: Sigma,
       category: 'insert',
-      command: (editor) => {
-        const insertPos = editor.state.selection.from;
-        editor.chain().focus().insertMathInline('').run();
-        setPendingAutoOpen(insertPos);
-        requestAnimationFrame(() => {
-          editor.commands.setNodeSelection(insertPos);
+      command: ({ chain, state, editor, afterCommit }) => {
+        const insertPos = state.selection.from;
+        chain().insertMathInline('').run();
+        afterCommit(() => {
+          setPendingAutoOpen(insertPos);
+          requestAnimationFrame(() => {
+            editor.commands.setNodeSelection(insertPos);
+          });
         });
       },
       aliases: ['math', 'latex', 'equation', 'formula', 'katex', 'inlinemath'],

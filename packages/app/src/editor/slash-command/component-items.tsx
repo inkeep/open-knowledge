@@ -29,7 +29,7 @@ import { getInteractionLayer } from '../interaction-layer-host';
 import { resolveIcon } from '../registry/icons.ts';
 import { getDescriptor, getRegisteredDescriptors } from '../registry/index.ts';
 import type { JsxComponentDescriptor } from '../registry/types.ts';
-import type { SlashCommandItem } from './items';
+import type { SlashCommandContext, SlashCommandItem } from './items';
 import imagePreview from './preview-assets/image-preview.png';
 import videoPreview from './preview-assets/video-preview.png';
 
@@ -473,8 +473,10 @@ export function focusInsertedComponent(
  * Inserts a jsxComponent PM node with structured attrs + default props.
  * Post-insert: auto-opens PropPanel (editable props) or focuses children.
  */
-function createInsertCommand(descriptor: JsxComponentDescriptor): (editor: Editor) => void {
-  return (editor: Editor) => {
+function createInsertCommand(
+  descriptor: JsxComponentDescriptor,
+): (ctx: SlashCommandContext) => void {
+  return ({ chain, state, editor, afterCommit }: SlashCommandContext) => {
     // Snapshot existing matching jsxComponent node references. ProseMirror
     // preserves node identity for nodes unchanged by a transaction, so the
     // matching node in the new doc whose reference is NOT in this set is
@@ -488,7 +490,7 @@ function createInsertCommand(descriptor: JsxComponentDescriptor): (editor: Edito
     // a NodeSelection target — and the consumer's consumeAutoOpen(getPos())
     // keys off the boundary position regardless.
     const beforeRefs = new WeakSet<object>();
-    editor.state.doc.descendants((node) => {
+    state.doc.descendants((node) => {
       if (node.type.name === 'jsxComponent' && node.attrs.componentName === descriptor.name) {
         beforeRefs.add(node);
       }
@@ -513,22 +515,24 @@ function createInsertCommand(descriptor: JsxComponentDescriptor): (editor: Edito
       tab2Attrs.props = { ...(tab2Attrs.props as Record<string, unknown>), label: 'Tab 2' };
       (inserted as Record<string, unknown>).content = [tab1, tab2];
     }
-    editor.chain().focus().insertContent(inserted).run();
+    chain().insertContent(inserted).run();
 
-    let insertPos = -1;
-    editor.state.doc.descendants((node, pos) => {
-      if (insertPos >= 0) return false;
-      if (
-        node.type.name === 'jsxComponent' &&
-        node.attrs.componentName === descriptor.name &&
-        !beforeRefs.has(node)
-      ) {
-        insertPos = pos;
-      }
+    afterCommit(() => {
+      let insertPos = -1;
+      editor.state.doc.descendants((node, pos) => {
+        if (insertPos >= 0) return false;
+        if (
+          node.type.name === 'jsxComponent' &&
+          node.attrs.componentName === descriptor.name &&
+          !beforeRefs.has(node)
+        ) {
+          insertPos = pos;
+        }
+      });
+
+      if (insertPos < 0) return;
+      focusInsertedComponent(editor, insertPos, descriptor);
     });
-
-    if (insertPos < 0) return;
-    focusInsertedComponent(editor, insertPos, descriptor);
   };
 }
 
@@ -647,8 +651,12 @@ export function getComponentItems(): SlashCommandItem[] {
  * The picker's `accept` attribute is set to all-types (matching `File`'s
  * descriptor `accept`) so the OS dialog shows every file. The uploaded
  * asset is inserted at the cursor's current position.
+ *
+ * The insert happens asynchronously, after the user picks a file, so there
+ * is nothing to contribute to the slash-command transaction — the item takes
+ * the editor and leaves `chain` untouched.
  */
-function openFilePickerAndUpload(editor: Editor): void {
+function openFilePickerAndUpload({ editor }: SlashCommandContext): void {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '*/*';
@@ -733,11 +741,9 @@ export function getInlineComponentItems(): SlashCommandItem[] {
           </p>
         ),
       },
-      command: (editor: Editor) => {
-        const insertPos = editor.state.selection.from;
-        editor
-          .chain()
-          .focus()
+      command: ({ chain, state, editor, afterCommit }) => {
+        const insertPos = state.selection.from;
+        chain()
           .insertContent({
             type: 'text',
             text: 'link',
@@ -745,11 +751,16 @@ export function getInlineComponentItems(): SlashCommandItem[] {
           })
           .run();
 
-        const markId = findMarkIdAt(editor.state, insertPos, 'link');
-        if (!markId) return;
-        setPendingLinkEdit(markId);
-        requestAnimationFrame(() => {
-          getInteractionLayer(editor).setActiveNode(markId);
+        // Mark ids are assigned by the mark-identity plugin's
+        // `appendTransaction`, so the id only exists once the insert has
+        // been committed and that plugin has run.
+        afterCommit(() => {
+          const markId = findMarkIdAt(editor.state, insertPos, 'link');
+          if (!markId) return;
+          setPendingLinkEdit(markId);
+          requestAnimationFrame(() => {
+            getInteractionLayer(editor).setActiveNode(markId);
+          });
         });
       },
     },
@@ -777,15 +788,15 @@ export function getInlineComponentItems(): SlashCommandItem[] {
           </p>
         ),
       },
-      command: (editor: Editor) => {
-        // Insert an empty `tag` atom WITHOUT a leading `chain().focus()`.
+      command: ({ chain }) => {
+        // Insert an empty `tag` atom WITHOUT a leading `focus()`.
         // The NodeView's mount effect (deferred via rAF) pulls focus
         // into the placeholder's inline input on the next frame; an
         // explicit editor-focus here would race with that and leave
         // the cursor past the atom instead. Insertion proceeds even
         // without the explicit focus because PM's selection is still
         // valid from the slash command's own match range.
-        editor.chain().insertTag('').run();
+        chain().insertTag('').run();
       },
     },
   ];

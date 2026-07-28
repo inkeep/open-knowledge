@@ -1,5 +1,11 @@
-import { describe, expect, test } from 'vitest';
-import { filterItems, getSlashCommandItems, type SlashCommandItem } from './items';
+import { afterEach, describe, expect, test } from 'vitest';
+import { _resetPendingAutoOpenForTest, consumeAutoOpen } from './component-items';
+import {
+  filterItems,
+  getSlashCommandItems,
+  type SlashCommandContext,
+  type SlashCommandItem,
+} from './items';
 
 describe('filterItems', () => {
   test('empty query returns all provided items', () => {
@@ -106,5 +112,97 @@ describe('built-in slash command items', () => {
     const items = getSlashCommandItems();
     expect(items.some((i) => i.name === 'image')).toBe(false);
     expect(items.some((i) => i.aliases?.includes('img'))).toBe(false);
+  });
+});
+
+describe('Inline Math item composes into the slash-command transaction', () => {
+  afterEach(() => {
+    _resetPendingAutoOpenForTest();
+  });
+
+  function inlineMathItem(): SlashCommandItem {
+    const item = getSlashCommandItems().find((i) => i.name === 'inlineMath');
+    if (!item) throw new Error('Inline Math slash item missing');
+    return item;
+  }
+
+  /**
+   * Context double standing in for what `applySlashCommandItem` passes: a
+   * chain that only records (a real one would append steps to the handler's
+   * transaction), the pre-insert selection, and a manually drained
+   * `afterCommit` queue so the split between in-transaction and post-commit
+   * work is observable.
+   */
+  function makeContext(caret: number): {
+    ctx: SlashCommandContext;
+    getInsertedFormula: () => string | undefined;
+    getSelectedPositions: () => number[];
+    drainDeferred: () => void;
+  } {
+    let insertedFormula: string | undefined;
+    const selectedPositions: number[] = [];
+    const deferred: Array<() => void> = [];
+    const chain = {
+      insertMathInline: (formula: string) => {
+        insertedFormula = formula;
+        return chain;
+      },
+      run: () => true,
+    };
+    const ctx = {
+      chain: () => chain,
+      state: { selection: { from: caret } },
+      editor: {
+        commands: {
+          setNodeSelection: (pos: number) => {
+            selectedPositions.push(pos);
+            return true;
+          },
+        },
+      },
+      afterCommit: (fn: () => void) => deferred.push(fn),
+    } as unknown as SlashCommandContext;
+    return {
+      ctx,
+      getInsertedFormula: () => insertedFormula,
+      getSelectedPositions: () => selectedPositions,
+      drainDeferred: () => {
+        for (const fn of deferred) fn();
+      },
+    };
+  }
+
+  test('the insert lands on the passed chain and the selection move waits for the commit', () => {
+    const caret = 12;
+    const { ctx, getInsertedFormula, getSelectedPositions, drainDeferred } = makeContext(caret);
+
+    const rafQueue: FrameRequestCallback[] = [];
+    const originalRaf = globalThis.requestAnimationFrame;
+    globalThis.requestAnimationFrame = ((fn: FrameRequestCallback) => {
+      rafQueue.push(fn);
+      return rafQueue.length;
+    }) as typeof globalThis.requestAnimationFrame;
+
+    try {
+      inlineMathItem().command(ctx);
+
+      // The atom insert is the item's only contribution to the transaction.
+      expect(getInsertedFormula()).toBe('');
+      // Nothing post-insert may run inside the chain: at that point the
+      // insert has not been applied to the editor, so a NodeSelection on the
+      // atom would target a position that does not exist yet.
+      expect(rafQueue).toHaveLength(0);
+      expect(consumeAutoOpen(caret)).toBe(false);
+
+      drainDeferred();
+
+      // Once committed, the auto-open handshake runs against the real editor.
+      expect(consumeAutoOpen(caret)).toBe(true);
+      expect(rafQueue).toHaveLength(1);
+      rafQueue[0]?.(0);
+      expect(getSelectedPositions()).toEqual([caret]);
+    } finally {
+      globalThis.requestAnimationFrame = originalRaf;
+    }
   });
 });

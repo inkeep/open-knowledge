@@ -67,6 +67,25 @@ Detection patterns (call expressions only — type-declarations are naturally ex
 
 Test: [`packages/desktop/tests/integration/no-resolved-value-theme-source.test.ts`](../packages/desktop/tests/integration/no-resolved-value-theme-source.test.ts).
 
+### `no-split-suggestion-dispatch.grit`
+
+One-transaction suggestion insertion ([PRECEDENTS.md #58](../PRECEDENTS.md#one-transaction-menu-insertions-precedent-58)). Inside a `@tiptap/suggestion` `Suggestion({ ... })` config, a trigger-range delete dispatched on its own (separate from the content insert) opens a re-entrant-dispatch window: anything fired synchronously during the delete's own `updateState` (a plugin `appendTransaction`, a view/NodeView update, the y-prosemirror binding reacting to the delete) can remap the selection onto an adjacent `selectable: true` node, and the follow-up insert then silently REPLACES that node. The fix is one chain (`.deleteRange(range).insertContent(...).run()`) or an `applySlashCommandItem`-style boundary (`packages/app/src/editor/slash-command/apply-item.ts`) for items needing post-commit work.
+
+Detection patterns (scoped to `Suggestion($config)` call sites, so delete-only surfaces outside suggestion configs — e.g. a mention chip's remove button — never fire):
+- a chain whose `.run()` receiver is the `deleteRange(...)` call itself (`....deleteRange(range).run()` — a compliant atomic chain always continues past the delete before `.run()`)
+- `$editor.commands.deleteRange($range)` — the `commands.*` form dispatches immediately, always a standalone delete transaction
+
+**Registered at root `plugins[]`** (workspace-wide, like `microcopy-ellipsis`): the pattern self-scopes to `Suggestion(...)` calls, and a future suggestion surface in any package must be covered without a biome.jsonc edit.
+
+The rule does NOT catch:
+- a split whose delete chain carries a non-content step after `deleteRange` and before `.run()` (e.g. `.deleteRange(r).focus().run()`) — the `.run()` receiver is then not the `deleteRange` call
+- a second dispatch made inside a delegated item body (`item.command(editor)` running its own `editor.chain().run()`) — lint can't see through delegation
+- raw `view.dispatch(tr.delete(...))` inside a Suggestion config — no occurrence today
+
+Runtime complement: `packages/app/src/editor/extensions/suggestion-atomicity.dom.test.tsx` + `slash-command-atomicity.dom.test.tsx` drive every registered suggestion surface through a real Enter and assert exactly one doc-changing transaction — they catch the delegated-dispatch shapes the lint can't.
+
+Plugin: [`biome-plugins/no-split-suggestion-dispatch.grit`](no-split-suggestion-dispatch.grit). Fixture: [`biome-plugins/__fixtures__/no-split-suggestion-dispatch.fixture.tsx`](__fixtures__/no-split-suggestion-dispatch.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-split-suggestion-dispatch.test.ts`](../packages/app/tests/lint-plugins/no-split-suggestion-dispatch.test.ts).
+
 ### `no-unportaled-editor-content.grit`
 
 H6 cross-doc DOM bleed contract. `@tiptap/react`'s `PureEditorContent.componentDidMount` runs `element.append(...editor.view.dom.parentNode.childNodes)` — a sibling-vacuum primitive. When `view.dom` shares a parent with another editor's `view.dom` (e.g., V2 cache parked nodes, cross-Activity reconciliation transitions), the vacuum drags foreign content into the active wrapper. The structural fix is to render every `<EditorContent>` via `React.createPortal` into a per-Activity exclusively-owned DOM target, so `view.dom`'s parent only ever contains THIS editor's nodes.

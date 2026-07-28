@@ -2,6 +2,7 @@ import { Extension } from '@tiptap/core';
 import { type EditorState, PluginKey } from '@tiptap/pm/state';
 import { ReactRenderer } from '@tiptap/react';
 import Suggestion, { type SuggestionKeyDownProps, type SuggestionProps } from '@tiptap/suggestion';
+import { applySlashCommandItem } from '../slash-command/apply-item';
 import { filterItems, getSlashCommandItems, type SlashCommandItem } from '../slash-command/items';
 import { SlashCommandMenu } from '../slash-command/SlashCommandMenu';
 import { isSelectionInTableCell } from '../table-cell-context';
@@ -159,19 +160,7 @@ export const SlashCommand = Extension.create<SlashCommandOptions>({
             state: editor.state,
           }),
 
-        command: ({ editor, range, props: item }) => {
-          try {
-            editor.chain().focus().deleteRange(range).run();
-          } catch (err) {
-            console.error(`[slash-command] deleteRange failed for "${item.name}"`, err);
-            return;
-          }
-          try {
-            item.command(editor);
-          } catch (err) {
-            console.error(`[slash-command] command "${item.name}" threw an error`, err);
-          }
-        },
+        command: ({ editor, range, props: item }) => applySlashCommandItem({ editor, item, range }),
 
         render: () => {
           let renderer: ReactRenderer<typeof SlashCommandMenu> | null = null;
