@@ -31,12 +31,13 @@
  *   deferred reparent + ProseMirror inflations land at ~250 ms, the next
  *   rAF tick re-applies `scrollTop = target` and emits
  *   `ok/scroll-restore/phase2-success`. The poll detects the restored
- *   position well before the 2 s safety timer → PASS.
+ *   position well before the restore's wall-clock backstop → PASS.
  *
- * Test polling window (450 ms) is intentionally BELOW the 2000 ms
- * production safety timer that fires `ok/scroll-restore/abandoned` when
- * Stage 2 never landed. A regression that breaks the rAF-poll path but
- * is masked by some other late write would restore at >= 2 s with a
+ * Test polling window (450 ms) is intentionally FAR BELOW the production
+ * wall-clock backstop (RESTORE_BACKSTOP_MS, 10 s) that fires
+ * `ok/scroll-restore/abandoned` when Stage 2 never landed. A regression
+ * that breaks the rAF-poll path but is masked by some other late write
+ * would restore seconds late with a
  * user-perceptible scroll bounce — that is a UX regression, not a
  * successful fallback. This test treats it as a failure to specifically
  * pin the rAF-poll mechanism that delivers the "no perceptible delay"
@@ -213,9 +214,10 @@ test.describe('docs-open-scroll-restore — F1 RED (deterministic via portal-app
     ).toBeGreaterThan(0);
 
     // STEP 8 — the user-facing contract: scroll position must be restored
-    // after the warm-reopen, well before the 2000 ms safety timer that
-    // production uses to abandon Stage 2 if rAF-poll never lands. Polling
-    // window (450 ms) is deliberately far below 2 s — the rAF-poll must do
+    // after the warm-reopen, well before the wall-clock backstop
+    // (RESTORE_BACKSTOP_MS) that production uses to abandon Stage 2 if
+    // rAF-poll never lands. Polling window (450 ms) is deliberately far
+    // below it — the rAF-poll must do
     // the work. Patch defers appendChild by 250 ms, so the next rAF tick
     // re-applies scrollTop at ~260 ms, giving ~190 ms slack within the
     // 450 ms window. (450 ms vs original 400 ms: the extra 50 ms absorbs

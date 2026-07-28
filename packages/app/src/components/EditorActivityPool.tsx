@@ -65,6 +65,14 @@ import { EditorSkeleton } from './EditorSkeleton';
 import { PageHeader } from './PageHeader';
 import { usePageList } from './PageListContext';
 import { PropertyPanel } from './PropertyPanel';
+import {
+  computeRestoreTarget,
+  hasLandedAt,
+  isExternalScroll,
+  measureAnchor,
+  RESTORE_BACKSTOP_MS,
+  shouldRecordScrollPosition,
+} from './scroll-restore';
 import { Button } from './ui/button';
 
 // Lazy-loaded: the skill/template identity panel (+ SkillProperties /
@@ -482,24 +490,19 @@ interface ActivityEntryProps {
  *   (re-clamping scrollTop to 0), and the editor hydrates content
  *   asynchronously after `'create'` — neither a single synchronous write
  *   nor a one-shot ResizeObserver retry survives that race. The poll
- *   ends on the first user-scroll-intent signal (wheel / touchstart) or
- *   a 2 s safety timeout.
+ *   ends on the first user-scroll-intent signal (wheel / touchstart /
+ *   mousedown / keydown), on an external scrollTop write (outline click,
+ *   find-in-doc — anything we didn't write), or a hard wall-clock
+ *   backstop. There is deliberately no early "settled" finalizer: a
+ *   finalized restore never corrects again, so finalizing ahead of a late
+ *   layout shift (contended hydration, panel settle, font swap) is how
+ *   transient churn used to freeze into a permanently wrong position.
+ *
+ *   Anchor measurements are validity-guarded (see scroll-restore.ts): a
+ *   mounted-but-hidden anchor (a Suspense fallback window during a slow
+ *   reveal) yields NO target for that frame rather than a degenerate
+ *   viewport-origin measurement that self-amplifies per applied frame.
  */
-/**
- * Position of `anchor` within `container`'s scroll content (distance from the
- * content top), independent of the current scroll offset. Equals the total
- * height ABOVE the anchor — page header + Properties section. Returns null when
- * either element is missing so callers can skip anchor compensation.
- */
-function measureAnchorContentPos(
-  container: HTMLElement,
-  anchor: HTMLElement | null | undefined,
-): number | null {
-  if (!anchor) return null;
-  const cTop = container.getBoundingClientRect().top;
-  const aTop = anchor.getBoundingClientRect().top;
-  return aTop - cTop + container.scrollTop;
-}
 
 /**
  * Per-document scroll position, stored as a BODY OFFSET (scrollTop minus the
@@ -599,12 +602,18 @@ function ScrollPreservingContainer({
       // restore-in-progress (our own writes + panel-resize adjustments).
       if (!isActiveRef.current || isRestoringRef.current) return;
       if (el.scrollTop > 0) {
+        const anchor = measureAnchor(el, bodyAnchorRef?.current);
+        // A hidden (zero-rect) anchor means layout is mid-transition — any
+        // scroll event on such a frame is churn, not user position. Recording
+        // it would corrupt the save the same way it corrupts the restore.
+        if (!shouldRecordScrollPosition(anchor)) return;
         savedScrollTop.current = el.scrollTop;
-        const anchor = measureAnchorContentPos(el, bodyAnchorRef?.current);
-        savedAnchorPos.current = anchor;
+        savedAnchorPos.current = anchor.kind === 'measured' ? anchor.contentPos : null;
         // Persist the body-relative offset per doc so it survives a remount and
         // stays valid across Properties-panel height changes.
-        if (anchor !== null) rememberDocScrollOffset(docName, el.scrollTop - anchor);
+        if (anchor.kind === 'measured') {
+          rememberDocScrollOffset(docName, el.scrollTop - anchor.contentPos);
+        }
       }
     };
     el.addEventListener('scroll', onScroll, { passive: true });
@@ -626,10 +635,23 @@ function ScrollPreservingContainer({
   // and does not change when scrollHeight grows inside it. Polling reads
   // scrollHeight directly each frame — the signal we actually need.
   //
-  // Stop conditions: wheel / touchstart from the user (unambiguous
-  // scroll-intent signals — click-to-place-caret produces neither), or
-  // a 2 s safety timeout that covers the large-doc cold-mount + CRDT
-  // hydration window in dev.
+  // Stop conditions: user scroll intent (wheel / touchstart / mousedown on
+  // the scroller for scrollbar drags / keydown for keyboard scrolling), an
+  // EXTERNAL scroll write (outline-click scrollIntoView, find-in-doc — any
+  // scrollTop move we didn't make; see isExternalScroll), or the
+  // `RESTORE_BACKSTOP_MS` hard backstop. There is deliberately NO
+  // "settled" heuristic and NO short wall-clock finalizer: both finalize
+  // before a late layout shift above the body (contended hydration, panel
+  // settling, font swap), and a finalized restore never corrects again —
+  // that is exactly how transient churn froze into a permanently wrong
+  // position. Tracking until someone else takes over the scroll is the
+  // contract ("the same body content at the same viewport position"). Cost:
+  // a few rect reads per frame (getClientRects + two getBoundingClientRect),
+  // cheap while layout is clean — reads only force reflow after a write.
+  //
+  // CSS scroll anchoring is suspended while the loop runs: it is the one
+  // other browser-side scrollTop mover, and with it off, any move we
+  // didn't write is a reliable takeover signal.
   useLayoutEffect(() => {
     if (!isActive) return;
     const el = ref.current;
@@ -648,54 +670,115 @@ function ScrollPreservingContainer({
       savedAnchorPos.current !== null ? rawTarget - savedAnchorPos.current : null;
     const bodyOffset: number | null = sharedOffset ?? instanceOffset;
     if (rawTarget === 0 && bodyOffset === null) return; // nothing to restore
-    const computeTarget = (): number => {
-      if (bodyOffset === null) return rawTarget;
-      const anchor = measureAnchorContentPos(el, bodyAnchorRef?.current);
-      return anchor === null ? rawTarget : anchor + bodyOffset;
-    };
+    // Null = no valid layout evidence this frame (anchor mounted but hidden,
+    // e.g. a Suspense fallback window) — hold: no write this frame.
+    const computeTarget = (): number | null =>
+      computeRestoreTarget(rawTarget, bodyOffset, measureAnchor(el, bodyAnchorRef?.current));
     // Suppress scroll capture while we drive the restore — our own writes and
     // the panel-resize adjustments would otherwise be recorded as user scroll.
     isRestoringRef.current = true;
+    // Suspend CSS scroll anchoring for the loop's lifetime (restored in
+    // finish). Two agents adjusting scrollTop for the same content shifts
+    // fight each other, and with anchoring off, any scrollTop move we did
+    // not write is a reliable someone-else-took-over signal.
+    const priorOverflowAnchor = el.style.overflowAnchor;
+    el.style.overflowAnchor = 'none';
 
     const startTs = performance.now();
     let phase2Marked = false;
+    // True once the restore has landed on target at least once (Phase 1 or
+    // Phase 2) — gates the `yielded` mark so a healthy restore followed by
+    // user interaction doesn't read as an incomplete one.
+    let hasLandedOnce = false;
 
     // Stage 1 — synchronous best-effort write. Mark phase1-success when it
     // lands AND content is sized; do NOT short-circuit: the Suspense
     // warm-fallback → real-editor swap can still collapse scrollHeight and
     // re-clamp scrollTop, so Stage 2's poll must remain armed.
     let target = computeTarget();
-    el.scrollTop = target;
-    if (el.scrollTop === target && el.scrollHeight > target) {
-      mark('ok/scroll-restore/phase1-success', {
-        target,
-        elapsedMs: performance.now() - startTs,
-      });
+    if (target !== null) {
+      el.scrollTop = target;
+      if (hasLandedAt(el.scrollTop, target) && el.scrollHeight > target) {
+        hasLandedOnce = true;
+        mark('ok/scroll-restore/phase1-success', {
+          target,
+          elapsedMs: performance.now() - startTs,
+        });
+      }
     }
+    // The scrollTop as we left it — the baseline the external-scroll
+    // detector compares against next frame.
+    let prevScrollTop = el.scrollTop;
 
-    // Stage 2 — bounded per-frame re-apply.
+    // Stage 2 — per-frame tracking until user intent, external scroll, or
+    // backstop.
     let done = false;
     let raf = 0;
     const finish = () => {
       if (done) return;
       done = true;
       isRestoringRef.current = false; // re-enable user-scroll capture
+      el.style.overflowAnchor = priorOverflowAnchor;
       cancelAnimationFrame(raf);
       clearTimeout(safetyTimer);
-      el.removeEventListener('wheel', onUserInterrupt);
-      el.removeEventListener('touchstart', onUserInterrupt);
+      el.removeEventListener('wheel', yieldToUser);
+      el.removeEventListener('touchstart', yieldToUser);
+      el.removeEventListener('mousedown', yieldToUser);
+      el.removeEventListener('keydown', yieldToUser);
     };
-    const onUserInterrupt = () => finish();
-    el.addEventListener('wheel', onUserInterrupt, { passive: true });
-    el.addEventListener('touchstart', onUserInterrupt, { passive: true });
+    // Any user input yields, deliberately including EVERY key: once the user
+    // is interacting, enforcing a restore target against them is worse than
+    // a small residual offset they are already overriding. Caret-driven
+    // scrolls would also be caught next frame by the external-scroll check;
+    // the listeners just yield a frame sooner.
+    const yieldToUser = () => {
+      if (!hasLandedOnce) {
+        // A restore that never landed and then yielded is otherwise
+        // invisible (no phase1/phase2-success, no abandoned) — surface it so
+        // operators can distinguish "user took over" from "never ran".
+        mark('ok/scroll-restore/yielded', {
+          reason: 'user',
+          elapsedMs: performance.now() - startTs,
+          finalScrollTop: el.scrollTop,
+        });
+      }
+      finish();
+    };
+    el.addEventListener('wheel', yieldToUser, { passive: true });
+    el.addEventListener('touchstart', yieldToUser, { passive: true });
+    // mousedown covers scrollbar drags (they begin with a mousedown on the
+    // scroller and produce neither wheel nor touchstart); keydown covers
+    // keyboard scrolling once focus is inside.
+    el.addEventListener('mousedown', yieldToUser);
+    el.addEventListener('keydown', yieldToUser);
     const tick = () => {
       if (done) return;
+      // An UPWARD scrollTop move we didn't write = someone else owns the
+      // scroll now (outline-click scrollIntoView, find-in-doc). Yield
+      // immediately — enforcing a stale target over an intentional scroll is
+      // worse than any restore imprecision. Downward moves are shrink-clamps
+      // to re-apply over (possibly against a transient collapsed height);
+      // downward user takeovers arrive via the intent listeners above.
+      if (isExternalScroll(prevScrollTop, el.scrollTop)) {
+        if (!hasLandedOnce) {
+          mark('ok/scroll-restore/yielded', {
+            reason: 'external',
+            elapsedMs: performance.now() - startTs,
+            finalScrollTop: el.scrollTop,
+          });
+        }
+        finish();
+        return;
+      }
       // Recompute from the current anchor so the target follows the Properties
       // section as it settles to its post-toggle height (see computeTarget).
+      // A null target is a degenerate frame (anchor hidden): hold — writing
+      // through invalid evidence is how a transient hidden window used to
+      // become a permanently wrong scroll position.
       target = computeTarget();
-      if (el.scrollTop !== target && el.scrollHeight > target) {
+      if (target !== null && !hasLandedAt(el.scrollTop, target) && el.scrollHeight > target) {
         el.scrollTop = target;
-        if (el.scrollTop === target && !phase2Marked) {
+        if (hasLandedAt(el.scrollTop, target) && !phase2Marked) {
           // At-most-once per restore session: phase2-success fires on the
           // first re-apply that lands, not every frame thereafter.
           mark('ok/scroll-restore/phase2-success', {
@@ -703,34 +786,41 @@ function ScrollPreservingContainer({
             elapsedMs: performance.now() - startTs,
           });
           phase2Marked = true;
+          hasLandedOnce = true;
         }
       }
+      prevScrollTop = el.scrollTop;
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     const safetyTimer = setTimeout(() => {
       if (done) return;
-      // Fire `abandoned` based on final DOM state, not a historical
-      // success flag. The Phase 1 sync write can land then later be
-      // re-clamped to 0 by the Suspense warm-fallback → real-editor
-      // swap; if Stage 2 doesn't recover from that re-clamp within the
-      // 2 s window, the final state is wrong and the production
-      // telemetry must surface it. Also gated on
-      // `scrollHeight > target` so we don't emit `abandoned` when the
-      // doc legitimately shrunk below the saved target (content
-      // changed; restoration was not possible). User-scroll exits via
-      // `onUserInterrupt → finish` which clears the timer, so a
-      // scroll-away cannot trigger a false `abandoned` here.
-      if (el.scrollTop !== target && el.scrollHeight > target) {
+      // Fire `abandoned` based on final DOM state, not a historical success
+      // flag. Gated on `scrollHeight > target` so we don't emit `abandoned`
+      // when the doc legitimately shrunk below the saved target (content
+      // changed; restoration was not possible). A null target here means the
+      // anchor never became measurable again — that IS abandonment. User
+      // scroll exits via `yieldToUser → finish` which clears the timer,
+      // so a scroll-away cannot trigger a false `abandoned`.
+      const finalTarget = computeTarget();
+      if (
+        finalTarget === null ||
+        (!hasLandedAt(el.scrollTop, finalTarget) && el.scrollHeight > finalTarget)
+      ) {
+        // `target` stays numeric across the ok/scroll-restore family (a
+        // mixed number|string field silently NaNs any numeric aggregation);
+        // the unmeasurable-anchor case is carried by `anchorMeasurable`
+        // with `target` omitted.
         mark('ok/scroll-restore/abandoned', {
-          target,
+          ...(finalTarget !== null ? { target: finalTarget } : {}),
+          anchorMeasurable: finalTarget !== null,
           elapsedMs: performance.now() - startTs,
           scrollHeight: el.scrollHeight,
           finalScrollTop: el.scrollTop,
         });
       }
       finish();
-    }, 2000);
+    }, RESTORE_BACKSTOP_MS);
 
     return finish;
   }, [isActive, bodyAnchorRef, docName]);

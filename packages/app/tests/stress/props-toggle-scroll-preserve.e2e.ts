@@ -13,13 +13,47 @@
  * to A leaves the SAME body content at the SAME viewport position, while A's
  * panel does reflect the shared collapse (proving the state stayed live).
  */
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced } from './_helpers';
 
 async function openFromSidebar(page: Page, filename: string) {
   const row = page.getByRole('treeitem', { name: filename, exact: true });
   await expect(row).toBeVisible();
   await row.click();
+}
+
+/**
+ * Wait until the scroller's content height stops changing (~300ms stable,
+ * bounded at ~10s). The oracle snapshot below must be taken on SETTLED
+ * content: while late paragraphs are still hydrating, content growth
+ * triggers browser scroll-anchoring adjustments that legitimately shift
+ * scrollTop (and fire scroll events the product records as the user's
+ * position). A snapshot taken mid-hydration goes stale the moment such an
+ * adjustment lands — the restore then faithfully preserves the ADJUSTED
+ * position, and the assertion fails by exactly the adjustment delta.
+ */
+async function waitForStableScrollHeight(scroller: Locator) {
+  const stabilized = await scroller.evaluate(async (el) => {
+    let last = -1;
+    let stable = 0;
+    for (let i = 0; i < 200 && stable < 6; i += 1) {
+      await new Promise((r) => setTimeout(r, 50));
+      if (el.scrollHeight === last) stable += 1;
+      else {
+        stable = 0;
+        last = el.scrollHeight;
+      }
+    }
+    return stable >= 6;
+  });
+  // Distinguish a timed-out stabilization from a genuine restore regression
+  // in CI logs: a failure right after this warning means the snapshot below
+  // may itself be unsettled (re-triage the hydration path, not the restore).
+  if (!stabilized) {
+    console.warn(
+      '[props-toggle e2e] scrollHeight never stabilized within 10s; snapshot may be unsettled',
+    );
+  }
 }
 
 const FM = `---
@@ -60,10 +94,12 @@ test('Properties toggle on another doc preserves scroll on return (shared + scro
     (el) => el.getBoundingClientRect().height,
   );
 
-  // Scroll doc A into its body and record the body marker's viewport position.
+  // Scroll doc A into its body and record the body marker's viewport position
+  // — on settled content only (see waitForStableScrollHeight).
   const scroller = page
     .getByTestId('editor-scroll-container')
     .filter({ hasText: 'Doc A Bottom Marker' });
+  await waitForStableScrollHeight(scroller);
   await scroller.evaluate((el) => el.scrollTo({ top: 1200, behavior: 'instant' }));
   const markerTopBefore = await bodyMarker(page).evaluate((el) => el.getBoundingClientRect().top);
 
