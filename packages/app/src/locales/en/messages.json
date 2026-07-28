@@ -140,6 +140,7 @@
     "2AIVbm": ["Review your report"],
     "2B6eYX": ["What this checkbox changes"],
     "2BBAbc": ["List"],
+    "2C-6zf": ["Not sent"],
     "2CHoQv": ["Force Reload"],
     "2FYpfJ": ["More"],
     "2FnYUD": [
@@ -411,6 +412,7 @@
     "78G7R3": [
       "Validate document frontmatter against JSON Schema files, scoped to doc sets by glob."
     ],
+    "7Bj3x9": ["Failed"],
     "7FamGZ": ["Go to line"],
     "7Fkcej": ["+ Add ", ["addChildName"]],
     "7H4UHD": ["Documents tagged <0>#", ["tagName"], "</0>"],
@@ -876,6 +878,7 @@
     ],
     "FXk_zY": ["Adds a guided workflow for authoring new Agent Skills."],
     "FZtBeR": ["Enable ", ["0"]],
+    "FgQ7XZ": ["Couldn't load your bug reports."],
     "FgRAvd": ["Logs & system info"],
     "FjkaiT": ["Zoom out"],
     "FqGWeR": ["Couldn't reach the agent registry."],
@@ -1409,6 +1412,7 @@
       "</0> already has a worktree — it'll open in its own window."
     ],
     "QDZbvN": [["diffDays"], "d ago"],
+    "QHCx0c": ["Bug report history"],
     "QLgdT6": ["any doc named ", ["0"]],
     "QM3SBZ": ["Plan (", ["done"], "/", ["0"], ")"],
     "QOINDn": ["empty"],
@@ -1507,6 +1511,7 @@
     "SCzAbA": [["phase"], " — ", ["pct"], "%"],
     "SF9qpO": ["Share your email for followups"],
     "SFN6dN": ["Heading 3"],
+    "SInSnF": ["Reference <0>", ["0"], "</0>"],
     "SItQRc": ["How do you like OpenKnowledge?"],
     "SOPwPh": ["Restore to this edit"],
     "SQWJ-i": ["Restore sessions"],
@@ -1666,6 +1671,7 @@
     "VdXv4D": ["Clone from GitHub"],
     "Vftef5": ["Common markdown issues — hard tabs, heading increments, list markers, and more."],
     "Vlc75q": ["Keep file deleted"],
+    "VmJT51": ["Loading your reports"],
     "VsaI0G": [["folderCount", "plural", { "one": ["folder"], "other": ["folders"] }]],
     "VuxVSP": ["Start source completion"],
     "VvS_k_": ["Config sharing is now local-only."],
@@ -2011,6 +2017,7 @@
     ],
     "bwil08": ["Building <0>openknowledge.skill</0> and opening the Claude Desktop App"],
     "c1LZZH": ["Link copied."],
+    "c2ktXL": ["Previous reports"],
     "c3XJ18": ["Help"],
     "c3ZGrq": ["the doc ", ["0"]],
     "c4fVUV": ["Fix"],
@@ -2036,6 +2043,7 @@
     "cOJyVj": ["Disable Themes"],
     "cOSAfL": ["No repositories found on your GitHub account."],
     "cOrTMo": ["Your share link is ready below."],
+    "cPAWbl": ["Emailed"],
     "cRHuuI": ["Couldn't copy path"],
     "cRm498": ["No schema files in this project yet — create one to start validating."],
     "cSCbv3": ["BETA"],
@@ -2286,6 +2294,7 @@
       ["shareBranch"],
       " already exists. Open its worktree from the switcher instead."
     ],
+    "h69WC6": ["Sent"],
     "h7FzJC": ["Link-graph response did not match expected shape."],
     "h9QFb9": ["Skill \"", ["0"], "\" deleted"],
     "hBMK4W": ["Project templates"],
@@ -2637,6 +2646,9 @@
       ". Any local edits will be replaced — your current version is saved to history first, so you can restore it."
     ],
     "nDT8qt": ["Initialized ", ["0"], " but could not open it."],
+    "nGAFeH": [
+      "Reports you've generated on this Mac. Retry a send, reveal a file, or delete one you no longer need."
+    ],
     "nJq7et": ["Couldn't uninstall skill: ", ["0"]],
     "nMSYz5": [
       "This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects."
@@ -2849,6 +2861,7 @@
     "rQAQus": ["Couldn't save template: ", ["error"]],
     "rQRrkB": ["yesterday"],
     "rSoi6g": [["displayName"], " (", ["bin"], ") isn't installed or on your PATH."],
+    "rUWrSE": ["Delete report"],
     "rVJpLz": [
       "On — hovering an external link sends its URL to the destination site to fetch a preview."
     ],
@@ -3077,6 +3090,7 @@
     "w7SsvI": ["That folder isn't an OpenKnowledge project yet. Initialize it and open?"],
     "w7nm4K": ["Indented blockquote for citations."],
     "wDgmsr": ["\"", ["0"], "\" install refreshed (", ["1"], ")"],
+    "wF2wqQ": ["Unknown date"],
     "wGSHzy": ["Activate one of the first eight editor tabs."],
     "wJijgU": ["Location"],
     "wJo9oS": ["Close find"],
@@ -3094,6 +3108,7 @@
     "w_Sphq": ["Attachments"],
     "waFx9W": ["Managed"],
     "wbv9xO": ["Create new project"],
+    "wcfO9r": ["No bug reports yet."],
     "wdxz7K": ["Source"],
     "weP6me": ["Couldn't load docs — type @ again to retry"],
     "wgNoIs": ["Select all"],

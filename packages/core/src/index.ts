@@ -1,3 +1,19 @@
+// Bug-report sidecar — the durable per-report YAML record backing the retry
+// list. Schema + open-state normalization; the writer/reader/retention live in
+// desktop main.
+export {
+  isKnownReportSidecarState,
+  isReportIdShape,
+  normalizeReportSidecarState,
+  REPORT_ID_PATTERN,
+  REPORT_SIDECAR_SCHEMA_VERSION,
+  REPORT_SIDECAR_STATES,
+  type ReportSidecar,
+  type ReportSidecarAttempt,
+  type ReportSidecarKnownState,
+  ReportSidecarSchema,
+  type ReportSidecarState,
+} from './bug-report-sidecar/schema.ts';
 // Burst-grouping utility
 export {
   type Burst,
@@ -28,6 +44,9 @@ export type {
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
+  OkBugReportDeleteResult,
+  OkBugReportListResult,
+  OkBugReportListRow,
   OkBugReportScreenshot,
   OkBugReportSendFallbackReason,
   OkBugReportSendMetadata,

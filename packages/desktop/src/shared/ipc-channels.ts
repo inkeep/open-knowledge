@@ -75,6 +75,8 @@ import type {
   LocalOpOkInitResponse,
   OkBugReportCrashAckResult,
   OkBugReportCreateResult,
+  OkBugReportDeleteResult,
+  OkBugReportListResult,
   OkBugReportScreenshot,
   OkBugReportSendResult,
   OkFolderState,
@@ -916,6 +918,11 @@ export interface RequestChannels {
    *   - `{kind: 'capture-screenshot'}` → capture the sender window before the
    *     dialog paints; returns a downscaled preview (or `null`) and holds the
    *     full-res bytes in main for a later `create` to stage.
+   *   - `{kind: 'list'}` → the persisted report history (newest first), read
+   *     from the per-report sidecars in `~/.ok/bug-reports/`.
+   *   - `{kind: 'delete', id}` → remove a persisted report's zip + sidecar by
+   *     `id`, containment-checked.
+   * Later report operations widen this payload rather than adding channels.
    * Never throws — every failure mode is discriminated so the dialog can
    * render it; each preload method casts the union result to its own arm.
    */
@@ -926,6 +933,8 @@ export interface RequestChannels {
       | OkBugReportSendResult
       | OkBugReportCrashAckResult
       | OkBugReportScreenshot
+      | OkBugReportListResult
+      | OkBugReportDeleteResult
       | null;
   };
   /** Read the LRU-capped recent-projects list from app state. */

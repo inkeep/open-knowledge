@@ -54,6 +54,7 @@ import {
   isEntryUpToDate,
   isOwnManagedEntry,
   type McpInstallOptions,
+  okBugReportsDir,
   type ProjectAiIntegrationsResult,
   previewContent,
   readExistingMcpEntry,
@@ -165,6 +166,7 @@ import {
   proxyRunCheckout,
   proxyShareTargetStatus,
 } from './branch-info-proxy.ts';
+import { createBugReportSidecarStore } from './bug-report-sidecar.ts';
 import { wrapperPathInBundle } from './bundle-paths.ts';
 import {
   type BundleReplaceWatcherHandle,
@@ -1074,6 +1076,19 @@ const bugReportScreenshots = new Map<number, BugReportScreenshotEntry>();
 
 /** Max width (logical px) of the screenshot preview data-URL handed to the renderer. */
 const BUG_REPORT_SCREENSHOT_PREVIEW_WIDTH = 720;
+
+/**
+ * Durable per-report sidecar record backing the history/retry list — owns the
+ * write-on-generate, the send-state transitions, the retention sweep, and the
+ * process-local in-flight lock, all scoped to `~/.ok/bug-reports/`. The logger
+ * is a thin adapter so `getLogger` resolves at call time, not module load.
+ */
+const bugReportSidecar = createBugReportSidecarStore({
+  dir: okBugReportsDir(),
+  logger: {
+    warn: (data, message) => getLogger('bug-report').warn(data as Record<string, unknown>, message),
+  },
+});
 
 /**
  * Active-editor target snapshot pushed by the renderer via
@@ -4747,6 +4762,12 @@ function registerIpcHandlers() {
         request,
       );
     }
+    if (request.kind === 'list') {
+      return bugReportSidecar.list();
+    }
+    if (request.kind === 'delete') {
+      return bugReportSidecar.remove(request.id);
+    }
     if (request.kind === 'send') {
       return handleBugReportSend(
         {
@@ -4761,6 +4782,9 @@ function registerIpcHandlers() {
           // Same containment root the Reveal handler whitelists above — only
           // zips `create` produced may be read and uploaded.
           bugReportsRoot: dirname(defaultBugReportZipPath()),
+          // Records uploading → sent/upload-failed/email-drafted on the sidecar
+          // and holds the in-flight lock, for the first send and a list retry.
+          sidecar: bugReportSidecar.sendHooks,
         },
         request,
       );
@@ -4799,6 +4823,9 @@ function registerIpcHandlers() {
         // Main-owned bytes captured for this exact window; `create` stages them
         // only when the renderer opted in via `includeScreenshot`.
         screenshotPngBytes: () => bugReportScreenshots.get(event.sender.id)?.png ?? null,
+        // Persist the report's `generated` sidecar and run the retention sweep
+        // once the bundle is written, so it survives dialog close + restart.
+        onReportGenerated: (meta) => bugReportSidecar.recordGenerated(meta),
         logger: getLogger('bug-report'),
       },
       request,
@@ -6025,6 +6052,11 @@ function bootPrimaryInstance(): void {
     quit: () => app.quit(),
     logger: getLogger('signal-clean-quit'),
   });
+  // A sidecar left `uploading` is a send interrupted by a crash/quit last
+  // session — a send never survives a restart, so demote it to `upload-failed`
+  // making it retryable and evictable again. Fire-and-forget +
+  // fail-soft: a reconcile failure must not block boot.
+  void bugReportSidecar.reconcileStaleUploading();
   app.on('child-process-gone', (_event, details) => {
     // Feed the server-exit recorder every Utility death (not just the crash
     // reasons the invitation pipeline acts on) so the bundle can distinguish a

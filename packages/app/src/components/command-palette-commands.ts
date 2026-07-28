@@ -21,6 +21,7 @@ import {
   FolderPlus,
   FoldVertical,
   GitBranch,
+  History,
   LayoutGrid,
   MessageSquare,
   Network,
@@ -118,6 +119,8 @@ export interface PaletteCommandContext {
   openSeedDialog(): void;
   openCreateProjectDialog(): void;
   openReportBugDialog(): void;
+  /** Close the palette and open the persisted report history / retry list. */
+  openBugReportHistory(): void;
   openFeedbackDialog(): void;
 }
 
@@ -173,6 +176,7 @@ const PALETTE_COMMAND_LABELS = {
   settings: msg`Settings`,
   installClaudeDesktop: msg`Install for Claude Chat & Cowork (Desktop App)`,
   reportBug: msg`Report a bug`,
+  bugReportHistory: msg`Bug report history`,
   sendFeedback: msg`Send feedback`,
   newFromTemplate: msg`New from template`,
   rename: msg`Rename`,
@@ -223,6 +227,7 @@ const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   settings: Settings,
   'install-claude-desktop': Download,
   'report-bug': Bug,
+  'bug-report-history': History,
   'send-feedback': MessageSquare,
   'new-from-template': FilePlus2,
   rename: Pencil,
@@ -312,6 +317,10 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
   'report-bug': (ctx) => {
     ctx.closePalette();
     ctx.openReportBugDialog();
+  },
+  'bug-report-history': (ctx) => {
+    ctx.closePalette();
+    ctx.openBugReportHistory();
   },
   'send-feedback': (ctx) => {
     ctx.closePalette();

@@ -363,6 +363,17 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     menu: [{ section: 'help-links', order: 1, ellipsis: true }],
   },
   {
+    // Palette-only sibling of report-bug (no `menu` placement): the persisted
+    // history/retry list for reports that were generated but never accepted by
+    // the intake. Desktop-only for the same reason report-bug is — the sidecar
+    // store and the retry upload both live behind the Electron bridge.
+    id: 'bug-report-history',
+    labelKey: 'bugReportHistory',
+    keywords: ['bug report history previous reports past retry resend'],
+    availability: { host: 'desktop' },
+    palette: { group: 'project', visibility: 'always' },
+  },
+  {
     // Sibling of report-bug, but host-agnostic: the feedback form POSTs to the
     // hosted intake route, so it works in the web host too (unlike the bug
     // report, whose bundle create + upload lives behind the Electron bridge).

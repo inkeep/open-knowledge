@@ -27,6 +27,8 @@ import type {
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
+  OkBugReportDeleteResult,
+  OkBugReportListResult,
   OkBugReportScreenshot,
   OkBugReportSendMetadata,
   OkBugReportSendResult,
@@ -1658,6 +1660,10 @@ export interface OkDesktopBridge {
       metadata: OkBugReportSendMetadata;
     }): Promise<OkBugReportSendResult>;
     crashAck(request: { eventId: string }): Promise<OkBugReportCrashAckResult>;
+    /** The persisted report history (newest first) read from the sidecars. */
+    list(): Promise<OkBugReportListResult>;
+    /** Remove a persisted report's zip + sidecar by `id` (containment-checked). */
+    delete(id: string): Promise<OkBugReportDeleteResult>;
     onCrashDetected(cb: (event: OkBugReportCrashDetectedEvent) => void): OkUnsubscribe;
   };
 

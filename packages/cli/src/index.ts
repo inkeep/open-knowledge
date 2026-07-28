@@ -26,6 +26,7 @@ export {
   type BundleExtraFile,
   type BundleLogger,
   defaultBugReportZipPath,
+  okBugReportsDir,
 } from './commands/bug-report-bundle.ts';
 // The bug-report secret scrub — shared with the desktop send path so the
 // note travelling in upload metadata / the mailto body gets the same

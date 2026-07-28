@@ -461,6 +461,8 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
             fallback: { mailtoUrl: 'mailto:support@inkeep.com' },
           }),
           crashAck: async () => ({ ok: true as const }),
+          list: async () => ({ ok: true as const, reports: [] }),
+          delete: async () => ({ ok: true as const }),
           onCrashDetected: () => () => {},
         },
         navigator: {

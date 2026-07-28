@@ -23,6 +23,8 @@ import type {
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
+  OkBugReportDeleteResult,
+  OkBugReportListResult,
   OkBugReportScreenshot,
   OkBugReportSendMetadata,
   OkBugReportSendResult,
@@ -534,6 +536,10 @@ const bridge: OkDesktopBridge = {
         kind: 'crash-ack',
         eventId: request.eventId,
       }) as Promise<OkBugReportCrashAckResult>,
+    list: () =>
+      invoke('ok:bug-report:dispatch', { kind: 'list' }) as Promise<OkBugReportListResult>,
+    delete: (id: string) =>
+      invoke('ok:bug-report:dispatch', { kind: 'delete', id }) as Promise<OkBugReportDeleteResult>,
     onCrashDetected(cb: (event: OkBugReportCrashDetectedEvent) => void) {
       const listener = (_event: IpcRendererEvent, event: OkBugReportCrashDetectedEvent) =>
         cb(event);

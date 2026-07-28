@@ -13,8 +13,10 @@ import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { Check, FileText, Folder, GitBranch, Hash, Loader2, Sparkles } from 'lucide-react';
 import {
   type Dispatch,
+  lazy,
   type KeyboardEvent as ReactKeyboardEvent,
   type SetStateAction,
+  Suspense,
   useDeferredValue,
   useEffect,
   useRef,
@@ -92,6 +94,10 @@ import { buildHandoffInput, useHandoffDispatch } from './handoff/useHandoffDispa
 import { useInstalledAgents } from './handoff/useInstalledAgents';
 import { basenameOf } from './project-switcher-recents';
 import { RecentItemContextMenu, RecentRemoveButton } from './recent-remove-controls';
+
+// Lazy so the report-history list + its bridge wiring stay out of the main
+// chunk until the user opens the ⌘K "Bug report history" entry (desktop-only).
+const BugReportHistoryDialog = lazy(() => import('@/components/BugReportHistoryDialog'));
 
 const COMMAND_PALETTE_SEARCH_TIMEOUT_MS = 3000;
 // Re-poll cadence while the server reports the search index is still warming
@@ -342,6 +348,10 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const [seedDialogOpen, setSeedDialogOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [reportBugOpen, setReportBugOpen] = useState(false);
+  const [reportBugHistoryOpen, setReportBugHistoryOpen] = useState(false);
+  // Defer mounting the (lazy) history dialog until it is first opened, so its
+  // chunk + the `bugReport.list()` fetch don't run on every palette open.
+  const [historyEverOpened, setHistoryEverOpened] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   // Tag-mode state. Loaded lazily on first `tag:` keystroke; cached for
   // the lifetime of the palette session (cleared on close in the open-
@@ -887,6 +897,10 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     openSeedDialog: () => setSeedDialogOpen(true),
     openCreateProjectDialog: () => setCreateProjectOpen(true),
     openReportBugDialog: () => setReportBugOpen(true),
+    openBugReportHistory: () => {
+      setHistoryEverOpened(true);
+      setReportBugHistoryOpen(true);
+    },
     openFeedbackDialog: () => setFeedbackOpen(true),
   };
   const visibleFixedCommands = inExclusiveMode
@@ -1611,6 +1625,21 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
       {/* Desktop-only — the registry gates the launching "Report a bug" command
           on `bridge !== null`, so the dialog only mounts when the bridge exists. */}
       {bridge ? <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} /> : null}
+      {/* Desktop-only — the registry gates the launching "Bug report history"
+          command on the same bridge presence. Lazy + deferred until first
+          opened. The empty-state CTA hands off to the compose dialog. */}
+      {bridge && historyEverOpened ? (
+        <Suspense fallback={null}>
+          <BugReportHistoryDialog
+            open={reportBugHistoryOpen}
+            onOpenChange={setReportBugHistoryOpen}
+            onReportABug={() => {
+              setReportBugHistoryOpen(false);
+              setReportBugOpen(true);
+            }}
+          />
+        </Suspense>
+      ) : null}
       {/* Host-agnostic — the feedback form POSTs to the hosted intake route, so
           the "Send feedback" command (and this dialog) exist on web too. */}
       <FeedbackFormDialog

@@ -456,6 +456,7 @@ describe('command identity registry (Phase 2b)', () => {
       'settings',
       'install-claude-desktop',
       'report-bug',
+      'bug-report-history',
       'send-feedback',
       'check-for-updates',
       'set-up-integrations',

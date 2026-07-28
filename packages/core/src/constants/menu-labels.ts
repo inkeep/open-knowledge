@@ -64,6 +64,7 @@ export const MENU_LABELS = {
   checkSpelling: 'Check spelling while typing',
   openOnGithub: 'OpenKnowledge on GitHub',
   reportBug: 'Report a bug',
+  bugReportHistory: 'Bug report history',
   sendFeedback: 'Send feedback',
   // Additional shared command labels the registry references. Each string is
   // rendered identically by the palette, so the parity test stays green. The

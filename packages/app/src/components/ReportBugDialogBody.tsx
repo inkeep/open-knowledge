@@ -34,6 +34,7 @@ import {
   TriangleAlertIcon,
 } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { BugReportPreviousReports } from '@/components/BugReportHistory';
 import { CopyButton } from '@/components/CopyButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -596,6 +597,13 @@ function ReportBugDialog({
                   </div>
                 )}
               </div>
+              {/* A lightweight disclosure of prior reports so a user can resend
+                  one they already made without regenerating. Only in the plain
+                  flow — the crash variants stay focused on the report at hand,
+                  and it renders nothing until there is history to show. */}
+              {crashInvite === undefined && crashContext === undefined ? (
+                <BugReportPreviousReports />
+              ) : null}
             </DialogBody>
             <DialogFooter>
               <Button

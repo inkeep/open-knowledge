@@ -1507,6 +1507,11 @@ msgstr ""
 msgid "Bug report {0}"
 msgstr ""
 
+#: src/components/BugReportHistoryDialog.tsx
+#: src/components/command-palette-commands.ts
+msgid "Bug report history"
+msgstr ""
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Bug reporting needs the OpenKnowledge desktop app."
 msgstr ""
@@ -2558,6 +2563,10 @@ msgstr ""
 msgid "Couldn't load this skill's files."
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
+msgid "Couldn't load your bug reports."
+msgstr ""
+
 #. placeholder {0}: result.error
 #: src/components/ManagedArtifactProperties.tsx
 msgid "Couldn't move skill: {0}"
@@ -2995,6 +3004,10 @@ msgstr ""
 
 #: src/components/TrashFailureModal.tsx
 msgid "Delete Permanently"
+msgstr ""
+
+#: src/components/BugReportHistory.tsx
+msgid "Delete report"
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
@@ -3514,6 +3527,10 @@ msgstr ""
 msgid "Email address"
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
+msgid "Emailed"
+msgstr ""
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Embed a video with native player controls."
 msgstr ""
@@ -3760,6 +3777,10 @@ msgstr ""
 
 #: src/components/acp/ThreadView.tsx
 msgid "failed"
+msgstr ""
+
+#: src/components/BugReportHistory.tsx
+msgid "Failed"
 msgstr ""
 
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -5353,6 +5374,10 @@ msgstr ""
 msgid "Loading timeline history"
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
+msgid "Loading your reports"
+msgstr ""
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Loading..."
 msgstr ""
@@ -5916,6 +5941,10 @@ msgstr ""
 msgid "No API key is set for this endpoint. Add one above."
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
+msgid "No bug reports yet."
+msgstr ""
+
 #: src/components/ActivityPanelDiffView.tsx
 msgid "No changes"
 msgstr ""
@@ -6232,6 +6261,10 @@ msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "Not required for a localhost endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
+msgstr ""
+
+#: src/components/BugReportHistory.tsx
+msgid "Not sent"
 msgstr ""
 
 #. placeholder {0}: summary.pattern
@@ -7037,6 +7070,10 @@ msgstr ""
 msgid "Previous match"
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
+msgid "Previous reports"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Previous tab"
 msgstr ""
@@ -7317,6 +7354,11 @@ msgstr ""
 msgid "Redo"
 msgstr ""
 
+#. placeholder {0}: row.reference
+#: src/components/BugReportHistory.tsx
+msgid "Reference <0>{0}</0>"
+msgstr ""
+
 #: src/components/ProblemsPanel.tsx
 msgid "Refresh audit"
 msgstr ""
@@ -7579,6 +7621,7 @@ msgstr ""
 msgid "Replace the active match from the replace field."
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
 #: src/components/ReportBugDialogBody.tsx
@@ -7596,6 +7639,10 @@ msgstr ""
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Report this error"
+msgstr ""
+
+#: src/components/BugReportHistoryDialog.tsx
+msgid "Reports you've generated on this Mac. Retry a send, reveal a file, or delete one you no longer need."
 msgstr ""
 
 #: src/components/settings/AccountSection.tsx
@@ -7779,6 +7826,7 @@ msgid "Resuming the conversation"
 msgstr ""
 
 #: src/components/ActivityModeContent.tsx
+#: src/components/BugReportHistory.tsx
 #: src/components/ConnectingBanner.tsx
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
@@ -7806,6 +7854,7 @@ msgstr ""
 msgid "Reveal in File Explorer, {hint}"
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -8176,12 +8225,17 @@ msgstr ""
 msgid "Send your report by email"
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Sending"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Sending report"
+msgstr ""
+
+#: src/components/BugReportHistory.tsx
+msgid "Sent"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
@@ -9876,6 +9930,7 @@ msgstr ""
 msgid "Uninstalled \"{0}\" from {1}"
 msgstr ""
 
+#: src/components/BugReportHistory.tsx
 #: src/components/FolderTimelineCard.tsx
 msgid "Unknown"
 msgstr ""
@@ -9886,6 +9941,10 @@ msgstr ""
 
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
 msgid "Unknown component: {unregisteredComponentName}"
+msgstr ""
+
+#: src/components/BugReportHistory.tsx
+msgid "Unknown date"
 msgstr ""
 
 #: src/components/DocumentErrorBoundary.tsx
