@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { computeStablePromotion } from './compute-stable-version.mjs';
+import { computeStablePromotion, evaluateAnchorGuard } from './compute-stable-version.mjs';
 
 // Injected git boundary so tests need no repo. Defaults: unknown changeset bump
 // types resolve to 'patch' (the patch floor), isAncestor false.
@@ -107,5 +107,82 @@ describe('computeStablePromotion', () => {
   test('rejects a non-beta tag', () => {
     expect(() => computeStablePromotion('v0.30.1', fakeGit())).toThrow(/vX\.Y\.Z-beta\.N/);
     expect(() => computeStablePromotion('garbage', fakeGit())).toThrow();
+  });
+});
+
+describe('evaluateAnchorGuard', () => {
+  test('level anchor passes', () => {
+    expect(evaluateAnchorGuard({ anchorVersion: '0.41.0', latestStableTag: 'v0.41.0' })).toMatchObject({
+      ok: true,
+      drift: 'none',
+      anchorVersion: '0.41.0',
+      latestStableVersion: '0.41.0',
+    });
+  });
+
+  test('anchor behind the newest stable fails and names the pending consolidation', () => {
+    const r = evaluateAnchorGuard({ anchorVersion: '0.41.0', latestStableTag: 'v0.41.1' });
+    expect(r.ok).toBe(false);
+    expect(r.drift).toBe('behind');
+    expect(r.reason).toMatch(/main-reset consolidation is still pending/);
+  });
+
+  test('anchor ahead of the newest stable fails and is reported as a different shape', () => {
+    const r = evaluateAnchorGuard({ anchorVersion: '0.42.0', latestStableTag: 'v0.41.0' });
+    expect(r.ok).toBe(false);
+    expect(r.drift).toBe('ahead');
+    expect(r.reason).toMatch(/ahead of the newest stable/);
+  });
+
+  test('compares numerically, not lexically, across a double-digit component', () => {
+    expect(evaluateAnchorGuard({ anchorVersion: '0.9.0', latestStableTag: 'v0.10.0' }).drift).toBe('behind');
+    expect(evaluateAnchorGuard({ anchorVersion: '0.35.10', latestStableTag: 'v0.35.9' }).drift).toBe('ahead');
+    expect(evaluateAnchorGuard({ anchorVersion: '0.35.10', latestStableTag: 'v0.35.10' }).ok).toBe(true);
+  });
+
+  test('bootstrap: no stable tag yet cannot be stale', () => {
+    expect(evaluateAnchorGuard({ anchorVersion: '0.1.0', latestStableTag: '' })).toMatchObject({
+      ok: true,
+      drift: 'bootstrap',
+      latestStableVersion: '',
+    });
+  });
+
+  test('tolerates surrounding whitespace from raw git / json input', () => {
+    expect(evaluateAnchorGuard({ anchorVersion: ' 0.41.0 ', latestStableTag: 'v0.41.0\n' }).ok).toBe(true);
+  });
+
+  test('a malformed anchor throws rather than reporting drift', () => {
+    // Reporting an unreadable anchor as drift would send an operator looking
+    // for a pending reset that does not exist.
+    expect(() => evaluateAnchorGuard({ anchorVersion: '0.41', latestStableTag: 'v0.41.0' })).toThrow(
+      /bare X\.Y\.Z version/,
+    );
+    expect(() => evaluateAnchorGuard({ anchorVersion: undefined, latestStableTag: 'v0.41.0' })).toThrow(
+      /bare X\.Y\.Z version/,
+    );
+    expect(() => evaluateAnchorGuard({ anchorVersion: 'v0.41.0', latestStableTag: 'v0.41.0' })).toThrow(
+      /bare X\.Y\.Z version/,
+    );
+  });
+
+  test('a malformed stable tag throws rather than reporting drift', () => {
+    expect(() => evaluateAnchorGuard({ anchorVersion: '0.41.0', latestStableTag: 'v0.41.0-beta.3' })).toThrow(
+      /vX\.Y\.Z format/,
+    );
+    expect(() => evaluateAnchorGuard({ anchorVersion: '0.41.0', latestStableTag: 'garbage' })).toThrow(
+      /vX\.Y\.Z format/,
+    );
+  });
+
+  test('reports only: it never sleeps, retries, or mutates', () => {
+    // The guard is called from inside the shared release-cadence group, where
+    // blocking would stall every other cut. Two calls with identical inputs
+    // must return identical verdicts with no elapsed-time dependence.
+    const before = Date.now();
+    const a = evaluateAnchorGuard({ anchorVersion: '0.41.0', latestStableTag: 'v0.41.1' });
+    const b = evaluateAnchorGuard({ anchorVersion: '0.41.0', latestStableTag: 'v0.41.1' });
+    expect(a).toEqual(b);
+    expect(Date.now() - before).toBeLessThan(500);
   });
 });
