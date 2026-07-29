@@ -100,7 +100,9 @@ Frontmatter findings are always **warnings** — there's no severity promotion y
 
 ## The settings editor
 
-**Settings ▸ Plugins ▸ Frontmatter schemas** (once the plugin is enabled) lists the project's schema files: search, an **Only modified** filter, and **New schema** to scaffold a fresh file in `.ok/schemas/`. Each entry shows a plain-language summary of its scope ("everything under docs/ — except any doc named index"), an editor for the `appliesTo` globs, an enable toggle, and delete for schema files OK manages.
+**Settings ▸ Plugins ▸ Frontmatter schemas** (once the plugin is enabled) lists the project's schema files: search, and **New schema** to scaffold a fresh file in `.ok/schemas/`. Each entry shows a plain-language summary of its scope ("everything under docs/ — except any doc named index"), an editor for the `appliesTo` globs, an enable toggle, and delete for schema files OK manages.
+
+The toggle is the only control over whether a schema validates. Turning it off keeps the schema's `appliesTo` globs, so turning it back on restores them — the toggle never discards the mapping. To drop a schema from `config.yml` entirely, edit `config.yml` directly. (Deleting a schema file is the one destructive action here: it removes the file and, with it, its `config.yml` mapping.)
 
 ## The schema editor
 

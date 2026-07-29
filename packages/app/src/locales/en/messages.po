@@ -696,10 +696,6 @@ msgstr "📝 or assets/icon.png"
 msgid "A <0>Modified</0> badge marks rules your config sets explicitly — directly, or inherited through <1>extends</1>. Unmarked rules keep their default state."
 msgstr "A <0>Modified</0> badge marks rules your config sets explicitly — directly, or inherited through <1>extends</1>. Unmarked rules keep their default state."
 
-#: src/components/settings/LintingSection.tsx
-msgid "A <0>Modified</0> badge marks schemas your config maps — on or off. Reset removes the mapping from config.yml."
-msgstr "A <0>Modified</0> badge marks schemas your config maps — on or off. Reset removes the mapping from config.yml."
-
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "A branch named {shareBranch} already exists. Open its worktree from the switcher instead."
 msgstr "A branch named {shareBranch} already exists. Open its worktree from the switcher instead."
@@ -5611,7 +5607,6 @@ msgid "Model: <0>{0}</0>"
 msgstr "Model: <0>{0}</0>"
 
 #: src/components/FolderOverview.tsx
-#: src/components/settings/LintingSection.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Modified"
 msgstr "Modified"
@@ -6408,7 +6403,6 @@ msgstr "Only external links trigger a request. Links to other documents in this 
 msgid "Only markdown files"
 msgstr "Only markdown files"
 
-#: src/components/settings/LintingSection.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Only modified"
 msgstr "Only modified"
@@ -7739,10 +7733,6 @@ msgstr "Reset"
 msgid "Reset {0} to default"
 msgstr "Reset {0} to default"
 
-#: src/components/settings/LintingSection.tsx
-msgid "Reset {file} to default"
-msgstr "Reset {file} to default"
-
 #: src/components/settings/field-controls.tsx
 msgid "Reset {labelText} to default"
 msgstr "Reset {labelText} to default"
@@ -7751,10 +7741,6 @@ msgstr "Reset {labelText} to default"
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Reset to default"
 msgstr "Reset to default"
-
-#: src/components/settings/LintingSection.tsx
-msgid "Reset to default (removes it from config.yml)"
-msgstr "Reset to default (removes it from config.yml)"
 
 #: src/editor/components/Mermaid.tsx
 msgid "Reset view"
@@ -9622,8 +9608,8 @@ msgid "This path is on an external volume (/Volumes/...). OpenKnowledge will los
 msgstr "This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects."
 
 #: src/components/settings/LintingSection.tsx
-msgid "This permanently deletes {deleteTarget} from the project and removes its mapping from config.yml. Docs it validated keep their frontmatter; they just stop being checked."
-msgstr "This permanently deletes {deleteTarget} from the project and removes its mapping from config.yml. Docs it validated keep their frontmatter; they just stop being checked."
+msgid "This permanently deletes {deleteTarget} from the project and removes its mapping from config.yml."
+msgstr "This permanently deletes {deleteTarget} from the project and removes its mapping from config.yml."
 
 #. placeholder {0}: skill.path
 #: src/components/SkillDeleteDialog.tsx

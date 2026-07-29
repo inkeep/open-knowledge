@@ -699,11 +699,6 @@
       ["1", "plural", { "one": ["#", " folder"], "other": ["#", " folders"] }],
       " and starter templates) in the folder of your choice."
     ],
-    "D2E7tr": [
-      "This permanently deletes ",
-      ["deleteTarget"],
-      " from the project and removes its mapping from config.yml. Docs it validated keep their frontmatter; they just stop being checked."
-    ],
     "D2emTw": ["Something went wrong sending your feedback. Please try again."],
     "D4H2N6": ["Remove ", ["tag"]],
     "D8JJwQ": ["Feedback isn't available right now. Please try again later."],
@@ -961,7 +956,6 @@
     "H3oH0g": ["Redo"],
     "H6nKok": ["Show in File Manager"],
     "H86f9p": ["Collapse"],
-    "H9E1bE": ["Reset to default (removes it from config.yml)"],
     "HAvRAI": [["skillCount", "plural", { "one": ["skill"], "other": ["skills"] }]],
     "HCn0Ay": ["Toggle strikethrough formatting."],
     "HGNCsl": ["Connection lost — keep this tab open, your edits will sync when reconnected"],
@@ -1294,6 +1288,11 @@
     "Nwbs0q": ["Don't show"],
     "NxW-md": ["Resize ", ["handleKey"]],
     "NzFvyK": ["Session ended — undo unavailable"],
+    "NzPihF": [
+      "This permanently deletes ",
+      ["deleteTarget"],
+      " from the project and removes its mapping from config.yml."
+    ],
     "NzluOx": ["(optional)"],
     "O0Z2Xr": ["Outgoing"],
     "O2UpM1": ["Browse"],
@@ -2270,7 +2269,6 @@
     "gYz2ep": ["Expires in ", ["timeLabel"]],
     "gZElfU": ["Fixing ", ["0"], " of ", ["1"], " files"],
     "gbHcbI": ["Failed to delete property"],
-    "geIbmI": ["Reset ", ["file"], " to default"],
     "gfdqcY": ["Couldn't apply the change: ", ["0"]],
     "gfohmY": ["Connect tools"],
     "ggm6JX": [
@@ -3011,9 +3009,6 @@
     "uKRYiW": ["Sync status unavailable — server error."],
     "uL_Wx8": ["The terminal stopped unexpectedly."],
     "uM6jnS": ["Restore failed"],
-    "uMHsvM": [
-      "A <0>Modified</0> badge marks schemas your config maps — on or off. Reset removes the mapping from config.yml."
-    ],
     "uNGmQn": ["Couldn't run the test. Check that OpenKnowledge is still running."],
     "uO9WLl": ["Push"],
     "uQNW00": ["Detached HEAD — checkout a branch to resume"],

@@ -19,13 +19,11 @@ import {
   summarizeAppliesTo,
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { ArrowUpRight, Plus, RotateCcw, SquarePen, Trash2 } from 'lucide-react';
+import { ArrowUpRight, Plus, SquarePen, Trash2 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { toast } from 'sonner';
 import { DeleteConfirmationDialog } from '@/components/DeleteConfirmationDialog';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -382,7 +380,6 @@ function SchemaFileRow({
   disabled,
   onToggle,
   onAppliesToChange,
-  onReset,
   onDelete,
 }: {
   file: string;
@@ -390,12 +387,10 @@ function SchemaFileRow({
   disabled: boolean;
   onToggle: (on: boolean) => void;
   onAppliesToChange: (globs: string[]) => void;
-  onReset: () => void;
   onDelete: (() => void) | null;
 }) {
   const { t } = useLingui();
   const on = mapping !== undefined && mappingEnabled(mapping);
-  const modified = mapping !== undefined;
 
   // The Edit button is the row's ONLY way into the file. Hash nav is OK's
   // source of truth: it activates (or re-activates) the file's tab AND closes
@@ -425,25 +420,6 @@ function SchemaFileRow({
             <SquarePen aria-hidden className="size-3" />
             <Trans>Edit</Trans>
           </Button>
-          {modified ? (
-            <Badge variant="outline" data-testid={`frontmatter-schema-modified-${file}`}>
-              <Trans>Modified</Trans>
-            </Badge>
-          ) : null}
-          {modified ? (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 shrink-0 text-muted-foreground opacity-60 hover:opacity-100"
-              disabled={disabled}
-              aria-label={t`Reset ${file} to default`}
-              title={t`Reset to default (removes it from config.yml)`}
-              onClick={onReset}
-              data-testid={`frontmatter-schema-reset-${file}`}
-            >
-              <RotateCcw className="size-3.5" />
-            </Button>
-          ) : null}
           {onDelete !== null ? (
             <Button
               variant="ghost"
@@ -490,11 +466,13 @@ function SchemaFileRow({
 /**
  * Frontmatter plugin panel: a browser over every schema file in the project
  * (discovered `*.schema.json` + `.ok/schemas/*.json` + anything config.yml
- * maps), mirroring the markdownlint rule browser's UX. Toggling a schema on
- * writes an `enabled: true` mapping to `contentRules.frontmatter.schemas`;
- * off keeps the mapping (and its appliesTo) with `enabled: false`; reset
- * wipes the mapping. The Edit button opens the file itself in the editor —
- * field editing lives on the file surface, not here.
+ * maps). The toggle is the only control: on writes an `enabled: true` mapping
+ * to `contentRules.frontmatter.schemas`, off keeps the mapping (and its
+ * appliesTo) with `enabled: false`, so re-enabling restores the globs. There
+ * is deliberately no way to unmap a schema from here — config-file state is an
+ * internal detail, and anyone who wants the mapping gone edits config.yml.
+ * The Edit button opens the file itself in the editor — field editing lives on
+ * the file surface, not here.
  */
 export function FrontmatterPluginSection() {
   const { t } = useLingui();
@@ -503,7 +481,6 @@ export function FrontmatterPluginSection() {
   const { schemas: discovered } = useFrontmatterSchemaFiles();
   const mappings = contentRules?.frontmatter?.schemas ?? [];
   const [search, setSearch] = useState('');
-  const [onlyModified, setOnlyModified] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [newSchemaName, setNewSchemaName] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -542,11 +519,7 @@ export function FrontmatterPluginSection() {
     a.localeCompare(b),
   );
   const query = search.trim().toLowerCase();
-  const visible = files.filter(
-    (f) =>
-      (query === '' || f.toLowerCase().includes(query)) &&
-      (!onlyModified || mappings.some((m) => m.file === f)),
-  );
+  const visible = files.filter((f) => query === '' || f.toLowerCase().includes(query));
 
   function toggleFile(file: string, on: boolean): void {
     if (!mappings.some((m) => m.file === file)) {
@@ -635,13 +608,6 @@ export function FrontmatterPluginSection() {
         </div>
       )}
 
-      <p className="text-sm text-muted-foreground" data-testid="frontmatter-schema-legend">
-        <Trans>
-          A <span className="font-medium text-foreground">Modified</span> badge marks schemas your
-          config maps — on or off. Reset removes the mapping from config.yml.
-        </Trans>
-      </p>
-
       <div className="flex items-center gap-4">
         <Input
           value={search}
@@ -651,17 +617,6 @@ export function FrontmatterPluginSection() {
           className="h-8"
           data-testid="frontmatter-schema-search"
         />
-        <div className="flex shrink-0 items-center gap-2">
-          <Checkbox
-            id="frontmatter-only-modified"
-            checked={onlyModified}
-            onCheckedChange={(next) => setOnlyModified(next === true)}
-            data-testid="frontmatter-only-modified"
-          />
-          <Label htmlFor="frontmatter-only-modified" className="text-sm font-normal">
-            <Trans>Only modified</Trans>
-          </Label>
-        </div>
         <Popover open={createOpen} onOpenChange={setCreateOpen}>
           <PopoverTrigger asChild>
             <Button
@@ -721,7 +676,6 @@ export function FrontmatterPluginSection() {
               disabled={!bindingReady}
               onToggle={(on) => toggleFile(file, on)}
               onAppliesToChange={(globs) => setAppliesTo(file, globs)}
-              onReset={() => writeMappings(mappings.filter((m) => m.file !== file))}
               onDelete={isFrontmatterSchemaAsset(file) ? () => setDeleteTarget(file) : null}
             />
           ))}
@@ -738,7 +692,7 @@ export function FrontmatterPluginSection() {
             itemName={t`schema ${deleteTarget}`}
             isSubmitting={deleting}
             onDelete={() => void deleteSchemaFile(deleteTarget)}
-            customDescription={t`This permanently deletes ${deleteTarget} from the project and removes its mapping from config.yml. Docs it validated keep their frontmatter; they just stop being checked.`}
+            customDescription={t`This permanently deletes ${deleteTarget} from the project and removes its mapping from config.yml.`}
           />
         ) : null}
       </Dialog>

@@ -1,8 +1,9 @@
 /**
  * DOM tests for the frontmatter plugin settings panel — the schema BROWSER:
  * every discovered schema file renders as a toggleable row, toggling writes
- * `enabled` mappings to `contentRules`, reset wipes a mapping, search filters
- * the list, and the Edit button navigates to the file via hash nav.
+ * `enabled` mappings to `contentRules` without ever discarding the row's
+ * globs, search filters the list, and the Edit button navigates to the file
+ * via hash nav.
  */
 
 import type { Config, ConfigBinding, ConfigPatch } from '@inkeep/open-knowledge-core';
@@ -112,17 +113,11 @@ beforeEach(() => {
 });
 
 describe('FrontmatterPluginSection — schema browser', () => {
-  test('renders one toggleable row per discovered file; mapped rows are Modified', () => {
+  test('renders one toggleable row per discovered file', () => {
     render(<FrontmatterPluginSection />);
     const mapped = screen.getByTestId('frontmatter-schema-row-.ok/schemas/doc.schema.json');
     expect(mapped).toBeTruthy();
     expect(screen.getByTestId('frontmatter-schema-row-schemas/local.schema.json')).toBeTruthy();
-    expect(
-      screen.getByTestId('frontmatter-schema-modified-.ok/schemas/doc.schema.json'),
-    ).toBeTruthy();
-    expect(
-      screen.queryByTestId('frontmatter-schema-modified-schemas/local.schema.json'),
-    ).toBeNull();
 
     const onToggle = screen.getByTestId(
       'frontmatter-schema-toggle-.ok/schemas/doc.schema.json',
@@ -150,16 +145,49 @@ describe('FrontmatterPluginSection — schema browser', () => {
     ]);
   });
 
-  test('a config-mapped file missing from discovery still renders (reset stays reachable)', () => {
+  test('a config-mapped file missing from discovery still renders (stays toggleable)', () => {
     mockProjectConfig = configWithMappings([{ file: 'gone/away.schema.json', enabled: true }]);
     render(<FrontmatterPluginSection />);
     expect(screen.getByTestId('frontmatter-schema-row-gone/away.schema.json')).toBeTruthy();
   });
 
-  test('reset wipes the mapping from config entirely', () => {
+  test('re-enabling a disabled mapping keeps the globs it was disabled with', () => {
+    mockProjectConfig = configWithMappings([
+      { appliesTo: ['docs/**'], file: '.ok/schemas/doc.schema.json', enabled: false },
+    ]);
     render(<FrontmatterPluginSection />);
-    fireEvent.click(screen.getByTestId('frontmatter-schema-reset-.ok/schemas/doc.schema.json'));
-    expect(lastSchemas()).toEqual([]);
+    fireEvent.click(screen.getByTestId('frontmatter-schema-toggle-.ok/schemas/doc.schema.json'));
+    expect(lastSchemas()).toEqual([
+      { appliesTo: ['docs/**'], file: '.ok/schemas/doc.schema.json', enabled: true },
+    ]);
+  });
+
+  test('a mapping with no enabled field reads as on, and toggling off pins enabled: false', () => {
+    // Hand-authored / pre-toggle configs omit `enabled`; the toggle-only surface
+    // treats absent as on. A regression here would silently show a validating
+    // schema as toggled off.
+    mockProjectConfig = configWithMappings([
+      { appliesTo: ['docs/**'], file: '.ok/schemas/doc.schema.json' },
+    ]);
+    render(<FrontmatterPluginSection />);
+    const toggle = screen.getByTestId(
+      'frontmatter-schema-toggle-.ok/schemas/doc.schema.json',
+    ) as HTMLButtonElement;
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(toggle);
+    expect(lastSchemas()).toEqual([
+      { appliesTo: ['docs/**'], file: '.ok/schemas/doc.schema.json', enabled: false },
+    ]);
+  });
+
+  test('the toggle is the only control — no Modified badge, no reset', () => {
+    render(<FrontmatterPluginSection />);
+    expect(
+      screen.queryByTestId('frontmatter-schema-modified-.ok/schemas/doc.schema.json'),
+    ).toBeNull();
+    expect(screen.queryByTestId('frontmatter-schema-reset-.ok/schemas/doc.schema.json')).toBeNull();
+    expect(screen.queryByTestId('frontmatter-only-modified')).toBeNull();
+    expect(screen.queryByTestId('frontmatter-schema-legend')).toBeNull();
   });
 
   test('editing appliesTo writes the globs on the file mapping', () => {
@@ -291,13 +319,6 @@ describe('FrontmatterPluginSection — schema browser', () => {
       screen.getByTestId('frontmatter-schema-applies-summary-.ok/schemas/doc.schema.json')
         .textContent,
     ).toContain('every doc');
-  });
-
-  test('the only-modified filter narrows to mapped schemas', () => {
-    render(<FrontmatterPluginSection />);
-    fireEvent.click(screen.getByTestId('frontmatter-only-modified'));
-    expect(screen.getByTestId('frontmatter-schema-row-.ok/schemas/doc.schema.json')).toBeTruthy();
-    expect(screen.queryByTestId('frontmatter-schema-row-schemas/local.schema.json')).toBeNull();
   });
 
   test('empty state renders when no schemas exist anywhere', () => {
