@@ -41,7 +41,11 @@ import { ZipFile } from 'yazl';
 import type { BundleExtraFile, BundleLogger } from '../commands/bug-report-bundle.ts';
 import { redactContent } from '../commands/bug-report-redact.ts';
 import { PACKAGE_VERSION } from '../constants.ts';
-import { type RedactStagedBundleResult, redactStagedBundle } from './bundle-redact.ts';
+import {
+  isRotatedLogPath,
+  type RedactStagedBundleResult,
+  redactStagedBundle,
+} from './bundle-redact.ts';
 
 // ---------------------------------------------------------------------------
 // Manifest schema
@@ -191,6 +195,20 @@ export interface CollectBundleOpts {
    * text-scrubbed.
    */
   extraFiles?: BundleExtraFile[];
+  /**
+   * Absolute paths to user-level log files (`~/.ok/logs/*.log`) staged under
+   * `logs/` beside the project's server sink logs, at the same bundle paths the
+   * standard level uses.
+   *
+   * Load-bearing for desktop crash reports: the Electron main process captures
+   * the renderer console into the user-level log, not the project's server log
+   * (`installClientLogForwarder` short-circuits when `window.okDesktop` is
+   * present), so without these a full bundle carries no renderer signal at all.
+   *
+   * Staged BEFORE the redaction + secret scrub — unlike `extraFiles`, these are
+   * text and must be scrubbed.
+   */
+  userLogFiles?: string[];
   /** Test-injectable dependencies — every field defaults to a real-system implementation. */
   deps?: CollectBundleDeps;
 }
@@ -630,6 +648,10 @@ function shouldCountLines(relPath: string): boolean {
 const SECRET_SCRUB_EXTENSIONS = new Set(['.jsonl', '.json', '.txt', '.log', '.lock']);
 
 function isSecretScrubbable(relPath: string): boolean {
+  // A rotated log's real extension is its counter (`.log.3` slices to `.3`), so
+  // an extension-set test alone silently skips it — and the user-level logs the
+  // full bundle now carries are exactly the ones that rotate.
+  if (isRotatedLogPath(relPath)) return true;
   const lastDot = relPath.lastIndexOf('.');
   if (lastDot === -1) return false;
   return SECRET_SCRUB_EXTENSIONS.has(relPath.slice(lastDot));
@@ -692,6 +714,9 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
     );
     stageFileIfPresent(logsCurrentPath(projectDir), join(stagingDir, 'logs', LOGS_CURRENT));
     stageFileIfPresent(logsPreviousPath(projectDir), join(stagingDir, 'logs', LOGS_PREVIOUS));
+    for (const userLogPath of opts.userLogFiles ?? []) {
+      stageFileIfPresent(userLogPath, join(stagingDir, 'logs', basename(userLogPath)));
+    }
 
     // Server lock + status + agent presence.
     const lockDir = join(projectDir, '.ok', 'local');

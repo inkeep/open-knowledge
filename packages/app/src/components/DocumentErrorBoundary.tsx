@@ -50,6 +50,7 @@ import {
   ServerCapabilityMismatchError,
   SyncTimeoutError,
 } from '@/editor/sync-promise';
+import { recallComponentStack, rememberComponentStack } from '@/lib/component-stack-registry';
 import { restartCollabServer } from '@/lib/restart-collab-server';
 
 interface ErrorCopy {
@@ -287,6 +288,7 @@ function DocumentErrorFallback({
             // reason as back-nav: activeDocName can lag the errored target.
             docName: errorDocName(error) ?? activeDocName,
             errorMessage: error instanceof Error && error.message ? error.message : String(error),
+            componentStack: recallComponentStack(error),
           }}
         />
       ) : null}
@@ -374,15 +376,18 @@ export function DocumentErrorBoundary({
           );
         }
       }}
-      onError={(error) => {
+      onError={(error, info) => {
+        rememberComponentStack(error, info.componentStack);
         // Pass the full error object as the second arg so the stack trace and
         // cause chain reach the console — `errorCopy(error).title` alone is a
         // user-facing summary ("Couldn't open document") with no debugging
         // signal. console.error (not warn) so it surfaces at the right severity
-        // for the user-visible fallback that just rendered.
+        // for the user-visible fallback that just rendered. The component stack
+        // is the only frame-level signal that survives a packaged build.
         console.error(
           `[DocumentErrorBoundary] rendered fallback for ${activeDocName}: ${errorCopy(error).title}`,
           error,
+          info.componentStack ?? '',
         );
       }}
     >

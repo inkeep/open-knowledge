@@ -272,6 +272,23 @@ function walkDirFiles(dir: string): string[] {
 // the contentDir). Other state files get substring-only substitution.
 const STATE_JSON_FILES = new Set(['agent-presence.json', 'agent-effects.json', 'runtime.json']);
 
+/**
+ * Rotated log files carry their counter where the extension would be
+ * (`desktop.2026-07-28.log.3`), so any suffix test has to special-case them.
+ */
+export function isRotatedLogPath(filePath: string): boolean {
+  return /\.log\.\d+$/.test(filePath);
+}
+
+/**
+ * The user-level logs are pino JSONL that happen to carry a `.log` suffix, so
+ * routing them by extension alone would give them the substring-only pass and
+ * silently drop the doc-name hashing the full level's `--redact` promises.
+ */
+function isLineDelimitedJson(filePath: string): boolean {
+  return filePath.endsWith('.jsonl') || filePath.endsWith('.log') || isRotatedLogPath(filePath);
+}
+
 export function redactStagedBundle(opts: RedactStagedBundleOpts): RedactStagedBundleResult {
   const ctx: RedactCtx = {
     contentDir: opts.contentDir,
@@ -282,7 +299,7 @@ export function redactStagedBundle(opts: RedactStagedBundleOpts): RedactStagedBu
 
   for (const subdir of ['telemetry', 'logs', 'process']) {
     for (const filePath of walkDirFiles(join(opts.stagingDir, subdir))) {
-      if (filePath.endsWith('.jsonl')) {
+      if (isLineDelimitedJson(filePath)) {
         redactJsonlFile(filePath, ctx);
       } else if (filePath.endsWith('.json')) {
         redactJsonFile(filePath, ctx);

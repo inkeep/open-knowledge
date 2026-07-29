@@ -19,6 +19,7 @@ import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
 import { OkBlob } from '@/components/OkBlob';
 import { ReportBugDialog } from '@/components/ReportBugDialog';
 import { Button } from '@/components/ui/button';
+import { recallComponentStack, rememberComponentStack } from '@/lib/component-stack-registry';
 
 function AppErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
   const { t } = useLingui();
@@ -74,6 +75,7 @@ function AppErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
             crashContext={{
               source: 'app shell',
               errorMessage: error instanceof Error && error.message ? error.message : String(error),
+              componentStack: recallComponentStack(error),
             }}
           />
         </CrashReportingBoundary>
@@ -86,10 +88,15 @@ export function AppErrorBoundary({ children }: { children: React.ReactNode }) {
   return (
     <ErrorBoundary
       FallbackComponent={AppErrorFallback}
-      onError={(error) => {
-        // Full error object so the stack reaches the console — and, via the
-        // renderer console capture, the next diagnostic bundle.
-        console.error('[AppErrorBoundary] app-shell render crash', error);
+      onError={(error, info) => {
+        rememberComponentStack(error, info.componentStack);
+        // The component stack is logged alongside the error because a packaged
+        // build's minified message + mangled JS stack name nothing on their own.
+        console.error(
+          '[AppErrorBoundary] app-shell render crash',
+          error,
+          info.componentStack ?? '',
+        );
       }}
     >
       {children}

@@ -6,6 +6,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type {
   ReportBundleLevel as CoreReportBundleLevel,
@@ -16,6 +17,7 @@ import {
   type BundleExtraFile,
   type BundleLogger,
   collectStandardBundle,
+  collectUserLogFiles,
   resolveProjectSlug,
 } from './commands/bug-report-bundle.ts';
 import {
@@ -107,6 +109,7 @@ async function collectFullBundle(
   projectDir: string,
   readDesktopEnv: () => DesktopMetadata | null,
 ): Promise<ReportBundleResult> {
+  const projectSlug = resolveProjectSlug(projectDir, opts.logger);
   const collected = await collectBundle({
     contentDir: resolveContentDir(projectDir, opts.logger),
     projectDir,
@@ -114,6 +117,14 @@ async function collectFullBundle(
     scrubSecrets: opts.redact,
     note: opts.note,
     extraFiles: opts.extraFiles,
+    // The full level is documented as a superset of standard, so it harvests
+    // the same user-level logs. Omitting them silently dropped the renderer
+    // console from every desktop crash report, since the Electron main process
+    // captures it here rather than into the project's server sink.
+    userLogFiles: collectUserLogFiles(
+      projectSlug,
+      opts.userLogsDir ?? join(homedir(), '.ok', 'logs'),
+    ),
     deps: { readDesktopEnv, logger: opts.logger },
   });
   try {
@@ -125,7 +136,7 @@ async function collectFullBundle(
       summary: {
         level: 'full',
         systemWide: false,
-        projectSlug: resolveProjectSlug(projectDir, opts.logger),
+        projectSlug,
         files: collected.manifest.files.map((f) => f.path),
         redactions: scrub?.redactions ?? [],
         redactedLineCount: scrub?.redactedLineCount ?? 0,

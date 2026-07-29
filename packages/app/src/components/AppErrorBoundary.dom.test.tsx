@@ -188,12 +188,17 @@ describe('AppErrorBoundary', () => {
     await user.click(screen.getByRole('button', { name: 'Create report' }));
     await screen.findByRole('heading', { name: 'Review your report' });
 
-    expect(createCalls).toEqual([
-      {
-        level: 'full',
-        note: 'Crash source: app shell\nError: MaybeThrow boom: shell',
-      },
-    ]);
+    expect(createCalls).toHaveLength(1);
+    expect(createCalls[0]?.level).toBe('full');
+    const note = createCalls[0]?.note ?? '';
+    expect(note).toContain('Crash source: app shell');
+    expect(note).toContain('Error: MaybeThrow boom: shell');
+    // React's component stack rides along: in a packaged build it is the only
+    // part of a crash that still names a real component.
+    expect(note).toContain('Component stack:');
+    expect(note).toContain('at MaybeThrow');
+    // Frame directories are trimmed, so the note cannot carry a home path.
+    expect(note).not.toContain('/Users/');
   });
 
   test('does not intercept errors the per-document boundary already handles', () => {

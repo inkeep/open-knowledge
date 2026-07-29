@@ -168,6 +168,20 @@ function collectSysinfo(): Record<string, unknown> {
   return info;
 }
 
+/**
+ * User-level log files (`~/.ok/logs/*.log`), optionally narrowed to one
+ * project. Shared with the full bundle so both report levels harvest the same
+ * set — on desktop these carry the renderer console, which reaches no other
+ * sink.
+ *
+ * The slug filter is best-effort: when no file matches it, every file is
+ * returned rather than none, because a log that predates project tagging is
+ * still better evidence than an empty bundle.
+ */
+export function collectUserLogFiles(projectSlug: string | null, logsDir: string): string[] {
+  return collectLogs(projectSlug, logsDir).files;
+}
+
 function collectLogs(projectSlug: string | null, logsDir: string): { files: string[] } {
   if (!existsSync(logsDir)) return { files: [] };
 

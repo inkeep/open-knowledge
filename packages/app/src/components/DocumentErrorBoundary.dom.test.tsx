@@ -258,12 +258,16 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
     await user.click(screen.getByRole('button', { name: 'Create report' }));
     await screen.findByRole('heading', { name: 'Review your report' });
 
-    expect(createCalls).toEqual([
-      {
-        level: 'full',
-        note: 'Crash source: document view\nDocument: alpha.md\nError: MaybeThrow boom: alpha',
-      },
-    ]);
+    expect(createCalls).toHaveLength(1);
+    expect(createCalls[0]?.level).toBe('full');
+    const note = createCalls[0]?.note ?? '';
+    expect(note).toContain('Crash source: document view');
+    expect(note).toContain('Document: alpha.md');
+    expect(note).toContain('Error: MaybeThrow boom: alpha');
+    expect(note).toContain('Component stack:');
+    expect(note).toContain('at MaybeThrow');
+    // Frame directories are trimmed, so the note cannot carry a home path.
+    expect(note).not.toContain('/Users/');
   });
 
   test('the report action is absent without the desktop bridge', () => {

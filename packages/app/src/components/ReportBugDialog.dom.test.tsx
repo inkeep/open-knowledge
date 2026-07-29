@@ -505,6 +505,46 @@ describe('ReportBugDialog', () => {
     );
   });
 
+  test("a crash context folds React's component stack into the note, capped", async () => {
+    const log = installBridge();
+    // 27 frames: two past the 25 kept, so the omission line is exercised.
+    // Fully-qualified locations, as React emits them.
+    const frames = Array.from(
+      { length: 27 },
+      (_, i) => `    at Component${i} (/Users/someone/OpenKnowledge.app/bundle.js:1:${i})`,
+    );
+    await renderDialog({
+      crashContext: {
+        source: 'app shell',
+        errorMessage: 'Minified React error #185',
+        componentStack: `\n${frames.join('\n')}\n`,
+      },
+    });
+
+    await createReport('it crashed');
+
+    const note = log.createCalls[0]?.note ?? '';
+    expect(note).toContain('Component stack:');
+    // Directory trimmed to the basename: keeps the source map coordinates,
+    // drops the home path the bundle was loaded from.
+    expect(note).toContain('at Component0 (bundle.js:1:0)');
+    expect(note).toContain('at Component24 (bundle.js:1:24)');
+    expect(note).not.toContain('/Users/');
+    expect(note).not.toContain('at Component25');
+    expect(note).toContain('... 2 more frame(s) omitted');
+  });
+
+  test('a crash context without a component stack keeps the note unchanged', async () => {
+    const log = installBridge();
+    await renderDialog({
+      crashContext: { source: 'app shell', errorMessage: 'boom' },
+    });
+
+    await createReport('it crashed');
+
+    expect(log.createCalls[0]?.note).toBe('it crashed\n\nCrash source: app shell\nError: boom');
+  });
+
   test('a failed create surfaces the error with the CLI fallback and stays in compose', async () => {
     installBridge({
       create: () => Promise.resolve({ ok: false, error: 'zip destination not writable' }),

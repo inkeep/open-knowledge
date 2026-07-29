@@ -85,6 +85,13 @@ export interface ReportBugCrashContext {
   /** Document that was active when the error surfaced, when known. */
   docName?: string;
   errorMessage?: string;
+  /**
+   * React's component stack for the throw, from the error boundary's
+   * `errorInfo`. Production bundles minify both the error message (React ships
+   * numeric codes) and the JS stack (mangled identifiers), so this is the only
+   * frame-level signal in a packaged crash report that names real components.
+   */
+  componentStack?: string;
 }
 
 interface CreatedReport {
@@ -105,10 +112,50 @@ function composeNote(userNote: string, contextLines: string[] | undefined): stri
   return trimmed === '' ? context : `${trimmed}\n\n${context}`;
 }
 
+/**
+ * Frames kept from the component stack. Deep trees can produce hundreds; the
+ * innermost few identify the throw site, and the note is user-reviewed in the
+ * compose box before sending, so an unbounded dump would swamp it.
+ */
+const COMPONENT_STACK_FRAME_LIMIT = 25;
+
+/**
+ * Reduce a frame's source location to `basename:line:col`.
+ *
+ * React emits fully-qualified locations, so an untrimmed frame carries the
+ * absolute path the bundle was loaded from — which on a per-user install is
+ * under the home directory. The directory is worthless for triage anyway: the
+ * component name plus `file:line:col` is what maps back through a source map.
+ */
+function trimFrameLocation(frame: string): string {
+  return frame.replace(/\(([^)]*)\)/, (whole, location: string) => {
+    const leaf = location.split(/[/\\]/).pop();
+    return leaf === undefined || leaf === '' ? whole : `(${leaf})`;
+  });
+}
+
+function componentStackLines(componentStack: string): string[] {
+  const frames = componentStack
+    .split('\n')
+    .map((line) => trimFrameLocation(line.trim()))
+    .filter((line) => line !== '');
+  if (frames.length === 0) return [];
+  const kept = frames.slice(0, COMPONENT_STACK_FRAME_LIMIT);
+  const omitted = frames.length - kept.length;
+  return [
+    'Component stack:',
+    ...kept,
+    ...(omitted > 0 ? [`... ${omitted} more frame(s) omitted`] : []),
+  ];
+}
+
 function crashContextLines(crashContext: ReportBugCrashContext): string[] {
   const lines = [`Crash source: ${crashContext.source}`];
   if (crashContext.docName !== undefined) lines.push(`Document: ${crashContext.docName}`);
   if (crashContext.errorMessage !== undefined) lines.push(`Error: ${crashContext.errorMessage}`);
+  if (crashContext.componentStack !== undefined) {
+    lines.push(...componentStackLines(crashContext.componentStack));
+  }
   return lines;
 }
 

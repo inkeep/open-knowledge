@@ -204,6 +204,80 @@ describe('collectReportBundle — full level', () => {
     expect(summary.files).toEqual(paths);
   });
 
+  test('carries the user-level logs the standard level collects, scrubbed', async () => {
+    // On desktop the Electron main process captures the renderer console into
+    // the user-level log, never into the project's server sink — so this is the
+    // only path a renderer crash reaches a full bundle by.
+    const projectDir = makeFullProjectDir();
+    const userLogsDir = makeTmpDir();
+    writeAt(
+      userLogsDir,
+      'desktop.2026-07-28.log',
+      `${JSON.stringify({ subsystem: 'renderer', msg: 'app-shell render crash' })}\n${JSON.stringify({ msg: `token ${SECRET}` })}\n`,
+    );
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath, summary } = await collectReportBundle({
+      level: 'full',
+      projectDir,
+      redact: true,
+      outputPath,
+      userLogsDir,
+    });
+
+    const entries = listZipEntries(zipPath);
+    expect(entries).toContain('logs/desktop.2026-07-28.log');
+    expect(summary.files).toContain('logs/desktop.2026-07-28.log');
+    const body = readZipEntry(zipPath, 'logs/desktop.2026-07-28.log');
+    expect(body).toContain('app-shell render crash');
+    // Staged before the scrub, unlike extra/ payloads.
+    expect(body).not.toContain(SECRET);
+  });
+
+  test('scrubs ROTATED user logs too, whose counter suffix defeats an extension test', async () => {
+    const projectDir = makeFullProjectDir();
+    const userLogsDir = makeTmpDir();
+    // `desktop.2026-07-28.log.1` slices to `.1`, not `.log`.
+    writeAt(
+      userLogsDir,
+      'desktop.2026-07-28.log.1',
+      `${JSON.stringify({ msg: `token ${SECRET}` })}\n`,
+    );
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectReportBundle({
+      level: 'full',
+      projectDir,
+      redact: true,
+      outputPath,
+      userLogsDir,
+    });
+
+    expect(listZipEntries(zipPath)).toContain('logs/desktop.2026-07-28.log.1');
+    expect(readZipEntry(zipPath, 'logs/desktop.2026-07-28.log.1')).not.toContain(SECRET);
+  });
+
+  test('hashes doc names in user logs, which are pino JSONL behind a .log suffix', async () => {
+    const projectDir = makeFullProjectDir();
+    const userLogsDir = makeTmpDir();
+    writeAt(
+      userLogsDir,
+      'desktop.2026-07-28.log',
+      `${JSON.stringify({ attributes: [{ key: 'doc.name', value: { stringValue: 'secret-notes/plan' } }] })}\n`,
+    );
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectReportBundle({
+      level: 'full',
+      projectDir,
+      redact: true,
+      outputPath,
+      userLogsDir,
+    });
+
+    expect(readZipEntry(zipPath, 'logs/desktop.2026-07-28.log')).not.toContain('secret-notes/plan');
+  });
+
   test('omits telemetry entirely when the sink has never written', async () => {
     const projectDir = makeTmpDir();
     writeAt(projectDir, '.ok/config.yml', 'name: bare-proj\n');
