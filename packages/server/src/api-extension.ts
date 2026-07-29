@@ -309,6 +309,7 @@ import { type NormalizedSummary, normalizeSummary } from './agent-write-summary.
 import { isAllowedApiOrigin } from './api-origin.ts';
 import { collectReferencedAssets, toContentRelativePath } from './asset-references.ts';
 import { assetContentTypeForPath } from './asset-serve-middleware.ts';
+import { collabUrlFromRequestHeaders } from './collab-bootstrap-url.ts';
 import { getLocalDir } from './config/paths.ts';
 import { CONFIG_VALIDATION_REVERT_ORIGIN } from './config-edit-origin.ts';
 import { DocInConflictError, isDocInConflict, respondDocInConflict } from './conflict-errors.ts';
@@ -583,7 +584,7 @@ import { buildLinkPreviewMetadata, type GuardedFetch } from './link-preview/meta
 import { LinkPreviewCache, type LinkPreviewOutcome } from './link-preview/preview-cache.ts';
 import { classifyLinkPreviewRequest } from './link-preview/request-gate.ts';
 import {
-  checkLocalOpSecurity,
+  checkLocalOpSecurity as checkLocalOpSecurityBase,
   createConcurrencyGuard,
   expandTilde,
   isAllowedGitUrl,
@@ -599,7 +600,10 @@ import {
   runPatSubprocess,
 } from './local-ops/index.ts';
 import { getLogger } from './logger.ts';
-import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
+import {
+  isAllowedWorkspaceHostHeader as isAllowedWorkspaceHostHeaderBase,
+  isLoopbackAddress,
+} from './loopback.ts';
 import {
   managedArtifactAbsPath,
   managedArtifactTimelinePaths,
@@ -619,6 +623,7 @@ import {
 } from './metrics.ts';
 import { precomputeParse } from './parse-pool.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
+import { hostHeaderMatchesPublicHost } from './remote-access.ts';
 import {
   appendRenameLogEntry,
   createAncestorShaSetCache,
@@ -2651,6 +2656,14 @@ async function renameTrackedPathInGit(
 }
 
 export interface ApiExtensionOptions {
+  /**
+   * The tunnel's public host (from `ResolvedRemoteAccess.publicHost`) when the
+   * server was started with remote access enabled. Widens the browser-Origin
+   * allowlists (the `/api/*` CORS gate + the local-op checks) to admit the
+   * remote SPA's origin. Undefined in local mode — allowlists stay
+   * loopback-only.
+   */
+  remotePublicHost?: string;
   hocuspocus: Hocuspocus;
   durabilityState: DocumentDurabilityState;
   sessionManager: AgentSessionManager;
@@ -3043,7 +3056,20 @@ function applyDiskEventToLiveAllFilesIndex(
 }
 
 export function createApiExtension(options: ApiExtensionOptions): Extension {
-  const { durabilityState } = options;
+  const { durabilityState, remotePublicHost } = options;
+  // Every local-op call site in this factory inherits the remote-origin
+  // widening through this shadow — one choke point, zero per-site churn.
+  const checkLocalOpSecurity = (
+    req: IncomingMessage,
+    res: ServerResponse,
+    opts: { handler: string },
+  ): boolean => checkLocalOpSecurityBase(req, res, { ...opts, remotePublicHost });
+  // Same shadow for the route-level Host gates (principal, workspace, metrics,
+  // the write-path gates): in remote mode the tunnel's public Host is as
+  // legitimate as a loopback name — the mount's admit gate already vetted it.
+  const isAllowedWorkspaceHostHeader = (host: string | undefined): boolean =>
+    isAllowedWorkspaceHostHeaderBase(host) ||
+    (remotePublicHost !== undefined && hostHeaderMatchesPublicHost(host, remotePublicHost));
   const {
     hocuspocus,
     sessionManager,
@@ -19122,7 +19148,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     if (req.method === 'GET' || req.method === 'HEAD') {
       try {
         // Same-origin collab WS: the shell loaded from this server, so
-        // `ws://<host>/collab` reaches the same process the request arrived on.
+        // `ws(s)://<host>/collab` reaches the same process the request arrived
+        // on (scheme honors X-Forwarded-Proto — see collab-bootstrap-url.ts).
         // Avoids the cross-port WS attempt sandboxed preview panes refuse. The
         // Host value is the client's own header reflected back to itself (the
         // Origin CORS gate in `onRequest` already refused cross-origin
@@ -19132,8 +19159,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // canonical advertised port to substitute, and the client falls back
         // to a same-origin WS URL on a null. Node HTTP/1.1 always populates
         // Host, so the null path is a malformed-request floor, not a normal case.
-        const host = req.headers.host;
-        const collabUrl = host ? `ws://${host}/collab` : null;
+        const collabUrl = collabUrlFromRequestHeaders(req.headers);
         const port = lockDir ? (readServerLock(lockDir)?.port ?? 0) : 0;
         // `singleFile` tells the React shell to drop project chrome for an
         // ephemeral single-file session (`ok <file>`).
@@ -20618,7 +20644,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       // unit tests that stub only `writeHead` + `end`.
       if (url.startsWith('/api/')) {
         const origin = request.headers.origin;
-        if (origin !== undefined && !isAllowedApiOrigin(origin)) {
+        if (origin !== undefined && !isAllowedApiOrigin(origin, remotePublicHost)) {
           // RFC 9457 problem+json. Tag the handler as `api-origin-gate` so
           // the `ok.api.error.count` counter distinguishes onRequest-level
           // CSRF rejections from per-handler emits. The cross-origin browser

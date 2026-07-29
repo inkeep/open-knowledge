@@ -108,6 +108,14 @@ Each project runs its own local server. These commands let you see and stop them
 | `ok stop` | Stop the server for the current directory — or pass a port, path, or PID to stop a specific server, or `all` to stop every server |
 | `ok clean` | Remove stale lock files left behind by a crash (never touches live servers) |
 
+## Remote access
+
+Serve this project's web UI and `/mcp` endpoint to your other devices through any HTTPS tunnel, both on one URL. Full setup (and the access-control model) in [Remote access](/docs/deploy/remote-access); point agents at the URL with [Connecting agents](/docs/deploy/connecting-agents).
+
+| Command | What it does |
+| --- | --- |
+| `ok start --remote [url]` | Start the server admitting requests from the tunnel URL (no server-side auth; restrict reach at the tunnel). Bare `--remote` uses `remote.url` from `.ok/config.yml` |
+
 ## More commands
 
 | Command | What it does |

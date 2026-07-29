@@ -1,0 +1,77 @@
+---
+title: Connecting agents
+icon: LuPlug
+description: Point every agent (Claude Code, Cursor, Claude Desktop, agent harnesses) at one shared knowledge base.
+---
+Prerequisite: a running server with [remote access set up](/docs/deploy/remote-access). That page is also where access control lives (the tunnel decides who can reach the URL; the server itself does not authenticate remote callers). To connect someone else's machine, get them access to the tunnel first (e.g. a tailnet invite or an edge-auth allowlist entry), then send them here.
+
+Your knowledge base is one URL: `https://<your-tunnel-url>/mcp`. Every client below connects to that same address, whether the server is your laptop, a Mac mini, or a VPS.
+
+## Connect every agent in one command
+
+[`add-mcp`](https://github.com/neon-solutions/add-mcp) detects which agents are installed on the machine and writes each one's MCP config for you — Claude Code, Cursor, Codex, VS Code, Windsurf, Goose, Zed, and more:
+
+```bash
+npx add-mcp https://<your-tunnel-url>/mcp --name ok-remote
+```
+
+If your `/mcp` endpoint is behind **Basic Auth** at the tunnel (see [Restrict who can reach it](/docs/deploy/remote-access#4-restrict-who-can-reach-it)), pass the credential as a header so the agent connects with no browser step:
+
+```bash
+npx add-mcp https://<your-tunnel-url>/mcp --name ok-remote \
+  --header "Authorization: Basic $(printf 'user:pass' | base64)"
+```
+
+An **OAuth/SSO**-gated endpoint can't be used this way — a headless agent can't complete a browser login, so gate agent endpoints with Basic Auth, a [path-branched policy](/docs/deploy/remote-access#4-restrict-who-can-reach-it), or Tailscale instead.
+
+## Claude Code
+
+```bash
+claude mcp add --transport http ok-remote https://<your-tunnel-url>/mcp
+```
+
+## Cursor
+
+```json title="~/.cursor/mcp.json"
+{
+  "mcpServers": {
+    "ok-remote": { "url": "https://<your-tunnel-url>/mcp" }
+  }
+}
+```
+
+## Codex
+
+Recent Codex versions take the URL directly:
+
+```toml title="~/.codex/config.toml"
+[mcp_servers.ok-remote]
+url = "https://<your-tunnel-url>/mcp"
+```
+
+## Claude Desktop
+
+Claude Desktop only takes command-type servers, so it reaches the server through the [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge — a local process that forwards to your `/mcp` URL.
+
+Its config file — `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, `%APPDATA%\Claude\claude_desktop_config.json` on Windows. In Claude Desktop open **Settings → Developer → Edit Config**, which creates the file and reveals it. Then add:
+
+```json title="claude_desktop_config.json"
+{
+  "mcpServers": {
+    "ok-remote": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://<your-tunnel-url>/mcp"]
+    }
+  }
+}
+```
+
+## Agent harnesses (OpenClaw, Hermes, etc.)
+
+Add the `/mcp` URL to your harness's MCP server config, the same way as above. Its agents can then read and write your knowledge base.
+
+## Cloud connectors (Claude.ai, ChatGPT, etc.)
+
+Cloud-dialed clients connect from the vendor's cloud, so your tunnel URL must be publicly reachable over HTTPS. The Claude and ChatGPT connectors require OAuth, which OpenKnowledge does not support as a server (for now). Connectors that accept a bearer token or API key instead (Microsoft Copilot Studio, Perplexity, etc.) can use a token you enforce at the tunnel: gate `/mcp` with a static bearer token in your tunnel's edge auth, then paste that same token into the connector's settings, the way an on-device agent presents its credential as a header.
+
+Claude Desktop is not a cloud connector; it uses the `mcp-remote` bridge covered above.

@@ -1,0 +1,270 @@
+---
+title: Remote access
+icon: LuGlobe
+description: Reach your knowledge base from your other devices.
+---
+By default, only agents on the same machine as your knowledge base can reach it. Remote access puts that same endpoint behind an HTTPS tunnel (ngrok, Cloudflare Tunnel, Tailscale, or your own reverse proxy) so your other devices can connect to one shared knowledge base.
+
+OpenKnowledge does not authenticate remote callers. Once you pass `--remote`, anyone who can reach your tunnel URL has full read-write control, so restricting who reaches it is up to the tunnel. Put it on a private network like Tailscale, add edge auth like ngrok OAuth or Cloudflare Access, or just keep the URL to yourself. The server ignores tunneled traffic until you start it with `--remote`, so you never expose the base by accident.
+
+## Set up the machine
+
+Remote access runs on the machine that holds your knowledge base. Pick where it lives and get OpenKnowledge running a project there.
+
+### Your laptop or desktop
+
+Your laptop or desktop, where OpenKnowledge is already installed and running your project. Nothing to prepare, so skip ahead to [Turn on remote access](#turn-on-remote-access).
+
+The catch is that it's only reachable while that machine is awake. Close the lid and your agents lose access. For around-the-clock access, use a dedicated server instead.
+
+### A dedicated server
+
+A VPS, Mac mini, or any computer you can leave running. It keeps your knowledge base reachable around the clock, so agents never lose access. Set it up first.
+
+<Callout>
+**On a VPS:** providers like Hetzner, DigitalOcean, and Lightsail all work. Pick Ubuntu 24.04 (1 GB RAM is comfortable; 512 MB runs a small knowledge base), add your SSH key at creation, and `ssh root@<ip>` in. Every step below happens in that shell.
+</Callout>
+
+Install OpenKnowledge (and Node 24 first, on a fresh box):
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo bash - && sudo apt-get install -y nodejs git
+npm install -g @inkeep/open-knowledge
+```
+
+Create the project (`ok init` sets up git for you):
+
+```bash
+mkdir ~/knowledge && cd ~/knowledge && ok init
+```
+
+To start from existing notes, `git clone` them as the project directory instead of `mkdir`, then run `ok init` inside.
+
+## Turn on remote access
+
+Run these on the machine you set up.
+
+### 1. Open a tunnel
+
+Any HTTPS tunnel works. It forwards a public URL to the server's local port, `24550` by default (change it with `remote.port` in `.ok/config.yml`; see the [Configuration reference](/docs/reference/configuration)). Point your tunnel at that same port. Pick one:
+
+<Callout type="info">
+Install your tunnel's client on the machine first if it isn't already.
+</Callout>
+
+<Tabs groupId="ok-tunnel" persist items={['Tailscale', 'ngrok', 'Cloudflare Tunnel']}>
+
+<Tab>
+
+Private, only devices on your tailnet can reach it. Requires [HTTPS enabled in your tailnet](https://tailscale.com/kb/1153/enabling-https).
+
+```bash
+tailscale serve --bg 24550
+# → https://<machine>.<tailnet>.ts.net
+```
+
+</Tab>
+
+<Tab>
+
+Public URL; add edge auth to restrict (see [Restrict who can reach it](#4-restrict-who-can-reach-it)).
+
+```bash
+ngrok http 24550
+# → https://<something>.ngrok.app
+```
+
+</Tab>
+
+<Tab>
+
+Public URL on your own domain; pair with Cloudflare Access to restrict (see [Restrict who can reach it](#4-restrict-who-can-reach-it)).
+
+```bash
+cloudflared tunnel --url http://localhost:24550
+```
+
+</Tab>
+
+</Tabs>
+
+Each one gives you a public HTTPS URL. That URL is your `remote.url`.
+
+### 2. Start the server with `--remote`
+
+From the project directory:
+
+```bash
+ok start --remote https://<your-tunnel-url>
+```
+
+Or persist the URL in `.ok/config.yml` and start with a bare flag:
+
+```yaml title=".ok/config.yml"
+remote:
+  url: https://<your-tunnel-url>
+```
+
+```bash
+ok start --remote
+```
+
+The flag is required every start. A `remote.url` sitting in config never turns remote access on by itself, and the server prints a warning banner on every remote start so the exposure is never silent. Without `--remote`, tunneled requests are refused with a hint rather than served.
+
+<Callout>
+Remote access is a command-line feature (`ok start --remote`), not a desktop toggle. To see what you're exposing, open the tunnel URL in a browser; the desktop app only connects to its own local server. The desktop app and `ok start` also can't run against the same project at once.
+</Callout>
+
+On a **dedicated server**, run it as a service instead, so it survives logout and reboots:
+
+```ini title="/etc/systemd/system/openknowledge.service"
+[Unit]
+Description=OpenKnowledge server
+After=network-online.target
+
+[Service]
+User=root
+WorkingDirectory=/root/knowledge
+ExecStart=/usr/bin/env ok start --remote
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+This matches the `ssh root@<ip>` VPS setup above (project at `/root/knowledge`, `remote.url` set in config). If you log in as a different user, set `User` and `WorkingDirectory` to that user and their project path.
+
+```bash
+sudo systemctl enable --now openknowledge
+```
+
+<Callout>
+**On macOS**, there's no systemd. Run `ok start --remote` in a terminal, and set the machine not to sleep (System Settings → Energy) for always-on use.
+</Callout>
+
+### 3. Verify
+
+From any device that can reach the tunnel, do a real handshake:
+
+```bash
+curl -sS -X POST https://<your-tunnel-url>/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+```
+
+Your knowledge base introduces itself:
+
+```json
+{"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"open-knowledge","version":"…"}},"jsonrpc":"2.0","id":1}
+```
+
+That's the whole path working. You now have an MCP URL for your knowledge base:
+
+```
+https://<your-tunnel-url>/mcp
+```
+
+### 4. Restrict who can reach it
+
+The server admits whoever the tunnel lets through, so we recommend adding access control at the tunnel:
+
+- **Tailscale `serve`** is restricted by construction: only devices on your tailnet can connect. Use [tailnet ACLs](https://tailscale.com/kb/1018/acls) to narrow it further. (`tailscale funnel` makes the URL public — treat it like any public tunnel.)
+- **ngrok** can require a login at the edge before any request reaches you. Use **OAuth** (or **OIDC/SSO** — `--oidc`, for Okta / Azure AD / Google Workspace):
+
+  ```bash
+  ngrok http 24550 --oauth google --oauth-allow-email you@example.com
+  ```
+
+- **Cloudflare Tunnel** pairs with [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) — a login policy on the hostname, checked at Cloudflare's edge.
+
+A public tunnel URL with no edge auth is a capable but *open* knowledge base: fine for a deliberate share, wrong as a default. The URL itself is the only secret, and URLs leak.
+
+<Callout type="warn">
+**For the web UI, use login-based edge auth (OAuth or SSO), not HTTP Basic Auth.** Live editing needs a WebSocket, and browsers can't send Basic Auth over one, so a Basic Auth gate leaves the editor stuck loading. A login sets a cookie, which does work. (Basic Auth is fine for agent-only access.)
+</Callout>
+
+<Callout type="info" title="Serving the UI and headless agents from one gated tunnel">
+The UI and a headless MCP agent need *opposite* auth: the browser needs a login (cookie), a headless agent needs a credential it can send with no browser. A single OAuth gate can't do both — an agent hitting an OAuth-gated `/mcp` just gets the login HTML. **ngrok** resolves it with a path-branched traffic policy — OAuth on the UI, Basic Auth on `/mcp`:
+
+```yaml title="policy.yaml"
+on_http_request:
+  - expressions: ["req.url.path.startsWith('/mcp')"]
+    actions:
+      - type: basic-auth
+        config: { credentials: ["agent:CHANGE_ME"] }
+  - expressions: ["!req.url.path.startsWith('/mcp')"]
+    actions:
+      - type: oauth
+        config: { provider: google }
+```
+
+Run with `--traffic-policy-file policy.yaml`. The agent then connects headlessly by presenting the Basic credential as a header (see [Connecting agents](/docs/deploy/connecting-agents)). **Cloudflare Access** can express the same split (a path-scoped login policy for the UI plus a service token for `/mcp`), but that recipe is not documented here. **Tailscale** sidesteps the whole thing — its network-layer auth covers UI and agents at once.
+</Callout>
+
+## Share your knowledge base
+
+Now that it's reachable, there are two ways in: a browser for people, and the MCP endpoint for agents.
+
+### In a browser
+
+The same tunnel URL serves the web UI:
+
+```
+https://<your-tunnel-url>/
+```
+
+Open it in any browser that can reach the tunnel to browse and edit
+the knowledge base. The UI and the MCP endpoint share the one URL (`/` is the editor,
+`/mcp` is for agents); there is no separate `ok ui` port in remote mode.
+
+Editing is live: changes sync in real time between every connected browser and agent.
+A few behaviors to know:
+
+- **Every remote browser acts as the server's owner.** Same identity, full access.
+- **The Ask AI panel runs on the server.** Each conversation spawns an agent on the
+  machine hosting `ok start`, using that machine's installed agent and credentials (not
+  anything on your device), and its edits sync back like any agent's. Install and sign in
+  to an agent on the host for Ask AI to work over the tunnel.
+
+Anyone you share the URL with can open it and edit alongside you, all as the same owner, since there are no per-person accounts. Share it deliberately and only with people you trust.
+
+### With agents
+
+Point any MCP client at your endpoint:
+
+```
+https://<your-tunnel-url>/mcp
+```
+
+See [Connecting agents](/docs/deploy/connecting-agents) for per-client setup (Claude, Cursor, Codex, and others), including how a headless agent passes edge-auth credentials.
+
+Anyone who can reach this URL has full read-write access.
+
+## Back up to a git remote
+
+Optional, but recommended for a server. Your knowledge base is a plain git repository, and OpenKnowledge has a built-in sync engine: point it at a GitHub remote and it commits and pushes as agents write, on its own.
+
+Create an empty **private** GitHub repo, then on the machine:
+
+```bash
+gh auth login              # authorize this machine (or add a deploy key with write access)
+cd ~/knowledge
+git remote add origin https://github.com/you/knowledge.git
+git branch -M main && git add -A && git commit -m "knowledge base" && git push -u origin main
+```
+
+Turn on auto-sync:
+
+```bash
+printf 'autoSync:\n  enabled: true\n' > .ok/local/config.yml
+sudo systemctl restart openknowledge
+```
+
+From now on every edit is committed and pushed automatically. The commit author comes from the machine's git identity (`git config user.name` / `user.email`). A fresh server has none set, so commits fall back to a service identity, **OpenKnowledge**. Signing in with `gh` handles pushing, not authorship. Set a git identity if you'd rather commits carry your name. See [GitHub sync](/docs/features/github-sync) for sync modes, conflict handling, and authentication.
+
+The git remote is also a way to edit locally: `git clone` it on your laptop and open the clone in OK Desktop. That gives you a separate local copy with the full editor. It syncs with the server through git (each side pushes and pulls), not live, so changes cross over on the next sync rather than instantly.
+
+## Turning it off
+
+Stop the tunnel, or restart the server without `--remote` — either one closes remote access (without the flag, the server refuses tunneled requests outright). If the URL may have leaked further than intended, rotate it at the tunnel (ngrok and Cloudflare mint a fresh URL on restart; on Tailscale, tighten the ACL).

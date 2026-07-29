@@ -22,3 +22,19 @@ describe('API origin guards', () => {
     expect(isAllowedApiOrigin('file://evil.example')).toBe(false);
   });
 });
+
+describe('isAllowedApiOrigin with a remote public host', () => {
+  test('admits the https tunnel origin only when the host is supplied', () => {
+    expect(isAllowedApiOrigin('https://myproject.ngrok.app', 'myproject.ngrok.app')).toBe(true);
+    expect(isAllowedApiOrigin('https://myproject.ngrok.app')).toBe(false);
+  });
+
+  test('still refuses foreign and http origins with the host supplied', () => {
+    expect(isAllowedApiOrigin('https://evil.example.com', 'myproject.ngrok.app')).toBe(false);
+    expect(isAllowedApiOrigin('http://myproject.ngrok.app', 'myproject.ngrok.app')).toBe(false);
+  });
+
+  test('loopback origins keep working alongside the remote host', () => {
+    expect(isAllowedApiOrigin('http://localhost:5173', 'myproject.ngrok.app')).toBe(true);
+  });
+});

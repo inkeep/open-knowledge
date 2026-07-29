@@ -1,0 +1,5 @@
+{
+  "title": "Deploy",
+  "icon": "LuServer",
+  "pages": ["remote-access", "connecting-agents"]
+}

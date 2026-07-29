@@ -712,3 +712,27 @@ describe('createConcurrencyGuard', () => {
     expect(() => guard.release('never-acquired')).not.toThrow();
   });
 });
+
+describe('hasValidLocalOpOrigin with a remote public host', () => {
+  const reqWithOrigin = (origin: string) =>
+    ({ headers: { origin }, socket: { remoteAddress: '127.0.0.1' } }) as never;
+
+  test('admits the https tunnel origin only when the host is supplied', () => {
+    expect(
+      hasValidLocalOpOrigin(reqWithOrigin('https://myproject.ngrok.app'), 'myproject.ngrok.app'),
+    ).toBe(true);
+    expect(hasValidLocalOpOrigin(reqWithOrigin('https://myproject.ngrok.app'))).toBe(false);
+  });
+
+  test('still refuses foreign origins with the host supplied', () => {
+    expect(
+      hasValidLocalOpOrigin(reqWithOrigin('https://evil.example.com'), 'myproject.ngrok.app'),
+    ).toBe(false);
+  });
+
+  test('loopback origins keep working alongside the remote host', () => {
+    expect(
+      hasValidLocalOpOrigin(reqWithOrigin('http://localhost:5173'), 'myproject.ngrok.app'),
+    ).toBe(true);
+  });
+});

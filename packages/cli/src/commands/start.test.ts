@@ -13,6 +13,7 @@ import {
   type BootedStartServer,
   bootStartServer,
   buildIdleShutdownHandler,
+  coerceRemoteBindHost,
   computeConnectExitCode,
   connectUiSibling,
   decideUiSpawn,
@@ -53,6 +54,33 @@ describe('resolveHost', () => {
 
   test('explicit undefined --host falls through to env (precedence: flag > env > default)', () => {
     expect(resolveHost({ host: undefined }, { HOST: '0.0.0.0' })).toBe('0.0.0.0');
+  });
+});
+
+describe('coerceRemoteBindHost', () => {
+  test('no-op when remote access is disabled', () => {
+    expect(coerceRemoteBindHost('::1', false)).toEqual({ host: '::1', coerced: false });
+    expect(coerceRemoteBindHost('localhost', false)).toEqual({
+      host: 'localhost',
+      coerced: false,
+    });
+  });
+
+  test('coerces IPv6/hostname binds to 127.0.0.1 in remote mode (tunnel proxy target)', () => {
+    for (const host of ['::', '::1', '[::1]', 'localhost']) {
+      expect(coerceRemoteBindHost(host, true)).toEqual({ host: '127.0.0.1', coerced: true });
+    }
+  });
+
+  test('leaves loopback binds alone in remote mode', () => {
+    expect(coerceRemoteBindHost('127.0.0.1', true)).toEqual({
+      host: '127.0.0.1',
+      coerced: false,
+    });
+  });
+
+  test('coerces all-interfaces binds to loopback in remote mode', () => {
+    expect(coerceRemoteBindHost('0.0.0.0', true)).toEqual({ host: '127.0.0.1', coerced: true });
   });
 });
 
@@ -614,6 +642,15 @@ describe('resolveCollabPort (collab vs UI-sibling port suppression)', () => {
   });
   test('nothing set → undefined (kernel-allocated)', () => {
     expect(resolveCollabPort(undefined, undefined, undefined)).toBeUndefined();
+  });
+  test('with remote enabled, platform-injected env PORT is suppressed (tunnel targets remote.port)', () => {
+    expect(resolveCollabPort(undefined, 6000, undefined, true)).toBeUndefined();
+  });
+  test('with remote enabled, explicit --port still wins (deliberate override)', () => {
+    expect(resolveCollabPort(5000, 6000, undefined, true)).toBe(5000);
+  });
+  test('with remote enabled and nothing else set → undefined (caller falls back to remote.port)', () => {
+    expect(resolveCollabPort(undefined, undefined, undefined, true)).toBeUndefined();
   });
 });
 

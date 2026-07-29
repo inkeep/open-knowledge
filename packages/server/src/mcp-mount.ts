@@ -46,6 +46,11 @@ import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
 import type { MaintenanceCoordinator } from './maintenance-coordinator.ts';
 import type { McpHttpHandler } from './mcp-http.ts';
 import { handleCollabSocketError, incrementCollabMessageTooLarge } from './metrics.ts';
+import {
+  hasForwardingHeaders,
+  isRemoteAdmitted,
+  type ResolvedRemoteAccess,
+} from './remote-access.ts';
 
 const DEFAULT_KEEPALIVE_GRACE_MS = 10_000;
 const MAX_COLLAB_MESSAGE_BYTES = 1024 * 1024;
@@ -136,6 +141,20 @@ export interface MountMcpAndApiOptions {
    * serving is unchanged.
    */
   ephemeral?: boolean;
+  /**
+   * Resolved `remote:` config (null/undefined ⇒ remote access disabled).
+   * When set, EVERY surface (`/mcp`, `/api/*`, `/collab`, content assets,
+   * the SPA) admits requests whose Host is either a loopback name or the
+   * tunnel's public host — the trust-the-tunnel model: OK does not
+   * authenticate remote callers, the tunnel's edge does (see
+   * `remote-access.ts`). Wrong-Host requests (DNS-rebound pages) are refused.
+   * Local loopback behavior is byte-for-byte unchanged.
+   *
+   * When null/undefined, requests carrying proxy-forwarding headers are
+   * refused with a hint — a tunnel pointed at a server that never opted in
+   * must fail loud, not silently inherit full local trust.
+   */
+  remoteAccess?: ResolvedRemoteAccess | null;
 }
 
 export interface MountMcpAndApiHandle {
@@ -182,6 +201,7 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     reactShellMiddleware,
     ephemeral,
   } = opts;
+  const remoteAccess = opts.remoteAccess ?? undefined;
   const keepaliveGraceMs = opts.keepaliveGraceMs ?? DEFAULT_KEEPALIVE_GRACE_MS;
 
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_COLLAB_MESSAGE_BYTES });
@@ -208,24 +228,53 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
 
   const onRequest = (req: IncomingMessage, res: ServerResponse): void => {
     const url = req.url?.split('?')[0];
+    // Tripwire: proxy-forwarding headers on a server that never opted into
+    // remote access mean a tunnel is pointed at us. Refuse with the fix
+    // instruction — the alternative is silently serving a public tunnel with
+    // full local trust, decided by whether the tunnel rewrites Host.
+    if (remoteAccess === undefined && hasForwardingHeaders(req)) {
+      errorResponse(
+        res,
+        403,
+        'urn:ok:error:host-not-allowed',
+        'Proxied request refused: this server was not started for remote access. Restart with `ok start --remote` to serve through a tunnel.',
+        { handler: 'mcp-mount' },
+      );
+      return;
+    }
+    // With remote access enabled, ONE admit decision covers every surface
+    // (trust-the-tunnel — see remote-access.ts): loopback socket + Host on
+    // the allowlist (loopback names or the tunnel's public host). Refusals
+    // are wrong-Host callers (DNS-rebound pages), not auth failures.
+    if (remoteAccess !== undefined && !isRemoteAdmitted(req, remoteAccess)) {
+      errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
+        handler: 'mcp-mount',
+      });
+      return;
+    }
     if (mcpHttpHandler !== undefined && url === '/mcp') {
       const origin = req.headers.origin;
       const sessionId = Array.isArray(req.headers['mcp-session-id'])
         ? req.headers['mcp-session-id'][0]
         : req.headers['mcp-session-id'];
-      if (!isLoopbackAddress(req.socket.remoteAddress)) {
-        errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback access required.', {
-          handler: 'mcp',
-        });
-        return;
+      if (remoteAccess === undefined) {
+        // The pre-remote gate pair, unchanged: loopback socket + loopback
+        // Host. (With remote enabled the shared admit gate above already
+        // enforced the superset.)
+        if (!isLoopbackAddress(req.socket.remoteAddress)) {
+          errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback access required.', {
+            handler: 'mcp',
+          });
+          return;
+        }
+        if (!isAllowedWorkspaceHostHeader(req.headers.host)) {
+          errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
+            handler: 'mcp',
+          });
+          return;
+        }
       }
-      if (!isAllowedWorkspaceHostHeader(req.headers.host)) {
-        errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
-          handler: 'mcp',
-        });
-        return;
-      }
-      if (origin !== undefined && !isAllowedApiOrigin(origin)) {
+      if (origin !== undefined && !isAllowedApiOrigin(origin, remoteAccess?.publicHost)) {
         errorResponse(res, 403, 'urn:ok:error:invalid-origin', 'Origin not allowed.', {
           handler: 'mcp',
         });
@@ -399,19 +448,44 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
   };
 
   const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
+    // Same tripwire as the HTTP leg: a proxied upgrade on a server that never
+    // opted into remote access is refused rather than trusted as local.
+    if (remoteAccess === undefined && hasForwardingHeaders(req)) {
+      log.warn(
+        { url: req.url, host: req.headers.host },
+        '[remote] refused proxied WS upgrade; start the server with `ok start --remote <url>`',
+      );
+      socket.destroy();
+      return;
+    }
+    // Shared admit decision for the `/collab/thread` + `/collab/keepalive`
+    // upgrades. Remote mode widens the Host allowlist to the tunnel's public
+    // host through the `isRemoteAdmitted` choke point (tunnel traffic arrives
+    // loopback-peer + public-Host); local mode keeps the loopback-peer +
+    // workspace-Host gate. The bare `/collab` catch-all below relies on the
+    // loopback bind in local mode, so it only consults `isRemoteAdmitted`.
+    const collabUpgradeAdmitted = (): boolean =>
+      remoteAccess !== undefined
+        ? isRemoteAdmitted(req, remoteAccess)
+        : isLoopbackAddress(req.socket.remoteAddress) &&
+          isAllowedWorkspaceHostHeader(req.headers.host);
     if (req.url?.startsWith('/collab/thread')) {
-      // Same gate family as the mutating HTTP surface: loopback peer +
-      // workspace Host header, plus browser-Origin allowlist when an Origin
-      // is present (WS upgrades from pages always carry one; a DNS-rebound
-      // page fails the Host check, a foreign page fails the Origin check).
+      // Admit via the shared `/collab` upgrade gate (remote-widened Host in
+      // remote mode), plus the browser-Origin allowlist when an Origin is
+      // present (WS upgrades from pages always carry one; a DNS-rebound page
+      // fails the Host check, a foreign page fails the Origin check).
       const acp = opts.acpThreadManager;
       if (
         acp === undefined ||
         acp === null ||
-        !isLoopbackAddress(req.socket.remoteAddress) ||
-        !isAllowedWorkspaceHostHeader(req.headers.host) ||
-        (req.headers.origin !== undefined && !isAllowedApiOrigin(req.headers.origin))
+        !collabUpgradeAdmitted() ||
+        (req.headers.origin !== undefined &&
+          !isAllowedApiOrigin(req.headers.origin, remoteAccess?.publicHost))
       ) {
+        log.debug(
+          { url: req.url, host: req.headers.host, origin: req.headers.origin },
+          '[collab] /collab/thread upgrade refused',
+        );
         socket.destroy();
         return;
       }
@@ -428,10 +502,11 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     }
 
     if (req.url?.startsWith('/collab/keepalive')) {
-      if (
-        !isLoopbackAddress(req.socket.remoteAddress) ||
-        !isAllowedWorkspaceHostHeader(req.headers.host)
-      ) {
+      if (!collabUpgradeAdmitted()) {
+        log.debug(
+          { url: req.url, host: req.headers.host },
+          '[collab] /collab/keepalive upgrade refused',
+        );
         socket.destroy();
         return;
       }
@@ -588,6 +663,13 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     }
 
     if (req.url?.startsWith('/collab')) {
+      // Same admit gate as the HTTP legs: a wrong-Host upgrade never reaches
+      // Hocuspocus (the CRDT write surface).
+      if (remoteAccess !== undefined && !isRemoteAdmitted(req, remoteAccess)) {
+        log.debug({ url: req.url, host: req.headers.host }, '[collab] /collab upgrade refused');
+        socket.destroy();
+        return;
+      }
       socket.on('error', (err: NodeJS.ErrnoException) => {
         if (handleCollabSocketError(err)) return;
         log.error({ err }, 'Upgrade socket error');

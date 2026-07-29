@@ -398,6 +398,13 @@ export {
   reconcile,
   splitMarkdownBlocks,
 } from './reconciliation.ts';
+export {
+  hasForwardingHeaders,
+  isRemoteAdmitted,
+  RemoteConfigError,
+  type ResolvedRemoteAccess,
+  resolveRemoteAccess,
+} from './remote-access.ts';
 export { resolvePackageVersion } from './resolve-package-version.ts';
 // Seed scaffolder (`ok seed`) — shared module for the CLI Commander wrapper
 // and the Electron IPC handler. Deterministic plan/apply split; writes the

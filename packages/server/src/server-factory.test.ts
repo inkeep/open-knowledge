@@ -1984,7 +1984,45 @@ describe('createServer() — config-doc admission guard', () => {
         thrown = err;
       }
       expect(thrown).not.toBeNull();
-      expect((thrown as Error).message).toContain('loopback Host header');
+      expect((thrown as Error).message).toContain('loopback or remote Host header');
+    } finally {
+      await server.destroy();
+    }
+  });
+
+  test('config doc admits the tunnel public Host when remote access is enabled', async () => {
+    const server = createServer({
+      contentDir: tmpDir,
+      projectDir: tmpDir,
+      quiet: true,
+      remotePublicHost: 'myproject.ngrok.app',
+    });
+    try {
+      await server.ready;
+      const guard = getConfigDocAdmissionGuard(server);
+      await expect(
+        guard.onAuthenticate(
+          makePayload({
+            documentName: '__config__/project',
+            peer: '127.0.0.1',
+            host: 'myproject.ngrok.app',
+          }),
+        ),
+      ).resolves.not.toThrow();
+      // The attacker-domain rejection is unchanged with a remote host configured.
+      let thrown: unknown = null;
+      try {
+        await guard.onAuthenticate(
+          makePayload({
+            documentName: '__config__/project',
+            peer: '127.0.0.1',
+            host: 'attacker.example.com',
+          }),
+        );
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).not.toBeNull();
     } finally {
       await server.destroy();
     }
@@ -2004,7 +2042,7 @@ describe('createServer() — config-doc admission guard', () => {
         thrown = err;
       }
       expect(thrown).not.toBeNull();
-      expect((thrown as Error).message).toContain('loopback Host header');
+      expect((thrown as Error).message).toContain('loopback or remote Host header');
     } finally {
       await server.destroy();
     }
@@ -2049,7 +2087,7 @@ describe('createServer() — config-doc admission guard', () => {
         thrown = err;
       }
       expect(thrown).not.toBeNull();
-      expect((thrown as Error).message).toContain('loopback Host header');
+      expect((thrown as Error).message).toContain('loopback or remote Host header');
     } finally {
       await server.destroy();
     }

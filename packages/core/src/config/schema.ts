@@ -974,6 +974,39 @@ export const ConfigSchema = z.looseObject({
         .default(true),
     })
     .default({ enabled: true }),
+  // Remote access through any HTTPS tunnel. Config alone never enables it —
+  // the `ok start --remote` flag does. Trust-the-tunnel: no server-side auth
+  // and no access-level knob; restricting reach is the tunnel's job.
+  // `agentSettable: false` everywhere so an agent can't self-expose the box.
+  remote: z
+    .looseObject({
+      url: z
+        .string()
+        .register(fieldRegistry, {
+          scope: 'project',
+          agentSettable: false,
+          defaultScope: 'project',
+          description:
+            'Public URL your tunnel gives you, e.g. https://myproject.ngrok.app. Used only with `ok start --remote` (config alone never enables remote access); its host is admitted through the Host-header allowlist. There is no server-side auth, so restrict access at the tunnel (ngrok OAuth, Cloudflare Access, Tailscale ACLs).',
+        })
+        .optional(),
+      port: z
+        .number()
+        .int()
+        .min(1)
+        .max(65535)
+        .register(fieldRegistry, {
+          scope: 'project',
+          agentSettable: false,
+          defaultScope: 'project',
+          description:
+            "TCP port the server binds when remote access is enabled (default 24550). Fixed so the tunnel's port mapping survives restarts. Set it only on a conflict. An explicit --port still wins; the PORT env var is ignored in remote mode.",
+        })
+        .default(24550),
+    })
+    .default({
+      port: 24550,
+    }),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

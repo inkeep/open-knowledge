@@ -23,7 +23,7 @@ import {
 import { closeSync, existsSync as fsExistsSync, mkdirSync as fsMkdirSync, openSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import type { Server as HttpServer } from 'node:http';
-import { basename, join } from 'node:path';
+import { basename, join, resolve as pathResolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import {
   DEFAULT_SERVER_HOST,
@@ -65,6 +65,35 @@ export function resolveHost(
   env: { HOST?: string | undefined; [key: string]: string | undefined },
 ): string {
   return opts.host ?? env.HOST ?? DEFAULT_SERVER_HOST;
+}
+
+/**
+ * Bind-family guard for remote mode. Tunnel agents (ngrok, cloudflared,
+ * tailscaled, …) proxy to an IPv4 loopback target (`127.0.0.1:<port>`), so an
+ * IPv6-only bind (`::`, `::1`, or `localhost` resolving to `::1` first)
+ * leaves the tunnel dialing a port nobody answers on — hit in practice during
+ * the MVP. When remote access is enabled and the resolved host is one of
+ * those shapes, coerce to `127.0.0.1` and tell the operator. Pure — returns
+ * the corrected host and whether a coercion happened; caller logs.
+ */
+export function coerceRemoteBindHost(
+  host: string,
+  remoteEnabled: boolean,
+): { host: string; coerced: boolean } {
+  if (!remoteEnabled) return { host, coerced: false };
+  if (
+    host === '::' ||
+    host === '::1' ||
+    host === '[::1]' ||
+    host === 'localhost' ||
+    // 0.0.0.0 binds every interface; in remote mode the tunnel agent only
+    // needs loopback, and an all-interfaces bind would let a LAN peer reach
+    // the admitted surface directly, bypassing the tunnel's edge auth.
+    host === '0.0.0.0'
+  ) {
+    return { host: '127.0.0.1', coerced: true };
+  }
+  return { host, coerced: false };
 }
 
 /** Hard cap on the project-name suffix in `process.title` to keep `ps`/Activity Monitor lines readable. */
@@ -201,19 +230,23 @@ export function spawnOkUi(opts: SpawnOkUiOptions): ChildProcess {
 
 /**
  * Resolve the collab server's port from the three sources, for `runStartCommand`.
- * An explicit `--port` always wins. Otherwise, when `--ui-port` is set (the
- * worktree-preview recipe) the env `PORT` is the UI sibling's intended port, NOT
- * the collab server's — drop it so the brain kernel-allocates and the two can't
- * contend. Without `--ui-port`, env `PORT` flows through as before. Pure so the
- * suppression rule (the thing that prevents brain/UI port contention) is tested
+ * An explicit `--port` always wins. Otherwise env `PORT` is dropped in two
+ * cases: when `--ui-port` is set (the worktree-preview recipe) it is the UI
+ * sibling's intended port, NOT the collab server's — drop it so the brain
+ * kernel-allocates and the two can't contend; and when remote access is
+ * enabled, because PaaS platforms (Railway, Fly, Render) inject `PORT` for
+ * their own edge proxy — honoring it would silently move the server off the
+ * stable `remote.port` the tunnel's port mapping targets, leaving the
+ * tunnel dialing a dead port. Pure so both suppression rules are tested
  * directly.
  */
 export function resolveCollabPort(
   portFromCli: number | undefined,
   portFromEnv: number | undefined,
   requestedUiPort: number | undefined,
+  remoteEnabled = false,
 ): number | undefined {
-  return portFromCli ?? (requestedUiPort !== undefined ? undefined : portFromEnv);
+  return portFromCli ?? (requestedUiPort !== undefined || remoteEnabled ? undefined : portFromEnv);
 }
 
 /**
@@ -756,6 +789,11 @@ interface BootStartServerOptions {
    * synthesized `.ok/config.yml`. Defaults to `cwd`.
    */
   projectDir?: string;
+  /**
+   * Explicit remote-access opt-in (from `ok start --remote`). See
+   * `BootServerOptions.enableRemote` — config alone never arms remote access.
+   */
+  enableRemote?: boolean;
 }
 
 export interface BootedStartServer {
@@ -1035,6 +1073,7 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     contentRoot: ephemeral ? undefined : config.content.dir,
     port: opts.port,
     host,
+    ...(opts.enableRemote === true ? { enableRemote: true } : {}),
     quiet: false,
     detectGh,
     tokenStore,
@@ -1177,6 +1216,13 @@ interface StartCommandOptions {
   /** From `--project-dir <dir>`. See `BootStartServerOptions.projectDir` — the
    *  throwaway temp project root for the ephemeral single-file shape. */
   projectDir?: string;
+  /**
+   * From `--remote [url]`: explicit remote-access opt-in. `true` when the flag
+   * is bare (url comes from `remote.url` in config); a string when the url is
+   * supplied inline (used for this run, not persisted). Absent → loopback-only,
+   * regardless of any `remote.url` in config.
+   */
+  remote?: string | boolean;
 }
 
 /**
@@ -1265,7 +1311,16 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   const { accent, dim, error, warning } = await import('../ui/colors.ts');
 
   const cwd = process.cwd();
-  const activeConfig = config;
+  // Remote access is an explicit `--remote [url]` opt-in. A `remote.url` left
+  // in `.ok/config.yml` does NOT arm it by itself — the flag decides; the
+  // config url fills in when the flag is bare, and a flag-supplied url wins
+  // for this run without persisting.
+  const remoteEnabled = opts.remote !== undefined && opts.remote !== false;
+  const remoteUrlOverride = typeof opts.remote === 'string' ? opts.remote : undefined;
+  const activeConfig: Config =
+    remoteUrlOverride !== undefined
+      ? { ...config, remote: { ...config.remote, url: remoteUrlOverride } }
+      : config;
 
   // Set the process title as early as possible so Activity Monitor and
   // `ps -ax | grep open-knowledge-server` show each running server by
@@ -1274,10 +1329,52 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   // action; the OS process list is the discovery path.
   process.title = deriveServerProcessTitle(cwd);
 
+  // Fail loud BEFORE booting: --remote with no url anywhere is unusable, and
+  // the error message is the fix instruction.
+  if (
+    remoteEnabled &&
+    (typeof activeConfig.remote?.url !== 'string' || activeConfig.remote.url === '')
+  ) {
+    console.error(
+      error(
+        '--remote requires a public tunnel URL — pass it (`ok start --remote https://<your-tunnel-host>`) or set remote.url in .ok/config.yml.',
+      ),
+    );
+    process.exit(78);
+  }
+
+  // The trust-the-tunnel warning. Deliberately unmissable: with --remote there
+  // is NO server-side authentication — access control is entirely the
+  // tunnel's job (edge auth), and every admitted caller has the full owner
+  // surface. Printed on every remote start so the trade is never implicit.
+  if (remoteEnabled) {
+    console.warn(
+      warning(
+        [
+          '',
+          '⚠  REMOTE ACCESS ENABLED — no server-side authentication.',
+          `   Anyone who can reach ${activeConfig.remote?.url} has FULL control of this`,
+          '   knowledge base, including sync, publishing, credentials, and local operations.',
+          '   Restrict who can reach it at the tunnel: ngrok OAuth, Cloudflare Access,',
+          '   Tailscale ACLs, or equivalent edge auth.',
+          '',
+        ].join('\n'),
+      ),
+    );
+  }
+
   // Source-of-truth host + port resolution: CLI flag > env > application
-  // default. Both live as runtime knobs only — neither is a schema field
-  // (non-user-configurable either-scope fields are excluded from config).
-  const host = resolveHost(opts, process.env as { HOST?: string | undefined });
+  // default. Host lives as a runtime knob only; the port additionally falls
+  // back to `remote.port` when remote access is enabled (a stable tunnel
+  // target is part of the remote contract — see coerceRemoteBindHost).
+  const resolvedHost = resolveHost(opts, process.env as { HOST?: string | undefined });
+  const hostCoercion = coerceRemoteBindHost(resolvedHost, remoteEnabled);
+  if (hostCoercion.coerced) {
+    console.warn(
+      `remote access is enabled and ${resolvedHost} is not an IPv4 loopback bind — tunnels proxy to 127.0.0.1, so binding ${resolvedHost} would leave the tunnel dialing a dead port. Using 127.0.0.1.`,
+    );
+  }
+  const host = hostCoercion.host;
   const portFromCli = opts.port !== undefined ? Number(opts.port) : undefined;
   const portFromEnv = process.env.PORT ? Number(process.env.PORT) : undefined;
   const requestedUiPort = opts.uiPort !== undefined ? Number(opts.uiPort) : undefined;
@@ -1287,7 +1384,19 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   // env `PORT` for the collab in that case so the brain kernel-allocates; an
   // explicit `--port` still wins if the caller really wants a fixed collab
   // port. (Defense-in-depth: the recipe shell chain also unsets `PORT`.)
-  const port = resolveCollabPort(portFromCli, portFromEnv, requestedUiPort);
+  // An explicit --port still wins everywhere; in remote mode the config port
+  // fills the default slot and env PORT is suppressed (see resolveCollabPort).
+  // A stable port matters in remote mode because the tailscale serve/funnel
+  // mapping names a fixed target port — a kernel-assigned ephemeral port would
+  // break the tunnel on every restart.
+  if (remoteEnabled && portFromCli === undefined && portFromEnv !== undefined) {
+    console.warn(
+      `remote access is enabled — ignoring env PORT=${process.env.PORT}; the tunnel's port mapping targets the stable remote port (${activeConfig.remote?.port}). Pass --port to override deliberately.`,
+    );
+  }
+  const port =
+    resolveCollabPort(portFromCli, portFromEnv, requestedUiPort, remoteEnabled) ??
+    (remoteEnabled ? activeConfig.remote?.port : undefined);
 
   // Fast path: when `--ui-port` is set (the worktree-preview recipe), a
   // live collab server already in this folder means we must NOT boot a second
@@ -1306,6 +1415,27 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
     }
   }
 
+  // Remote mode serves the SPA from the same remote port (`/` = UI, `/mcp` =
+  // MCP) so one tunnel covers both. Resolve the bundled shell the way `ok ui`
+  // does; an explicit --react-shell-dist-dir still wins. Missing shell (rare:
+  // source checkout without an app build) degrades to MCP/API-only with a
+  // warning rather than failing the start. Passing reactShellDistDir also
+  // suppresses the `ok ui` sibling spawn — one UI, one port, in remote mode.
+  let reactShellDistDir = opts.reactShellDistDir;
+  if (remoteEnabled && reactShellDistDir === undefined) {
+    const cliDir = import.meta.dirname ?? new URL('.', import.meta.url).pathname;
+    reactShellDistDir = [
+      pathResolve(cliDir, 'public'), // npm install: dist/public/ (bundled)
+      pathResolve(cliDir, '../../app/dist'), // monorepo dev from src/
+      pathResolve(cliDir, '../../../app/dist'), // monorepo dev from dist/
+    ].find((p) => fsExistsSync(p));
+    if (reactShellDistDir === undefined) {
+      console.warn(
+        'remote access: bundled web UI not found — serving /mcp and /api only over the tunnel.',
+      );
+    }
+  }
+
   let booted: BootedStartServer;
   try {
     booted = await bootStartServer({
@@ -1317,9 +1447,10 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       ...(opts.serveContentAssets !== undefined
         ? { serveContentAssets: opts.serveContentAssets }
         : {}),
-      ...(opts.reactShellDistDir ? { reactShellDistDir: opts.reactShellDistDir } : {}),
+      ...(reactShellDistDir ? { reactShellDistDir } : {}),
       ...(opts.singleFile ? { singleFile: opts.singleFile } : {}),
       ...(opts.projectDir ? { projectDir: opts.projectDir } : {}),
+      ...(remoteEnabled ? { enableRemote: true } : {}),
     });
   } catch (err) {
     // Project not initialized — clean message, no stack trace.
@@ -1337,6 +1468,13 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       err instanceof serverModule.GitNotAvailableError ||
       err instanceof serverModule.GitTooOldError
     ) {
+      process.exit(78);
+    }
+
+    // Unusable `remote:` config block (--remote without a url, a plain-http
+    // url, …) — the error message is the fix instruction. EX_CONFIG.
+    if (err instanceof serverModule.RemoteConfigError) {
+      console.error(error(err.message));
       process.exit(78);
     }
 
@@ -1570,6 +1708,10 @@ export function startCommand(getConfig: () => Config): Command {
     .option(
       '--project-dir <dir>',
       'Throwaway project root for --single-file (where ephemeral .ok/ state lives)',
+    )
+    .option(
+      '--remote [url]',
+      'Serve through a tunnel: admit requests carrying the tunnel Host with NO server-side auth (anyone who can reach the URL has full control — restrict access at the tunnel with edge auth). Bare --remote uses remote.url from .ok/config.yml; --remote <url> supplies it for this run.',
     )
     .action(async (opts: StartCommandOptions) => {
       const config = getConfig();

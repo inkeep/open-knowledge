@@ -64,6 +64,7 @@ import { getLogger, loggerFactory, type PinoLogger } from './logger.ts';
 import { createMcpHttpHandler } from './mcp-http.ts';
 import { mountMcpAndApi } from './mcp-mount.ts';
 import { MissingOkConfigError } from './missing-ok-config-error.ts';
+import { RemoteConfigError, resolveRemoteAccess } from './remote-access.ts';
 import { createServer, type ServerInstance, type ServerOptions } from './server-factory.ts';
 import { installServerMemoryGauge, installServerRuntimeGauges } from './server-memory-telemetry.ts';
 import { reconcileSkillInstalls } from './skill-reconcile.ts';
@@ -232,6 +233,14 @@ export interface BootServerOptions
    * invoke UI-sibling spawn logic. Default false.
    */
   skipAutoInit?: boolean;
+  /**
+   * Explicit remote-access opt-in (`ok start --remote`). Remote access is
+   * NEVER armed from config alone — a `remote.url` left in `.ok/config.yml`
+   * must not silently expose a server whose operator didn't ask for it this
+   * run. Only the CLI passes true; the Electron utility and dev-server boot
+   * paths never do. Default false.
+   */
+  enableRemote?: boolean;
   /**
    * Forwarded to the ACP thread manager — see
    * `AcpThreadManagerOptions.probeHarnessManagedMcpEntry`. `ok start` and the
@@ -532,8 +541,24 @@ export async function bootServer(opts: BootServerOptions): Promise<BootedServer>
 async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   const skipAutoInit = opts.skipAutoInit ?? false;
   const attachUi = opts.attachUiSibling ?? true;
-  const idleMsOption = opts.idleShutdownMs;
   const log = opts.log ?? getLogger('boot');
+
+  // Remote access (the `remote:` config block) — armed only on the explicit
+  // `enableRemote` opt-in, never from config alone. Throws RemoteConfigError
+  // on requested-but-unusable config — fail loud at boot rather than serving
+  // a half-open remote surface. Ephemeral single-file mode never serves
+  // remotely (it has no project, no MCP endpoint, and no consented root).
+  const remoteAccess =
+    opts.enableRemote === true && opts.ephemeral !== true ? resolveRemoteAccess(opts.config) : null;
+  if (opts.enableRemote === true && opts.ephemeral !== true && remoteAccess === null) {
+    throw new RemoteConfigError(
+      'remote access was requested but remote.url is not set — pass a url (`ok start --remote <url>`) or set remote.url in .ok/config.yml.',
+    );
+  }
+  // Remote MCP sessions arrive over the tunnel as plain HTTP; the idle timer
+  // counts /collab WS clients only and would tear the server down under a
+  // live remote client. Keep it up in remote mode.
+  const idleMsOption = remoteAccess !== null ? null : opts.idleShutdownMs;
 
   // Lock-kind resolution. Explicit option wins over env. `OK_LOCK_KIND` is
   // the contract used by the MCP detach-spawn path in
@@ -663,6 +688,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   const serverInstance = createServer({
     contentDir: opts.contentDir,
     projectDir: opts.projectDir,
+    remotePublicHost: remoteAccess?.publicHost,
     contentRoot: opts.contentRoot,
     port: opts.port,
     host: opts.host,
@@ -859,10 +885,15 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // mounts, so the first `list` already includes them.
   if (acpThreadManager !== null) await acpThreadManager.init();
 
+  if (remoteAccess !== null) {
+    log.info({ url: remoteAccess.url }, '[remote] remote access enabled (trust-the-tunnel)');
+  }
+
   const mount = mountMcpAndApi({
     httpServer,
     hocuspocus,
     mcpHttpHandler,
+    remoteAccess,
     log,
     sessionManager,
     agentFocusBroadcaster,

@@ -203,6 +203,11 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       .filter((l) => getFieldMeta(l.schema)?.scope === 'project')
       .map((l) => l.path.join('.'))
       .sort();
+    // `remote.*` is the project's remote-access posture — the tunnel URL the
+    // Host allowlist admits (armed only by `ok start --remote`) and the stable
+    // port the tunnel targets. Project scope (committed) and never
+    // agent-settable: an agent setting these would be widening its own
+    // network exposure.
     expect(projectStrict).toEqual([
       'autoSync.default',
       'bridge.backgroundThrottle.enabled',
@@ -218,6 +223,8 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'contentRules.markdownlint.enabled',
       'lossCapture.enabled',
       'lossCapture.maxBytes',
+      'remote.port',
+      'remote.url',
       'telemetry.localSink.attributeDenylist',
       'telemetry.localSink.enabled',
       'telemetry.localSink.logs.maxBytes',

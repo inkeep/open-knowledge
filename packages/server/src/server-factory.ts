@@ -164,6 +164,7 @@ import {
 import { loadPrincipal } from './principal.ts';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';
 import { reconcile } from './reconciliation.ts';
+import { hostHeaderMatchesPublicHost } from './remote-access.ts';
 import { runRemovalRedirectGuard } from './removal-redirect-guard.ts';
 import { loadRemovedDocsJournal, saveRemovedDocsJournal } from './removed-docs-journal.ts';
 import {
@@ -206,6 +207,12 @@ import { trustSystemCertificates } from './trust-system-ca.ts';
 import { cleanupOrphanUploadTempfiles } from './upload-streaming.ts';
 
 export interface ServerOptions {
+  /**
+   * The tunnel's public host when remote access is enabled — threaded into
+   * the API extension so the browser-Origin allowlists admit the remote
+   * SPA's origin. See `ApiExtensionOptions.remotePublicHost`.
+   */
+  remotePublicHost?: string;
   port?: number;
   host?: string;
   contentDir: string;
@@ -1714,9 +1721,12 @@ export function createServer(options: ServerOptions): ServerInstance {
           (headersBag && typeof headersBag.get === 'function' ? headersBag.get('host') : null) ??
           req.headers?.host ??
           undefined;
-        if (!isAllowedWorkspaceHostHeader(host)) {
+        const remoteHostOk =
+          options.remotePublicHost !== undefined &&
+          hostHeaderMatchesPublicHost(host, options.remotePublicHost);
+        if (!isAllowedWorkspaceHostHeader(host) && !remoteHostOk) {
           throw new Error(
-            `config-doc admission requires loopback Host header (host=${host ?? '<absent>'}, doc=${payload.documentName})`,
+            `config-doc admission requires a loopback or remote Host header (host=${host ?? '<absent>'}, doc=${payload.documentName})`,
           );
         }
       },
@@ -1826,6 +1836,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     const apiExtension = createApiExtension({
       hocuspocus,
       durabilityState,
+      remotePublicHost: options.remotePublicHost,
       sessionManager,
       contentDir,
       contentFilter,

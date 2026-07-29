@@ -10,6 +10,8 @@ Every other read tool (`search`, `links`, `history`, etc.) and all write tools r
 
 The surface is **21 tools**. The four write verbs — `write`, `edit`, `delete`, `move` — are native CRUD operations polymorphic over a target. `write`, `edit`, and `delete` nest per-target fields inside the address key (`write({ document: { path, content } })`) and take exactly one target per call: `document`, `folder`, `template`, or `skill` — plus `asset` for `write` and `delete`, and a `documents` batch on `write` that writes several docs in order, each entry carrying its own `summary`. `move` takes flat `from`/`to` paths and auto-detects a document, folder, or asset, with nested `template` and `skill` targets for those two.
 
+To point an MCP client at this server, locally or over a tunnel from another machine, see [Connecting agents](/docs/deploy/connecting-agents).
+
 ## Tools
 
 | Tool | Purpose |

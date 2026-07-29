@@ -18,6 +18,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { errorResponse } from './http/error-response.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
+import { originMatchesPublicHost } from './remote-access.ts';
 
 const log = getLogger('local-op-security');
 
@@ -232,9 +233,15 @@ export function isLoopbackRequest(req: IncomingMessage): boolean {
  * accept crafted origins like `http://127.0.0.1.evil.com` if DNS rebinding
  * ever lined up with the loopback socket check.
  */
-export function hasValidLocalOpOrigin(req: IncomingMessage): boolean {
+export function hasValidLocalOpOrigin(req: IncomingMessage, remotePublicHost?: string): boolean {
   const origin = req.headers.origin;
   if (!origin) return true;
+  // Remote mode: the SPA served through the tunnel fetches from its public
+  // origin — admitted alongside the loopback set. Absent (local mode), the
+  // allowlist stays loopback-only.
+  if (remotePublicHost !== undefined && originMatchesPublicHost(origin, remotePublicHost)) {
+    return true;
+  }
   try {
     // WHATWG URL preserves the IPv6 brackets in `hostname` (e.g. `[::1]`), so
     // the comparison set includes the bracketed form alongside the literal.
@@ -263,7 +270,7 @@ export function hasValidLocalOpOrigin(req: IncomingMessage): boolean {
 export function checkLocalOpSecurity(
   req: IncomingMessage,
   res: ServerResponse,
-  options: { handler: string },
+  options: { handler: string; remotePublicHost?: string },
 ): boolean {
   if (!isLoopbackRequest(req)) {
     errorResponse(
@@ -275,7 +282,7 @@ export function checkLocalOpSecurity(
     );
     return false;
   }
-  if (!hasValidLocalOpOrigin(req)) {
+  if (!hasValidLocalOpOrigin(req, options.remotePublicHost)) {
     errorResponse(
       res,
       403,
