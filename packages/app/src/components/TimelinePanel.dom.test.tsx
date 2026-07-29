@@ -139,6 +139,18 @@ const SURFACED_KINDS: ParsedCheckpoint[] = [
     size: 12,
     metadata: { copies: 2, fragmentChildren: 18 },
   },
+  {
+    kind: 'persistence-divergence-realign',
+    docName: 'notes',
+    size: 12,
+    metadata: { diskBytes: 37, discardedBytes: 79 },
+  },
+  {
+    kind: 'managed-artifact-reconcile',
+    docName: '.ok/templates/daily',
+    size: 12,
+    metadata: { diskBytes: 41, discardedBytes: 66 },
+  },
 ];
 const AUTO_CONSOLIDATION: ParsedCheckpoint = {
   kind: 'auto-consolidation',

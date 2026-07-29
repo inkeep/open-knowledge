@@ -1592,6 +1592,26 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
           metadata: { copies: 2, fragmentChildren: 18 },
         });
         return;
+      case 'persistence-divergence-realign':
+        await saveInMemoryCheckpoint(shadow, 'content/docs', {
+          kind,
+          docName: 'k.md',
+          contents: `k${tag}\n`,
+          label: 'l',
+          date,
+          metadata: { diskBytes: 37, discardedBytes: 79 },
+        });
+        return;
+      case 'managed-artifact-reconcile':
+        await saveInMemoryCheckpoint(shadow, 'content/docs', {
+          kind,
+          docName: 'm.md',
+          contents: `m${tag}\n`,
+          label: 'l',
+          date,
+          metadata: { diskBytes: 41, discardedBytes: 66 },
+        });
+        return;
       case 'auto-consolidation':
         await writeAutoConsolidationCheckpoint(shadow, tag === '' ? 1 : Number(tag));
         return;
@@ -1621,6 +1641,8 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
       maxBridgeBackstopTrip: 50,
       maxPersistenceReconcileLoss: 50,
       maxPersistenceDuplicationReset: 50,
+      maxPersistenceDivergenceRealign: 50,
+      maxManagedArtifactReconcile: 50,
       maxAutoConsolidation: 50,
       ttlMs: 0,
     });

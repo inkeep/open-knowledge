@@ -42,9 +42,11 @@ import {
   withFileLock,
 } from '@inkeep/open-knowledge-core/server';
 import type * as Y from 'yjs';
+import type { DeriveLossDetectOptions } from './bridge-loss-detector.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 import { tracedAtomicFs, tracedMkdir } from './fs-traced.ts';
 import { getLogger } from './logger.ts';
+import { incrementManagedArtifactReconcile } from './metrics.ts';
 
 const log = getLogger('managed-artifact-persistence');
 
@@ -62,6 +64,35 @@ export interface ManagedArtifactCtx {
   /** Injected from `persistence.ts` (avoids a circular import). */
   setReconciledBase: (docName: string, content: string) => void;
   getReconciledBase: (docName: string) => string | undefined;
+  /**
+   * Called immediately before the concurrent-writer reconcile replaces the live
+   * artifact with the disk bytes. Mints the restore anchor for `liveContent`
+   * (the reconcile transacts under `FILE_WATCHER_ORIGIN`, so neither undo stack
+   * can reach it) and returns the paired-intake detector for the import, so the
+   * discarded content reaches the loss ring instead of vanishing silently.
+   *
+   * Injected rather than imported for the same reason the reconciled-base
+   * accessors are: the shadow repo, the loss ring, and the branch resolver all
+   * live in `persistence.ts`, and importing them here would close a cycle.
+   * Optional so a ctx built without that plumbing (unit rigs, ephemeral boots)
+   * still reconciles — it just reconciles unanchored, which the
+   * `managedArtifactReconcile` counter records.
+   *
+   * The detector is RETURNED rather than constructed here, which is why this
+   * hook bundles two jobs where the document-path sibling
+   * (`checkpointBeforeDivergenceRealign`) only checkpoints and lets its caller
+   * build `detect` inline. That asymmetry is the DI boundary, not a style
+   * choice: a `detect` reporter needs the loss ring, the site constant, and
+   * `fnv1aDigest`, none of which this module can reach without the cycle the
+   * seam exists to avoid. A follow-up site inside `persistence.ts` should
+   * follow the realign shape; one outside it should follow this one.
+   */
+  beforeReconcileDivergence?: (
+    document: Y.Doc,
+    documentName: string,
+    liveContent: string,
+    diskContent: string,
+  ) => DeriveLossDetectOptions | undefined;
 }
 
 /** Store outcome — surfaced for tests + telemetry. */
@@ -387,8 +418,15 @@ export async function storeManagedArtifactDoc(
           disk = null;
         }
         if (disk !== null && disk !== lkg && disk !== content) {
+          // The reconcile discards whatever the author had live under an origin
+          // neither undo stack can reach, so it owes a restore anchor and a
+          // loss-ring breadcrumb before it touches the doc. The counter fires
+          // here rather than inside the hook so a ctx with no shadow plumbing
+          // still records that live content was replaced.
+          incrementManagedArtifactReconcile();
+          const detect = ctx.beforeReconcileDivergence?.(document, documentName, content, disk);
           document.transact(() => {
-            applyDiskContentToDoc(document, disk, undefined, documentName);
+            applyDiskContentToDoc(document, disk, undefined, documentName, undefined, detect);
           }, FILE_WATCHER_ORIGIN);
           ctx.setReconciledBase(documentName, disk);
           ctx.lkgCache.set(documentName, disk);

@@ -919,6 +919,22 @@ export type InMemoryCheckpointParams = (
       branch?: string;
       metadata: { copies: number; fragmentChildren: number };
     }
+  | {
+      kind: 'persistence-divergence-realign';
+      docName: string;
+      contents: string;
+      label: string;
+      branch?: string;
+      metadata: { diskBytes: number; discardedBytes: number };
+    }
+  | {
+      kind: 'managed-artifact-reconcile';
+      docName: string;
+      contents: string;
+      label: string;
+      branch?: string;
+      metadata: { diskBytes: number; discardedBytes: number };
+    }
 ) & {
   /**
    * Explicit commit timestamp (any git-parseable date, e.g. ISO 8601), applied
@@ -1068,6 +1084,22 @@ async function saveInMemoryCheckpointInner(
     case 'persistence-duplication-reset':
       parsed = {
         kind: 'persistence-duplication-reset',
+        docName: params.docName,
+        size,
+        metadata: params.metadata,
+      };
+      break;
+    case 'persistence-divergence-realign':
+      parsed = {
+        kind: 'persistence-divergence-realign',
+        docName: params.docName,
+        size,
+        metadata: params.metadata,
+      };
+      break;
+    case 'managed-artifact-reconcile':
+      parsed = {
+        kind: 'managed-artifact-reconcile',
         docName: params.docName,
         size,
         metadata: params.metadata,
@@ -1309,6 +1341,23 @@ export interface CheckpointRetentionPolicy {
    */
   maxPersistenceDuplicationReset: number;
   /**
+   * Maximum `persistence-divergence-realign` checkpoints to keep per branch.
+   * Written when the L3 store-time backstop declares disk the winner over a
+   * diverged live document. Its own budget so an agent retry-looping against a
+   * file a second writer keeps rewriting cannot evict duplication-reset or
+   * merge-drop anchors — the budget is the second line of defense; the mint-side
+   * dedup in `persistence.ts` is the first. Default 50.
+   */
+  maxPersistenceDivergenceRealign: number;
+  /**
+   * Maximum `managed-artifact-reconcile` checkpoints to keep per branch.
+   * Written when a managed-artifact store reconciles against a concurrent
+   * writer. Its own budget so churn on a skill or template — a class that is
+   * frequently agent-authored, and so can reconcile far more often than prose —
+   * cannot evict the document-path anchors. Default 50.
+   */
+  maxManagedArtifactReconcile: number;
+  /**
    * Maximum `auto-consolidation` checkpoints to keep per branch.
    * These are service-authored when dead WIP chains are folded; left unbounded
    * they reintroduce the unbounded-hidden-ref growth this feature exists to
@@ -1340,6 +1389,8 @@ export const DEFAULT_CHECKPOINT_RETENTION: CheckpointRetentionPolicy = {
   maxBridgeBackstopTrip: 50,
   maxPersistenceReconcileLoss: 50,
   maxPersistenceDuplicationReset: 50,
+  maxPersistenceDivergenceRealign: 50,
+  maxManagedArtifactReconcile: 50,
   maxAutoConsolidation: 2,
   ttlMs: 30 * 24 * 60 * 60 * 1000,
 };
@@ -1356,6 +1407,8 @@ export interface CheckpointGcResult {
   deletedBridgeBackstopTrip: number;
   deletedPersistenceReconcileLoss: number;
   deletedPersistenceDuplicationReset: number;
+  deletedPersistenceDivergenceRealign: number;
+  deletedManagedArtifactReconcile: number;
   deletedAutoConsolidation: number;
   retained: number;
 }
@@ -1430,6 +1483,16 @@ export const GC_BUCKET_POLICY = {
     counter: 'deletedPersistenceDuplicationReset',
     applyTtl: true,
   },
+  'persistence-divergence-realign': {
+    limit: (p) => p.maxPersistenceDivergenceRealign,
+    counter: 'deletedPersistenceDivergenceRealign',
+    applyTtl: true,
+  },
+  'managed-artifact-reconcile': {
+    limit: (p) => p.maxManagedArtifactReconcile,
+    counter: 'deletedManagedArtifactReconcile',
+    applyTtl: true,
+  },
   // Count-only: TTL must never be able to reap every surviving
   // auto-checkpoint, or the chained consolidated history it anchors becomes
   // unreachable.
@@ -1481,6 +1544,8 @@ async function gcCheckpointRefsInner(
     deletedBridgeBackstopTrip: 0,
     deletedPersistenceReconcileLoss: 0,
     deletedPersistenceDuplicationReset: 0,
+    deletedPersistenceDivergenceRealign: 0,
+    deletedManagedArtifactReconcile: 0,
     deletedAutoConsolidation: 0,
     retained: 0,
   };

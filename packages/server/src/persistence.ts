@@ -84,6 +84,7 @@ import {
   loadManagedArtifactDoc,
   type ManagedArtifactCtx,
   managedArtifactContributorAttribution,
+  managedArtifactTimelinePaths,
   storeManagedArtifactDoc,
 } from './managed-artifact-persistence.ts';
 import { mdManager, schema } from './md-manager.ts';
@@ -96,8 +97,13 @@ import {
   incrementDeferredStoreFailures,
   incrementGitAutoSaveFailure,
   incrementGitWriterCommitFailure,
+  incrementManagedArtifactReconcileCheckpointCreated,
+  incrementManagedArtifactReconcileDeduped,
   incrementPersistenceDeferHold,
   incrementPersistenceDiskWrite,
+  incrementPersistenceDivergenceRealign,
+  incrementPersistenceDivergenceRealignCheckpointCreated,
+  incrementPersistenceDivergenceRealignDeduped,
   incrementPersistenceDuplicationReset,
   incrementPersistenceDuplicationResetCheckpointCreated,
   incrementPersistenceDuplicationResetDeduped,
@@ -642,6 +648,8 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     lkgCache: managedArtifactLkgCache,
     setReconciledBase: (docName, content) => durabilityState.setReconciledBase(docName, content),
     getReconciledBase: (docName) => durabilityState.getReconciledBase(docName),
+    beforeReconcileDivergence: (document, docName, liveContent, diskContent) =>
+      checkpointBeforeManagedArtifactReconcile(document, docName, liveContent, diskContent),
   };
 
   // Mermaid (`.mmd`/`.mermaid`) persistence ctx. Y.Text-only, content-dir paths,
@@ -1153,6 +1161,8 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
    */
   const PERSISTENCE_PREWRITE_SITE = 'persistence-prewrite';
   const PERSISTENCE_DUPLICATION_SITE = 'persistence-duplication-reset';
+  const PERSISTENCE_REALIGN_SITE = 'persistence-divergence-realign';
+  const MANAGED_ARTIFACT_RECONCILE_SITE = 'managed-artifact-reconcile';
 
   /**
    * Last floor-checkpoint payload minted per document. Some documents diverge
@@ -1292,16 +1302,13 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     fragmentChildren: number,
   ): void {
     incrementPersistenceDuplicationReset();
-    if (lastDuplicationCheckpointPayload.get(document) === liveMarkdown) {
-      incrementPersistenceDuplicationResetDeduped();
-      return;
-    }
-    // Claimed before the write so two trips can never race into two anchors;
-    // released again if the write fails, so a transient shadow error still
-    // retries on the next trip instead of permanently suppressing the anchor.
-    lastDuplicationCheckpointPayload.set(document, liveMarkdown);
     const ring = options?.getLossRing?.();
     const shadow = shadowRef?.current;
+    // The shadow guard precedes the dedup claim deliberately. Claiming first
+    // would let a single no-shadow trip pin the payload forever, so every later
+    // trip with that same content would dedup into silence — no anchor, and no
+    // ring record either. The breadcrumb is the only signal a no-shadow run
+    // has; it must not be deduped away.
     if (!shadow) {
       void ring?.record({
         event: LOSS_EVENT_CHECKPOINT_WRITE,
@@ -1313,6 +1320,14 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       });
       return;
     }
+    if (lastDuplicationCheckpointPayload.get(document) === liveMarkdown) {
+      incrementPersistenceDuplicationResetDeduped();
+      return;
+    }
+    // Claimed before the write so two trips can never race into two anchors;
+    // released again if the write fails, so a transient shadow error still
+    // retries on the next trip instead of permanently suppressing the anchor.
+    lastDuplicationCheckpointPayload.set(document, liveMarkdown);
     const branch = getCurrentBranch?.() ?? 'main';
     queueMicrotask(() => {
       saveInMemoryCheckpoint(shadow, contentRoot, {
@@ -1356,6 +1371,229 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           );
         });
     });
+  }
+
+  const lastRealignCheckpointPayload = new WeakMap<Y.Doc, string>();
+
+  /**
+   * Checkpoint-before-repair for the L3 store-time divergence realign.
+   *
+   * `liveMarkdown` is the document the realign is about to discard. Unlike the
+   * duplication tripwire this arm fires on a genuine external-writer conflict,
+   * so the disk-wins decision itself is correct and stays — but the realign
+   * transacts under `FILE_WATCHER_ORIGIN` all the same, which the server
+   * UndoManager excludes by contract and which reaches browsers as a remote
+   * update outside any local `trackedOrigins` set. The agent learns its write
+   * did not land; the human whose WYSIWYG edit merged alongside it learns
+   * nothing, and this anchor is their only way back.
+   *
+   * Fire-and-forget, and the realign is never gated on it — the dedup
+   * suppresses the MINT, not the repair.
+   *
+   * Takes the disk bytes rather than their length so the caller cannot pass a
+   * length that has drifted from the content it describes; the sibling
+   * managed-artifact helper takes the same shape.
+   */
+  function checkpointBeforeDivergenceRealign(
+    document: Y.Doc,
+    documentName: string,
+    liveMarkdown: string,
+    diskContent: string,
+  ): void {
+    incrementPersistenceDivergenceRealign();
+    const ring = options?.getLossRing?.();
+    const shadow = shadowRef?.current;
+    // The shadow guard precedes the dedup claim deliberately. Claiming first
+    // would let a single no-shadow trip pin the payload forever, so every later
+    // trip with that same content would dedup into silence — no anchor, and no
+    // ring record either. The breadcrumb is the only signal a no-shadow run
+    // has; it must not be deduped away.
+    if (!shadow) {
+      void ring?.record({
+        event: LOSS_EVENT_CHECKPOINT_WRITE,
+        docName: documentName,
+        writerId: null,
+        direction: 'b',
+        site: PERSISTENCE_REALIGN_SITE,
+        lostLen: liveMarkdown.length,
+      });
+      return;
+    }
+    if (lastRealignCheckpointPayload.get(document) === liveMarkdown) {
+      incrementPersistenceDivergenceRealignDeduped();
+      return;
+    }
+    // Claimed before the write so two trips can never race into two anchors;
+    // released again if the write fails, so a transient shadow error still
+    // retries on the next trip instead of permanently suppressing the anchor.
+    lastRealignCheckpointPayload.set(document, liveMarkdown);
+    const branch = getCurrentBranch?.() ?? 'main';
+    queueMicrotask(() => {
+      saveInMemoryCheckpoint(shadow, contentRoot, {
+        kind: 'persistence-divergence-realign',
+        docName: documentName,
+        contents: liveMarkdown,
+        label: `Before divergence realign @ ${new Date().toISOString()}`,
+        branch,
+        metadata: { diskBytes: diskContent.length, discardedBytes: liveMarkdown.length },
+      })
+        .then((sha) => {
+          incrementPersistenceDivergenceRealignCheckpointCreated();
+          void ring?.record({
+            event: LOSS_EVENT_CHECKPOINT_WRITE,
+            docName: documentName,
+            writerId: null,
+            direction: 'b',
+            site: PERSISTENCE_REALIGN_SITE,
+            lostLen: liveMarkdown.length,
+            checkpointSha: sha,
+          });
+          console.warn(
+            JSON.stringify({
+              event: 'persistence-divergence-realign-checkpoint-created',
+              docName: documentName,
+              sha,
+              kind: 'persistence-divergence-realign',
+              timestamp: new Date().toISOString(),
+            }),
+          );
+        })
+        .catch((checkpointErr: unknown) => {
+          if (lastRealignCheckpointPayload.get(document) === liveMarkdown) {
+            lastRealignCheckpointPayload.delete(document);
+          }
+          const e =
+            checkpointErr instanceof Error ? checkpointErr : new Error(String(checkpointErr));
+          log.warn(
+            { documentName, err: e },
+            '[persistence] divergence-realign checkpoint write failed',
+          );
+        });
+    });
+  }
+
+  const lastManagedReconcileCheckpointPayload = new WeakMap<Y.Doc, string>();
+
+  /**
+   * Checkpoint-before-repair for the managed-artifact concurrent-writer
+   * reconcile, plus the paired-intake detector for the import that follows.
+   *
+   * Reached only through `ManagedArtifactCtx.beforeReconcileDivergence`, which
+   * exists because the shadow repo, the loss ring, and the branch resolver all
+   * live in this closure and importing them into the artifact module would
+   * close a cycle.
+   *
+   * The anchor is filed under the artifact's TIMELINE key
+   * (`.ok/skills/<name>` / `<folder>/.ok/templates/<name>`), not the synthetic
+   * `__skill__` / `__template__` doc name, so it addresses the same path the
+   * history surface reads. Global skills live outside any project shadow repo
+   * and are unversioned by construction — they get the ring breadcrumb and the
+   * detector, but no anchor, because there is nowhere to file one.
+   */
+  function checkpointBeforeManagedArtifactReconcile(
+    document: Y.Doc,
+    documentName: string,
+    liveContent: string,
+    diskContent: string,
+  ): DeriveLossDetectOptions | undefined {
+    // No fire counter here, unlike the two sibling helpers: the reconcile's
+    // `incrementManagedArtifactReconcile()` fires at the call site in
+    // `managed-artifact-persistence.ts`, so a ctx built without this hook still
+    // records that live content was replaced.
+    const ring = options?.getLossRing?.();
+    const detect: DeriveLossDetectOptions = {
+      baselineFullMd: diskContent,
+      report: (obs) => {
+        // Never throws, per the reporter contract — this runs inside the
+        // reconcile transact, and the store's catch would report the whole
+        // write as failed on a purely diagnostic error.
+        try {
+          const dropped = detectPairedIntakeLoss(obs);
+          if (dropped.length === 0) return;
+          void ring?.record({
+            event: LOSS_EVENT_DETECTOR_TRIP,
+            docName: documentName,
+            writerId: FILE_SYSTEM_WRITER.id,
+            direction: 'b',
+            site: MANAGED_ARTIFACT_RECONCILE_SITE,
+            lostLen: dropped.reduce((n, s) => n + s.length, 0),
+            digest: fnv1aDigest(dropped.join('\n')),
+          });
+        } catch (detectErr) {
+          log.warn(
+            { documentName, err: detectErr },
+            '[persistence] managed-artifact reconcile loss detection failed',
+          );
+        }
+      },
+    };
+
+    const paths = managedArtifactTimelinePaths(documentName);
+    const shadow = shadowRef?.current;
+    if (!shadow || !paths.managed || !paths.versioned) {
+      void ring?.record({
+        event: LOSS_EVENT_CHECKPOINT_WRITE,
+        docName: documentName,
+        writerId: null,
+        direction: 'b',
+        site: MANAGED_ARTIFACT_RECONCILE_SITE,
+        lostLen: liveContent.length,
+      });
+      return detect;
+    }
+    if (lastManagedReconcileCheckpointPayload.get(document) === liveContent) {
+      incrementManagedArtifactReconcileDeduped();
+      return detect;
+    }
+    // Claimed before the write so two trips can never race into two anchors;
+    // released again if the write fails, so a transient shadow error still
+    // retries on the next trip instead of permanently suppressing the anchor.
+    lastManagedReconcileCheckpointPayload.set(document, liveContent);
+    const branch = getCurrentBranch?.() ?? 'main';
+    const anchorDocName = paths.docKey;
+    queueMicrotask(() => {
+      saveInMemoryCheckpoint(shadow, contentRoot, {
+        kind: 'managed-artifact-reconcile',
+        docName: anchorDocName,
+        contents: liveContent,
+        label: `Before artifact reconcile @ ${new Date().toISOString()}`,
+        branch,
+        metadata: { diskBytes: diskContent.length, discardedBytes: liveContent.length },
+      })
+        .then((sha) => {
+          incrementManagedArtifactReconcileCheckpointCreated();
+          void ring?.record({
+            event: LOSS_EVENT_CHECKPOINT_WRITE,
+            docName: documentName,
+            writerId: null,
+            direction: 'b',
+            site: MANAGED_ARTIFACT_RECONCILE_SITE,
+            lostLen: liveContent.length,
+            checkpointSha: sha,
+          });
+          console.warn(
+            JSON.stringify({
+              event: 'managed-artifact-reconcile-checkpoint-created',
+              docName: documentName,
+              sha,
+              kind: 'managed-artifact-reconcile',
+              timestamp: new Date().toISOString(),
+            }),
+          );
+        })
+        .catch((checkpointErr: unknown) => {
+          if (lastManagedReconcileCheckpointPayload.get(document) === liveContent) {
+            lastManagedReconcileCheckpointPayload.delete(document);
+          }
+          const e =
+            checkpointErr instanceof Error ? checkpointErr : new Error(String(checkpointErr));
+          log.warn(
+            { documentName, err: e },
+            '[persistence] managed-artifact reconcile checkpoint write failed',
+          );
+        });
+    });
+    return detect;
   }
 
   // Lazy-init histograms; safe to call in every hook. Meter is a no-op when OTel
@@ -2059,6 +2297,46 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                 candidateBytes: markdown.length,
               }),
             );
+            // The realign discards the live document under an origin neither
+            // undo stack can reach, so it owes a restore anchor first. Minted
+            // before the transact and never gated on — a shadow failure degrades
+            // observability, never the disk-authority repair.
+            checkpointBeforeDivergenceRealign(document, documentName, markdown, diskContent);
+            // The disk bytes are the state the live document is being realigned
+            // ONTO, so fragment content absent from them is exactly what this
+            // realign destroys. That baseline is what makes the paired-intake
+            // detector report the discarded content instead of staying silent —
+            // the precondition that lets the other persistence callers omit
+            // `detect` (they re-apply bytes the fragment already derives from)
+            // is false here by construction.
+            const lossRing = options?.getLossRing?.();
+            const detect: DeriveLossDetectOptions = {
+              baselineFullMd: diskContent,
+              report: (obs) => {
+                // Never throws, per the reporter contract. This runs INSIDE the
+                // realign transact, whose catch records a store failure and
+                // rethrows — a diagnostic failure escaping here would report the
+                // disk-authority repair as failed when it actually succeeded.
+                try {
+                  const dropped = detectPairedIntakeLoss(obs);
+                  if (dropped.length === 0) return;
+                  void lossRing?.record({
+                    event: LOSS_EVENT_DETECTOR_TRIP,
+                    docName: documentName,
+                    writerId: FILE_SYSTEM_WRITER.id,
+                    direction: 'b',
+                    site: PERSISTENCE_REALIGN_SITE,
+                    lostLen: dropped.reduce((n, s) => n + s.length, 0),
+                    digest: fnv1aDigest(dropped.join('\n')),
+                  });
+                } catch (detectErr) {
+                  log.warn(
+                    { documentName, err: detectErr },
+                    '[persistence] divergence-realign loss detection failed',
+                  );
+                }
+              },
+            };
             // Caller-wrapped FILE_WATCHER_ORIGIN transact (paired-write +
             // skipStoreHooks), matching the tripwire-reset ingest — so the
             // realign fires no nested store and stays out of the agent's
@@ -2072,7 +2350,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             // setReconciledBase) so a retry re-reads disk and reconciles again.
             try {
               document.transact(() => {
-                applyDiskContent(document, diskContent);
+                applyDiskContent(document, diskContent, undefined, undefined, undefined, detect);
               }, FILE_WATCHER_ORIGIN);
             } catch (err) {
               durabilityState.recordStoreFailure(documentName, toStoreFailure(err));

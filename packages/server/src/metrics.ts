@@ -337,6 +337,34 @@ export interface ReconciliationMetrics {
    *  false-positive class the guard used to destroy; a healthy signal, not a
    *  loss. */
   persistenceDuplicationSpared: number;
+  /** Count of L3 store-time divergence realigns — disk moved away from the
+   *  reconciled base between L1's check and the store, so disk won and the live
+   *  document was replaced. Increments on every realign, including ones with no
+   *  shadow wired, so a run whose anchors never landed does not read as healthy.
+   *  A nonzero value in a dogfood bundle means a second writer's edit displaced
+   *  live CRDT state (the agent's write, and any human edit merged alongside). */
+  persistenceDivergenceRealign: number;
+  /** Successful `persistence-divergence-realign` checkpoint writes. With the
+   *  deduped sibling this closes the identity
+   *  `persistenceDivergenceRealign = created + deduped + (anchors that never landed)`. */
+  persistenceDivergenceRealignCheckpointCreated: number;
+  /** Realigns whose pre-realign document was byte-identical to the anchor already
+   *  on the timeline for that doc, so no new checkpoint was minted. An agent
+   *  retry-looping against a file a second writer keeps rewriting lives here;
+   *  without the dedup it would evict its own useful anchors. */
+  persistenceDivergenceRealignDeduped: number;
+  /** Count of managed-artifact (skill/template) stores that reconciled against a
+   *  concurrent writer instead of clobbering — the live artifact doc was replaced
+   *  with the disk bytes. Increments on every reconcile, including unversioned
+   *  artifacts (global skills) where no anchor can exist. */
+  managedArtifactReconcile: number;
+  /** Successful `managed-artifact-reconcile` checkpoint writes. Always ≤
+   *  `managedArtifactReconcile`: global skills live outside any project shadow
+   *  repo, so their reconciles are counted but structurally unanchorable. */
+  managedArtifactReconcileCheckpointCreated: number;
+  /** Reconciles whose pre-reconcile artifact was byte-identical to the anchor
+   *  already on the timeline for that doc, so no new checkpoint was minted. */
+  managedArtifactReconcileDeduped: number;
   /** Count of Y.Text→XmlFragment re-derive-loop backstop trips — a run of
    *  re-derive drains never reached a raw-byte fixed point and the B-direction
    *  re-derive was frozen (checkpoint + ring event). A nonzero value in CI or a
@@ -555,6 +583,12 @@ const counters: ReconciliationMetrics = {
   persistenceDuplicationResetCheckpointCreated: 0,
   persistenceDuplicationResetDeduped: 0,
   persistenceDuplicationSpared: 0,
+  persistenceDivergenceRealign: 0,
+  persistenceDivergenceRealignCheckpointCreated: 0,
+  persistenceDivergenceRealignDeduped: 0,
+  managedArtifactReconcile: 0,
+  managedArtifactReconcileCheckpointCreated: 0,
+  managedArtifactReconcileDeduped: 0,
   reDeriveBackstopTripped: 0,
   bridgeSplitBrainRederives: 0,
   bridgeSplitBrainRederivesSuppressed: 0,
@@ -804,6 +838,30 @@ export function incrementPersistenceDuplicationSpared(): void {
   counters.persistenceDuplicationSpared++;
 }
 
+export function incrementPersistenceDivergenceRealign(): void {
+  counters.persistenceDivergenceRealign++;
+}
+
+export function incrementPersistenceDivergenceRealignCheckpointCreated(): void {
+  counters.persistenceDivergenceRealignCheckpointCreated++;
+}
+
+export function incrementPersistenceDivergenceRealignDeduped(): void {
+  counters.persistenceDivergenceRealignDeduped++;
+}
+
+export function incrementManagedArtifactReconcile(): void {
+  counters.managedArtifactReconcile++;
+}
+
+export function incrementManagedArtifactReconcileCheckpointCreated(): void {
+  counters.managedArtifactReconcileCheckpointCreated++;
+}
+
+export function incrementManagedArtifactReconcileDeduped(): void {
+  counters.managedArtifactReconcileDeduped++;
+}
+
 export function incrementReDeriveBackstopTripped(): void {
   counters.reDeriveBackstopTripped++;
 }
@@ -1017,6 +1075,12 @@ export function resetMetrics(): void {
   counters.persistenceDuplicationResetCheckpointCreated = 0;
   counters.persistenceDuplicationResetDeduped = 0;
   counters.persistenceDuplicationSpared = 0;
+  counters.persistenceDivergenceRealign = 0;
+  counters.persistenceDivergenceRealignCheckpointCreated = 0;
+  counters.persistenceDivergenceRealignDeduped = 0;
+  counters.managedArtifactReconcile = 0;
+  counters.managedArtifactReconcileCheckpointCreated = 0;
+  counters.managedArtifactReconcileDeduped = 0;
   counters.reDeriveBackstopTripped = 0;
   counters.bridgeSplitBrainRederives = 0;
   counters.bridgeSplitBrainRederivesSuppressed = 0;

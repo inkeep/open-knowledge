@@ -250,6 +250,68 @@ describe('concurrent-writer reconcile', () => {
     expect(reconciled.get(docName)).toBe(otherWriter);
   });
 
+  /**
+   * Global skills are the reconcile arm's primary reachable case — project
+   * skills return 'no-op' before it, so the reachable set is global skills plus
+   * templates. They also live outside any project shadow repo, which makes them
+   * the unanchorable half of the site: the hook still has to run so the counter
+   * and the ring breadcrumb fire, even though there is nowhere to file an
+   * anchor. The booted template test pins the anchored half; this pins the hand-
+   * off, which is what tells the anchored half it will ever be reached.
+   */
+  test('reconcile invokes beforeReconcileDivergence with the live and disk content', async () => {
+    const calls: Array<{ docName: string; live: string; disk: string }> = [];
+    const ctx: ManagedArtifactCtx = {
+      ...makeCtx(),
+      beforeReconcileDivergence: (_doc, name, live, disk) => {
+        calls.push({ docName: name, live, disk });
+        return undefined;
+      },
+    };
+    const doc = new Y.Doc();
+    const v1 = '---\nname: demo\ndescription: a\n---\nA\n';
+    doc.transact(() => doc.getText('source').insert(0, v1), 'agent');
+    await storeManagedArtifactDoc(doc, docName, 'agent', ctx);
+    expect(calls).toHaveLength(0); // a clean store must not look like a reconcile
+
+    const path = managedArtifactAbsPath(docName, ctx);
+    const otherWriter = '---\nname: demo\ndescription: a\n---\nOTHER WRITER\n';
+    writeFileSync(path, otherWriter, 'utf-8');
+
+    doc.transact(
+      () => doc.getText('source').insert(doc.getText('source').length, 'local edit'),
+      'agent',
+    );
+    const live = doc.getText('source').toString();
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('reconciled');
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.docName).toBe(docName);
+    // The live bytes handed to the hook are the ones about to be discarded, and
+    // the disk bytes are the baseline the detector measures against. Getting
+    // these backwards would checkpoint the content that survives.
+    expect(calls[0]?.live).toBe(live);
+    expect(calls[0]?.live).toContain('local edit');
+    expect(calls[0]?.disk).toBe(otherWriter);
+  });
+
+  test('reconcile still returns reconciled when no checkpoint hook is wired', async () => {
+    // Ephemeral boots and unit rigs build a ctx without the hook. The repair
+    // must not depend on the anchor being available.
+    const ctx = makeCtx();
+    expect(ctx.beforeReconcileDivergence).toBeUndefined();
+    const doc = new Y.Doc();
+    doc.transact(
+      () => doc.getText('source').insert(0, '---\nname: demo\ndescription: a\n---\nA\n'),
+      'agent',
+    );
+    await storeManagedArtifactDoc(doc, docName, 'agent', ctx);
+    const path = managedArtifactAbsPath(docName, ctx);
+    writeFileSync(path, '---\nname: demo\ndescription: a\n---\nOTHER\n', 'utf-8');
+    doc.transact(() => doc.getText('source').insert(doc.getText('source').length, 'x'), 'agent');
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('reconciled');
+  });
+
   test('applyExternalManagedArtifactChange imports disk bytes into the live doc', () => {
     const ctx = makeCtx();
     const doc = new Y.Doc();

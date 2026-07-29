@@ -165,6 +165,36 @@ export type ParsedCheckpoint =
       metadata: { copies: number; fragmentChildren: number };
     }
   | {
+      // The persistence L3 store-time divergence backstop found that disk had
+      // moved away from the reconciled base between L1's check and this store,
+      // declared disk the winner, and applied it over the live document. That
+      // realign transacts under the file-watcher origin, so the live state it
+      // discards — the agent's rejected write AND any human WYSIWYG edit that
+      // had merged alongside it — is undo-eligible on neither side. Distinct
+      // from `persistence-duplication-reset` (a duplication verdict) so an
+      // operator can tell an external-writer conflict from a duplication trip
+      // by kind alone. `contents` is the pre-realign document — the restore
+      // anchor. Both metadata fields are content-free byte counts.
+      kind: 'persistence-divergence-realign';
+      docName: string | null;
+      size: number | null;
+      metadata: { diskBytes: number; discardedBytes: number };
+    }
+  | {
+      // The managed-artifact store found the file changed under it by a second
+      // writer (another OK window, a hand edit, a CLI write) and imported the
+      // disk bytes over the live artifact doc rather than clobbering them. Same
+      // file-watcher origin, same undo-inaccessibility; `contents` is the live
+      // artifact the reconcile discards. Its own kind because the content class
+      // differs — skills and templates, not primary prose — so an operator can
+      // budget and triage it separately from the document-path realign. Both
+      // metadata fields are content-free byte counts.
+      kind: 'managed-artifact-reconcile';
+      docName: string | null;
+      size: number | null;
+      metadata: { diskBytes: number; discardedBytes: number };
+    }
+  | {
       // Service-authored consolidation of dead/stale WIP chains.
       // GET /api/history excludes this kind by default so daily
       // auto-consolidations never pollute timelines; old readers that predate
@@ -333,6 +363,25 @@ export function parseCheckpoint(body: string): ParsedCheckpoint | null {
           docName,
           size,
           metadata: { copies: m.copies, fragmentChildren: m.fragmentChildren },
+        };
+      }
+      return null;
+    }
+    if (kind === 'persistence-divergence-realign' || kind === 'managed-artifact-reconcile') {
+      // Both carry the identical content-free byte-count pair, so one guard
+      // serves both discriminants without widening either metadata shape.
+      const m = metadata as { diskBytes?: unknown; discardedBytes?: unknown };
+      if (
+        typeof m.diskBytes === 'number' &&
+        Number.isFinite(m.diskBytes) &&
+        typeof m.discardedBytes === 'number' &&
+        Number.isFinite(m.discardedBytes)
+      ) {
+        return {
+          kind,
+          docName,
+          size,
+          metadata: { diskBytes: m.diskBytes, discardedBytes: m.discardedBytes },
         };
       }
       return null;
@@ -531,6 +580,23 @@ export const CHECKPOINT_KIND_REGISTRY = {
   'persistence-duplication-reset': {
     visibility: 'surfaced',
     gcBucket: 'persistence-duplication-reset',
+    bundleExposure: 'metadata',
+    chainAnchor: false,
+  },
+  // Both buckets below are TTL-bounded (`applyTtl: true` in `GC_BUCKET_POLICY`,
+  // budgets `maxPersistenceDivergenceRealign` / `maxManagedArtifactReconcile`),
+  // so either can be reaped to nothing and a chain routed through one would be
+  // severed the moment it was. `auto-consolidation` remains the only count-only
+  // bucket and the only anchor.
+  'persistence-divergence-realign': {
+    visibility: 'surfaced',
+    gcBucket: 'persistence-divergence-realign',
+    bundleExposure: 'metadata',
+    chainAnchor: false,
+  },
+  'managed-artifact-reconcile': {
+    visibility: 'surfaced',
+    gcBucket: 'managed-artifact-reconcile',
     bundleExposure: 'metadata',
     chainAnchor: false,
   },

@@ -74,6 +74,18 @@ const SAMPLE_BY_KIND = {
     size: 12,
     metadata: { copies: 2, fragmentChildren: 18 },
   },
+  'persistence-divergence-realign': {
+    kind: 'persistence-divergence-realign',
+    docName: 'notes',
+    size: 12,
+    metadata: { diskBytes: 37, discardedBytes: 79 },
+  },
+  'managed-artifact-reconcile': {
+    kind: 'managed-artifact-reconcile',
+    docName: '.ok/templates/daily',
+    size: 12,
+    metadata: { diskBytes: 41, discardedBytes: 66 },
+  },
   'auto-consolidation': {
     kind: 'auto-consolidation',
     docName: null,
