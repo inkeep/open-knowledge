@@ -230,6 +230,41 @@ describe('a forced smoke failure pages both channels, not just an annotation', (
   });
 });
 
+describe('the smoke harness comes from the workflow SHA, not the release tag', () => {
+  const smokeStep = () => {
+    const at = desktopRelease.indexOf('- name: Smoke the packaged DMG (FR5b)');
+    expect(at).toBeGreaterThan(-1);
+    const rest = desktopRelease.slice(at + 1);
+    const end = rest.indexOf('      - name: ');
+    return end === -1 ? rest : rest.slice(0, end);
+  };
+
+  test('the step overlays the harness from GITHUB_SHA', () => {
+    // The harness is CI tooling. Read it from the release tag and a fix to the
+    // copy logic can never reach an already-cut tag — and since promote-stable
+    // tags the stable at the beta's SHA, every soaked beta is older than the
+    // fix, so all of them stay unreleasable.
+    const step = smokeStep();
+    expect(step).toContain('git fetch --depth=1 origin "$GITHUB_SHA"');
+    expect(step).toContain('git checkout "$GITHUB_SHA" --');
+    expect(step).toContain('.github/scripts/dmg-mount.mjs');
+  });
+
+  test('the overlay cannot newly gate a ref that predates the harness', () => {
+    // Order is the whole safety property: a ref with no harness must still take
+    // the absent-gate exit, not get one grafted on from the default branch.
+    const step = smokeStep();
+    expect(step.indexOf('ref predates the harness')).toBeLessThan(
+      step.indexOf('git checkout "$GITHUB_SHA" --'),
+    );
+  });
+
+  test('the overlay degrades to the tag copy instead of blocking the release', () => {
+    // A transient fetch failure must not turn into a refused release.
+    expect(smokeStep()).toContain('::warning::Could not read the smoke harness');
+  });
+});
+
 describe('the stable gate does not touch the beta cadence', () => {
   const scoped = (stepHeader) => {
     const at = desktopRelease.indexOf(stepHeader);

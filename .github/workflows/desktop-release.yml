@@ -504,6 +504,24 @@ jobs:
             echo "::notice::DMG smoke gate absent at ${RELEASE_TAG} (ref predates the harness) — releasing without it. Later tags carry the gate."
             exit 0
           fi
+          # The harness is CI tooling, not release content, so take it from the
+          # workflow's own SHA rather than the release checkout — same reasoning
+          # as the two payload builders further down. Without this, a fix to the
+          # copy logic only reaches tags cut AFTER it lands, so every tag
+          # already cut stays permanently unreleasable: promote-stable tags the
+          # stable at the beta's SHA, and a soaked beta is by definition older
+          # than the fix. Overlaying only these two files keeps the config and
+          # the smoke tests themselves pinned to the release, which is right —
+          # they assert the app's behavior. Deliberately AFTER the absent-gate
+          # check above, so a ref predating the harness still releases ungated
+          # rather than being newly gated by a file it never carried.
+          # Best-effort: on failure keep the tag's copy rather than block.
+          if git fetch --depth=1 origin "$GITHUB_SHA" >/dev/null 2>&1 &&
+             git checkout "$GITHUB_SHA" -- "$DRIVER" .github/scripts/dmg-mount.mjs 2>/dev/null; then
+            echo "::notice::Smoke harness taken from ${GITHUB_SHA} rather than ${RELEASE_TAG}."
+          else
+            echo "::warning::Could not read the smoke harness from ${GITHUB_SHA}; using the copy carried by ${RELEASE_TAG}."
+          fi
           # `.dmg.blockmap` sorts next to `.dmg`; match only the bundle itself.
           # `|| true` keeps `set -e` from killing the step when dist-desktop is
           # absent — the explicit empty-DMG guard below owns that message.
