@@ -18,6 +18,8 @@ import {
   type WriterClassification,
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit, { type SimpleGit } from 'simple-git';
+import { resolveCheckpointChainAnchors } from '../checkpoint-chain.ts';
+import { getLogger } from '../logger.ts';
 
 export interface ShadowCommit {
   hash: string;
@@ -130,7 +132,9 @@ async function logOnRef(
  * Checkpoint-ancestry fallback. When the per-writer WIP
  * refs are shallow — e.g. immediately after an auto-consolidation folded the
  * dead chains and deleted their refs — the WIP commits are now reachable ONLY
- * through the latest checkpoint's ancestry. Walk it (bounded `-n`) for `relPath`,
+ * through the chain anchors' ancestry. Walk every anchor rather than the newest
+ * checkpoint ref: the newest is routinely a parentless rescue artifact, and
+ * walking that alone silently empties the read. Bounded `-n`, for `relPath`,
  * skipping the checkpoint/park/import commits themselves and already-seen hashes,
  * and attribute each surviving WIP commit via its `ok-actor:` body line (the
  * source of truth — the ref name is gone). Keeps the enriched read populated
@@ -143,34 +147,40 @@ async function checkpointAncestryFallback(
   need: number,
   seen: Set<string>,
 ): Promise<ShadowCommit[]> {
-  let latestCheckpoint = '';
+  // Anchor resolution throws when a git query fails, because the writer must
+  // never commit through an unknown anchor set. A read has no such stake, so it
+  // degrades to an empty history like every other failure in this reader.
+  let anchors: string[];
   try {
-    latestCheckpoint = (
-      await sg.raw(
-        'for-each-ref',
-        '--sort=-creatordate',
-        '--count=1',
-        '--format=%(objectname)',
-        `refs/checkpoints/${branch}/`,
-      )
-    ).trim();
-  } catch {
+    anchors = await resolveCheckpointChainAnchors(sg, branch);
+  } catch (err) {
+    // The resolver already warns about the git failure itself; this names the
+    // consequence at the call site, so a degraded read is distinguishable from
+    // an aborted write in the log.
+    getLogger('shadow-log').warn(
+      { branch, relPath, err },
+      '[shadow-log] chain anchors unresolved; per-path history degraded to empty',
+    );
     return [];
   }
-  if (!latestCheckpoint) return [];
+  if (anchors.length === 0) return [];
 
   let out = '';
   try {
     // Bounded walk with slack for skipped checkpoint/seen rows.
     out = await sg.raw(
       'log',
-      latestCheckpoint,
+      ...anchors,
       `-${Math.max(need * 3, 20)}`,
       '--format=%H%x00%aI%x00%an%x00%s%x00%B%x1e',
       '--',
       relPath,
     );
-  } catch {
+  } catch (err) {
+    getLogger('shadow-log').warn(
+      { branch, relPath, anchorCount: anchors.length, err },
+      '[shadow-log] ancestry walk failed; per-path history degraded to empty',
+    );
     return [];
   }
 

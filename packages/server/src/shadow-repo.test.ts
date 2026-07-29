@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import {
+  CHECKPOINT_KIND_REGISTRY,
   CHECKPOINT_KINDS,
   type CheckpointKind,
   formatCheckpointBodyLine,
@@ -1657,6 +1658,206 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
       expect(`${counter}=${count}`).toBe(`${counter}=1`);
     }
     expect(result.retained).toBe(CHECKPOINT_KINDS.length);
+  });
+});
+
+describe('checkpoint chain anchoring', () => {
+  let projectRoot: string;
+  let shadow: ShadowHandle;
+
+  const WRITER: WriterIdentity = {
+    id: 'agent-a',
+    name: 'Agent A',
+    email: 'a@openknowledge.local',
+  };
+
+  beforeEach(async () => {
+    projectRoot = resolve(tmpDir, 'chain-project');
+    mkdirSync(resolve(projectRoot, 'content/docs'), { recursive: true });
+    const git = simpleGit(projectRoot);
+    await git.init();
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@test.com');
+    shadow = await initShadowRepo(projectRoot);
+  });
+
+  /** Distinct, increasing commit dates: git stores them at one-second granularity. */
+  const at = (rank: number): string => `@${1_700_000_000 + rank * 100} +0000`;
+
+  /** One writer edit, so the next consolidation has a WIP chain to fold. */
+  async function edit(tag: string, rank: number): Promise<void> {
+    writeFileSync(resolve(projectRoot, 'content/docs/intro.md'), `# ${tag}\n`, 'utf-8');
+    await commitWip(shadow, WRITER, 'content/docs', `wip ${tag}`, 'main', { date: at(rank) });
+  }
+
+  /** A real service-authored consolidation through the production spine. */
+  async function consolidate(tag: string, rank: number): Promise<string> {
+    const { checkpointRef } = await saveVersion(shadow, 'content/docs', [WRITER], 'main', tag, {
+      checkpointKind: { foldedRefs: 1, trigger: 'dead-chain' },
+      date: at(rank),
+    });
+    return checkpointRef.split('/').pop() as string;
+  }
+
+  async function lossCheckpoint(rank: number): Promise<string> {
+    return saveInMemoryCheckpoint(shadow, 'content/docs', {
+      kind: 'bridge-merge-loss',
+      docName: 'intro.md',
+      contents: '# rescued\n',
+      label: 'merge loss',
+      metadata: { lostSubstrings: ['x'] },
+      date: at(rank),
+    });
+  }
+
+  const reachableShas = async (): Promise<string[]> =>
+    (await shadowGit(shadow).raw('rev-list', '--all')).trim().split('\n').filter(Boolean);
+
+  const parentsOf = async (sha: string): Promise<string[]> =>
+    (await shadowGit(shadow).raw('rev-list', '--parents', '-n', '1', sha))
+      .trim()
+      .split(/\s+/)
+      .slice(1);
+
+  test('a kind anchors the chain exactly when its retention bucket is count-only', async () => {
+    // `chainAnchor` (the registry, consumed by the writer and the CLI reader)
+    // and `applyTtl` (the GC table) are the same fact stated in two modules:
+    // a bucket GC can empty cannot carry the chain. TypeScript cannot express
+    // the link across them, so pin it here — if a new kind declares one without
+    // the other, reaping its ref starts destroying history silently.
+    const { GC_BUCKET_POLICY } = await import('./shadow-repo.ts');
+    for (const kind of CHECKPOINT_KINDS) {
+      const { chainAnchor, gcBucket } = CHECKPOINT_KIND_REGISTRY[kind];
+      expect(`${kind}:chainAnchor=${chainAnchor}`).toBe(
+        `${kind}:chainAnchor=${!GC_BUCKET_POLICY[gcBucket].applyTtl}`,
+      );
+    }
+  });
+
+  test('a reaped consolidation stays reachable when a loss checkpoint landed between folds', async () => {
+    const { gcCheckpointRefs } = await import('./shadow-repo.ts');
+
+    await edit('one', 1);
+    const c1 = await consolidate('auto 1', 2);
+    // A routine rescue artifact, newer than c1. It is a parentless root commit,
+    // so a chain routed through it reaches nothing.
+    await lossCheckpoint(3);
+    await edit('two', 4);
+    const c2 = await consolidate('auto 2', 5);
+    await edit('three', 6);
+    await consolidate('auto 3', 7);
+
+    // c1 is now over the keep-2 budget and its ref is reaped. That is only
+    // non-destructive if a surviving checkpoint's ancestry still reaches it —
+    // the guarantee `maxAutoConsolidation` is documented to rest on.
+    const gc = await gcCheckpointRefs(shadow, 'main', {
+      ...DEFAULT_CHECKPOINT_RETENTION,
+      maxAutoConsolidation: 2,
+      ttlMs: 0,
+    });
+    expect(gc.deletedAutoConsolidation).toBe(1);
+
+    expect(await parentsOf(c2)).toContain(c1);
+    expect(await reachableShas()).toContain(c1);
+  });
+
+  test('a consolidation adopts every dangling durable tip, not just one', async () => {
+    // One severing event leaves TWO durable tips, so a single-slot chain parent
+    // can never re-attach them both. Checkpoint dates are one-second granular,
+    // so the surviving tip cannot be picked by recency either.
+    await edit('one', 1);
+    const c1 = await consolidate('auto 1', 2);
+    await lossCheckpoint(3);
+    await edit('two', 4);
+    const c2 = await consolidate('auto 2', 5);
+    await edit('three', 6);
+    const c3 = await consolidate('auto 3', 7);
+
+    const reachableFromC3 = (await shadowGit(shadow).raw('rev-list', c3))
+      .trim()
+      .split('\n')
+      .filter(Boolean);
+    expect(reachableFromC3).toContain(c2);
+    expect(reachableFromC3).toContain(c1);
+  });
+
+  test('a consolidation re-joins a chain that is already forked into two durable tips', async () => {
+    const { gcCheckpointRefs } = await import('./shadow-repo.ts');
+    const sg = shadowGit(shadow);
+
+    await edit('one', 1);
+    const c1 = await consolidate('auto 1', 2);
+
+    // A repo the old writer already forked carries two durable tips at once,
+    // and no single-slot parent can re-join them. Seed that state directly
+    // rather than racing the old writer to produce it: a durable checkpoint
+    // that neither reaches c1 nor is reachable from it.
+    const tree = (await sg.raw('rev-parse', `${c1}^{tree}`)).trim();
+    const severed = (
+      await sg
+        .env({
+          GIT_DIR: shadow.gitDir,
+          GIT_AUTHOR_NAME: 'openknowledge',
+          GIT_AUTHOR_EMAIL: 'noreply@openknowledge.local',
+          GIT_COMMITTER_NAME: 'openknowledge',
+          GIT_COMMITTER_EMAIL: 'noreply@openknowledge.local',
+          GIT_AUTHOR_DATE: at(3),
+          GIT_COMMITTER_DATE: at(3),
+        })
+        .raw(
+          'commit-tree',
+          tree,
+          '-m',
+          `checkpoint: severed\n\n${formatCheckpointBodyLine({
+            kind: 'auto-consolidation',
+            docName: null,
+            size: null,
+            metadata: { foldedRefs: 1, trigger: 'dead-chain' },
+          })}`,
+        )
+    ).trim();
+    await sg.raw('update-ref', `refs/checkpoints/main/${severed}`, severed);
+
+    await edit('two', 4);
+    const c2 = await consolidate('auto 2', 5);
+
+    // Adopting only the newest durable anchor would strand c1 here, which is
+    // exactly what the count-only budget then destroys.
+    const parents = await parentsOf(c2);
+    expect(parents).toContain(severed);
+    expect(parents).toContain(c1);
+
+    const gc = await gcCheckpointRefs(shadow, 'main', {
+      ...DEFAULT_CHECKPOINT_RETENTION,
+      maxAutoConsolidation: 2,
+      ttlMs: 0,
+    });
+    expect(gc.deletedAutoConsolidation).toBe(1);
+    expect(await reachableShas()).toContain(c1);
+  });
+
+  test('a loss checkpoint is never adopted, so reaping its ref still bounds its content', async () => {
+    // Loss metadata embeds verbatim document content, so its retention budget is
+    // a data-lifecycle guarantee. Adopting one as a chain parent would keep it
+    // reachable forever and silently defeat that expiry.
+    const { gcCheckpointRefs } = await import('./shadow-repo.ts');
+
+    await edit('one', 1);
+    await consolidate('auto 1', 2);
+    const loss = await lossCheckpoint(3);
+    await edit('two', 4);
+    const c2 = await consolidate('auto 2', 5);
+
+    expect(await parentsOf(c2)).not.toContain(loss);
+
+    const gc = await gcCheckpointRefs(shadow, 'main', {
+      ...DEFAULT_CHECKPOINT_RETENTION,
+      maxBridgeMergeLoss: 0,
+      maxAutoConsolidation: 2,
+      ttlMs: 0,
+    });
+    expect(gc.deletedBridgeMergeLoss).toBe(1);
+    expect(await reachableShas()).not.toContain(loss);
   });
 });
 

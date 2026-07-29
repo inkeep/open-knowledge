@@ -1,12 +1,3 @@
-import { describe as _bunDescribe, afterEach, beforeEach, expect, test } from 'vitest';
-
-// Skip-on-CI gate (oven-sh/bun#11892): simple-git fixture pattern in this
-// test setup spawns git children that Bun fails to reap on ubuntu-latest
-// GHA runners; post-test cgroup never drains, hanging test (test) at the
-// 15-min timeout. Tests run normally locally; follow-up PR will migrate
-// fixtures to execFileSync.
-const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
-
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -14,10 +5,12 @@ import { resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { formatOkActor, type OkActorEntry } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   commitUpstreamImport,
   commitWip,
   initShadowRepo,
+  saveInMemoryCheckpoint,
   saveVersion,
   type WriterIdentity,
 } from '../shadow-repo.ts';
@@ -319,6 +312,58 @@ describe('readShadowLog — checkpoint-ancestry fallback (PRD-6972 FR7 / D15)', 
     // Attribution preserved via the ok-actor body line (the ref name is gone).
     expect(after.commits.every((c) => c.writerId === 'agent-z')).toBe(true);
     expect(after.commits.every((c) => c.writerClassification === 'agent')).toBe(true);
+  });
+
+  test('parity holds when a loss checkpoint lands after the consolidation', async () => {
+    const project = await bootstrapProject();
+    const shadow = await initShadowRepo(project);
+    const contentDir = resolve(project, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    const branch = (await simpleGit(project).revparse(['--abbrev-ref', 'HEAD'])).trim();
+    const writer: WriterIdentity = { id: 'agent-z', name: 'Agent Z', email: 'z@t.test' };
+
+    // Explicit increasing dates order the WIP commits and keep them ahead of
+    // the checkpoints below. Git dates are one-second granular, so a short
+    // real-time sleep would not order them at all.
+    for (let i = 1; i <= 3; i++) {
+      writeFileSync(resolve(contentDir, 'auth.md'), `# v${i}\n`);
+      await commitWip(
+        shadow,
+        writer,
+        contentDir,
+        wipBody(`edit ${i}`, 'agent-z', 'Agent Z'),
+        branch,
+        { date: `@${1_799_999_000 + i * 100} +0000` },
+      );
+    }
+
+    const before = await readShadowLog(project, 'content/auth.md', 5);
+    expect(before.commits.length).toBe(3);
+
+    await saveVersion(shadow, contentDir, [writer], branch, undefined, {
+      checkpointKind: { foldedRefs: 1, trigger: 'dead-chain' },
+      date: '@1800000000 +0000',
+    });
+
+    // Any bridge trip mints a rescue checkpoint, and it is a parentless root
+    // commit. Once it is the newest checkpoint ref, a fallback that walks only
+    // the newest one walks a dead end. Explicit dates order the two checkpoints
+    // without a >1s sleep (git commit dates are one-second granular).
+    await saveInMemoryCheckpoint(shadow, 'content', {
+      kind: 'bridge-merge-loss',
+      docName: 'auth.md',
+      contents: '# rescued\n',
+      label: 'merge loss',
+      branch,
+      metadata: { lostSubstrings: ['x'] },
+      date: '@1800000100 +0000',
+    });
+
+    const after = await readShadowLog(project, 'content/auth.md', 5);
+    expect(after.commits.map((c) => c.hash).sort()).toEqual(
+      before.commits.map((c) => c.hash).sort(),
+    );
+    expect(after.commits.every((c) => c.writerId === 'agent-z')).toBe(true);
   });
 
   test('no checkpoint + no WIP refs → still empty (no false fallback)', async () => {

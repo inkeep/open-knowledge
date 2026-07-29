@@ -45,6 +45,7 @@ import {
   type WriterClassification,
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
+import { resolveCheckpointChainAnchors } from './checkpoint-chain.ts';
 import { tracedMkdirSync, tracedRenameSync, tracedWriteFileSync } from './fs-traced.ts';
 import { listTreeLongEntries } from './git-paths.ts';
 import { getLogger } from './logger.ts';
@@ -1378,7 +1379,7 @@ interface GcBucketPolicy {
  * new kind can never end up scanned-but-never-reaped, accumulating refs forever
  * with no cap and no TTL.
  */
-const GC_BUCKET_POLICY = {
+export const GC_BUCKET_POLICY = {
   'bridge-merge-loss': {
     limit: (p) => p.maxBridgeMergeLoss,
     counter: 'deletedBridgeMergeLoss',
@@ -1972,28 +1973,25 @@ async function saveVersionInner(
     // Deduplicate (upstream may alias a writer ref in edge cases)
     const uniqueParents = [...new Set(shadowParentShas)];
 
-    // Checkpoint chaining: EVERY checkpoint — even one with WIP activity — adopts the
-    // latest prior checkpoint as an additional parent, so history forms one
-    // connected chain. The timeline walk then reaches all prior entries through
-    // the newest checkpoint's ancestry, and kind-aware GC can reap older
-    // auto-consolidation refs (their commits stay reachable via newer
-    // checkpoints). The prior checkpoint goes LAST so WIP tips remain
-    // first-parents.
-    try {
-      const priorCheckpoint = (
-        await sg.raw(
-          'for-each-ref',
-          '--sort=-creatordate',
-          '--count=1',
-          '--format=%(objectname)',
-          `refs/checkpoints/${branch}/`,
-        )
-      ).trim();
-      if (priorCheckpoint && !uniqueParents.includes(priorCheckpoint)) {
-        uniqueParents.push(priorCheckpoint);
-      }
-    } catch {
-      // no prior checkpoints — this is the first one, parentless is fine
+    // Checkpoint chaining: EVERY checkpoint — even one with WIP activity —
+    // adopts every dangling chain anchor as an additional parent, so history
+    // forms one connected DAG. That is what makes kind-aware GC non-destructive:
+    // reaping an older checkpoint ref leaves its commit reachable through a
+    // newer checkpoint's ancestry, which is the guarantee `maxAutoConsolidation`
+    // rests on. Anchors go LAST so WIP tips remain first-parents.
+    const chainAnchors = await resolveCheckpointChainAnchors(sg, branch);
+    for (const anchor of chainAnchors) {
+      if (!uniqueParents.includes(anchor)) uniqueParents.push(anchor);
+    }
+    if (chainAnchors.length > 1) {
+      // More than one dangling anchor means the chain had already forked and is
+      // being re-joined here. Routine once, persistent means something upstream
+      // keeps splitting it. The count rides a structured log, never a metric
+      // label.
+      log.info(
+        { branch, anchors: chainAnchors.length },
+        '[shadow] checkpoint chain re-anchored across multiple dangling tips',
+      );
     }
 
     const checkpointActorEntry: OkActorEntry = {

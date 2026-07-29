@@ -441,6 +441,21 @@ export interface CheckpointKindAttributes {
   gcBucket: CheckpointKind;
   /** How rows of this kind may appear in a consent-gated diagnostic bundle. */
   bundleExposure: CheckpointBundleExposure;
+  /**
+   * Whether a checkpoint of this kind may anchor the consolidation chain — the
+   * set a new checkpoint adopts as parents so that reaping an older checkpoint
+   * ref leaves its commit reachable.
+   *
+   * Only a kind GC cannot empty qualifies. A count-only bucket always retains
+   * its newest N, so at least one survives to carry the ancestry; every
+   * TTL-bounded bucket can be reaped to nothing, and a chain routed through one
+   * would be severed the moment it was.
+   *
+   * `false` is also what keeps a kind whose metadata embeds verbatim document
+   * content from being adopted: a parent edge would make it reachable for as
+   * long as the chain lives and silently outlast the budget that expires it.
+   */
+  chainAnchor: boolean;
 }
 
 /**
@@ -461,58 +476,69 @@ export const CHECKPOINT_KIND_REGISTRY = {
     visibility: 'surfaced',
     gcBucket: 'bridge-merge-loss',
     bundleExposure: 'subject-only',
+    chainAnchor: false,
   },
   'producer-guard-loss': {
     visibility: 'surfaced',
     gcBucket: 'producer-guard-loss',
     bundleExposure: 'metadata',
+    chainAnchor: false,
   },
   'observer-a-duplication': {
     visibility: 'surfaced',
     gcBucket: 'observer-a-duplication',
     bundleExposure: 'metadata',
+    chainAnchor: false,
   },
   'external-change-rescue': {
     visibility: 'surfaced',
     gcBucket: 'external-change-rescue',
     bundleExposure: 'metadata',
+    chainAnchor: false,
   },
   'defer-exhaustion-loss': {
     visibility: 'surfaced',
     gcBucket: 'defer-exhaustion-loss',
     bundleExposure: 'metadata',
+    chainAnchor: false,
   },
   // `lostSubstrings` is verbatim document content — subject-only.
   'observer-a-apply-loss': {
     visibility: 'surfaced',
     gcBucket: 'observer-a-apply-loss',
     bundleExposure: 'subject-only',
+    chainAnchor: false,
   },
   // `lostSubstrings` is verbatim document content — subject-only.
   'bridge-derive-loss': {
     visibility: 'surfaced',
     gcBucket: 'bridge-derive-loss',
     bundleExposure: 'subject-only',
+    chainAnchor: false,
   },
   'bridge-backstop-trip': {
     visibility: 'surfaced',
     gcBucket: 'bridge-backstop-trip',
     bundleExposure: 'metadata',
+    chainAnchor: false,
   },
   'persistence-reconcile-loss': {
     visibility: 'surfaced',
     gcBucket: 'persistence-reconcile-loss',
     bundleExposure: 'metadata',
+    chainAnchor: false,
   },
   'persistence-duplication-reset': {
     visibility: 'surfaced',
     gcBucket: 'persistence-duplication-reset',
     bundleExposure: 'metadata',
+    chainAnchor: false,
   },
   'auto-consolidation': {
     visibility: 'hidden',
     gcBucket: 'auto-consolidation',
     bundleExposure: 'none',
+    chainAnchor: true,
   },
 } as const satisfies Record<CheckpointKind, CheckpointKindAttributes>;
 
@@ -528,4 +554,16 @@ export const CHECKPOINT_KINDS = Object.keys(CHECKPOINT_KIND_REGISTRY) as Checkpo
 export function isSurfacedCheckpointKind(kind: CheckpointKind | null | undefined): boolean {
   if (kind == null) return true;
   return CHECKPOINT_KIND_REGISTRY[kind].visibility === 'surfaced';
+}
+
+/**
+ * Whether a checkpoint kind may anchor the consolidation chain.
+ *
+ * `null` / `undefined` — an untyped user `Save Version` checkpoint, or one
+ * whose body line was missing or malformed — anchors. Those are retained
+ * permanently, so a chain routed through one can never be severed by GC.
+ */
+export function isChainAnchorCheckpointKind(kind: CheckpointKind | null | undefined): boolean {
+  if (kind == null) return true;
+  return CHECKPOINT_KIND_REGISTRY[kind].chainAnchor;
 }

@@ -480,6 +480,7 @@ export {
   CHECKPOINT_KIND_REGISTRY,
   CHECKPOINT_KINDS,
   formatCheckpointBodyLine,
+  isChainAnchorCheckpointKind,
   isSurfacedCheckpointKind,
   parseCheckpoint,
 } from './checkpoint-kinds.ts';
