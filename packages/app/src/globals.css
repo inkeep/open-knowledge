@@ -1235,6 +1235,83 @@
   @apply py-0.5 px-1 rounded-sm bg-amber-100 dark:bg-amber-900/50;
 }
 
+/* Authoring annotations (`%%…%%`, `<!-- … -->`). The editing surface shows
+ * them dimmed rather than hiding them: the comment promoter claims literal
+ * comment syntax wherever it appears in the bytes, including prose a user
+ * typed without meaning it as a comment, so `display: none` here would
+ * delete typed text from the surface it was typed into. Reading surfaces
+ * still hide them — the mdast→hast renderer emits a literal HTML comment.
+ *
+ * The delimiters are not in the document (the promoter strips them and
+ * records the form as an attribute), so they are drawn as pseudo-elements.
+ * That keeps them out of the text content ProseMirror maps positions
+ * against and out of the serialized bytes. */
+.comment-mark {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+/* The delimiters are chrome, not prose. `content: "…" / ""` supplies an empty
+ * alternative text so assistive technology does not read the punctuation out
+ * as part of the sentence — `user-select: none` only governs mouse selection
+ * and in-editor copy, it says nothing to AT. No extra opacity: these glyphs
+ * are the only signifier that a run is an annotation, so dimming them below
+ * the body they label put them under the 3:1 non-text contrast floor in the
+ * light theme. */
+.comment-mark::before,
+.comment-mark::after {
+  content: "%%" / "";
+  font-style: normal;
+  user-select: none;
+}
+
+.comment-mark[data-source-form="html"]::before {
+  content: "<!--" / "";
+  margin-right: 0.15em;
+}
+
+.comment-mark[data-source-form="html"]::after {
+  content: "-->" / "";
+  margin-left: 0.15em;
+}
+
+/* The block form needs an affordance the inline form gets from its delimiter
+ * glyphs, and it has to stay distinguishable from a blockquote, which sits a
+ * few rules below with its own muted left rail. A dashed rail plus a `%%`
+ * marker in the gutter carries both: dashed reads as "not part of the prose"
+ * where blockquote's solid rail reads as "quoted prose", and the marker names
+ * the construct the way the inline glyphs do. */
+.comment-block {
+  position: relative;
+  color: var(--muted-foreground);
+  font-style: italic;
+  border-left: 2px dashed color-mix(in oklab, var(--muted-foreground) 45%, transparent);
+  padding-left: 0.75rem;
+  margin: 0.5rem 0;
+}
+
+/* `background: inherit` rather than the page token so the knockout tracks the
+ * local surface when the block sits inside a callout, a card, or a selection
+ * highlight. The offset stays inside the block's own margin box so the marker
+ * cannot collide with the previous line's descenders or clip when the block is
+ * a first child. */
+.comment-block::before {
+  content: "%%" / "";
+  position: absolute;
+  left: 0.35rem;
+  top: -0.45em;
+  font-style: normal;
+  font-size: 0.7em;
+  line-height: 1;
+  padding: 0 0.15rem;
+  background: inherit;
+  user-select: none;
+}
+
+.comment-block[data-source-form="html"]::before {
+  content: "<!--" / "";
+}
+
 .ProseMirror .ok-find-match {
   border-radius: 0.15rem;
   background-color: color-mix(in oklab, var(--color-agent) 28%, transparent);

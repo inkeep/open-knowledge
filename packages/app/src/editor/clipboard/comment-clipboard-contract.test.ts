@@ -645,7 +645,7 @@ describe('carrier proof — mdManager.parse restores comment constructs from the
 // ─── renderHTML omission contract (attribute level, pinned) ────────────
 
 describe('renderHTML stamps the clipboard opt-out attr', () => {
-  test('comment mark renders with data-clipboard-omit="true" + display:none', () => {
+  test('comment mark renders with data-clipboard-omit="true" and no hiding style', () => {
     const json = md.parse('Prose with %%hidden note%% inside.');
     const doc = schema.nodeFromJSON(json);
     let found = false;
@@ -655,7 +655,9 @@ describe('renderHTML stamps the clipboard opt-out attr', () => {
           const spec = mark.type.spec.toDOM?.(mark, true);
           const attrs = (spec as [string, Record<string, string>])?.[1] ?? {};
           expect(attrs['data-clipboard-omit']).toBe('true');
-          expect(attrs.style).toContain('display: none');
+          // Omission rides the attribute, never a style — the editing
+          // surface has to keep showing whatever the promoter claimed.
+          expect(attrs.style ?? '').not.toContain('display: none');
           found = true;
         }
       }
@@ -663,7 +665,7 @@ describe('renderHTML stamps the clipboard opt-out attr', () => {
     expect(found).toBe(true);
   });
 
-  test('commentBlock renders with data-clipboard-omit="true" + display:none', () => {
+  test('commentBlock renders with data-clipboard-omit="true" and no hiding style', () => {
     const json = md.parse('Visible.\n\n%%\n\nsecret block body\n\n%%');
     const doc = schema.nodeFromJSON(json);
     let found = false;
@@ -672,7 +674,7 @@ describe('renderHTML stamps the clipboard opt-out attr', () => {
         const spec = node.type.spec.toDOM?.(node);
         const attrs = (spec as [string, Record<string, string>])?.[1] ?? {};
         expect(attrs['data-clipboard-omit']).toBe('true');
-        expect(attrs.style).toContain('display: none');
+        expect(attrs.style ?? '').not.toContain('display: none');
         found = true;
       }
     });

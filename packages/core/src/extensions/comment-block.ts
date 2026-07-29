@@ -1,9 +1,18 @@
 /**
- * commentBlock — multi-line literal authoring annotation. Hidden in
+ * commentBlock — multi-line literal authoring annotation. Dimmed in
  * WYSIWYG, hidden on cross-app clipboard paste; survives in markdown
  * source as `%%\n…\n%%` (Obsidian-style block) or `<!-- … -->` (HTML
- * comment, possibly multi-line). Rendered with `display: none` +
- * `data-clipboard-omit="true"` so authors edit it in source mode.
+ * comment, possibly multi-line). Rendered with `data-clipboard-omit="true"`
+ * and a `comment-block` class the app styles as dimmed annotation.
+ *
+ * Like the inline sister mark, this node does NOT hide its body in the
+ * editing surface: the promoter claims literal comment syntax wherever it
+ * appears, so hiding it makes typed text disappear from the surface it was
+ * typed into. Published output still hides comments — the mdast→hast
+ * renderer emits them as literal `<!-- … -->` HTML comments. Every surface
+ * that mounts this schema UNDER THE APP STYLESHEET, including the app's
+ * read-only TipTap views, shows the body dimmed; a consumer that supplies
+ * neither `.comment-block` styling nor its own gets undecorated prose.
  *
  * Sister to the inline `comment` PM mark (`comment-mark.ts`); the two
  * cover the full hidden-content surface:
@@ -103,13 +112,12 @@ export const CommentBlock = Node.create({
       'aside',
       {
         'data-comment-block': '',
-        // Hidden in WYSIWYG via inline `display: none` (no app-side CSS
-        // dependency). Inline style is decisive across cross-app
-        // destination CSS. `data-clipboard-omit` makes the live-DOM
-        // walker drop the subtree from outbound payloads.
+        // `data-clipboard-omit` makes the live-DOM walker drop the subtree
+        // from outbound payloads, and `comment-scrub.ts` derives the schema's
+        // omitted mark/node set by probing this very attribute — so omission
+        // is carried by the attribute, not by any styling.
         'data-clipboard-omit': 'true',
         class: 'comment-block',
-        style: 'display: none;',
         ...HTMLAttributes,
       },
       0,

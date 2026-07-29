@@ -153,19 +153,27 @@ export const sharedExtensions = [
   // (`![alt](src)`) keep flowing through the `image` node above.
   ImageReferenceFidelity,
   Highlight,
+  // Legibility contract for the two comment descriptors below: neither
+  // self-hides any more, so a consumer that mounts this schema owns the
+  // `.comment-mark` / `.comment-block` styling that marks an annotation as
+  // one. Without it a comment renders as ordinary prose. The app supplies it
+  // in `globals.css`; nothing else in this workspace renders the schema to a
+  // DOM (the server never does, docs render through `mdastToHtml`).
+  //
   // Custom comment mark — literal authoring annotation. Recognises
   // `%%text%%` (Obsidian) and `<!-- text -->` (HTML comment) inline
-  // forms. Renders with `display: none` + `data-clipboard-omit="true"`
-  // so the text is invisible in WYSIWYG and dropped from cross-app
-  // clipboard payloads. The PM mark carries `sourceForm` (`'percent' |
+  // forms. Renders with `data-clipboard-omit="true"` so the text is
+  // dropped from cross-app clipboard payloads, and dimmed rather than
+  // hidden in WYSIWYG so a promoted run never removes typed text from
+  // the editing surface. The PM mark carries `sourceForm` (`'percent' |
   // 'html'`); PM-mediated saves preserve the form the author typed.
   CommentMark,
   // Block counterpart — block-level literal authoring annotation.
   // Recognises `%%\n…\n%%` (Obsidian fence) and `<!-- … -->`
   // (single-paragraph HTML comment, including multi-child paragraphs
-  // whose body contains inline markdown). Renders with `display: none`
-  // + `data-clipboard-omit="true"`. PM node carries `sourceForm` +
-  // `sourceLayout` attributes; saves preserve byte-stable round-trip.
+  // whose body contains inline markdown). Same dimmed-not-hidden
+  // treatment and `data-clipboard-omit="true"`. PM node carries
+  // `sourceForm` + `sourceLayout`; saves preserve byte-stable round-trip.
   CommentBlock,
   // Footnote inline reference `[^id]` (atom) + block definition
   // `[^id]: body` (block). remark-gfm parses into mdast `footnoteReference`

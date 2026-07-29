@@ -1,14 +1,28 @@
 /**
- * comment — literal authoring annotation. Hidden in WYSIWYG, hidden on
+ * comment — literal authoring annotation. Dimmed in WYSIWYG, hidden on
  * cross-app clipboard paste; survives in markdown source as `%%text%%`
  * (Obsidian-style) or `<!-- text -->` (HTML comment form).
  *
  * Both source forms parse into this mark on a text run via
- * `comment-promoter.ts`. The mark renders with `style="display: none"`
- * + `data-clipboard-omit="true"`, so authors who write a comment can't
- * see it in WYSIWYG and the clipboard walker drops it from outbound
- * payloads. Source mode (CodeMirror) shows the literal `%%…%%` /
- * `<!-- … -->` bytes — that's where authors create and edit comments.
+ * `comment-promoter.ts`. The mark renders with `data-clipboard-omit="true"`,
+ * so the clipboard walker drops it from outbound payloads, and with a
+ * `comment-mark` class the app styles as dimmed annotation. Source mode
+ * (CodeMirror) shows the literal `%%…%%` / `<!-- … -->` bytes.
+ *
+ * The mark deliberately does NOT hide the run in the editing surface. The
+ * promoter claims literal comment syntax wherever it appears, including
+ * prose a user typed without meaning it as a comment, so hiding the run
+ * makes typed text disappear from the surface it was typed into with no way
+ * to recover it there.
+ *
+ * Published output still hides comments — the mdast→hast renderer emits them
+ * as literal `<!-- … -->` HTML comments, which browsers do not display. The
+ * split is editor-schema versus rendered-markdown, not editable versus
+ * read-only: the app's read-only TipTap surfaces (the skill viewer, the
+ * rendered diff) mount this same schema under the same stylesheet, so they
+ * show comment bodies dimmed too. That is the intended reading for both —
+ * a diff that silently dropped an annotation change would be lying about
+ * the edit.
  *
  * Round-trip via `to-markdown-handlers.ts`'s `comment` handler: each
  * source form preserves on save. The PM mark carries a `sourceForm`
@@ -49,8 +63,8 @@ export const CommentMark = Mark.create({
   name: 'comment',
   // Lower priority than structural marks (strong, emphasis) so the comment
   // composes inside them rather than the other way round on parse. Matches
-  // the priority math/highlight didn't need to set (those are atom/visible
-  // shapes); for the hidden-text mark, the inside-bias produces the more
+  // the priority math/highlight didn't need to set (those are atom shapes);
+  // for an inline mark over ordinary text, the inside-bias produces the more
   // intuitive nesting on rich-text edits.
   priority: 10,
   excludes: '',
@@ -85,15 +99,12 @@ export const CommentMark = Mark.create({
       'span',
       {
         'data-comment-mark': '',
-        // Hidden in WYSIWYG via inline `display: none` (no app-side CSS
-        // dependency). Inline style is decisive — it wins regardless of
-        // any cross-app destination CSS that might try to override the
-        // class. `data-clipboard-omit` makes the live-DOM clipboard walker
-        // drop the subtree from outbound payloads (no marker class
-        // appears in cross-app paste).
+        // `data-clipboard-omit` makes the live-DOM clipboard walker drop the
+        // subtree from outbound payloads, and `comment-scrub.ts` derives the
+        // schema's omitted mark/node set by probing this very attribute — so
+        // omission is carried by the attribute, not by any styling.
         'data-clipboard-omit': 'true',
         class: 'comment-mark',
-        style: 'display: none;',
         ...HTMLAttributes,
       },
       0,
