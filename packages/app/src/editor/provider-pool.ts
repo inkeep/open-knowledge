@@ -1,5 +1,6 @@
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import {
+  addsBlankLines,
   LINEAGE_EPOCH_KEY,
   MarkdownManager,
   normalizeBridge,
@@ -2820,8 +2821,14 @@ export class ProviderPool {
       const theirs = provider.document.getText('source').toString();
       const { body: theirsBody } = stripFrontmatter(theirs);
       const theirsNorm = normalizeBridge(theirsBody);
-      const ytextClean = normalizeBridge(oursYtextBody) === theirsNorm;
-      const fragClean = normalizeBridge(oursFragBody) === theirsNorm;
+      // `addsBlankLines` breaks the tie the normalized compare cannot: it
+      // collapses blank runs on both sides, so buffered blank lines the
+      // server's rebuilt state lacks would read as "nothing to restore" and
+      // the recycle would discard them.
+      const ytextClean =
+        normalizeBridge(oursYtextBody) === theirsNorm && !addsBlankLines(theirsBody, oursYtextBody);
+      const fragClean =
+        normalizeBridge(oursFragBody) === theirsNorm && !addsBlankLines(theirsBody, oursFragBody);
       if (ytextClean && fragClean) return true;
       let ours: string;
       if (ytextClean) {

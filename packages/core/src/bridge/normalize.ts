@@ -222,6 +222,18 @@ export const BRIDGE_TOLERANCE_CLASSES = [
 
 export type BridgeToleranceClass = (typeof BRIDGE_TOLERANCE_CLASSES)[number];
 
+function interiorBlankRunLengths(s: string): number[] {
+  const interior = s.replace(/^\n+/, '').replace(/\n+$/, '');
+  return [...interior.matchAll(/\n{2,}/g)].map((m) => m[0].length);
+}
+
+export function addsBlankLines(baseline: string, candidate: string): boolean {
+  const before = interiorBlankRunLengths(baseline);
+  const after = interiorBlankRunLengths(candidate);
+  if (before.length !== after.length) return false;
+  return after.some((length, i) => length > (before[i] ?? 0));
+}
+
 export function detectAppliedToleranceClasses(left: string, right: string): BridgeToleranceClass[] {
   const classes: BridgeToleranceClass[] = [];
 

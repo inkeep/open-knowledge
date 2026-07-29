@@ -44,7 +44,7 @@
  *     tripwire, writeTracker registration) applies unchanged.
  */
 
-import { normalizeBridge } from '@inkeep/open-knowledge-core';
+import { addsBlankLines, normalizeBridge } from '@inkeep/open-knowledge-core';
 import type * as Y from 'yjs';
 import { getMsSinceLastUserTx } from './bridge-quiescence.ts';
 import { isPersistenceExcludedDoc } from './cc1-broadcast.ts';
@@ -182,8 +182,23 @@ export function createPersistenceStalenessWatchdog(
     return base === undefined ? undefined : normalizeBridge(base);
   }
 
-  function isDivergent(candidate: string, normalizedBase: string | undefined): boolean {
-    return normalizedBase === undefined ? candidate !== '' : candidate !== normalizedBase;
+  /**
+   * `rawYText` / `base` carry the unnormalized bytes because the normalized
+   * comparison collapses blank runs on both sides: a run the user just added
+   * reads as no divergence, and the durability backstop would never fire for
+   * an edit that slipped the debounced store. The reverse direction stays
+   * non-divergent — fewer blank lines than the base is the collapse class the
+   * comparator exists to tolerate.
+   */
+  function isDivergent(
+    candidate: string,
+    normalizedBase: string | undefined,
+    rawYText: string,
+    base: string | undefined,
+  ): boolean {
+    if (normalizedBase === undefined) return candidate !== '';
+    if (candidate !== normalizedBase) return true;
+    return base !== undefined && addsBlankLines(base, rawYText);
   }
 
   async function sweepOnce(): Promise<void> {
@@ -226,7 +241,7 @@ export function createPersistenceStalenessWatchdog(
       }
       const candidate = candidateFromRaw(rawYText);
       const normalizedBase = normalizedBaseFor(base);
-      if (!isDivergent(candidate, normalizedBase)) {
+      if (!isDivergent(candidate, normalizedBase, rawYText, base)) {
         attempts.delete(documentName);
         continue;
       }
@@ -354,9 +369,14 @@ export function createPersistenceStalenessWatchdog(
       // Re-read both sides: a store that completed yet left the same bytes
       // divergent chose not to write them (no-op class) — mark declined so
       // we don't loop on it. Convergence (or content that moved on) re-arms.
-      const afterCandidate = candidateFromRaw(document.getText('source').toString());
-      const afterNormalizedBase = normalizedBaseFor(getBase(documentName));
-      if (isDivergent(afterCandidate, afterNormalizedBase) && afterCandidate === candidate) {
+      const afterRawYText = document.getText('source').toString();
+      const afterBase = getBase(documentName);
+      const afterCandidate = candidateFromRaw(afterRawYText);
+      const afterNormalizedBase = normalizedBaseFor(afterBase);
+      if (
+        isDivergent(afterCandidate, afterNormalizedBase, afterRawYText, afterBase) &&
+        afterCandidate === candidate
+      ) {
         attempts.set(documentName, {
           fingerprint: candidate,
           atMs: nowMs,

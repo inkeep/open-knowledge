@@ -1,10 +1,11 @@
 import type { Join } from 'mdast-util-to-markdown';
 import type { Position } from 'unist';
+import { isBlankLineParagraph } from './zero-emission-blocks.ts';
 
 type MaybePositioned = { position?: Position };
 type MaybeTyped = {
   type?: string;
-  data?: { sourceContiguousNext?: boolean; sourcePrecedingBlankLines?: number };
+  data?: { sourceContiguousNext?: boolean };
 };
 type FlowNode = Parameters<Join>[0];
 
@@ -15,9 +16,8 @@ function isContiguousHeadingWithParagraph(left: FlowNode, right: FlowNode): bool
 }
 
 export const positionAwareBlankLineJoin: Join = (left, right) => {
+  if (isBlankLineParagraph(left)) return 0;
   if (isContiguousHeadingWithParagraph(left, right)) return 0;
-  const dataGap = (right as MaybeTyped).data?.sourcePrecedingBlankLines;
-  if (typeof dataGap === 'number' && dataGap >= 2) return dataGap;
   const lp = (left as MaybePositioned).position;
   const rp = (right as MaybePositioned).position;
   if (!lp || !rp) return undefined;

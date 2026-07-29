@@ -56,9 +56,14 @@ export function computeMapDrivenBodySplice(
   let newBody: string;
   let newChildren: readonly RootContent[];
   try {
-    oldChildren = mdManager.parseToMdast(oldBody).children;
+    // The editor view on both sides: a blank-line run between two blocks is
+    // a paragraph in the PM document but pure gap bytes to a CommonMark
+    // parse, so the sibling walk below would see two identical block lists
+    // and splice a byte range that excludes the very change it is meant to
+    // carry.
+    oldChildren = mdManager.parseToEditorMdast(oldBody).children;
     newBody = mdManager.serialize(newPmJson);
-    newChildren = mdManager.parseToMdast(newBody).children;
+    newChildren = mdManager.parseToEditorMdast(newBody).children;
   } catch (err) {
     // Swallowing is the contract (caller falls back to the whole-body diff
     // path), but the swallow must not be silent: a systemic parse/serialize

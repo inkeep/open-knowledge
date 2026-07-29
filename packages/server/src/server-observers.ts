@@ -29,6 +29,7 @@ import type {
   StructuralDivergenceReason,
 } from '@inkeep/open-knowledge-core';
 import {
+  addsBlankLines,
   applyFastDiff,
   applyIncrementalDiff,
   BridgeInvariantViolationError,
@@ -1887,7 +1888,13 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       // classification below went lazy).
       const normCurrent = normalizeBridge(currentText);
       const normMd = normalizeBridge(md);
-      if (normCurrent === normMd) {
+      // The blank-line tolerance is symmetric, so a run the user just added in
+      // the WYSIWYG normalizes away and this gate would certify a settlement
+      // that drops it. The fragment is the authority for its own blank lines;
+      // the reverse direction (source richer than the fragment) stays
+      // tolerated, since that is the container-interior case the fragment
+      // cannot represent.
+      if (normCurrent === normMd && !addsBlankLines(currentText, md)) {
         setActiveSpanAttributes({ 'observer.a.path': 'gated-in-sync' });
         recordSettledBaselines(md);
         return;
@@ -2153,6 +2160,13 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       // residual doc on every WYSIWYG edit (regressing the residual-merge
       // steady state); the bytes are already safe either way.
       if (settlesSplitBrainChecked(appliedYText, md, normMd, normApplied)) {
+        // When the drain left Y.Text untouched, B's raw-witness comparand
+        // still equals the live bytes and it would early-exit, leaving the
+        // divergence to rest until some later fragment change happens to
+        // re-trigger the identity gate. Move to the diverged-attach witness
+        // shape in exactly that case so B re-derives now. A drain that DID
+        // move Y.Text keeps the residual-merge steady state.
+        if (appliedYText === preMergeBaseline) recordDivergedAttachBaselines(md);
         textDirty = true;
         recordSplitBrainRederive('post-merge');
       }

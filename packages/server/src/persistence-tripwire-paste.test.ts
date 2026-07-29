@@ -49,7 +49,10 @@ const FIXTURE_DIR = resolve(import.meta.dirname, 'persistence-tripwire.fixtures'
  * doubled blank line — that is what makes this 51 bytes rather than the 43
  * the same five paragraphs occupy with single blank lines.
  */
-const USER_DOC = 'hello\n\n\n\nkjnekandkjawnkjd\n\n\n\nwkajnd\n\n\n\nwk\n\n\n\nwwjwj\n';
+// One blank-line paragraph per gap serializes to three newlines: the canonical
+// block separator plus the blank line itself. Four newlines would be the shape
+// that re-parses to TWO paragraphs per gap, doubling the run on every trip.
+const USER_DOC = 'hello\n\n\nkjnekandkjawnkjd\n\n\nwkajnd\n\n\nwk\n\n\nwwjwj\n';
 const USER_DOC_LINE = 'kjnekandkjawnkjd';
 
 const BROWSER_ORIGIN = {
@@ -180,7 +183,7 @@ describe('persistence tripwire vs a whole-document paste', () => {
     // the shape genuinely IS an integer doubling, and the epoch-recovery guard
     // still needs that verdict. Pinning it here keeps a future "fix" from
     // weakening the classifier instead of the action it drives.
-    expect(USER_DOC.length).toBe(51);
+    expect(USER_DOC.length).toBe(47);
     expect(classifyDuplication(`${USER_DOC}\n${USER_DOC}`, USER_DOC)).toEqual({
       kind: 'block',
       reason: 'structural-duplication',

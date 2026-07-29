@@ -68,6 +68,7 @@ export {
   tryLineLevelCombine,
 } from './merge-three-way.ts';
 export {
+  addsBlankLines,
   BRIDGE_TOLERANCE_CLASSES,
   type BridgeToleranceClass,
   detectAppliedToleranceClasses,

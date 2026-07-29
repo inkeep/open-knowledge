@@ -1238,6 +1238,7 @@ export {
 
 // Bridge — observer/CRDT-bridge shared utilities (precedent #14)
 export {
+  addsBlankLines,
   applyFastDiff,
   applyIncrementalDiff,
   applyPatchToFm,

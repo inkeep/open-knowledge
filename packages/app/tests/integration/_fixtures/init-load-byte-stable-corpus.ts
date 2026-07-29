@@ -68,7 +68,7 @@ export const CORPUS: CorpusEntry[] = [
   {
     filename: 'ng1-multiblank.md',
     ng: ['blank-line-count-normalization'],
-    description: 'Three blank lines between paragraphs (remark collapses to 2).',
+    description: 'Three blank lines between paragraphs (preserved as blank-line paragraphs).',
     body:
       'First paragraph.' +
       NL +

@@ -78,7 +78,10 @@ export interface SourceBlockSpans {
 export function computeSourceBlockSpans(source: string, md: MarkdownManager): SourceBlockSpans {
   const { frontmatter, body } = stripFrontmatter(source);
   const fmLineCount = frontmatter === '' ? 0 : frontmatter.split('\n').length - 1;
-  const spans = md.parseToMdast(body).children.map((child) => ({
+  // The editor view, not the CommonMark one: a preserved blank line is a
+  // paragraph in the PM doc, and this array is index-aligned with those
+  // children. Losing the alignment silently disables every decoration.
+  const spans = md.parseToEditorMdast(body).children.map((child) => ({
     start: (child.position?.start.line ?? Number.POSITIVE_INFINITY) + fmLineCount,
     end: (child.position?.end.line ?? Number.NEGATIVE_INFINITY) + fmLineCount,
   }));

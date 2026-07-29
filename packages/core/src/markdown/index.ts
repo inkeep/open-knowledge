@@ -68,6 +68,7 @@ import {
   createParseProcessor,
   createSerializeProcessor,
   parseMd,
+  parseMdToEditorMdast,
   parseMdToMdast,
   serializeMd,
 } from './pipeline.ts';
@@ -165,6 +166,13 @@ export class MarkdownManager {
       return { type: 'root', children: [] };
     }
     return parseMdToMdast(markdown, this.parseProcessor);
+  }
+
+  parseToEditorMdast(markdown: string): MdastRoot {
+    if (!markdown.trim()) {
+      return { type: 'root', children: [] };
+    }
+    return parseMdToEditorMdast(markdown, this.parseProcessor);
   }
 
   parseWithFallback(markdown: string, opts?: ParseContext): JSONContent {

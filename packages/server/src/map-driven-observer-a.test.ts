@@ -354,7 +354,7 @@ describe('map-driven Observer A — default Path A behavior', () => {
 
     test('a parse/serialize throw inside the splice reports parse-error instead of vanishing', () => {
       const throwingManager = {
-        parseToMdast: () => {
+        parseToEditorMdast: () => {
           throw new Error('synthetic parser regression');
         },
         serialize: () => '',
@@ -377,12 +377,12 @@ describe('map-driven Observer A — default Path A behavior', () => {
     test('a sustained parse-error fallback warns once with the error message, then stays counter-only', () => {
       const raw = '# Heading\n\nFirst.\n\nSecond.\n';
       const { doc, xmlFragment, ytext } = createTestDoc();
-      // Real manager except parseToMdast — only the splice computation uses
-      // parseToMdast, so the drain itself (serialize + the incremental-diff
+      // Real manager except parseToEditorMdast — only the splice computation
+      // uses that view, so the drain itself (serialize + the incremental-diff
       // fallback) still completes while every splice attempt throws.
       const throwingManager = new Proxy(mdManager, {
         get(target, prop) {
-          if (prop === 'parseToMdast') {
+          if (prop === 'parseToEditorMdast') {
             return () => {
               throw new Error('synthetic parser regression');
             };

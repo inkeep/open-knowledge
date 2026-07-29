@@ -158,3 +158,30 @@ describe('content-level replay against content the server has moved past', () =>
     expect(emittedEvents(warn)).not.toContain('ok-buffer-replay-diverged');
   });
 });
+
+describe('content-level replay of an edit the comparator cannot see', () => {
+  /** The buffered edit is blank lines and nothing else. */
+  const BLANK_RUN_MD = '# Notes\n\n\n\nSettled paragraph.\n';
+
+  it('recovers buffered blank lines the server state lacks', async () => {
+    // The surface comparison collapses blank runs on both sides, so this edit
+    // reads as "already there" and the recycle would drop it with no event and
+    // no checkpoint. It is only visible to the direction check.
+    const docName = `pp-blank-${randomUUID()}`;
+    const { delta, fullState } = buildTwoSurfaceState(BASE_MD, BLANK_RUN_MD);
+    pool = new ProviderPool(3, DUMMY_WS);
+    const entry = pool.open(docName);
+    if (!entry) throw new Error('expected entry');
+    entry.observerCleanup = () => {};
+    const ytext = entry.provider.document.getText('source');
+    ytext.insert(0, BASE_MD);
+    pool.__test_seedBufferedUpdate(docName, delta, { fullState, durable: false });
+    entry.provider.emit('synced', { state: true });
+
+    await vi.waitFor(() => {
+      expect(emittedEvents(warn)).toContain('ok-buffer-replay-content-applied');
+    });
+    expect(ytext.toString()).toContain('# Notes\n\n\n\nSettled paragraph.');
+    expect(emittedEvents(warn)).not.toContain('ok-buffer-replay-diverged');
+  });
+});

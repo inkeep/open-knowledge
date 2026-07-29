@@ -104,13 +104,9 @@ export interface SourceDocBoundary {
   bom?: true;
   leading?: string;
   trailing?: string;
-  gapBlankLines?: ReadonlyArray<number | null>;
 }
 
 declare module 'mdast' {
-  interface Data {
-    sourcePrecedingBlankLines?: number;
-  }
   interface RootData {
     sourceDocBoundary?: SourceDocBoundary;
   }

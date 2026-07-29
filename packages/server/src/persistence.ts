@@ -22,6 +22,7 @@ import { dirname, relative, resolve } from 'node:path';
 import type { Extension } from '@hocuspocus/server';
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
 import {
+  addsBlankLines,
   BridgeInvariantViolationError,
   type ConfigValidationError,
   DOCUMENT_OPEN_BYTE_LIMIT,
@@ -1675,8 +1676,16 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         // Routed through the shared helper so this compare and the
         // staleness watchdog's divergence predicate stay one derivation.
         const normalizedMarkdown = normalizedSourceForm(ytextSnapshot);
+        // The blank-line tolerance is symmetric, so blank lines a user just
+        // added normalize away and this compare would call the store a no-op —
+        // the edit would live in the CRDT and never reach the file. The
+        // opposite direction stays a no-op, since a candidate with FEWER blank
+        // lines than the base is the mount artifact / container-collapse class
+        // this gate exists to suppress.
         let markdownSemanticallyUnchanged =
-          currentBase !== undefined && normalizedMarkdown === normalizeBridge(currentBase);
+          currentBase !== undefined &&
+          normalizedMarkdown === normalizeBridge(currentBase) &&
+          !addsBlankLines(currentBase, markdown);
         // G8 (ephemeral single-file mode only): also treat the candidate as a
         // no-op when it equals the CANONICAL serialization of the on-disk base.
         // A round-trip-unstable file (`## H\nP`) load-canonicalizes on open —

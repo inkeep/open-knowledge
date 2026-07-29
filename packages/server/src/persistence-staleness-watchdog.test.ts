@@ -1,3 +1,4 @@
+import { normalizeBridge } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { isPersistenceExcludedDoc } from './cc1-broadcast.ts';
@@ -183,6 +184,41 @@ describe('staleness detection and forced store', () => {
     doc.getText('source').insert(0, '---\ntitle: y\n---\n\n# body\n');
     await rig.watchdog.sweep();
     expect(rig.forceCalls).toEqual(['fm-doc']);
+  });
+
+  test('rescues a blank run the normalized comparator cannot see', async () => {
+    // The comparator collapses blank runs on both sides, so a widened interior
+    // run reads as converged and the backstop would leave the edit in memory
+    // forever. The base and the memory below are deliberately normalize-equal.
+    const base = 'Above.\n\nBelow.\n';
+    const widened = 'Above.\n\n\n\nBelow.\n';
+    expect(normalizeBridge(base)).toBe(normalizeBridge(widened));
+
+    const doc = makeDoc(widened);
+    rig.docs.set('blank-run-doc', doc);
+    rig.bases.set('blank-run-doc', base);
+    rig.disk.set('blank-run-doc', base);
+    rig.txAges.set('blank-run-doc', GRACE_MS * 10);
+
+    await rig.watchdog.sweep();
+    expect(rig.forceCalls).toEqual(['blank-run-doc']);
+
+    // The store advanced the base, so the next sweep sees convergence.
+    await rig.watchdog.sweep();
+    expect(rig.forceCalls).toEqual(['blank-run-doc']);
+  });
+
+  test('leaves a doc alone when the base carries the wider run', async () => {
+    // The reverse direction is the collapse class the comparator exists to
+    // tolerate — forcing a store here would write the narrower form to disk.
+    const doc = makeDoc('- a\n\n- b\n');
+    rig.docs.set('collapsed-doc', doc);
+    rig.bases.set('collapsed-doc', '- a\n\n\n- b\n');
+    rig.disk.set('collapsed-doc', '- a\n\n\n- b\n');
+    rig.txAges.set('collapsed-doc', GRACE_MS * 10);
+
+    await rig.watchdog.sweep();
+    expect(rig.forceCalls).toEqual([]);
   });
 
   test('materializes a never-persisted doc with content and no disk file', async () => {

@@ -27,6 +27,7 @@ import { encodeEntityRefs, restoreEntityRefsPlugin } from './entity-ref-guard.ts
 import { highlightPromoterPlugin } from './highlight-promoter.ts';
 import { imagePromoterPlugin } from './image-promoter.ts';
 import { indentedCodePromoterPlugin } from './indented-code-promoter.ts';
+import { insertInteriorBlankRunParagraphs } from './interior-blank-runs.ts';
 import { mathPromoterPlugin } from './math-promoter.ts';
 import type { SourceDocBoundary } from './mdast-augmentation.ts';
 import { mergedPostParseWalkerPlugin } from './merged-walker.ts';
@@ -38,6 +39,7 @@ import { stripTrailingEdge } from './strip-trailing-edge.ts';
 import { remarkTags } from './tag-to-markdown.ts';
 import { voidBrPromoterPlugin } from './void-br-promoter.ts';
 import { remarkWikiLink } from './wiki-link-micromark.ts';
+import { pruneZeroEmissionBlocks } from './zero-emission-blocks.ts';
 
 interface PipelineOptions {
   schema: Schema;
@@ -148,8 +150,6 @@ function splitDocumentHeadBom(source: string): { source: string; hadBom: boolean
     : { source, hadBom: false };
 }
 
-const GAP_CAPTURE_MIN_NEWLINES = 3;
-
 const LEADING_BOUNDARY_SHAPE = /^\n+$/;
 const TRAILING_BOUNDARY_SHAPE = /^\n{2,}$/;
 
@@ -160,7 +160,6 @@ function captureDocBoundary(
 ): SourceDocBoundary | undefined {
   let leading: string | undefined;
   let trailing: string | undefined;
-  let gapBlankLines: Array<number | null> | undefined;
 
   const children = root.children;
   if (children.length > 0) {
@@ -174,32 +173,15 @@ function captureDocBoundary(
       const gap = source.slice(lastEnd);
       if (TRAILING_BOUNDARY_SHAPE.test(gap)) trailing = gap;
     }
-    const gaps: Array<number | null> = [];
-    let anyGap = false;
-    for (let i = 1; i < children.length; i++) {
-      const prevEnd = children[i - 1]?.position?.end?.offset;
-      const nextStart = children[i]?.position?.start?.offset;
-      let blanks: number | null = null;
-      if (typeof prevEnd === 'number' && typeof nextStart === 'number' && nextStart >= prevEnd) {
-        const gap = source.slice(prevEnd, nextStart);
-        if (new RegExp(`^\\n{${GAP_CAPTURE_MIN_NEWLINES},}$`).test(gap)) {
-          blanks = gap.length - 1;
-          anyGap = true;
-        }
-      }
-      gaps.push(blanks);
-    }
-    if (anyGap) gapBlankLines = gaps;
   }
 
-  if (!hadBom && leading === undefined && trailing === undefined && !gapBlankLines) {
+  if (!hadBom && leading === undefined && trailing === undefined) {
     return undefined;
   }
   const boundary: SourceDocBoundary = {
     ...(hadBom ? { bom: true as const } : {}),
     ...(leading !== undefined ? { leading } : {}),
     ...(trailing !== undefined ? { trailing } : {}),
-    ...(gapBlankLines ? { gapBlankLines } : {}),
   };
   root.data ??= {};
   root.data.sourceDocBoundary = boundary;
@@ -209,12 +191,7 @@ function captureDocBoundary(
 function readDocBoundary(value: unknown): SourceDocBoundary | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
   const v = value as Record<string, unknown>;
-  const out: {
-    bom?: true;
-    leading?: string;
-    trailing?: string;
-    gapBlankLines?: Array<number | null>;
-  } = {};
+  const out: { bom?: true; leading?: string; trailing?: string } = {};
   if (v.bom === true) out.bom = true;
   if (typeof v.leading === 'string' && LEADING_BOUNDARY_SHAPE.test(v.leading)) {
     out.leading = v.leading;
@@ -222,17 +199,7 @@ function readDocBoundary(value: unknown): SourceDocBoundary | undefined {
   if (typeof v.trailing === 'string' && TRAILING_BOUNDARY_SHAPE.test(v.trailing)) {
     out.trailing = v.trailing;
   }
-  if (
-    Array.isArray(v.gapBlankLines) &&
-    v.gapBlankLines.every(
-      (g) =>
-        g === null ||
-        (typeof g === 'number' && Number.isInteger(g) && g >= GAP_CAPTURE_MIN_NEWLINES - 1),
-    )
-  ) {
-    out.gapBlankLines = v.gapBlankLines as Array<number | null>;
-  }
-  return out.bom || out.leading || out.trailing || out.gapBlankLines ? out : undefined;
+  return out.bom || out.leading || out.trailing ? out : undefined;
 }
 
 export function parseMd(rawSource: string, processor: Processor): PmNode {
@@ -246,6 +213,7 @@ export function parseMd(rawSource: string, processor: Processor): PmNode {
   const tree = processor.parse(file);
   file.value = source;
   const transformed = processor.runSync(tree, file) as MdastRoot;
+  insertInteriorBlankRunParagraphs(transformed, source);
   const boundary = captureDocBoundary(transformed, source, hadBom);
   const doc = (processor as unknown as { stringify(tree: unknown): PmNode }).stringify(transformed);
   if (!boundary) return doc;
@@ -253,6 +221,18 @@ export function parseMd(rawSource: string, processor: Processor): PmNode {
 }
 
 export function parseMdToMdast(rawSource: string, processor: Processor): MdastRoot {
+  return parseToMdast(rawSource, processor, false);
+}
+
+export function parseMdToEditorMdast(rawSource: string, processor: Processor): MdastRoot {
+  return parseToMdast(rawSource, processor, true);
+}
+
+function parseToMdast(
+  rawSource: string,
+  processor: Processor,
+  materializeBlankRuns: boolean,
+): MdastRoot {
   const { source: rawAfterBom, hadBom } = splitDocumentHeadBom(rawSource);
   const source = dedentBlockJsxClose(rawAfterBom);
   const protected_ = encodeEntityRefs(protectFromMdx(encodeBackslashEscapes(source)));
@@ -260,6 +240,7 @@ export function parseMdToMdast(rawSource: string, processor: Processor): MdastRo
   const tree = processor.parse(file);
   file.value = source;
   const transformed = processor.runSync(tree, file) as MdastRoot;
+  if (materializeBlankRuns) insertInteriorBlankRunParagraphs(transformed, source);
   captureDocBoundary(transformed, source, hadBom);
   return transformed;
 }
@@ -273,18 +254,9 @@ export function serializeMd(doc: PmNode, processor: Processor, opts: SerializeMd
 
   stripTrailingEdge(mdast);
 
+  pruneZeroEmissionBlocks(mdast);
+
   const boundary = readDocBoundary(doc.attrs?.sourceDocBoundary);
-  const gaps = boundary?.gapBlankLines;
-  if (gaps && gaps.length === mdast.children.length - 1) {
-    for (let i = 1; i < mdast.children.length; i++) {
-      const blanks = gaps[i - 1];
-      if (typeof blanks === 'number') {
-        const child = mdast.children[i];
-        child.data ??= {};
-        child.data.sourcePrecedingBlankLines = blanks;
-      }
-    }
-  }
 
   let out = String(processor.stringify(mdast));
   if (boundary?.leading) out = boundary.leading + out;

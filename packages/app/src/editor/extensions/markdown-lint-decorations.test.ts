@@ -140,6 +140,49 @@ describe('computeSourceBlockSpans', () => {
   test('empty body → no spans', () => {
     expect(computeSourceBlockSpans('', md).spans).toHaveLength(0);
   });
+
+  // Decorations and Problems-panel navigation are gated on spans matching the
+  // PM doc's top-level children one for one. A preserved blank run adds
+  // paragraphs the source parse alone does not see, so without a synthesized
+  // span per blank line the whole feature silently switches off for any
+  // document containing one.
+  test('a preserved blank run keeps span/child parity', () => {
+    const source = 'a\n\n\n\nb\n';
+    expect(computeSourceBlockSpans(source, md).spans).toHaveLength(
+      md.parse(source).content?.length ?? 0,
+    );
+  });
+
+  test('each blank line of a run gets its own single-line span', () => {
+    expect(computeSourceBlockSpans('a\n\n\n\nb\n', md).spans).toEqual([
+      { start: 1, end: 1 },
+      { start: 3, end: 3 },
+      { start: 4, end: 4 },
+      { start: 5, end: 5 },
+    ]);
+  });
+
+  test('synthesized spans shift with frontmatter like every other span', () => {
+    const { spans, fmLineCount } = computeSourceBlockSpans('---\nt: X\n---\na\n\n\nb\n', md);
+    expect(fmLineCount).toBe(3);
+    expect(spans).toEqual([
+      { start: 4, end: 4 },
+      { start: 6, end: 6 },
+      { start: 7, end: 7 },
+    ]);
+  });
+});
+
+describe('diagnostics on a preserved blank run', () => {
+  test('anchor to the blank line they are about, not the next block', () => {
+    const byBlock = mapDiagnosticsToBlocks('a\n\n\n\nb\n', [diag(3)], md);
+    expect([...byBlock.keys()]).toEqual([1]);
+  });
+
+  test('the canonical single blank line still anchors to the next block', () => {
+    const byBlock = mapDiagnosticsToBlocks('a\n\nb\n', [diag(2)], md);
+    expect([...byBlock.keys()]).toEqual([1]);
+  });
 });
 
 describe('blockIndexForLine', () => {
