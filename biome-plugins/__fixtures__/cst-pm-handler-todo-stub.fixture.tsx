@@ -1,6 +1,6 @@
 // FIXTURE - drives `cst-pm-handler-todo-stub.test.ts` via shell-out
-// to `bunx biome check`. Not part of the main lint (override scope keeps
-// the rule off this fixture's path under normal `bun run lint`; the test
+// to `pnpm exec biome check`. Not part of the main lint (override scope keeps
+// the rule off this fixture's path under normal `pnpm run lint`; the test
 // explicitly invokes biome on this file path).
 //
 // 4 positive cases (deliberate codemod-stub bodies — plugin must fire) +

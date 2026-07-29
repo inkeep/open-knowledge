@@ -1,6 +1,6 @@
 // FIXTURE — drives `path-conditional-map-driven-origin.test.ts` via shell-out
 // to `biome check`. Not part of the main lint (override scope keeps the rule
-// off this fixture's path under normal `bun run lint`; the test explicitly
+// off this fixture's path under normal `pnpm run lint`; the test explicitly
 // invokes biome on this file path).
 //
 // 7 positive cases (deliberate violations — plugin must fire) + 3 negative

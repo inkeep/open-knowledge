@@ -17,7 +17,7 @@
  * legitimately assert that behavior. Flagging them would redden those floor
  * tests; the fixture pins that they stay silent.
  *
- * Deliberately NOT linted by the main `bun run lint` pass (biome-plugins/ is
+ * Deliberately NOT linted by the main `pnpm run lint` pass (biome-plugins/ is
  * outside the lint paths); only the scoped override in biome.jsonc reaches it,
  * via the fixture-file test.
  */

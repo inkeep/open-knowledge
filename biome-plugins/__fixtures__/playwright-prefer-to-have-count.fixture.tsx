@@ -7,7 +7,7 @@
  * exact equality (`toBe(3)`) so both weakened-pattern and widened-pattern
  * drift fail the gate.
  *
- * Deliberately NOT linted by the main `bun run lint` pass (biome-plugins/
+ * Deliberately NOT linted by the main `pnpm run lint` pass (biome-plugins/
  * is outside the lint paths); only the scoped override in biome.jsonc
  * reaches it, via the fixture-file test.
  */

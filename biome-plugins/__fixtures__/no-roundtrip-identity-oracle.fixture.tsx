@@ -9,7 +9,7 @@
  * (`toBe(10)`) so both a weakened pattern (drops below 10) and a widened
  * pattern that catches a negative (rises above 10) fail the gate.
  *
- * Deliberately NOT linted by the main `bun run lint` pass (biome-plugins/ is
+ * Deliberately NOT linted by the main `pnpm run lint` pass (biome-plugins/ is
  * outside the lint paths); only the scoped override in biome.jsonc reaches it,
  * via the fixture-file test.
  */

@@ -1,6 +1,6 @@
 // FIXTURE — drives `class-proof-registration-discipline.test.ts` via
-// shell-out to `bunx biome check`. Not part of the main lint (override
-// scope keeps the rule off this fixture's path under normal `bun run lint`;
+// shell-out to `pnpm exec biome check`. Not part of the main lint (override
+// scope keeps the rule off this fixture's path under normal `pnpm run lint`;
 // the test explicitly invokes biome on this file path).
 //
 // GritQL's `or { ... }` is short-circuit: when a call matches the first

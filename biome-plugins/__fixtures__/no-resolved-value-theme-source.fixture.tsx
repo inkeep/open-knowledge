@@ -1,5 +1,5 @@
 // FIXTURE — drives `no-resolved-value-theme-source.test.ts` via shell-out
-// to `bunx biome check`. Excluded from `bun run lint` because the lint
+// to `pnpm exec biome check`. Excluded from `pnpm run lint` because the lint
 // command lists `packages docs *.json *.jsonc *.ts` — `biome-plugins/`
 // isn't reached.
 //

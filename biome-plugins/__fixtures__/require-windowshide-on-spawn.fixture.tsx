@@ -1,6 +1,6 @@
 // FIXTURE — drives `require-windowshide-on-spawn.test.ts` via shell-out to
-// `bunx biome check`. Not part of the main lint (override scope keeps the rule
-// off this fixture's path under normal `bun run lint`; the test explicitly
+// `pnpm exec biome check`. Not part of the main lint (override scope keeps the rule
+// off this fixture's path under normal `pnpm run lint`; the test explicitly
 // invokes biome on this file path via the fixture self-include in the
 // override's `includes[]`).
 //
