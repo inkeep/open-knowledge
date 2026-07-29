@@ -24,9 +24,9 @@ const PARSE_EXTENSIONS = [mdx()];
 const PARSE_MDAST_EXTENSIONS = [mdxFromMarkdown()];
 
 describe('getCanonicalDescriptors (broad filter)', () => {
-  test('returns 14 canonicals (matches built-ins snapshot)', () => {
+  test('returns 15 canonicals (matches built-ins snapshot)', () => {
     const canonicals = getCanonicalDescriptors();
-    expect(canonicals.length).toBe(14);
+    expect(canonicals.length).toBe(15);
   });
 
   test('excludes compat surfaces', () => {
@@ -48,7 +48,7 @@ describe('getCanonicalDescriptors (broad filter)', () => {
 });
 
 describe('getAgentCanonicalDescriptors (JSX-only agent surface)', () => {
-  test('returns 13 canonicals — broad set minus fence-kind', () => {
+  test('returns 13 canonicals — broad set minus fence- and html-kind', () => {
     expect(getAgentCanonicalDescriptors().length).toBe(13);
   });
 
@@ -64,11 +64,11 @@ describe('getAgentCanonicalDescriptors (JSX-only agent surface)', () => {
     }
   });
 
-  test('broad set minus agent set equals exactly the fence-kind names', () => {
+  test('broad set minus agent set equals exactly the fence- and html-kind names', () => {
     const broad = new Set(getCanonicalDescriptors().map((d) => d.name));
     const agent = new Set(getAgentCanonicalDescriptors().map((d) => d.name));
     const divergence = new Set([...broad].filter((name) => !agent.has(name)));
-    expect(divergence).toEqual(new Set(['MermaidFence']));
+    expect(divergence).toEqual(new Set(['MermaidFence', 'HtmlAlignBlock']));
   });
 });
 
@@ -79,7 +79,7 @@ describe('projectLite — 4 fields per entry', () => {
       expect(lite.id).toBe(d.name);
       expect(lite.displayName.length).toBeGreaterThan(0);
       expect(lite.description.length).toBeGreaterThan(0);
-      expect(['jsx-block', 'jsx-void', 'fence']).toContain(lite.kind);
+      expect(['jsx-block', 'jsx-void', 'fence', 'html']).toContain(lite.kind);
     }
   });
 

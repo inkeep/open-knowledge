@@ -42,6 +42,7 @@
  * '*' maps to UnregisteredBadgeRender for the wildcard fallback.
  */
 import { Accordion } from './Accordion.tsx';
+import { AlignBlock } from './AlignBlock.tsx';
 import { Audio } from './Audio.tsx';
 import { Callout } from './Callout.tsx';
 import { Embed } from './Embed.tsx';
@@ -85,6 +86,10 @@ export const componentMap: Record<string, React.ComponentType<any>> = {
   // Renders via a cross-origin iframe with `referrerPolicy="no-referrer"`.
   Embed,
   Accordion,
+  // `HtmlAlignBlock` — canonical renderer for promoted `<div align>` wrappers
+  // (GitHub-README centered headers). Children stay ordinary editable
+  // blocks; the wrapper only applies text alignment.
+  HtmlAlignBlock: AlignBlock,
   Tabs,
   Tab,
   Math: MathView,

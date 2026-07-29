@@ -1907,6 +1907,14 @@
   outline-offset: 2px;
 }
 
+/* `<div align>` compat wrapper (HtmlAlignBlock / div-align-promoter):
+   images inside the aligned block flow inline like GitHub renders them —
+   the OK default `display: block` image would ignore the wrapper's
+   text-align and pin badges/heroes to the left edge. */
+.ProseMirror [data-component-type="align-block"] img {
+  display: inline-block;
+}
+
 /* Wiki-link chip icon — the `<img>` inside `[data-wiki-link-icon]`. Lives
    AFTER `.ProseMirror img` so source order matches the descending-
    specificity ratchet (biome's noDescendingSpecificity). Overrides

@@ -779,6 +779,38 @@ const htmlDetailsAccordionProps: PropDef[] = [
   accordionProps[5],
 ];
 
+// HtmlAlignBlock exposes the one attribute the `<div align>` authoring form
+// encodes; the enum mirrors the promoter's validated value set.
+const htmlAlignBlockProps: PropDef[] = [
+  {
+    name: 'align',
+    type: 'enum',
+    enumValues: ['center', 'left', 'right', 'justify'],
+    required: false,
+    defaultValue: 'center',
+    description: 'Block alignment from the `<div align>` attribute.',
+  },
+  {
+    // 'div' | 'center' — which HTML wrapper authored this block.
+    name: 'tag',
+    type: 'string',
+    required: false,
+    defaultValue: 'div',
+    hidden: true,
+    description: 'Source wrapper tag (div or center).',
+  },
+  {
+    // Raw attribute bytes from the opener tag (leading whitespace included)
+    // so a dirty-path rebuild re-emits non-align attributes untouched.
+    name: 'sourceAttrs',
+    type: 'string',
+    required: false,
+    defaultValue: '',
+    hidden: true,
+    description: 'Raw opener-tag attribute bytes preserved for round-trip.',
+  },
+];
+
 // WikiEmbed* compats expose only what `![[file.ext|alias]]` can encode — a
 // single editable string slot. Stored target / anchor stay on the prop bag
 // alongside `alias` so `serialize` can rebuild byte-identical source bytes,
@@ -1689,6 +1721,55 @@ export const builtInComponents: JsxComponentMeta[] = [
           htmlBoundary: {
             opener: `<details${open}${nameAttr}${idAttr}>\n${summary}`,
             closer: '</details>',
+          },
+        },
+      };
+    },
+  },
+  {
+    // Canonical (not compat) on the MermaidFence precedent: the HTML
+    // `<div align>` wrapper IS the authoring form — there is no MDX JSX
+    // counterpart to render through, so a compat row would dangle T7's
+    // rendersAs-resolves-to-canonical invariant.
+    name: 'HtmlAlignBlock',
+    surface: 'canonical',
+    hasChildren: true,
+    props: htmlAlignBlockProps,
+    icon: 'AlignCenter',
+    category: 'content',
+    displayName: 'Align block',
+    description:
+      'GitHub-style `<div align>` wrapper. Children render as normal blocks with the alignment applied; the `<div align>` syntax is preserved on round-trip.',
+    searchTerms: ['align', 'center', 'centered', 'div'],
+    serialize: (node, ctx) => {
+      const p = node.attrs.props as
+        | { align?: string; tag?: string; sourceAttrs?: string }
+        | undefined;
+      const tag = p?.tag === 'center' ? 'center' : 'div';
+      const align = typeof p?.align === 'string' && p.align ? p.align : null;
+      // Start from the preserved raw attr bytes (non-align attributes ride
+      // along untouched), then reconcile the live `align` prop into them —
+      // a PropPanel alignment edit must reach disk, not lose to the stale
+      // captured bytes. `<center>` implies center; it only carries an
+      // explicit align attr when the user picks a different alignment.
+      let attrs = typeof p?.sourceAttrs === 'string' ? p.sourceAttrs : '';
+      const alignAttrRe = /(\balign\s*=\s*)(?:"[^"]*"|'[^']*'|[^\s"'<>]+)/i;
+      if (align !== null && (tag === 'div' || align !== 'center')) {
+        attrs = alignAttrRe.test(attrs)
+          ? attrs.replace(alignAttrRe, `$1"${escapeHtmlAttr(align)}"`)
+          : `${attrs} align="${escapeHtmlAttr(align)}"`;
+      } else if (align === null || (tag === 'center' && align === 'center')) {
+        attrs = attrs.replace(new RegExp(`\\s*${alignAttrRe.source}`, 'i'), '');
+      }
+      return {
+        type: 'mdxJsxFlowElement' as const,
+        name: 'HtmlAlignBlock',
+        attributes: [],
+        children: ctx.all(node) as never,
+        data: {
+          htmlBoundary: {
+            opener: `<${tag}${attrs}>`,
+            closer: `</${tag}>`,
           },
         },
       };

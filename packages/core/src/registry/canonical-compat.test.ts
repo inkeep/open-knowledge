@@ -28,8 +28,8 @@ describe('canonical/compat split — registry shape', () => {
     }
   });
 
-  test('exactly 14 canonical descriptors (5-pack + Math + MermaidFence + Pdf + File + Tabs + Tab + Embed + Mirror + MirrorSource)', () => {
-    expect(canonicalDescriptors.length).toBe(14);
+  test('exactly 15 canonical descriptors (5-pack + Math + MermaidFence + Pdf + File + Tabs + Tab + Embed + Mirror + MirrorSource + HtmlAlignBlock)', () => {
+    expect(canonicalDescriptors.length).toBe(15);
     // Media canonicals with a matching HTML primitive are lowercase
     // (img/video/audio). Non-native canonicals stay capitalized
     // (Callout, Accordion, Math, MermaidFence, Pdf, File, Tabs, Tab,
@@ -44,6 +44,7 @@ describe('canonical/compat split — registry shape', () => {
         'Callout',
         'Embed',
         'File',
+        'HtmlAlignBlock',
         'Math',
         'MermaidFence',
         'Mirror',

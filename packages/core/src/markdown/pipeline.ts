@@ -22,6 +22,7 @@ import { calloutTransformerPlugin, REMARK_GITHUB_ALERTS_OPTIONS } from './callou
 import { commentPromoterPlugin } from './comment-promoter.ts';
 import { dedentBlockJsxClose } from './dedent-block-jsx-close.ts';
 import { detailsAccordionPromoterPlugin } from './details-accordion-promoter.ts';
+import { divAlignPromoterPlugin } from './div-align-promoter.ts';
 import { encodeEntityRefs, restoreEntityRefsPlugin } from './entity-ref-guard.ts';
 import { highlightPromoterPlugin } from './highlight-promoter.ts';
 import { imagePromoterPlugin } from './image-promoter.ts';
@@ -84,6 +85,7 @@ export const ACTIVE_MDAST_PLUGINS = [
   { name: 'restore-entity-refs', plugin: restoreEntityRefsPlugin },
   { name: 'restore-backslash-escapes', plugin: restoreBackslashEscapesPlugin },
   { name: 'details-accordion-promoter', plugin: detailsAccordionPromoterPlugin },
+  { name: 'div-align-promoter', plugin: divAlignPromoterPlugin },
   { name: 'image-promoter', plugin: imagePromoterPlugin },
   { name: 'indented-code-promoter', plugin: indentedCodePromoterPlugin },
   { name: 'math-promoter', plugin: mathPromoterPlugin },

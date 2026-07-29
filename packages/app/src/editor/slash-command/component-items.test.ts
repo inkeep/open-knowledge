@@ -49,6 +49,7 @@ describe('getComponentItems (slash menu)', () => {
     expect(labels).toEqual(
       [
         'Accordion',
+        'Align block',
         'Audio',
         'Callout',
         'Embed',
@@ -253,11 +254,11 @@ describe('agent-surface ↔ slash-menu filter parity', () => {
     }
   });
 
-  test('broad set minus agent set === fence-kind names (today: just MermaidFence)', () => {
+  test('broad set minus agent set === fence- and html-kind names', () => {
     const broad = broadCanonicalSet();
     const agent = agentCanonicalSet();
     const divergence = new Set([...broad].filter((name) => !agent.has(name)));
-    expect(divergence).toEqual(new Set(['MermaidFence']));
+    expect(divergence).toEqual(new Set(['MermaidFence', 'HtmlAlignBlock']));
   });
 
   test('broad set minus slash-menu set === SLASH_HIDDEN_CANONICALS exactly', () => {

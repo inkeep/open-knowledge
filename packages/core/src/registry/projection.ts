@@ -41,7 +41,7 @@ const TO_MARKDOWN_MDX_EXT = mdxToMarkdown();
  * - `jsx-void` — self-closing JSX with no body (`<img src="" />`).
  * - `fence` — fenced code block (`MermaidFence`, the one fence-kind canonical).
  */
-export type ComponentKind = 'jsx-block' | 'jsx-void' | 'fence';
+export type ComponentKind = 'jsx-block' | 'jsx-void' | 'fence' | 'html';
 
 /** Lite per-entry shape — what the write-tool-description inventory carries. */
 export interface ComponentEntryLite {
@@ -97,7 +97,10 @@ export function getCanonicalDescriptors(): JsxComponentMeta[] {
  * stays in the registry because it's load-bearing for the parse pipeline.
  */
 export function getAgentCanonicalDescriptors(): JsxComponentMeta[] {
-  return getCanonicalDescriptors().filter((d) => resolveKind(d) !== 'fence');
+  return getCanonicalDescriptors().filter((d) => {
+    const kind = resolveKind(d);
+    return kind !== 'fence' && kind !== 'html';
+  });
 }
 
 /**
@@ -113,6 +116,11 @@ export function getAgentCanonicalDescriptors(): JsxComponentMeta[] {
  */
 function resolveKind(descriptor: JsxComponentMeta): ComponentKind {
   if (descriptor.name === 'MermaidFence') return 'fence';
+  // html-kind: the authoring form is raw HTML (`<div align>` / `<center>`),
+  // so advertising a `<HtmlAlignBlock>` JSX form to agents would teach them
+  // markup that renders in OK but nowhere else (same exclusion rationale as
+  // fence-kind).
+  if (descriptor.name === 'HtmlAlignBlock') return 'html';
   if (descriptor.hasChildren) return 'jsx-block';
   return 'jsx-void';
 }

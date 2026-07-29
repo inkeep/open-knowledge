@@ -900,6 +900,11 @@
       "hasOptions": false
     },
     {
+      "name": "div-align-promoter",
+      "version": null,
+      "hasOptions": false
+    },
+    {
       "name": "image-promoter",
       "version": null,
       "hasOptions": false
