@@ -18,7 +18,7 @@
  */
 
 import { useLingui } from '@lingui/react/macro';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { EditorModeToggle } from '@/components/EditorModeToggle';
 import { NotInSidebarIndicator } from '@/components/NotInSidebarIndicator';
 import { FrontmatterSchemaFieldEditor } from '@/components/settings/frontmatter-schema-field-editor';
@@ -26,7 +26,10 @@ import { PluginBetaBadge } from '@/components/settings/PluginBetaBadge';
 import { TextViewer } from '@/components/TextViewer';
 import { useProjectLintConfig } from '@/editor/lint-config-client';
 import { type LintConfigViewMode, useLintConfigViewMode } from '@/editor/useLintConfigViewMode';
-import { consumeSchemaFieldsView } from '@/lib/schema-fields-view-intent';
+import {
+  consumeSchemaFieldsView,
+  subscribeSchemaFieldsView,
+} from '@/lib/schema-fields-view-intent';
 
 interface SchemaConfigEditorProps {
   /** Root-relative path of the opened schema asset (no leading slash). */
@@ -46,14 +49,27 @@ export function SchemaConfigEditor({ assetPath }: SchemaConfigEditorProps) {
   // A Settings-panel open carries a one-shot Fields intent that outranks the
   // persisted preference for THIS mount only; the user's own toggle (which
   // both persists and overrides) wins from then on.
-  const [overrideMode, setOverrideMode] = useState<LintConfigViewMode | null>(() =>
-    consumeSchemaFieldsView(assetPath) ? 'rules' : null,
-  );
+  const [overrideMode, setOverrideMode] = useState<LintConfigViewMode | null>(null);
   const viewMode = overrideMode ?? persistedMode;
   const setViewMode = (next: LintConfigViewMode) => {
     setOverrideMode(next);
     setPersistedMode(next);
   };
+
+  // Claim the Fields intent from an effect, not a render-time read, so render
+  // performs no destructive consume and one path serves both cases: an intent
+  // banked before this mount, and one recorded live while the editor stays
+  // mounted (see the module doc for the Settings-overlay case that keeps the
+  // already-active schema mounted and makes the live path necessary).
+  useEffect(() => {
+    const claim = (path: string) => {
+      if (path !== assetPath) return;
+      if (!consumeSchemaFieldsView(path)) return;
+      setOverrideMode('rules');
+    };
+    claim(assetPath);
+    return subscribeSchemaFieldsView(claim);
+  }, [assetPath]);
   const { data } = useProjectLintConfig();
 
   // Server and client paths are both root-relative with no leading slash, so

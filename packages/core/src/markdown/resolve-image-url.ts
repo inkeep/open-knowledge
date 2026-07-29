@@ -1,4 +1,3 @@
-
 import { isRelativeUrl } from './safe-url.ts';
 
 function isDevDiagnosticContext(): boolean {

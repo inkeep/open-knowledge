@@ -1,4 +1,3 @@
-
 import { FRONTMATTER_RE, stripFrontmatter } from '../extensions/frontmatter.ts';
 
 const LEADING_BOUNDARY_RE = /^(?:\r?\n)+/;

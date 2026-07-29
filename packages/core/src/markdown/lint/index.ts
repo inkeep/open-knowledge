@@ -1,4 +1,3 @@
-
 import { LINT_PLUGINS, type LinterConfig } from './plugins.ts';
 import type { LintDiagnostic } from './types.ts';
 
