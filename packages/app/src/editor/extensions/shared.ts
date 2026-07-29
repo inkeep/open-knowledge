@@ -41,6 +41,7 @@ import { SlashCommand } from './slash-command';
 import { SourceDirtyObserver } from './source-dirty-observer';
 import { TabFocusTrap } from './tab-focus-trap';
 import { TableInsertControls } from './table-insert-controls';
+import { TableRowEnter } from './table-row-enter';
 import { TagClickPlugin } from './tag-click-plugin';
 import { Tag } from './tag-view';
 import { WikiLink } from './wiki-link';
@@ -156,6 +157,10 @@ export const sharedExtensions = [
   // `view.dom.parentElement` for the same Activity-flip reason as
   // BlockDragHandle; keyboard parity lives in the TableCellHandles dropdowns.
   TableInsertControls,
+  // TableRowEnter — spreadsheet-style Enter in tables: always moves the caret
+  // to the same column of the row below (appending a row from the last row),
+  // never splitting the cell; Shift+Enter stays the in-cell line break.
+  TableRowEnter,
   SourceDirtyObserver,
   // Typed-URL autolink. Origin-guarded (never converts CRDT-sync-tagged
   // peer/agent/disk edits) and active-editor-gated (never converts in a pooled
