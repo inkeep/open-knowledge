@@ -1209,6 +1209,9 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
 
   test('keeps only the most-recent N bridge-merge-loss refs per branch', async () => {
     const { gcCheckpointRefs } = await import('./shadow-repo.ts');
+    // Distinct seconds per write: retention keeps a whole same-second group
+    // rather than choosing a victim it cannot order, so a count assertion needs
+    // an unambiguous recency order.
     for (let i = 0; i < 7; i++) {
       await saveInMemoryCheckpoint(shadow, 'content/docs', {
         kind: 'bridge-merge-loss',
@@ -1216,6 +1219,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
         contents: `contents ${i}\n`,
         label: `loss ${i}`,
         metadata: { lostSubstrings: [`lost-${i}`] },
+        date: `@${1_700_000_000 + i * 100} +0000`,
       });
     }
 
@@ -1247,6 +1251,8 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     // (maxProducerGuardLoss), independent of maxBridgeMergeLoss — a stuck
     // serializer must not evict merge-drop recovery anchors (or vice versa).
     const { gcCheckpointRefs } = await import('./shadow-repo.ts');
+    // Distinct seconds per write, as above: a same-second group is retained
+    // whole, which would leave nothing for the budget to evict.
     for (let i = 0; i < 7; i++) {
       await saveInMemoryCheckpoint(shadow, 'content/docs', {
         kind: 'producer-guard-loss',
@@ -1254,6 +1260,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
         contents: `contents ${i}\n`,
         label: `guard loss ${i}`,
         metadata: { construct: 'table' },
+        date: `@${1_700_000_000 + i * 100} +0000`,
       });
     }
     // One bridge-merge-loss alongside: its budget (50) must shield it from the
@@ -1473,7 +1480,16 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     expect(result.deletedAutoConsolidation).toBe(0);
   });
 
-  const seedKind = async (kind: CheckpointKind, tag = ''): Promise<void> => {
+  /**
+   * Distinct, increasing commit dates for seeded checkpoints. Git stores dates
+   * at one-second granularity, so a burst written without them ties, and
+   * retention keeps a whole tied group rather than choosing a victim it cannot
+   * order. A budget assertion needs an unambiguous order to count against.
+   * Matches the scheme `writeAutoConsolidationCheckpoint` already uses.
+   */
+  const seedDate = (rank: number): string => `@${1_700_000_000 + rank * 100} +0000`;
+
+  const seedKind = async (kind: CheckpointKind, tag = '', date?: string): Promise<void> => {
     switch (kind) {
       case 'bridge-merge-loss':
         await saveInMemoryCheckpoint(shadow, 'content/docs', {
@@ -1481,6 +1497,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
           docName: 'a.md',
           contents: `a${tag}\n`,
           label: 'l',
+          date,
           metadata: { lostSubstrings: ['x'] },
         });
         return;
@@ -1490,6 +1507,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
           docName: 'b.md',
           contents: `b${tag}\n`,
           label: 'l',
+          date,
           metadata: { construct: 'tableCell' },
         });
         return;
@@ -1499,6 +1517,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
           docName: 'c.md',
           contents: `c${tag}\n`,
           label: 'l',
+          date,
           metadata: { duplicatedLineCount: 1 },
         });
         return;
@@ -1508,6 +1527,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
           docName: 'd.md',
           contents: `d${tag}\n`,
           label: 'l',
+          date,
           metadata: { incomingDiskSha: 'sha' },
         });
         return;
@@ -1517,6 +1537,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
           docName: 'e.md',
           contents: `e${tag}\n`,
           label: 'l',
+          date,
           metadata: { deferCount: 8 },
         });
         return;
@@ -1526,6 +1547,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
           docName: 'h.md',
           contents: `h${tag}\n`,
           label: 'l',
+          date,
           metadata: { lostSubstrings: ['dropped'] },
         });
         return;
@@ -1535,6 +1557,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
           docName: 'f.md',
           contents: `f${tag}\n`,
           label: 'l',
+          date,
           metadata: { lostSubstrings: ['dropped'] },
         });
         return;
@@ -1544,6 +1567,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
           docName: 'g.md',
           contents: `g${tag}\n`,
           label: 'l',
+          date,
           metadata: { rounds: 8 },
         });
         return;
@@ -1553,6 +1577,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
           docName: 'i.md',
           contents: `i${tag}\n`,
           label: 'l',
+          date,
           metadata: { atRiskLines: 1, witnessAvailable: true },
         });
         return;
@@ -1600,8 +1625,8 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     // invisible to the seed-one-per-kind sweep — this is what catches a missing
     // fan-out entry: refs that accumulate forever with no cap and no TTL.
     for (const kind of CHECKPOINT_KINDS) {
-      await seedKind(kind, '1');
-      await seedKind(kind, '2');
+      await seedKind(kind, '1', seedDate(1));
+      await seedKind(kind, '2', seedDate(2));
     }
 
     // Every `max*` limit set to 1, derived from the policy shape so a new

@@ -638,6 +638,9 @@
       "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
     ],
     "BjitBo": ["Download ", ["0"]],
+    "BkGtRl": [
+      "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
+    ],
     "Bn9-El": ["default"],
     "Bv5a9_": ["Selection statistics"],
     "Bx4EXG": ["Actions for ", ["label"]],
@@ -872,6 +875,7 @@
       ["0"],
       ")."
     ],
+    "FWSjnp": ["Edit source pane and code property fields"],
     "FXk_zY": ["Adds a guided workflow for authoring new Agent Skills."],
     "FZtBeR": ["Enable ", ["0"]],
     "FgQ7XZ": ["Couldn't load your bug reports."],
@@ -1552,6 +1556,9 @@
     "T0OVm7": ["The default branch is protected — pushes need a pull request."],
     "T3Mld1": ["Window"],
     "T3j-7o": ["e.g. Switching projects while a sync was running"],
+    "TDeOpa": [
+      "Undo or redo your own edits, leaving edits from collaborators and agents in place."
+    ],
     "TEEPPF": ["Will replace existing OpenKnowledge entry"],
     "TJnkyf": ["ok ui responded but server.lock has no port yet"],
     "TKQ7K-": ["Install"],
@@ -1665,6 +1672,7 @@
     "VNgKZz": ["Advanced settings"],
     "VTulZj": ["Open in worktree"],
     "VUijjF": ["Embed an image with optional alt text."],
+    "VXGFMg": ["Code field undo or redo"],
     "VYd_YA": ["Open an existing project folder from disk."],
     "VZGh8G": ["Fold, unfold, fold all, or unfold all source ranges."],
     "VZSBXL": ["Semantic ranking activates the first time an agent runs a search."],
@@ -2847,7 +2855,6 @@
     "qyLmWw": ["Source editor search panel"],
     "r-OJYm": ["Enter a valid branch name (no spaces, no leading dot, no \"..\")."],
     "r2eKE3": ["Sign in to ", ["agentName"], " first"],
-    "r2huLx": ["Undo, redo, or undo selection changes through CodeMirror history."],
     "r4R7AZ": ["Network error during cleanup"],
     "r51jLC": ["File saved & Claude Desktop App opened"],
     "r6ncaO": ["Close tab"],

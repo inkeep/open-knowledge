@@ -49,7 +49,10 @@ describe('restore after checkpoint GC', () => {
       { timeoutMs: 5000, settleMs: 200 },
     );
 
-    // Two checkpoints of one kind, so keep-1 evicts exactly one of them.
+    // Two checkpoints of one kind, so keep-1 evicts exactly one of them. The
+    // explicit dates put them a second apart: git stores commit dates at
+    // one-second granularity, so writing both in the same second would leave
+    // the sweep no way to tell which is newer and it would then keep both.
     const shadow = await initShadowRepo(server.contentDir);
     const firstSha = await saveInMemoryCheckpoint(shadow, '', {
       kind: 'defer-exhaustion-loss',
@@ -58,6 +61,7 @@ describe('restore after checkpoint GC', () => {
       branch: 'main',
       label: 'older recovery',
       metadata: { deferCount: 9 },
+      date: '2026-01-02T03:04:05Z',
     });
     const secondSha = await saveInMemoryCheckpoint(shadow, '', {
       kind: 'defer-exhaustion-loss',
@@ -66,6 +70,7 @@ describe('restore after checkpoint GC', () => {
       branch: 'main',
       label: 'newer recovery',
       metadata: { deferCount: 9 },
+      date: '2026-01-02T03:04:06Z',
     });
 
     // Sanity: both shas resolve BEFORE the sweep, so a 404 after it is the
@@ -97,17 +102,14 @@ describe('restore after checkpoint GC', () => {
     });
     expect(gc.deletedDeferExhaustionLoss).toBe(1);
 
-    // Which of the two same-second checkpoints the sweep evicts is not pinned
-    // here: retention orders by git author date, which has one-second
-    // granularity, so a pair written inside one second ties and the survivor
-    // is decided by ref order rather than by recency. This test is about what
-    // a restore does with an evicted sha, so read the eviction back out of the
-    // ref set instead of assuming which one it was.
+    // Recency is unambiguous here, so the survivor's identity is pinned: a
+    // sweep that keeps the most recent N must drop the older checkpoint and
+    // keep the newer rescue, never the other way round.
     const refsAfter = checkpointRefShas();
     const evicted = [...refsBefore].filter((sha) => !refsAfter.has(sha));
-    expect(evicted).toHaveLength(1);
-    const evictedSha = evicted[0] as string;
-    expect([firstSha, secondSha]).toContain(evictedSha);
+    expect(evicted).toEqual([firstSha]);
+    expect(refsAfter.has(secondSha)).toBe(true);
+    const evictedSha = firstSha;
 
     // The row is gone from the timeline...
     const histRes = await fetch(
@@ -155,8 +157,6 @@ describe('restore after checkpoint GC', () => {
     // No mutation: not a partial restore, not a resurrection of the evicted blob.
     const after = readTestDoc(server.contentDir, docName);
     expect(after).toBe(before);
-    expect(after).not.toContain(
-      evictedSha === firstSha ? 'older recovered body' : 'newer recovered body',
-    );
+    expect(after).not.toContain('older recovered body');
   }, 60_000);
 });

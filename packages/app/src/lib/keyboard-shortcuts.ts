@@ -725,11 +725,32 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     id: 'source-history',
     category: 'source',
     title: msg`Source undo or redo`,
-    description: msg`Undo, redo, or undo selection changes through CodeMirror history.`,
+    description: msg`Undo or redo your own edits, leaving edits from collaborators and agents in place.`,
     scope: msg`Source editor`,
     bindings: [
       { mac: '⌘ Z', windowsLinux: 'Ctrl Z' },
       { mac: '⇧⌘ Z', windowsLinux: 'Ctrl Y / Ctrl Shift Z' },
+    ],
+  },
+  {
+    // The selection chords live here rather than on the source row: source mode
+    // runs the origin-aware collaborative undo, which has no selection history,
+    // while these two surfaces still install CodeMirror's own `historyKeymap`.
+    // Scope names only those two. An ordinary fenced code block is NOT one of
+    // them: it edits through the ProseMirror node view under the collaborative
+    // undo, so listing it here would repeat the mis-scope this row exists to
+    // correct. That keymap's second redo entry declares `linux` with no `key`,
+    // so Ctrl Shift Z resolves on Linux but not on Windows, and this column
+    // cannot split the two platforms. Ctrl Y is the redo chord that holds on
+    // both.
+    id: 'code-field-history',
+    category: 'wysiwyg',
+    title: msg`Code field undo or redo`,
+    description: msg`Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field.`,
+    scope: msg`Edit source pane and code property fields`,
+    bindings: [
+      { mac: '⌘ Z', windowsLinux: 'Ctrl Z' },
+      { mac: '⇧⌘ Z', windowsLinux: 'Ctrl Y' },
       { mac: '⌘ U / ⇧⌘ U', windowsLinux: 'Ctrl U / Alt U' },
     ],
   },

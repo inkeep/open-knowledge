@@ -31,6 +31,14 @@ import {
 const BUDGET = 5;
 const OVER = BUDGET + 4;
 
+/**
+ * Distinct, increasing commit dates. Git stores dates at one-second
+ * granularity, so a burst written without them ties, and retention keeps a
+ * whole tied group rather than choosing a victim it cannot order. A budget
+ * assertion needs an unambiguous recency order to count against.
+ */
+const burstDate = (rank: number): string => `@${1_700_000_000 + rank * 100} +0000`;
+
 let tmpDir: string;
 let shadow: ShadowHandle;
 
@@ -58,6 +66,7 @@ describe('checkpoint GC budgets for the derive-guard / detector / backstop kinds
         contents: `pending line ${i}\n`,
         label: `defer exhaustion ${i}`,
         metadata: { deferCount: 9 },
+        date: burstDate(i),
       });
     }
     // One anchor of every other surfaced kind, each inside its own budget.
@@ -104,6 +113,7 @@ describe('checkpoint GC budgets for the derive-guard / detector / backstop kinds
         contents: `derive body ${i}\n`,
         label: `derive loss ${i}`,
         metadata: { lostSubstrings: [`derive-${i}`] },
+        date: burstDate(i),
       });
       await saveInMemoryCheckpoint(shadow, 'content/docs', {
         kind: 'bridge-backstop-trip',
@@ -111,6 +121,7 @@ describe('checkpoint GC budgets for the derive-guard / detector / backstop kinds
         contents: `backstop body ${i}\n`,
         label: `backstop trip ${i}`,
         metadata: { rounds: 8 },
+        date: burstDate(i),
       });
     }
 

@@ -837,7 +837,7 @@ export async function safetyCheckpoint(
  *   fragment serialization (the restore anchor); `lostSubstrings` names the
  *   dropped content for diagnosis.
  */
-export type InMemoryCheckpointParams =
+export type InMemoryCheckpointParams = (
   | {
       kind: 'bridge-merge-loss';
       docName: string;
@@ -909,7 +909,20 @@ export type InMemoryCheckpointParams =
       label: string;
       branch?: string;
       metadata: { rounds: number };
-    };
+    }
+) & {
+  /**
+   * Explicit commit timestamp (any git-parseable date, e.g. ISO 8601), applied
+   * to both author and committer date. Production leaves this unset so git
+   * stamps the current time; tests pass explicit values to pin retention
+   * ordering — git stores dates at one-second granularity, so checkpoints
+   * written inside one second are indistinguishable by date and would
+   * otherwise need a >1s wall-clock wait between writes to order
+   * deterministically. Mirrors `CommitWipOptions.date` and
+   * `SaveVersionOptions.date`.
+   */
+  date?: string;
+};
 
 /**
  * Silent in-memory checkpoint — writes `contents` as a blob at the
@@ -1061,17 +1074,18 @@ async function saveInMemoryCheckpointInner(
       await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: tmpIndex }).raw('write-tree')
     ).trim();
 
-    const commitSha = (
-      await sg
-        .env({
-          GIT_DIR: shadow.gitDir,
-          GIT_AUTHOR_NAME: 'openknowledge',
-          GIT_AUTHOR_EMAIL: 'noreply@openknowledge.local',
-          GIT_COMMITTER_NAME: 'openknowledge',
-          GIT_COMMITTER_EMAIL: 'noreply@openknowledge.local',
-        })
-        .raw('commit-tree', treeSha, '-m', message)
-    ).trim();
+    const commitEnv: Record<string, string> = {
+      GIT_DIR: shadow.gitDir,
+      GIT_AUTHOR_NAME: 'openknowledge',
+      GIT_AUTHOR_EMAIL: 'noreply@openknowledge.local',
+      GIT_COMMITTER_NAME: 'openknowledge',
+      GIT_COMMITTER_EMAIL: 'noreply@openknowledge.local',
+    };
+    if (params.date) {
+      commitEnv.GIT_AUTHOR_DATE = params.date;
+      commitEnv.GIT_COMMITTER_DATE = params.date;
+    }
+    const commitSha = (await sg.env(commitEnv).raw('commit-tree', treeSha, '-m', message)).trim();
 
     await sg.raw('update-ref', `refs/checkpoints/${branch}/${commitSha}`, commitSha);
     return commitSha;
@@ -1400,6 +1414,12 @@ const GC_BUCKET_POLICY = {
  * triggered `Save Version` artifacts) are always retained to preserve the
  * permanent-history contract.
  *
+ * Recency comes from the commit author date, which git stores at one-second
+ * granularity, so a burst written inside one second is unorderable. When the
+ * keep boundary falls inside such a group the count window widens to cover
+ * the whole group — the sweep may retain more than N, but it never destroys a
+ * checkpoint it cannot prove is the older one.
+ *
  * Batched: single `for-each-ref` + single `git log --no-walk` regardless of
  * ref count. Deletion is one `update-ref -d` per eligible ref.
  */
@@ -1524,10 +1544,28 @@ async function gcCheckpointRefsInner(
   ): void => {
     // Newest first so the count-based keep-N is trivial.
     list.sort((a, b) => b.timestamp - a.timestamp);
+    // Timestamps come from `%aI`, and git stores commit dates at one-second
+    // granularity, so entries written inside the same second tie and carry no
+    // recency information relative to each other — the enumeration that
+    // produced them is refname (sha) order, which is a content hash. When the
+    // keep boundary lands inside such a group, widen it to cover the whole
+    // group rather than destroying a member picked by that order: a sweep that
+    // cannot order its candidates must not fabricate one, and the newest
+    // rescue point is exactly what the arbitrary victim can be. Retention is a
+    // space bound, not a correctness bound, and the excess is bounded by the
+    // size of the straddling group. The TTL below is a per-entry threshold,
+    // needs no ordering, and is deliberately left applying to every entry.
+    let keep = limit;
+    while (keep > 0 && keep < list.length) {
+      const lastKept = list[keep - 1];
+      const firstDropped = list[keep];
+      if (!lastKept || !firstDropped || lastKept.timestamp !== firstDropped.timestamp) break;
+      keep++;
+    }
     for (let i = 0; i < list.length; i++) {
       const entry = list[i];
       if (!entry) continue;
-      const overCount = i >= limit;
+      const overCount = i >= keep;
       const overTtl =
         applyTtl && policy.ttlMs > 0 && entry.timestamp > 0 && now - entry.timestamp > policy.ttlMs;
       if (overCount || overTtl) {

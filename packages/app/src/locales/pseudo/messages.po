@@ -1916,6 +1916,10 @@ msgstr ""
 msgid "Code expired — please try again"
 msgstr ""
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Code field undo or redo"
+msgstr ""
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Codex will still ask until you run \"ok init\" in a terminal for this project."
 msgstr ""
@@ -3470,6 +3474,10 @@ msgstr ""
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Edit source"
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Edit source pane and code property fields"
 msgstr ""
 
 #: src/editor/slash-command/embed-starter-items.tsx
@@ -9958,12 +9966,16 @@ msgstr ""
 msgid "Undo or redo visual-editor changes through TipTap collaboration history."
 msgstr ""
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Undo or redo your own edits, leaving edits from collaborators and agents in place."
+msgstr ""
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Undo to this edit?"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Undo, redo, or undo selection changes through CodeMirror history."
+msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 msgstr ""
 
 #: src/components/skill-actions.tsx
