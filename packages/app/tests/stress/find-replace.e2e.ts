@@ -7,7 +7,12 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
-import { expect, test, waitForActiveProviderSynced } from './_helpers';
+import {
+  expect,
+  matchIsWithinReadableScrollport,
+  test,
+  waitForActiveProviderSynced,
+} from './_helpers';
 
 function uniqueDocName(label: string): string {
   return `test-find-replace-${label}-${randomUUID().slice(0, 8)}`;
@@ -26,23 +31,6 @@ async function getYText(page: Page): Promise<string> {
 
 function visibleScrollContainer(page: Page) {
   return page.locator('[data-testid="editor-scroll-container"]:visible');
-}
-
-async function activeFindMatchIsInsideScrollport(page: Page): Promise<boolean> {
-  return page.evaluate(() => {
-    const scrollContainer = Array.from(
-      document.querySelectorAll('[data-testid="editor-scroll-container"]'),
-    ).find((element): element is HTMLElement => {
-      if (!(element instanceof HTMLElement)) return false;
-      return element.getClientRects().length > 0;
-    });
-    const activeMatch = scrollContainer?.querySelector('.ok-find-match-active');
-    if (!scrollContainer || !(activeMatch instanceof HTMLElement)) return false;
-
-    const scrollRect = scrollContainer.getBoundingClientRect();
-    const matchRect = activeMatch.getBoundingClientRect();
-    return matchRect.top >= scrollRect.top && matchRect.bottom <= scrollRect.bottom;
-  });
 }
 
 async function activeElementIsEditor(page: Page): Promise<boolean> {
@@ -166,7 +154,9 @@ test('TipTap find navigation scrolls an off-screen active match into view', asyn
       ),
     )
     .toBeGreaterThan(0);
-  await expect.poll(() => activeFindMatchIsInsideScrollport(page)).toBe(true);
+  await expect
+    .poll(() => matchIsWithinReadableScrollport(page, '.ok-find-match-active'))
+    .toBe(true);
 });
 
 test('TipTap find navigation does not show table controls inside table matches', async ({

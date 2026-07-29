@@ -17,6 +17,11 @@ export function mergeViewMenuState(
  * Expand/Collapse rendered (no smart-hide), sidebar + doc panel assumed
  * visible (the common wide-window startup), terminal hidden with no live
  * session.
+ *
+ * `canViewInSource` is the one field that defaults to the RESTRICTIVE value
+ * rather than the likely one: it gates a context-menu row, and a row offered
+ * before the renderer has said the jump is live would silently do nothing.
+ * Absent is better than inert for a row the user has to read past.
  */
 export function createDefaultEditorViewMenuState(): EditorViewMenuStateSnapshot {
   return {
@@ -30,6 +35,7 @@ export function createDefaultEditorViewMenuState(): EditorViewMenuStateSnapshot 
     docPanelVisible: true,
     terminalVisible: false,
     terminalLive: false,
+    canViewInSource: false,
   };
 }
 

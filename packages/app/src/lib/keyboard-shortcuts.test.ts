@@ -5,6 +5,7 @@ import {
   formatShortcutLabel,
   isEditableShortcutTarget,
   KEYBOARD_SHORTCUTS,
+  type KeyboardShortcutId,
   matchesKeyboardShortcut,
 } from './keyboard-shortcuts';
 
@@ -601,5 +602,71 @@ describe('keyboard shortcut registry', () => {
     expect(isEditableShortcutTarget({ tagName: 'TEXTAREA' })).toBe(true);
     expect(isEditableShortcutTarget({ isContentEditable: true })).toBe(true);
     expect(isEditableShortcutTarget({ tagName: 'BUTTON' })).toBe(false);
+  });
+
+  test('formats the mode-switch shortcuts per platform', () => {
+    expect(formatShortcut('toggle-editor-mode', 'mac')).toBe('⌥⌘ M');
+    expect(formatShortcut('toggle-editor-mode', 'windowsLinux')).toBe('Ctrl Alt M');
+    expect(formatShortcut('view-source-at-cursor', 'mac')).toBe('⌥⌘ E');
+    expect(formatShortcut('view-source-at-cursor', 'windowsLinux')).toBe('Ctrl Alt E');
+  });
+
+  test('registers the mode-switch commands in their shortcut-help categories', () => {
+    const byId = new Map(KEYBOARD_SHORTCUTS.map((shortcut) => [shortcut.id, shortcut]));
+    expect(byId.get('toggle-editor-mode')?.category).toBe('general');
+    expect(byId.get('view-source-at-cursor')?.category).toBe('wysiwyg');
+  });
+
+  test('the mode-switch chords match only their own id across the whole registry', () => {
+    // The matcher keys on `code`, so the produced `key` (layout-dependent when
+    // Alt is held) is irrelevant here and set only to satisfy the event shape.
+    const chords = [
+      { id: 'toggle-editor-mode', code: 'KeyM', key: 'm' },
+      { id: 'view-source-at-cursor', code: 'KeyE', key: 'e' },
+    ] as const;
+    for (const chord of chords) {
+      const macEvent = {
+        metaKey: true,
+        ctrlKey: false,
+        altKey: true,
+        shiftKey: false,
+        key: chord.key,
+        code: chord.code,
+      };
+      const winEvent = {
+        metaKey: false,
+        ctrlKey: true,
+        altKey: true,
+        shiftKey: false,
+        key: chord.key,
+        code: chord.code,
+      };
+      for (const shortcut of KEYBOARD_SHORTCUTS) {
+        // The public array widens `id` to `string`; every runtime value is a
+        // registered id, so narrowing it back for the matcher lookup is sound.
+        const id = shortcut.id as KeyboardShortcutId;
+        expect(matchesKeyboardShortcut(macEvent, id, 'mac')).toBe(id === chord.id);
+        expect(matchesKeyboardShortcut(winEvent, id, 'windowsLinux')).toBe(id === chord.id);
+      }
+    }
+  });
+
+  test('the mode toggle requires its Alt modifier so it never steals Cmd+M', () => {
+    // Cmd+M (no Alt) is the macOS "minimize window" chord — the toggle must not
+    // fire on it, nor on a bare M keypress.
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: false, key: 'm', code: 'KeyM' },
+        'toggle-editor-mode',
+        'mac',
+      ),
+    ).toBe(false);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: false, altKey: false, key: 'm', code: 'KeyM' },
+        'toggle-editor-mode',
+        'mac',
+      ),
+    ).toBe(false);
   });
 });

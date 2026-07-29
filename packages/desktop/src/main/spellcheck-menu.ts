@@ -19,6 +19,13 @@
  *     with checking off defensively (Enable row, no suggestions).
  *   - Look Up / Search with Google: shown when there is a selection or a
  *     flagged word to act on.
+ *   - View in Source: shown only when the renderer has said the jump is live
+ *     (`canViewInSource`) — the native menu attaches to every editable field in
+ *     the window, and the jump only means something over a document open in the
+ *     visual editor. Omitted rather than disabled: a permanently-greyed row on
+ *     every rename field and dialog input is worse noise than no row. The jump
+ *     runs in the renderer (routed over the menu-action channel), so the builder
+ *     reads no document content here.
  *
  * Pure: `buildSpellcheckMenuTemplate` takes a params slice + the current
  * `spellCheckEnabled` flag + an `actions` object and returns a
@@ -52,12 +59,23 @@ export interface SpellcheckMenuActions {
   readonly lookUp: () => void;
   /** Open a web search for the selection or flagged word. */
   readonly search: (query: string) => void;
+  /** Jump to the markdown source of the right-clicked block. Routed to the
+   *  renderer over the menu-action channel; no document text is read in main. */
+  readonly viewInSource: () => void;
 }
 
 export interface BuildSpellcheckMenuTemplateParams {
   readonly params: SpellcheckMenuParams;
   /** Whether spell checking is currently on (the persisted app-wide flag). */
   readonly spellCheckEnabled: boolean;
+  /**
+   * Whether the view-in-source jump is live for the focused window — the
+   * renderer's own answer, since `isEditable` alone cannot tell the document
+   * body from the composer, a rename field or a dialog input. Required rather
+   * than defaulted so a new call site has to state it instead of silently
+   * re-offering the row everywhere.
+   */
+  readonly canViewInSource: boolean;
   readonly actions: SpellcheckMenuActions;
 }
 
@@ -75,10 +93,17 @@ export interface BuildSpellcheckMenuTemplateParams {
 const LOOKUP_LABEL_MAX = 50;
 const SEARCH_QUERY_MAX = 200;
 
+/**
+ * Native-menu label for the view-in-source jump. The `</>` code glyph rides the
+ * label text because native menu items carry no icon field, mirroring the code
+ * affordance the renderer bubble menu shows for the same command.
+ */
+const VIEW_IN_SOURCE_LABEL = 'View in Source Markdown';
+
 export function buildSpellcheckMenuTemplate(
   input: BuildSpellcheckMenuTemplateParams,
 ): MenuItemConstructorOptions[] {
-  const { params, spellCheckEnabled, actions } = input;
+  const { params, spellCheckEnabled, canViewInSource, actions } = input;
   const { misspelledWord, dictionarySuggestions, selectionText, editFlags } = params;
 
   const editSection: MenuItemConstructorOptions[] = [];
@@ -138,8 +163,22 @@ export function buildSpellcheckMenuTemplate(
     });
   }
 
+  // Only where the jump is live. The jump is renderer-owned (routed over the
+  // menu-action channel), so main reads no document text — including to decide
+  // this, which is why the answer is pushed rather than computed here.
+  const viewSection: MenuItemConstructorOptions[] = canViewInSource
+    ? [
+        {
+          label: VIEW_IN_SOURCE_LABEL,
+          click: () => {
+            actions.viewInSource();
+          },
+        },
+      ]
+    : [];
+
   const template: MenuItemConstructorOptions[] = [];
-  for (const section of [editSection, spellSection, lookupSection]) {
+  for (const section of [editSection, spellSection, lookupSection, viewSection]) {
     if (section.length === 0) continue;
     if (template.length > 0) template.push({ type: 'separator' });
     template.push(...section);

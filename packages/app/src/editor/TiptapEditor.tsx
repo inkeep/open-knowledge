@@ -56,6 +56,8 @@ import { FrozenTableHeaders } from './extensions/frozen-table-headers.ts';
 import { MarkdownLintDecorations } from './extensions/markdown-lint-decorations.ts';
 import { sharedExtensions } from './extensions/shared.ts';
 import { uploadDecorationPlugin } from './image-upload/index.ts';
+import type { LandingHandle } from './landing-controller';
+import { startWysiwygLanding } from './mode-switch-landing';
 import { getMountId } from './mount-id-registry';
 import { mountTiptapEditorPromise } from './mount-promise';
 import { markUserTyping } from './observers';
@@ -67,6 +69,7 @@ import {
   computeChangedRange,
   createAgentInsertFlashPlugin,
 } from './plugins/agent-insert-flash';
+import { isScrollRestoreSuppressed, runScrollNavigation } from './scroll-restore-coordination';
 import { publishSelectionContext, selectionSnapshotFromWysiwyg } from './selection-context';
 import {
   publishSelectionStats,
@@ -74,6 +77,10 @@ import {
   selectionStatsFromWysiwyg,
 } from './selection-stats';
 import { createSidebarAwareHandleDrop, openSidebarDropPayload } from './sidebar-drop';
+import {
+  consumePendingWysiwygNavigation,
+  peekPendingWysiwygNavigation,
+} from './source-editor-navigation';
 import { TableCellHandles } from './table-controls/TableCellHandles';
 import { attachTypingBurstDetector } from './typing-burst-detector';
 import { getEditorView } from './utils/get-editor-view';
@@ -851,6 +858,56 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
     return () => unregisterEditor(docName, editor);
   }, [editor, provider]);
 
+  // Replays a queued source-to-WYSIWYG landing once this editor is the active,
+  // visible surface for its doc — the WYSIWYG twin of SourceEditor's source-side
+  // replay. The cross-mode landing runs through the settle contract rather than a
+  // one-shot scroll, so it hands back a handle the cleanup cancels if the mode
+  // flips away before it settles. Deferring the consume + start to a microtask
+  // lets StrictMode's synchronous mount->cleanup->remount finish first, so only
+  // the surviving closure starts the landing and it settles once.
+  useEffect(() => {
+    if (isSourceMode) return;
+    const docName = provider.configuration.name;
+    if (!docName) return;
+    if (!peekPendingWysiwygNavigation(docName)) return;
+
+    let cancelled = false;
+    let landing: LandingHandle | null = null;
+    const begin = (): void => {
+      // Deferring the consume + start to a microtask lets StrictMode's
+      // synchronous mount->cleanup->remount finish first, so only the surviving
+      // closure starts the landing and it settles once.
+      queueMicrotask(() => {
+        if (cancelled) return;
+        const navigation = consumePendingWysiwygNavigation(docName);
+        if (navigation?.kind !== 'selection-offset') return;
+        landing = startWysiwygLanding({
+          editor,
+          docName,
+          navigation,
+          ydoc: provider.document,
+          transition: { from: 'source', to: 'wysiwyg' },
+        });
+      });
+    };
+    // The view can still be mid-creation when this passive effect runs — a large
+    // doc's deferred mount, or an Activity hidden->visible recycle. `'create'`
+    // mutates the editor in place without changing this effect's deps, so bailing
+    // here would strand the queued landing until some unrelated re-render; defer
+    // to the editor's `'create'` instead, matching this file's other view-guarded
+    // effects.
+    if (getEditorView(editor)) {
+      begin();
+    } else {
+      editor.on('create', begin);
+    }
+    return () => {
+      cancelled = true;
+      editor.off('create', begin);
+      landing?.cancel('mode-flip');
+    };
+  }, [editor, provider, isSourceMode]);
+
   // Publish selection-scoped stats so the footer can scope its counts to the
   // current selection. Debounced because selection events fire rapidly during
   // drag-select; cleared to null on unmount so a closed tab leaves no entry.
@@ -1276,6 +1333,10 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       const scrollToChange = (): void => {
         const sv = liveView();
         if (sv == null || sv.hasFocus() || document.visibilityState !== 'visible') return;
+        // Following an agent's write is not the user navigating, so it defers to
+        // a mode-switch landing rather than pre-empting one; the later follow-up
+        // attempts run once the landing has settled and released.
+        if (isScrollRestoreSuppressed(docName)) return;
         try {
           const docSize = sv.state.doc.content.size;
           const pos = Math.max(0, Math.min(Math.floor((from + to) / 2), docSize - 1));
@@ -1367,6 +1428,13 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
   // the case where the user clicks a deep-link to a doc already in the
   // pool — provider doesn't change, but the hash anchor does).
   useEffect(() => {
+    // This editor stays mounted while source mode is active (the flip is a CSS
+    // swap, not an unmount), so without this gate the ladder's retry timers and
+    // transaction-driven re-scroll would keep driving a hidden WYSIWYG view. Skip
+    // the work entirely in source mode; the effect re-runs on the flip back and
+    // reads the current hash then, so a deep link that arrived while hidden still
+    // lands when the editor becomes visible.
+    if (isSourceMode) return;
     let attempts = 0;
     let timeoutId: number | undefined;
     let pendingAnchor: string | null = null;
@@ -1397,8 +1465,12 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
     function scrollAnchorIntoView(anchor: string): boolean {
       const el = findAnchorTarget(anchor);
       if (!el) return false;
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      return true;
+      // A deep link is an explicit navigation and supersedes a position-
+      // preserving landing. Reporting a stand-down as "not scrolled" feeds the
+      // retry ladder below, which re-tries once the other navigation released.
+      return runScrollNavigation(docName, () => {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
     }
 
     // Cold deep links can hit while Activity/ProseMirror layout is still
@@ -1490,7 +1562,7 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       editor.off('transaction', retryPendingOrSchedule);
       window.removeEventListener('hashchange', scheduleScrollFromHash);
     };
-  }, [provider, editor, docName, activeDocName]);
+  }, [provider, editor, docName, activeDocName, isSourceMode]);
 
   // Outline panel click → scroll the Nth heading in the WYSIWYG DOM into view.
   // Using index (not slug) keeps this robust to duplicate heading texts without
@@ -1506,11 +1578,14 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       if (!realView) return;
       const headings = realView.dom.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6');
       const target = headings[detail.index];
-      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (!target) return;
+      runScrollNavigation(docName, () => {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
     }
     window.addEventListener(OUTLINE_NAV_EVENT, onNav);
     return () => window.removeEventListener(OUTLINE_NAV_EVENT, onNav);
-  }, [editor]);
+  }, [editor, docName]);
 
   // Publish (or clear) this tab's awareness for the doc this editor binds to.
   //

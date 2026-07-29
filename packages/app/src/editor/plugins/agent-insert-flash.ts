@@ -75,37 +75,12 @@ export function computeChangedRange(
  */
 export const AGENT_INSERT_FLASH_ACTIVATION_MS = 6_000;
 
-/**
- * Map a top-level block-index range `[fromBlock, toBlock)` to a ProseMirror
- * position range in `doc`, or null when empty / out of bounds.
- *
- * The activation-replay counterpart to `computeChangedRange`: the write has
- * already applied, so there is no transaction to diff — the server stamped the
- * changed block indices instead. They address PM top-level nodes directly
- * (y-prosemirror mirrors the XmlFragment's children onto the PM doc), so the
- * PM range is the span from the boundary before the first changed block to the
- * boundary after the last.
- */
-export function blockRangeToPositions(
-  doc: PMNode,
-  fromBlock: number,
-  toBlock: number,
-): { from: number; to: number } | null {
-  const childCount = doc.childCount;
-  const first = Math.max(0, Math.min(fromBlock, childCount));
-  const last = Math.max(first, Math.min(toBlock, childCount));
-  if (last <= first) return null;
-  let pos = 0;
-  for (let i = 0; i < first; i++) pos += doc.child(i).nodeSize;
-  const from = pos;
-  for (let i = first; i < last; i++) pos += doc.child(i).nodeSize;
-  const to = pos;
-  const size = doc.content.size;
-  const clampedFrom = Math.max(0, Math.min(from, size));
-  const clampedTo = Math.max(clampedFrom, Math.min(to, size));
-  if (clampedTo <= clampedFrom) return null;
-  return { from: clampedFrom, to: clampedTo };
-}
+// `blockRangeToPositions` lives in block-spans (the block-ordinal coordinate
+// substrate) so the mode-switch resolver can reach it without importing this
+// decoration plugin's module graph. Re-exported here for the agent-flash
+// activation-replay path, which maps server-stamped block indices to a PM range
+// as the counterpart to `computeChangedRange` above.
+export { blockRangeToPositions } from '../block-spans';
 
 export function createAgentInsertFlashPlugin(): Plugin<DecorationSet> {
   return new Plugin<DecorationSet>({

@@ -834,6 +834,10 @@ function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
   });
   attachSpellcheckContextMenu(win.webContents, {
     isSpellCheckEnabled: () => appState.spellCheckEnabled,
+    // The native menu attaches to every editable field in the window, so the
+    // view-in-source row needs the renderer's answer for whether the jump is
+    // live. Read per right-click, like the spell-check flag above.
+    canViewInSource: () => editorViewMenuState.canViewInSource === true,
     setSpellCheckEnabled: setSpellCheckEnabledAppWide,
     addToDictionary: (word) => {
       session.defaultSession.addWordToSpellCheckerDictionary(word);
@@ -842,6 +846,13 @@ function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
       void openExternalSafely(url).catch((err: unknown) => {
         getLogger('spellcheck-menu').warn({ err, url }, 'context-menu search openExternal failed');
       });
+    },
+    viewInSource: () => {
+      // Route to the window that was right-clicked. Guard the click→close race:
+      // the menu click fires async, and a send on a destroyed webContents throws
+      // and crashes main (no userland uncaughtException handler).
+      if (win.isDestroyed()) return;
+      sendToRenderer(win.webContents, 'ok:menu-action', 'toggle-source');
     },
     popMenu: (input) => {
       popSpellcheckMenu({ Menu, window: win }, input);
@@ -1109,9 +1120,10 @@ let editorActiveTarget: EditorActiveTargetSnapshot = { kind: null };
  * View-menu state pushed by the renderer via
  * `ok:editor:view-menu-state-changed`. Drives the View menu's checkbox
  * reflection for the visibility toggles and the smart-hide on Expand All /
- * Collapse All. Module-scope rather than per-window for the same reason
- * `editorActiveTarget` is — the menu is a singleton. Pre-push defaults
- * (and their rationale) live with `createDefaultEditorViewMenuState`.
+ * Collapse All, plus the editor context menu's view-in-source row. Module-scope
+ * rather than per-window for the same reason `editorActiveTarget` is — the menu
+ * is a singleton. Pre-push defaults (and their rationale) live with
+ * `createDefaultEditorViewMenuState`.
  */
 let editorViewMenuState: EditorViewMenuStateSnapshot = createDefaultEditorViewMenuState();
 

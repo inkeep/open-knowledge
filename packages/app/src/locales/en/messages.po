@@ -3512,6 +3512,10 @@ msgstr "editing [[{realCurrentDoc}]]"
 msgid "Editing broken MDX source: {reason}"
 msgstr "Editing broken MDX source: {reason}"
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Editor"
+msgstr "Editor"
+
 #: src/components/EditorModeToggle.tsx
 msgid "Editor mode"
 msgstr "Editor mode"
@@ -5139,6 +5143,10 @@ msgstr "Jump to page {pageNumber}"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Jump to tab 1-8"
 msgstr "Jump to tab 1-8"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Jump to the markdown source for the block at the cursor, centered and highlighted."
+msgstr "Jump to the markdown source for the block at the cursor, centered and highlighted."
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/FolderOverview.tsx
@@ -8968,6 +8976,10 @@ msgstr "Surface"
 msgid "Switch and update branch"
 msgstr "Switch and update branch"
 
+#: src/lib/keyboard-shortcuts.ts
+msgid "Switch between the visual and source editors, keeping your place."
+msgstr "Switch between the visual and source editors, keeping your place."
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Switch branch"
 msgstr "Switch branch"
@@ -9822,6 +9834,10 @@ msgid "Toggle source tab focus mode"
 msgstr "Toggle source tab focus mode"
 
 #: src/lib/keyboard-shortcuts.ts
+msgid "Toggle source view"
+msgstr "Toggle source view"
+
+#: src/lib/keyboard-shortcuts.ts
 msgid "Toggle strikethrough formatting."
 msgstr "Toggle strikethrough formatting."
 
@@ -10249,6 +10265,14 @@ msgstr "View as text"
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "View diff for edit {burstNumber} of {docName}"
 msgstr "View diff for edit {burstNumber} of {docName}"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "View in source"
+msgstr "View in source"
+
+#: src/editor/bubble-menu/ViewInSourceBubbleButton.tsx
+msgid "View in source markdown"
+msgstr "View in source markdown"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Visibility"

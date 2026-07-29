@@ -29,10 +29,21 @@ export {
 } from './fixtures.ts';
 export { waitForGraphSimulationSettled } from './graph.ts';
 export {
+  assertLanded,
+  injectForcedEstimateError,
+  landingMarkCount,
+  readSourceCaretHead,
+  readWysiwygCaretHead,
+  scrollWysiwygBlockToTop,
+  toggleMode,
+  waitForLandingSettled,
+} from './landing.ts';
+export {
   installClockAfterSync,
   type WaitForProviderOptions,
   waitForActiveProviderSynced,
 } from './provider.ts';
+export { matchIsWithinReadableScrollport } from './scrollport.ts';
 export {
   checkCollabSync,
   closeServerLog,
@@ -55,4 +66,5 @@ export {
   waitForSlashMenuFirstOption,
   waitForSlashMenuOpen,
 } from './slash-menu.ts';
+export { blockMarker, generateTallDoc } from './tall-doc-fixture.ts';
 export { createMp3Buffer, createMp4Buffer, createPngBuffer } from './upload-fixtures.ts';

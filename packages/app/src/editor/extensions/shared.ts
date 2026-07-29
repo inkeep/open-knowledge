@@ -12,6 +12,7 @@ import { GfmAutolink } from '../gfm-autolink-plugin';
 import { uploadAndInsert } from '../image-upload/index.ts';
 import { InlineLinkInputRule } from '../inline-link-input-rule';
 import { MathInputRule } from '../math-input-rule';
+import { LandingFlash } from '../plugins/landing-flash-wysiwyg';
 import { getComponentItems, getInlineComponentItems } from '../slash-command/component-items';
 import { getEmbedStarterItems } from '../slash-command/embed-starter-items';
 import { getSlashCommandItems } from '../slash-command/items';
@@ -182,6 +183,13 @@ export const sharedExtensions = [
   // so it can be configured per-editor-instance with context-aware text.
   BridgeIdPlugin,
   SelectionStatePlugin,
+  // LandingFlash — transient inline highlight on the range a mode-switch jump
+  // lands on, the WYSIWYG counterpart of the source landing flash. Decoration-
+  // only, no documentName keying, no write path. Registered on every WYSIWYG
+  // editor for symmetry but dormant today: the in-scope jump lands in source and
+  // the plain toggle is scroll-only, so nothing dispatches it until a "view in
+  // WYSIWYG" jump exists to drive it.
+  LandingFlash,
   // Block-chunked content-visibility:auto. Applies the
   // `ok-chunk-wrapper` class to every top-level direct child of the doc
   // via PM Decoration.node. Off-viewport blocks skip layout/paint per the

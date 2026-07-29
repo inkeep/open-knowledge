@@ -24,7 +24,10 @@ export const PALETTE_COMMAND_IDS = new Set<string>([
 // Ids deliberately NOT palette rows — each with a stated reason.
 export const APP_RESERVED_IDS = new Map<string, string>([
   ['delete', 'sidebar Trash id, distinct from the menu move-to-trash; not separately surfaced'],
-  ['toggle-source', 'source-mode toggle owned by the editor, not a palette action today'],
+  [
+    'toggle-source',
+    'view-in-source jump dispatched by the Desktop editor context menu; reachable there, not a Cmd+K palette row',
+  ],
   ['save-version', 'deferred Project menu — not yet a shipped command anywhere'],
   ['version-history', 'deferred Project menu — not yet a shipped command anywhere'],
   ['focus-search', 'focus-routing id, not a user-facing command'],

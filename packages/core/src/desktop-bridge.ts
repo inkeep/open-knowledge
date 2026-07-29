@@ -810,6 +810,7 @@ interface OkEditorViewMenuStateSnapshot {
   readonly docPanelVisible?: boolean;
   readonly terminalVisible?: boolean;
   readonly terminalLive?: boolean;
+  readonly canViewInSource?: boolean;
 }
 
 /**

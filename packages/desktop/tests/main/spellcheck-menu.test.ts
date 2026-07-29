@@ -22,8 +22,14 @@ function makeActions() {
     setSpellCheckEnabled: vi.fn((_: boolean) => {}),
     lookUp: vi.fn(() => {}),
     search: vi.fn((_: string) => {}),
+    viewInSource: vi.fn(() => {}),
   };
 }
+
+// The view-in-source jump trails every section-composition case below, which
+// all build with the jump live (`canViewInSource` defaults to true in `build`).
+// Its own gate is covered by the not-live cases at the end of the describe.
+const VIEW_ROW = 'View in Source Markdown';
 
 const allEditFlags = {
   canCut: true,
@@ -46,8 +52,9 @@ function build(
   params: SpellcheckMenuParams,
   spellCheckEnabled: boolean,
   actions: BuildSpellcheckMenuTemplateParams['actions'],
+  canViewInSource = true,
 ): MenuItemConstructorOptions[] {
-  return buildSpellcheckMenuTemplate({ params, spellCheckEnabled, actions });
+  return buildSpellcheckMenuTemplate({ params, spellCheckEnabled, canViewInSource, actions });
 }
 
 /** Project a template to a comparable shape: role, label, or separator marker. */
@@ -56,9 +63,16 @@ function shapeOf(template: MenuItemConstructorOptions[]): string[] {
 }
 
 describe('buildSpellcheckMenuTemplate — section composition', () => {
-  test('editable text with no misspelling and no selection → edit roles only', () => {
+  test('editable text with no misspelling and no selection → edit roles + View in Source', () => {
     const template = build(makeParams(), true, makeActions());
-    expect(shapeOf(template)).toEqual(['cut', 'copy', 'paste', 'selectAll']);
+    expect(shapeOf(template)).toEqual([
+      'cut',
+      'copy',
+      'paste',
+      'selectAll',
+      '[separator]',
+      VIEW_ROW,
+    ]);
   });
 
   test('edit roles respect editFlags', () => {
@@ -66,7 +80,7 @@ describe('buildSpellcheckMenuTemplate — section composition', () => {
       editFlags: { canCut: false, canCopy: true, canPaste: true, canSelectAll: false },
     });
     const template = build(params, true, makeActions());
-    expect(shapeOf(template)).toEqual(['copy', 'paste']);
+    expect(shapeOf(template)).toEqual(['copy', 'paste', '[separator]', VIEW_ROW]);
   });
 
   test('flagged word with checking on → suggestions, Add to Dictionary, Disable, Look Up, Search', () => {
@@ -88,6 +102,8 @@ describe('buildSpellcheckMenuTemplate — section composition', () => {
       '[separator]',
       'Look Up "teh"',
       'Search with Google',
+      '[separator]',
+      VIEW_ROW,
     ]);
   });
 
@@ -105,6 +121,8 @@ describe('buildSpellcheckMenuTemplate — section composition', () => {
       '[separator]',
       'Look Up "zzx"',
       'Search with Google',
+      '[separator]',
+      VIEW_ROW,
     ]);
   });
 
@@ -117,6 +135,8 @@ describe('buildSpellcheckMenuTemplate — section composition', () => {
       'selectAll',
       '[separator]',
       'Enable Spell Check',
+      '[separator]',
+      VIEW_ROW,
     ]);
   });
 
@@ -136,6 +156,8 @@ describe('buildSpellcheckMenuTemplate — section composition', () => {
       '[separator]',
       'Look Up "teh"',
       'Search with Google',
+      '[separator]',
+      VIEW_ROW,
     ]);
   });
 
@@ -150,15 +172,19 @@ describe('buildSpellcheckMenuTemplate — section composition', () => {
       '[separator]',
       'Look Up "hello world"',
       'Search with Google',
+      '[separator]',
+      VIEW_ROW,
     ]);
   });
 
-  test('no rows at all → empty template (no dangling separators)', () => {
+  test('no edit/spell/lookup rows → View in Source alone (no dangling separators)', () => {
+    // With the jump live and nothing else to offer, the view row is the sole
+    // entry, with no leading separator.
     const params = makeParams({
       editFlags: { canCut: false, canCopy: false, canPaste: false, canSelectAll: false },
     });
     const template = build(params, true, makeActions());
-    expect(template).toHaveLength(0);
+    expect(shapeOf(template)).toEqual([VIEW_ROW]);
   });
 
   test('leading section absent → no leading separator', () => {
@@ -176,7 +202,63 @@ describe('buildSpellcheckMenuTemplate — section composition', () => {
       '[separator]',
       'Look Up "teh"',
       'Search with Google',
+      '[separator]',
+      VIEW_ROW,
     ]);
+  });
+
+  test('View in Source is the last row on a fully-populated menu', () => {
+    const params = makeParams({
+      misspelledWord: 'teh',
+      dictionarySuggestions: ['the'],
+      selectionText: 'teh fox',
+    });
+    const template = build(params, true, makeActions());
+    const shape = shapeOf(template);
+    // Appended after everything else, behind its own separator.
+    expect(shape.at(-1)).toBe(VIEW_ROW);
+    expect(shape.at(-2)).toBe('[separator]');
+  });
+
+  // The menu attaches to every editable field in the window, and the jump only
+  // means something over a document open in the visual editor. Everywhere else
+  // — the composer, a rename field, a dialog input, source mode, no document —
+  // the row is omitted rather than shown inert or greyed.
+  test('the jump not being live omits the row, leaving the rest intact', () => {
+    const params = makeParams({
+      misspelledWord: 'teh',
+      dictionarySuggestions: ['the'],
+      selectionText: 'teh fox',
+    });
+    const template = build(params, true, makeActions(), false);
+    expect(shapeOf(template)).toEqual([
+      'cut',
+      'copy',
+      'paste',
+      'selectAll',
+      '[separator]',
+      'the',
+      'Add to Dictionary',
+      'Disable Spell Check',
+      '[separator]',
+      'Look Up "teh fox"',
+      'Search with Google',
+    ]);
+  });
+
+  test('the omitted row takes its separator with it', () => {
+    const template = build(makeParams(), true, makeActions(), false);
+    expect(shapeOf(template)).toEqual(['cut', 'copy', 'paste', 'selectAll']);
+  });
+
+  test('a capability-less field with the jump not live gets no menu rows at all', () => {
+    // The case that made the row unconditional-looking: an editable target with
+    // no edit flags, no misspelling and no selection. It must now come back
+    // empty rather than offering a lone row that does nothing.
+    const params = makeParams({
+      editFlags: { canCut: false, canCopy: false, canPaste: false, canSelectAll: false },
+    });
+    expect(build(params, true, makeActions(), false)).toEqual([]);
   });
 });
 
@@ -218,6 +300,13 @@ describe('buildSpellcheckMenuTemplate — callback dispatch', () => {
     const template = build(makeParams(), false, actions);
     clickRow(template, 'Enable Spell Check');
     expect(actions.setSpellCheckEnabled).toHaveBeenCalledWith(true);
+  });
+
+  test('View in Source fires the viewInSource action', () => {
+    const actions = makeActions();
+    const template = build(makeParams(), true, actions);
+    clickRow(template, VIEW_ROW);
+    expect(actions.viewInSource).toHaveBeenCalledTimes(1);
   });
 
   test('Look Up fires lookUp; Search fires search with the word', () => {
@@ -299,12 +388,24 @@ describe('popSpellcheckMenu', () => {
 
     popSpellcheckMenu(
       { Menu: { buildFromTemplate }, window: fakeWindow },
-      { params: makeParams(), spellCheckEnabled: true, actions: makeActions() },
+      {
+        params: makeParams(),
+        spellCheckEnabled: true,
+        canViewInSource: true,
+        actions: makeActions(),
+      },
     );
 
     expect(buildFromTemplate).toHaveBeenCalledTimes(1);
     const built = buildFromTemplate.mock.calls[0]?.[0];
-    expect(shapeOf(built ?? [])).toEqual(['cut', 'copy', 'paste', 'selectAll']);
+    expect(shapeOf(built ?? [])).toEqual([
+      'cut',
+      'copy',
+      'paste',
+      'selectAll',
+      '[separator]',
+      VIEW_ROW,
+    ]);
     expect(popup).toHaveBeenCalledWith({ window: fakeWindow });
   });
 
@@ -314,7 +415,12 @@ describe('popSpellcheckMenu', () => {
 
     popSpellcheckMenu(
       { Menu: { buildFromTemplate }, window: fakeWindow },
-      { params: makeParams(), spellCheckEnabled: true, actions: makeActions() },
+      {
+        params: makeParams(),
+        spellCheckEnabled: true,
+        canViewInSource: true,
+        actions: makeActions(),
+      },
     );
 
     expect(buildFromTemplate).not.toHaveBeenCalled();

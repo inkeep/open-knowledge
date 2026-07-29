@@ -21,6 +21,7 @@ import {
   ACTIVITY_MOUNT_LIMIT,
   computeActivityMountList,
   computeEditorMountGate,
+  computeEffectiveSourceMode,
   EditorActivityPool,
   getServerRestartRecoveryView,
   LARGE_DOC_CHAR_THRESHOLD,
@@ -418,9 +419,10 @@ describe('computeEditorMountGate — invariant: at least one editor rendered', (
 // ---------------------------------------------------------------------------
 
 describe('shouldEmitFirstToggle — first-toggle mark gate', () => {
-  test('large doc, both editors rendering, not yet emitted → emit', () => {
+  test('active large doc, both editors rendering, not yet emitted → emit', () => {
     expect(
       shouldEmitFirstToggle({
+        isActive: true,
         isLarge: true,
         renderSource: true,
         renderVisual: true,
@@ -429,9 +431,26 @@ describe('shouldEmitFirstToggle — first-toggle mark gate', () => {
     ).toBe(true);
   });
 
+  test('hidden entry that materialises both editors on a global flip → do NOT emit', () => {
+    // A hidden large entry whose deferred editor mounts (e.g. because a global
+    // flip set the other visited flag) must not spend the one-shot: it never
+    // paid a first-toggle cost, and consuming the mark here would suppress the
+    // real one when the doc is actually re-activated.
+    expect(
+      shouldEmitFirstToggle({
+        isActive: false,
+        isLarge: true,
+        renderSource: true,
+        renderVisual: true,
+        hasEmittedFirstToggle: false,
+      }),
+    ).toBe(false);
+  });
+
   test('large doc, both rendering, already emitted → do NOT emit (one-shot per Activity)', () => {
     expect(
       shouldEmitFirstToggle({
+        isActive: true,
         isLarge: true,
         renderSource: true,
         renderVisual: true,
@@ -443,6 +462,7 @@ describe('shouldEmitFirstToggle — first-toggle mark gate', () => {
   test('large doc, only source rendering (initial cold load in source mode) → do NOT emit', () => {
     expect(
       shouldEmitFirstToggle({
+        isActive: true,
         isLarge: true,
         renderSource: true,
         renderVisual: false,
@@ -454,6 +474,7 @@ describe('shouldEmitFirstToggle — first-toggle mark gate', () => {
   test('large doc, only visual rendering (initial cold load in visual mode) → do NOT emit', () => {
     expect(
       shouldEmitFirstToggle({
+        isActive: true,
         isLarge: true,
         renderSource: false,
         renderVisual: true,
@@ -462,13 +483,14 @@ describe('shouldEmitFirstToggle — first-toggle mark gate', () => {
     ).toBe(false);
   });
 
-  test('small doc with both editors mounted (default pre-mount-both) → do NOT emit (AC 3)', () => {
+  test('small doc with both editors mounted (default pre-mount-both) → do NOT emit', () => {
     // Critical invariant: small docs have BOTH editors pre-mounted from
     // the start (computeEditorMountGate returns isLarge:false). The first-
     // toggle mark must NEVER fire for small docs because there's no defer-
     // mount transition to measure.
     expect(
       shouldEmitFirstToggle({
+        isActive: true,
         isLarge: false,
         renderSource: true,
         renderVisual: true,
@@ -480,12 +502,33 @@ describe('shouldEmitFirstToggle — first-toggle mark gate', () => {
   test('small doc, both rendered, already emitted (impossible in production but safe) → do NOT emit', () => {
     expect(
       shouldEmitFirstToggle({
+        isActive: true,
         isLarge: false,
         renderSource: true,
         renderVisual: true,
         hasEmittedFirstToggle: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe('computeEffectiveSourceMode — hidden-entry mode freeze', () => {
+  test('the active entry follows the current global mode', () => {
+    // isActive true → global mode wins regardless of the frozen last-active mode.
+    expect(computeEffectiveSourceMode(true, true, false)).toBe(true);
+    expect(computeEffectiveSourceMode(true, false, true)).toBe(false);
+  });
+
+  test('a hidden entry stays frozen at its last-active mode, ignoring the global flip', () => {
+    // isActive false → the frozen mode wins, so a global flip the hidden entry
+    // never displays cannot change what it would mount.
+    expect(computeEffectiveSourceMode(false, true, false)).toBe(false);
+    expect(computeEffectiveSourceMode(false, false, true)).toBe(true);
+  });
+
+  test('a hidden entry whose frozen mode matches the global mode is unaffected', () => {
+    expect(computeEffectiveSourceMode(false, true, true)).toBe(true);
+    expect(computeEffectiveSourceMode(false, false, false)).toBe(false);
   });
 });
 

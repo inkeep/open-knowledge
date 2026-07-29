@@ -510,6 +510,30 @@
   }
 }
 
+/* Landing flash — transient highlight on the range a mode-switch jump lands on
+   (landing-flash-source.ts / landing-flash-wysiwyg.ts). A dedicated class, not
+   the agent-write flash, so its treatment can diverge from the agent wash later
+   without touching attribution; it reuses the shared agent-flash keyframe today.
+   Inline decoration in both editors, so one rule covers CodeMirror and
+   ProseMirror. box-decoration-break keeps a wrapped multi-line range
+   individually accented; duration matches FLASH_DURATION_MS. */
+.ok-landing-flash {
+  animation: agent-flash 2s var(--ease-out-strong) forwards;
+  border-radius: 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  position: relative;
+}
+
+/* Reduced motion — static terracotta accent bar, no movement or background sweep. */
+@media (prefers-reduced-motion: reduce) {
+  .ok-landing-flash {
+    animation: none;
+    box-shadow: inset 3px 0 0 var(--color-agent);
+    transition: box-shadow 2s ease;
+  }
+}
+
 [data-agent-flash-state="editing"][data-agent-flash-position="append"]
   .ProseMirror
   > *:nth-last-child(-n + 3),
@@ -5105,6 +5129,13 @@ html.electron-mode [data-slot="sidebar-inner"] {
 
 .dark [data-presence-badge="agent"][data-presence-mode="editing"] {
   animation-name: agent-breathing-dark;
+}
+
+/* Boosted-alpha landing flash on the dark canvas (reduced motion already
+   neutralizes the animation via a 0s duration, so the accent-bar fallback
+   still stands). */
+.dark .ok-landing-flash {
+  animation-name: agent-flash-dark;
 }
 
 .dark [data-undo-state="ready"][data-undo-just-enabled="true"] {

@@ -49,6 +49,7 @@ import {
   ComposerMentionInput,
   type ComposerMentionInputHandle,
 } from '@/editor/ComposerMentionInput';
+import { isScrollRestoreSuppressed } from '@/editor/scroll-restore-coordination';
 import {
   lightRenderMarkdownPreview,
   type SelectionSnapshot,
@@ -279,6 +280,14 @@ export function BottomComposer({
     // eases down so the last lines stay above the newly-grown composer instead of
     // being covered. Also clamps any scroller stranded past shrinking content.
     const followBottom = () => {
+      // A mode-switch landing owns the scroller for its whole settle window, so
+      // the pin must stand down for it exactly as it does for the user's own
+      // wheel. Without this the pin wins: a deep mode flip momentarily clamps
+      // the scroller to the bottom (the outgoing mode's scrollTop overshoots the
+      // incoming mode's shorter content), which reads here as "bottom-anchored"
+      // and re-pins the user to the end of the document every frame, stomping
+      // the landing after it settled.
+      if (isScrollRestoreSuppressed(docName)) return;
       const pinned = [...document.querySelectorAll<HTMLElement>('.editor-doc-scroll')].filter(
         (el) => {
           const max = el.scrollHeight - el.clientHeight;
@@ -296,6 +305,10 @@ export function BottomComposer({
       window.addEventListener('touchstart', cancel, { passive: true });
       const start = performance.now();
       const step = () => {
+        // A landing that starts mid-window cancels the pin outright rather than
+        // pausing it: resuming afterwards would yank the settled landing back to
+        // the bottom, since `pinned` was captured before the landing moved it.
+        if (isScrollRestoreSuppressed(docName)) cancelled = true;
         if (cancelled || performance.now() - start >= 300) {
           window.removeEventListener('wheel', cancel);
           window.removeEventListener('touchstart', cancel);
@@ -312,6 +325,9 @@ export function BottomComposer({
     const revealCaret = () => {
       if (surface !== 'wysiwyg') return;
       requestAnimationFrame(() => {
+        // Same standing-down rule as the bottom pin: never write scroll while a
+        // landing owns the scroller.
+        if (isScrollRestoreSuppressed(docName)) return;
         const editor = getEditorForDoc(docName);
         const box = cardRef.current;
         if (!editor || editor.isDestroyed || !box) return;

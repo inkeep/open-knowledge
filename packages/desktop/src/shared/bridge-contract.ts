@@ -817,7 +817,8 @@ export type OkEditorActiveTargetSnapshot =
   | { readonly kind: null };
 
 /**
- * Renderer → main snapshot of the View menu's checkbox + smart-hide state.
+ * Renderer → main snapshot of the View menu's checkbox + smart-hide state, plus
+ * the editor capabilities main's other native menus gate rows on.
  * Drives the macOS View menu's live `checked` reflection for "Show Hidden Files"
  * and the `visible: false` smart-hide on "Expand All" /
  * "Collapse All" so a fully-expanded tree doesn't render a no-op item.
@@ -849,6 +850,12 @@ export interface OkEditorViewMenuStateSnapshot {
   // terminal reads `terminalLive: true, terminalVisible: false`. Drives the
   // Terminal menu's "Kill Terminal" enablement.
   readonly terminalLive?: boolean;
+  // Whether the editor context menu's "View in Source" jump would do anything:
+  // it reads the visual editor's caret for the active document, so it is inert
+  // in source mode and with no document open. Optional + defaults false, so the
+  // row stays out of the menu until the renderer says the jump is live — main
+  // has no way to compute this, and must not learn about document content.
+  readonly canViewInSource?: boolean;
 }
 
 /**

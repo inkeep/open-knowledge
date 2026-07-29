@@ -64,6 +64,10 @@ import {
   __resetMountPromiseCache,
   mountTiptapEditorPromise,
 } from './mount-promise';
+import {
+  __resetScrollRestoreCoordination,
+  acquireScrollRestoreSuppression,
+} from './scroll-restore-coordination';
 
 // ---------------------------------------------------------------------------
 // Minimal HTMLElement fake — satisfies the subset the cache uses.
@@ -339,9 +343,11 @@ describe('MAX_CACHE constant', () => {
 describe('TipTap cache — lifecycle', () => {
   beforeEach(() => {
     __resetCacheForTests();
+    __resetScrollRestoreCoordination();
   });
   afterEach(() => {
     __resetCacheForTests();
+    __resetScrollRestoreCoordination();
   });
 
   test('mount: cache-miss calls factory and stores entry', () => {
@@ -408,6 +414,41 @@ describe('TipTap cache — lifecycle', () => {
     });
     // Container's scrollTop should be restored.
     expect(newContainer.scrollTop).toBe(1234);
+  });
+
+  test('mount: cache-hit stands down on scroll restore while a landing holds the scroller', () => {
+    // A warm mount and a mode-switch landing fire at the same moment; the
+    // landing is the single scroll writer for its window, so the parked
+    // position must not be written over it.
+    const h = makeTiptapHarness('doc-a');
+    const entry = mountTiptapEditor({
+      docName: h.docName,
+      container: h.container as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+    h.editorDom.scrollTop = 1234;
+    parkTiptapEditor(entry);
+
+    const suppression = acquireScrollRestoreSuppression(h.docName);
+    const suppressed = makeNode();
+    mountTiptapEditor({
+      docName: h.docName,
+      container: suppressed as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+    expect(suppressed.scrollTop).toBe(0);
+
+    // Suppression is per-document and lifts on release: the next warm mount
+    // restores again.
+    parkTiptapEditor(entry);
+    suppression.release();
+    const released = makeNode();
+    mountTiptapEditor({
+      docName: h.docName,
+      container: released as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+    expect(released.scrollTop).toBe(1234);
   });
 
   test('mount: cache-hit restores focus ONLY when editor owned focus at park time', () => {
@@ -1010,8 +1051,14 @@ describe('TipTap cache — undoManager.restore cleanup on destroy', () => {
 // ---------------------------------------------------------------------------
 
 describe('CM6 cache — lifecycle', () => {
-  beforeEach(() => __resetCacheForTests());
-  afterEach(() => __resetCacheForTests());
+  beforeEach(() => {
+    __resetCacheForTests();
+    __resetScrollRestoreCoordination();
+  });
+  afterEach(() => {
+    __resetCacheForTests();
+    __resetScrollRestoreCoordination();
+  });
 
   test('mount: cache-miss calls factory and stores entry', () => {
     const h = makeCmHarness('cm-doc-a');
@@ -1154,6 +1201,39 @@ describe('CM6 cache — lifecycle', () => {
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
     expect(h.spies.focusCalls).toBeGreaterThan(before2);
+  });
+
+  test('mount after park: stands down on scroll restore while a landing holds the scroller', () => {
+    // Source-mode twin of the TipTap case: a source landing owns the scroller
+    // for its settle window, so the warm mount must not write the parked
+    // position over it.
+    const h = makeCmHarness('cm-doc-a');
+    const entry = mountCmEditor({
+      docName: h.docName,
+      container: h.container as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+    h.viewDom.scrollTop = 42;
+    parkCmEditor(entry);
+
+    const suppression = acquireScrollRestoreSuppression(h.docName);
+    const suppressed = makeNode();
+    mountCmEditor({
+      docName: h.docName,
+      container: suppressed as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+    expect(suppressed.scrollTop).toBe(0);
+
+    parkCmEditor(entry);
+    suppression.release();
+    const released = makeNode();
+    mountCmEditor({
+      docName: h.docName,
+      container: released as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+    expect(released.scrollTop).toBe(42);
   });
 
   test('evict: destroys view + provider + ydoc', () => {

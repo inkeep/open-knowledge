@@ -1,11 +1,12 @@
 /**
  * Per-descriptor static palette for the live-DOM clipboard walker.
  *
- * Used only when `view.nodeDOM(pos)` returns `null` — the slice originates
- * inside an `<Activity mode="hidden">` subtree whose live DOM was unmounted.
- * The walker's primary path captures whatever React rendered + whatever CSS
- * resolved; this fallback emits a hand-built palette for each canonical /
- * compat descriptor so the Activity-hidden case isn't silently empty.
+ * Used only when `view.nodeDOM(pos)` returns `null` — nothing is rendered for
+ * the slice's position. Hiding an `<Activity>` subtree does not produce that:
+ * React keeps its DOM at `display:none`. The walker's primary path captures
+ * whatever React rendered + whatever CSS resolved; this fallback emits a
+ * hand-built palette for each canonical / compat descriptor so a slice with no
+ * live DOM isn't silently empty.
  *
  * Output shape per descriptor mirrors what the React render produces (post
  * walker filter), so cross-app destinations see the same shape regardless of

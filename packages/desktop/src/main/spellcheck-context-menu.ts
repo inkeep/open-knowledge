@@ -2,11 +2,17 @@
  * Wires the native editor context menu onto a window's webContents.
  *
  * The main process observes the `context-menu` event directly, so spellcheck
- * params and clipboard edit flags arrive without any renderer IPC. The only
- * gate is `params.isEditable`: the menu shows on any editable field and is
+ * params and clipboard edit flags arrive without any renderer IPC. The gate for
+ * the menu itself is `params.isEditable`: it shows on any editable field and is
  * suppressed everywhere else. Surfaces that own their right-click (asset chips,
  * file tree, editor tabs) `preventDefault()` in the renderer, which suppresses
  * this main-process event, so they never reach this handler.
+ *
+ * Editable, though, spans far more than the document body — the composer, a
+ * rename field, any dialog input — so a row that only means something over a
+ * document carries its own gate. Those read as capabilities the renderer pushes
+ * and this handler samples fresh per right-click, the same shape as the
+ * spell-check flag.
  *
  * Side-effecting capabilities (session, shell, persistence, popup) are injected
  * so the gate + action wiring are exercised by unit tests without mounting a
@@ -49,6 +55,13 @@ export interface SpellcheckContextMenuDeps {
    * without re-attaching the listener.
    */
   readonly isSpellCheckEnabled: () => boolean;
+  /**
+   * Whether the view-in-source jump would do anything right now — read fresh
+   * per right-click, from the state the renderer pushes on every mode and
+   * active-document change. Main cannot derive this: it sees an editable
+   * target, not which surface the target belongs to.
+   */
+  readonly canViewInSource: () => boolean;
   /** Flip app-wide spell checking: update the live session AND persist. */
   readonly setSpellCheckEnabled: (enabled: boolean) => void;
   /**
@@ -58,6 +71,9 @@ export interface SpellcheckContextMenuDeps {
   readonly addToDictionary: (word: string) => void;
   /** Hand a URL to the OS default browser (through the shared scheme gate). */
   readonly openExternal: (url: string) => void;
+  /** Route the view-in-source jump back to the renderer over the existing
+   *  menu-action channel — no new IPC channel and no document text in main. */
+  readonly viewInSource: () => void;
   /** Build + pop the native menu for the assembled template params. */
   readonly popMenu: (input: BuildSpellcheckMenuTemplateParams) => void;
 }
@@ -94,10 +110,14 @@ export function attachSpellcheckContextMenu(
       search: (query) => {
         deps.openExternal(googleSearchUrl(query));
       },
+      viewInSource: () => {
+        deps.viewInSource();
+      },
     };
     deps.popMenu({
       params,
       spellCheckEnabled: deps.isSpellCheckEnabled(),
+      canViewInSource: deps.canViewInSource(),
       actions,
     });
   });

@@ -1,9 +1,14 @@
+// @vitest-environment jsdom
 /**
  * Unit tests for the WYSIWYG lint→block mapping. `mapDiagnosticsToBlocks`
  * groups source-line diagnostics by the top-level mdast block they fall in,
  * which is what the plugin then maps onto top-level PM nodes (1:1 by the
  * bridge invariant — the fragment derives from parse of the same Y.Text
  * source the diagnostics were linted against).
+ *
+ * The Problems-row navigation is covered against a real mounted editor at the
+ * bottom of this file, so jsdom is on for the whole file; the pure mapping
+ * tests are unaffected by it.
  */
 
 import {
@@ -11,12 +16,15 @@ import {
   type LintDiagnostic,
   MarkdownManager,
 } from '@inkeep/open-knowledge-core';
-import { describe, expect, test } from 'vitest';
+import { Editor } from '@tiptap/core';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { LINT_NAV_EVENT, type LintNavDetail } from '@/components/ProblemsPanel';
+import { blockIndexForLine, computeSourceBlockSpans } from '../block-spans.ts';
 import {
-  blockIndexForLine,
-  computeSourceBlockSpans,
-  mapDiagnosticsToBlocks,
-} from './markdown-lint-decorations.ts';
+  __resetScrollRestoreCoordination,
+  registerLandingScrollOwner,
+} from '../scroll-restore-coordination.ts';
+import { MarkdownLintDecorations, mapDiagnosticsToBlocks } from './markdown-lint-decorations.ts';
 
 const md = new MarkdownManager({ extensions: coreExtensions });
 
@@ -205,7 +213,138 @@ describe('blockIndexForLine', () => {
     expect(blockIndexForLine(spans, 12)).toBe(2);
   });
 
+  test('line on a span boundary → that block', () => {
+    expect(blockIndexForLine(spans, 3)).toBe(1);
+    expect(blockIndexForLine(spans, 6)).toBe(1);
+    expect(blockIndexForLine(spans, 8)).toBe(2);
+  });
+
+  test('line before the first block → the first block', () => {
+    const offset = [
+      { start: 3, end: 4 },
+      { start: 7, end: 8 },
+    ];
+    expect(blockIndexForLine(offset, 1)).toBe(0);
+    expect(blockIndexForLine(offset, 5)).toBe(1);
+  });
+
   test('no spans → null', () => {
     expect(blockIndexForLine([], 1)).toBeNull();
+  });
+});
+
+describe('Problems-row navigation — scroll suppression', () => {
+  const DOC = 'lint-nav-doc';
+  // 1: # Heading / 2: blank / 3: First paragraph. / 4: blank / 5: Second paragraph.
+  const BODY = '# Heading\n\nFirst paragraph.\n\nSecond paragraph.\n';
+  let editor: Editor | null = null;
+  let host: HTMLElement | null = null;
+  let scrollIntoView: ReturnType<typeof vi.fn>;
+  let originalScrollIntoView: PropertyDescriptor | undefined;
+  let originalFetch: typeof globalThis.fetch;
+
+  /**
+   * Mount the extension on a real editor. jsdom implements neither of the two
+   * DOM surfaces this path turns on, so both are installed here: `offsetParent`
+   * is the plugin's "am I the visible editor" gate, and `scrollIntoView` is the
+   * observable the suppression guard controls.
+   */
+  function mountEditor(): Editor {
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    const mounted = new Editor({
+      element: host,
+      extensions: [
+        ...coreExtensions,
+        MarkdownLintDecorations.configure({ docName: DOC, getSource: () => BODY }),
+      ],
+      content: md.parse(BODY),
+    });
+    Object.defineProperty(mounted.view.dom, 'offsetParent', { value: host, configurable: true });
+    return mounted;
+  }
+
+  function clickProblemsRow(line: number): void {
+    const detail: LintNavDetail = { line, column: 1 };
+    window.dispatchEvent(new CustomEvent<LintNavDetail>(LINT_NAV_EVENT, { detail }));
+  }
+
+  beforeEach(() => {
+    __resetScrollRestoreCoordination();
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({ effective: {} }),
+    ) as unknown as typeof fetch;
+    scrollIntoView = vi.fn();
+    originalScrollIntoView = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'scrollIntoView',
+    );
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      value: scrollIntoView,
+      configurable: true,
+      writable: true,
+    });
+    editor = mountEditor();
+  });
+
+  afterEach(() => {
+    editor?.destroy();
+    editor = null;
+    host?.remove();
+    host = null;
+    if (originalScrollIntoView) {
+      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView);
+    } else {
+      Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
+    }
+    globalThis.fetch = originalFetch;
+    __resetScrollRestoreCoordination();
+  });
+
+  test('scrolls the diagnostic block into view and places the caret in it', () => {
+    clickProblemsRow(3); // "First paragraph." — the second top-level block
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    const { $from } = editor?.state.selection ?? {};
+    expect($from?.parent.textContent).toBe('First paragraph.');
+  });
+
+  test('supersedes a position-preserving landing rather than standing down under it', () => {
+    // The row the user clicked outranks the position a mode-switch toggle was
+    // preserving. Standing the scroll down while still moving the caret would
+    // leave them looking at a viewport that never went anywhere.
+    const supersede = vi.fn();
+    registerLandingScrollOwner(DOC, { yieldsToNavigation: true, supersede });
+
+    clickProblemsRow(3);
+
+    expect(supersede).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    const { $from } = editor?.state.selection ?? {};
+    expect($from?.parent.textContent).toBe('First paragraph.');
+  });
+
+  test('stands down whole while a landing that is itself a navigation owns the scroller', () => {
+    registerLandingScrollOwner(DOC, { yieldsToNavigation: false, supersede: vi.fn() });
+    const before = editor?.state.selection.$from.parent.textContent;
+
+    clickProblemsRow(3);
+
+    // Caret and scroll move together or not at all — a half-applied navigation
+    // is the failure mode, not the fallback.
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(editor?.state.selection.$from.parent.textContent).toBe(before);
+  });
+
+  test('a landing on another document does not gate this one', () => {
+    registerLandingScrollOwner('some-other-doc', {
+      yieldsToNavigation: false,
+      supersede: vi.fn(),
+    });
+
+    clickProblemsRow(3);
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
 });

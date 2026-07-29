@@ -34,7 +34,6 @@ import {
   type LintTextEdit,
   lintDocument,
   MarkdownManager,
-  stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { Extension } from '@tiptap/core';
@@ -49,7 +48,9 @@ import {
   peekPendingSourceNavigation,
 } from '@/editor/source-editor-navigation';
 import { cn } from '@/lib/utils';
+import { blockIndexForLine, comparableChildCount, computeSourceBlockSpans } from '../block-spans';
 import { fetchEffectiveLintConfig, subscribeToLintConfigChanged } from '../lint-config-client';
+import { runScrollNavigation } from '../scroll-restore-coordination';
 
 const markdownLintDecorationKey = new PluginKey<DecorationSet>('markdownLintDecorations');
 
@@ -61,46 +62,6 @@ const OK_LINT_BLOCK_ERROR_CLASS = 'ok-lint-block-error';
 const OK_LINT_BLOCK_ATOM_CLASS = 'ok-lint-block-atom';
 
 const RECOMPUTE_DEBOUNCE_MS = 400;
-
-/** 1-based inclusive line spans of top-level body blocks, in full-source coordinates. */
-export interface SourceBlockSpans {
-  spans: { start: number; end: number }[];
-  /** Lines the frontmatter region occupies at the top of the source (0 when none). */
-  fmLineCount: number;
-}
-
-/**
- * Top-level block line spans for a full `Y.Text('source')` snapshot. The body
- * region (after the FM fence) is parsed to mdast; spans are shifted back into
- * full-source coordinates so lint diagnostics (which carry full-source lines —
- * markdownlint skips the FM region itself) index into them directly.
- */
-export function computeSourceBlockSpans(source: string, md: MarkdownManager): SourceBlockSpans {
-  const { frontmatter, body } = stripFrontmatter(source);
-  const fmLineCount = frontmatter === '' ? 0 : frontmatter.split('\n').length - 1;
-  // The editor view, not the CommonMark one: a preserved blank line is a
-  // paragraph in the PM doc, and this array is index-aligned with those
-  // children. Losing the alignment silently disables every decoration.
-  const spans = md.parseToEditorMdast(body).children.map((child) => ({
-    start: (child.position?.start.line ?? Number.POSITIVE_INFINITY) + fmLineCount,
-    end: (child.position?.end.line ?? Number.NEGATIVE_INFINITY) + fmLineCount,
-  }));
-  return { spans, fmLineCount };
-}
-
-/**
- * Map a 1-based full-source line to a top-level block index. Lines inside a
- * block map to it; between-block lines (blank-line runs — where rules like
- * MD012 report) anchor to the NEXT block; lines past the last block anchor to
- * the last one. Null only when there are no blocks at all.
- */
-export function blockIndexForLine(spans: SourceBlockSpans['spans'], line: number): number | null {
-  const containing = spans.findIndex((s) => line >= s.start && line <= s.end);
-  if (containing >= 0) return containing;
-  const following = spans.findIndex((s) => s.start > line);
-  if (following >= 0) return following;
-  return spans.length > 0 ? spans.length - 1 : null;
-}
 
 /**
  * Group diagnostics by the index of the top-level block they fall in.
@@ -127,21 +88,6 @@ export function mapDiagnosticsToBlocks(
     else byBlock.set(index, [diagnostic]);
   }
   return byBlock;
-}
-
-/**
- * Top-level child count comparable against body block spans. A doc whose last
- * block isn't a paragraph renders with a trailing empty paragraph (the
- * type-here affordance below a final heading/list) that has NO source
- * counterpart — parse of the source never yields an empty paragraph. Without
- * this allowance the span↔doc count comparison fails PERMANENTLY on
- * heading-final docs, silently disabling decorations and navigation.
- */
-function comparableChildCount(doc: PmNode): number {
-  const last = doc.childCount > 0 ? doc.child(doc.childCount - 1) : null;
-  const trailingEmptyParagraph =
-    last !== null && last.type.name === 'paragraph' && last.content.size === 0;
-  return trailingEmptyParagraph ? doc.childCount - 1 : doc.childCount;
 }
 
 /** DOM attribute that carries a block's diagnostic lines for the hover tooltip. */
@@ -586,17 +532,24 @@ export const MarkdownLintDecorations = Extension.create<MarkdownLintDecorationsO
               if (i === index) blockOffset = offset;
             });
             if (blockOffset < 0) return false;
-            view.dispatch(
-              view.state.tr.setSelection(
-                TextSelection.near(view.state.doc.resolve(blockOffset + 1)),
-              ),
-            );
-            view.focus();
-            const blockDom = view.nodeDOM(blockOffset);
-            if (blockDom instanceof HTMLElement) {
-              blockDom.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-            return true;
+            // Caret and viewport move together or not at all. A position-
+            // preserving mode-switch landing is superseded here — the row the
+            // user clicked outranks the position they were keeping — while a
+            // landing that is itself an explicit navigation keeps the scroller
+            // and this click stands down whole, leaving the banked source-mode
+            // intent alive for the caller to replay.
+            return runScrollNavigation(docName, () => {
+              view.dispatch(
+                view.state.tr.setSelection(
+                  TextSelection.near(view.state.doc.resolve(blockOffset + 1)),
+                ),
+              );
+              view.focus();
+              const blockDom = view.nodeDOM(blockOffset);
+              if (blockDom instanceof HTMLElement) {
+                blockDom.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            });
           }
 
           // Live Problems-row click for the OPEN doc. The cross-doc project

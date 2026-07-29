@@ -174,6 +174,24 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     ],
   },
   {
+    // Toggles the visual/source editor and preserves scroll position both ways.
+    // Follows the CmdOrCtrl+Alt+<letter> family the other view toggles use
+    // (sidebar ⌥⌘S, doc panel ⌥⌘B), so it stays clear of TipTap/CodeMirror's
+    // own single-modifier bindings and works from either editor.
+    id: 'toggle-editor-mode',
+    category: 'general',
+    title: msg`Toggle source view`,
+    description: msg`Switch between the visual and source editors, keeping your place.`,
+    scope: msg`Editor`,
+    bindings: [
+      {
+        mac: '⌥⌘ M',
+        windowsLinux: 'Ctrl Alt M',
+        match: { code: 'KeyM', anyMod: true, altKey: true, allowExtraModifiers: true },
+      },
+    ],
+  },
+  {
     id: 'toggle-terminal-panel',
     category: 'general',
     title: msg`Show or hide terminal`,
@@ -499,6 +517,23 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
         mac: '⌘ K',
         windowsLinux: 'Ctrl K',
         match: { key: 'k', mod: true },
+      },
+    ],
+  },
+  {
+    // Jumps from the visual editor to the markdown behind the caret's block,
+    // centered and highlighted. CmdOrCtrl+Alt+E stays clear of TipTap's ⌘E
+    // inline-code binding (no Alt) and of the ⌥⌘M mode toggle above.
+    id: 'view-source-at-cursor',
+    category: 'wysiwyg',
+    title: msg`View in source`,
+    description: msg`Jump to the markdown source for the block at the cursor, centered and highlighted.`,
+    scope: msg`Visual editor`,
+    bindings: [
+      {
+        mac: '⌥⌘ E',
+        windowsLinux: 'Ctrl Alt E',
+        match: { code: 'KeyE', anyMod: true, altKey: true, allowExtraModifiers: true },
       },
     ],
   },

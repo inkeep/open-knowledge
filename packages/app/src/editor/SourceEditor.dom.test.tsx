@@ -10,7 +10,38 @@ import { subscribeToOpenAskAiComposer } from '@/components/ask-ai-composer-event
 import { OUTLINE_NAV_EVENT, type OutlineNavDetail } from '@/components/OutlinePanel';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { evictCmEditor } from './editor-cache';
-import { SourceEditor } from './SourceEditor';
+import type { LandingHandle } from './landing-controller';
+import { applyRawMdxNavigation, SourceEditor } from './SourceEditor';
+import {
+  __resetScrollRestoreCoordination,
+  registerLandingScrollOwner,
+} from './scroll-restore-coordination';
+import {
+  clearPendingSourceNavigationsForTest,
+  peekPendingSourceNavigation,
+  rememberPendingSourceNavigation,
+  type SelectionOffsetNavigation,
+} from './source-editor-navigation';
+
+/**
+ * Override slot for the cross-mode landing start. Whether a landing starts is
+ * the branch the replay effect's consume decision turns on, and neither answer
+ * is reachable in jsdom (a landing needs a mounted WYSIWYG doc and a scroller
+ * with real client rects). Unset by default, so every other test in this file
+ * runs the real implementation.
+ */
+const landingOverride = vi.hoisted(() => ({
+  start: null as (() => LandingHandle | null) | null,
+}));
+
+vi.mock('./mode-switch-landing', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./mode-switch-landing')>();
+  return {
+    ...actual,
+    startSourceLanding: (params: Parameters<typeof actual.startSourceLanding>[0]) =>
+      landingOverride.start ? landingOverride.start() : actual.startSourceLanding(params),
+  };
+});
 
 const originalFetch = globalThis.fetch;
 (globalThis as { Window?: typeof window.Window }).Window = window.Window;
@@ -344,5 +375,133 @@ describe('SourceEditor outline navigation', () => {
     const headingLine = view.state.doc.line(8);
     expect(headingLine.text).toBe('## Second');
     expect(view.state.selection.main.head).toBe(headingLine.from);
+  });
+});
+
+describe('SourceEditor raw-MDX replay mode re-check', () => {
+  interface FakeCmView {
+    state: { doc: { length: number } };
+    dispatch: (spec: unknown) => void;
+    focus: () => void;
+    dispatched: unknown[];
+  }
+
+  function fakeCmView(docLength = 100): FakeCmView {
+    const dispatched: unknown[] = [];
+    return {
+      state: { doc: { length: docLength } },
+      dispatch: (spec) => {
+        dispatched.push(spec);
+      },
+      focus: () => {},
+      dispatched,
+    };
+  }
+
+  const nextFrame = () =>
+    new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
+
+  const NAV_DOC = 'raw-mdx-doc';
+
+  beforeEach(() => {
+    __resetScrollRestoreCoordination();
+  });
+
+  afterEach(() => {
+    __resetScrollRestoreCoordination();
+  });
+
+  test('does not dispatch when the editor left source mode before the frame ran', async () => {
+    const view = fakeCmView();
+    applyRawMdxNavigation(view as unknown as EditorView, { offset: 42 }, () => false, NAV_DOC);
+    await nextFrame();
+    expect(view.dispatched).toHaveLength(0);
+  });
+
+  test('dispatches the navigation when still in source mode', async () => {
+    const view = fakeCmView();
+    applyRawMdxNavigation(view as unknown as EditorView, { offset: 42 }, () => true, NAV_DOC);
+    await nextFrame();
+    expect(view.dispatched).toHaveLength(1);
+  });
+
+  test('supersedes a position-preserving landing still holding the scroller', async () => {
+    const supersede = vi.fn();
+    registerLandingScrollOwner(NAV_DOC, { yieldsToNavigation: true, supersede });
+    const view = fakeCmView();
+
+    applyRawMdxNavigation(view as unknown as EditorView, { offset: 42 }, () => true, NAV_DOC);
+    await nextFrame();
+
+    expect(supersede).toHaveBeenCalledTimes(1);
+    expect(view.dispatched).toHaveLength(1);
+  });
+
+  test('stands down while a landing that is itself a navigation owns the scroller', async () => {
+    registerLandingScrollOwner(NAV_DOC, { yieldsToNavigation: false, supersede: vi.fn() });
+    const view = fakeCmView();
+
+    applyRawMdxNavigation(view as unknown as EditorView, { offset: 42 }, () => true, NAV_DOC);
+    await nextFrame();
+
+    expect(view.dispatched).toHaveLength(0);
+  });
+});
+
+/**
+ * The queued cross-mode jump is consume-once, so consuming it before knowing a
+ * landing actually started throws it away: `startSourceLanding` declines when
+ * the WYSIWYG doc it grades against was never mounted (the deferred-mount path
+ * a large document takes), and the user's jump target would be gone even though
+ * the entry's TTL still allows a later replay.
+ */
+describe('SourceEditor cross-mode landing replay', () => {
+  const NAVIGATION: SelectionOffsetNavigation = {
+    kind: 'selection-offset',
+    intent: 'jump',
+    anchor: { blockIndex: 0, kind: 'heading', content: 'heading' },
+  };
+
+  beforeEach(() => {
+    clearPendingSourceNavigationsForTest();
+    globalThis.fetch = vi.fn(async () => Response.json({})) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    landingOverride.start = null;
+    clearPendingSourceNavigationsForTest();
+    cleanup();
+    for (const docName of mountedDocNames) evictCmEditor(docName);
+    mountedDocNames.clear();
+    globalThis.fetch = originalFetch;
+  });
+
+  /** Mount source mode over a banked jump and let the deferred replay run. */
+  async function mountWithQueuedJump(docName: string): Promise<void> {
+    const { provider, ytext } = makeProvider(docName);
+    rememberPendingSourceNavigation(docName, NAVIGATION);
+    const { container } = render(<Harness provider={provider} ytext={ytext} wordWrap={true} />);
+    await findCmContent(container);
+    // The replay is deferred to a microtask so a StrictMode mount/unmount cycle
+    // finishes first; flush it before reading the store.
+    await act(async () => {});
+  }
+
+  test('keeps the jump banked when no landing could start', async () => {
+    landingOverride.start = () => null;
+
+    await mountWithQueuedJump('source-landing-declined');
+
+    expect(peekPendingSourceNavigation('source-landing-declined')).toEqual(NAVIGATION);
+  });
+
+  test('consumes the jump once a landing owns it', async () => {
+    landingOverride.start = () => ({ cancel: () => {} });
+
+    await mountWithQueuedJump('source-landing-started');
+
+    expect(peekPendingSourceNavigation('source-landing-started')).toBeNull();
   });
 });

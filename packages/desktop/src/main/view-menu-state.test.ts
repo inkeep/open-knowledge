@@ -130,6 +130,9 @@ describe('createDefaultEditorViewMenuState — pre-first-push menu state', () =>
       docPanelVisible: true,
       terminalVisible: false,
       terminalLive: false,
+      // Restrictive by design: this one gates a context-menu row, and a row
+      // offered before the renderer says the jump is live would do nothing.
+      canViewInSource: false,
     });
   });
 });

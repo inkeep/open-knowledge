@@ -1,12 +1,15 @@
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
 import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState } from 'react';
+import { getEditorForDoc } from '@/editor/active-editor';
 import { EmojiInsertPopover } from '@/editor/components/EmojiInsertPopover';
 import { TagDialog } from '@/editor/components/TagDialog';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { RAW_MDX_NAV_EVENT, type RawMdxNavDetail } from '@/editor/extensions/raw-mdx-nav-event';
+import { captureModeSwitchAnchor, requestViewInSource } from '@/editor/mode-switch-landing';
 import { getSelectionContext } from '@/editor/selection-context';
 import { rememberPendingSourceNavigation } from '@/editor/source-editor-navigation';
 import { type EditorModeValue, useEditorMode } from '@/editor/use-editor-mode';
+import { VIEW_IN_SOURCE_EVENT, type ViewInSourceDetail } from '@/editor/view-in-source-event';
 import { useGitSyncStatus } from '@/hooks/use-git-sync-status';
 import { useInstalledClis } from '@/hooks/use-installed-clis';
 import { useNoPushPermissionToast } from '@/hooks/use-no-push-permission-toast';
@@ -210,7 +213,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   const { projectConfig, projectLocalConfig, projectLocalSynced, projectSynced } =
     useConfigContext();
 
-  const { activeDocName } = useDocumentContext();
+  const { activeDocName, activeProvider } = useDocumentContext();
 
   // Onboarding modal: open once per machine per project when every gate
   // input aligns. Decision logic lives in `resolveAutoSyncOnboarding`, which
@@ -473,12 +476,103 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   useWorktreeAutoSyncNotice();
 
   function handleModeChange(mode: EditorModeValue) {
+    // Capture the viewport anchor while the outgoing editor is still laid out,
+    // before the mode flip hides it, so the incoming view can land on the same
+    // block. Read-only — it banks a pending navigation, it never edits the doc.
+    if (activeDocName && activeProvider && editorMode !== mode) {
+      captureModeSwitchAnchor({
+        from: editorMode,
+        to: mode,
+        docName: activeDocName,
+        ytext: activeProvider.document.getText('source'),
+      });
+    }
     setEditorMode(mode);
     // User-initiated change — persist globally. Tool-driven flips (e.g.
     // RAW_MDX_NAV_EVENT → source) are session-only and deliberately do NOT
     // call setPersistedMode.
     setPersistedMode(mode);
   }
+
+  // Effect Events so the once-bound keydown listener below reads the current
+  // closures (mode, active doc/provider) without re-subscribing on every change.
+  const toggleEditorModeEvent = useEffectEvent(() => {
+    handleModeChange(editorMode === 'source' ? 'wysiwyg' : 'source');
+  });
+  // "View in source" reads the visual editor's caret for the active document, so
+  // it means nothing in source mode or with nothing open. One predicate: the
+  // Desktop context menu gates its row on the pushed value while the handler
+  // re-checks locally, and a drift between them is a row that is offered and
+  // then silently does nothing.
+  const canViewInSource =
+    editorMode === 'wysiwyg' && Boolean(activeDocName) && Boolean(activeProvider);
+
+  const requestViewInSourceEvent = useEffectEvent(() => {
+    // The two nullable reads are restated so TypeScript narrows them.
+    if (!canViewInSource || !activeDocName || !activeProvider) return;
+    const editor = getEditorForDoc(activeDocName);
+    if (!editor) return;
+    requestViewInSource({
+      editor,
+      docName: activeDocName,
+      ytext: activeProvider.document.getText('source'),
+    });
+  });
+
+  // Main attaches the native editor context menu to every editable field in the
+  // window and sees an editable target, not which surface it belongs to — so
+  // without this push the "View in Source" row would ride the composer, every
+  // rename field and every dialog input. Desktop-only; it goes over the existing
+  // view-menu-state channel rather than teaching main anything about the doc.
+  useEffect(() => {
+    window.okDesktop?.editor.notifyViewMenuStateChanged({ canViewInSource });
+  }, [canViewInSource]);
+
+  // Mode-toggle + view-in-source keyboard commands. Capture phase so a focused
+  // editor can't swallow the chord first; both use CmdOrCtrl+Alt+<letter>, clear
+  // of the editors' single-modifier bindings. Capture phase is also why the
+  // overlay check is needed: the chord is intercepted before an open modal or
+  // palette could handle it, so without standing down the editor behind the
+  // overlay would flip mode while the user is working in the overlay.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (matchesKeyboardShortcut(event, 'toggle-editor-mode')) {
+        if (isOverlayLayerOpen()) return;
+        event.preventDefault();
+        toggleEditorModeEvent();
+        return;
+      }
+      if (matchesKeyboardShortcut(event, 'view-source-at-cursor')) {
+        if (isOverlayLayerOpen()) return;
+        event.preventDefault();
+        requestViewInSourceEvent();
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
+  }, []);
+
+  // The Desktop editor context menu's "View in Source" routes back over the
+  // menu-action bus (not a second bridge listener) and runs the same jump the
+  // keyboard command does; the shared guard makes it inert outside WYSIWYG.
+  useEffect(() => {
+    return subscribeLocalMenuAction((action) => {
+      if (action === 'toggle-source') requestViewInSourceEvent();
+    });
+  }, []);
+
+  // A "view in source" jump (keyboard, bubble menu, or Desktop menu) banks its
+  // landing target, then fires this to request the flip. Session-only — a
+  // contextual peek at one doc's source, not a change to the global mode
+  // preference, mirroring the raw-MDX flip above.
+  useEffect(() => {
+    function onViewInSource(e: Event) {
+      const detail = (e as CustomEvent<ViewInSourceDetail>).detail;
+      if (detail?.docName === activeDocName) setEditorMode('source');
+    }
+    window.addEventListener(VIEW_IN_SOURCE_EVENT, onViewInSource);
+    return () => window.removeEventListener(VIEW_IN_SOURCE_EVENT, onViewInSource);
+  }, [activeDocName]);
 
   return (
     <>

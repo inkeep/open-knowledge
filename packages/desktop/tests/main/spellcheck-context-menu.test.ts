@@ -51,12 +51,17 @@ function makeWebContents() {
   };
 }
 
-function makeDeps(isSpellCheckEnabled: () => boolean = () => true) {
+function makeDeps(
+  isSpellCheckEnabled: () => boolean = () => true,
+  canViewInSource: () => boolean = () => true,
+) {
   return {
     isSpellCheckEnabled,
+    canViewInSource,
     setSpellCheckEnabled: vi.fn((_: boolean) => {}),
     addToDictionary: vi.fn((_: string) => {}),
     openExternal: vi.fn((_: string) => {}),
+    viewInSource: vi.fn(() => {}),
     popMenu: vi.fn((_: BuildSpellcheckMenuTemplateParams) => {}),
   };
 }
@@ -91,6 +96,25 @@ describe('attachSpellcheckContextMenu — spellCheckEnabled flag', () => {
     const secondInput = deps.popMenu.mock.calls[1]?.[0];
     expect(firstInput?.spellCheckEnabled).toBe(true);
     expect(secondInput?.spellCheckEnabled).toBe(false);
+  });
+});
+
+describe('attachSpellcheckContextMenu — canViewInSource capability', () => {
+  test('reads the capability fresh on each right-click', () => {
+    // Same shape as the spell-check flag: the renderer pushes mode and
+    // active-document changes continuously, and the menu must reflect the state
+    // at THIS right-click, not the one the listener was attached under.
+    const wc = makeWebContents();
+    const values = [true, false];
+    const deps = makeDeps(
+      () => true,
+      () => values.shift() ?? true,
+    );
+    attachSpellcheckContextMenu(wc, deps);
+    wc.fire(makeParams());
+    wc.fire(makeParams());
+    expect(deps.popMenu.mock.calls[0]?.[0]?.canViewInSource).toBe(true);
+    expect(deps.popMenu.mock.calls[1]?.[0]?.canViewInSource).toBe(false);
   });
 });
 
@@ -164,5 +188,13 @@ describe('attachSpellcheckContextMenu — action wiring', () => {
     const actions = fireAndGetActions(wc, deps, makeParams({ selectionText: 'a b&c' }));
     actions.search('a b&c');
     expect(deps.openExternal).toHaveBeenCalledWith('https://www.google.com/search?q=a%20b%26c');
+  });
+
+  test('viewInSource routes to the injected capability', () => {
+    const wc = makeWebContents();
+    const deps = makeDeps();
+    const actions = fireAndGetActions(wc, deps, makeParams());
+    actions.viewInSource();
+    expect(deps.viewInSource).toHaveBeenCalledTimes(1);
   });
 });

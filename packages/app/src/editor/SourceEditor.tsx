@@ -1,6 +1,6 @@
 import { indentWithTab } from '@codemirror/commands';
 import { search } from '@codemirror/search';
-import { Compartment, EditorSelection, EditorState } from '@codemirror/state';
+import { Compartment, EditorSelection, EditorState, StateEffect } from '@codemirror/state';
 import { placeholder as cmPlaceholder, EditorView, keymap } from '@codemirror/view';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
@@ -25,11 +25,15 @@ import {
 import type { RawMdxNavDetail } from '@/editor/extensions/raw-mdx-nav-event';
 import { useConfigContext } from '@/lib/config-provider';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
+import { registerSourceView, unregisterSourceView } from './active-source-view';
 import { createSourceClipboardExtension } from './clipboard/index.ts';
 import { type CmCacheEntry, mountCmEditor, parkCmEditor } from './editor-cache';
 import { useDocLintConfig } from './lint-config-client';
+import { startSourceLanding } from './mode-switch-landing';
 import { getMountId } from './mount-id-registry';
 import { markUserTyping } from './observers';
+import { landingFlashSource } from './plugins/landing-flash-source';
+import { claimScrollerForNavigation, runScrollNavigation } from './scroll-restore-coordination';
 import { publishSelectionContext, selectionSnapshotFromSource } from './selection-context';
 import {
   publishSelectionStats,
@@ -39,6 +43,7 @@ import {
 import {
   clearPendingSourceNavigation,
   consumePendingSourceNavigation,
+  peekPendingSourceNavigation,
 } from './source-editor-navigation';
 import { createMarkdownLintExtension } from './source-lint/markdown-lint-source';
 import { sourceModeSetup } from './source-mode-setup';
@@ -56,6 +61,11 @@ import { attachTypingBurstDetector } from './typing-burst-detector';
 // components/EditorToolbar.tsx.
 const TOOLBAR_OVERLAP_PX = 56;
 
+// CodeMirror's search config asks for a scroll EFFECT rather than performing
+// the scroll, so standing a match-scroll down means handing back an effect no
+// extension reads.
+const noScrollEffect = StateEffect.define<null>();
+
 interface SourceEditorProps {
   docName: string;
   ytext: Y.Text;
@@ -64,7 +74,7 @@ interface SourceEditorProps {
   isSourceModeActive: boolean;
 }
 
-function applyOutlineNavigation(view: EditorView, detail: OutlineNavDetail): void {
+function applyOutlineNavigation(view: EditorView, detail: OutlineNavDetail, docName: string): void {
   const doc = view.state.doc;
   let startLine = 1;
   // FM fence recognition must agree with the server's extractHeadings (core
@@ -89,11 +99,13 @@ function applyOutlineNavigation(view: EditorView, detail: OutlineNavDetail): voi
     if (isInCodeFence(line.text)) continue;
     if (/^#{1,6}\s/.test(line.text)) {
       if (seen === detail.index) {
-        view.dispatch({
-          selection: EditorSelection.cursor(line.from),
-          effects: EditorView.scrollIntoView(line.from, { y: 'start' }),
+        runScrollNavigation(docName, () => {
+          view.dispatch({
+            selection: EditorSelection.cursor(line.from),
+            effects: EditorView.scrollIntoView(line.from, { y: 'start' }),
+          });
+          view.focus();
         });
-        view.focus();
         return;
       }
       seen++;
@@ -101,39 +113,52 @@ function applyOutlineNavigation(view: EditorView, detail: OutlineNavDetail): voi
   }
 }
 
-function applyRawMdxNavigation(view: EditorView, detail: RawMdxNavDetail): void {
+export function applyRawMdxNavigation(
+  view: EditorView,
+  detail: RawMdxNavDetail,
+  stillInSourceMode: () => boolean,
+  docName: string,
+): void {
   requestAnimationFrame(() => {
+    // The dispatch is deferred a frame, so the user may flip back to WYSIWYG
+    // between scheduling and running. Applying then would move the caret and
+    // scroll a now-hidden editor; re-read the live mode and bail if it changed.
+    if (!stillInSourceMode()) return;
     const doc = view.state.doc;
     // Clamp offset to doc length (offset may exceed doc length if content
     // differs between Y.Text and originalSpan).
     const pos = Math.min(detail.offset, doc.length);
-    view.dispatch({
-      selection: EditorSelection.cursor(pos),
-      effects: EditorView.scrollIntoView(pos, { y: 'center' }),
+    runScrollNavigation(docName, () => {
+      view.dispatch({
+        selection: EditorSelection.cursor(pos),
+        effects: EditorView.scrollIntoView(pos, { y: 'center' }),
+      });
+      view.focus();
     });
-    view.focus();
   });
 }
 
 /** Jump to a lint diagnostic's 1-based line/column. Lines/columns are clamped —
  *  the doc may shift between the click and this dispatch. */
-function applyLintNavigation(view: EditorView, detail: LintNavDetail): void {
+function applyLintNavigation(view: EditorView, detail: LintNavDetail, docName: string): void {
   const doc = view.state.doc;
   const lineNumber = Math.min(Math.max(detail.line, 1), doc.lines);
   const line = doc.line(lineNumber);
   const pos = Math.min(line.from + Math.max(0, detail.column - 1), line.to);
-  view.dispatch({
-    selection: EditorSelection.cursor(pos),
-    // `y: 'start'` (not 'center'/'nearest'): in full-page source mode the editor
-    // renders at content height with no internal scrollport, so CM measures the
-    // target as already visible against its own scrollDOM and 'center'/'nearest'
-    // never scroll the real ancestor (ScrollPreservingContainer) — the jump
-    // silently no-ops whenever the doc overflows the viewport. Top-edge alignment
-    // propagates to the ancestor and honors `scrollMargins`, matching the search
-    // scrollToMatch + outline-nav fix above.
-    effects: EditorView.scrollIntoView(pos, { y: 'start' }),
+  runScrollNavigation(docName, () => {
+    view.dispatch({
+      selection: EditorSelection.cursor(pos),
+      // `y: 'start'` (not 'center'/'nearest'): in full-page source mode the editor
+      // renders at content height with no internal scrollport, so CM measures the
+      // target as already visible against its own scrollDOM and 'center'/'nearest'
+      // never scroll the real ancestor (ScrollPreservingContainer) — the jump
+      // silently no-ops whenever the doc overflows the viewport. Top-edge alignment
+      // propagates to the ancestor and honors `scrollMargins`, matching the search
+      // scrollToMatch + outline-nav fix above.
+      effects: EditorView.scrollIntoView(pos, { y: 'start' }),
+    });
+    view.focus();
   });
-  view.focus();
 }
 
 export function SourceEditor({
@@ -266,8 +291,16 @@ export function SourceEditor({
               // found offscreen match lands just under the toolbar instead of staying
               // out of view. Drives every search entry point (Enter, Cmd+G, F3,
               // next/prev) since they all route through `config.scrollToMatch`.
+              //
+              // A match is an explicit navigation, so it claims the scroller from
+              // an in-flight mode-switch landing first — without that, a search
+              // run inside a landing's settle window scrolls and is reset to the
+              // landing's own target milliseconds later.
               search({
-                scrollToMatch: (range) => EditorView.scrollIntoView(range, { y: 'start' }),
+                scrollToMatch: (range) =>
+                  claimScrollerForNavigation(resolvedDocName)
+                    ? EditorView.scrollIntoView(range, { y: 'start' })
+                    : noScrollEffect.of(null),
               }),
               // Tab inserts indentation instead of escaping focus. CM6's default is
               // to let Tab move focus (WCAG "no keyboard trap") — for a code-style
@@ -293,6 +326,8 @@ export function SourceEditor({
                 currentDocName: resolvedDocName,
               }),
               createSourcePolishExtension(),
+              // Transient highlight for a mode-switch jump that lands in source.
+              landingFlashSource(),
               lintCompartment.of(createMarkdownLintExtension(linterConfig, docName)),
               sourceClipboard,
               EditorView.updateListener.of((update) => {
@@ -364,6 +399,9 @@ export function SourceEditor({
       });
       cmEntryRef.current = entry;
       viewRef.current = entry.view;
+      // Publish the live view so a source-to-WYSIWYG flip can read its viewport
+      // synchronously at flip time, before this editor is hidden.
+      registerSourceView(docName, entry.view);
     } catch (err) {
       // Surface mount failures through DocumentErrorBoundary.
       console.error('[SourceEditor] mountCmEditor failed', err);
@@ -376,6 +414,7 @@ export function SourceEditor({
       const cur = cmEntryRef.current;
       if (cur) {
         parkCmEditor(cur);
+        unregisterSourceView(docName, cur.view);
       }
       // Listener cleanup is implicit when evictCmEditor calls view.destroy().
       // We do NOT remove listeners here because the view is still alive in
@@ -496,7 +535,7 @@ export function SourceEditor({
       if (!detail || detail.mode !== 'source' || !isSourceModeActive) return;
       const view = viewRef.current;
       if (!view) return;
-      applyOutlineNavigation(view, detail);
+      applyOutlineNavigation(view, detail, docName);
       clearPendingSourceNavigation(docName);
     }
     window.addEventListener(OUTLINE_NAV_EVENT, onNav);
@@ -510,7 +549,7 @@ export function SourceEditor({
       if (!detail || !isSourceModeActive) return;
       const view = viewRef.current;
       if (!view) return;
-      applyLintNavigation(view, detail);
+      applyLintNavigation(view, detail, docName);
       clearPendingSourceNavigation(docName);
     }
     window.addEventListener(LINT_NAV_EVENT, onLintNav);
@@ -525,21 +564,62 @@ export function SourceEditor({
     const view = viewRef.current;
     if (!view) return;
 
-    const pendingNavigation = consumePendingSourceNavigation(docName);
+    const pendingNavigation = peekPendingSourceNavigation(docName);
     if (!pendingNavigation) return;
 
-    if (pendingNavigation.kind === 'outline') {
-      applyOutlineNavigation(view, pendingNavigation.detail);
+    // The one-shot navs apply synchronously and consume their entry; re-running
+    // this effect (a StrictMode mount is invoked twice) simply finds nothing left.
+    if (pendingNavigation.kind !== 'selection-offset') {
+      consumePendingSourceNavigation(docName);
+      if (pendingNavigation.kind === 'outline') {
+        applyOutlineNavigation(view, pendingNavigation.detail, docName);
+      } else if (pendingNavigation.kind === 'lint') {
+        applyLintNavigation(view, pendingNavigation.detail, docName);
+      } else if (pendingNavigation.kind === 'raw-mdx') {
+        applyRawMdxNavigation(
+          view,
+          pendingNavigation.detail,
+          () => sourceModeActiveRef.current,
+          docName,
+        );
+      }
       return;
     }
 
-    if (pendingNavigation.kind === 'lint') {
-      applyLintNavigation(view, pendingNavigation.detail);
-      return;
-    }
-
-    applyRawMdxNavigation(view, pendingNavigation.detail);
-  }, [docName, isSourceModeActive]);
+    // The cross-mode landing runs through the settle contract instead of a
+    // one-shot scroll, so it hands back a handle the cleanup cancels if the mode
+    // flips away (or the doc changes) before it settles. Because that cleanup
+    // cancels — and a cancelled landing is discarded without settling — starting
+    // it synchronously here loses the whole landing to the immediate
+    // mount→cleanup→remount a StrictMode mount performs. Deferring the consume
+    // and start to a microtask lets that synchronous cycle finish first; only the
+    // surviving closure's callback runs, so the landing starts once and settles.
+    let cancelled = false;
+    let landing: ReturnType<typeof startSourceLanding> = null;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      const navigation = peekPendingSourceNavigation(docName);
+      if (navigation?.kind !== 'selection-offset') return;
+      landing = startSourceLanding({
+        view,
+        docName,
+        navigation,
+        ydoc: provider.document,
+        transition: { from: 'wysiwyg', to: 'source' },
+      });
+      // Consume only once a landing actually started. `startSourceLanding`
+      // declines when the WYSIWYG doc it grades against is not mounted (a large
+      // document that deferred it), and consuming first would drop the user's
+      // jump target for good — leaving it banked lets a later entry replay it
+      // inside its TTL. A landing that did start owns the entry from here: its
+      // own cancel path discards it.
+      if (landing) consumePendingSourceNavigation(docName);
+    });
+    return () => {
+      cancelled = true;
+      landing?.cancel('mode-flip');
+    };
+  }, [docName, isSourceModeActive, provider]);
 
   return <div ref={containerRef} className="source-editor h-full pb-3" />;
 }

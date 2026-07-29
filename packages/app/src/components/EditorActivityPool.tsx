@@ -53,7 +53,15 @@ import { peekRenameSnapshot, setActivityMountList } from '@/editor/editor-cache'
 import { isSystemDoc } from '@/editor/is-system-doc';
 import { clearMountId, getMountId, setMountId } from '@/editor/mount-id-registry';
 import type { ServerRestartRecoveryState } from '@/editor/provider-pool';
+import {
+  BODY_ANCHOR_ATTR,
+  getDocScrollState,
+  isScrollRestoreSuppressed,
+  rememberDocScrollState,
+  scrollFraction,
+} from '@/editor/scroll-restore-coordination';
 import { TiptapEditor } from '@/editor/TiptapEditor';
+import type { EditorModeValue } from '@/editor/use-editor-mode';
 import { useLifecycleStatus } from '@/hooks/use-lifecycle-status';
 import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name';
 import { mark, ProfilerBoundary } from '@/lib/perf';
@@ -164,13 +172,20 @@ export function computeEditorMountGate(args: EditorMountGateArgs): EditorMountGa
 
 /**
  * Pure gate for the `ok/cold/first-toggle` mark emission. The mark is the
- * first-toggle latency anchor — fires EXACTLY ONCE per ActivityEntry, only
- * when the defer-mount path was active (`isLarge`) and the deferred editor
- * has now mounted (both `renderSource` and `renderVisual` are true). For
- * small docs whose default is pre-mount-both, the mark must NEVER fire —
- * there is no defer-mount transition to measure.
+ * first-toggle latency anchor — fires EXACTLY ONCE per ActivityEntry, only for
+ * the ACTIVE entry, only when the defer-mount path was active (`isLarge`) and
+ * the deferred editor has now mounted (both `renderSource` and `renderVisual`
+ * are true). For small docs whose default is pre-mount-both, the mark must
+ * NEVER fire — there is no defer-mount transition to measure.
+ *
+ * The `isActive` conjunct is load-bearing: a hidden entry whose deferred editor
+ * mounts (e.g. a global flip materialising the other mode's editor in its
+ * display:none subtree) must not spend the one-shot, or it both records a
+ * phantom cold-mount it never paid AND suppresses the real mark that fires when
+ * the doc is actually re-activated and pays the cost.
  */
 interface ShouldEmitFirstToggleArgs {
+  isActive: boolean;
   isLarge: boolean;
   renderSource: boolean;
   renderVisual: boolean;
@@ -179,8 +194,26 @@ interface ShouldEmitFirstToggleArgs {
 
 export function shouldEmitFirstToggle(args: ShouldEmitFirstToggleArgs): boolean {
   if (args.hasEmittedFirstToggle) return false;
+  if (!args.isActive) return false;
   if (!args.isLarge) return false;
   return args.renderSource && args.renderVisual;
+}
+
+/**
+ * The mode an Activity entry actually displays. Only the ACTIVE entry follows a
+ * global mode flip; a hidden entry stays in the mode it last displayed
+ * (`lastActiveIsSourceMode`) until it becomes active again, at which point it
+ * adopts the current global mode. Freezing the mode for hidden entries is what
+ * stops a global flip from mounting an editor inside a hidden (display:none)
+ * subtree — the visited-mode gate and the mount gate both key off this value,
+ * so a flip a hidden entry never displays can no longer flip its render flags.
+ */
+export function computeEffectiveSourceMode(
+  isActive: boolean,
+  isSourceMode: boolean,
+  lastActiveIsSourceMode: boolean,
+): boolean {
+  return isActive ? isSourceMode : lastActiveIsSourceMode;
 }
 
 /**
@@ -502,50 +535,28 @@ interface ActivityEntryProps {
  *   mounted-but-hidden anchor (a Suspense fallback window during a slow
  *   reveal) yields NO target for that frame rather than a degenerate
  *   viewport-origin measurement that self-amplifies per applied frame.
- */
-
-/**
- * Per-document scroll position, stored as a BODY OFFSET (scrollTop minus the
- * above-body anchor height) and keyed by `docName`. Two reasons it lives at
- * module scope, not in a per-instance ref:
- *   1. Survives the editor's REMOUNT on navigate-back — the fresh
- *      ScrollPreservingContainer instance re-reads the same value instead of
- *      losing it (the per-instance ref was the bug: a remount dropped it and
- *      then re-captured churn from the resize).
- *   2. Body-relative — a Properties-panel height change (collapse/expand, even
- *      globally on another doc) never invalidates it, because the offset is
- *      measured from the top of the body, not the top of the scroller.
- * Restore = currentAnchor + storedOffset, so it always lands on the same body
- * content regardless of the panel's current height.
  *
- * Entries are deliberately kept PAST Activity eviction (so revisiting a
- * pooled-out doc still restores scroll), so there is no per-eviction cleanup —
- * but to keep a very long session from growing the map without bound,
- * `rememberDocScrollOffset` caps it at `MAX_TRACKED_DOC_SCROLL`, dropping the
- * least-recently-written entry (re-insert-on-write makes the order LRU).
+ *   The saved position itself lives in scroll-restore-coordination, not in
+ *   this module, so a mode-switch landing reads and writes the same map
+ *   rather than racing a private one.
  */
-const MAX_TRACKED_DOC_SCROLL = 256;
-const docScrollBodyOffset = new Map<string, number>();
-function rememberDocScrollOffset(docName: string, offset: number): void {
-  docScrollBodyOffset.delete(docName); // re-insert last → LRU order for eviction
-  docScrollBodyOffset.set(docName, offset);
-  if (docScrollBodyOffset.size > MAX_TRACKED_DOC_SCROLL) {
-    const oldest = docScrollBodyOffset.keys().next().value;
-    if (oldest !== undefined) docScrollBodyOffset.delete(oldest);
-  }
-}
-
-function ScrollPreservingContainer({
+export function ScrollPreservingContainer({
   isActive,
   docName,
+  mode,
   initialScrollTop,
   bodyAnchorRef,
   children,
 }: {
   isActive: boolean;
   /** The document this scroller belongs to — the key under which its scroll
-   *  body-offset persists across remounts (see `docScrollBodyOffset`). */
+   *  body-offset persists across remounts (see scroll-restore-coordination). */
   docName: string;
+  /** The editor mode this scroller currently displays. Captured with each saved
+   *  scroll position and compared on re-activation: a saved position from a
+   *  different mode is floored (proportional) instead of driving this mode's
+   *  geometry against the other mode's offset. */
+  mode: EditorModeValue;
   /**
    * Seed value for `savedScrollTop` at mount. Used by the warm-skeleton
    * rename-restore path: when the new ActivityEntry mounts post-rename
@@ -591,6 +602,18 @@ function ScrollPreservingContainer({
     isActiveRef.current = isActive;
   }, [isActive]);
 
+  // Mirror the current mode into a ref the restore effect reads on re-activation.
+  // It is a LAYOUT effect declared before the restore effect on purpose: when an
+  // Activity flips hidden->visible React re-runs both effects' setup, layout
+  // effects before passive and in declaration order, so a passive mirror would
+  // update only AFTER the restore had already read a mode frozen at the last
+  // hide. The restore keys on `isActive` (not `mode`), so an in-place flip of the
+  // active doc — owned by the landing controller — never runs it.
+  const modeRef = useRef(mode);
+  useLayoutEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
   // Track scrollTop via a scroll listener so we always have the latest user
   // position — `display:none` zeros scrollTop before any layout effect could
   // read it, so we MUST capture via scroll events.
@@ -610,9 +633,15 @@ function ScrollPreservingContainer({
         savedScrollTop.current = el.scrollTop;
         savedAnchorPos.current = anchor.kind === 'measured' ? anchor.contentPos : null;
         // Persist the body-relative offset per doc so it survives a remount and
-        // stays valid across Properties-panel height changes.
+        // stays valid across Properties-panel height changes. The mode + fraction
+        // ride along so a later re-activation in a different mode can floor
+        // instead of driving this offset against the other mode's geometry.
         if (anchor.kind === 'measured') {
-          rememberDocScrollOffset(docName, el.scrollTop - anchor.contentPos);
+          rememberDocScrollState(docName, {
+            offset: el.scrollTop - anchor.contentPos,
+            mode: modeRef.current,
+            fraction: scrollFraction(el.scrollTop, el.scrollHeight, el.clientHeight),
+          });
         }
       }
     };
@@ -656,16 +685,47 @@ function ScrollPreservingContainer({
     if (!isActive) return;
     const el = ref.current;
     if (!el) return;
+    // A mode-switch landing owns the scroll for this document during its settle
+    // window; stand down so there is a single writer and the restore does not
+    // overwrite the landing with the pre-landing position.
+    if (isScrollRestoreSuppressed(docName)) return;
+
+    const saved = getDocScrollState(docName);
+    // Cross-mode re-activation floor. The saved offset was measured against the
+    // OTHER mode's geometry, so the precise anchor-tracking restore below would
+    // actively drive the scroller onto a wrong-geometry target. Instead land
+    // once at the same fraction through the scrollable range and stand down — a
+    // near-miss, never actively wrong. A cross-mode restore that cannot be
+    // applied (the new mode's content does not overflow, so there is no range to
+    // be a fraction of) still emits a diagnostic mark, so the failure is
+    // observable rather than silent (the old height-gated `abandoned` mark was
+    // suppressed in exactly this case).
+    if (saved && saved.mode !== modeRef.current) {
+      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+      const target = Math.round(saved.fraction * maxScroll);
+      const applicable = maxScroll > 0;
+      if (applicable) el.scrollTop = target;
+      mark('ok/scroll-restore/cross-mode', {
+        docName,
+        savedMode: saved.mode,
+        mode: modeRef.current,
+        fraction: Number(saved.fraction.toFixed(4)),
+        target,
+        applied: applicable && el.scrollTop === target,
+      });
+      return;
+    }
+
     const rawTarget = savedScrollTop.current;
 
     // Restore keeps the BODY offset — how far into the document body we were
     // scrolled — constant, instead of a raw pixel scrollTop, and recomputes the
     // target from the CURRENT anchor on every apply so it tracks the Properties
     // panel settling to its post-toggle height. Prefer the per-doc offset
-    // (`docScrollBodyOffset`) so it survives the editor's remount on
+    // (`getDocScrollState`) so it survives the editor's remount on
     // navigate-back; fall back to this instance's captured pair, then the raw
     // scroll (fresh mount / warm rename-restore) so existing behavior is intact.
-    const sharedOffset = docScrollBodyOffset.get(docName);
+    const sharedOffset = saved?.offset;
     const instanceOffset =
       savedAnchorPos.current !== null ? rawTarget - savedAnchorPos.current : null;
     const bodyOffset: number | null = sharedOffset ?? instanceOffset;
@@ -753,6 +813,22 @@ function ScrollPreservingContainer({
     el.addEventListener('keydown', yieldToUser);
     const tick = () => {
       if (done) return;
+      // A landing acquired the scroll for this document mid-restore — stop
+      // competing so the landing is the single writer. Probed BEFORE the
+      // external-scroll check below: a landing's own writes would otherwise
+      // read as a takeover of unknown origin, and the named reason is the more
+      // precise signal for an exit we can attribute exactly.
+      if (isScrollRestoreSuppressed(docName)) {
+        if (!hasLandedOnce) {
+          mark('ok/scroll-restore/yielded', {
+            reason: 'landing',
+            elapsedMs: performance.now() - startTs,
+            finalScrollTop: el.scrollTop,
+          });
+        }
+        finish();
+        return;
+      }
       // An UPWARD scrollTop move we didn't write = someone else owns the
       // scroll now (outline-click scrollIntoView, find-in-doc). Yield
       // immediately — enforcing a stale target over an intentional scroll is
@@ -829,7 +905,7 @@ function ScrollPreservingContainer({
     <div
       ref={ref}
       data-testid="editor-scroll-container"
-      // Toolbar exclusion zone = 3.5rem (EditorToolbar's rendered height). Four
+      // Toolbar exclusion zone = 3.5rem (EditorToolbar's rendered height). Five
       // load-bearing constants must move together if the toolbar height changes:
       //   - `pt-14` (here): initial-paint content reserve so doc content doesn't
       //     start behind the absolute-positioned EditorToolbar overlay.
@@ -847,6 +923,9 @@ function ScrollPreservingContainer({
       //     and have no programmatic scroll-into-view call sites today; adding
       //     a `scrollMargins` contribution in the shared factory would mis-align
       //     nested CM scrolls if they ever become scrollable.
+      //   - TOOLBAR_OVERLAP_PX in editor/mode-switch-landing.ts: the mode-switch
+      //     capture probes step in from this inset, and the landing hands it to
+      //     the controller as the target's resting offset below the toolbar.
       // The toolbar itself: components/EditorToolbar.tsx.
       className="editor-doc-scroll subtle-scrollbar h-full overflow-y-auto pt-14 scroll-pt-14"
       style={{ overflowAnchor: 'auto' }}
@@ -1024,33 +1103,51 @@ function ActivityEntry({
   // so its length reliably signals "this doc will be expensive to render".
   const ytextLength = entry.provider.document.getText('source').length;
 
+  // The mode this entry actually displays. Only the active entry follows the
+  // global flip; a hidden entry stays frozen at its last-active mode until it is
+  // re-activated. Freezing is what keeps a global flip from mounting an editor
+  // inside a hidden (display:none) subtree — every mode-derived decision below
+  // (visited tracking, mount gate, class swaps) keys off `effectiveIsSourceMode`,
+  // so a flip a hidden entry never displays cannot flip its render flags.
+  const [lastActiveIsSourceMode, setLastActiveIsSourceMode] = useState(isSourceMode);
+  useEffect(() => {
+    if (isActive && lastActiveIsSourceMode !== isSourceMode) {
+      setLastActiveIsSourceMode(isSourceMode);
+    }
+  }, [isActive, isSourceMode, lastActiveIsSourceMode]);
+  const effectiveIsSourceMode = computeEffectiveSourceMode(
+    isActive,
+    isSourceMode,
+    lastActiveIsSourceMode,
+  );
+
   // Track which modes have been visited. useState (not useRef) because React
   // Compiler's Babel plugin rejects render-phase ref mutation — even though the
   // mutation here is idempotent and safe, the compiler can't prove it. State
   // with a lazy initializer + a post-commit effect is the compiler-approved
   // shape.
   //
-  // Correctness note: on the render where `isSourceMode` first flips from
-  // `false → true`, we need the newly-visited SourceEditor to render in THAT
-  // render (not wait for an effect + rerender). `computeEditorMountGate`
-  // handles this by OR-ing with `isSourceMode` directly, so even when the
+  // Correctness note: on the render where `effectiveIsSourceMode` first flips
+  // from `false → true`, we need the newly-visited SourceEditor to render in
+  // THAT render (not wait for an effect + rerender). `computeEditorMountGate`
+  // handles this by OR-ing with the mode directly, so even when the
   // `visitedSource` state is still false at the flipped render, the gate
   // returns `renderSource=true`. The effect then flips state, and subsequent
   // renders stay consistent.
   //
   // Activity mode=hidden preserves state across visibility flips (just like
   // refs would), so alt-tab between docs doesn't reset the visit history.
-  const [visitedSource, setVisitedSource] = useState(isSourceMode);
-  const [visitedVisual, setVisitedVisual] = useState(!isSourceMode);
+  const [visitedSource, setVisitedSource] = useState(effectiveIsSourceMode);
+  const [visitedVisual, setVisitedVisual] = useState(!effectiveIsSourceMode);
 
   useEffect(() => {
-    if (isSourceMode && !visitedSource) setVisitedSource(true);
-    else if (!isSourceMode && !visitedVisual) setVisitedVisual(true);
-  }, [isSourceMode, visitedSource, visitedVisual]);
+    if (effectiveIsSourceMode && !visitedSource) setVisitedSource(true);
+    else if (!effectiveIsSourceMode && !visitedVisual) setVisitedVisual(true);
+  }, [effectiveIsSourceMode, visitedSource, visitedVisual]);
 
   const gate = computeEditorMountGate({
     ytextLength,
-    isSourceMode,
+    isSourceMode: effectiveIsSourceMode,
     visitedSource,
     visitedVisual,
   });
@@ -1068,7 +1165,7 @@ function ActivityEntry({
       mark('ok/activity/defer-mount', {
         docName: entry.docName,
         ytextLength,
-        isSourceMode,
+        isSourceMode: effectiveIsSourceMode,
         renderSource: gate.renderSource,
         renderVisual: gate.renderVisual,
       });
@@ -1080,7 +1177,7 @@ function ActivityEntry({
     gate.renderVisual,
     entry.docName,
     ytextLength,
-    isSourceMode,
+    effectiveIsSourceMode,
   ]);
 
   // Rename-induced cold-mount carries forward the PRIOR editor's HTML + scrollTop
@@ -1132,6 +1229,7 @@ function ActivityEntry({
   useEffect(() => {
     if (
       !shouldEmitFirstToggle({
+        isActive,
         isLarge: gate.isLarge,
         renderSource: gate.renderSource,
         renderVisual: gate.renderVisual,
@@ -1144,17 +1242,18 @@ function ActivityEntry({
       docName: entry.docName,
       mountId: getMountId(entry.docName),
       ytextLength,
-      modeEnteredFirst: isSourceMode ? 'source' : 'visual',
+      modeEnteredFirst: effectiveIsSourceMode ? 'source' : 'visual',
     });
     setHasEmittedFirstToggle(true);
   }, [
     hasEmittedFirstToggle,
+    isActive,
     gate.isLarge,
     gate.renderSource,
     gate.renderVisual,
     entry.docName,
     ytextLength,
-    isSourceMode,
+    effectiveIsSourceMode,
   ]);
 
   return (
@@ -1167,6 +1266,7 @@ function ActivityEntry({
       <ScrollPreservingContainer
         isActive={isActive}
         docName={entry.docName}
+        mode={effectiveIsSourceMode ? 'source' : 'wysiwyg'}
         initialScrollTop={warmSnapshot?.scrollTop}
         bodyAnchorRef={bodyAnchorRef}
       >
@@ -1218,7 +1318,7 @@ function ActivityEntry({
                     <MermaidDocEditor
                       docName={entry.docName}
                       provider={entry.provider}
-                      isSourceMode={isSourceMode}
+                      isSourceMode={effectiveIsSourceMode}
                     />
                   ) : (
                     /* Dual-editor mount with size-gated defer for large docs. Small
@@ -1248,7 +1348,7 @@ function ActivityEntry({
                         frontmatter, and they have no cover/icon. Regular docs get
                         PageHeader (decorative cover+icon, null when unset) +
                         PropertyPanel (frontmatter table, null when empty). */}
-                      {!isSourceMode &&
+                      {!effectiveIsSourceMode &&
                         (isManagedArtifactDocName(entry.docName) ||
                         parseProjectSkillContentDocName(entry.docName) ? (
                           <Suspense fallback={null}>
@@ -1266,21 +1366,33 @@ function ActivityEntry({
                       {/* Body-top anchor for scroll-restore compensation (see
                           ScrollPreservingContainer.bodyAnchorRef). Zero height,
                           non-interactive — everything above it (page header +
-                          Properties) is the variable region it measures. */}
-                      <div ref={bodyAnchorRef} aria-hidden className="h-0" />
+                          Properties) is the variable region it measures. The
+                          BODY_ANCHOR_ATTR marker lets a landing find this node
+                          from a bare container it did not mount (see
+                          scroll-restore-coordination.writeLandingResult). */}
+                      <div
+                        ref={bodyAnchorRef}
+                        aria-hidden
+                        className="h-0"
+                        {...{ [BODY_ANCHOR_ATTR]: '' }}
+                      />
                       <div className="relative flex-1">
                         {gate.renderSource ? (
-                          <div className={isSourceMode ? 'h-full' : 'ok-mode-hidden h-full'}>
+                          <div
+                            className={effectiveIsSourceMode ? 'h-full' : 'ok-mode-hidden h-full'}
+                          >
                             <SourceEditorSlot
                               entry={entry}
                               isActive={isActive}
-                              isSourceMode={isSourceMode}
+                              isSourceMode={effectiveIsSourceMode}
                               editorPlaceholder={editorPlaceholder}
                             />
                           </div>
                         ) : null}
                         {gate.renderVisual ? (
-                          <div className={isSourceMode ? 'ok-mode-hidden h-full' : 'h-full'}>
+                          <div
+                            className={effectiveIsSourceMode ? 'ok-mode-hidden h-full' : 'h-full'}
+                          >
                             <TiptapEditor
                               // The isNewDoc segment forces TipTap remount on the draft → saved
                               // transition (the flip changes the page list's membership of this
@@ -1295,7 +1407,7 @@ function ActivityEntry({
                               key={`${entry.docName}-${String(isNewDoc)}-${entry.poolEventId}`}
                               provider={entry.provider}
                               placeholder={editorPlaceholder}
-                              isSourceMode={isSourceMode}
+                              isSourceMode={effectiveIsSourceMode}
                               // Per-Activity exclusive portal target — see the
                               // `portalTarget` useState declaration for
                               // the bleed-prevention rationale. The target's

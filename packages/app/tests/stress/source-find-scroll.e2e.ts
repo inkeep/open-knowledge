@@ -12,9 +12,12 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
-import { expect, test, waitForActiveProviderSynced } from './_helpers';
-
-const TOOLBAR_OVERLAP_PX = 56;
+import {
+  expect,
+  matchIsWithinReadableScrollport,
+  test,
+  waitForActiveProviderSynced,
+} from './_helpers';
 
 function uniqueDocName(label: string): string {
   return `test-source-find-${label}-${randomUUID().slice(0, 8)}`;
@@ -24,29 +27,6 @@ const sourceToggle = (page: Page) => page.getByRole('radio', { name: 'Markdown s
 
 function visibleScrollContainer(page: Page) {
   return page.locator('[data-testid="editor-scroll-container"]:visible');
-}
-
-/**
- * True iff the currently-selected CodeMirror search match is fully within the
- * visible scrollport AND below the toolbar overlap zone (so it is actually
- * readable, not hidden behind the absolute-positioned toolbar).
- */
-async function selectedSearchMatchInScrollport(page: Page): Promise<boolean> {
-  return page.evaluate((toolbar) => {
-    const scrollContainer = Array.from(
-      document.querySelectorAll('[data-testid="editor-scroll-container"]'),
-    ).find(
-      (element): element is HTMLElement =>
-        element instanceof HTMLElement && element.getClientRects().length > 0,
-    );
-    const match = scrollContainer?.querySelector('.cm-searchMatch-selected');
-    if (!scrollContainer || !(match instanceof HTMLElement)) return false;
-    const scrollRect = scrollContainer.getBoundingClientRect();
-    const matchRect = match.getBoundingClientRect();
-    return (
-      matchRect.top >= scrollRect.top + toolbar - 2 && matchRect.bottom <= scrollRect.bottom + 2
-    );
-  }, TOOLBAR_OVERLAP_PX);
 }
 
 test('source-mode find scrolls an off-screen match into view', async ({ page, api }) => {
@@ -105,5 +85,7 @@ test('source-mode find scrolls an off-screen match into view', async ({ page, ap
       ),
     )
     .toBeGreaterThan(0);
-  await expect.poll(() => selectedSearchMatchInScrollport(page)).toBe(true);
+  await expect
+    .poll(() => matchIsWithinReadableScrollport(page, '.cm-searchMatch-selected'))
+    .toBe(true);
 });

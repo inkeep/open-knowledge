@@ -1,10 +1,19 @@
+import { MarkdownManager, sharedExtensions, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { isMacOS } from '@tiptap/core';
+import { type Editor, getSchema, isMacOS } from '@tiptap/core';
+import type { Node as PmNode } from '@tiptap/pm/model';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import * as Y from 'yjs';
+import { registerEditor, unregisterEditor } from '@/editor/active-editor';
 import { publishSelectionContext } from '@/editor/selection-context';
 import type { EditorSurface } from '@/editor/selection-stats';
+import {
+  clearPendingSourceNavigationsForTest,
+  peekPendingSourceNavigation,
+} from '@/editor/source-editor-navigation';
+import { VIEW_IN_SOURCE_EVENT, type ViewInSourceDetail } from '@/editor/view-in-source-event';
 import { subscribeToPreferredSessionRequests } from './handoff/preferred-session-events';
 import { subscribeToActiveTerminalInput } from './handoff/terminal-input-events';
 
@@ -28,6 +37,27 @@ function seedSelection(markdown: string): void {
 function clearSelection(): void {
   publishSelectionContext(TEST_DOC, 'wysiwyg', null);
   publishSelectionContext(TEST_DOC, 'source', null);
+}
+
+// Substrate for the view-in-source seam test: a stand-in editor whose mounted PM
+// view carries the caret + doc, so the real jump reads the block under the caret.
+const jumpMd = new MarkdownManager({ extensions: sharedExtensions });
+const jumpSchema = getSchema(sharedExtensions);
+
+/** PM position just inside top-level block `index`. */
+function pmPosOfBlock(doc: PmNode, index: number): number {
+  let pos = 0;
+  for (let i = 0; i < index; i++) pos += doc.child(i).nodeSize;
+  return pos + 1;
+}
+
+function makeJumpEditor(markdown: string, caretBlock: number): Editor {
+  const { body } = stripFrontmatter(markdown);
+  const doc = jumpSchema.nodeFromJSON(jumpMd.parse(body));
+  return {
+    isDestroyed: false,
+    editorView: { state: { doc, selection: { from: pmPosOfBlock(doc, caretBlock) } } },
+  } as unknown as Editor;
 }
 
 // Collect the Ask-AI passages EditorPane dispatches to the sessions host (which
@@ -106,8 +136,16 @@ vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => ({ contentDir: '/tmp/project', pathSeparator: '/' }),
 }));
 
+// Mutable so the view-in-source test can supply a provider — its source Y.Text
+// is what the jump reads. Default undefined keeps every other test unchanged
+// (EditorPane's view-in-source path early-returns without a provider).
+let activeProvider: { document: Y.Doc } | undefined;
 vi.doMock('@/editor/DocumentContext', () => ({
-  useDocumentContext: () => ({ activeDocName: 'docs/notes', collabUrl: 'ws://test' }),
+  useDocumentContext: () => ({
+    activeDocName: 'docs/notes',
+    collabUrl: 'ws://test',
+    activeProvider,
+  }),
 }));
 
 vi.doMock('@/editor/use-editor-mode', () => ({
@@ -374,7 +412,7 @@ function makeOkDesktopStub(
   getDockState: () => Promise<{ visible: boolean }> = async () => ({ visible: false }),
 ) {
   const menuHandlers: Array<(action: string) => void> = [];
-  const viewMenuPushes: Array<{ terminalVisible?: boolean }> = [];
+  const viewMenuPushes: Array<{ terminalVisible?: boolean; canViewInSource?: boolean }> = [];
   return {
     viewMenuPushes,
     dispatchMenuAction(action: string) {
@@ -393,7 +431,10 @@ function makeOkDesktopStub(
         };
       },
       editor: {
-        notifyViewMenuStateChanged(state: { terminalVisible?: boolean }) {
+        notifyViewMenuStateChanged(state: {
+          terminalVisible?: boolean;
+          canViewInSource?: boolean;
+        }) {
           viewMenuPushes.push(state);
         },
       },
@@ -416,6 +457,8 @@ describe('EditorPane terminal dock wiring', () => {
     delete (window as { okDesktop?: unknown }).okDesktop;
     terminalOpenedCalls.length = 0;
     clearSelection();
+    activeProvider = undefined;
+    clearPendingSourceNavigationsForTest();
   });
 
   test('web host mounts the sessions host (host-agnostic) with no desktop bridge', async () => {
@@ -537,6 +580,66 @@ describe('EditorPane terminal dock wiring', () => {
 
     act(() => desk.dispatchMenuAction('toggle-doc-panel'));
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
+  });
+
+  test('desktop: the toggle-source menu action runs the view-in-source jump', async () => {
+    // The Desktop editor context menu dispatches `toggle-source` over the same
+    // menu-action channel the terminal actions use. This exercises the real
+    // renderer half of that seam end to end: bridge → menu-action bus →
+    // EditorPane subscriber → the real view-in-source jump.
+    const desk = makeOkDesktopStub();
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+
+    // The jump reads the caret block off the registered editor and the source
+    // bytes off the active provider's Y.Text.
+    const markdown = '# Title\n\nfirst paragraph\n\ntarget paragraph';
+    const ydoc = new Y.Doc();
+    ydoc.getText('source').insert(0, markdown);
+    activeProvider = { document: ydoc };
+    const editor = makeJumpEditor(markdown, 3); // caret inside "target paragraph"
+    registerEditor('docs/notes', editor);
+
+    const flips: string[] = [];
+    const onFlip = (e: Event) => flips.push((e as CustomEvent<ViewInSourceDetail>).detail.docName);
+    window.addEventListener(VIEW_IN_SOURCE_EVENT, onFlip);
+
+    await renderEditorPane();
+    act(() => desk.dispatchMenuAction('toggle-source'));
+
+    window.removeEventListener(VIEW_IN_SOURCE_EVENT, onFlip);
+    unregisterEditor('docs/notes', editor);
+
+    // It requested the flip for this doc and banked a jump navigation — the
+    // Desktop menu action reached the jump, not just the mode flip.
+    expect(flips).toEqual(['docs/notes']);
+    const nav = peekPendingSourceNavigation('docs/notes');
+    if (nav?.kind !== 'selection-offset') throw new Error('expected a selection-offset nav');
+    expect(nav.intent).toBe('jump');
+  });
+
+  // Main attaches the native context menu to every editable field in the window
+  // and cannot tell which surface fired it, so whether the "View in Source" row
+  // is offered rides entirely on this push. If it stopped happening, the row
+  // would silently vanish from the desktop editor instead of appearing where it
+  // does not belong.
+  test('desktop: pushes the view-in-source capability for the context-menu row', async () => {
+    const desk = makeOkDesktopStub();
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+
+    // No provider: nothing for the jump to read, so the row must stay out.
+    await renderEditorPane();
+    expect(desk.viewMenuPushes).toContainEqual({ canViewInSource: false });
+    expect(desk.viewMenuPushes).not.toContainEqual({ canViewInSource: true });
+
+    cleanup();
+    const ydoc = new Y.Doc();
+    ydoc.getText('source').insert(0, '# Title\n\nbody');
+    activeProvider = { document: ydoc };
+    const live = makeOkDesktopStub();
+    (window as { okDesktop?: unknown }).okDesktop = live.stub;
+
+    await renderEditorPane();
+    expect(live.viewMenuPushes).toContainEqual({ canViewInSource: true });
   });
 
   test('desktop: each open records terminal-opened; mount (hidden) and close do not', async () => {

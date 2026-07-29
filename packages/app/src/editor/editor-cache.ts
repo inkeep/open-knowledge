@@ -65,6 +65,7 @@ import { getMountId } from './mount-id-registry';
 // module — keep it that way to preserve coordinated lifecycle between this
 // V2 cache and the mount-promise cache.
 import { invalidateMountPromise } from './mount-promise';
+import { isScrollRestoreSuppressed } from './scroll-restore-coordination';
 
 /**
  * Read the per-editor Yjs UndoManager so the caller can null its `restore`
@@ -437,17 +438,31 @@ export function __resetRenameSnapshotStore(): void {
 }
 
 /**
- * Best-effort live scrollTop read from the active editor scroll container.
- * The active doc's `ScrollPreservingContainer` pins `data-testid="editor-scroll-container"`
- * on its outer scrollable div (`EditorActivityPool.tsx`). Only the active doc's
- * container is rendered at any time (hidden Activity entries don't paint DOM per
- * React 19.2), so the query is unambiguous.
+ * The painted editor scroll container, or null. Each pooled doc's
+ * `ScrollPreservingContainer` pins `data-testid="editor-scroll-container"` on its
+ * outer scrollable div (`EditorActivityPool.tsx`). A hidden `<Activity>` entry
+ * keeps that div in the DOM (display:none, not unmounted), so more than one can be
+ * present at once and a plain `querySelector` may return a backgrounded doc's.
+ * Only the active doc's container is painted, so filtering by layout boxes
+ * (`getClientRects`) selects it and never reads a stale scrollTop off a hidden one.
+ */
+export function visibleEditorScrollContainer(): HTMLDivElement | null {
+  if (typeof document === 'undefined') return null;
+  const containers = document.querySelectorAll<HTMLDivElement>(
+    '[data-testid="editor-scroll-container"]',
+  );
+  for (const el of containers) {
+    if (el.getClientRects().length > 0) return el;
+  }
+  return null;
+}
+
+/**
+ * Best-effort live scrollTop read from the painted editor scroll container.
  */
 function readActiveScrollTop(): number {
   try {
-    if (typeof document === 'undefined') return 0;
-    const el = document.querySelector<HTMLDivElement>('[data-testid="editor-scroll-container"]');
-    return el?.scrollTop ?? 0;
+    return visibleEditorScrollContainer()?.scrollTop ?? 0;
   } catch (err) {
     // The fallback 0 is indistinguishable from a legitimate "scroll at top";
     // without this mark, a querySelector failure would silently produce a
@@ -657,8 +672,11 @@ export function mountTiptapEditor(params: MountTiptapParams): TiptapCacheEntry {
     reuse.activeMountKey = docName;
     touchLru(tiptapLru, docName);
     // Restore scroll AFTER DOM is re-attached (scrollTop on detached nodes
-    // is a no-op in real browsers).
-    container.scrollTop = reuse.scrollTop;
+    // is a no-op in real browsers). Stand down when a mode-switch landing owns
+    // the scroller for this doc — this warm-mount restore fires at the same
+    // moment as a landing and would otherwise overwrite it with the parked
+    // position.
+    if (!isScrollRestoreSuppressed(docName)) container.scrollTop = reuse.scrollTop;
     // Focus restore is gated on "had focus at park time". Blindly calling
     // .focus() on every mount hijacks focus from keyboard users
     // Tab-navigating through the sidebar and from deep-link cold loads
@@ -977,7 +995,9 @@ export function mountCmEditor(params: MountCmParams): CmCacheEntry {
     reparentCmDom(reuse, container);
     reuse.activeMountKey = docName;
     touchLru(cmLru, docName);
-    container.scrollTop = reuse.scrollTop;
+    // Stand down when a mode-switch landing owns the scroller for this doc, so
+    // the warm-mount restore cannot overwrite the landing with the parked scroll.
+    if (!isScrollRestoreSuppressed(docName)) container.scrollTop = reuse.scrollTop;
     if (reuse.hadFocus) {
       try {
         reuse.view.focus();

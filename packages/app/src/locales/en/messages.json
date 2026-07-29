@@ -1189,6 +1189,7 @@
     "LvdLef": ["Thanks for the feedback!"],
     "LwMxXg": ["Failed to open worktree."],
     "M-IF14": ["Report reference"],
+    "M0jOcG": ["View in source markdown"],
     "M1OfV9": ["Next source diagnostic"],
     "M3ytY_": [
       "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
@@ -2023,6 +2024,7 @@
     "blFttG": ["Search projects"],
     "bmC18N": ["Clearing local collaboration data for \"", ["docName"], "\" before reconnecting."],
     "brCtGB": ["History unavailable"],
+    "buNXgr": ["Switch between the visual and source editors, keeping your place."],
     "bultyE": [
       "When enabled, the agent opens or refreshes the preview after each edit. Disable if you manage your own preview window (OK Desktop, a browser tab on another display, etc.)."
     ],
@@ -2058,6 +2060,9 @@
     "cRHuuI": ["Couldn't copy path"],
     "cRm498": ["No schema files in this project yet — create one to start validating."],
     "cSCbv3": ["BETA"],
+    "cU-seF": [
+      "Jump to the markdown source for the block at the cursor, centered and highlighted."
+    ],
     "cUK8lW": [
       ["conflictCount", "plural", { "one": ["#", " conflict"], "other": ["#", " conflicts"] }]
     ],
@@ -3006,6 +3011,7 @@
     "u7H-Wn": ["Show panel (", ["panelShortcutLabel"], ")"],
     "u7U_Ij": ["Link the selected text, or edit the link under the caret."],
     "uA_jXp": ["Switch and update branch"],
+    "uBAxNB": ["Editor"],
     "uCaIdy": ["GitHub sign-in is missing or expired. Reconnect to resume syncing."],
     "uDlyqd": [
       "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
@@ -3075,6 +3081,7 @@
     "vIxrEk": ["Fit width"],
     "vLyv1R": ["Hide"],
     "vPKX2i": ["In app (beta)"],
+    "vPXOUw": ["Toggle source view"],
     "vQIVHc": ["Folder properties"],
     "vWc9a0": ["Type to edit; <0>⌘ Enter</0> saves, <1>Esc</1> cancels."],
     "vYPvPB": ["Switch project…"],
@@ -3305,6 +3312,7 @@
     "zkz0Fg": ["Set up syncing"],
     "zlErBl": ["Page headings error response did not match RFC 9457"],
     "zo3Dl7": ["Toggle thumbnails"],
+    "zq2eBA": ["View in source"],
     "zrP8HX": [
       "Frontmatter every document created from this template starts with. Values are YAML — a list is <0>[a, b]</0>; <1>{",
       ["date"],

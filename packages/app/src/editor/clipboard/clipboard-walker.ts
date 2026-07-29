@@ -15,9 +15,10 @@
  * state (Tabs / Carousel / Canvas) opt in to a `descriptor.toClipboardHast`
  * override.
  *
- * Activity-hidden edge: `view.nodeDOM(pos)` returns null when the slice is in
- * an `<Activity mode="hidden">` subtree whose DOM was unmounted. The walker
- * delegates to the per-descriptor static palette in
+ * No-live-DOM edge: `view.nodeDOM(pos)` returns null when nothing is rendered
+ * for the slice's position. Hiding an `<Activity>` subtree is not that case —
+ * React keeps its DOM at `display:none` — so the null is unexpected and logged.
+ * The walker then delegates to the per-descriptor static palette in
  * `clipboard-walker-fallback-palette.ts`.
  *
  * Opt-out: a descriptor can mark a subtree with `data-clipboard-omit="true"`
