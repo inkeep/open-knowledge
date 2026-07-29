@@ -480,6 +480,7 @@ export function CloneDialog({
                     // Keep focus in the input — the list is a passive suggestion
                     // surface, not a focus target. And don't let a pointer-down on
                     // the input itself (the anchor) count as an outside-click close.
+                    data-ok-declines-keyboard=""
                     onOpenAutoFocus={(e) => e.preventDefault()}
                     onCloseAutoFocus={(e) => e.preventDefault()}
                     onInteractOutside={(e) => {

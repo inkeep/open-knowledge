@@ -14,6 +14,7 @@ import { useWorktreeAutoSyncNotice } from '@/hooks/use-worktree-autosync-notice'
 import { useConfigContext } from '@/lib/config-provider';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import {
   getInitialTerminalDock,
   type TerminalDockPosition,
@@ -296,11 +297,11 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   useEffect(() => {
     if (window.okDesktop != null) return;
     function handleKeyDown(event: KeyboardEvent) {
-      if (matchesKeyboardShortcut(event, 'toggle-terminal-panel')) {
-        event.preventDefault();
-        if (sendSelectionToTerminalEvent(false)) return;
-        setTerminalVisible((visible) => !visible);
-      }
+      if (!matchesKeyboardShortcut(event, 'toggle-terminal-panel')) return;
+      if (isOverlayLayerOpen()) return;
+      event.preventDefault();
+      if (sendSelectionToTerminalEvent(false)) return;
+      setTerminalVisible((visible) => !visible);
     }
     // Capture phase so a focused xterm textarea can't swallow ⌘J first.
     window.addEventListener('keydown', handleKeyDown, { capture: true });
@@ -318,6 +319,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     if (!terminalAvailable) return;
     function handleKeyDown(event: KeyboardEvent) {
       if (!matchesKeyboardShortcut(event, 'new-terminal-tab')) return;
+      if (isOverlayLayerOpen()) return;
       event.preventDefault();
       if (!sendSelectionToTerminalEvent(true)) launchNewChatEvent();
     }

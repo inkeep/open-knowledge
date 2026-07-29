@@ -213,6 +213,7 @@ import {
   subscribeToFileTreeMenuActionRename,
 } from '@/lib/file-tree-menu-action-events';
 import { importTemplate } from '@/lib/folder-config-api';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { parseServerResponse, parseSuccessOrWarn } from '@/lib/parse-server-response';
 import { createRefreshScheduler } from '@/lib/refresh-scheduler';
 import { getRelaunchInFlightSnapshot, useRelaunchInFlight } from '@/lib/relaunch-store';
@@ -3133,6 +3134,10 @@ export function FileTree({
       let disposed = false;
       const handleCommitKeyDown = (event: KeyboardEvent) => {
         if (event.key !== 'Enter') return;
+        // Unlike its sibling below, this listener has no focus gate — the
+        // pending placeholder is its only condition, so an Enter pressed in a
+        // layer above would otherwise commit it.
+        if (isOverlayLayerOpen()) return;
         const pending = pendingCreateRef.current;
         if (!pending || pending.renamePath !== placeholder.renamePath) return;
         queueMicrotask(() => clearPendingCreate(pending));

@@ -11,12 +11,12 @@
  * interface (`useSidebar().state` flips on toggle), so a refactor that drops
  * the gate fails here instead of shipping a double-toggle.
  *
- * Substrate: jsdom via `bun run test:dom`. `window.innerWidth` is pinned to a
+ * Substrate: jsdom via `pnpm run test:dom`. `window.innerWidth` is pinned to a
  * desktop width so `toggleSidebar` takes the `setOpen` branch and the derived
  * state is `expanded` → `collapsed` on a single toggle.
  */
 
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { SIDEBAR_PINS_KEY } from '@/lib/sidebar-pin-store';
 import { SidebarProvider, useSidebar } from './sidebar';
@@ -73,6 +73,29 @@ describe('SidebarProvider web-mode ⌥⌘S shortcut — Electron gate', () => {
         <StateProbe />
       </SidebarProvider>,
     );
+    expect(screen.getByTestId('sidebar-state').textContent).toBe('expanded');
+
+    pressSidebarShortcut();
+
+    expect(screen.getByTestId('sidebar-state').textContent).toBe('expanded');
+  });
+
+  test('web host: ⌥⌘S does NOT toggle while an overlay owns the keyboard', async () => {
+    const { Dialog, DialogContent, DialogDescription, DialogTitle } = await import(
+      '@/components/ui/dialog'
+    );
+    render(
+      <SidebarProvider>
+        <StateProbe />
+        <Dialog open>
+          <DialogContent>
+            <DialogTitle>Command palette</DialogTitle>
+            <DialogDescription>Search files and commands</DialogDescription>
+          </DialogContent>
+        </Dialog>
+      </SidebarProvider>,
+    );
+    await waitFor(() => expect(screen.getByRole('dialog')).not.toBeNull());
     expect(screen.getByTestId('sidebar-state').textContent).toBe('expanded');
 
     pressSidebarShortcut();

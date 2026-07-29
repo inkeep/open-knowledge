@@ -43,6 +43,7 @@ import {
 } from '@/lib/dock-session-persistence';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import type { NewSessionChoice } from '@/lib/new-session-choice';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import type { TerminalDockPosition } from '@/lib/terminal-dock-store';
 import {
   getInitialPreferBareTerminal,
@@ -1081,6 +1082,9 @@ export function TerminalSessionsHost({
       if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       if (!/^[1-9]$/.test(event.key)) return;
       if (!chordTargetsHost(hostEl, variant)) return;
+      // `chordTargetsHost` short-circuits to true in the dedicated terminal
+      // window, so focus alone does not gate this there.
+      if (isOverlayLayerOpen()) return;
       const target = sessionsRef.current[Number(event.key) - 1];
       if (target == null) return;
       event.preventDefault();
@@ -1099,6 +1103,7 @@ export function TerminalSessionsHost({
       const direction = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
       if (direction === 0) return;
       if (!chordTargetsHost(hostEl, variant)) return;
+      if (isOverlayLayerOpen()) return;
       if (dragActiveRef.current) return;
       const target = event.target as HTMLElement | null;
       if (target?.tagName === 'INPUT' || target?.isContentEditable) return;

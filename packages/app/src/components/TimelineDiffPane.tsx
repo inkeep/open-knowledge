@@ -36,6 +36,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { collectChangeAnchors, countChangeGroups } from '@/lib/diff-change-nav';
 import { LruStringCache } from '@/lib/lru-string-cache';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import {
   countRenderedDiffAnchors,
   RENDERED_DIFF_CHANGE_SELECTOR,
@@ -166,13 +167,24 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
     };
   }, [diffKey]);
 
-  // Esc closes the pane — parity with a full-screen overlay's expected dismiss.
+  // Esc closes the pane — parity with a full-screen overlay's expected dismiss,
+  // but only when no layer sits above it (the restore-confirm dialog, the
+  // command palette, a menu). Capture phase on `window` so the probe runs
+  // before Radix's DismissableLayer (capture phase on `document`) flips
+  // `data-state` and the pane closes out from under the layer Escape targeted.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' && !dialogOpen) closeTimelineDiff();
+      if (e.key !== 'Escape') return;
+      // `dialogOpen` is kept alongside the DOM probe rather than replaced by it:
+      // the restore-confirm is this pane's own state, so reading it cannot fail,
+      // and closing the pane out from under that particular dialog would lose
+      // the user's place in a restore they were part-way through confirming.
+      if (dialogOpen) return;
+      if (isOverlayLayerOpen()) return;
+      closeTimelineDiff();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, { capture: true });
+    return () => window.removeEventListener('keydown', onKey, { capture: true });
   }, [dialogOpen]);
 
   // No try/finally: the React Compiler cannot lower a `finally` clause in a

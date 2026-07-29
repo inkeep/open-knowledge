@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useSidebarResize } from '@/hooks/use-sidebar-resize';
 import { formatShortcutLabel, matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { LEFT_COLLAPSE_THRESHOLD, resolvePartition } from '@/lib/sidebar-partition';
 import { applyToggle, readPins, resolveEffectiveState } from '@/lib/sidebar-pin-store';
 import { cn } from '@/lib/utils';
@@ -192,14 +193,7 @@ function SidebarProvider({
     if (partition === 'above' || !open) return;
     const onEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      const openLayer = document.querySelector(
-        '[data-state="open"][role="dialog"], ' +
-          '[data-state="open"][role="alertdialog"], ' +
-          '[data-state="open"][role="menu"], ' +
-          '[data-state="open"][role="listbox"], ' +
-          '[data-radix-popper-content-wrapper] [data-state="open"]',
-      );
-      if (openLayer) return;
+      if (isOverlayLayerOpen()) return;
       setOpen(false);
     };
     window.addEventListener('keydown', onEscape, { capture: true });
@@ -213,10 +207,10 @@ function SidebarProvider({
   React.useEffect(() => {
     if (typeof window !== 'undefined' && window.okDesktop != null) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (matchesKeyboardShortcut(event, 'toggle-files-sidebar')) {
-        event.preventDefault();
-        toggleSidebar();
-      }
+      if (!matchesKeyboardShortcut(event, 'toggle-files-sidebar')) return;
+      if (isOverlayLayerOpen()) return;
+      event.preventDefault();
+      toggleSidebar();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);

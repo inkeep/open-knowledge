@@ -46,6 +46,7 @@ import { docNameFromHash, hashFromDocName } from '@/lib/doc-hash';
 import { getInitialDocPanelWidth, writeDocPanelWidth } from '@/lib/doc-panel-width-store';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { ProfilerBoundary } from '@/lib/perf';
 import {
   matchesShareReceiveMiss,
@@ -794,10 +795,10 @@ function EditorAreaInner({
   useEffect(() => {
     if (window.okDesktop != null) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (matchesKeyboardShortcut(event, 'toggle-document-panel')) {
-        event.preventDefault();
-        togglePanel();
-      }
+      if (!matchesKeyboardShortcut(event, 'toggle-document-panel')) return;
+      if (isOverlayLayerOpen()) return;
+      event.preventDefault();
+      togglePanel();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);

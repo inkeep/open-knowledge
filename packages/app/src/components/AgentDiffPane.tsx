@@ -22,6 +22,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { type AgentDiffView, closeAgentDiff, setAgentDiffKept } from '@/lib/agent-diff-store';
 import { collectChangeAnchors } from '@/lib/diff-change-nav';
 import { LruStringCache } from '@/lib/lru-string-cache';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { RENDERED_DIFF_CHANGE_SELECTOR } from '@/lib/rendered-diff/diff-decorations';
 import { fetchAgentBurstDiff } from '@/lib/use-activity-panel';
 import { countDiffStat } from '@/lib/use-timeline-entry-diff';
@@ -158,11 +159,30 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
     };
   }, [diffKey]);
 
-  // Keyboard: Esc closes; J/K (or ←/→) step through versions.
+  // Keyboard: Esc closes; J/K (or ←/→) step through versions. Bubble phase is
+  // sufficient here — nothing this handler does needs to observe the DOM ahead
+  // of a dismissable layer, because Escape arrives already cancelled.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      // A layer above the pane owns the keyboard: Escape belongs to it, and the
+      // review chords must not step its arrow-key navigation. `defaultPrevented`
+      // is what covers Escape — a dismissable layer cancels it from a
+      // capture-phase listener on `document`, and that same listener has already
+      // flipped `data-state` by the time this bubble-phase handler runs. Scoped
+      // to Escape: the editor cancels ←/→ in its own gap-cursor and node-view
+      // paths, and those must not silently disable version stepping.
+      if (e.key === 'Escape' && e.defaultPrevented) return;
+      if (isOverlayLayerOpen()) return;
+      // The editor stays mounted and live behind the pane, so a text surface
+      // with the caret in it keeps its own letters — `preventDefault` on "j"
+      // cancels the insertion no matter which phase this handler runs in.
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) {
+        return;
+      }
       if (e.key === 'Escape') {
         closeAgentDiff();
       } else if (e.key === 'j' || e.key === 'ArrowRight') {

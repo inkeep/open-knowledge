@@ -74,6 +74,7 @@ import {
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { recordOnboardingAskedAi } from '@/lib/onboarding-signals';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import {
   IN_APP_THREAD_ID,
   loadStickyAgent,
@@ -381,6 +382,7 @@ export function BottomComposer({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!matchesKeyboardShortcut(event, 'open-ask-ai')) return;
+      if (isOverlayLayerOpen()) return;
       // Don't hijack ⌘L when the caret is in a native form field (rename input,
       // search box, …) — only swallow it for the editor body / global context.
       if (isNativeTextControl(event.target)) return;

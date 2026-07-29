@@ -324,6 +324,9 @@ export function SrcAutocomplete({
         // parent prop panel, swallows the upload affordance, and makes
         // the whole row read as broken).
         className="z-70 w-(--radix-popover-trigger-width) p-1"
+        // Focus stays on the input below, so this list must not count as
+        // owning app-global shortcuts.
+        data-ok-declines-keyboard=""
         onOpenAutoFocus={(e) => {
           // Default Radix behavior moves focus into the PopoverContent
           // on open — that would yank focus off the input and visually

@@ -124,6 +124,9 @@ export const InteractionPropPanel: FC<InteractionPropPanelProps> = ({
         collisionPadding={8}
         aria-label={ariaLabel}
         data-ok-prop-panel={kind}
+        // Hover-opened and focus-declining: the caret stays in the document,
+        // so this panel must not count as owning app-global shortcuts.
+        data-ok-declines-keyboard=""
         data-slot={dataSlot}
         // Hover-triggered open should NOT pull focus out of the editor — the
         // chip stays the active tabstop. Keyboard Tab into popover content

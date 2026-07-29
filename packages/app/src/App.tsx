@@ -49,6 +49,7 @@ import {
   skillFileFromHash,
 } from '@/lib/doc-hash';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { mark, ProfilerBoundary } from '@/lib/perf';
 import { SingleFileModeProvider, useSingleFileMode } from '@/lib/single-file-mode';
 import { useServerKeepalive } from '@/lib/use-server-keepalive';
@@ -348,6 +349,7 @@ function InstallInClaudeDesktopTrigger() {
 function SettingsShortcutHandler() {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      if (isOverlayLayerOpen()) return;
       const target = e.target as { tagName?: string; isContentEditable?: boolean } | null;
       if (
         isSettingsShortcut({
@@ -436,6 +438,7 @@ function NewItemShortcutHandler() {
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      if (isOverlayLayerOpen()) return;
       // KeyboardEvent.target is EventTarget|null — widen to the duck-typed
       // ShortcutEventLike shape used by the pure predicate.
       const target = e.target as { tagName?: string; isContentEditable?: boolean } | null;

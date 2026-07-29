@@ -722,3 +722,141 @@ describe('EditorTabs runtime behavior', () => {
     ]);
   });
 });
+
+/**
+ * The tab chords are registered capture-phase on `window`, so they run before
+ * anything an overlay could install — an open command palette or dialog cannot
+ * stop them from underneath and the listener has to decline for itself.
+ *
+ * Each suppression case is paired with the same chord fired without an overlay,
+ * so a test that goes green because the shortcut stopped working outright is
+ * distinguishable from one that goes green because the gate works.
+ *
+ * Keys the app never claims (⌘C/⌘V/⌘X/⌘A/⌘Z) are pinned as untouched while an
+ * overlay is up: the gate must decline these chords, not swallow the whole
+ * keyboard, or pasting into the palette's own search field breaks.
+ */
+describe('EditorTabs global chords — overlay gate', () => {
+  beforeEach(() => {
+    resetState();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  async function renderTabsUnderOverlay() {
+    const { EditorTabs } = await import('./EditorTabs');
+    const { Dialog, DialogContent, DialogDescription, DialogTitle } = await import(
+      '@/components/ui/dialog'
+    );
+    const view = render(
+      <TooltipProvider>
+        <EditorTabs />
+        <Dialog open>
+          <DialogContent>
+            <DialogTitle>Command palette</DialogTitle>
+            <DialogDescription>Search files and commands</DialogDescription>
+          </DialogContent>
+        </Dialog>
+      </TooltipProvider>,
+    );
+    await waitFor(() => expect(screen.getByRole('dialog')).not.toBeNull());
+    return view;
+  }
+
+  function press(init: KeyboardEventInit): boolean {
+    let notPrevented = true;
+    act(() => {
+      notPrevented = fireEvent.keyDown(document.body, init);
+    });
+    return notPrevented;
+  }
+
+  const newTab = () => ({ key: 't', ...primaryShortcutModifier() });
+  const reopenClosed = () => ({ key: 't', shiftKey: true, ...primaryShortcutModifier() });
+  const jumpToFirst = () => ({ key: '1', ...primaryShortcutModifier() });
+  const nextTab = () => ({ key: 'Tab', ctrlKey: true });
+
+  test('⌘T opens a tab with no overlay, and does not while one is open', async () => {
+    await renderEditorTabs();
+    press(newTab());
+    expect(openNewTab).toHaveBeenCalledTimes(1);
+
+    cleanup();
+    resetState();
+
+    await renderTabsUnderOverlay();
+    press(newTab());
+    expect(openNewTab).not.toHaveBeenCalled();
+  });
+
+  test('⇧⌘T reopens a closed tab with no overlay, and does not while one is open', async () => {
+    await renderEditorTabs();
+    press(reopenClosed());
+    expect(reopenClosedTab).toHaveBeenCalledTimes(1);
+
+    cleanup();
+    resetState();
+
+    await renderTabsUnderOverlay();
+    press(reopenClosed());
+    expect(reopenClosedTab).not.toHaveBeenCalled();
+  });
+
+  test('⌘1 jumps to a tab with no overlay, and does not while one is open', async () => {
+    await renderEditorTabs();
+    press(jumpToFirst());
+    expect(activateTab).toHaveBeenCalledTimes(1);
+
+    cleanup();
+    resetState();
+
+    await renderTabsUnderOverlay();
+    press(jumpToFirst());
+    expect(activateTab).not.toHaveBeenCalled();
+  });
+
+  test('⌃Tab cycles tabs with no overlay, and does not while one is open', async () => {
+    await renderEditorTabs();
+    press(nextTab());
+    expect(activateTab).toHaveBeenCalledTimes(1);
+
+    cleanup();
+    resetState();
+
+    await renderTabsUnderOverlay();
+    press(nextTab());
+    expect(activateTab).not.toHaveBeenCalled();
+  });
+
+  test('leaves unclaimed chords alone while an overlay is open', async () => {
+    await renderTabsUnderOverlay();
+
+    const seen: string[] = [];
+    const spy = (event: Event) => seen.push((event as KeyboardEvent).key);
+    document.addEventListener('keydown', spy);
+
+    try {
+      // Clipboard, select-all, and undo/redo have to reach the overlay's own
+      // input, so nothing may cancel them.
+      for (const key of ['c', 'v', 'x', 'a', 'z']) {
+        expect(press({ key, ...primaryShortcutModifier() })).toBe(true);
+      }
+      expect(press({ key: 'z', shiftKey: true, ...primaryShortcutModifier() })).toBe(true);
+      for (const key of ['ArrowDown', 'ArrowUp', 'Enter']) {
+        expect(press({ key })).toBe(true);
+      }
+      // Escape is cancelled by the dialog itself (that is the dismiss); the
+      // property under test is only that it still reaches every listener.
+      press({ key: 'Escape' });
+    } finally {
+      document.removeEventListener('keydown', spy);
+    }
+
+    expect(seen).toEqual(['c', 'v', 'x', 'a', 'z', 'z', 'ArrowDown', 'ArrowUp', 'Enter', 'Escape']);
+    expect(openNewTab).not.toHaveBeenCalled();
+    expect(activateTab).not.toHaveBeenCalled();
+    expect(reopenClosedTab).not.toHaveBeenCalled();
+  });
+});

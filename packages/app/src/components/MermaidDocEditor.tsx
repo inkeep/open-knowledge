@@ -34,6 +34,7 @@ import { yCollab } from 'y-codemirror.next';
 import * as Y from 'yjs';
 import { propEditorHighlight } from '@/editor/components/CodeMirrorPropInput';
 import { type MermaidSourceBinding, MermaidView } from '@/editor/components/Mermaid';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 
 const darkTheme = basicDarkInit({
   settings: { background: 'var(--background)', gutterBackground: 'var(--muted)' },
@@ -173,6 +174,8 @@ export function MermaidDocEditor({
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod || e.key.toLowerCase() !== 'z') return;
+      // Undo belongs to whatever layer sits above the diagram.
+      if (isOverlayLayerOpen()) return;
       // If the user is typing in an input overlay (label editor) or any
       // contenteditable, let the platform undo handle that input instead.
       const target = e.target;

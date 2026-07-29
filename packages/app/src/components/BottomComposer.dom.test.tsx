@@ -1362,3 +1362,64 @@ describe('BottomComposer (failure + defensive guards)', () => {
     await waitFor(() => expect(dispatchCalls).toHaveLength(1));
   });
 });
+
+/**
+ * ⌘L is registered capture-phase on `window`, so it also outruns anything an
+ * overlay installs. `defaultPrevented` is the load-bearing signal here: the
+ * handler cancels the keystroke before emitting, so an uncancelled ⌘L proves
+ * the handler declined rather than proving the focus trap bounced it back.
+ */
+describe('BottomComposer ⌘L — overlay gate', () => {
+  function askAiEvent() {
+    const meta = new KeyboardEvent('keydown', {
+      key: 'l',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    return matchesKeyboardShortcut(meta, 'open-ask-ai')
+      ? meta
+      : new KeyboardEvent('keydown', { key: 'l', ctrlKey: true, bubbles: true, cancelable: true });
+  }
+
+  test('claims ⌘L with no overlay open', async () => {
+    await renderComposer();
+
+    const event = askAiEvent();
+    act(() => {
+      document.body.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  test('declines ⌘L while an overlay owns the keyboard', async () => {
+    enableInstalledDesktopTargets();
+    const { BottomComposer } = await import('./BottomComposer');
+    const { Dialog, DialogContent, DialogDescription, DialogTitle } = await import(
+      '@/components/ui/dialog'
+    );
+    render(
+      <>
+        <BottomComposer docName="notes" surface="wysiwyg" />
+        <Dialog open>
+          <DialogContent>
+            <DialogTitle>Command palette</DialogTitle>
+            <DialogDescription>Search files and commands</DialogDescription>
+          </DialogContent>
+        </Dialog>
+      </>,
+    );
+    await waitFor(() => expect(screen.getByRole('dialog')).not.toBeNull());
+    const composerInput = document.querySelector('textarea');
+    expect(composerInput).not.toBeNull();
+
+    const event = askAiEvent();
+    act(() => {
+      document.body.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.activeElement).not.toBe(composerInput);
+  });
+});

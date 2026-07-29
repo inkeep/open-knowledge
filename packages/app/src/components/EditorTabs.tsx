@@ -61,6 +61,7 @@ import { useLifecycleStatus } from '@/hooks/use-lifecycle-status';
 import { hashFromDocName } from '@/lib/doc-hash';
 import { emitDocumentsChanged } from '@/lib/documents-events';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { parseServerResponse, parseSuccessOrWarn } from '@/lib/parse-server-response';
 import { cn } from '@/lib/utils';
 import {
@@ -762,7 +763,13 @@ export function EditorTabs() {
     }
 
     function onKeyDown(event: globalThis.KeyboardEvent) {
-      if (hasTabShortcutModifier(event)) scheduleTabShortcutHintReveal();
+      // Every branch below needs the modifier, so bail on it first — this runs on
+      // every keystroke in the app, and the overlay probe queries the DOM.
+      if (!hasTabShortcutModifier(event)) return;
+      // Capture phase on `window` outruns anything an overlay installs, so an
+      // open palette / dialog / menu cannot stop these chords from underneath.
+      if (isOverlayLayerOpen()) return;
+      scheduleTabShortcutHintReveal();
 
       if (matchesKeyboardShortcut(event, 'tab-new')) {
         event.preventDefault();

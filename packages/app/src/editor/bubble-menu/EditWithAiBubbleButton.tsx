@@ -38,6 +38,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { serializeWysiwygSelection } from '../edit-with-ai-selection';
 import { getEditorDocName } from '../extensions/doc-context';
 
@@ -81,6 +82,9 @@ function EditWithAiBubbleMenu({
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (!shortcutEnabled) return;
       if (!matchesKeyboardShortcut(event, 'edit-with-ai')) return;
+      // `shortcutEnabled` only means "this is the active doc's editor", so it
+      // stays true under an overlay — the layer above owns the keyboard.
+      if (isOverlayLayerOpen()) return;
       if (isNativeTextControl(event.target)) return;
 
       event.preventDefault();

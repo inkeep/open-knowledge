@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { getEditorForDoc, subscribeEditorRegistry } from '@/editor/active-editor';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { getEditorView } from '../utils/get-editor-view';
 import { FindReplaceBar } from './FindReplaceBar';
 import { getFindReplaceState } from './tiptap-find-replace-extension';
@@ -213,6 +214,10 @@ export function FindReplaceController({ activeDocName, isSourceMode }: FindRepla
 
     function onKeyDown(event: KeyboardEvent) {
       if (!activeDocName || isSourceMode || event.defaultPrevented) return;
+      // A layer above the editor owns the keyboard. Escape already falls out
+      // via `defaultPrevented` above (a dismissable layer cancels it), but the
+      // find chords are not cancelled by anything and need this arm.
+      if (isOverlayLayerOpen()) return;
 
       if (matchesKeyboardShortcut(event, 'find')) {
         event.preventDefault();

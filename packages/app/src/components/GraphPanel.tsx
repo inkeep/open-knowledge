@@ -43,6 +43,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { hashFromDocName } from '@/lib/doc-hash';
 import { openExternalUrl } from '@/lib/external-link';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { cn } from '@/lib/utils';
 
 const FULLSCREEN_HUB_LIMIT = 50;
@@ -313,11 +314,17 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
 
   useEffect(() => {
     if (!isExpanded) return;
+    // Capture phase on `window` so the open-layer probe runs before Radix's
+    // DismissableLayer (capture phase on `document`) flips `data-state` —
+    // otherwise Escape collapses the graph out from under the layer it was
+    // meant to dismiss.
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsExpanded(false);
+      if (e.key !== 'Escape') return;
+      if (isOverlayLayerOpen()) return;
+      setIsExpanded(false);
     };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
+    window.addEventListener('keydown', onKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', onKeyDown, { capture: true });
   }, [isExpanded]);
 
   useEffect(() => {

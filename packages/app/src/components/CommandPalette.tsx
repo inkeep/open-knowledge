@@ -90,6 +90,7 @@ import {
   matchesKeyboardShortcut,
 } from '@/lib/keyboard-shortcuts';
 import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils.ts';
@@ -466,6 +467,11 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     function onKey(e: KeyboardEvent) {
       const isTrigger = matchesKeyboardShortcut(e, 'command-palette');
       if (!isTrigger) return;
+      // Asymmetric gate, because ⌘K is a toggle: while the palette is up it IS
+      // the top layer and the chord has to keep dismissing it, but while it is
+      // closed any other open layer owns the keyboard and the palette must not
+      // stack on top of it.
+      if (!open && isOverlayLayerOpen()) return;
       e.preventDefault();
       onOpenChange(!open);
     }

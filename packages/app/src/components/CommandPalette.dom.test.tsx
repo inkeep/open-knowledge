@@ -1278,3 +1278,71 @@ describe('Cmd+K menu-parity backfill', () => {
     expect(screen.queryByTestId('command-palette-new-terminal')).toBeNull();
   });
 });
+
+/**
+ * ⌘K is a toggle, so its gate is asymmetric: any other open layer owns the
+ * keyboard and must keep the palette from stacking on top of it, but once the
+ * palette is up it IS the top layer and ⌘K has to keep dismissing it.
+ */
+describe('CommandPalette ⌘K — overlay gate', () => {
+  beforeEach(() => {
+    cleanup();
+    activeDocName = 'docs/active';
+    activeTarget = { kind: 'doc', docName: 'docs/active' };
+    pageListLoading = false;
+    commandDialogProps = [];
+    window.location.hash = '';
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify({ results: [] }), { status: 200 })),
+    ) as never;
+  });
+
+  function pressCommandK() {
+    fireEvent.keyDown(document.body, { key: 'k', metaKey: true });
+    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+  }
+
+  test('closes itself on ⌘K while it is the open layer', async () => {
+    const { onOpenChange } = await renderPalette({ bridge: createBridge() });
+
+    pressCommandK();
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  test('does not open on ⌘K while another dialog owns the keyboard', async () => {
+    const { Dialog, DialogContent, DialogDescription, DialogTitle } = await import(
+      '@/components/ui/dialog'
+    );
+    const { CommandPalette } = await import('./CommandPalette');
+    const onOpenChange = vi.fn(() => {});
+    render(
+      <>
+        <CommandPalette bridge={createBridge() as never} open={false} onOpenChange={onOpenChange} />
+        <Dialog open>
+          <DialogContent>
+            <DialogTitle>Settings</DialogTitle>
+            <DialogDescription>Settings body</DialogDescription>
+          </DialogContent>
+        </Dialog>
+      </>,
+    );
+    await waitFor(() => expect(screen.getByRole('dialog')).not.toBeNull());
+
+    pressCommandK();
+
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  test('opens on ⌘K with nothing else open', async () => {
+    const { CommandPalette } = await import('./CommandPalette');
+    const onOpenChange = vi.fn(() => {});
+    render(
+      <CommandPalette bridge={createBridge() as never} open={false} onOpenChange={onOpenChange} />,
+    );
+
+    pressCommandK();
+
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+  });
+});
