@@ -166,6 +166,61 @@ function compareSemver(a, b) {
   return 0;
 }
 
+export const DEFAULT_RELEASE_LOOKBACK = 3;
+
+/** `v0.36.0` and `0.36.0` both mean the same release; anything else means none. */
+function normalizeVersion(raw) {
+  const trimmed = String(raw ?? '').trim().replace(/^v/, '');
+  return /^\d+\.\d+\.\d+$/.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * Decide which shipped versions a given run is allowed to speak about.
+ *
+ * The release being processed is the ceiling: a fix that lands in a later
+ * version has not reached anybody yet, so telling its reporter would be a lie.
+ *
+ * The floor is deliberately a few releases further back rather than the release
+ * itself. A run that never happened — a workflow outage, or simply the stretch
+ * before any of this was armed — would otherwise strand those reporters
+ * permanently, because the next release only ever considers its own version and
+ * nothing ever revisits the gap. Widening the floor is safe because the
+ * absent-marker check, not the width of this window, is what prevents a second
+ * reply: the window is bounded by "has not been told yet".
+ *
+ * Without a window every completed fix in history looks eligible, which on a
+ * first armed run means messaging the entire back catalogue at once.
+ */
+export function makeReleaseWindow({
+  releaseTag,
+  stableTags = [],
+  lookback = DEFAULT_RELEASE_LOOKBACK,
+}) {
+  const release = normalizeVersion(releaseTag);
+  if (!release) {
+    throw new Error(
+      `RELEASE_TAG must be a bare stable tag such as v0.36.0 (got ${JSON.stringify(releaseTag)}). ` +
+        'Refusing to run: with no release to scope against, every shipped fix in history is a candidate.',
+    );
+  }
+
+  const known = [...new Set(stableTags.map(normalizeVersion).filter(Boolean))].sort(compareSemver);
+  const atOrBelow = known.filter((v) => compareSemver(v, release) <= 0);
+  // Keep the release plus `lookback` older ones; the entry just below that
+  // block is the exclusive floor. Too little history to reach back that far
+  // means everything at or below the release stays in.
+  const floorIndex = atOrBelow.length - (lookback + 1) - 1;
+  const floor = floorIndex >= 0 ? atOrBelow[floorIndex] : null;
+
+  return (version) => {
+    const shipped = normalizeVersion(version);
+    if (!shipped) return 'unversioned';
+    if (compareSemver(shipped, release) > 0) return 'not-yet-shipped';
+    if (floor && compareSemver(shipped, floor) <= 0) return 'shipped-earlier';
+    return 'in-window';
+  };
+}
+
 /**
  * Walk every candidate and decide, for each, whether to reply and where.
  *
@@ -191,9 +246,17 @@ export async function runWriteBack({
   readChangesetProse,
   postReply,
   recordNotification,
+  classifyRelease,
   live = false,
   log = () => {},
 }) {
+  // No default. A missing window is not "notify about everything", it is a
+  // caller that forgot to scope the run, and the difference between those two
+  // readings is the entire back catalogue.
+  if (typeof classifyRelease !== 'function') {
+    throw new Error('runWriteBack requires classifyRelease; see makeReleaseWindow.');
+  }
+
   const posted = [];
   const skipped = [];
   const skip = (identifier, reason) => skipped.push({ identifier, reason });
@@ -225,6 +288,15 @@ export async function runWriteBack({
         );
       }
       skip(candidate.identifier, gate.unresolved.length > 0 ? 'version-underivable' : 'fan-in-withheld');
+      continue;
+    }
+
+    // Scope to the release this run is about. Skips here are the ordinary bulk
+    // of a run rather than a fault, so they are recorded per candidate and
+    // summarised at the end instead of annotated one line at a time.
+    const placement = classifyRelease(gate.version);
+    if (placement !== 'in-window') {
+      skip(candidate.identifier, placement);
       continue;
     }
 
@@ -517,6 +589,8 @@ async function main() {
     log('::notice::write-back: running in dry-run mode (set WRITE_BACK_MODE=live to arm reporter replies).');
   }
 
+  const releaseTag = process.env.RELEASE_TAG;
+
   const stableTags = realStableTags();
   const versionFor = (node) =>
     deriveVersionForFixRefs({
@@ -528,10 +602,17 @@ async function main() {
       log,
     });
 
+  const classifyRelease = makeReleaseWindow({ releaseTag, stableTags });
+  log(
+    `::notice::write-back: scoped to ${releaseTag} and the ${DEFAULT_RELEASE_LOOKBACK} stable releases before it; ` +
+      'anything shipped earlier is left alone.',
+  );
+
   const result = await runWriteBack({
     listCandidates: () => paginate({ apiKey, query: CANDIDATE_QUERY, variables: {} }),
     listChildren: (parentId) => paginate({ apiKey, query: CHILDREN_QUERY, variables: { parentId } }),
     versionFor,
+    classifyRelease,
     readChangesetProse: (candidate, ctx) => realReadChangesetProse(candidate, ctx),
     postReply: realPostReply,
     recordNotification: async ({ issueId, url, title }) => {

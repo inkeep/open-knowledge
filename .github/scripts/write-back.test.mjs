@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import {
   CANDIDATE_QUERY,
+  DEFAULT_RELEASE_LOOKBACK,
   deriveVersionForFixRefs,
+  makeReleaseWindow,
   notificationMarkerUrl,
   parseChangeset,
   runWriteBack,
@@ -41,6 +43,9 @@ function harness(overrides = {}) {
     readChangesetProse: async () => CHANGESET,
     postReply: async (origin, text) => writes.push({ kind: 'post', origin: origin.url, text }),
     recordNotification: async (marker) => writes.push({ kind: 'mark', url: marker.url }),
+    // Every candidate in these fixtures ships in v0.36.0; the window tests
+    // below drive the scoping itself.
+    classifyRelease: makeReleaseWindow({ releaseTag: 'v0.36.0', stableTags: STABLE_TAGS }),
     log: (m) => logs.push(m),
     ...overrides,
   };
@@ -375,5 +380,115 @@ describe('workflow shape', () => {
   test('live posting needs an explicit mode on top of the credential', () => {
     expect(workflow).toContain('WRITE_BACK_MODE');
     expect(workflow).toContain('LINEAR_API_KEY');
+  });
+});
+
+describe('release window', () => {
+  // A longer history than the lookback, so "outside the window" is reachable.
+  const TAGS = ['v0.34.0', 'v0.35.0', 'v0.35.1', 'v0.35.2', 'v0.36.0', 'v0.37.0'];
+  const windowFor = (releaseTag, lookback) =>
+    makeReleaseWindow({ releaseTag, stableTags: TAGS, lookback });
+
+  test('the release being processed is in window', () => {
+    expect(windowFor('v0.36.0')('0.36.0')).toBe('in-window');
+  });
+
+  test('a version above the release has not reached anyone yet', () => {
+    expect(windowFor('v0.36.0')('0.37.0')).toBe('not-yet-shipped');
+  });
+
+  test('the lookback keeps recent releases reachable so a missed run self-heals', () => {
+    const classify = windowFor('v0.36.0', 3);
+    // v0.36.0 plus the three before it.
+    for (const v of ['0.36.0', '0.35.2', '0.35.1', '0.35.0']) {
+      expect(classify(v)).toBe('in-window');
+    }
+  });
+
+  test('anything older than the lookback is left alone', () => {
+    expect(windowFor('v0.36.0', 3)('0.34.0')).toBe('shipped-earlier');
+  });
+
+  test('a narrower lookback excludes more of the history', () => {
+    const classify = windowFor('v0.36.0', 1);
+    expect(classify('0.35.2')).toBe('in-window');
+    expect(classify('0.35.1')).toBe('shipped-earlier');
+  });
+
+  test('a zero lookback degenerates to the exact release and nothing else', () => {
+    const classify = windowFor('v0.36.0', 0);
+    expect(classify('0.36.0')).toBe('in-window');
+    expect(classify('0.35.2')).toBe('shipped-earlier');
+  });
+
+  test('too little history to reach back keeps everything at or below the release', () => {
+    // Fewer known tags than the lookback wants leaves no floor at all, so the
+    // ceiling is the only bound. Pinned because it is a distinct branch from
+    // the one every other case here exercises.
+    const classify = makeReleaseWindow({ releaseTag: 'v0.36.0', stableTags: ['v0.36.0'] });
+    expect(classify('0.36.0')).toBe('in-window');
+    expect(classify('0.35.0')).toBe('in-window');
+    expect(classify('0.37.0')).toBe('not-yet-shipped');
+  });
+
+  test('the v prefix is accepted on both sides', () => {
+    expect(windowFor('0.36.0')('v0.36.0')).toBe('in-window');
+  });
+
+  test('an underivable version is reported as such rather than silently admitted', () => {
+    expect(windowFor('v0.36.0')(null)).toBe('unversioned');
+  });
+
+  test('a missing or malformed release tag refuses rather than admitting all of history', () => {
+    for (const bad of [undefined, '', '   ', 'v0.36.0-beta.1', 'latest']) {
+      expect(() => makeReleaseWindow({ releaseTag: bad, stableTags: TAGS })).toThrow(/RELEASE_TAG/);
+    }
+  });
+
+  test('the default lookback is three', () => {
+    expect(DEFAULT_RELEASE_LOOKBACK).toBe(3);
+  });
+});
+
+describe('release window applied to a run', () => {
+  // The fixture candidate ships in v0.36.0 throughout.
+  test('a candidate that shipped before the window is skipped, not replied to', async () => {
+    const h = harness({
+      live: true,
+      classifyRelease: makeReleaseWindow({
+        releaseTag: 'v0.41.0',
+        stableTags: ['v0.36.0', 'v0.38.0', 'v0.39.0', 'v0.40.0', 'v0.41.0'],
+      }),
+    });
+    const result = await h.run();
+    expect(result.skipped).toContainEqual({ identifier: 'PRD-7539', reason: 'shipped-earlier' });
+    expect(h.writes).toHaveLength(0);
+  });
+
+  test('a candidate whose fix is not in this release yet is skipped, not replied to', async () => {
+    const h = harness({
+      live: true,
+      classifyRelease: makeReleaseWindow({
+        releaseTag: 'v0.35.0',
+        stableTags: ['v0.35.0', 'v0.36.0'],
+      }),
+    });
+    const result = await h.run();
+    expect(result.skipped).toContainEqual({ identifier: 'PRD-7539', reason: 'not-yet-shipped' });
+    expect(h.writes).toHaveLength(0);
+  });
+
+  test('a candidate inside the window still gets its reply', async () => {
+    const h = harness({
+      live: true,
+      classifyRelease: makeReleaseWindow({ releaseTag: 'v0.36.0', stableTags: STABLE_TAGS }),
+    });
+    await h.run();
+    expect(h.writes.filter((w) => w.kind === 'post')).toHaveLength(1);
+  });
+
+  test('runWriteBack refuses to run unscoped', async () => {
+    const h = harness({ live: true, classifyRelease: undefined });
+    await expect(h.run()).rejects.toThrow(/classifyRelease/);
   });
 });
