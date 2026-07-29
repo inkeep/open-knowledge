@@ -22,6 +22,13 @@ name: Reporter Write-Back
 #   behind or delay a cut, and no release workflow waits on its result. The
 #   worst outcome available to a failure here is that nobody gets told.
 #
+# WHY THERE ARE TWO TOKENS
+#   The reply is posted onto an issue in this repo; the fix pull request and its
+#   changeset are read out of the private monorepo. No single credential can do
+#   both — this repo's own token cannot see agents-private at all, and the App
+#   installation token that can is scoped to that one repository. So both are
+#   passed and the script picks per call site by target repo.
+#
 # EVERYTHING SHIPS INERT
 #   With no LINEAR_API_KEY the script emits a notice and enumerates nothing.
 #   With the key but no WRITE_BACK_MODE it composes replies and logs them
@@ -88,10 +95,47 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Check whether the bridge App is configured
+        # Fix references point into the private monorepo, which this repo's own
+        # token cannot read at all. Secrets are unreadable in `if:` expressions,
+        # so the presence check runs here and gates the mint via an output.
+        if: steps.tag.outputs.stable == 'true'
+        id: bridge-check
+        env:
+          OK_RELEASE_BRIDGE_APP_ID: ${{ secrets.OK_RELEASE_BRIDGE_APP_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${OK_RELEASE_BRIDGE_APP_ID:-}" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::OK_RELEASE_BRIDGE_APP_ID not set — reads against the private monorepo will 404 and those candidates will be reported as failures."
+          fi
+
+      - name: Mint cross-repo read token (bridge App)
+        if: steps.tag.outputs.stable == 'true' && steps.bridge-check.outputs.configured == 'true'
+        id: bridge-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          # Public client ID for inkeep-ok-release-bridge (non-secret; supersedes the deprecated app-id input).
+          client-id: Iv23lii4qS2FAc6tkzfI
+          private-key: ${{ secrets.OK_RELEASE_BRIDGE_APP_PRIVATE_KEY }}
+          # The bridge App is installed on agents-private, not here. Scoping the
+          # token to that installation is also why it cannot be the only token:
+          # it has no standing to post the reply back onto an issue in this repo.
+          owner: inkeep
+          repositories: agents-private
+          permission-contents: read
+          permission-pull-requests: read
+
       - name: Notify reporters whose fix reached this release
         if: steps.tag.outputs.stable == 'true'
         env:
+          # Posting the reply, which happens against this repo.
           GH_TOKEN: ${{ github.token }}
+          # Reading the fix pull request and its changeset, which happen against
+          # agents-private. The script picks per call site by target repo.
+          CROSS_REPO_TOKEN: ${{ steps.bridge-token.outputs.token }}
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
           # Absent by default. Set to `live` on the repo (a variable, not a
           # secret, so it is visible in the settings UI) to arm real posts.

@@ -2,12 +2,17 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import {
   CANDIDATE_QUERY,
+  changesetDirFor,
   DEFAULT_RELEASE_LOOKBACK,
   deriveVersionForFixRefs,
+  findChangesetPath,
   makeReleaseWindow,
   notificationMarkerUrl,
   parseChangeset,
+  parseMergeShaOutput,
+  runFailureMessage,
   runWriteBack,
+  selectGhToken,
 } from './write-back.mjs';
 
 const GH_ISSUE = 'https://github.com/inkeep/open-knowledge/issues/769';
@@ -146,6 +151,49 @@ describe('version derivation', () => {
     expect(derive({ fixReferences: [] })).toBeNull();
   });
 
+  test('a fix reference naming a pull request that was closed unmerged is an answer, not a fault', () => {
+    // Real shape: PRD-7539 still carries agents-private#2844, which was closed
+    // in favour of #2864. A stale attachment is for a human to fix in Linear,
+    // so it warns and skips rather than painting the run red.
+    const logs = [];
+    expect(
+      derive({
+        fixReferences: [{ channel: 'pull-request', url: GH_PULL }],
+        resolvePrMergeSha: () => null,
+        log: (m) => logs.push(m),
+      }),
+    ).toBeNull();
+    expect(logs.join(' ')).toContain('closed without merging');
+  });
+
+  test('the merge-sha reply distinguishes "never merged" from "cannot be accounted for"', () => {
+    const at = { owner: 'inkeep', repo: 'agents-private', number: 2844 };
+    const sha = 'da71f0c698ccaac11da915169ca6c7d585d5eb97';
+
+    // The real reply for agents-private#2844: closed, so merged_at is null.
+    expect(parseMergeShaOutput('null\n', at)).toBeNull();
+    expect(parseMergeShaOutput('\n', at)).toBeNull();
+    expect(parseMergeShaOutput('2026-07-23T14:19:56Z\n' + sha, at)).toBe(sha);
+    expect(parseMergeShaOutput('2026-07-23T14:19:56Z\n' + sha.toUpperCase(), at)).toBe(sha);
+
+    // Merged but with no usable sha is neither a fix nor an answer.
+    expect(() => parseMergeShaOutput('2026-07-23T14:19:56Z\nnot-a-sha', at)).toThrow(/merge_commit_sha/);
+  });
+
+  test('an unreadable pull request still throws, because that one is not an answer', () => {
+    // The 404 that broke the first live run was authorisation, not data. It
+    // must stay loud; folding it in with the stale-attachment case would make
+    // a repo-wide permission failure look like a tidy row of skips.
+    expect(() =>
+      derive({
+        fixReferences: [{ channel: 'pull-request', url: GH_PULL }],
+        resolvePrMergeSha: () => {
+          throw new Error('gh api pulls/2844 failed: HTTP 404');
+        },
+      }),
+    ).toThrow(/404/);
+  });
+
   test('an infra failure in the git boundary propagates rather than reading as not-shipped', () => {
     expect(() =>
       derive({
@@ -220,8 +268,13 @@ describe('write-back run', () => {
         throw new Error('Linear attachmentCreate reported failure');
       },
     });
-    await expect(h.run()).rejects.toThrow(/attachmentCreate/);
+    const result = await h.run();
+    // The at-most-once contract: no marker, therefore no reply. The failure is
+    // carried out as an error rather than a skip so the run still goes red.
     expect(h.writes.filter((w) => w.kind === 'post')).toHaveLength(0);
+    expect(result.errored).toHaveLength(1);
+    expect(result.errored[0].message).toMatch(/attachmentCreate/);
+    expect(result.skipped).toEqual([]);
   });
 
   test('running twice against the same release posts exactly once', async () => {
@@ -342,6 +395,138 @@ describe('changeset parsing', () => {
 // The properties that keep a reporter-facing side effect from ever touching a
 // release: its own trigger, its own concurrency group, and no edit to any of
 // the three publish workflows.
+describe('locating the changeset a fix shipped with', () => {
+  // The real file list off the pull request the first live run choked on.
+  const MONOREPO_FILES = [
+    'public/open-knowledge/.changeset/default-theme-tile-own-colors.md',
+    'public/open-knowledge/packages/app/src/components/ThemeTile.tsx',
+  ];
+
+  test('a monorepo pull request keeps its changeset under the subtree, not at the root', () => {
+    expect(findChangesetPath(MONOREPO_FILES, { repo: 'agents-private' })).toBe(
+      'public/open-knowledge/.changeset/default-theme-tile-own-colors.md',
+    );
+  });
+
+  test('a pull request against the public mirror keeps it at the root, where that repo puts it', () => {
+    expect(findChangesetPath(['.changeset/some-fix.md'], { repo: 'open-knowledge' })).toBe('.changeset/some-fix.md');
+  });
+
+  test("another product's changeset is never quoted to an Open Knowledge reporter", () => {
+    // The monorepo has three .changeset dirs. Matching any `.changeset/` on the
+    // path would put agents-platform release notes in front of an OK reporter,
+    // and they would read plausibly enough that nobody would catch it.
+    const foreign = ['public/agents/.changeset/some-agents-fix.md', '.changeset/a-stray-root-changeset.md'];
+    expect(findChangesetPath(foreign, { repo: 'agents-private' })).toBeNull();
+  });
+
+  test('the changeset README is never mistaken for a changeset', () => {
+    expect(findChangesetPath(['public/open-knowledge/.changeset/README.md'], { repo: 'agents-private' })).toBeNull();
+  });
+
+  test('a pull request that added no changeset yields nothing rather than a wrong file', () => {
+    expect(findChangesetPath(['public/open-knowledge/packages/app/src/x.ts'], { repo: 'agents-private' })).toBeNull();
+    expect(findChangesetPath([], { repo: 'agents-private' })).toBeNull();
+  });
+
+  test('the directory is chosen by repo, since only the mirror has it at the root', () => {
+    expect(changesetDirFor('open-knowledge')).toBe('.changeset/');
+    expect(changesetDirFor('agents-private')).toBe('public/open-knowledge/.changeset/');
+  });
+});
+
+describe('cross-repo token selection', () => {
+  const env = { CROSS_REPO_TOKEN: 'bridge-token', GITHUB_REPOSITORY: 'inkeep/open-knowledge' };
+
+  test('a read against the private monorepo uses the bridge token', () => {
+    expect(selectGhToken({ owner: 'inkeep', repo: 'agents-private', env })).toBe('bridge-token');
+  });
+
+  test('a read against this repo keeps the ambient token, which the bridge token cannot replace', () => {
+    // The bridge token is scoped to agents-private, so handing it to a call
+    // against this repo would 404 the very thing the ambient token can do.
+    expect(selectGhToken({ owner: 'inkeep', repo: 'open-knowledge', env })).toBeNull();
+    expect(selectGhToken({ owner: 'InKeep', repo: 'Open-Knowledge', env })).toBeNull();
+  });
+
+  test('with no bridge token configured every call falls back to the ambient one', () => {
+    const bare = { GITHUB_REPOSITORY: 'inkeep/open-knowledge' };
+    expect(selectGhToken({ owner: 'inkeep', repo: 'agents-private', env: bare })).toBeNull();
+    expect(selectGhToken({ owner: 'inkeep', repo: 'agents-private', env: { ...bare, CROSS_REPO_TOKEN: '  ' } })).toBeNull();
+  });
+});
+
+describe('one unreadable candidate does not silence the rest', () => {
+  const two = (first, second) => ({
+    listCandidates: async () => [
+      candidate({ id: 'uuid-1', identifier: 'PRD-0001', attachmentUrls: [first, GH_ISSUE] }),
+      candidate({ id: 'uuid-2', identifier: 'PRD-0002', attachmentUrls: [second, GH_ISSUE] }),
+    ],
+  });
+
+  test('a candidate whose fix reference cannot be read is reported, and the next one still posts', async () => {
+    const h = harness({
+      ...two(GH_PULL, GH_PULL),
+      versionFor: async (node) => {
+        if (node.identifier === 'PRD-0001') throw new Error('gh api pulls/2844 failed: HTTP 404');
+        return 'v0.36.0';
+      },
+    });
+    const result = await h.run();
+
+    expect(result.errored.map((e) => e.identifier)).toEqual(['PRD-0001']);
+    expect(result.errored[0].message).toContain('404');
+    expect(result.posted.map((p) => p.identifier)).toEqual(['PRD-0002']);
+  });
+
+  test('a failure is never filed as a skip, so a broken run cannot read as a quiet one', async () => {
+    const h = harness({
+      ...two(GH_PULL, GH_PULL),
+      versionFor: async () => {
+        throw new Error('gh api failed: HTTP 404');
+      },
+    });
+    const result = await h.run();
+
+    expect(result.errored).toHaveLength(2);
+    expect(result.skipped).toEqual([]);
+  });
+
+  test('errors still turn the run red once the reachable reporters have been told', () => {
+    // Surviving a bad candidate must not become a way of passing while broken.
+    expect(runFailureMessage({ posted: [], skipped: [], errored: [] })).toBeNull();
+    expect(runFailureMessage({ skipped: [{ identifier: 'PRD-1', reason: 'no-origin' }], errored: [] })).toBeNull();
+
+    const message = runFailureMessage({
+      errored: [
+        { identifier: 'PRD-0001', message: 'HTTP 404' },
+        { identifier: 'PRD-0002', message: 'HTTP 502' },
+      ],
+    });
+    expect(message).toContain('2 of the candidates');
+    expect(message).toContain('PRD-0001');
+    expect(message).toContain('PRD-0002');
+  });
+
+  test('a reply that fails after its marker was written says so, because no run will retry it', async () => {
+    const h = harness({
+      live: true,
+      postReply: async () => {
+        throw new Error('notify endpoint returned HTTP 502');
+      },
+    });
+    const result = await h.run();
+
+    const [failure] = result.errored;
+    expect(failure.message).toContain('marker');
+    expect(failure.message).toContain('did NOT send');
+    expect(failure.message).toContain('by hand');
+    expect(failure.message).toContain('502');
+    // The marker really was written; that is why the message says what it says.
+    expect(h.writes.map((w) => w.kind)).toEqual(['mark']);
+  });
+});
+
 describe('workflow shape', () => {
   const read = (name) => readFileSync(new URL(`../workflows/${name}`, import.meta.url), 'utf8');
   const workflow = read('write-back.yml');
@@ -380,6 +565,33 @@ describe('workflow shape', () => {
   test('live posting needs an explicit mode on top of the credential', () => {
     expect(workflow).toContain('WRITE_BACK_MODE');
     expect(workflow).toContain('LINEAR_API_KEY');
+  });
+
+  test('the private monorepo is read with a bridge App token, not with this repo own token', () => {
+    // The default token cannot see agents-private at all, so a run wired with
+    // only `GH_TOKEN` 404s on every fix reference.
+    expect(workflow).toContain('CROSS_REPO_TOKEN: ${{ steps.bridge-token.outputs.token }}');
+    expect(workflow).toMatch(/uses: actions\/create-github-app-token@[0-9a-f]{40}/);
+    expect(workflow).toContain('repositories: agents-private');
+  });
+
+  test('the bridge token is minted read-only, and for both scopes the reads need', () => {
+    // Contents alone finds no changeset (the path comes from the PR file list);
+    // pull-requests alone yields a version with nothing to quote.
+    expect(workflow).toContain('permission-contents: read');
+    expect(workflow).toContain('permission-pull-requests: read');
+    expect(workflow).not.toMatch(/permission-\w+(-\w+)*: write/);
+  });
+
+  test('posting still uses this repo own token, which the scoped bridge token could not do', () => {
+    expect(workflow).toContain('GH_TOKEN: ${{ github.token }}');
+    expect(workflow).toContain('issues: write');
+  });
+
+  test('a missing bridge App degrades to a warning rather than failing the mint', () => {
+    // Secrets are unreadable in `if:`, so the gate is an output from a step.
+    expect(workflow).toMatch(/id: bridge-check/);
+    expect(workflow).toMatch(/if:.*steps\.bridge-check\.outputs\.configured == 'true'/);
   });
 });
 

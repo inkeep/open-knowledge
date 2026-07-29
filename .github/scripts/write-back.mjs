@@ -31,9 +31,11 @@
  *
  * Fail-loud contract: "nothing to notify about" is a real ANSWER and exits 0.
  * A missing credential is an answer too. Any infra error (Linear unreachable, a
- * git failure, a malformed GraphQL response) throws and exits non-zero rather
- * than being folded into silence, because a caller cannot tell a quiet run from
- * a broken one and would never look again.
+ * git failure, a malformed GraphQL response) exits non-zero rather than being
+ * folded into silence, because a caller cannot tell a quiet run from a broken
+ * one and would never look again. An error against ONE ticket is deferred, not
+ * softened: the run finishes so the other reporters still hear, and then exits
+ * non-zero carrying every failure it collected.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -147,6 +149,10 @@ export function deriveVersionForFixRefs({
   for (const ref of usable) {
     const parsed = parseFixRef(ref.channel === 'commit' ? ref.sha : ref.url, { defaultRepo });
     const privateSha = resolvePrivateSha(parsed, { resolvePrMergeSha });
+    if (!privateSha) {
+      log(`::notice::write-back: ${ref.url} was closed without merging, so it carries no fix commit.`);
+      return null;
+    }
     const result = resolveShippedVersion({ privateSha, stableTags, findMirroredCommits, contains });
     if (!result.shipped) {
       log(`::notice::write-back: ${ref.url} has not reached a stable release yet (${result.reason}).`);
@@ -235,9 +241,11 @@ export function makeReleaseWindow({
  *
  * `live` false is the default and performs zero writes of any kind.
  *
- * Returns { posted, skipped, dryRun } where `skipped` carries a reason per
+ * Returns { posted, skipped, errored, dryRun }. `skipped` carries a reason per
  * candidate, so a run that did nothing can be read as either "correctly quiet"
- * or "quietly broken".
+ * or "quietly broken"; `errored` carries the candidates that threw, which the
+ * caller must turn into a non-zero exit — they are failures that happened to be
+ * survivable, not skips.
  */
 export async function runWriteBack({
   listCandidates,
@@ -259,9 +267,15 @@ export async function runWriteBack({
 
   const posted = [];
   const skipped = [];
+  const errored = [];
   const skip = (identifier, reason) => skipped.push({ identifier, reason });
 
-  for (const candidate of await listCandidates()) {
+  // One candidate per attempt, so a ticket whose fix reference cannot be read
+  // does not decide the fate of every reporter behind it in the list. The
+  // failure is collected rather than swallowed: the caller fails the run once
+  // everyone reachable has been told, which is strictly more than aborting on
+  // the first bad reference told anyone.
+  const processCandidate = async (candidate) => {
     const { origins, unrepliable, fixReferences } = partitionAttachments(candidate.attachmentUrls ?? []);
     const children = await listChildren(candidate.id);
 
@@ -288,7 +302,7 @@ export async function runWriteBack({
         );
       }
       skip(candidate.identifier, gate.unresolved.length > 0 ? 'version-underivable' : 'fan-in-withheld');
-      continue;
+      return;
     }
 
     // Scope to the release this run is about. Skips here are the ordinary bulk
@@ -297,7 +311,7 @@ export async function runWriteBack({
     const placement = classifyRelease(gate.version);
     if (placement !== 'in-window') {
       skip(candidate.identifier, placement);
-      continue;
+      return;
     }
 
     if (origins.length === 0) {
@@ -311,7 +325,7 @@ export async function runWriteBack({
         // Not every fix has a reporter. This is the ordinary case, not a fault.
         skip(candidate.identifier, 'no-origin');
       }
-      continue;
+      return;
     }
 
     for (const origin of origins) {
@@ -367,13 +381,48 @@ export async function runWriteBack({
       log(
         `::debug::write-back: marker written for ${origin.url} (${candidate.identifier}); posting reply next.`,
       );
-      await postReply(origin, text);
+      try {
+        await postReply(origin, text);
+      } catch (err) {
+        // Past the point of no return. Re-raise saying so, because the generic
+        // "could not be processed" this lands in reads as retryable and this
+        // one is not: the marker stands, so no later run will pick it up and
+        // the only remaining fix is a reply posted by hand.
+        throw new Error(
+          `marker for ${origin.url} was written but the reply did NOT send (${err.message}). ` +
+            'No future run will retry it; post the reply by hand.',
+        );
+      }
       log(`::notice::write-back: replied to ${origin.url} for ${candidate.identifier} (v${gate.version}).`);
       posted.push({ identifier: candidate.identifier, origin: origin.url, version: gate.version, dryRun: false });
     }
+  };
+
+  for (const candidate of await listCandidates()) {
+    try {
+      await processCandidate(candidate);
+    } catch (err) {
+      log(`::warning::write-back: ${candidate.identifier} could not be processed: ${err.message}`);
+      errored.push({ identifier: candidate.identifier, message: err.message });
+    }
   }
 
-  return { posted, skipped, dryRun: !live };
+  return { posted, skipped, errored, dryRun: !live };
+}
+
+/**
+ * A run that could not process every candidate is a failed run, even though it
+ * ran to the end and may well have posted to most reporters. The verdict is
+ * returned rather than thrown where it is decided, so that "errors must still
+ * turn the job red" is one expression a test can hold on to instead of a branch
+ * inside an entry point nothing can call.
+ */
+export function runFailureMessage({ errored = [] } = {}) {
+  if (errored.length === 0) return null;
+  return (
+    `${errored.length} of the candidates could not be processed: ` +
+    errored.map((e) => `${e.identifier} (${e.message})`).join('; ')
+  );
 }
 
 // --- workflow-runtime wiring (real Linear / git / gh / Discord boundary) ---
@@ -463,23 +512,67 @@ function realContains(tag, sha) {
   );
 }
 
-function gh(args) {
-  return execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+/**
+ * Two credentials, chosen per call site rather than one ambient one.
+ *
+ * A fix reference points into the private monorepo, which the workflow's own
+ * token cannot see at all — every read against it 404s, indistinguishable from
+ * a deleted pull request. The App installation token that CAN see it is scoped
+ * to that one repository, so it in turn cannot post the reply back onto an
+ * issue here. Neither token can do both jobs, so the target repo picks.
+ *
+ * Absent a cross-repo token the ambient one is used and the 404 surfaces as an
+ * ordinary per-candidate failure, which is why the entry point warns up front
+ * when there is no such token: so those 404s are not read as deleted pull
+ * requests.
+ */
+export function selectGhToken({ owner, repo, env }) {
+  const crossRepo = String(env.CROSS_REPO_TOKEN ?? '').trim();
+  if (!crossRepo) return null;
+  const self = String(env.GITHUB_REPOSITORY ?? '').trim().toLowerCase();
+  return `${owner}/${repo}`.toLowerCase() === self ? null : crossRepo;
+}
+
+function gh(args, target) {
+  const token = target ? selectGhToken({ ...target, env: process.env }) : null;
+  return execFileSync('gh', args, {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: token ? { ...process.env, GH_TOKEN: token } : process.env,
+  });
 }
 
 function realResolvePrMergeSha({ owner, repo, number }) {
   let out;
   try {
-    out = gh(['api', `repos/${owner}/${repo}/pulls/${number}`, '--jq', '.merged_at,.merge_commit_sha']);
+    out = gh(['api', `repos/${owner}/${repo}/pulls/${number}`, '--jq', '.merged_at,.merge_commit_sha'], {
+      owner,
+      repo,
+    });
   } catch (err) {
     throw new Error(
       `gh api repos/${owner}/${repo}/pulls/${number} failed: ${String(err?.stderr || err?.message || '').trim()}`,
     );
   }
-  const [mergedAt, sha] = out.split('\n').map((s) => s.trim());
-  if (!mergedAt || mergedAt === 'null') {
-    throw new Error(`${owner}/${repo}#${number} is not merged; there is no fix commit to resolve.`);
-  }
+  return parseMergeShaOutput(out, { owner, repo, number });
+}
+
+/**
+ * The merge commit behind a pull request, or null if it never had one.
+ *
+ * Split out from the `gh` call so the distinction it draws is testable, because
+ * that distinction decides whether a run goes red. A pull request closed
+ * without merging is an ANSWER: there is no fix commit, which happens whenever
+ * a ticket keeps the attachment from a superseded attempt while the fix lands
+ * under a different number. Only a human editing Linear can put that right, so
+ * it routes to the same warn-and-skip as a fix that has not shipped. A reply
+ * shape nobody can account for still throws.
+ */
+export function parseMergeShaOutput(out, { owner, repo, number } = {}) {
+  const [mergedAt, sha] = String(out ?? '')
+    .split('\n')
+    .map((s) => s.trim());
+  if (!mergedAt || mergedAt === 'null') return null;
   if (!FULL_SHA_RE.test(sha || '')) {
     throw new Error(`${owner}/${repo}#${number} has no usable merge_commit_sha (got '${sha}').`);
   }
@@ -487,10 +580,36 @@ function realResolvePrMergeSha({ owner, repo, number }) {
 }
 
 /**
+ * Where this product's changeset lives, given the repo the fix reference names.
+ *
+ * The monorepo carries three changeset directories and only one of them is this
+ * product's. `public/agents/.changeset/` is a different product's release notes;
+ * quoting it would put another team's copy in front of an Open Knowledge bug
+ * reporter, and it would read plausibly enough that nobody would catch it. So
+ * the directory is chosen by repo rather than found by searching the path for
+ * `.changeset/` — a search matches all three, and the monorepo root has a stray
+ * changeset sitting in it too.
+ *
+ * In the public mirror this subtree IS the repo root, so a fix reference naming
+ * that repo wants the root directory.
+ */
+export function changesetDirFor(repo) {
+  return repo === 'open-knowledge' ? '.changeset/' : 'public/open-knowledge/.changeset/';
+}
+
+/** The one changeset a pull request added, or null if it added none. */
+export function findChangesetPath(filenames, { repo } = {}) {
+  const dir = changesetDirFor(repo);
+  const isChangeset = (name) =>
+    name.startsWith(dir) && /^[^/]+\.md$/.test(name.slice(dir.length)) && !name.endsWith('/README.md');
+  return filenames.map((name) => String(name).trim()).find(isChangeset) ?? null;
+}
+
+/**
  * The prose quoted back to the reporter is the changeset the fix shipped with,
  * which is already public release-notes copy. It is read from the fix pull
- * request's own `.changeset/*.md` addition rather than from the ticket, so no
- * internal field is ever in reach.
+ * request's own changeset addition rather than from the ticket, so no internal
+ * field is ever in reach.
  */
 function realReadChangesetProse(_candidate, { fixReferences }) {
   const pull = fixReferences.find((ref) => ref.channel === 'pull-request');
@@ -498,33 +617,30 @@ function realReadChangesetProse(_candidate, { fixReferences }) {
 
   let names;
   try {
-    names = gh([
-      'api',
-      `repos/${pull.owner}/${pull.repo}/pulls/${pull.number}/files`,
-      '--paginate',
-      '--jq',
-      '.[].filename',
-    ]);
+    names = gh(
+      ['api', `repos/${pull.owner}/${pull.repo}/pulls/${pull.number}/files`, '--paginate', '--jq', '.[].filename'],
+      pull,
+    );
   } catch (err) {
     throw new Error(`gh api pulls/${pull.number}/files failed: ${String(err?.stderr || err?.message || '').trim()}`);
   }
 
-  const changesetPath = names
-    .split('\n')
-    .map((s) => s.trim())
-    .find((name) => /^\.changeset\/[^/]+\.md$/.test(name) && !name.endsWith('/README.md'));
+  const changesetPath = findChangesetPath(names.split('\n'), { repo: pull.repo });
   if (!changesetPath) return null;
 
   let raw;
   try {
-    raw = gh([
-      'api',
-      // Read at the PR head rather than at the default branch: the changeset
-      // file is consumed and deleted when the release that shipped it was cut.
-      `repos/${pull.owner}/${pull.repo}/contents/${changesetPath}?ref=refs/pull/${pull.number}/head`,
-      '--jq',
-      '.content',
-    ]);
+    raw = gh(
+      [
+        'api',
+        // Read at the PR head rather than at the default branch: the changeset
+        // file is consumed and deleted when the release that shipped it was cut.
+        `repos/${pull.owner}/${pull.repo}/contents/${changesetPath}?ref=refs/pull/${pull.number}/head`,
+        '--jq',
+        '.content',
+      ],
+      pull,
+    );
   } catch (err) {
     throw new Error(`gh api contents/${changesetPath} failed: ${String(err?.stderr || err?.message || '').trim()}`);
   }
@@ -608,6 +724,13 @@ async function main() {
       'anything shipped earlier is left alone.',
   );
 
+  if (!String(process.env.CROSS_REPO_TOKEN ?? '').trim()) {
+    log(
+      `::warning::write-back: no CROSS_REPO_TOKEN, so reads against ${DEFAULT_PRIVATE_REPO} run on this repo's own ` +
+        'token and will 404. Those 404s mean "not authorised", not "no such pull request".',
+    );
+  }
+
   const result = await runWriteBack({
     listCandidates: () => paginate({ apiKey, query: CANDIDATE_QUERY, variables: {} }),
     listChildren: (parentId) => paginate({ apiKey, query: CHILDREN_QUERY, variables: { parentId } }),
@@ -632,7 +755,17 @@ async function main() {
     log,
   });
 
-  console.log(JSON.stringify({ dryRun: result.dryRun, posted: result.posted.length, skipped: result.skipped }));
+  console.log(
+    JSON.stringify({
+      dryRun: result.dryRun,
+      posted: result.posted.length,
+      skipped: result.skipped,
+      errored: result.errored,
+    }),
+  );
+
+  const failure = runFailureMessage(result);
+  if (failure) throw new Error(failure);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
