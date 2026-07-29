@@ -158,7 +158,19 @@ export async function withMountedDmg(dmgPath, callback, deps = {}) {
 
     const appName = apps[0];
     const appCopyPath = join(appCopyRoot, appName);
-    await cpImpl(join(mountRoot, appName), appCopyPath, { recursive: true });
+    // `verbatimSymlinks` is load-bearing, not a nicety. Node's default resolves
+    // every relative symlink against the SOURCE and writes an absolute path in
+    // its place, and an Electron bundle is built out of relative links
+    // (`Electron Framework -> Versions/Current/Electron Framework`). The next
+    // line detaches the very mount those rewritten links would point into, so
+    // dropping this option yields a copy whose frameworks all dangle: the app
+    // aborts at launch with `dyld: Library not loaded: @rpath/Electron
+    // Framework.framework/Electron Framework`, and every packaged smoke test
+    // fails in milliseconds — which reads as a product verdict, not a copy bug.
+    await cpImpl(join(mountRoot, appName), appCopyPath, {
+      recursive: true,
+      verbatimSymlinks: true,
+    });
     await detach();
 
     return await callback(appCopyPath);

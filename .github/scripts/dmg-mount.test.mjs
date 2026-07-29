@@ -1,4 +1,7 @@
 import { EventEmitter } from 'node:events';
+import { cp, mkdir, mkdtemp, readlink, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { DmgMountError, MOUNT_ERROR_CODES, withMountedDmg } from './dmg-mount.mjs';
 
@@ -69,6 +72,50 @@ describe('withMountedDmg', () => {
     expect(attach).toContain('-nobrowse');
     expect(attach).toContain('-readonly');
     expect(attach).toContain('-mountpoint');
+  });
+
+  test('copies an Electron-shaped bundle without absolutizing its relative symlinks', async () => {
+    // Exercises the REAL `fs.cp` against a real symlink tree — only hdiutil is
+    // faked. A stub that records the options bag would ratify the current
+    // implementation; this pins the property that matters, so a later swap to
+    // `ditto` or `cp -R` still has to keep the links relative.
+    const scratch = await mkdtemp(join(tmpdir(), 'ok-dmg-mount-test-'));
+    const framework = join(
+      scratch,
+      'OpenKnowledge.app/Contents/Frameworks/Electron Framework.framework',
+    );
+    await mkdir(join(framework, 'Versions/A'), { recursive: true });
+    await writeFile(join(framework, 'Versions/A/Electron Framework'), 'mach-o');
+    await symlink('A', join(framework, 'Versions/Current'));
+    await symlink('Versions/Current/Electron Framework', join(framework, 'Electron Framework'));
+
+    let linkTarget = null;
+    await withMountedDmg(
+      '/tmp/OpenKnowledge.dmg',
+      async (appPath) => {
+        linkTarget = await readlink(
+          join(appPath, 'Contents/Frameworks/Electron Framework.framework/Electron Framework'),
+        );
+      },
+      {
+        runCommand: async () => {},
+        // The mount root has to be the tree we prepared; the copy root stays a
+        // fresh directory so the copy is a genuine cross-directory one.
+        mkdtemp: async (prefix) =>
+          prefix.includes('ok-dmg-mount-') ? scratch : await mkdtemp(prefix),
+        cp,
+        rm,
+        listAppsInMount: async () => ['OpenKnowledge.app'],
+        process: new EventEmitter(),
+      },
+    );
+
+    // An absolute target here points into the mount that the driver detaches one
+    // line after the copy, so the framework is gone before the app ever launches.
+    expect(linkTarget).toBe('Versions/Current/Electron Framework');
+    expect(isAbsolute(linkTarget)).toBe(false);
+
+    await rm(scratch, { recursive: true, force: true });
   });
 
   test('detaches before the callback error propagates', async () => {
