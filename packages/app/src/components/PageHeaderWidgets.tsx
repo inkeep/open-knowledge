@@ -26,10 +26,10 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: matches the existing PropertyWidgets.tsx posture — raw `<input>` is the typed-input affordance shared across every frontmatter widget; migrating to shadcn `<Input>` is the file-wide pre-rule backlog described in PropertyWidgets.tsx's top-of-file ignore comment.
 
 import { ALLOWED_IMAGE_MIME_TYPES } from '@inkeep/open-knowledge-core';
-import { Trans, useLingui } from '@lingui/react/macro';
-import { EmojiPicker, type EmojiPickerListComponents } from 'frimousse';
+import { useLingui } from '@lingui/react/macro';
 import { ImagePlus, Smile, Upload, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { FrimousseEmojiPicker } from '@/components/emoji-picker';
 import type { CommonWidgetProps } from '@/components/PropertyWidgets';
 import { resolvePageCover, resolvePageIcon } from '@/components/page-header-utils';
 import { Button } from '@/components/ui/button';
@@ -121,7 +121,7 @@ export function PageIconWidget({ keyName, value, onCommit }: CommonWidgetProps<s
             <PageIconPreviewContent resolved={resolved} />
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="end">
+        <PopoverContent className="w-auto p-0" align="end" aria-label={t`Emoji picker`}>
           <FrimousseEmojiPicker
             onSelect={(emoji) => {
               setDraft(emoji);
@@ -366,69 +366,4 @@ function PageCoverPreviewContent({ resolved }: { resolved: ReturnType<typeof res
     );
   }
   return <ImagePlus className="size-4" aria-hidden />;
-}
-
-/**
- * Themed component overrides for `EmojiPicker.List` — extracted to a
- * module-level constant so React Compiler can hoist the object literal
- * once (the picker re-renders on every keystroke; an inline object
- * would create a new identity each pass and force the virtualised
- * list to remount its rows).
- */
-const EMOJI_LIST_COMPONENTS: EmojiPickerListComponents = {
-  CategoryHeader: ({ category, ...props }) => (
-    <div
-      {...props}
-      className="bg-popover px-3 pt-3 pb-1.5 font-medium text-muted-foreground text-xs"
-    >
-      {category.label}
-    </div>
-  ),
-  Row: ({ children, ...props }) => (
-    <div {...props} className="scroll-my-1.5 px-1.5">
-      {children}
-    </div>
-  ),
-  Emoji: ({ emoji, ...props }) => (
-    <button
-      type="button"
-      {...props}
-      className="flex size-8 items-center justify-center rounded-md text-lg data-[active]:bg-accent"
-    >
-      {emoji.emoji}
-    </button>
-  ),
-};
-
-/**
- * Frimousse-backed emoji picker, themed to match OK's shadcn surface
- * (popover bg, accent on hover, ring on focus). Keeps the picker
- * compact (320px) and constrained vertically so it fits inside the
- * popover without scrolling the page. The `onSelect` callback fires
- * with the rendered emoji string (multi-codepoint sequences already
- * joined by `frimousse`).
- */
-function FrimousseEmojiPicker({ onSelect }: { onSelect: (emoji: string) => void }) {
-  const { t } = useLingui();
-  return (
-    <EmojiPicker.Root
-      className="isolate flex h-[326px] w-[320px] flex-col bg-popover text-popover-foreground"
-      onEmojiSelect={({ emoji }) => onSelect(emoji)}
-    >
-      <EmojiPicker.Search
-        className="z-10 mx-2 mt-2 rounded-md border bg-background px-2.5 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        placeholder={t`Search emoji`}
-        autoFocus
-      />
-      <EmojiPicker.Viewport className="relative flex-1 outline-none">
-        <EmojiPicker.Loading className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
-          <Trans>Loading</Trans>
-        </EmojiPicker.Loading>
-        <EmojiPicker.Empty className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
-          <Trans>No emoji found.</Trans>
-        </EmojiPicker.Empty>
-        <EmojiPicker.List className="select-none pb-1.5" components={EMOJI_LIST_COMPONENTS} />
-      </EmojiPicker.Viewport>
-    </EmojiPicker.Root>
-  );
 }

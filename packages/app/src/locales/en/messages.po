@@ -3573,6 +3573,15 @@ msgstr "Embeddings API key"
 msgid "Embeddings are computed only when a search runs and are cached locally under <0>.ok/local</0>."
 msgstr "Embeddings are computed only when a search runs and are cached locally under <0>.ok/local</0>."
 
+#: src/editor/slash-command/items.tsx
+msgid "Emoji"
+msgstr "Emoji"
+
+#: src/components/PageHeaderWidgets.tsx
+#: src/editor/components/EmojiInsertPopover.tsx
+msgid "Emoji picker"
+msgstr "Emoji picker"
+
 #: src/components/ArrayOfObjectsWidget.tsx
 #: src/components/ObjectWidget.tsx
 msgid "empty"
@@ -5286,7 +5295,7 @@ msgstr "List"
 msgid "Lists"
 msgstr "Lists"
 
-#: src/components/PageHeaderWidgets.tsx
+#: src/components/emoji-picker.tsx
 #: src/components/SkillsSidebarSection.tsx
 #: src/editor/components/TagDialog.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
@@ -6015,7 +6024,7 @@ msgstr "No edit session yet"
 msgid "No edits yet."
 msgstr "No edits yet."
 
-#: src/components/PageHeaderWidgets.tsx
+#: src/components/emoji-picker.tsx
 msgid "No emoji found."
 msgstr "No emoji found."
 
@@ -7019,6 +7028,10 @@ msgstr "Pick a built-in IDE palette. The dark IDE themes override the light/dark
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Pick a name"
 msgstr "Pick a name"
+
+#: src/editor/slash-command/items.tsx
+msgid "Pick an emoji to insert at the cursor."
+msgstr "Pick an emoji to insert at the cursor."
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Pick the folder where you've cloned it."
@@ -8055,7 +8068,7 @@ msgstr "Search branches..."
 msgid "Search by meaning"
 msgstr "Search by meaning"
 
-#: src/components/PageHeaderWidgets.tsx
+#: src/components/emoji-picker.tsx
 msgid "Search emoji"
 msgstr "Search emoji"
 

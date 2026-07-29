@@ -206,3 +206,52 @@ describe('Inline Math item composes into the slash-command transaction', () => {
     }
   });
 });
+
+describe('emoji item', () => {
+  const emojiItem = () => {
+    const item = getSlashCommandItems().find((i) => i.name === 'emoji');
+    if (!item) throw new Error('emoji item missing');
+    return item;
+  };
+
+  test('lives in the insert category and is reachable via the ":" alias', () => {
+    expect(emojiItem().category).toBe('insert');
+    const result = filterItems(getSlashCommandItems(), ':');
+    expect(result.some((i) => i.name === 'emoji')).toBe(true);
+  });
+
+  test('contributes no chain steps and defers the picker open to afterCommit', () => {
+    const deferred: Array<() => void> = [];
+    let dispatched = 0;
+    // Node-env double for the document listener target — the dispatch helper
+    // goes through `document.dispatchEvent`, which the jsdom tier covers in
+    // EmojiInsertPopover.dom.test.tsx; here we only pin the deferral contract.
+    const ctx = {
+      chain: () => {
+        throw new Error('emoji item must not touch the chain');
+      },
+      state: {} as never,
+      editor: {} as never,
+      afterCommit: (fn: () => void) => deferred.push(fn),
+    } as unknown as SlashCommandContext;
+
+    const g = globalThis as { document?: unknown };
+    const originalDocument = g.document;
+    g.document = {
+      dispatchEvent: () => {
+        dispatched += 1;
+        return true;
+      },
+    };
+    try {
+      emojiItem().command(ctx);
+      expect(dispatched).toBe(0);
+      expect(deferred).toHaveLength(1);
+      for (const fn of deferred) fn();
+      expect(dispatched).toBe(1);
+    } finally {
+      if (originalDocument === undefined) delete g.document;
+      else g.document = originalDocument;
+    }
+  });
+});

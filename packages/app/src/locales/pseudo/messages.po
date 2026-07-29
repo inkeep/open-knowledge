@@ -3569,6 +3569,15 @@ msgstr ""
 msgid "Embeddings are computed only when a search runs and are cached locally under <0>.ok/local</0>."
 msgstr ""
 
+#: src/editor/slash-command/items.tsx
+msgid "Emoji"
+msgstr ""
+
+#: src/components/PageHeaderWidgets.tsx
+#: src/editor/components/EmojiInsertPopover.tsx
+msgid "Emoji picker"
+msgstr ""
+
 #: src/components/ArrayOfObjectsWidget.tsx
 #: src/components/ObjectWidget.tsx
 msgid "empty"
@@ -5282,7 +5291,7 @@ msgstr ""
 msgid "Lists"
 msgstr ""
 
-#: src/components/PageHeaderWidgets.tsx
+#: src/components/emoji-picker.tsx
 #: src/components/SkillsSidebarSection.tsx
 #: src/editor/components/TagDialog.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
@@ -6011,7 +6020,7 @@ msgstr ""
 msgid "No edits yet."
 msgstr ""
 
-#: src/components/PageHeaderWidgets.tsx
+#: src/components/emoji-picker.tsx
 msgid "No emoji found."
 msgstr ""
 
@@ -7014,6 +7023,10 @@ msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Pick a name"
+msgstr ""
+
+#: src/editor/slash-command/items.tsx
+msgid "Pick an emoji to insert at the cursor."
 msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
@@ -8051,7 +8064,7 @@ msgstr ""
 msgid "Search by meaning"
 msgstr ""
 
-#: src/components/PageHeaderWidgets.tsx
+#: src/components/emoji-picker.tsx
 msgid "Search emoji"
 msgstr ""
 

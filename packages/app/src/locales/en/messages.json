@@ -1200,6 +1200,7 @@
       "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
     ],
     "MHrjPM": ["Title"],
+    "MI6Z0f": ["Pick an emoji to insert at the cursor."],
     "MJqRO6": ["Your report is being sent."],
     "MJuO1q": ["Context window:"],
     "MKEPCY": ["Follow"],
@@ -2774,6 +2775,7 @@
     "pAgkuZ": ["Reopening \"", ["docName"], "\" with a fresh local collaboration cache."],
     "pBROkv": ["Thanks for subscribing. Watch your inbox for product updates."],
     "pEQFsW": ["No matching projects."],
+    "pFPzHA": ["Emoji picker"],
     "pFagOn": ["Source editing"],
     "pHYP6v": ["Open <0>Customize</0> in the sidebar <1/> <2>Skills</2>."],
     "pQf2Ux": [".ok/skills is back to local-only."],
@@ -2965,6 +2967,7 @@
     "t9Qn8y": ["No agents enabled"],
     "tAPZEx": ["Below"],
     "tHKQ6j": ["Renaming"],
+    "tKlWWY": ["Emoji"],
     "tN5WTS": ["The provider rejected the request. Check the API key and the model id."],
     "tP5DDk": ["Apply link"],
     "tUvUfp": ["Use a folder you already have."],

@@ -1,5 +1,6 @@
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
 import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState } from 'react';
+import { EmojiInsertPopover } from '@/editor/components/EmojiInsertPopover';
 import { TagDialog } from '@/editor/components/TagDialog';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { RAW_MDX_NAV_EVENT, type RawMdxNavDetail } from '@/editor/extensions/raw-mdx-nav-event';
@@ -553,6 +554,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         onResolved={() => setAutoSyncOnboardingDismissed(true)}
       />
       <TagDialog />
+      <EmojiInsertPopover />
       {/*
         Agent Activity Panel now lives inside DocPanel as the `'agent'` mode
         content.

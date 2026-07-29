@@ -18,11 +18,13 @@ import {
   Minus,
   Quote,
   Sigma,
+  Smile,
   Superscript,
   Table2,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { setPendingAutoOpen } from './component-items';
+import { openEmojiPickerForEditor } from './emoji-picker-event';
 
 /**
  * What an item's `command` receives when the slash menu runs it.
@@ -417,6 +419,24 @@ export function getSlashCommandItems(): SlashCommandItem[] {
             </Trans>
           </p>
         ),
+      },
+    },
+    {
+      // Emoji inserts plain Unicode text, so it needs no node type and
+      // round-trips GFM byte-for-byte. The item contributes no chain steps —
+      // the trigger-range delete commits alone, then `afterCommit` raises the
+      // app-scope picker popover (`EmojiInsertPopover`) anchored at the caret.
+      name: 'emoji',
+      label: t`Emoji`,
+      icon: Smile,
+      category: 'insert',
+      command: ({ editor, afterCommit }) => {
+        afterCommit(() => openEmojiPickerForEditor({ editor }));
+      },
+      aliases: [':', 'emoticon', 'smiley', 'face', 'reaction'],
+      preview: {
+        description: t`Pick an emoji to insert at the cursor.`,
+        render: () => <p className="text-2xl leading-8">🎉 🚀 ✅ ❤️ 👀</p>,
       },
     },
     {
