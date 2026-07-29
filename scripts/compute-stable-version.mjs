@@ -46,6 +46,7 @@
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { gitCleanEnv } from './git-clean-env.mjs';
 import { FIXED_GROUP_ANCHOR, bumpSemver, maxBumpType, parseFrontmatterBumpType } from './compute-next-beta.mjs';
 
 const BETA_TAG_RE = /^v\d+\.\d+\.\d+-beta\.\d+$/;
@@ -296,7 +297,7 @@ function compareVersions(a, b) {
 // git error.
 
 export function runGit(args) {
-  const res = spawnSync('git', args, { encoding: 'utf8' });
+  const res = spawnSync('git', args, { encoding: 'utf8', env: gitCleanEnv() });
   if (res.status !== 0) {
     throw new Error(`git ${args.join(' ')} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`);
   }
@@ -323,7 +324,7 @@ export const realGit = {
   isAncestor: (a, b) => {
     // Distinguish a clean "not an ancestor" (exit 1) from an infra failure
     // (any other non-zero) — the latter must fail loud, not read as "false".
-    const res = spawnSync('git', ['merge-base', '--is-ancestor', a, b], { encoding: 'utf8' });
+    const res = spawnSync('git', ['merge-base', '--is-ancestor', a, b], { encoding: 'utf8', env: gitCleanEnv() });
     if (res.status === 0) return true;
     if (res.status === 1) return false;
     throw new Error(

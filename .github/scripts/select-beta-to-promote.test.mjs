@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { computeStablePromotion } from '../../scripts/compute-stable-version.mjs';
+import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
 import {
   evaluateFastTier,
   makeResolveChangesetPrUrl,
@@ -582,6 +583,10 @@ afterEach(() => {
 function makeRepoWithChangesets(commits) {
   const dir = mkdtempSync(join(tmpdir(), 'ok-fast-tier-'));
   tempRepos.push(dir);
+  // gitCleanEnv: git hooks export GIT_DIR, which overrides `cwd` repo
+  // discovery — without the scrub, this helper's `git init` re-initialises
+  // the CALLING hook's repo admin dir and corrupts its shared .git/config
+  // (core.bare=true). Same bug class as the bridge suite's helper.
   const git = (...args) =>
     execFileSync(
       'git',
@@ -594,7 +599,7 @@ function makeRepoWithChangesets(commits) {
         'commit.gpgsign=false',
         ...args,
       ],
-      { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: gitCleanEnv() },
     );
   git('init', '--quiet', '--initial-branch=main');
   execFileSync('mkdir', ['-p', join(dir, '.changeset')]);

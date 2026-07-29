@@ -47,6 +47,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { computeStablePromotion, realGit } from '../../scripts/compute-stable-version.mjs';
+import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
 
 const BETA_TAG_RE = /^v\d+\.\d+\.\d+-beta\.\d+$/;
 const STABLE_TAG_RE = /^v\d+\.\d+\.\d+$/;
@@ -302,12 +303,14 @@ export function resolveTier({ armed, verdict, standardTarget, fastTarget }) {
 function resolveLatestStableSha() {
   const out = execFileSync('git', ['tag', '--list', 'v*', '--sort=-version:refname'], {
     encoding: 'utf8',
+    env: gitCleanEnv(),
   });
   for (const line of out.split('\n')) {
     const t = line.trim();
     if (STABLE_TAG_RE.test(t)) {
       return execFileSync('git', ['rev-parse', '--verify', `${t}^{commit}`], {
         encoding: 'utf8',
+        env: gitCleanEnv(),
       }).trim();
     }
   }
@@ -319,11 +322,13 @@ function makeRealIsAlreadyShipped(latestStableSha) {
     if (!latestStableSha) return false; // no stable yet -> nothing is shipped
     const betaSha = execFileSync('git', ['rev-parse', '--verify', `${betaTag}^{commit}`], {
       encoding: 'utf8',
+      env: gitCleanEnv(),
     }).trim();
     // Distinguish a clean "not an ancestor" (exit 1) from an infra failure (any
     // other non-zero), which must fail loud rather than read as "not shipped".
     const res = spawnSync('git', ['merge-base', '--is-ancestor', betaSha, latestStableSha], {
       encoding: 'utf8',
+      env: gitCleanEnv(),
     });
     if (res.status === 0) return true;
     if (res.status === 1) return false;
@@ -369,7 +374,7 @@ export function makeResolveChangesetPrUrl(linkRepo) {
     const subject = execFileSync(
       'git',
       ['log', '-1', '--diff-filter=A', '--format=%s', '--', `.changeset/${changesetId}.md`],
-      { encoding: 'utf8' },
+      { encoding: 'utf8', env: gitCleanEnv() },
     ).trim();
     const m = /\(#(\d+)\)$/.exec(subject);
     return m ? `https://github.com/${linkRepo}/pull/${m[1]}` : null;
@@ -438,6 +443,7 @@ async function main() {
   const armed = process.env.FAST_TIER_ARMED === 'true';
   const rawTags = execFileSync('git', ['tag', '--list', 'v*-beta.*', '--sort=-version:refname'], {
     encoding: 'utf8',
+    env: gitCleanEnv(),
   });
   const betaTags = parseBetaTags(rawTags);
   const latestStableSha = resolveLatestStableSha();

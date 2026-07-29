@@ -36,7 +36,7 @@ function sanitizeErrorMessage(value) {
 }
 
 function run(command, args, options = {}) {
-  // Drop inherited GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE: every git spawn in
+  // Drop inherited GIT_* repo-targeting vars: every git spawn in
   // this script targets an explicit clone/worktree via cwd, never the repo a
   // calling git hook belongs to. In CI these variables are unset (no-op);
   // locally they leak from pre-push/pre-commit hooks into harnesses that
@@ -46,7 +46,12 @@ function run(command, args, options = {}) {
   const {
     GIT_DIR: _d,
     GIT_WORK_TREE: _w,
+    GIT_COMMON_DIR: _c,
     GIT_INDEX_FILE: _i,
+    GIT_OBJECT_DIRECTORY: _o,
+    GIT_ALTERNATE_OBJECT_DIRECTORIES: _a,
+    GIT_NAMESPACE: _n,
+    GIT_PREFIX: _p,
     ...cleanEnv
   } = { ...process.env, ...options.env };
   try {
@@ -997,7 +1002,6 @@ async function syncPublicPr() {
     internalPr,
     forceDraft: hasConflicts,
   });
-
 }
 
 async function closeLinkedInternalPr() {
