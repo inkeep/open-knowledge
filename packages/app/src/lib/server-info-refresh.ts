@@ -18,15 +18,16 @@
  * `lastDiskAckedSV` watermark so the mismatch-recycle baseline-
  * selection always operates on fresh data.
  *
- * Mostly idempotent: `compareAndUpdateObservedBranch` returns false
- * unless the branch actually changed, and `observeDiskAckBatch`
- * overwrites in-place. `setExpectedServerInstanceId` is NOT — the pool
- * assigns unconditionally (see provider-pool.ts), so a refresh that
- * observes a rotated server id overwrites the cached epoch even while
- * per-doc providers are still learning of the rotation through auth
- * rejection, and their recycle dedupe then compares against the
- * already-updated value. Do not rely on this path to no-op on
- * unchanged ids until the pool owns epoch transitions.
+ * Idempotent on an unchanged server: `compareAndUpdateObservedBranch`
+ * returns false unless the branch actually changed,
+ * `observeDiskAckBatch` overwrites in-place, and
+ * `setExpectedServerInstanceId` early-returns on a matching id. When the
+ * id does NOT match, this path is a rotation report rather than a cache
+ * write — the pool routes it through the same epoch transition a
+ * rejected auth claim takes, and recycles. That matters here because
+ * `__system__` carries no epoch claim of its own, so this refresher is
+ * often the first channel to observe a rotation while per-doc providers
+ * are still retrying tokens frozen with the dead epoch.
  *
  * Silent on failure: endpoint unavailability falls back to the
  * existing recovery paths (auth-token-claim mismatch on next provider

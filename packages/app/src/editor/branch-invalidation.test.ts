@@ -216,6 +216,107 @@ describe('handleBranchSwitched', () => {
     expect(pool.__test_hasBufferedUpdate(d1)).toBe(false);
     expect(pool.__test_hasBufferedUpdate(d2)).toBe(false);
   });
+
+  // One `/api/server-info` response can report a rotated epoch AND a changed
+  // branch — the late-join case the refresher exists for. The refresher
+  // observes the epoch first, so by the time the branch decision resolves a
+  // recycle is already in flight over the same entries.
+  test('stands down while a server-instance-mismatch recycle owns the pool', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      pool = new ProviderPool(3, DUMMY_WS);
+      pool.setExpectedServerInstanceId(TEST_SERVER_INSTANCE_ID);
+      pool.setObservedBranch('main');
+      const d1 = docName('combined');
+      const entry = pool.open(d1);
+      if (!entry) throw new Error('expected entry');
+      pool.setActive(d1);
+      await awaitAttachedPersistence(entry);
+
+      // Same order `refreshServerInfo` dispatches in.
+      pool.setExpectedServerInstanceId('server-rotated');
+      expect(pool.isMismatchRecycleInFlight()).toBe(true);
+      await handleBranchSwitched(pool, 'feature');
+
+      const deferred = warnSpy.mock.calls.filter(([first]) => {
+        if (typeof first !== 'string') return false;
+        try {
+          return (
+            (JSON.parse(first) as { event?: string }).event ===
+            'ok-branch-switched-deferred-to-mismatch-recycle'
+          );
+        } catch {
+          return false;
+        }
+      });
+      expect(deferred.length).toBe(1);
+
+      await pool.awaitMismatchSettled();
+
+      // Exactly one whole-pool invalidation ran, not two.
+      const recycleAlls = infoSpy.mock.calls.filter(([first]) => {
+        if (typeof first !== 'string') return false;
+        try {
+          return (JSON.parse(first) as { event?: string }).event === 'ok-pool-recycle-all';
+        } catch {
+          return false;
+        }
+      });
+      expect(recycleAlls.length).toBe(1);
+    } finally {
+      warnSpy.mockRestore();
+      infoSpy.mockRestore();
+    }
+  });
+
+  // The stand-down is only safe because the discard policy is enforced where
+  // the buffer is consumed rather than only at this entry point.
+  test('a buffer captured on another branch is discarded rather than replayed', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      pool = new ProviderPool(3, DUMMY_WS);
+      pool.setExpectedServerInstanceId(TEST_SERVER_INSTANCE_ID);
+      pool.setObservedBranch('main');
+      const d1 = docName('provenance');
+      const entry = pool.open(d1);
+      if (!entry) throw new Error('expected entry');
+      pool.setActive(d1);
+      await awaitAttachedPersistence(entry);
+
+      // A recycle installs the replay listener on the fresh provider.
+      entry.provider.emit('authenticationFailed', { reason: 'server-instance-mismatch' });
+      await pool.awaitMismatchSettled();
+      const fresh = pool.entries.get(d1);
+      if (!fresh || fresh.kind !== 'active') throw new Error('expected a recycled entry');
+
+      // Stage a buffer whose provenance is the branch we are leaving, then
+      // move the pool to the new branch before the fresh provider syncs.
+      pool.__test_seedBufferedUpdate(d1, new Uint8Array([0x01, 0x02]), { branch: 'main' });
+      pool.setObservedBranch('feature');
+      fresh.provider.emit('synced', { state: true });
+
+      const deadline = Date.now() + 2_000;
+      while (pool.__test_hasBufferedUpdate(d1) && Date.now() < deadline) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      }
+      expect(pool.__test_hasBufferedUpdate(d1)).toBe(false);
+
+      const fenced = warnSpy.mock.calls.filter(([first]) => {
+        if (typeof first !== 'string') return false;
+        try {
+          return (
+            (JSON.parse(first) as { event?: string }).event === 'ok-buffer-replay-branch-mismatch'
+          );
+        } catch {
+          return false;
+        }
+      });
+      expect(fenced.length).toBe(1);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
 });
 
 describe('ProviderPool.close drains bufferedUpdates', () => {

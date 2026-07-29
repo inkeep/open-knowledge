@@ -494,9 +494,16 @@ export class ProviderPool {
   /**
    * Live server instance ID observed from `/api/server-info` or CC1
    * `server-info`. Drives the auth-token claim and the
-   * `serverInstanceId` segment of the IndexedDB DB name. Cleared on
-   * mismatch so the next epoch cleanly transitions through
-   * `whenServerInstanceKnown()` + `attachDeferredPersistence`.
+   * `serverInstanceId` segment of the IndexedDB DB name.
+   *
+   * An epoch transition clears it only while it still holds the epoch just
+   * proven dead, so a fresher one observed on another channel survives to be
+   * claimed by the entries the recycle re-opens. What follows the clear
+   * depends on how the rotation was learned: the auth-rejection arm leaves
+   * the field null until a later observation adopts an epoch through
+   * `whenServerInstanceKnown()` + `attachDeferredPersistence`, while an
+   * observation that already carries the new epoch adopts it inline and
+   * leaves re-attachment to the recycle's own re-opens.
    */
   private cachedServerInstanceId: string | null = null;
   /**
@@ -507,10 +514,11 @@ export class ProviderPool {
    * allocate a fresh handle bound to the next epoch transition.
    *
    * `null` arg to `setExpectedServerInstanceId` does NOT reject — the
-   * pending handle stays alive until a real epoch lands. This matches the
-   * mismatch-recycle path: the handler clears `cachedServerInstanceId` to
-   * null mid-recovery, then the boot/refresh fetch races the new id back
-   * into place.
+   * pending handle stays alive until a real epoch lands. That matters on the
+   * auth-rejection arm, where the transition clears the epoch mid-recovery
+   * and a later boot/refresh fetch races the new one back into place. An
+   * observation that reports the rotation directly has no such window: it
+   * resolves the handle inline, in the same call that starts the transition.
    */
   private pendingServerInstanceKnown: {
     promise: Promise<string>;
@@ -522,6 +530,24 @@ export class ProviderPool {
    * structured client telemetry alongside `docName` / `branch`.
    */
   private recoveryMismatchStaleClaim: string | undefined;
+  /**
+   * Dead epochs whose transition has already been routed through
+   * `handleServerInstanceMismatch`.
+   *
+   * Dedupe keys on the stale claim VALUE rather than on
+   * `cachedServerInstanceId` equality. That field is the live-epoch cache
+   * (auth claim + IDB name) and has more than one legitimate writer, so
+   * using it as the latch let an unrelated writer decide whether a
+   * transition had run: an epoch observed over HTTP while per-doc providers
+   * were still retrying a frozen stale claim used to suppress their recycle
+   * entirely. The claim value is immutable per provider and cannot be
+   * disturbed that way.
+   *
+   * Bounded by construction — a provider freezes exactly one claim at
+   * admission, so the set holds at most one entry per pool slot within a
+   * recycle window, and it is dropped when the recycle settles.
+   */
+  private readonly handledStaleClaims = new Set<string>();
   /**
    * Unsynced-edit buffer captured per-doc during a `server-instance-mismatch`
    * recycle. Populated right before `clearData()` wipes IDB; drained at the
@@ -651,29 +677,74 @@ export class ProviderPool {
   }
 
   /**
-   * Update the live server instance ID observed from `/api/server-info` or CC1
-   * `server-info`. Does NOT overwrite the storage-backed IDB-associated ID:
-   * a fast boot fetch after server restart must not mask stale IDB contents
-   * before the first document provider opens.
+   * Observe the live server epoch reported by `/api/server-info` or CC1
+   * `server-info`. This is an observation entry point, not a field setter:
+   * the pool owns the epoch-transition contract, and every channel that can
+   * learn of a rotation (HTTP refresh, CC1 push, a rejected auth claim) is a
+   * reporter routed through the same handling.
    *
-   * On a non-null id this also (a) resolves any pending
-   * `whenServerInstanceKnown()` handle and (b) retroactively attaches
-   * persistence to entries opened during the cold-boot window before the
-   * epoch was known. Persistence is `IndexeddbPersistence`-backed and the
-   * DB-name shape `ok-ydoc:${branch}:${serverInstanceId}:${docName}`
-   * carries the epoch as a structural correctness signal; opening a
-   * provider before the live epoch is known means the DB cannot be
-   * attached at admission time without picking the wrong epoch.
+   * Three observations, three outcomes:
+   *
+   * - **Same epoch** — no-op. The common case on every `__system__`
+   *   reconnect when the server did not restart.
+   * - **First epoch after boot or after a recycle** (`null` → id) — adopt.
+   *   Resolves any pending `whenServerInstanceKnown()` handle and
+   *   retroactively attaches persistence to entries opened during the
+   *   window before the epoch was known. Persistence is
+   *   `IndexeddbPersistence`-backed and the DB-name shape
+   *   `ok-ydoc:${branch}:${serverInstanceId}:${docName}` carries the epoch
+   *   as a structural correctness signal, so a provider opened before the
+   *   live epoch is known cannot attach at admission time without picking
+   *   the wrong epoch.
+   * - **Rotation** (idA → idB) — route through the same transition handler
+   *   the auth-rejection path uses, then adopt idB. Learning that the
+   *   server rotated from an HTTP response is semantically identical to
+   *   learning it from a rejected claim, and the per-doc providers holding
+   *   frozen claims on idA cannot deliver that news themselves once the
+   *   token-less `__system__` channel has already reported it.
+   *
+   * Does NOT overwrite the storage-backed IDB-associated ID: a fast boot
+   * fetch after a server restart must not mask stale IDB contents before
+   * the first document provider opens.
    */
   setExpectedServerInstanceId(id: string | null): void {
-    this.cachedServerInstanceId = id;
-    if (id === null || id.length === 0) return;
-    if (this.pendingServerInstanceKnown !== null) {
-      const pending = this.pendingServerInstanceKnown;
-      this.pendingServerInstanceKnown = null;
-      pending.resolve(id);
+    const observed = id !== null && id.length > 0 ? id : null;
+    const known =
+      this.cachedServerInstanceId !== null && this.cachedServerInstanceId.length > 0
+        ? this.cachedServerInstanceId
+        : null;
+
+    if (known !== null && observed === known) return;
+
+    if (known !== null && observed !== null) {
+      // The handler drops the dead epoch from the cache before it runs, so
+      // it sees the same "no live epoch" state the auth-rejection path
+      // hands it. Adoption of the new epoch happens below, after the
+      // transition is under way, so the entries the recycle re-opens claim
+      // the epoch that is actually live.
+      this.handleServerInstanceMismatch(known);
+      this.cachedServerInstanceId = observed;
+      this.resolvePendingServerInstanceKnown(observed);
+      // Deliberately no `attachDeferredPersistence` here. The recycle
+      // re-opens every entry and attaches persistence at admission under
+      // the new epoch; attaching mid-transition would instead bind a
+      // pre-restart Y.Doc to a fresh-epoch IDB and seed it with the exact
+      // stale state the recycle exists to discard.
+      return;
     }
-    this.attachDeferredPersistence(id);
+
+    this.cachedServerInstanceId = id;
+    if (observed === null) return;
+    this.resolvePendingServerInstanceKnown(observed);
+    this.attachDeferredPersistence(observed);
+  }
+
+  /** Hand a newly-adopted epoch to whoever is waiting on one. */
+  private resolvePendingServerInstanceKnown(id: string): void {
+    if (this.pendingServerInstanceKnown === null) return;
+    const pending = this.pendingServerInstanceKnown;
+    this.pendingServerInstanceKnown = null;
+    pending.resolve(id);
   }
 
   /**
@@ -1926,9 +1997,12 @@ export class ProviderPool {
     //      bytes back onto the Y.Doc so the user's unsynced edits survive.
     //
     // Idempotence: after a server restart, every open provider fires
-    // authenticationFailed in quick succession. The first call clears the
-    // IDB-associated claim; sibling failures with the same stale claim then
-    // short-circuit while preserving any already-observed fresh server ID.
+    // authenticationFailed in quick succession. The transition handler
+    // dedupes on the stale claim value, so siblings reporting the same dead
+    // epoch short-circuit there, and an in-flight recycle collapses siblings
+    // reporting different ones. Clearing the cached epoch is a consequence of
+    // the transition, not the dedupe mechanism, and is conditional so a
+    // fresher epoch already observed on another channel survives.
     const onAuthenticationFailed = ({ reason }: { reason: string }): void => {
       // Trust-boundary narrow: `reason` is a wire-foreign string from
       // Hocuspocus. Inlined (not imported from the server's runtime
@@ -1969,20 +2043,14 @@ export class ProviderPool {
       const payload: string | undefined = rawPayload.length > 0 ? rawPayload : undefined;
       const typed = candidateKind as HocuspocusAuthRejectionReason;
       if (typed === 'server-instance-mismatch') {
-        // `expectedServerInstanceId` is the claim this provider sent at
-        // construction time. Idempotence: the first authenticationFailed
-        // for this epoch transition clears `cachedServerInstanceId`;
-        // every later sibling event observes `cached !== expected` and
-        // short-circuits so the recycle path runs exactly once.
+        // `expectedServerInstanceId` is the claim this provider froze at
+        // construction time, and the rejection proves that epoch is dead.
+        // Idempotence lives in the transition handler, keyed by the claim
+        // value: a provider admitted without a claim has nothing to report.
         if (expectedServerInstanceId === null) {
           return;
         }
-        if (this.cachedServerInstanceId !== expectedServerInstanceId) {
-          return;
-        }
-        const staleClaimFromToken = expectedServerInstanceId;
-        this.cachedServerInstanceId = null;
-        this.handleServerInstanceMismatch(staleClaimFromToken);
+        this.handleServerInstanceMismatch(expectedServerInstanceId);
         return;
       }
       // Branch-mismatch is the late-join backstop for the cross-branch
@@ -2169,6 +2237,22 @@ export class ProviderPool {
       let tokenBacked: boolean;
       const buffered = this.bufferedUpdates.get(docName);
       if (buffered !== undefined) {
+        if (buffered.branch !== branch) {
+          // Provenance fence. The buffer was captured against a different
+          // branch's content, and edits authored on one branch are not valid
+          // against another's — the same "discard, don't preserve" policy the
+          // cross-branch invalidation applies, enforced here so it holds no
+          // matter which channel triggered this recycle. Discard drops the
+          // RAM copy and its durable mirror together, so the branch this
+          // buffer belonged to keeps no resurrectable record.
+          this.discardBufferedUpdate(docName);
+          this.emitStructuredClientRecoveryEvent({
+            event: 'ok-buffer-replay-branch-mismatch',
+            ...this.recoveryTelemetryBase(docName, staleClaimAtReplayInstall),
+            reason: 'buffer-captured-on-another-branch',
+          });
+          return;
+        }
         this.bufferedUpdates.delete(docName);
         source = buffered;
         tokenBranch = buffered.branch;
@@ -2400,6 +2484,38 @@ export class ProviderPool {
    * never rethrown into Hocuspocus's event emitter.
    */
   private handleServerInstanceMismatch(staleClaimedServerInstanceId: string): void {
+    if (this.handledStaleClaims.has(staleClaimedServerInstanceId)) {
+      // The claim rides along because these breadcrumbs are the diagnostic
+      // for this race, and "dedupe fired" without "for which epoch" cannot be
+      // correlated across a burst. Server instance ids are server-generated
+      // UUIDs, so the cardinality discipline is satisfied.
+      this.emitStructuredClientBreadcrumb({
+        event: 'ok-pool-mismatch-transition-deduped',
+        reason: 'claim-already-handled',
+        staleClaim: staleClaimedServerInstanceId,
+      });
+      return;
+    }
+    this.handledStaleClaims.add(staleClaimedServerInstanceId);
+    // Drop the cache only while it still holds the epoch just proven dead.
+    // A fresher epoch already observed on another channel must survive so
+    // the entries this recycle re-opens claim the one that is live.
+    if (this.cachedServerInstanceId === staleClaimedServerInstanceId) {
+      this.cachedServerInstanceId = null;
+    }
+    if (this.mismatchInFlight !== null) {
+      // A recycle already covers every pool entry, so a sibling transition
+      // reported under a different stale claim must not start a second one.
+      // Claim-keyed dedupe alone would miss this collapse.
+      this.emitStructuredClientBreadcrumb({
+        event: 'ok-pool-mismatch-transition-deduped',
+        reason: 'recycle-in-flight',
+        staleClaim: staleClaimedServerInstanceId,
+        inflightForClaim: this.recoveryMismatchStaleClaim ?? '',
+      });
+      return;
+    }
+
     this.recoveryMismatchStaleClaim =
       staleClaimedServerInstanceId.length > 0 ? staleClaimedServerInstanceId : undefined;
 
@@ -2654,6 +2770,13 @@ export class ProviderPool {
     ).finally(() => {
       if (this.mismatchInFlight === inflight) {
         this.mismatchInFlight = null;
+        // Every entry has been re-opened under a fresh claim, so nothing
+        // in the pool can still report these epochs. Dropping them keeps
+        // the set bounded and leaves the retry path open for an entry the
+        // recycle left inert on a failed clear: its next rejection carries
+        // the same claim and gets a real transition rather than a silent
+        // bail.
+        this.handledStaleClaims.clear();
       }
     });
     this.mismatchInFlight = inflight;
@@ -2762,6 +2885,19 @@ export class ProviderPool {
    */
   awaitMismatchSettled(): Promise<void> {
     return this.mismatchInFlight ?? Promise.resolve();
+  }
+
+  /**
+   * True while a `server-instance-mismatch` recycle owns the pool.
+   *
+   * The stand-down signal for any other whole-pool invalidation. `flushOnHide`
+   * and `resyncOnVisible` read the private field directly; the cross-branch
+   * invalidation lives outside this class and needs the same answer, because
+   * one `/api/server-info` dispatch can report a rotated epoch and a changed
+   * branch together and must still run a single invalidation.
+   */
+  isMismatchRecycleInFlight(): boolean {
+    return this.mismatchInFlight !== null;
   }
 
   /**
@@ -3326,6 +3462,9 @@ export class ProviderPool {
     // harness) starts from a clean slate. Leaving the flag set would
     // cause the next pool to retry a clear we've already abandoned.
     this.clearFailures.clear();
+    // Epoch-transition dedupe is per-pool: a fresh pool holds no providers
+    // that could still report these claims.
+    this.handledStaleClaims.clear();
     // In-memory lineage records die with the pool; the storage envelope
     // deliberately survives — a fresh pool (new tab, HMR remount) re-reads
     // and instance-validates it, which is the cross-tab channel the
@@ -3334,6 +3473,9 @@ export class ProviderPool {
     this.docLineageEpochsEnvelopeConsumed = false;
     this.onBranchMismatch = null;
     this.branchMismatchInFlight = null;
+    // Same reset as its branch-side sibling: a disposed pool must not report
+    // a recycle as in flight, or the stand-down would latch on forever.
+    this.mismatchInFlight = null;
     this.onRenameRedirect = null;
     this.onDocDeleted = null;
     this.evictListeners.clear();

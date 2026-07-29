@@ -48,7 +48,11 @@ type BranchSwitchedClearFailedLog = z.infer<typeof BranchSwitchedClearFailedLogS
  * `clearBufferedUpdates()` those bytes (captured against branch A's Y.Doc)
  * would replay onto branch B the next time the user opened the affected
  * doc. The branch-switch policy is "discard, don't preserve" — apply it
- * to the in-memory buffer slot, not just the IDB layer.
+ * to the in-memory buffer slot, not just the IDB layer. The pool's replay
+ * drain fences on the same policy independently (it declines any buffer
+ * whose capture branch differs from the live one), which is what makes the
+ * stand-down below safe; this eager drop stays because it releases the
+ * durable mirror rather than waiting for a reopen to discover it.
  *
  * `clearData` failures are caught per-entry and logged as structured
  * `ok-branch-switched-clear-failed` warn events so the recycle still
@@ -56,6 +60,25 @@ type BranchSwitchedClearFailedLog = z.infer<typeof BranchSwitchedClearFailedLogS
  * the pool stranded on branch A.
  */
 export async function handleBranchSwitched(pool: ProviderPool, branch: string): Promise<void> {
+  // Stand down while a server-instance-mismatch recycle owns the pool. One
+  // `/api/server-info` response can report both a rotated epoch and a changed
+  // branch, and the CC1 push has the same composition; running a second
+  // invalidation over the same entries would tear down providers the recycle
+  // just re-opened and advance the restart-recovery state machine off a
+  // snapshot this pass had already replaced. The recycle does everything this
+  // function would: it clears every entry's IDB and re-opens all of them
+  // against the branch the pool now holds. The buffer policy still differs and
+  // is the stricter one, but it no longer needs forcing from here — the replay
+  // drain fences on the buffer's own capture branch, so edits authored against
+  // the previous branch are discarded wherever the recycle came from. Same
+  // stand-down `flushOnHide` and `resyncOnVisible` take.
+  if (pool.isMismatchRecycleInFlight()) {
+    console.warn(
+      JSON.stringify({ event: 'ok-branch-switched-deferred-to-mismatch-recycle', branch }),
+    );
+    return;
+  }
+
   const clears: Promise<void>[] = [];
   for (const [docName, entry] of pool.entries) {
     // TearingDown entries are transient and don't carry persistence.

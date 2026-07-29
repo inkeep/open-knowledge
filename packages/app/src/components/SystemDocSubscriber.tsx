@@ -50,6 +50,14 @@ export function SystemDocSubscriber() {
   useEffect(() => {
     if (collabUrl === null) return;
     const doc = new Y.Doc();
+    // STOP: this provider must stay token-less. It is the only channel by
+    // which a live client learns that the server rotated its instance id,
+    // and it can only be that channel because it carries no epoch claim for
+    // the server to reject. Giving it a claim-bearing token makes it fail
+    // authentication after every restart; it has no `authenticationFailed`
+    // handler and this effect does not re-run, so `refreshServerInfo` would
+    // never fire and the pool would never learn the new epoch — turning an
+    // intermittent single-doc stall into a deterministic total one.
     const provider = new HocuspocusProvider({
       url: collabUrl,
       name: SYSTEM_DOC_NAME,

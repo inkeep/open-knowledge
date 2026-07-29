@@ -2205,6 +2205,235 @@ describe("ProviderPool authenticationFailed handling (US-002 / 'server-instance-
   });
 });
 
+// ---------------------------------------------------------------------------
+// Epoch observation as a transition, not a field write.
+//
+// `cachedServerInstanceId` serves two masters: it is the live-epoch cache
+// (auth claim + IDB name) AND it used to be the recycle-dedupe latch. Any
+// independent writer of the field could therefore disarm the latch. The
+// token-less `__system__` provider is exactly such a writer: it carries no
+// epoch claim, so the server never rejects it, and its post-restart refresh
+// reaches `setExpectedServerInstanceId` while per-doc providers are still
+// retrying a frozen stale claim. These tests pin the ordering both ways.
+// ---------------------------------------------------------------------------
+describe('ProviderPool epoch-transition observation', () => {
+  /** Count of `handleServerInstanceMismatch` entries that reached the recycle. */
+  function countRecycles(infoSpy: ReturnType<typeof vi.spyOn>): number {
+    return infoSpy.mock.calls.filter(([first]) => {
+      if (typeof first !== 'string') return false;
+      try {
+        return (JSON.parse(first) as { event?: string }).event === 'ok-pool-mismatch-recycle-begin';
+      } catch {
+        return false;
+      }
+    }).length;
+  }
+
+  test('observing a rotated epoch over HTTP recycles the pool', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      pool = new ProviderPool(3, DUMMY_WS, { storage: null });
+      pool.setExpectedServerInstanceId('server-old');
+      const entry = pool.open('doc1');
+      if (!entry) throw new Error('expected entry');
+      pool.setActive('doc1');
+      const originalProvider = entry.provider;
+
+      // The refresher's sole pool call. Learning of a rotation here is
+      // semantically identical to learning of it from a rejected claim.
+      pool.setExpectedServerInstanceId('server-new');
+      await pool.awaitMismatchSettled();
+
+      expect(countRecycles(infoSpy)).toBe(1);
+      expect(pool.entries.get('doc1')?.provider).not.toBe(originalProvider);
+      // The transition must end with the observed epoch adopted, not merely
+      // cleared — otherwise the re-opened providers carry no claim at all.
+      expect(await pool.whenServerInstanceKnown()).toBe('server-new');
+    } finally {
+      infoSpy.mockRestore();
+    }
+  });
+
+  test('a stale claim rejected after the refresh landed the new epoch still recycles exactly once', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      pool = new ProviderPool(3, DUMMY_WS, { storage: null });
+      pool.setExpectedServerInstanceId('server-old');
+      const entry = pool.open('doc1');
+      if (!entry) throw new Error('expected entry');
+      pool.setActive('doc1');
+      const originalProvider = entry.provider;
+
+      // The suppression interleaving: the token-less refresh wins the race
+      // to the pool, then the per-doc provider's frozen stale claim is
+      // rejected. Dedupe keys on the claim VALUE, so the epoch the refresh
+      // just cached cannot decide whether the transition already ran.
+      pool.setExpectedServerInstanceId('server-new');
+      originalProvider.emit('authenticationFailed', { reason: 'server-instance-mismatch' });
+      await pool.awaitMismatchSettled();
+
+      expect(countRecycles(infoSpy)).toBe(1);
+      expect(pool.entries.get('doc1')?.provider).not.toBe(originalProvider);
+      // Without the adoption the pool would recycle onto a null epoch and the
+      // re-opened providers would claim nothing, silently dropping the fence.
+      expect(await pool.whenServerInstanceKnown()).toBe('server-new');
+    } finally {
+      infoSpy.mockRestore();
+    }
+  });
+
+  test('a stale claim rejected before the refresh lands still recycles exactly once', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      pool = new ProviderPool(3, DUMMY_WS, { storage: null });
+      pool.setExpectedServerInstanceId('server-old');
+      const entry = pool.open('doc1');
+      if (!entry) throw new Error('expected entry');
+      pool.setActive('doc1');
+
+      entry.provider.emit('authenticationFailed', { reason: 'server-instance-mismatch' });
+      // The refresh that follows the recycle is an adoption, not a second
+      // transition — the pool no longer holds the dead epoch.
+      pool.setExpectedServerInstanceId('server-new');
+      await pool.awaitMismatchSettled();
+
+      expect(countRecycles(infoSpy)).toBe(1);
+    } finally {
+      infoSpy.mockRestore();
+    }
+  });
+
+  test('re-observing the same epoch is a no-op', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      pool = new ProviderPool(3, DUMMY_WS, { storage: null });
+      pool.setExpectedServerInstanceId('server-old');
+      const entry = pool.open('doc1');
+      if (!entry) throw new Error('expected entry');
+      pool.setActive('doc1');
+      const originalProvider = entry.provider;
+
+      pool.setExpectedServerInstanceId('server-old');
+      await pool.awaitMismatchSettled();
+
+      expect(countRecycles(infoSpy)).toBe(0);
+      expect(pool.entries.get('doc1')?.provider).toBe(originalProvider);
+      expect(await pool.whenServerInstanceKnown()).toBe('server-old');
+    } finally {
+      infoSpy.mockRestore();
+    }
+  });
+
+  test('the first epoch observed after boot is adopted without a recycle', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      pool = new ProviderPool(3, DUMMY_WS, { storage: null });
+      const entry = pool.open('doc1');
+      if (!entry) throw new Error('expected entry');
+      pool.setActive('doc1');
+      const originalProvider = entry.provider;
+
+      pool.setExpectedServerInstanceId('server-first');
+      await pool.awaitMismatchSettled();
+
+      expect(countRecycles(infoSpy)).toBe(0);
+      expect(pool.entries.get('doc1')?.provider).toBe(originalProvider);
+    } finally {
+      infoSpy.mockRestore();
+    }
+  });
+
+  test('an epoch re-observed after a recycle is adopted without a second recycle', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      pool = new ProviderPool(3, DUMMY_WS, { storage: null });
+      pool.setExpectedServerInstanceId('server-old');
+      const entry = pool.open('doc1');
+      if (!entry) throw new Error('expected entry');
+      pool.setActive('doc1');
+
+      pool.setExpectedServerInstanceId('server-new');
+      await pool.awaitMismatchSettled();
+      // A second refresh observing the epoch the pool already adopted.
+      pool.setExpectedServerInstanceId('server-new');
+      await pool.awaitMismatchSettled();
+
+      expect(countRecycles(infoSpy)).toBe(1);
+    } finally {
+      infoSpy.mockRestore();
+    }
+  });
+
+  test('two providers holding distinct stale claims collapse into one recycle', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      pool = new ProviderPool(3, DUMMY_WS, { storage: null });
+      pool.setExpectedServerInstanceId('server-a');
+      const e1 = pool.open('doc1');
+      if (!e1) throw new Error('expected entry');
+      pool.setActive('doc1');
+      // Adopt a second epoch without a transition — the null-then-id shape the
+      // auth-rejection arm leaves behind mid-recovery. The entry admitted
+      // afterwards freezes a different claim, so both providers are live and
+      // claim-keyed dedupe alone cannot collapse them.
+      pool.setExpectedServerInstanceId(null);
+      pool.setExpectedServerInstanceId('server-b');
+      const e2 = pool.open('doc2');
+      if (!e2) throw new Error('expected entry');
+
+      const recyclesBefore = countRecycles(infoSpy);
+      e2.provider.emit('authenticationFailed', { reason: 'server-instance-mismatch' });
+      // e1 froze its claim under the earlier epoch, so claim-keyed dedupe
+      // does not cover it — only the in-flight latch collapses this one.
+      expect(pool.isMismatchRecycleInFlight()).toBe(true);
+      e1.provider.emit('authenticationFailed', { reason: 'server-instance-mismatch' });
+      await pool.awaitMismatchSettled();
+
+      expect(countRecycles(infoSpy) - recyclesBefore).toBe(1);
+      const collapsed = infoSpy.mock.calls.filter(([first]) => {
+        if (typeof first !== 'string') return false;
+        try {
+          const parsed = JSON.parse(first) as { event?: string; reason?: string };
+          return (
+            parsed.event === 'ok-pool-mismatch-transition-deduped' &&
+            parsed.reason === 'recycle-in-flight'
+          );
+        } catch {
+          return false;
+        }
+      });
+      expect(collapsed.length).toBe(1);
+      // Both halves: the claim that was collapsed, and the one the running
+      // recycle belongs to. Correlating a burst needs the pair.
+      const collapsedFields = JSON.parse(String(collapsed[0]?.[0])) as {
+        staleClaim?: string;
+        inflightForClaim?: string;
+      };
+      expect(collapsedFields.staleClaim).toBe('server-a');
+      expect(collapsedFields.inflightForClaim).toBe('server-b');
+    } finally {
+      infoSpy.mockRestore();
+    }
+  });
+
+  test('a disposed pool no longer reports a recycle in flight', async () => {
+    pool = new ProviderPool(3, DUMMY_WS, { storage: null });
+    pool.setExpectedServerInstanceId('server-old');
+    const entry = pool.open('doc1');
+    if (!entry) throw new Error('expected entry');
+    pool.setActive('doc1');
+
+    entry.provider.emit('authenticationFailed', { reason: 'server-instance-mismatch' });
+    expect(pool.isMismatchRecycleInFlight()).toBe(true);
+    pool.dispose();
+
+    // A latched flag would make every later whole-pool invalidation stand
+    // down against a recycle that can never settle.
+    expect(pool.isMismatchRecycleInFlight()).toBe(false);
+    pool = new ProviderPool(3, DUMMY_WS, { storage: null });
+  });
+});
+
 describe('ProviderPool syncPromise lifecycle integration (F15)', () => {
   beforeEach(() => {
     __resetSyncPromiseCache();
@@ -4144,7 +4373,7 @@ describe('ProviderPool provider-open gating', () => {
     }
   });
 
-  test('setExpectedServerInstanceId is a no-op for entries that already have persistence attached', async () => {
+  test('re-observing the live epoch leaves already-attached persistence alone', async () => {
     pool = new ProviderPool(3, DUMMY_WS);
     pool.setExpectedServerInstanceId('server-warm');
     const docName = uniqueDocName('pp-warm');
@@ -4152,10 +4381,31 @@ describe('ProviderPool provider-open gating', () => {
     if (!entry) throw new Error('expected entry');
     const persistenceBefore = await awaitAttachedPersistence(entry);
 
-    pool.setExpectedServerInstanceId('server-warm-update');
+    pool.setExpectedServerInstanceId('server-warm');
     await wait(20);
     if (entry.kind !== 'active') throw new Error('expected entry to remain active');
     expect(entry.persistence).toBe(persistenceBefore);
+  });
+
+  test('observing a rotated epoch recycles the entry onto fresh persistence', async () => {
+    pool = new ProviderPool(3, DUMMY_WS);
+    pool.setExpectedServerInstanceId('server-warm');
+    const docName = uniqueDocName('pp-rotate');
+    const entry = pool.open(docName);
+    if (!entry) throw new Error('expected entry');
+    const persistenceBefore = await awaitAttachedPersistence(entry);
+
+    pool.setExpectedServerInstanceId('server-warm-update');
+    await pool.awaitMismatchSettled();
+
+    // The pre-rotation entry cannot keep serving: its Y.Doc merged items
+    // under the previous server's clientID and its IDB is epoch-scoped to
+    // the dead epoch.
+    const replaced = pool.entries.get(docName);
+    expect(replaced?.provider).not.toBe(entry.provider);
+    if (replaced !== undefined && replaced.kind === 'active' && replaced.persistence !== null) {
+      expect(replaced.persistence).not.toBe(persistenceBefore);
+    }
   });
 
   test('setExpectedServerInstanceId(null) does not detach already-attached persistence', async () => {
