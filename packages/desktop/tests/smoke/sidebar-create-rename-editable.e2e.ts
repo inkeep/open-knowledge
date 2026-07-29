@@ -9,11 +9,11 @@ import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { SMOKE_ENABLED } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget({ requirePackaged: true });
 
-const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
 
 interface SeededProject {
@@ -141,7 +141,16 @@ async function createSidebarFileAndType(
 
 test.describe('Sidebar create and rename editability smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
-  test.skip(!DARWIN, 'Smoke harness is darwin-only in v0.');
+  // Deliberately NOT cross-platform, unlike its un-gated siblings: this spec
+  // drives the PACKAGED app, and `resolveDesktopTarget({requirePackaged:true})`
+  // falls back to the mac-arm64 `.app`. Off-mac the target never exists, so a
+  // `PLATFORM_SUPPORTED` gate here would read as cross-platform coverage while
+  // the spec silently skipped on Windows and Linux — worse than an honest
+  // darwin-only gate. Making it genuinely cross-platform means resolving the
+  // per-OS unpacked path AND packaging before the smoke run rather than after;
+  // the crossbuild job does the reverse, on purpose (a packaging breach must
+  // not skip the smoke signal).
+  test.skip(!DARWIN, 'Drives the packaged mac .app; see comment.');
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('successive sidebar-created files remain editable after inline rename commit', async ({

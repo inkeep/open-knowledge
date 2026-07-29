@@ -22,9 +22,7 @@
  * Skip gates mirror `deep-link.e2e.ts` and `mcp-wiring.e2e.ts`:
  *   - `OK_DESKTOP_E2E_SMOKE !== '1'` — opt-in so `pnpm exec playwright test` on
  *     the whole repo doesn't try to launch Electron in headless CI.
- *   - `process.platform !== 'darwin'` — the smoke harness is darwin-only in
- *     v0; the IPC plumbing is platform-agnostic and remains exercised by the
- *     Bun unit/integration tests on every platform.
+ *   - unsupported platform — the harness drives darwin / win32 / linux.
  *   - `out/main/index.js` missing — `pnpm run build:desktop` must have run.
  */
 
@@ -34,12 +32,15 @@ import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import {
+  homeEnv,
+  PLATFORM_SKIP_REASON,
+  PLATFORM_SUPPORTED,
+  SMOKE_ENABLED,
+} from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
-
-const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DARWIN = process.platform === 'darwin';
 
 interface SeededHome {
   tmpHome: string;
@@ -95,7 +96,7 @@ async function launchApp(tmpHome: string): Promise<ElectronApplication> {
       timeout: 30_000,
       env: {
         ...process.env,
-        HOME: tmpHome,
+        ...homeEnv(tmpHome),
         OK_DESKTOP_E2E_SMOKE: '1',
       },
     }),
@@ -165,7 +166,7 @@ async function findNavigatorWindow(app: ElectronApplication, timeoutMs = 15_000)
 
 test.describe('Project Navigator return-affordance smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
-  test.skip(!DARWIN, 'Smoke harness is darwin-only in v0.');
+  test.skip(!PLATFORM_SUPPORTED, PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('bridge.navigator.open() opens navigator from editor; re-invokes never spawn a duplicate', async ({

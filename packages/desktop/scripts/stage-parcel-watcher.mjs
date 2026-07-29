@@ -27,10 +27,11 @@
  * Cross-arch: pnpm installs only the host-matching `@parcel/watcher-*` binary,
  * and we stage whatever binary packages are present. The mac DMG is arm64-only
  * (matches the arm64-only host), so its arm64 binary is always present and the
- * fix is complete there. The win/linux dual-arch builds currently stage only
- * the host-arch binary; the other-arch artifact keeps using the chokidar
- * fallback (now subfolder-correct, #760), so it degrades gracefully rather than
- * breaking. Fetching the missing-arch parcel binaries the way
+ * fix is complete there. Linux builds each arch on a runner of that arch, so
+ * both debs get their matching binary. Windows still packages both arches from
+ * one x64 host, so its arm64 installer stages only the x64 binary and falls
+ * back to chokidar (now subfolder-correct, #760) — degraded, not broken.
+ * Fetching the missing-arch parcel binaries the way
  * `prepare-platform-natives.mjs` does for keyring is a follow-up.
  */
 import { cpSync, mkdirSync, readFileSync, rmSync } from 'node:fs';

@@ -53,12 +53,15 @@ import { _electron as electron } from '@playwright/test';
 import { typeProjectName } from './_helpers/create-new-dialog';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { clickNavCreateNew } from './_helpers/navigator-actions';
+import {
+  homeEnv,
+  PLATFORM_SKIP_REASON,
+  PLATFORM_SUPPORTED,
+  SMOKE_ENABLED,
+} from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
-
-const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DARWIN = process.platform === 'darwin';
 
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
@@ -106,7 +109,7 @@ async function launchApp(tmpHome: string, opts: LaunchOpts = {}): Promise<Electr
       args: [`--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
-        HOME: tmpHome,
+        ...homeEnv(tmpHome),
         OK_DESKTOP_E2E_SMOKE: '1',
         ...(opts.pickedParent !== undefined
           ? { OK_DESKTOP_TEST_PICKED_PATH: opts.pickedParent }
@@ -161,7 +164,7 @@ function trackForCleanup(...paths: string[]): void {
 
 test.describe('Create-new-project smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
-  test.skip(!DARWIN, 'Smoke harness is darwin-only.');
+  test.skip(!PLATFORM_SUPPORTED, PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test.afterEach(async () => {
@@ -297,6 +300,14 @@ test.describe('Create-new-project smoke', () => {
   test('promotes project root to git root; content.dir defaults to the git root, not the picked sub-folder', async ({
     captureStderrFor,
   }) => {
+    // Runs on Windows too. It previously failed there — the banner named
+    // `repoRoot` but `.ok/config.yml` never landed at the git root — because
+    // `isDescendantOfHome` compared an 8.3-short home (CI's tmpdir is under
+    // `C:\Users\RUNNER~1\…`, which `realpathSync` does NOT expand) against the
+    // LONG path `git rev-parse --show-toplevel` always reports, so `relative()`
+    // escaped with `..` and promotion silently never fired. Fixed in
+    // `folder-admission.ts` via `realpathSync.native` canonicalization; this
+    // spec is the end-to-end proof of that fix.
     const tmpHome = seedTmpHome('git-confirm');
     // Seed a git repo inside HOME so isDescendantOfHome admits promotion.
     // The picked parent is <repoRoot>/notes; the project name is MyProj; the

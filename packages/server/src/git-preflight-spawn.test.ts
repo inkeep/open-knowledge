@@ -42,12 +42,18 @@ import { OK_DIR } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 
 /**
- * Path of the server-package root (where `package.json` lives). The
- * `import.meta.dir` for this file is `<server>/src/`; strip the trailing
- * `/src` to get the package root that the spawned `bun` uses as its cwd
- * for workspace resolution.
+ * Path of the server-package root (where `package.json` lives) — the cwd the
+ * spawned Node uses for workspace resolution. `import.meta.dir` for this file
+ * is `<server>/src`, so the package root is its parent.
+ *
+ * `resolve(dir, '..')` rather than a `replace(/\/src$/, '')`: the regex matched
+ * a FORWARD-slash suffix, so it silently no-opped on Windows (`...\server\src`
+ * kept its `src`) — and, paired with the old `import.meta.dir` transform that
+ * produced a URL pathname, it stripped the wrong thing and yielded a cwd that
+ * did not exist. Path math belongs in `node:path`, which is separator-correct
+ * on every platform.
  */
-const SERVER_PACKAGE_ROOT = import.meta.dir.replace(/\/src$/, '');
+const SERVER_PACKAGE_ROOT = resolve(import.meta.dir, '..');
 
 function seedOkScaffold(projectDir: string): void {
   const okDir = resolve(projectDir, OK_DIR);

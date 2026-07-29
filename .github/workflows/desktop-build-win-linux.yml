@@ -9,10 +9,18 @@ name: Desktop build (manual, Windows/Linux)
 #
 # Topology: one `prepare` job on ubuntu builds the workspace (the CLI
 # build chain uses `cp -r`/`mkdir -p` bash-isms that don't survive a
-# Windows runner's default shell, and this also keeps the two packaging
+# Windows runner's default shell, and this also keeps the packaging
 # jobs from redundantly rebuilding identical platform-neutral JS), then
 # per-OS jobs do only the platform-specific half: electron-vite build +
-# electron-builder against the prebuilt cli/dist.
+# electron-builder against the prebuilt cli/dist. The Linux job is a
+# two-cell matrix — x64 on `ubuntu-latest`, arm64 on the native
+# `ubuntu-24.04-arm` runner — so each `.deb` carries prebuilt natives for
+# the arch it targets.
+#
+# Artifacts are one-per-installer, each named for the file it holds
+# (OpenKnowledge-Setup-x64 / -arm64, OpenKnowledge-x86_64-AppImage,
+# OpenKnowledge-amd64-deb / -arm64-deb) so an operator can grab just the
+# one they're about to QA. GitHub zips artifacts on download either way.
 #
 # Windows signing (D3, Azure Artifact Signing): OPTIONAL here. When the
 # three AZURE_* secrets + three AZURE_SIGNING_* repo variables are
@@ -237,22 +245,70 @@ jobs:
           fi
           pnpm exec electron-builder --win --publish never "${extra[@]}"
 
-      - name: Upload Windows artifacts
+      # One artifact per installer, each named for the file it carries, so the
+      # operator downloads only the arch they're about to QA instead of pulling
+      # both installers plus metadata as one blob. GitHub zips every artifact on
+      # download regardless, so this is a naming/selection win, not a way to
+      # skip unzipping. The `.exe.blockmap` glob rides along with its installer
+      # and is absent today (`nsis.differentialPackage: false`) — a per-arch
+      # glob keeps `if-no-files-found: error` meaningful (the `.exe` still
+      # matches) while staying correct if differential packaging is restored.
+      - name: Upload Windows x64 installer
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: open-knowledge-windows-${{ github.run_number }}
-          path: |
-            packages/desktop/dist-desktop/*.exe
-            packages/desktop/dist-desktop/*.exe.blockmap
-            packages/desktop/dist-desktop/latest.yml
+          name: OpenKnowledge-Setup-x64
+          path: packages/desktop/dist-desktop/*Setup-x64.exe*
           retention-days: 14
           if-no-files-found: error
 
+      - name: Upload Windows arm64 installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: OpenKnowledge-Setup-arm64
+          path: packages/desktop/dist-desktop/*Setup-arm64.exe*
+          retention-days: 14
+          if-no-files-found: error
+
+      # electron-updater's Windows manifest covers BOTH arches in one file, so
+      # it can't ride along with a single installer — it gets its own (tiny)
+      # artifact.
+      - name: Upload Windows update metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: OpenKnowledge-windows-update-metadata
+          path: packages/desktop/dist-desktop/latest.yml
+          retention-days: 14
+          if-no-files-found: error
+
+  # Two cells, each on a NATIVE runner for its arch. Cross-compiling the arm64
+  # native deps from an x64 host is impractical (pnpm installs only the
+  # host-matching `@parcel/watcher-*` prebuild, and the Linux build skips
+  # @electron/rebuild by design — see electron-builder.yml `beforeBuild`), so
+  # the arm64 deb is built on GitHub's arm64 Linux runner where pnpm installs
+  # the arm64 prebuilds directly and `scripts/stage-parcel-watcher.mjs` stages
+  # the right binary.
+  #
+  # AppImage stays x64-only: the aarch64 AppImage runtime won't launch on a
+  # stock Debian 13 arm64 install (needs libfuse.so.2 + libz.so.1, neither
+  # present by default — Linux VM QA). arm64 users get the deb, which pulls its
+  # deps via apt. electron-builder.yml holds the same split.
   build-linux:
     if: inputs.platforms == 'both' || inputs.platforms == 'linux'
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    strategy:
+      # One arch failing must not cancel the other — the operator can still QA
+      # whichever installer built.
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x64
+            targets: AppImage:x64 deb:x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            targets: deb:arm64
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -264,12 +320,16 @@ jobs:
       - name: Get pnpm store directory
         shell: bash
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+      # `runner.arch` is part of the key: both Linux cells report
+      # `runner.os == 'Linux'`, and a store populated on x64 carries none of the
+      # arm64 prebuilds (and vice versa), so a shared key would thrash the cache
+      # between cells on every run.
       - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-ok-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-ok-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-ok-pnpm-store-
+            ${{ runner.os }}-${{ runner.arch }}-ok-pnpm-store-
 
       - name: Install dependencies
         env:
@@ -303,24 +363,54 @@ jobs:
         working-directory: packages/desktop
         run: pnpm run build:desktop
 
-      # x64 only. The Linux native rebuild is skipped (electron-builder.yml
-      # beforeBuild), so an arm64 deb would package but ship the x64
-      # @parcel/watcher prebuild (pnpm installs only the host arch), degrading
-      # file-watching to chokidar on arm64. Keep the draft clean at x64; arm64
-      # Linux is deferred to a native arm64 runner follow-up that can stage the
-      # arm64 prebuilds. electron-builder.yml keeps deb:[x64,arm64] as the intended
-      # end state, and AppImage is already x64-only there.
-      - name: Package AppImage + deb (x64)
+      # Each cell packages only its own arch, on a runner of that arch — so the
+      # `.deb` ships the matching `@parcel/watcher` / `@napi-rs/keyring`
+      # prebuilds rather than degrading file-watching to chokidar. The deb
+      # target needs `fpm`; electron-builder 26 downloads a native
+      # `linux-arm64v8` build of it (see app-builder-lib's `getFpmPath`), so no
+      # emulation or system fpm is involved.
+      - name: Package ${{ matrix.targets }}
         working-directory: packages/desktop
-        run: pnpm exec electron-builder --linux AppImage:x64 deb:x64 --publish never
+        run: pnpm exec electron-builder --linux ${{ matrix.targets }} --publish never
 
-      - name: Upload Linux artifacts
+      # One artifact per installer, named for its file (see the Windows upload
+      # steps for the rationale). Guarded per-arch because artifact names must
+      # be unique within a run and each cell produces a different set.
+      - name: Upload Linux AppImage (x86_64)
+        if: matrix.arch == 'x64'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: open-knowledge-linux-${{ github.run_number }}
-          path: |
-            packages/desktop/dist-desktop/*.AppImage
-            packages/desktop/dist-desktop/*.deb
-            packages/desktop/dist-desktop/latest-linux.yml
+          name: OpenKnowledge-x86_64-AppImage
+          path: packages/desktop/dist-desktop/*.AppImage
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload Linux deb (amd64)
+        if: matrix.arch == 'x64'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: OpenKnowledge-amd64-deb
+          path: packages/desktop/dist-desktop/*amd64.deb
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload Linux deb (arm64)
+        if: matrix.arch == 'arm64'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: OpenKnowledge-arm64-deb
+          path: packages/desktop/dist-desktop/*arm64.deb
+          retention-days: 14
+          if-no-files-found: error
+
+      # electron-updater on Linux supports AppImage only, so `latest-linux.yml`
+      # is written by the x64 cell alone — the arm64 deb cell produces no
+      # update manifest and needs none.
+      - name: Upload Linux update metadata
+        if: matrix.arch == 'x64'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: OpenKnowledge-linux-update-metadata
+          path: packages/desktop/dist-desktop/latest-linux.yml
           retention-days: 14
           if-no-files-found: error

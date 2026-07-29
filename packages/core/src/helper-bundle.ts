@@ -1,4 +1,4 @@
-import { dirname, join } from 'node:path';
+import { posix as pathPosix } from 'node:path';
 
 /**
  * Helper bundle filesystem identifiers + the pure path-arithmetic resolver
@@ -61,10 +61,23 @@ export const HELPER_EXECUTABLE_NAME = 'OpenKnowledge Helper';
  * (`<.app>/Contents/MacOS/<MainBinary>`), return the absolute path of the
  * helper bundle's executable inside the parent's `Contents/Frameworks/`.
  * Pure path arithmetic — does not consult the filesystem.
+ *
+ * Uses `path.posix` explicitly, NOT the host-default `path`. This function
+ * describes a macOS `.app` layout, which is POSIX by definition — the target
+ * separator is a property of the thing being modelled, not of the machine
+ * doing the modelling. With the host default it emitted backslashes when run
+ * on a Windows host (`\Applications\OpenKnowledge.app\…`), which is not a path
+ * that exists on any platform. Harmless in production, where this only ever
+ * executes on darwin, but it made a pure function silently host-dependent and
+ * broke the cross-platform testability its consumer deliberately preserves:
+ * `resolve-detached-spawn-args.ts` dispatches `path.win32` vs `path.posix` off
+ * the TARGET platform precisely so the resolver can be exercised for every
+ * (platform, isPackaged) combination from any host. Caught by the Windows
+ * `preflight-tests` cell.
  */
 export function resolveHelperBundleBinary(parentExecPath: string): string {
-  return join(
-    dirname(parentExecPath),
+  return pathPosix.join(
+    pathPosix.dirname(parentExecPath),
     '..',
     'Frameworks',
     HELPER_BUNDLE_NAME,

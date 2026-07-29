@@ -17,7 +17,7 @@
  *
  * Skip gates (same as the rest of the smoke suite):
  *   - `OK_DESKTOP_E2E_SMOKE !== '1'` — opt-in.
- *   - `process.platform !== 'darwin'` — darwin-only.
+ *   - unsupported platform — the harness drives darwin / win32 / linux.
  *   - `out/main/index.js` missing — `pnpm run build:desktop` must have run.
  */
 
@@ -28,12 +28,15 @@ import type { ElectronApplication, JSHandle, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { WINDOW_MIN_SIZE } from '../../src/main/window-min-size.ts';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import {
+  homeEnv,
+  PLATFORM_SKIP_REASON,
+  PLATFORM_SUPPORTED,
+  SMOKE_ENABLED,
+} from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
-
-const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DARWIN = process.platform === 'darwin';
 
 interface SeededHome {
   tmpHome: string;
@@ -83,7 +86,7 @@ async function launchApp(tmpHome: string): Promise<ElectronApplication> {
       timeout: 30_000,
       env: {
         ...process.env,
-        HOME: tmpHome,
+        ...homeEnv(tmpHome),
         OK_DESKTOP_E2E_SMOKE: '1',
       },
     }),
@@ -137,7 +140,7 @@ async function readMinSizeFor(app: ElectronApplication, page: Page): Promise<Min
 
 test.describe('BrowserWindow min-size smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
-  test.skip(!DARWIN, 'Smoke harness is darwin-only in v0.');
+  test.skip(!PLATFORM_SUPPORTED, PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test(`Editor window enforces ${WINDOW_MIN_SIZE.EDITOR.width}x${WINDOW_MIN_SIZE.EDITOR.height} min; Navigator window enforces ${WINDOW_MIN_SIZE.NAVIGATOR.width}x${WINDOW_MIN_SIZE.NAVIGATOR.height} min`, async ({

@@ -63,12 +63,37 @@ export interface ResolveProjectRootOptions {
 }
 
 /**
+ * Canonicalize a path so two spellings of the SAME directory compare equal.
+ *
+ * Windows keeps a legacy 8.3 alias for most long names (`C:\Users\runneradmin`
+ * is also `C:\Users\RUNNER~1`); the forms are different strings that no
+ * separator normalization can reconcile. `fs.realpathSync` does NOT expand the
+ * alias, `fs.realpathSync.native` does. The operands below arrive by different
+ * routes — `home` from `os.homedir()`, `gitRoot` from
+ * `git rev-parse --show-toplevel`, which always reports the LONG name — so a
+ * short-form home vs a long-form git root makes `relative()` escape with `..`
+ * and promotion silently never fires. Real-Windows-verified.
+ *
+ * Best-effort: falls back to the input if the path cannot be resolved.
+ *
+ * Mirrored in `packages/desktop/src/main/folder-admission.ts`; the two copies
+ * must move together (TypeScript cannot catch drift across packages).
+ */
+function canonicalizeForCompare(p: string): string {
+  try {
+    return realpathSync.native(p);
+  } catch {
+    return p;
+  }
+}
+
+/**
  * Strict descendant — equal-to-home does NOT promote, so a hypothetical
  * `~/.git/` (e.g., dotfiles repo) is never picked as the project boundary.
  * Mirrors the equivalent helper in desktop's `discoverProject`.
  */
 function isDescendantOfHome(p: string, home: string): boolean {
-  const rel = relative(home, p);
+  const rel = relative(canonicalizeForCompare(home), canonicalizeForCompare(p));
   return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel);
 }
 

@@ -124,6 +124,29 @@ describe('Bun global facade', () => {
 
     expect(() => bunFacade.gc()).not.toThrow();
   });
+
+  test('spawnSync surfaces a launch failure instead of reporting exit 0', () => {
+    // Regression guard. `spawnSync` returns `{status: null, error: ENOENT}` when
+    // the child cannot be launched; mapping that to `exitCode: 0` reported a
+    // process that never ran as a clean success, and would let a test asserting
+    // `exitCode === 0` pass against a command that never executed. Both shapes
+    // below produce that state on every platform.
+    expect(() => bunFacade.spawnSync(['definitely-not-a-real-binary-xyz'])).toThrow();
+    expect(() =>
+      bunFacade.spawnSync({
+        cmd: [process.execPath, '-e', 'process.exit(0)'],
+        cwd: join(tmpdir(), 'ok-shim-nonexistent-cwd-probe'),
+      }),
+    ).toThrow();
+  });
+
+  test('a real non-zero exit still reports its code (not swallowed by the guard)', () => {
+    // The complement of the guard above: a process that DID run and exited
+    // non-zero must still surface its code rather than throwing.
+    const result = bunFacade.spawnSync([process.execPath, '-e', 'process.exit(78)']);
+    expect(result.exitCode).toBe(78);
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('Bun.CryptoHasher', () => {

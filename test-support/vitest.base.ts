@@ -47,10 +47,23 @@ export const importMetaDirPlugin: Plugin = {
     // transform), and a `.dir`-literal guard would rewrite itself.
     if (!code.includes('import.meta')) return null;
     IMPORT_META_DIR.lastIndex = 0;
-    const out = code.replace(
-      IMPORT_META_DIR,
-      '(new URL(".", import.meta.url).pathname.slice(0, -1))',
-    );
+    // Rewrite to Node's NATIVE `import.meta.dirname`, not to a URL expression.
+    //
+    // The previous target — `new URL(".", import.meta.url).pathname.slice(0, -1)`
+    // — is a URL PATHNAME, which is only accidentally a filesystem path, and only
+    // on POSIX. On Windows it yields `/C:/repo/packages/server/src`: a leading
+    // slash and forward separators. Passing that to `spawnSync({cwd})` fails
+    // ENOENT, and any `path` operation against it silently produces nonsense.
+    // Verified on a Windows 11 ARM64 VM: it is what made
+    // `git-preflight-spawn.test.ts` report exit 0 instead of 78 (the subprocess
+    // never launched).
+    //
+    // `import.meta.dirname` is native from Node 20.11 (this repo pins 24), is
+    // already correct on every platform, and is exactly what the bun-only
+    // `import.meta.dir` means. The regex deliberately does not match
+    // `import.meta.dirname`, and `String.replace` never re-scans its own
+    // output, so rewriting to that form cannot loop.
+    const out = code.replace(IMPORT_META_DIR, 'import.meta.dirname');
     return out === code ? null : { code: out, map: null };
   },
 };

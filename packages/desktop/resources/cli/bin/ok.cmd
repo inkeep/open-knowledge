@@ -33,6 +33,9 @@ rem Self-diagnose the uninstalled/moved lifecycle: MCP clients may hold this
 rem wrapper path in their configs after the app is removed. Two-line stderr
 rem (human-readable + machine-readable JSON) and exit 69 (EX_UNAVAILABLE),
 rem mirroring ok.sh's ok-bundle-missing contract.
-echo OpenKnowledge has been removed. Reinstall from the OpenKnowledge installer. 1>&2
-echo {"error":"ok-bundle-missing","hint":"OpenKnowledge app appears to have been removed. Reinstall it, or remove OK entries from your MCP config and rerun ok init."} 1>&2
+rem Redirect FIRST: `echo text 1>&2` keeps the space before the redirect token
+rem as part of the echoed text, so every line would ship a trailing space and
+rem diverge byte-for-byte from ok.sh / ok.ps1's identical contract.
+1>&2 echo OpenKnowledge has been removed. Reinstall from the OpenKnowledge installer.
+1>&2 echo {"error":"ok-bundle-missing","hint":"OpenKnowledge app appears to have been removed. Reinstall it, or remove OK entries from your MCP config and rerun ok init."}
 endlocal & exit /b 69

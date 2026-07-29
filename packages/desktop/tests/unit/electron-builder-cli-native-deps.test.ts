@@ -57,15 +57,53 @@ function shippedViaParcelStaging(pkg: string): boolean {
   );
 }
 
+/**
+ * Native addons tsdown is known to keep external. Anchors the regex below
+ * against silent partial parses: a `neverBundle` array reformatted across
+ * lines, or rewritten to build its entries from a variable, can still match
+ * the regex while yielding a SHORTER list — dropping packages from the loop
+ * below with no test turning red. A plain length check can't catch that; naming
+ * the entries can.
+ *
+ * Removing an entry here is legitimate when the package genuinely stops being
+ * external — but it must be a deliberate edit, not a parser accident.
+ */
+const EXPECTED_NEVER_BUNDLE = [
+  '@parcel/watcher',
+  '@napi-rs/keyring',
+  '@inkeep/open-knowledge-native-config',
+] as const;
+
+/**
+ * Parse tsdown's `neverBundle` array out of the CLI's config source.
+ *
+ * Fails LOUD on every unparseable shape. The previous
+ * `catch { return [] }` turned a moved/renamed config, an unreadable file, or a
+ * reformatted array into an empty list — which downgrades this whole suite to
+ * a single premise assertion and stops generating the per-package checks that
+ * are its actual value.
+ */
 function readNeverBundle(): string[] {
-  try {
-    const src = readFileSync(tsdownConfig, 'utf8');
-    const m = /neverBundle:\s*\[([^\]]*)\]/.exec(src);
-    if (!m) return [];
-    return [...m[1].matchAll(/['"]([^'"]+)['"]/g)].map((x) => x[1] as string);
-  } catch {
-    return [];
+  if (!existsSync(tsdownConfig)) {
+    throw new Error(
+      `tsdown config not found at ${tsdownConfig}. This guard reads its \`neverBundle\` ` +
+        `array; if the config moved, update this path rather than letting the guard go quiet.`,
+    );
   }
+  const src = readFileSync(tsdownConfig, 'utf8');
+  const m = /neverBundle:\s*\[([^\]]*)\]/.exec(src);
+  if (!m) {
+    throw new Error(
+      `could not locate a \`neverBundle: [...]\` array literal in ${tsdownConfig}. If the ` +
+        `option is now computed rather than written inline, this guard needs a real parser — ` +
+        `it must not silently fall back to an empty list.`,
+    );
+  }
+  const entries = [...m[1].matchAll(/['"]([^'"]+)['"]/g)].map((x) => x[1] as string);
+  if (entries.length === 0) {
+    throw new Error(`matched \`neverBundle\` in ${tsdownConfig} but extracted no package names.`);
+  }
+  return entries;
 }
 
 function readExtraResourceTargets(platform?: 'mac' | 'win' | 'linux'): string[] {
@@ -127,7 +165,10 @@ describe('bundled CLI can resolve tsdown neverBundle native addons', () => {
   test('neverBundle list + electron-builder.yml parsed (premise check)', () => {
     expect(existsSync(builderYml)).toBe(true);
     expect(existsSync(tsdownConfig)).toBe(true);
-    expect(neverBundle.length).toBeGreaterThan(0);
+    // Named, not just counted — see EXPECTED_NEVER_BUNDLE. A parse that
+    // silently drops entries keeps `length > 0` while skipping the per-package
+    // checks for whatever it lost.
+    expect(neverBundle).toEqual(expect.arrayContaining([...EXPECTED_NEVER_BUNDLE]));
   });
 
   for (const pkg of neverBundle) {

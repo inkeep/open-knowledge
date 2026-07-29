@@ -468,6 +468,12 @@ linux:
   # Linux users get the deb, which pulls its deps via apt. Restore arm64 to
   # the AppImage arch list once we ship a runtime that bundles FUSE/zlib or
   # falls back to --appimage-extract-and-run.
+  #
+  # The arm64 deb is built on a NATIVE arm64 runner (the `build-linux` matrix
+  # in .github/workflows/desktop-build-win-linux.yml), never cross-compiled:
+  # pnpm installs only the host-arch `@parcel/watcher` prebuild and the Linux
+  # build skips @electron/rebuild by design (`beforeBuild` above), so an
+  # x64-host arm64 deb would package but ship the wrong native binaries.
   target:
     - target: AppImage
       arch: [x64]

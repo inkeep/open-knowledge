@@ -347,9 +347,48 @@ function isDescendantOrEqual(child: string, parent: string): boolean {
   return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel);
 }
 
+/**
+ * Canonicalize a path so two spellings of the SAME directory compare equal.
+ *
+ * Windows keeps a legacy 8.3 alias for most long names (`C:\Users\runneradmin`
+ * is also reachable as `C:\Users\RUNNER~1`), and the two forms are different
+ * strings that no separator normalization can reconcile — only the filesystem
+ * knows they are one directory. `fs.realpathSync` does NOT expand the alias;
+ * `fs.realpathSync.native` does (it goes through `GetFinalPathNameByHandle`).
+ *
+ * This matters because the two operands below arrive by different routes:
+ * `home` / the picked path come from `os.homedir()` + `realpathSync`, which
+ * preserve whatever form the caller had, while `gitTopLevel` shells out to
+ * `git rev-parse --show-toplevel`, which always reports the LONG name. Compare
+ * a short-form home against a long-form git root and `relative()` escapes with
+ * `..`, so the descendant check says "outside home" for a directory that is
+ * plainly inside it — and git-root promotion silently never fires.
+ *
+ * Verified on a Windows 11 ARM64 VM:
+ *   realpathSync('…\\OK-SN-~2\\LONGDI~1')        -> unchanged (still short)
+ *   realpathSync.native(same)                    -> '…\\ok-sn-UtSXeQ\\longdirectoryname'
+ *   git rev-parse --show-toplevel                -> 'C:/Users/…/longdirectoryname/website'
+ *   relative(shortHome, longGitRoot)             -> '..\\..\\ok-sn-…\\website'  (escapes)
+ *
+ * No-op in practice on POSIX, where `.native` and the JS implementation agree.
+ * Falls back to the input when the path cannot be resolved (deleted between
+ * calls, permission denied) — a best-effort canonicalizer must never be the
+ * thing that throws.
+ *
+ * Mirrored in `packages/cli/src/integrations/resolve-project-root.ts`; the two
+ * copies must move together (TypeScript cannot catch drift across packages).
+ */
+function canonicalizeForCompare(p: string): string {
+  try {
+    return realpathSync.native(p);
+  } catch {
+    return p;
+  }
+}
+
 /** Strict descendant — equal-to-home does NOT promote. */
 function isDescendantOfHome(p: string, home: string): boolean {
-  const rel = relative(home, p);
+  const rel = relative(canonicalizeForCompare(home), canonicalizeForCompare(p));
   return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel);
 }
 

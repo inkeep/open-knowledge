@@ -264,10 +264,37 @@ function bunSpawnSync(
   });
   const stdout = result.stdout ?? Buffer.alloc(0);
   const stderr = result.stderr ?? Buffer.alloc(0);
+  // FAIL LOUD when the process never ran.
+  //
+  // `spawnSync` reports `status: null` + a populated `error` when the child
+  // could not be launched at all (ENOENT on the binary, a cwd that does not
+  // exist, EACCES). The previous `result.status ?? 0` mapped that to exit code
+  // ZERO — a process that never executed was reported as a clean success. Any
+  // assertion of the form `expect(result.exitCode).toBe(N)` then failed with the
+  // uninformative `expected +0 to be N`, and — far worse — a test asserting
+  // `exitCode === 0` would have PASSED against a command that never ran.
+  //
+  // Real-Windows-verified: `spawnSync('node', [...], {cwd: '<missing>'})` returns
+  // `{status: null, error: ENOENT}`, which is exactly how
+  // `git-preflight-spawn.test.ts` came to report 0 instead of 78.
+  //
+  // Throwing (rather than inventing a sentinel code) is the honest mapping: a
+  // launch failure is a harness bug every time, and the thrown error names the
+  // real cause instead of leaving it to be inferred from a bogus exit code.
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status === null && !result.signal) {
+    throw new Error(
+      `spawnSync(${file}) produced neither an exit status nor a signal — the process did not run.`,
+    );
+  }
   return {
     stdout,
     stderr,
-    exitCode: result.status ?? 0,
+    // Signal-killed processes legitimately have a null status; keep null rather
+    // than coercing, so `toBe(0)` cannot pass for a killed process either.
+    exitCode: result.status,
     signalCode: result.signal,
     success: result.status === 0,
     pid: result.pid,
