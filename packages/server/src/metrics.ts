@@ -316,6 +316,27 @@ export interface ReconciliationMetrics {
    *  doc resting on a construct that diverges on every write-back lives here;
    *  without the dedup it would evict its own useful anchors. */
   persistenceReconcileLossDeduped: number;
+  /** Count of structural-duplication tripwire fires that BLOCKED the store and
+   *  reset the live document from disk. Increments on every reset, including
+   *  ones with no shadow wired, so a run whose anchors never landed does not
+   *  read as healthy. A nonzero value in a dogfood bundle means a user's live
+   *  content was replaced by the disk copy. */
+  persistenceDuplicationReset: number;
+  /** Successful `persistence-duplication-reset` checkpoint writes. With the
+   *  deduped sibling this closes the identity
+   *  `persistenceDuplicationReset = created + deduped + (anchors that never landed)`. */
+  persistenceDuplicationResetCheckpointCreated: number;
+  /** Resets whose pre-reset document was byte-identical to the anchor already on
+   *  the timeline for that doc, so no new checkpoint was minted. A client stuck
+   *  re-materializing the same duplicate lives here; without the dedup it would
+   *  evict its own useful anchors. */
+  persistenceDuplicationResetDeduped: number;
+  /** Count of duplication verdicts the tripwire declined to act on because the
+   *  document already had a settled write behind it, so the doubling is an
+   *  incremental edit (a paste) rather than a load-time materialization. The
+   *  false-positive class the guard used to destroy; a healthy signal, not a
+   *  loss. */
+  persistenceDuplicationSpared: number;
   /** Count of Y.Text→XmlFragment re-derive-loop backstop trips — a run of
    *  re-derive drains never reached a raw-byte fixed point and the B-direction
    *  re-derive was frozen (checkpoint + ring event). A nonzero value in CI or a
@@ -530,6 +551,10 @@ const counters: ReconciliationMetrics = {
   persistenceReconcileLoss: 0,
   persistenceReconcileLossCheckpointCreated: 0,
   persistenceReconcileLossDeduped: 0,
+  persistenceDuplicationReset: 0,
+  persistenceDuplicationResetCheckpointCreated: 0,
+  persistenceDuplicationResetDeduped: 0,
+  persistenceDuplicationSpared: 0,
   reDeriveBackstopTripped: 0,
   bridgeSplitBrainRederives: 0,
   bridgeSplitBrainRederivesSuppressed: 0,
@@ -763,6 +788,22 @@ export function incrementPersistenceReconcileLossDeduped(): void {
   counters.persistenceReconcileLossDeduped++;
 }
 
+export function incrementPersistenceDuplicationReset(): void {
+  counters.persistenceDuplicationReset++;
+}
+
+export function incrementPersistenceDuplicationResetCheckpointCreated(): void {
+  counters.persistenceDuplicationResetCheckpointCreated++;
+}
+
+export function incrementPersistenceDuplicationResetDeduped(): void {
+  counters.persistenceDuplicationResetDeduped++;
+}
+
+export function incrementPersistenceDuplicationSpared(): void {
+  counters.persistenceDuplicationSpared++;
+}
+
 export function incrementReDeriveBackstopTripped(): void {
   counters.reDeriveBackstopTripped++;
 }
@@ -972,6 +1013,10 @@ export function resetMetrics(): void {
   counters.persistenceReconcileLoss = 0;
   counters.persistenceReconcileLossCheckpointCreated = 0;
   counters.persistenceReconcileLossDeduped = 0;
+  counters.persistenceDuplicationReset = 0;
+  counters.persistenceDuplicationResetCheckpointCreated = 0;
+  counters.persistenceDuplicationResetDeduped = 0;
+  counters.persistenceDuplicationSpared = 0;
   counters.reDeriveBackstopTripped = 0;
   counters.bridgeSplitBrainRederives = 0;
   counters.bridgeSplitBrainRederivesSuppressed = 0;

@@ -1581,6 +1581,16 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
           metadata: { atRiskLines: 1, witnessAvailable: true },
         });
         return;
+      case 'persistence-duplication-reset':
+        await saveInMemoryCheckpoint(shadow, 'content/docs', {
+          kind,
+          docName: 'j.md',
+          contents: `j${tag}\n`,
+          label: 'l',
+          date,
+          metadata: { copies: 2, fragmentChildren: 18 },
+        });
+        return;
       case 'auto-consolidation':
         await writeAutoConsolidationCheckpoint(shadow, tag === '' ? 1 : Number(tag));
         return;
@@ -1609,6 +1619,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
       maxObserverAApplyLoss: 50,
       maxBridgeBackstopTrip: 50,
       maxPersistenceReconcileLoss: 50,
+      maxPersistenceDuplicationReset: 50,
       maxAutoConsolidation: 50,
       ttlMs: 0,
     });

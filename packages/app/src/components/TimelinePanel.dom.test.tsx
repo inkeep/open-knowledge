@@ -133,6 +133,12 @@ const SURFACED_KINDS: ParsedCheckpoint[] = [
     size: 12,
     metadata: { atRiskLines: 1, witnessAvailable: true },
   },
+  {
+    kind: 'persistence-duplication-reset',
+    docName: 'notes',
+    size: 12,
+    metadata: { copies: 2, fragmentChildren: 18 },
+  },
 ];
 const AUTO_CONSOLIDATION: ParsedCheckpoint = {
   kind: 'auto-consolidation',

@@ -68,6 +68,12 @@ const SAMPLE_BY_KIND = {
     size: 12,
     metadata: { atRiskLines: 1, witnessAvailable: true },
   },
+  'persistence-duplication-reset': {
+    kind: 'persistence-duplication-reset',
+    docName: 'notes',
+    size: 12,
+    metadata: { copies: 2, fragmentChildren: 18 },
+  },
   'auto-consolidation': {
     kind: 'auto-consolidation',
     docName: null,

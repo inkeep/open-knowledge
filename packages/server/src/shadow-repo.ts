@@ -910,6 +910,14 @@ export type InMemoryCheckpointParams = (
       branch?: string;
       metadata: { rounds: number };
     }
+  | {
+      kind: 'persistence-duplication-reset';
+      docName: string;
+      contents: string;
+      label: string;
+      branch?: string;
+      metadata: { copies: number; fragmentChildren: number };
+    }
 ) & {
   /**
    * Explicit commit timestamp (any git-parseable date, e.g. ISO 8601), applied
@@ -1051,6 +1059,14 @@ async function saveInMemoryCheckpointInner(
     case 'persistence-reconcile-loss':
       parsed = {
         kind: 'persistence-reconcile-loss',
+        docName: params.docName,
+        size,
+        metadata: params.metadata,
+      };
+      break;
+    case 'persistence-duplication-reset':
+      parsed = {
+        kind: 'persistence-duplication-reset',
         docName: params.docName,
         size,
         metadata: params.metadata,
@@ -1283,6 +1299,15 @@ export interface CheckpointRetentionPolicy {
    */
   maxPersistenceReconcileLoss: number;
   /**
+   * Maximum `persistence-duplication-reset` checkpoints to keep per branch.
+   * Written when the structural-duplication tripwire refuses a doubled store
+   * and resets the live document from disk. Its own budget so a client stuck
+   * re-materializing a duplicate every debounce cannot evict merge-drop or
+   * serializer-corruption recovery anchors — the budget is the second line of
+   * defense; the mint-side dedup in `persistence.ts` is the first. Default 50.
+   */
+  maxPersistenceDuplicationReset: number;
+  /**
    * Maximum `auto-consolidation` checkpoints to keep per branch.
    * These are service-authored when dead WIP chains are folded; left unbounded
    * they reintroduce the unbounded-hidden-ref growth this feature exists to
@@ -1313,6 +1338,7 @@ export const DEFAULT_CHECKPOINT_RETENTION: CheckpointRetentionPolicy = {
   maxObserverAApplyLoss: 50,
   maxBridgeBackstopTrip: 50,
   maxPersistenceReconcileLoss: 50,
+  maxPersistenceDuplicationReset: 50,
   maxAutoConsolidation: 2,
   ttlMs: 30 * 24 * 60 * 60 * 1000,
 };
@@ -1328,6 +1354,7 @@ export interface CheckpointGcResult {
   deletedObserverAApplyLoss: number;
   deletedBridgeBackstopTrip: number;
   deletedPersistenceReconcileLoss: number;
+  deletedPersistenceDuplicationReset: number;
   deletedAutoConsolidation: number;
   retained: number;
 }
@@ -1397,6 +1424,11 @@ const GC_BUCKET_POLICY = {
     counter: 'deletedPersistenceReconcileLoss',
     applyTtl: true,
   },
+  'persistence-duplication-reset': {
+    limit: (p) => p.maxPersistenceDuplicationReset,
+    counter: 'deletedPersistenceDuplicationReset',
+    applyTtl: true,
+  },
   // Count-only: TTL must never be able to reap every surviving
   // auto-checkpoint, or the chained consolidated history it anchors becomes
   // unreachable.
@@ -1447,6 +1479,7 @@ async function gcCheckpointRefsInner(
     deletedObserverAApplyLoss: 0,
     deletedBridgeBackstopTrip: 0,
     deletedPersistenceReconcileLoss: 0,
+    deletedPersistenceDuplicationReset: 0,
     deletedAutoConsolidation: 0,
     retained: 0,
   };

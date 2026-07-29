@@ -45,6 +45,7 @@ import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-ti
 import * as Y from 'yjs';
 import { LINEAGE_EPOCH_KEY } from './auth-token-schema.ts';
 import type { BacklinkIndex } from './backlink-index.ts';
+import { type DeriveLossDetectOptions, detectPairedIntakeLoss } from './bridge-loss-detector.ts';
 import { getMsSinceLastUserTx, isDocQuiescent } from './bridge-quiescence.ts';
 import { assertBridgeInvariant, createDocCanonicalizer } from './bridge-watchdog.ts';
 import {
@@ -74,6 +75,7 @@ import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 import {
   LOSS_EVENT_CHECKPOINT_WRITE,
+  LOSS_EVENT_DETECTOR_TRIP,
   LOSS_EVENT_PERSISTENCE_HOLD,
   type LossCaptureRing,
 } from './loss-capture.ts';
@@ -95,6 +97,10 @@ import {
   incrementGitWriterCommitFailure,
   incrementPersistenceDeferHold,
   incrementPersistenceDiskWrite,
+  incrementPersistenceDuplicationReset,
+  incrementPersistenceDuplicationResetCheckpointCreated,
+  incrementPersistenceDuplicationResetDeduped,
+  incrementPersistenceDuplicationSpared,
   incrementPersistenceForceFlushDuringBurst,
   incrementPersistenceReconcileLoss,
   incrementPersistenceReconcileLossCheckpointCreated,
@@ -363,7 +369,21 @@ export interface PersistenceOptions {
     persistedMarkdown: string,
     previousMarkdown: string | null,
   ) => void;
-  applyDiskContentToDoc?: (document: Y.Doc, content: string) => void;
+  /**
+   * Injectable disk-intake seam. Mirrors the full `applyDiskContentToDoc`
+   * signature — narrowing it to `(document, content)` made the trailing
+   * `detect` argument unreachable from every call site routed through the
+   * option, which silently opted the tripwire reset out of paired-intake
+   * derive-loss detection on the one path guaranteed to discard live content.
+   */
+  applyDiskContentToDoc?: (
+    document: Y.Doc,
+    content: string,
+    resolveEmbed?: (basename: string, sourcePath: string) => string | null,
+    sourcePath?: string,
+    resolveSize?: (basename: string, sourcePath: string) => number | null,
+    detect?: DeriveLossDetectOptions,
+  ) => void;
   /**
    * Override `os.homedir()` for config-doc persistence. Tests scope
    * user-global writes (`__user__/config.yml`) to a tempdir; if unset,
@@ -636,6 +656,26 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   // `onStoreDocument` reads FM via `stripFrontmatter(ytext.toString())` and
   // writes Y.Text verbatim — no recompose step, no per-key cache, no L3 hook.
   const tripwireResetFailedDocs = new Set<string>();
+  /**
+   * Docs that have completed at least one store since they were loaded.
+   *
+   * The structural-duplication tripwire's two classes are indistinguishable at
+   * the classifier: a stale-cache merge and a select-all copy paste both arrive
+   * under a browser `source: 'connection'` origin and both duplicate with
+   * agreeing node shapes, so neither the transaction origin nor Observer A's
+   * provenance/shape race test separates them. What separates them is WHEN the
+   * doubling appears. The stale-cache merge materializes at provider-sync time,
+   * on a document that has not yet produced a settled write; a paste is an
+   * incremental edit on a document that already persisted cleanly this session.
+   *
+   * Membership is therefore the tripwire's licence to act destructively, and
+   * `onLoadDocument` clears it because a reload starts a fresh sync window.
+   * A document that stays resident rarely loads again, so in practice the
+   * licence lasts as long as the server process holds that document: the guard
+   * is armed for the sync window after each load, which is the window the
+   * stale-cache merge occupies.
+   */
+  const docsWithSettledWrite = new Set<string>();
   const applyDiskContent = options?.applyDiskContentToDoc ?? applyDiskContentToDoc;
   let pendingDeferredStoreFlushMode: 'within-branch' | 'discard-stale' | null = null;
 
@@ -1111,6 +1151,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
    * and the floor checkpoint so a bundle reader can pair them on one doc.
    */
   const PERSISTENCE_PREWRITE_SITE = 'persistence-prewrite';
+  const PERSISTENCE_DUPLICATION_SITE = 'persistence-duplication-reset';
 
   /**
    * Last floor-checkpoint payload minted per document. Some documents diverge
@@ -1225,6 +1266,92 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           log.warn(
             { documentName, err: e },
             '[persistence] reconcile-loss checkpoint write failed',
+          );
+        });
+    });
+  }
+
+  const lastDuplicationCheckpointPayload = new WeakMap<Y.Doc, string>();
+
+  /**
+   * Checkpoint-before-repair for the structural-duplication tripwire reset.
+   *
+   * `liveMarkdown` is the document the reset is about to discard. The reset
+   * transacts under `FILE_WATCHER_ORIGIN`, which the server UndoManager
+   * excludes by contract and which reaches browsers as a remote update outside
+   * any local `trackedOrigins` set, so this anchor is the only way back to the
+   * pre-reset state. Fire-and-forget, and the reset is never gated on it — the
+   * dedup suppresses the MINT, not the repair.
+   */
+  function checkpointBeforeDuplicationReset(
+    document: Y.Doc,
+    documentName: string,
+    liveMarkdown: string,
+    copies: number,
+    fragmentChildren: number,
+  ): void {
+    incrementPersistenceDuplicationReset();
+    if (lastDuplicationCheckpointPayload.get(document) === liveMarkdown) {
+      incrementPersistenceDuplicationResetDeduped();
+      return;
+    }
+    // Claimed before the write so two trips can never race into two anchors;
+    // released again if the write fails, so a transient shadow error still
+    // retries on the next trip instead of permanently suppressing the anchor.
+    lastDuplicationCheckpointPayload.set(document, liveMarkdown);
+    const ring = options?.getLossRing?.();
+    const shadow = shadowRef?.current;
+    if (!shadow) {
+      void ring?.record({
+        event: LOSS_EVENT_CHECKPOINT_WRITE,
+        docName: documentName,
+        writerId: null,
+        direction: 'b',
+        site: PERSISTENCE_DUPLICATION_SITE,
+        lostLen: liveMarkdown.length,
+      });
+      return;
+    }
+    const branch = getCurrentBranch?.() ?? 'main';
+    queueMicrotask(() => {
+      saveInMemoryCheckpoint(shadow, contentRoot, {
+        kind: 'persistence-duplication-reset',
+        docName: documentName,
+        contents: liveMarkdown,
+        label: `Before duplication reset @ ${new Date().toISOString()}`,
+        branch,
+        metadata: { copies, fragmentChildren },
+      })
+        .then((sha) => {
+          incrementPersistenceDuplicationResetCheckpointCreated();
+          void ring?.record({
+            event: LOSS_EVENT_CHECKPOINT_WRITE,
+            docName: documentName,
+            writerId: null,
+            direction: 'b',
+            site: PERSISTENCE_DUPLICATION_SITE,
+            lostLen: liveMarkdown.length,
+            checkpointSha: sha,
+          });
+          console.warn(
+            JSON.stringify({
+              event: 'persistence-duplication-reset-checkpoint-created',
+              docName: documentName,
+              sha,
+              kind: 'persistence-duplication-reset',
+              timestamp: new Date().toISOString(),
+            }),
+          );
+        })
+        .catch((checkpointErr: unknown) => {
+          if (lastDuplicationCheckpointPayload.get(document) === liveMarkdown) {
+            lastDuplicationCheckpointPayload.delete(document);
+          }
+          const e =
+            checkpointErr instanceof Error ? checkpointErr : new Error(String(checkpointErr));
+          log.warn(
+            { documentName, err: e },
+            '[persistence] duplication-reset checkpoint write failed',
           );
         });
     });
@@ -1641,7 +1768,26 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         // currentBase) bypass — there's nothing to duplicate yet.
         if (currentBase !== undefined) {
           const classification = classifyDuplication(markdown, currentBase);
-          if (classification.kind === 'block') {
+          if (classification.kind === 'block' && docsWithSettledWrite.has(documentName)) {
+            // This document already persisted cleanly this session, so the
+            // doubling is an incremental edit — a whole-document paste, the
+            // gesture the classifier cannot tell apart from a stale-cache
+            // merge. Fall through to the normal write path rather than
+            // refusing the store and recycling the live document out from
+            // under the user.
+            incrementPersistenceDuplicationSpared();
+            console.warn(
+              JSON.stringify({
+                event: 'ok-persistence-duplication-spared',
+                'doc.name': documentName,
+                candidateBytes: markdown.length,
+                baseBytes: currentBase.length,
+                fragmentChildren: document.getXmlFragment('default').length,
+                copies: classification.copies,
+                reason: classification.reason,
+              }),
+            );
+          } else if (classification.kind === 'block') {
             if (tripwireResetFailedDocs.has(documentName)) {
               log.warn(
                 { documentName },
@@ -1716,10 +1862,55 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
               } else {
                 diskContent = currentBase;
               }
+              // The reset discards the live document under an origin neither
+              // undo stack can reach, so it owes a restore anchor first.
+              checkpointBeforeDuplicationReset(
+                document,
+                documentName,
+                markdown,
+                classification.copies,
+                fragmentChildren,
+              );
+              // The disk bytes are the shared ancestor the duplicate grew from,
+              // so fragment content absent from them is exactly what this reset
+              // destroys. That baseline is what makes the paired-intake
+              // detector report the discarded copy instead of staying silent —
+              // the precondition that lets the other persistence callers omit
+              // `detect` (they re-apply bytes the fragment already derives
+              // from) is false here by construction.
+              const lossRing = options?.getLossRing?.();
+              const detect: DeriveLossDetectOptions = {
+                baselineFullMd: diskContent,
+                report: (obs) => {
+                  // Never throws, per the reporter contract. This runs INSIDE
+                  // the reset transact, whose catch latches the per-doc tripwire
+                  // breaker — a diagnostic failure escaping here would strand
+                  // the doc on the breaker and log a reset failure for a reset
+                  // that actually succeeded.
+                  try {
+                    const dropped = detectPairedIntakeLoss(obs);
+                    if (dropped.length === 0) return;
+                    void lossRing?.record({
+                      event: LOSS_EVENT_DETECTOR_TRIP,
+                      docName: documentName,
+                      writerId: FILE_SYSTEM_WRITER.id,
+                      direction: 'b',
+                      site: PERSISTENCE_DUPLICATION_SITE,
+                      lostLen: dropped.reduce((n, s) => n + s.length, 0),
+                      digest: fnv1aDigest(dropped.join('\n')),
+                    });
+                  } catch (detectErr) {
+                    log.warn(
+                      { documentName, err: detectErr },
+                      '[persistence] duplication-reset loss detection failed',
+                    );
+                  }
+                },
+              };
               // Caller wraps for atomicity + paired-write origin identity
               // (precedent #24).
               document.transact(() => {
-                applyDiskContent(document, diskContent);
+                applyDiskContent(document, diskContent, undefined, undefined, undefined, detect);
               }, FILE_WATCHER_ORIGIN);
               tripwireResetFailedDocs.delete(documentName);
             } catch (err) {
@@ -1978,6 +2169,9 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
         // Update reconciled base after successful store
         durabilityState.setReconciledBase(documentName, markdown);
+        // A settled write is what licences the duplication tripwire to stop
+        // treating a later doubling as a load-time materialization.
+        docsWithSettledWrite.add(documentName);
         tripwireResetFailedDocs.delete(documentName);
         persistenceDeferCounts.delete(documentName);
 
@@ -2133,6 +2327,11 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
   const extension: Extension = {
     async onLoadDocument({ document, documentName, context: _context }) {
+      // A load opens a fresh provider-sync window, which is exactly when the
+      // stale-cache duplication the tripwire guards against materializes. Drop
+      // any settled-write licence carried over from a previous session so the
+      // guard is armed again.
+      docsWithSettledWrite.delete(documentName);
       if (isSystemDoc(documentName)) return;
       if (isConfigDoc(documentName)) {
         loadConfigDoc(document, documentName, configPersistenceCtx);

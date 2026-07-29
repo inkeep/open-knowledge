@@ -148,6 +148,23 @@ export type ParsedCheckpoint =
       metadata: { atRiskLines: number; witnessAvailable: boolean };
     }
   | {
+      // The persistence structural-duplication tripwire refused a store whose
+      // body was an integer doubling of the disk base and reset the live Y.Doc
+      // from disk. That reset transacts under the file-watcher origin, which is
+      // undo-eligible on neither the server UndoManager nor the client's, so
+      // whatever the live document held is otherwise unrecoverable. Distinct
+      // from `persistence-reconcile-loss` (the pre-write fragment rebuild) so an
+      // operator can tell a duplication reset from a divergence repair by kind
+      // alone, and from `observer-a-duplication` (the bridge layer's own gate)
+      // so the two duplication classes keep separate budgets. `contents` is the
+      // pre-reset document the reset discards — the restore anchor. Both
+      // metadata fields are content-free counts.
+      kind: 'persistence-duplication-reset';
+      docName: string | null;
+      size: number | null;
+      metadata: { copies: number; fragmentChildren: number };
+    }
+  | {
       // Service-authored consolidation of dead/stale WIP chains.
       // GET /api/history excludes this kind by default so daily
       // auto-consolidations never pollute timelines; old readers that predate
@@ -299,6 +316,23 @@ export function parseCheckpoint(body: string): ParsedCheckpoint | null {
           docName,
           size,
           metadata: { atRiskLines: m.atRiskLines, witnessAvailable: m.witnessAvailable },
+        };
+      }
+      return null;
+    }
+    if (kind === 'persistence-duplication-reset') {
+      const m = metadata as { copies?: unknown; fragmentChildren?: unknown };
+      if (
+        typeof m.copies === 'number' &&
+        Number.isFinite(m.copies) &&
+        typeof m.fragmentChildren === 'number' &&
+        Number.isFinite(m.fragmentChildren)
+      ) {
+        return {
+          kind: 'persistence-duplication-reset',
+          docName,
+          size,
+          metadata: { copies: m.copies, fragmentChildren: m.fragmentChildren },
         };
       }
       return null;
@@ -468,6 +502,11 @@ export const CHECKPOINT_KIND_REGISTRY = {
   'persistence-reconcile-loss': {
     visibility: 'surfaced',
     gcBucket: 'persistence-reconcile-loss',
+    bundleExposure: 'metadata',
+  },
+  'persistence-duplication-reset': {
+    visibility: 'surfaced',
+    gcBucket: 'persistence-duplication-reset',
     bundleExposure: 'metadata',
   },
   'auto-consolidation': {
