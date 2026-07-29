@@ -20,7 +20,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { ZipFile } from 'yazl';
-import { type CollectBundleDeps, collectBundle, writeBundle } from './bundle.ts';
+import {
+  CHECKPOINT_REF_GIT_FORMAT,
+  type CollectBundleDeps,
+  collectBundle,
+  writeBundle,
+} from './bundle.ts';
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -72,11 +77,11 @@ function writeAt(contentDir: string, relPath: string, body: string): void {
 // ---------------------------------------------------------------------------
 
 describe('collectBundle — smoke', () => {
-  test('produces a v1 manifest on a fresh content-dir with no server', async () => {
+  test('produces a v2 manifest on a fresh content-dir with no server', async () => {
     const contentDir = makeTmpDir();
     const collected = await collectBundle({ contentDir, deps: makeDeterministicDeps() });
 
-    expect(collected.manifest.schemaVersion).toBe(1);
+    expect(collected.manifest.schemaVersion).toBe(2);
     expect(collected.manifest.createdAt).toBe('2026-05-28T14:22:01.000Z');
     expect(collected.manifest.ok).toEqual({
       version: '0.7.99',
@@ -86,7 +91,7 @@ describe('collectBundle — smoke', () => {
     });
     expect(collected.manifest.host).toEqual({ desktop: null });
     expect(collected.manifest.serverStatus).toBe('not-running');
-    expect(collected.manifest.redaction).toEqual({ applied: false, docNameMapSidecar: null });
+    expect(collected.manifest.redaction).toEqual({ applied: false });
 
     // state/runtime.json + state/server-status.txt always staged.
     const paths = collected.manifest.files.map((f) => f.path);
@@ -674,6 +679,53 @@ describe('collectBundle — summary', () => {
 });
 
 // ---------------------------------------------------------------------------
+// loss-capture ring staging (full/Detailed tier)
+// ---------------------------------------------------------------------------
+
+describe('collectBundle — loss-capture ring', () => {
+  test('stages the content-loss ring under state/ with its raw doc name intact', async () => {
+    const contentDir = makeTmpDir();
+    const lossEvent = JSON.stringify({
+      ts: 1,
+      schemaVersion: 1,
+      seq: 1,
+      event: 'guard-defer',
+      docName: 'meetings/plan',
+      writerId: null,
+      site: 'site-2',
+      lostLen: 12,
+      digest: 'abc12345',
+    });
+    writeAt(contentDir, '.ok/local/loss-capture/loss-current.jsonl', `${lossEvent}\n`);
+    writeAt(contentDir, '.ok/local/loss-capture/loss-prev.jsonl', `${lossEvent}\n`);
+
+    const collected = await collectBundle({
+      contentDir,
+      redact: true,
+      deps: makeDeterministicDeps(),
+    });
+    const paths = collected.manifest.files.map((f) => f.path);
+    expect(paths).toContain('state/loss-current.jsonl');
+    expect(paths).toContain('state/loss-prev.jsonl');
+
+    // The ring's doc name ships raw — only the content-dir path is masked, and
+    // the ring carries no content-dir path.
+    const staged = readFileSync(join(collected.stagingDir, 'state', 'loss-current.jsonl'), 'utf-8');
+    expect(staged).toContain('meetings/plan');
+    collected.cleanup();
+  });
+
+  test('omits the loss ring when no producer has recorded an event', async () => {
+    const contentDir = makeTmpDir();
+    const collected = await collectBundle({ contentDir, deps: makeDeterministicDeps() });
+    const paths = collected.manifest.files.map((f) => f.path);
+    expect(paths).not.toContain('state/loss-current.jsonl');
+    expect(paths).not.toContain('state/loss-prev.jsonl');
+    collected.cleanup();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // writeBundle
 // ---------------------------------------------------------------------------
 
@@ -730,7 +782,7 @@ describe('writeBundle', () => {
       `unzip -q ${JSON.stringify(outputPath)} manifest.json -d ${JSON.stringify(extractDir)}`,
     );
     const parsed = JSON.parse(readFileSync(join(extractDir, 'manifest.json'), 'utf-8'));
-    expect(parsed.schemaVersion).toBe(1);
+    expect(parsed.schemaVersion).toBe(2);
     expect(parsed.contentDir.pathSha256).toBe(collected.manifest.contentDir.pathSha256);
     expect(parsed.files).toEqual(collected.manifest.files);
     collected.cleanup();
@@ -858,6 +910,20 @@ describe('collectBundle — staging cleanup on throw', () => {
         // Another suite's staging dir (different layout, or already cleaned).
       }
       expect(staged).not.toContain(marker);
+    }
+  });
+});
+
+describe('checkpoint-ref staging format (privacy enforcement)', () => {
+  test('stages only the content-free commit subject, never the body', () => {
+    // The REAL privacy enforcement for checkpoint bundle staging: the loss
+    // kinds' commit BODY carries verbatim lost-content substrings, so the
+    // for-each-ref format must expose only the content-free subject. This locks
+    // that enforcement point — the checkpoint-kind registry's bundleExposure
+    // attribute is advisory and is not consulted by the staging path.
+    expect(CHECKPOINT_REF_GIT_FORMAT).toContain('%(contents:subject)');
+    for (const bodyToken of ['%(contents:body)', '%(contents)', '%(body)', '%(trailers)']) {
+      expect(CHECKPOINT_REF_GIT_FORMAT).not.toContain(bodyToken);
     }
   });
 });

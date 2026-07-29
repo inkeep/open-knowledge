@@ -732,6 +732,11 @@ const bridge: OkDesktopBridge = {
       // state. Same swallow-rejection contract as the active-target push.
       invoke('ok:editor:view-menu-state-changed', state).catch(() => {});
     },
+    notifyBackgroundThrottle: (signal: { hasPendingWork: boolean; enabled: boolean }) => {
+      // Sibling fire-and-forget push keying the window's background-throttling
+      // to unsynced work. Same swallow-rejection contract as the pushes above.
+      invoke('ok:editor:background-throttle', signal).catch(() => {});
+    },
   },
 
   menu: {

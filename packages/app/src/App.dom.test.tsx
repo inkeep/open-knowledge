@@ -141,6 +141,18 @@ vi.doMock('@/components/SystemDocSubscriber', () => ({
   SystemDocSubscriber: () => <div data-testid="system-doc-subscriber" />,
 }));
 
+// Side-effect-only lifecycle reporters that mount null and drive the provider
+// pool / desktop bridge (flush-on-hide; background-throttle). This chrome-focused
+// test doesn't exercise them and its DocumentContext mock omits `getPool`, so
+// stub them like the other side surfaces above — their behavior is covered by
+// their own suites (install-editor-lifecycle-flush, install-background-throttle-reporter).
+vi.doMock('@/editor/EditorLifecycleFlush', () => ({
+  EditorLifecycleFlush: () => null,
+}));
+vi.doMock('@/editor/BackgroundThrottleReporter', () => ({
+  BackgroundThrottleReporter: () => null,
+}));
+
 vi.doMock('@/components/McpConsentDialog', () => ({
   McpConsentDialog: () => <div data-testid="mcp-consent-dialog" />,
 }));

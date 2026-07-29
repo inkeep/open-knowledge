@@ -48,7 +48,7 @@ import type { AgentSessionManager } from './agent-sessions.ts';
 interface YjsDeleteSetShape {
   clients: Map<number, Array<{ clock: number; len: number }>>;
 }
-interface YjsStackItemShape {
+export interface YjsStackItemShape {
   insertions: YjsDeleteSetShape;
   deletions: YjsDeleteSetShape;
   meta: Map<unknown, unknown>;
@@ -81,7 +81,7 @@ function collectItemsInDeleteSet(
 // sibling pointers. `AbstractType._start` is declared in
 // `node_modules/yjs/dist/src/types/AbstractType.d.ts` — documented public
 // surface despite the underscore prefix (convention-only; TypeScript-visible).
-function* walkYTextItems(ytext: Y.Text): IterableIterator<Item> {
+export function* walkYTextItems(ytext: Y.Text): IterableIterator<Item> {
   let cursor = (ytext as unknown as { _start: Item | null })._start;
   while (cursor !== null) {
     yield cursor;

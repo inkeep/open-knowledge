@@ -27,8 +27,10 @@ import {
   DOCUMENT_OPEN_BYTE_LIMIT,
   fnv1aDigest,
   formatFileSize,
+  fragmentHoldsPendingContent,
   normalizeBridge,
   type Principal,
+  pendingContentLines,
   prependFrontmatter,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
@@ -71,6 +73,11 @@ import { tracedMkdir, tracedRename, tracedUnlinkSync, tracedWriteFile } from './
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 import {
+  LOSS_EVENT_CHECKPOINT_WRITE,
+  LOSS_EVENT_PERSISTENCE_HOLD,
+  type LossCaptureRing,
+} from './loss-capture.ts';
+import {
   loadManagedArtifactDoc,
   type ManagedArtifactCtx,
   managedArtifactContributorAttribution,
@@ -86,8 +93,12 @@ import {
   incrementDeferredStoreFailures,
   incrementGitAutoSaveFailure,
   incrementGitWriterCommitFailure,
+  incrementPersistenceDeferHold,
   incrementPersistenceDiskWrite,
   incrementPersistenceForceFlushDuringBurst,
+  incrementPersistenceReconcileLoss,
+  incrementPersistenceReconcileLossCheckpointCreated,
+  incrementPersistenceReconcileLossDeduped,
   incrementPersistenceReconciliationFailures,
   incrementPersistenceSanityCheckSerializeFailures,
   incrementPersistenceSkipNonQuiescent,
@@ -96,7 +107,7 @@ import {
 import { toPosix } from './path-utils.ts';
 import { classifyDuplication } from './persistence-tripwire.ts';
 import { backfillRenameLogCommitSha, getOrLoadRenameLogIndex } from './rename-log.ts';
-import { OBSERVER_SYNC_ORIGIN } from './server-observers.ts';
+import { getConvergedFragmentWitness, OBSERVER_SYNC_ORIGIN } from './server-observers.ts';
 import type { ShadowRef, WriterIdentity } from './shadow-repo.ts';
 import {
   buildWipTree,
@@ -105,6 +116,7 @@ import {
   FILE_SYSTEM_WRITER,
   GIT_UPSTREAM_WRITER,
   SERVICE_WRITER,
+  saveInMemoryCheckpoint,
   shadowGit,
 } from './shadow-repo.ts';
 import { getMeter, setActiveSpanAttributes, withSpan } from './telemetry.ts';
@@ -386,6 +398,13 @@ export interface PersistenceOptions {
    * without coupling the test contract to the function's stack frame).
    */
   mdManager?: MarkdownManager;
+  /**
+   * Accessor for the content-free loss ring. Closure-deferred because the ring
+   * is constructed later in boot than the persistence extension; `undefined`
+   * when loss capture is disabled or in rigs that wire no diagnostics. The
+   * pre-write divergence arms record their hold / checkpoint breadcrumbs here.
+   */
+  getLossRing?: () => Pick<LossCaptureRing, 'record'> | undefined;
   /**
    * Probe into the removal cache (`RecentlyRemovedDocs`). Diagnostic only:
    * when a store is about to write a doc the cache still records as
@@ -1087,6 +1106,130 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     }
   }
 
+  /**
+   * The pre-write divergence arms' ring `site`, shared by the hold breadcrumb
+   * and the floor checkpoint so a bundle reader can pair them on one doc.
+   */
+  const PERSISTENCE_PREWRITE_SITE = 'persistence-prewrite';
+
+  /**
+   * Last floor-checkpoint payload minted per document. Some documents diverge
+   * at this boundary on EVERY write-back — a construct whose fragment view is
+   * lossy against its own Y.Text bytes re-trips the check for as long as the
+   * doc exists — and an un-deduped mint would let that one doc evict every
+   * other recovery anchor sharing its retention bucket. Retention caps bound
+   * the ref count but cannot stop a spammer from evicting its own useful
+   * anchor, so the dedup is the first line and the cap the second. Keyed by
+   * Y.Doc identity so the entry dies with the doc.
+   */
+  const lastFloorCheckpointPayload = new WeakMap<Y.Doc, string>();
+
+  /**
+   * Breadcrumb for a tolerated divergence: the whole fragment/Y.Text delta is
+   * content the derive-timing guard is holding, so the fragment is left intact
+   * and the keystroke survives. Content-free — a byte length of the at-risk
+   * lines, never the lines.
+   */
+  function recordDeferHold(documentName: string, pendingLines: readonly string[]): void {
+    incrementPersistenceDeferHold();
+    void options?.getLossRing?.()?.record({
+      event: LOSS_EVENT_PERSISTENCE_HOLD,
+      docName: documentName,
+      writerId: null,
+      direction: 'b',
+      site: PERSISTENCE_PREWRITE_SITE,
+      lostLen: pendingLines.reduce((n, line) => n + line.length, 0),
+    });
+  }
+
+  /**
+   * Checkpoint-before-repair for a divergence the derive-timing tolerance does
+   * NOT cover. `fragmentMarkdown` is the fragment-side view the imminent
+   * `reconcileFragmentNow` destroys, so it is the restore anchor; Y.Text goes
+   * to disk either way. Fire-and-forget, and the repair is never gated on it —
+   * the dedup suppresses the MINT, not the rebuild.
+   *
+   * `witnessAvailable: false` records a distinguishable trip class: observers
+   * detached, so the tolerance could not be evaluated at all and the arm fell
+   * back to rebuilding. Prior art (`reports/tolerated-divergence-hygiene-layers/REPORT.md`)
+   * puts the floor under exactly that fallback rather than skipping blind.
+   */
+  function checkpointBeforeReconcile(
+    document: Y.Doc,
+    documentName: string,
+    fragmentMarkdown: string,
+    ytextMarkdown: string,
+    witnessAvailable: boolean,
+  ): void {
+    incrementPersistenceReconcileLoss();
+    if (lastFloorCheckpointPayload.get(document) === fragmentMarkdown) {
+      incrementPersistenceReconcileLossDeduped();
+      return;
+    }
+    // Claimed before the write so two trips can never race into two anchors;
+    // released again if the write fails, so a transient shadow error still
+    // retries on the next trip instead of permanently suppressing the anchor.
+    lastFloorCheckpointPayload.set(document, fragmentMarkdown);
+    const atRisk = pendingContentLines(fragmentMarkdown, ytextMarkdown, '');
+    const lostLen = atRisk.reduce((n, line) => n + line.length, 0);
+    const ring = options?.getLossRing?.();
+    const shadow = shadowRef?.current;
+    if (!shadow) {
+      void ring?.record({
+        event: LOSS_EVENT_CHECKPOINT_WRITE,
+        docName: documentName,
+        writerId: null,
+        direction: 'b',
+        site: PERSISTENCE_PREWRITE_SITE,
+        lostLen,
+      });
+      return;
+    }
+    const branch = getCurrentBranch?.() ?? 'main';
+    queueMicrotask(() => {
+      saveInMemoryCheckpoint(shadow, contentRoot, {
+        kind: 'persistence-reconcile-loss',
+        docName: documentName,
+        contents: fragmentMarkdown,
+        label: `Before persistence fragment rebuild @ ${new Date().toISOString()}`,
+        branch,
+        metadata: { atRiskLines: atRisk.length, witnessAvailable },
+      })
+        .then((sha) => {
+          incrementPersistenceReconcileLossCheckpointCreated();
+          void ring?.record({
+            event: LOSS_EVENT_CHECKPOINT_WRITE,
+            docName: documentName,
+            writerId: null,
+            direction: 'b',
+            site: PERSISTENCE_PREWRITE_SITE,
+            lostLen,
+            checkpointSha: sha,
+          });
+          console.warn(
+            JSON.stringify({
+              event: 'persistence-reconcile-loss-checkpoint-created',
+              docName: documentName,
+              sha,
+              kind: 'persistence-reconcile-loss',
+              timestamp: new Date().toISOString(),
+            }),
+          );
+        })
+        .catch((checkpointErr: unknown) => {
+          if (lastFloorCheckpointPayload.get(document) === fragmentMarkdown) {
+            lastFloorCheckpointPayload.delete(document);
+          }
+          const e =
+            checkpointErr instanceof Error ? checkpointErr : new Error(String(checkpointErr));
+          log.warn(
+            { documentName, err: e },
+            '[persistence] reconcile-loss checkpoint write failed',
+          );
+        });
+    });
+  }
+
   // Lazy-init histograms; safe to call in every hook. Meter is a no-op when OTel
   // SDK is disabled, so allocations are essentially free.
   let loadDurationHist: ReturnType<ReturnType<typeof getMeter>['createHistogram']> | null = null;
@@ -1275,9 +1418,16 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         // serialize failure as definite divergence, queue fragment
         // reconciliation, and proceed to write Y.Text bytes verbatim.
         let normalizeEqual: boolean;
+        // Hoisted out of the `try` because its ABSENCE is load-bearing. The
+        // divergence arms below both need the fragment-side view — one to
+        // evaluate the derive-timing tolerance against it, the other to
+        // checkpoint it — and a serialize throw leaves neither possible. Only
+        // `null` distinguishes "no divergence tolerance was evaluated because
+        // there was nothing to evaluate" from "the tolerance said no".
+        let fragmentMarkdown: string | null = null;
         try {
           const fragmentBody = mgr.serialize(json);
-          const fragmentMarkdown = prependFrontmatter(frontmatter, fragmentBody);
+          fragmentMarkdown = prependFrontmatter(frontmatter, fragmentBody);
           normalizeEqual = assertBridgeInvariant(markdown, fragmentMarkdown, {
             site: 'persistence',
             docName: documentName,
@@ -1316,17 +1466,64 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             { err, documentName },
             `[persistence] Sanity-check serialize failed for ${documentName}; proceeding with ytext bytes`,
           );
+          // The assertion may have thrown AFTER the assignment above; a
+          // fragment view that could not be validated is not a view this
+          // function may act on.
+          fragmentMarkdown = null;
           normalizeEqual = false;
         }
         if (!normalizeEqual) {
           // Watchdog already emitted the rate-limited telemetry +
           // incremented `bridgeInvariantViolations` (or its suppressed
           // counterpart) — or, when serialize itself threw, the warn above
-          // is the single signal. Reconcile the fragment synchronously so
-          // it converges to ytext before the disk write below proceeds with
-          // ytext bytes (Y.Text is the contract's source-of-truth per
-          // precedent #38).
-          reconcileFragmentNow(document, body, documentName);
+          // is the single signal.
+          //
+          // Three arms, discriminated by what is knowable at this instant:
+          //
+          //  1. The whole divergence is content the derive-timing guard is
+          //     holding in the fragment (a WYSIWYG keystroke not yet in
+          //     Y.Text). Rebuilding would destroy it with no checkpoint and no
+          //     ring event, because both observers self-skip the
+          //     OBSERVER_SYNC_ORIGIN write. HOLD the fragment instead: Y.Text
+          //     still goes to disk below, so this defers the fragment's
+          //     convergence, never the durability of the user's bytes. The
+          //     predicate is the SAME pure call Observer B's guard makes, over
+          //     the witness the observer publishes — a tolerated divergence in
+          //     the shape prior art converges on, with no checker-side
+          //     freshness or age bound (the one shipped wall-clock bound on
+          //     this pattern was removed as unmaintainable). See
+          //     `reports/tolerated-divergence-hygiene-layers/REPORT.md`.
+          //  2. Any other divergence, including one whose tolerance could not
+          //     be evaluated because observers publish no witness: checkpoint
+          //     the fragment view FIRST, then repair. Checkpoint-before-repair
+          //     keeps the destroyed view restorable.
+          //  3. Serialize threw: no fragment view exists, so neither arm can
+          //     run. Left exactly as it was — the repair, and the
+          //     serialize-failure counter above as its only signal. A skip here
+          //     would silently swallow a serialize failure.
+          const witness =
+            fragmentMarkdown === null ? undefined : getConvergedFragmentWitness(document);
+          if (
+            fragmentMarkdown !== null &&
+            witness !== undefined &&
+            fragmentHoldsPendingContent(fragmentMarkdown, markdown, witness)
+          ) {
+            recordDeferHold(documentName, pendingContentLines(fragmentMarkdown, markdown, witness));
+          } else {
+            if (fragmentMarkdown !== null) {
+              checkpointBeforeReconcile(
+                document,
+                documentName,
+                fragmentMarkdown,
+                markdown,
+                witness !== undefined,
+              );
+            }
+            // Reconcile the fragment synchronously so it converges to ytext
+            // before the disk write below proceeds with ytext bytes (Y.Text is
+            // the contract's source-of-truth per precedent #38).
+            reconcileFragmentNow(document, body, documentName);
+          }
         }
 
         // Skip the write when the serialized output matches the load-time

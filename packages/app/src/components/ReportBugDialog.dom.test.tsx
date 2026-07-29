@@ -251,7 +251,7 @@ describe('ReportBugDialog', () => {
     expect(checkbox.hasAttribute('disabled')).toBe(false);
     expect(
       screen.getByText(
-        'Adds telemetry, server state, and runtime info when available. Document names are anonymized.',
+        'Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted).',
       ),
     ).not.toBeNull();
 

@@ -253,6 +253,7 @@ async function installDelayedDesktopSessionBridge(
         editor: {
           notifyActiveTargetChanged: () => {},
           notifyViewMenuStateChanged: () => {},
+          notifyBackgroundThrottle: () => {},
         },
         sidebar: {
           expandAll: () => unsubscribe,

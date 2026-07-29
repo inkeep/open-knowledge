@@ -10,10 +10,9 @@ import {
   toEffectiveBase,
 } from '@inkeep/open-knowledge-core';
 import { isMacOS } from '@tiptap/core';
-import { basicSetup } from 'codemirror';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef, useState } from 'react';
-import { yCollab } from 'y-codemirror.next';
+import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
 import type * as Y from 'yjs';
 import { emitOpenAskAiComposer } from '@/components/ask-ai-composer-events';
 import { OUTLINE_NAV_EVENT, type OutlineNavDetail } from '@/components/OutlinePanel';
@@ -42,6 +41,7 @@ import {
   consumePendingSourceNavigation,
 } from './source-editor-navigation';
 import { createMarkdownLintExtension } from './source-lint/markdown-lint-source';
+import { sourceModeSetup } from './source-mode-setup';
 import { createSourcePolishExtension } from './source-polish';
 import { FM_FENCE_LINE_RE } from './source-polish/view-plugin';
 import { attachTypingBurstDetector } from './typing-burst-detector';
@@ -255,7 +255,7 @@ export function SourceEditor({
           const state = EditorState.create({
             doc: ytext.toString(),
             extensions: [
-              basicSetup,
+              sourceModeSetup,
               // Search-result scroll. CM's default search `scrollToMatch` is
               // `EditorView.scrollIntoView(range)` (y:'nearest'), which no-ops in
               // full-page source mode: the editor renders at content height with no
@@ -276,6 +276,10 @@ export function SourceEditor({
               // focus mode. Upstream convention per codemirror.net/examples/tab/.
               keymap.of([indentWithTab]),
               yCollab(ytext, provider.awareness),
+              // Route Mod-z/Mod-y to the y-codemirror Y.UndoManager (origin-aware,
+              // remote/agent writes excluded) instead of CodeMirror's native
+              // history, which sourceModeSetup omits.
+              keymap.of(yUndoManagerKeymap),
               // Nested-CM / SourceEditor convergence: the factory provides markdown
               // (with GFM + codeLanguages), wiki-link + md-link decorations,
               // agent-flash, theme compartment, line-wrapping. Source mode adds the

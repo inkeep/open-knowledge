@@ -1,5 +1,6 @@
 import type * as Y from 'yjs';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
+import type { DeriveLossDetectOptions } from './bridge-loss-detector.ts';
 import type { PairedWriteOrigin } from './server-observers.ts';
 
 /**
@@ -16,6 +17,11 @@ export const FILE_WATCHER_ORIGIN = {
 /**
  * Apply raw disk bytes through the shared paired-write primitive. The caller
  * owns the outer `document.transact(..., FILE_WATCHER_ORIGIN)` boundary.
+ *
+ * `detect` opts this write into paired-intake derive-loss detection. Omitting
+ * it leaves the write serialize-free, which is why the persistence and
+ * managed-artifact callers pass nothing: they re-apply bytes the fragment is
+ * already derived from, so there is no un-propagated editor content to lose.
  */
 export function applyDiskContentToDoc(
   document: Y.Doc,
@@ -23,8 +29,9 @@ export function applyDiskContentToDoc(
   resolveEmbed?: (basename: string, sourcePath: string) => string | null,
   sourcePath?: string,
   resolveSize?: (basename: string, sourcePath: string) => number | null,
+  detect?: DeriveLossDetectOptions,
 ): void {
   const embedResolver =
     resolveEmbed && sourcePath ? { resolveEmbed, resolveSize, sourcePath } : undefined;
-  composeAndWriteRawBody(document, content, 'file-watcher', embedResolver);
+  composeAndWriteRawBody(document, content, 'file-watcher', embedResolver, undefined, detect);
 }

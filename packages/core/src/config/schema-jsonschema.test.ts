@@ -236,4 +236,83 @@ describe('loose-mode forgiveness', () => {
     });
     expect(config.telemetry.localSink.attributeDenylist).toEqual(['x-internal-token']);
   });
+
+  test('lossCapture defaults to enabled with a rotation cap', () => {
+    const config = ConfigSchema.parse({});
+    expect(config.lossCapture.enabled).toBe(true);
+    expect(config.lossCapture.maxBytes).toBe(12_582_912);
+  });
+
+  test('lossCapture.enabled=false preserved through parse', () => {
+    const config = ConfigSchema.parse({ lossCapture: { enabled: false } });
+    expect(config.lossCapture.enabled).toBe(false);
+    // The sibling cap still resolves to its default even when enabled is overridden.
+    expect(config.lossCapture.maxBytes).toBe(12_582_912);
+  });
+
+  test('lossCapture custom maxBytes preserved', () => {
+    const config = ConfigSchema.parse({ lossCapture: { maxBytes: 4096 } });
+    expect(config.lossCapture.maxBytes).toBe(4096);
+    expect(config.lossCapture.enabled).toBe(true);
+  });
+
+  test('bridge.backgroundThrottle defaults to enabled', () => {
+    const config = ConfigSchema.parse({});
+    expect(config.bridge.backgroundThrottle.enabled).toBe(true);
+  });
+
+  test('bridge.backgroundThrottle.enabled=false preserved through parse', () => {
+    const config = ConfigSchema.parse({ bridge: { backgroundThrottle: { enabled: false } } });
+    expect(config.bridge.backgroundThrottle.enabled).toBe(false);
+  });
+
+  test('bridge.deferGuard defaults to enabled', () => {
+    const config = ConfigSchema.parse({});
+    expect(config.bridge.deferGuard.enabled).toBe(true);
+  });
+
+  test('bridge.deferGuard.enabled=false preserved through parse', () => {
+    const config = ConfigSchema.parse({ bridge: { deferGuard: { enabled: false } } });
+    expect(config.bridge.deferGuard.enabled).toBe(false);
+  });
+
+  test('bridge.lossDetector defaults to enabled', () => {
+    const config = ConfigSchema.parse({});
+    expect(config.bridge.lossDetector.enabled).toBe(true);
+  });
+
+  test('bridge.lossDetector.enabled=false preserved through parse', () => {
+    const config = ConfigSchema.parse({ bridge: { lossDetector: { enabled: false } } });
+    expect(config.bridge.lossDetector.enabled).toBe(false);
+  });
+
+  test('bridge.fixedPoint defaults to enabled', () => {
+    const config = ConfigSchema.parse({});
+    expect(config.bridge.fixedPoint.enabled).toBe(true);
+  });
+
+  test('bridge.fixedPoint.enabled=false preserved through parse', () => {
+    const config = ConfigSchema.parse({ bridge: { fixedPoint: { enabled: false } } });
+    expect(config.bridge.fixedPoint.enabled).toBe(false);
+  });
+
+  test('bridge.preDrain defaults to enabled', () => {
+    const config = ConfigSchema.parse({});
+    expect(config.bridge.preDrain.enabled).toBe(true);
+  });
+
+  test('bridge.preDrain.enabled=false preserved through parse', () => {
+    const config = ConfigSchema.parse({ bridge: { preDrain: { enabled: false } } });
+    expect(config.bridge.preDrain.enabled).toBe(false);
+  });
+
+  test('bridge.flushOnHide defaults to enabled', () => {
+    const config = ConfigSchema.parse({});
+    expect(config.bridge.flushOnHide.enabled).toBe(true);
+  });
+
+  test('bridge.flushOnHide.enabled=false preserved through parse', () => {
+    const config = ConfigSchema.parse({ bridge: { flushOnHide: { enabled: false } } });
+    expect(config.bridge.flushOnHide.enabled).toBe(false);
+  });
 });

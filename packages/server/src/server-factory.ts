@@ -63,6 +63,10 @@ import { BacklinkIndex } from './backlink-index.ts';
 import { shellEscape } from './bash/shell-escape.ts';
 import { bootElapsedMs, recordBootPhase, setBootField } from './boot-timings.ts';
 import {
+  type BridgeDeriveLossReporter,
+  createBridgeDeriveLossReporter,
+} from './bridge-loss-detector.ts';
+import {
   CC1Broadcaster,
   isConfigDoc,
   isManagedArtifactDoc,
@@ -125,6 +129,7 @@ import { errnoCode } from './http/handler-utils.ts';
 import { createLiveDerivedIndexExtension } from './live-derived-index.ts';
 import { getLogger } from './logger.ts';
 import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
+import { LossCaptureRing } from './loss-capture.ts';
 import {
   createMaintenanceCoordinator,
   type MaintenanceCoordinator,
@@ -967,8 +972,14 @@ export function createServer(options: ServerOptions): ServerInstance {
   let shadowRef: ShadowRef;
   let maintenanceCoordinator: MaintenanceCoordinator | undefined;
   let persistence: ReturnType<typeof createPersistenceExtension>;
+  // Constructed later in init (after the bridge-guard config read) but reached
+  // by closure from the persistence options built before it.
+  let lossRing: LossCaptureRing | undefined;
   let hocuspocus: Hocuspocus;
   let sessionManager: AgentSessionManager;
+  // Set at boot when the loss detector is enabled; shared by the agent-session
+  // manager (agent-undo) and the file-watcher intake path (dirty-open-doc).
+  let bridgeLossReporter: BridgeDeriveLossReporter | undefined;
   let cc1Broadcaster: CC1Broadcaster | null = null;
   let agentFocusBroadcaster: AgentFocusBroadcaster | null = null;
   let agentPresenceBroadcaster: AgentPresenceBroadcaster | null = null;
@@ -1329,6 +1340,9 @@ export function createServer(options: ServerOptions): ServerInstance {
       // otherwise register as a benign self-write and be invisible).
       isRecentlyRemoved: (docName) => recentlyRemovedDocs.has(docName),
       mdManager: options.mdManager,
+      // Closure-deferred like the CC1 callbacks above: the ring is constructed
+      // further down in init, after the bridge-guard config is read.
+      getLossRing: () => lossRing,
     };
 
     persistence = createPersistenceExtension({ ...persistenceOpts, durabilityState });
@@ -1848,6 +1862,10 @@ export function createServer(options: ServerOptions): ServerInstance {
       authStreamHeartbeatMs,
       projectDir,
       resolveEmbed,
+      // Deferred read: the reporter is constructed later in init (after the loss
+      // ring) than this extension, and stays undefined when the lossDetector
+      // kill-switch is off.
+      getBridgeLossReporter: () => bridgeLossReporter,
       getPrincipal: () => loadedPrincipal,
       acpRegistry,
       loadAcpCustomAgents: () => loadCustomAgents(lockDir, getLogger('acp-registry')),
@@ -1876,6 +1894,43 @@ export function createServer(options: ServerOptions): ServerInstance {
     });
     hocuspocus.configuration.extensions.push(apiExtension);
 
+    // Bridge loss-hardening wiring: resolve the defer-guard kill-switch
+    // and construct the content-free loss ring once at boot. Reading the
+    // committed project config fails OPEN to the schema defaults, so a corrupt
+    // config can never silently disable the loss-prevention guard. A change to
+    // either knob takes effect on the next restart — acceptable for a
+    // support-visible field escape and a diagnostics ring.
+    const bridgeGuardConfig = readConfigSafely({
+      absPath: resolveConfigPath('project', projectDir),
+      sideline: false,
+      warn: (message) =>
+        log.warn({ message }, '[config] could not read project config for bridge guards'),
+    });
+    const deferGuardEnabled = bridgeGuardConfig.value.bridge.deferGuard.enabled;
+    const fixedPointBackstopEnabled = bridgeGuardConfig.value.bridge.fixedPoint.enabled;
+    const preDrainEnabled = bridgeGuardConfig.value.bridge.preDrain.enabled;
+    lossRing = bridgeGuardConfig.value.lossCapture.enabled
+      ? new LossCaptureRing({
+          projectDir,
+          maxBytes: bridgeGuardConfig.value.lossCapture.maxBytes,
+        })
+      : undefined;
+
+    // The Observer-B derive-loss detector for the paired agent-undo path.
+    // Built here (after the loss ring) and attached to the session manager
+    // constructed earlier in init — no session exists yet, so every real
+    // session picks it up. Disabled → no reporter, and the undo derive stays
+    // serialize-free.
+    if (bridgeGuardConfig.value.bridge.lossDetector.enabled) {
+      bridgeLossReporter = createBridgeDeriveLossReporter({
+        shadow: () => shadowRef.current,
+        ring: lossRing,
+        getBranch: () => headWatcher?.getLastKnownBranch() ?? 'main',
+        contentRoot: contentRoot ?? '',
+      });
+      sessionManager.attachBridgeLossReporter(bridgeLossReporter);
+    }
+
     hocuspocus.configuration.extensions.push(
       createServerObserverExtension({
         mdManager,
@@ -1885,6 +1940,11 @@ export function createServer(options: ServerOptions): ServerInstance {
         getCurrentBranch: () => headWatcher?.getLastKnownBranch() ?? null,
         resolveEmbed,
         resolveSize,
+        deferGuardEnabled,
+        lossDetectorEnabled: bridgeGuardConfig.value.bridge.lossDetector.enabled,
+        fixedPointBackstopEnabled,
+        preDrainEnabled,
+        lossRing,
       }),
     );
 
@@ -1986,7 +2046,15 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   /** Apply markdown content to Y.Doc — delegates to the shared throwing helper. */
   const applyToDoc = (docName: string, content: string): void =>
-    applyExternalChange(durabilityState, hocuspocus, docName, content, resolveEmbed, resolveSize);
+    applyExternalChange(
+      durabilityState,
+      hocuspocus,
+      docName,
+      content,
+      resolveEmbed,
+      resolveSize,
+      bridgeLossReporter,
+    );
 
   /**
    * Clear the conflict status set by `case 'conflict'` once a subsequent

@@ -29,6 +29,9 @@ import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   type AutoConsolidationTrigger,
+  CHECKPOINT_KIND_REGISTRY,
+  CHECKPOINT_KINDS,
+  type CheckpointKind,
   formatCheckpointBodyLine,
   formatCheckpointSubject,
   formatImportSubject,
@@ -818,6 +821,21 @@ export async function safetyCheckpoint(
  *   branch-switch path) would otherwise have discarded dirty Y.Doc content.
  *   `contents` is the rescued in-memory markdown; `incomingDiskSha` names
  *   the disk SHA we chose over it.
+ * - `defer-exhaustion-loss` — the derive-timing defer guard reached its
+ *   drain-count bound and force-resolved. `contents` is the pre-resolve
+ *   fragment serialization (which still holds the un-propagated keystroke);
+ *   `deferCount` is a content-free count of the deferrals that preceded it.
+ * - `observer-a-apply-loss` — the XmlFragment→Y.Text APPLY post-condition found
+ *   the byte-preserving apply arms dropped content the fragment's intended
+ *   markdown held. Distinct from `bridge-merge-loss` (a Path-B MERGE drop) so
+ *   the two detection sites keep separate counters and retention budgets.
+ *   `contents` is the pre-loss fragment serialization; `lostSubstrings` names
+ *   the dropped content.
+ * - `bridge-derive-loss` — the Y.Text→XmlFragment derive post-condition found
+ *   the pre-derive fragment held content the authoritative Y.Text lacked, about
+ *   to be discarded by a paired agent-undo derive. `contents` is the pre-derive
+ *   fragment serialization (the restore anchor); `lostSubstrings` names the
+ *   dropped content for diagnosis.
  */
 export type InMemoryCheckpointParams =
   | {
@@ -851,11 +869,52 @@ export type InMemoryCheckpointParams =
       label: string;
       branch?: string;
       metadata: { incomingDiskSha: string };
+    }
+  | {
+      kind: 'defer-exhaustion-loss';
+      docName: string;
+      contents: string;
+      label: string;
+      branch?: string;
+      metadata: { deferCount: number };
+    }
+  | {
+      kind: 'observer-a-apply-loss';
+      docName: string;
+      contents: string;
+      label: string;
+      branch?: string;
+      metadata: { lostSubstrings: string[] };
+    }
+  | {
+      kind: 'bridge-derive-loss';
+      docName: string;
+      contents: string;
+      label: string;
+      branch?: string;
+      metadata: { lostSubstrings: string[] };
+    }
+  | {
+      kind: 'persistence-reconcile-loss';
+      docName: string;
+      contents: string;
+      label: string;
+      branch?: string;
+      metadata: { atRiskLines: number; witnessAvailable: boolean };
+    }
+  | {
+      kind: 'bridge-backstop-trip';
+      docName: string;
+      contents: string;
+      label: string;
+      branch?: string;
+      metadata: { rounds: number };
     };
 
 /**
- * Silent in-memory checkpoint — writes `contents` as a blob at
- * `<docName>.md` in an isolated git tree, commits with body
+ * Silent in-memory checkpoint — writes `contents` as a blob at the
+ * extension-less tree path `<docName>` (docNames are extension-less by
+ * convention; `foo` → `foo.md` on disk) in an isolated git tree, commits with body
  * `checkpoint: ${label}\n\nok-checkpoint-v1: ${JSON}`, and updates the ref
  * `refs/checkpoints/<branch>/<sha>`. Never touches `refs/wip/*` — this is a
  * one-shot recovery artifact, not part of the per-writer WIP chain
@@ -894,9 +953,16 @@ async function saveInMemoryCheckpointInner(
   // Path inside the tree mirrors the real content layout so TimelinePanel's
   // existing per-doc view logic (walks the tree at the commit's docName)
   // resolves identically for silent-checkpoint artifacts.
-  const treePath = contentRoot
-    ? `${contentRoot.replace(/\/$/, '')}/${params.docName}`
-    : params.docName;
+  //
+  // A '.'-only (or './'-prefixed) contentRoot means the content dir IS the repo
+  // root. `git update-index --cacheinfo` rejects a `./`-prefixed tree path, so
+  // collapse it to a bare docName — mirroring the WIP builders, which treat ''
+  // and '.' as the same root pathspec. Without this a silent checkpoint throws
+  // `Invalid path './<doc>'` and the recovery floor never persists on a booted
+  // server (which passes contentRoot '.').
+  const normalizedRoot =
+    contentRoot === '.' ? '' : contentRoot.replace(/^\.\//, '').replace(/\/$/, '');
+  const treePath = normalizedRoot ? `${normalizedRoot}/${params.docName}` : params.docName;
   // Byte-size of the rescued content; encoded in metadata so the rescue
   // read path can render the listing without spawning a per-ref `git ls-tree`
   // subprocess.
@@ -932,6 +998,46 @@ async function saveInMemoryCheckpointInner(
     case 'external-change-rescue':
       parsed = {
         kind: 'external-change-rescue',
+        docName: params.docName,
+        size,
+        metadata: params.metadata,
+      };
+      break;
+    case 'defer-exhaustion-loss':
+      parsed = {
+        kind: 'defer-exhaustion-loss',
+        docName: params.docName,
+        size,
+        metadata: params.metadata,
+      };
+      break;
+    case 'observer-a-apply-loss':
+      parsed = {
+        kind: 'observer-a-apply-loss',
+        docName: params.docName,
+        size,
+        metadata: params.metadata,
+      };
+      break;
+    case 'bridge-derive-loss':
+      parsed = {
+        kind: 'bridge-derive-loss',
+        docName: params.docName,
+        size,
+        metadata: params.metadata,
+      };
+      break;
+    case 'bridge-backstop-trip':
+      parsed = {
+        kind: 'bridge-backstop-trip',
+        docName: params.docName,
+        size,
+        metadata: params.metadata,
+      };
+      break;
+    case 'persistence-reconcile-loss':
+      parsed = {
+        kind: 'persistence-reconcile-loss',
         docName: params.docName,
         size,
         metadata: params.metadata,
@@ -1123,6 +1229,46 @@ export interface CheckpointRetentionPolicy {
    */
   maxExternalChangeRescue: number;
   /**
+   * Maximum `defer-exhaustion-loss` checkpoints to keep per branch. Written
+   * when the derive-timing defer guard force-resolves at its drain-count bound.
+   * Its own budget so a doc stuck in sustained defer-exhaustion cannot evict
+   * merge-drop or serializer-corruption recovery anchors. Default 50.
+   */
+  maxDeferExhaustionLoss: number;
+  /**
+   * Maximum `bridge-derive-loss` checkpoints to keep per branch. Written when
+   * the Y.Text→XmlFragment derive post-condition detects the pre-derive
+   * fragment held content Y.Text lacked. Its own budget so a doc undergoing
+   * repeated derive-loss cannot evict merge-drop or serializer-corruption
+   * recovery anchors. Default 50.
+   */
+  maxBridgeDeriveLoss: number;
+  /**
+   * Maximum `observer-a-apply-loss` checkpoints to keep per branch. Written when
+   * the Observer-A apply post-condition detects the byte-preserving apply arms
+   * dropped fragment content. Its own budget so a doc undergoing repeated apply
+   * drops cannot evict Path-B merge-drop or serializer-corruption anchors.
+   * Default 50.
+   */
+  maxObserverAApplyLoss: number;
+  /**
+   * Maximum `bridge-backstop-trip` checkpoints to keep per branch. Written when
+   * the Y.Text→XmlFragment re-derive loop hits its drain-count backstop and
+   * freezes. Its own budget so a doc stuck in a runaway re-derive loop cannot
+   * evict merge-drop or serializer-corruption recovery anchors. Default 50.
+   */
+  maxBridgeBackstopTrip: number;
+  /**
+   * Maximum `persistence-reconcile-loss` checkpoints to keep per branch.
+   * Written when the persistence pre-write check finds a divergence outside the
+   * derive-timing guard's protected set and rebuilds the fragment. Its own
+   * budget so a doc resting on a construct that diverges on every write-back
+   * cannot evict merge-drop or serializer-corruption recovery anchors — the
+   * budget is the second line of defense; the mint-side dedup in `persistence.ts`
+   * is the first. Default 50.
+   */
+  maxPersistenceReconcileLoss: number;
+  /**
    * Maximum `auto-consolidation` checkpoints to keep per branch.
    * These are service-authored when dead WIP chains are folded; left unbounded
    * they reintroduce the unbounded-hidden-ref growth this feature exists to
@@ -1148,6 +1294,11 @@ export const DEFAULT_CHECKPOINT_RETENTION: CheckpointRetentionPolicy = {
   maxProducerGuardLoss: 50,
   maxObserverADuplication: 50,
   maxExternalChangeRescue: 50,
+  maxDeferExhaustionLoss: 50,
+  maxBridgeDeriveLoss: 50,
+  maxObserverAApplyLoss: 50,
+  maxBridgeBackstopTrip: 50,
+  maxPersistenceReconcileLoss: 50,
   maxAutoConsolidation: 2,
   ttlMs: 30 * 24 * 60 * 60 * 1000,
 };
@@ -1158,9 +1309,89 @@ export interface CheckpointGcResult {
   deletedProducerGuardLoss: number;
   deletedObserverADuplication: number;
   deletedExternalChangeRescue: number;
+  deletedDeferExhaustionLoss: number;
+  deletedBridgeDeriveLoss: number;
+  deletedObserverAApplyLoss: number;
+  deletedBridgeBackstopTrip: number;
+  deletedPersistenceReconcileLoss: number;
   deletedAutoConsolidation: number;
   retained: number;
 }
+
+/** The per-bucket deletion counters on {@link CheckpointGcResult}. */
+type GcDeletionCounter = Exclude<keyof CheckpointGcResult, 'scanned' | 'retained'>;
+
+interface GcBucketPolicy {
+  /** The retention limit this bucket draws from. */
+  limit: (policy: CheckpointRetentionPolicy) => number;
+  /** Which `CheckpointGcResult` counter its deletions land on. */
+  counter: GcDeletionCounter;
+  /** Whether the TTL lower bound applies (false = count-only retention). */
+  applyTtl: boolean;
+}
+
+/**
+ * Retention wiring per GC bucket. `satisfies Record<CheckpointKind, …>` is what
+ * makes this exhaustive: a checkpoint kind added to the parser cannot compile
+ * until it declares a limit, a counter, and its TTL applicability here — so a
+ * new kind can never end up scanned-but-never-reaped, accumulating refs forever
+ * with no cap and no TTL.
+ */
+const GC_BUCKET_POLICY = {
+  'bridge-merge-loss': {
+    limit: (p) => p.maxBridgeMergeLoss,
+    counter: 'deletedBridgeMergeLoss',
+    applyTtl: true,
+  },
+  'producer-guard-loss': {
+    limit: (p) => p.maxProducerGuardLoss,
+    counter: 'deletedProducerGuardLoss',
+    applyTtl: true,
+  },
+  'observer-a-duplication': {
+    limit: (p) => p.maxObserverADuplication,
+    counter: 'deletedObserverADuplication',
+    applyTtl: true,
+  },
+  'external-change-rescue': {
+    limit: (p) => p.maxExternalChangeRescue,
+    counter: 'deletedExternalChangeRescue',
+    applyTtl: true,
+  },
+  'defer-exhaustion-loss': {
+    limit: (p) => p.maxDeferExhaustionLoss,
+    counter: 'deletedDeferExhaustionLoss',
+    applyTtl: true,
+  },
+  'observer-a-apply-loss': {
+    limit: (p) => p.maxObserverAApplyLoss,
+    counter: 'deletedObserverAApplyLoss',
+    applyTtl: true,
+  },
+  'bridge-derive-loss': {
+    limit: (p) => p.maxBridgeDeriveLoss,
+    counter: 'deletedBridgeDeriveLoss',
+    applyTtl: true,
+  },
+  'bridge-backstop-trip': {
+    limit: (p) => p.maxBridgeBackstopTrip,
+    counter: 'deletedBridgeBackstopTrip',
+    applyTtl: true,
+  },
+  'persistence-reconcile-loss': {
+    limit: (p) => p.maxPersistenceReconcileLoss,
+    counter: 'deletedPersistenceReconcileLoss',
+    applyTtl: true,
+  },
+  // Count-only: TTL must never be able to reap every surviving
+  // auto-checkpoint, or the chained consolidated history it anchors becomes
+  // unreachable.
+  'auto-consolidation': {
+    limit: (p) => p.maxAutoConsolidation,
+    counter: 'deletedAutoConsolidation',
+    applyTtl: false,
+  },
+} as const satisfies Record<CheckpointKind, GcBucketPolicy>;
 
 /**
  * GC `refs/checkpoints/<branch>/*` kind-aware: keep the most-recent N per
@@ -1191,6 +1422,11 @@ async function gcCheckpointRefsInner(
     deletedProducerGuardLoss: 0,
     deletedObserverADuplication: 0,
     deletedExternalChangeRescue: 0,
+    deletedDeferExhaustionLoss: 0,
+    deletedBridgeDeriveLoss: 0,
+    deletedObserverAApplyLoss: 0,
+    deletedBridgeBackstopTrip: 0,
+    deletedPersistenceReconcileLoss: 0,
     deletedAutoConsolidation: 0,
     retained: 0,
   };
@@ -1241,16 +1477,10 @@ async function gcCheckpointRefsInner(
     return result;
   }
 
-  type TypedKind =
-    | 'bridge-merge-loss'
-    | 'producer-guard-loss'
-    | 'observer-a-duplication'
-    | 'external-change-rescue'
-    | 'auto-consolidation';
   interface Entry {
     sha: string;
     timestamp: number; // ms since epoch
-    kind: TypedKind | null;
+    kind: CheckpointKind | null;
   }
   const entries: Entry[] = [];
   for (const record of logRaw.split('\x1e')) {
@@ -1264,24 +1494,21 @@ async function gcCheckpointRefsInner(
     entries.push({ sha, timestamp: Number.isFinite(ts) ? ts : 0, kind });
   }
 
-  // Partition by kind. Save-Version (kind=null) entries are always retained.
-  // This record MUST list every kind parseCheckpoint can return, or
-  // `byKind[e.kind].push` throws on the unmapped kind: adding a new checkpoint
-  // kind to the parser without adding it here is the bug this guards against.
-  const byKind: Record<TypedKind, Entry[]> = {
-    'bridge-merge-loss': [],
-    'producer-guard-loss': [],
-    'observer-a-duplication': [],
-    'external-change-rescue': [],
-    'auto-consolidation': [],
-  };
+  // Partition by GC BUCKET, derived from the shared registry rather than a
+  // hand-kept list — `CHECKPOINT_KINDS` is the enumeration and
+  // `CHECKPOINT_KIND_REGISTRY[kind].gcBucket` is the routing, so a kind added to
+  // the parser lands in a real bucket by construction. Save-Version (kind=null)
+  // entries are always retained.
+  const byBucket = Object.fromEntries(
+    CHECKPOINT_KINDS.map((kind) => [kind, [] as Entry[]]),
+  ) as Record<CheckpointKind, Entry[]>;
   let retainedUntyped = 0;
   for (const e of entries) {
     if (e.kind === null) {
       retainedUntyped++;
       continue;
     }
-    byKind[e.kind].push(e);
+    byBucket[CHECKPOINT_KIND_REGISTRY[e.kind].gcBucket].push(e);
   }
 
   const now = Date.now();
@@ -1289,12 +1516,7 @@ async function gcCheckpointRefsInner(
   const planDeletions = (
     list: Entry[],
     limit: number,
-    counter:
-      | 'deletedBridgeMergeLoss'
-      | 'deletedProducerGuardLoss'
-      | 'deletedObserverADuplication'
-      | 'deletedExternalChangeRescue'
-      | 'deletedAutoConsolidation',
+    counter: GcDeletionCounter,
     // auto-consolidation is count-only: TTL must never be able to reap every
     // surviving auto-checkpoint, or the chained consolidated history it anchors
     // becomes unreachable. Pass false to disable the TTL lower bound.
@@ -1317,28 +1539,18 @@ async function gcCheckpointRefsInner(
       }
     }
   };
-  planDeletions(byKind['bridge-merge-loss'], policy.maxBridgeMergeLoss, 'deletedBridgeMergeLoss');
-  planDeletions(
-    byKind['producer-guard-loss'],
-    policy.maxProducerGuardLoss,
-    'deletedProducerGuardLoss',
-  );
-  planDeletions(
-    byKind['observer-a-duplication'],
-    policy.maxObserverADuplication,
-    'deletedObserverADuplication',
-  );
-  planDeletions(
-    byKind['external-change-rescue'],
-    policy.maxExternalChangeRescue,
-    'deletedExternalChangeRescue',
-  );
-  planDeletions(
-    byKind['auto-consolidation'],
-    policy.maxAutoConsolidation,
-    'deletedAutoConsolidation',
-    false,
-  );
+  // Exhaustive by construction: every bucket in the registry gets a plan, and
+  // `GC_BUCKET_POLICY` is `satisfies Record<CheckpointKind, …>` so a new kind
+  // cannot compile without declaring its limit, counter, and TTL applicability.
+  for (const bucket of CHECKPOINT_KINDS) {
+    const bucketPolicy = GC_BUCKET_POLICY[bucket];
+    planDeletions(
+      byBucket[bucket],
+      bucketPolicy.limit(policy),
+      bucketPolicy.counter,
+      bucketPolicy.applyTtl,
+    );
+  }
 
   for (const ref of deleteRefs) {
     try {

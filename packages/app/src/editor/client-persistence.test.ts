@@ -645,6 +645,36 @@ describe('flushFullState', () => {
     docB.destroy();
   });
 
+  test('commits the flush transaction explicitly and still persists durably', async () => {
+    const docName = uniqueDocName('cp-flush-commit');
+    const doc = new Y.Doc();
+    const provider = createClientPersistence({
+      branch: TEST_BRANCH,
+      serverInstanceId: TEST_SERVER_INSTANCE_ID,
+      docName,
+      doc,
+    });
+    await provider.whenSynced;
+    doc.getText('source').insert(0, 'commit me');
+
+    // Only the flush path calls IDBTransaction.commit() explicitly; every
+    // other IDB op in this suite relies on auto-commit, so a call on the
+    // prototype during the flush is attributable to the flush path.
+    const commitSpy = vi.spyOn(IDBTransaction.prototype, 'commit');
+    try {
+      await provider.flushFullState();
+      expect(commitSpy).toHaveBeenCalled();
+    } finally {
+      commitSpy.mockRestore();
+    }
+
+    // Explicit commit must not break durability: a full-state row is present.
+    const rows = await readPersistedUpdates(TEST_BRANCH, TEST_SERVER_INSTANCE_ID, docName);
+    expect(rows.length).toBe(1);
+    await provider.destroy();
+    doc.destroy();
+  });
+
   test('resolves only after the full-state row is committed and superseded rows are trimmed', async () => {
     const docName = uniqueDocName('cp-flush-durable');
     const doc = new Y.Doc();

@@ -1,26 +1,22 @@
 /**
- * Unit tests for the bundle redactor.
+ * Unit tests for the bundle content-dir masker.
  *
- * The redactor walks staged JSONL + JSON files under a bundle's staging dir
- * and produces:
- *   - doc.name attribute values replaced by `doc:<8 hex>` sha256 hashes
- *   - the absolute content-dir prefix replaced with the literal `<CONTENT_DIR>`
- *   - a stable per-bundle inverse map (`hashed → original`) for `manifest.json`
+ * The masker walks staged JSONL + JSON + plain files under a bundle's staging
+ * dir and replaces the absolute content-dir prefix, wherever it appears, with
+ * the literal `<CONTENT_DIR>` token. Doc names / titles are NOT anonymized —
+ * they ship raw under the user's Detailed-diagnostics consent (credentials are
+ * handled by the separate secret-pattern scrub).
  *
  * Tests use real disk fixtures (no fs mocks) since the module's job is
- * filesystem-shaped. We seed JSONL + JSON in a tmpdir, call the redactor,
- * and assert on the rewritten files + the returned map.
+ * filesystem-shaped. We seed files in a tmpdir, call the masker, and assert on
+ * the rewritten files.
  */
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
-import {
-  _recordHashForTests,
-  type RedactStagedBundleResult,
-  redactStagedBundle,
-} from './bundle-redact.ts';
+import { redactStagedBundle } from './bundle-redact.ts';
 
 const tmpDirs: string[] = [];
 
@@ -48,12 +44,8 @@ function readStaged(stagingDir: string, relPath: string): string {
   return readFileSync(join(stagingDir, relPath), 'utf-8');
 }
 
-// ---------------------------------------------------------------------------
-// OTLP attribute-pair shape gets doc.name hashed
-// ---------------------------------------------------------------------------
-
-describe('redactStagedBundle — tracer bullet', () => {
-  test('hashes the OTLP attribute-pair `doc.name` stringValue', () => {
+describe('redactStagedBundle — doc names ship raw', () => {
+  test('leaves an OTLP `doc.name` attribute value unhashed', () => {
     const stagingDir = makeStagingDir();
     const otlpLine = JSON.stringify({
       resourceSpans: [
@@ -61,87 +53,7 @@ describe('redactStagedBundle — tracer bullet', () => {
           scopeSpans: [
             {
               spans: [
-                {
-                  attributes: [{ key: 'doc.name', value: { stringValue: 'my-secret-doc' } }],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    writeStaged(stagingDir, 'telemetry/spans-current.jsonl', `${otlpLine}\n`);
-
-    const result = redactStagedBundle({ stagingDir, contentDir: '/Users/test/notes' });
-
-    const after = readStaged(stagingDir, 'telemetry/spans-current.jsonl');
-    expect(after).not.toContain('my-secret-doc');
-    expect(after).toMatch(/"doc:[a-f0-9]{8}"/);
-
-    // The inverse map records hashed → original.
-    const entries = Object.entries(result.docNameMap);
-    expect(entries).toHaveLength(1);
-    const [hashed, original] = entries[0] ?? ['', ''];
-    expect(original).toBe('my-secret-doc');
-    expect(hashed).toMatch(/^doc:[a-f0-9]{8}$/);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Pino flat-key shape + nested objects
-// ---------------------------------------------------------------------------
-
-describe('redactStagedBundle — Pino + nested shapes', () => {
-  test('hashes a Pino flat-key `doc.name` value in a log record', () => {
-    const stagingDir = makeStagingDir();
-    const pinoLine = JSON.stringify({
-      level: 30,
-      time: 1716908521000,
-      'doc.name': 'pino-secret',
-      msg: 'wrote doc',
-    });
-    writeStaged(stagingDir, 'logs/server-current.jsonl', `${pinoLine}\n`);
-
-    const result = redactStagedBundle({ stagingDir, contentDir: '/Users/test/notes' });
-
-    const after = readStaged(stagingDir, 'logs/server-current.jsonl');
-    expect(after).not.toContain('pino-secret');
-    const parsed = JSON.parse(after.trim());
-    expect(parsed['doc.name']).toMatch(/^doc:[a-f0-9]{8}$/);
-    expect(Object.values(result.docNameMap)).toContain('pino-secret');
-  });
-
-  test('hashes a `doc.name` nested inside a structured Pino log object', () => {
-    const stagingDir = makeStagingDir();
-    const pinoLine = JSON.stringify({
-      level: 30,
-      msg: 'handler',
-      req: { url: '/api/x', 'doc.name': 'nested-doc' },
-    });
-    writeStaged(stagingDir, 'logs/server-current.jsonl', `${pinoLine}\n`);
-
-    redactStagedBundle({ stagingDir, contentDir: '/x' });
-
-    const after = JSON.parse(readStaged(stagingDir, 'logs/server-current.jsonl').trim());
-    expect(after.req['doc.name']).toMatch(/^doc:[a-f0-9]{8}$/);
-    expect(after.req['doc.name']).not.toBe('nested-doc');
-  });
-
-  test('preserves non-doc-name attributes inside an OTLP attribute array', () => {
-    const stagingDir = makeStagingDir();
-    const otlpLine = JSON.stringify({
-      resourceSpans: [
-        {
-          scopeSpans: [
-            {
-              spans: [
-                {
-                  attributes: [
-                    { key: 'http.method', value: { stringValue: 'GET' } },
-                    { key: 'doc.name', value: { stringValue: 'secret-x' } },
-                    { key: 'http.status_code', value: { intValue: 200 } },
-                  ],
-                },
+                { attributes: [{ key: 'doc.name', value: { stringValue: 'meetings/plan' } }] },
               ],
             },
           ],
@@ -152,110 +64,37 @@ describe('redactStagedBundle — Pino + nested shapes', () => {
 
     redactStagedBundle({ stagingDir, contentDir: '/Users/test/notes' });
 
-    const after = JSON.parse(readStaged(stagingDir, 'telemetry/spans-current.jsonl').trim());
-    const attrs = after.resourceSpans[0].scopeSpans[0].spans[0].attributes;
-    expect(attrs[0]).toEqual({ key: 'http.method', value: { stringValue: 'GET' } });
-    expect(attrs[1].key).toBe('doc.name');
-    expect(attrs[1].value.stringValue).toMatch(/^doc:[a-f0-9]{8}$/);
-    expect(attrs[2]).toEqual({ key: 'http.status_code', value: { intValue: 200 } });
-  });
-
-  test('walks doc.name in resource-level and event-level OTLP attributes too', () => {
-    const stagingDir = makeStagingDir();
-    const otlpLine = JSON.stringify({
-      resourceSpans: [
-        {
-          resource: {
-            attributes: [{ key: 'doc.name', value: { stringValue: 'res-doc' } }],
-          },
-          scopeSpans: [
-            {
-              spans: [
-                {
-                  events: [
-                    {
-                      attributes: [{ key: 'doc.name', value: { stringValue: 'evt-doc' } }],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    writeStaged(stagingDir, 'telemetry/spans-current.jsonl', `${otlpLine}\n`);
-
-    const result = redactStagedBundle({ stagingDir, contentDir: '/x' });
-
     const after = readStaged(stagingDir, 'telemetry/spans-current.jsonl');
-    expect(after).not.toContain('res-doc');
-    expect(after).not.toContain('evt-doc');
-    expect(Object.values(result.docNameMap).sort()).toEqual(['evt-doc', 'res-doc']);
+    expect(after).toContain('meetings/plan');
+    expect(after).not.toMatch(/doc:[a-f0-9]{8}/);
   });
 
-  test('preserves the partial trailing line untouched (AC8 SIGKILL resilience)', () => {
+  test('leaves a Pino flat-key `doc.name` and a presence `currentDoc` raw', () => {
     const stagingDir = makeStagingDir();
-    const completeLine = JSON.stringify({
-      resourceSpans: [
-        {
-          scopeSpans: [
-            { spans: [{ attributes: [{ key: 'doc.name', value: { stringValue: 'a' } }] }] },
-          ],
-        },
-      ],
-    });
-    // Two complete lines + one unterminated trailing fragment (mid-write).
-    const body = `${completeLine}\n${completeLine}\n{"resourceSpans"`;
-    writeStaged(stagingDir, 'telemetry/spans-current.jsonl', body);
+    const pinoLine = JSON.stringify({ level: 30, 'doc.name': 'notes/journal', msg: 'wrote doc' });
+    writeStaged(stagingDir, 'logs/server-current.jsonl', `${pinoLine}\n`);
+    writeStaged(
+      stagingDir,
+      'state/agent-presence.json',
+      JSON.stringify({
+        presence: { 'agent-a1': { currentDoc: 'meetings/secret-standup', ts: 1 } },
+      }),
+    );
 
-    redactStagedBundle({ stagingDir, contentDir: '/x' });
+    redactStagedBundle({ stagingDir, contentDir: '/Users/test/notes' });
 
-    const after = readStaged(stagingDir, 'telemetry/spans-current.jsonl');
-    // Trailing fragment preserved verbatim — recipients skip it the same way.
-    expect(after.endsWith('{"resourceSpans"')).toBe(true);
-    // Both complete lines were redacted.
-    expect(after).not.toContain('"a"');
-  });
-
-  test('non-string doc.name values pass through unchanged (only strings hash)', () => {
-    // A doc.name attribute with an intValue (theoretically possible) should
-    // NOT be hashed. The redactor only touches stringValue/string forms.
-    const stagingDir = makeStagingDir();
-    const otlpLine = JSON.stringify({
-      resourceSpans: [
-        {
-          scopeSpans: [
-            {
-              spans: [
-                {
-                  attributes: [{ key: 'doc.name', value: { intValue: 12345 } }],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    writeStaged(stagingDir, 'telemetry/spans-current.jsonl', `${otlpLine}\n`);
-
-    const result = redactStagedBundle({ stagingDir, contentDir: '/x' });
-
-    const after = JSON.parse(readStaged(stagingDir, 'telemetry/spans-current.jsonl').trim());
-    expect(after.resourceSpans[0].scopeSpans[0].spans[0].attributes[0]).toEqual({
-      key: 'doc.name',
-      value: { intValue: 12345 },
-    });
-    expect(result.docNameMap).toEqual({});
+    expect(JSON.parse(readStaged(stagingDir, 'logs/server-current.jsonl').trim())['doc.name']).toBe(
+      'notes/journal',
+    );
+    expect(
+      JSON.parse(readStaged(stagingDir, 'state/agent-presence.json')).presence['agent-a1']
+        .currentDoc,
+    ).toBe('meetings/secret-standup');
   });
 });
 
-// ---------------------------------------------------------------------------
-// contentDir → <CONTENT_DIR> substring substitution
-// ---------------------------------------------------------------------------
-
-describe('redactStagedBundle — contentDir substitution', () => {
-  test('replaces contentDir prefix in span string-value attributes', () => {
+describe('redactStagedBundle — contentDir masking', () => {
+  test('replaces the contentDir prefix in an OTLP string-value attribute', () => {
     const stagingDir = makeStagingDir();
     const contentDir = '/Users/test/my-notes';
     const otlpLine = JSON.stringify({
@@ -265,12 +104,7 @@ describe('redactStagedBundle — contentDir substitution', () => {
             {
               spans: [
                 {
-                  attributes: [
-                    {
-                      key: 'fs.path',
-                      value: { stringValue: '/Users/test/my-notes/foo.md' },
-                    },
-                  ],
+                  attributes: [{ key: 'fs.path', value: { stringValue: `${contentDir}/foo.md` } }],
                 },
               ],
             },
@@ -283,317 +117,171 @@ describe('redactStagedBundle — contentDir substitution', () => {
     redactStagedBundle({ stagingDir, contentDir });
 
     const after = readStaged(stagingDir, 'telemetry/spans-current.jsonl');
-    expect(after).not.toContain('/Users/test/my-notes');
+    expect(after).not.toContain(contentDir);
     expect(after).toContain('<CONTENT_DIR>/foo.md');
   });
 
-  test('replaces all occurrences of contentDir in a single string field', () => {
+  test('replaces every occurrence of contentDir in a single string field', () => {
     const stagingDir = makeStagingDir();
     const contentDir = '/Users/test/notes';
     const pinoLine = JSON.stringify({
       level: 30,
-      msg: 'opened /Users/test/notes/a then /Users/test/notes/b',
+      msg: `opened ${contentDir}/a then ${contentDir}/b`,
     });
     writeStaged(stagingDir, 'logs/server-current.jsonl', `${pinoLine}\n`);
 
     redactStagedBundle({ stagingDir, contentDir });
 
-    const after = JSON.parse(readStaged(stagingDir, 'logs/server-current.jsonl').trim());
-    expect(after.msg).toBe('opened <CONTENT_DIR>/a then <CONTENT_DIR>/b');
+    expect(JSON.parse(readStaged(stagingDir, 'logs/server-current.jsonl').trim()).msg).toBe(
+      'opened <CONTENT_DIR>/a then <CONTENT_DIR>/b',
+    );
   });
 
-  test('replaces contentDir in state/runtime.json string fields', () => {
+  test('masks contentDir in state/runtime.json via the JSON walker', () => {
     const stagingDir = makeStagingDir();
     const contentDir = '/Users/test/notes';
     writeStaged(
       stagingDir,
       'state/runtime.json',
-      `${JSON.stringify({ ok: { workingDir: '/Users/test/notes' } }, null, 2)}\n`,
+      `${JSON.stringify({ ok: { workingDir: contentDir } }, null, 2)}\n`,
     );
 
     redactStagedBundle({ stagingDir, contentDir });
 
     const after = readStaged(stagingDir, 'state/runtime.json');
-    expect(after).not.toContain('/Users/test/notes');
+    expect(after).not.toContain(contentDir);
     expect(after).toContain('<CONTENT_DIR>');
   });
 
-  test('replaces contentDir in state/.txt plain files (substring only)', () => {
+  test('masks contentDir in a state/.txt plain file', () => {
     const stagingDir = makeStagingDir();
     const contentDir = '/Users/test/notes';
     writeStaged(
       stagingDir,
       'state/shadow-head.txt',
-      'deadbee /Users/test/notes/foo\nbabecake /Users/test/notes/bar\n',
+      `deadbee ${contentDir}/foo\nbabecake ${contentDir}/bar\n`,
     );
 
     redactStagedBundle({ stagingDir, contentDir });
 
-    const after = readStaged(stagingDir, 'state/shadow-head.txt');
-    expect(after).toBe('deadbee <CONTENT_DIR>/foo\nbabecake <CONTENT_DIR>/bar\n');
-  });
-
-  test('replaces contentDir in state/agent-presence.json walker pass', () => {
-    const stagingDir = makeStagingDir();
-    const contentDir = '/Users/test/notes';
-    writeStaged(
-      stagingDir,
-      'state/agent-presence.json',
-      `${JSON.stringify({
-        agents: [
-          {
-            agentId: 'a1',
-            'doc.name': 'live-doc',
-            workingDir: '/Users/test/notes',
-          },
-        ],
-      })}`,
+    expect(readStaged(stagingDir, 'state/shadow-head.txt')).toBe(
+      'deadbee <CONTENT_DIR>/foo\nbabecake <CONTENT_DIR>/bar\n',
     );
-
-    const result = redactStagedBundle({ stagingDir, contentDir });
-
-    const after = JSON.parse(readStaged(stagingDir, 'state/agent-presence.json'));
-    expect(after.agents[0].workingDir).toBe('<CONTENT_DIR>');
-    expect(after.agents[0]['doc.name']).toMatch(/^doc:[a-f0-9]{8}$/);
-    expect(Object.values(result.docNameMap)).toContain('live-doc');
   });
 
-  test('hashes the real `currentDoc` field the presence endpoint emits', () => {
-    // The live `/api/metrics/agent-presence` wire body carries the doc path
-    // under `currentDoc`, not `doc.name`. The walker must hash that exact key
-    // so a staged presence artifact never leaks the doc a human is editing.
-    const stagingDir = makeStagingDir();
-    const contentDir = '/Users/test/notes';
-    writeStaged(
-      stagingDir,
-      'state/agent-presence.json',
-      `${JSON.stringify({
-        presence: {
-          'agent-a1': {
-            displayName: 'Claude',
-            icon: 'claude',
-            color: '#abc',
-            currentDoc: 'meetings/secret-standup',
-            mode: 'writing',
-            ts: 1,
-          },
-        },
-      })}`,
-    );
-
-    const result = redactStagedBundle({ stagingDir, contentDir });
-
-    const after = JSON.parse(readStaged(stagingDir, 'state/agent-presence.json'));
-    expect(after.presence['agent-a1'].currentDoc).toMatch(/^doc:[a-f0-9]{8}$/);
-    expect(JSON.stringify(after)).not.toContain('meetings/secret-standup');
-    expect(Object.values(result.docNameMap)).toContain('meetings/secret-standup');
-  });
-
-  test('leaves a null `currentDoc` untouched (only strings hash)', () => {
-    const stagingDir = makeStagingDir();
-    const contentDir = '/Users/test/notes';
-    writeStaged(
-      stagingDir,
-      'state/agent-presence.json',
-      `${JSON.stringify({
-        presence: { 'agent-a1': { currentDoc: null, mode: 'idle', ts: 1 } },
-      })}`,
-    );
-
-    redactStagedBundle({ stagingDir, contentDir });
-
-    const after = JSON.parse(readStaged(stagingDir, 'state/agent-presence.json'));
-    expect(after.presence['agent-a1'].currentDoc).toBeNull();
-  });
-
-  test('hashes doc.name values in state/agent-effects.json via the walker pass', () => {
-    const stagingDir = makeStagingDir();
-    const contentDir = '/Users/test/notes';
-    writeStaged(
-      stagingDir,
-      'state/agent-effects.json',
-      `${JSON.stringify({
-        effects: [
-          {
-            'doc.name': 'meetings/standup',
-            entries: [{ sessionId: 'agent-a1', agentType: 'claude', ts: 1, insertedChars: 4 }],
-          },
-        ],
-      })}`,
-    );
-
-    const result = redactStagedBundle({ stagingDir, contentDir });
-
-    const after = JSON.parse(readStaged(stagingDir, 'state/agent-effects.json'));
-    expect(after.effects[0]['doc.name']).toMatch(/^doc:[a-f0-9]{8}$/);
-    expect(after.effects[0].entries[0].sessionId).toBe('agent-a1');
-    expect(Object.values(result.docNameMap)).toContain('meetings/standup');
-  });
-
-  test('hashes doc.name values in state/watcher-recent.jsonl via the line-wise walker', () => {
+  test('masks contentDir in state/watcher-recent.jsonl line-by-line', () => {
     const stagingDir = makeStagingDir();
     const contentDir = '/Users/test/notes';
     const lines = [
       JSON.stringify({
         ts: 1,
         decision: 'dispatched',
-        kind: 'create',
-        'doc.name': '.../meetings/standup.md',
-        pathRole: 'content-md',
+        absPath: `${contentDir}/meetings/standup.md`,
       }),
       JSON.stringify({
         ts: 2,
         decision: 'drop-filter-excluded',
-        kind: 'update',
-        'doc.name': '.../dist/output.md',
-        pathRole: 'content-md',
+        absPath: `${contentDir}/dist/o.md`,
       }),
     ];
     writeStaged(stagingDir, 'state/watcher-recent.jsonl', `${lines.join('\n')}\n`);
 
-    const result = redactStagedBundle({ stagingDir, contentDir });
+    redactStagedBundle({ stagingDir, contentDir });
 
     const after = readStaged(stagingDir, 'state/watcher-recent.jsonl');
-    expect(after).not.toContain('standup');
-    expect(after).not.toContain('output.md');
+    expect(after).not.toContain(contentDir);
     const parsed = after
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line));
-    expect(parsed[0]['doc.name']).toMatch(/^doc:[a-f0-9]{8}$/);
+    expect(parsed[0].absPath).toBe('<CONTENT_DIR>/meetings/standup.md');
     expect(parsed[0].decision).toBe('dispatched');
-    expect(parsed[1]['doc.name']).toMatch(/^doc:[a-f0-9]{8}$/);
-    expect(Object.values(result.docNameMap)).toContain('.../meetings/standup.md');
   });
 
-  test('strings that do not include contentDir are passed through verbatim', () => {
+  test('preserves a partial trailing JSONL line untouched (SIGKILL resilience)', () => {
     const stagingDir = makeStagingDir();
     const contentDir = '/Users/test/notes';
-    const pinoLine = JSON.stringify({ level: 30, msg: 'unrelated message' });
-    writeStaged(stagingDir, 'logs/server-current.jsonl', `${pinoLine}\n`);
+    const complete = JSON.stringify({ msg: `at ${contentDir}/a` });
+    writeStaged(stagingDir, 'telemetry/spans-current.jsonl', `${complete}\n${complete}\n{"msg"`);
 
     redactStagedBundle({ stagingDir, contentDir });
 
-    const after = JSON.parse(readStaged(stagingDir, 'logs/server-current.jsonl').trim());
-    expect(after.msg).toBe('unrelated message');
+    const after = readStaged(stagingDir, 'telemetry/spans-current.jsonl');
+    expect(after.endsWith('{"msg"')).toBe(true);
+    expect(after).not.toContain(`${contentDir}/a`);
+    expect(after).toContain('<CONTENT_DIR>/a');
   });
 
-  test('stable per-bundle: same input → same hash; map has one entry', () => {
+  test('masks contentDir in a corrupt (unparseable) state JSON via the whole-file fallback', () => {
     const stagingDir = makeStagingDir();
-    const sharedLine = JSON.stringify({
-      'doc.name': 'same',
-      msg: 'one',
+    const contentDir = '/Users/test/notes';
+    const torn = `{ "active-doc": "notes/plan", "contentDir": "${contentDir}", /* corrupt`;
+    writeStaged(stagingDir, 'state/agent-presence.json', torn);
+
+    redactStagedBundle({ stagingDir, contentDir });
+
+    const after = readStaged(stagingDir, 'state/agent-presence.json');
+    expect(after).not.toContain(contentDir);
+    expect(after).toContain('<CONTENT_DIR>');
+    // Doc name in the torn fragment still ships raw.
+    expect(after).toContain('notes/plan');
+  });
+
+  test('non-string leaves pass through unchanged', () => {
+    const stagingDir = makeStagingDir();
+    const otlpLine = JSON.stringify({
+      resourceSpans: [
+        {
+          scopeSpans: [
+            { spans: [{ attributes: [{ key: 'http.status_code', value: { intValue: 200 } }] }] },
+          ],
+        },
+      ],
     });
-    const sharedLine2 = JSON.stringify({
-      'doc.name': 'same',
-      msg: 'two',
+    writeStaged(stagingDir, 'telemetry/spans-current.jsonl', `${otlpLine}\n`);
+
+    redactStagedBundle({ stagingDir, contentDir: '/x' });
+
+    const after = JSON.parse(readStaged(stagingDir, 'telemetry/spans-current.jsonl').trim());
+    expect(after.resourceSpans[0].scopeSpans[0].spans[0].attributes[0]).toEqual({
+      key: 'http.status_code',
+      value: { intValue: 200 },
     });
-    writeStaged(stagingDir, 'logs/server-current.jsonl', `${sharedLine}\n${sharedLine2}\n`);
-
-    const result = redactStagedBundle({ stagingDir, contentDir: '/x' });
-
-    const after = readStaged(stagingDir, 'logs/server-current.jsonl').trim().split('\n');
-    const p1 = JSON.parse(after[0] ?? '');
-    const p2 = JSON.parse(after[1] ?? '');
-    expect(p1['doc.name']).toBe(p2['doc.name']);
-    expect(Object.keys(result.docNameMap)).toHaveLength(1);
   });
 
-  test('distinct doc names produce distinct hashes and map entries', () => {
+  test('a string with no contentDir substring is passed through verbatim', () => {
     const stagingDir = makeStagingDir();
-    const a = JSON.stringify({ 'doc.name': 'a' });
-    const b = JSON.stringify({ 'doc.name': 'b' });
-    const c = JSON.stringify({ 'doc.name': 'c' });
-    writeStaged(stagingDir, 'logs/server-current.jsonl', `${a}\n${b}\n${c}\n`);
+    const pinoLine = JSON.stringify({ level: 30, msg: 'unrelated message' });
+    writeStaged(stagingDir, 'logs/server-current.jsonl', `${pinoLine}\n`);
 
-    const result = redactStagedBundle({ stagingDir, contentDir: '/x' });
-    expect(Object.keys(result.docNameMap)).toHaveLength(3);
-    expect(Object.values(result.docNameMap).sort()).toEqual(['a', 'b', 'c']);
-    // Hashes are deterministic but distinct.
-    const hashes = Object.keys(result.docNameMap);
-    expect(new Set(hashes).size).toBe(3);
+    redactStagedBundle({ stagingDir, contentDir: '/Users/test/notes' });
+
+    expect(JSON.parse(readStaged(stagingDir, 'logs/server-current.jsonl').trim()).msg).toBe(
+      'unrelated message',
+    );
   });
 
-  test('empty staging dir produces an empty docNameMap', () => {
-    const stagingDir = makeStagingDir();
-    const result = redactStagedBundle({ stagingDir, contentDir: '/x' });
-    expect(result.docNameMap).toEqual({});
-  });
-
-  test('empty contentDir does not insert tokens between characters', () => {
-    // Defensive guard against a degenerate config that hands the redactor an
-    // empty string. Without the guard, split('').join('<CONTENT_DIR>') would
-    // explode every string into per-character tokens.
+  test('an empty contentDir does not insert tokens between characters', () => {
+    // Defensive guard against a degenerate config that hands the masker an
+    // empty string. Without it, split('').join('<CONTENT_DIR>') would explode
+    // every string into per-character tokens.
     const stagingDir = makeStagingDir();
     const pinoLine = JSON.stringify({ level: 30, msg: 'abc' });
     writeStaged(stagingDir, 'logs/server-current.jsonl', `${pinoLine}\n`);
 
     redactStagedBundle({ stagingDir, contentDir: '' });
 
-    const after = JSON.parse(readStaged(stagingDir, 'logs/server-current.jsonl').trim());
-    expect(after.msg).toBe('abc');
-  });
-});
-
-describe('hashOrLookup — collision detection', () => {
-  test('first occurrence of a hash claims the inverse-map entry; subsequent distinct collisions go to docNameCollisions', () => {
-    // We exercise the internal recordHash helper directly because finding
-    // two distinct doc names that produce the same sha256 8-hex prefix
-    // is infeasible. The unit test pins the *behavior* a real collision
-    // would trigger — first value wins the docNameMap slot; later distinct
-    // colliding values are surfaced separately so the user does not silently
-    // lose one original from the inverse map.
-    const ctx = {
-      contentDir: '/tmp/c',
-      docNameMap: {} as Record<string, string>,
-      originalToHashed: new Map<string, string>(),
-      docNameCollisions: {} as Record<string, string[]>,
-    };
-    _recordHashForTests(ctx, 'first-value', 'collide');
-    _recordHashForTests(ctx, 'second-value', 'collide');
-    _recordHashForTests(ctx, 'third-value', 'collide');
-    // Repeat shouldn't double-record.
-    _recordHashForTests(ctx, 'second-value', 'collide');
-    expect(ctx.docNameMap.collide).toBe('first-value');
-    expect(ctx.docNameCollisions.collide).toEqual(['second-value', 'third-value']);
+    expect(JSON.parse(readStaged(stagingDir, 'logs/server-current.jsonl').trim()).msg).toBe('abc');
   });
 
-  test('repeated record of the same value is a no-op (idempotent)', () => {
-    const ctx = {
-      contentDir: '/tmp/c',
-      docNameMap: {} as Record<string, string>,
-      originalToHashed: new Map<string, string>(),
-      docNameCollisions: {} as Record<string, string[]>,
-    };
-    _recordHashForTests(ctx, 'value', 'h');
-    _recordHashForTests(ctx, 'value', 'h');
-    expect(ctx.docNameMap.h).toBe('value');
-    expect(ctx.docNameCollisions).toEqual({});
-  });
-
-  test('RedactStagedBundleResult surfaces an empty docNameCollisions when nothing collides', () => {
-    // No collision-free workspace should pay for collision tracking; the
-    // field is present on the result type so consumers can rely on it,
-    // but should be an empty object when no real collision occurred.
-    const stagingDir = mkdtempSync(resolve(tmpdir(), 'ok-redact-collision-'));
-    tmpDirs.push(stagingDir);
-    mkdirSync(join(stagingDir, 'telemetry'));
-    mkdirSync(join(stagingDir, 'logs'));
-    mkdirSync(join(stagingDir, 'state'));
-    writeFileSync(
-      join(stagingDir, 'telemetry', 'spans-current.jsonl'),
-      `${JSON.stringify({ 'doc.name': 'unique-doc' })}\n`,
-    );
-    const result: RedactStagedBundleResult = redactStagedBundle({
-      stagingDir,
-      contentDir: '/nonexistent',
-    });
-    expect(result.docNameCollisions).toEqual({});
+  test('empty staging dir is a no-op', () => {
+    const stagingDir = makeStagingDir();
+    expect(() => redactStagedBundle({ stagingDir, contentDir: '/x' })).not.toThrow();
   });
 });
 
 describe('redactStagedBundle — process/ subdirectory', () => {
-  test('strips content-dir prefix from process/metadata.json', () => {
+  test('masks the content-dir prefix in process/metadata.json', () => {
     const stagingDir = makeStagingDir();
     mkdirSync(join(stagingDir, 'process'));
     const contentDir = '/Users/jane/secret-vault';
@@ -610,7 +298,7 @@ describe('redactStagedBundle — process/ subdirectory', () => {
     expect(after.pid).toBe(12345);
   });
 
-  test('strips content-dir prefix from process/lsof.txt', () => {
+  test('masks the content-dir prefix in process/lsof.txt', () => {
     const stagingDir = makeStagingDir();
     mkdirSync(join(stagingDir, 'process'));
     const contentDir = '/Users/jane/secret-vault';
@@ -627,81 +315,17 @@ describe('redactStagedBundle — process/ subdirectory', () => {
     expect(after).toContain('<CONTENT_DIR>');
     expect(after).toContain('/usr/bin/node');
   });
-
-  test('hashes doc.name values inside process/*.jsonl files', () => {
-    const stagingDir = makeStagingDir();
-    mkdirSync(join(stagingDir, 'process'));
-    const line = JSON.stringify({ 'doc.name': 'sensitive-folder/note' });
-    writeStaged(stagingDir, 'process/process-stats.jsonl', `${line}\n`);
-
-    redactStagedBundle({ stagingDir, contentDir: '/no-match' });
-
-    const after = readStaged(stagingDir, 'process/process-stats.jsonl').trim();
-    const parsed = JSON.parse(after);
-    expect(parsed['doc.name']).toMatch(/^doc:[0-9a-f]{8}$/);
-  });
-
-  test('substring-scrubs doc names from a corrupt state/agent-presence.json under --redact', () => {
-    const stagingDir = makeStagingDir();
-    const contentDir = '/Users/test/notes';
-    const secretDoc = 'private-folder/auth-doc';
-
-    // Telemetry walked FIRST populates ctx.originalToHashed via the
-    // OTLP attribute-pair walker, so the substring scrub knows what
-    // literal to look for once the JSON walker hits the corrupt state.
-    const otlpLine = JSON.stringify({
-      resourceSpans: [
-        {
-          scopeSpans: [
-            {
-              spans: [{ attributes: [{ key: 'doc.name', value: { stringValue: secretDoc } }] }],
-            },
-          ],
-        },
-      ],
-    });
-    writeStaged(stagingDir, 'telemetry/spans-current.jsonl', `${otlpLine}\n`);
-
-    const torn = `{ "active-doc": "${secretDoc}", "contentDir": "${contentDir}", "uptimeMs": 12345, /* corrupt`;
-    writeStaged(stagingDir, 'state/agent-presence.json', torn);
-
-    const result = redactStagedBundle({ stagingDir, contentDir });
-
-    const after = readStaged(stagingDir, 'state/agent-presence.json');
-    expect(after).not.toContain(secretDoc);
-    expect(after).not.toContain(contentDir);
-    expect(after).toContain('<CONTENT_DIR>');
-    expect(after).toMatch(/doc:[0-9a-f]{8}/);
-    expect(Object.values(result.docNameMap)).toContain(secretDoc);
-  });
 });
 
 describe('redactStagedBundle — cross-platform basename dispatch', () => {
   test('stdlib pin: node:path.win32.basename strips backslash-joined Windows paths to the file name', async () => {
-    // Stdlib documentation pin — NOT an end-to-end test of the production
-    // dispatch through redactStagedBundle. The production dispatch (with
-    // POSIX paths) is covered by the "replaces contentDir in state/
-    // agent-presence.json walker pass" test above and the corrupt-
-    // state-file test in the process/ describe block; both call
-    // redactStagedBundle and assert the JSON walker route fires (doc.name
-    // hashed). The Windows leg of the dispatch can't be exercised from a
-    // macOS host (Node's default `import { basename } from 'node:path'`
-    // resolves to path.posix.basename at runtime; only path.win32.basename
-    // honors backslashes regardless of host), so this test pins the
-    // stdlib contract the production fix relies on — when Node runs on
-    // Windows, the same `import { basename }` resolves to path.win32.basename
-    // and the dispatch routes correctly.
+    // Stdlib documentation pin — the production dispatch routes state files to
+    // the JSON walker by basename, and Node's default `basename` resolves to
+    // path.win32 on Windows. Can't exercise the Windows leg from a POSIX host,
+    // so this pins the stdlib contract the dispatch relies on.
     const { posix, win32 } = await import('node:path');
-    expect(win32.basename('C:\\Users\\jane\\stage\\state\\agent-presence.json')).toBe(
-      'agent-presence.json',
-    );
     expect(win32.basename('C:\\stage\\state\\runtime.json')).toBe('runtime.json');
-    // POSIX path is unchanged on both variants (no regression).
-    expect(posix.basename('/Users/jane/stage/state/agent-presence.json')).toBe(
-      'agent-presence.json',
-    );
-    expect(win32.basename('/Users/jane/stage/state/agent-presence.json')).toBe(
-      'agent-presence.json',
-    );
+    expect(posix.basename('/Users/jane/stage/state/runtime.json')).toBe('runtime.json');
+    expect(win32.basename('/Users/jane/stage/state/runtime.json')).toBe('runtime.json');
   });
 });

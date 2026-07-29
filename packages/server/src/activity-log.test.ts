@@ -6,6 +6,12 @@ import * as Y from 'yjs';
 import { captureEffect, type EffectValue } from './activity-log.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
 
+/**
+ * The frozen per-session write origin these tests stand in for. `captureEffect`
+ * matches it by object identity, so every stimulus below transacts under it.
+ */
+const WRITE_ORIGIN = Object.freeze({ source: 'local', context: { origin: 'test-write' } });
+
 function makeDoc() {
   const doc = new Y.Doc();
   const ytext = doc.getText('source');
@@ -19,10 +25,10 @@ beforeEach(() => {
 describe('captureEffect — happy path', () => {
   test('registers an effect entry in Y.Map("agent-effects") after a Y.Text change', () => {
     const { doc, ytext } = makeDoc();
-    captureEffect(ytext, 'agent-test', 'claude-code');
+    captureEffect(ytext, 'agent-test', WRITE_ORIGIN, 'claude-code');
     doc.transact(() => {
       ytext.insert(0, 'Hello world');
-    });
+    }, WRITE_ORIGIN);
 
     const effectsMap = doc.getMap<EffectValue>('agent-effects');
     expect(effectsMap.size).toBe(1);
@@ -37,10 +43,10 @@ describe('captureEffect — happy path', () => {
 
   test('stores agent_type from parameter', () => {
     const { doc, ytext } = makeDoc();
-    captureEffect(ytext, 'agent-abc', undefined, 'cursor');
+    captureEffect(ytext, 'agent-abc', WRITE_ORIGIN, undefined, 'cursor');
     doc.transact(() => {
       ytext.insert(0, 'data');
-    });
+    }, WRITE_ORIGIN);
 
     const effectsMap = doc.getMap<EffectValue>('agent-effects');
     const value = [...effectsMap.values()][0] as EffectValue;
@@ -49,10 +55,10 @@ describe('captureEffect — happy path', () => {
 
   test('defaults agent_type to "agent" when not provided', () => {
     const { doc, ytext } = makeDoc();
-    captureEffect(ytext, 'agent-xyz');
+    captureEffect(ytext, 'agent-xyz', WRITE_ORIGIN);
     doc.transact(() => {
       ytext.insert(0, 'test');
-    });
+    }, WRITE_ORIGIN);
 
     const effectsMap = doc.getMap<EffectValue>('agent-effects');
     const value = [...effectsMap.values()][0] as EffectValue;
@@ -61,10 +67,10 @@ describe('captureEffect — happy path', () => {
 
   test('delta captures Quill Delta ops (YTextEvent.delta)', () => {
     const { doc, ytext } = makeDoc();
-    captureEffect(ytext, 'agent-delta-test', 'blue');
+    captureEffect(ytext, 'agent-delta-test', WRITE_ORIGIN, 'blue');
     doc.transact(() => {
       ytext.insert(0, 'abc');
-    });
+    }, WRITE_ORIGIN);
 
     const effectsMap = doc.getMap<EffectValue>('agent-effects');
     const value = [...effectsMap.values()][0] as EffectValue;
@@ -74,13 +80,13 @@ describe('captureEffect — happy path', () => {
 
   test('is a one-shot observer — second write does not create new entry', () => {
     const { doc, ytext } = makeDoc();
-    captureEffect(ytext, 'agent-oneshot', 'seed');
+    captureEffect(ytext, 'agent-oneshot', WRITE_ORIGIN, 'seed');
     doc.transact(() => {
       ytext.insert(0, 'first');
-    });
+    }, WRITE_ORIGIN);
     doc.transact(() => {
       ytext.insert(0, 'second');
-    });
+    }, WRITE_ORIGIN);
 
     const effectsMap = doc.getMap<EffectValue>('agent-effects');
     expect(effectsMap.size).toBe(1);
@@ -89,7 +95,7 @@ describe('captureEffect — happy path', () => {
   test('does nothing when ytext has no doc (early return)', () => {
     // Creating a Y.Text without a Y.Doc — accessing .doc returns null
     const orphanText = new Y.Text();
-    expect(() => captureEffect(orphanText, 'agent-orphan')).not.toThrow();
+    expect(() => captureEffect(orphanText, 'agent-orphan', WRITE_ORIGIN)).not.toThrow();
   });
 });
 
@@ -98,10 +104,10 @@ describe('captureEffect — ring-buffer eviction', () => {
     const { doc, ytext } = makeDoc();
 
     for (let i = 0; i < 60; i++) {
-      captureEffect(ytext, `agent-${i}`, 'seed');
+      captureEffect(ytext, `agent-${i}`, WRITE_ORIGIN, 'seed');
       doc.transact(() => {
         ytext.insert(0, `write-${i}`);
-      });
+      }, WRITE_ORIGIN);
     }
 
     const effectsMap = doc.getMap<EffectValue>('agent-effects');
@@ -113,10 +119,10 @@ describe('captureEffect — ring-buffer eviction', () => {
 
     // Artificially set timestamps to be distinguishable
     for (let i = 0; i < 60; i++) {
-      captureEffect(ytext, `agent-${i}`, 'seed');
+      captureEffect(ytext, `agent-${i}`, WRITE_ORIGIN, 'seed');
       doc.transact(() => {
         ytext.insert(0, `write-${i}`);
-      });
+      }, WRITE_ORIGIN);
     }
 
     const effectsMap = doc.getMap<EffectValue>('agent-effects');
@@ -132,15 +138,15 @@ describe('captureEffect — ring-buffer eviction', () => {
   test('two sessions produce distinct entries keyed by session ID', () => {
     const { doc, ytext } = makeDoc();
 
-    captureEffect(ytext, 'session-A', 'blue');
+    captureEffect(ytext, 'session-A', WRITE_ORIGIN, 'blue');
     doc.transact(() => {
       ytext.insert(0, 'from-A');
-    });
+    }, WRITE_ORIGIN);
 
-    captureEffect(ytext, 'session-B', 'red');
+    captureEffect(ytext, 'session-B', WRITE_ORIGIN, 'red');
     doc.transact(() => {
       ytext.insert(0, 'from-B');
-    });
+    }, WRITE_ORIGIN);
 
     const effectsMap = doc.getMap<EffectValue>('agent-effects');
     expect(effectsMap.size).toBe(2);
@@ -165,7 +171,7 @@ describe('captureEffect — error handling (D37)', () => {
     // captureEffect wires the observer but before the user's transact fires.
     // This is the most reliable reproducer: observer runs, inner transact throws,
     // catch block records the failure + increments the metric.
-    captureEffect(ytext, 'agent-fail', 'seed');
+    captureEffect(ytext, 'agent-fail', WRITE_ORIGIN, 'seed');
 
     const originalSet = effectsMap.set.bind(effectsMap);
     (effectsMap as unknown as { set: typeof originalSet }).set = () => {
@@ -177,7 +183,7 @@ describe('captureEffect — error handling (D37)', () => {
     try {
       doc.transact(() => {
         ytext.insert(0, 'trigger');
-      });
+      }, WRITE_ORIGIN);
     } finally {
       process.env.NODE_ENV = prevEnv;
       (effectsMap as unknown as { set: typeof originalSet }).set = originalSet;
@@ -189,7 +195,7 @@ describe('captureEffect — error handling (D37)', () => {
 
   test('unobserves on doc destroy to prevent observer leak', () => {
     const { doc, ytext } = makeDoc();
-    captureEffect(ytext, 'agent-leak', 'seed');
+    captureEffect(ytext, 'agent-leak', WRITE_ORIGIN, 'seed');
 
     // Destroying the doc before any write must detach the observer so a later
     // (post-destroy) write on a reused ytext reference cannot fire the capture

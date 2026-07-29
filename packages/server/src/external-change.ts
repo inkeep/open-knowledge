@@ -16,6 +16,12 @@ import {
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
 import { formatReconcileSubject } from '@inkeep/open-knowledge-core/shadow-repo-layout';
+import {
+  type BridgeDeriveLossReporter,
+  DERIVE_LOSS_SITE_FILE_WATCHER_INTAKE,
+  type DeriveLossDetectOptions,
+} from './bridge-loss-detector.ts';
+import { shouldRunPairedIntakeDetection } from './bridge-loss-suppression.ts';
 import { isConfigDoc, isMermaidDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { isDocInConflict } from './conflict-errors.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
@@ -70,6 +76,7 @@ export function applyExternalChange(
   content: string,
   resolveEmbed?: (basename: string, sourcePath: string) => string | null,
   resolveSize?: (basename: string, sourcePath: string) => number | null,
+  bridgeLossReporter?: BridgeDeriveLossReporter,
 ): void {
   if (isSystemDoc(docName) || isConfigDoc(docName) || isMermaidDoc(docName)) return;
   const document = hocuspocus.documents.get(docName);
@@ -95,12 +102,33 @@ export function applyExternalChange(
   const priorFm = stripFrontmatter(currentSource).frontmatter;
   const { frontmatter: nextFm } = stripFrontmatter(content);
 
+  // A dirty OPEN doc (fragment holds un-propagated WYSIWYG content) is about to
+  // have that content rebuilt over by the disk bytes — a silent loss vector.
+  // Wire the paired-intake derive-loss detector when a reporter is present and
+  // the file-watcher origin is classified `detect`; the pre-write Y.Text is the
+  // baseline so a disk edit that legitimately replaces propagated content never
+  // trips, only never-propagated fragment content does. Off (no reporter) leaves
+  // the write serialize-free.
+  const detect: DeriveLossDetectOptions | undefined =
+    bridgeLossReporter && shouldRunPairedIntakeDetection(FILE_WATCHER_ORIGIN.context.origin)
+      ? {
+          report: (obs) =>
+            bridgeLossReporter(
+              docName,
+              obs,
+              FILE_SYSTEM_WRITER.id,
+              DERIVE_LOSS_SITE_FILE_WATCHER_INTAKE,
+            ),
+          baselineFullMd: currentSource,
+        }
+      : undefined;
+
   // Caller wraps for atomicity + paired-write FILE_WATCHER_ORIGIN identity
   // (precedent #24). The transact moved out of applyDiskContentToDoc so the
   // per-surface origin reaches observer guards.
   try {
     document.transact(() => {
-      applyDiskContentToDoc(document, content, resolveEmbed, docName, resolveSize);
+      applyDiskContentToDoc(document, content, resolveEmbed, docName, resolveSize, detect);
     }, FILE_WATCHER_ORIGIN);
   } catch (err) {
     // Yjs transactions don't roll back on throw — `applyFastDiff` may have
@@ -169,10 +197,19 @@ export function createExternalChangeHandler(
   hocuspocus: Hocuspocus,
   resolveEmbed?: (basename: string, sourcePath: string) => string | null,
   resolveSize?: (basename: string, sourcePath: string) => number | null,
+  bridgeLossReporter?: BridgeDeriveLossReporter,
 ): (docName: string, content: string) => Promise<void> {
   return async (docName: string, content: string): Promise<void> => {
     try {
-      applyExternalChange(durabilityState, hocuspocus, docName, content, resolveEmbed, resolveSize);
+      applyExternalChange(
+        durabilityState,
+        hocuspocus,
+        docName,
+        content,
+        resolveEmbed,
+        resolveSize,
+        bridgeLossReporter,
+      );
       getLogger('file-watcher').info({ docName }, 'applied external change');
     } catch (err) {
       if (
@@ -303,6 +340,13 @@ export function reconcileDiskBeforeAgentWrite(
   docName: string,
   contentDir: string,
   resolveEmbed?: (basename: string, sourcePath: string) => string | null,
+  /**
+   * Paired-intake derive-loss reporter, forwarded to the `applyExternalChange`
+   * ingest below. This is the dirty-open-doc watcher positive on the HOTTEST
+   * intake path — every agent content write reconciles through here — so it
+   * carries the same `detect` wiring the file-watcher's own handler does.
+   */
+  bridgeLossReporter?: BridgeDeriveLossReporter,
 ): ReconcileBeforeWriteResult {
   if (isSystemDoc(docName) || isConfigDoc(docName) || isMermaidDoc(docName)) return NOT_RECONCILED;
 
@@ -443,7 +487,15 @@ export function reconcileDiskBeforeAgentWrite(
       // FILE_WATCHER_ORIGIN transact and advances reconciledBase
       // synchronously.
       const ingest = outcome.kind === 'clean' ? diskContent : outcome.newContent;
-      applyExternalChange(durabilityState, hocuspocus, docName, ingest, resolveEmbed);
+      applyExternalChange(
+        durabilityState,
+        hocuspocus,
+        docName,
+        ingest,
+        resolveEmbed,
+        undefined,
+        bridgeLossReporter,
+      );
       if (outcome.kind === 'merged') {
         // The base must track the DISK bytes, not the memory-only merged
         // content: the L3 store backstop and the watcher's queued event for

@@ -176,6 +176,30 @@ export function docNameToRelativePath(docName: string): string {
     : `${docName}${getDocExtension(docName)}`;
 }
 
+/**
+ * The extension-less twin of a resolved content-tree path.
+ *
+ * Full-tree checkpoints (Save Version, auto-consolidation, pre-rollback) store
+ * a doc's blob at the extension-full disk path (`<root>/foo.md`). The silent
+ * single-blob checkpoint trees `saveInMemoryCheckpoint` writes instead store it
+ * at the extension-LESS docName path (`<root>/foo`), because the Hocuspocus doc
+ * name that flows through the CRDT layer is already extension-less. A restore
+ * probe therefore has to try both shapes.
+ *
+ * Returns the path with `getDocExtension(docName)` stripped, or null when the
+ * path does not carry that appended extension (managed-artifact `.ok/...` keys
+ * and mermaid docNames already hold their own suffix — those are full-tree only
+ * and have no extension-less twin).
+ */
+export function extensionlessDocTreePath(fullPath: string, docName: string): string | null {
+  const ext = getDocExtension(docName);
+  if (ext.length > 0 && fullPath.endsWith(ext)) {
+    const stripped = fullPath.slice(0, -ext.length);
+    if (stripped.length > 0 && stripped !== fullPath) return stripped;
+  }
+  return null;
+}
+
 /** Clear the recorded extension for a docName (e.g. on file delete). */
 export function forgetDocExtension(docName: string): void {
   docExtensionByName.delete(docName);

@@ -278,6 +278,50 @@ export interface ReconciliationMetrics {
   observerADuplicationRederives: number;
   /** Successful duplication-recovery checkpoint writes — the forensic anchor for a destructive re-derive; divergence from `observerADuplicationRederives` means anchors are being lost. */
   observerADuplicationCheckpointCreated: number;
+  /** Count of Observer A APPLY-arm content-loss trips — the byte-preserving
+   *  apply arms (map-driven splice / incremental diff) dropped content the
+   *  fragment's intended markdown held. An INDEPENDENT detection site from the
+   *  Path-B merge post-condition, so it keeps its own event counter rather than
+   *  inflating `bridgeMergeContentLoss` — an operator reading the
+   *  anchors-per-loss ratio must be able to tell an apply drop from a merge
+   *  drop. Increments on every trip, including one with no shadow wired, so a
+   *  run whose checkpoint writes all fail does not read as healthy. */
+  observerAApplyLoss: number;
+  /** Successful `observer-a-apply-loss` checkpoint writes — the paired
+   *  `...CheckpointCreated` sibling. `observerAApplyLoss - observerAApplyLossCheckpointCreated`
+   *  is exactly the number of trips whose restore anchor never landed. */
+  observerAApplyLossCheckpointCreated: number;
+  /** Count of derive-timing defer-guard force-resolves — the guard reached its
+   *  drain-count bound and resolved the re-derive loudly, checkpointing the
+   *  pre-resolve fragment. A nonzero value in CI or a dogfood bundle is a
+   *  surfaced regression: a doc was stuck in sustained defer-exhaustion. */
+  deriveTimingDeferForceResolved: number;
+  /** Count of persistence pre-write checks that HELD the fragment instead of
+   *  rebuilding it, because the whole divergence was content the derive-timing
+   *  guard is protecting. A tolerated divergence, not a loss: Y.Text still went
+   *  to disk. A sustained nonzero rate on one doc is the quiescent-hold signal
+   *  — the keystroke is alive in the fragment but not yet durable. */
+  persistenceDeferHold: number;
+  /** Count of persistence pre-write checks that found a divergence OUTSIDE the
+   *  guard's protected set and rebuilt the fragment. Increments on every trip,
+   *  including deduped ones and ones with no shadow wired, so a run whose
+   *  anchors never landed does not read as healthy. */
+  persistenceReconcileLoss: number;
+  /** Successful `persistence-reconcile-loss` checkpoint writes. With the
+   *  deduped sibling this closes the identity
+   *  `persistenceReconcileLoss = created + deduped + (anchors that never landed)`. */
+  persistenceReconcileLossCheckpointCreated: number;
+  /** Trips whose pre-rebuild fragment state was byte-identical to the anchor
+   *  already on the timeline for that doc, so no new checkpoint was minted. A
+   *  doc resting on a construct that diverges on every write-back lives here;
+   *  without the dedup it would evict its own useful anchors. */
+  persistenceReconcileLossDeduped: number;
+  /** Count of Y.Text→XmlFragment re-derive-loop backstop trips — a run of
+   *  re-derive drains never reached a raw-byte fixed point and the B-direction
+   *  re-derive was frozen (checkpoint + ring event). A nonzero value in CI or a
+   *  dogfood bundle is a surfaced regression: a doc was stuck in a runaway
+   *  re-derive loop. */
+  reDeriveBackstopTripped: number;
   /** Y.Text-is-truth contract (precedent #38) — count of Observer A
    *  settlement checks that detected a drain settling split-brain (Y.Text
    *  vs serialize(fragment) divergence beyond `normalizeBridge` tolerance)
@@ -479,6 +523,14 @@ const counters: ReconciliationMetrics = {
   observerAResidualMergeRuns: 0,
   observerADuplicationRederives: 0,
   observerADuplicationCheckpointCreated: 0,
+  observerAApplyLoss: 0,
+  observerAApplyLossCheckpointCreated: 0,
+  deriveTimingDeferForceResolved: 0,
+  persistenceDeferHold: 0,
+  persistenceReconcileLoss: 0,
+  persistenceReconcileLossCheckpointCreated: 0,
+  persistenceReconcileLossDeduped: 0,
+  reDeriveBackstopTripped: 0,
   bridgeSplitBrainRederives: 0,
   bridgeSplitBrainRederivesSuppressed: 0,
   persistenceReconciliationFailures: 0,
@@ -683,6 +735,38 @@ export function incrementObserverADuplicationCheckpointCreated(): void {
   counters.observerADuplicationCheckpointCreated++;
 }
 
+export function incrementObserverAApplyLoss(): void {
+  counters.observerAApplyLoss++;
+}
+
+export function incrementObserverAApplyLossCheckpointCreated(): void {
+  counters.observerAApplyLossCheckpointCreated++;
+}
+
+export function incrementDeriveTimingDeferForceResolved(): void {
+  counters.deriveTimingDeferForceResolved++;
+}
+
+export function incrementPersistenceDeferHold(): void {
+  counters.persistenceDeferHold++;
+}
+
+export function incrementPersistenceReconcileLoss(): void {
+  counters.persistenceReconcileLoss++;
+}
+
+export function incrementPersistenceReconcileLossCheckpointCreated(): void {
+  counters.persistenceReconcileLossCheckpointCreated++;
+}
+
+export function incrementPersistenceReconcileLossDeduped(): void {
+  counters.persistenceReconcileLossDeduped++;
+}
+
+export function incrementReDeriveBackstopTripped(): void {
+  counters.reDeriveBackstopTripped++;
+}
+
 export function incrementBridgeSplitBrainRederives(): void {
   counters.bridgeSplitBrainRederives++;
 }
@@ -761,10 +845,22 @@ export function incrementCollabMessageTooLarge(): void {
   counters.collabMessageTooLargeCount++;
 }
 
+export function incrementShadowMigrationLegacyRefsDeleted(count: number): void {
+  counters.shadowMigrationLegacyRefsDeleted += count;
+}
+
+export function incrementEffectDiffCaptureFailures(): void {
+  counters.effectDiffCaptureFailures++;
+}
+
+export function incrementAgentPresenceMutationError(): void {
+  counters.agentPresenceMutationErrors++;
+}
+
 /**
  * Classify a collab-socket error. Returns `true` if the error is a
  * known-safe kernel TCP-teardown signal (EPIPE or ECONNRESET) that should
- * be filtered out of logs per precedent §23. As a side effect, increments
+ * be filtered out of logs per precedent #22. As a side effect, increments
  * the corresponding per-code metric counter so operators can see the rate
  * during incident triage.
  *
@@ -790,18 +886,6 @@ export function incrementCollabMessageTooLarge(): void {
  *     ws.terminate();
  *   });
  */
-export function incrementShadowMigrationLegacyRefsDeleted(count: number): void {
-  counters.shadowMigrationLegacyRefsDeleted += count;
-}
-
-export function incrementEffectDiffCaptureFailures(): void {
-  counters.effectDiffCaptureFailures++;
-}
-
-export function incrementAgentPresenceMutationError(): void {
-  counters.agentPresenceMutationErrors++;
-}
-
 export function handleCollabSocketError(err: NodeJS.ErrnoException): boolean {
   if (err.code === 'EPIPE' || err.code === 'ECONNRESET') {
     incrementCollabSocketFilteredError(err.code);
@@ -881,6 +965,14 @@ export function resetMetrics(): void {
   counters.observerAResidualMergeRuns = 0;
   counters.observerADuplicationRederives = 0;
   counters.observerADuplicationCheckpointCreated = 0;
+  counters.observerAApplyLoss = 0;
+  counters.observerAApplyLossCheckpointCreated = 0;
+  counters.deriveTimingDeferForceResolved = 0;
+  counters.persistenceDeferHold = 0;
+  counters.persistenceReconcileLoss = 0;
+  counters.persistenceReconcileLossCheckpointCreated = 0;
+  counters.persistenceReconcileLossDeduped = 0;
+  counters.reDeriveBackstopTripped = 0;
   counters.bridgeSplitBrainRederives = 0;
   counters.bridgeSplitBrainRederivesSuppressed = 0;
   counters.persistenceReconciliationFailures = 0;

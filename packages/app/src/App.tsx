@@ -28,11 +28,13 @@ import { ReportBugMenuTrigger } from '@/components/ReportBugMenuTrigger';
 import { SystemDocSubscriber } from '@/components/SystemDocSubscriber';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { ValidationFreshness } from '@/components/ValidationFreshness';
+import { BackgroundThrottleReporter } from '@/editor/BackgroundThrottleReporter';
 import {
   DocumentProvider,
   useDocumentContext,
   useDocumentTransition,
 } from '@/editor/DocumentContext';
+import { EditorLifecycleFlush } from '@/editor/EditorLifecycleFlush';
 import { parseEditorTabId } from '@/editor/editor-tabs';
 import { useInstalledClis } from '@/hooks/use-installed-clis';
 import { useReconcileSkillTabs } from '@/hooks/use-reconcile-skill-tabs';
@@ -480,7 +482,13 @@ function ConfigProviderHost({ children }: { children: ReactNode }) {
   // self-gates to non-desktop. Mounted here because this host already owns the
   // single app-root `collabUrl` read.
   useServerKeepalive(collabUrl);
-  return <ConfigProvider collabUrl={collabUrl}>{children}</ConfigProvider>;
+  return (
+    <ConfigProvider collabUrl={collabUrl}>
+      <EditorLifecycleFlush />
+      <BackgroundThrottleReporter />
+      {children}
+    </ConfigProvider>
+  );
 }
 
 export function App() {

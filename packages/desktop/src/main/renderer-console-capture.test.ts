@@ -1,3 +1,4 @@
+import { RENDERER_LOG_MAX_MESSAGE_BYTES } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
   attachRendererConsoleCapture,
@@ -124,6 +125,67 @@ describe('attachRendererConsoleCapture', () => {
     wc.emit({ level: 'info', message: 'just a string' });
 
     expect(spy.calls[0]?.msg).toBe('just a string');
+  });
+
+  test('scrubs credentials out of a plain-string message before it reaches the log', () => {
+    const wc = makeFakeWebContents();
+    const spy = makeSpyLogger();
+    attachRendererConsoleCapture(wc, { getLogger: spy.getLogger });
+
+    const secret = 'ghp_0123456789abcdefghijklmnopqrstuvwxyz';
+    const raw = `push from /Users/alice/notes failed: ${secret}`;
+    // Planted-positive control: the token really is in the emitted console text.
+    expect(raw).toContain(secret);
+    wc.emit({ level: 'error', message: raw });
+
+    const call = spy.calls[0];
+    if (!call) throw new Error('expected exactly one log call');
+    expect(call.msg).not.toContain(secret);
+    expect(call.msg).toContain('[REDACTED-GH-PAT]');
+    expect(call.msg).not.toContain('/Users/alice/');
+    expect(call.msg).toContain('~/notes');
+  });
+
+  test('scrubs credentials out of lifted structured fields, which pino redact never sees', () => {
+    const wc = makeFakeWebContents();
+    const spy = makeSpyLogger();
+    attachRendererConsoleCapture(wc, { getLogger: spy.getLogger });
+
+    const secret = 'AKIAIOSFODNN7EXAMPLE';
+    wc.emit({
+      level: 'warning',
+      message: JSON.stringify({
+        event: 'ok-provider-auth-failed',
+        // Not a key on the desktop logger's `redact` denylist — a keyed-field
+        // redaction pass cannot reach it, so only a capture-time scrub can.
+        reason: `rejected creds ${secret}`,
+        docPath: '/Users/alice/notes/plan.md',
+      }),
+    });
+
+    const call = spy.calls[0];
+    if (!call) throw new Error('expected exactly one log call');
+    expect(call.data.reason).toBe('rejected creds [REDACTED-AWS-KEY]');
+    expect(call.data.docPath).toBe('~/notes/plan.md');
+    expect(JSON.stringify(call.data)).not.toContain(secret);
+  });
+
+  test('scrubs before truncating so a secret straddling the cap cannot survive', () => {
+    const wc = makeFakeWebContents();
+    const spy = makeSpyLogger();
+    attachRendererConsoleCapture(wc, { getLogger: spy.getLogger });
+
+    const secret = 'ghp_0123456789abcdefghijklmnopqrstuvwxyz';
+    // Straddle the message cap: truncating first cuts the token in half, the
+    // pattern stops matching, and the surviving prefix ships verbatim.
+    const filler = 'x'.repeat(RENDERER_LOG_MAX_MESSAGE_BYTES - 33);
+    wc.emit({ level: 'info', message: `${filler} ${secret} trailing` });
+
+    const call = spy.calls[0];
+    if (!call) throw new Error('expected exactly one log call');
+    expect(call.msg).not.toContain('ghp_');
+    expect(call.msg).toContain('[REDACTED-GH-PAT]');
+    expect(call.msg.length).toBeLessThanOrEqual(RENDERER_LOG_MAX_MESSAGE_BYTES);
   });
 
   test('a throwing logger never propagates out of the listener', () => {

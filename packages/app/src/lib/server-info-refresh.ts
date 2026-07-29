@@ -18,12 +18,15 @@
  * `lastDiskAckedSV` watermark so the mismatch-recycle baseline-
  * selection always operates on fresh data.
  *
- * Idempotent: every dispatch path no-ops on unchanged inputs
- * (`setExpectedServerInstanceId` early-returns on matching IDs;
- * `compareAndUpdateObservedBranch` returns false unless the branch
- * actually changed; `observeDiskAckBatch` overwrites in-place). Safe
- * to call on every `synced` event without producing redundant
- * recycles.
+ * Mostly idempotent: `compareAndUpdateObservedBranch` returns false
+ * unless the branch actually changed, and `observeDiskAckBatch`
+ * overwrites in-place. `setExpectedServerInstanceId` is NOT — the pool
+ * assigns unconditionally (see provider-pool.ts), so a refresh that
+ * observes a rotated server id overwrites the cached epoch even while
+ * per-doc providers are still learning of the rotation through auth
+ * rejection, and their recycle dedupe then compares against the
+ * already-updated value. Do not rely on this path to no-op on
+ * unchanged ids until the pool owns epoch transitions.
  *
  * Silent on failure: endpoint unavailability falls back to the
  * existing recovery paths (auth-token-claim mismatch on next provider

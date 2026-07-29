@@ -1,6 +1,7 @@
 import {
   RENDERER_LOG_MAX_BATCH_BYTES,
   RENDERER_LOG_MAX_ENTRIES,
+  RENDERER_LOG_MAX_MESSAGE_BYTES,
 } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -135,6 +136,28 @@ describe('installClientLogForwarder', () => {
     expect(entries[0]?.event).toBe('ok-provider-server-driven-close-reauth');
     expect((entries[0]?.fields as Record<string, unknown>)?.reason).toBe('Failed to connect');
     expect(entries[0]?.ts).toBe(111);
+  });
+
+  test('scrubs credentials from the captured message before forwarding', () => {
+    const fetchSpy = makeFetchSpy();
+    const { con } = install(fetchSpy);
+    const secret = 'ghp_0123456789abcdefghijklmnopqrstuvwxyz';
+    con.error(`push failed with token ${secret}`);
+    handle?.flushNow();
+    const { entries } = bodyOf(fetchSpy);
+    expect(entries[0]?.message).not.toContain(secret);
+    expect(entries[0]?.message).toContain('[REDACTED-GH-PAT]');
+  });
+
+  test('keeps the 8192-byte message cap after scrubbing', () => {
+    const fetchSpy = makeFetchSpy();
+    const { con } = install(fetchSpy);
+    con.info('x'.repeat(RENDERER_LOG_MAX_MESSAGE_BYTES + 500));
+    handle?.flushNow();
+    const message = bodyOf(fetchSpy).entries[0]?.message as string;
+    // A 4096-tightened cap would fail the lower bound; the cap stays at 8192.
+    expect(message.length).toBeGreaterThan(4096);
+    expect(message.length).toBeLessThanOrEqual(RENDERER_LOG_MAX_MESSAGE_BYTES);
   });
 
   test('still calls the original console method', () => {

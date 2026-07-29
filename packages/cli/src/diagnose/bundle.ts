@@ -41,11 +41,7 @@ import { ZipFile } from 'yazl';
 import type { BundleExtraFile, BundleLogger } from '../commands/bug-report-bundle.ts';
 import { redactContent } from '../commands/bug-report-redact.ts';
 import { PACKAGE_VERSION } from '../constants.ts';
-import {
-  isRotatedLogPath,
-  type RedactStagedBundleResult,
-  redactStagedBundle,
-} from './bundle-redact.ts';
+import { isRotatedLogPath, redactStagedBundle } from './bundle-redact.ts';
 
 // ---------------------------------------------------------------------------
 // Manifest schema
@@ -59,8 +55,14 @@ import {
 // exception: it is exported as the value type of the `readDesktopEnv` seam so
 // `collectReportBundle` callers (the desktop app) can inject host metadata.
 
-/** Schema version pinned at 1 for v1 bundles. */
-type BundleSchemaVersion = 1;
+/**
+ * Manifest contract version. Bumped to 2 when `redaction` dropped
+ * `docNameMapSidecar` / `docNameCollisions` alongside the doc-name
+ * anonymization they described: a consumer that reads either field off a v2
+ * manifest gets `undefined` rather than a value, so the removal has to be
+ * legible from the version rather than inferred from a missing key.
+ */
+type BundleSchemaVersion = 2;
 
 export interface DesktopMetadata {
   electronVersion: string;
@@ -90,23 +92,8 @@ interface BundleSecretScrub {
 }
 
 interface BundleRedaction {
+  /** Whether the content-dir path mask ran over the staged copies. */
   applied: boolean;
-  /**
-   * Filename of the inverse-map sidecar written next to the zip on the user's
-   * own machine — NOT included in the zip. The recipient sees only the
-   * filename for reference; the actual `<hashed> → <original>` map stays
-   * with the user so they can de-anonymize a bundle they sent without giving
-   * the recipient the ability to reverse it.
-   */
-  docNameMapSidecar: string | null;
-  /**
-   * Hashes for which two or more distinct originals were observed during
-   * redaction. Each value is the list of additional originals beyond the
-   * one stored in the sidecar map. Field is absent when no collision
-   * occurred; present and non-empty means the sidecar map is lossy for
-   * those hashes.
-   */
-  docNameCollisions?: Record<string, string[]>;
   /**
    * Audit of the secret-pattern scrub (the `ok bug-report` scrub applied to
    * the staged copies). Present only when the collector ran with
@@ -172,13 +159,11 @@ export interface CollectBundleOpts {
   /** Optional path to an existing `ok diagnose process` output dir; copied to `process/` in the bundle. */
   processDir?: string;
   /**
-   * Apply `--redact` to the staged copies: hash `doc.name` attribute values
-   * with sha256(value).slice(0,8), replace the absolute content-dir
-   * prefix in any string field with the literal `<CONTENT_DIR>` token, and
-   * record the inverse map in `manifest.redaction.docNameMap`. The original
-   * on-disk files under `<contentDir>/.ok/local/{telemetry,logs}/` are
-   * untouched — the collector copies them first; the redactor only sees the
-   * staged copies.
+   * Mask the absolute content-dir prefix in any staged string field with the
+   * literal `<CONTENT_DIR>` token (so a shared bundle doesn't leak the user's
+   * home-directory layout). Doc names ship raw. The original on-disk files
+   * under `<contentDir>/.ok/local/{telemetry,logs}/` are untouched — the
+   * collector copies them first; the masker only sees the staged copies.
    */
   redact?: boolean;
   /**
@@ -290,15 +275,6 @@ export interface CollectedBundle {
   stagingDir: string;
   manifest: BundleManifest;
   summary: BundleSummary;
-  /**
-   * In-memory inverse map produced when `--redact` was applied. Held here so
-   * `writeBundle` can persist it to a sidecar file next to the zip — NEVER
-   * inside the zip. `null` when redaction was not applied.
-   */
-  redactionMapPayload: {
-    docNameMap: Record<string, string>;
-    docNameCollisions: Record<string, string[]>;
-  } | null;
   /** Removes the staging dir. Idempotent. */
   cleanup: () => void;
 }
@@ -324,10 +300,13 @@ export interface WriteBundleOpts {
 
 const TELEMETRY_REL = ['.ok', 'local', 'telemetry'] as const;
 const LOGS_REL = ['.ok', 'local', 'logs'] as const;
+const LOSS_CAPTURE_REL = ['.ok', 'local', 'loss-capture'] as const;
 const SPANS_CURRENT = 'spans-current.jsonl';
 const SPANS_PREVIOUS = 'spans-prev.jsonl';
 const LOGS_CURRENT = 'server-current.jsonl';
 const LOGS_PREVIOUS = 'server-prev.jsonl';
+const LOSS_CURRENT = 'loss-current.jsonl';
+const LOSS_PREVIOUS = 'loss-prev.jsonl';
 
 function spansCurrentPath(projectDir: string): string {
   return join(projectDir, ...TELEMETRY_REL, SPANS_CURRENT);
@@ -345,16 +324,31 @@ function logsPreviousPath(projectDir: string): string {
   return join(projectDir, ...LOGS_REL, LOGS_PREVIOUS);
 }
 
+// Content-loss ring — the bridge's content-free loss-class event log. Rides the
+// full/Detailed tier only. Path layout mirrors the server's loss-capture sink;
+// inlined here for the same reason as the spans/logs layout above (the on-disk
+// `.ok/local/` layout is the contract, not the writer's types).
+function lossCaptureCurrentPath(projectDir: string): string {
+  return join(projectDir, ...LOSS_CAPTURE_REL, LOSS_CURRENT);
+}
+
+function lossCapturePreviousPath(projectDir: string): string {
+  return join(projectDir, ...LOSS_CAPTURE_REL, LOSS_PREVIOUS);
+}
+
 // Exposed so a cross-package parity test can assert these inlined paths stay
-// equivalent to the server's `telemetry-file-sink.ts` exports — the layout is
-// a contract, but no compiler check catches drift between
-// the two sites today (the duplication is intentional per dependency-direction
-// concerns).
+// equivalent to the server's `telemetry-file-sink.ts` / `loss-capture.ts`
+// exports — the layout is a contract, but no compiler check catches drift
+// between the two sites today (the duplication is intentional per
+// dependency-direction concerns). Every inlined path helper above belongs in
+// here: one left out is one whose rename silently stops harvesting its source.
 export const _pathHelpersForTests = {
   spansCurrentPath,
   spansPreviousPath,
   logsCurrentPath,
   logsPreviousPath,
+  lossCaptureCurrentPath,
+  lossCapturePreviousPath,
 };
 
 // ---------------------------------------------------------------------------
@@ -443,14 +437,23 @@ function defaultReadShadowHead(contentDir: string): string | null {
   return result.stdout ?? '';
 }
 
+/**
+ * The git `for-each-ref` format for staging checkpoint refs: subject ONLY.
+ * Checkpoint commit BODIES carry an `ok-checkpoint-v1` JSON line with the doc
+ * name and (for the loss kinds) verbatim lost-content substrings; the subject
+ * is a content-free label. Staging the body would exfiltrate the user's
+ * document, so this format — not the checkpoint-kind registry's advisory
+ * `bundleExposure` attribute — is the actual privacy enforcement point, guarded
+ * against a body/trailers drift by a format test.
+ */
+export const CHECKPOINT_REF_GIT_FORMAT =
+  '%(refname)%09%(creatordate:iso-strict)%09%(contents:subject)';
+
 function defaultReadCheckpointRefs(contentDir: string): string | null {
   const shadowDir = join(contentDir, '.git', 'ok');
   if (!existsSync(shadowDir)) return null;
-  // `%(contents:subject)` only: checkpoint commit bodies carry an
-  // `ok-checkpoint-v1` JSON line with the doc name and (for merge-loss
-  // checkpoints) lost-content substrings — the subject is a content-free
-  // label, so restricting the format keeps the artifact safe to stage as
-  // plain text under the same redaction rules as shadow-head.txt.
+  // Subject-only (see CHECKPOINT_REF_GIT_FORMAT): keeps the staged artifact safe
+  // as plain text under the same redaction rules as shadow-head.txt.
   const result = spawnSync(
     'git',
     [
@@ -459,7 +462,7 @@ function defaultReadCheckpointRefs(contentDir: string): string | null {
       'for-each-ref',
       '--sort=-creatordate',
       `--count=${CHECKPOINT_REF_LIMIT}`,
-      '--format=%(refname)%09%(creatordate:iso-strict)%09%(contents:subject)',
+      `--format=${CHECKPOINT_REF_GIT_FORMAT}`,
       'refs/checkpoints/',
     ],
     withHiddenWindowsConsole({ encoding: 'utf-8', timeout: 2000 }),
@@ -784,6 +787,16 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       writeFileSync(join(stagingDir, 'state', 'checkpoint-refs.txt'), checkpointRefs);
     }
 
+    // Content-loss ring — content-free-by-schema loss-class events (which sites
+    // deferred / detected / froze / checkpointed, correlated by checkpoint sha).
+    // The "was anything silently lost, and where" triage artifact, paired with
+    // checkpoint-refs above. Present only once a producer has recorded an event.
+    stageFileIfPresent(lossCaptureCurrentPath(projectDir), join(stagingDir, 'state', LOSS_CURRENT));
+    stageFileIfPresent(
+      lossCapturePreviousPath(projectDir),
+      join(stagingDir, 'state', LOSS_PREVIOUS),
+    );
+
     // last-spawn-error.log (Electron host writes this when a spawn fails).
     stageFileIfPresent(
       join(lockDir, 'last-spawn-error.log'),
@@ -831,13 +844,12 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       cpSync(opts.processDir, processDest, { recursive: true });
     }
 
-    // Apply redaction to the staged copies BEFORE the file inventory walk so
-    // the recorded bytes/lines reflect post-redaction state. Originals on disk
-    // are not touched — only the staged copies in stagingDir. The redactor
-    // returns the inverse map for the manifest.
-    let redactionResult: RedactStagedBundleResult | null = null;
-    if (opts.redact === true) {
-      redactionResult = redactStagedBundle({ stagingDir, contentDir });
+    // Mask the content-dir path in the staged copies BEFORE the file inventory
+    // walk so the recorded bytes/lines reflect post-mask state. Originals on
+    // disk are not touched — only the staged copies in stagingDir.
+    const redactApplied = opts.redact === true;
+    if (redactApplied) {
+      redactStagedBundle({ stagingDir, contentDir });
     }
 
     // Staged before the scrub so a secret pasted into the note gets caught too.
@@ -885,22 +897,13 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       }
     }
 
-    const redaction: BundleRedaction =
-      redactionResult !== null
-        ? Object.keys(redactionResult.docNameCollisions).length > 0
-          ? {
-              applied: true,
-              docNameMapSidecar: null,
-              docNameCollisions: redactionResult.docNameCollisions,
-            }
-          : { applied: true, docNameMapSidecar: null }
-        : { applied: false, docNameMapSidecar: null };
+    const redaction: BundleRedaction = { applied: redactApplied };
     if (secretScrub !== null) {
       redaction.secretScrub = secretScrub;
     }
 
     const manifest: BundleManifest = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       createdAt: now().toISOString(),
       ok: {
         version: okVersion(),
@@ -915,7 +918,7 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
         // string itself is masked when redaction is on so the bundle doesn't
         // leak the user's home directory layout.
         pathSha256: hashContentDirPath(contentDir),
-        absolutePath: redactionResult !== null ? '<CONTENT_DIR>' : contentDir,
+        absolutePath: redactApplied ? '<CONTENT_DIR>' : contentDir,
       },
       telemetry: {
         localSink,
@@ -946,7 +949,7 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       fileCount: files.length,
       docNameCount,
       contentDirVisible,
-      redacted: redactionResult !== null,
+      redacted: redactApplied,
     };
 
     let cleaned = false;
@@ -956,15 +959,7 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       rmSync(stagingDir, { recursive: true, force: true });
     };
 
-    const redactionMapPayload =
-      redactionResult !== null
-        ? {
-            docNameMap: redactionResult.docNameMap,
-            docNameCollisions: redactionResult.docNameCollisions,
-          }
-        : null;
-
-    return { stagingDir, manifest, summary, redactionMapPayload, cleanup };
+    return { stagingDir, manifest, summary, cleanup };
   } catch (err) {
     // The cleanup handle only exists on the returned value, so a throw during
     // staging is the one path where nobody else can release the tmpdir — and
@@ -989,27 +984,6 @@ export async function writeBundle(opts: WriteBundleOpts): Promise<string> {
     );
   }
 
-  // When redaction was applied, restamp the staged manifest with the sidecar
-  // filename so the recipient sees a pointer (not the map itself). The sidecar
-  // is written next to the zip below — outside the zip, on the user's machine
-  // only. This preserves the contract: "downstream consumers see only
-  // hashes."
-  if (collected.redactionMapPayload !== null) {
-    const sidecarName = `${basename(outputPath, '.zip')}.docnames.json`;
-    const stampedManifest: BundleManifest = {
-      ...collected.manifest,
-      redaction: {
-        ...collected.manifest.redaction,
-        applied: true,
-        docNameMapSidecar: sidecarName,
-      },
-    };
-    writeFileSync(
-      join(collected.stagingDir, 'manifest.json'),
-      `${JSON.stringify(stampedManifest, null, 2)}\n`,
-    );
-  }
-
   const zipfile = new ZipFile();
   const absStagedFiles = walkStagedFiles(collected.stagingDir);
   for (const absPath of absStagedFiles) {
@@ -1017,28 +991,6 @@ export async function writeBundle(opts: WriteBundleOpts): Promise<string> {
     zipfile.addFile(absPath, relPath);
   }
   zipfile.end();
-
-  // Write the inverse-map sidecar next to the zip (NOT inside it). The user
-  // keeps this locally so they can de-anonymize their own bundle if they ever
-  // need to; the recipient only ever gets the zip. Mode 0o600 because the
-  // sidecar contains the exact data --redact was meant to keep private —
-  // default umask would leave it world-readable on shared systems.
-  if (collected.redactionMapPayload !== null) {
-    const sidecarName = `${basename(outputPath, '.zip')}.docnames.json`;
-    const sidecarPath = join(parent, sidecarName);
-    writeFileSync(
-      sidecarPath,
-      `${JSON.stringify(
-        {
-          docNameMap: collected.redactionMapPayload.docNameMap,
-          docNameCollisions: collected.redactionMapPayload.docNameCollisions,
-        },
-        null,
-        2,
-      )}\n`,
-      { mode: 0o600 },
-    );
-  }
 
   const writer = createWriteStream(outputPath);
   zipfile.outputStream.pipe(writer);

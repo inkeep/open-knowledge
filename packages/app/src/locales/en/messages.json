@@ -648,6 +648,7 @@
       ["DEFAULT_EMBEDDINGS_MODEL"],
       "."
     ],
+    "C-twqs": ["Recovered content"],
     "C-xgad": ["or use a starter pack"],
     "C0hoX6": ["Always included"],
     "C62P6b": ["Editor selection"],
@@ -1593,9 +1594,6 @@
     "UDFrWm": ["Checking GitHub connection..."],
     "UGeJuP": ["Allowed values (empty = any)"],
     "UL8A9w": ["Tag"],
-    "ULRb5t": [
-      "Adds telemetry, server state, and runtime info when available. Document names are anonymized."
-    ],
     "UMrOy2": ["Skill \"", ["trimmedName"], "\" created"],
     "UPjaXD": ["Couldn't duplicate \"", ["0"], "\": ", ["1"]],
     "UQAp48": ["Search templates"],
@@ -2215,6 +2213,9 @@
     "fJgQHX": ["Failed to create file"],
     "fNr-MX": ["Disable semantic search"],
     "fR-Kdc": ["(project-level only)"],
+    "fRVBiq": [
+      "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
+    ],
     "fSRzLo": ["Show document panel"],
     "fVcm9t": [["0", "plural", { "one": ["#", " doc"], "other": ["#", " docs"] }]],
     "fWi7pn": ["Initialize starter pack"],

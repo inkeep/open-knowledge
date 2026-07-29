@@ -44,10 +44,11 @@
  * next non-paired ytext mutation would re-derive fragment from the STALE
  * ytext bytes, silently reverting the write.
  */
-import { applyFastDiff, stripFrontmatter } from '@inkeep/open-knowledge-core';
+import { applyFastDiff, prependFrontmatter, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import type { JSONContent } from '@tiptap/core';
-import { updateYFragment } from '@tiptap/y-tiptap';
+import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import type * as Y from 'yjs';
+import type { DeriveLossDetectOptions } from './bridge-loss-detector.ts';
 import { mdManager, schema } from './md-manager.ts';
 import { withSpanSync } from './telemetry.ts';
 
@@ -132,6 +133,52 @@ function buildParseOpts(embedResolver: EmbedResolverArg):
 }
 
 /**
+ * Serialize a fragment's current markdown body — the at-risk pending content a
+ * paired derive is about to rebuild over. Captured BEFORE the rebuild so a loss
+ * detector can compare it against the post-rebuild forms. Called only when a
+ * detector is wired; the serialize cost is off otherwise.
+ */
+function serializeFragmentBody(xmlFragment: Y.XmlFragment): string {
+  return mdManager.serialize(yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON());
+}
+
+/**
+ * After a paired derive rebuilds the fragment, hand the wired detector the
+ * canonical before/after representations so it can checkpoint + observe content
+ * the rebuild discarded. All bodies are canonical markdown (frontmatter-
+ * stripped, one serializer) so the comparison is normalization-sound.
+ *
+ * `restoreFrontmatter` is the FM the recovery payload prepends to `pendingBody`
+ * — the pre-derive FM, so a restore reconstructs the document that held the
+ * pending content.
+ */
+function reportPairedDeriveLoss(
+  detect: DeriveLossDetectOptions,
+  pendingBody: string,
+  parsedJson: JSONContent,
+  xmlFragment: Y.XmlFragment,
+  restoreFrontmatter: string,
+  parseOpts: ReturnType<typeof buildParseOpts>,
+): void {
+  const rebuiltBody = serializeFragmentBody(xmlFragment);
+  // The parse result re-serialized directly — a canonical post-op derivation
+  // independent of the live fragment updateYFragment just mutated.
+  const ytextDerivedBody = mdManager.serialize(parsedJson);
+  // The pre-operation body canonicalized to the same space, so content the
+  // operation legitimately removed (which this baseline held) is excluded from
+  // the loss verdict — only never-propagated fragment content can trip.
+  const { body: baselineRawBody } = stripFrontmatter(detect.baselineFullMd);
+  const baselineBody = mdManager.serialize(mdManager.parseWithFallback(baselineRawBody, parseOpts));
+  detect.report({
+    pendingBody,
+    baselineBody,
+    ytextDerivedBody,
+    rebuiltBody,
+    restorePayload: prependFrontmatter(restoreFrontmatter, pendingBody),
+  });
+}
+
+/**
  * Apply raw composed bytes to Y.Text via an incremental line-aligned diff and derive
  * XmlFragment via parse.
  *
@@ -187,6 +234,7 @@ export function composeAndWriteRawBody(
   surface: ComposeWriteSurface,
   embedResolver?: EmbedResolverArg,
   precomputed?: PrecomputedParse,
+  detect?: DeriveLossDetectOptions,
 ): void {
   withSpanSync(
     'bridge.composeAndWriteRawBody',
@@ -207,6 +255,11 @@ export function composeAndWriteRawBody(
       // fragment side never carries it.
       const parsedJson = parseBodyWithPrecompute(document, rawContent, embedResolver, precomputed);
       const pmNode = schema.nodeFromJSON(parsedJson);
+
+      // Capture the at-risk fragment content BEFORE the rebuild overwrites it —
+      // only when a detector is wired (the paired origin classified `detect`),
+      // so an ordinary write pays no serialize cost.
+      const pendingBody = detect ? serializeFragmentBody(xmlFragment) : undefined;
 
       // Y.Text gets the raw bytes FIRST, then fragment derives. The order matters:
       // Yjs transactions don't roll back on throw, so a partial failure mid-call
@@ -229,6 +282,18 @@ export function composeAndWriteRawBody(
 
       const meta = { mapping: new Map(), isOMark: new Map() };
       updateYFragment(document, xmlFragment, pmNode, meta);
+
+      if (detect && pendingBody !== undefined) {
+        const { frontmatter: restoreFrontmatter } = stripFrontmatter(detect.baselineFullMd);
+        reportPairedDeriveLoss(
+          detect,
+          pendingBody,
+          parsedJson,
+          xmlFragment,
+          restoreFrontmatter,
+          buildParseOpts(embedResolver),
+        );
+      }
     },
   );
 }
@@ -261,6 +326,7 @@ export function replaceRawBody(
   rawContent: string,
   embedResolver?: EmbedResolverArg,
   precomputed?: PrecomputedParse,
+  detect?: DeriveLossDetectOptions,
 ): void {
   withSpanSync(
     'bridge.replaceRawBody',
@@ -277,6 +343,10 @@ export function replaceRawBody(
       const parsedJson = parseBodyWithPrecompute(document, rawContent, embedResolver, precomputed);
       const pmNode = schema.nodeFromJSON(parsedJson);
 
+      // Capture the at-risk fragment content BEFORE the rebuild — only when a
+      // detector is wired (the paired origin classified `detect`).
+      const pendingBody = detect ? serializeFragmentBody(xmlFragment) : undefined;
+
       const currentText = ytext.toString();
       if (currentText !== rawContent) {
         ytext.delete(0, currentText.length);
@@ -285,6 +355,18 @@ export function replaceRawBody(
 
       const meta = { mapping: new Map(), isOMark: new Map() };
       updateYFragment(document, xmlFragment, pmNode, meta);
+
+      if (detect && pendingBody !== undefined) {
+        const { frontmatter: restoreFrontmatter } = stripFrontmatter(detect.baselineFullMd);
+        reportPairedDeriveLoss(
+          detect,
+          pendingBody,
+          parsedJson,
+          xmlFragment,
+          restoreFrontmatter,
+          buildParseOpts(embedResolver),
+        );
+      }
     },
   );
 }
@@ -309,16 +391,55 @@ export function replaceRawBody(
  *
  * @param document Y.Doc holding the doc's `default` XmlFragment and `source` Y.Text.
  * @param embedResolver Optional `![[file.ext]]` resolver context.
+ * @param detect Optional post-condition observer. When supplied, the pre-derive
+ *   fragment is serialized (the at-risk content) and, after the rebuild,
+ *   `detect.report` is invoked with the canonical before/after representations
+ *   so a caller can checkpoint + observe content the rebuild discarded. The
+ *   serialize cost is paid ONLY when a detector is wired.
  */
-export function deriveFragmentFromYtext(document: Y.Doc, embedResolver?: EmbedResolverArg): void {
+export function deriveFragmentFromYtext(
+  document: Y.Doc,
+  embedResolver?: EmbedResolverArg,
+  detect?: DeriveLossDetectOptions,
+): void {
   const xmlFragment = document.getXmlFragment('default');
   const ytext = document.getText('source');
 
   const fullMd = ytext.toString();
-  const { body } = stripFrontmatter(fullMd);
-  const parsedJson = mdManager.parseWithFallback(body, buildParseOpts(embedResolver));
+  const { frontmatter, body } = stripFrontmatter(fullMd);
+  const parseOpts = buildParseOpts(embedResolver);
+  const parsedJson = mdManager.parseWithFallback(body, parseOpts);
   const pmNode = schema.nodeFromJSON(parsedJson);
+
+  // Capture the pre-derive fragment serialization only when a detector is
+  // wired — the extra serializes are off unless loss capture is enabled.
+  const pendingBody = detect
+    ? mdManager.serialize(yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON())
+    : undefined;
 
   const meta = { mapping: new Map(), isOMark: new Map() };
   updateYFragment(document, xmlFragment, pmNode, meta);
+
+  if (detect && pendingBody !== undefined) {
+    const rebuiltBody = mdManager.serialize(
+      yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON(),
+    );
+    // The parse result re-serialized directly — a canonical post-op ytext
+    // derivation independent of the live fragment updateYFragment just mutated.
+    const ytextDerivedBody = mdManager.serialize(parsedJson as JSONContent);
+    // The pre-operation Y.Text body canonicalized to the same space, so content
+    // the operation legitimately removed (which this baseline held) is excluded
+    // from the loss verdict — only never-propagated fragment content can trip.
+    const { body: baselineRawBody } = stripFrontmatter(detect.baselineFullMd);
+    const baselineBody = mdManager.serialize(
+      mdManager.parseWithFallback(baselineRawBody, parseOpts),
+    );
+    detect.report({
+      pendingBody,
+      baselineBody,
+      ytextDerivedBody,
+      rebuiltBody,
+      restorePayload: prependFrontmatter(frontmatter, pendingBody),
+    });
+  }
 }

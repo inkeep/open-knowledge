@@ -3,15 +3,18 @@
  * TimelinePanel — document edit history content for the DocPanel timeline tab.
  *
  * Fetches GET /api/history on mount, polls every 10s while mounted. The
- * timeline surfaces only actor/system commits — WIP writes from agents,
- * principals, the file watcher, the service, plus upstream syncs — as a flat
- * reverse-chronological list. Checkpoint rows are filtered out: checkpoints
- * — from background cleanup jobs (shadow-branch GC, auto-consolidation,
- * silent rescue) and from agents via the MCP `checkpoint` tool — are restore
- * points, not user-facing edit history (agents reach them through `history` /
- * `restore_version`). The WIP commits those checkpoints fold over remain
- * visible (the server walks their ancestry), so dropping the checkpoint rows
- * loses no edit history.
+ * timeline surfaces actor/system commits — WIP writes from agents, principals,
+ * the file watcher, the service, plus upstream syncs — as a flat
+ * reverse-chronological list, PLUS the recovered-content rescue checkpoints the
+ * shared kind registry marks `visibility: 'surfaced'` (rendered as ordinary
+ * "Recovered content" versions). The rest of the checkpoints stay out: routine
+ * cleanup / auto-consolidation (registry `hidden`) and Save-Version / MCP
+ * `checkpoint`-tool restore points (no parsed kind) are not user-facing edit
+ * history. Whether a checkpoint surfaces is driven by
+ * `isSurfacedCheckpointKind` so this panel never drifts from the server's
+ * timeline-query + GC partition. The WIP commits any dropped checkpoint folds
+ * over remain visible (the server walks their ancestry), so dropping them loses
+ * no edit history.
  *
  * Per-row UX:
  *   - Click a row → open the version's "what changed" diff in the main editor
@@ -31,6 +34,7 @@ import {
   AGENT_ICON_COLORS_DARK,
   colorFromSeed,
   iconFromClientName,
+  isSurfacedCheckpointKind,
   ProblemDetailsSchema,
   type TimelineEntry,
 } from '@inkeep/open-knowledge-core';
@@ -43,6 +47,7 @@ import {
   ChevronRight,
   GitBranch,
   HardDrive,
+  History,
   Loader2,
   RotateCcw,
   Sparkles,
@@ -107,12 +112,7 @@ async function pollHistoryOnce(
       return 'error';
     }
     const data = (await res.json()) as { entries: TimelineEntry[] };
-    // Drop checkpoint rows: they're background-cleanup artifacts now, not
-    // user history. The WIP commits they fold over are returned independently
-    // (the server walks checkpoint ancestry), so this loses no edit history.
-    // Exclude-by-type (not an allowlist) keeps any future actor/system entry
-    // type visible by default.
-    handlers.setEntries((data.entries ?? []).filter((e) => e.type !== 'checkpoint'));
+    handlers.setEntries((data.entries ?? []).filter(showsInTimeline));
     handlers.setError(null);
     return 'ok';
   } catch (e) {
@@ -135,6 +135,20 @@ interface TimelineContentProps {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * A row belongs in the timeline unless it is a checkpoint the shared kind
+ * registry does not surface. A recovered-content rescue checkpoint (a parsed
+ * surfaced kind) renders as an ordinary version; Save-Version / MCP-checkpoint
+ * restore points (no parsed kind) and registry-`hidden` kinds stay out of edit
+ * history. Guarding `checkpoint !== null` is load-bearing: `isSurfacedCheckpointKind`
+ * treats a null kind as surfaced (its callers include non-checkpoint rows), so
+ * the null-kind checkpoints must be excluded here rather than by the registry.
+ */
+function showsInTimeline(entry: TimelineEntry): boolean {
+  if (entry.type !== 'checkpoint') return true;
+  return entry.checkpoint !== null && isSurfacedCheckpointKind(entry.checkpoint.kind);
+}
 
 function formatRelativeTime(isoString: string): string {
   const date = new Date(isoString);
@@ -178,9 +192,14 @@ type EntryDescriptor =
   | { kind: 'rename'; from: string; to: string }
   | { kind: 'reconcile' }
   | { kind: 'upstream' }
+  | { kind: 'recovered' }
   | { kind: 'edit' };
 
 function classifyEntry(entry: TimelineEntry): EntryDescriptor {
+  // Only surfaced rescue checkpoints reach the render (showsInTimeline drops
+  // the rest), so any checkpoint here is recovered content — labeled generically
+  // rather than by its internal kind.
+  if (entry.type === 'checkpoint') return { kind: 'recovered' };
   if (entry.type === 'upstream') return { kind: 'upstream' };
   const msg = entry.message;
   const rollback = /^rollback: .+ to ([0-9a-f]{7,40})$/.exec(msg);
@@ -199,6 +218,9 @@ function docLeaf(path: string): string {
 
 /** Map internal author names to user-friendly display names. Uses structured contributors when available. */
 function displayAuthor(entry: TimelineEntry): string {
+  // Rescue checkpoints are service-authored; the recovery framing is the title,
+  // never the raw service author or the internal checkpoint label.
+  if (entry.type === 'checkpoint') return t`Recovered content`;
   if (entry.type === 'upstream') return t`Upstream sync`;
   if (entry.contributors.length === 1) return entry.contributors[0].name;
   if (entry.contributors.length > 1) return entry.contributors.map((c) => c.name).join(', ');
@@ -211,6 +233,7 @@ function displayAuthor(entry: TimelineEntry): string {
 function ContributorIcon({ entry, isDark }: { entry: TimelineEntry; isDark: boolean }) {
   const iconClass = 'size-3.5 shrink-0 text-muted-foreground';
 
+  if (entry.type === 'checkpoint') return <History className={iconClass} aria-hidden="true" />;
   if (entry.type === 'upstream') return <GitBranch className={iconClass} />;
 
   if (entry.contributors.length > 0) {
@@ -417,6 +440,11 @@ function EntryDetail({
   if (descriptor.kind === 'reconcile') {
     return <p className="truncate text-xs text-muted-foreground">{t`Synced from disk`}</p>;
   }
+
+  // A recovered row's title ("Recovered content") is the whole label; it has no
+  // contributor doc list, so render no second line rather than the "Edited"
+  // fallback below (which would misdescribe a system rescue as a user edit).
+  if (descriptor.kind === 'recovered') return null;
 
   if (allDocs.length > 0) {
     return (

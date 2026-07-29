@@ -60,11 +60,16 @@
  * (`ok:terminal:set-dock-state`). The 87→88 bump reconciled the Windows/Linux
  * desktop port: the win/linux renderer menubar (`ok:menu:dispatch`, a
  * discriminated fold per the sharing-dispatch precedent — the custom-drawn menu
- * bar's whole surface in one slot). The 88→89 bump added the React self-uninstall
- * window (`ok:uninstall:dispatch`), the last renderer→main surface that still
- * rode a private URL scheme through `will-navigate`; folding all four screens
- * plus the screen pull into one slot keeps the whole migration at one channel.
- * Full rationale in the ratchet test header.
+ * bar's whole surface in one slot). The 88→90 bumps landed as two independent
+ * additions. One is the React self-uninstall window (`ok:uninstall:dispatch`),
+ * the last renderer→main surface that still rode a private URL scheme through
+ * `will-navigate`; folding all four screens plus the screen pull into one slot
+ * keeps the whole migration at one channel. The other is the desktop
+ * background-throttling toggle (`ok:editor:background-throttle`), keying a
+ * window's Chromium timers to its unsynced work — it could not fold onto the
+ * sibling `ok:editor:*` snapshots (different cadence, and a fold would rebuild
+ * the app menu on every keystroke-to-sync edge). Full rationale in the ratchet
+ * test header.
  */
 
 import type {
@@ -1553,6 +1558,24 @@ export interface RequestChannels {
    */
   'ok:editor:view-menu-state-changed': {
     args: [state: Partial<EditorViewMenuStateSnapshot>];
+    result: undefined;
+  };
+  /**
+   * Renderer → main fire-and-forget push keying the sender window's Chromium
+   * background-throttling to its unsynced work. `hasPendingWork` is the
+   * renderer's aggregate unsynced-work flag; `enabled` is the resolved
+   * `bridge.backgroundThrottle.enabled` kill-switch. Main runs the toggle
+   * predicate and calls `setBackgroundThrottling` on `event.sender`.
+   *
+   * Could not fold onto the sibling `ok:editor:*` snapshots: those fire on
+   * active-target / view-menu changes and drive `refreshApplicationMenu`, a
+   * different cadence and side effect than an unsynced-work transition — a
+   * fold would spuriously rebuild the menu on every keystroke-to-sync edge.
+   * Modeled as a request channel so the preload `invoke().catch(()=>{})`
+   * pattern composes through the typed `createInvoker` wrapper.
+   */
+  'ok:editor:background-throttle': {
+    args: [signal: { hasPendingWork: boolean; enabled: boolean }];
     result: undefined;
   };
   /**

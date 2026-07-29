@@ -998,7 +998,7 @@ msgid "Adds a managed block to {0}"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Adds telemetry, server state, and runtime info when available. Document names are anonymized."
+msgid "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
 msgstr ""
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -7398,6 +7398,10 @@ msgstr ""
 
 #: src/components/FileTree.tsx
 msgid "Reconnecting…"
+msgstr ""
+
+#: src/components/TimelinePanel.tsx
+msgid "Recovered content"
 msgstr ""
 
 #: src/components/AppMenubar.tsx

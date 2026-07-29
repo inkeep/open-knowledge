@@ -61,6 +61,7 @@ import { toBroadcasterKey } from '../agent-id.ts';
 import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import {
   type AgentSessionManager,
+  agentWriteLossDetect,
   applyAgentMarkdownWrite,
   snapshotBlocks,
 } from '../agent-sessions.ts';
@@ -1919,7 +1920,14 @@ export class AcpThreadManager {
           : undefined;
       session.dc.document.transact(() => {
         const beforeBlocks = snapshotBlocks(session.dc.document);
-        applyAgentMarkdownWrite(session.dc.document, content, 'replace', embedResolver);
+        applyAgentMarkdownWrite(
+          session.dc.document,
+          content,
+          'replace',
+          embedResolver,
+          undefined,
+          agentWriteLossDetect(session),
+        );
         // Same-transaction flash entry, mirroring the HTTP agent-write
         // handlers — drives the editor's write-flash + follow-the-write
         // animation for thread writes too (and rides the per-session

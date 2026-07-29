@@ -65,25 +65,35 @@ if (domWindow?.HTMLElement) {
   domWindow.HTMLElement.prototype.scrollIntoView ||= () => {};
 }
 
-// jsdom doesn't implement layout, so `Range` has no `getClientRects` /
-// `getBoundingClientRect`. ProseMirror measures a text Range on every
-// selection scroll (`coordsAtPos` → `singleRect`), and TipTap dispatches that
-// scroll ASYNCHRONOUSLY — so the resulting TypeError lands after the test that
-// triggered it has finished, where vitest can only report it as an unhandled
-// error and fail the whole run. Backfilling the two methods removes the throw
-// at its source; empty rects are the honest answer in a layout-free DOM, and
-// PM already treats a zero rect as "unmeasurable".
-if (domWindow?.Range && typeof domWindow.Range.prototype.getClientRects !== 'function') {
-  Object.defineProperty(domWindow.Range.prototype, 'getClientRects', {
-    configurable: true,
-    value: () => [],
-  });
-}
-if (domWindow?.Range && typeof domWindow.Range.prototype.getBoundingClientRect !== 'function') {
-  Object.defineProperty(domWindow.Range.prototype, 'getBoundingClientRect', {
-    configurable: true,
-    value: () => ({ bottom: 0, height: 0, left: 0, right: 0, top: 0, width: 0 }),
-  });
+// jsdom has no layout, so the geometry pair ProseMirror needs to place a
+// selection is missing on some node types. `singleRect` calls
+// `target.getClientRects()` and falls back to `target.getBoundingClientRect()`,
+// and a scroll-into-view that lands after a test's editor is gone surfaces as
+// an UNCAUGHT exception rather than a test failure — every test passes and the
+// run still exits non-zero. Supply both as empty/zero geometry so the fallback
+// path resolves instead of throwing. Only fills genuine gaps; a real browser
+// and any jsdom build that implements these keep their own.
+const ZERO_RECT = {
+  x: 0,
+  y: 0,
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  width: 0,
+  height: 0,
+  toJSON() {
+    return this;
+  },
+};
+for (const ctor of [domWindow?.Range, domWindow?.Element, domWindow?.Text]) {
+  if (!ctor) continue;
+  const proto = ctor.prototype as {
+    getClientRects?: () => unknown;
+    getBoundingClientRect?: () => unknown;
+  };
+  proto.getClientRects ||= () => [];
+  proto.getBoundingClientRect ||= () => ZERO_RECT;
 }
 
 // jsdom doesn't ship MessageChannel; React 19's scheduler uses it for postTask

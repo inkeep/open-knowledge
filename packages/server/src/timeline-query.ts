@@ -19,11 +19,12 @@
 import { existsSync } from 'node:fs';
 import type { EntryType, TimelineEntry } from '@inkeep/open-knowledge-core';
 import {
+  isSurfacedCheckpointKind,
   parseCheckpoint,
   parseOkActors,
   readContributors,
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
-import { getDocExtension } from './doc-extensions.ts';
+import { extensionlessDocTreePath, getDocExtension } from './doc-extensions.ts';
 import { getLogger } from './logger.ts';
 import { managedArtifactTimelinePaths } from './managed-artifact-persistence.ts';
 import {
@@ -270,7 +271,7 @@ async function filterEntriesByChain<E extends { sha: string }>(
   entries: E[],
   chain: Array<{ path: string; renameCommit: string | null }>,
   branch: string,
-  pathFor: (name: string) => string,
+  pathCandidatesFor: (name: string) => readonly string[],
   cache: AncestorShaSetCache,
   seedsCache: SeedsCache,
 ): Promise<E[]> {
@@ -289,7 +290,10 @@ async function filterEntriesByChain<E extends { sha: string }>(
   );
 
   // Build the probe list. For each entry, for each chain step where the
-  // entry's SHA satisfies the cycle bound, emit one probe.
+  // entry's SHA satisfies the cycle bound, emit one probe per path candidate
+  // (extension-full disk path + the extension-less docName path silent
+  // single-blob checkpoint trees use). The entry is kept if ANY candidate
+  // resolves to a blob in its tree.
   type Probe = { entryIdx: number; sha: string; path: string };
   const probes: Probe[] = [];
   for (let entryIdx = 0; entryIdx < entries.length; entryIdx++) {
@@ -298,7 +302,9 @@ async function filterEntriesByChain<E extends { sha: string }>(
       const step = chain[chainIdx];
       const ancestors = predecessorAncestors[chainIdx];
       if (ancestors !== null && !ancestors.has(entry.sha)) continue;
-      probes.push({ entryIdx, sha: entry.sha, path: pathFor(step.path) });
+      for (const path of pathCandidatesFor(step.path)) {
+        probes.push({ entryIdx, sha: entry.sha, path });
+      }
     }
   }
 
@@ -492,6 +498,16 @@ export async function getDocumentHistory(
     normalizedRoot
       ? `${normalizedRoot}/${name}${getDocExtension(name)}`
       : `${name}${getDocExtension(name)}`;
+  // Ordered tree-path candidates for checkpoint-row filtering: the
+  // extension-full disk path, then the extension-less docName path that silent
+  // single-blob checkpoint trees (`saveInMemoryCheckpoint`) use. `pathFor`
+  // stays single-valued for the byte-identical baseline + git-log pathspec,
+  // where only the real disk path applies.
+  const pathCandidatesFor = (name: string): readonly string[] => {
+    const full = pathFor(name);
+    const extless = extensionlessDocTreePath(full, name);
+    return extless ? [full, extless] : [full];
+  };
 
   // Managed-artifact docs (skills/templates) are versioned under their
   // `.ok/...` artifact key, NOT the synthetic `__skill__/...` doc name — so the
@@ -600,7 +616,7 @@ export async function getDocumentHistory(
           allEntries,
           chain,
           branch,
-          pathFor,
+          pathCandidatesFor,
           cache,
           seedsCache,
         );
@@ -623,7 +639,7 @@ export async function getDocumentHistory(
 
       const filtered = allEntries.filter(
         (e) =>
-          (includeAuto || e.checkpoint?.kind !== 'auto-consolidation') &&
+          (includeAuto || isSurfacedCheckpointKind(e.checkpoint?.kind)) &&
           matchesAuthor(e, authorFilter) &&
           (excludeAuthorFilter.length === 0 || !matchesAuthor(e, excludeAuthorFilter)),
       );
@@ -729,7 +745,7 @@ export async function getDocumentHistory(
           allCpEntries,
           chain,
           branch,
-          pathFor,
+          pathCandidatesFor,
           ancestorSetCache,
           seedsCache,
         );
@@ -881,12 +897,14 @@ export async function getDocumentHistory(
     // tree paths), not user history — never expose them through the timeline.
     filtered = filtered.filter((e) => e.type !== 'park');
 
-    // Hide auto-consolidation checkpoint rows by default. The walk already
-    // traversed their WIP ancestry (so the WIP rows they anchor stay visible);
-    // only the synthetic checkpoint row is dropped, and it is dropped BEFORE
-    // pagination so a hidden row never costs a visible page slot.
+    // Hide checkpoint kinds the shared registry marks `visibility: 'hidden'`
+    // (auto-consolidation today) by default. The walk already traversed their
+    // WIP ancestry (so the WIP rows they anchor stay visible); only the
+    // synthetic checkpoint row is dropped, and it is dropped BEFORE pagination
+    // so a hidden row never costs a visible page slot. Registry-driven so a
+    // future hidden kind is excluded without editing this filter.
     if (!includeAuto) {
-      filtered = filtered.filter((e) => e.checkpoint?.kind !== 'auto-consolidation');
+      filtered = filtered.filter((e) => isSurfacedCheckpointKind(e.checkpoint?.kind));
     }
 
     // Drop no-op rows: a WIP/upstream commit whose blob for this doc is

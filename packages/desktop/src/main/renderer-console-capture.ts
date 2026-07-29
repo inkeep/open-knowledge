@@ -15,7 +15,7 @@
 import {
   mapConsoleLevel,
   parseStructuredConsoleMessage,
-  truncateLogMessage,
+  prepareCapturedConsoleMessage,
 } from '@inkeep/open-knowledge-core';
 import { getLogger } from './desktop-logger.ts';
 
@@ -71,7 +71,11 @@ export function attachRendererConsoleCapture(
     try {
       const level = mapConsoleLevel(event.level);
       if (!level) return;
-      const message = truncateLogMessage(event.message ?? '');
+      // Scrub credentials at capture time: this message becomes pino's `msg`
+      // (and, when structured, its lifted fields), and the desktop logger's
+      // `redact` is path-keyed — it never inspects either. Scrubbing here also
+      // masks `/Users/<name>/` to `~/` in the local log.
+      const message = prepareCapturedConsoleMessage(event.message ?? '');
       const structured = parseStructuredConsoleMessage(message);
       // Spread the renderer-supplied fields FIRST so our provenance markers
       // below always win — a renderer JSON payload must not be able to clobber

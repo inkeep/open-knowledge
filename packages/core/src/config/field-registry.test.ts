@@ -166,7 +166,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     ]);
   });
 
-  test('project-strict fields cover autoSync.default + content.* + contentRules.* + telemetry.localSink.*', () => {
+  test('project-strict fields cover autoSync.default + content.* + contentRules.* + lossCapture.* + telemetry.localSink.*', () => {
     // `autoSync.default` is the committed seed for a machine's sync mode on
     // first open ('off'/'pull'/'full', or the legacy boolean, or null). Project
     // scope is the whole point — it travels with the repo so a maintainer
@@ -188,6 +188,11 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     // disabling the sink is also a project-level decision (sensitive
     // workspaces opt out across the whole team).
     //
+    // `lossCapture.*` controls the dedicated bridge loss-class ring harvested
+    // by the same bundle. Project scope for the same reason as the telemetry
+    // sink: rotation cap shared via the committed `config.yml`, and disabling
+    // the ring is a whole-team decision for a sensitive workspace.
+    //
     // `contentRules.*` is the project's markdown authoring standard — which
     // lint plugins run. Shared via the committed `config.yml` (the OK analog of
     // a checked-in `.markdownlint.json`). Each plugin's slice registers its own
@@ -200,11 +205,19 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       .sort();
     expect(projectStrict).toEqual([
       'autoSync.default',
+      'bridge.backgroundThrottle.enabled',
+      'bridge.deferGuard.enabled',
+      'bridge.fixedPoint.enabled',
+      'bridge.flushOnHide.enabled',
+      'bridge.lossDetector.enabled',
+      'bridge.preDrain.enabled',
       'content.attachmentFolderPath',
       'content.dir',
       'contentRules.frontmatter.enabled',
       'contentRules.frontmatter.schemas',
       'contentRules.markdownlint.enabled',
+      'lossCapture.enabled',
+      'lossCapture.maxBytes',
       'telemetry.localSink.attributeDenylist',
       'telemetry.localSink.enabled',
       'telemetry.localSink.logs.maxBytes',

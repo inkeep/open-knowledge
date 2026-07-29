@@ -1477,6 +1477,12 @@ export interface OkDesktopBridge {
      * JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
      */
     notifyViewMenuStateChanged(state: Partial<OkEditorViewMenuStateSnapshot>): void;
+    /**
+     * Fire-and-forget push keying the window's Chromium background-throttling
+     * to its unsynced work. See canonical JSDoc in
+     * `packages/desktop/src/shared/bridge-contract.ts`.
+     */
+    notifyBackgroundThrottle(signal: { hasPendingWork: boolean; enabled: boolean }): void;
   };
 
   /**

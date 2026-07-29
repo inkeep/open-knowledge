@@ -1990,6 +1990,15 @@ export interface OkDesktopBridge {
      * windows — matches the active-target singleton model.
      */
     notifyViewMenuStateChanged(state: Partial<OkEditorViewMenuStateSnapshot>): void;
+    /**
+     * Fire-and-forget push keying the window's Chromium background-throttling
+     * to its unsynced work. `hasPendingWork` is the renderer's aggregate
+     * unsynced-work flag; `enabled` is the resolved
+     * `bridge.backgroundThrottle.enabled` kill-switch. Main runs the toggle
+     * predicate on the sender window's webContents. Reported on each
+     * transition of either input.
+     */
+    notifyBackgroundThrottle(signal: { hasPendingWork: boolean; enabled: boolean }): void;
   };
 
   /**

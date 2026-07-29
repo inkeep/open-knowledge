@@ -156,7 +156,7 @@ async function collectFullBundle(
  *   per-project lock/spawn-error + local sink logs, sysinfo. No git/server
  *   dependency.
  * - `full`: the `ok diagnose bundle` superset — adds telemetry spans, live
- *   server state, runtime metadata, and doc-name anonymization.
+ *   server state, runtime metadata, and the content-loss ring.
  *   Availability-gated: pieces whose source is missing (no running server,
  *   no shadow repo, no telemetry sink) are omitted without error, and the
  *   bundled manifest inventory reflects what was actually included.
@@ -164,9 +164,9 @@ async function collectFullBundle(
  * Every full-only artifact is project-scoped, so without a `projectDir` both
  * levels produce the same system-wide bundle.
  *
- * With `redact` on, the secret-pattern scrub applies at both levels; the
- * full level additionally hashes doc names and masks the content-dir path
- * (inverse map written as a sidecar next to the zip, never inside it).
+ * With `redact` on, the secret-pattern scrub applies at both levels; the full
+ * level additionally masks the content-dir path. Doc names ship raw under the
+ * user's explicit Detailed-diagnostics consent.
  */
 export async function collectReportBundle(
   opts: CollectReportBundleOptions,

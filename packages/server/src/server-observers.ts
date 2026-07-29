@@ -35,10 +35,13 @@ import {
   BridgeMergeContentLossError,
   comparePmStructural,
   DUPLICATION_GATE_MIN_LINE_LENGTH,
+  fnv1aDigest,
+  fragmentHoldsPendingContent,
   isParseEquivalentBridge,
   mergeThreeWay,
   normalizeBridge,
   overMultipliedBodyLines,
+  pendingContentLines,
   prependFrontmatter,
   projectMergeBoundarySpace,
   reattachLeadingDocBoundary,
@@ -50,6 +53,7 @@ import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-ti
 // Value import (not `import type`): `carrierKind` uses `instanceof Y.XmlElement`
 // to read a top-level child's node shape for the duplication gate.
 import * as Y from 'yjs';
+import { detectApplyArmDrop } from './bridge-loss-detector.ts';
 import { attachQuiescenceTracker } from './bridge-quiescence.ts';
 import {
   assertBridgeInvariant,
@@ -61,14 +65,24 @@ import {
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
 import { getLogger } from './logger.ts';
+import {
+  LOSS_EVENT_BACKSTOP_TRIP,
+  LOSS_EVENT_CHECKPOINT_WRITE,
+  LOSS_EVENT_DETECTOR_TRIP,
+  LOSS_EVENT_GUARD_DEFER,
+  type LossCaptureRing,
+} from './loss-capture.ts';
 import { computeMapDrivenBodySplice } from './map-driven-splice.ts';
 import {
   incrementBridgeMergeCheckpointCreated,
   incrementBridgeMergeContentGrowth,
   incrementBridgeMergeContentLoss,
   incrementBridgeSplitBrainRederives,
+  incrementDeriveTimingDeferForceResolved,
   incrementMapDrivenSpliceApplied,
   incrementMapDrivenSpliceFallback,
+  incrementObserverAApplyLoss,
+  incrementObserverAApplyLossCheckpointCreated,
   incrementObserverADuplicationCheckpointCreated,
   incrementObserverADuplicationRederives,
   incrementObserverAPathBFires,
@@ -76,9 +90,16 @@ import {
   incrementProducerGuardCheckpointCreated,
   incrementProducerGuardFires,
   incrementProducerGuardFiresSuppressed,
+  incrementReDeriveBackstopTripped,
   incrementServerObserverError,
   incrementServerObserverFire,
 } from './metrics.ts';
+import {
+  type PreDrainController,
+  type PreDrainOpInput,
+  type PreDrainVerdict,
+  planPreDrain,
+} from './pre-drain-discriminator.ts';
 import { registerBridgeDirtyProbe } from './server-workload-telemetry.ts';
 import { type ShadowHandle, saveInMemoryCheckpoint } from './shadow-repo.ts';
 import { setActiveSpanAttributes, withSpanSync } from './telemetry.ts';
@@ -233,6 +254,28 @@ export class ProducerGuardViolationError extends Error {
  */
 const PRODUCER_GUARD_DANGER_TYPES = new Set(['jsxComponent', 'table', 'tableCell', 'tableHeader']);
 
+/**
+ * Consecutive derive-timing defers a document may accumulate before the guard
+ * stops deferring and force-resolves the re-derive loudly. Drain-count based, so
+ * it stays honest under the no-wall-clock rule (precedent #13(b)): the bound is
+ * "how many re-derive drains have been withheld," never elapsed time. Same value
+ * as the persistence layer's `QUIESCENCE_MAX_DEFER` — under sustained typing a
+ * doc that keeps a keystroke un-propagated is the same shape both layers bound.
+ */
+const MAX_DERIVE_TIMING_DEFERS = 8;
+
+/**
+ * Backstop cap for the Y.Text→XmlFragment re-derive loop (the loud
+ * tripwire). A run of this many consecutive re-derive drains that never reaches
+ * a raw-byte fixed point (the two representations keep diverging) freezes the
+ * B-direction re-derive loop. Drain-count based (never wall-clock,
+ * precedent #13(b)). Set well above the worst measured legitimate run — a single
+ * byte-emitting round per settlement episode — so a legitimate flow can never
+ * trip it; the residual it guards is the un-probed echo/normalize-UNEQUAL
+ * corrective-loop domain, where a trip is a true positive.
+ */
+const MAX_REDERIVE_ROUNDS = 8;
+
 function fragmentContainsDangerSpace(node: PmStructuralNode): boolean {
   if (node.type && PRODUCER_GUARD_DANGER_TYPES.has(node.type)) return true;
   if (node.content) {
@@ -334,6 +377,51 @@ function applyMapDrivenSplice(ytext: Y.Text, splice: YTextMapDrivenSplice): void
   const deleteLength = splice.spliceEnd - splice.spliceStart;
   if (deleteLength > 0) ytext.delete(splice.spliceStart, deleteLength);
   if (splice.newSlice.length > 0) ytext.insert(splice.spliceStart, splice.newSlice);
+}
+
+/**
+ * Per-document pre-drain controllers, keyed by the live Y.Doc so a paired
+ * write's caller (agent-undo in `agent-sessions.ts`, agent-write handlers) can
+ * reach the doc's observer-owned controller without threading a registry
+ * through the boot wiring. Keyed by doc object identity: two servers in one
+ * process hold distinct Y.Docs, so entries never collide. Set when the observer
+ * attaches, deleted on detach.
+ */
+const preDrainControllers = new WeakMap<Y.Doc, PreDrainController>();
+
+/**
+ * The pre-drain controller for a document, or undefined when observers aren't
+ * attached (system/config/mermaid docs, unloaded docs). A caller with no
+ * controller simply skips pre-drain — the paired write's checkpoint floor still
+ * captures any un-propagated content.
+ */
+export function getPreDrainController(doc: Y.Doc): PreDrainController | undefined {
+  return preDrainControllers.get(doc);
+}
+
+/**
+ * Per-document publisher for the last-converged fragment serialization — the
+ * witness leg of `fragmentHoldsPendingContent`. Stored as a GETTER, never as a
+ * captured string: the witness advances on every settlement, so a value read at
+ * attach time would freeze at the doc's first convergence and make every later
+ * consumer wrong in the unsafe direction. Same lifecycle as
+ * `preDrainControllers` — set on attach, deleted on detach, keyed by doc object
+ * identity.
+ */
+const convergedFragmentWitnesses = new WeakMap<Y.Doc, () => string>();
+
+/**
+ * The last-converged fragment serialization for a document, or `undefined` when
+ * observers aren't attached (system/config docs, unloaded docs, unit rigs).
+ *
+ * This is a witness VALUE, not a "currently deferring" flag — the distinction
+ * the prior-art survey in `reports/tolerated-divergence-hygiene-layers/REPORT.md`
+ * identifies as what keeps a consumer conservative rather than blind when the
+ * datum lags. A consumer with no witness cannot evaluate the derive-timing
+ * tolerance at all and must fall back to its own un-toleranced behavior.
+ */
+export function getConvergedFragmentWitness(doc: Y.Doc): string | undefined {
+  return convergedFragmentWitnesses.get(doc)?.();
 }
 
 // Bridge utilities (applyIncrementalDiff, applyFastDiff, mergeThreeWay,
@@ -446,6 +534,71 @@ export interface SetupServerObserversOpts {
    * re-projection.
    */
   mergeThreeWay?: typeof mergeThreeWay;
+  /**
+   * Derive-timing defer guard. When a drain-shaped Observer B re-derive would
+   * stomp un-propagated WYSIWYG content the fragment holds but Y.Text lacks, the
+   * guard defers the re-derive so the keystroke survives. Default ON; pass
+   * `false` to make the guard inert (the stomp reproduces) — the config
+   * kill-switch resolves to this at boot.
+   */
+  deferGuardEnabled?: boolean;
+  /**
+   * Bridge content-loss detector. When enabled, the Observer-A apply arms
+   * (map-driven splice + incremental diff) run a content-preservation
+   * post-condition: content the fragment held that the applied Y.Text dropped
+   * (beyond normalization tolerance) writes a recovery checkpoint + a
+   * content-free `detector-trip` event. Detection only — never blocks the
+   * write. Default ON; the config kill-switch resolves to this at boot.
+   */
+  lossDetectorEnabled?: boolean;
+  /**
+   * Re-derive-loop fixed-point backstop. When enabled, the Y.Text→XmlFragment
+   * re-derive cycle terminates on a raw-byte fixed point; a run of re-derive
+   * drains that never reaches one hits a drain-count backstop, freezing the
+   * B-direction re-derive loop LOUDLY (checkpoint + `backstop-trip` ring event).
+   * Default ON; the config kill-switch resolves to this at boot. Pass `false`
+   * to make the backstop inert (a runaway loop churns unbounded).
+   */
+  fixedPointBackstopEnabled?: boolean;
+  /**
+   * Pre-drain discriminator kill-switch. When enabled (default), a paired
+   * write's caller can flush a discriminator-proven non-overlapping pending
+   * keystroke into Y.Text before its paired transact so the keystroke survives
+   * rather than needing the checkpoint floor. The config kill-switch resolves to
+   * this at boot; pass `false` to make `preDrain` inert (the pending content is
+   * left for the paired write's checkpoint floor to capture instead).
+   */
+  preDrainEnabled?: boolean;
+  /**
+   * Loss-capture ring for content-free observability. When present, each
+   * derive-timing defer records a distinguishable `guard-defer` event, each
+   * detector trip a `detector-trip` event, and each backstop trip a
+   * `backstop-trip` event. Omit in unit rigs that only assert the drain
+   * behavior. Structural (`record` only) so a suite can pass a capturing fake.
+   */
+  lossRing?: Pick<LossCaptureRing, 'record'>;
+  /**
+   * Test-only seam: invoked at each derive-timing defer with the current
+   * settlement witnesses, so suites can count defers and assert witness
+   * atomicity (a deferring drain must not move either witness) without reaching
+   * into closure state. Omitted in production.
+   */
+  onDeriveTimingDefer?: (snapshot: { canonicalWitness: string; rawWitness: string }) => void;
+  /**
+   * Test-only seam: invoked when the re-derive-loop backstop trips, with the
+   * count of consecutive non-converging drains that preceded the freeze, so a
+   * suite can assert the trip without reaching into closure state. Omitted in
+   * production.
+   */
+  onReDeriveBackstop?: (rounds: number) => void;
+  /**
+   * Test-only seam: invoked inside the Observer-A apply transact after the arm
+   * writes, so a suite can mutate the just-applied Y.Text to model an apply-arm
+   * content drop (which the byte-preserving arms never do organically) and
+   * exercise the apply post-condition on the production drain. Omitted in
+   * production.
+   */
+  __testApplyLossInjector?: (ytext: Y.Text) => void;
 }
 
 /**
@@ -456,8 +609,16 @@ export interface SetupServerObserversOpts {
  * in-sync case. Single-sourced so both Observer A detection sites (identity
  * gate + post-merge baseline check) apply the identical predicate.
  */
-function settlesSplitBrain(settledText: string, md: string, normMdPre?: string): boolean {
-  return settledText !== md && normalizeBridge(settledText) !== (normMdPre ?? normalizeBridge(md));
+function settlesSplitBrain(
+  settledText: string,
+  md: string,
+  normMdPre?: string,
+  normSettledPre?: string,
+): boolean {
+  return (
+    settledText !== md &&
+    (normSettledPre ?? normalizeBridge(settledText)) !== (normMdPre ?? normalizeBridge(md))
+  );
 }
 
 /** Node-shape discriminant for a top-level fragment child. */
@@ -706,6 +867,11 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
    * attrs only: doc.name + enum site.
    */
   const recordSplitBrainRederive = (site: BridgeSplitBrainSite): void => {
+    // Every split-brain re-derive site is corrective reconciliation work that
+    // did NOT converge — the fragment does not derive from Y.Text and a
+    // same-drain Observer B re-derive is enqueued. Mark the drain so the
+    // backstop can count it toward the re-derive-loop bound.
+    drainDidCorrectiveWork = true;
     // No-throw is structural, not incidental: every call site runs inside
     // runObserverASyncImpl's try, after the state-critical witness writes and
     // the `textDirty = true` B-enqueue. A throw escaping here would route
@@ -726,6 +892,26 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     } catch (telErr) {
       log.warn({ err: telErr }, '[Server Observer A] Split-brain telemetry failed');
     }
+  };
+
+  /**
+   * Record a derive-timing defer to the loss ring — content-free (a byte
+   * length, never the bytes). Fire-and-forget: the ring's own `record` logs and
+   * swallows any write failure, so a diagnostics hiccup can never feed back into
+   * the observer write spine. No per-drain console log: a sustained defer burst
+   * would otherwise spam stdout, so the bounded, rotating ring is the sink.
+   */
+  const recordGuardDefer = (pendingLines: readonly string[]): void => {
+    void opts.lossRing?.record({
+      event: LOSS_EVENT_GUARD_DEFER,
+      docName: opts.docName ?? '',
+      writerId: null,
+      direction: 'b',
+      // The ring's `lostLen` is the AT-RISK content's byte length, not the
+      // document's. The whole-document length would read as a multi-KB loss on
+      // every one-character defer.
+      lostLen: pendingLines.reduce((n, line) => n + line.length, 0),
+    });
   };
 
   /**
@@ -774,6 +960,293 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     });
   };
 
+  /**
+   * Content-preservation post-condition for the byte-preserving Observer-A
+   * apply arms (map-driven splice + incremental diff). The mergeThreeWay arm
+   * carries its own `assertContentPreservation`, so it is excluded at the call
+   * site. Detection only: the drain still persists the applied bytes; on a
+   * genuine drop the pre-loss fragment state (`intendedMd`) is checkpointed so
+   * it stays restorable, and a content-free `detector-trip` ring event fires.
+   *
+   * `normIntended` is the already-computed `normalizeBridge(md)` — the
+   * comparison runs in normalized space so a raw-vs-canonical form difference a
+   * byte-preserving splice legitimately leaves in Y.Text (`__foo__` vs
+   * `**foo**`) is never read as a loss. A byte-identical apply and a
+   * normalize-equal apply both short-circuit before the (rare) segment diff.
+   */
+  const detectObserverAApplyLoss = (
+    intendedMd: string,
+    normIntended: string,
+    appliedYText: string,
+    normApplied: string,
+  ): void => {
+    if (opts.lossDetectorEnabled === false) return;
+    const dropped = detectApplyArmDrop(intendedMd, normIntended, appliedYText, normApplied);
+    if (dropped.length === 0) return;
+    // Event counter first, synchronously: a trip with no shadow wired — or one
+    // whose checkpoint write later fails — must still be visible on
+    // /api/metrics/reconciliation. `observerAApplyLoss` minus its
+    // `...CheckpointCreated` sibling is exactly the anchor-loss count.
+    incrementObserverAApplyLoss();
+    const lostLen = dropped.reduce((n, s) => n + s.length, 0);
+    const digest = fnv1aDigest(dropped.join('\n'));
+    const shadow = opts.shadow?.();
+    if (!shadow || !opts.docName) {
+      void opts.lossRing?.record({
+        event: LOSS_EVENT_DETECTOR_TRIP,
+        docName: opts.docName ?? '',
+        writerId: null,
+        direction: 'a',
+        site: 'observer-a-apply',
+        lostLen,
+        digest,
+      });
+      return;
+    }
+    const branch = opts.getBranch?.() ?? 'main';
+    const contentRoot = opts.contentRoot ?? '';
+    const docName = opts.docName;
+    queueMicrotask(() => {
+      saveInMemoryCheckpoint(shadow, contentRoot, {
+        kind: 'observer-a-apply-loss',
+        docName,
+        contents: intendedMd,
+        label: `Before Observer-A apply content-loss @ ${new Date().toISOString()}`,
+        branch,
+        metadata: { lostSubstrings: dropped },
+      })
+        .then((sha) => {
+          incrementObserverAApplyLossCheckpointCreated();
+          void opts.lossRing?.record({
+            event: LOSS_EVENT_DETECTOR_TRIP,
+            docName,
+            writerId: null,
+            direction: 'a',
+            site: 'observer-a-apply',
+            lostLen,
+            digest,
+            checkpointSha: sha,
+          });
+          console.warn(
+            JSON.stringify({
+              event: 'observer-a-apply-loss-checkpoint-created',
+              docName,
+              sha,
+              kind: 'observer-a-apply-loss',
+              timestamp: new Date().toISOString(),
+            }),
+          );
+        })
+        .catch((checkpointErr: unknown) => {
+          const e =
+            checkpointErr instanceof Error ? checkpointErr : new Error(String(checkpointErr));
+          log.warn({ docName, err: e }, '[Server Observer A] Apply-loss checkpoint write failed');
+          checkpointLog.warn(
+            { err: e, 'doc.name': docName, branch, kind: 'observer-a-apply-loss' },
+            'checkpoint write failed',
+          );
+          // The checkpoint failed, but the detector still tripped — emit the
+          // sha-less ring event (mirroring the no-shadow branch) so the fire is
+          // represented in the ring even without a restore anchor. `record()`
+          // never throws or rejects synchronously, so it can't mask the error.
+          void opts.lossRing?.record({
+            event: LOSS_EVENT_DETECTOR_TRIP,
+            docName,
+            writerId: null,
+            direction: 'a',
+            site: 'observer-a-apply',
+            lostLen,
+            digest,
+          });
+        });
+    });
+  };
+
+  /**
+   * Loud force-resolve when the derive-timing defer bound is exhausted. The
+   * re-derive is about to proceed and drop the un-propagated content from the
+   * live fragment, so `preResolveFragmentMd` (which still holds it) is
+   * checkpointed as a restore anchor and a distinguishable ring event carries
+   * that checkpoint's sha — never a silent clamp. Fire-and-forget: the
+   * sha-bearing ring event is written from inside the checkpoint's `then`, and
+   * on a checkpoint-write failure a sha-less ring event fires from the `catch`
+   * instead, so the fire is always represented in the ring; the metrics counter
+   * increments synchronously (the guard force-resolved regardless of whether the
+   * shadow write later succeeds). When
+   * no shadow/docName is wired (unit rigs exercising only the bridge mechanics)
+   * the checkpoint is skipped but the ring event + counter still fire.
+   */
+  const forceResolveExhaustedDefer = (
+    preResolveFragmentMd: string,
+    deferCount: number,
+    /** The at-risk lines the force-resolve is about to drop from the fragment. */
+    pendingLines: readonly string[],
+  ): void => {
+    incrementDeriveTimingDeferForceResolved();
+    // At-risk bytes, not document bytes — see `recordGuardDefer`.
+    const lostLen = pendingLines.reduce((n, line) => n + line.length, 0);
+    const shadow = opts.shadow?.();
+    const docName = opts.docName;
+    if (!shadow || !docName) {
+      void opts.lossRing?.record({
+        event: LOSS_EVENT_CHECKPOINT_WRITE,
+        docName: docName ?? '',
+        writerId: null,
+        direction: 'b',
+        site: 'derive-timing-exhaustion',
+        lostLen,
+      });
+      return;
+    }
+    const branch = opts.getBranch?.() ?? 'main';
+    const contentRoot = opts.contentRoot ?? '';
+    queueMicrotask(() => {
+      saveInMemoryCheckpoint(shadow, contentRoot, {
+        kind: 'defer-exhaustion-loss',
+        docName,
+        contents: preResolveFragmentMd,
+        label: `Before derive-defer force-resolve @ ${new Date().toISOString()}`,
+        branch,
+        metadata: { deferCount },
+      })
+        .then((sha) => {
+          void opts.lossRing?.record({
+            event: LOSS_EVENT_CHECKPOINT_WRITE,
+            docName,
+            writerId: null,
+            direction: 'b',
+            site: 'derive-timing-exhaustion',
+            lostLen,
+            checkpointSha: sha,
+          });
+          console.warn(
+            JSON.stringify({
+              event: 'derive-defer-exhaustion-checkpoint-created',
+              docName,
+              sha,
+              kind: 'defer-exhaustion-loss',
+              timestamp: new Date().toISOString(),
+            }),
+          );
+        })
+        .catch((checkpointErr: unknown) => {
+          const e =
+            checkpointErr instanceof Error ? checkpointErr : new Error(String(checkpointErr));
+          log.warn(
+            { docName, err: e },
+            '[Server Observer B] Derive-defer exhaustion checkpoint write failed',
+          );
+          checkpointLog.warn(
+            { err: e, 'doc.name': docName, branch, kind: 'defer-exhaustion-loss' },
+            'checkpoint write failed',
+          );
+          // The checkpoint failed, but the force-resolve still fired — emit the
+          // sha-less ring event (mirroring the no-shadow branch) so the fire is
+          // represented in the ring even without a restore anchor.
+          void opts.lossRing?.record({
+            event: LOSS_EVENT_CHECKPOINT_WRITE,
+            docName,
+            writerId: null,
+            direction: 'b',
+            site: 'derive-timing-exhaustion',
+            lostLen,
+          });
+        });
+    });
+  };
+
+  /**
+   * Loud trip of the re-derive-loop backstop. The B-direction re-derive is
+   * frozen (`bDirectionFrozen`) to stop a run of drains that never reach a
+   * raw-byte fixed point. The current Y.Text — the authoritative bytes at freeze
+   * time — is checkpointed so that state stays restorable through the timeline
+   * floor, and a distinguishable `backstop-trip` ring event carries the
+   * checkpoint's sha. The A-direction (user edits) and persistence stay live;
+   * the freeze exits when a later drain reaches a raw-byte fixed point. Never a
+   * silent truncate-and-continue. Fire-and-forget: the metrics counter and the
+   * test seam fire synchronously; the sha-bearing ring event rides the
+   * checkpoint's `then`, and a sha-less one rides the `catch` on a
+   * checkpoint-write failure so the freeze is always represented in the ring.
+   * When no shadow/docName is wired (unit rigs) the checkpoint is skipped but
+   * the ring event + counter still fire.
+   */
+  const tripReDeriveBackstop = (rounds: number): void => {
+    bDirectionFrozen = true;
+    incrementReDeriveBackstopTripped();
+    opts.onReDeriveBackstop?.(rounds);
+    const frozenYText = ytext.toString();
+    const shadow = opts.shadow?.();
+    const docName = opts.docName;
+    // No `lostLen`: the freeze loses nothing. Y.Text stays authoritative and
+    // live, the checkpoint anchors it, and only the B-direction re-derive stops.
+    // Reporting the frozen document's length here would read as a whole-document
+    // loss in the ring.
+    if (!shadow || !docName) {
+      void opts.lossRing?.record({
+        event: LOSS_EVENT_BACKSTOP_TRIP,
+        docName: docName ?? '',
+        writerId: null,
+        direction: 'b',
+        site: 'rederive-backstop',
+      });
+      return;
+    }
+    const branch = opts.getBranch?.() ?? 'main';
+    const contentRoot = opts.contentRoot ?? '';
+    queueMicrotask(() => {
+      saveInMemoryCheckpoint(shadow, contentRoot, {
+        kind: 'bridge-backstop-trip',
+        docName,
+        contents: frozenYText,
+        label: `Before re-derive backstop freeze @ ${new Date().toISOString()}`,
+        branch,
+        metadata: { rounds },
+      })
+        .then((sha) => {
+          void opts.lossRing?.record({
+            event: LOSS_EVENT_BACKSTOP_TRIP,
+            docName,
+            writerId: null,
+            direction: 'b',
+            site: 'rederive-backstop',
+            checkpointSha: sha,
+          });
+          console.warn(
+            JSON.stringify({
+              event: 'bridge-rederive-backstop-checkpoint-created',
+              docName,
+              sha,
+              kind: 'bridge-backstop-trip',
+              timestamp: new Date().toISOString(),
+            }),
+          );
+        })
+        .catch((checkpointErr: unknown) => {
+          const e =
+            checkpointErr instanceof Error ? checkpointErr : new Error(String(checkpointErr));
+          log.warn(
+            { docName, err: e },
+            '[Server Observer B] Re-derive backstop checkpoint write failed',
+          );
+          checkpointLog.warn(
+            { err: e, 'doc.name': docName, branch, kind: 'bridge-backstop-trip' },
+            'checkpoint write failed',
+          );
+          // The checkpoint failed, but the backstop still tripped and froze the
+          // B-direction re-derive — emit the sha-less ring event (mirroring the
+          // no-shadow branch) so the freeze is visible in the ring even without
+          // a restore anchor. Without it the freeze reads like "ring disabled".
+          void opts.lossRing?.record({
+            event: LOSS_EVENT_BACKSTOP_TRIP,
+            docName,
+            writerId: null,
+            direction: 'b',
+            site: 'rederive-backstop',
+          });
+        });
+    });
+  };
+
   // ─── Observer A: XmlFragment → Y.Text ─────────────────────
   // Two witnesses, one lifecycle. A single baseline variable here previously
   // conflated two incompatible surface contracts: gate 1 needs the canonical
@@ -806,6 +1279,71 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   // cannot certify that de-anchoring the emission is safe.
   let lastExternalYtextChangeMs = 0;
 
+  // Derive-timing defer guard state. `lastConvergedFragmentMd` is the
+  // freshness-derived serialization of the fragment at the last point where the
+  // fragment and Y.Text were known to agree — the witness the intra-line
+  // predicate compares against, so a freshness respell that is stable across
+  // re-derives (present in both the current serialization and this witness)
+  // cannot read as pending content, while genuine un-propagated children can.
+  // It is deliberately NOT refreshed on a freshness-suppressed Observer A
+  // settlement: that is exactly the drain that leaves the fragment ahead of its
+  // stamped sourceRaw, so refreshing here would blind the guard to the pending
+  // keystroke the whole mechanism exists to preserve.
+  const deferGuardEnabled = opts.deferGuardEnabled !== false;
+  let lastConvergedFragmentMd = '';
+  // Cheap gate: the O(N) fresh-serialize the predicate needs runs only when the
+  // fragment has moved since the last convergence. A source-only edit never
+  // trips this, so the guard adds nothing to the common Observer-B re-derive.
+  let fragmentMutatedSinceConverge = false;
+  // Unbroken run of derive-timing defers. Reset to 0 at every convergence (a
+  // real settlement propagated the pending content or the two representations
+  // agreed); climbs only while the same keystroke stays un-propagated across
+  // successive re-derive drains. Reaching `MAX_DERIVE_TIMING_DEFERS` trips the
+  // loud force-resolve.
+  let consecutiveDeriveTimingDefers = 0;
+  // One-shot: the duplication gate confirmed a race-duplicated span (provenance
+  // walk) and enqueued a same-drain Observer B re-derive to rebuild the
+  // single-copy fragment from Y.Text truth. That re-derive must NOT be deferred:
+  // the doubled fragment holds a line more times than Y.Text, which looks like
+  // pending content to the defer predicate, but the excess is a CRDT-merge
+  // artifact the gate already adjudicated for discard — not an un-propagated
+  // WYSIWYG keystroke. Set in Observer A, consumed by the very next Observer B
+  // in the same synchronous dispatch (no keystroke can interleave), so deferring
+  // it would strand the doubled fragment permanently.
+  let pendingDuplicationRecovery = false;
+
+  // Re-derive-loop fixed-point backstop. The re-derive cycle terminates
+  // on a RAW-BYTE fixed point: a drain whose settled Y.Text raw-equals the
+  // fragment's canonical serialization. A doc that never reaches one but keeps
+  // advancing to NEW states is making forward progress (a large residual-bearing
+  // edit stream, a slow paste) — not a loop. A doc that never reaches one and
+  // REVISITS a recently-settled state is oscillating: the re-derive keeps
+  // re-emitting bytes it already emitted without converging. `oscillationRun`
+  // counts consecutive corrective drains whose settled Y.Text revisited the
+  // recent ring; a run reaching `MAX_REDERIVE_ROUNDS` freezes the B-direction
+  // re-derive loop LOUDLY (checkpoint + ring event) rather than churning
+  // unbounded. Revisit is compared on RAW-BYTE digests, never `normalizeBridge`
+  // tolerance — an oscillation between two tolerated spellings (byte-different,
+  // normalize-equal) still trips, which a normalize-tolerant check would mask.
+  const fixedPointBackstopEnabled = opts.fixedPointBackstopEnabled !== false;
+  const preDrainEnabled = opts.preDrainEnabled !== false;
+  // Bounded ring of recent non-converged settled-Y.Text digests. Sized to the
+  // trip bound so a cycle of any period up to the bound is a detectable revisit.
+  const REDERIVE_DIGEST_RING = MAX_REDERIVE_ROUNDS;
+  const recentSettledDigests: string[] = [];
+  let oscillationRun = 0;
+  let bDirectionFrozen = false;
+  // Per-drain backstop signals, set by Observer A/B during the drain and read by
+  // the settlement dispatcher for a REAL (non-self-origin) drain only. The
+  // nested `afterAllTransactions` a self-origin observer write triggers reports
+  // 'none' and never touches these, so the outer drain's signals survive the
+  // re-entrant dispatch. `drainDeferred` makes a derive-timing-deferred drain a
+  // non-event (neither increment nor reset), protecting the fixed point from
+  // defer-masking.
+  let drainDidCorrectiveWork = false;
+  let drainReachedRawFixedPoint = false;
+  let drainDeferred = false;
+
   /**
    * STOP: the Path A/B router strict-compares this witness against
    * `ytext.toString()`, and `mergeThreeWay`'s diverged-branch base must be a
@@ -831,6 +1369,15 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     lastSyncedCanonicalMd = canonicalMd;
     refreshYTextWitness();
     canonicalWitnessCoherent = canonicalMd !== '';
+    // Raw-byte fixed-point signal for the re-derive backstop: the raw witness
+    // was just snapshotted from `ytext.toString()`, so `lastSyncedYTextBytes ===
+    // canonicalMd` means the authoritative Y.Text bytes equal the fragment's
+    // canonical serialization exactly — a true fixed point. A normalize-equal
+    // but byte-different settlement (a resting residual) does NOT set it, so it
+    // never resets an active loop counter (the raw-vs-normalize guard).
+    if (fixedPointBackstopEnabled && canonicalMd !== '' && lastSyncedYTextBytes === canonicalMd) {
+      drainReachedRawFixedPoint = true;
+    }
   };
 
   /**
@@ -955,8 +1502,14 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
    * runs only after byte + normalize inequality — the drains that would
    * otherwise settle split-brain and pay a full Observer B re-derive.
    */
-  const settlesSplitBrainChecked = (settledText: string, md: string, normMdPre?: string): boolean =>
-    settlesSplitBrain(settledText, md, normMdPre) && !isRestingParseEquivalent(settledText, md);
+  const settlesSplitBrainChecked = (
+    settledText: string,
+    md: string,
+    normMdPre?: string,
+    normSettledPre?: string,
+  ): boolean =>
+    settlesSplitBrain(settledText, md, normMdPre, normSettledPre) &&
+    !isRestingParseEquivalent(settledText, md);
 
   /** Initialize Observer A baseline from current XmlFragment state. */
   try {
@@ -980,6 +1533,9 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     } else {
       recordDivergedAttachBaselines(canonicalInit);
     }
+    // Seed the derive-timing convergence witness with the attach-time fragment
+    // serialization so the first re-derive has a real baseline to compare against.
+    lastConvergedFragmentMd = canonicalInit;
   } catch (err) {
     incrementServerObserverError('a');
     log.warn(
@@ -1225,11 +1781,25 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       ) {
         recordDivergedAttachBaselines(md);
         textDirty = true;
+        pendingDuplicationRecovery = true;
         recordSplitBrainRederive('duplication-guard');
         incrementObserverADuplicationRederives();
         saveDuplicationCheckpoint(md, overMultiplied.length);
         setActiveSpanAttributes({ 'observer.a.path': 'gated-duplication-rederive' });
         return;
+      }
+
+      // Derive-timing convergence witness: on a freshness-safe drain `md`
+      // IS the fresh serialization of the current fragment (freshness derived,
+      // not the stale sourceRaw), and Observer A is handling that content, so
+      // this is the fragment's last-known real state. Capturing it here — and
+      // NOT on a freshness-suppressed drain — is what lets the defer predicate
+      // tell a pending keystroke (children beyond this witness) from a stable
+      // freshness respell (present in both current serialize and this witness).
+      if (freshnessSafe) {
+        lastConvergedFragmentMd = md;
+        fragmentMutatedSinceConverge = false;
+        consecutiveDeriveTimingDefers = 0;
       }
 
       // Gate 1 (fragment-unchanged): the fragment's canonical serialization is
@@ -1476,12 +2046,31 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
             pathBState.mergedText = asComputed;
           }
         }
+        // Test-only apply-loss injector. The byte-preserving apply arms cannot
+        // drop content organically (only a future apply bug would), so this
+        // seam lets a suite mutate the just-written Y.Text to model that bug and
+        // exercise the apply post-condition on the production drain. Absent in
+        // production; runs inside the sync transact so the drop is a real
+        // Y.Text mutation the post-condition reads back.
+        opts.__testApplyLossInjector?.(ytext);
       }, OBSERVER_SYNC_ORIGIN);
 
       // Splice-path health counter — the fallback side increments inside
       // `tryComputeMapDrivenSplice`, so `applied / (applied + Σfallback)`
       // tracks how often the byte-preserving default actually serves drains.
       if (mapDrivenSplice) incrementMapDrivenSpliceApplied();
+
+      // Content-preservation post-condition for the byte-preserving apply arms
+      // only — the mergeThreeWay branch (Path B + residual merge) carries its
+      // own assertContentPreservation, so re-checking it here would double-count.
+      // The post-apply Y.Text and its normalized form are read ONCE and shared
+      // by the apply post-condition and the settlement check below: both are
+      // O(doc bytes) and both ran on identical inputs, on the per-keystroke path.
+      const appliedYText = ytext.toString();
+      const normApplied = normalizeBridge(appliedYText);
+      if (mapDrivenSplice || (ytextInSync && !residualMergeEligible)) {
+        detectObserverAApplyLoss(md, normMd, appliedYText, normApplied);
+      }
 
       // Telemetry: emit one structured event per Path B fire so
       // operators can track the slow-path cost. Bounded cardinality —
@@ -1563,7 +2152,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       // diverged-attach witness shape here would wrongly re-derive every
       // residual doc on every WYSIWYG edit (regressing the residual-merge
       // steady state); the bytes are already safe either way.
-      if (settlesSplitBrainChecked(ytext.toString(), md, normMd)) {
+      if (settlesSplitBrainChecked(appliedYText, md, normMd, normApplied)) {
         textDirty = true;
         recordSplitBrainRederive('post-merge');
       }
@@ -1717,6 +2306,9 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     }
 
     xmlDirty = true;
+    // A non-paired fragment change may carry un-propagated content; arm the
+    // cheap gate so the next Observer B re-derive pays the predicate serialize.
+    fragmentMutatedSinceConverge = true;
   };
 
   // ─── Initial sync: populate Y.Text from XmlFragment if empty ──
@@ -1781,7 +2373,101 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
           recordFrontmatterEditSurface('source-mode');
           priorFmForTelemetry = frontmatter;
         }
+        // Raw-byte fixed point: the doc is not merely normalize-equal — the
+        // authoritative Y.Text is byte-identical to the fragment's canonical
+        // serialization. That is the termination signal that resets (and
+        // unfreezes) the re-derive backstop, and it is the SAME comparand
+        // `recordSettledBaselines` uses, deliberately.
+        //
+        // The raw witness is NOT a usable comparand here. When Observer A ran
+        // earlier in this same drain it refreshed that witness from this very
+        // `ytext`, so `lastSyncedYTextBytes === md` would be a tautology: an
+        // A-then-B drain that settled split-brain (or merged to a
+        // residual-bearing state) would declare a fixed point it never reached,
+        // resetting the oscillation run and releasing a live backstop freeze on
+        // a non-converged drain. The canonical witness carries the fragment's
+        // serialization, which A does NOT re-derive from Y.Text, so comparing
+        // against it tests convergence rather than self.
+        if (fixedPointBackstopEnabled && canonicalWitnessCoherent && lastSyncedCanonicalMd === md) {
+          drainReachedRawFixedPoint = true;
+        }
         return;
+      }
+
+      // Backstop freeze: the re-derive loop hit its drain-count bound. Skip the
+      // re-derive entirely to stop the runaway loop — the B-direction only. The
+      // A-direction (user WYSIWYG edits → Y.Text) and persistence stay live, so
+      // typed content still persists; the freeze exits when a later drain
+      // reaches a raw-byte fixed point (unfrozen by the settlement dispatcher) or
+      // the doc reopens. Placed after the early-exit so a doc that settles while
+      // frozen still unfreezes through it.
+      if (bDirectionFrozen) {
+        setActiveSpanAttributes({ 'observer.b.path': 'backstop-frozen' });
+        return;
+      }
+
+      // Derive-timing defer guard. Before rebuilding the fragment from
+      // Y.Text, check whether the fragment holds un-propagated WYSIWYG content
+      // this re-derive would silently discard. Gated on a fragment mutation
+      // since the last convergence (a source-only re-derive never pays the
+      // serialize) and on the guard being enabled. The predicate is
+      // witness-aware and three-way: a line defers ONLY when the fragment
+      // serialization has it while BOTH Y.Text and the last-converged fragment
+      // lack it — so a stable freshness respell (present in both the current
+      // serialize and the witness) and a Y.Text-only residual (fragment holds
+      // LESS, not more) never defer.
+      if (pendingDuplicationRecovery) {
+        // A confirmed race-duplication recovery enqueued this re-derive; the
+        // doubled fragment's excess is a discard-worthy CRDT artifact, not
+        // pending content. Consume the one-shot and fall through so the fragment
+        // rebuilds single-copy from Y.Text — deferring here would leave it
+        // permanently doubled while Y.Text stays correct.
+        pendingDuplicationRecovery = false;
+      } else if (deferGuardEnabled && fragmentMutatedSinceConverge) {
+        const freshFragmentBody = mdManager.serialize(
+          yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON(),
+        );
+        const freshFragmentMd = prependFrontmatter(frontmatter, freshFragmentBody);
+        if (fragmentHoldsPendingContent(freshFragmentMd, md, lastConvergedFragmentMd)) {
+          if (consecutiveDeriveTimingDefers >= MAX_DERIVE_TIMING_DEFERS) {
+            // Exhaustion. The keystroke has stayed un-propagated across the full
+            // drain-count bound (sustained typing keeps freshness hot so
+            // Observer A never gets a quiet drain to propagate it). Stop
+            // deferring and force-resolve LOUDLY: checkpoint the pre-resolve
+            // fragment serialization so the content stays restorable, emit a
+            // ring event carrying that checkpoint's sha, reset the counter, and
+            // fall through to the re-derive below. Never a silent clamp — the
+            // content leaves the live fragment but the timeline floor keeps it
+            // reachable.
+            forceResolveExhaustedDefer(
+              freshFragmentMd,
+              consecutiveDeriveTimingDefers,
+              pendingContentLines(freshFragmentMd, md, lastConvergedFragmentMd),
+            );
+            consecutiveDeriveTimingDefers = 0;
+            setActiveSpanAttributes({ 'observer.b.path': 'derive-timing-force-resolve' });
+          } else {
+            // Defer: leave the fragment intact so the keystroke survives, re-arm
+            // both observers so the pending content propagates through Observer A
+            // on a subsequent freshness-safe drain and B re-derives cleanly after,
+            // and DO NOT move the witnesses — this is not a settlement.
+            consecutiveDeriveTimingDefers += 1;
+            xmlDirty = true;
+            textDirty = true;
+            recordGuardDefer(pendingContentLines(freshFragmentMd, md, lastConvergedFragmentMd));
+            opts.onDeriveTimingDefer?.({
+              canonicalWitness: lastSyncedCanonicalMd,
+              rawWitness: lastSyncedYTextBytes,
+            });
+            // A deferred drain is a backstop non-event: the fragment holds
+            // un-propagated content by design, so it is neither corrective
+            // convergence work nor a fixed point. Marking it keeps a defer run
+            // from masking (or falsely feeding) the re-derive-loop counter.
+            drainDeferred = true;
+            setActiveSpanAttributes({ 'observer.b.path': 'derive-timing-defer' });
+            return;
+          }
+        }
       }
 
       // Bridge always-live: parseWithFallback never throws — it always
@@ -1789,9 +2475,12 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       // for unparseable spans. `observerParseOpts` threads `resolveEmbed` +
       // `sourcePath` so `![[photo.png]]` mdast nodes resolve to disk paths
       // before PM dispatch. Under server-authoritative architecture
-      // (precedent #14), this observer is the sole writer for XmlFragment —
-      // the "always-live" contract here means no client sees frozen WYSIWYG
-      // when another peer is mid-typing a broken MDX tag.
+      // (precedent #14), this observer is the sole SERVER-SIDE writer for
+      // XmlFragment — the client editor still writes its own fragment replica
+      // (y-tiptap's prosemirror binding), reconciled over the wire under
+      // Y.Text-is-truth; "sole writer" is scoped to the server process, not the
+      // whole system. The "always-live" contract here means no client sees
+      // frozen WYSIWYG when another peer is mid-typing a broken MDX tag.
       const parsedJson = mdManager.parseWithFallback(body, observerParseOpts);
 
       const pmNode = opts.schema.nodeFromJSON(parsedJson);
@@ -1800,6 +2489,12 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         const meta = { mapping: new Map(), isOMark: new Map() };
         updateYFragment(doc, xmlFragment, pmNode, meta);
       }, OBSERVER_SYNC_ORIGIN);
+
+      // The re-derive is corrective reconciliation work; whether it reached a
+      // raw-byte fixed point is decided by the post-sync convergence check
+      // below (`recordSettledBaselines` sets `drainReachedRawFixedPoint` when
+      // the settled Y.Text raw-equals the canonical serialization).
+      if (fixedPointBackstopEnabled) drainDidCorrectiveWork = true;
 
       if (priorFmForTelemetry !== frontmatter) {
         recordFrontmatterEditSurface('source-mode');
@@ -1844,6 +2539,13 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         // canonical value there would misroute the next fragment change to
         // Path B on any in-tolerance residual doc.
         recordSettledBaselines(canonicalYText);
+        // Derive-timing convergence witness: B just rebuilt the fragment
+        // from Y.Text, so `canonicalYText` IS the fresh serialization of the
+        // current fragment and the two representations agree — the last-known
+        // real fragment state the defer predicate compares against.
+        lastConvergedFragmentMd = canonicalYText;
+        fragmentMutatedSinceConverge = false;
+        consecutiveDeriveTimingDefers = 0;
       } catch (reserializeErr) {
         // Watchdog violations re-throw past every soft-recovery catch up to
         // whatever drove the original transaction. In test mode the test
@@ -1986,6 +2688,14 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
           return;
         }
 
+        // Reset the per-drain backstop signals for this REAL drain. The two
+        // 'none' returns above (no dirty flags, or self-origin only — the
+        // nested dispatch a self-origin observer write triggers) fall out
+        // before here, so those never clear the signals the outer drain sets.
+        drainDidCorrectiveWork = false;
+        drainReachedRawFixedPoint = false;
+        drainDeferred = false;
+
         // Observer A FIRST: when both flags are set — either a single
         // non-paired transaction mutated both CRDTs (rare), or A's
         // settlement check (`settlesSplitBrain`) enqueued a same-drain B
@@ -2014,6 +2724,34 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
           opts.onDispatch?.('b');
           runObserverBSync();
         }
+
+        // Re-derive-loop backstop bookkeeping for this real drain. A
+        // deferred drain is a non-event. A drain that reached a raw-byte fixed
+        // point resets and unfreezes (and clears the ring — a new episode). A
+        // corrective drain that did NOT converge is an oscillation signal only
+        // when its settled Y.Text REVISITS the recent ring; a genuinely new
+        // state is forward progress and resets the run. A revisit run reaching
+        // the bound freezes the B-direction loop loudly.
+        if (fixedPointBackstopEnabled && !drainDeferred) {
+          if (drainReachedRawFixedPoint) {
+            oscillationRun = 0;
+            recentSettledDigests.length = 0;
+            bDirectionFrozen = false;
+          } else if (drainDidCorrectiveWork) {
+            const digest = fnv1aDigest(ytext.toString());
+            if (recentSettledDigests.includes(digest)) {
+              oscillationRun += 1;
+              if (oscillationRun >= MAX_REDERIVE_ROUNDS && !bDirectionFrozen) {
+                tripReDeriveBackstop(oscillationRun);
+              }
+            } else {
+              oscillationRun = 0;
+            }
+            recentSettledDigests.push(digest);
+            if (recentSettledDigests.length > REDERIVE_DIGEST_RING) recentSettledDigests.shift();
+          }
+        }
+
         // Stamp the final dispatch decision on the span. 'a-then-b'
         // is reported when both ran in the same drain (rare but
         // semantically distinct from sequential 'a' or 'b').
@@ -2038,10 +2776,95 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   // and exposes `isDocQuiescent(doc)` for the persistence quiescence gate.
   const detachQuiescence = attachQuiescenceTracker(doc);
 
+  // ─── Pre-drain controller ──────────────────────────────────
+  // Flush a discriminator-proven non-overlapping pending keystroke into Y.Text
+  // BEFORE a paired write's transact so the keystroke survives the paired
+  // derive (rather than needing the checkpoint floor). Lives here because it
+  // owns the fragment/Y.Text/witness state and the cheap pending gate; the
+  // flush write uses `OBSERVER_SYNC_ORIGIN` (the same self-origin Observer A's
+  // Path-A splice uses) so the flushed structs are NOT captured into the
+  // paired op's UndoManager frame.
+  const preDrainController: PreDrainController = {
+    preDrain(op: PreDrainOpInput): PreDrainVerdict {
+      // Kill-switch: leave the content pending so the paired write's checkpoint
+      // floor captures it (behaviorally inert, floor path unchanged).
+      if (!preDrainEnabled) return { preDrain: false, reason: 'skip-disabled' };
+      // Cheap gate: nothing has entered the fragment since the last converged
+      // settlement, so there is no un-propagated content to flush. A clean
+      // paired op pays only this boolean — never the O(N) serialize below.
+      if (!fragmentMutatedSinceConverge) return { preDrain: false, reason: 'skip-no-pending' };
+
+      try {
+        const json = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
+        const fullMd = ytext.toString();
+        const { body } = stripFrontmatter(fullMd);
+        const fmPrefixLen = fullMd.length - body.length;
+
+        // The whole decision — gate, witness check, target extraction,
+        // localizer, already-converged check, overlap classification — lives in
+        // `planPreDrain`. This controller supplies the doc-side state and
+        // EXECUTES the plan; it does not re-derive one, so the corpus bar and
+        // the shipped behaviour cannot drift apart.
+        const { preDrain, verdict, splice } = planPreDrain({
+          pendingDirty: true,
+          body,
+          fragmentPmJson: json,
+          // The splice model is only a faithful model of the drain's rewrite
+          // when Y.Text still equals the raw witness — otherwise the drain takes
+          // a non-splice path whose rewrite differs. Fail closed to the floor.
+          witnessMatched: fullMd === lastSyncedYTextBytes,
+          fmPrefixLen,
+          op:
+            op.kind === 'agent-undo'
+              ? { kind: 'agent-undo', ytext, stackItem: op.stackItem }
+              : { kind: 'agent-write', writeKind: op.writeKind },
+          mdManager,
+        });
+        // `splice` narrows to non-null from `preDrain` alone — the plan's
+        // discriminated union makes the old `|| splice === null` arm dead.
+        if (!preDrain) return verdict;
+
+        // Flush: apply the drain's splice to Y.Text under the observer
+        // self-origin, then record the settlement — post-flush Y.Text equals the
+        // fragment's canonical serialization, a true fixed point, so the
+        // witnesses and the defer/backstop bookkeeping stay coherent for the
+        // paired op that follows and any later drain.
+        const bodyOffset = fullMd.length - body.length;
+        doc.transact(() => {
+          applyMapDrivenSplice(ytext, {
+            spliceStart: bodyOffset + splice.spliceStart,
+            spliceEnd: bodyOffset + splice.spliceEnd,
+            newSlice: splice.newSlice,
+          });
+        }, OBSERVER_SYNC_ORIGIN);
+        const canonicalMd = prependFrontmatter(readCurrentFm(), mdManager.serialize(json));
+        recordSettledBaselines(canonicalMd);
+        lastConvergedFragmentMd = canonicalMd;
+        fragmentMutatedSinceConverge = false;
+        consecutiveDeriveTimingDefers = 0;
+        return verdict;
+      } catch (err) {
+        // A pre-drain is a best-effort survival optimization: a serialize/parse
+        // throw on malformed fragment content must never break the paired op —
+        // fall closed to the checkpoint floor.
+        incrementServerObserverError('a');
+        log.warn(
+          { err: err instanceof Error ? err : new Error(String(err)), docName: opts.docName },
+          '[Server pre-drain] Discrimination threw — routing to the checkpoint floor',
+        );
+        return { preDrain: false, reason: 'checkpoint-witness-mismatch' };
+      }
+    },
+  };
+  preDrainControllers.set(doc, preDrainController);
+  convergedFragmentWitnesses.set(doc, () => lastConvergedFragmentMd);
+
   // ─── Cleanup ───────────────────────────────────────────────
   return () => {
     unregisterDirtyProbe();
     detachQuiescence();
+    preDrainControllers.delete(doc);
+    convergedFragmentWitnesses.delete(doc);
     doc.off('afterAllTransactions', afterAll);
     xmlFragment.unobserveDeep(observerA);
     ytext.unobserve(observerB);

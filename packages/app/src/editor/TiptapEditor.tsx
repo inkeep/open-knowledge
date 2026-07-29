@@ -38,6 +38,7 @@ import type { SidebarDragPayload } from '@/lib/sidebar-drag';
 import { useIdentity } from '../presence/identity';
 import { registerEditor, unregisterEditor } from './active-editor';
 import { applyLintFixes } from './apply-lint-fix.ts';
+import { getAwarenessHeartbeat } from './awareness-heartbeat-runtime';
 import { buildAwarenessUser } from './awareness-user';
 import { bindingStalenessGuardPlugin, type WedgeDetail } from './binding-staleness-guard';
 import { BubbleMenuBar } from './bubble-menu/BubbleMenuBar';
@@ -1554,6 +1555,14 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       user: buildAwarenessUser({ principal, identity }),
       mode: isSourceMode ? 'source' : 'wysiwyg',
     });
+    // Keep this presence entry fresh from an unthrottled worker clock so a
+    // backgrounded tab (whose main-thread renewal is throttled) isn't pruned
+    // as outdated by peers. clearAwareness on cleanup is race-safe against a
+    // newly-active editor registering first.
+    const heartbeat = getAwarenessHeartbeat();
+    heartbeat.start();
+    heartbeat.setAwareness(awareness);
+    return () => heartbeat.clearAwareness(awareness);
   }, [provider, docName, activeDocName, identity, principal, isSourceMode]);
 
   // Plumb the React `isSourceMode` prop through to the per-editor WeakMap in

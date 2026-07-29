@@ -9,6 +9,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { SERVER_CRASH_LOG } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
 import { collectReportBundle as collectReportBundleFromIndex } from './index.ts';
 import { collectReportBundle } from './report-bundle.ts';
@@ -74,6 +75,60 @@ function makeFullProjectDir(slug = 'full-proj'): string {
   writeAt(projectDir, '.ok/local/telemetry/spans-current.jsonl', `${span}\n${leak}\n`);
   writeAt(projectDir, '.ok/local/logs/server-current.jsonl', '{"level":30,"msg":"boot"}\n');
   return projectDir;
+}
+
+/**
+ * One realistically-shaped credential per input the STANDARD tier harvests,
+ * paired with the zip entry it must not survive in. The standard tier is
+ * `collectStandardBundle`, a different assembler from the full tier's
+ * `collectBundle` — the full-tier canary does not cover any of these sinks.
+ */
+const STANDARD_PLANTS = {
+  'logs/desktop.log': 'AKIAIOSFODNN7EXAMPLE',
+  'local-logs/server-current.jsonl': SECRET,
+  'lockdir/last-spawn-error.log': 'abcdefghijklmnopqrstuvwxyz0123456789',
+  'lockdir/server.lock': 'hunter2',
+  [`lockdir/${SERVER_CRASH_LOG}`]: 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123',
+  'note.txt': 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiJ9.s5x8Qk3rTvW2pLmNq7Yz',
+} as const satisfies Record<string, string>;
+
+const PLANTED_NOTE = `it died right after I pasted ${STANDARD_PLANTS['note.txt']}`;
+
+/** Every standard-tier source seeded with its planted credential. */
+function makePlantedStandardProject(): { projectDir: string; userLogsDir: string } {
+  const projectDir = makeTmpDir();
+  const userLogsDir = makeTmpDir();
+  writeAt(projectDir, '.ok/config.yml', 'name: planted-proj\n');
+  // The desktop transport's sink: renderer console output captured into
+  // `~/.ok/logs`, which the standard tier harvests wholesale.
+  writeAt(
+    userLogsDir,
+    'desktop.log',
+    `{"level":50,"msg":"assume-role ${STANDARD_PLANTS['logs/desktop.log']} denied"}\n`,
+  );
+  // The web transport's sink: the same renderer console output, ingested
+  // through `/api/client-logs` into the project-local server log.
+  writeAt(
+    projectDir,
+    '.ok/local/logs/server-current.jsonl',
+    `{"level":50,"source":"renderer-console","msg":"push failed ${STANDARD_PLANTS['local-logs/server-current.jsonl']}"}\n`,
+  );
+  writeAt(
+    projectDir,
+    '.ok/local/last-spawn-error.log',
+    `spawn failed: Authorization: Bearer ${STANDARD_PLANTS['lockdir/last-spawn-error.log']}\n`,
+  );
+  writeAt(
+    projectDir,
+    '.ok/local/server.lock',
+    `{"pid":1234,"remote":"https://ci:${STANDARD_PLANTS['lockdir/server.lock']}@github.com/o/r.git"}\n`,
+  );
+  writeAt(
+    projectDir,
+    `.ok/local/${SERVER_CRASH_LOG}`,
+    `{"reason":"boot failed","env":"ANTHROPIC_API_KEY=${STANDARD_PLANTS[`lockdir/${SERVER_CRASH_LOG}`]}"}\n`,
+  );
+  return { projectDir, userLogsDir };
 }
 
 describe('collectReportBundle — standard level', () => {
@@ -149,6 +204,55 @@ describe('collectReportBundle — standard level', () => {
     expect(summary.files).toContain('extra/crash.dmp');
   });
 
+  test('canary: no planted credential survives in any standard-tier bundle artifact', async () => {
+    const { projectDir, userLogsDir } = makePlantedStandardProject();
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath, summary } = await collectReportBundle({
+      level: 'standard',
+      projectDir,
+      note: PLANTED_NOTE,
+      redact: true,
+      outputPath,
+      userLogsDir,
+    });
+
+    // Every seeded source really did reach the bundle — otherwise the sweep
+    // below would pass by collecting nothing.
+    const entries = listZipEntries(zipPath);
+    for (const entry of Object.keys(STANDARD_PLANTS)) expect(entries).toContain(entry);
+
+    // No text artifact anywhere in the assembled bundle carries any of them.
+    const textEntries = entries.filter((e) => /\.(jsonl?|txt|log|lock|md)$/.test(e));
+    for (const entry of textEntries) {
+      const content = readZipEntry(zipPath, entry);
+      for (const secret of Object.values(STANDARD_PLANTS)) {
+        expect(`${entry}: ${content}`).not.toContain(secret);
+      }
+    }
+    expect(summary.redactedLineCount).toBeGreaterThanOrEqual(Object.keys(STANDARD_PLANTS).length);
+  });
+
+  test('canary control: with the scrub off every planted credential lands verbatim', async () => {
+    const { projectDir, userLogsDir } = makePlantedStandardProject();
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectReportBundle({
+      level: 'standard',
+      projectDir,
+      note: PLANTED_NOTE,
+      redact: false,
+      outputPath,
+      userLogsDir,
+    });
+
+    // The scrub is the only thing removing them: unredacted, each planted
+    // credential is present in the entry it was planted in.
+    for (const [entry, secret] of Object.entries(STANDARD_PLANTS)) {
+      expect(readZipEntry(zipPath, entry)).toContain(secret);
+    }
+  });
+
   test('produces a system-wide bundle when projectDir is omitted', async () => {
     const userLogsDir = makeTmpDir();
     writeAt(userLogsDir, 'cli.log', 'started\n');
@@ -194,7 +298,7 @@ describe('collectReportBundle — full level', () => {
     expect(entries).not.toContain('state/server.lock');
     expect(entries).not.toContain('state/agent-presence.json');
     const manifest = JSON.parse(readZipEntry(zipPath, 'manifest.json'));
-    expect(manifest.schemaVersion).toBe(1);
+    expect(manifest.schemaVersion).toBe(2);
     expect(manifest.serverStatus).toBe('not-running');
     const paths = manifest.files.map((f: { path: string }) => f.path);
     expect(paths).not.toContain('state/shadow-head.txt');
@@ -257,13 +361,21 @@ describe('collectReportBundle — full level', () => {
     expect(readZipEntry(zipPath, 'logs/desktop.2026-07-28.log.1')).not.toContain(SECRET);
   });
 
-  test('hashes doc names in user logs, which are pino JSONL behind a .log suffix', async () => {
+  test('scrubs credentials in user logs, which are pino JSONL behind a .log suffix', async () => {
+    // User-level logs carry a .log suffix but are line-delimited JSON, so
+    // routing them by extension alone would give them the substring-only pass
+    // and skip the per-line credential scrub. Doc names stay in cleartext by
+    // the ratified consent posture: legible names are what make a bundle
+    // diagnosable, and the summary says so before anything is written.
     const projectDir = makeFullProjectDir();
     const userLogsDir = makeTmpDir();
     writeAt(
       userLogsDir,
       'desktop.2026-07-28.log',
-      `${JSON.stringify({ attributes: [{ key: 'doc.name', value: { stringValue: 'secret-notes/plan' } }] })}\n`,
+      `${JSON.stringify({
+        attributes: [{ key: 'doc.name', value: { stringValue: 'secret-notes/plan' } }],
+        msg: 'token ghp_0123456789abcdefghijABCDEFGHIJ123456 leaked into a log line',
+      })}\n`,
     );
     const outputPath = join(makeTmpDir(), 'report.zip');
 
@@ -275,7 +387,10 @@ describe('collectReportBundle — full level', () => {
       userLogsDir,
     });
 
-    expect(readZipEntry(zipPath, 'logs/desktop.2026-07-28.log')).not.toContain('secret-notes/plan');
+    const entry = readZipEntry(zipPath, 'logs/desktop.2026-07-28.log');
+    expect(entry).not.toContain('ghp_0123456789abcdefghijABCDEFGHIJ123456');
+    expect(entry).toContain('[REDACTED-');
+    expect(entry).toContain('secret-notes/plan');
   });
 
   test('omits telemetry entirely when the sink has never written', async () => {
@@ -295,7 +410,7 @@ describe('collectReportBundle — full level', () => {
     expect(entries).toContain('manifest.json');
   });
 
-  test('scrubs seeded secrets, hashes doc names, and reports the audit', async () => {
+  test('scrubs seeded credentials while doc names ship raw, with no inverse-map sidecar', async () => {
     const projectDir = makeFullProjectDir();
     const outputPath = join(makeTmpDir(), 'report.zip');
 
@@ -307,10 +422,12 @@ describe('collectReportBundle — full level', () => {
     });
 
     const spans = readZipEntry(zipPath, 'telemetry/spans-current.jsonl');
+    // Credentials are scrubbed, unconditionally.
     expect(spans).not.toContain(SECRET);
     expect(spans).toContain('[REDACTED-GH-PAT]');
-    expect(spans).not.toContain('secret-notes/plan');
-    expect(spans).toContain('doc:');
+    // Doc names ship raw under Detailed-diagnostics consent — no hashing.
+    expect(spans).toContain('secret-notes/plan');
+    expect(spans).not.toMatch(/doc:[a-f0-9]{8}/);
     const manifest = JSON.parse(readZipEntry(zipPath, 'manifest.json'));
     expect(manifest.redaction.applied).toBe(true);
     const scrub = manifest.redaction.secretScrub;
@@ -320,9 +437,75 @@ describe('collectReportBundle — full level', () => {
     expect(summary.redactions).toEqual(scrub.redactions);
     expect(summary.redactedLineCount).toBe(scrub.redactedLineCount);
     expect(summary.redactedLineCount).toBeGreaterThanOrEqual(1);
-    // Inverse doc-name map lands as a sidecar next to the zip, never inside.
-    expect(existsSync(join(dirname(outputPath), 'report.docnames.json'))).toBe(true);
+    // No inverse-map sidecar is written next to the zip anymore.
+    expect(existsSync(join(dirname(outputPath), 'report.docnames.json'))).toBe(false);
     expect(listZipEntries(zipPath)).not.toContain('report.docnames.json');
+  });
+
+  test('canary: planted credentials appear in no full-tier bundle artifact', async () => {
+    const projectDir = makeFullProjectDir();
+    // Plant the same secret across multiple sinks: the server log and a
+    // loss-ring event field, on top of the span leak makeFullProjectDir seeds.
+    writeAt(
+      projectDir,
+      '.ok/local/logs/server-current.jsonl',
+      `{"level":50,"msg":"auth failed for ${SECRET}"}\n`,
+    );
+    writeAt(
+      projectDir,
+      '.ok/local/loss-capture/loss-current.jsonl',
+      `${JSON.stringify({
+        ts: 1,
+        schemaVersion: 1,
+        seq: 1,
+        event: 'detector-trip',
+        docName: 'notes/plan',
+        writerId: `agent ${SECRET}`,
+        checkpointSha: 'deadbeef',
+      })}\n`,
+    );
+    const outputPath = join(makeTmpDir(), 'report.zip');
+    const { zipPath } = await collectReportBundle({
+      level: 'full',
+      projectDir,
+      redact: true,
+      outputPath,
+    });
+
+    // No text artifact anywhere in the assembled bundle carries the secret.
+    const textEntries = listZipEntries(zipPath).filter((e) => /\.(jsonl?|txt|log|lock)$/.test(e));
+    for (const entry of textEntries) {
+      expect(readZipEntry(zipPath, entry)).not.toContain(SECRET);
+    }
+    // The loss ring rode the full tier; its doc name shipped raw, secret gone.
+    const ring = readZipEntry(zipPath, 'state/loss-current.jsonl');
+    expect(ring).toContain('notes/plan');
+    expect(ring).not.toContain(SECRET);
+  });
+
+  test('tier gating: the loss ring rides the full tier only, never the standard tier', async () => {
+    const projectDir = makeFullProjectDir();
+    writeAt(
+      projectDir,
+      '.ok/local/loss-capture/loss-current.jsonl',
+      `${JSON.stringify({ ts: 1, schemaVersion: 1, seq: 1, event: 'checkpoint-write', docName: 'd' })}\n`,
+    );
+
+    const full = await collectReportBundle({
+      level: 'full',
+      projectDir,
+      redact: true,
+      outputPath: join(makeTmpDir(), 'full.zip'),
+    });
+    expect(listZipEntries(full.zipPath)).toContain('state/loss-current.jsonl');
+
+    const standard = await collectReportBundle({
+      level: 'standard',
+      projectDir,
+      redact: true,
+      outputPath: join(makeTmpDir(), 'standard.zip'),
+    });
+    expect(listZipEntries(standard.zipPath)).not.toContain('state/loss-current.jsonl');
   });
 
   test('redact: false leaves content unmodified with an empty audit', async () => {

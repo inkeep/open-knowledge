@@ -579,8 +579,9 @@ function ReportBugDialog({
                     </label>
                     <p id={detailedHintId} className="text-1sm text-muted-foreground">
                       <Trans>
-                        Adds telemetry, server state, and runtime info when available. Document
-                        names are anonymized.
+                        Adds telemetry, server state, and runtime info when available. Credentials
+                        are always removed; document names, if included, appear in cleartext (not
+                        redacted).
                       </Trans>
                     </p>
                   </div>

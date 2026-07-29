@@ -695,14 +695,9 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
   test('resolveDocPathAtCommit — unrenamed doc, current path exists at sha → returns current path', async () => {
     const sha = await commit('# A\n', 'a.md', 'WIP: a');
     const index = createEmptyIndex();
-    const path = await resolveDocPathAtCommit(
-      shadow,
-      'a',
-      sha,
-      'main',
-      index,
-      (n) => `content/${n}.md`,
-    );
+    const path = await resolveDocPathAtCommit(shadow, 'a', sha, 'main', index, (n) => [
+      `content/${n}.md`,
+    ]);
     expect(path).toBe('content/a.md');
   });
 
@@ -710,14 +705,9 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
     const index = createEmptyIndex();
     // 40-char hex SHA that is highly unlikely to exist
     const fakeSha = 'deadbeef'.repeat(5);
-    const path = await resolveDocPathAtCommit(
-      shadow,
-      'a',
-      fakeSha,
-      'main',
-      index,
-      (n) => `content/${n}.md`,
-    );
+    const path = await resolveDocPathAtCommit(shadow, 'a', fakeSha, 'main', index, (n) => [
+      `content/${n}.md`,
+    ]);
     expect(path).toBeNull();
   });
 
@@ -741,14 +731,9 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
     );
 
     // Should resolve commitA (a pre-rename SHA) to its historical path.
-    const path = await resolveDocPathAtCommit(
-      shadow,
-      'b',
-      commitA,
-      'main',
-      index,
-      (n) => `content/${n}.md`,
-    );
+    const path = await resolveDocPathAtCommit(shadow, 'b', commitA, 'main', index, (n) => [
+      `content/${n}.md`,
+    ]);
     expect(path).toBe('content/a.md');
   });
 
@@ -782,14 +767,9 @@ describe('rename-log read primitives (shadow-repo backed)', () => {
     //     because seeds(R) excludes K2 (post-R checkpoint) and newACommit is
     //     a parentless post-saveVersion commit on cycle 3's WIP ref.
     //   → returns null
-    const path = await resolveDocPathAtCommit(
-      shadow,
-      'b',
-      newACommit,
-      'main',
-      index,
-      (n) => `content/${n}.md`,
-    );
+    const path = await resolveDocPathAtCommit(shadow, 'b', newACommit, 'main', index, (n) => [
+      `content/${n}.md`,
+    ]);
     expect(path).toBeNull();
   });
 

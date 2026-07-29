@@ -887,12 +887,17 @@ export function batchCheckExistence(
       const lines = stdout.split('\n').filter((l) => l.length > 0);
       // Each input line `<sha>:<path>` produces one output line:
       //   missing: `<sha>:<path> missing`
-      //   present: `<sha>:<path> <hash> <type> <size>`
-      // Output order matches input order (per git docs). Map line→bool.
+      //   present: `<oid> <type> <size>`
+      // Output order matches input order (per git docs). Count only `blob`
+      // presence: a doc-content probe that resolves to a `tree` is a directory
+      // sharing the doc's name, not the document — treating it as present would
+      // let the extension-less restore probe (and history-row filter) match a
+      // folder and then `git show` its listing as content.
       const result: boolean[] = probes.map((_, i) => {
         const line = lines[i];
         if (!line) return false;
-        return !line.endsWith(' missing');
+        const parts = line.split(' ');
+        return parts.length === 3 && parts[1] === 'blob';
       });
       settle(result);
     });
@@ -1448,12 +1453,18 @@ function lookupBranchInMap(map: Map<string, Set<string>>, sha: string): string {
  * Resolve the historical path of `currentDocName` at `commitSha`, scoped by
  * the cycle bound for each predecessor.
  *
+ * `pathCandidatesFor` yields the ordered tree-path candidates for a name: a
+ * doc's blob can live at the extension-full disk path (full-tree checkpoints,
+ * WIP snapshots) or at the extension-less docName path (the single-blob trees
+ * `saveInMemoryCheckpoint` writes). Higher-priority candidates come first, and
+ * the first candidate that resolves to a blob (across all chain steps, in
+ * newest→oldest order) wins.
+ *
  * Reachability work is parallelized across predecessors and all surviving
  * `(sha, path)` probes are amortized into a single `git cat-file
  * --batch-check` stream — matches the batched design intent in
- * `filterEntriesByChain`. First match in newest→oldest order wins. Returns
- * `null` when no historical path matches — caller decides whether to 404
- * or fall through.
+ * `filterEntriesByChain`. Returns `null` when no candidate matches — caller
+ * decides whether to 404 or fall through.
  */
 export async function resolveDocPathAtCommit(
   shadow: ShadowHandle,
@@ -1461,7 +1472,7 @@ export async function resolveDocPathAtCommit(
   commitSha: string,
   branch: string,
   index: RenameLogIndex,
-  pathFor: (docName: string) => string,
+  pathCandidatesFor: (docName: string) => readonly string[],
   cache?: AncestorShaSetCache,
   seedsCache?: SeedsCache,
 ): Promise<string | null> {
@@ -1479,13 +1490,18 @@ export async function resolveDocPathAtCommit(
   );
 
   // Phase 2: build the probe list in newest→oldest priority order, dropping
-  // predecessor steps whose cycle bound rejects the target sha.
+  // predecessor steps whose cycle bound rejects the target sha. Each step
+  // contributes its candidates in priority order (extension-full before
+  // extension-less), so a full-tree checkpoint matches its disk path before
+  // an extension-less twin is ever considered.
   const probes: Array<{ sha: string; path: string }> = [];
   for (let i = chain.length - 1; i >= 0; i--) {
     const step = chain[i];
     const ancestors = predecessorAncestors[i];
     if (ancestors !== null && !ancestors.has(commitSha)) continue;
-    probes.push({ sha: commitSha, path: pathFor(step.path) });
+    for (const path of pathCandidatesFor(step.path)) {
+      probes.push({ sha: commitSha, path });
+    }
   }
 
   if (probes.length === 0) return null;

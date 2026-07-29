@@ -15,6 +15,7 @@ type MessageCallback = (event: MessageEvent) => void;
 export class ControllableWebSocket {
   private inner: WebSocket;
   private paused = false;
+  private droppingOutbound = false;
   private inboundQueue: MessageEvent[] = [];
   private onMessageHandler: MessageCallback | null = null;
   private addedMessageListeners: MessageCallback[] = [];
@@ -47,6 +48,18 @@ export class ControllableWebSocket {
 
   pauseInbound(): void {
     this.paused = true;
+  }
+
+  /**
+   * Discard outbound frames while enabled — models a lost/throttled update the
+   * provider believes it sent (`unsyncedChanges` stays > 0 with no ack, server
+   * never receives it). A later `provider.forceSync()` re-runs the sync
+   * handshake and reconciles the missing update, so this is how a test proves
+   * the flush-on-hide `forceSync` — not the incremental send — reached the
+   * server.
+   */
+  setDropOutbound(drop: boolean): void {
+    this.droppingOutbound = drop;
   }
 
   resumeInbound(): void {
@@ -110,6 +123,7 @@ export class ControllableWebSocket {
   }
 
   send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
+    if (this.droppingOutbound) return;
     this.inner.send(data);
   }
 

@@ -486,9 +486,10 @@ export interface RunDiagnoseBundleOpts {
   /** Skip the y/N prompt and write unconditionally. */
   yes?: boolean;
   /**
-   * Apply `--redact`: hash `doc.name` attribute values in staged JSONLs and
-   * replace the absolute content-dir prefix with the literal `<CONTENT_DIR>`
-   * token. Originals under `<contentDir>/.ok/local/` are NOT modified — the
+   * Redaction of the staged copies: scrub credentials (secret patterns) and
+   * mask the absolute content-dir prefix as `<CONTENT_DIR>`. Defaults to ON;
+   * `false` (the `--no-redact` opt-out) writes a raw bundle. Doc names ship raw
+   * either way. Originals under `<contentDir>/.ok/local/` are NOT modified — the
    * redactor mutates only the staged copies inside the bundle.
    */
   redact?: boolean;
@@ -559,6 +560,39 @@ function isAffirmative(answer: string): boolean {
   return a === 'y' || a === 'yes';
 }
 
+/**
+ * How the content-dir path ends up in the zip. `redacted` says the mask ran;
+ * `contentDirVisible` is the empirical post-mask scan. They can disagree — the
+ * mask covers `telemetry/`, `logs/`, `process/`, and `state/`, while `note.txt`
+ * is staged after it — so the disagreement is reported rather than assumed
+ * away. The consent prompt is only worth printing if it describes the bytes
+ * that actually leave.
+ */
+function describeContentDirPath(collected: CollectedBundle): string {
+  const { summary, manifest } = collected;
+  if (summary.redacted) {
+    return summary.contentDirVisible
+      ? 'masked as <CONTENT_DIR>, but still present in some files'
+      : 'masked as <CONTENT_DIR>';
+  }
+  return summary.contentDirVisible
+    ? `visible (${manifest.contentDir.absolutePath})`
+    : 'not present';
+}
+
+/**
+ * Credential scrubbing rides the same `redact` switch as the path mask, so
+ * `--no-redact` ships tokens verbatim. That is the point of a raw bundle, but
+ * the user has to be told before they hand it to anyone.
+ */
+function describeCredentials(collected: CollectedBundle): string {
+  const scrub = collected.manifest.redaction.secretScrub;
+  if (scrub === undefined) {
+    return pc.yellow('NOT scrubbed (--no-redact): tokens and keys ship verbatim');
+  }
+  return `scrubbed known credential formats (${scrub.redactedLineCount} line(s) across ${scrub.redactions.length} file(s))`;
+}
+
 function printSummary(
   log: (msg: string) => void,
   collected: CollectedBundle,
@@ -566,19 +600,15 @@ function printSummary(
 ): void {
   const { summary, manifest } = collected;
   log('');
-  log(pc.bold('ok diagnose bundle — content summary'));
+  log(pc.bold('ok diagnose bundle — what leaves this machine'));
   log('');
   log(`  Files:               ${summary.fileCount}`);
   log(`  Total size:          ${formatBytes(summary.totalBytes)} uncompressed`);
   log(
-    `  doc.name attributes:  ${summary.docNameCount} occurrence(s) in telemetry${
-      summary.redacted ? ' (values hashed)' : ''
-    }`,
+    `  Document names:      included in cleartext (${summary.docNameCount} doc.name occurrence(s) in telemetry)`,
   );
-  log(
-    `  Content-dir path:    ${summary.contentDirVisible ? `visible (${manifest.contentDir.absolutePath})` : 'not visible'}`,
-  );
-  log(`  Redacted:            ${summary.redacted ? 'yes' : 'no'}`);
+  log(`  Content-dir path:    ${describeContentDirPath(collected)}`);
+  log(`  Credentials:         ${describeCredentials(collected)}`);
   log(`  Server status:       ${manifest.serverStatus}`);
   log(`  Output:              ${outputPath}`);
   log('');
@@ -620,11 +650,16 @@ export async function runDiagnoseBundle(
     processDir = await runProcess(opts.pid);
   }
 
+  // Redact by default: mask the content-dir path and scrub credentials from
+  // the staged copies. `--no-redact` (opts.redact === false) opts out for a raw
+  // local dump the user inspects themselves. Doc names ship raw either way.
+  const redact = opts.redact !== false;
   const collected = await collectBundle({
     contentDir: opts.contentDir,
     projectDir: opts.projectDir,
     processDir,
-    redact: opts.redact === true,
+    redact,
+    scrubSecrets: redact,
     deps: deps.collectDeps,
   });
 
@@ -711,7 +746,17 @@ export function diagnoseCommand(): Command {
     )
     .option('--out <path>', 'Write the zip to this path instead of the default location')
     .option('--yes', 'Skip the y/N prompt')
-    .option('--redact', 'Hash doc names and strip the content-dir prefix from the staged bundle')
+    // Declaration ORDER is load-bearing in Commander: a lone `--no-redact`
+    // defaults `opts.redact` to true, but declaring the positive form FIRST
+    // suppresses that default and leaves it undefined. `--no-redact` therefore
+    // stays first, and `--redact` is the explicit no-op alias that keeps the
+    // pre-flip spelling working instead of erroring with a "did you mean
+    // --no-redact?" hint that would steer the user to the opposite behavior.
+    .option(
+      '--no-redact',
+      'Write a raw bundle: skip credential scrubbing and content-dir path masking',
+    )
+    .option('--redact', 'Scrub credentials and mask the content-dir path (the default)')
     .action(async (opts: { pid?: string; out?: string; yes?: boolean; redact?: boolean }) => {
       let pid: number | undefined;
       if (opts.pid !== undefined) {
@@ -733,7 +778,7 @@ export function diagnoseCommand(): Command {
           pid,
           out: opts.out,
           yes: opts.yes === true,
-          redact: opts.redact === true,
+          redact: opts.redact,
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

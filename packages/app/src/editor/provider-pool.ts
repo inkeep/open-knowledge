@@ -29,6 +29,12 @@ import { sharedExtensions } from './extensions/shared.ts';
 import { isSystemDoc } from './is-system-doc';
 import { getMountId } from './mount-id-registry';
 import { setupObservers } from './observers';
+import {
+  consumeReplayOutboxEntry,
+  ReplayOutboxTimeoutError,
+  readReplayOutboxEntry,
+  writeReplayOutboxEntry,
+} from './replay-outbox';
 import { BridgeSetupError, invalidateSyncPromise, rejectSyncPromise } from './sync-promise';
 
 /**
@@ -37,6 +43,30 @@ import { BridgeSetupError, invalidateSyncPromise, rejectSyncPromise } from './sy
  * distinguish replay writes from user edits / server sync deliveries.
  */
 export const TAB_REPLAY_ORIGIN = Object.freeze({ kind: 'tab-replay' } as const);
+
+/**
+ * One doc's captured pre-recycle unsynced edit. See the `bufferedUpdates`
+ * field comment for what `delta`/`fullState` carry.
+ */
+interface BufferedReplayUpdate {
+  readonly delta: Uint8Array;
+  readonly fullState: Uint8Array | null;
+  /**
+   * The branch this buffer was captured under — the outbox key's first
+   * component. Captured rather than re-read at use time because the discard
+   * paths run AFTER a branch switch has already moved the observed branch.
+   */
+  readonly branch: string;
+  /**
+   * True once a durable outbox record for this buffer has committed. That
+   * record is the cross-tab exactly-once token, so it also decides whether
+   * the replay must claim before applying and whether a discard has to reach
+   * IDB. Flipped by the write's resolution, so it stays false for over-cap
+   * docs, failed writes, and engines with no durable outbox at all — those
+   * buffers are RAM-only and behave exactly as they did before the outbox.
+   */
+  durable: boolean;
+}
 
 export type SyncState = 'connecting' | 'synced' | 'disconnected';
 export type ServerRestartRecoveryState =
@@ -444,6 +474,20 @@ export class ProviderPool {
   private readonly wsUrl: string;
   private readonly recycleDebounceMs: number;
   private readonly clearDataTimeoutMs: number;
+  /**
+   * Gates the background-flush / resync-on-visible mechanism. Wired from
+   * the project `bridge.flushOnHide.enabled` kill-switch (default ON) via
+   * `setFlushOnHideEnabled`; when off, `flushOnHide`/`resyncOnVisible` are
+   * inert.
+   */
+  private flushOnHideEnabled = true;
+  /**
+   * Listeners notified whenever any provider's `unsyncedChanges` count moves.
+   * Separate from `onChange` (a single lifecycle callback) so the desktop
+   * background-throttle reporter can observe unsynced-work edges without
+   * competing for the `onChange` slot the DocumentContext owns.
+   */
+  private readonly unsyncedWorkListeners = new Set<() => void>();
   private onChange: PoolChangeCallback | null = null;
   private tabIdentity: { principalId: string; tabSessionId: string } | null = null;
   private serverRestartRecoveryState: ServerRestartRecoveryState = IDLE_SERVER_RESTART_RECOVERY;
@@ -482,8 +526,12 @@ export class ProviderPool {
    * Unsynced-edit buffer captured per-doc during a `server-instance-mismatch`
    * recycle. Populated right before `clearData()` wipes IDB; drained at the
    * fresh provider's FIRST post-recycle `synced` event when the replay
-   * listener restores the edit. In-memory only — a tab crash inside the
-   * recycle window loses the buffer (accepted trade-off).
+   * listener restores the edit. This map is the fast in-session carrier; a
+   * durable copy is mirrored into the replay outbox (`replay-outbox.ts`) so a
+   * tab crash inside the recycle window no longer loses the buffer — a fresh
+   * tab reads it back from IDB and replays. The two stay coherent: whichever
+   * source the replay listener consumes, it deletes the durable outbox first
+   * so the edit is never re-applied.
    *
    * `delta` is the raw unsynced Yjs update relative to the last acked
    * baseline. It CANNOT integrate into the post-restart doc on its own:
@@ -499,10 +547,7 @@ export class ProviderPool {
    * delta apply (which at worst leaves the structs pending, today's
    * behavior).
    */
-  private readonly bufferedUpdates = new Map<
-    string,
-    { delta: Uint8Array; fullState: Uint8Array | null }
-  >();
+  private readonly bufferedUpdates = new Map<string, BufferedReplayUpdate>();
   /**
    * Per-docName `closeAndClearPersistence` in-flight tracking. Drives the
    * delete-then-recreate-same-docname coordination: while a clear is in
@@ -1242,6 +1287,25 @@ export class ProviderPool {
 
   private emitStructuredClientRecoveryEvent(parts: Record<string, string | number>): void {
     console.warn(JSON.stringify(parts));
+  }
+
+  /**
+   * Describe a durable-outbox failure for telemetry, splitting a STALL from an
+   * ordinary IDB error the same way `ok-client-cache-clear-failed` does. The
+   * two call for different responses: an error is one failed operation, a
+   * timeout means the storage layer is wedged and whatever the operation was
+   * gating (a recycle, a replay) is stuck behind it.
+   */
+  private outboxFailureFields(err: unknown): {
+    failureKind: 'timeout' | 'rejected';
+    errorName: string;
+    errorMessage: string;
+  } {
+    return {
+      failureKind: err instanceof ReplayOutboxTimeoutError ? 'timeout' : 'rejected',
+      errorName: err instanceof Error ? err.name : 'non-error-throw',
+      errorMessage: err instanceof Error ? err.message : String(err),
+    };
   }
 
   /**
@@ -2076,58 +2140,158 @@ export class ProviderPool {
     provider.on('disconnect', onDisconnect);
     provider.on('authenticationFailed', onAuthenticationFailed);
     provider.on('close', onServerDrivenClose);
+    // Fan a provider's unsynced-work edges out to pool-level listeners (the
+    // desktop background-throttle reporter). Removed with the provider on
+    // `destroy()`. The immediate emit catches a doc that opens already dirty.
+    provider.on('unsyncedChanges', () => this.emitUnsyncedWork());
+    this.emitUnsyncedWork();
 
-    // Buffer-replay wiring: if this docName has a pending buffered update
-    // from a prior authenticationFailed recycle, apply it to the fresh
-    // Y.Doc on the first `synced` event. The listener self-detaches after
-    // firing once; if no buffered update exists for this docName, this is
-    // a no-op path. Origin `TAB_REPLAY_ORIGIN` lets observers distinguish
-    // replay writes from user edits / server sync deliveries.
-    const buffered = this.bufferedUpdates.get(docName);
-    if (buffered !== undefined) {
-      const staleClaimAtReplayInstall = this.recoveryMismatchStaleClaim;
-      const replayOnce = (): void => {
-        provider.off('synced', replayOnce);
-        if (entry.kind !== 'active' || this.entries.get(docName) !== entry) return;
-        const current = this.bufferedUpdates.get(docName);
-        if (current === undefined) return;
-        // Drop the buffer reference up-front: a malformed update that
-        // throws would throw again on retry, and the server's sync has
-        // already delivered the canonical state. Catch the throw so it
-        // doesn't escape into Hocuspocus's event emitter as an unhandled
-        // rejection and so the next sync can proceed.
+    // Buffer-replay wiring: on the first `synced` after (re)open, replay any
+    // unsynced edit captured during a prior `server-instance-mismatch`
+    // recycle. Two sources: the in-session RAM buffer (same-tab recycle) and
+    // the durable outbox (`replay-outbox.ts`, which survives a tab crash in
+    // the recycle window — the only signal a fresh tab has). The listener
+    // self-detaches after firing once; with no buffered edit it is a cheap
+    // no-op (one `indexedDB.databases()` check). Origin `TAB_REPLAY_ORIGIN`
+    // lets observers distinguish replay writes from user edits / server sync.
+    const staleClaimAtReplayInstall = this.recoveryMismatchStaleClaim;
+    const runReplay = async (): Promise<void> => {
+      if (entry.kind !== 'active' || this.entries.get(docName) !== entry) return;
+      const branch = this.normalizedObservedBranch();
+
+      // Prefer the RAM buffer (no IDB read); fall back to the durable outbox,
+      // the only carrier after a tab crash.
+      let source: { delta: Uint8Array; fullState: Uint8Array | null };
+      // The outbox key this replay's token lives under, and whether a token
+      // exists at all. A RAM buffer with no durable mirror (over-cap doc,
+      // failed write, engine without `databases()`) has nothing to claim.
+      let tokenBranch = branch;
+      let tokenBacked: boolean;
+      const buffered = this.bufferedUpdates.get(docName);
+      if (buffered !== undefined) {
         this.bufferedUpdates.delete(docName);
+        source = buffered;
+        tokenBranch = buffered.branch;
+        tokenBacked = buffered.durable;
+      } else {
         try {
-          if (
-            current.fullState !== null &&
-            this.replayBufferedContent(docName, provider, current.fullState)
-          ) {
-            return;
-          }
-          // Delta-only fallback (full state over cap, replica rebuild threw,
-          // or content divergence made the surface attribution ambiguous).
-          // The raw delta usually parks in `pendingStructs` on a rebuilt doc
-          // — kept as the terminal fallback so this path never REGRESSES
-          // relative to the pre-content-replay behavior.
-          Y.applyUpdate(provider.document, current.delta, TAB_REPLAY_ORIGIN);
-          this.emitStructuredClientBreadcrumb({
-            event: 'ok-pool-buffer-replay-delta-applied',
-            docName,
-            deltaBytes: current.delta.byteLength,
-          });
+          const durable = await readReplayOutboxEntry(branch, docName);
+          if (durable === null) return;
+          source = durable;
+          tokenBacked = true;
         } catch (err: unknown) {
-          const errorName = err instanceof Error ? err.name : 'non-error-throw';
           this.emitStructuredClientRecoveryEvent({
-            event: 'ok-buffer-replay-failed',
+            event: 'ok-buffer-replay-outbox-read-failed',
             ...this.recoveryTelemetryBase(docName, staleClaimAtReplayInstall),
-            replayByteLength: current.delta.byteLength,
-            errorName,
-            errorMessage: err instanceof Error ? err.message : String(err),
+            ...this.outboxFailureFields(err),
           });
+          return;
         }
-      };
-      provider.on('synced', replayOnce);
-    }
+      }
+
+      // Consume-first: delete the durable outbox BEFORE any content reaches
+      // the server, so a crash after apply can never let a reopen re-apply.
+      // The content-level replay's surface comparison is not re-entrant — a
+      // stale outbox replayed against already-synced content would clobber it.
+      // At-most-once in the tiny [consumed → server-synced] tail (matching the
+      // RAM buffer, and past the crash window the outbox exists to close).
+      //
+      // The consume is also the CROSS-TAB claim: same-origin tabs share one
+      // `(branch, docName)` record, so losing the claim means another tab
+      // already replayed this edit and this one must stand down. That covers
+      // both orders — the other tab consuming before we read (we never see a
+      // record) and after (we see one but cannot claim it).
+      //
+      // Only attempt it when a durable record actually backs this replay. An
+      // unconditional consume would, on a RAM-only buffer, throw its way into
+      // the bail below with the RAM copy ALREADY deleted and no outbox to
+      // recover from — dropping the edit inside the mechanism that exists to
+      // preserve it.
+      if (tokenBacked) {
+        let claimed: boolean;
+        try {
+          claimed = await consumeReplayOutboxEntry(tokenBranch, docName);
+        } catch (err: unknown) {
+          // Bail rather than apply: the record is still there, so a later
+          // clean open recovers the edit instead of risking a double-apply.
+          this.emitStructuredClientRecoveryEvent({
+            event: 'ok-buffer-replay-outbox-consume-failed',
+            ...this.recoveryTelemetryBase(docName, staleClaimAtReplayInstall),
+            ...this.outboxFailureFields(err),
+          });
+          return;
+        }
+        if (!claimed) {
+          this.emitStructuredClientRecoveryEvent({
+            event: 'ok-buffer-replay-superseded',
+            ...this.recoveryTelemetryBase(docName, staleClaimAtReplayInstall),
+            reason: 'claimed-by-another-tab',
+          });
+          return;
+        }
+      }
+      if (entry.kind !== 'active' || this.entries.get(docName) !== entry) {
+        // Both carriers are gone by now (RAM deleted above, outbox claimed),
+        // so this bail is a real in-process loss — not the ratified crash
+        // tail. Loud so it can never be mistaken for "nothing to replay".
+        this.emitStructuredClientRecoveryEvent({
+          event: 'ok-buffer-replay-abandoned',
+          ...this.recoveryTelemetryBase(docName, staleClaimAtReplayInstall),
+          reason: 'entry-replaced-during-consume',
+          replayByteLength: source.delta.byteLength,
+        });
+        return;
+      }
+
+      try {
+        if (
+          source.fullState !== null &&
+          this.replayBufferedContent(docName, provider, source.fullState)
+        ) {
+          return;
+        }
+        // Delta-only fallback (full state over cap, replica rebuild threw, or
+        // content divergence made the surface attribution ambiguous). The raw
+        // delta usually parks in `pendingStructs` on a rebuilt doc — kept as
+        // the terminal fallback so this path never REGRESSES relative to the
+        // pre-content-replay behavior.
+        Y.applyUpdate(provider.document, source.delta, TAB_REPLAY_ORIGIN);
+        this.emitStructuredClientBreadcrumb({
+          event: 'ok-pool-buffer-replay-delta-applied',
+          docName,
+          deltaBytes: source.delta.byteLength,
+        });
+      } catch (err: unknown) {
+        const errorName = err instanceof Error ? err.name : 'non-error-throw';
+        this.emitStructuredClientRecoveryEvent({
+          event: 'ok-buffer-replay-failed',
+          ...this.recoveryTelemetryBase(docName, staleClaimAtReplayInstall),
+          replayByteLength: source.delta.byteLength,
+          errorName,
+          errorMessage: err instanceof Error ? err.message : String(err),
+        });
+      }
+    };
+    const onSyncedReplay = (): void => {
+      // Detach synchronously so a second `synced` during the async replay never
+      // re-triggers. `runReplay` handles its own known failure boundaries
+      // (outbox read/consume, apply) and returns; this outer handler fires only
+      // on an UNEXPECTED throw — which, once a carrier has been consumed, is a
+      // silent in-process loss. Emit it (like this file's other fire-and-forget
+      // recovery paths) rather than swallow, while still keeping the rejection
+      // out of the `synced` emitter. Kept minimal (no telemetry-base helper) so
+      // the fallback itself can never throw its way back out.
+      provider.off('synced', onSyncedReplay);
+      void runReplay().catch((err: unknown) => {
+        this.emitStructuredClientRecoveryEvent({
+          event: 'ok-buffer-replay-unexpected-error',
+          docName,
+          errorName: err instanceof Error ? err.name : 'non-error-throw',
+          errorMessage: err instanceof Error ? err.message : String(err),
+        });
+      });
+    };
+    provider.on('synced', onSyncedReplay);
 
     this._entries.set(docName, entry);
     this.touch(docName);
@@ -2248,6 +2412,13 @@ export class ProviderPool {
       branch: this.normalizedObservedBranch(),
     });
     const startedAt = Date.now();
+    // Branch scope for the durable replay outbox — captured once so every
+    // per-doc write uses the same key the reopen path reconstructs.
+    const recoveryBranch = this.normalizedObservedBranch();
+    // Durable-outbox writes kicked off during the capture loop. Awaited before
+    // `clearData()` so a crash while the y-indexeddb store is being wiped still
+    // leaves the buffer recoverable (buffer → clearData → recycle ordering).
+    const outboxWrites: Promise<void>[] = [];
     const recoveryActiveDocName = this.activeDocName;
     // Recovery UI (spinner + failure panel) only tracks the foreground doc.
     // Background pool entries still recycle and clear IDB on mismatch; if
@@ -2316,29 +2487,61 @@ export class ProviderPool {
         // edit at content level (see `bufferedUpdates` doc comment). Docs
         // whose full state exceeds the cap keep the delta-only fallback.
         const fullState = Y.encodeStateAsUpdate(poolEntry.provider.document);
-        this.bufferedUpdates.set(docName, {
+        const fullStateForBuffer = fullState.byteLength > MAX_BUFFER_BYTES ? null : fullState;
+        const buffered: BufferedReplayUpdate = {
           delta: unsynced,
-          fullState: fullState.byteLength > MAX_BUFFER_BYTES ? null : fullState,
-        });
+          fullState: fullStateForBuffer,
+          branch: recoveryBranch,
+          durable: false,
+        };
+        this.bufferedUpdates.set(docName, buffered);
+        // Mirror the buffer into the durable outbox only when content-level
+        // replay is possible (over-cap docs stay RAM-only — their crash loss
+        // is the same accepted trade-off as before). A failed durable write
+        // degrades to the RAM buffer, so swallow-and-observe rather than
+        // block the recycle. `durable` flips only once the record has
+        // committed; everything downstream (the cross-tab claim, the discard
+        // paths) keys off it, so an unwritten mirror can never be mistaken
+        // for a live token.
+        if (fullStateForBuffer !== null) {
+          outboxWrites.push(
+            writeReplayOutboxEntry(recoveryBranch, docName, {
+              delta: unsynced,
+              fullState: fullStateForBuffer,
+            })
+              .then((persisted) => {
+                if (persisted) buffered.durable = true;
+                else {
+                  this.emitStructuredClientRecoveryEvent({
+                    event: 'ok-buffer-replay-outbox-unavailable',
+                    ...this.recoveryTelemetryBase(docName),
+                    reason: 'indexeddb-databases-unsupported',
+                  });
+                }
+              })
+              .catch((err: unknown) => {
+                this.emitStructuredClientRecoveryEvent({
+                  event: 'ok-buffer-replay-outbox-write-failed',
+                  ...this.recoveryTelemetryBase(docName),
+                  ...this.outboxFailureFields(err),
+                });
+              }),
+          );
+        }
         this.emitStructuredClientBreadcrumb({
           event: 'ok-pool-mismatch-buffer-captured',
           docName,
           deltaBytes: unsynced.byteLength,
-          fullStateBytes: fullState.byteLength > MAX_BUFFER_BYTES ? 0 : fullState.byteLength,
+          fullStateBytes: fullStateForBuffer === null ? 0 : fullStateForBuffer.byteLength,
         });
       }
     }
 
-    // Gate per-doc on clearData success. A `clearData` failure (blocked
-    // by another tab/DevTools, quota exhaustion, transaction-aborted)
-    // means the IDB still holds the pre-restart Y.Doc state — recycling
-    // into the un-cleared DB would hydrate the fresh provider's Y.Doc
-    // from stale data BEFORE Yjs sync runs, re-opening the content-
-    // duplication bug class clearData exists to prevent. Use
-    // `Promise.allSettled` so per-element rejections surface (the prior
-    // `Promise.all + per-element catch` swallowed every failure, then
-    // recycled unconditionally).
-    const clears: { docName: string; promise: Promise<void> }[] = [];
+    // Select entries to clear now, but DEFER the actual `clearData()` calls
+    // until the durable outbox writes commit — a crash between "IDB wiped"
+    // and "outbox written" would lose the buffer, so the outbox must land
+    // first. Keeps the buffer → clearData → recycle ordering.
+    const toClear: { docName: string; persistence: ClientPersistenceProvider }[] = [];
     for (const [docName, poolEntry] of snapshot) {
       // TearingDown entries have null persistence by construction; Active
       // entries opened before the live server epoch was known also have
@@ -2348,18 +2551,34 @@ export class ProviderPool {
       // SHOULD be cleared.
       if (poolEntry.kind !== 'active') continue;
       if (poolEntry.persistence === null) continue;
-      clears.push({
-        docName,
-        promise: this.withClearDataTimeout(docName, poolEntry.persistence.clearData()),
-      });
+      toClear.push({ docName, persistence: poolEntry.persistence });
     }
-    this.emitStructuredClientBreadcrumb({
-      event: 'ok-pool-mismatch-clears-begin',
-      count: clears.length,
-    });
 
-    const inflight: Promise<void> = Promise.allSettled(clears.map((c) => c.promise))
-      .then((results) => {
+    // Clear IDB then recycle. When the durable outbox has writes in flight,
+    // await them first so a crash between "IDB wiped" and "outbox written"
+    // can't lose the buffer; with nothing to write, clearData starts
+    // synchronously (timing unchanged from before the durable layer).
+    const runClearsAndRecycle = (): Promise<void> => {
+      // Gate per-doc on clearData success. A `clearData` failure (blocked
+      // by another tab/DevTools, quota exhaustion, transaction-aborted)
+      // means the IDB still holds the pre-restart Y.Doc state — recycling
+      // into the un-cleared DB would hydrate the fresh provider's Y.Doc
+      // from stale data BEFORE Yjs sync runs, re-opening the content-
+      // duplication bug class clearData exists to prevent. Use
+      // `Promise.allSettled` so per-element rejections surface (the prior
+      // `Promise.all + per-element catch` swallowed every failure, then
+      // recycled unconditionally).
+      const clears: { docName: string; promise: Promise<void> }[] = toClear.map(
+        ({ docName, persistence }) => ({
+          docName,
+          promise: this.withClearDataTimeout(docName, persistence.clearData()),
+        }),
+      );
+      this.emitStructuredClientBreadcrumb({
+        event: 'ok-pool-mismatch-clears-begin',
+        count: clears.length,
+      });
+      return Promise.allSettled(clears.map((c) => c.promise)).then((results) => {
         const failed: string[] = [];
         const cleared: string[] = [];
         let sawClearTimeout = false;
@@ -2426,12 +2645,17 @@ export class ProviderPool {
         // `failureReason` is only read when `failedDocNames` is non-empty; this branch is all clears OK.
         this.enterServerRestartReconnect(reconnectDocNames, [], startedAt, 'clear-data-failed');
         this.recycleAllEntries();
-      })
-      .finally(() => {
-        if (this.mismatchInFlight === inflight) {
-          this.mismatchInFlight = null;
-        }
       });
+    };
+    const inflight: Promise<void> = (
+      outboxWrites.length === 0
+        ? runClearsAndRecycle()
+        : Promise.allSettled(outboxWrites).then(runClearsAndRecycle)
+    ).finally(() => {
+      if (this.mismatchInFlight === inflight) {
+        this.mismatchInFlight = null;
+      }
+    });
     this.mismatchInFlight = inflight;
   }
 
@@ -2616,7 +2840,7 @@ export class ProviderPool {
     this.lruOrder = this.lruOrder.filter((n) => n !== docName);
     // Explicit close discards any pending replay buffer — the user closed
     // the tab; resurrecting unsynced edits later would surprise them.
-    this.bufferedUpdates.delete(docName);
+    this.discardBufferedUpdate(docName);
 
     if (this.activeDocName === docName) {
       this.activeDocName = null;
@@ -2813,7 +3037,38 @@ export class ProviderPool {
    * branch B Y.Doc the next time the user opened that doc.
    */
   clearBufferedUpdates(): void {
-    this.bufferedUpdates.clear();
+    for (const docName of Array.from(this.bufferedUpdates.keys())) {
+      this.discardBufferedUpdate(docName);
+    }
+  }
+
+  /**
+   * Drop one doc's pending replay buffer on an INTENTIONAL discard (explicit
+   * close, LRU eviction, cross-branch invalidation) — RAM copy and durable
+   * mirror together.
+   *
+   * Dropping only the RAM copy would leave the outbox record behind as an
+   * immortal orphan: a later open of the same doc reads it back and replays an
+   * arbitrarily old edit, which is exactly the surprise `close()` and the
+   * cross-branch invalidation were each written to prevent. Fire-and-forget —
+   * both call sites are synchronous and the record is idempotent to consume —
+   * but a failure is reported, since it leaves a resurrectable edit behind.
+   *
+   * Deliberately NOT called from `dispose()`: that is a pool-lifecycle end
+   * (HMR remount, collab-URL swap, test teardown), not a user discard, and the
+   * durable copy surviving it is the crash-durability the outbox exists for.
+   */
+  private discardBufferedUpdate(docName: string): void {
+    const buffered = this.bufferedUpdates.get(docName);
+    this.bufferedUpdates.delete(docName);
+    if (buffered === undefined || !buffered.durable) return;
+    void consumeReplayOutboxEntry(buffered.branch, docName).catch((err: unknown) => {
+      this.emitStructuredClientRecoveryEvent({
+        event: 'ok-buffer-replay-outbox-discard-failed',
+        ...this.recoveryTelemetryBase(docName),
+        ...this.outboxFailureFields(err),
+      });
+    });
   }
 
   /**
@@ -2824,8 +3079,17 @@ export class ProviderPool {
    * branch-switched / close drain semantics. Naming-prefix `__test`
    * keeps these out of production call sites by convention.
    */
-  __test_seedBufferedUpdate(docName: string, update: Uint8Array): void {
-    this.bufferedUpdates.set(docName, { delta: update, fullState: null });
+  __test_seedBufferedUpdate(
+    docName: string,
+    update: Uint8Array,
+    options: { fullState?: Uint8Array; durable?: boolean; branch?: string } = {},
+  ): void {
+    this.bufferedUpdates.set(docName, {
+      delta: update,
+      fullState: options.fullState ?? null,
+      branch: options.branch ?? this.normalizedObservedBranch(),
+      durable: options.durable ?? false,
+    });
   }
   __test_bufferedUpdatesSize(): number {
     return this.bufferedUpdates.size;
@@ -2881,6 +3145,145 @@ export class ProviderPool {
    */
   peek(docName: string): PoolEntry | null {
     return this.entries.get(docName) ?? null;
+  }
+
+  /**
+   * Toggle the background-flush / resync-on-visible mechanism. Wired from
+   * the project `bridge.flushOnHide.enabled` kill-switch (default ON);
+   * disable only to isolate a suspected regression.
+   */
+  setFlushOnHideEnabled(enabled: boolean): void {
+    this.flushOnHideEnabled = enabled;
+  }
+
+  /**
+   * Push every active doc's unsynced work to the server and commit its IDB
+   * cache when the tab is backgrounded or unloaded.
+   *
+   * A backgrounded tab's timers are throttled and it may be frozen or
+   * recycled before the provider's incremental-update path delivers the
+   * last edits. IndexedDB alone is not durable — it is an additive cache
+   * the mismatch-recycle flow clears — so the flush should reach the SERVER.
+   * `forceSync()` re-runs the sync handshake (the same primitive
+   * `forceSyncInterval` uses to recover dropped updates), reconciling any
+   * edit the server is missing; `flushFullState()` then commits the cache.
+   *
+   * How much of that lands depends on which hide this is, and the difference
+   * is structural, not a gap to close: `forceSync()` only SENDS SyncStep1, and
+   * the client's own updates travel to the server one full exchange later (the
+   * server answers with its SyncStep1, the client replies SyncStep2). On
+   * `visibilitychange → hidden` the tab is still alive, so that exchange
+   * completes and the server delivery is real. On a true unload (`pagehide`
+   * for a close/navigate) the tab does not survive the round trip, so the
+   * effective durability there is the IndexedDB commit — which is why
+   * `flushFullState()` is not treated as the redundant half of this pair. No
+   * WebSocket primitive can beat unload; `sendBeacon` carries no CRDT session.
+   *
+   * Skipped while a server-instance-mismatch recycle is in flight: that
+   * flow already captures the unsynced delta into the durable replay outbox
+   * and owns re-delivery, so a concurrent forceSync would race the epoch it
+   * is being recycled against for no benefit.
+   */
+  flushOnHide(): void {
+    if (!this.flushOnHideEnabled) return;
+    if (this.mismatchInFlight !== null) return;
+    for (const entry of this._entries.values()) {
+      if (entry.kind !== 'active') continue;
+      if (entry.provider.unsyncedChanges > 0) {
+        entry.provider.forceSync();
+        // On a true unload this IDB commit is the effective durability (see the
+        // docblock above), so a rejection loses edits — route it through the
+        // structured emitter like the other durability-path failures in this
+        // file rather than swallowing it. Fire-and-forget: never let it reject.
+        void entry.persistence?.flushFullState().catch((err: unknown) => {
+          this.emitStructuredClientRecoveryEvent({
+            event: 'ok-pool-flush-on-hide-failed',
+            ...this.recoveryTelemetryBase(entry.docName),
+            errorName: err instanceof Error ? err.name : 'non-error-throw',
+            errorMessage: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
+    }
+  }
+
+  /**
+   * Re-run the sync handshake for every active doc when the tab returns to
+   * the foreground. A backgrounded tab can miss server-pushed updates
+   * (throttled delivery, a dropped frame, a brief disconnect); `forceSync`
+   * pulls whatever the client is behind on so the doc reconverges.
+   *
+   * Only docs that have completed a sync are re-synced. `forceSync()` calls
+   * `resetUnsyncedChanges()`, which sets `unsyncedChanges` to 1
+   * unconditionally and only returns to 0 when the server answers — so firing
+   * it at a provider that cannot answer LATCHES every clean doc dirty for as
+   * long as the disconnect lasts. That pins `hasAnyUnsyncedWork()` true, which
+   * holds desktop background-throttling suppressed (battery) and makes
+   * `flushOnHide` force-sync every doc on every hide. Nothing is lost by
+   * skipping: a provider that is connecting or reconnecting runs the full sync
+   * handshake itself once the socket is up.
+   */
+  resyncOnVisible(): void {
+    if (!this.flushOnHideEnabled) return;
+    // Same stand-down as `flushOnHide`: the recycle flow owns re-delivery for
+    // the epoch being recycled away, so a forceSync here races it. It would
+    // also latch `unsyncedChanges` on providers about to be destroyed, which is
+    // the exact spurious-latch this method's docblock exists to avoid.
+    if (this.mismatchInFlight !== null) return;
+    for (const entry of this._entries.values()) {
+      if (entry.kind !== 'active') continue;
+      if (entry.syncState !== 'synced') continue;
+      entry.provider.forceSync();
+    }
+  }
+
+  /**
+   * True while any open doc holds edits the server has not yet acked.
+   *
+   * Over-reports (true) rather than under-reports: this keys the desktop
+   * background-throttle toggle, and keeping timers alive a moment too long is
+   * safe (a little less battery), while throttling mid-sync is not. A doc
+   * that closes while still dirty is the one residual over-report window.
+   */
+  hasAnyUnsyncedWork(): boolean {
+    for (const entry of this._entries.values()) {
+      if (entry.kind === 'active' && entry.provider.unsyncedChanges > 0) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Subscribe to unsynced-work edges (see `hasAnyUnsyncedWork`). The callback
+   * fires whenever any provider's `unsyncedChanges` count moves and once when
+   * a doc opens; the subscriber recomputes `hasAnyUnsyncedWork()` and dedupes
+   * the true↔false transition itself. Returns an unsubscribe.
+   */
+  addUnsyncedWorkListener(cb: () => void): () => void {
+    this.unsyncedWorkListeners.add(cb);
+    return () => {
+      this.unsyncedWorkListeners.delete(cb);
+    };
+  }
+
+  private emitUnsyncedWork(): void {
+    // Isolated per listener. This runs inside a provider's `unsyncedChanges`
+    // handler, so an unguarded throw would abandon the remaining listeners AND
+    // propagate into the pool's provider event loop. The desktop subscriber
+    // calls an Electron IPC proxy, a cross-process boundary the renderer
+    // cannot enforce, and the install-time capability check cannot speak for a
+    // proxy that throws later. Reported rather than swallowed: a listener that
+    // is failing is a real signal, it just must not take sync bookkeeping with
+    // it.
+    for (const cb of this.unsyncedWorkListeners) {
+      try {
+        cb();
+      } catch (err) {
+        this.emitStructuredClientRecoveryEvent({
+          event: 'ok-pool-unsynced-work-listener-threw',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
   }
 
   /**
@@ -2945,6 +3348,12 @@ export class ProviderPool {
     this.pendingServerInstanceKnown = null;
     this.tabIdentity = null;
     this.recoveryMismatchStaleClaim = undefined;
+    // Pool-level subscriptions and toggles are mutable fields like any other:
+    // a disposed pool that still fans unsynced-work edges out to a previous
+    // mount's subscriber, or that carries a previous run's kill-switch value,
+    // is exactly the stale-state bleed this block exists to prevent.
+    this.unsyncedWorkListeners.clear();
+    this.flushOnHideEnabled = true;
   }
 
   private evictLru(): void {

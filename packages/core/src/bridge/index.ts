@@ -53,12 +53,17 @@ export {
 export { DUPLICATION_GATE_MIN_LINE_LENGTH, overMultipliedBodyLines } from './growth-detect.ts';
 export { fnv1aDigest } from './hash-util.ts';
 export {
+  fragmentHoldsPendingContent,
+  pendingContentLines,
+} from './intraline-predicate.ts';
+export {
   assertContentPreservation,
   BridgeMergeContentLossError,
   type BridgeMergeContentLossInfo,
   type BridgeMergeContentLossLogPayload,
   type BridgeMergeContentLossSide,
   type BridgeMergeContentLossWhich,
+  findDroppedContent,
   mergeThreeWay,
   tryLineLevelCombine,
 } from './merge-three-way.ts';

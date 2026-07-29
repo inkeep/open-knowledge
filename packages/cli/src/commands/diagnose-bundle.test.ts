@@ -189,14 +189,15 @@ describe('runDiagnoseBundle — prompt + summary', () => {
 
     await runDiagnoseBundle({ contentDir, yes: true }, deps);
     const allLogs = captured.logs.join('\n');
-    expect(allLogs).toContain('content summary');
+    expect(allLogs).toContain('what leaves this machine');
     expect(allLogs).toContain('Files:');
     expect(allLogs).toContain('Total size:');
-    expect(allLogs).toContain('doc.name attributes:');
+    expect(allLogs).toContain('Document names:');
     expect(allLogs).toContain('Content-dir path:');
+    expect(allLogs).toContain('Credentials:');
     expect(allLogs).toContain('Server status:');
     // Includes the count from the seeded spans file.
-    expect(allLogs).toMatch(/doc\.name attributes:\s+1 occurrence/);
+    expect(allLogs).toMatch(/Document names:\s+included in cleartext \(1 doc\.name occurrence/);
   });
 
   test('prompt accepted with "y" → zip written', async () => {
@@ -242,6 +243,107 @@ describe('runDiagnoseBundle — prompt + summary', () => {
 });
 
 // ---------------------------------------------------------------------------
+// consent summary — the copy has to match what actually ships
+// ---------------------------------------------------------------------------
+
+/**
+ * The summary is the only place a user is told what a bundle contains before
+ * they hand it to someone. It has to name each thing that leaves separately:
+ * doc names ship in cleartext even on the redacted path, so a single blanket
+ * "Redacted: yes" reads as a promise the bundle does not keep.
+ */
+describe('runDiagnoseBundle — consent summary', () => {
+  const SECRET = 'ghp_0123456789abcdefghijklmnopqrstuvwxyz';
+
+  function seedSpans(contentDir: string): void {
+    writeAt(
+      contentDir,
+      '.ok/local/telemetry/spans-current.jsonl',
+      `${JSON.stringify({
+        resourceSpans: [
+          {
+            scopeSpans: [
+              {
+                spans: [
+                  {
+                    attributes: [
+                      { key: 'doc.name', value: { stringValue: 'q3-layoff-plan' } },
+                      { key: 'fs.path', value: { stringValue: `${contentDir}/q3-layoff-plan.md` } },
+                      { key: 'ok.note', value: { stringValue: `token ${SECRET}` } },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })}\n`,
+    );
+  }
+
+  test('default run names doc names as cleartext, the path as masked, and counts the scrub', async () => {
+    const contentDir = makeTmpDir();
+    seedSpans(contentDir);
+    const { deps, captured } = makeRunnerDeps();
+
+    await runDiagnoseBundle({ contentDir, yes: true }, deps);
+    const allLogs = captured.logs.join('\n');
+
+    expect(allLogs).toMatch(/Document names:\s+included in cleartext/);
+    expect(allLogs).toContain('masked as <CONTENT_DIR>');
+    expect(allLogs).not.toContain('but still present in some files');
+
+    const scrubbed = allLogs.match(
+      /Credentials:\s+scrubbed known credential formats \((\d+) line\(s\) across (\d+) file\(s\)\)/,
+    );
+    expect(scrubbed).not.toBeNull();
+    expect(Number(scrubbed?.[1])).toBeGreaterThan(0);
+    expect(Number(scrubbed?.[2])).toBeGreaterThan(0);
+
+    // The blanket claim is gone: nothing in the summary asserts the bundle as
+    // a whole is redacted while doc names ship raw.
+    expect(allLogs).not.toContain('Redacted:');
+  });
+
+  test('--no-redact run says the path is visible and credentials are not scrubbed', async () => {
+    const contentDir = makeTmpDir();
+    seedSpans(contentDir);
+    const { deps, captured } = makeRunnerDeps();
+
+    await runDiagnoseBundle({ contentDir, yes: true, redact: false }, deps);
+    const allLogs = captured.logs.join('\n');
+
+    expect(allLogs).toMatch(/Document names:\s+included in cleartext/);
+    expect(allLogs).toContain(`visible (${resolve(contentDir)})`);
+    expect(allLogs).toContain('NOT scrubbed (--no-redact): tokens and keys ship verbatim');
+    expect(allLogs).not.toContain('masked as <CONTENT_DIR>');
+  });
+
+  test('the summary describes the bundle that was actually written', async () => {
+    const contentDir = makeTmpDir();
+    seedSpans(contentDir);
+    const { deps, captured } = makeRunnerDeps();
+
+    const result = await runDiagnoseBundle({ contentDir, yes: true }, deps);
+    const allLogs = captured.logs.join('\n');
+
+    // Every claim above is only worth anything if the zip agrees with it.
+    const extractDir = makeTmpDir('ok-bundle-extract-');
+    execSync(
+      `unzip -q ${JSON.stringify(result.outputPath ?? '')} -d ${JSON.stringify(extractDir)}`,
+    );
+    const spans = readFileSync(join(extractDir, 'telemetry', 'spans-current.jsonl'), 'utf-8');
+
+    expect(allLogs).toMatch(/Document names:\s+included in cleartext/);
+    expect(spans).toContain('q3-layoff-plan');
+    expect(allLogs).toContain('masked as <CONTENT_DIR>');
+    expect(spans).not.toContain(contentDir);
+    expect(allLogs).toMatch(/Credentials:\s+scrubbed/);
+    expect(spans).not.toContain(SECRET);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // --out flag
 // ---------------------------------------------------------------------------
 
@@ -272,10 +374,10 @@ describe('runDiagnoseBundle — --out flag', () => {
 // --redact end-to-end
 // ---------------------------------------------------------------------------
 
-describe('runDiagnoseBundle — --redact', () => {
-  test('hashes doc names and strips contentDir in zipped JSONLs; manifest carries inverse map', async () => {
+describe('runDiagnoseBundle — redaction', () => {
+  test('redacts by default: masks contentDir and scrubs credentials while doc names ship raw', async () => {
     const contentDir = makeTmpDir();
-    // Seed a fixture with a known doc name + the content-dir path.
+    const secret = 'ghp_0123456789abcdefghijklmnopqrstuvwxyz';
     const otlpLine = JSON.stringify({
       resourceSpans: [
         {
@@ -286,6 +388,7 @@ describe('runDiagnoseBundle — --redact', () => {
                   attributes: [
                     { key: 'doc.name', value: { stringValue: 'fixture-doc' } },
                     { key: 'fs.path', value: { stringValue: `${contentDir}/foo.md` } },
+                    { key: 'ok.note', value: { stringValue: `token ${secret}` } },
                   ],
                 },
               ],
@@ -298,39 +401,34 @@ describe('runDiagnoseBundle — --redact', () => {
 
     const { deps } = makeRunnerDeps();
     const out = join(makeTmpDir('ok-bundle-out-'), 'redacted.zip');
-    const result = await runDiagnoseBundle({ contentDir, out, yes: true, redact: true }, deps);
+    const result = await runDiagnoseBundle({ contentDir, out, yes: true }, deps);
     expect(result.outputPath).toBe(out);
 
-    // Extract the zip and inspect.
     const extractDir = makeTmpDir('ok-bundle-extract-');
     execSync(`unzip -q ${JSON.stringify(out)} -d ${JSON.stringify(extractDir)}`);
     const zippedSpans = readFileSync(join(extractDir, 'telemetry', 'spans-current.jsonl'), 'utf-8');
 
-    // (a) doc-name-shaped values were replaced with doc:<8hex>.
-    expect(zippedSpans).not.toContain('fixture-doc');
-    expect(zippedSpans).toMatch(/"doc:[a-f0-9]{8}"/);
-
-    // (b) absolute content-dir prefix was replaced with <CONTENT_DIR>.
+    // Doc names ship raw under Detailed-diagnostics consent — no hashing.
+    expect(zippedSpans).toContain('fixture-doc');
+    expect(zippedSpans).not.toMatch(/doc:[a-f0-9]{8}/);
+    // The absolute content-dir prefix is masked.
     expect(zippedSpans).not.toContain(contentDir);
     expect(zippedSpans).toContain('<CONTENT_DIR>/foo.md');
+    // Credentials are scrubbed unconditionally.
+    expect(zippedSpans).not.toContain(secret);
+    expect(zippedSpans).toContain('[REDACTED-GH-PAT]');
 
-    // (c) manifest.json.redaction.docNameMapSidecar references an out-of-zip
-    // sidecar; the inverse map itself never lives inside the zip.
     const manifest = JSON.parse(readFileSync(join(extractDir, 'manifest.json'), 'utf-8'));
     expect(manifest.redaction.applied).toBe(true);
-    expect(manifest.redaction.docNameMapSidecar).toMatch(/\.docnames\.json$/);
+    expect(manifest.redaction).not.toHaveProperty('docNameMapSidecar');
     expect(manifest.redaction).not.toHaveProperty('docNameMap');
-    // The manifest's absolutePath is masked when redaction is on, so the
-    // recipient never sees the raw user-home path either.
+    expect(manifest.redaction.secretScrub.redactedLineCount).toBeGreaterThan(0);
     expect(manifest.contentDir.absolutePath).toBe('<CONTENT_DIR>');
     // pathSha256 stays as the SHA-256 of the original path for correlation.
     expect(manifest.contentDir.pathSha256).toMatch(/^[0-9a-f]{64}$/);
 
-    // The sidecar exists next to the zip and contains the inverse map.
-    const sidecarPath = join(dirname(out), manifest.redaction.docNameMapSidecar);
-    expect(existsSync(sidecarPath)).toBe(true);
-    const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8'));
-    expect(Object.values(sidecar.docNameMap)).toContain('fixture-doc');
+    // No inverse-map sidecar is written next to the zip anymore.
+    expect(existsSync(join(dirname(out), 'redacted.docnames.json'))).toBe(false);
   });
 
   test('original on-disk JSONL files under .ok/local/ are NOT modified by --redact', async () => {
@@ -376,8 +474,9 @@ describe('runDiagnoseBundle — --redact', () => {
     expect(logsOnDisk).toContain('original-log-doc');
   });
 
-  test('--redact off by default leaves manifest.redaction.applied=false', async () => {
+  test('--no-redact writes a raw bundle: doc names, content-dir, and credentials all visible', async () => {
     const contentDir = makeTmpDir();
+    const secret = 'ghp_0123456789abcdefghijklmnopqrstuvwxyz';
     const otlpLine = JSON.stringify({
       resourceSpans: [
         {
@@ -385,7 +484,11 @@ describe('runDiagnoseBundle — --redact', () => {
             {
               spans: [
                 {
-                  attributes: [{ key: 'doc.name', value: { stringValue: 'visible' } }],
+                  attributes: [
+                    { key: 'doc.name', value: { stringValue: 'visible' } },
+                    { key: 'fs.path', value: { stringValue: `${contentDir}/foo.md` } },
+                    { key: 'ok.note', value: { stringValue: `token ${secret}` } },
+                  ],
                 },
               ],
             },
@@ -397,17 +500,21 @@ describe('runDiagnoseBundle — --redact', () => {
 
     const { deps } = makeRunnerDeps();
     const out = join(makeTmpDir('ok-bundle-out-'), 'plain.zip');
-    await runDiagnoseBundle({ contentDir, out, yes: true }, deps);
+    await runDiagnoseBundle({ contentDir, out, yes: true, redact: false }, deps);
 
     const extractDir = makeTmpDir('ok-bundle-extract-');
     execSync(`unzip -q ${JSON.stringify(out)} -d ${JSON.stringify(extractDir)}`);
     const zippedSpans = readFileSync(join(extractDir, 'telemetry', 'spans-current.jsonl'), 'utf-8');
+    // Positive control: without redaction the planted secret + content-dir are
+    // present, proving the scrub-on path actually removes them (not a scan of
+    // an empty/wrong file).
     expect(zippedSpans).toContain('visible');
+    expect(zippedSpans).toContain(secret);
+    expect(zippedSpans).toContain(contentDir);
 
     const manifest = JSON.parse(readFileSync(join(extractDir, 'manifest.json'), 'utf-8'));
     expect(manifest.redaction.applied).toBe(false);
-    expect(manifest.redaction.docNameMapSidecar).toBeNull();
-    expect(manifest.redaction).not.toHaveProperty('docNameMap');
+    expect(manifest.redaction).not.toHaveProperty('docNameMapSidecar');
     expect(manifest.contentDir.absolutePath).toBe(resolve(contentDir));
   });
 });

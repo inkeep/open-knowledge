@@ -25,6 +25,11 @@ export const DEFAULT_TELEMETRY_ATTRIBUTE_DENYLIST: readonly string[] = Object.fr
 export const DEFAULT_SPANS_MAX_BYTES = 52_428_800;
 export const DEFAULT_LOGS_MAX_BYTES = 26_214_400;
 
+// The loss-capture ring is a small, dedicated diagnostic sink (bridge
+// loss-class events, content-free); ~12 MB/generation keeps its two-generation
+// footprint bounded well under the span/log rings it must never compete with.
+const DEFAULT_LOSS_CAPTURE_MAX_BYTES = 12_582_912;
+
 // Non-secret embeddings-provider defaults. Shared with the server so the live
 // layered config read and the schema `.default()` below cannot drift. The API
 // key is NEVER a config value — it lives only in `~/.ok/secrets.yml` (0600).
@@ -603,6 +608,146 @@ export const ConfigSchema = z.looseObject({
         logs: { maxBytes: DEFAULT_LOGS_MAX_BYTES },
         attributeDenylist: [...DEFAULT_TELEMETRY_ATTRIBUTE_DENYLIST],
       },
+    }),
+  // PROJECT-scope: the loss-capture ring records bridge loss-class events
+  // (deferred re-derives, tripped detectors/backstops, written recovery
+  // checkpoints) content-free under `<contentDir>/.ok/local/loss-capture/` for
+  // `ok diagnose bundle` to harvest. Same posture as the telemetry sink:
+  // local-only until the user runs bundle, default-on following the universal
+  // production-tooling pattern, and a project-shared decision (a sensitive
+  // workspace opts the whole team out). It is a distinct ring from the OTel
+  // span/log sink above — its own file, its own smaller cap — so a burst of
+  // loss events never rotates diagnostic logs out from under the user.
+  lossCapture: z
+    .looseObject({
+      enabled: z
+        .boolean()
+        .register(fieldRegistry, {
+          scope: 'project',
+          agentSettable: false,
+          defaultScope: 'project',
+          description:
+            'Record bridge loss-class events (content-free) under .ok/local/loss-capture/ for `ok diagnose bundle`. Local-only — never leaves the machine until you run bundle. Set false for sensitive workspaces. Shared across collaborators.',
+        })
+        .default(true),
+      maxBytes: z
+        .number()
+        .register(fieldRegistry, {
+          scope: 'project',
+          agentSettable: false,
+          defaultScope: 'project',
+          description:
+            'Maximum size, in bytes, of the local loss-capture file before it rotates (default ~12 MB).',
+        })
+        .default(DEFAULT_LOSS_CAPTURE_MAX_BYTES),
+    })
+    .default({
+      enabled: true,
+      maxBytes: DEFAULT_LOSS_CAPTURE_MAX_BYTES,
+    }),
+  // PROJECT-scope: kill-switches for the bridge loss-hardening mechanisms.
+  // Mostly server-side, but not exclusively — `backgroundThrottle` gates the
+  // desktop main process and `flushOnHide` the renderer, so the sub-tree is
+  // "the bridge loss-hardening family", not "the server". Each defaults ON (the
+  // mechanisms are the loss-prevention guarantee) and exists as a
+  // support-visible field escape — a sensitive or regression-hit workspace can
+  // disable one without a code change. Project scope because the bridge is
+  // server-authoritative: the whole project shares one server, so a per-machine
+  // toggle would not be honored.
+  bridge: z
+    .looseObject({
+      backgroundThrottle: z
+        .looseObject({
+          enabled: z
+            .boolean()
+            .register(fieldRegistry, {
+              scope: 'project',
+              agentSettable: false,
+              defaultScope: 'project',
+              description:
+                "Keep the desktop window's timers running at full rate while it holds unsynced work, so backgrounding the app never starves sync or recovery; when the window is idle the OS-default background throttling is restored (battery). Honored by the desktop app. Default ON — disable only to isolate a suspected regression.",
+            })
+            .default(true),
+        })
+        .default({ enabled: true }),
+      deferGuard: z
+        .looseObject({
+          enabled: z
+            .boolean()
+            .register(fieldRegistry, {
+              scope: 'project',
+              agentSettable: false,
+              defaultScope: 'project',
+              description:
+                'Defer a drain-shaped Observer B re-derive when the WYSIWYG fragment holds an un-propagated keystroke Y.Text lacks, so the keystroke survives instead of being stomped. Default ON — disable only to isolate a suspected regression.',
+            })
+            .default(true),
+        })
+        .default({ enabled: true }),
+      lossDetector: z
+        .looseObject({
+          enabled: z
+            .boolean()
+            .register(fieldRegistry, {
+              scope: 'project',
+              agentSettable: false,
+              defaultScope: 'project',
+              description:
+                'Detect content the bridge silently dropped at its reconciliation boundary (an Observer-A apply arm or a paired agent-undo derive) and write a recovery checkpoint plus a content-free loss event. Detection only — never blocks a write. Default ON — disable only to isolate a suspected regression.',
+            })
+            .default(true),
+        })
+        .default({ enabled: true }),
+      fixedPoint: z
+        .looseObject({
+          enabled: z
+            .boolean()
+            .register(fieldRegistry, {
+              scope: 'project',
+              agentSettable: false,
+              defaultScope: 'project',
+              description:
+                'Bound the Y.Text→WYSIWYG re-derive loop with a drain-count backstop: a run of re-derive drains that never reaches a raw-byte fixed point freezes the re-derive loop and writes a recovery checkpoint plus a content-free loss event, instead of churning unbounded. Default ON — disable only to isolate a suspected regression.',
+            })
+            .default(true),
+        })
+        .default({ enabled: true }),
+      preDrain: z
+        .looseObject({
+          enabled: z
+            .boolean()
+            .register(fieldRegistry, {
+              scope: 'project',
+              agentSettable: false,
+              defaultScope: 'project',
+              description:
+                'Before an agent write or undo rebuilds the WYSIWYG fragment, flush an un-propagated keystroke that provably does not overlap the operation into Y.Text so the keystroke survives instead of needing recovery; overlapping or unmodellable cases fall back to the checkpoint floor. Scope: appending writes and single-frame undos — a write that replaces the whole body (replace / edit) overwrites the keystroke either way, so those always take the checkpoint floor. Default ON — disable only to isolate a suspected regression.',
+            })
+            .default(true),
+        })
+        .default({ enabled: true }),
+      flushOnHide: z
+        .looseObject({
+          enabled: z
+            .boolean()
+            .register(fieldRegistry, {
+              scope: 'project',
+              agentSettable: false,
+              defaultScope: 'project',
+              description:
+                "On tab hide/unload, force-send each doc's unsynced work to the server and commit its local cache, and re-sync on return to foreground, so a backgrounded tab never strands edits that IndexedDB alone would lose on recycle. Honored client-side. Default ON — disable only to isolate a suspected regression.",
+            })
+            .default(true),
+        })
+        .default({ enabled: true }),
+    })
+    .default({
+      backgroundThrottle: { enabled: true },
+      deferGuard: { enabled: true },
+      lossDetector: { enabled: true },
+      fixedPoint: { enabled: true },
+      preDrain: { enabled: true },
+      flushOnHide: { enabled: true },
     }),
   // PROJECT-LOCAL scope: semantic search is an additive embeddings signal fused
   // into the MCP `search` tool's lexical ranking. It is per-machine, not

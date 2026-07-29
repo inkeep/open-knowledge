@@ -254,6 +254,12 @@ export function assertContentPreservation(
   }
 }
 
+export function findDroppedContent(candidate: string, baseline: string, applied: string): string[] {
+  const atRisk = extractUniqueSegments(baseline, candidate);
+  if (atRisk.length === 0) return [];
+  return atRisk.filter((seg) => !applied.includes(seg));
+}
+
 function mergeConflictRegion(base: string, user: string, agent: string): string {
   if (user === '') return agent;
   if (agent === '') return user;

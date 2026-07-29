@@ -1,13 +1,22 @@
 /**
  * Shared, dependency-free helpers for capturing renderer/browser `console`
- * output into the on-disk pino logs. Consumed by all three capture sites so
- * they agree on level mapping, structured-message unwrapping, and batch bounds:
+ * output into the on-disk pino logs. Consumed by both capture sites — the
+ * modules that turn raw console text into a log record — so they agree on
+ * credential scrubbing, level mapping, structured-message unwrapping, and
+ * batch bounds:
  *   - Electron main `console-message` listener (`packages/desktop/src/main/renderer-console-capture.ts`)
- *   - server `/api/client-logs` ingest handler (`packages/server/src/api-extension.ts`)
  *   - web renderer forwarder (`packages/app/src/lib/install-client-log-forwarder.ts`)
+ *
+ * The server's `/api/client-logs` ingest handler
+ * (`packages/server/src/api-extension.ts`) is downstream of the web forwarder,
+ * not a capture site: it receives entries the forwarder already scrubbed and
+ * schema-validated. `renderer-capture-scrub-coverage.test.ts` sweeps every
+ * caller of these primitives and fails on one that skips the scrub.
  *
  * Browser+Node safe (no deps) — lives in core alongside `schemas/api/*`.
  */
+
+import { scrubSecrets } from './secret-scrub.ts';
 
 export type RendererLogLevel = 'info' | 'warn' | 'error';
 
@@ -62,13 +71,11 @@ export function mapConsoleLevel(level: string): RendererLogLevel | null {
  * events as `console.warn(JSON.stringify({ event, ...fields }))` (e.g.
  * provider-pool's `ok-provider-*` events). Lifting those into pino object
  * fields makes them greppable and lets pino's path-based `redact` mask the
- * denylisted keys it covers (top-level + one level of nesting). NOTE: this is
- * NOT a full secret scrub — a raw (non-JSON) `console.*` string is logged
- * verbatim and never redacted, and lifted fields are only masked for the fixed
- * denylist at depth <= 1. Capturing all console output is a deliberate
- * local-diagnostics tradeoff; the ship-path backstop is `bug-report`'s
- * `redactContent` pass over every bundled file. Returns `null` when the message
- * is not a JSON object.
+ * denylisted keys it covers (top-level + one level of nesting). Call this on a
+ * message already run through {@link prepareCapturedConsoleMessage}: pino's
+ * keyed `redact` only masks the fixed denylist at depth <= 1, so a credential
+ * in any other field (or in a plain non-JSON string) is only removed by the
+ * capture-time scrub. Returns `null` when the message is not a JSON object.
  */
 export function parseStructuredConsoleMessage(
   message: string,
@@ -94,4 +101,18 @@ export function parseStructuredConsoleMessage(
 export function truncateLogMessage(message: string): string {
   if (message.length <= RENDERER_LOG_MAX_MESSAGE_BYTES) return message;
   return `${message.slice(0, RENDERER_LOG_MAX_MESSAGE_BYTES - TRUNCATION_SUFFIX.length)}${TRUNCATION_SUFFIX}`;
+}
+
+/**
+ * Turn a raw console message into the text a capture site may hand to a sink:
+ * scrub credentials, then bound the length. Every capture site goes through
+ * this (or `scrubSecrets` directly) — a verbatim console string reaches the log
+ * file with no keyed-field redaction in front of it, so the scrub cannot be
+ * left to a downstream layer.
+ *
+ * Scrub BEFORE truncating: a secret straddling the cap would otherwise be cut
+ * mid-token, stop matching its pattern, and ship its surviving prefix.
+ */
+export function prepareCapturedConsoleMessage(message: string): string {
+  return truncateLogMessage(scrubSecrets(message));
 }

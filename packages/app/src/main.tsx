@@ -53,6 +53,7 @@ import {
   shouldInstallColdMountInstrumentation,
 } from '@/lib/perf/cold-mount-instrumentation';
 import { installRelaunchStateBridge } from '@/lib/relaunch-store';
+import { requestStoragePersistence } from '@/lib/request-storage-persistence';
 import { installShareReceivedListener } from '@/lib/share/receive-store';
 import { seedInitialDocHashFromWindow } from '@/lib/single-file-initial-doc';
 import { installSubscribeCardStore } from '@/lib/subscribe-card-store';
@@ -87,6 +88,11 @@ installClientFetchWrapper({
 // renderer console directly. Installed AFTER the fetch wrapper so the POST
 // carries version headers + same-origin routing.
 installClientLogForwarder();
+
+// Ask once for persistent origin storage so the browser is less likely to
+// evict the IndexedDB CRDT cache under storage pressure. Best-effort and
+// non-authoritative — the server stays the source of truth.
+void requestStoragePersistence();
 
 // Install cold-mount instrumentation BEFORE any editor module loads — the
 // prototype patches must be in place before the first `new Editor(...)` call.

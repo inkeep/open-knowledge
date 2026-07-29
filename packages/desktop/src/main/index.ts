@@ -156,6 +156,7 @@ import {
   channelFromVersion,
   type StartAutoUpdaterHandle,
 } from './auto-updater.ts';
+import { applyBackgroundThrottle } from './background-throttle.ts';
 import { resolveBootRestoreDecision, resolveRestoreActions } from './boot-restore-decision.ts';
 import { readBootSessionUuid } from './boot-session.ts';
 import { runBootstrap } from './bootstrap.ts';
@@ -4602,6 +4603,15 @@ function registerIpcHandlers() {
       if (win) dockVisibleForWindow.set(win.id, state.terminalVisible);
     }
     refreshApplicationMenu();
+    return undefined;
+  });
+
+  handle('ok:editor:background-throttle', async (event, signal) => {
+    // Keep the sender window's Chromium timers alive while it holds unsynced
+    // work, so backgrounding never starves sync/recovery; restore the OS
+    // default when it goes clean. Policy lives here in main (the embedder);
+    // the renderer only reports the signal.
+    applyBackgroundThrottle(event.sender, signal);
     return undefined;
   });
 

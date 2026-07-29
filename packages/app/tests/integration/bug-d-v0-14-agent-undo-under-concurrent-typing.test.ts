@@ -1,21 +1,15 @@
 /**
- * SKIP-GUARDED: UNSKIP when the per-agent UM + agent-undo handler is wired.
+ * Mechanism illustration: the naive rebuild-from-Y.Text pattern
+ * (`syncTextToFragmentLocal`, a local replica) stomps concurrent user
+ * XmlFragment content when Y.Text is a generation behind — the same
+ * un-propagated-keystroke shape as the forward-write path.
  *
- * These tests assert that the post-undo rebuild preserves user's concurrent
- * XmlFragment content: the naive rebuild-from-Y.Text pattern
- * (syncTextToFragment) destroys concurrent user XmlFragment content on the
- * undo path — identical stomp shape to the forward-write path.
- *
- * The fix deleted
- * syncTextToFragment and documented the XmlFragment-authoritative fix
- * pattern (applyAgentMarkdownWrite, precedent #10); the undo handler is
- * implemented using that pattern. See:
- *   - applyAgentMarkdownWrite in agent-sessions.ts as the pickup template
- *
- * Test 1: Pure mechanism — syncTextToFragment with stale Y.Text
- *   destroys XmlFragment content.
- * Test 2: realistic flow — post-undo syncTextToFragment
- *   destroys new user XmlFragment keystroke.
+ * This suite pins the stomp on a REPLICA, not the production drain. The
+ * authoritative gate for the class on the real `setupServerObservers` drain is
+ * the derive-timing defer guard suite (`derive-timing-guard.test.ts`): it drives
+ * the production Observer B re-derive and asserts the pending keystroke survives
+ * (RED→GREEN) with the guard ON and stomps with it OFF. Keep these two tests as
+ * the reduced illustration of what that guard prevents.
  */
 
 import { prependFrontmatter, stripFrontmatter } from '@inkeep/open-knowledge-core';

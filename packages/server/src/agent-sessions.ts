@@ -30,12 +30,19 @@ import {
 export { colorFromSeed } from '@inkeep/open-knowledge-core';
 
 import * as Y from 'yjs';
+import type { YjsStackItemShape } from './agent-activity.ts';
 import {
   composeAndWriteRawBody,
   deriveFragmentFromYtext,
   type PrecomputedParse,
   replaceRawBody,
 } from './bridge-intake.ts';
+import {
+  type BridgeDeriveLossReporter,
+  DERIVE_LOSS_SITE_AGENT_WRITE_INTAKE,
+  type DeriveLossDetectOptions,
+} from './bridge-loss-detector.ts';
+import { shouldRunPairedIntakeDetection } from './bridge-loss-suppression.ts';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { DocInConflictError, isDocInConflict } from './conflict-errors.ts';
 import {
@@ -48,7 +55,7 @@ import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
 import { getLogger } from './logger.ts';
 import { incrementAgentSessionEvictions } from './metrics.ts';
 import { precomputeParse } from './parse-pool.ts';
-import type { PairedWriteOrigin } from './server-observers.ts';
+import { getPreDrainController, type PairedWriteOrigin } from './server-observers.ts';
 import { getMeter, setActiveSpanAttributes, withSpanSync } from './telemetry.ts';
 
 /**
@@ -200,6 +207,59 @@ export async function prepareFrontmatterPatchParse(
   return precomputeParse(result.nextFenced + (needsFenceSeparator ? '\n' : '') + body);
 }
 
+/**
+ * Wires the paired-intake derive-loss detector for an agent write. When present
+ * (and the `agent-write` origin is classified `detect`), an agent write that
+ * rebuilds the fragment over un-propagated WYSIWYG content checkpoints +
+ * observes it. The reporter comes from the session; `writerId` is the agent id
+ * for the ring event's correlation slot.
+ */
+export interface AgentWriteLossDetect {
+  reporter: BridgeDeriveLossReporter;
+  writerId: string | null;
+}
+
+/**
+ * Build the paired-intake loss-detect for an agent write from its session.
+ * Returns undefined when loss detection is disabled (no reporter attached), so
+ * the write stays serialize-free. Accepts a structural subset of the session so
+ * callers pass the session record directly.
+ */
+export function agentWriteLossDetect(session: {
+  bridgeLossReporter?: BridgeDeriveLossReporter;
+  agentId: string;
+}): AgentWriteLossDetect | undefined {
+  return session.bridgeLossReporter
+    ? { reporter: session.bridgeLossReporter, writerId: session.agentId }
+    : undefined;
+}
+
+/**
+ * Pre-drain in front of an agent write. Called by a write handler BEFORE
+ * its `doc.transact(..., session.origin)` block — the flush must land in its own
+ * observer-origin transact (not captured into the agent's undo frame), and the
+ * compose inside the transact then reads the flushed Y.Text so the keystroke
+ * rides into the composed body. Recomposes the write's projected body (the same
+ * `composeAgentWrite` the apply path runs) so the discriminator can locate the
+ * op's target; a no-op compose (empty append/prepend) skips. Inert when no
+ * controller is registered (system/config doc, observers not attached) — the
+ * write's checkpoint floor then captures any un-propagated content instead.
+ */
+export function agentWritePreDrain(
+  document: Document,
+  markdown: string,
+  position: 'append' | 'prepend' | 'replace' | 'patch',
+): void {
+  const controller = getPreDrainController(document as unknown as Y.Doc);
+  if (!controller) return;
+  // A no-op compose (empty append/prepend) writes nothing, so there is nothing
+  // to pre-drain in front of.
+  if (composeAgentWrite(document.getText('source').toString(), markdown, position) === undefined) {
+    return;
+  }
+  controller.preDrain({ kind: 'agent-write', writeKind: position });
+}
+
 export function applyAgentMarkdownWrite(
   document: Document,
   markdown: string,
@@ -221,6 +281,7 @@ export function applyAgentMarkdownWrite(
    * doc that moved during the caller's await falls back to inline parse.
    */
   precomputed?: PrecomputedParse,
+  lossDetect?: AgentWriteLossDetect,
 ): AgentWriteContentDivergence | undefined {
   // Conflict-aware write gate (precedent #38 + this batch's structural
   // refusal contract). Lives OUTSIDE the transact — the check is static on
@@ -248,6 +309,7 @@ export function applyAgentMarkdownWrite(
         position,
         embedResolver,
         precomputed,
+        lossDetect,
       );
       if (divergence !== undefined) {
         setActiveSpanAttributes({
@@ -378,6 +440,7 @@ function applyAgentMarkdownWriteInner(
     sourcePath: string;
   },
   precomputed?: PrecomputedParse,
+  lossDetect?: AgentWriteLossDetect,
 ): AgentWriteContentDivergence | undefined {
   try {
     const ytext = document.getText('source');
@@ -387,6 +450,26 @@ function applyAgentMarkdownWriteInner(
       return;
     }
     const { existingFm, finalFm, newContent } = composed;
+
+    // A `replace`/`patch` that rebuilds the fragment over un-propagated WYSIWYG
+    // content silently discards it — wire the paired-intake derive-loss detector
+    // when a reporter is present and the `agent-write` origin is classified
+    // `detect`. The pre-write Y.Text is the baseline so the agent's own write is
+    // excluded; only never-propagated fragment content trips. Off leaves the
+    // write serialize-free.
+    const detect: DeriveLossDetectOptions | undefined =
+      lossDetect && shouldRunPairedIntakeDetection(AGENT_WRITE_ORIGIN.context.origin)
+        ? {
+            report: (obs) =>
+              lossDetect.reporter(
+                document.name,
+                obs,
+                lossDetect.writerId,
+                DERIVE_LOSS_SITE_AGENT_WRITE_INTAKE,
+              ),
+            baselineFullMd: currentYText,
+          }
+        : undefined;
 
     if (finalFm !== existingFm) {
       // Refuse the write when the agent's payload introduces unparseable
@@ -448,9 +531,9 @@ function applyAgentMarkdownWriteInner(
     // incremental primitive. Two primitives, two intents — see
     // `bridge-intake.ts` file header for the full contrast.
     if (position === 'replace') {
-      replaceRawBody(document, newContent, embedResolver, precomputed);
+      replaceRawBody(document, newContent, embedResolver, precomputed, detect);
     } else {
-      composeAndWriteRawBody(document, newContent, 'agent', embedResolver, precomputed);
+      composeAndWriteRawBody(document, newContent, 'agent', embedResolver, precomputed, detect);
     }
 
     // Site A content-divergence gate (shared predicate). Read Y.Text
@@ -612,7 +695,42 @@ function applyAgentUndoInner(
         ? Math.min(Math.max(0, count ?? 0), um.undoStack.length)
         : um.undoStack.length;
 
+  // Pre-drain: before the derive rebuilds the fragment, flush an
+  // un-propagated keystroke that provably does not overlap the frame being
+  // undone into Y.Text, so the keystroke survives the undo instead of needing
+  // the checkpoint floor below. Only for a single-frame undo — the discriminator
+  // models the top StackItem's target, so a multi-frame drain (which reverts
+  // frames the discriminator did not inspect) fails closed to the floor. Runs
+  // before the baseline capture so a successful flush makes the derive's own
+  // loss verdict see the now-in-Y.Text keystroke and never checkpoints it.
+  if (framesToPop === 1 && um.undoStack.length > 0) {
+    getPreDrainController(document as unknown as Y.Doc)?.preDrain({
+      kind: 'agent-undo',
+      stackItem: um.undoStack[um.undoStack.length - 1] as unknown as YjsStackItemShape,
+    });
+  }
+
   let undone = false;
+  // The Observer-B derive post-condition: when a reporter is wired, the derive
+  // observes whether the pre-derive fragment held content that was NEVER in
+  // Y.Text (an un-propagated WYSIWYG keystroke the rebuild is about to discard)
+  // and checkpoints + emits it. The pre-undo Y.Text is the baseline so the
+  // undo's own (intended) content removal is excluded from the verdict — only a
+  // never-propagated keystroke can trip. Bound to this session's doc/writer
+  // here so the primitive stays identity-free.
+  //
+  // Gated on the per-origin registry, like the agent-write and file-watcher
+  // intakes: `PAIRED_INTAKE_DETECTION` is the load-bearing classification, so
+  // reclassifying `agent-undo` must actually change what runs here rather than
+  // leaving a site that detects on reporter presence alone.
+  const reporter = session.bridgeLossReporter;
+  const detect: DeriveLossDetectOptions | undefined =
+    reporter && shouldRunPairedIntakeDetection(undoOrigin.context.origin)
+      ? {
+          report: (obs) => reporter(session.docName, obs, session.agentId),
+          baselineFullMd: document.getText('source').toString(),
+        }
+      : undefined;
   // Wrap undo + composition in one outer transact under undoOrigin.
   // Y.js merges um.undo()'s nested transact into this outer → fires under undoOrigin.
   // isPairedWriteOrigin(undoOrigin) === true → Observer A/B short-circuit on settle.
@@ -621,7 +739,7 @@ function applyAgentUndoInner(
       um.undo();
       undone = true;
     }
-    if (undone) deriveFragmentFromYtext(document, embedResolver);
+    if (undone) deriveFragmentFromYtext(document, embedResolver, detect);
   }, undoOrigin);
 
   log.debug(
@@ -658,6 +776,12 @@ interface SessionRecord {
   um: Y.UndoManager;
   agentId: string;
   docName: string;
+  /**
+   * Observer-B derive-loss observer, copied from the manager at session
+   * birth. Undefined when loss detection is disabled — then the undo derive
+   * pays no serialize cost.
+   */
+  bridgeLossReporter?: BridgeDeriveLossReporter;
   /**
    * Recency stamp (epoch ms), maintained exclusively by AgentSessionManager:
    * refreshed on every `getSession` / `getLiveSession` hit. The manager's
@@ -815,15 +939,37 @@ export class AgentSessionManager {
   private readonly maxSessions: number;
   /** Idle floor for eviction eligibility. Override is for tests only. */
   private readonly minEvictableIdleMs: number;
+  /**
+   * Observer-B derive-loss observer, wired at boot when loss detection is
+   * enabled. Copied into every session created by this manager. Undefined =
+   * detection off, and the undo derive stays serialize-free. Settable via the
+   * constructor (tests) or {@link attachBridgeLossReporter} at boot (the server
+   * builds the reporter after the loss ring, later in init than the manager).
+   */
+  private bridgeLossReporter?: BridgeDeriveLossReporter;
   private evictions = 0;
 
   constructor(
     hocuspocus: Hocuspocus,
-    options: { maxSessions?: number; minEvictableIdleMs?: number } = {},
+    options: {
+      maxSessions?: number;
+      minEvictableIdleMs?: number;
+      bridgeLossReporter?: BridgeDeriveLossReporter;
+    } = {},
   ) {
     this.hocuspocus = hocuspocus;
     this.maxSessions = options.maxSessions ?? MAX_AGENT_SESSIONS;
     this.minEvictableIdleMs = options.minEvictableIdleMs ?? MIN_EVICTABLE_IDLE_MS;
+    this.bridgeLossReporter = options.bridgeLossReporter;
+  }
+
+  /**
+   * Attach the derive-loss observer after construction. Called once at boot,
+   * before any session exists (sessions are created only at request time), so
+   * every real session picks it up at creation.
+   */
+  public attachBridgeLossReporter(reporter: BridgeDeriveLossReporter): void {
+    this.bridgeLossReporter = reporter;
   }
 
   /** Number of live sessions currently retained. Read-only occupancy probe. */
@@ -1056,7 +1202,16 @@ export class AgentSessionManager {
       `[agent-session] Created session for: ${docName} / ${agentId}`,
     );
 
-    return { dc, origin, undoOrigin, um, agentId, docName, lastUsedAt: Date.now() };
+    return {
+      dc,
+      origin,
+      undoOrigin,
+      um,
+      agentId,
+      docName,
+      lastUsedAt: Date.now(),
+      bridgeLossReporter: this.bridgeLossReporter,
+    };
   }
 
   /**

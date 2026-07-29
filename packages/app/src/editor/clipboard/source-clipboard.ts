@@ -59,6 +59,19 @@ import {
 import { isMarkdown } from './is-markdown.ts';
 import { installShiftTracker, pasteShiftHeld } from './shift-tracker.ts';
 
+/**
+ * Origin for the large-paste direct `Y.Text('source')` write. The chunked
+ * path bypasses CM6's dispatch and writes Y.Text itself, so it needs its own
+ * marked origin — a distinct `context.origin` keeps the write's provenance
+ * legible to any client-side observer that inspects origins, matching the
+ * source-mode lint-fix write's shape.
+ */
+const SOURCE_PASTE_ORIGIN = Object.freeze({
+  source: 'local' as const,
+  skipStoreHooks: false,
+  context: Object.freeze({ origin: 'source-paste' as const }),
+});
+
 export interface SourceClipboardDeps {
   ydoc: Y.Doc;
   ytext: Y.Text;
@@ -368,6 +381,7 @@ function tryBranchDHtml(
   // inserts incrementally.
   void chunkedYTextInsert(deps.ydoc, deps.ytext, anchorIndex, markdown, {
     resolveOffset,
+    origin: SOURCE_PASTE_ORIGIN,
   }).catch((err) => {
     handleChunkedInsertFailure({
       view,

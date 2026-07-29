@@ -390,6 +390,8 @@ export interface TestClient {
   pauseSync: () => void;
   /** Resume inbound CRDT sync, draining queued messages. Only available when syncControl: true. */
   resumeSync: () => void;
+  /** Drop (discard) outbound frames while enabled. Only available when syncControl: true. */
+  setDropOutbound: (drop: boolean) => void;
 }
 
 export interface CreateTestClientOptions {
@@ -460,6 +462,10 @@ export async function createTestClient(
     resumeSync: () => {
       if (!controllableWs) throw new Error('resumeSync requires syncControl: true');
       controllableWs.resumeInbound();
+    },
+    setDropOutbound: (drop: boolean) => {
+      if (!controllableWs) throw new Error('setDropOutbound requires syncControl: true');
+      controllableWs.setDropOutbound(drop);
     },
     cleanup: async () => {
       watcherDetach?.();

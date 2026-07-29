@@ -296,6 +296,8 @@ import {
   AgentSessionCapacityError,
   type AgentSessionManager,
   type AgentWriteContentDivergence,
+  agentWriteLossDetect,
+  agentWritePreDrain,
   applyAgentMarkdownWrite,
   applyAgentUndo,
   iconFromClientName,
@@ -503,6 +505,7 @@ import {
 } from './backlink-index.ts';
 import { getBootTimings } from './boot-timings.ts';
 import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from './bridge-intake.ts';
+import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
 import { isConfigDoc, isLinkIndexExcludedDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import type { ResolveStrategy } from './conflict-storage.ts';
@@ -510,6 +513,7 @@ import type { ContentFilter } from './content-filter.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import {
   docNameToRelativePath,
+  extensionlessDocTreePath,
   forgetDocExtension,
   getDocExtension,
   isSupportedAssetFile,
@@ -945,6 +949,22 @@ function safeDocPath(docName: string, contentRoot: string): { path: string } | {
   const ext = getDocExtension(docName);
   const path = normalized ? `${normalized}/${docName}${ext}` : `${docName}${ext}`;
   return { path };
+}
+
+/**
+ * Ordered tree-path candidates for resolving a doc's blob inside a commit at
+ * restore time. Full-tree checkpoints (Save Version, auto-consolidation,
+ * pre-rollback) hold the blob at the extension-full disk path; the silent
+ * single-blob checkpoint trees `saveInMemoryCheckpoint` writes hold it at the
+ * extension-less docName path. Probe extension-full first so a full-tree
+ * checkpoint always matches its real path before the extension-less twin is
+ * considered.
+ */
+function docTreePathCandidates(docName: string, contentRoot: string): readonly string[] {
+  const p = safeDocPath(docName, contentRoot);
+  if ('error' in p) return [`${docName}.md`];
+  const extless = extensionlessDocTreePath(p.path, docName);
+  return extless ? [p.path, extless] : [p.path];
 }
 
 const GENERIC_PASTE_NAMES = /^(image\.(png|jpe?g|gif|webp)|Clipboard.*|Untitled.*)$/i;
@@ -2822,6 +2842,15 @@ export interface ApiExtensionOptions {
    */
   resolveEmbed?: (basename: string, sourcePath: string) => string | null;
   /**
+   * Paired-intake derive-loss reporter, threaded into every
+   * `reconcileDiskBeforeAgentWrite` call so the L1 reconcile's
+   * FILE_WATCHER_ORIGIN ingest carries the same `detect` wiring the file
+   * watcher's own path does. A GETTER, not a value: the reporter is built later
+   * in server init (after the loss ring) than this extension is constructed, and
+   * is absent entirely when the `bridge.lossDetector` kill-switch is off.
+   */
+  getBridgeLossReporter?: () => BridgeDeriveLossReporter | undefined;
+  /**
    * Getter for the server's principal record. Called at request time so
    * deferred async init propagates. Returns null if principal has not
    * yet been loaded or loading failed.
@@ -3054,6 +3083,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     localOpCliArgs = ['open-knowledge'],
     authStreamHeartbeatMs,
     projectDir,
+    getBridgeLossReporter,
     getPrincipal,
     homeDirOverride,
     acpRegistry,
@@ -4271,7 +4301,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           span.setAttribute('rename.rewrite_candidates', pendingRewrites.length);
           assertRewriteTargetsNotConflicted(pendingRewrites.map((entry) => entry.docName));
 
-          reconcileDiskBeforeAgentWrite(durabilityState, hocuspocus, sourceDocName, contentDir);
+          reconcileDiskBeforeAgentWrite(
+            durabilityState,
+            hocuspocus,
+            sourceDocName,
+            contentDir,
+            undefined,
+            getBridgeLossReporter?.(),
+          );
           if (recentlyRemovedDocs && !isSystemDoc(sourceDocName) && !isConfigDoc(sourceDocName)) {
             recentlyRemovedDocs.setDeleted(sourceDocName);
           }
@@ -4532,7 +4569,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             // losslessly through the rename re-serialize and re-resolves on the
             // next normal load/reconcile. The extension-level resolveEmbed is
             // also shadowed by this function's own options param.
-            reconcileDiskBeforeAgentWrite(durabilityState, hocuspocus, docName, contentDir);
+            reconcileDiskBeforeAgentWrite(
+              durabilityState,
+              hocuspocus,
+              docName,
+              contentDir,
+              undefined,
+              getBridgeLossReporter?.(),
+            );
             const content = readCurrentDocumentContent(docName);
             if (typeof content === 'string') {
               snapshotContents.set(docName, content);
@@ -5207,6 +5251,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           docName,
           contentDir,
           options.resolveEmbed,
+          getBridgeLossReporter?.(),
         );
 
         const timestamp = new Date().toISOString();
@@ -5215,6 +5260,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         const { response: summaryResponse, stored: storedSummary } =
           summaryResponseFields(normalizedSummary);
 
+        // Disarmed in `finally` so a write that produces no Y.Text delta (or
+        // throws before its transact) never leaves an armed observer behind to
+        // capture a later same-session write under this call's stale key.
+        let disposeEffectCapture: (() => void) | undefined;
         // setPresence lives INSIDE the try so the pairing with touchMode('idle')
         // in `finally` is atomic — any throw between setPresence and transact
         // (even future code added here) flips the badge back to idle rather
@@ -5230,8 +5279,21 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             mode: 'writing',
             ts: Date.now(),
           });
-          // Register one-shot observer BEFORE write transact so YTextEvent.delta is captured
-          captureEffect(session.dc.document.getText('source'), agentId, colorSeed, clientName);
+          // Arm the origin-keyed effect observer BEFORE the write transact so the
+          // agent's own YTextEvent.delta is captured. Keyed on `session.origin`,
+          // so the pre-drain flush below (OBSERVER_SYNC_ORIGIN) passes through
+          // uncaptured instead of filing the user's keystroke as an agent effect.
+          disposeEffectCapture = captureEffect(
+            session.dc.document.getText('source'),
+            agentId,
+            session.origin,
+            colorSeed,
+            clientName,
+          );
+          // Pre-drain a non-overlapping pending keystroke into Y.Text before the
+          // write's own transact (own observer-origin transact — not the agent's
+          // undo frame) so the compose below rides it into the body.
+          agentWritePreDrain(session.dc.document, `${content}\n`, 'append');
           // Use per-session origin, not shared AGENT_WRITE_ORIGIN (STOP rule)
           session.dc.document.transact(() => {
             const beforeBlocks = snapshotBlocks(session.dc.document);
@@ -5242,6 +5304,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               options.resolveEmbed
                 ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
                 : undefined,
+              undefined,
+              agentWriteLossDetect(session),
             );
 
             const changedBlocks =
@@ -5267,6 +5331,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           incrementAgentWriteCalls();
           countNormalizedSummary(normalizedSummary);
         } finally {
+          disposeEffectCapture?.();
           agentPresenceBroadcaster?.touchMode(agentId, 'idle');
         }
 
@@ -5402,6 +5467,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           resolvedDocName,
           contentDir,
           options.resolveEmbed,
+          getBridgeLossReporter?.(),
         );
 
         // Off-thread parse precompute (parse-pool): parse the projected
@@ -5426,6 +5492,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // for production observability.
         let writeDivergence: AgentWriteContentDivergence | undefined;
 
+        // Disarmed in `finally` so a write that produces no Y.Text delta (or
+        // throws before its transact) never leaves an armed observer behind to
+        // capture a later same-session write under this call's stale key.
+        let disposeEffectCapture: (() => void) | undefined;
+
         // setPresence lives INSIDE the try so the pairing with touchMode('idle')
         // in `finally` is atomic — any throw between setPresence and transact
         // (even future code added here) flips the badge back to idle rather
@@ -5441,8 +5512,20 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             mode: 'writing',
             ts: Date.now(),
           });
-          // Register one-shot observer BEFORE write transact so YTextEvent.delta is captured
-          captureEffect(session.dc.document.getText('source'), agentId, colorSeed, clientName);
+          // Arm the origin-keyed effect observer BEFORE the write transact so the
+          // agent's own YTextEvent.delta is captured. Keyed on `session.origin`,
+          // so the pre-drain flush below (OBSERVER_SYNC_ORIGIN) passes through
+          // uncaptured instead of filing the user's keystroke as an agent effect.
+          disposeEffectCapture = captureEffect(
+            session.dc.document.getText('source'),
+            agentId,
+            session.origin,
+            colorSeed,
+            clientName,
+          );
+          // Pre-drain a non-overlapping pending keystroke into Y.Text before the
+          // write's transact so the compose below rides it into the body.
+          agentWritePreDrain(session.dc.document, body.markdown, position);
           // Use per-session origin, not shared AGENT_WRITE_ORIGIN (STOP rule)
           session.dc.document.transact(() => {
             const beforeBlocks = snapshotBlocks(session.dc.document);
@@ -5452,6 +5535,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               position,
               writeMdEmbedResolver,
               writeMdPrecomputed,
+              agentWriteLossDetect(session),
             );
 
             const changedBlocks =
@@ -5492,6 +5576,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           incrementAgentWriteCalls();
           countNormalizedSummary(normalizedSummary);
         } finally {
+          disposeEffectCapture?.();
           agentPresenceBroadcaster?.touchMode(agentId, 'idle');
         }
 
@@ -5850,6 +5935,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                 resolvedDocName,
                 contentDir,
                 options.resolveEmbed,
+                getBridgeLossReporter?.(),
               );
 
               // Off-thread parse precompute — same advisory pattern as the
@@ -5865,30 +5951,50 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               );
 
               let writeDivergence: AgentWriteContentDivergence | undefined;
-              // Register one-shot observer BEFORE write transact so YTextEvent.delta is captured
-              captureEffect(session.dc.document.getText('source'), agentId, colorSeed, clientName);
-              // Use per-session origin, not shared AGENT_WRITE_ORIGIN (STOP rule)
-              session.dc.document.transact(() => {
-                const beforeBlocks = snapshotBlocks(session.dc.document);
-                writeDivergence = applyAgentMarkdownWrite(
-                  session.dc.document,
-                  entry.markdown,
-                  entry.position ?? 'append',
-                  entryEmbedResolver,
-                  entryPrecomputed,
-                );
+              // Arm the origin-keyed effect observer BEFORE the write transact so
+              // the agent's own YTextEvent.delta is captured. Per-entry scope: the
+              // disposer runs right after this entry's transact so an entry whose
+              // compose is a no-op cannot capture the NEXT entry's delta.
+              const disposeEntryEffectCapture = captureEffect(
+                session.dc.document.getText('source'),
+                agentId,
+                session.origin,
+                colorSeed,
+                clientName,
+              );
+              // Pre-drain a non-overlapping pending keystroke into Y.Text before
+              // this entry's transact so the compose below rides it into the
+              // body. Its own observer-origin transact — never nested inside the
+              // agent's, which would capture the flush into the undo frame.
+              agentWritePreDrain(session.dc.document, entry.markdown, entry.position ?? 'append');
+              try {
+                // Use per-session origin, not shared AGENT_WRITE_ORIGIN (STOP rule)
+                session.dc.document.transact(() => {
+                  const beforeBlocks = snapshotBlocks(session.dc.document);
+                  writeDivergence = applyAgentMarkdownWrite(
+                    session.dc.document,
+                    entry.markdown,
+                    entry.position ?? 'append',
+                    entryEmbedResolver,
+                    entryPrecomputed,
+                    agentWriteLossDetect(session),
+                  );
 
-                const changedBlocks =
-                  changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
-                const activityMap = session.dc.document.getMap('agent-flash');
-                activityMap.set(agentId, {
-                  agentId,
-                  timestamp: Date.now(),
-                  type: 'insert',
-                  description: `Added (${agentName}): ${entry.markdown.trim().slice(0, 50)}`,
-                  ...(changedBlocks !== undefined ? { changedBlocks } : {}),
-                });
-              }, session.origin);
+                  const changedBlocks =
+                    changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ??
+                    undefined;
+                  const activityMap = session.dc.document.getMap('agent-flash');
+                  activityMap.set(agentId, {
+                    agentId,
+                    timestamp: Date.now(),
+                    type: 'insert',
+                    description: `Added (${agentName}): ${entry.markdown.trim().slice(0, 50)}`,
+                    ...(changedBlocks !== undefined ? { changedBlocks } : {}),
+                  });
+                }, session.origin);
+              } finally {
+                disposeEntryEffectCapture();
+              }
 
               recordContentDivergenceGate('agent-write-batch', writeDivergence);
               recordContributor(
@@ -6093,6 +6199,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           resolvedDocName,
           contentDir,
           options.resolveEmbed,
+          getBridgeLossReporter?.(),
         );
 
         // Optimistic off-thread parse precompute (parse-pool): apply the FM
@@ -7532,6 +7639,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           docName,
           contentDir,
           options.resolveEmbed,
+          getBridgeLossReporter?.(),
         );
 
         // Optimistic off-thread parse precompute (parse-pool): splice the
@@ -7574,6 +7682,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // Site A content-divergence captured from the in-transact gate.
         // Surfaced as the response's `warning` field on successful patches.
         let patchDivergence: AgentWriteContentDivergence | undefined;
+        // Disarmed in `finally` so a patch that finds no match (and therefore
+        // produces no Y.Text delta) never leaves an armed observer behind to
+        // capture a later same-session write under this call's stale key.
+        let disposeEffectCapture: (() => void) | undefined;
         // setPresence lives INSIDE the try so the pairing with touchMode('idle')
         // in `finally` is atomic — any throw between setPresence and transact
         // (even future code added here) flips the badge back to idle rather
@@ -7589,8 +7701,16 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             mode: 'writing',
             ts: Date.now(),
           });
-          // Register one-shot observer BEFORE write transact so YTextEvent.delta is captured
-          captureEffect(session.dc.document.getText('source'), agentId, colorSeed, clientName);
+          // Arm the origin-keyed effect observer BEFORE the write transact so the
+          // agent's own YTextEvent.delta is captured, never a foreign-origin write
+          // that lands between arming and the transact.
+          disposeEffectCapture = captureEffect(
+            session.dc.document.getText('source'),
+            agentId,
+            session.origin,
+            colorSeed,
+            clientName,
+          );
           // Use per-session origin, not shared AGENT_WRITE_ORIGIN (STOP rule)
           session.dc.document.transact(() => {
             // Read current authoritative state from Y.Text — the user's
@@ -7667,6 +7787,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               'patch',
               patchEmbedResolver,
               patchPrecomputed,
+              agentWriteLossDetect(session),
             );
 
             const changedBlocks =
@@ -7713,6 +7834,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             recordContentDivergenceGate('agent-patch', patchDivergence);
           }
         } finally {
+          disposeEffectCapture?.();
           agentPresenceBroadcaster?.touchMode(agentId, 'idle');
         }
 
@@ -8825,10 +8947,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         sha,
         branch,
         renameLogIndex,
-        (name) => {
-          const p = safeDocPath(name, resolvedContentRoot);
-          return 'error' in p ? `${name}.md` : p.path;
-        },
+        (name) => docTreePathCandidates(name, resolvedContentRoot),
         ancestorCache,
       );
       if (historicalPath === null) {
@@ -8935,10 +9054,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           commitSha,
           branch,
           renameLogIndex,
-          (name) => {
-            const p = safeDocPath(name, resolvedContentRoot);
-            return 'error' in p ? `${name}.md` : p.path;
-          },
+          (name) => docTreePathCandidates(name, resolvedContentRoot),
           ancestorCache,
         );
         if (historicalPath === null) {
@@ -19977,6 +20093,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                 options.resolveEmbed
                   ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
                   : undefined,
+                undefined,
+                agentWriteLossDetect(session),
               );
             }, session.origin);
 

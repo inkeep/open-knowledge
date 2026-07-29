@@ -363,20 +363,32 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  * migration remains the committed end state, with the `ipc-channels.ts` header
  * updated in lock-step.
  *
- * Bumped from 88 to 89 for the React self-uninstall window
- * (`ok:uninstall:dispatch`). The uninstall screens were the last renderer→main
- * surface still riding a private `ok-desktop-uninstall://` URL scheme
- * intercepted by `will-navigate`; moving them onto real IPC retires that
- * channel. Follows the `ok:sharing:dispatch` discriminated-union precedent —
- * the screen pull plus every intent from all four screens (picker, survey,
- * progress, notices) share ONE slot, so porting the remaining screens costs no
- * further channels. Could not fold into an existing channel: no renderer→main
- * uninstall surface existed, and the sender-validation rule (only a live
- * uninstall window is answered) is specific to this surface. The typed-ipc
- * migration remains the committed end state, with the `ipc-channels.ts` header
- * updated in lock-step.
+ * Bumped from 88 to 90 by two independent additions that landed together.
+ *
+ * 89 is the React self-uninstall window (`ok:uninstall:dispatch`). The
+ * uninstall screens were the last renderer→main surface still riding a private
+ * `ok-desktop-uninstall://` URL scheme intercepted by `will-navigate`; moving
+ * them onto real IPC retires that scheme. Follows the `ok:sharing:dispatch`
+ * discriminated-union precedent — the screen pull plus every intent from all
+ * four screens (picker, survey, progress, notices) share ONE slot, so porting
+ * the remaining screens costs no further channels. Could not fold into an
+ * existing channel: no renderer→main uninstall surface existed, and the
+ * sender-validation rule (only a live uninstall window is answered) is specific
+ * to this surface.
+ *
+ * 90 is the desktop background-throttling toggle
+ * (`ok:editor:background-throttle`): the renderer reports its aggregate
+ * unsynced-work state so main keeps the window's Chromium timers alive while
+ * work is pending. Could not fold onto the sibling `ok:editor:*` snapshots:
+ * those fire on active-target / view-menu changes and drive
+ * `refreshApplicationMenu`, a different cadence and side effect than an
+ * unsynced-work transition — a fold would rebuild the menu on every
+ * keystroke-to-sync edge.
+ *
+ * The typed-ipc migration remains the committed end state, with the
+ * `ipc-channels.ts` header updated in lock-step.
  */
-const REQUEST_CHANNEL_CAP = 89;
+const REQUEST_CHANNEL_CAP = 90;
 
 /**
  * Extract the body of an interface block by name. Returns the substring

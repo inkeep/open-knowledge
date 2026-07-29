@@ -26,6 +26,7 @@ import {
   RENDERER_LOG_MAX_BATCH_BYTES,
   RENDERER_LOG_MAX_ENTRIES,
   RENDERER_LOG_MAX_MESSAGE_BYTES,
+  scrubSecrets,
   truncateLogMessage,
 } from '@inkeep/open-knowledge-core';
 
@@ -233,7 +234,11 @@ export function installClientLogForwarder(
   function captureConsole(level: ClientLogEntry['level'], args: unknown[]): void {
     if (inForward) return;
     try {
-      const message = truncateLogMessage(args.map(stringifyArg).join(' '));
+      // Scrub credentials from the free-text message at capture time — verbatim
+      // console strings bypass the server's keyed-field pino redaction, so a
+      // secret logged as plain text would otherwise reach the local sink raw.
+      // Scrub before truncating so a secret straddling the byte cap is caught.
+      const message = truncateLogMessage(scrubSecrets(args.map(stringifyArg).join(' ')));
       // Only attempt the structured JSON.parse on a reasonably-sized first arg —
       // a multi-MB `console.log(hugeJsonString)` would otherwise block the
       // caller's hot path parsing bytes we'd discard anyway (the message is

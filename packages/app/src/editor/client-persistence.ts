@@ -244,6 +244,13 @@ class ClientPersistenceImpl implements ClientPersistenceProvider {
             // just written; rows added concurrently after it keep their
             // own, higher keys.
             store.delete(IDBKeyRange.upperBound(addReq.result, true));
+            // Explicitly commit rather than waiting for the auto-commit that
+            // fires when the event loop next has no pending requests. On the
+            // flush-on-hide/unload path the tab may be frozen before that turn
+            // runs, so starting the commit now shortens the window in which a
+            // freeze could strand the write. Guarded — not every engine
+            // implements the (Baseline) method.
+            if (typeof tx.commit === 'function') tx.commit();
           };
         } catch (err) {
           reject(err instanceof Error ? err : new Error(String(err)));

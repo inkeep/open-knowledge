@@ -380,7 +380,7 @@ const MARKDOWN_EXTENSION_QUALIFIED_DOC_PATTERN = /\.(md|mdx)$/i;
 // module instance takes over so WebSocket / observer / timer state doesn't leak.
 let pool: ProviderPool | null = null;
 
-function getPool(collabUrl: string): ProviderPool {
+export function getPool(collabUrl: string): ProviderPool {
   if (!pool) {
     pool = new ProviderPool(MAX_POOL, collabUrl);
     // Wire the editor cache to the pool's eviction events. Without this

@@ -324,6 +324,34 @@ describe('ProviderPool onChange', () => {
   });
 });
 
+describe('ProviderPool unsynced-work signal', () => {
+  test('hasAnyUnsyncedWork reflects an active provider unsyncedChanges count', () => {
+    pool = new ProviderPool(3, DUMMY_WS);
+    const entry = pool.open('doc1');
+    if (entry === null) throw new Error('expected entry');
+    expect(pool.hasAnyUnsyncedWork()).toBe(false);
+    entry.provider.unsyncedChanges = 1;
+    expect(pool.hasAnyUnsyncedWork()).toBe(true);
+    entry.provider.unsyncedChanges = 0;
+    expect(pool.hasAnyUnsyncedWork()).toBe(false);
+  });
+
+  test('addUnsyncedWorkListener fires on the provider unsyncedChanges event; unsubscribe stops it', () => {
+    pool = new ProviderPool(3, DUMMY_WS);
+    const entry = pool.open('doc1');
+    if (entry === null) throw new Error('expected entry');
+    let calls = 0;
+    const stop = pool.addUnsyncedWorkListener(() => {
+      calls++;
+    });
+    entry.provider.emit('unsyncedChanges', { number: 1 });
+    expect(calls).toBe(1);
+    stop();
+    entry.provider.emit('unsyncedChanges', { number: 2 });
+    expect(calls).toBe(1);
+  });
+});
+
 describe('ProviderPool onEvict subscription', () => {
   // Replaces the explicit cross-module call to evictTiptapEditor /
   // evictCmEditor that lived in destroyEntry. Verifies that

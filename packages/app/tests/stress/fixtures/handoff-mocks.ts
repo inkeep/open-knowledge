@@ -591,6 +591,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         editor: {
           notifyActiveTargetChanged: (): void => {},
           notifyViewMenuStateChanged: (): void => {},
+          notifyBackgroundThrottle: (): void => {},
         },
         startup: {
           reportMarks: (): void => {},

@@ -458,11 +458,17 @@ describe('AgentPresenceBroadcaster', () => {
     const tryMatches = src.match(tryShapePattern) ?? [];
     expect(tryMatches.length).toBe(expectedCount);
 
-    // Every handler's finally block must call touchMode('idle'). Drop
-    // this pairing and the entry stays in 'writing' until the next
-    // successful write or WS close.
+    // Every handler's finally block must CLOSE with touchMode('idle'). Drop
+    // this pairing and the entry stays in 'writing' until the next successful
+    // write or WS close.
+    //
+    // Other cleanup may precede it in the same finally (the effect-capture
+    // disposer does), but the `\}` anchor keeps touchMode the LAST statement:
+    // anything after it could throw and skip the idle flip, which is the
+    // stuck-writing race this guards. `[^{}]*` also refuses a nested block, so a
+    // touchMode buried inside a conditional still fails.
     const finallyPattern =
-      /finally\s*\{\s*agentPresenceBroadcaster\?\.touchMode\(agentId,\s*'idle'\);\s*\}/g;
+      /finally\s*\{[^{}]*agentPresenceBroadcaster\?\.touchMode\(agentId,\s*'idle'\);\s*\}/g;
     const finallyMatches = src.match(finallyPattern) ?? [];
     expect(finallyMatches.length).toBe(expectedCount);
   });

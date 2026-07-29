@@ -14,6 +14,7 @@ import type { Schema } from '@tiptap/pm/model';
 import type * as Y from 'yjs';
 import { isConfigDoc, isMermaidDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { getLogger } from './logger.ts';
+import type { LossCaptureRing } from './loss-capture.ts';
 import { incrementServerObserverError } from './metrics.ts';
 import { setupServerObservers } from './server-observers.ts';
 import type { ShadowRef } from './shadow-repo.ts';
@@ -52,6 +53,38 @@ export interface ServerObserverExtensionOptions {
    * `WikiEmbedFile.translateProps` then renders without a size span.
    */
   resolveSize?: (basename: string, sourcePath: string) => number | null;
+  /**
+   * Derive-timing defer guard kill-switch, resolved from `.ok/config.yml`
+   * (`bridge.deferGuard.enabled`, default ON). Threaded per-document into
+   * `setupServerObservers`.
+   */
+  deferGuardEnabled?: boolean;
+  /**
+   * Bridge content-loss detector kill-switch, resolved from `.ok/config.yml`
+   * (`bridge.lossDetector.enabled`, default ON). Threaded per-document into
+   * `setupServerObservers` for the Observer-A apply post-condition.
+   */
+  lossDetectorEnabled?: boolean;
+  /**
+   * Re-derive-loop fixed-point backstop kill-switch, resolved from
+   * `.ok/config.yml` (`bridge.fixedPoint.enabled`, default ON). Threaded
+   * per-document into `setupServerObservers`.
+   */
+  fixedPointBackstopEnabled?: boolean;
+  /**
+   * Pre-drain discriminator kill-switch, resolved from `.ok/config.yml`
+   * (`bridge.preDrain.enabled`, default ON). Threaded per-document into
+   * `setupServerObservers`; the doc's pre-drain controller stays registered
+   * either way, but flushes only when enabled.
+   */
+  preDrainEnabled?: boolean;
+  /**
+   * Content-free loss-capture ring, constructed once at boot (gated on
+   * `lossCapture.enabled`). Each derive-timing defer records a `guard-defer`
+   * event, each detector trip a `detector-trip` event, and each backstop trip a
+   * `backstop-trip` event through it. Omit when no ring is wired (unit harness).
+   */
+  lossRing?: LossCaptureRing;
 }
 
 /**
@@ -93,6 +126,11 @@ export function createServerObserverExtension(opts: ServerObserverExtensionOptio
             contentRoot: opts.contentRoot,
             resolveEmbed: opts.resolveEmbed,
             resolveSize: opts.resolveSize,
+            deferGuardEnabled: opts.deferGuardEnabled,
+            lossDetectorEnabled: opts.lossDetectorEnabled,
+            fixedPointBackstopEnabled: opts.fixedPointBackstopEnabled,
+            preDrainEnabled: opts.preDrainEnabled,
+            lossRing: opts.lossRing,
           });
           cleanups.set(documentName, unsubscribe);
           return true;

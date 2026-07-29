@@ -61,18 +61,27 @@ export {
   BUG_REPORT_SCREENSHOT_ZIP_NAME,
   LOG_LEVELS,
 } from './logger-types.ts';
-// Renderer/browser console-capture helpers (level mapping, structured-message
-// unwrap, batch bounds) shared by the desktop main listener, the server
-// `/api/client-logs` ingest, and the web renderer forwarder.
+// Renderer/browser console-capture helpers (capture-time scrub, level mapping,
+// structured-message unwrap, batch bounds) shared by the desktop main listener
+// and the web renderer forwarder, plus the server `/api/client-logs` ingest
+// that receives what the forwarder captured.
 export {
   mapConsoleLevel,
   parseStructuredConsoleMessage,
+  prepareCapturedConsoleMessage,
   RENDERER_LOG_MAX_BATCH_BYTES,
   RENDERER_LOG_MAX_ENTRIES,
   RENDERER_LOG_MAX_MESSAGE_BYTES,
   type RendererLogLevel,
   truncateLogMessage,
 } from './logging/renderer-log.ts';
+// Canonical secret/credential scrub shared by the diagnostic-bundle assembly
+// and the renderer console-capture forwarder (one pattern list, no drift).
+export {
+  redactSecrets,
+  SECRET_PATTERN_NAMES,
+  scrubSecrets,
+} from './logging/secret-scrub.ts';
 // Cross-process contract version (pure integer; browser-safe).
 export { PROTOCOL_VERSION } from './protocol-version.ts';
 
@@ -1281,8 +1290,10 @@ export {
   type FrontmatterBindingUnsubscribe,
   type FrontmatterDocProvider,
   type FrontmatterSnapshot,
+  findDroppedContent,
   findFirstDivergenceIndex,
   fnv1aDigest,
+  fragmentHoldsPendingContent,
   type InvariantViolation,
   isParseEquivalentBridge,
   MAX_FM_REGION_BYTES,
@@ -1294,6 +1305,7 @@ export {
   type PmStructuralNode,
   parseFencedFmRegion,
   parseFmRegion,
+  pendingContentLines,
   projectMergeBoundarySpace,
   readFmKeys,
   readFmMap,
@@ -1314,6 +1326,25 @@ export {
   toBridgeInvariantLog,
   tryLineLevelCombine,
 } from './bridge/index.ts';
+export type {
+  AutoConsolidationTrigger,
+  CheckpointBundleExposure,
+  CheckpointKind,
+  CheckpointKindAttributes,
+  CheckpointVisibility,
+  ParsedCheckpoint,
+} from './checkpoint-kinds.ts';
+// Checkpoint-kind metadata + the shared kind registry ARE browser-safe (pure
+// data, no `node:fs`) and live in `./checkpoint-kinds.ts`, so the editor UI can
+// drive timeline-row visibility off the same registry the server GC/timeline/
+// bundle paths use. `shadow-repo-layout` re-exports these for Node-only callers.
+export {
+  CHECKPOINT_KIND_REGISTRY,
+  CHECKPOINT_KINDS,
+  formatCheckpointBodyLine,
+  isSurfacedCheckpointKind,
+  parseCheckpoint,
+} from './checkpoint-kinds.ts';
 // Two-phase shutdown timing constants — shared by the CLI's idle-shutdown
 // UI-sibling termination and the desktop's `stopAllOwnedServers` auto-
 // update teardown. Calibrated against Hocuspocus's destroyTimeoutMs.

@@ -1002,8 +1002,8 @@ msgid "Adds a managed block to {0}"
 msgstr "Adds a managed block to {0}"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Adds telemetry, server state, and runtime info when available. Document names are anonymized."
-msgstr "Adds telemetry, server state, and runtime info when available. Document names are anonymized."
+msgid "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
+msgstr "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Adds the OpenKnowledge skill to the <0>Claude Desktop App</0> so it's available in Chat and Cowork sessions."
@@ -7403,6 +7403,10 @@ msgstr "Reconnecting to the agent service…"
 #: src/components/FileTree.tsx
 msgid "Reconnecting…"
 msgstr "Reconnecting…"
+
+#: src/components/TimelinePanel.tsx
+msgid "Recovered content"
+msgstr "Recovered content"
 
 #: src/components/AppMenubar.tsx
 msgid "Redo"

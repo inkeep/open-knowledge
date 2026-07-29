@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import {
+  CHECKPOINT_KINDS,
+  type CheckpointKind,
   formatCheckpointBodyLine,
   parseCheckpoint,
   parseOkActor,
@@ -983,9 +985,13 @@ describe('saveInMemoryCheckpoint (bridge-correctness SPEC §6 R7a)', () => {
   });
 
   test('round-trips a bridge-merge-loss checkpoint — ref exists, parseCheckpoint recovers metadata', async () => {
+    // Production callers pass the extension-LESS Hocuspocus docName (what flows
+    // through the CRDT layer), so the blob lands at the extension-less tree path
+    // `content/docs/intro` — not `content/docs/intro.md`. The restore floor
+    // resolves that shape.
     const params: InMemoryCheckpointParams = {
       kind: 'bridge-merge-loss',
-      docName: 'intro.md',
+      docName: 'intro',
       contents: '# Pre-merge baseline\n',
       label: 'Before concurrent merge @ 2026-04-17T08:00:00Z',
       branch: 'main',
@@ -1007,14 +1013,15 @@ describe('saveInMemoryCheckpoint (bridge-correctness SPEC §6 R7a)', () => {
     if (parsed?.kind !== 'bridge-merge-loss') throw new Error('expected bridge-merge-loss kind');
     expect(parsed.metadata.lostSubstrings).toEqual(['user keystroke', 'another lost phrase']);
 
-    // Contents blob is stored at content/docs/intro.md
+    // Contents blob is stored at the extension-less path content/docs/intro
     const tree = (await sg.raw('ls-tree', '-r', sha)).trim();
-    expect(tree).toContain('content/docs/intro.md');
+    expect(tree).toContain('content/docs/intro');
+    expect(tree).not.toContain('content/docs/intro.md');
 
     // docName + size are inlined in
     // the metadata so the rescue read path doesn't need ls-tree per commit.
     if (parsed.kind !== 'bridge-merge-loss') throw new Error('narrow');
-    expect(parsed.docName).toBe('intro.md');
+    expect(parsed.docName).toBe('intro');
     expect(parsed.size).toBe(Buffer.byteLength('# Pre-merge baseline\n', 'utf-8'));
   });
 
@@ -1464,6 +1471,156 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     });
 
     expect(result.deletedAutoConsolidation).toBe(0);
+  });
+
+  const seedKind = async (kind: CheckpointKind, tag = ''): Promise<void> => {
+    switch (kind) {
+      case 'bridge-merge-loss':
+        await saveInMemoryCheckpoint(shadow, 'content/docs', {
+          kind,
+          docName: 'a.md',
+          contents: `a${tag}\n`,
+          label: 'l',
+          metadata: { lostSubstrings: ['x'] },
+        });
+        return;
+      case 'producer-guard-loss':
+        await saveInMemoryCheckpoint(shadow, 'content/docs', {
+          kind,
+          docName: 'b.md',
+          contents: `b${tag}\n`,
+          label: 'l',
+          metadata: { construct: 'tableCell' },
+        });
+        return;
+      case 'observer-a-duplication':
+        await saveInMemoryCheckpoint(shadow, 'content/docs', {
+          kind,
+          docName: 'c.md',
+          contents: `c${tag}\n`,
+          label: 'l',
+          metadata: { duplicatedLineCount: 1 },
+        });
+        return;
+      case 'external-change-rescue':
+        await saveInMemoryCheckpoint(shadow, 'content/docs', {
+          kind,
+          docName: 'd.md',
+          contents: `d${tag}\n`,
+          label: 'l',
+          metadata: { incomingDiskSha: 'sha' },
+        });
+        return;
+      case 'defer-exhaustion-loss':
+        await saveInMemoryCheckpoint(shadow, 'content/docs', {
+          kind,
+          docName: 'e.md',
+          contents: `e${tag}\n`,
+          label: 'l',
+          metadata: { deferCount: 8 },
+        });
+        return;
+      case 'observer-a-apply-loss':
+        await saveInMemoryCheckpoint(shadow, 'content/docs', {
+          kind,
+          docName: 'h.md',
+          contents: `h${tag}\n`,
+          label: 'l',
+          metadata: { lostSubstrings: ['dropped'] },
+        });
+        return;
+      case 'bridge-derive-loss':
+        await saveInMemoryCheckpoint(shadow, 'content/docs', {
+          kind,
+          docName: 'f.md',
+          contents: `f${tag}\n`,
+          label: 'l',
+          metadata: { lostSubstrings: ['dropped'] },
+        });
+        return;
+      case 'bridge-backstop-trip':
+        await saveInMemoryCheckpoint(shadow, 'content/docs', {
+          kind,
+          docName: 'g.md',
+          contents: `g${tag}\n`,
+          label: 'l',
+          metadata: { rounds: 8 },
+        });
+        return;
+      case 'persistence-reconcile-loss':
+        await saveInMemoryCheckpoint(shadow, 'content/docs', {
+          kind,
+          docName: 'i.md',
+          contents: `i${tag}\n`,
+          label: 'l',
+          metadata: { atRiskLines: 1, witnessAvailable: true },
+        });
+        return;
+      case 'auto-consolidation':
+        await writeAutoConsolidationCheckpoint(shadow, tag === '' ? 1 : Number(tag));
+        return;
+      default: {
+        const unseeded: never = kind;
+        throw new Error(`unseeded checkpoint kind: ${unseeded}`);
+      }
+    }
+  };
+
+  test('buckets every registered checkpoint kind without throwing', async () => {
+    const { gcCheckpointRefs } = await import('./shadow-repo.ts');
+
+    for (const kind of CHECKPOINT_KINDS) await seedKind(kind);
+
+    // Generous limits: the assertion is that every kind is scanned and bucketed
+    // without throwing, not that anything is deleted.
+    const result = await gcCheckpointRefs(shadow, 'main', {
+      ...DEFAULT_CHECKPOINT_RETENTION,
+      maxBridgeMergeLoss: 50,
+      maxProducerGuardLoss: 50,
+      maxObserverADuplication: 50,
+      maxExternalChangeRescue: 50,
+      maxDeferExhaustionLoss: 50,
+      maxBridgeDeriveLoss: 50,
+      maxObserverAApplyLoss: 50,
+      maxBridgeBackstopTrip: 50,
+      maxPersistenceReconcileLoss: 50,
+      maxAutoConsolidation: 50,
+      ttlMs: 0,
+    });
+
+    expect(result.scanned).toBe(CHECKPOINT_KINDS.length);
+    expect(result.retained).toBe(CHECKPOINT_KINDS.length);
+  });
+
+  test('every registered kind is actually REAPED at its own limit, not merely bucketed', async () => {
+    const { gcCheckpointRefs } = await import('./shadow-repo.ts');
+
+    // Two checkpoints of every kind, then GC at limit 1. A kind that is scanned
+    // and bucketed but never handed to `planDeletions` retains BOTH and is
+    // invisible to the seed-one-per-kind sweep — this is what catches a missing
+    // fan-out entry: refs that accumulate forever with no cap and no TTL.
+    for (const kind of CHECKPOINT_KINDS) {
+      await seedKind(kind, '1');
+      await seedKind(kind, '2');
+    }
+
+    // Every `max*` limit set to 1, derived from the policy shape so a new
+    // retention field cannot be silently left at its default here.
+    const limits = Object.fromEntries(
+      Object.entries(DEFAULT_CHECKPOINT_RETENTION).map(([k, v]) =>
+        k.startsWith('max') ? [k, 1] : [k, v],
+      ),
+    ) as typeof DEFAULT_CHECKPOINT_RETENTION;
+
+    const result = await gcCheckpointRefs(shadow, 'main', { ...limits, ttlMs: 0 });
+
+    // One reaped per kind — every bucket drained to its limit of 1.
+    const deleted = Object.entries(result).filter(([k]) => k.startsWith('deleted'));
+    expect(deleted.length).toBe(CHECKPOINT_KINDS.length);
+    for (const [counter, count] of deleted) {
+      expect(`${counter}=${count}`).toBe(`${counter}=1`);
+    }
+    expect(result.retained).toBe(CHECKPOINT_KINDS.length);
   });
 });
 
