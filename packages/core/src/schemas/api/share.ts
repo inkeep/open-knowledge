@@ -93,15 +93,19 @@ export type ShareConstructUrlErrorCode = z.infer<typeof ShareConstructUrlErrorCo
  *   reads the last pushed version until a push lands.
  * - `absent` — the target isn't on origin at all, so the minted link 404s for
  *   the recipient until it's pushed.
+ * - `empty` — a shared folder holding nothing git can track. Git has no object
+ *   for a folder with zero blobs, so unlike `absent` this is NOT push-fixable:
+ *   no push resolves it, and the only remedy is adding a document.
  *
- * Closed enum for v1. Producers only ever emit these three; consumers parse
- * tolerantly (see the `freshness` field below), so a value a newer server
- * adds degrades to "no signal" on an older client rather than a parse failure.
+ * Closed enum. Consumers parse tolerantly (see the `freshness` field below),
+ * so a value a newer server adds degrades to "no signal" on an older client
+ * rather than a parse failure.
  */
 export const ShareFreshnessSchema = z.enum([
   'current',
   'stale',
   'absent',
+  'empty',
 ]) satisfies StandardSchemaV1;
 export type ShareFreshness = z.infer<typeof ShareFreshnessSchema>;
 
@@ -116,7 +120,8 @@ export type ShareFreshness = z.infer<typeof ShareFreshnessSchema>;
  *
  * The success variant also carries an optional `freshness` signal
  * (`ShareFreshnessSchema`) describing whether the shared target is current /
- * stale / absent vs. origin; it is omitted whenever the signal is unavailable.
+ * stale / absent / empty vs. origin (`empty` is the folder-only,
+ * not-push-fixable case); it is omitted whenever the signal is unavailable.
  *
  * Schemas are `.loose()` per the file-wide convention for forward-compat;
  * adding fields (e.g., `defaultBranch` for splash branch-indicator hints)

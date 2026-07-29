@@ -29,8 +29,9 @@ A share link points at GitHub, but your local edits only reach GitHub through au
 
 - **Not on GitHub yet.** The target has never been pushed, so the link won't resolve until it is. With auto-sync off, the row offers **Enable auto-sync** and **How to push manually**; with auto-sync on, it offers **Sync now** and clears itself once the push lands.
 - **Unpushed changes.** The target is on GitHub but has local edits that aren't, so recipients see the last pushed version. With auto-sync on this stays silent — the next sync closes the gap.
+- **Empty folder.** The folder holds nothing Git can track — it has no documents, or everything inside it is ignored — so the link won't resolve, and unlike the never-pushed case no push will fix it. The row names the only remedy, adding a document, and offers no sync actions at all. Only folders reach this state: a doc is trackable at any size, including zero bytes.
 
-If you don't have write access to the repo, the row explains that instead of offering a push action. The check is local, adds no network round-trip, and never blocks sharing: if it can't run, the link still copies with no warning. Folder shares get the same treatment as docs. Links minted by an agent get the same check: the [`share_link` MCP tool](/docs/reference/mcp) prepends the warning to its response so the agent can relay it with the link.
+If you don't have write access to the repo, the row explains that instead of offering a push action. The check is local, adds no network round-trip, and never blocks sharing: if it can't run, the link still copies with no warning. Folder shares get the same treatment as docs, and can additionally hit the empty-folder case above, which a doc never can. Links minted by an agent get the same check: the [`share_link` MCP tool](/docs/reference/mcp) prepends the warning to its response so the agent can relay it with the link.
 
 ## Opening a share link
 

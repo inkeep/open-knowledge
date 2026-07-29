@@ -77,6 +77,21 @@ describe('createGitTriangle — send-side freshness drift cells', () => {
     ).not.toBe('');
   });
 
+  test('a bare directory: absent from the ref with both drift probes silent -> empty', () => {
+    const t = newTriangle();
+    t.mkdirWorkingTree('hollow');
+    const ref = `origin/${t.branch}`;
+    // The cell that separates "not on origin yet" from "not representable in
+    // git": all three probes must be silent at once. A placeholder file added
+    // to this primitive would still miss the ref, but would light up status —
+    // and every `empty` verdict downstream would quietly become `absent`.
+    expect(gitExit(t.senderDir, ['cat-file', '-e', `${ref}:hollow`])).not.toBe(0);
+    expect(t.git(t.senderDir, ['diff', '--name-only', ref, '--', 'hollow'])).toBe('');
+    expect(
+      t.git(t.senderDir, ['status', '--porcelain', '--untracked-files=all', '--', 'hollow']),
+    ).toBe('');
+  });
+
   test('a clean pushed symlink: unchanged -> current, and stored as a symlink (mode 120000)', () => {
     const t = newTriangle();
     t.seedSymlinkAndPush('link.md', 'target.md', '# target\n');

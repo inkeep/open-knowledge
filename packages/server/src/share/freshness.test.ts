@@ -81,9 +81,78 @@ describe('computeShareFreshness — folder drift cells', () => {
   });
 });
 
+describe('computeShareFreshness — folder with no git-trackable content', () => {
+  test('a folder holding no files is empty, not absent', async () => {
+    const t = newTriangle();
+    t.mkdirWorkingTree('hollow');
+    expect(await computeShareFreshness(t.senderDir, t.branch, 'hollow', 'folder')).toBe('empty');
+  });
+
+  test('a folder holding only empty subfolders is empty', async () => {
+    const t = newTriangle();
+    t.mkdirWorkingTree('outer/inner/deeper');
+    expect(await computeShareFreshness(t.senderDir, t.branch, 'outer', 'folder')).toBe('empty');
+  });
+
+  test('a folder whose only contents are gitignored is empty', async () => {
+    const t = newTriangle();
+    t.seedAndPush('.gitignore', 'scratch/\n');
+    t.writeWorkingTree('scratch/note.md', '# ignored\n');
+    expect(await computeShareFreshness(t.senderDir, t.branch, 'scratch', 'folder')).toBe('empty');
+  });
+
+  test('a push leaves the verdict unchanged — the state a push cannot resolve', async () => {
+    const t = newTriangle();
+    t.mkdirWorkingTree('hollow');
+    expect(await computeShareFreshness(t.senderDir, t.branch, 'hollow', 'folder')).toBe('empty');
+    // `git add -A` finds nothing to stage, so this pushes the base commit
+    // again: the folder is in exactly the same place afterwards.
+    t.git(t.senderDir, ['add', '-A']);
+    t.git(t.senderDir, ['push', 'origin', t.branch]);
+    expect(await computeShareFreshness(t.senderDir, t.branch, 'hollow', 'folder')).toBe('empty');
+  });
+});
+
+describe('computeShareFreshness — push-fixable folders stay absent', () => {
+  test('a folder holding one untracked doc is absent (a push puts it on origin)', async () => {
+    const t = newTriangle();
+    t.mkdirWorkingTree('drafts');
+    t.writeWorkingTree('drafts/x.md', 'unstaged\n');
+    expect(await computeShareFreshness(t.senderDir, t.branch, 'drafts', 'folder')).toBe('absent');
+  });
+
+  test('a folder committed but never pushed is absent', async () => {
+    const t = newTriangle();
+    t.writeWorkingTree('later/y.md', 'committed, not pushed\n');
+    t.git(t.senderDir, ['add', '--', 'later/y.md']);
+    t.git(t.senderDir, ['commit', '-m', 'add later/y.md (unpushed)']);
+    expect(await computeShareFreshness(t.senderDir, t.branch, 'later', 'folder')).toBe('absent');
+  });
+
+  test('a folder holding only .ok metadata is absent — that folder does push', async () => {
+    const t = newTriangle();
+    t.writeWorkingTree('meta/.ok/folder.yml', 'title: Meta\n');
+    expect(await computeShareFreshness(t.senderDir, t.branch, 'meta', 'folder')).toBe('absent');
+  });
+
+  test('a zero-byte doc is absent, then current across a sync — a file is trackable at any size', async () => {
+    const t = newTriangle();
+    t.writeWorkingTree('blank.md', '');
+    expect(await computeShareFreshness(t.senderDir, t.branch, 'blank.md', 'doc')).toBe('absent');
+    t.seedAndPush('blank.md', '');
+    expect(await computeShareFreshness(t.senderDir, t.branch, 'blank.md', 'doc')).toBe('current');
+  });
+});
+
 describe('computeShareFreshness — content-root folder share (empty path)', () => {
   test('a clean content root is current (root tree exists; pathspec falls back to ".")', async () => {
     const t = newTriangle();
+    expect(await computeShareFreshness(t.senderDir, t.branch, '', 'folder')).toBe('current');
+  });
+
+  test('an empty subfolder does not make the content root empty', async () => {
+    const t = newTriangle();
+    t.mkdirWorkingTree('hollow');
     expect(await computeShareFreshness(t.senderDir, t.branch, '', 'folder')).toBe('current');
   });
 

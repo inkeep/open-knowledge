@@ -104,7 +104,7 @@ export function buildGitHubTreeUrl(
 /**
  * Emit one structured ops log line per request. All fields are non-PII (no
  * project path, no doc filename, no URL bytes). `kind` (`'doc' | 'folder'`)
- * and `freshness` (`'current' | 'stale' | 'absent'`) are bounded enums, so
+ * and `freshness` (`'current' | 'stale' | 'absent' | 'empty'`) are bounded enums, so
  * they're safe as span/log attributes per the cardinality STOP rule.
  * `freshness` is omitted when the probe couldn't run (fail-open).
  */

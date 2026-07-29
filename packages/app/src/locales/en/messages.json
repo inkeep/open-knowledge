@@ -2198,6 +2198,9 @@
     "eTsJYJ": ["description"],
     "eVPynQ": ["Open <0><1>", ["verificationUri"], "</1><2/></0> and enter this code:"],
     "eaHUxx": ["Files toolbar"],
+    "eazHgv": [
+      "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
+    ],
     "el312q": ["Install skills into"],
     "emgiet": ["Authoritative content; mirrored verbatim everywhere it's referenced."],
     "enPTnx": ["line ", ["displayLine"]],

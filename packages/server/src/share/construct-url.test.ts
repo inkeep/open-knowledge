@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { decodeShareUrl } from '@inkeep/open-knowledge-core';
+import { decodeShareUrl, ShareFreshnessSchema } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
 import { loggerFactory, PinoLogger } from '../logger.ts';
 import {
@@ -632,6 +632,29 @@ describe('emitShareConstructUrlLog telemetry', () => {
   test('carries kind on a business-logic failure', () => {
     const records = captureLog(() => emitShareConstructUrlLog('invalid-path', { kind: 'doc' }));
     expect(records[0]).toMatchObject({ result: 'invalid-path', kind: 'doc' });
+  });
+
+  test('records every freshness verdict distinctly, including the one no push resolves', () => {
+    // Ops discrimination: a share that is dead forever must not land in the
+    // same log bucket as one the next push fixes. Driven off the contract's own
+    // enum so a verdict added to it can never reach the log as a silent
+    // synonym of another.
+    const verdicts = ShareFreshnessSchema.options;
+    const records = captureLog(() => {
+      for (const freshness of verdicts) {
+        emitShareConstructUrlLog('ok', { branchExists: true, kind: 'folder', freshness });
+      }
+    });
+    const logged = records.map((r) => r.freshness);
+    expect(logged).toContain('empty');
+    expect(logged).toContain('absent');
+    expect(records.find((r) => r.freshness === 'empty')).toMatchObject({
+      action: 'construct-url',
+      result: 'ok',
+      kind: 'folder',
+      freshness: 'empty',
+    });
+    expect(new Set(logged).size).toBe(verdicts.length);
   });
 
   test('omits kind + branchExists when opts absent', () => {

@@ -4496,6 +4496,10 @@ msgstr "Get product updates in your inbox."
 msgid "Get set up"
 msgstr "Get set up"
 
+#: src/components/ShareFreshnessWarning.tsx
+msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
+msgstr "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
+
 #: src/components/settings/SharingSection.tsx
 #: src/components/SkillsSidebarSection.tsx
 msgid "git configuration is unavailable"

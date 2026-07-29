@@ -389,10 +389,21 @@ describe('share_link outputSchema admits the freshness success payloads (S3)', (
     ...base,
     text: 'Share link for doc `notes` on branch `main`:\nhttps://openknowledge.ai/d/enc',
   };
+  // A folder git holds no object for. The declared enum is what AJV compiles
+  // into the client-side check, so a verdict the tool emits but the enum omits
+  // costs the agent the WHOLE result, not just the warning.
+  const withEmptyFreshness = {
+    ...base,
+    sharedUrl: 'https://github.com/o/r/tree/main/hollow',
+    resolvedKind: 'folder',
+    freshness: 'empty',
+    text: "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document.\n\nShare link for folder `hollow` on branch `main`:\nhttps://openknowledge.ai/d/enc",
+  };
 
   for (const [label, payload] of [
     ['success with freshness', withFreshness],
     ['success without freshness (happy-path passthrough)', withoutFreshness],
+    ['success with the empty-folder verdict', withEmptyFreshness],
   ] as const) {
     test(`${label} structuredContent validates against the compiled share_link schema`, () => {
       const validator = new AjvJsonSchemaValidator();

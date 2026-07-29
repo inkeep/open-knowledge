@@ -32,7 +32,7 @@ vi.doMock('@/lib/config-provider', () => ({
   }),
 }));
 
-const { ShareFreshnessWarning } = await import('./ShareFreshnessWarning');
+const { ShareFreshnessWarning, shareFreshnessRowVisible } = await import('./ShareFreshnessWarning');
 
 function makeStatus(overrides: Partial<GitSyncStatus> = {}): GitSyncStatus {
   return {
@@ -310,5 +310,97 @@ describe('ShareFreshnessWarning — recovery CTAs (FR4/FR5)', () => {
     expect(screen.queryByRole('button', { name: 'Enable auto-sync' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
     expect(screen.queryByRole('link', { name: /How to push manually/ })).toBeNull();
+  });
+});
+
+describe('ShareFreshnessWarning — empty folder', () => {
+  const FACT = "The link won't work until you add a tracked document.";
+
+  test('sync off: states the folder is empty and offers no remedy', () => {
+    render(
+      <ShareFreshnessWarning
+        freshness="empty"
+        status={makeStatus({ syncEnabled: false })}
+        kind="folder"
+      />,
+    );
+    const row = screen.getByTestId('share-freshness-row');
+    const text = row.textContent ?? '';
+    expect(text).toContain("Git can't track this folder");
+    expect(text).toContain(FACT);
+    // Nothing here claims a push would help.
+    expect(text).not.toContain("isn't on GitHub yet");
+    expect(text).not.toContain("hasn't synced to GitHub yet");
+    // Every CTA is a dead end for a folder git cannot represent.
+    expect(screen.queryByRole('button', { name: 'Enable auto-sync' })).toBeNull();
+    expect(screen.queryByRole('link', { name: /How to push manually/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
+  });
+
+  test('sync on: renders the same row — auto-sync cannot resolve this state', () => {
+    render(
+      <ShareFreshnessWarning
+        freshness="empty"
+        status={makeStatus({ syncEnabled: true, state: 'idle' })}
+        kind="folder"
+      />,
+    );
+    const text = screen.getByTestId('share-freshness-row').textContent ?? '';
+    expect(text).toContain("Git can't track this folder");
+    expect(text).toContain(FACT);
+    expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
+  });
+
+  test('carries the strong icon whether or not auto-sync is on', () => {
+    const { rerender } = render(
+      <ShareFreshnessWarning
+        freshness="empty"
+        status={makeStatus({ syncEnabled: false })}
+        kind="folder"
+      />,
+    );
+    expect(
+      screen.getByTestId('share-freshness-row').querySelector('svg.lucide-triangle-alert'),
+    ).not.toBeNull();
+    rerender(
+      <ShareFreshnessWarning
+        freshness="empty"
+        status={makeStatus({ syncEnabled: true, state: 'idle' })}
+        kind="folder"
+      />,
+    );
+    expect(
+      screen.getByTestId('share-freshness-row').querySelector('svg.lucide-triangle-alert'),
+    ).not.toBeNull();
+  });
+
+  test('a completed sync never turns the row into an all-clear', () => {
+    const { rerender } = render(
+      <ShareFreshnessWarning
+        freshness="empty"
+        status={makeStatus({ syncEnabled: true, state: 'idle', lastSyncUtc: null })}
+        kind="folder"
+      />,
+    );
+    // A sync completes elsewhere (the auto-sync cadence) and bumps lastSyncUtc.
+    rerender(
+      <ShareFreshnessWarning
+        freshness="empty"
+        status={makeStatus({
+          syncEnabled: true,
+          state: 'idle',
+          lastSyncUtc: '2026-07-02T12:00:00Z',
+        })}
+        kind="folder"
+      />,
+    );
+    const text = screen.getByTestId('share-freshness-row').textContent ?? '';
+    expect(text).not.toContain('Synced. The link is up to date.');
+    expect(text).toContain("Git can't track this folder");
+  });
+
+  test('the popover sizes for the row in both sync states', () => {
+    expect(shareFreshnessRowVisible('empty', makeStatus({ syncEnabled: false }))).toBe(true);
+    expect(shareFreshnessRowVisible('empty', makeStatus({ syncEnabled: true }))).toBe(true);
   });
 });

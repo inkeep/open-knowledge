@@ -18,6 +18,8 @@
  *                              folder) is stale
  *   - `commitWithoutPush`   -> a seeded path edited + committed but not pushed
  *                              is stale (origin keeps the old blob)
+ *   - `mkdirWorkingTree`    -> a folder holding zero blobs, which git cannot
+ *                              represent and no push can put on origin
  * and the receive-side legs (`renameOnOrigin` / `renameFolderOnOrigin` /
  * `deleteOnOrigin`) advance origin so a receiver clone observes the move.
  * `deleteInReceiverWorkingTree` / `renameInReceiverWorkingTree` mutate the
@@ -49,6 +51,14 @@ export interface GitTriangle {
    * seeded folder, is stale.
    */
   writeWorkingTree(relPath: string, content: string): void;
+  /**
+   * Sender: create a directory (recursively) and nothing else. The only
+   * primitive that produces a folder holding zero blobs — every sibling writes
+   * a file, so a directory otherwise exists only as a by-product of one. Git
+   * has no object for such a folder, so it can never reach origin: the state
+   * where "not on origin" and "a push would fix it" come apart.
+   */
+  mkdirWorkingTree(relPath: string): void;
   /** Sender: overwrite + commit a seeded path but do NOT push (origin keeps the old blob). */
   commitWithoutPush(relPath: string, content: string): void;
   /** Sender -> origin: `git mv` a file + commit + push (origin gains `newRel`, loses `oldRel`). */
@@ -158,6 +168,9 @@ export function createGitTriangle(opts: { branch?: string } = {}): GitTriangle {
     },
     writeWorkingTree(relPath, content) {
       writeFile(senderDir, relPath, content);
+    },
+    mkdirWorkingTree(relPath) {
+      mkdirSync(join(senderDir, relPath), { recursive: true });
     },
     commitWithoutPush(relPath, content) {
       writeFile(senderDir, relPath, content);

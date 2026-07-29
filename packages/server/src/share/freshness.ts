@@ -2,7 +2,7 @@
  * Send-side freshness probe for `POST /api/share/construct-url`: does the
  * shared target match what origin has? Three local-only git reads against
  * `refs/remotes/origin/<branch>` — never a fetch — run in parallel and combine
- * into `current` / `stale` / `absent`.
+ * into `current` / `stale` / `absent` / `empty`.
  *
  * simple-git's `raw` rejects on non-empty stderr, not on exit code (see
  * `git-branch-info.ts`), so the exit-1 `diff --quiet` from the verified recipe
@@ -62,7 +62,14 @@ export async function computeShareFreshness(
       git.raw(['status', '--porcelain', '--untracked-files=all', '--', pathspec]),
     ]);
 
-    if (!present) return 'absent';
+    if (!present) {
+      // A folder absent from the ref with nothing to push is absent forever:
+      // git has no object for a folder holding zero blobs, so a push cannot
+      // put it on origin. Gated on `folder` because a doc is trackable at any
+      // size — a zero-byte file is absent now and current after a sync.
+      if (kind === 'folder' && trackedDiff.trim() === '' && untracked.trim() === '') return 'empty';
+      return 'absent';
+    }
     // Tracked drift (committed-unpushed or uncommitted) surfaces in the diff;
     // a brand-new untracked file beneath a shared folder surfaces only in
     // status. Either makes the recipient's copy differ from what they'd see.

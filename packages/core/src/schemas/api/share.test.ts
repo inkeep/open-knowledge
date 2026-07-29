@@ -245,8 +245,12 @@ describe('isBranchNotFoundGitError', () => {
 });
 
 describe('ShareFreshnessSchema (closed v1 enum)', () => {
-  test('accepts the three v1 freshness states', () => {
-    for (const value of ['current', 'stale', 'absent'] as const) {
+  test('accepts every freshness state the contract declares', () => {
+    // `empty` is the verdict for a folder git holds no object for: unlike
+    // `absent`, no push resolves it, so it cannot be folded into `absent`
+    // without the enum promising a remedy that does not exist.
+    for (const value of ['current', 'stale', 'absent', 'empty'] as const) {
+      expect(ShareFreshnessSchema.safeParse(value).success).toBe(true);
       expect(ShareFreshnessSchema.parse(value)).toBe(value);
     }
   });
@@ -273,7 +277,10 @@ describe('ShareConstructUrlResponseSchema freshness field', () => {
   });
 
   test('each valid freshness value round-trips on the success variant', () => {
-    for (const value of ['current', 'stale', 'absent'] as const) {
+    // The field is `.catch(undefined)`, so a value the enum does not carry is
+    // stripped silently rather than rejected — a verdict missing from the enum
+    // reaches no consumer at all.
+    for (const value of ['current', 'stale', 'absent', 'empty'] as const) {
       const parsed = ShareConstructUrlResponseSchema.parse({ ...successBase, freshness: value });
       expect(parsed.ok).toBe(true);
       if (parsed.ok) expect(parsed.freshness).toBe(value);

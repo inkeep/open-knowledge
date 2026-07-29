@@ -19,6 +19,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import type { z } from 'zod';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import { register, type ShareLinkDeps } from './share-link.ts';
@@ -37,6 +38,8 @@ interface RegisteredTool {
   name: string;
   description: string;
   inputSchema?: Record<string, unknown>;
+  /** Raw Zod shape the tool declares; each field is parseable on its own. */
+  outputSchema?: Record<string, z.ZodType>;
   handler: (args: { path: string; kind?: 'doc' | 'folder'; cwd?: string }) => Promise<ToolResult>;
 }
 
@@ -45,13 +48,18 @@ function createFakeServer() {
   const server = {
     registerTool(
       name: string,
-      cfg: { description?: string; inputSchema?: Record<string, unknown> },
+      cfg: {
+        description?: string;
+        inputSchema?: Record<string, unknown>;
+        outputSchema?: Record<string, z.ZodType>;
+      },
       handler: RegisteredTool['handler'],
     ) {
       registered = {
         name,
         description: cfg.description ?? '',
         inputSchema: cfg.inputSchema,
+        outputSchema: cfg.outputSchema,
         handler,
       };
     },
@@ -787,6 +795,31 @@ describe('share_link — freshness relay (FR6)', () => {
     expect(result.structuredContent).toMatchObject({ ok: true });
     expect(result.structuredContent?.freshness).toBeUndefined();
     expect(result.content[0]?.text?.startsWith('Share link for')).toBe(true);
+  });
+
+  test('relays the empty-folder sentence instead of a push remedy', async () => {
+    await mkdir(resolve(tmpDir, 'hollow'), { recursive: true });
+    mockResponse = { status: 200, body: { ...successBody(), freshness: 'empty' } };
+    const { server, getTool } = createFakeServer();
+    register(server, makeDeps(baseUrl));
+    const result = await getTool().handler({ path: 'hollow' });
+    expect(result.structuredContent).toMatchObject({ ok: true, freshness: 'empty' });
+    const text = result.content[0]?.text ?? '';
+    expect(text).toContain("Git can't track this folder");
+    expect(text).toContain(
+      "it's empty or contains only ignored files. The link won't work until you add a tracked document.",
+    );
+    // The agent must not relay a remedy no push can deliver.
+    expect(text).not.toContain("isn't on GitHub yet");
+  });
+
+  test('declares the empty verdict in the output schema so strict clients accept it', () => {
+    const { server, getTool } = createFakeServer();
+    register(server, makeDeps(baseUrl));
+    // Claude validates `structuredContent` against this schema with AJV, so a
+    // verdict the tool can emit but the schema omits is rejected client-side.
+    const freshnessSchema = getTool().outputSchema?.freshness;
+    expect(freshnessSchema?.safeParse('empty').success).toBe(true);
   });
 
   test('tolerates an unknown freshness value: no warning, field omitted, tool still succeeds (D21)', async () => {

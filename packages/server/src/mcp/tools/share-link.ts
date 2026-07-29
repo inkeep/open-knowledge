@@ -19,6 +19,7 @@ import {
   type ShareConstructUrlErrorCode,
   ShareConstructUrlResponseSchema,
   type ShareFreshness,
+  ShareFreshnessSchema,
 } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import { SUPPORTED_DOC_EXTENSIONS } from '../../doc-extensions.ts';
@@ -69,9 +70,10 @@ interface ShareLinkSuccess {
 /**
  * The relayable warning an agent prepends to a share link when the target
  * isn't current on origin — the `share_link` mirror of the popover's fact line
- * (kind substitutes doc/folder). `current` and `undefined` (the fail-open and
- * unknown-value cases) get no warning, so an older client that can't interpret
- * a newer freshness value degrades to silence rather than a bad relay.
+ * (kind substitutes doc/folder, except in the folder-only `empty` branch).
+ * `current` and `undefined` (the fail-open and unknown-value cases) get no
+ * warning, so an older client that can't interpret a newer freshness value
+ * degrades to silence rather than a bad relay.
  */
 function freshnessWarning(freshness: ShareFreshness | undefined, kind: ShareKind): string {
   if (freshness === 'absent') {
@@ -79,6 +81,12 @@ function freshnessWarning(freshness: ShareFreshness | undefined, kind: ShareKind
   }
   if (freshness === 'stale') {
     return `This ${kind} has unpushed changes. Recipients will see the last pushed version.\n\n`;
+  }
+  if (freshness === 'empty') {
+    // Hardcodes "folder" rather than substituting `kind`: the producer in
+    // freshness.ts emits `empty` only for `kind === 'folder'`, so a doc never
+    // reaches this branch.
+    return `Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document.\n\n`;
   }
   return '';
 }
@@ -285,12 +293,14 @@ const OutputSchema = outputSchemaWithText({
     .enum(['doc', 'folder'])
     .optional()
     .describe('Kind the target resolved to (success only).'),
-  freshness: z
-    .enum(['current', 'stale', 'absent'])
-    .optional()
-    .describe(
-      'Whether the shared target matches origin (success only): current, stale (unpushed edits), or absent (not on origin). Omitted when the probe could not run.',
-    ),
+  // Reuses the canonical enum rather than restating it. A strict client (AJV)
+  // rejects the whole `structuredContent` when the declared schema and the
+  // emitted value disagree, so a hand-maintained copy here turns any future
+  // widening of `ShareFreshnessSchema` into a runtime rejection with no
+  // compile-time warning. Importing it makes the two diverge-proof.
+  freshness: ShareFreshnessSchema.optional().describe(
+    'Whether the shared target matches origin (success only): current, stale (unpushed edits), absent (not on origin, a push fixes it), or empty (a folder holding nothing git can track, which no push fixes). Omitted when the probe could not run.',
+  ),
   error: z
     .enum([
       'no-remote',

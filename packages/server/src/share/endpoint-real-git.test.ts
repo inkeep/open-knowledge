@@ -41,6 +41,25 @@ async function postTargetStatus(port: number, body: unknown): Promise<Response> 
   });
 }
 
+async function postConstructUrl(port: number, body: unknown): Promise<Response> {
+  return fetch(`http://127.0.0.1:${port}/api/share/construct-url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Point the triangle's sender at a github.com URL so the handler's origin gate
+ * classifies it as a GitHub remote and reaches the freshness probe. Every probe
+ * downstream (`rev-parse` / `cat-file` / `diff` / `status`) reads local refs, so
+ * the unreachable URL is never contacted and the real push already recorded
+ * `refs/remotes/origin/<branch>`.
+ */
+function repointOriginAtGitHub(t: GitTriangle): void {
+  t.git(t.senderDir, ['remote', 'set-url', 'origin', 'https://github.com/o/r.git']);
+}
+
 async function getBranchInfo(
   port: number,
   query: { branch: string; path: string; kind: 'doc' | 'folder' },
@@ -152,6 +171,66 @@ describe('GET /api/git/branch-info (shareTargetOnOriginBranch over HTTP)', () =>
     });
     expect(absent.status).toBe(200);
     expect((await absent.json()).shareTargetOnOriginBranch).toBe(false);
+  });
+});
+
+describe('POST /api/share/construct-url (freshness computed through the endpoint)', () => {
+  test('a folder holding no files reports the empty verdict on the wire', async () => {
+    const t = newTriangle();
+    t.mkdirWorkingTree('hollow');
+    repointOriginAtGitHub(t);
+
+    rig = await bootEndpointServer({ projectDir: t.senderDir });
+    const res = await postConstructUrl(rig.port, { kind: 'folder', folderPath: 'hollow' });
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as Record<string, unknown>;
+    // The whole composition, not just the producer: the response schema's
+    // `.catch(undefined)` strips a freshness value its enum does not carry, so
+    // an unwidened enum returns 200 with the field silently gone — no error, no
+    // log, and the client sees "no signal" instead of the warning.
+    expect(json).toMatchObject({
+      ok: true,
+      branch: t.branch,
+      sharedUrl: 'https://github.com/o/r/tree/main/hollow',
+      freshness: 'empty',
+    });
+  });
+
+  test('a folder holding an untracked doc still reports absent — a push does fix that one', async () => {
+    const t = newTriangle();
+    t.writeWorkingTree('drafts/note.md', '# draft\n');
+    repointOriginAtGitHub(t);
+
+    rig = await bootEndpointServer({ projectDir: t.senderDir });
+    const res = await postConstructUrl(rig.port, { kind: 'folder', folderPath: 'drafts' });
+
+    expect(res.status).toBe(200);
+    expect((await res.json()) as Record<string, unknown>).toMatchObject({
+      ok: true,
+      freshness: 'absent',
+    });
+  });
+
+  test('a folder whose only contents are gitignored reports empty on the wire', async () => {
+    const t = newTriangle();
+    t.seedAndPush('.gitignore', 'scratch/\n');
+    t.writeWorkingTree('scratch/note.md', '# ignored\n');
+    repointOriginAtGitHub(t);
+
+    rig = await bootEndpointServer({ projectDir: t.senderDir });
+    const res = await postConstructUrl(rig.port, { kind: 'folder', folderPath: 'scratch' });
+
+    expect(res.status).toBe(200);
+    // The sharpest cell, and the one most likely to regress into `absent`: the
+    // folder looks populated on disk but is invisible to git, so the untracked
+    // probe comes back empty exactly as it does for a bare directory. Pinned at
+    // the endpoint tier because that is where the verdict has to survive the
+    // response schema to reach a client.
+    expect((await res.json()) as Record<string, unknown>).toMatchObject({
+      ok: true,
+      freshness: 'empty',
+    });
   });
 });
 

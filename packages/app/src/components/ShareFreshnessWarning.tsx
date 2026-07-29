@@ -33,12 +33,14 @@ const PUSH_DOCS_URL = 'https://git-scm.com/docs/git-push';
 /**
  * Whether the warning row renders for `(freshness, status)`. The share popover
  * reads this to size itself before the row mounts. `current` / omitted freshness
- * never warns; `stale` with auto-sync ON is the ratified silent cell.
+ * never warns; `stale` with auto-sync ON is the ratified silent cell. `empty`
+ * warns unconditionally — no sync setting makes an untrackable folder shareable.
  */
 export function shareFreshnessRowVisible(
   freshness: ShareFreshness | undefined,
   status: GitSyncStatus | null,
 ): boolean {
+  if (freshness === 'empty') return true;
   if (freshness !== 'stale' && freshness !== 'absent') return false;
   if (freshness === 'stale' && status?.syncEnabled === true) return false;
   return true;
@@ -98,6 +100,21 @@ export function ShareFreshnessWarning({ freshness, status, kind }: ShareFreshnes
 
   const rowClass =
     'flex items-start gap-2 rounded-md border border-dashed border-border bg-muted/40 p-2 text-xs text-muted-foreground';
+
+  // Ahead of every other branch on purpose: no CTA on this row is a real
+  // remedy, and no completed sync turns it into an all-clear, because nothing
+  // a push can carry is missing. Adding a document is the only way out, so the
+  // row states that and stops.
+  if (freshness === 'empty') {
+    return (
+      <div className={rowClass} data-testid="share-freshness-row">
+        <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+        <span>
+          {t`Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document.`}
+        </span>
+      </div>
+    );
+  }
 
   if (syncNow === 'synced') {
     return (
