@@ -260,6 +260,23 @@ export function makeReleaseWindow({
 }
 
 /**
+ * A failure that no later run will pick up, so a person has to.
+ *
+ * Every other per-candidate failure happens before the marker is written, which
+ * means the next release run enumerates that ticket again and tries again by
+ * itself. This one happens after, so the ticket looks notified to every future
+ * run while the reporter was never actually told. The two need opposite
+ * responses — wait versus act — and an operator reading a red job should not
+ * have to infer which from the wording of an error message.
+ */
+export class NeedsHumanError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'NeedsHumanError';
+  }
+}
+
+/**
  * Walk every candidate and decide, for each, whether to reply and where.
  *
  * Boundaries are injected so the whole decision path is testable with no Linear
@@ -416,11 +433,11 @@ export async function runWriteBack({
       try {
         await postReply(origin, text);
       } catch (err) {
-        // Past the point of no return. Re-raise saying so, because the generic
-        // "could not be processed" this lands in reads as retryable and this
-        // one is not: the marker stands, so no later run will pick it up and
-        // the only remaining fix is a reply posted by hand.
-        throw new Error(
+        // Past the point of no return. Re-raise as its own type, because the
+        // generic "could not be processed" this lands in reads as retryable and
+        // this one is not: the marker stands, so no later run will pick it up
+        // and the only remaining fix is a reply posted by hand.
+        throw new NeedsHumanError(
           `marker for ${origin.url} was written but the reply did NOT send (${err.message}). ` +
             'No future run will retry it; post the reply by hand.',
         );
@@ -434,8 +451,11 @@ export async function runWriteBack({
     try {
       await processCandidate(candidate);
     } catch (err) {
-      log(`::warning::write-back: ${candidate.identifier} could not be processed: ${err.message}`);
-      errored.push({ identifier: candidate.identifier, message: err.message });
+      const disposition = err instanceof NeedsHumanError ? 'needs-human' : 'retried-next-run';
+      log(
+        `::warning::write-back: ${candidate.identifier} could not be processed (${disposition}): ${err.message}`,
+      );
+      errored.push({ identifier: candidate.identifier, message: err.message, disposition });
     }
   }
 
@@ -448,31 +468,240 @@ export async function runWriteBack({
  * returned rather than thrown where it is decided, so that "errors must still
  * turn the job red" is one expression a test can hold on to instead of a branch
  * inside an entry point nothing can call.
+ *
+ * Red is red either way, but the two dispositions want opposite responses and
+ * the message says which. A run that is red only because Linear wobbled needs
+ * nobody to do anything; a marker written without its reply needs a person, and
+ * saying so in the same breath as the failure is the difference between that
+ * being noticed and it being read as one more flake.
  */
 export function runFailureMessage({ errored = [] } = {}) {
   if (errored.length === 0) return null;
-  return (
+  const head =
     `${errored.length} of the candidates could not be processed: ` +
-    errored.map((e) => `${e.identifier} (${e.message})`).join('; ')
+    errored.map((e) => `${e.identifier} (${e.message})`).join('; ');
+
+  const needsHuman = errored.filter((e) => e.disposition === 'needs-human');
+  if (needsHuman.length === 0) {
+    return `${head}. No marker was written for any of them, so the next release run picks them up again.`;
+  }
+  return (
+    `${head}. ACTION REQUIRED: ${needsHuman.map((e) => e.identifier).join(', ')} ` +
+    `${needsHuman.length === 1 ? 'was' : 'were'} marked as notified but the reply never sent; ` +
+    'no future run will retry, so post it by hand.'
   );
 }
 
 // --- workflow-runtime wiring (real Linear / git / gh / Discord boundary) ---
 
-async function linearGraphql({ apiKey, query, variables }) {
-  const res = await fetch(LINEAR_GRAPHQL_URL, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: apiKey },
-    body: JSON.stringify({ query, variables }),
-  });
-  if (!res.ok) {
-    throw new Error(`Linear GraphQL returned HTTP ${res.status}: ${(await res.text()).slice(0, 400)}`);
+export const LINEAR_RETRY_ATTEMPTS = 3;
+export const LINEAR_RETRY_BASE_MS = 500;
+export const LINEAR_RETRY_CAP_MS = 8000;
+
+/**
+ * How long any one outbound request may go unanswered.
+ *
+ * A connection that is refused or dropped surfaces immediately, but one that is
+ * accepted and then goes silent is left running by undici for five minutes:
+ * half this job's entire budget, spent without a single word in the log. Two of
+ * them outlast the job, so an unbounded request does not merely delay the retry,
+ * it guarantees the retry is never spent and the run dies as a bare Actions
+ * timeout carrying none of the disposition it exists to report.
+ *
+ * The ceiling is far above any answer either endpoint has a reason to be slow
+ * about, so reaching it means silence rather than load.
+ */
+export const REQUEST_TIMEOUT_MS = 15_000;
+
+/**
+ * Which HTTP replies from Linear are worth asking again about.
+ *
+ * A 4xx is Linear having read the request and rejected it — a bad credential, a
+ * malformed query, a filter the schema does not have. Asking again produces the
+ * same answer, so retrying only delays a correct failure and buries its message
+ * under attempts. A 5xx is the opposite: the one seen in the wild was an Envoy
+ * `connection termination` raised before authentication ran at all, so the edge
+ * never reached the backend and the request as written was never judged. 429 is
+ * Linear naming a wait out loud.
+ *
+ * The distinction earns its keep at this scale rather than in principle. One
+ * enumeration makes several hundred sequential requests; meeting at least one
+ * blip across them is nearer to expected than to unlucky, and a single one used
+ * to fail the entire job.
+ */
+export function isRetryableStatus(status) {
+  return status === 429 || (status >= 500 && status < 600);
+}
+
+const RETRYABLE_NETWORK_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EPIPE',
+  'ETIMEDOUT',
+  'UND_ERR_SOCKET',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+]);
+
+/**
+ * Whether a throw out of `fetch` describes a connection that failed rather than
+ * a request that was answered.
+ *
+ * Nothing was interpreted in that case — no status, no body — so the request is
+ * in exactly the state a 5xx leaves it in and gets the same treatment. undici
+ * reports these as a bare `TypeError: fetch failed` and hangs the real reason
+ * off `cause`, so the chain is walked rather than the top-level message read.
+ * An unrecognised throw is deliberately NOT retried: absent a reason to think
+ * the connection was at fault, repeating it is guesswork.
+ *
+ * A request abandoned at its own deadline is matched by name rather than by
+ * code: `AbortSignal.timeout` rejects with a DOMException whose `code` is the
+ * numeric legacy 23, which the table of string codes below cannot see. Its
+ * sibling `AbortError` is pointedly absent, because an abort no clock asked for
+ * was somebody's decision and repeating the request would be overriding it.
+ */
+export function isRetryableNetworkError(err) {
+  for (let cur = err, depth = 0; cur && typeof cur === 'object' && depth < 5; cur = cur.cause, depth += 1) {
+    if (cur.name === 'TimeoutError') return true;
+    if (RETRYABLE_NETWORK_CODES.has(cur.code)) return true;
+    if (/fetch failed|socket hang up|other side closed|terminated|network/i.test(String(cur.message ?? ''))) {
+      return true;
+    }
   }
-  const payload = await res.json();
-  if (payload.errors?.length) {
-    throw new Error(`Linear GraphQL error: ${payload.errors.map((e) => e.message).join('; ')}`);
+  return false;
+}
+
+/** `Retry-After` in its delta-seconds form; the HTTP-date form falls through to backoff. */
+export function parseRetryAfterSeconds(header) {
+  const seconds = Number(String(header ?? '').trim());
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}
+
+/**
+ * How long to wait before the next attempt.
+ *
+ * Half the exponential window plus a random slice of the other half. The random
+ * part keeps concurrent retriers from re-colliding in lockstep after a shared
+ * outage; keeping the first half fixed guarantees the wait is never so short
+ * that the retry is just a second helping of the same hammering. An explicit
+ * `Retry-After` wins over the computed window but is still capped, so a large
+ * one cannot park the job for the length of its own timeout.
+ */
+export function retryDelayMs({
+  attempt,
+  retryAfterSeconds = null,
+  base = LINEAR_RETRY_BASE_MS,
+  cap = LINEAR_RETRY_CAP_MS,
+  random = Math.random,
+}) {
+  if (retryAfterSeconds !== null) return Math.min(retryAfterSeconds * 1000, cap);
+  const window = Math.min(base * 2 ** (attempt - 1), cap);
+  return Math.round(window / 2 + random() * (window / 2));
+}
+
+class LinearRequestError extends Error {
+  constructor(message, { retryable, retryAfterSeconds = null }) {
+    super(message);
+    this.name = 'LinearRequestError';
+    this.retryable = retryable;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
-  return payload.data;
+}
+
+const realSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * One Linear GraphQL call, retried when the failure says nothing about the
+ * request itself.
+ *
+ * Both call sites are safe to repeat. The reads are reads. The one mutation
+ * creates an attachment whose URL is deterministic in (origin, version), and
+ * Linear treats that URL as an idempotent key against the issue — the same
+ * property the cross-run at-most-once guarantee already rests on, which is
+ * strictly stronger than repeating the call inside a single run. Retrying it
+ * also closes a hole that not retrying leaves open: a marker that was written
+ * but whose reply was lost in transit reads to the next run as `already
+ * notified`, so the reporter is never told and nothing says so.
+ *
+ * Payload-level `errors` are never retried. A 200 carrying them means the query
+ * was understood and refused, which is the 4xx case wearing a different status.
+ */
+export async function linearGraphql({
+  apiKey,
+  query,
+  variables,
+  fetchImpl = fetch,
+  sleep = realSleep,
+  random = Math.random,
+  attempts = LINEAR_RETRY_ATTEMPTS,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+  log = () => {},
+}) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      let res;
+      try {
+        // Minted per attempt, so a retry starts with a fresh deadline rather
+        // than inheriting the spent one. It stays live through the body reads
+        // below, which is what bounds a reply that begins and then stops.
+        res = await fetchImpl(LINEAR_GRAPHQL_URL, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: apiKey },
+          body: JSON.stringify({ query, variables }),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+      } catch (err) {
+        throw new LinearRequestError(`Linear GraphQL request failed before any reply: ${err.message}`, {
+          retryable: isRetryableNetworkError(err),
+        });
+      }
+
+      if (!res.ok) {
+        // The status is the part that decides retryability, so reading the body
+        // must not be able to take it away: the same dropped connection that
+        // produced a 5xx can drop again mid-body.
+        let body = '';
+        try {
+          body = (await res.text()).slice(0, 400);
+        } catch (err) {
+          body = `<body unreadable: ${err.message}>`;
+        }
+        throw new LinearRequestError(`Linear GraphQL returned HTTP ${res.status}: ${body}`, {
+          retryable: isRetryableStatus(res.status),
+          retryAfterSeconds: parseRetryAfterSeconds(res.headers?.get?.('retry-after')),
+        });
+      }
+
+      let payload;
+      try {
+        payload = await res.json();
+      } catch (err) {
+        // A body that died in transit is the connection failing a beat later
+        // than the cases above and gets the same treatment. A body that arrived
+        // whole and simply is not JSON is not, and its SyntaxError says so.
+        throw new LinearRequestError(`Linear GraphQL reply could not be read: ${err.message}`, {
+          retryable: isRetryableNetworkError(err),
+        });
+      }
+      if (payload.errors?.length) {
+        throw new LinearRequestError(`Linear GraphQL error: ${payload.errors.map((e) => e.message).join('; ')}`, {
+          retryable: false,
+        });
+      }
+      return payload.data;
+    } catch (err) {
+      if (attempt >= attempts || !err.retryable) throw err;
+      const delay = retryDelayMs({ attempt, retryAfterSeconds: err.retryAfterSeconds, random });
+      log(
+        `::notice::write-back: Linear call failed transiently (${err.message}); retrying in ${delay}ms ` +
+          `(attempt ${attempt + 1} of ${attempts}).`,
+      );
+      await sleep(delay);
+    }
+  }
 }
 
 function toNode(raw) {
@@ -485,11 +714,11 @@ function toNode(raw) {
   };
 }
 
-async function paginate({ apiKey, query, variables }) {
+async function paginate({ apiKey, query, variables, log }) {
   const collected = [];
   let after = null;
   do {
-    const data = await linearGraphql({ apiKey, query, variables: { ...variables, after } });
+    const data = await linearGraphql({ apiKey, query, variables: { ...variables, after }, log });
     const page = data?.issues;
     if (!page) throw new Error('Linear returned no issues connection; refusing to treat that as an empty result.');
     collected.push(...page.nodes.map(toNode));
@@ -708,10 +937,16 @@ async function realPostReply(origin, text) {
     const url = process.env.DISCORD_NOTIFY_URL;
     const token = process.env.DISCORD_NOTIFY_TOKEN;
     if (!url || !token) throw new Error('DISCORD_NOTIFY_URL / DISCORD_NOTIFY_TOKEN are required to reply on Discord');
+    // Deadlined but deliberately not retried: this runs after the marker is
+    // written, so a second send could double-post. The deadline is what turns a
+    // bot that stopped answering into the needs-human disposition the caller
+    // raises, instead of a silent hang in the one state (marked, not delivered)
+    // that nobody can infer from a job that simply ran out of time.
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
       body: JSON.stringify({ threadId: origin.threadId, content: text }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (!res.ok) {
       throw new Error(`notify endpoint returned HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
@@ -764,8 +999,8 @@ async function main() {
   }
 
   const result = await runWriteBack({
-    listCandidates: () => paginate({ apiKey, query: CANDIDATE_QUERY, variables: {} }),
-    listChildren: (parentId) => paginate({ apiKey, query: CHILDREN_QUERY, variables: { parentId } }),
+    listCandidates: () => paginate({ apiKey, query: CANDIDATE_QUERY, variables: {}, log }),
+    listChildren: (parentId) => paginate({ apiKey, query: CHILDREN_QUERY, variables: { parentId }, log }),
     versionFor,
     classifyRelease,
     readChangesetProse: (candidate, ctx) => realReadChangesetProse(candidate, ctx),
@@ -776,6 +1011,7 @@ async function main() {
         query:
           'mutation Mark($input: AttachmentCreateInput!) { attachmentCreate(input: $input) { success } }',
         variables: { input: { issueId, url, title } },
+        log,
       });
       // A dropped marker is not cosmetic: it is what stops the next run
       // replying to the same reporter again.

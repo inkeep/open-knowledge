@@ -7,10 +7,17 @@ import {
   deriveVersionForFixRefs,
   findChangesetPath,
   isFixRepoInRemit,
+  isRetryableNetworkError,
+  isRetryableStatus,
+  LINEAR_RETRY_ATTEMPTS,
+  LINEAR_RETRY_CAP_MS,
+  linearGraphql,
   makeReleaseWindow,
   notificationMarkerUrl,
   parseChangeset,
   parseMergeShaOutput,
+  parseRetryAfterSeconds,
+  retryDelayMs,
   runFailureMessage,
   runWriteBack,
   selectGhToken,
@@ -577,6 +584,296 @@ describe('one unreadable candidate does not silence the rest', () => {
     expect(failure.message).toContain('502');
     // The marker really was written; that is why the message says what it says.
     expect(h.writes.map((w) => w.kind)).toEqual(['mark']);
+  });
+});
+
+describe('telling a failure that waits from a failure that needs a person', () => {
+  test('a failure before the marker is filed as one the next run picks up', async () => {
+    const h = harness({
+      live: true,
+      versionFor: async () => {
+        throw new Error('Linear GraphQL returned HTTP 503');
+      },
+    });
+    const result = await h.run();
+
+    // No marker was written, so the ticket is enumerated again next release and
+    // tried again by itself. Nobody has to do anything.
+    expect(h.writes).toEqual([]);
+    expect(result.errored[0].disposition).toBe('retried-next-run');
+  });
+
+  test('a reply lost after its marker was written is filed as one that needs a person', async () => {
+    const h = harness({
+      live: true,
+      postReply: async () => {
+        throw new Error('notify endpoint returned HTTP 502');
+      },
+    });
+    const result = await h.run();
+
+    expect(result.errored[0].disposition).toBe('needs-human');
+    expect(h.logs.some((m) => m.includes('needs-human'))).toBe(true);
+  });
+
+  test('the run verdict names the tickets a person has to pick up, and stays quiet when none do', () => {
+    const transient = runFailureMessage({
+      errored: [{ identifier: 'PRD-0001', message: 'HTTP 503', disposition: 'retried-next-run' }],
+    });
+    expect(transient).toContain('next release run picks them up');
+    expect(transient).not.toContain('ACTION REQUIRED');
+
+    const needsHuman = runFailureMessage({
+      errored: [
+        { identifier: 'PRD-0001', message: 'HTTP 503', disposition: 'retried-next-run' },
+        { identifier: 'PRD-0002', message: 'marker written, reply did NOT send', disposition: 'needs-human' },
+      ],
+    });
+    // Both are red. Only one of them is a job for a person, and a verdict that
+    // did not say which would read as one more flake.
+    expect(needsHuman).toContain('ACTION REQUIRED');
+    expect(needsHuman).toContain('PRD-0002');
+    expect(needsHuman).not.toMatch(/ACTION REQUIRED[^.]*PRD-0001/);
+  });
+});
+
+describe('a Linear call that failed for reasons unrelated to the request', () => {
+  const ok = (data) => ({ ok: true, status: 200, json: async () => ({ data }), headers: { get: () => null } });
+  const fail = (status, body = 'upstream connect error', headers = {}) => ({
+    ok: false,
+    status,
+    text: async () => body,
+    headers: { get: (name) => headers[String(name).toLowerCase()] ?? null },
+  });
+
+  // Every attempt is recorded and no wall-clock time passes: `sleep` only notes
+  // what it was asked to wait, and `random` is fixed so the delay is exact.
+  function callLinear(replies, overrides = {}) {
+    const slept = [];
+    const logs = [];
+    let attempts = 0;
+    const call = linearGraphql({
+      apiKey: 'k',
+      query: 'query {}',
+      variables: {},
+      fetchImpl: async (_url, init) => {
+        const reply = replies[attempts];
+        attempts += 1;
+        if (typeof reply === 'function') return reply(init);
+        return reply;
+      },
+      sleep: async (ms) => slept.push(ms),
+      random: () => 0.5,
+      log: (m) => logs.push(m),
+      ...overrides,
+    });
+    return { call, slept, logs, attemptCount: () => attempts };
+  }
+
+  test('a 503 is asked again rather than failing the whole job', async () => {
+    // The exact shape of the failure that broke the v0.45.0 run: an Envoy reply
+    // raised before authentication, among hundreds of requests that worked.
+    const h = callLinear([
+      fail(503, 'upstream connect error or disconnect/reset before headers'),
+      ok({ issues: { nodes: [] } }),
+    ]);
+    await expect(h.call).resolves.toEqual({ issues: { nodes: [] } });
+    expect(h.attemptCount()).toBe(2);
+    expect(h.slept).toHaveLength(1);
+    expect(h.logs.join(' ')).toContain('retrying in');
+  });
+
+  test('a 401 is not asked again, because the answer would be the same', async () => {
+    // Retrying a genuine credential failure only delays a correct verdict and
+    // buries its message under attempts. The distinguishing detail must survive.
+    const h = callLinear([fail(401, '{"errors":[{"type":"AUTHENTICATION_ERROR"}]}')]);
+    await expect(h.call).rejects.toThrow(/HTTP 401/);
+    await expect(h.call).rejects.toThrow(/AUTHENTICATION_ERROR/);
+    expect(h.attemptCount()).toBe(1);
+    expect(h.slept).toEqual([]);
+  });
+
+  test('every 4xx that is not 429 fails fast, and every 5xx is retried', () => {
+    for (const status of [400, 401, 403, 404, 409, 422]) expect(isRetryableStatus(status)).toBe(false);
+    for (const status of [429, 500, 502, 503, 504]) expect(isRetryableStatus(status)).toBe(true);
+    expect(isRetryableStatus(200)).toBe(false);
+  });
+
+  test('a 429 waits as long as Linear asked rather than as long as the backoff computed', async () => {
+    const h = callLinear([fail(429, 'slow down', { 'retry-after': '2' }), ok({ issues: {} })]);
+    await h.call;
+    expect(h.slept).toEqual([2000]);
+  });
+
+  test('an outsized Retry-After is capped, so one reply cannot park the job', () => {
+    expect(retryDelayMs({ attempt: 1, retryAfterSeconds: 3600 })).toBe(LINEAR_RETRY_CAP_MS);
+    expect(parseRetryAfterSeconds('2')).toBe(2);
+    // The HTTP-date form is not delta-seconds; it falls through to backoff.
+    expect(parseRetryAfterSeconds('Wed, 30 Jul 2026 19:11:09 GMT')).toBeNull();
+    expect(parseRetryAfterSeconds(null)).toBeNull();
+    expect(parseRetryAfterSeconds('0')).toBeNull();
+  });
+
+  test('the wait grows between attempts and is never long enough to be unbounded', () => {
+    const first = retryDelayMs({ attempt: 1, random: () => 0.5 });
+    const second = retryDelayMs({ attempt: 2, random: () => 0.5 });
+    expect(second).toBeGreaterThan(first);
+    expect(retryDelayMs({ attempt: 20, random: () => 1 })).toBeLessThanOrEqual(LINEAR_RETRY_CAP_MS);
+    // Half the window is fixed, so a retry is never a second helping of the
+    // same hammering; the other half is where the jitter lives.
+    expect(retryDelayMs({ attempt: 1, random: () => 0 })).toBeLessThan(retryDelayMs({ attempt: 1, random: () => 1 }));
+    expect(retryDelayMs({ attempt: 1, random: () => 0 })).toBeGreaterThan(0);
+  });
+
+  test('a connection that never produced a reply is retried like a 5xx', async () => {
+    // undici reports a reset as a bare `fetch failed` and hangs the reason off
+    // `cause`, so the chain has to be walked rather than the message read.
+    const reset = Object.assign(new TypeError('fetch failed'), {
+      cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+    });
+    const h = callLinear([
+      () => {
+        throw reset;
+      },
+      ok({ issues: {} }),
+    ]);
+    await expect(h.call).resolves.toEqual({ issues: {} });
+    expect(h.attemptCount()).toBe(2);
+  });
+
+  test('a throw with no sign the connection was at fault is not retried on a guess', async () => {
+    const h = callLinear([
+      () => {
+        throw new TypeError('Invalid header value');
+      },
+    ]);
+    await expect(h.call).rejects.toThrow(/before any reply/);
+    expect(h.attemptCount()).toBe(1);
+  });
+
+  test('a reply that never arrives is given up on rather than allowed to eat the job', async () => {
+    // The case the retry is otherwise blind to. undici leaves a connection that
+    // was accepted and then went silent running for five minutes by default, so
+    // two of them exceed the job's own budget: without a deadline on the request
+    // the attempt below is never reached, and the run dies as an Actions timeout
+    // carrying none of the disposition it would otherwise have reported.
+    const h = callLinear(
+      [
+        (init) => {
+          if (!init?.signal) throw new Error('the request carried no deadline');
+          // What undici does when the signal fires: reject with its reason.
+          return new Promise((_resolve, reject) => {
+            init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true });
+          });
+        },
+        ok({ issues: {} }),
+      ],
+      { timeoutMs: 20 },
+    );
+    await expect(h.call).resolves.toEqual({ issues: {} });
+    expect(h.attemptCount()).toBe(2);
+  });
+
+  test('a request given up on at its deadline is retried, but a deliberate cancellation is not', async () => {
+    // Taken from the runtime rather than hand-rolled, because the shape is the
+    // whole point: `AbortSignal.timeout` rejects with a DOMException whose
+    // `code` is the numeric legacy 23 and not a string, so the code table cannot
+    // recognise it and its name is the only thing that can.
+    const signal = AbortSignal.timeout(1);
+    await new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true }));
+    expect(signal.reason.name).toBe('TimeoutError');
+    expect(isRetryableNetworkError(signal.reason)).toBe(true);
+    // An abort nobody asked a clock for was somebody's decision, and repeating
+    // the request would be overriding it.
+    expect(isRetryableNetworkError(new DOMException('cancelled', 'AbortError'))).toBe(false);
+  });
+
+  test('the network classifier reads codes anywhere in the cause chain, and refuses the rest', () => {
+    expect(isRetryableNetworkError(Object.assign(new Error('x'), { code: 'ECONNRESET' }))).toBe(true);
+    expect(isRetryableNetworkError(Object.assign(new Error('x'), { code: 'UND_ERR_SOCKET' }))).toBe(true);
+    expect(isRetryableNetworkError(new TypeError('fetch failed'))).toBe(true);
+    expect(isRetryableNetworkError(new Error('socket hang up'))).toBe(true);
+    expect(isRetryableNetworkError(new Error('Unexpected token < in JSON'))).toBe(false);
+    expect(isRetryableNetworkError(null)).toBe(false);
+  });
+
+  test('a 200 carrying GraphQL errors is a refusal, not a wobble, so it is not retried', async () => {
+    const h = callLinear([
+      {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({ errors: [{ message: 'Unknown field: notified' }] }),
+      },
+    ]);
+    await expect(h.call).rejects.toThrow(/Unknown field/);
+    expect(h.attemptCount()).toBe(1);
+  });
+
+  test('a service that stays down surfaces its own failure rather than a retry-shaped one', async () => {
+    const h = callLinear([fail(503), fail(503), fail(503), ok({ issues: {} })]);
+    await expect(h.call).rejects.toThrow(/HTTP 503/);
+    expect(h.attemptCount()).toBe(LINEAR_RETRY_ATTEMPTS);
+  });
+
+  test('a reply body that dies in transit is retried, since that is the connection failing a beat later', async () => {
+    const truncated = {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => {
+        throw Object.assign(new TypeError('terminated'), {
+          cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }),
+        });
+      },
+    };
+    const h = callLinear([truncated, ok({ issues: {} })]);
+    await expect(h.call).resolves.toEqual({ issues: {} });
+    expect(h.attemptCount()).toBe(2);
+  });
+
+  test('a reply that arrived whole and simply is not JSON is not retried', async () => {
+    const h = callLinear([
+      {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => {
+          throw new SyntaxError('Unexpected token < in JSON at position 0');
+        },
+      },
+    ]);
+    await expect(h.call).rejects.toThrow(/could not be read/);
+    expect(h.attemptCount()).toBe(1);
+  });
+
+  test('an unreadable error body cannot cost the status that decides retryability', async () => {
+    // The same dropped connection that produced the 5xx can drop again while
+    // its body is being read. Losing the status there would turn a retryable
+    // failure into an unclassifiable one.
+    const h = callLinear([
+      {
+        ok: false,
+        status: 503,
+        headers: { get: () => null },
+        text: async () => {
+          throw new Error('aborted');
+        },
+      },
+      ok({ issues: {} }),
+    ]);
+    await expect(h.call).resolves.toEqual({ issues: {} });
+    expect(h.attemptCount()).toBe(2);
+  });
+
+  test('the marker mutation is retried too, since its url is what makes it idempotent', async () => {
+    // The deterministic (origin, version) url is already what stops a SECOND
+    // RUN re-replying, which is a stronger claim than repeating one call. Not
+    // retrying it leaves the worse hole open: a marker that landed while its
+    // reply was lost reads to the next run as already-notified.
+    const h = callLinear([fail(503), ok({ attachmentCreate: { success: true } })]);
+    await expect(h.call).resolves.toEqual({ attachmentCreate: { success: true } });
+    expect(h.attemptCount()).toBe(2);
   });
 });
 
