@@ -33,6 +33,7 @@ if (globalWithDomShims.ResizeObserver === undefined) {
 }
 
 let mockProjectConfig: Config | null = null;
+let mockUserConfig: Config | null = null;
 let mockProjectSynced = true;
 let mockProjectBinding: ConfigBinding | null = null;
 
@@ -44,7 +45,7 @@ vi.doMock('@/lib/config-provider', () => ({
     projectLocalBinding: null,
     okignoreBinding: null,
     okignoreSynced: false,
-    userConfig: null,
+    userConfig: mockUserConfig,
     projectConfig: mockProjectConfig,
     projectSynced: mockProjectSynced,
     projectLocalConfig: null,
@@ -88,6 +89,27 @@ vi.doMock('@/editor/lint-config-client', () => ({
   },
 }));
 
+// The enable notice is a toast; capture it instead of rendering a Toaster so the
+// action's deep-link target is assertable without sonner's portal + timers.
+interface ToastOptions {
+  id?: string;
+  description?: string;
+  duration?: number;
+  action?: { label: string; onClick: () => void };
+}
+interface CapturedToast extends ToastOptions {
+  message: string;
+}
+const successToasts: CapturedToast[] = [];
+vi.doMock('sonner', () => ({
+  toast: {
+    success: (message: string, options?: ToastOptions) => {
+      successToasts.push({ message, ...options });
+    },
+    error: () => {},
+  },
+}));
+
 const { ProjectPluginsManageSection, UserPluginsManageSection, MarkdownlintPluginSection } =
   await import('./LintingSection');
 
@@ -103,25 +125,39 @@ function configWith(linter: SliceOverrides): Config {
   } as unknown as Config;
 }
 
-function makeBinding(): { binding: ConfigBinding; calls: unknown[] } {
+function makeBinding(options: { ok?: boolean } = {}): {
+  binding: ConfigBinding;
+  calls: unknown[];
+} {
   const calls: unknown[] = [];
+  const ok = options.ok !== false;
   const binding = {
     current: () => ({}),
     patch: (patch: unknown) => {
       calls.push(patch);
-      return { ok: true, value: { applied: [], effective: {} } };
+      return ok
+        ? { ok: true, value: { applied: [], effective: {} } }
+        : { ok: false, error: { code: 'invalid' } };
     },
     subscribe: () => () => {},
   } as unknown as ConfigBinding;
   return { binding, calls };
 }
 
+/** A config where every project plugin reads as OFF, so a click ENABLES it. */
+function configWithNoPluginsEnabled(): Config {
+  return { contentRules: {} } as unknown as Config;
+}
+
 beforeEach(() => {
   mockProjectConfig = configWith({});
+  mockUserConfig = null;
   mockProjectSynced = true;
   mockProjectBinding = null;
   mockProjectLintData = null;
   writeMarkdownlintRuleCalls.length = 0;
+  successToasts.length = 0;
+  window.location.hash = '';
 });
 
 afterEach(() => {
@@ -158,6 +194,61 @@ describe('ProjectPluginsManageSection', () => {
     });
   });
 
+  test('enabling a plugin offers its settings panel, and the offer deep-links there', async () => {
+    // The gap this closes: enabling happens here, but the plugin is configured
+    // on its own page — which can sit scrolled off screen in the sidebar.
+    mockProjectConfig = configWithNoPluginsEnabled();
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    render(<ProjectPluginsManageSection />);
+
+    await userEvent.click(screen.getByTestId('settings-plugin-toggle-frontmatter'));
+
+    expect(successToasts).toHaveLength(1);
+    expect(successToasts[0]?.message).toBe('Frontmatter schemas enabled');
+    successToasts[0]?.action?.onClick();
+    expect(window.location.hash).toBe('#settings/plugin:frontmatter');
+  });
+
+  test('the notice carries a per-plugin id so repeat toggles replace rather than stack', async () => {
+    // The fixed id is the whole mechanism behind "toggling the same plugin
+    // repeatedly replaces the notice"; without this assertion that claim is
+    // just a docstring. Duration and description are the other two options the
+    // notice depends on and nothing else pinned.
+    mockProjectConfig = configWithNoPluginsEnabled();
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    render(<ProjectPluginsManageSection />);
+
+    await userEvent.click(screen.getByTestId('settings-plugin-toggle-frontmatter'));
+    await userEvent.click(screen.getByTestId('settings-plugin-toggle-markdownlint'));
+
+    expect(successToasts.map((toast) => toast.id)).toEqual([
+      'plugin-enabled-frontmatter',
+      'plugin-enabled-markdownlint',
+    ]);
+    expect(successToasts[0]?.description).toBe('Set it up on its own page under Plugins.');
+    expect(successToasts[0]?.duration).toBe(8000);
+  });
+
+  test('disabling a plugin says nothing (nothing new to configure)', async () => {
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    // configWith({}) leaves markdownlint enabled, so this click turns it OFF.
+    render(<ProjectPluginsManageSection />);
+    await userEvent.click(screen.getByTestId('settings-plugin-toggle-markdownlint'));
+    expect(successToasts).toHaveLength(0);
+  });
+
+  test('a rejected write does not claim the plugin was enabled', async () => {
+    mockProjectConfig = configWithNoPluginsEnabled();
+    const { binding } = makeBinding({ ok: false });
+    mockProjectBinding = binding;
+    render(<ProjectPluginsManageSection />);
+    await userEvent.click(screen.getByTestId('settings-plugin-toggle-frontmatter'));
+    expect(successToasts).toHaveLength(0);
+  });
+
   test('disables controls until the binding is ready', () => {
     mockProjectBinding = null;
     mockProjectSynced = false;
@@ -185,6 +276,23 @@ describe('UserPluginsManageSection', () => {
     render(<UserPluginsManageSection userBinding={userBinding} />);
     await userEvent.click(screen.getByTestId('settings-plugin-toggle-theme'));
     expect(userCalls).toContainEqual({ appearance: { colorThemeEnabled: false } });
+    // Turning it OFF is not an invitation to go configure it.
+    expect(successToasts).toHaveLength(0);
+  });
+
+  test('re-enabling Themes offers its panel too (the user-scope plugin is not special-cased)', async () => {
+    const { binding: userBinding } = makeBinding();
+    // Absent-or-false is the only way `colorThemeEnabled` reads as off; the
+    // default is on, so start from an explicit false.
+    mockUserConfig = { appearance: { colorThemeEnabled: false } } as unknown as Config;
+    render(<UserPluginsManageSection userBinding={userBinding} />);
+
+    await userEvent.click(screen.getByTestId('settings-plugin-toggle-theme'));
+
+    expect(successToasts).toHaveLength(1);
+    expect(successToasts[0]?.message).toBe('Themes enabled');
+    successToasts[0]?.action?.onClick();
+    expect(window.location.hash).toBe('#settings/plugin:theme');
   });
 });
 
@@ -206,6 +314,26 @@ describe('MarkdownlintPluginSection', () => {
     // markdownlint is a project-scope plugin — the header carries a Project badge.
     expect(screen.getByTestId('settings-scope-badge-project')).toBeDefined();
     expect(screen.queryByTestId('settings-scope-badge-user')).toBeNull();
+  });
+
+  test('links its docs page from the panel header', () => {
+    // The standing counterpart to the enable toast — whoever lands here later
+    // (or after the toast expired) still has a route to the how-to.
+    mockProjectLintData = projectDataWithMarkdownlintRules({ default: true });
+    render(
+      <TooltipProvider>
+        <MarkdownlintPluginSection />
+      </TooltipProvider>,
+    );
+    const docs = screen.getByTestId(
+      'settings-plugin-markdownlint-title-docs-link',
+    ) as HTMLAnchorElement;
+    expect(docs.getAttribute('href')).toBe(
+      'https://openknowledge.ai/docs/advanced/content-rules/markdownlint',
+    );
+    // A link list full of bare "Learn more" tells a screen-reader user nothing;
+    // the accessible name names the destination and keeps the visible text.
+    expect(docs.getAttribute('aria-label')).toBe('Learn more about markdownlint');
   });
 
   test('names the project config file in the description when one is present', () => {

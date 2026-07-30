@@ -761,4 +761,19 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     expect(screen.getByTestId('settings-install-claude-desktop').textContent).toBe('Reinstall');
     expect(screen.getByTestId('install-claude-dialog').getAttribute('data-reinstall')).toBe('true');
   });
+  // Drift guard: `plugin:<id>` is constructed independently in three places —
+  // `pluginSettingsSectionId`, the shell's sidebar group, and this dispatcher.
+  // Nothing in the type system ties them, and the enable notice's deep link
+  // silently falls back to Preferences if they diverge. `lint-plugin-meta.test.ts`
+  // is the local precedent for this shape of guard.
+  test('dispatches every lint plugin id built by pluginSettingsSectionId', async () => {
+    const { pluginSettingsSectionId } = await import('@/lib/use-settings-route');
+    const { LINT_PLUGIN_META } = await import('./lint-plugin-meta');
+
+    for (const plugin of LINT_PLUGIN_META) {
+      cleanup();
+      await renderBody({ activeId: pluginSettingsSectionId(plugin.id) });
+      expect(screen.getByTestId(`settings-plugin-${plugin.id}`)).toBeTruthy();
+    }
+  });
 });

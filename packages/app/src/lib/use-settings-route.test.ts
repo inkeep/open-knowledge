@@ -7,6 +7,7 @@ import { describe, expect, test } from 'vitest';
 import {
   isSettingsHashOpen,
   isSettingsShortcut,
+  pluginSettingsSectionId,
   SETTINGS_OPEN_HASH,
   settingsHashSection,
 } from './use-settings-route';
@@ -61,6 +62,15 @@ describe('settingsHashSection', () => {
 
   test('non-settings hash → null', () => {
     expect(settingsHashSection('#/some-doc')).toBeNull();
+  });
+
+  test('round-trips a `plugin:<id>` section (the colon survives the parse)', () => {
+    // Plugin panels are the one sidebar family whose ids are not plain slugs —
+    // the enable toast deep-links to them, so the colon must reach the shell
+    // intact or the jump silently falls back to Preferences.
+    const hash = `#settings/${pluginSettingsSectionId('frontmatter')}`;
+    expect(isSettingsHashOpen(hash)).toBe(true);
+    expect(settingsHashSection(hash)).toBe('plugin:frontmatter');
   });
 });
 

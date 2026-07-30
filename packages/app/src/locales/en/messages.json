@@ -172,6 +172,7 @@
     "2ryd91": ["Failed to rename property"],
     "2tgFCe": ["Starting clone"],
     "2vIPtm": ["Open link in new tab"],
+    "2wTb8w": ["Set it up on its own page under Plugins."],
     "2wxgft": ["Rename"],
     "322lyb": ["Highlight tips, warnings, and notes."],
     "34qyH5": ["Could not reach server"],
@@ -1164,6 +1165,7 @@
       ")."
     ],
     "LhWYpm": ["Other OK paths are tracked upstream:"],
+    "Li4U-T": ["Learn more about ", ["title"]],
     "LiAw2k": ["What this changes"],
     "LlHqdU": ["Initializing project"],
     "Llyqvo": ["This usually means one of:"],
@@ -1769,6 +1771,7 @@
     "XcGbim": ["Show hidden files"],
     "Xet9MX": ["Failed to load backlinks"],
     "Xewl6B": ["Your local copy is behind. Pull the latest changes, then open the link again."],
+    "XfA5xx": [["label"], " enabled"],
     "XfzqjK": ["template \"", ["name"], "\""],
     "Xg-Ntj": ["The token needs the repo and read:user scopes."],
     "Xisk4u": ["Edited ", ["editedAgo"]],
@@ -1834,6 +1837,7 @@
     "YjhKI5": ["Cloning..."],
     "YkvmF4": ["New session"],
     "YlDuro": ["Fit height"],
+    "Yp-Hi_": ["Open settings"],
     "YsEYYS": [
       ["behind", "plural", { "one": ["#", " commit behind"], "other": ["#", " commits behind"] }]
     ],
@@ -3360,6 +3364,7 @@
     "ztKII6": ["Failed to add item"],
     "zvjCD4": ["Detailed diagnostics"],
     "zwBp5t": ["Private"],
+    "zwWKhA": ["Learn more"],
     "zyKa-I": ["Star us on GitHub"],
     "zz_Wd_": ["Mode"]
   }

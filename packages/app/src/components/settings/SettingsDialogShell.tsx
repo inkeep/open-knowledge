@@ -49,6 +49,7 @@ import { useDocumentContext } from '@/editor/DocumentContext';
 import { useConfigContext } from '@/lib/config-provider';
 import { isFileProtocolPage } from '@/lib/file-protocol-page';
 import { useClaudeDesktopIntegration } from '@/lib/handoff/use-claude-desktop-integration';
+import { subscribeToSettingsSection } from '@/lib/use-settings-route';
 import { cn } from '@/lib/utils';
 import { LINT_PLUGIN_META } from './lint-plugin-meta';
 import { buildSettingsSearchIndex, type SettingsSearchEntry } from './settings-search-index';
@@ -111,6 +112,13 @@ export function SettingsDialogShell({
       setSearchQuery('');
     }
   }, [open, initialSection]);
+
+  // Deep links fired while the dialog is ALREADY open (the plugin-enable
+  // notice's "Open settings") arrive here, not via `initialSection` — an
+  // in-dialog hash write is a `replaceState` and fires no `hashchange`, and its
+  // target can equal the current hash after a sidebar click moved `activeId`
+  // without it.
+  useEffect(() => subscribeToSettingsSection(setActiveId), []);
 
   // Imperative scroll-to-flash for a field the search navigated to. The target
   // renders inside the lazily-loaded body and, for schema sections, only once

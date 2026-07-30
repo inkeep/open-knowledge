@@ -489,6 +489,10 @@ msgstr ""
 msgid "{label} ({0})"
 msgstr ""
 
+#: src/components/settings/plugin-enabled-notice.ts
+msgid "{label} enabled"
+msgstr ""
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr ""
@@ -5248,6 +5252,14 @@ msgstr ""
 msgid "Layout options"
 msgstr ""
 
+#: src/components/settings/LintingSection.tsx
+msgid "Learn more"
+msgstr ""
+
+#: src/components/settings/LintingSection.tsx
+msgid "Learn more about {title}"
+msgstr ""
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Let agents use OpenKnowledge without asking"
 msgstr ""
@@ -6672,6 +6684,10 @@ msgstr ""
 
 #: src/components/TerminalRevealTab.tsx
 msgid "Open session dock"
+msgstr ""
+
+#: src/components/settings/plugin-enabled-notice.ts
+msgid "Open settings"
 msgstr ""
 
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -8401,6 +8417,10 @@ msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Set identity"
+msgstr ""
+
+#: src/components/settings/plugin-enabled-notice.ts
+msgid "Set it up on its own page under Plugins."
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx

@@ -113,6 +113,21 @@ beforeEach(() => {
 });
 
 describe('FrontmatterPluginSection — schema browser', () => {
+  test('links its docs page from the panel header', () => {
+    // The standing counterpart to the enable-time toast: the panel itself says
+    // where to read up on schema authoring.
+    render(<FrontmatterPluginSection />);
+    const docs = screen.getByTestId(
+      'settings-plugin-frontmatter-title-docs-link',
+    ) as HTMLAnchorElement;
+    expect(docs.getAttribute('href')).toBe(
+      'https://openknowledge.ai/docs/advanced/content-rules/frontmatter',
+    );
+    // The accessible name is built from the panel title — a wrong `title` would
+    // silently say "markdownlint" here, which only this assertion catches.
+    expect(docs.getAttribute('aria-label')).toBe('Learn more about Frontmatter schemas');
+  });
+
   test('renders one toggleable row per discovered file', () => {
     render(<FrontmatterPluginSection />);
     const mapped = screen.getByTestId('frontmatter-schema-row-.ok/schemas/doc.schema.json');

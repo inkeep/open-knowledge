@@ -44,6 +44,53 @@ function settingsSectionHash(sectionId: string): string {
   return `#settings/${sectionId}`;
 }
 
+/**
+ * In-dialog section navigation, dispatched alongside the hash write below.
+ *
+ * The hash alone cannot carry this. Sidebar clicks move the dialog's `activeId`
+ * WITHOUT touching the hash (deliberate — the hash is an entry point, not a
+ * durable route), so the two diverge; a navigation request whose target equals
+ * the current hash then writes nothing, and even an unconditional write of an
+ * identical value fires no `hashchange`. The result is a dead affordance on
+ * second use. This event re-fires regardless of value, the same problem the
+ * shell's `ruleQuery` nonce solves for repeat rule navigation.
+ */
+const SECTION_INTENT_EVENT = 'open-knowledge:settings-section-intent';
+
+/** Subscribe to in-dialog section navigation. Returns an unsubscribe. */
+export function subscribeToSettingsSection(onSection: (sectionId: string) => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const handler = (event: Event) => {
+    const { detail } = event as CustomEvent<string>;
+    if (typeof detail === 'string' && detail.length > 0) onSection(detail);
+  };
+  window.addEventListener(SECTION_INTENT_EVENT, handler);
+  return () => window.removeEventListener(SECTION_INTENT_EVENT, handler);
+}
+
+/**
+ * Navigate to a sidebar section, whether Settings is closed or already open.
+ *
+ * Closed: assigning the hash pushes a history entry and opens the dialog there.
+ * Open: `replaceState` keeps the URL truthful WITHOUT pushing — the dialog's
+ * `close()` is a single `history.back()`, so an extra entry would make the
+ * first Escape rewind to `#settings` (dialog stays open, panel snaps back to
+ * Preferences) instead of closing. The event is what actually moves the panel.
+ *
+ * The named wrappers below are the call-site vocabulary; keep new deep links as
+ * wrappers here rather than hand-building the hash at the call site.
+ */
+function openSettingsSection(sectionId: string): void {
+  if (typeof window === 'undefined') return;
+  const target = settingsSectionHash(sectionId);
+  if (isSettingsHashOpen(window.location.hash)) {
+    window.history.replaceState(null, '', target);
+    window.dispatchEvent(new CustomEvent(SECTION_INTENT_EVENT, { detail: sectionId }));
+    return;
+  }
+  if (window.location.hash !== target) window.location.hash = target;
+}
+
 /** Sidebar item id for the User → Configure agents section. */
 const CONFIGURE_AGENTS_SECTION = 'configure-agents';
 
@@ -53,9 +100,7 @@ const CONFIGURE_AGENTS_SECTION = 'configure-agents';
  * (mirrors `SETTINGS_OPEN_HASH` usage in `SettingsButton`).
  */
 export function openAgentSettings(): void {
-  if (typeof window === 'undefined') return;
-  const target = settingsSectionHash(CONFIGURE_AGENTS_SECTION);
-  if (window.location.hash !== target) window.location.hash = target;
+  openSettingsSection(CONFIGURE_AGENTS_SECTION);
 }
 
 /** Sidebar item id for the This project → Plugins manage section. */
@@ -67,9 +112,26 @@ const PROJECT_PLUGINS_SECTION = 'plugins-manage';
  * single-sourced (mirrors `openAgentSettings`).
  */
 export function openProjectPluginsSettings(): void {
-  if (typeof window === 'undefined') return;
-  const target = settingsSectionHash(PROJECT_PLUGINS_SECTION);
-  if (window.location.hash !== target) window.location.hash = target;
+  openSettingsSection(PROJECT_PLUGINS_SECTION);
+}
+
+/**
+ * Sidebar item id for one plugin's own settings panel — the `plugin:<id>` ids
+ * the Plugins group builds and `SettingsDialogBody` dispatches on. Mirrors
+ * those two sites; a rename has to move all three together.
+ */
+export function pluginSettingsSectionId(pluginId: string): string {
+  return `plugin:${pluginId}`;
+}
+
+/**
+ * Open Settings straight to an enabled plugin's own panel — where the
+ * just-enabled plugin is actually configured. The enable gesture happens on a
+ * different page (the per-scope Plugins manage list), so without this the
+ * plugin appears to turn on and do nothing.
+ */
+export function openPluginSettings(pluginId: string): void {
+  openSettingsSection(pluginSettingsSectionId(pluginId));
 }
 
 interface SettingsRouteState {

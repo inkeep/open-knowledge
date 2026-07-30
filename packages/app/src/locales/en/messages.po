@@ -489,6 +489,10 @@ msgstr "{keyName} value"
 msgid "{label} ({0})"
 msgstr "{label} ({0})"
 
+#: src/components/settings/plugin-enabled-notice.ts
+msgid "{label} enabled"
+msgstr "{label} enabled"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
@@ -5252,6 +5256,14 @@ msgstr "Layout"
 msgid "Layout options"
 msgstr "Layout options"
 
+#: src/components/settings/LintingSection.tsx
+msgid "Learn more"
+msgstr "Learn more"
+
+#: src/components/settings/LintingSection.tsx
+msgid "Learn more about {title}"
+msgstr "Learn more about {title}"
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Let agents use OpenKnowledge without asking"
 msgstr "Let agents use OpenKnowledge without asking"
@@ -6677,6 +6689,10 @@ msgstr "Open recent project"
 #: src/components/TerminalRevealTab.tsx
 msgid "Open session dock"
 msgstr "Open session dock"
+
+#: src/components/settings/plugin-enabled-notice.ts
+msgid "Open settings"
+msgstr "Open settings"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 #: src/components/ShareReceiveDialog.tsx
@@ -8406,6 +8422,10 @@ msgstr "Set git identity"
 #: src/components/SyncStatusBadge.tsx
 msgid "Set identity"
 msgstr "Set identity"
+
+#: src/components/settings/plugin-enabled-notice.ts
+msgid "Set it up on its own page under Plugins."
+msgstr "Set it up on its own page under Plugins."
 
 #: src/components/settings/SyncSection.tsx
 msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."

@@ -44,6 +44,7 @@ import { requestSchemaFieldsView } from '@/lib/schema-fields-view-intent';
 import { LINT_PLUGIN_META } from './lint-plugin-meta';
 import { MarkdownlintRuleBrowser } from './markdownlint-rule-browser';
 import { PluginBetaBadge } from './PluginBetaBadge';
+import { notifyPluginEnabled } from './plugin-enabled-notice';
 import { ScopeBadge } from './ScopeBadge';
 
 /** Project-scope content-rules config + a `contentRules`-patch writer. Shared by the sections. */
@@ -141,7 +142,10 @@ export function ProjectPluginsManageSection() {
                 id={`settings-plugin-toggle-${plugin.id}`}
                 checked={on}
                 disabled={!bindingReady}
-                onCheckedChange={(next) => write(pluginEnabledPatch(plugin.id, next))}
+                onCheckedChange={(next) => {
+                  if (!write(pluginEnabledPatch(plugin.id, next))) return;
+                  if (next) notifyPluginEnabled({ pluginId: plugin.id, label: plugin.label });
+                }}
                 aria-label={on ? t`Disable ${plugin.label}` : t`Enable ${plugin.label}`}
                 data-testid={`settings-plugin-toggle-${plugin.id}`}
               />
@@ -207,7 +211,13 @@ export function UserPluginsManageSection({ userBinding }: { userBinding: ConfigB
             onCheckedChange={(next) => {
               if (!userBinding) return;
               const result = userBinding.patch({ appearance: { colorThemeEnabled: next } });
-              if (!result.ok) toast.error(t`Failed to save theme setting`);
+              if (!result.ok) {
+                toast.error(t`Failed to save theme setting`);
+                return;
+              }
+              // 'theme' is the user-scope plugin's `plugin:theme` sidebar id —
+              // it owns no `contentRules` slice, so it is not in LINT_PLUGIN_META.
+              if (next) notifyPluginEnabled({ pluginId: 'theme', label: t`Themes` });
             }}
             aria-label={themeEnabled ? t`Disable Themes` : t`Enable Themes`}
             data-testid="settings-plugin-toggle-theme"
@@ -224,6 +234,7 @@ function PluginSectionHeader({
   title,
   scope,
   beta,
+  docUrl,
   children,
 }: {
   titleId: string;
@@ -232,8 +243,14 @@ function PluginSectionHeader({
   scope?: 'user' | 'project';
   /** When set, renders the feature-maturity Beta tag beside the title. */
   beta?: boolean;
+  /**
+   * Docs page for the plugin. The standing counterpart to the enable-time
+   * toast: whoever lands here later still gets a route to the how-to.
+   */
+  docUrl?: string;
   children: ReactNode;
 }) {
+  const { t } = useLingui();
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2">
@@ -244,8 +261,31 @@ function PluginSectionHeader({
         {scope ? <ScopeBadge scope={scope} /> : null}
       </div>
       <p className="text-sm text-muted-foreground">{children}</p>
+      {docUrl !== undefined ? (
+        <a
+          href={docUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => dispatchExternalLinkClick(e, docUrl)}
+          onAuxClick={(e) => dispatchExternalLinkClick(e, docUrl)}
+          // Names its destination for anyone listing links out of context, where
+          // a bare "Learn more" says nothing. Keeps the visible text as a prefix
+          // so voice control still activates it by what's on screen.
+          aria-label={t`Learn more about ${title}`}
+          className="inline-flex items-center gap-0.5 text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          data-testid={`${titleId}-docs-link`}
+        >
+          <Trans>Learn more</Trans>
+          <ArrowUpRight aria-hidden className="size-3" />
+        </a>
+      ) : null}
     </div>
   );
+}
+
+/** Docs page for one plugin — panel headers link it beside their description. */
+function pluginDocUrl(id: LintPluginId): string | undefined {
+  return LINT_PLUGIN_META.find((plugin) => plugin.id === id)?.docUrl;
 }
 
 /** markdownlint plugin: the full-catalog rule browser. */
@@ -265,6 +305,7 @@ export function MarkdownlintPluginSection({
         titleId="settings-plugin-markdownlint-title"
         title="markdownlint"
         scope="project"
+        docUrl={pluginDocUrl('markdownlint')}
       >
         <Trans>
           Flag common markdown issues in the editor. Powered by{' '}
@@ -584,6 +625,7 @@ export function FrontmatterPluginSection() {
         titleId="settings-plugin-frontmatter-title"
         title={t`Frontmatter schemas`}
         beta
+        docUrl={pluginDocUrl('frontmatter')}
       >
         <Trans>
           Validate document frontmatter against standard JSON Schema files (draft-06, draft-07,

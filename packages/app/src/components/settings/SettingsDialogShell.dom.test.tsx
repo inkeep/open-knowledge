@@ -21,7 +21,7 @@
  */
 
 import type { ConfigBinding, OkignoreBinding } from '@inkeep/open-knowledge-core';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -311,6 +311,54 @@ describe('SettingsDialogShell userBinding gating (Tier-3 mount)', () => {
     expect(status.textContent).toContain('Loading settings');
     expect(screen.getByTestId('settings-dialog')).toBeTruthy();
     expect(screen.queryByTestId('settings-body-probe') === null).toBe(true);
+  });
+
+  // Regression: the plugin-enable notice fires a deep link while the dialog is
+  // ALREADY open. `initialSection` cannot carry that — an in-dialog hash write
+  // is a replaceState (no `hashchange`), and after a sidebar click moved
+  // `activeId` without touching the hash, the target can equal the current
+  // hash. Both make a hash-only channel a no-op on second use.
+  test('an in-dialog deep link re-activates its section even when the hash already matches', async () => {
+    window.location.hash = '#settings/plugin:markdownlint';
+    render(
+      <SettingsDialogShell
+        open={true}
+        initialSection="plugin:markdownlint"
+        onOpenChange={() => {}}
+      />,
+    );
+    expect(probeProps[probeProps.length - 1]?.activeId).toBe('plugin:markdownlint');
+
+    // Sidebar click moves the panel; the hash deliberately stays put.
+    await userEvent.click(screen.getByTestId('settings-sidebar-item-hotkeys'));
+    expect(probeProps[probeProps.length - 1]?.activeId).toBe('hotkeys');
+    expect(window.location.hash).toBe('#settings/plugin:markdownlint');
+
+    // Same target as the current hash — must still land.
+    const { openPluginSettings } = await import('@/lib/use-settings-route');
+    await act(async () => {
+      openPluginSettings('markdownlint');
+    });
+    expect(probeProps[probeProps.length - 1]?.activeId).toBe('plugin:markdownlint');
+  });
+
+  // Second half of the `plugin:<id>` drift guard (the body dispatcher is pinned
+  // in SettingsDialogBody.sections.dom.test.tsx). The sidebar builds the id
+  // independently of `pluginSettingsSectionId`; if the two drift, the enable
+  // notice's deep link lands on a section the sidebar never highlights.
+  test('builds sidebar ids for enabled plugins that match pluginSettingsSectionId', async () => {
+    const { pluginSettingsSectionId } = await import('@/lib/use-settings-route');
+    mockProjectConfig = {
+      contentRules: { markdownlint: { enabled: true }, frontmatter: { enabled: true } },
+    };
+
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+
+    for (const id of ['markdownlint', 'frontmatter']) {
+      expect(
+        screen.getByTestId(`settings-sidebar-item-${pluginSettingsSectionId(id)}`),
+      ).toBeTruthy();
+    }
   });
 
   test('contains body render failures inside the dialog frame', async () => {

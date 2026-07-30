@@ -11,9 +11,13 @@ export interface LintPluginMeta {
   id: LintPluginId;
   /** Sidebar + panel-header label (brand names — intentionally not translated). */
   label: string;
+  /** Docs page for the plugin, linked from its settings panel. */
+  docUrl: string;
 }
 
+const DOCS_BASE = 'https://openknowledge.ai/docs/advanced/content-rules';
+
 export const LINT_PLUGIN_META: LintPluginMeta[] = [
-  { id: 'markdownlint', label: 'markdownlint' },
-  { id: 'frontmatter', label: 'Frontmatter schemas' },
+  { id: 'markdownlint', label: 'markdownlint', docUrl: `${DOCS_BASE}/markdownlint` },
+  { id: 'frontmatter', label: 'Frontmatter schemas', docUrl: `${DOCS_BASE}/frontmatter` },
 ];
