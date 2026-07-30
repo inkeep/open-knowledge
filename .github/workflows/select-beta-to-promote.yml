@@ -131,6 +131,17 @@ concurrency:
   group: ok-auto-promote-stable
   cancel-in-progress: true
 
+env:
+  # THE fast-tier arming switch, read by both the selector and the aggregate
+  # alarm. Hoisted to one place because the two must agree: the alarm's whole
+  # premise is "the tier is armed and reaching nothing", which is only a real
+  # finding when the tier is in fact armed. Two literals would drift and the
+  # alarm would page about a tier that is switched off.
+  # Flipping this to "true" requires a reviewed PR — read the "Soak tiers"
+  # section of RELEASES.md first: arming has prerequisites, and it is an owner
+  # decision.
+  FAST_TIER_ARMED: "false"
+
 jobs:
   evaluate:
     name: Evaluate 24h soak + business-hours gate
@@ -202,7 +213,7 @@ jobs:
           # it did before the tier existed. Flipping it to "true" requires a
           # reviewed PR — read the "Soak tiers" section of RELEASES.md first:
           # arming has prerequisites, and it is an owner decision.
-          FAST_TIER_ARMED: "false"
+          FAST_TIER_ARMED: ${{ env.FAST_TIER_ARMED }}
           # Optional. Absent (the current state) the bug-link lookup reports
           # "unresolvable" and the tier degrades to standard, which is the
           # expected steady state until an operator provisions the secret.
@@ -402,6 +413,11 @@ jobs:
         id: alarm
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Both alarm conditions are statements about an ARMED tier. Passing
+          # the switch in lets the evaluator stay silent while it is off,
+          # instead of inferring "armed" from history that a disarmed tier
+          # still produces.
+          FAST_TIER_ARMED: ${{ env.FAST_TIER_ARMED }}
         run: node .github/scripts/evaluate-smoke-alarm.mjs
 
       # Routed to the same channels as the per-cut smoke alert, not to a

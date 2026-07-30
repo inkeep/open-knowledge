@@ -43,10 +43,19 @@ const DISPATCH_STEP_NAME = 'Dispatch promote-stable for the smoke-proven candida
 export function evaluateAlarm({
   history,
   nowMs,
+  armed = true,
   consecutiveThreshold = CONSECUTIVE_NON_PASS_THRESHOLD,
   windowDays = STALE_FAST_TIER_WINDOW_DAYS,
 }) {
   const reasons = [];
+  // Both conditions below are claims about an ARMED tier — "the gate looks
+  // persistently broken" and "the tier is armed and reaching nothing". Neither
+  // is a finding while the switch is off: with `FAST_TIER_ARMED=false` the
+  // selector forces `soak_tier=standard`, so `promoted` can never be true no
+  // matter how healthy the gate is, and condition 2 becomes structurally
+  // guaranteed the moment any cut qualifies. That fired hourly into a public
+  // channel about a tier nobody had turned on.
+  if (!armed) return { alarm: false, reasons };
   const qualified = history.filter((h) => h.qualified);
 
   // Condition 1 — leading run of non-pass verdicts among qualified cuts.
@@ -73,8 +82,10 @@ export function evaluateAlarm({
       `${qualifiedInWindow.length} cut(s) qualified for the fast tier in the last ${windowDays} days but none was promoted through it — the tier is armed and reaching nothing`,
     );
   }
-  // The disarmed case needs no branch: with nothing qualified, condition 1's
-  // streak is 0 and condition 2's guard is false, so both stay silent.
+  // The disarmed case is handled by the `armed` short-circuit above, not by
+  // "nothing qualifies". `qualified` is derived from whether the fast-tier
+  // smoke job RAN, and that job is gated on a candidate existing rather than
+  // on the arming switch — so a disarmed tier still produces qualified cuts.
 
   return { alarm: reasons.length > 0, reasons };
 }
@@ -163,7 +174,11 @@ function main() {
     );
   }
 
-  const { alarm, reasons } = evaluateAlarm({ history, nowMs: Date.now() });
+  // Default to DISARMED when the variable is absent. The workflow always
+  // passes it, so an absent value means an unexpected caller — and staying
+  // quiet is the safe failure for a channel-paging alarm.
+  const armed = process.env.FAST_TIER_ARMED === 'true';
+  const { alarm, reasons } = evaluateAlarm({ history, nowMs: Date.now(), armed });
   if (!alarm) {
     console.log('No aggregate smoke alarm: the fast tier is either healthy or intentionally off.');
   } else {

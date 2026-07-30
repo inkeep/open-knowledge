@@ -109,6 +109,30 @@ describe('a disarmed fast tier is not a broken one', () => {
     const r = run(Array.from({ length: 40 }, (_, i) => notQualified({ at: daysAgo(i * 0.3) })));
     expect(r.alarm).toBe(false);
   });
+
+  test('qualified-but-never-promoted stays silent when the switch is off', () => {
+    // The shape that actually paged. `qualified` tracks whether the fast-tier
+    // smoke job RAN, and that job is gated on a candidate existing rather than
+    // on the arming switch — so a disarmed tier still produces qualified cuts,
+    // while `promoted` can never become true because the selector forces
+    // soak_tier=standard. Condition 2 is therefore structurally guaranteed the
+    // moment any cut qualifies, and it fired hourly into a public channel.
+    const history = [cut({ at: daysAgo(1) }), cut({ at: daysAgo(4) })];
+    expect(evaluateAlarm({ history, nowMs: NOW, armed: false })).toEqual({
+      alarm: false,
+      reasons: [],
+    });
+    // Same history, tier armed: this IS a finding and must still fire.
+    expect(evaluateAlarm({ history, nowMs: NOW, armed: true }).alarm).toBe(true);
+  });
+
+  test('a persistently broken gate is also not a finding while disarmed', () => {
+    const history = Array.from({ length: CONSECUTIVE_NON_PASS_THRESHOLD + 1 }, (_, i) =>
+      cut({ at: daysAgo(i + 1) }),
+    );
+    expect(evaluateAlarm({ history, nowMs: NOW, armed: false }).alarm).toBe(false);
+    expect(evaluateAlarm({ history, nowMs: NOW, armed: true }).alarm).toBe(true);
+  });
 });
 
 describe('both conditions can fire together', () => {
