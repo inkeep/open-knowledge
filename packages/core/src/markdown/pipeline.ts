@@ -23,6 +23,7 @@ import { commentPromoterPlugin } from './comment-promoter.ts';
 import { dedentBlockJsxClose } from './dedent-block-jsx-close.ts';
 import { detailsAccordionPromoterPlugin } from './details-accordion-promoter.ts';
 import { divAlignPromoterPlugin } from './div-align-promoter.ts';
+import { emptyTaskItemUnmintPlugin, mintEmptyTaskItemContent } from './empty-task-item.ts';
 import { encodeEntityRefs, restoreEntityRefsPlugin } from './entity-ref-guard.ts';
 import { highlightPromoterPlugin } from './highlight-promoter.ts';
 import { imagePromoterPlugin } from './image-promoter.ts';
@@ -96,6 +97,7 @@ export const ACTIVE_MDAST_PLUGINS = [
   { name: 'mermaid-promoter', plugin: mermaidPromoterPlugin },
   { name: 'comment-promoter', plugin: commentPromoterPlugin },
   { name: 'merged-post-parse-walker', plugin: mergedPostParseWalkerPlugin },
+  { name: 'empty-task-item-unmint', plugin: emptyTaskItemUnmintPlugin },
   { name: 'ensure-non-empty-doc', plugin: () => ensureNonEmptyDoc },
 ] as const;
 
@@ -251,6 +253,8 @@ export function serializeMd(doc: PmNode, processor: Processor, opts: SerializeMd
     nodeHandlers: opts.pmNodeHandlers,
     markHandlers: opts.pmMarkHandlers,
   });
+
+  mintEmptyTaskItemContent(mdast);
 
   stripTrailingEdge(mdast);
 

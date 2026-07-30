@@ -7,6 +7,11 @@
  * failure was a split-brain where deleting the `\` from source left the
  * hardBreak node in the fragment and the next Observer A drain re-emitted it,
  * masked from the watchdog by parse-equivalence tolerance.
+ *
+ * The break must also SURVIVE: it reaches Y.Text as `<br />`, the one spelling
+ * that survives its own re-parse. Dropping it instead would leave the
+ * keystroke with no trace in the bytes and none in the view after the next
+ * re-derivation. See `strip-trailing-edge.ts`.
  */
 
 import { updateYFragment } from '@tiptap/y-tiptap';
@@ -28,7 +33,7 @@ describe('trailing hardBreak bridge convergence', () => {
     server = undefined;
   });
 
-  test('WYSIWYG trailing hardBreak: no stray backslash, fragment and Y.Text converge', async () => {
+  test('WYSIWYG trailing hardBreak: no stray backslash, survives, fragment and Y.Text converge', async () => {
     server = await createTestServer();
     const docName = `trailing-hardbreak-${crypto.randomUUID()}`;
     const client = await createTestClient(server.port, docName);
@@ -58,7 +63,10 @@ describe('trailing hardBreak bridge convergence', () => {
       const fragMd = serializeFragment(client.fragment);
 
       // The stray-character symptom: no backslash may reach source bytes.
-      expect(ytext).toBe('hello\n');
+      expect(ytext).not.toContain('\\');
+      // ...and the break is not silently discarded either: it lands in the one
+      // spelling that survives its own re-parse.
+      expect(ytext).toBe('hello<br />\n');
       // The split-brain: fragment serialization must equal Y.Text, so a
       // subsequent Observer A drain cannot re-emit a deleted character.
       expect(fragMd).toBe(ytext);
@@ -82,7 +90,8 @@ describe('trailing hardBreak bridge convergence', () => {
       await awaitDocQuiescence(client.doc);
       await wait(500);
       const ytext2 = client.ytext.toString();
-      expect(ytext2).toBe('hello there\n');
+      expect(ytext2).not.toContain('\\');
+      expect(ytext2).toBe('hello there<br />\n');
       expect(serializeFragment(client.fragment)).toBe(ytext2);
     } finally {
       await client.cleanup();

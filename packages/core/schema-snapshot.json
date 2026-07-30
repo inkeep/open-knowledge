@@ -945,6 +945,11 @@
       "hasOptions": false
     },
     {
+      "name": "empty-task-item-unmint",
+      "version": null,
+      "hasOptions": false
+    },
+    {
       "name": "ensure-non-empty-doc",
       "version": null,
       "hasOptions": false

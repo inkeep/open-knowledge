@@ -1,11 +1,19 @@
-import type { Nodes, Parent, RootContent, Text } from 'mdast';
+import type { Break, Nodes, Parent, RootContent, Text } from 'mdast';
 
 const MARK_WRAPPERS = new Set(['strong', 'emphasis', 'delete', 'link', 'mark', 'comment']);
 
-function isBareTrailingBreak(node: RootContent | undefined): boolean {
+const HTML_BREAK_SPELLING = '<br />';
+
+function isBareTrailingBreak(node: RootContent | undefined): node is Break {
   if (!node || node.type !== 'break') return false;
-  const sourceRaw = (node.data as { sourceRaw?: unknown } | undefined)?.sourceRaw;
+  const sourceRaw = node.data?.sourceRaw;
   return typeof sourceRaw !== 'string' || sourceRaw.length === 0;
+}
+
+function respellAsHtmlBreak(node: Break): void {
+  node.data ??= {};
+  node.data.sourceRaw = HTML_BREAK_SPELLING;
+  node.data.sourceStyle = 'html';
 }
 
 /** True for a plain text node whose bytes are its visible value — no stored
@@ -29,8 +37,8 @@ function stripTrailing(children: RootContent[], isWrapperContent = false): void 
   while (children.length > 0) {
     const last = children[children.length - 1];
     if (isBareTrailingBreak(last)) {
-      children.pop();
-      continue;
+      respellAsHtmlBreak(last);
+      break;
     }
     if (last && MARK_WRAPPERS.has(last.type) && 'children' in last) {
       const inner = (last as Parent).children as RootContent[];
@@ -63,7 +71,9 @@ function stripTrailing(children: RootContent[], isWrapperContent = false): void 
 const BLOCK_CONTAINERS = new Set(['paragraph', 'heading', 'tableCell']);
 
 /** In-place: canonicalize the trailing edge of every block whose phrasing
- * content can end in a meaningless-at-block-edge construct. */
+ * content can end in a construct whose markdown spelling is meaningless at a
+ * block edge — re-spelling the ones that have a surviving form, dropping the
+ * ones that do not. */
 export function stripTrailingEdge(tree: Nodes): void {
   const visit = (node: Nodes): void => {
     if (BLOCK_CONTAINERS.has(node.type) && 'children' in node) {
