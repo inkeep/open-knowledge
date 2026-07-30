@@ -1,12 +1,25 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
+import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import shellQuote from 'shell-quote';
 import simpleGit from 'simple-git';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
+import { BacklinkIndex } from './backlink-index.ts';
+import { getBootTimings, resetBootTimingsForTest, startBootTimings } from './boot-timings.ts';
+import { DerivedDocumentIndex } from './derived-document-index.ts';
+import { classifyGitError } from './error-classification.ts';
 import { applyExternalChange } from './external-change.ts';
 import type {
   CheckPushPermissionOptions,
@@ -21,8 +34,39 @@ import {
   writeManagedRenameJournal,
 } from './managed-rename-journal.ts';
 import { ensureProjectGit } from './project-git.ts';
+import { saveRemovedDocsJournal } from './removed-docs-journal.ts';
 import { buildSyncCredentialArgs, createServer, type ServerInstance } from './server-factory.ts';
+import { releaseServerLock } from './server-lock.ts';
 import { initShadowRepo, shadowGit } from './shadow-repo.ts';
+import { TagIndex } from './tag-index.ts';
+
+const watcherStartupFailures = vi.hoisted(() => ({ file: false, head: false }));
+
+vi.mock('./file-watcher.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./file-watcher.ts')>();
+  return {
+    ...actual,
+    startWatcher: async (...args: Parameters<typeof actual.startWatcher>) => {
+      if (watcherStartupFailures.file) {
+        throw new Error('injected file-watcher startup failure');
+      }
+      return actual.startWatcher(...args);
+    },
+  };
+});
+
+vi.mock('./head-watcher.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./head-watcher.ts')>();
+  return {
+    ...actual,
+    startHeadWatcher: async (...args: Parameters<typeof actual.startHeadWatcher>) => {
+      if (watcherStartupFailures.head) {
+        throw new Error('injected head-watcher startup failure');
+      }
+      return actual.startHeadWatcher(...args);
+    },
+  };
+});
 
 // ─── CaptureLogger infrastructure ───────────────────────────────────────────
 // Uses loggerFactory.configure() pattern from logger.test.ts.
@@ -119,6 +163,7 @@ describe('createServer() — document durability state isolation', () => {
     const diskB = '# Disk B\n';
     let serverA: ServerInstance | null = null;
     let serverB: ServerInstance | null = null;
+    const beginStartup = vi.spyOn(DerivedDocumentIndex.prototype, 'beginStartup');
 
     try {
       writeFileSync(join(projectA, `${docName}.md`), diskA, 'utf-8');
@@ -137,6 +182,8 @@ describe('createServer() — document durability state isolation', () => {
       });
       await Promise.all([serverA.ready, serverB.ready]);
 
+      expect(beginStartup).toHaveBeenCalledTimes(2);
+      expect(beginStartup.mock.instances[0]).not.toBe(beginStartup.mock.instances[1]);
       const [connectionA, connectionB] = await Promise.all([
         serverA.hocuspocus.openDirectConnection(docName),
         serverB.hocuspocus.openDirectConnection(docName),
@@ -178,8 +225,139 @@ describe('createServer() — document durability state isolation', () => {
         rm(projectA, { recursive: true, force: true }),
         rm(projectB, { recursive: true, force: true }),
       ]);
+      beginStartup.mockRestore();
     }
   });
+});
+
+describe('createServer() — derived-index branch lifecycle', () => {
+  let projectDir: string;
+  let git: ReturnType<typeof simpleGit>;
+  let server: ServerInstance | null;
+
+  beforeEach(async () => {
+    projectDir = await mkdtemp(join(tmpdir(), 'ok-derived-branch-'));
+    git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@example.com');
+    writeFileSync(join(projectDir, 'main.md'), '# Main\n\n#main-branch\n', 'utf-8');
+    await git.add('.');
+    await git.commit('main content');
+    await git.checkoutLocalBranch('feature');
+    unlinkSync(join(projectDir, 'main.md'));
+    writeFileSync(join(projectDir, 'feature.md'), '# Feature\n\n#feature-branch\n', 'utf-8');
+    await git.add(['-A']);
+    await git.commit('feature content');
+    await git.checkout('main');
+    server = null;
+  });
+
+  afterEach(async () => {
+    await server?.destroy();
+    vi.restoreAllMocks();
+    await rm(projectDir, { recursive: true, force: true });
+  });
+
+  test('settles target indexes before broadcasting branch-switched', async () => {
+    const beginStartup = vi.spyOn(DerivedDocumentIndex.prototype, 'beginStartup');
+    server = createServer({
+      contentDir: projectDir,
+      projectDir,
+      quiet: true,
+      gitEnabled: false,
+      skipStateManifestCheck: true,
+    });
+    await server.ready;
+    const coordinator = beginStartup.mock.instances[0] as DerivedDocumentIndex;
+    beginStartup.mockRestore();
+    const settle = vi.spyOn(DerivedDocumentIndex.prototype, 'settleBranchFromDisk');
+    const emit = vi.spyOn(server.cc1Broadcaster, 'emitBranchSwitched');
+
+    await git.checkout('feature');
+    await vi.waitFor(() => expect(emit).toHaveBeenCalledWith('feature'), {
+      timeout: 10_000,
+      interval: 25,
+    });
+
+    expect(settle).toHaveBeenCalledTimes(1);
+    expect(settle.mock.invocationCallOrder[0]).toBeLessThan(emit.mock.invocationCallOrder[0] ?? 0);
+    expect(server.durabilityState.isBatchInProgress()).toBe(false);
+    expect(await coordinator.getDocsForTagWithMatches('feature-branch')).toEqual([
+      { docName: 'feature', matchingTags: ['feature-branch'] },
+    ]);
+    expect(await coordinator.getDocsForTagWithMatches('main-branch')).toEqual([]);
+  }, 20_000);
+
+  test('aborts a degraded branch settlement and releases coordinator queries', async () => {
+    const beginStartup = vi.spyOn(DerivedDocumentIndex.prototype, 'beginStartup');
+    server = createServer({
+      contentDir: projectDir,
+      projectDir,
+      quiet: true,
+      gitEnabled: false,
+      skipStateManifestCheck: true,
+    });
+    await server.ready;
+    const coordinator = beginStartup.mock.instances[0] as DerivedDocumentIndex;
+    beginStartup.mockRestore();
+    vi.spyOn(DerivedDocumentIndex.prototype, 'settleBranchFromDisk').mockRejectedValueOnce(
+      new Error('injected branch settlement failure'),
+    );
+    const abort = vi.spyOn(DerivedDocumentIndex.prototype, 'abortBranchSwitch');
+    const emit = vi.spyOn(server.cc1Broadcaster, 'emitBranchSwitched');
+
+    await git.checkout('feature');
+    await vi.waitFor(() => expect(emit).toHaveBeenCalledWith('feature'), {
+      timeout: 10_000,
+      interval: 25,
+    });
+
+    expect(abort).toHaveBeenCalled();
+    expect(server.durabilityState.isBatchInProgress()).toBe(false);
+    await expect(coordinator.getIndexedDocNames()).resolves.toBeInstanceOf(Array);
+  }, 20_000);
+
+  test('begin-branch failure always restores durability admission and releases queries', async () => {
+    const beginStartup = vi.spyOn(DerivedDocumentIndex.prototype, 'beginStartup');
+    server = createServer({
+      contentDir: projectDir,
+      projectDir,
+      quiet: true,
+      gitEnabled: false,
+      skipStateManifestCheck: true,
+    });
+    await server.ready;
+    const coordinator = beginStartup.mock.instances[0] as DerivedDocumentIndex;
+    beginStartup.mockRestore();
+    let rejectBegin!: (error: Error) => void;
+    const beginBranch = vi
+      .spyOn(DerivedDocumentIndex.prototype, 'beginBranchSwitch')
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectBegin = reject;
+          }),
+      );
+    const abort = vi.spyOn(DerivedDocumentIndex.prototype, 'abortBranchSwitch');
+
+    await git.checkout('feature');
+    await vi.waitFor(() => expect(beginBranch).toHaveBeenCalledWith('feature'), {
+      timeout: 10_000,
+      interval: 25,
+    });
+    expect(server.durabilityState.isBatchInProgress()).toBe(true);
+
+    rejectBegin(new Error('injected branch begin failure'));
+    await vi.waitFor(
+      () => {
+        expect(abort).toHaveBeenCalled();
+        expect(server?.durabilityState.isBatchInProgress()).toBe(false);
+      },
+      { timeout: 10_000, interval: 25 },
+    );
+    await expect(coordinator.getIndexedDocNames()).resolves.toBeInstanceOf(Array);
+  }, 20_000);
 });
 
 describe('createServer().destroy() — graceful shutdown flush', () => {
@@ -520,6 +698,39 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     expect(shutdownLogs[0].payload.documentCount).toBe(5);
   });
 
+  test('destroy does not await the derived-index cache drain', async () => {
+    const beginStartup = vi.spyOn(DerivedDocumentIndex.prototype, 'beginStartup');
+    const server = createServer({
+      contentDir: tmpDir,
+      projectDir: tmpDir,
+      quiet: true,
+      destroyTimeoutMs: 500,
+    });
+    await server.ready;
+    const coordinator = beginStartup.mock.instances[0] as DerivedDocumentIndex;
+    beginStartup.mockRestore();
+    const close = vi
+      .spyOn(DerivedDocumentIndex.prototype, 'close')
+      .mockImplementation(() => new Promise<void>(() => {}));
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+      const result = await Promise.race([
+        server.destroy().then(() => 'destroyed' as const),
+        new Promise<'timed-out'>((resolveTimeout) => {
+          timeout = setTimeout(() => resolveTimeout('timed-out'), 2_000);
+        }),
+      ]);
+
+      expect(result).toBe('destroyed');
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      close.mockRestore();
+      await coordinator.close();
+    }
+  });
+
   test('destroy() flushes multiple documents before resolving (multi-doc drain)', async () => {
     const server = createServer({
       contentDir: tmpDir,
@@ -589,13 +800,8 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
  * Failure injection:
  *   - shadow-repo: forced via invalid path (file-as-dir). This subsystem's
  *     init throws on invalid paths, so preferred technique works.
- *   - file-watcher + head-watcher: cannot be forced via invalid paths because
- *     startWatcher falls back from @parcel/watcher to chokidar (tolerates
- *     invalid paths) and startHeadWatcher returns a no-op handle on missing
- *     .git. The degraded.push wiring for these subsystems is verified by
- *     the shadow-repo test (same push pattern) + code-level assertions.
- *     vi.doMock was attempted but leaks across all test files in the same
- *     `bun test` process, breaking file-watcher.test.ts.
+ *   - file-watcher + head-watcher: hoisted, call-through module mocks throw
+ *     only when the corresponding per-test flag is enabled.
  */
 
 describe('createServer() degraded signal', () => {
@@ -606,6 +812,9 @@ describe('createServer() degraded signal', () => {
   });
 
   afterEach(() => {
+    watcherStartupFailures.file = false;
+    watcherStartupFailures.head = false;
+    resetBootTimingsForTest();
     rmSync(testProjectDir, { recursive: true, force: true });
   });
 
@@ -623,6 +832,54 @@ describe('createServer() degraded signal', () => {
     expect(srv.degraded).toEqual([]);
 
     await srv.destroy();
+  });
+
+  test('backlink startup failure labels the server as backlink-index degraded', async () => {
+    const contentDir = mkdtempSync(resolve(testProjectDir, 'content-'));
+    const load = vi
+      .spyOn(BacklinkIndex.prototype, 'loadFromDisk')
+      .mockRejectedValueOnce(new Error('injected backlink startup failure'));
+    const srv = createServer({
+      contentDir,
+      projectDir: testProjectDir,
+      quiet: true,
+    });
+
+    try {
+      await srv.ready;
+      expect(load).toHaveBeenCalled();
+      expect(srv.degraded).toContain('backlink-index');
+      expect(srv.degraded.filter((name) => name === 'backlink-index')).toHaveLength(1);
+    } finally {
+      load.mockRestore();
+      await srv.destroy();
+    }
+  });
+
+  test('tag reconciliation failure labels the server as tag-index degraded', async () => {
+    const contentDir = mkdtempSync(resolve(testProjectDir, 'content-'));
+    const beginStartup = vi.spyOn(DerivedDocumentIndex.prototype, 'beginStartup');
+    const reconcile = vi
+      .spyOn(TagIndex.prototype, 'reconcileWithDisk')
+      .mockRejectedValueOnce(new Error('injected tag reconciliation failure'));
+    const srv = createServer({
+      contentDir,
+      projectDir: testProjectDir,
+      quiet: true,
+    });
+
+    try {
+      await srv.ready;
+      const coordinator = beginStartup.mock.instances[0] as DerivedDocumentIndex;
+      expect(reconcile).toHaveBeenCalled();
+      expect(srv.degraded).toContain('tag-index');
+      expect(srv.degraded.filter((name) => name === 'tag-index')).toHaveLength(1);
+      await expect(coordinator.getAllTags()).resolves.toBeInstanceOf(Array);
+    } finally {
+      await srv.destroy();
+      beginStartup.mockRestore();
+      reconcile.mockRestore();
+    }
   });
 
   test('shadow-repo init failure — degraded includes "shadow-repo"', async () => {
@@ -650,28 +907,28 @@ describe('createServer() degraded signal', () => {
     await srv.destroy();
   });
 
-  test('degraded push wiring exists for all three subsystems', () => {
-    // Verify at the source level that the degraded.push calls exist in
-    // initAsync for file-watcher and head-watcher. This is a code-level
-    // assertion — not as strong as a runtime test, but vi.doMock leaks
-    // make runtime testing impractical without process isolation.
-    const dir = import.meta.dirname ?? new URL('.', import.meta.url).pathname;
-    const src = readFileSync(resolve(dir, 'server-factory.ts'), 'utf-8');
+  test.each([
+    { failure: 'file' as const, label: 'file-watcher' },
+    { failure: 'head' as const, label: 'head-watcher' },
+  ])('$label startup failure is reported at runtime', async ({ failure, label }) => {
+    watcherStartupFailures[failure] = true;
+    if (failure === 'file') startBootTimings('2026-07-23T00:00:00.000Z');
+    const contentDir = mkdtempSync(resolve(testProjectDir, 'content-'));
+    const srv = createServer({
+      contentDir,
+      projectDir: testProjectDir,
+      quiet: true,
+    });
 
-    // Each subsystem's catch block should push to the degraded array
-    expect(src).toContain("degraded.push('shadow-repo')");
-    expect(src).toContain("degraded.push('file-watcher')");
-    expect(src).toContain("degraded.push('head-watcher')");
-
-    // The factory return should include degraded
-    expect(src).toMatch(/return\s*\{[^}]*degraded[^}]*\}/s);
-
-    // The index-phase boot timing is recorded in a `finally`, not the `try`, so
-    // a partial/failed watcher start still yields a timing for the desktop
-    // startup waterfall. Same code-level-assertion rationale as above: pin the
-    // placement so a refactor that moves it into the try (dropping it on the
-    // degraded path) is caught here.
-    expect(src).toMatch(/finally\s*\{[\s\S]*?recordBootPhase\('indexesMs'/);
+    try {
+      await srv.ready;
+      expect(srv.degraded).toEqual([label]);
+      if (failure === 'file') {
+        expect(getBootTimings()?.indexesMs).toEqual(expect.any(Number));
+      }
+    } finally {
+      await srv.destroy();
+    }
   });
 
   test('degraded is readonly — push and reassignment are compile-time errors', async () => {
@@ -2305,23 +2562,75 @@ describe('createServer() — readProjectAutoSyncMode precedence', () => {
   });
 });
 
-// onAutoDisable invocation requires a protected-branch git remote, which is
-// expensive to set up in a unit test. The callback body is small and its
-// effect (writeConfigPatch with scope: 'project-local') is fully covered by
-// writeConfigPatch's own round-trip test. Pinning the call-site at the source
-// level catches scope drift without provisioning git fixtures.
-describe('createServer() — onAutoDisable scope pinning', () => {
-  test('onAutoDisable callback writes via scope: project-local', () => {
-    const dir = import.meta.dirname ?? new URL('.', import.meta.url).pathname;
-    const src = readFileSync(resolve(dir, 'server-factory.ts'), 'utf-8');
-    const onAutoDisableMatch = src.match(
-      /onAutoDisable:\s*async\s*\([^)]*\)\s*=>\s*\{[\s\S]*?\n\s{8}\},/,
-    );
-    expect(onAutoDisableMatch).not.toBeNull();
-    const body = onAutoDisableMatch?.[0] ?? '';
-    expect(body).toContain("scope: 'project-local'");
-    expect(body).toContain('autoSync: { enabled: false }');
-    expect(body).not.toMatch(/scope:\s*'project'(?!-local)/);
+describe('createServer() — protected-branch auto-disable persistence', () => {
+  test('persists autoSync.enabled=false to project-local config only', async () => {
+    const projectDir = mkdtempSync(resolve(tmpdir(), 'ok-auto-disable-test-'));
+    const homedir = mkdtempSync(resolve(tmpdir(), 'ok-auto-disable-home-'));
+    const contentDir = mkdtempSync(resolve(projectDir, 'content-'));
+    const projectConfigPath = resolveConfigPath('project', projectDir);
+    const localConfigPath = resolveConfigPath('project-local', projectDir);
+    mkdirSync(join(projectDir, '.ok', LOCAL_DIR), { recursive: true });
+    writeFileSync(projectConfigPath, 'autoSync:\n  default: true\n', 'utf-8');
+    writeFileSync(localConfigPath, 'autoSync:\n  enabled: true\n', 'utf-8');
+
+    const server = createServer({
+      contentDir,
+      projectDir,
+      quiet: true,
+      gitEnabled: false,
+      configHomedirOverride: homedir,
+      destroyTimeoutMs: 1_000,
+    });
+
+    try {
+      await server.ready;
+      const engine = server.syncEngine;
+      expect(engine).not.toBeNull();
+      expect(engine?.getStatus().syncEnabled).toBe(true);
+
+      const testEngine = engine as unknown as {
+        handleError: (
+          classified: ReturnType<typeof classifyGitError>,
+          operation: 'push' | 'pull',
+        ) => void;
+      };
+      testEngine.handleError(
+        classifyGitError(new Error('remote: error: protected branch')),
+        'push',
+      );
+
+      expect(engine?.getStatus()).toMatchObject({
+        state: 'disabled',
+        syncEnabled: false,
+        pausedReason: 'protected-branch',
+        pushErrorCode: 'semantic-protected-branch',
+      });
+      await vi.waitFor(
+        () => {
+          const local = readConfigSafely({
+            absPath: localConfigPath,
+            sideline: false,
+            warn: () => {},
+          });
+          expect(local.valid).toBe(true);
+          expect(local.value.autoSync.enabled).toBe(false);
+        },
+        { timeout: 2_000, interval: 20 },
+      );
+
+      const project = readConfigSafely({
+        absPath: projectConfigPath,
+        sideline: false,
+        warn: () => {},
+      });
+      expect(project.valid).toBe(true);
+      expect(project.value.autoSync.default).toBe(true);
+      expect(project.value.autoSync.enabled).toBeNull();
+    } finally {
+      await server.destroy();
+      rmSync(projectDir, { recursive: true, force: true });
+      rmSync(homedir, { recursive: true, force: true });
+    }
   });
 });
 describe('createServer() — phantom-doc unload', () => {
@@ -2643,6 +2952,93 @@ describe('createServer() — removalRedirectGuard registration', () => {
         thrown = err;
       }
       expect(thrown).toBeNull();
+    } finally {
+      await server.destroy();
+    }
+  });
+
+  test('warm backlink reconciliation arms deletion rejection for a file removed offline', async () => {
+    writeFileSync(join(tmpDir, 'removed-offline.md'), '# Removed offline\n', 'utf-8');
+    const first = createServer({
+      contentDir: tmpDir,
+      projectDir: tmpDir,
+      quiet: true,
+      gitEnabled: false,
+    });
+    await first.ready;
+    await first.destroy();
+    releaseServerLock(first.lockDir);
+    unlinkSync(join(tmpDir, 'removed-offline.md'));
+
+    const restarted = createServer({
+      contentDir: tmpDir,
+      projectDir: tmpDir,
+      quiet: true,
+      gitEnabled: false,
+    });
+    try {
+      await restarted.ready;
+      const ext = restarted.hocuspocus.configuration.extensions.find(
+        (entry) => (entry as { __kind?: string }).__kind === 'removal-redirect-guard',
+      ) as { onAuthenticate: (payload: unknown) => Promise<void> } | undefined;
+      if (!ext) throw new Error('removal-redirect-guard not registered');
+
+      await expect(
+        ext.onAuthenticate({
+          token: undefined,
+          context: {},
+          documentName: 'removed-offline',
+        }),
+      ).rejects.toMatchObject({ reason: 'doc-deleted' });
+    } finally {
+      await restarted.destroy();
+    }
+  });
+
+  test('warm removal journal preserves rename redirects', async () => {
+    writeFileSync(join(tmpDir, 'renamed-source.md'), '# Renamed source\n', 'utf-8');
+    const first = createServer({
+      contentDir: tmpDir,
+      projectDir: tmpDir,
+      quiet: true,
+      gitEnabled: false,
+    });
+    await first.ready;
+    await first.destroy();
+    releaseServerLock(first.lockDir);
+    unlinkSync(join(tmpDir, 'renamed-source.md'));
+    writeFileSync(join(tmpDir, 'renamed-target.md'), '# Renamed target\n', 'utf-8');
+    saveRemovedDocsJournal(tmpDir, [
+      [
+        'renamed-source',
+        {
+          kind: 'renamed',
+          newDocName: 'renamed-target',
+          addedAt: Date.now(),
+        },
+      ],
+    ]);
+    const server = createServer({
+      contentDir: tmpDir,
+      projectDir: tmpDir,
+      quiet: true,
+      gitEnabled: false,
+    });
+
+    try {
+      await server.ready;
+      const ext = server.hocuspocus.configuration.extensions.find(
+        (entry) => (entry as { __kind?: string }).__kind === 'removal-redirect-guard',
+      ) as { onAuthenticate: (payload: unknown) => Promise<void> } | undefined;
+      if (!ext) throw new Error('removal-redirect-guard not registered');
+
+      await expect(
+        ext.onAuthenticate({
+          token: undefined,
+          context: {},
+          documentName: 'renamed-source',
+        }),
+      ).rejects.toMatchObject({ reason: 'rename-redirect:renamed-target' });
     } finally {
       await server.destroy();
     }

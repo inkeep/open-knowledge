@@ -2,6 +2,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { Hocuspocus } from '@hocuspocus/server';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
+import type { DerivedDocumentIndexLivePort } from './derived-document-index.ts';
 import { DocumentDurabilityState } from './document-durability-state.ts';
 import { applyExternalChange } from './external-change.ts';
 import { createLiveDerivedIndexExtension } from './live-derived-index.ts';
@@ -36,6 +37,13 @@ function makeOnChangePayload(
   };
 }
 
+function createDerivedIndexPort(
+  recordLiveDocument = vi.fn(async (_documentName: string, _markdown: string) => {}),
+  captureLiveUpdateToken = vi.fn((): number | null => 0),
+): DerivedDocumentIndexLivePort {
+  return { captureLiveUpdateToken, recordLiveDocument };
+}
+
 describe('createLiveDerivedIndexExtension', () => {
   let hp: Hocuspocus;
   let durabilityState: DocumentDurabilityState;
@@ -46,12 +54,10 @@ describe('createLiveDerivedIndexExtension', () => {
   });
 
   test('skips file-watcher origin transactions', async () => {
-    const updateDocumentFromMarkdown = vi.fn(() => {});
-    const signalChannel = vi.fn(() => {});
+    const recordLiveDocument = vi.fn(async () => {});
     const extension = createLiveDerivedIndexExtension({
-      backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
+      derivedDocumentIndex: createDerivedIndexPort(recordLiveDocument),
       debounceMs: 5,
-      signalChannel,
     });
     const conn = await hp.openDirectConnection('skip-file-watcher');
     const doc = getDoc(conn);
@@ -65,18 +71,40 @@ describe('createLiveDerivedIndexExtension', () => {
     );
     await wait(20);
 
-    expect(updateDocumentFromMarkdown).not.toHaveBeenCalled();
-    expect(signalChannel).not.toHaveBeenCalled();
+    expect(recordLiveDocument).not.toHaveBeenCalled();
+    await conn.disconnect();
+  });
+
+  test('drops live changes while the coordinator withholds a branch token', async () => {
+    const recordLiveDocument = vi.fn(async () => {});
+    const extension = createLiveDerivedIndexExtension({
+      derivedDocumentIndex: createDerivedIndexPort(
+        recordLiveDocument,
+        vi.fn(() => null),
+      ),
+      debounceMs: 5,
+    });
+    const conn = await hp.openDirectConnection('branch-transition');
+    const doc = getDoc(conn);
+
+    applyExternalChange(durabilityState, hp, 'branch-transition', '# Old branch\n');
+    await extension.onChange?.(
+      makeOnChangePayload(hp, doc, 'branch-transition', {
+        source: 'local',
+        context: { origin: 'branch-switch' },
+      }),
+    );
+    await wait(20);
+
+    expect(recordLiveDocument).not.toHaveBeenCalled();
     await conn.disconnect();
   });
 
   test('debounces rapid changes to a single update and preserves frontmatter', async () => {
-    const updateDocumentFromMarkdown = vi.fn(() => {});
-    const signalChannel = vi.fn(() => {});
+    const recordLiveDocument = vi.fn(async () => {});
     const extension = createLiveDerivedIndexExtension({
-      backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
+      derivedDocumentIndex: createDerivedIndexPort(recordLiveDocument),
       debounceMs: 5,
-      signalChannel,
     });
     const conn = await hp.openDirectConnection('debounced-doc');
     const doc = getDoc(conn);
@@ -97,25 +125,20 @@ describe('createLiveDerivedIndexExtension', () => {
     await extension.onChange?.(payload);
     await wait(20);
 
-    expect(updateDocumentFromMarkdown).toHaveBeenCalledTimes(1);
-    expect(updateDocumentFromMarkdown).toHaveBeenCalledWith(
+    expect(recordLiveDocument).toHaveBeenCalledTimes(1);
+    expect(recordLiveDocument).toHaveBeenCalledWith(
       'debounced-doc',
       '---\ntitle: Debounced\n---\n# Hello\n\n[[beta]]\n',
+      0,
     );
-    expect(signalChannel).toHaveBeenCalledTimes(2);
-    expect(signalChannel.mock.calls).toEqual([['backlinks'], ['graph']]);
     await conn.disconnect();
   });
 
-  test('feeds tagIndex with the same markdown and signals the tags channel', async () => {
-    const updateBacklink = vi.fn(() => {});
-    const updateTag = vi.fn(() => {});
-    const signalChannel = vi.fn(() => {});
+  test('hands one settled raw markdown string to the derived-index boundary', async () => {
+    const recordLiveDocument = vi.fn(async () => {});
     const extension = createLiveDerivedIndexExtension({
-      backlinkIndex: { updateDocumentFromMarkdown: updateBacklink } as unknown as never,
-      tagIndex: { updateDocumentFromMarkdown: updateTag } as unknown as never,
+      derivedDocumentIndex: createDerivedIndexPort(recordLiveDocument),
       debounceMs: 5,
-      signalChannel,
     });
     const conn = await hp.openDirectConnection('tag-derived-doc');
     const doc = getDoc(conn);
@@ -129,17 +152,18 @@ describe('createLiveDerivedIndexExtension', () => {
     await extension.onChange?.(payload);
     await wait(20);
 
-    expect(updateBacklink).toHaveBeenCalledTimes(1);
-    expect(updateTag).toHaveBeenCalledTimes(1);
-    expect(updateTag).toHaveBeenCalledWith('tag-derived-doc', '# Hello\n\nA #typescript note.\n');
-    expect(signalChannel.mock.calls).toEqual([['backlinks'], ['graph'], ['tags']]);
+    expect(recordLiveDocument).toHaveBeenCalledExactlyOnceWith(
+      'tag-derived-doc',
+      '# Hello\n\nA #typescript note.\n',
+      0,
+    );
     await conn.disconnect();
   });
 
   test('beforeUnloadDocument cancels pending timers', async () => {
-    const updateDocumentFromMarkdown = vi.fn(() => {});
+    const recordLiveDocument = vi.fn(async () => {});
     const extension = createLiveDerivedIndexExtension({
-      backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
+      derivedDocumentIndex: createDerivedIndexPort(recordLiveDocument),
       debounceMs: 20,
     });
     const conn = await hp.openDirectConnection('unload-doc');
@@ -159,14 +183,14 @@ describe('createLiveDerivedIndexExtension', () => {
     });
     await wait(40);
 
-    expect(updateDocumentFromMarkdown).not.toHaveBeenCalled();
+    expect(recordLiveDocument).not.toHaveBeenCalled();
     await conn.disconnect();
   });
 
   test('onDestroy clears pending timers across documents', async () => {
-    const updateDocumentFromMarkdown = vi.fn(() => {});
+    const recordLiveDocument = vi.fn(async () => {});
     const extension = createLiveDerivedIndexExtension({
-      backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
+      derivedDocumentIndex: createDerivedIndexPort(recordLiveDocument),
       debounceMs: 20,
     });
     const first = await hp.openDirectConnection('destroy-a');
@@ -195,7 +219,7 @@ describe('createLiveDerivedIndexExtension', () => {
     });
     await wait(40);
 
-    expect(updateDocumentFromMarkdown).not.toHaveBeenCalled();
+    expect(recordLiveDocument).not.toHaveBeenCalled();
     await first.disconnect();
     await second.disconnect();
   });
@@ -206,9 +230,9 @@ describe('createLiveDerivedIndexExtension', () => {
     // serializer never emits them back). Under contract, body source is
     // `Y.Text('source').toString()` — CRLF survives byte-equal. Discriminating
     // because CRLF is not preserved through parse → serialize (parser strips).
-    const updateDocumentFromMarkdown = vi.fn(() => {});
+    const recordLiveDocument = vi.fn(async () => {});
     const extension = createLiveDerivedIndexExtension({
-      backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
+      derivedDocumentIndex: createDerivedIndexPort(recordLiveDocument),
       debounceMs: 5,
     });
     const conn = await hp.openDirectConnection('crlf-doc');
@@ -227,8 +251,8 @@ describe('createLiveDerivedIndexExtension', () => {
     );
     await wait(20);
 
-    expect(updateDocumentFromMarkdown).toHaveBeenCalledTimes(1);
-    const [, bodyArg] = updateDocumentFromMarkdown.mock.calls[0] as [string, string];
+    expect(recordLiveDocument).toHaveBeenCalledTimes(1);
+    const [, bodyArg] = recordLiveDocument.mock.calls[0] as [string, string];
     // CRLF survives — ytext is the source-of-truth.
     expect(bodyArg).toContain('\r\n');
     // would have produced LF-only canonical bytes from
@@ -242,9 +266,9 @@ describe('createLiveDerivedIndexExtension', () => {
     // doc starting with `---\n# H\n` would round-trip through
     // serialize(fragment) as `***\n\n# H\n`. Under contract, ytext keeps
     // the user's typed `---\n` byte-equal — discriminating.
-    const updateDocumentFromMarkdown = vi.fn(() => {});
+    const recordLiveDocument = vi.fn(async () => {});
     const extension = createLiveDerivedIndexExtension({
-      backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
+      derivedDocumentIndex: createDerivedIndexPort(recordLiveDocument),
       debounceMs: 5,
     });
     const conn = await hp.openDirectConnection('thematic-doc');
@@ -259,8 +283,8 @@ describe('createLiveDerivedIndexExtension', () => {
     );
     await wait(20);
 
-    expect(updateDocumentFromMarkdown).toHaveBeenCalledTimes(1);
-    const [, bodyArg] = updateDocumentFromMarkdown.mock.calls[0] as [string, string];
+    expect(recordLiveDocument).toHaveBeenCalledTimes(1);
+    const [, bodyArg] = recordLiveDocument.mock.calls[0] as [string, string];
     expect(bodyArg).toBe('---\n# Title\n');
     expect(bodyArg).not.toContain('***');
     await conn.disconnect();
@@ -272,9 +296,9 @@ describe('createLiveDerivedIndexExtension', () => {
     // paths in steady state. It still validates the spec acceptance: the
     // SNIPPET CONTENT (what consumers see) reflects what the user typed.
     // '<https://x>' in snippet text, not '[https://x](https://x)'.
-    const updateDocumentFromMarkdown = vi.fn(() => {});
+    const recordLiveDocument = vi.fn(async () => {});
     const extension = createLiveDerivedIndexExtension({
-      backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
+      derivedDocumentIndex: createDerivedIndexPort(recordLiveDocument),
       debounceMs: 5,
     });
     const conn = await hp.openDirectConnection('autolink-doc');
@@ -294,22 +318,20 @@ describe('createLiveDerivedIndexExtension', () => {
     );
     await wait(20);
 
-    expect(updateDocumentFromMarkdown).toHaveBeenCalledTimes(1);
-    const [, bodyArg] = updateDocumentFromMarkdown.mock.calls[0] as [string, string];
+    expect(recordLiveDocument).toHaveBeenCalledTimes(1);
+    const [, bodyArg] = recordLiveDocument.mock.calls[0] as [string, string];
     expect(bodyArg).toContain('<https://example.com>');
     expect(bodyArg).not.toContain('[https://example.com](https://example.com)');
     await conn.disconnect();
   });
 
   test('logs and swallows callback errors', async () => {
-    const updateDocumentFromMarkdown = vi.fn(() => {
+    const recordLiveDocument = vi.fn(async () => {
       throw new Error('boom');
     });
-    const signalChannel = vi.fn(() => {});
     const extension = createLiveDerivedIndexExtension({
-      backlinkIndex: { updateDocumentFromMarkdown } as unknown as never,
+      derivedDocumentIndex: createDerivedIndexPort(recordLiveDocument),
       debounceMs: 5,
-      signalChannel,
     });
     const conn = await hp.openDirectConnection('error-doc');
     const doc = getDoc(conn);
@@ -325,8 +347,7 @@ describe('createLiveDerivedIndexExtension', () => {
       );
       await wait(20);
 
-      expect(updateDocumentFromMarkdown).toHaveBeenCalledTimes(1);
-      expect(signalChannel).not.toHaveBeenCalled();
+      expect(recordLiveDocument).toHaveBeenCalledTimes(1);
       expect(errorSpy).toHaveBeenCalled();
       expect(String(errorSpy.mock.calls[0]?.[1])).toContain(
         'Failed to update derived views for error-doc',

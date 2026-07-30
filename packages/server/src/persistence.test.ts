@@ -12,11 +12,22 @@ import {
 import { mkdir, realpath, rename, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
+import { composeAndWriteRawBody } from './bridge-intake.ts';
+import { createContentFilter } from './content-filter.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
+import {
+  DerivedDocumentIndex,
+  type DerivedDocumentIndexPersistencePort,
+} from './derived-document-index.ts';
+import { DocumentDurabilityState } from './document-durability-state.ts';
 import { contentHash, isSelfWrite, registerWrite } from './file-watcher';
-import { captureDocSnapshotForPersistence, resolveWriterFromOrigin } from './persistence';
+import {
+  captureDocSnapshotForPersistence,
+  createPersistenceExtension,
+  resolveWriterFromOrigin,
+} from './persistence';
 import { FILE_SYSTEM_WRITER, GIT_UPSTREAM_WRITER, SERVICE_WRITER } from './shadow-repo';
 
 describe('safeContentPath', () => {
@@ -218,6 +229,112 @@ describe('symlink-safe atomic write', () => {
     const hash = contentHash(markdown);
     expect(isSelfWrite(targetPath, hash)).toBe(true);
     expect(isSelfWrite(linkPath, hash)).toBe(false);
+  });
+});
+
+describe('durable derived-index projection', () => {
+  let contentDir: string;
+
+  beforeEach(() => {
+    contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-derived-persistence-')));
+  });
+
+  afterEach(() => {
+    rmSync(contentDir, { recursive: true, force: true });
+  });
+
+  async function storeDocument(
+    persistence: ReturnType<typeof createPersistenceExtension>,
+    document: Y.Doc,
+    documentName: string,
+  ): Promise<void> {
+    await persistence.extension.onStoreDocument?.({
+      document,
+      documentName,
+      lastTransactionOrigin: {
+        source: 'connection',
+        connection: { context: { principalId: 'principal-test' } },
+      },
+      lastContext: {},
+    } as never);
+  }
+
+  test('advances reconciled durability state before projecting the successful store', async () => {
+    const documentName = 'projected';
+    const markdown = '# Projected\n';
+    const durabilityState = new DocumentDurabilityState();
+    const recordDurableStore = vi.fn(async (receivedName: string, receivedMarkdown: string) => {
+      expect(durabilityState.getReconciledBase(receivedName)).toBe(receivedMarkdown);
+    });
+    const derivedDocumentIndex: DerivedDocumentIndexPersistencePort = {
+      recordDurableStore,
+    };
+    const persistence = createPersistenceExtension({
+      contentDir,
+      projectDir: contentDir,
+      gitEnabled: false,
+      durabilityState,
+      derivedDocumentIndex,
+    });
+    const document = new Y.Doc();
+    composeAndWriteRawBody(document, markdown, 'test');
+
+    await storeDocument(persistence, document, documentName);
+
+    expect(readFileSync(join(contentDir, `${documentName}.md`), 'utf-8')).toBe(markdown);
+    expect(recordDurableStore).toHaveBeenCalledWith(documentName, markdown);
+    document.destroy();
+  });
+
+  test('does not project a store whose durable disk write failed', async () => {
+    const documentName = 'blocked';
+    mkdirSync(join(contentDir, `${documentName}.md`));
+    const durabilityState = new DocumentDurabilityState();
+    const recordDurableStore = vi.fn();
+    const persistence = createPersistenceExtension({
+      contentDir,
+      projectDir: contentDir,
+      gitEnabled: false,
+      durabilityState,
+      derivedDocumentIndex: { recordDurableStore },
+    });
+    const document = new Y.Doc();
+    composeAndWriteRawBody(document, '# Blocked\n', 'test');
+
+    await expect(storeDocument(persistence, document, documentName)).rejects.toThrow();
+
+    expect(recordDurableStore).not.toHaveBeenCalled();
+    expect(durabilityState.getReconciledBase(documentName)).toBeUndefined();
+    document.destroy();
+  });
+
+  test('keeps a successful store durable when the derived index has already closed', async () => {
+    const documentName = 'closed-projection';
+    const markdown = '# Closed projection\n';
+    const durabilityState = new DocumentDurabilityState();
+    const derivedDocumentIndex = new DerivedDocumentIndex({
+      projectDir: contentDir,
+      contentDir,
+      contentFilter: createContentFilter({ projectDir: contentDir, contentDir }),
+      getGlobalSkillRoots: () => [],
+      signalChannel: () => {},
+    });
+    await derivedDocumentIndex.close();
+    const persistence = createPersistenceExtension({
+      contentDir,
+      projectDir: contentDir,
+      gitEnabled: false,
+      durabilityState,
+      derivedDocumentIndex,
+    });
+    const document = new Y.Doc();
+    composeAndWriteRawBody(document, markdown, 'test');
+
+    await expect(storeDocument(persistence, document, documentName)).resolves.toBeUndefined();
+
+    expect(readFileSync(join(contentDir, `${documentName}.md`), 'utf-8')).toBe(markdown);
+    expect(durabilityState.getReconciledBase(documentName)).toBe(markdown);
+    document.destroy();
   });
 });
 

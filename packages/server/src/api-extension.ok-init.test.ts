@@ -14,22 +14,9 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { listenOnLoopback } from './loopback-rig-test-helpers.ts';
 
-/**
- * Locate the source body that follows `const <handlerNameConst> = '...'`
- * declaration and return the next ~80 lines as a single string. The
- * 429-emission test uses this to scope a `.toContain` check to the
- * ok-init handler block without false-matching the same URN/header in
- * unrelated handlers.
- */
-function extractHandlerBlock(src: string, handlerNameConst: string): string {
-  const anchorRe = new RegExp(`const\\s+${handlerNameConst}\\s*=`);
-  const match = anchorRe.exec(src);
-  if (!match) {
-    throw new Error(`extractHandlerBlock: '${handlerNameConst}' anchor not found`);
-  }
-  // 80 lines × roughly 80 chars = ~6400 chars. Generous slice to catch
-  // both the tryAcquire branch and the finally-release.
-  return src.slice(match.index, match.index + 6400);
+interface TestConcurrencyGuard {
+  tryAcquire(key: string): boolean;
+  release(key: string): void;
 }
 
 interface TestRig {
@@ -57,7 +44,9 @@ function initRepo(cwd: string): void {
  * doesn't read from it (the body's projectPath is the operative target),
  * so a minimal git repo there satisfies the boot.
  */
-async function bootRig(): Promise<TestRig> {
+async function bootRig(
+  options: { localOpConcurrencyGuard?: TestConcurrencyGuard } = {},
+): Promise<TestRig> {
   // Root tmpRoot under the real home dir so projectPaths constructed beneath
   // it pass the handler's `isSafeLocalPath` home-dir containment gate. (A
   // tmpdir() root resolves outside $HOME on macOS — `/private/var/...` — and
@@ -85,6 +74,7 @@ async function bootRig(): Promise<TestRig> {
     projectDir,
     getFileIndex: () => new Map(),
     serverInstanceId: 'test-instance',
+    localOpConcurrencyGuard: options.localOpConcurrencyGuard,
   });
 
   const { createServer } = await import('node:http');
@@ -116,7 +106,7 @@ async function bootRig(): Promise<TestRig> {
 async function postOkInit(
   port: number,
   body: Record<string, unknown>,
-): Promise<{ status: number; json: Record<string, unknown> }> {
+): Promise<{ status: number; json: Record<string, unknown>; retryAfter: string | null }> {
   const res = await fetch(`http://127.0.0.1:${port}/api/local-op/ok-init`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -124,7 +114,7 @@ async function postOkInit(
   });
   // biome-ignore lint/suspicious/noExplicitAny: test
   const json = (await res.json()) as any;
-  return { status: res.status, json };
+  return { status: res.status, json, retryAfter: res.headers.get('retry-after') };
 }
 
 let rig: TestRig | null = null;
@@ -234,48 +224,47 @@ describe('POST /api/local-op/ok-init', () => {
     expect(res.json.type).toBe('urn:ok:error:invalid-request');
   });
 
-  test('429 problem+json contract — handler is wired through localOpGuard with the ok-init key', () => {
-    // The localOpGuard-backed 429 path is the user-facing contract when
-    // a concurrent ok-init lands while one is in-flight. The race itself
-    // is hard to observe deterministically through node:http's serial
-    // request dispatch (the synchronous initContent + finally{release}
-    // window is shorter than the body-parse + sync-gates window of the
-    // next request in the rig), so we validate the contract via source
-    // scan instead — three invariants the handler MUST satisfy:
-    //
-    //   1. A dedicated key constant `LOCAL_OP_OK_INIT_KEY` is declared
-    //      with the canonical channel string `/api/local-op/ok-init`.
-    //   2. The handler acquires the key via `localOpGuard.tryAcquire`
-    //      and emits a 429 with `urn:ok:error:concurrent-operation`
-    //      and the `Retry-After: 2` header on contention.
-    //   3. The key is released in a `finally` block so a thrown
-    //      `withParentLock` task can't leak the lock.
-    //
-    // Source scanning here is in the spirit of the structural-ratchet
-    // pattern (`ipc-channel-count-ratchet.test.ts`, `no-loosely-typed-
-    // webcontents-ipc.test.ts`): a regression that removes the lock or
-    // the 429 envelope shape would silently re-enable the race the
-    // guard exists to prevent.
-    const apiExtensionSrc = readFileSync(join(__dirname, 'api-extension.ts'), 'utf8');
+  test('returns 429 on contention and releases the guard after init failure', async () => {
+    const key = '/api/local-op/ok-init';
+    const acquired: string[] = [];
+    const released: string[] = [];
+    let rejectAcquisition = true;
+    let held = false;
+    const guard: TestConcurrencyGuard = {
+      tryAcquire(nextKey) {
+        acquired.push(nextKey);
+        if (rejectAcquisition || held) return false;
+        held = true;
+        return true;
+      },
+      release(nextKey) {
+        released.push(nextKey);
+        held = false;
+      },
+    };
+    rig = await bootRig({ localOpConcurrencyGuard: guard });
+    const target = join(rig.tmpRoot, 'guarded-worktree');
+    mkdirSync(target);
+    initRepo(target);
+    writeFileSync(join(target, 'README.md'), '# guarded\n');
+    run(target, 'git add -A');
+    run(target, 'git commit -q -m initial');
 
-    // (1) Key constant declared with the canonical channel string.
-    expect(apiExtensionSrc).toMatch(/LOCAL_OP_OK_INIT_KEY\s*=\s*['"]\/api\/local-op\/ok-init['"]/);
+    const contended = await postOkInit(rig.port, { projectPath: target });
+    expect(contended.status).toBe(429);
+    expect(contended.json.type).toBe('urn:ok:error:concurrent-operation');
+    expect(contended.retryAfter).toBe('2');
+    expect(acquired).toEqual([key]);
+    expect(released).toEqual([]);
 
-    // (2a) Handler calls tryAcquire on the key.
-    expect(apiExtensionSrc).toMatch(/localOpGuard\.tryAcquire\(LOCAL_OP_OK_INIT_KEY\)/);
-
-    // (2b) 429 + concurrent-operation URN + Retry-After header live in
-    // the handler block immediately following the tryAcquire negative
-    // branch. Co-located so a regression that breaks the contract
-    // surfaces here.
-    const okInitBlock = extractHandlerBlock(apiExtensionSrc, 'HANDLE_LOCAL_OP_OK_INIT');
-    expect(okInitBlock).toContain('429');
-    expect(okInitBlock).toContain("'urn:ok:error:concurrent-operation'");
-    expect(okInitBlock).toContain("'Retry-After'");
-
-    // (3) Release lives in a finally block (catches both happy-path
-    // success and `withParentLock` throws).
-    expect(okInitBlock).toMatch(/finally\s*\{[^}]*localOpGuard\.release\(LOCAL_OP_OK_INIT_KEY\)/s);
+    rejectAcquisition = false;
+    writeFileSync(join(target, '.ok'), 'blocks scaffold directory\n');
+    const failed = await postOkInit(rig.port, { projectPath: target });
+    expect(failed.status).toBe(200);
+    expect(failed.json).toMatchObject({ ok: false, reason: 'init-failed' });
+    expect(acquired).toEqual([key, key]);
+    expect(released).toEqual([key]);
+    expect(held).toBe(false);
   });
 
   test('scaffolds inside a linked worktree (FR13 + D12 spirit)', async () => {

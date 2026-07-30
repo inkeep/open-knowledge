@@ -1,20 +1,12 @@
 import type { Document, Extension } from '@hocuspocus/server';
-import type { BacklinkIndex } from './backlink-index.ts';
 import { isLinkIndexExcludedDoc } from './cc1-broadcast.ts';
+import type { DerivedDocumentIndexLivePort } from './derived-document-index.ts';
 import { getLogger } from './logger.ts';
-import type { TagIndex } from './tag-index.ts';
 
 export const LIVE_DERIVED_INDEX_DEBOUNCE_MS = 100;
 
 export interface LiveDerivedIndexOptions {
-  backlinkIndex: BacklinkIndex;
-  /**
-   * Optional. When wired, every backlink-update tick also re-extracts tags
-   * for the changed doc and broadcasts the `'tags'` derived-view channel so
-   * tag-aware UIs can invalidate their caches alongside backlinks/graph.
-   */
-  tagIndex?: TagIndex;
-  signalChannel?: (channel: 'files' | 'backlinks' | 'graph' | 'tags') => void;
+  derivedDocumentIndex: DerivedDocumentIndexLivePort;
   debounceMs?: number;
 }
 
@@ -40,12 +32,7 @@ function serializeLiveDocument(document: Document): string {
 }
 
 export function createLiveDerivedIndexExtension(options: LiveDerivedIndexOptions): Extension {
-  const {
-    backlinkIndex,
-    tagIndex,
-    signalChannel,
-    debounceMs = LIVE_DERIVED_INDEX_DEBOUNCE_MS,
-  } = options;
+  const { derivedDocumentIndex, debounceMs = LIVE_DERIVED_INDEX_DEBOUNCE_MS } = options;
   const pendingByDoc = new Map<string, ReturnType<typeof setTimeout>>();
 
   function clearPending(docName: string): void {
@@ -56,7 +43,7 @@ export function createLiveDerivedIndexExtension(options: LiveDerivedIndexOptions
     }
   }
 
-  function schedule(docName: string, document: Document): void {
+  function schedule(docName: string, document: Document, token: number): void {
     clearPending(docName);
     pendingByDoc.set(
       docName,
@@ -64,13 +51,12 @@ export function createLiveDerivedIndexExtension(options: LiveDerivedIndexOptions
         pendingByDoc.delete(docName);
         try {
           const markdown = serializeLiveDocument(document);
-          backlinkIndex.updateDocumentFromMarkdown(docName, markdown);
-          signalChannel?.('backlinks');
-          signalChannel?.('graph');
-          if (tagIndex) {
-            tagIndex.updateDocumentFromMarkdown(docName, markdown);
-            signalChannel?.('tags');
-          }
+          void derivedDocumentIndex.recordLiveDocument(docName, markdown, token).catch((err) => {
+            getLogger('live-derived-index').error(
+              { docName, err },
+              `Failed to update derived views for ${docName}`,
+            );
+          });
         } catch (err) {
           getLogger('live-derived-index').error(
             { docName, err },
@@ -93,9 +79,15 @@ export function createLiveDerivedIndexExtension(options: LiveDerivedIndexOptions
         return;
       }
 
+      const token = derivedDocumentIndex.captureLiveUpdateToken();
+      if (token === null) {
+        clearPending(documentName);
+        return;
+      }
+
       // Give the source/tree bridge a short trailing window to converge so we
       // derive links from settled live document state instead of the 2s store debounce.
-      schedule(documentName, document);
+      schedule(documentName, document, token);
     },
 
     async beforeUnloadDocument({ documentName }) {

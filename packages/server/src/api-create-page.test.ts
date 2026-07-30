@@ -13,9 +13,13 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { Principal } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { createApiExtension } from './api-extension.test-helper.ts';
+import {
+  createApiExtension,
+  createDerivedDocumentIndexApiPortStub,
+} from './api-extension.test-helper.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { contributorCount, hasContributor, swapContributors } from './contributor-tracker.ts';
+import type { DerivedDocumentIndexApiPort } from './derived-document-index.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 
 // ---------------------------------------------------------------------------
@@ -58,6 +62,7 @@ async function callCreatePage(
   options?: {
     fileIndex?: Map<string, FileIndexEntry>;
     backlinkIndex?: BacklinkIndex;
+    derivedDocumentIndex?: DerivedDocumentIndexApiPort;
     getPrincipal?: () => Principal | null;
   },
 ): Promise<CapturedResponse> {
@@ -67,6 +72,7 @@ async function callCreatePage(
     contentDir,
     getFileIndex: () => options?.fileIndex ?? new Map<string, FileIndexEntry>(),
     backlinkIndex: options?.backlinkIndex,
+    derivedDocumentIndex: options?.derivedDocumentIndex,
     getPrincipal: options?.getPrincipal,
   });
   const req = makeReq(method, body);
@@ -121,6 +127,28 @@ describe('POST /api/create-page', () => {
     expect(body.docName).toBe('my-page');
     expect(body.ok).toBeUndefined();
     expect(existsSync(join(dir, 'my-page.md'))).toBe(true);
+  });
+
+  test('keeps a created file successful when the derived index is closed', async () => {
+    const dir = setupTmpDir();
+    const derivedDocumentIndex = createDerivedDocumentIndexApiPortStub({
+      async recordDirectDocument() {
+        const error = new Error('Derived document index is closed');
+        error.name = 'DerivedDocumentIndexClosedError';
+        throw error;
+      },
+    });
+
+    const result = await callCreatePage(
+      dir,
+      'POST',
+      { path: 'survives-shutdown.md' },
+      { derivedDocumentIndex },
+    );
+
+    expect(result.status).toBe(200);
+    expect(existsSync(join(dir, 'survives-shutdown.md'))).toBe(true);
+    expect(JSON.parse(result.body)).toMatchObject({ docName: 'survives-shutdown' });
   });
 
   test('creates a .mdx file and returns the extension-less docName', async () => {

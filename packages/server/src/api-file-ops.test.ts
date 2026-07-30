@@ -15,11 +15,15 @@ import { join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { Hocuspocus } from '@hocuspocus/server';
 import simpleGit from 'simple-git';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
-import { createApiExtension } from './api-extension.test-helper.ts';
+import {
+  createApiExtension,
+  createDerivedDocumentIndexApiPortStub,
+} from './api-extension.test-helper.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { type ContentFilter, createContentFilter } from './content-filter.ts';
+import type { DerivedDocumentIndexApiPort } from './derived-document-index.ts';
 import { _resetDocExtensionsForTests, getDocExtension } from './doc-extensions.ts';
 import type { FileIndexEntry, FolderIndexEntry } from './file-watcher.ts';
 
@@ -125,6 +129,7 @@ type CallApiOptions = {
   signalChannel?: Parameters<typeof createApiExtension>[0]['signalChannel'];
   projectDir?: string;
   contentFilter?: ContentFilter;
+  derivedDocumentIndex?: DerivedDocumentIndexApiPort;
 };
 
 async function createTestApiExtension(contentDir: string, options?: CallApiOptions) {
@@ -155,6 +160,19 @@ async function createTestApiExtension(contentDir: string, options?: CallApiOptio
     signalChannel: options?.signalChannel,
     projectDir: options?.projectDir,
     contentFilter: options?.contentFilter,
+    derivedDocumentIndex: options?.derivedDocumentIndex,
+  });
+}
+
+function createClosedDerivedDocumentIndexPort(): DerivedDocumentIndexApiPort {
+  const rejectClosed = async (): Promise<never> => {
+    const error = new Error('Derived document index is closed');
+    error.name = 'DerivedDocumentIndexClosedError';
+    throw error;
+  };
+  return createDerivedDocumentIndexApiPortStub({
+    recordDirectMutations: rejectClosed,
+    recordDirectDocument: rejectClosed,
   });
 }
 
@@ -203,6 +221,7 @@ function setupTmpDir(): string {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   _resetDocExtensionsForTests();
   if (tmpDir) {
     rmSync(tmpDir, { recursive: true, force: true });
@@ -971,6 +990,27 @@ describe('file operation API routes', () => {
     expect(body.renamed).toEqual([{ fromDocName: 'notes', toDocName: 'renamed-notes' }]);
   });
 
+  test('keeps a document rename successful when the derived index closes after disk commit', async () => {
+    const dir = setupTmpDir();
+    writeFileSync(join(dir, 'notes.md'), '# Notes\n', 'utf-8');
+
+    const result = await callApi(
+      dir,
+      '/api/rename-path',
+      'POST',
+      {
+        kind: 'file',
+        fromPath: 'notes',
+        toPath: 'renamed-notes',
+      },
+      { derivedDocumentIndex: createClosedDerivedDocumentIndexPort() },
+    );
+
+    expect(result.status).toBe(200);
+    expect(existsSync(join(dir, 'notes.md'))).toBe(false);
+    expect(readFileSync(join(dir, 'renamed-notes.md'), 'utf-8')).toBe('# Notes\n');
+  });
+
   test('renames a folder and returns descendant mappings', async () => {
     const dir = setupTmpDir();
     mkdirSync(join(dir, 'docs/nested'), { recursive: true });
@@ -1283,6 +1323,28 @@ describe('file operation API routes', () => {
     expect(body.deletedDocNames).toEqual(['trash-me']);
   });
 
+  test('keeps a durable delete successful when relationship projection fails', async () => {
+    const dir = setupTmpDir();
+    writeFileSync(join(dir, 'trash-me.md'), '# Delete me\n', 'utf-8');
+    const failingBacklinkIndex = {
+      deleteDocument: () => {
+        throw new Error('projection failed');
+      },
+    } as unknown as BacklinkIndex;
+
+    const result = await callApi(
+      dir,
+      '/api/delete-path',
+      'POST',
+      { kind: 'file', path: 'trash-me' },
+      { backlinkIndex: failingBacklinkIndex },
+    );
+
+    expect(result.status).toBe(200);
+    expect(existsSync(join(dir, 'trash-me.md'))).toBe(false);
+    expect(JSON.parse(result.body)).toMatchObject({ deletedDocNames: ['trash-me'] });
+  });
+
   test('delete accepts asset-shaped markdown paths as document deletes', async () => {
     const dir = setupTmpDir();
     writeFileSync(join(dir, 'trash-me.md'), '# Delete me\n', 'utf-8');
@@ -1370,6 +1432,32 @@ describe('file operation API routes', () => {
       { fromPath: 'docs/media/diagram.png', toPath: 'docs/assets/hero.png' },
     ]);
     expect(body.rewrittenDocs).toEqual([{ docName: 'docs/guide', rewrites: 5 }]);
+  });
+
+  test('keeps an asset rename successful when the derived index closes after disk commit', async () => {
+    const dir = setupTmpDir();
+    mkdirSync(join(dir, 'docs/media'), { recursive: true });
+    writeFileSync(join(dir, 'docs/media/diagram.png'), 'fake image bytes', 'utf-8');
+    writeFileSync(join(dir, 'docs/guide.md'), '![diagram](./media/diagram.png)\n', 'utf-8');
+
+    const result = await callApi(
+      dir,
+      '/api/rename-path',
+      'POST',
+      {
+        kind: 'asset',
+        fromPath: 'docs/media/diagram.png',
+        toPath: 'docs/assets/diagram.png',
+      },
+      { derivedDocumentIndex: createClosedDerivedDocumentIndexPort() },
+    );
+
+    expect(result.status).toBe(200);
+    expect(existsSync(join(dir, 'docs/media/diagram.png'))).toBe(false);
+    expect(readFileSync(join(dir, 'docs/assets/diagram.png'), 'utf-8')).toBe('fake image bytes');
+    expect(readFileSync(join(dir, 'docs/guide.md'), 'utf-8')).toBe(
+      '![diagram](./assets/diagram.png)\n',
+    );
   });
 
   test('asset rename rejects destinations excluded by content config', async () => {
@@ -1475,6 +1563,9 @@ describe('file operation API routes', () => {
     mkdirSync(join(dir, 'docs/media'), { recursive: true });
     writeFileSync(join(dir, 'docs/guide.md'), '# Guide\n', 'utf-8');
     writeFileSync(join(dir, 'docs/index.md'), '[Guide](./guide.md)\n', 'utf-8');
+    const backlinkIndex = await buildBacklinkIndex(dir);
+    const backlinkSave = vi.spyOn(backlinkIndex, 'saveToDisk');
+    const signals: string[] = [];
 
     const result = await callApi(
       dir,
@@ -1485,7 +1576,10 @@ describe('file operation API routes', () => {
         fromPath: 'docs/guide.md',
         toPath: 'docs/media/guide.custom',
       },
-      { backlinkIndex: buildBacklinkIndex(dir) },
+      {
+        backlinkIndex,
+        signalChannel: (channel) => signals.push(channel),
+      },
     );
 
     expect(result.status).toBe(200);
@@ -1507,6 +1601,12 @@ describe('file operation API routes', () => {
       },
     ]);
     expect(body.rewrittenDocs).toEqual([{ docName: 'docs/index', rewrites: 1 }]);
+    expect(backlinkSave).toHaveBeenCalledTimes(1);
+    expect(signals.filter((channel) => channel !== 'files')).toEqual([
+      'backlinks',
+      'graph',
+      'tags',
+    ]);
   });
 
   test('document-to-file rename carries live Y.Doc content to the destination file', async () => {
@@ -1543,6 +1643,27 @@ describe('file operation API routes', () => {
     } finally {
       await conn.disconnect().catch(() => {});
     }
+  });
+
+  test('keeps a document-to-file rename successful when the derived index closes', async () => {
+    const dir = setupTmpDir();
+    writeFileSync(join(dir, 'guide.md'), '# Guide\n', 'utf-8');
+
+    const result = await callApi(
+      dir,
+      '/api/rename-path',
+      'POST',
+      {
+        kind: 'asset',
+        fromPath: 'guide.md',
+        toPath: 'guide.txt',
+      },
+      { derivedDocumentIndex: createClosedDerivedDocumentIndexPort() },
+    );
+
+    expect(result.status).toBe(200);
+    expect(existsSync(join(dir, 'guide.md'))).toBe(false);
+    expect(readFileSync(join(dir, 'guide.txt'), 'utf-8')).toBe('# Guide\n');
   });
 
   test('document-to-file rename returns 404 when the source document is missing', async () => {
@@ -1929,6 +2050,30 @@ describe('file operation API routes', () => {
       { fromPath: 'media/diagram.png', toPath: 'assets/diagram.png' },
     ]);
     expect(body.rewrittenDocs).toEqual([{ docName: 'index', rewrites: 2 }]);
+  });
+
+  test('keeps an asset-only folder rename successful when the derived index closes', async () => {
+    const dir = setupTmpDir();
+    mkdirSync(join(dir, 'media'), { recursive: true });
+    writeFileSync(join(dir, 'media/diagram.png'), 'fake image bytes', 'utf-8');
+    writeFileSync(join(dir, 'index.md'), '![diagram](./media/diagram.png)\n', 'utf-8');
+
+    const result = await callApi(
+      dir,
+      '/api/rename-path',
+      'POST',
+      {
+        kind: 'folder',
+        fromPath: 'media',
+        toPath: 'assets',
+      },
+      { derivedDocumentIndex: createClosedDerivedDocumentIndexPort() },
+    );
+
+    expect(result.status).toBe(200);
+    expect(existsSync(join(dir, 'media'))).toBe(false);
+    expect(readFileSync(join(dir, 'assets/diagram.png'), 'utf-8')).toBe('fake image bytes');
+    expect(readFileSync(join(dir, 'index.md'), 'utf-8')).toBe('![diagram](./assets/diagram.png)\n');
   });
 
   test('folder rename rewrites references to assets that move with markdown docs', async () => {
@@ -2366,15 +2511,13 @@ describe('file operation API routes', () => {
     expect(body.duplicatedDocNames).toEqual(['archive copy/index', 'archive copy/old/entry']);
   });
 
-  test('removes a copied folder when duplicate-path post-copy registration fails', async () => {
+  test('keeps a copied folder when the derived index closes after registration', async () => {
     const dir = setupTmpDir();
     mkdirSync(join(dir, 'archive'), { recursive: true });
-    writeFileSync(join(dir, 'archive/index.md'), '# Archive\n', 'utf-8');
-    const failingBacklinkIndex = {
-      updateDocumentFromMarkdown: () => {
-        throw new Error('registration failed');
-      },
-    } as unknown as BacklinkIndex;
+    writeFileSync(join(dir, 'archive/index.mdx'), '# Archive\n', 'utf-8');
+    const fileIndex = new Map(buildFileIndex(dir));
+    const folderIndex = new Map(buildFolderIndex(dir));
+    const contentFilter = createContentFilter({ projectDir: dir, contentDir: dir });
 
     const result = await callApi(
       dir,
@@ -2384,55 +2527,42 @@ describe('file operation API routes', () => {
         kind: 'folder',
         path: 'archive',
       },
-      { backlinkIndex: failingBacklinkIndex, getFileIndex: () => new Map() },
-    );
-
-    expect(result.status).toBe(500);
-    expect(existsSync(join(dir, 'archive copy'))).toBe(false);
-    expect(JSON.parse(result.body)).toMatchObject({
-      type: 'urn:ok:error:internal-server-error',
-      title: 'Failed to duplicate path.',
-      status: 500,
-    });
-  });
-
-  test('removes a copied file when duplicate-path post-copy registration fails', async () => {
-    const dir = setupTmpDir();
-    writeFileSync(join(dir, 'notes.md'), '# Notes\n', 'utf-8');
-    const failingBacklinkIndex = {
-      updateDocumentFromMarkdown: () => {
-        throw new Error('registration failed');
-      },
-    } as unknown as BacklinkIndex;
-
-    const result = await callApi(
-      dir,
-      '/api/duplicate-path',
-      'POST',
       {
-        kind: 'file',
-        path: 'notes',
+        derivedDocumentIndex: createClosedDerivedDocumentIndexPort(),
+        contentFilter,
+        getFileIndex: () => fileIndex,
+        getFolderIndex: () => folderIndex,
+        mutateFileIndex: (event) => {
+          if (event.kind === 'create') {
+            fileIndex.set(event.docName, {
+              size: event.content.length,
+              modified: new Date(0).toISOString(),
+              canonicalPath: event.path,
+              inode: 0,
+              aliases: [],
+            });
+          } else if (event.kind === 'delete') {
+            fileIndex.delete(event.docName);
+          }
+        },
       },
-      { backlinkIndex: failingBacklinkIndex, getFileIndex: () => new Map() },
     );
 
-    expect(result.status).toBe(500);
-    expect(existsSync(join(dir, 'notes copy.md'))).toBe(false);
+    expect(result.status).toBe(200);
+    expect(readFileSync(join(dir, 'archive copy/index.mdx'), 'utf-8')).toBe('# Archive\n');
+    expect(fileIndex.has('archive copy/index')).toBe(true);
+    expect([...folderIndex.keys()].some((path) => path.startsWith('archive copy'))).toBe(true);
+    expect(getDocExtension('archive copy/index')).toBe('.mdx');
     expect(JSON.parse(result.body)).toMatchObject({
-      type: 'urn:ok:error:internal-server-error',
-      title: 'Failed to duplicate path.',
-      status: 500,
+      kind: 'folder',
+      path: 'archive copy',
+      duplicatedDocNames: ['archive copy/index'],
     });
   });
 
-  test('forgets a copied file extension when duplicate-path post-copy registration fails', async () => {
+  test('keeps a copied file when the derived index closes after registration', async () => {
     const dir = setupTmpDir();
     writeFileSync(join(dir, 'notes.mdx'), '# Notes\n', 'utf-8');
-    const failingBacklinkIndex = {
-      updateDocumentFromMarkdown: () => {
-        throw new Error('registration failed');
-      },
-    } as unknown as BacklinkIndex;
 
     const result = await callApi(
       dir,
@@ -2442,25 +2572,26 @@ describe('file operation API routes', () => {
         kind: 'file',
         path: 'notes',
       },
-      { backlinkIndex: failingBacklinkIndex, getFileIndex: () => new Map() },
+      {
+        derivedDocumentIndex: createClosedDerivedDocumentIndexPort(),
+        getFileIndex: () => new Map(),
+      },
     );
 
-    expect(result.status).toBe(500);
-    expect(existsSync(join(dir, 'notes copy.mdx'))).toBe(false);
-    expect(getDocExtension('notes copy')).toBe('.md');
+    expect(result.status).toBe(200);
+    expect(readFileSync(join(dir, 'notes copy.mdx'), 'utf-8')).toBe('# Notes\n');
+    expect(getDocExtension('notes copy')).toBe('.mdx');
+    expect(JSON.parse(result.body)).toMatchObject({
+      kind: 'file',
+      path: 'notes copy',
+      duplicatedDocNames: ['notes copy'],
+    });
   });
 
-  test('returns 507 when duplicate-path registration hits storage exhaustion', async () => {
+  test('rolls back a copied folder when synchronous registration fails', async () => {
     const dir = setupTmpDir();
     mkdirSync(join(dir, 'archive'), { recursive: true });
     writeFileSync(join(dir, 'archive/index.md'), '# Archive\n', 'utf-8');
-    const fullDiskBacklinkIndex = {
-      updateDocumentFromMarkdown: () => {
-        const err = new Error('no space left on device') as NodeJS.ErrnoException;
-        err.code = 'ENOSPC';
-        throw err;
-      },
-    } as unknown as BacklinkIndex;
 
     const result = await callApi(
       dir,
@@ -2470,28 +2601,20 @@ describe('file operation API routes', () => {
         kind: 'folder',
         path: 'archive',
       },
-      { backlinkIndex: fullDiskBacklinkIndex, getFileIndex: () => new Map() },
+      {
+        mutateFileIndex: (event) => {
+          if (event.kind === 'create') throw new Error('registration failed');
+        },
+      },
     );
 
-    expect(result.status).toBe(507);
+    expect(result.status).toBe(500);
     expect(existsSync(join(dir, 'archive copy'))).toBe(false);
-    expect(JSON.parse(result.body)).toMatchObject({
-      type: 'urn:ok:error:storage-full',
-      title: 'Could not duplicate path because storage is full.',
-      status: 507,
-    });
   });
 
-  test('returns 507 when duplicate-path file registration hits storage exhaustion', async () => {
+  test('rolls back a copied file when synchronous registration fails', async () => {
     const dir = setupTmpDir();
     writeFileSync(join(dir, 'notes.md'), '# Notes\n', 'utf-8');
-    const fullDiskBacklinkIndex = {
-      updateDocumentFromMarkdown: () => {
-        const err = new Error('no space left on device') as NodeJS.ErrnoException;
-        err.code = 'ENOSPC';
-        throw err;
-      },
-    } as unknown as BacklinkIndex;
 
     const result = await callApi(
       dir,
@@ -2501,79 +2624,15 @@ describe('file operation API routes', () => {
         kind: 'file',
         path: 'notes',
       },
-      { backlinkIndex: fullDiskBacklinkIndex, getFileIndex: () => new Map() },
-    );
-
-    expect(result.status).toBe(507);
-    expect(existsSync(join(dir, 'notes copy.md'))).toBe(false);
-    expect(JSON.parse(result.body)).toMatchObject({
-      type: 'urn:ok:error:storage-full',
-      title: 'Could not duplicate path because storage is full.',
-      status: 507,
-    });
-  });
-
-  test('returns actionable storage-readonly when duplicate-path registration hits permissions', async () => {
-    const dir = setupTmpDir();
-    mkdirSync(join(dir, 'archive'), { recursive: true });
-    writeFileSync(join(dir, 'archive/index.md'), '# Archive\n', 'utf-8');
-    const readOnlyBacklinkIndex = {
-      updateDocumentFromMarkdown: () => {
-        const err = new Error('permission denied') as NodeJS.ErrnoException;
-        err.code = 'EACCES';
-        throw err;
-      },
-    } as unknown as BacklinkIndex;
-
-    const result = await callApi(
-      dir,
-      '/api/duplicate-path',
-      'POST',
       {
-        kind: 'folder',
-        path: 'archive',
+        mutateFileIndex: (event) => {
+          if (event.kind === 'create') throw new Error('registration failed');
+        },
       },
-      { backlinkIndex: readOnlyBacklinkIndex, getFileIndex: () => new Map() },
-    );
-
-    expect(result.status).toBe(500);
-    expect(existsSync(join(dir, 'archive copy'))).toBe(false);
-    expect(JSON.parse(result.body)).toMatchObject({
-      type: 'urn:ok:error:storage-readonly',
-      title: 'Could not duplicate path because storage is not writable.',
-      status: 500,
-    });
-  });
-
-  test('returns actionable storage-readonly when duplicate-path file registration hits permissions', async () => {
-    const dir = setupTmpDir();
-    writeFileSync(join(dir, 'notes.md'), '# Notes\n', 'utf-8');
-    const readOnlyBacklinkIndex = {
-      updateDocumentFromMarkdown: () => {
-        const err = new Error('permission denied') as NodeJS.ErrnoException;
-        err.code = 'EACCES';
-        throw err;
-      },
-    } as unknown as BacklinkIndex;
-
-    const result = await callApi(
-      dir,
-      '/api/duplicate-path',
-      'POST',
-      {
-        kind: 'file',
-        path: 'notes',
-      },
-      { backlinkIndex: readOnlyBacklinkIndex, getFileIndex: () => new Map() },
     );
 
     expect(result.status).toBe(500);
     expect(existsSync(join(dir, 'notes copy.md'))).toBe(false);
-    expect(JSON.parse(result.body)).toMatchObject({
-      type: 'urn:ok:error:storage-readonly',
-      title: 'Could not duplicate path because storage is not writable.',
-      status: 500,
-    });
   });
 
   test('returns 409 when duplicate-path folder destination appears before copy', async () => {

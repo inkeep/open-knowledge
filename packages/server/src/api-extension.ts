@@ -498,12 +498,7 @@ import {
   ManagedRenameSourceTypeMismatchError,
   SymlinkEscapeError,
 } from './apply-managed-rename.ts';
-import {
-  type BacklinkIndex,
-  computeBrokenOutboundLinks,
-  type GraphNode as IndexedGraphNode,
-  isOrphanMode,
-} from './backlink-index.ts';
+import { computeBrokenOutboundLinks } from './backlink-index.ts';
 import { getBootTimings } from './boot-timings.ts';
 import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from './bridge-intake.ts';
 import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
@@ -512,6 +507,13 @@ import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import type { ResolveStrategy } from './conflict-storage.ts';
 import type { ContentFilter } from './content-filter.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
+import {
+  type DerivedDocumentIndexApiPort,
+  type DerivedDocumentIndexMutation,
+  type DerivedGraphNode,
+  isDerivedDocumentIndexClosedError,
+  isDerivedOrphanMode,
+} from './derived-document-index.ts';
 import {
   docNameToRelativePath,
   extensionlessDocTreePath,
@@ -657,7 +659,6 @@ import { createSingleFlight } from './single-flight.ts';
 import { restoreSkillVersion } from './skill-restore.ts';
 import { SuggestLinksTargetNotFoundError, suggestLinks } from './suggest-links.ts';
 import type { SyncEngine } from './sync-engine.ts';
-import type { TagIndex } from './tag-index.ts';
 import { getMeter, getTracer, withSpan, withSpanSync } from './telemetry.ts';
 import { getDocumentHistory, getFolderTimeline } from './timeline-query.ts';
 import { recordTimelineCoalesced } from './timeline-telemetry.ts';
@@ -2743,6 +2744,7 @@ export interface ApiExtensionOptions {
    * Linux CI — see `WatcherHandle.rescanFromDisk` in `file-watcher.ts`.
    */
   rescanFiles?: () => void | Promise<void>;
+  localOpConcurrencyGuard?: ReturnType<typeof createConcurrencyGuard>;
   /**
    * When true, register test-only routes (`/api/test-reset`,
    * `/api/test-rescan-backlinks`, `/api/test-rescan-files`). Defaults to
@@ -2776,9 +2778,8 @@ export interface ApiExtensionOptions {
    */
   getDiskAckSVs?: () => Record<string, string>;
   contentRoot?: string;
-  backlinkIndex?: BacklinkIndex;
-  tagIndex?: TagIndex;
-  signalChannel?: (channel: 'files' | 'backlinks' | 'graph' | 'lint-config') => void;
+  derivedDocumentIndex?: DerivedDocumentIndexApiPort;
+  signalChannel?: (channel: 'files' | 'lint-config') => void;
   /**
    * Optional. When present, agent write handlers publish per-write attribution
    * entries on `__system__` awareness (`agentFocus` map) with writeKind +
@@ -3092,6 +3093,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     getAliasMap,
     getFolderAliasIndex,
     rescanFiles,
+    localOpConcurrencyGuard,
     enableTestRoutes = false,
     shadowRef,
     flushGitCommit,
@@ -3099,8 +3101,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     getCurrentBranch,
     getDiskAckSVs,
     contentRoot,
-    backlinkIndex,
-    tagIndex,
+    derivedDocumentIndex,
     signalChannel,
     agentFocusBroadcaster,
     agentPresenceBroadcaster,
@@ -3134,7 +3135,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   } = options;
 
   // Concurrency guard: at most 1 in-flight request per local-op endpoint
-  const localOpGuard = createConcurrencyGuard();
+  const localOpGuard = localOpConcurrencyGuard ?? createConcurrencyGuard();
 
   // Single-flight dedupe for `GET /api/documents?showAll=true`. Keyed per
   // server instance (NOT module-global — tests boot several servers in one
@@ -3342,15 +3343,15 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
    * Soft orphan-hint: when a written doc has zero backlinks AND a hub
    * candidate exists in its folder tree, attach a hint suggesting the hub.
    * Returns `undefined` when any prerequisite is unavailable (no
-   * backlinkIndex wired, target not in index, has backlinks, or no candidate).
+   * relationship index wired, target not in index, has backlinks, or no candidate).
    * Non-throwing — a hint-computation failure must not fail the write.
    */
-  function computeOrphanHints(
+  async function computeOrphanHints(
     docName: string,
-  ): Array<{ type: 'orphan'; parentCandidates: string[]; message: string }> | undefined {
-    if (!backlinkIndex) return undefined;
+  ): Promise<Array<{ type: 'orphan'; parentCandidates: string[]; message: string }> | undefined> {
+    if (!derivedDocumentIndex) return undefined;
     try {
-      const backlinks = backlinkIndex.getBacklinks(docName);
+      const backlinks = await derivedDocumentIndex.getBacklinks(docName);
       if (backlinks.length > 0) return undefined;
       // This runs on every write — if hub-candidate walking becomes pathological
       // on very large file indexes, we want an observable signal. 5ms is well
@@ -3593,7 +3594,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     return contentFilter.isExcluded(relPath);
   }
 
-  function collectAdmittedDocNames(): Set<string> {
+  async function collectAdmittedDocNames(): Promise<Set<string>> {
     const admitted = new Set<string>();
     for (const [docName, entry] of getFileIndex()) {
       admitted.add(docName);
@@ -3637,11 +3638,117 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     // its title/frontmatter would leak through the link/title endpoints. Already-
     // admitted names (file index, managed artifacts) skip the gate — cheap and
     // they're known in-scope.
-    for (const docName of backlinkIndex?.getIndexedDocNames() ?? []) {
+    for (const docName of (await derivedDocumentIndex?.getIndexedDocNames()) ?? []) {
       if (admitted.has(docName)) continue;
       if (!isDocNameContentExcluded(docName)) admitted.add(docName);
     }
     return admitted;
+  }
+
+  async function recordDerivedMutationsBestEffort(
+    mutations: readonly DerivedDocumentIndexMutation[],
+    reason: string,
+  ): Promise<void> {
+    if (!derivedDocumentIndex || mutations.length === 0) return;
+    try {
+      await derivedDocumentIndex.recordDirectMutations(mutations);
+    } catch (err) {
+      logDerivedProjectionFailure(
+        err,
+        { count: mutations.length, reason },
+        '[derived-index] failed to project durable document mutations',
+      );
+    }
+  }
+
+  async function recordDerivedDocumentBestEffort(
+    documentName: string,
+    markdown: string,
+    reason: string,
+  ): Promise<void> {
+    if (!derivedDocumentIndex) return;
+    try {
+      await derivedDocumentIndex.recordDirectDocument(documentName, markdown);
+    } catch (err) {
+      logDerivedProjectionFailure(
+        err,
+        { documentName, reason },
+        '[derived-index] failed to project durable document',
+      );
+    }
+  }
+
+  async function recordDerivedLinkRewriteBestEffort(
+    documentName: string,
+    markdown: string,
+    reason: string,
+  ): Promise<void> {
+    if (!derivedDocumentIndex) return;
+    try {
+      await derivedDocumentIndex.recordLinkRewrite(documentName, markdown);
+    } catch (err) {
+      logDerivedProjectionFailure(
+        err,
+        { documentName, reason },
+        '[derived-index] failed to project link rewrite',
+      );
+    }
+  }
+
+  function logDerivedProjectionFailure(
+    err: unknown,
+    context: Record<string, unknown>,
+    failureMessage: string,
+  ): void {
+    if (isDerivedDocumentIndexClosedError(err)) {
+      log.debug(
+        { err, ...context },
+        '[derived-index] coordinator closed; skipping durable projection',
+      );
+      return;
+    }
+    log.warn({ err, ...context }, failureMessage);
+  }
+
+  function respondToDerivedIndexQueryFailure(
+    res: ServerResponse,
+    err: unknown,
+    options: {
+      handler: string;
+      failureTitle: string;
+    },
+  ): void {
+    if (isDerivedDocumentIndexClosedError(err)) {
+      errorResponse(
+        res,
+        503,
+        'urn:ok:error:derived-index-unavailable',
+        'Derived index is shutting down.',
+        {
+          handler: options.handler,
+          cause: err,
+          logLevel: 'debug',
+        },
+      );
+      return;
+    }
+    errorResponse(res, 500, 'urn:ok:error:internal-server-error', options.failureTitle, {
+      handler: options.handler,
+      cause: err,
+    });
+  }
+
+  async function deleteDerivedDocumentsBestEffort(
+    documentNames: Iterable<string>,
+    reason: string,
+  ): Promise<void> {
+    await recordDerivedMutationsBestEffort(
+      [...documentNames].map((documentName) => ({
+        kind: 'delete',
+        documentName,
+      })),
+      reason,
+    );
   }
 
   // On-disk existence oracle for non-doc outbound link targets (linked assets
@@ -4010,11 +4117,15 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     }
   }
 
-  function applyPendingAssetReferenceRewrites(
+  async function applyPendingAssetReferenceRewrites(
     pendingRewrites: readonly { docName: string; markdown: string; rewrites: number }[],
     renamedAssets: readonly RenamedAssetMapping[],
-  ): ManagedRenameRewrittenDoc[] {
+  ): Promise<{
+    rewrittenDocs: ManagedRenameRewrittenDoc[];
+    derivedMutations: DerivedDocumentIndexMutation[];
+  }> {
     const rewrittenDocs: ManagedRenameRewrittenDoc[] = [];
+    const derivedMutations: DerivedDocumentIndexMutation[] = [];
     for (const pending of pendingRewrites) {
       const document = hocuspocus.documents.get(pending.docName);
       const rewritten = document
@@ -4022,10 +4133,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         : pending;
       if (rewritten.rewrites === 0) continue;
       writeManagedRenameDocumentToDisk(pending.docName, rewritten.markdown);
-      backlinkIndex?.updateDocumentFromMarkdown(pending.docName, rewritten.markdown);
+      derivedMutations.push({
+        kind: 'link-rewrite',
+        documentName: pending.docName,
+        markdown: rewritten.markdown,
+      });
       rewrittenDocs.push({ docName: pending.docName, rewrites: rewritten.rewrites });
     }
-    return rewrittenDocs;
+    return { rewrittenDocs, derivedMutations };
   }
 
   function resolveExtensionlessAssetPath(assetPath: string): {
@@ -4169,7 +4284,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           },
         },
         async (span) => {
-          if (!backlinkIndex) {
+          if (!derivedDocumentIndex) {
             throw new BacklinkIndexRequiredError();
           }
           const destinationAssetPath = extname(toPath) ? toPath : `${toPath}${extname(fromPath)}`;
@@ -4226,19 +4341,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             renamePathOnDisk(sourcePath, destinationPath);
           }
 
-          const rewrittenDocs = applyPendingAssetReferenceRewrites(pendingRewrites, renamedAssets);
-
-          void backlinkIndex.saveToDisk().catch((err) => {
-            log.warn(
-              { fromPath, toPath: destinationAssetPath, err },
-              `[backlinks] Failed to persist asset rename cache for ${fromPath} -> ${destinationAssetPath}`,
-            );
-          });
+          const { rewrittenDocs, derivedMutations } = await applyPendingAssetReferenceRewrites(
+            pendingRewrites,
+            renamedAssets,
+          );
+          await recordDerivedMutationsBestEffort(derivedMutations, 'asset-rename');
           signalChannel?.('files');
-          if (rewrittenDocs.length > 0) {
-            signalChannel?.('backlinks');
-            signalChannel?.('graph');
-          }
 
           rewrittenDocs.sort((a, b) => a.docName.localeCompare(b.docName));
           span.setAttribute('rename.rewrite_count', rewrittenDocs.length);
@@ -4265,7 +4373,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           },
         },
         async (span) => {
-          if (!backlinkIndex) {
+          if (!derivedDocumentIndex) {
             throw new BacklinkIndexRequiredError();
           }
           if (!isSupportedDocFile(fromPath) || isSupportedDocFile(toPath)) {
@@ -4363,7 +4471,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               renamePathOnDisk(sourcePath, destinationPath);
             }
 
-            backlinkIndex.deleteDocument(sourceDocName);
             forgetDocExtension(sourceDocName);
             mutateFileIndex?.({ kind: 'delete', path: sourcePath, docName: sourceDocName });
             const destinationStat = statSync(destinationPath);
@@ -4376,19 +4483,16 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               inode: destinationStat.ino,
             });
 
-            rewrittenDocs = applyPendingAssetReferenceRewrites(pendingRewrites, renamedAssets);
-
-            void backlinkIndex.saveToDisk().catch((err) => {
-              log.warn(
-                { fromPath, toPath, err },
-                `[backlinks] Failed to persist document-to-file rename cache for ${fromPath} -> ${toPath}`,
-              );
-            });
+            const rewriteResult = await applyPendingAssetReferenceRewrites(
+              pendingRewrites,
+              renamedAssets,
+            );
+            rewrittenDocs = rewriteResult.rewrittenDocs;
+            await recordDerivedMutationsBestEffort(
+              [{ kind: 'delete', documentName: sourceDocName }, ...rewriteResult.derivedMutations],
+              'document-to-file-rename',
+            );
             signalChannel?.('files');
-            if (rewrittenDocs.length > 0) {
-              signalChannel?.('backlinks');
-              signalChannel?.('graph');
-            }
           });
 
           rewrittenDocs.sort((a, b) => a.docName.localeCompare(b.docName));
@@ -4431,7 +4535,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           },
         },
         async (span) => {
-          if (!backlinkIndex) {
+          if (!derivedDocumentIndex) {
             throw new BacklinkIndexRequiredError();
           }
 
@@ -4506,7 +4610,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             // updated after the folder itself moves.
             const pendingAssetRewrites = collectAssetReferenceRewritesForMappings(renamedAssets);
             assertRewriteTargetsNotConflicted(pendingAssetRewrites.map((entry) => entry.docName));
-            const rewrittenDocs: ManagedRenameRewrittenDoc[] = [];
             if (kind === 'folder') {
               const renamedWithGit = await renameTrackedPathInGit(
                 projectDir,
@@ -4519,19 +4622,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               renameFolderIndexEntries(fromPath, toPath);
               signalChannel?.('files');
             }
-            rewrittenDocs.push(
-              ...applyPendingAssetReferenceRewrites(pendingAssetRewrites, renamedAssets),
+            const { rewrittenDocs, derivedMutations } = await applyPendingAssetReferenceRewrites(
+              pendingAssetRewrites,
+              renamedAssets,
             );
-            if (rewrittenDocs.length > 0) {
-              void backlinkIndex.saveToDisk().catch((err) => {
-                log.warn(
-                  { fromPath, toPath, err },
-                  `[backlinks] Failed to persist managed rename cache for ${fromPath} -> ${toPath}`,
-                );
-              });
-              signalChannel?.('backlinks');
-              signalChannel?.('graph');
-            }
+            await recordDerivedMutationsBestEffort(derivedMutations, 'asset-only-folder-rename');
             rewrittenDocs.sort((a, b) => a.docName.localeCompare(b.docName));
             return { renamed: [], renamedAssets, rewrittenDocs };
           }
@@ -4544,7 +4639,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
           const backlinkSourceSet = new Set<string>();
           for (const { from } of affectedDocs) {
-            for (const entry of backlinkIndex.getBacklinks(from)) {
+            for (const entry of await derivedDocumentIndex.getBacklinks(from)) {
               if (!renameMap.has(entry.source)) {
                 backlinkSourceSet.add(entry.source);
               }
@@ -4653,10 +4748,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
           const rewrittenDocs: ManagedRenameRewrittenDoc[] = [];
           const rewriteDocNames = [...rewriteDocNameSet].sort((a, b) => a.localeCompare(b));
+          const derivedMutations: DerivedDocumentIndexMutation[] = [];
 
           await withManagedRenameRecovery(projectDir ?? contentDir, recoveryJournal, async () => {
             for (const docName of missingBacklinkSources) {
-              backlinkIndex.deleteDocument(docName);
+              derivedMutations.push({ kind: 'delete', documentName: docName });
             }
 
             for (const docName of rewriteDocNames) {
@@ -4676,7 +4772,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                 rewrittenDocs.push({ docName, rewrites: rewritten.rewrites });
               }
 
-              backlinkIndex.updateDocumentFromMarkdown(docName, rewritten.markdown);
+              derivedMutations.push({
+                kind: 'link-rewrite',
+                documentName: docName,
+                markdown: rewritten.markdown,
+              });
             }
 
             // `captureAndCloseDocuments` sends an application-level
@@ -4913,11 +5013,17 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                 content: renamedSource.markdown,
               });
 
-              backlinkIndex.renameDocument(fromDocName, toDocName, renamedSource.markdown);
+              derivedMutations.push({
+                kind: 'rename',
+                oldDocumentName: fromDocName,
+                newDocumentName: toDocName,
+                markdown: renamedSource.markdown,
+              });
               if (renamedSource.rewrites > 0) {
                 rewrittenDocs.push({ docName: toDocName, rewrites: renamedSource.rewrites });
               }
             }
+            await recordDerivedMutationsBestEffort(derivedMutations, 'document-rename');
 
             // Second crash-injection seam — fires AFTER the log append +
             // AFTER the per-doc sync loop, BEFORE the implicit
@@ -4933,15 +5039,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             }
           });
 
-          void backlinkIndex.saveToDisk().catch((err) => {
-            log.warn(
-              { fromPath, toPath, err },
-              `[backlinks] Failed to persist managed rename cache for ${fromPath} -> ${toPath}`,
-            );
-          });
           signalChannel?.('files');
-          signalChannel?.('backlinks');
-          signalChannel?.('graph');
 
           rewrittenDocs.sort((a, b) => a.docName.localeCompare(b.docName));
           span.setAttribute('rename.rewrite_count', rewrittenDocs.length);
@@ -5636,8 +5734,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
         // Orphan-hint nudge: if this doc now has zero backlinks and a
         // plausible hub exists in its folder tree, suggest the hub. Soft —
-        // agent can ignore. Silent when no backlinkIndex is wired.
-        const hints = computeOrphanHints(resolvedDocName);
+        // agent can ignore. Silent when no relationship index is wired.
+        const hints = await computeOrphanHints(resolvedDocName);
 
         // The converged post-write source (frontmatter region + body), read
         // once and reused for both the mermaid render check and the broken-
@@ -5659,7 +5757,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // the write (authoring a doc before its target exists is legitimate).
         // The just-written doc is added to the admitted set so a valid self-link
         // isn't falsely flagged before the file-watcher indexes it on disk.
-        const admittedForLinks = collectAdmittedDocNames();
+        const admittedForLinks = await collectAdmittedDocNames();
         admittedForLinks.add(resolvedDocName);
         const brokenLinks = computeBrokenOutboundLinks(
           writtenSource,
@@ -6087,7 +6185,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           // the whole batch. Every flushed batch doc joins the admitted set
           // first so intra-batch links (doc A -> doc B written in the same
           // call) validate regardless of entry order.
-          const admittedForLinks = collectAdmittedDocNames();
+          const admittedForLinks = await collectAdmittedDocNames();
           for (const p of pending) {
             if (flushErrors.get(p.docName) === undefined) admittedForLinks.add(p.docName);
           }
@@ -6445,7 +6543,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // the body unchanged, so this reflects the doc's current body links —
         // surfacing the same `brokenLinks` signal on every `edit` path keeps
         // the contract uniform rather than returning a misleading empty `[]`.
-        const admittedForLinks = collectAdmittedDocNames();
+        const admittedForLinks = await collectAdmittedDocNames();
         admittedForLinks.add(resolvedDocName);
         const brokenLinks = computeBrokenOutboundLinks(
           session.dc.document.getText('source').toString(),
@@ -7193,7 +7291,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const handleBacklinks = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
-      if (!backlinkIndex) {
+      if (!derivedDocumentIndex) {
         errorResponse(
           res,
           503,
@@ -7218,7 +7316,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           });
           return;
         }
-        const backlinks = backlinkIndex.getBacklinks(docName).map((entry) => ({
+        const backlinks = (await derivedDocumentIndex.getBacklinks(docName)).map((entry) => ({
           source: entry.source,
           anchor: entry.anchor,
           title: readPageTitleForDocName(entry.source),
@@ -7232,9 +7330,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           { handler: 'backlinks' },
         );
       } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to read backlinks.', {
+        respondToDerivedIndexQueryFailure(res, e, {
           handler: 'backlinks',
-          cause: e,
+          failureTitle: 'Failed to read backlinks.',
         });
       }
     },
@@ -7251,7 +7349,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const handleBacklinkCounts = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
-      if (!backlinkIndex) {
+      if (!derivedDocumentIndex) {
         errorResponse(
           res,
           503,
@@ -7270,12 +7368,11 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           });
           return;
         }
-        const counts: Record<string, number> = {};
-        for (const docName of raw.split(',')) {
-          const trimmed = docName.trim();
-          if (!trimmed || !isSafeDocName(trimmed)) continue;
-          counts[trimmed] = backlinkIndex.getBacklinkCount(trimmed);
-        }
+        const docNames = raw
+          .split(',')
+          .map((docName) => docName.trim())
+          .filter((docName) => docName && isSafeDocName(docName));
+        const counts = await derivedDocumentIndex.getBacklinkCounts(docNames);
         successResponse(
           res,
           200,
@@ -7284,13 +7381,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           { handler: 'backlink-counts' },
         );
       } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to read backlink counts.',
-          { handler: 'backlink-counts', cause: e },
-        );
+        respondToDerivedIndexQueryFailure(res, e, {
+          handler: 'backlink-counts',
+          failureTitle: 'Failed to read backlink counts.',
+        });
       }
     },
     { handler: 'backlink-counts', method: 'GET', skipBodyParse: true },
@@ -7299,7 +7393,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const handleForwardLinks = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
-      if (!backlinkIndex) {
+      if (!derivedDocumentIndex) {
         errorResponse(
           res,
           503,
@@ -7324,40 +7418,38 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           });
           return;
         }
-        const admitted = collectAdmittedDocNames();
+        const admitted = await collectAdmittedDocNames();
         successResponse(
           res,
           200,
           ForwardLinksSuccessSchema,
           {
             docName,
-            forwardLinks: backlinkIndex.getForwardLinkEntries(docName).map((entry) =>
-              entry.kind === 'doc'
-                ? {
-                    kind: 'doc' as const,
-                    docName: entry.target,
-                    anchor: entry.anchor,
-                    title: readPageTitleForLinkedDocName(entry.target, admitted),
-                    snippet: entry.snippet,
-                  }
-                : {
-                    kind: 'external' as const,
-                    url: entry.url,
-                    title: entry.label ?? entry.url,
-                    snippet: entry.snippet,
-                  },
+            forwardLinks: (await derivedDocumentIndex.getForwardLinkEntries(docName)).map(
+              (entry) =>
+                entry.kind === 'doc'
+                  ? {
+                      kind: 'doc' as const,
+                      docName: entry.target,
+                      anchor: entry.anchor,
+                      title: readPageTitleForLinkedDocName(entry.target, admitted),
+                      snippet: entry.snippet,
+                    }
+                  : {
+                      kind: 'external' as const,
+                      url: entry.url,
+                      title: entry.label ?? entry.url,
+                      snippet: entry.snippet,
+                    },
             ),
           },
           { handler: 'forward-links' },
         );
       } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to read forward links.',
-          { handler: 'forward-links', cause: e },
-        );
+        respondToDerivedIndexQueryFailure(res, e, {
+          handler: 'forward-links',
+          failureTitle: 'Failed to read forward links.',
+        });
       }
     },
     { handler: 'forward-links', method: 'GET', skipBodyParse: true },
@@ -7366,7 +7458,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const handleLinkGraph = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
-      if (!backlinkIndex) {
+      if (!derivedDocumentIndex) {
         errorResponse(
           res,
           503,
@@ -7398,7 +7490,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           return;
         }
 
-        let nodes: IndexedGraphNode[];
+        let nodes: DerivedGraphNode[];
         let links: Array<{ source: string; target: string }>;
 
         if (rawDegrees && docName) {
@@ -7414,12 +7506,15 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             return;
           }
 
-          ({ nodes, links } = backlinkIndex.getLinkGraphNeighborhood(docName, degrees));
+          ({ nodes, links } = await derivedDocumentIndex.getLinkGraphNeighborhood(
+            docName,
+            degrees,
+          ));
         } else {
-          ({ nodes, links } = backlinkIndex.getLinkGraph());
+          ({ nodes, links } = await derivedDocumentIndex.getLinkGraph());
         }
 
-        const admitted = collectAdmittedDocNames();
+        const admitted = await collectAdmittedDocNames();
         const enrichedNodes = nodes.map((node) => {
           if (node.kind === 'doc') {
             const meta = readFrontmatterMetadataForLinkedDocName(node.docName, admitted);
@@ -7449,16 +7544,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           { handler: 'link-graph' },
         );
       } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to read link graph.',
-          {
-            handler: 'link-graph',
-            cause: e,
-          },
-        );
+        respondToDerivedIndexQueryFailure(res, e, {
+          handler: 'link-graph',
+          failureTitle: 'Failed to read link graph.',
+        });
       }
     },
     { handler: 'link-graph', method: 'GET', skipBodyParse: true },
@@ -7467,7 +7556,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const handleOrphans = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
-      if (!backlinkIndex) {
+      if (!derivedDocumentIndex) {
         errorResponse(
           res,
           503,
@@ -7480,7 +7569,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       try {
         const url = new URL(req.url ?? '', 'http://localhost');
         const mode = url.searchParams.get('mode') ?? 'both';
-        if (!isOrphanMode(mode)) {
+        if (!isDerivedOrphanMode(mode)) {
           errorResponse(
             res,
             400,
@@ -7491,21 +7580,18 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           return;
         }
 
-        const orphans = backlinkIndex
-          .getOrphans([...getFileIndex().keys()], mode)
-          .map((docName) => ({
-            docName,
-            title: readPageTitleForDocName(docName),
-          }));
+        const orphans = (
+          await derivedDocumentIndex.getOrphans([...getFileIndex().keys()], mode)
+        ).map((docName) => ({
+          docName,
+          title: readPageTitleForDocName(docName),
+        }));
         successResponse(res, 200, OrphansSuccessSchema, { orphans }, { handler: 'orphans' });
       } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to read orphan pages.',
-          { handler: 'orphans', cause: e },
-        );
+        respondToDerivedIndexQueryFailure(res, e, {
+          handler: 'orphans',
+          failureTitle: 'Failed to read orphan pages.',
+        });
       }
     },
     { handler: 'orphans', method: 'GET', skipBodyParse: true },
@@ -7514,7 +7600,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const handleHubs = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
-      if (!backlinkIndex) {
+      if (!derivedDocumentIndex) {
         errorResponse(
           res,
           503,
@@ -7529,17 +7615,17 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         const rawLimit = url.searchParams.get('limit');
         const parsed = rawLimit ? Number.parseInt(rawLimit, 10) : 20;
         const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 20;
-        const admitted = collectAdmittedDocNames();
-        const hubs = backlinkIndex.getHubs(limit).map((hub) => ({
+        const admitted = await collectAdmittedDocNames();
+        const hubs = (await derivedDocumentIndex.getHubs(limit)).map((hub) => ({
           docName: hub.docName,
           title: readPageTitleForLinkedDocName(hub.docName, admitted),
           count: hub.count,
         }));
         successResponse(res, 200, HubsSuccessSchema, { hubs }, { handler: 'hubs' });
       } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to read hub pages.', {
+        respondToDerivedIndexQueryFailure(res, e, {
           handler: 'hubs',
-          cause: e,
+          failureTitle: 'Failed to read hub pages.',
         });
       }
     },
@@ -7549,7 +7635,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const handleDeadLinks = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
-      if (!backlinkIndex) {
+      if (!derivedDocumentIndex) {
         errorResponse(
           res,
           503,
@@ -7572,8 +7658,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         const sourceDocNameFilter = sourceDocNames.length
           ? [...new Set(sourceDocNames.map((docName) => resolveAlias(docName)))]
           : undefined;
-        const deadLinks = backlinkIndex.getDeadLinks(
-          collectAdmittedDocNames(),
+        const deadLinks = await derivedDocumentIndex.getDeadLinks(
+          await collectAdmittedDocNames(),
           sourceDocNameFilter,
         );
 
@@ -7594,13 +7680,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           { handler: 'dead-links' },
         );
       } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to read dead links.',
-          { handler: 'dead-links', cause: e },
-        );
+        respondToDerivedIndexQueryFailure(res, e, {
+          handler: 'dead-links',
+          failureTitle: 'Failed to read dead links.',
+        });
       }
     },
     { handler: 'dead-links', method: 'GET', skipBodyParse: true },
@@ -7942,7 +8025,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
         // Write-time outbound-link validation — synchronous, from the
         // just-edited source bytes; see handleAgentWriteMd for the full why.
-        const admittedForLinks = collectAdmittedDocNames();
+        const admittedForLinks = await collectAdmittedDocNames();
         admittedForLinks.add(docName);
         const brokenLinks = computeBrokenOutboundLinks(
           patchedSource,
@@ -8436,17 +8519,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         const doc = hocuspocus.documents.get(docName);
         if (doc) await (forceUnloadDocument ?? hocuspocus.unloadDocument.bind(hocuspocus))(doc);
         writeFileSync(filePath, '', 'utf-8');
-        if (backlinkIndex) {
-          backlinkIndex.deleteDocument(docName);
-          void backlinkIndex.saveToDisk().catch((err) => {
-            log.warn(
-              { docName, err },
-              `[backlinks] Failed to persist cache after test-reset for ${docName}`,
-            );
-          });
-          signalChannel?.('backlinks');
-          signalChannel?.('graph');
-        }
+        await derivedDocumentIndex?.testOnly?.resetDocumentForTest(docName);
 
         // Also reset the project-root .okignore synthetic doc + on-disk file
         // unless the caller explicitly opts out. Without this, patterns added
@@ -8510,7 +8583,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
    * backlink-dependent integration tests (e.g. `agent-focus-wiring.test.ts`
    * orphan-hint shape) cannot otherwise recover from.
    *
-   * This endpoint forces `backlinkIndex.rebuildFromDisk()` — authoritative
+   * This endpoint forces an authoritative relationship-index rescan from disk,
    * resync from the filesystem that covers dropped events. It is NOT suitable
    * for production: rebuild wipes any in-memory backlink state not yet
    * debounced to disk (e.g. a live agent-write awaiting persistence). Gated
@@ -8520,7 +8593,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     EmptyRequestSchema,
     async (_req, res) => {
       try {
-        if (!backlinkIndex) {
+        if (!derivedDocumentIndex?.testOnly) {
           errorResponse(
             res,
             503,
@@ -8530,16 +8603,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           );
           return;
         }
-        await backlinkIndex.rebuildFromDisk();
-        // A full rebuild replaces branch state, dropping the out-of-contentDir
-        // global skill bundle nodes — re-register them (node-only, within-bundle)
-        // so a forced rescan keeps the global skill graph intact.
-        await backlinkIndex.ingestGlobalSkillBundles([resolve(skillsHome, '.ok', 'skills')]);
-        void backlinkIndex.saveToDisk().catch((err) => {
-          log.warn({ err }, '[backlinks] Failed to persist cache after test-rescan-backlinks');
-        });
-        signalChannel?.('backlinks');
-        signalChannel?.('graph');
+        await derivedDocumentIndex.testOnly.rescanBacklinksForTest();
         successResponse(
           res,
           200,
@@ -10478,17 +10542,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           }
         }
         mutateFileIndex?.({ kind: 'create', path: fullPath, docName, content: initialContent });
-        if (backlinkIndex) {
-          backlinkIndex.updateDocumentFromMarkdown(docName, initialContent);
-          void backlinkIndex.saveToDisk().catch((err) => {
-            log.warn(
-              { docName, err },
-              `[backlinks] Failed to persist create-page cache for ${docName}`,
-            );
-          });
-          signalChannel?.('backlinks');
-          signalChannel?.('graph');
-        }
+        await recordDerivedDocumentBestEffort(docName, initialContent, 'create-page');
         signalChannel?.('files');
         if (templateScopeForLog !== undefined) {
           // Cardinality-bounded structured event — `templateScope` is one of
@@ -10770,7 +10824,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               docName: duplicatedPath,
               content,
             });
-            backlinkIndex?.updateDocumentFromMarkdown(duplicatedPath, content);
             duplicatedDocNames = [duplicatedPath];
           } catch (err) {
             try {
@@ -10792,6 +10845,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             });
             throw err;
           }
+          await recordDerivedDocumentBestEffort(duplicatedPath, content, 'duplicate-path-file');
         } else {
           const next = nextAvailableDuplicateFolderPath(contentDir, requestedPath);
           duplicatedPath = next.folderPath;
@@ -10806,6 +10860,13 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             return;
           }
           const destinationPath = resolveContentEntryPath(contentDir, 'folder', duplicatedPath);
+          const copiedDocRollbackLedger: Array<{
+            docName: string;
+            fullPath: string;
+            extensionRegistered: boolean;
+            dirCountIncremented: boolean;
+            fileIndexRegistered: boolean;
+          }> = [];
           try {
             tracedCpSync(sourcePath, destinationPath, {
               recursive: true,
@@ -10825,6 +10886,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             }
             throw err;
           }
+          const derivedMutations: DerivedDocumentIndexMutation[] = [];
           try {
             for (const folderPath of collectFolderPaths(contentDir, duplicatedPath)) {
               upsertFolderIndexPathSegments(folderPath);
@@ -10832,22 +10894,60 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             const copiedDocs = collectMarkdownCopies(contentDir, duplicatedPath);
             duplicatedDocNames = copiedDocs.map((doc) => doc.docName);
             for (const doc of copiedDocs) {
+              const rollbackEntry = {
+                docName: doc.docName,
+                fullPath: doc.fullPath,
+                extensionRegistered: false,
+                dirCountIncremented: false,
+                fileIndexRegistered: false,
+              };
+              copiedDocRollbackLedger.push(rollbackEntry);
               const sourceExtension = extname(doc.fullPath);
               registerDocExtension(stripDocExtension(doc.docName), sourceExtension);
+              rollbackEntry.extensionRegistered = true;
               recentlyRemovedDocs?.delete(doc.docName);
               if (contentFilter) {
                 contentFilter.incrementMdDir(dirname(doc.docName));
+                rollbackEntry.dirCountIncremented = true;
               }
               registerWrite(doc.fullPath, contentHash(doc.content));
+              rollbackEntry.fileIndexRegistered = true;
               mutateFileIndex?.({
                 kind: 'create',
                 path: doc.fullPath,
                 docName: doc.docName,
                 content: doc.content,
               });
-              backlinkIndex?.updateDocumentFromMarkdown(doc.docName, doc.content);
+              derivedMutations.push({
+                kind: 'upsert',
+                documentName: doc.docName,
+                markdown: doc.content,
+              });
             }
           } catch (err) {
+            for (const rollbackEntry of copiedDocRollbackLedger.reverse()) {
+              if (rollbackEntry.fileIndexRegistered) {
+                try {
+                  mutateFileIndex?.({
+                    kind: 'delete',
+                    path: rollbackEntry.fullPath,
+                    docName: rollbackEntry.docName,
+                  });
+                } catch (rollbackErr) {
+                  log.warn(
+                    { docName: rollbackEntry.docName, err: rollbackErr },
+                    '[duplicate-path] failed to roll back copied file-index row',
+                  );
+                }
+              }
+              if (rollbackEntry.dirCountIncremented) {
+                contentFilter?.decrementMdDir(dirname(rollbackEntry.docName));
+              }
+              if (rollbackEntry.extensionRegistered) {
+                forgetDocExtension(stripDocExtension(rollbackEntry.docName));
+              }
+            }
+            removeFolderIndexEntries(duplicatedPath);
             try {
               tracedRmSync(destinationPath, { recursive: true, force: true });
             } catch (cleanupErr) {
@@ -10858,6 +10958,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             }
             throw err;
           }
+          await recordDerivedMutationsBestEffort(derivedMutations, 'duplicate-path-folder');
         }
 
         switch (actor.kind) {
@@ -10884,13 +10985,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           }
         }
 
-        if (backlinkIndex && duplicatedDocNames.length > 0) {
-          void backlinkIndex.saveToDisk().catch((err) => {
-            log.warn({ err }, '[backlinks] Failed to persist duplicate-path cache');
-          });
-          signalChannel?.('backlinks');
-          signalChannel?.('graph');
-        }
         signalChannel?.('files');
         successResponse(
           res,
@@ -11499,6 +11593,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             docName,
           });
         }
+        await deleteDerivedDocumentsBestEffort(deletedDocNames, 'delete-path');
 
         signalChannel?.('files');
         successResponse(
@@ -11667,6 +11762,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             if (operationKind === 'folder') {
               removeFolderIndexEntries(path);
             }
+            await deleteDerivedDocumentsBestEffort(deletedDocNames, 'trash-cleanup');
 
             // Synchronous CC1 emit closes the race where the renderer expects
             // the updated tree right after the response. The watcher's later
@@ -14440,7 +14536,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   const handleTagsList = withValidation(
     EmptyRequestSchema,
     async (_req, res) => {
-      if (!tagIndex) {
+      if (!derivedDocumentIndex) {
         errorResponse(
           res,
           503,
@@ -14451,12 +14547,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         return;
       }
       try {
-        const tags = tagIndex.getAllTags();
+        const tags = await derivedDocumentIndex.getAllTags();
         successResponse(res, 200, TagsListSuccessSchema, { tags }, { handler: 'tags-list' });
       } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to read tags.', {
+        respondToDerivedIndexQueryFailure(res, e, {
           handler: 'tags-list',
-          cause: e,
+          failureTitle: 'Failed to read tags.',
         });
       }
     },
@@ -14475,7 +14571,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       });
       return;
     }
-    if (!tagIndex) {
+    if (!derivedDocumentIndex) {
       errorResponse(
         res,
         503,
@@ -14501,12 +14597,14 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       return;
     }
     try {
-      const docs = tagIndex.getDocsForTagWithMatches(name).map(({ docName, matchingTags }) => ({
-        docName,
-        title: readPageTitleForDocName(docName),
-        matchingTags,
-        snippet: null,
-      }));
+      const docs = (await derivedDocumentIndex.getDocsForTagWithMatches(name)).map(
+        ({ docName, matchingTags }) => ({
+          docName,
+          title: readPageTitleForDocName(docName),
+          matchingTags,
+          snippet: null,
+        }),
+      );
       successResponse(
         res,
         200,
@@ -14517,13 +14615,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         },
       );
     } catch (e) {
-      errorResponse(
-        res,
-        500,
-        'urn:ok:error:internal-server-error',
-        'Failed to read tag membership.',
-        { handler: 'tags-for-name', cause: e },
-      );
+      respondToDerivedIndexQueryFailure(res, e, {
+        handler: 'tags-for-name',
+        failureTitle: 'Failed to read tag membership.',
+      });
     }
   }
 
@@ -16425,12 +16520,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // entries. Global skills live outside the project graph (not content
         // docs), so they have nothing to re-index.
         if (body.scope === 'project' && !contentEditError) {
-          // Best-effort: the git-mv + SKILL.md rewrite already succeeded, so a
-          // re-index failure (e.g. a `readFileSync` racing a relocated file)
-          // must NOT turn a successful rename into a 500. The next open/rescan
-          // re-indexes the moved docs from disk.
           try {
-            reindexMovedProjectSkillDocs(skillsRoot, body.fromName, body.toName);
+            await reindexMovedProjectSkillDocs(skillsRoot, body.fromName, body.toName);
           } catch (err) {
             getLogger('skill-move').warn(
               { err, fromName: body.fromName, toName: body.toName },
@@ -16593,46 +16684,47 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
    * content docs never desync — disk stays the truth on the next open), and no
    * session churn against the just-moved dir.
    */
-  function reindexMovedProjectSkillDocs(
+  async function reindexMovedProjectSkillDocs(
     skillsRoot: string,
     fromName: string,
     toName: string,
-  ): void {
-    if (!backlinkIndex) return;
-    const reindexOne = (oldDocName: string, newDocName: string, absFile: string): void => {
+  ): Promise<void> {
+    if (!derivedDocumentIndex) return;
+    const derivedMutations: DerivedDocumentIndexMutation[] = [];
+    const collectReindex = (oldDocName: string, newDocName: string, absFile: string): void => {
       let markdown: string;
       try {
         markdown = readFileSync(absFile, 'utf-8');
       } catch {
         // Unreadable relocated file: drop the stale old-name entry rather than
         // leave it dangling (the next open will index it fresh from disk).
-        backlinkIndex.deleteDocument(oldDocName);
-        tagIndex?.deleteDocument(oldDocName);
+        derivedMutations.push({ kind: 'delete', documentName: oldDocName });
         return;
       }
-      backlinkIndex.renameDocument(oldDocName, newDocName, markdown);
-      tagIndex?.renameDocument(oldDocName, newDocName, markdown);
+      derivedMutations.push({
+        kind: 'rename',
+        oldDocumentName: oldDocName,
+        newDocumentName: newDocName,
+        markdown,
+      });
     };
 
     // SKILL.md: its rewrite during the move is fs-direct (applySkillWrite), so
     // it never re-enters the index via a CRDT write either. The reference `.md`
     // files were git-mv'd verbatim — never rewritten — so they too are stale.
-    reindexOne(
+    collectReindex(
       projectSkillContentDocName(fromName),
       projectSkillContentDocName(toName),
       resolve(skillsRoot, toName, 'SKILL.md'),
     );
     for (const rel of listProjectMdReferences(skillsRoot, toName)) {
-      reindexOne(
+      collectReindex(
         projectRefContentDocName(fromName, rel),
         projectRefContentDocName(toName, rel),
         resolve(skillsRoot, toName, rel),
       );
     }
-    // Nudge any client that isn't holding the moved docs open to refresh its
-    // graph promptly. (`tags` rides the live-derived-index path, not here.)
-    signalChannel?.('backlinks');
-    signalChannel?.('graph');
+    await derivedDocumentIndex.recordDirectMutations(derivedMutations);
   }
 
   const handleSkillFileGet = withValidation(
@@ -19525,13 +19617,13 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       // (idempotent: the debounced pass re-applies the same bytes).
       let linkFindings: ValidationDiagnostic[] = [];
       const linksSetting = getLinksValidationSetting?.() ?? DEFAULT_LINKS_VALIDATION;
-      if (backlinkIndex && linksSetting !== 'off' && !isLinkIndexExcludedDoc(docName)) {
-        backlinkIndex.updateDocumentFromMarkdown(docName, source);
+      if (derivedDocumentIndex && linksSetting !== 'off' && !isLinkIndexExcludedDoc(docName)) {
+        await recordDerivedLinkRewriteBestEffort(docName, source, 'lint-validation');
         const linksValidator = createProjectValidators({
           projectDir: projectDir ?? contentDir,
           contentDir,
           baseConfig: base,
-          backlinkIndex,
+          derivedDocumentIndex,
           linksValidation: linksSetting,
           admittedDocNames: collectAdmittedDocNames,
           docFilePathFor: (d) => resolveDocFilePath(contentDir, d),
@@ -19955,7 +20047,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   );
 
   // Unified validation audit: every registered project validator (markdownlint
-  // walk + backlink-index dead-link read) merged into one source-tagged plane.
+  // walk + derived-index dead-link read) merged into one source-tagged plane.
   // Additive alongside /api/lint/audit and /api/dead-links, which keep their
   // single-validator contracts.
   const handleAudit = withValidation(
@@ -19997,7 +20089,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           contentDir,
           baseConfig,
           liveSourceFor: liveLintSourceFor,
-          backlinkIndex: backlinkIndex ?? null,
+          derivedDocumentIndex: derivedDocumentIndex ?? null,
           linksValidation: getLinksValidationSetting?.(),
           admittedDocNames: collectAdmittedDocNames,
           docFilePathFor: (docName) => resolveDocFilePath(contentDir, docName),

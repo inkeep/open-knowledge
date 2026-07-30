@@ -141,6 +141,7 @@ describe('ProblemTypeSchema', () => {
       'urn:ok:error:method-not-allowed',
       'urn:ok:error:invalid-request',
       'urn:ok:error:internal-server-error',
+      'urn:ok:error:derived-index-unavailable',
     ];
     for (const t of tokens) {
       const result = ProblemTypeSchema.safeParse(t);

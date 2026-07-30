@@ -179,7 +179,13 @@ export async function startHeadWatcher(
   projectRoot: string,
   onBatchBegin: OnBatchBegin,
   onBatchEnd: OnBatchEnd,
-  opts: { forceBackend?: 'parcel' | 'chokidar' } = {},
+  opts: {
+    forceBackend?: 'parcel' | 'chokidar';
+    subscribeForTest?: (
+      gitDir: string,
+      dispatch: HeadEventDispatch,
+    ) => Promise<() => Promise<void>>;
+  } = {},
 ): Promise<HeadWatcherHandle> {
   const inspected = discoverGitRepository(projectRoot);
   if (inspected.kind !== 'repository') {
@@ -194,10 +200,15 @@ export async function startHeadWatcher(
   let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
   let oldHead: string | null = null;
   let lastKnownBranch: string | null = null;
+  let batchEndInFlight: Promise<void> | null = null;
 
   async function emitBatchEnd(timeout: boolean): Promise<void> {
     // Wait for onBatchBegin to finish before proceeding
     if (beginInFlight) await beginInFlight;
+    if (batchEndInFlight) {
+      await batchEndInFlight;
+      return;
+    }
     if (!inBatch) return;
 
     if (quietTimer) {
@@ -226,24 +237,32 @@ export async function startHeadWatcher(
 
     const oldBranch = lastKnownBranch;
 
+    const end = Promise.resolve().then(async () => {
+      try {
+        await onBatchEnd({
+          headMoved,
+          oldHead,
+          newHead,
+          timeout,
+          batchKind,
+          oldBranch,
+          newBranch,
+        });
+      } catch (e) {
+        log.error({ err: e }, 'onBatchEnd callback failed');
+      } finally {
+        // Set inBatch = false AFTER the async callback completes
+        // so new file events stay buffered during branch-switch orchestration
+        inBatch = false;
+        oldHead = newHead;
+        lastKnownBranch = newBranch;
+      }
+    });
+    batchEndInFlight = end;
     try {
-      await onBatchEnd({
-        headMoved,
-        oldHead,
-        newHead,
-        timeout,
-        batchKind,
-        oldBranch,
-        newBranch,
-      });
-    } catch (e) {
-      log.error({ err: e }, 'onBatchEnd callback failed');
+      await end;
     } finally {
-      // Set inBatch = false AFTER the async callback completes
-      // so new file events stay buffered during branch-switch orchestration
-      inBatch = false;
-      oldHead = newHead;
-      lastKnownBranch = newBranch;
+      if (batchEndInFlight === end) batchEndInFlight = null;
     }
   }
 
@@ -258,6 +277,9 @@ export async function startHeadWatcher(
   let beginInFlight: Promise<void> | null = null;
 
   async function handleGitEvent(trigger: string): Promise<void> {
+    // A second HEAD event belongs to a new batch, but it must not re-enter the
+    // still-running branch-switch callback for the preceding batch.
+    if (batchEndInFlight) await batchEndInFlight;
     if (!inBatch) {
       inBatch = true;
       // Do NOT re-read HEAD here. `oldHead` already holds the last-settled HEAD
@@ -297,8 +319,11 @@ export async function startHeadWatcher(
   // Prefer @parcel/watcher; fall back to chokidar when it can't start so HEAD
   // watching stays functional in packaged builds that omit the native addon.
   let resolvedUnsub: (() => Promise<void>) | null = null;
-  let backend: 'parcel' | 'chokidar' = 'chokidar';
-  if (opts.forceBackend !== 'chokidar') {
+  let backend: 'parcel' | 'chokidar' | 'test' = 'chokidar';
+  if (opts.subscribeForTest) {
+    resolvedUnsub = await opts.subscribeForTest(gitDir, dispatch);
+    backend = 'test';
+  } else if (opts.forceBackend !== 'chokidar') {
     resolvedUnsub = await tryStartParcelHeadWatcher(gitDir, dispatch);
     if (resolvedUnsub) backend = 'parcel';
   }

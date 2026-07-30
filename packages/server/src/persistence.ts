@@ -45,7 +45,6 @@ import type { JSONContent } from '@tiptap/core';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
 import { LINEAGE_EPOCH_KEY } from './auth-token-schema.ts';
-import type { BacklinkIndex } from './backlink-index.ts';
 import { type DeriveLossDetectOptions, detectPairedIntakeLoss } from './bridge-loss-detector.ts';
 import { getMsSinceLastUserTx, isDocQuiescent } from './bridge-quiescence.ts';
 import { assertBridgeInvariant, createDocCanonicalizer } from './bridge-watchdog.ts';
@@ -68,6 +67,7 @@ import {
   restoreContributors,
   swapContributors,
 } from './contributor-tracker.ts';
+import type { DerivedDocumentIndexPersistencePort } from './derived-document-index.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 import { DocumentDurabilityState, type StoreFailure } from './document-durability-state.ts';
 import { contentHash, registerWrite } from './file-watcher.ts';
@@ -315,7 +315,7 @@ export interface PersistenceOptions {
   shadowRef?: ShadowRef;
   /** Content root relative to project dir (e.g., 'content/docs'). Used for shadow repo staging. */
   contentRoot?: string;
-  backlinkIndex?: BacklinkIndex;
+  derivedDocumentIndex?: DerivedDocumentIndexPersistencePort;
   /** Accessor for the current branch from the HEAD watcher. Used to scope WIP refs per branch. */
   getCurrentBranch?: () => string | null;
   /**
@@ -610,7 +610,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   // project root must fall back to '.' — using the literal pathspec would
   // make `git add <fallback>` look for a non-existent subfolder.
   const contentRoot = options?.contentRoot ?? (toPosix(relative(projectDir, contentDir)) || '.');
-  const backlinkIndex = options?.backlinkIndex;
+  const derivedDocumentIndex = options?.derivedDocumentIndex;
   const getPrincipal = options?.getPrincipal;
   const onAgentCommit = options?.onAgentCommit;
   const onFlushCommit = options?.onFlushCommit;
@@ -2462,14 +2462,13 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         tripwireResetFailedDocs.delete(documentName);
         persistenceDeferCounts.delete(documentName);
 
-        if (backlinkIndex) {
-          backlinkIndex.updateDocumentFromMarkdown(documentName, markdown);
-          void backlinkIndex.saveToDisk().catch((err) => {
-            log.warn(
-              { err, documentName },
-              `[backlinks] Failed to persist cache for ${documentName}`,
-            );
-          });
+        try {
+          await derivedDocumentIndex?.recordDurableStore(documentName, markdown);
+        } catch (err) {
+          log.warn(
+            { err, documentName },
+            '[derived-index] durable-store projection failed; disk write remains authoritative',
+          );
         }
 
         setActiveSpanAttributes({ 'persistence.bytes': markdown.length });

@@ -67,7 +67,7 @@ function deps(overrides: Partial<ValidationAuditDeps> = {}): ValidationAuditDeps
     projectDir: root,
     contentDir: root,
     baseConfig: lintOn,
-    backlinkIndex: index,
+    derivedDocumentIndex: index,
     admittedDocNames: () => admitted,
     docFilePathFor,
     ...overrides,
@@ -214,7 +214,9 @@ describe('runValidationAudit', () => {
     seedDoc('dirty', DOC_WITH_TAB);
     seedDoc('linker', '# Linker\n\nSee [[ghost]].\n');
 
-    const result = await runValidationAudit(createProjectValidators(deps({ backlinkIndex: null })));
+    const result = await runValidationAudit(
+      createProjectValidators(deps({ derivedDocumentIndex: null })),
+    );
 
     expect(result.files.map((f) => f.file)).toEqual(['dirty.md']);
     expect(result.errorCount).toBe(0);
@@ -302,7 +304,7 @@ describe('runValidationAudit', () => {
     const result = await runValidationAudit(
       createProjectValidators(
         deps({
-          backlinkIndex: fakeIndex,
+          derivedDocumentIndex: fakeIndex,
           admittedDocNames: () => ['unsaved'],
           docFilePathFor: () => null,
         }),
@@ -328,7 +330,7 @@ describe('runValidationAudit', () => {
     const result = await runValidationAudit(
       createProjectValidators(
         deps({
-          backlinkIndex: fakeIndex,
+          derivedDocumentIndex: fakeIndex,
           admittedDocNames: () => ['legacy'],
           docFilePathFor: () => 'legacy.md',
         }),

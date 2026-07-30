@@ -8,6 +8,7 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -2094,7 +2095,7 @@ describe('resolveRequestedContentDir', () => {
       expect(resolveRequestedContentDir('.', root, linkParent)).toBe('.');
       expect(resolveRequestedContentDir('sub', root, linkParent)).toBe('sub');
     } finally {
-      rmSync(linkParent, { force: true });
+      unlinkSync(linkParent);
     }
   });
 });

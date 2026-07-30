@@ -22,9 +22,9 @@
  *
  * Fidelity: real boot, real WS client, real `onStoreDocument` managed-artifact
  * branch, real file lock, real shadow repo. The divergent write is a plain
- * `writeFileSync` — a second writer's edit needs no seam, because `.ok/templates`
- * is not on the content watcher, so the divergence survives until the next store
- * exactly as it does in production.
+ * `writeFileSync`. The test invokes the real store hook immediately afterward
+ * so the managed-artifact watcher cannot consume the same change first and turn
+ * this into coverage of its separate disk-intake path.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -108,6 +108,20 @@ async function pollUntil(
   throw new Error(`pollUntil timed out after ${timeoutMs}ms`);
 }
 
+async function storeImmediately(rig: TestServer, docName: string): Promise<void> {
+  const document = rig.instance.hocuspocus.documents.get(docName);
+  if (!document) throw new Error(`document not loaded: ${docName}`);
+
+  await rig.instance.hocuspocus.hooks('onStoreDocument', {
+    clientsCount: document.getConnectionsCount(),
+    document,
+    lastContext: {},
+    lastTransactionOrigin: undefined,
+    documentName: docName,
+    instance: rig.instance.hocuspocus,
+  });
+}
+
 describe('managed-artifact reconcile-on-divergence — content-loss conventions', () => {
   test(
     'the reconcile checkpoints the live artifact and reports the loss before discarding it',
@@ -124,14 +138,7 @@ describe('managed-artifact reconcile-on-divergence — content-loss conventions'
       client.doc.transact(() => client.ytext.insert(0, v1));
       await pollUntil(() => existsSync(tplFile) && readFileSync(tplFile, 'utf-8') === v1);
 
-      // A second writer changes the file underneath us. `.ok/templates` is not on
-      // the content watcher, so this stays invisible until the next store — the
-      // production shape of a concurrent OK window or a hand edit.
-      mkdirSync(resolve(tplFile, '..'), { recursive: true });
-      const foreign = `---\ntitle: T\ndescription: d\n---\n\n# Template\n\n${FOREIGN_LINE}\n`;
-      writeFileSync(tplFile, foreign, 'utf-8');
-
-      // Meanwhile the author keeps typing. These bytes are live and unstored.
+      // The author keeps typing. These bytes are live and unstored.
       const live = client.ytext.toString();
       client.doc.transact(() => client.ytext.insert(live.length, `\n${AUTHOR_PENDING_LINE}\n`));
       await pollUntil(() =>
@@ -143,6 +150,15 @@ describe('managed-artifact reconcile-on-divergence — content-loss conventions'
             .includes(AUTHOR_PENDING_LINE),
         ),
       );
+
+      // A second writer changes the file underneath us. Invoke the real store
+      // hook in the same turn so this test deterministically reaches the
+      // concurrent-writer reconcile before the separate template watcher can
+      // import the file.
+      mkdirSync(resolve(tplFile, '..'), { recursive: true });
+      const foreign = `---\ntitle: T\ndescription: d\n---\n\n# Template\n\n${FOREIGN_LINE}\n`;
+      writeFileSync(tplFile, foreign, 'utf-8');
+      await storeImmediately(server, docName);
 
       // The next store reads disk, sees `disk !== lkg && disk !== content`, and
       // reconciles: the foreign bytes win and the author's sentence is discarded.

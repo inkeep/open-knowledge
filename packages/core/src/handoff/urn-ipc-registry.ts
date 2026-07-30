@@ -206,6 +206,7 @@ export const URN_HTTP_ONLY: ReadonlySet<ProblemType> = new Set<ProblemType>([
   'urn:ok:error:payload-too-large',
   'urn:ok:error:request-timeout',
   'urn:ok:error:internal-server-error',
+  'urn:ok:error:derived-index-unavailable',
   // Local-op security gates (fire before IPC; bypassed by IPC channels by design)
   'urn:ok:error:loopback-required',
   'urn:ok:error:invalid-origin',

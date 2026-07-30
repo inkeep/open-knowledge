@@ -59,7 +59,6 @@ import { createApiExtension, isSafeDocName } from './api-extension.ts';
 import { assetReferencesChanged } from './asset-references.ts';
 import { seedBasenameIndex, seedSingleDirBasenameIndex } from './asset-walk.ts';
 import { HocuspocusAuthRejection, parseHocuspocusAuthToken } from './auth-token-schema.ts';
-import { BacklinkIndex } from './backlink-index.ts';
 import { shellEscape } from './bash/shell-escape.ts';
 import { bootElapsedMs, recordBootPhase, setBootField } from './boot-timings.ts';
 import {
@@ -90,6 +89,10 @@ import { resolveProjectTemplates } from './content/templates-resolver.ts';
 import { type ContentFilter, createContentFilter } from './content-filter.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import { dropPendingDocs, recordContributor } from './contributor-tracker.ts';
+import {
+  DerivedDocumentIndex,
+  type DerivedDocumentIndexBranchTransition,
+} from './derived-document-index.ts';
 import { applyDiskContentToDoc } from './disk-content-intake.ts';
 import { docNameToRelativePath, getDocExtension, stripDocExtension } from './doc-extensions.ts';
 import { runDocLineageGuard } from './doc-lineage-guard.ts';
@@ -201,7 +204,6 @@ import {
 import { assertCompatibleStateManifest } from './state-manifest.ts';
 import { SyncEngine } from './sync-engine.ts';
 import { createSyncHandshakeSpanExtension } from './sync-handshake-span-extension.ts';
-import { TagIndex } from './tag-index.ts';
 import { initTelemetry, shutdownTelemetry, withSpan } from './telemetry.ts';
 import { trustSystemCertificates } from './trust-system-ca.ts';
 import { cleanupOrphanUploadTempfiles } from './upload-streaming.ts';
@@ -416,7 +418,7 @@ export interface ServerInstance {
    * Read AFTER `await ready` for a stable list; reads before may return a partial result.
    * Empty array means all subsystems initialized successfully.
    * Possible values: `'shadow-repo'`, `'managed-rename-recovery'`, `'file-watcher'`,
-   * `'head-watcher'`.
+   * `'head-watcher'`, `'backlink-index'`, `'tag-index'`.
    */
   readonly degraded: readonly string[];
   /**
@@ -974,8 +976,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   // Synchronous init — if any constructor throws, release the lock before propagating.
   let contentFilter: ReturnType<typeof createContentFilter>;
-  let backlinkIndex: BacklinkIndex;
-  let tagIndex: TagIndex;
+  let derivedDocumentIndex: DerivedDocumentIndex;
   let shadowRef: ShadowRef;
   let maintenanceCoordinator: MaintenanceCoordinator | undefined;
   let persistence: ReturnType<typeof createPersistenceExtension>;
@@ -1043,27 +1044,6 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   function signalChannel(channel: 'files' | 'backlinks' | 'graph' | 'tags' | 'lint-config'): void {
     cc1Broadcaster?.signal(channel);
-  }
-
-  // Debounced saveToDisk for watcher-event paths. Collapses bursts (e.g. a git
-  // clone landing many files) into a single write. Startup and branch-switch
-  // paths call backlinkIndex.saveToDisk() directly — those are deliberate
-  // full-state transitions that should not be deferred. The tag snapshot
-  // rides the same debounce: every scheduleSaveToDisk call site pairs with a
-  // tagIndex mutation on the same disk event.
-  const BACKLINK_SAVE_DEBOUNCE_MS = 2000;
-  let backlinkSaveTimer: ReturnType<typeof setTimeout> | null = null;
-  function scheduleSaveToDisk(): void {
-    if (backlinkSaveTimer !== null) clearTimeout(backlinkSaveTimer);
-    backlinkSaveTimer = setTimeout(() => {
-      backlinkSaveTimer = null;
-      void backlinkIndex.saveToDisk().catch((err) => {
-        getLogger('backlinks').warn({ err }, 'Failed to persist debounced cache');
-      });
-      void tagIndex.saveToDisk().catch((err) => {
-        getLogger('tag-index').warn({ err }, 'Failed to persist debounced tag snapshot');
-      });
-    }, BACKLINK_SAVE_DEBOUNCE_MS);
   }
 
   // LRU cache of docNames renamed away or deleted, durable across restarts
@@ -1176,28 +1156,12 @@ export function createServer(options: ServerOptions): ServerInstance {
       contentDir,
       singleDocRelPath,
       onAfterRebuild: () => {
-        // Re-derive backlink + tag indexes against the new visible-set.
-        // Both indexes hold a live reference to ContentFilter, so they
-        // read the freshly-rebuilt state on their next call. Failures
-        // are logged but never roll back the rebuild — the in-memory
-        // ignore filter is correct; derived views may go stale until
-        // the next external trigger.
-        //
-        // All three re-derivations below are fire-and-forget and run
-        // concurrently. Rapid successive ignore-file edits can overlap
-        // them; that's fine — each walk reads the live ContentFilter, so
-        // the last rebuild's visible-set wins and the end state converges
-        // (TagIndex additionally serializes its init calls internally).
-        void backlinkIndex.rebuildFromDisk(getActiveBranch()).catch((err) => {
+        // Re-derive relationship views against the freshly rebuilt admission
+        // boundary. The coordinator serializes rapid successive rebuilds.
+        void derivedDocumentIndex.refreshContentScope().catch((err) => {
           getLogger('server-factory').warn(
             { err },
-            '[content-filter] backlink-index rebuild failed after onAfterRebuild',
-          );
-        });
-        void tagIndex.init().catch((err) => {
-          getLogger('server-factory').warn(
-            { err },
-            '[content-filter] tag-index rebuild failed after onAfterRebuild',
+            '[content-filter] derived-index rebuild failed after onAfterRebuild',
           );
         });
         // Reconcile the watcher's in-memory file/folder indexes with the
@@ -1235,25 +1199,12 @@ export function createServer(options: ServerOptions): ServerInstance {
           });
       },
     });
-    backlinkIndex = new BacklinkIndex({ projectDir, contentDir, contentFilter });
-    tagIndex = new TagIndex({ projectDir, contentDir, contentFilter });
-    // Boot-time scan, fire-and-forget: the factory itself is synchronous.
-    // Warm start restores the persisted snapshot and mtime-reconciles offline
-    // changes; cold start (no/corrupt snapshot) falls back to the full scan.
-    // `initAsync` awaits a reconcile after the watcher starts; TagIndex
-    // serializes the passes internally, so by the time `ready` resolves the
-    // index reflects disk.
-    void (async () => {
-      if (await tagIndex.loadFromDisk()) {
-        await tagIndex.reconcileWithDisk();
-      } else {
-        await tagIndex.init();
-      }
-    })().catch((err) => {
-      getLogger('server-factory').warn(
-        { err },
-        '[server-factory] tag-index warm boot failed; continuing with empty index',
-      );
+    derivedDocumentIndex = new DerivedDocumentIndex({
+      projectDir,
+      contentDir,
+      contentFilter,
+      getGlobalSkillRoots: () => managedArtifactSkillsRoots(persistence.managedArtifactCtx),
+      signalChannel,
     });
 
     shadowRef = { current: shadowRepo };
@@ -1305,7 +1256,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       shadowRef,
       ephemeral,
       contentRoot,
-      backlinkIndex,
+      derivedDocumentIndex,
       configHomedirOverride,
       getCurrentBranch: () => headWatcher?.getLastKnownBranch() ?? null,
       resolveEmbed,
@@ -1545,9 +1496,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       })),
     );
     const liveDerivedIndexExtension = createLiveDerivedIndexExtension({
-      backlinkIndex,
-      tagIndex,
-      signalChannel,
+      derivedDocumentIndex,
     });
     hocuspocus.configuration.extensions.push(liveDerivedIndexExtension);
 
@@ -1862,8 +1811,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       // empty-object case.
       getDiskAckSVs: () => cc1Broadcaster?.getLatestDiskAckSVsAsBase64() ?? {},
       contentRoot,
-      backlinkIndex,
-      tagIndex,
+      derivedDocumentIndex,
       signalChannel,
       agentFocusBroadcaster,
       agentPresenceBroadcaster,
@@ -2220,13 +2168,8 @@ export function createServer(options: ServerOptions): ServerInstance {
       switch (event.kind) {
         case 'create': {
           log.info({ docName: event.docName }, `[reconcile] create: ${event.docName}`);
-          backlinkIndex.updateDocumentFromMarkdown(event.docName, event.content);
-          scheduleSaveToDisk();
-          tagIndex.updateDocumentFromMarkdown(event.docName, event.content);
+          await derivedDocumentIndex.recordDiskUpsert(event.docName, event.content);
           signalChannel('files');
-          signalChannel('backlinks');
-          signalChannel('graph');
-          signalChannel('tags');
           onUpstreamAdd(event.docName);
           break;
         }
@@ -2235,12 +2178,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           const { docName, content: theirs } = event;
           const document = hocuspocus.documents.get(docName);
           if (!document) {
-            backlinkIndex.updateDocumentFromMarkdown(docName, theirs);
-            scheduleSaveToDisk();
-            tagIndex.updateDocumentFromMarkdown(docName, theirs);
-            signalChannel('backlinks');
-            signalChannel('graph');
-            signalChannel('tags');
+            await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
             return;
           }
 
@@ -2261,83 +2199,76 @@ export function createServer(options: ServerOptions): ServerInstance {
           switch (result.kind) {
             case 'noop':
               clearLifecycleConflict(document);
-              backlinkIndex.updateDocumentFromMarkdown(docName, theirs);
-              scheduleSaveToDisk();
-              tagIndex.updateDocumentFromMarkdown(docName, theirs);
-              signalChannel('backlinks');
-              signalChannel('graph');
-              signalChannel('tags');
+              await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
               break;
 
             case 'clean':
-              try {
-                applyToDoc(docName, result.newContent);
-                setReconciledBase(docName, result.newContent);
-                incrementReconcile();
-                clearLifecycleConflict(document);
-                backlinkIndex.updateDocumentFromMarkdown(docName, theirs);
-                scheduleSaveToDisk();
-                tagIndex.updateDocumentFromMarkdown(docName, theirs);
-                signalChannel('backlinks');
-                signalChannel('graph');
-                signalChannel('tags');
-              } catch (e) {
-                log.error(
-                  { err: e, docName },
-                  `[reconcile] failed to apply clean content to Y.Doc for ${docName}`,
-                );
-                // Disk is source of truth — keep base in sync even if Y.Doc update failed
-                setReconciledBase(docName, theirs);
-                clearLifecycleConflict(document);
+              {
+                let applied = false;
+                try {
+                  applyToDoc(docName, result.newContent);
+                  setReconciledBase(docName, result.newContent);
+                  incrementReconcile();
+                  clearLifecycleConflict(document);
+                  applied = true;
+                } catch (e) {
+                  log.error(
+                    { err: e, docName },
+                    `[reconcile] failed to apply clean content to Y.Doc for ${docName}`,
+                  );
+                  // Disk is source of truth — keep base in sync even if Y.Doc update failed
+                  setReconciledBase(docName, theirs);
+                  clearLifecycleConflict(document);
+                }
+                if (applied) {
+                  await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
+                }
               }
               break;
 
             case 'merged':
-              try {
-                applyToDoc(docName, result.newContent);
-                // Base tracks the DISK bytes (theirs), not the merged content
-                // — the merge exists only in memory until a later store
-                // flushes it. A base pointing past disk makes every
-                // disk-vs-base comparator misread the world: the
-                // L1 before-agent-write reconcile would see a phantom
-                // divergence and clean-ingest disk (reverting this merge),
-                // the L3 store backstop would abort the next agent flush the
-                // same way, and the no-op store skip (ytext === base) would
-                // keep the merged content off disk indefinitely. With
-                // base = theirs, the next store writes the merge through and
-                // re-events reconcile to noop (theirs === base).
-                setReconciledBase(docName, theirs);
-                incrementReconcile();
-                clearLifecycleConflict(document);
-                backlinkIndex.updateDocumentFromMarkdown(docName, theirs);
-                scheduleSaveToDisk();
-                tagIndex.updateDocumentFromMarkdown(docName, theirs);
-                signalChannel('backlinks');
-                signalChannel('graph');
-                signalChannel('tags');
-              } catch (e) {
-                log.error(
-                  { err: e, docName },
-                  `[reconcile] failed to apply merged content to Y.Doc for ${docName}`,
-                );
-                // Disk is source of truth — keep base in sync even if Y.Doc update failed
-                setReconciledBase(docName, theirs);
-                clearLifecycleConflict(document);
+              {
+                let applied = false;
+                try {
+                  applyToDoc(docName, result.newContent);
+                  // Base tracks the DISK bytes (theirs), not the merged content
+                  // — the merge exists only in memory until a later store
+                  // flushes it. A base pointing past disk makes every
+                  // disk-vs-base comparator misread the world: the
+                  // L1 before-agent-write reconcile would see a phantom
+                  // divergence and clean-ingest disk (reverting this merge),
+                  // the L3 store backstop would abort the next agent flush the
+                  // same way, and the no-op store skip (ytext === base) would
+                  // keep the merged content off disk indefinitely. With
+                  // base = theirs, the next store writes the merge through and
+                  // re-events reconcile to noop (theirs === base).
+                  setReconciledBase(docName, theirs);
+                  incrementReconcile();
+                  clearLifecycleConflict(document);
+                  applied = true;
+                } catch (e) {
+                  log.error(
+                    { err: e, docName },
+                    `[reconcile] failed to apply merged content to Y.Doc for ${docName}`,
+                  );
+                  // Disk is source of truth — keep base in sync even if Y.Doc update failed
+                  setReconciledBase(docName, theirs);
+                  clearLifecycleConflict(document);
+                }
+                if (applied) {
+                  await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
+                }
               }
               break;
 
             case 'conflicts': {
+              let applied = false;
               try {
                 applyToDoc(docName, result.newContent);
                 setReconciledBase(docName, result.newContent);
                 incrementReconcile();
                 incrementConflict();
-                backlinkIndex.updateDocumentFromMarkdown(docName, theirs);
-                scheduleSaveToDisk();
-                tagIndex.updateDocumentFromMarkdown(docName, theirs);
-                signalChannel('backlinks');
-                signalChannel('graph');
-                signalChannel('tags');
+                applied = true;
               } catch (e) {
                 log.error(
                   { err: e, docName },
@@ -2357,6 +2288,9 @@ export function createServer(options: ServerOptions): ServerInstance {
                 lifecycleMap.set('status', 'conflict');
                 lifecycleMap.set('reason', 'merged-with-markers');
               }
+              if (applied) {
+                await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
+              }
               break;
             }
 
@@ -2375,13 +2309,8 @@ export function createServer(options: ServerOptions): ServerInstance {
           const { docName } = event;
           const document = hocuspocus.documents.get(docName);
           if (!document) {
-            backlinkIndex.deleteDocument(docName);
-            scheduleSaveToDisk();
-            tagIndex.deleteDocument(docName);
+            await derivedDocumentIndex.recordDiskDelete(docName);
             signalChannel('files');
-            signalChannel('backlinks');
-            signalChannel('graph');
-            signalChannel('tags');
             onUpstreamDelete(docName);
             console.info(
               JSON.stringify({
@@ -2435,18 +2364,13 @@ export function createServer(options: ServerOptions): ServerInstance {
           lifecycleMap.set('status', 'deleted-upstream');
 
           deleteReconciledBase(docName);
-          backlinkIndex.deleteDocument(docName);
-          scheduleSaveToDisk();
-          tagIndex.deleteDocument(docName);
+          await derivedDocumentIndex.recordDiskDelete(docName);
           log.info({ docName, isDirty }, `[reconcile] delete: ${docName} (dirty=${isDirty})`);
 
           // Unload document to prevent re-creation on next persistence cycle
           hocuspocus.closeConnections(docName);
           await forceUnloadDocument(document);
           signalChannel('files');
-          signalChannel('backlinks');
-          signalChannel('graph');
-          signalChannel('tags');
           onUpstreamDelete(docName);
           console.info(
             JSON.stringify({
@@ -2465,9 +2389,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
           deleteReconciledBase(oldDocName);
           setReconciledBase(newDocName, content);
-          backlinkIndex.renameDocument(oldDocName, newDocName, content);
-          scheduleSaveToDisk();
-          tagIndex.renameDocument(oldDocName, newDocName, content);
+          await derivedDocumentIndex.recordDiskRename(oldDocName, newDocName, content);
 
           if (document) {
             const lifecycleMap = document.getMap('lifecycle');
@@ -2477,9 +2399,6 @@ export function createServer(options: ServerOptions): ServerInstance {
 
           log.info({ oldDocName, newDocName }, `[reconcile] rename: ${oldDocName} → ${newDocName}`);
           signalChannel('files');
-          signalChannel('backlinks');
-          signalChannel('graph');
-          signalChannel('tags');
           onUpstreamRename(oldDocName, newDocName);
           console.info(
             JSON.stringify({
@@ -2523,7 +2442,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         }
 
         // Asset events update the basename index and fire CC1 'files' only.
-        // They do NOT touch backlinkIndex (markdown-only). They DO trigger
+        // They do NOT touch relationship views (markdown-only). They DO trigger
         // a fallback re-render of any open doc that references the changed
         // basename via `[[name.ext]]` (see
         // `rerenderDocsReferencingAssetBasename`) — without this, a doc
@@ -2550,8 +2469,8 @@ export function createServer(options: ServerOptions): ServerInstance {
         }
         // file-* events maintain the in-memory fileIndex as `kind:'file'`. Like
         // asset events they signal `files` (cache-invalidate /api/documents and
-        // the workspace search corpus) but do NOT touch backlinkIndex or
-        // tagIndex (relationship surfaces stay markdown-scoped). updateFileIndex
+        // the workspace search corpus) but do NOT touch relationship views
+        // (those surfaces stay markdown-scoped). updateFileIndex
         // in handleRawEvents already mutated the index by the time we arrive
         // here.
         case 'file-create':
@@ -2778,24 +2697,6 @@ export function createServer(options: ServerOptions): ServerInstance {
         log.warn({ err }, '[server] failed to mark server.lock draining');
       }
 
-      // Cancel any pending debounced backlink cache write so the timer doesn't
-      // fire after resources are torn down.
-      if (backlinkSaveTimer !== null) {
-        clearTimeout(backlinkSaveTimer);
-        backlinkSaveTimer = null;
-      }
-
-      // Close tag-index persistence: queued scans/saves become no-ops from
-      // here, so a fire-and-forget snapshot save from the boot path can't
-      // recreate files under `.ok/` while a caller tears the state dir down.
-      // Deliberately NOT awaited: this whole destroy runs under boot.ts's 5s
-      // per-step budget (destroyHocuspocus), and draining a boot-busy chain
-      // here stacks on top of the ready-wait below and blows that budget on
-      // slow machines. The synchronous flag flip is the load-bearing part;
-      // an already-in-flight write finishes long before callers reach their
-      // post-destroy cleanup.
-      void tagIndex.close();
-
       // Flush the removal journal synchronously — a tombstone recorded just
       // before shutdown must survive the restart or a reconnecting stale
       // client resurrects the doc. Failure feeds `phaseErrors`: this flush is
@@ -2953,6 +2854,14 @@ export function createServer(options: ServerOptions): ServerInstance {
             });
             log.error({ err }, '[server] shutdown phase-3 flush failed');
           }
+
+          // Close relationship-index persistence only after the final L1
+          // stores have projected their durable markdown into backlinks.
+          // close() moves any pending cache save onto the coordinator queue
+          // before rejecting later work. The async drain is deliberately not
+          // awaited here: this destroy runs under boot.ts's bounded per-step
+          // shutdown budget.
+          void derivedDocumentIndex.close();
 
           // Phase 4: drain L2 (disk → git) — only meaningful AFTER L1 has run
           // Bounded to destroyTimeoutMs so a stuck git process doesn't hang shutdown.
@@ -3432,18 +3341,9 @@ export function createServer(options: ServerOptions): ServerInstance {
         // so reference-only edits ride the next SKILL.md touch / restart; a SKILL.md
         // unlink does NOT fire onChange, so a deleted skill is pruned on restart.
         if (parseGlobalSkillBundleDoc(docName)) {
-          void backlinkIndex
-            .ingestGlobalSkillBundles(
-              managedArtifactSkillsRoots(persistence.managedArtifactCtx),
-              getActiveBranch(),
-            )
-            .then(() => {
-              signalChannel('backlinks');
-              signalChannel('graph');
-            })
-            .catch((err) => {
-              log.warn({ err, docName }, '[backlinks] global skill bundle re-ingest failed');
-            });
+          void derivedDocumentIndex.refreshGlobalSkillNodes().catch((err) => {
+            log.warn({ err, docName }, '[backlinks] global skill bundle re-ingest failed');
+          });
         }
       };
 
@@ -3643,11 +3543,12 @@ export function createServer(options: ServerOptions): ServerInstance {
       degraded.push('ignore-files-watcher');
     }
 
-    // Align this server's branch-scoped durability state and backlink index
-    // with the project's current HEAD before either is read or written.
+    // Align branch-scoped durability and relationship views with the project's
+    // current HEAD before either is read or written.
     const startupBranch = readProjectHeadState(projectDir).branch ?? 'main';
     switchReconciledBaseScope(startupBranch);
-    backlinkIndex.switchBranch(startupBranch);
+    const derivedIndexStartup = derivedDocumentIndex.beginStartup(startupBranch);
+    let derivedIndexStartupSettled = false;
 
     // Boot-timing scope for the index phases (backlink load/rebuild, tag
     // re-init, basename seed) plus the watcher's startup seed walk. The whole
@@ -3660,85 +3561,21 @@ export function createServer(options: ServerOptions): ServerInstance {
       // `ok.boot.indexes` spans the whole index-building phase; the nested
       // `ok.boot.seed-walk` span (around `startWatcher`) is its child.
       await withSpan('ok.boot.indexes', undefined, async () => {
-        // Warm start: load the on-disk cache and reconcile (stat-only for
-        // unchanged files, async bounded reads for changed ones).
-        // Cold start (no cache): full async rebuild with bounded concurrency.
-        // Runs BEFORE startWatcher to avoid a race where watcher events mutate
-        // the backlink index while an async rebuild is in progress.
-        // Isolated in its own try/catch so a corrupt cache never prevents the
-        // watcher from starting — watcher events will populate the index
-        // incrementally from that point.
-        const branch = getActiveBranch();
-        try {
-          const cacheLoaded = await backlinkIndex.loadFromDisk(branch);
-          if (cacheLoaded) {
-            const diff = await backlinkIndex.reconcileWithDisk(branch);
-            if (diff.added > 0 || diff.updated > 0 || diff.deleted > 0) {
-              log.info(
-                { added: diff.added, updated: diff.updated, deleted: diff.deleted },
-                '[backlinks] startup reconcile: offline changes applied',
-              );
-            }
-            // Files deleted while the server was down leave no tombstone —
-            // the delete was never observed, so nothing stops a reconnecting
-            // client that still holds the doc's Yjs state from re-creating
-            // the file as a "legitimate first write". The reconcile's
-            // deleted set is exactly the last-known content docs whose file
-            // vanished during downtime; arm the removal guard for each (the
-            // journal hook makes the inference durable, and the guard's
-            // file-existence-first self-heal admits any legitimate
-            // re-creation).
-            let tombstonedOffline = 0;
-            for (const deletedDocName of diff.deletedDocNames) {
-              // Same doc-kind gate as every other populate site:
-              // `isReservedForUserTree` excludes synthetic, config, and
-              // managed-artifact docs — none may enter the removal cache.
-              // (Managed artifacts live under `.ok/` outside the content
-              // walk and have their own reconcile ownership.)
-              if (isReservedForUserTree(deletedDocName)) continue;
-              // A journaled rename-redirect is strictly more informative
-              // than an inferred flat delete — a rename inside the
-              // debounced backlink-save window leaves the persisted cache
-              // stale with the old name, so the inference sees it as
-              // deleted-while-down. Refuse the downgrade (mirrors the
-              // watcher unpaired-delete peek-guard above).
-              if (recentlyRemovedDocs.peek(deletedDocName)?.kind === 'renamed') continue;
-              recentlyRemovedDocs.setDeleted(deletedDocName);
-              tombstonedOffline++;
-            }
-            if (tombstonedOffline > 0) {
-              log.info(
-                { count: tombstonedOffline },
-                '[removal-guard] tombstoned docs deleted while the server was down',
-              );
-            }
-          } else {
-            await backlinkIndex.rebuildFromDisk(branch);
-          }
-          // Register GLOBAL skill bundle docs (SKILL + references/**) as graph
-          // nodes. They live at `<home>/.ok/skills`, OUTSIDE contentDir, so the
-          // content rebuild/reconcile above never touches them — this runs AFTER
-          // those (both replace branch state) so the nodes aren't dropped. Their
-          // bodies are deliberately not parsed (within-bundle-only). The cache is
-          // persisted after, but a warm restart re-ingests here regardless.
-          try {
-            await backlinkIndex.ingestGlobalSkillBundles(
-              managedArtifactSkillsRoots(persistence.managedArtifactCtx),
-              branch,
-            );
-          } catch (err) {
-            log.warn({ err, branch }, '[backlinks] global skill bundle ingest failed');
-          }
-          void backlinkIndex.saveToDisk().catch((err) => {
-            getLogger('backlinks').warn(
-              { branch, err },
-              `Failed to persist startup cache for ${branch}`,
-            );
-          });
-        } catch (err) {
-          log.error(
-            { err, branch },
-            '[backlinks] startup init failed; index will populate incrementally via watcher',
+        const { deletedDocNames, backlinkIndexDegraded } = await derivedIndexStartup.backlinksReady;
+        if (backlinkIndexDegraded) degraded.push('backlink-index');
+        // Files deleted while the server was down leave no watcher tombstone.
+        // Arm the removal guard from the coordinator's startup reconciliation.
+        let tombstonedOffline = 0;
+        for (const deletedDocName of deletedDocNames) {
+          if (isReservedForUserTree(deletedDocName)) continue;
+          if (recentlyRemovedDocs.peek(deletedDocName)?.kind === 'renamed') continue;
+          recentlyRemovedDocs.setDeleted(deletedDocName);
+          tombstonedOffline++;
+        }
+        if (tombstonedOffline > 0) {
+          log.info(
+            { count: tombstonedOffline },
+            '[removal-guard] tombstoned docs deleted while the server was down',
           );
         }
         // `startWatcher` performs the file-watcher's startup seed walk — the
@@ -3781,30 +3618,9 @@ export function createServer(options: ServerOptions): ServerInstance {
             );
           }
         }
-        // Reconcile tagIndex once the watcher has settled. The warm-boot pass
-        // in the synchronous boot path covers the snapshot restore / cold
-        // scan; this second pass is a cheap stat-only sweep that picks up any
-        // disk content that landed between constructor time and watcher
-        // startup (rare, but cheap to cover), then persists the snapshot for
-        // the next boot. Isolated in its own try/catch so a failed tag scan
-        // degrades tag search only — letting it reach the outer catch would
-        // skip the basename-index seed below and misreport a healthy watcher
-        // as `file-watcher` in `degraded[]`.
-        try {
-          const tagDiff = await tagIndex.reconcileWithDisk();
-          if (tagDiff.added > 0 || tagDiff.updated > 0 || tagDiff.deleted > 0) {
-            log.info(tagDiff, '[tag-index] startup reconcile: offline changes applied');
-          }
-          void tagIndex.saveToDisk().catch((err) => {
-            getLogger('tag-index').warn({ err }, 'Failed to persist startup tag snapshot');
-          });
-        } catch (err) {
-          log.error(
-            { err },
-            '[tag-index] startup reconcile failed; tag index updates incrementally via watcher events',
-          );
-          degraded.push('tag-index');
-        }
+        const derivedIndexSettlement = await derivedDocumentIndex.settleStartupAfterWatcherSeed();
+        derivedIndexStartupSettled = true;
+        if (derivedIndexSettlement.tagIndexDegraded) degraded.push('tag-index');
         // Seed the basename index from disk once the watcher's startup walk
         // has finished. The watcher's fileIndex is markdown-only, so we walk
         // the contentDir directly for assets.
@@ -3869,6 +3685,11 @@ export function createServer(options: ServerOptions): ServerInstance {
     } catch (err) {
       log.error({ err }, '[server] disk bridge watcher failed to start');
       degraded.push('file-watcher');
+      if (!derivedIndexStartupSettled) {
+        const settlement = await derivedDocumentIndex.settleStartupAfterWatcherSeed();
+        derivedIndexStartupSettled = true;
+        if (settlement.tagIndexDegraded) degraded.push('tag-index');
+      }
     } finally {
       // Record the index-phase duration + final markdown file count even on a
       // partial/failed watcher start, so the waterfall still has a value. The
@@ -4012,312 +3833,271 @@ export function createServer(options: ServerOptions): ServerInstance {
             // Cross-branch or detached-head — discard buffered events (wrong branch state)
             incrementBranchSwitch();
             eventBuffer.splice(0, eventBuffer.length);
-
-            // Switch reconciledBase scope to target branch
-            switchReconciledBaseScope(newBranch);
-            // Cancel any pending debounced save before switching branches.
-            // Without this, the timer fires after activeBranch is updated and
-            // saves the old branch's graph state into the new branch's cache.
-            if (backlinkSaveTimer !== null) {
-              clearTimeout(backlinkSaveTimer);
-              backlinkSaveTimer = null;
-            }
-            backlinkIndex.switchBranch(newBranch);
-
-            // Rebuild `ContentFilter`'s sibling-asset refcount BEFORE the
-            // basenameIndex reseed. ContentFilter's `dirCount` is normally
-            // maintained incrementally via `incrementMdDir` /
-            // `decrementMdDir` calls fired by the file watcher's create /
-            // delete events, but the cross-branch path discarded those
-            // events above (`eventBuffer.splice`). Without a rebuild, the
-            // refcount holds the previous branch's directory shape and
-            // legitimate sibling-asset pairs on the new branch
-            // (`assets/cover.md` next to `assets/photo.png`) are rejected
-            // by `seedBasenameIndex`'s admission check, leaving the asset
-            // unresolved.
-            contentFilter.rebuildDirCount();
-
-            // Reseed `basenameIndex` BEFORE the doc-reset loop. The reset
-            // calls `applyToDoc` → `applyExternalChange` → mdast→PM with
-            // `resolveEmbed`, which resolves `![[photo.png]]` against the
-            // basename index. With the previous (stale) branch's paths
-            // still in the index, the PM image `src` carries the
-            // pre-switch resolution until the next user edit — disk
-            // markdown round-trips fine, but the rendered preview is
-            // wrong.
-            //
-            // Asset DiskEvents from the switch itself are discarded
-            // (`eventBuffer.splice` above) and `basenameIndex` is a flat
-            // Map without branch scope, so the explicit walk is the only
-            // mechanism by which post-switch paths enter the index.
-            // Mirror backlinkIndex's branch-scoped reset: drop the index,
-            // walk the new branch's disk, re-seed.
-            //
-            // `onSkip` wiring is symmetric with the boot path — a mid-
-            // session permission flip (EACCES), fd exhaustion (EMFILE),
-            // or root-scope read failure during the reseed walk surfaces
-            // the same `basename-index-partial` degraded indicator the
-            // boot path uses.
+            let deferredStoresFlushed = false;
+            let branchTransition: DerivedDocumentIndexBranchTransition | undefined;
             try {
-              let reseedSkipCount = 0;
-              basenameIndex.clear();
-              await seedBasenameIndex({
-                contentDir,
-                contentFilter,
-                basenameIndex,
-                onSkip: (reason, code, path) => {
-                  reseedSkipCount++;
+              // Switch reconciledBase scope to target branch
+              switchReconciledBaseScope(newBranch);
+              branchTransition = await derivedDocumentIndex.beginBranchSwitch(newBranch);
+
+              // Rebuild `ContentFilter`'s sibling-asset refcount BEFORE the
+              // basenameIndex reseed. ContentFilter's `dirCount` is normally
+              // maintained incrementally via `incrementMdDir` /
+              // `decrementMdDir` calls fired by the file watcher's create /
+              // delete events, but the cross-branch path discarded those
+              // events above (`eventBuffer.splice`). Without a rebuild, the
+              // refcount holds the previous branch's directory shape and
+              // legitimate sibling-asset pairs on the new branch
+              // (`assets/cover.md` next to `assets/photo.png`) are rejected
+              // by `seedBasenameIndex`'s admission check, leaving the asset
+              // unresolved.
+              contentFilter.rebuildDirCount();
+
+              // Reseed `basenameIndex` BEFORE the doc-reset loop. The reset
+              // calls `applyToDoc` → `applyExternalChange` → mdast→PM with
+              // `resolveEmbed`, which resolves `![[photo.png]]` against the
+              // basename index. With the previous (stale) branch's paths
+              // still in the index, the PM image `src` carries the
+              // pre-switch resolution until the next user edit — disk
+              // markdown round-trips fine, but the rendered preview is
+              // wrong.
+              //
+              // Asset DiskEvents from the switch itself are discarded
+              // (`eventBuffer.splice` above) and `basenameIndex` is a flat
+              // Map without branch scope, so the explicit walk is the only
+              // mechanism by which post-switch paths enter the index.
+              // Mirror the relationship coordinator's branch-scoped reset: drop
+              // the basename index, walk the new branch's disk, and re-seed.
+              //
+              // `onSkip` wiring is symmetric with the boot path — a mid-
+              // session permission flip (EACCES), fd exhaustion (EMFILE),
+              // or root-scope read failure during the reseed walk surfaces
+              // the same `basename-index-partial` degraded indicator the
+              // boot path uses.
+              try {
+                let reseedSkipCount = 0;
+                basenameIndex.clear();
+                await seedBasenameIndex({
+                  contentDir,
+                  contentFilter,
+                  basenameIndex,
+                  onSkip: (reason, code, path) => {
+                    reseedSkipCount++;
+                    log.warn(
+                      { reason, code, path, branch: newBranch },
+                      `[basename-index] skipped entry during branch-switch reseed (${reason}${code ? ` ${code}` : ''})`,
+                    );
+                  },
+                });
+                if (reseedSkipCount > 0) {
                   log.warn(
-                    { reason, code, path, branch: newBranch },
-                    `[basename-index] skipped entry during branch-switch reseed (${reason}${code ? ` ${code}` : ''})`,
+                    { count: reseedSkipCount, branch: newBranch },
+                    `[basename-index] branch-switch reseed completed with ${reseedSkipCount} skipped entries — embeds under inaccessible subtrees will not resolve on this branch`,
                   );
-                },
-              });
-              if (reseedSkipCount > 0) {
-                log.warn(
-                  { count: reseedSkipCount, branch: newBranch },
-                  `[basename-index] branch-switch reseed completed with ${reseedSkipCount} skipped entries — embeds under inaccessible subtrees will not resolve on this branch`,
-                );
-                if (!degraded.includes('basename-index-partial')) {
-                  degraded.push('basename-index-partial');
-                }
-              }
-            } catch (err) {
-              log.error({ err, branch: newBranch }, '[basename-index] branch-switch reseed failed');
-            }
-
-            // Reset all open Y.Docs from the target branch's disk content
-            for (const [docName, document] of hocuspocus.documents) {
-              if (isReservedForUserTree(docName)) continue;
-              try {
-                const filePath = safeContentPath(docName, contentDir);
-                if (!existsSync(filePath)) {
-                  // File doesn't exist on target branch — tombstone
-                  const base = getReconciledBase(docName) ?? '';
-                  const ours = serializeDoc(docName) ?? '';
-                  const isDirty = ours !== base;
-
-                  if (isDirty && shadowRef.current) {
-                    // Silent rescue checkpoint on branch-switch tombstone
-                    // Same pattern as reconcile-delete above.
-                    const shadowForCheckpoint = shadowRef.current;
-                    queueMicrotask(() => {
-                      saveInMemoryCheckpoint(shadowForCheckpoint, contentRoot ?? '', {
-                        kind: 'external-change-rescue',
-                        docName,
-                        contents: ours,
-                        label: `External change recovered @ ${new Date().toISOString()}`,
-                        branch: newBranch,
-                        metadata: { incomingDiskSha: '' },
-                      })
-                        .then(() => {
-                          incrementRescueBuffer();
-                          log.info(
-                            { docName },
-                            `[reconcile] rescue checkpoint saved on branch switch: ${docName}`,
-                          );
-                        })
-                        .catch((e: unknown) => {
-                          log.error(
-                            { docName, err: e },
-                            `[reconcile] rescue checkpoint write failed: ${docName}`,
-                          );
-                        });
-                    });
+                  if (!degraded.includes('basename-index-partial')) {
+                    degraded.push('basename-index-partial');
                   }
-
-                  const lifecycleMap = document.getMap('lifecycle');
-                  lifecycleMap.set('status', 'deleted-upstream');
-                  log.info(
-                    { docName, branch: newBranch },
-                    `[branch-switch] tombstone: ${docName} (not on ${newBranch})`,
-                  );
-                  continue;
                 }
-
-                // Reset Y.Doc from disk
-                const diskContent = readFileSync(filePath, 'utf-8');
-                applyToDoc(docName, diskContent);
-                setReconciledBase(docName, diskContent);
-                log.info({ docName }, `[branch-switch] reset: ${docName}`);
-              } catch (e) {
-                log.error({ err: e, docName }, `[branch-switch] failed to reset ${docName}`);
-              }
-            }
-
-            log.info(
-              { branch: newBranch, docCount: hocuspocus.documents.size },
-              `[branch-switch] loaded branch ${newBranch} (${hocuspocus.documents.size} docs)`,
-            );
-            try {
-              const branchCacheLoaded = await backlinkIndex.loadFromDisk(newBranch);
-              if (branchCacheLoaded) {
-                const diff = await backlinkIndex.reconcileWithDisk(newBranch);
-                if (diff.added > 0 || diff.updated > 0 || diff.deleted > 0) {
-                  log.info(diff, `[backlinks] branch-switch reconcile for ${newBranch}`);
-                }
-              } else {
-                await backlinkIndex.rebuildFromDisk(newBranch);
-              }
-              // Global skill bundle nodes are user-global, not branch-scoped — the
-              // freshly-built branch state lacks them, so re-ingest for this branch
-              // (same node-only, within-bundle-only path as boot).
-              try {
-                await backlinkIndex.ingestGlobalSkillBundles(
-                  managedArtifactSkillsRoots(persistence.managedArtifactCtx),
-                  newBranch,
-                );
               } catch (err) {
-                log.warn(
+                log.error(
                   { err, branch: newBranch },
-                  '[backlinks] branch-switch global skill bundle ingest failed',
+                  '[basename-index] branch-switch reseed failed',
                 );
               }
-              void backlinkIndex.saveToDisk(newBranch).catch((err) => {
-                getLogger('backlinks').warn(
-                  { branch: newBranch, err },
-                  `Failed to persist branch cache for ${newBranch}`,
-                );
-              });
-            } catch (err) {
-              log.error(
-                { err, branch: newBranch },
-                '[backlinks] branch-switch rebuild failed; backlinks may be stale',
-              );
-            }
-            // TagIndex is branch-agnostic but its source-of-truth is the
-            // contentDir that just changed underneath it. The checkout
-            // rewrote changed files' mtimes, so a reconcile re-parses exactly
-            // the docs that differ between branches instead of the whole
-            // corpus; a failed reconcile falls back to the full scan so the
-            // index never silently keeps the old branch's tags.
-            try {
-              const tagDiff = await tagIndex.reconcileWithDisk();
-              if (tagDiff.added > 0 || tagDiff.updated > 0 || tagDiff.deleted > 0) {
-                log.info(tagDiff, `[tag-index] branch-switch reconcile for ${newBranch}`);
-              }
-            } catch (err) {
-              log.warn(
-                { err, branch: newBranch },
-                '[tag-index] branch-switch reconcile failed; falling back to full rebuild',
-              );
-              await tagIndex.init();
-            }
-            void tagIndex.saveToDisk().catch((err) => {
-              getLogger('tag-index').warn(
-                { branch: newBranch, err },
-                'Failed to persist tag snapshot after branch switch',
-              );
-            });
 
-            // Restore parked WIP if exists (three-way merge parked state against current disk)
-            if (shadowRef.current && info.batchKind === 'cross-branch') {
-              let restoredCount = 0;
-              for (const [docName] of hocuspocus.documents) {
+              // Reset all open Y.Docs from the target branch's disk content
+              for (const [docName, document] of hocuspocus.documents) {
                 if (isReservedForUserTree(docName)) continue;
                 try {
-                  const parked = await readParkedState(
-                    shadowRef.current,
-                    newBranch,
-                    SERVICE_WRITER.id,
-                    docName,
-                  );
-                  if (!parked) continue;
-                  // Skip if no in-flight edits were parked
-                  if (parked.markdown === parked.diskSnapshot) continue;
+                  const filePath = safeContentPath(docName, contentDir);
+                  if (!existsSync(filePath)) {
+                    // File doesn't exist on target branch — tombstone
+                    const base = getReconciledBase(docName) ?? '';
+                    const ours = serializeDoc(docName) ?? '';
+                    const isDirty = ours !== base;
 
-                  const currentDisk = getReconciledBase(docName);
-                  if (!currentDisk) continue;
-
-                  const outcome = reconcile({
-                    docName,
-                    base: parked.diskSnapshot,
-                    ours: parked.markdown,
-                    theirs: currentDisk,
-                  });
-
-                  switch (outcome.kind) {
-                    case 'merged':
-                    case 'clean':
-                      applyToDoc(docName, outcome.newContent);
-                      setReconciledBase(docName, outcome.newContent);
-                      restoredCount++;
-                      break;
-                    case 'conflicts': {
-                      applyToDoc(docName, outcome.newContent);
-                      setReconciledBase(docName, outcome.newContent);
-                      incrementConflict();
-                      restoredCount++;
-                      // Mirror the file-watcher `case 'conflicts'` lifecycle set
-                      // so block-level reconcile failures during branch-switch
-                      // WIP restore also fire the UI swap + mutating-handler
-                      // refusal gate. Raw Y.Map.set, no transact — matches the
-                      // sibling convention.
-                      {
-                        const restoredDoc = hocuspocus.documents.get(docName);
-                        if (restoredDoc) {
-                          const lifecycleMap = restoredDoc.getMap('lifecycle');
-                          lifecycleMap.set('status', 'conflict');
-                          lifecycleMap.set('reason', 'merged-with-markers');
-                        }
-                      }
-                      break;
+                    if (isDirty && shadowRef.current) {
+                      // Silent rescue checkpoint on branch-switch tombstone
+                      // Same pattern as reconcile-delete above.
+                      const shadowForCheckpoint = shadowRef.current;
+                      queueMicrotask(() => {
+                        saveInMemoryCheckpoint(shadowForCheckpoint, contentRoot ?? '', {
+                          kind: 'external-change-rescue',
+                          docName,
+                          contents: ours,
+                          label: `External change recovered @ ${new Date().toISOString()}`,
+                          branch: newBranch,
+                          metadata: { incomingDiskSha: '' },
+                        })
+                          .then(() => {
+                            incrementRescueBuffer();
+                            log.info(
+                              { docName },
+                              `[reconcile] rescue checkpoint saved on branch switch: ${docName}`,
+                            );
+                          })
+                          .catch((e: unknown) => {
+                            log.error(
+                              { docName, err: e },
+                              `[reconcile] rescue checkpoint write failed: ${docName}`,
+                            );
+                          });
+                      });
                     }
-                    case 'noop':
-                    case 'refused':
-                      break;
+
+                    const lifecycleMap = document.getMap('lifecycle');
+                    lifecycleMap.set('status', 'deleted-upstream');
+                    log.info(
+                      { docName, branch: newBranch },
+                      `[branch-switch] tombstone: ${docName} (not on ${newBranch})`,
+                    );
+                    continue;
                   }
+
+                  // Reset Y.Doc from disk
+                  const diskContent = readFileSync(filePath, 'utf-8');
+                  applyToDoc(docName, diskContent);
+                  setReconciledBase(docName, diskContent);
+                  log.info({ docName }, `[branch-switch] reset: ${docName}`);
                 } catch (e) {
-                  log.error(
-                    { err: e, docName },
-                    `[branch-switch] restore WIP failed for ${docName}`,
-                  );
+                  log.error({ err: e, docName }, `[branch-switch] failed to reset ${docName}`);
                 }
               }
-              if (restoredCount > 0) {
-                log.info(
-                  { count: restoredCount, branch: newBranch },
-                  `[branch-switch] restored ${restoredCount} parked docs on ${newBranch}`,
+
+              log.info(
+                { branch: newBranch, docCount: hocuspocus.documents.size },
+                `[branch-switch] loaded branch ${newBranch} (${hocuspocus.documents.size} docs)`,
+              );
+              try {
+                await derivedDocumentIndex.settleBranchFromDisk(branchTransition);
+              } catch (err) {
+                derivedDocumentIndex.abortBranchSwitch(branchTransition);
+                log.error(
+                  { err, branch: newBranch },
+                  '[derived-index] branch-switch rebuild failed; relationship views may be stale',
                 );
               }
-            }
 
-            // Clean up detached HEAD context if switching FROM detached TO named branch
-            if (info.oldBranch?.startsWith('detached-') && shadowRef.current) {
-              try {
-                const sg = shadowGit(shadowRef.current);
-                // List refs under the detached context
-                const refs = (
-                  await sg.raw('for-each-ref', `refs/wip/${info.oldBranch}/`, '--format=%(refname)')
-                ).trim();
-                if (refs) {
-                  // Ref deletion is a shadow mutation — take the op gate so it
-                  // cannot interleave with a maintenance gc run.
-                  await shadowOpGateFor(shadowRef.current).withMutator(async () => {
-                    for (const ref of refs.split('\n')) {
-                      if (ref) {
-                        await sg.raw('update-ref', '-d', ref);
+              // Restore parked WIP if exists (three-way merge parked state against current disk)
+              if (shadowRef.current && info.batchKind === 'cross-branch') {
+                let restoredCount = 0;
+                for (const [docName] of hocuspocus.documents) {
+                  if (isReservedForUserTree(docName)) continue;
+                  try {
+                    const parked = await readParkedState(
+                      shadowRef.current,
+                      newBranch,
+                      SERVICE_WRITER.id,
+                      docName,
+                    );
+                    if (!parked) continue;
+                    // Skip if no in-flight edits were parked
+                    if (parked.markdown === parked.diskSnapshot) continue;
+
+                    const currentDisk = getReconciledBase(docName);
+                    if (!currentDisk) continue;
+
+                    const outcome = reconcile({
+                      docName,
+                      base: parked.diskSnapshot,
+                      ours: parked.markdown,
+                      theirs: currentDisk,
+                    });
+
+                    switch (outcome.kind) {
+                      case 'merged':
+                      case 'clean':
+                        applyToDoc(docName, outcome.newContent);
+                        setReconciledBase(docName, outcome.newContent);
+                        restoredCount++;
+                        break;
+                      case 'conflicts': {
+                        applyToDoc(docName, outcome.newContent);
+                        setReconciledBase(docName, outcome.newContent);
+                        incrementConflict();
+                        restoredCount++;
+                        // Mirror the file-watcher `case 'conflicts'` lifecycle set
+                        // so block-level reconcile failures during branch-switch
+                        // WIP restore also fire the UI swap + mutating-handler
+                        // refusal gate. Raw Y.Map.set, no transact — matches the
+                        // sibling convention.
+                        {
+                          const restoredDoc = hocuspocus.documents.get(docName);
+                          if (restoredDoc) {
+                            const lifecycleMap = restoredDoc.getMap('lifecycle');
+                            lifecycleMap.set('status', 'conflict');
+                            lifecycleMap.set('reason', 'merged-with-markers');
+                          }
+                        }
+                        break;
                       }
+                      case 'noop':
+                      case 'refused':
+                        break;
                     }
-                  });
+                  } catch (e) {
+                    log.error(
+                      { err: e, docName },
+                      `[branch-switch] restore WIP failed for ${docName}`,
+                    );
+                  }
+                }
+                if (restoredCount > 0) {
                   log.info(
-                    { context: info.oldBranch },
-                    `[branch-switch] cleaned up detached context ${info.oldBranch}`,
+                    { count: restoredCount, branch: newBranch },
+                    `[branch-switch] restored ${restoredCount} parked docs on ${newBranch}`,
                   );
                 }
-              } catch (e) {
-                log.error({ err: e }, '[branch-switch] detached cleanup failed');
+              }
+
+              // Clean up detached HEAD context if switching FROM detached TO named branch
+              if (info.oldBranch?.startsWith('detached-') && shadowRef.current) {
+                try {
+                  const sg = shadowGit(shadowRef.current);
+                  // List refs under the detached context
+                  const refs = (
+                    await sg.raw(
+                      'for-each-ref',
+                      `refs/wip/${info.oldBranch}/`,
+                      '--format=%(refname)',
+                    )
+                  ).trim();
+                  if (refs) {
+                    // Ref deletion is a shadow mutation — take the op gate so it
+                    // cannot interleave with a maintenance gc run.
+                    await shadowOpGateFor(shadowRef.current).withMutator(async () => {
+                      for (const ref of refs.split('\n')) {
+                        if (ref) {
+                          await sg.raw('update-ref', '-d', ref);
+                        }
+                      }
+                    });
+                    log.info(
+                      { context: info.oldBranch },
+                      `[branch-switch] cleaned up detached context ${info.oldBranch}`,
+                    );
+                  }
+                } catch (e) {
+                  log.error({ err: e }, '[branch-switch] detached cleanup failed');
+                }
+              }
+
+              // Notify connected clients that the branch scope changed so they can
+              // invalidate their IDB persistence caches. Emit AFTER all server-side
+              // state transitions (Y.Doc reset, backlink rebuild, WIP restore,
+              // detached-ref cleanup) so a client's recycle-triggered reconnect
+              // synchronizes against the new branch's fully-settled state.
+              setBatchInProgress(false);
+              await persistence.flushDeferredStores('discard-stale');
+              deferredStoresFlushed = true;
+              cc1Broadcaster?.emitBranchSwitched(newBranch);
+            } finally {
+              derivedDocumentIndex.abortBranchSwitch(branchTransition);
+              if (!deferredStoresFlushed) {
+                setBatchInProgress(false);
+                await persistence.flushDeferredStores('discard-stale');
               }
             }
-
-            // Notify connected clients that the branch scope changed so they can
-            // invalidate their IDB persistence caches. Emit AFTER all server-side
-            // state transitions (Y.Doc reset, backlink rebuild, WIP restore,
-            // detached-ref cleanup) so a client's recycle-triggered reconnect
-            // synchronizes against the new branch's fully-settled state.
-            setBatchInProgress(false);
-            await persistence.flushDeferredStores('discard-stale');
-            cc1Broadcaster?.emitBranchSwitched(newBranch);
           }
 
           // Record upstream import if HEAD moved AND content files were affected.
@@ -4522,9 +4302,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     // nothing else would trigger a refresh until the next focus /
     // visibilitychange.
     signalChannel('files');
-    signalChannel('backlinks');
-    signalChannel('graph');
-    signalChannel('tags');
+    derivedDocumentIndex.announceReadyViews();
 
     // initAsync has reached the point where `resolveReady` will fire — record
     // the elapsed-from-boot-start so the waterfall has a server-ready mark.
@@ -4539,7 +4317,13 @@ export function createServer(options: ServerOptions): ServerInstance {
   // (so it could be passed into createApiExtension before initAsync ran).
   // Settle it now from initAsync's completion. Errors propagate through the
   // same channel callers awaited before.
-  initAsync().then(resolveReady, rejectReady);
+  initAsync().then(resolveReady, (err) => {
+    // A pre-index startup failure would otherwise strand coordinator callers
+    // behind unresolved admission/readiness barriers. Failed server startup
+    // has no recovery path, so close releases every waiter with a rejection.
+    void derivedDocumentIndex.close();
+    rejectReady(err);
+  });
 
   return {
     hocuspocus,

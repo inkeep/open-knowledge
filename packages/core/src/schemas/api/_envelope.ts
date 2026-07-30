@@ -204,6 +204,10 @@ export const ProblemTypeSchema = z.enum([
   // size-class (413 → reduce payload).
   'urn:ok:error:request-timeout',
   'urn:ok:error:internal-server-error',
+  // Derived-index queries reject with this retryable lifecycle state once
+  // coordinator shutdown begins. Configuration absence retains the
+  // index-specific `*-not-configured` tokens below.
+  'urn:ok:error:derived-index-unavailable',
   // /api/local-op/* security gate (shared by all local-op endpoints)
   'urn:ok:error:loopback-required',
   'urn:ok:error:invalid-origin',

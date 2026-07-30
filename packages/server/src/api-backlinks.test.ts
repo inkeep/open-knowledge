@@ -3,11 +3,19 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { describe, expect, test } from 'vitest';
-import { createApiExtension } from './api-extension.test-helper.ts';
+import { describe, expect, test, vi } from 'vitest';
+import {
+  createApiExtension,
+  createDerivedDocumentIndexApiPortStub,
+} from './api-extension.test-helper.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { type ContentFilter, createContentFilter } from './content-filter.ts';
+import {
+  DerivedDocumentIndex,
+  type DerivedDocumentIndexApiPort,
+} from './derived-document-index.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
+import { getLogger } from './logger.ts';
 
 interface CapturedResponse {
   status: number;
@@ -42,7 +50,12 @@ async function callRoute(
   url: string,
   fileIndex: ReadonlyMap<string, FileIndexEntry>,
   backlinkIndex?: BacklinkIndex,
-  options?: { method?: string; enableTestRoutes?: boolean; contentFilter?: ContentFilter },
+  options?: {
+    method?: string;
+    enableTestRoutes?: boolean;
+    contentFilter?: ContentFilter;
+    derivedDocumentIndex?: DerivedDocumentIndexApiPort;
+  },
 ): Promise<CapturedResponse> {
   const ext = createApiExtension({
     hocuspocus: {} as never,
@@ -50,6 +63,7 @@ async function callRoute(
     contentDir,
     getFileIndex: () => fileIndex,
     backlinkIndex,
+    derivedDocumentIndex: options?.derivedDocumentIndex,
     enableTestRoutes: options?.enableTestRoutes,
     ...(options?.contentFilter ? { contentFilter: options.contentFilter } : {}),
   });
@@ -460,6 +474,91 @@ describe('graph endpoints', () => {
       expect(body.type).toBe('urn:ok:error:backlink-index-not-configured');
       expect(body.status).toBe(503);
     } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('returns a quiet 503 when derived-index query routes race shutdown', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-derived-query-shutdown-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    const contentFilter = createContentFilter({ projectDir, contentDir });
+    const derivedDocumentIndex = new DerivedDocumentIndex({
+      projectDir,
+      contentDir,
+      contentFilter,
+      getGlobalSkillRoots: () => [],
+      signalChannel: () => {},
+    });
+    await derivedDocumentIndex.close();
+    const httpLogger = getLogger('http');
+    const errorLog = vi.spyOn(httpLogger, 'error');
+    const debugLog = vi.spyOn(httpLogger, 'debug');
+
+    const routes = [
+      '/api/backlinks?docName=doc',
+      '/api/backlink-counts?docNames=doc',
+      '/api/forward-links?docName=doc',
+      '/api/link-graph',
+      '/api/orphans',
+      '/api/hubs',
+      '/api/dead-links',
+      '/api/tags',
+      '/api/tags/example',
+    ] as const;
+
+    try {
+      for (const route of routes) {
+        const response = await callRoute(contentDir, route, new Map(), undefined, {
+          derivedDocumentIndex,
+        });
+        expect(response.status).toBe(503);
+        expect(JSON.parse(response.body)).toMatchObject({
+          type: 'urn:ok:error:derived-index-unavailable',
+          title: 'Derived index is shutting down.',
+          status: 503,
+        });
+      }
+      expect(errorLog).not.toHaveBeenCalled();
+      expect(debugLog).toHaveBeenCalledTimes(routes.length);
+    } finally {
+      errorLog.mockRestore();
+      debugLog.mockRestore();
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps unexpected derived-index query failures as 500 faults', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-derived-query-failure-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    const failure = new Error('unexpected query failure');
+    const derivedDocumentIndex = createDerivedDocumentIndexApiPortStub({
+      async getBacklinks() {
+        throw failure;
+      },
+    });
+    const errorLog = vi.spyOn(getLogger('http'), 'error');
+
+    try {
+      const response = await callRoute(
+        contentDir,
+        '/api/backlinks?docName=doc',
+        new Map(),
+        undefined,
+        { derivedDocumentIndex },
+      );
+      expect(response.status).toBe(500);
+      expect(JSON.parse(response.body)).toMatchObject({
+        type: 'urn:ok:error:internal-server-error',
+        status: 500,
+      });
+      expect(errorLog).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'api.error', err: failure }),
+        'Failed to read backlinks.',
+      );
+    } finally {
+      errorLog.mockRestore();
       rmSync(projectDir, { recursive: true, force: true });
     }
   });

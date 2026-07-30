@@ -4,7 +4,7 @@
  * "given the project (or a sub-path), what per-file diagnostics hold?" behind
  * one interface while owning its own execution model — the lint validator
  * walks the content tree via `auditProject`; the links validator reads the
- * in-memory `BacklinkIndex`. The engine fans out and merges everything into
+ * derived document index. The engine fans out and merges everything into
  * one source-tagged diagnostic plane. Backs `GET /api/audit` + MCP `audit`.
  */
 
@@ -15,9 +15,18 @@ import {
   SUPPORTED_DOC_EXTENSIONS,
   type ValidationDiagnostic,
 } from '@inkeep/open-knowledge-core';
-import type { BacklinkIndex } from '../backlink-index.ts';
+import type { DerivedDocumentIndexApiPort } from '../derived-document-index.ts';
 import { getLogger } from '../logger.ts';
 import { auditProject } from './audit.ts';
+
+type DeadLinksResult = Awaited<ReturnType<DerivedDocumentIndexApiPort['getDeadLinks']>>;
+
+interface ValidationDerivedIndexReader {
+  getDeadLinks(
+    admittedDocuments: Iterable<string>,
+    sourceDocumentNames?: readonly string[],
+  ): DeadLinksResult | Promise<DeadLinksResult>;
+}
 
 interface FileValidationResult {
   /** Path relative to `contentDir`. */
@@ -60,15 +69,15 @@ export interface ValidationAuditDeps {
   baseConfig: LinterConfig;
   /** Live CRDT source overlay for loaded docs (see `AuditOptions.liveSourceFor`). */
   liveSourceFor?: (docRelPath: string) => string | null;
-  /** Null when the server booted without a backlink index; links findings degrade to a warning. */
-  backlinkIndex: Pick<BacklinkIndex, 'getDeadLinks'> | null;
+  /** Null when the server booted without a derived index; links findings degrade to a warning. */
+  derivedDocumentIndex: ValidationDerivedIndexReader | null;
   /**
    * Project posture for broken links (`validation.links`): 'off' silences the
    * links validator entirely, 'warning' (default) / 'error' set the severity.
    */
   linksValidation?: LinksValidationSetting;
   /** Every docName that currently exists — the dead-link existence oracle. */
-  admittedDocNames: () => Iterable<string>;
+  admittedDocNames: () => Iterable<string> | Promise<Iterable<string>>;
   /** docName → on-disk contentDir-relative path, null when no file exists yet. */
   docFilePathFor: (docName: string) => string | null;
 }
@@ -177,14 +186,14 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator {
         return { files: [], fileCount: 0, warnings: [] };
       }
       const severity = setting === 'error' ? 'error' : 'warning';
-      if (!deps.backlinkIndex) {
+      if (!deps.derivedDocumentIndex) {
         return {
           files: [],
           fileCount: 0,
           warnings: ['links validation unavailable: backlink index is not configured'],
         };
       }
-      const admitted = [...deps.admittedDocNames()];
+      const admitted = [...(await deps.admittedDocNames())];
       const sourceFilter = scopedSourceDocNames(admitted, scope.targetPath);
       // `getDeadLinks` reads an empty source filter as "no filter" — a scope
       // matching zero docs must short-circuit here or it would silently widen
@@ -192,7 +201,7 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator {
       if (sourceFilter !== undefined && sourceFilter.length === 0) {
         return { files: [], fileCount: 0, warnings: [] };
       }
-      const deadLinks = deps.backlinkIndex.getDeadLinks(admitted, sourceFilter);
+      const deadLinks = await deps.derivedDocumentIndex.getDeadLinks(admitted, sourceFilter);
 
       const byFile = new Map<string, ValidationDiagnostic[]>();
       for (const { target, sources } of deadLinks) {

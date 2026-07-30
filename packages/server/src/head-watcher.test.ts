@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readProjectHeadState, startHeadWatcher, watchedGitFile } from './head-watcher';
 
 let tmpDir: string;
@@ -136,6 +136,71 @@ describe('startHeadWatcher chokidar fallback', () => {
       expect(handle.getLastKnownBranch()).toBe('main');
     } finally {
       // unsubscribe() must resolve — it closes the chokidar watcher.
+      await handle.unsubscribe();
+    }
+  });
+});
+
+describe('startHeadWatcher batch serialization', () => {
+  test('queues a second HEAD batch until the first branch-switch callback settles', async () => {
+    const projectRoot = resolve(tmpDir, 'repo');
+    mkdirSync(projectRoot, { recursive: true });
+    const git = (args: string) => execSync(`git ${args}`, { cwd: projectRoot, stdio: 'ignore' });
+    git('init -q');
+    git('config user.email t@t.co');
+    git('config user.name t');
+    writeFileSync(resolve(projectRoot, 'a.md'), 'hello\n');
+    git('add -A');
+    git('commit -qm init');
+    git('branch -M main');
+    git('branch feature');
+    git('branch second');
+
+    let dispatch!: (rawPath: string) => void;
+    let releaseFirst!: () => void;
+    const firstCanSettle = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const branches: Array<string | null> = [];
+    let activeCallbacks = 0;
+    let maxActiveCallbacks = 0;
+
+    const handle = await startHeadWatcher(
+      projectRoot,
+      () => {},
+      async (info) => {
+        activeCallbacks++;
+        maxActiveCallbacks = Math.max(maxActiveCallbacks, activeCallbacks);
+        branches.push(info.newBranch);
+        try {
+          if (branches.length === 1) await firstCanSettle;
+        } finally {
+          activeCallbacks--;
+        }
+      },
+      {
+        subscribeForTest: async (_gitDir, nextDispatch) => {
+          dispatch = nextDispatch;
+          return async () => {};
+        },
+      },
+    );
+
+    try {
+      git('checkout -q feature');
+      dispatch(resolve(projectRoot, '.git', 'HEAD'));
+      await vi.waitFor(() => expect(branches).toEqual(['feature']));
+
+      git('checkout -q second');
+      dispatch(resolve(projectRoot, '.git', 'HEAD'));
+      await new Promise((resolveWait) => setTimeout(resolveWait, 150));
+      expect(branches).toEqual(['feature']);
+
+      releaseFirst();
+      await vi.waitFor(() => expect(branches).toEqual(['feature', 'second']));
+      expect(maxActiveCallbacks).toBe(1);
+    } finally {
+      releaseFirst();
       await handle.unsubscribe();
     }
   });

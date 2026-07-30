@@ -126,6 +126,12 @@ interface ErrorResponseOptions {
    * line. Surfaces underlying errno / syscall on storage failures.
    */
   cause?: unknown;
+  /**
+   * Override the status-derived log level for expected lifecycle responses.
+   * For example, a 503 emitted while a subsystem is shutting down is useful
+   * to the caller but is not an operational fault.
+   */
+  logLevel?: 'debug' | 'warn' | 'error';
 }
 
 /**
@@ -299,7 +305,7 @@ export function errorResponse(
   // The Pino line is for grep correlation via `instance`. Separating
   // levels avoids drowning monitoring in routine 4xx noise (mirrors
   // pino-http's `customLogLevel` defaults).
-  const logLevel = status >= 500 ? 'error' : 'warn';
+  const logLevel = options.logLevel ?? (status >= 500 ? 'error' : 'warn');
   log()[logLevel](
     {
       event: 'api.error',
