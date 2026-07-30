@@ -75,6 +75,8 @@
  */
 
 import type { ChildProcess } from 'node:child_process';
+import { type Dirent, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ElectronApplication } from '@playwright/test';
 
 export interface CloseAppBoundedOpts {
@@ -112,6 +114,71 @@ export interface CloseAppBoundedOpts {
  */
 export function captureAppProcess(app: ElectronApplication): ChildProcess {
   return app.process();
+}
+
+/** Depth that reaches `<tmpHome>/<project>/.ok/local/server.lock`. */
+const LOCK_SEARCH_DEPTH = 3;
+
+function collectServerLockPids(dir: string, depth: number, out: number[]): void {
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true, encoding: 'utf8' });
+  } catch {
+    return; // Already removed, or never created — nothing to reap.
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name === '.ok') {
+      try {
+        const raw = readFileSync(join(dir, '.ok', 'local', 'server.lock'), 'utf8');
+        const pid = (JSON.parse(raw) as { pid?: unknown }).pid;
+        // Guard 0/1/negatives: `process.kill` treats 0 as "this group" and
+        // negatives as a group id, so a malformed lock could signal the test
+        // runner itself.
+        if (typeof pid === 'number' && Number.isInteger(pid) && pid > 1) out.push(pid);
+      } catch {
+        // No lock, unreadable, or not JSON — the server never started or
+        // already released it.
+      }
+      continue;
+    }
+    if (depth > 0) collectServerLockPids(join(dir, entry.name), depth - 1, out);
+  }
+}
+
+/**
+ * Kill the OK servers that a packaged app spawned, before their content dirs
+ * are unlinked.
+ *
+ * A packaged build spawns its server DETACHED so it outlives the app — that is
+ * the product behavior, not a bug. But it also puts the server in its own
+ * process group, so `closeAppBounded`'s `kill(-pid)` on the Electron group
+ * never reaches it. Each packaged smoke test therefore leaves a live server
+ * reparented to init, holding the file descriptors it inherited from the
+ * Playwright worker. Enough of those and the worker cannot exit, which
+ * surfaces as `Worker teardown timeout ... exceeded` and a non-zero exit with
+ * every test green — indistinguishable from a real gate failure to anything
+ * reading the exit code.
+ *
+ * Unpackaged runs never see this: the dev-mode server is a child of the app
+ * and dies with the group, which is why the accumulation only appears once the
+ * suite runs against a real bundle.
+ *
+ * The pid comes from the server's own `.ok/local/server.lock`, so this reaps
+ * exactly the servers these tests started and never a developer's own.
+ * Best-effort by design: a missing lock, a dead pid, or an unreadable tree all
+ * mean there is nothing to reap.
+ */
+export function reapDetachedServers(dirs: readonly string[]): void {
+  const pids: number[] = [];
+  for (const dir of dirs) collectServerLockPids(dir, LOCK_SEARCH_DEPTH, pids);
+  for (const pid of new Set(pids)) {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // ESRCH — already gone, which is the common case on a clean shutdown.
+    }
+  }
 }
 
 /**

@@ -87,7 +87,7 @@
 import type { ChildProcess } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { expect as baseExpect, test as baseTest, type ElectronApplication } from '@playwright/test';
-import { captureAppProcess, closeAppBounded } from './electron-cleanup';
+import { captureAppProcess, closeAppBounded, reapDetachedServers } from './electron-cleanup';
 import {
   captureElectronStderr,
   type ElectronStderrCapture,
@@ -183,6 +183,13 @@ export const test = baseTest.extend<SmokeFixtures>({
     for (const proc of procs) {
       await closeAppBounded(proc, { gracefulMs: 5_000 });
     }
+    // Contract (2b): reap the servers those apps spawned. A packaged build
+    // detaches its server so it outlives the app, which also puts it outside
+    // the process group the reap above kills — so it survives, holding the
+    // worker's inherited descriptors open. Runs after the app reap (the app
+    // gets its chance to shut its own server down first) and before the dir
+    // removal below (the lock it reads lives inside those dirs).
+    reapDetachedServers(cleanupDirs);
     // Contract (3): tmp-dir cleanup. Runs after every proc is reaped, so
     // no helper subprocess / utility process is still writing into the
     // tree being unlinked. Tolerant of ENOTEMPTY / EBUSY anyway — if an

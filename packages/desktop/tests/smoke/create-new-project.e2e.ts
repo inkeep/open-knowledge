@@ -51,7 +51,9 @@ import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { typeProjectName } from './_helpers/create-new-dialog';
+import { reapDetachedServers } from './_helpers/electron-cleanup';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { seedMcpConsentComplete } from './_helpers/mcp-consent';
 import { clickNavCreateNew } from './_helpers/navigator-actions';
 import {
   homeEnv,
@@ -103,6 +105,10 @@ async function launchApp(tmpHome: string, opts: LaunchOpts = {}): Promise<Electr
   // app.getPath('userData') on macOS — setting HOME doesn't work because
   // NSHomeDirectory() resolves via getpwuid(), not the env.
   const userDataDir = join(tmpHome, 'Library', 'Application Support', DESKTOP_PRODUCT_NAME);
+  // This file drives project creation, not MCP wiring; without this the packaged
+  // build's MCP consent modal covers the launcher and every `nav-create-new`
+  // click times out.
+  seedMcpConsentComplete(tmpHome);
   return electron.launch(
     desktopLaunchOptions({
       target: TARGET,
@@ -168,7 +174,15 @@ test.describe('Create-new-project smoke', () => {
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test.afterEach(async () => {
-    for (const target of cleanupTargets.splice(0)) {
+    const targets = cleanupTargets.splice(0);
+    // A packaged build detaches its server so it outlives the app, which also
+    // puts it outside the process group the fixture's reap kills. Left alone it
+    // survives holding the worker's inherited descriptors, and enough of them
+    // stop the worker exiting — a non-zero exit with every test green. These
+    // suites unlink their own dirs rather than registering `cleanupDirs`, so
+    // the reap has to happen here, before the locks it reads are removed.
+    reapDetachedServers(targets);
+    for (const target of targets) {
       try {
         rmSync(target, { recursive: true, force: true });
       } catch {
@@ -370,7 +384,15 @@ test.describe('Create-new-project smoke', () => {
       .poll(() => existsSync(join(repoRoot, '.ok', 'config.yml')), { timeout: 15_000 })
       .toBe(true);
     expect(existsSync(join(target, '.ok', 'config.yml'))).toBe(false);
-    expect(existsSync(target)).toBe(true);
+    // Polled, not bare. The config landing at the git root and the user-facing
+    // target folder being created are two independent filesystem operations
+    // with no ordering guarantee exposed here, so waiting on the first says
+    // nothing about the second. A bare check raced and failed roughly two runs
+    // in three against a packaged bundle, where the extra boot work at this
+    // moment widens the gap. Polling cannot mask a real regression — a target
+    // that never appears still fails, just after the deadline rather than
+    // before the write.
+    await expect.poll(() => existsSync(target), { timeout: 15_000 }).toBe(true);
     const cfg = readFileSync(join(repoRoot, '.ok', 'config.yml'), 'utf8');
     expect(cfg).not.toMatch(/^\s*dir:\s*notes\/MyProj/m);
     expect(cfg).toMatch(/^# content:/m);

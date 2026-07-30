@@ -35,7 +35,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { reapDetachedServers } from './_helpers/electron-cleanup';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { seedMcpConsentComplete } from './_helpers/mcp-consent';
 import { clickNavOpen } from './_helpers/navigator-actions';
 import { expect, test } from './_helpers/smoke-test';
 
@@ -103,6 +105,10 @@ async function launchApp(tmpHome: string, opts: LaunchOpts = {}): Promise<Electr
   // Support state and `lastOpenedProject` from real usage causes the editor
   // window to spawn instead of the navigator.
   const userDataDir = join(tmpHome, 'Library', 'Application Support', DESKTOP_PRODUCT_NAME);
+  // This file drives the content-dir consent flow, not MCP wiring; without this
+  // the packaged build's MCP consent modal covers the launcher and every
+  // `nav-open` click times out.
+  seedMcpConsentComplete(tmpHome);
   return electron.launch(
     desktopLaunchOptions({
       target: TARGET,
@@ -178,7 +184,15 @@ test.describe('Consent-dialog smoke', () => {
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test.afterEach(async () => {
-    for (const target of cleanupTargets.splice(0)) {
+    const targets = cleanupTargets.splice(0);
+    // A packaged build detaches its server so it outlives the app, which also
+    // puts it outside the process group the fixture's reap kills. Left alone it
+    // survives holding the worker's inherited descriptors, and enough of them
+    // stop the worker exiting — a non-zero exit with every test green. These
+    // suites unlink their own dirs rather than registering `cleanupDirs`, so
+    // the reap has to happen here, before the locks it reads are removed.
+    reapDetachedServers(targets);
+    for (const target of targets) {
       try {
         rmSync(target, { recursive: true, force: true });
       } catch {
