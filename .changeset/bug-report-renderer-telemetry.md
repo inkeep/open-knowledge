@@ -1,0 +1,5 @@
+---
+"@inkeep/open-knowledge": patch
+---
+
+Bug reports sent from the desktop app now carry the evidence needed to diagnose an editor crash. Two pieces were missing. First, the detailed-diagnostics report is meant to be a superset of the basic one, but it was leaving out the app's own log file — the one the desktop app writes the editor's console messages into. Basic reports included it, detailed ones did not, so the most thorough report was the one that dropped the crash trail. Second, when the editor hit an error, the report recorded the error message but not React's component stack, which is the only part of a crash that still names real parts of the app in a released build; without it, a crash report read as a string of meaningless letters and numbers. Reports now include both, so a crash can be traced without asking you to copy anything out of a developer console by hand. Secrets in the newly included log are redacted the same way as everywhere else, and the component stack is trimmed to its most relevant frames.
