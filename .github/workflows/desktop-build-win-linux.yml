@@ -245,6 +245,14 @@ jobs:
           fi
           pnpm exec electron-builder --win --publish never "${extra[@]}"
 
+      # Fail before uploading an installer that cannot start. An asar packed
+      # without `node_modules` produces a binary that dies on its first bare
+      # import, before `app.ready` — no window, no dialog — so an operator
+      # downloading this artifact for QA would see only "nothing happens".
+      - name: Assert the packaged asar carries its dependencies
+        working-directory: packages/desktop
+        run: node scripts/assert-asar-complete.mjs dist-desktop "windows installers"
+
       # One artifact per installer, each named for the file it carries, so the
       # operator downloads only the arch they're about to QA instead of pulling
       # both installers plus metadata as one blob. GitHub zips every artifact on
@@ -283,7 +291,7 @@ jobs:
   # Two cells, each on a NATIVE runner for its arch. Cross-compiling the arm64
   # native deps from an x64 host is impractical (pnpm installs only the
   # host-matching `@parcel/watcher-*` prebuild, and the Linux build skips
-  # @electron/rebuild by design — see electron-builder.yml `beforeBuild`), so
+  # @electron/rebuild by design — see electron-builder.linux.yml), so
   # the arm64 deb is built on GitHub's arm64 Linux runner where pnpm installs
   # the arm64 prebuilds directly and `scripts/stage-parcel-watcher.mjs` stages
   # the right binary.
@@ -371,7 +379,20 @@ jobs:
       # emulation or system fpm is involved.
       - name: Package ${{ matrix.targets }}
         working-directory: packages/desktop
-        run: pnpm exec electron-builder --linux ${{ matrix.targets }} --publish never
+        # --config: the Linux overlay turns off the native-rebuild pass WITHOUT
+        # asserting that node_modules are staged externally. See
+        # electron-builder.linux.yml.
+        run: |
+          pnpm exec electron-builder --linux ${{ matrix.targets }} --publish never \
+            --config electron-builder.linux.yml
+
+      # Fail before uploading an installer that cannot start (see the Windows
+      # step for the full rationale). This is the control that would have caught
+      # the 0.42.2 arm64 deb, which installed cleanly and then died on
+      # `Cannot find package 'pino'` with no user-visible signal at all.
+      - name: Assert the packaged asar carries its dependencies
+        working-directory: packages/desktop
+        run: node scripts/assert-asar-complete.mjs dist-desktop "linux ${{ matrix.arch }} installers"
 
       # One artifact per installer, named for its file (see the Windows upload
       # steps for the rationale). Guarded per-arch because artifact names must

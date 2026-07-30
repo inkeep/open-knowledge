@@ -1,0 +1,38 @@
+# Linux packaging config. Inherits everything from `electron-builder.yml` and
+# changes exactly one thing: it turns off electron-builder's native-rebuild pass.
+#
+# WHY THIS FILE EXISTS, rather than a `beforeBuild` hook returning false.
+#
+# The rebuild has to be skipped on Linux: the only modules @electron/rebuild
+# finds to compile are unused node-gyp transitive deps pulled in through the
+# bundled server (`node-liblzma` via `just-bash`, `@mongodb-js/zstd`). pnpm
+# ignores their build scripts, so they are unbuilt in every normal install and
+# the app already runs without them — but node-liblzma's binding.gyp forces
+# `-Werror`, and Electron's bundled v8 headers trip `-Wcomment` under GCC, so
+# the pass hard-fails. Every native module that actually ships on Linux
+# (@napi-rs/keyring, @inkeep/open-knowledge-native-config, @parcel/watcher) is
+# N-API and loads straight from its prebuilt `.node`.
+#
+# The obvious way to express that — a `beforeBuild` hook returning `false` —
+# does something else as well, and the difference shipped a broken package.
+# In app-builder-lib, `beforeBuild` resolving to `false` means "I am staging
+# node_modules myself":
+#
+#     this._nodeModulesHandledExternally = !performDependenciesInstallOrRebuild
+#
+# and that flag gates the ONLY code path that copies dependencies into the app
+# (`computeNodeModuleFileSets`). Nothing was staging them, so the Linux asar
+# shipped with no `node_modules` at all and the app died on its first bare
+# import — before `app.ready`, so with no window, no dialog and no crash report.
+#
+# `npmRebuild: false` returns a few lines EARLIER in the same function, before
+# that flag is ever set, so it skips the rebuild while still shipping the
+# dependencies. It is a top-level-only option (not per-platform), which is why
+# it lives in a Linux-only overlay instead of in the shared config.
+#
+# Linux builds MUST pass `--config electron-builder.linux.yml`. Forgetting it
+# fails the build loudly on node-liblzma rather than producing a silently
+# broken package, which is the failure mode this file is here to prevent.
+extends: file:./electron-builder.yml
+
+npmRebuild: false

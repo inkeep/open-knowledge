@@ -22,7 +22,7 @@
     "build:mac": "pnpm run build:desktop && node scripts/prepare-universal.mjs && node scripts/stage-parcel-watcher.mjs && electron-builder --mac --publish never",
     "build:mac:unsigned": "pnpm run build:desktop && node scripts/prepare-universal.mjs && node scripts/stage-parcel-watcher.mjs && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --publish never -c.mac.identity=null",
     "build:win": "pnpm run build:desktop && node scripts/prepare-platform-natives.mjs && node scripts/stage-parcel-watcher.mjs && electron-builder --win --publish never",
-    "build:linux": "pnpm run build:desktop && node scripts/prepare-platform-natives.mjs && node scripts/stage-parcel-watcher.mjs && electron-builder --linux --publish never",
+    "build:linux": "pnpm run build:desktop && node scripts/prepare-platform-natives.mjs && node scripts/stage-parcel-watcher.mjs && electron-builder --linux --publish never --config electron-builder.linux.yml",
     "prepare:universal": "node scripts/prepare-universal.mjs",
     "prepare:platform-natives": "node scripts/prepare-platform-natives.mjs",
     "postinstall": "node scripts/postinstall.mjs",

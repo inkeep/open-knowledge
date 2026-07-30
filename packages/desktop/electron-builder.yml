@@ -11,12 +11,15 @@ copyright: Copyright © 2026 Inkeep
 # electron-rebuild / native-module ABI compilation cannot drift.
 electronVersion: "41.2.1"
 
-# Gate @electron/rebuild per platform: mac/win rebuild native deps (mac needs
-# node-pty's ABI; win cross-builds per-arch binaries), Linux skips it (all shipped
-# Linux natives are N-API prebuilds; the only node-gyp deps are unused, unbuilt-by-
-# design transitive server deps that fail to compile against Electron's v8 headers
-# under GCC -Werror). See scripts/before-build.mjs for the full rationale.
-beforeBuild: scripts/before-build.mjs
+# @electron/rebuild runs for mac and Windows from this config: mac needs
+# node-pty's ABI rebuilt, Windows cross-builds its per-arch binaries.
+#
+# Linux skips the pass instead, via the `electron-builder.linux.yml` overlay
+# (`npmRebuild: false`) — Linux builds MUST pass `--config
+# electron-builder.linux.yml`. The skip is NOT expressed as a `beforeBuild` hook
+# returning false: in app-builder-lib that also asserts "node_modules are staged
+# externally", which suppresses dependency collection entirely and ships an asar
+# the app cannot start from. That overlay documents the mechanism in full.
 
 directories:
   output: dist-desktop
@@ -472,7 +475,7 @@ linux:
   # The arm64 deb is built on a NATIVE arm64 runner (the `build-linux` matrix
   # in .github/workflows/desktop-build-win-linux.yml), never cross-compiled:
   # pnpm installs only the host-arch `@parcel/watcher` prebuild and the Linux
-  # build skips @electron/rebuild by design (`beforeBuild` above), so an
+  # build skips @electron/rebuild by design (see the overlay config), so an
   # x64-host arm64 deb would package but ship the wrong native binaries.
   target:
     - target: AppImage
