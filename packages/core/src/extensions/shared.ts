@@ -33,6 +33,7 @@ import { StrikeFidelity } from './strike-fidelity.ts';
 import { TableCellFidelity, TableFidelity, TableHeaderFidelity } from './table-fidelity.ts';
 import { Tag } from './tag.ts';
 import { ThematicBreakFidelity } from './thematic-break-fidelity.ts';
+import { UnderlineFidelity } from './underline-fidelity.ts';
 import { WikiLink } from './wiki-link.ts';
 import { WikiLinkEmbed } from './wiki-link-embed.ts';
 
@@ -69,6 +70,10 @@ export const sharedExtensions = [
   // single-tilde strikethrough round-trips byte-equal; replaces the
   // StarterKit Strike.
   StrikeFidelity,
+  // UnderlineFidelity carries `sourceForm` ('u' vs 'ins') so both inline-HTML
+  // spellings of underline re-emit as authored; replaces the StarterKit
+  // Underline, which had no serializable markdown form at all.
+  UnderlineFidelity,
   // Override @tiptap/extension-code's `excludes: '_'` so the Code mark can
   // coexist with emphasis/strong on the same span. CommonMark allows it;
   // the upstream exclusion broke round-trip for `*a \`*\`*` and `_a \`_\`_`
@@ -113,6 +118,7 @@ export const sharedExtensions = [
     italic: false,
     bold: false,
     strike: false,
+    underline: false,
     code: false,
     codeBlock: false,
     heading: false,

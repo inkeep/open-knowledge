@@ -38,6 +38,7 @@ import { remarkMdxAgnostic } from './remark-mdx-agnostic.ts';
 import { singleDollarMathPromoterPlugin } from './single-dollar-math-promoter.ts';
 import { stripTrailingEdge } from './strip-trailing-edge.ts';
 import { remarkTags } from './tag-to-markdown.ts';
+import { underlinePromoterPlugin } from './underline-promoter.ts';
 import { voidBrPromoterPlugin } from './void-br-promoter.ts';
 import { remarkWikiLink } from './wiki-link-micromark.ts';
 import { pruneZeroEmissionBlocks } from './zero-emission-blocks.ts';
@@ -94,6 +95,7 @@ export const ACTIVE_MDAST_PLUGINS = [
   { name: 'math-promoter', plugin: mathPromoterPlugin },
   { name: 'single-dollar-math-promoter', plugin: singleDollarMathPromoterPlugin },
   { name: 'highlight-promoter', plugin: highlightPromoterPlugin },
+  { name: 'underline-promoter', plugin: underlinePromoterPlugin },
   { name: 'mermaid-promoter', plugin: mermaidPromoterPlugin },
   { name: 'comment-promoter', plugin: commentPromoterPlugin },
   { name: 'merged-post-parse-walker', plugin: mergedPostParseWalkerPlugin },

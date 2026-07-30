@@ -515,13 +515,6 @@
       "inclusive": true,
       "spanning": true
     },
-    "underline": {
-      "attrs": {},
-      "excludes": "underline",
-      "group": "",
-      "inclusive": true,
-      "spanning": true
-    },
     "highlight": {
       "attrs": {},
       "excludes": "highlight",
@@ -558,6 +551,17 @@
         }
       },
       "excludes": "strike",
+      "group": "",
+      "inclusive": true,
+      "spanning": true
+    },
+    "underline": {
+      "attrs": {
+        "sourceForm": {
+          "hasDefault": true
+        }
+      },
+      "excludes": "underline",
       "group": "",
       "inclusive": true,
       "spanning": true
@@ -649,6 +653,7 @@
     "emphasis",
     "strong",
     "strike",
+    "underline",
     "code",
     "codeBlock",
     "blockquote",

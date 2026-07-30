@@ -887,6 +887,9 @@ importers:
       '@tiptap/extension-table':
         specifier: 3.22.3
         version: 3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)
+      '@tiptap/extension-underline':
+        specifier: 3.22.3
+        version: 3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))
       '@tiptap/pm':
         specifier: 3.22.4
         version: 3.22.4

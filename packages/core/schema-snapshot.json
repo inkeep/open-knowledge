@@ -831,7 +831,12 @@
       "spanning": true
     },
     "underline": {
-      "attrs": {},
+      "attrs": {
+        "sourceForm": {
+          "hasDefault": true,
+          "default": "u"
+        }
+      },
       "excludes": "underline",
       "group": "",
       "inclusive": true,
@@ -926,6 +931,11 @@
     },
     {
       "name": "highlight-promoter",
+      "version": null,
+      "hasOptions": false
+    },
+    {
+      "name": "underline-promoter",
       "version": null,
       "hasOptions": false
     },

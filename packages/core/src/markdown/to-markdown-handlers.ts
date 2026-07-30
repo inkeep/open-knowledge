@@ -10,6 +10,7 @@ import { isInlineWhitespaceNumericCharRef } from './whitespace-char-ref.ts';
 declare module 'mdast-util-to-markdown' {
   interface ConstructNameMap {
     mark: 'mark';
+    underline: 'underline';
     comment: 'comment';
     commentBlock: 'commentBlock';
     strikethrough: 'strikethrough';
@@ -632,6 +633,22 @@ export const toMarkdownHandlers = {
       '==',
     );
     value += tracker.move('==');
+    exit();
+    return value;
+  },
+
+  underline(node, _parent, state, info) {
+    const open = node.data?.sourceForm === 'ins' ? '<ins>' : '<u>';
+    const close = node.data?.sourceForm === 'ins' ? '</ins>' : '</u>';
+    const tracker = state.createTracker(info);
+    const exit = state.enter('underline');
+    let value = tracker.move(open);
+    value += state.containerPhrasing(node as Parents, {
+      before: value,
+      after: close,
+      ...tracker.current(),
+    });
+    value += tracker.move(close);
     exit();
     return value;
   },

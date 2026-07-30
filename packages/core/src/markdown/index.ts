@@ -60,6 +60,7 @@ import type { PropDef } from '../registry/types.ts';
 import type {
   CommentBlockMdast,
   CommentMdast,
+  UnderlineMdast,
   WikiLinkEmbedMdast,
   WikiLinkMdast,
 } from './mdast-augmentation.ts';
@@ -571,6 +572,12 @@ function buildMdastToPmHandlers(
   }
 
   if (m.highlight) handlers.mark = toPmMark(m.highlight);
+
+  if (m.underline) {
+    handlers.underline = toPmMark(m.underline, (node: UnderlineMdast) => ({
+      sourceForm: node.data?.sourceForm === 'ins' ? 'ins' : 'u',
+    }));
+  }
 
   if (m.comment) {
     handlers.comment = toPmMark(m.comment, (node: CommentMdast) => ({
@@ -1482,6 +1489,12 @@ function buildPmToMdastHandlers(
 
   if (m.highlight) {
     markHandlers.highlight = fromPmMark('mark');
+  }
+
+  if (m.underline) {
+    markHandlers.underline = fromPmMark('underline', (mark: PmMark) => ({
+      data: { sourceForm: mark.attrs.sourceForm === 'ins' ? 'ins' : 'u' },
+    }));
   }
 
   if (m.comment) {

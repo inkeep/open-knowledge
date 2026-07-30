@@ -1,5 +1,6 @@
 import type { Nodes, Root } from 'mdast';
 import { visit } from 'unist-util-visit';
+import { findFencedRegions, findInlineCodeRegions, isInsideFence } from './fence-regions.ts';
 
 const GUARD_OPEN = '\uE000';
 const GUARD_CLOSE = '\uE001';
@@ -38,7 +39,30 @@ const LOWERCASE_HTML_TAG_RE = /<([a-z][a-z0-9]*)(\s[^>]*)?\/?>/g;
 
 const LOWERCASE_JSX_CANONICAL_TAGS = new Set(['img', 'video', 'audio']);
 
-const LOWERCASE_PAIRED_JSX_TAGS = new Set(['mark']);
+const LOWERCASE_PAIRED_JSX_TAGS = new Set(['mark', 'u', 'ins']);
+
+function countOpenersBefore(
+  source: string,
+  tag: string,
+  offset: number,
+  codeRegions: Array<[number, number]>,
+): number {
+  let count = 0;
+  let from = 0;
+  const needle = `<${tag}`;
+  while (from < offset) {
+    const at = source.indexOf(needle, from);
+    if (at === -1 || at >= offset) break;
+    from = at + needle.length;
+    const after = source[at + needle.length];
+    if (after !== undefined && after !== '>' && after !== '/' && !/\s/.test(after)) continue;
+    if (isInsideFence(at, codeRegions)) continue;
+    const gt = source.indexOf('>', at);
+    if (gt !== -1 && source[gt - 1] === '/') continue;
+    count++;
+  }
+  return count;
+}
 
 const UPPERCASE_CLOSE_TAG_INDEX_RE = /<\/([A-Z][A-Za-z0-9.]*)>/g;
 
@@ -270,8 +294,16 @@ export function protectFromMdx(source: string): string {
     return `${GUARD_OPEN}${safe}${GUARD_CLOSE}`;
   });
 
-  result = result.replace(HTML_CLOSE_TAG_RE, (match, tag: string) => {
-    if (LOWERCASE_PAIRED_JSX_TAGS.has(tag)) return match;
+  const exemptedClosers = new Map<string, number>();
+  const codeRegions = [...findFencedRegions(result), ...findInlineCodeRegions(result)];
+  result = result.replace(HTML_CLOSE_TAG_RE, (match, tag: string, offset: number) => {
+    if (LOWERCASE_PAIRED_JSX_TAGS.has(tag)) {
+      const used = exemptedClosers.get(tag) ?? 0;
+      if (used < countOpenersBefore(result, tag, offset, codeRegions)) {
+        exemptedClosers.set(tag, used + 1);
+        return match;
+      }
+    }
     return match.replace(/</g, GUARD_OPEN).replace(/>/g, GUARD_CLOSE);
   });
 

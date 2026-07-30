@@ -64,6 +64,7 @@
     "@tiptap/extension-link": "^3.22.3",
     "@tiptap/extension-strike": "^3.22.3",
     "@tiptap/extension-table": "^3.22.3",
+    "@tiptap/extension-underline": "^3.22.3",
     "@tiptap/pm": "^3.22.3",
     "@tiptap/starter-kit": "^3.22.3",
     "ajv": "^8.18.0",

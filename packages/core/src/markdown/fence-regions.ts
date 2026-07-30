@@ -24,3 +24,26 @@ export function findFencedRegions(src: string): Array<[number, number]> {
 export function isInsideFence(offset: number, fences: Array<[number, number]>): boolean {
   return fences.some(([start, end]) => offset >= start && offset < end);
 }
+
+const BACKTICK_RUN_RE = /`+/g;
+
+export function findInlineCodeRegions(src: string): Array<[number, number]> {
+  const runs: Array<{ offset: number; length: number }> = [];
+  BACKTICK_RUN_RE.lastIndex = 0;
+  for (const match of src.matchAll(BACKTICK_RUN_RE)) {
+    runs.push({ offset: match.index, length: match[0].length });
+  }
+
+  const regions: Array<[number, number]> = [];
+  for (let i = 0; i < runs.length; i++) {
+    const open = runs[i];
+    for (let j = i + 1; j < runs.length; j++) {
+      const close = runs[j];
+      if (close.length !== open.length) continue;
+      regions.push([open.offset, close.offset + close.length]);
+      i = j;
+      break;
+    }
+  }
+  return regions;
+}

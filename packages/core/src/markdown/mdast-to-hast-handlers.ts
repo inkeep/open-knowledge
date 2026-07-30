@@ -10,11 +10,12 @@ import type {
   PromotedMdastType,
   RawMdxFallbackMdast,
   TagMdast,
+  UnderlineMdast,
   WikiLinkEmbedMdast,
   WikiLinkMdast,
 } from './mdast-augmentation.ts';
 
-const HTML_PRIMITIVE_TAGS = new Set(['img', 'video', 'audio', 'mark']);
+const HTML_PRIMITIVE_TAGS = new Set(['img', 'video', 'audio', 'mark', 'u', 'ins']);
 
 const compatPrimitiveByName: ReadonlyMap<string, CompatMeta> = new Map(
   builtInComponents.flatMap((meta) =>
@@ -209,6 +210,18 @@ const markHandler: Handler = (state, node) => {
   return state.applyData(node, result);
 };
 
+const underlineHandler: Handler = (state, node) => {
+  const source = node as UnderlineMdast;
+  const result: Element = {
+    type: 'element',
+    tagName: source.data?.sourceForm === 'ins' ? 'ins' : 'u',
+    properties: {},
+    children: state.all(source) as ElementContent[],
+  };
+  state.patch(node, result);
+  return state.applyData(node, result);
+};
+
 function mdastTextContent(node: unknown): string {
   if (typeof node !== 'object' || node === null) return '';
   const n = node as { type?: string; value?: unknown; children?: unknown };
@@ -317,6 +330,7 @@ const promotedHandlers: Record<PromotedMdastType, Handler> = {
   mdxJsxTextElement: mdxJsxTextHandler,
   rawMdxFallback: rawMdxFallbackHandler,
   mark: markHandler,
+  underline: underlineHandler,
   tag: tagHandler,
   comment: commentHandler,
   commentBlock: commentBlockHandler,

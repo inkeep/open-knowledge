@@ -7,6 +7,7 @@ export const PROMOTED_MDAST_TYPES = [
   'mdxJsxTextElement',
   'rawMdxFallback',
   'mark',
+  'underline',
   'tag',
   'comment',
   'commentBlock',
@@ -90,6 +91,18 @@ export interface MarkMdast {
   // biome-ignore lint/suspicious/noExplicitAny: see RootContentMap note above
   children: Array<any>;
   data?: { sourceRaw?: string; [key: string]: unknown };
+  position?: Position;
+}
+
+export interface UnderlineMdast {
+  type: 'underline';
+  // biome-ignore lint/suspicious/noExplicitAny: see RootContentMap note above
+  children: Array<any>;
+  data?: {
+    sourceForm?: 'u' | 'ins';
+    sourceRaw?: string;
+    [key: string]: unknown;
+  };
   position?: Position;
 }
 
@@ -193,6 +206,7 @@ declare module 'mdast' {
     rawMdxFallback: RawMdxFallbackMdast;
     wikiLinkEmbed: WikiLinkEmbedMdast;
     mark: MarkMdast;
+    underline: UnderlineMdast;
     tag: TagMdast;
     comment: CommentMdast;
     commentBlock: CommentBlockMdast;
