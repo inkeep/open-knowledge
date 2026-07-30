@@ -28,6 +28,7 @@ import type { Editor } from '@tiptap/core';
 import { yUndoPluginKey } from '@tiptap/y-tiptap';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
+import { getSourceViewForDoc, registerSourceView } from './active-source-view';
 import {
   __consumeRenameSnapshot,
   __getActivityMountList,
@@ -1251,6 +1252,26 @@ describe('CM6 cache — lifecycle', () => {
     expect(h.providerSpies.destroyCalls).toBe(1);
     expect(ydocDestroySpy).toHaveBeenCalledTimes(1);
     expect(__peekCm(h.docName)).toBeUndefined();
+  });
+
+  test('evict: drops the source-view registry entry', () => {
+    // Eviction is the only view-destroy path outside a React cleanup, so nothing
+    // else would notice if this call were removed or reordered after destroy().
+    // A destroyed view left reachable answers geometry questions with undefined
+    // results, which freezes the outline's active heading rather than failing
+    // loudly. Asserts the observable outcome rather than spying on the call.
+    const h = makeCmHarness('cm-doc-a');
+    const entry = mountCmEditor({
+      docName: h.docName,
+      container: h.container as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+    registerSourceView(h.docName, entry.view);
+    expect(getSourceViewForDoc(h.docName)).toBe(entry.view);
+
+    expect(evictCmEditor(h.docName)).toBe(true);
+
+    expect(getSourceViewForDoc(h.docName)).toBeNull();
   });
 
   test('5 park-mount cycles work for CM6', () => {

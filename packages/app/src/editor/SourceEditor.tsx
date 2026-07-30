@@ -4,7 +4,6 @@ import { Compartment, EditorSelection, EditorState, StateEffect } from '@codemir
 import { placeholder as cmPlaceholder, EditorView, keymap } from '@codemirror/view';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
-  createCodeFenceTracker,
   DEFAULT_LINTER_CONFIG,
   type PersistedLinterConfig,
   toEffectiveBase,
@@ -45,10 +44,10 @@ import {
   consumePendingSourceNavigation,
   peekPendingSourceNavigation,
 } from './source-editor-navigation';
+import { sourceHeadingLines } from './source-heading-lines';
 import { createMarkdownLintExtension } from './source-lint/markdown-lint-source';
 import { sourceModeSetup } from './source-mode-setup';
 import { createSourcePolishExtension } from './source-polish';
-import { FM_FENCE_LINE_RE } from './source-polish/view-plugin';
 import { attachTypingBurstDetector } from './typing-burst-detector';
 
 // Toolbar exclusion zone in px (= 3.5rem, EditorToolbar's rendered height). CM6
@@ -75,42 +74,18 @@ interface SourceEditorProps {
 }
 
 function applyOutlineNavigation(view: EditorView, detail: OutlineNavDetail, docName: string): void {
-  const doc = view.state.doc;
-  let startLine = 1;
-  // FM fence recognition must agree with the server's extractHeadings (core
-  // fence contract), which produces the outline this index maps onto —
-  // otherwise YAML `#` lines shift the heading count and clicks jump wrong.
-  if (doc.lines >= 1 && FM_FENCE_LINE_RE.test(doc.line(1).text)) {
-    for (let i = 2; i <= doc.lines; i++) {
-      if (FM_FENCE_LINE_RE.test(doc.line(i).text)) {
-        startLine = i + 1;
-        break;
-      }
-    }
-  }
+  // The outline row's index maps 1:1 onto this enumeration, which shares its
+  // line-admission rules with the server producer that emitted the row.
+  const heading = sourceHeadingLines(view.state.doc)[detail.index];
+  if (!heading) return;
 
-  // Skip `#` comments inside fenced code blocks — they render as code, not
-  // headings, so they must stay out of the heading count that maps 1:1 onto
-  // the outline index.
-  const isInCodeFence = createCodeFenceTracker();
-  let seen = 0;
-  for (let i = startLine; i <= doc.lines; i++) {
-    const line = doc.line(i);
-    if (isInCodeFence(line.text)) continue;
-    if (/^#{1,6}\s/.test(line.text)) {
-      if (seen === detail.index) {
-        runScrollNavigation(docName, () => {
-          view.dispatch({
-            selection: EditorSelection.cursor(line.from),
-            effects: EditorView.scrollIntoView(line.from, { y: 'start' }),
-          });
-          view.focus();
-        });
-        return;
-      }
-      seen++;
-    }
-  }
+  runScrollNavigation(docName, () => {
+    view.dispatch({
+      selection: EditorSelection.cursor(heading.from),
+      effects: EditorView.scrollIntoView(heading.from, { y: 'start' }),
+    });
+    view.focus();
+  });
 }
 
 export function applyRawMdxNavigation(
@@ -400,7 +375,8 @@ export function SourceEditor({
       cmEntryRef.current = entry;
       viewRef.current = entry.view;
       // Publish the live view so a source-to-WYSIWYG flip can read its viewport
-      // synchronously at flip time, before this editor is hidden.
+      // synchronously at flip time, before this editor is hidden, and so outline
+      // active-heading tracking can measure this document's line geometry.
       registerSourceView(docName, entry.view);
     } catch (err) {
       // Surface mount failures through DocumentErrorBoundary.
@@ -414,6 +390,8 @@ export function SourceEditor({
       const cur = cmEntryRef.current;
       if (cur) {
         parkCmEditor(cur);
+        // A parked view is off screen, so it must stop answering geometry
+        // questions for this document even though the view itself stays alive.
         unregisterSourceView(docName, cur.view);
       }
       // Listener cleanup is implicit when evictCmEditor calls view.destroy().

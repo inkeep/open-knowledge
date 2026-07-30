@@ -97,7 +97,6 @@ import {
   FrontmatterPatchSuccessSchema,
   FrontmatterSchemasListSuccessSchema,
   FrontmatterSchemaWriteRequestSchema,
-  getHeadingSlug,
   getParseHealth,
   type HeadingEntry,
   HistorySuccessSchema,
@@ -232,6 +231,7 @@ import {
   SyncStatusSchema,
   SyncTriggerRequestSchema,
   SyncTriggerSuccessSchema,
+  scanHeadingLine,
   searchWorkspaceCorpus,
   skillLiveDocName,
   stripFrontmatter,
@@ -3018,12 +3018,8 @@ export function extractHeadings(content: string): HeadingEntry[] {
   const isInCodeFence = createCodeFenceTracker();
   for (const line of body.split('\n')) {
     if (isInCodeFence(line)) continue;
-    const match = line.match(/^(#{1,6})\s+(.+)$/);
-    if (match) {
-      const text = match[2].trim();
-      const slug = getHeadingSlug(text, slugCounts);
-      if (slug) headings.push({ level: match[1].length, text, slug });
-    }
+    const heading = scanHeadingLine(line, slugCounts);
+    if (heading) headings.push(heading);
   }
   return headings;
 }

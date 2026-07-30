@@ -51,11 +51,8 @@ function countLeadingIndent(text: string): number {
 
 // Line-scoped shape of the fence contract, sourced from core so the FM
 // region the user sees styled as YAML matches what the bridge recognizes by
-// construction (no local regex copy to drift). Re-exported for
-// SourceEditor's outline-navigation FM skip.
+// construction (no local regex copy to drift).
 import { FM_FENCE_LINE_RE } from '@inkeep/open-knowledge-core';
-
-export { FM_FENCE_LINE_RE };
 
 function frontmatterRange(state: EditorState): { from: number; to: number } | null {
   if (state.doc.lines < 2) return null;

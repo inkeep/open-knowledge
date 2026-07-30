@@ -146,7 +146,7 @@ function OutlinePanelInner({
   }, [activeProvider, activeDocName, docName, queryClient]);
 
   const slugs = headings.map((h) => h.slug);
-  const activeSlug = useActiveHeading(slugs, isSourceMode);
+  const activeSlug = useActiveHeading(slugs, { isSourceMode, docName });
   const activeIndex = activeSlug ? headings.findIndex((h) => h.slug === activeSlug) : -1;
 
   function handleNav(index: number, slug: string) {

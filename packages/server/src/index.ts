@@ -32,6 +32,7 @@ export {
   __resetShowAllWalkStatsForTesting,
   type ApiExtensionOptions,
   createApiExtension,
+  extractHeadings,
   MANAGED_RENAME_ORIGIN,
   ROLLBACK_ORIGIN,
   safeSubdir,

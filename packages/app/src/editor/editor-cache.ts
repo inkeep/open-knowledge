@@ -54,6 +54,7 @@ import { yUndoPluginKey } from '@tiptap/y-tiptap';
 import type * as Y from 'yjs';
 import { mark } from '@/lib/perf';
 import { readNumericOverride } from '@/lib/perf/env-override';
+import { unregisterSourceView } from './active-source-view';
 import { getMountId } from './mount-id-registry';
 // Cyclic import is intentional and ESM-safe: this module's `mountTiptapEditor`
 // is consumed by `mount-promise.ts` (the Suspense + use(promise) primitive),
@@ -1122,6 +1123,14 @@ export function parkCmEditor(entry: CmCacheEntry): void {
 export function evictCmEditor(docName: string): boolean {
   const entry = cmCache.get(docName);
   if (!entry) return false;
+
+  // Drop the registry entry before destroying the view it points at. The
+  // registry's contract is that an entry means a mounted view, and eviction is
+  // the one destroy path no React cleanup covers: `parkCmEditor`'s kill-switch
+  // branch is always followed by SourceEditor's own unregister, but the LRU
+  // calls this independently of any component lifecycle. The identity guard in
+  // `unregisterSourceView` makes the park-then-evict double call a no-op.
+  unregisterSourceView(docName, entry.view);
 
   try {
     entry.view.destroy();
