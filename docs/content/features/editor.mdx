@@ -38,6 +38,25 @@ A `mermaid` code fence renders as a live diagram (the slash menu can insert one)
 
 An `html preview` code fence renders its contents live in a sandboxed iframe instead of showing the source. The slash menu's `/embed` group inserts starters — a blank theme-aware page, a chart, stat cards, custom SVG, an interactive control — that open straight into the preview.
 
+### Underline
+
+`Cmd+U`, or the Underline button in the selection bubble menu, underlines the selection. Markdown has no underline syntax of its own, so it saves as inline HTML: `<u>underlined</u>`. `<ins>…</ins>` — what Joplin and Logseq write — is read as underline too, whether it arrives on the clipboard or is already sitting in a file you open, and each file keeps the spelling it arrived with instead of being rewritten under you. Both underline in OpenKnowledge and in any renderer that passes inline HTML through. GitHub is the exception worth knowing: it renders `<ins>` underlined but strips `<u>` back to plain text, so the words survive and the underline doesn't.
+
+### Comments
+
+Notes to yourself and to your agents that stay in the file and out of what a reader sees. OpenKnowledge reads two syntaxes. There's no button or shortcut for either — you type them, inline inside a paragraph or as a standalone block spanning several lines:
+
+| Syntax | Hidden from readers in |
+| --- | --- |
+| `<!-- note -->` | Everywhere. It's an HTML comment, so no markdown renderer ever shows it to a reader. |
+| `%%note%%` | OpenKnowledge and Obsidian, which share the convention. Everywhere else it renders as ordinary text, percent signs and all. |
+
+So: reach for `<!-- -->` when the file will be read outside OpenKnowledge — pushed to GitHub, built into a docs site, opened in another editor. Reach for `%%…%%` when the file round-trips through Obsidian, whose own comment syntax this is. The syntax you type is the syntax that gets saved: OpenKnowledge never converts `<!-- -->` into `%%…%%` or back. A multi-line `%%` block is tidied to the padded shape, with a blank line after the opening delimiter and before the closing one.
+
+In the editor, comments stay visible and editable: dimmed and italic, with their delimiters drawn beside them, and a dashed left rail on the block form. That's deliberate — text you typed should never disappear from the surface you typed it into. Source mode shows the raw bytes, as always.
+
+Readers don't see them. Wherever OpenKnowledge renders a doc to HTML rather than to the editor, both forms come out as real HTML comments, which browsers don't display. Copying a passage out of OpenKnowledge leaves the comments behind too, so an annotation can't ride along into an email or a chat message. In-app read-only views — the rendered diff, the skill viewer — do keep showing them dimmed: there the whole point is to show you everything the document contains.
+
 ### Find and replace
 
 `Cmd+F` opens find in the visual editor; `Cmd+Option+F` (`Ctrl+H` on Windows / Linux) adds the replace controls. `Cmd+G` and `Shift+Cmd+G` step through matches.
