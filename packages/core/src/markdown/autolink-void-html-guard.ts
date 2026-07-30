@@ -77,16 +77,6 @@ function indexParagraphBreaks(source: string): number[] {
   return breaks;
 }
 
-function indexSelfClose(source: string): number[] {
-  const positions: number[] = [];
-  let i = source.indexOf('/>');
-  while (i !== -1) {
-    positions.push(i);
-    i = source.indexOf('/>', i + 2);
-  }
-  return positions;
-}
-
 function indexGreaterThan(source: string): number[] {
   const positions: number[] = [];
   let i = source.indexOf('>');
@@ -163,6 +153,105 @@ function isSelfClosingTagAt(
   return result[tagClose - 1] === '/';
 }
 
+function indexUppercaseTagSpans(source: string): Array<[number, number]> {
+  const spans: Array<[number, number]> = [];
+  const TAG_START_RE = /<\/?([A-Z][A-Za-z0-9.]*)/g;
+  for (const m of source.matchAll(TAG_START_RE)) {
+    const tagStart = m.index;
+    if (spans.length > 0) {
+      const [prevStart, prevEnd] = spans[spans.length - 1];
+      if (tagStart > prevStart && tagStart <= prevEnd) continue;
+    }
+    let i = tagStart + m[0].length;
+    let inSingleQuote = false;
+    let inDoubleQuote = false;
+    let inBacktick = false;
+    let braceDepth = 0;
+    let terminator = -1;
+    while (i < source.length) {
+      const ch = source[i];
+      if (inSingleQuote) {
+        if (ch === "'") inSingleQuote = false;
+        else if (ch === '\\' && i + 1 < source.length) i++;
+      } else if (inDoubleQuote) {
+        if (ch === '"') inDoubleQuote = false;
+        else if (ch === '\\' && i + 1 < source.length) i++;
+      } else if (inBacktick) {
+        if (ch === '`') inBacktick = false;
+        else if (ch === '\\' && i + 1 < source.length) i++;
+      } else if (ch === "'") {
+        inSingleQuote = true;
+      } else if (ch === '"') {
+        inDoubleQuote = true;
+      } else if (ch === '`') {
+        inBacktick = true;
+      } else if (ch === '{') {
+        braceDepth++;
+      } else if (ch === '}' && braceDepth > 0) {
+        braceDepth--;
+      } else if (braceDepth === 0 && ch === '>') {
+        terminator = i;
+        break;
+      }
+      i++;
+    }
+    if (terminator !== -1) {
+      if (source.slice(tagStart, terminator).includes('\n\n')) continue;
+      spans.push([tagStart, terminator]);
+    }
+  }
+  return spans;
+}
+
+function isOffsetInsideAnyRegion(offset: number, regions: Array<[number, number]>): boolean {
+  if (regions.length === 0) return false;
+  let lo = 0;
+  let hi = regions.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    const [start, end] = regions[mid];
+    if (offset <= start) hi = mid - 1;
+    else if (offset > end) lo = mid + 1;
+    else return true; // strict-start, inclusive-end: a tag's OWN `<` at start
+  }
+  return false;
+}
+
+function isUppercaseJsxSelfClosingAt(
+  scanStart: number,
+  result: string,
+  nextBlankLine: number,
+): boolean {
+  const scanEnd = Math.min(result.length, nextBlankLine);
+  let inDoubleQuote = false;
+  let braceDepth = 0;
+  for (let i = scanStart; i < scanEnd; i++) {
+    const ch = result[i];
+    if (inDoubleQuote) {
+      if (ch === '"') inDoubleQuote = false;
+      if (ch === '\\' && i + 1 < scanEnd) i++;
+      continue;
+    }
+    if (ch === '"') {
+      inDoubleQuote = true;
+      continue;
+    }
+    if (ch === '{') {
+      braceDepth++;
+      continue;
+    }
+    if (ch === '}' && braceDepth > 0) {
+      braceDepth--;
+      continue;
+    }
+    if (braceDepth > 0) continue;
+    if (ch === '>') {
+      return i > 0 && result[i - 1] === '/';
+    }
+  }
+  return false;
+}
+
 export function protectFromMdx(source: string): string {
   let result = source;
 
@@ -203,11 +292,13 @@ export function protectFromMdx(source: string): string {
 
   const closeTagOffsets = indexUppercaseCloseTagsByName(result);
   const paragraphBreaks = indexParagraphBreaks(result);
-  const selfCloseOffsets = indexSelfClose(result);
   const greaterThanOffsets = indexGreaterThan(result);
+  const uppercaseTagSpans = indexUppercaseTagSpans(result);
 
   result = result.replace(/</g, (match, offset) => {
     if (isAngleBracketDestinationOpen(offset, result)) return match;
+
+    if (isOffsetInsideAnyRegion(offset, uppercaseTagSpans)) return match;
 
     const lookahead = result.slice(offset, offset + 256);
 
@@ -247,17 +338,9 @@ export function protectFromMdx(source: string): string {
     const pbIdx = lowerBound(paragraphBreaks, offset);
     const nextBlankLine = pbIdx < paragraphBreaks.length ? paragraphBreaks[pbIdx] : result.length;
 
-    const scIdx = lowerBound(selfCloseOffsets, nextBlankLine);
-    if (scIdx > 0) {
-      const lastSelfCloseAbs = selfCloseOffsets[scIdx - 1];
-      if (lastSelfCloseAbs > offset) {
-        const tagEndAbs = offset + tagMatch[0].length - 1;
-        const betweenContent = result.slice(tagEndAbs, lastSelfCloseAbs);
-        const withoutQuotes = betweenContent.replace(/"[^"]*"|'[^']*'/g, '');
-        if (!withoutQuotes.includes('/')) {
-          return match; // Self-closing — safe for mdx-jsx
-        }
-      }
+    const scanStart = offset + 1 + tagName.length;
+    if (isUppercaseJsxSelfClosingAt(scanStart, result, nextBlankLine)) {
+      return match; // Self-closing — safe for mdx-jsx
     }
 
     const positions = closeTagOffsets.get(tagName);
