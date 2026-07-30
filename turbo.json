@@ -37,6 +37,18 @@
       "cache": true,
       "inputs": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.json", "tests/contract/**/*.ts"]
     },
+    "@inkeep/md-conformance#test": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.json",
+        "tests/contract/**/*.ts",
+        "corpora/**/*.json",
+        "../server/src/**/*.ts"
+      ]
+    },
     "test:dom": {
       "dependsOn": ["^build"],
       "cache": true,
@@ -48,7 +60,10 @@
         "vitest.dom.config.ts",
         "vitest.config.ts",
         "../core/src/**/*.ts",
-        "../server/src/**/*.ts"
+        "../server/src/**/*.ts",
+        "../md-conformance/src/**/*.ts",
+        "../md-conformance/src/**/*.json",
+        "../md-conformance/corpora/typed-view-scripts.json"
       ]
     },
     "test:integration": {
