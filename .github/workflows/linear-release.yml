@@ -21,8 +21,14 @@ name: Linear Release
 #   is exactly why the desktop-release cascade uses it).
 #
 #   Channel is derived from the tag shape: a `-beta.N` suffix => beta (started
-#   stage `Beta`); a bare vX.Y.Z => stable (completed — the release lands in the
-#   pipeline's completed stage, which is named `Stable`).
+#   stage `Beta`); a bare vX.Y.Z => stable, which COMPLETES the release so it
+#   lands in the pipeline's built-in completed stage `Released`. Two channels,
+#   two resting states: `Beta` (in flight) and `Released` (shipped to prod).
+#   There is no started `Stable` stage — Linear's built-in Planned / Released /
+#   Canceled stages cannot be renamed (only `started` stages are user-editable),
+#   so `Released` IS the stable/production terminal. Don't re-add a `Stable`
+#   started stage: `complete` moves the release straight past it, so nothing
+#   would ever rest there.
 #
 # RELEASE IDENTITY (why betas accumulate into one release)
 #   The Linear release is keyed by the STABLE base version (vX.Y.Z with any
@@ -39,16 +45,15 @@ name: Linear Release
 #   set before the stage flip.
 #
 # ONE-TIME SETUP
-#   1. A Linear SCHEDULED pipeline "OpenKnowledge" (team Product) with one
-#      started stage named exactly `Beta`, and the pipeline's built-in
-#      completed stage renamed to `Stable` (so shipped-to-production maps to
-#      Linear's completed lifecycle). [done]
+#   1. A Linear SCHEDULED pipeline "OpenKnowledge" (team Product) with exactly
+#      one custom started stage named `Beta`. Shipped-to-production maps to the
+#      built-in completed stage `Released`. [done]
 #   2. The pipeline access key (Linear -> Settings -> Releases -> pipeline)
 #      added as the repo secret LINEAR_ACCESS_KEY on inkeep/open-knowledge.
 #      A pipeline access key is REQUIRED — a personal Linear API key will not
 #      work. Until the secret exists this workflow no-ops (see the guard).
 #   3. Optional: a Linear status automation — on release completion (stage
-#      `Stable`), move its issues to a Done status.
+#      `Released`), move its issues to a Done status.
 #   4. Coverage: issues are attached by scanning commit text for Linear
 #      identifiers (e.g. PRD-1234). A ticketed fix whose PR title lacks the
 #      identifier will not be attached — put PRD-#### in the PR title.
@@ -157,7 +162,7 @@ jobs:
       # Beta cut only: advance the release to the started `Beta` stage. A stable
       # promotion has no started-stage step — reaching stable IS completion, so
       # the `complete` step below moves the release straight to the completed
-      # `Stable` stage (two-channel model: stable = production = done).
+      # `Released` stage (two-channel model: stable = production = done).
       - name: Advance to Beta stage (beta cut)
         if: env.HAS_KEY == 'true' && steps.derive.outputs.channel == 'beta'
         uses: linear/linear-release-action@c0cb8354a362c24c6d3e0948f37fd66d07588e3f # v0
@@ -168,7 +173,7 @@ jobs:
           stage: Beta
 
       # Stable promotion only: mark shipped-to-production, moving the release to
-      # the pipeline's completed stage (`Stable`) and firing any completion-based
+      # the pipeline's completed stage (`Released`) and firing any completion-based
       # Linear status automations.
       - name: Complete the release (stable only)
         if: env.HAS_KEY == 'true' && steps.derive.outputs.channel == 'stable'
