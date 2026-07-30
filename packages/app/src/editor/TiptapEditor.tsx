@@ -29,6 +29,11 @@ const editorCtorStartTimes = new WeakMap<object, number>();
 
 import type { Transaction as PMTransaction } from '@tiptap/pm/state';
 import type { EditorView as PMEditorView } from '@tiptap/pm/view';
+import { CommentAnchorLayer } from '@/comments/anchor-decorations';
+import { CommentMarginRail } from '@/comments/CommentMarginRail';
+import { CommentSelectionAffordance } from '@/comments/CommentSelectionAffordance';
+import { CommentsBoundary } from '@/comments/CommentsBoundary';
+import { CommentThreadPopover } from '@/comments/CommentThreadPopover';
 import { loadFollowFilePref } from '@/components/acp/follow-file';
 import { OUTLINE_NAV_EVENT, type OutlineNavDetail } from '@/components/OutlinePanel';
 import { anchorFromHash } from '@/lib/doc-hash';
@@ -1674,6 +1679,19 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
           plugins. */}
       {!isSourceMode && (
         <BubbleMenuBar editor={editor} shortcutEnabled={docName === activeDocName} />
+      )}
+      {/* Comment UI, isolated so its errors can't blank the doc. */}
+      {!isSourceMode && (
+        <CommentsBoundary>
+          <CommentSelectionAffordance
+            editor={editor}
+            docName={docName}
+            shortcutEnabled={docName === activeDocName}
+          />
+          <CommentAnchorLayer editor={editor} docName={docName} />
+          <CommentThreadPopover editor={editor} docName={docName} />
+          {docName === activeDocName && <CommentMarginRail editor={editor} docName={docName} />}
+        </CommentsBoundary>
       )}
       {!isSourceMode && <TableCellHandles editor={editor} />}
       {/* Drag handle + "+" chrome is registered as the imperative

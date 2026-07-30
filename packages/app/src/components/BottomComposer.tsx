@@ -30,6 +30,20 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import { ChevronDown, Loader2, TextQuote, X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import {
+  composeCommentBatchInstruction,
+  QueuedCommentsChip,
+  QueuedCommentsList,
+  toCommentBatchItem,
+  useQueuedComments,
+  useSelectedCommentCount,
+} from '@/comments/comment-chips';
+import {
+  type BatchPreparedItem,
+  dispatchComments,
+  selectAllQueued,
+  subscribeCommentPosted,
+} from '@/comments/store';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
 import { AgentSplitButton } from '@/components/handoff/AgentSplitButton';
@@ -112,7 +126,7 @@ function markdownRelativePathStem(path: string): string | null {
  * from the ProseMirror body (a contentEditable root), so this is deliberately
  * NARROWER than `isEditableShortcutTarget` — only native INPUT/TEXTAREA/SELECT
  * are excluded, so ⌘L never steals a caret out of a real form field (e.g. the
- * rename input, a search box). Mirrors `EditWithAiBubbleButton`'s helper.
+ * rename input, a search box).
  */
 function isNativeTextControl(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -438,6 +452,23 @@ export function BottomComposer({
   // the top row never duplicates an inline reference. Reset on dispatch/clear.
   const [touchedFiles, setTouchedFiles] = useState<readonly string[]>([]);
   const [dismissedFiles, setDismissedFiles] = useState<ReadonlySet<string>>(() => new Set());
+  // Comments queued from the selection composer — they ride this composer's
+  // chip row and its send button.
+  const queuedComments = useQueuedComments();
+  // The count that matters is what a send would carry — the CHECKED subset.
+  // Unchecking every item leaves the queue non-empty but the send empty, so
+  // gate the send button on this too rather than on the raw queue length.
+  const selectedCommentCount = useSelectedCommentCount();
+  const [commentsExpanded, setCommentsExpanded] = useState(false);
+  // Attached = "part of THIS message", and OFF until asked for. An attached queue
+  // takes over the send button and the placeholder, so attaching by itself would
+  // let a comment left anywhere in the project repoint a composer the user opened
+  // for an unrelated question. The `+` menu's toggle is the way in, and queueing
+  // another comment does not flip it — a default that re-asserts itself is not a
+  // default. Dispatching the batch is what the Queue panel's own send is for.
+  const [commentsAttached, setCommentsAttached] = useState(false);
+  const queueSize = queuedComments.length;
+  const hasQueuedComments = selectedCommentCount > 0 && commentsAttached;
   // The current inline-mention `@path` set, pushed up from the editor — used to
   // dedup the top row against inline mentions (the live invariant).
   const [inlineMentions, setInlineMentions] = useState<readonly string[]>([]);
@@ -502,6 +533,19 @@ export function BottomComposer({
   useEffect(() => {
     if (liveFrontmatterSelection) setPinnedSelection(liveFrontmatterSelection);
   }, [liveFrontmatterSelection]);
+  // A pinned selection deliberately outlives the editor selection so it can
+  // survive clicking away into the composer. Filing a comment is the one case
+  // where that is wrong: the passage now rides the batch as that comment's
+  // quote, and leaving it pinned would send the same words again as an
+  // unrelated in-scope selection.
+  useEffect(
+    () =>
+      subscribeCommentPosted(() => {
+        setPinnedSelection(null);
+        setSelectionExpanded(false);
+      }),
+    [],
+  );
 
   // Explicit pick this session wins; otherwise the sticky preference; otherwise
   // first-installed. `selectedId` stays null until the user picks so a
@@ -545,7 +589,10 @@ export function BottomComposer({
   // is enough context to hand off).
   const canSend =
     !pending &&
-    (!isEmpty || pinnedSelection !== null) &&
+    // Queued comments are enough on their own: each carries its own body, and
+    // an untyped batch still has a default instruction. Requiring typed text
+    // would leave the send button dead with a full queue.
+    (!isEmpty || pinnedSelection !== null || hasQueuedComments) &&
     (isTerminalSelected || resolvedTarget !== null || isThreadSelected);
 
   // Picker options for the split button's menu. Desktop rows are the agents the
@@ -582,14 +629,22 @@ export function BottomComposer({
         })
       : undefined;
 
-  // Rotating example prompts shown as an animated placeholder while empty.
-  const suggestions = [
-    t`Research the extinction of flightless birds`,
-    t`Condense my AGENTS.md file to less than 40k characters`,
-    t`Create a new spec file for my user story`,
-    t`Summarize everything I changed this week`,
-  ];
-  const suggestion = useRotatingSuggestion(suggestions, !reduced && isEmpty && !dismissed);
+  // Rotating example prompts shown as an animated placeholder while empty. With
+  // comments queued the placeholder stops rotating and states what sending will
+  // do — that IS the default instruction the batch carries when nothing is
+  // typed, so it should be visible rather than implicit.
+  const suggestions = hasQueuedComments
+    ? [t`Work through these comments`]
+    : [
+        t`Research the extinction of flightless birds`,
+        t`Condense my AGENTS.md file to less than 40k characters`,
+        t`Create a new spec file for my user story`,
+        t`Summarize everything I changed this week`,
+      ];
+  const suggestion = useRotatingSuggestion(
+    suggestions,
+    !reduced && isEmpty && !dismissed && !hasQueuedComments,
+  );
 
   // Stickiness persists on PICK, not gated to submit: the
   // moment the user chooses an agent/CLI in the dropdown it becomes the default
@@ -627,6 +682,11 @@ export function BottomComposer({
     // sticky-dismissed tracking (and `inlineMentions` follows the cleared editor).
     setTouchedFiles([]);
     setDismissedFiles(new Set());
+    // The queue detaches with the rest of the draft's context. Left on, the next
+    // message would silently carry whatever had been queued since — the same
+    // surprise as attaching by default, just deferred a send.
+    setCommentsAttached(false);
+    setCommentsExpanded(false);
     // Clear the SHARED draft too so a sent prompt does not reappear in the
     // create-screen hero (or on the next navigation back to a doc).
     clearComposerDraft();
@@ -636,14 +696,39 @@ export function BottomComposer({
   // folder / project scope. Surfaces the rare null-workspace case, routes a CLI
   // pick to the docked terminal (else the installed-agent deep-link), and clears
   // the draft on completion.
-  const dispatchComposed = (input: ReturnType<typeof buildComposerHandoffInput>) => {
+  //
+  // Resolves to whether the prompt actually reached an agent. The queued-comment
+  // send is the caller that needs the answer: a batch reported as delivered is
+  // resolved and dropped from the queue, so a branch that hands off nothing —
+  // no resolved target, a terminal that refused to open, an uninstalled agent
+  // routed to its download page, a deep-link dispatch that came back not-ok —
+  // has to say so rather than let the comments close on a send that never
+  // happened.
+  const dispatchComposed = async (
+    input: ReturnType<typeof buildComposerHandoffInput>,
+    /**
+     * Clear the composer once the prompt is away. True for a plain send, where
+     * this function IS the send.
+     *
+     * The queued-comment path passes false, because there this is only the
+     * hand-off — the send is not finished until `dispatchComments` reports what
+     * actually shipped, and that caller owns the clear. Two owners meant the
+     * clear ran twice on that path, and worse, the not-installed branch below
+     * cleared while returning false: the typed instruction was thrown away on a
+     * batch that never left the queue.
+     */
+    clearOnSuccess = true,
+  ): Promise<boolean> => {
+    const clearIfOwned = () => {
+      if (clearOnSuccess) clearComposer();
+    };
     if (input === null) {
       // Defensive: `buildComposerHandoffInput` returns null only when the
       // workspace hasn't resolved yet, and the composer normally only shows once
       // a doc / folder (hence a workspace) is open — so this is rarely reachable.
       // Surface a toast rather than a silent no-op if it is.
       toast.error(t`Couldn't send your prompt — please try again.`);
-      return;
+      return false;
     }
     // In-app agent thread: open a server-hosted thread with the composed prompt
     // (like "Open with AI → Start an agent"), then clear. Works on every host.
@@ -657,8 +742,8 @@ export function BottomComposer({
           : undefined,
       );
       recordOnboardingAskedAi();
-      clearComposer();
-      return;
+      clearIfOwned();
+      return true;
     }
     // CLI mode: hand the composed prompt to the docked terminal for the selected
     // CLI (like Open with AI) and clear. No deep-link dispatch. Stickiness already
@@ -670,21 +755,27 @@ export function BottomComposer({
         terminalLaunch.launchInTerminal(input, selectedCli);
       } catch {
         toast.error(t`Couldn't open the terminal — please try again.`);
-        return;
+        return false;
       }
       recordOnboardingAskedAi();
-      clearComposer();
-      return;
+      clearIfOwned();
+      return true;
     }
-    if (resolvedTarget === null) return;
+    // Nothing resolved to send to. `submit` gates on `canSend` before reaching
+    // here, so this is the defence-in-depth path for callers that don't (the
+    // agent-picker rows dispatch directly) — say why rather than swallowing it.
+    if (resolvedTarget === null) {
+      toast.error(t`No agent is set up yet — pick one from the send menu.`);
+      return false;
+    }
     // An enabled-but-not-installed Desktop agent routes to its installer
     // rather than a failing deep-link dispatch (the toggle can enable an agent
     // the user hasn't installed yet).
     if (states[resolvedTarget.id]?.installed !== true) {
       void openInstallUrl(resolvedTarget);
       toast.info(t`${resolvedTarget.displayName} isn't installed yet — opening its download page.`);
-      clearComposer();
-      return;
+      clearIfOwned();
+      return false;
     }
     setPending(true);
     // dispatchHandoff never throws and toasts success/error itself; on resolve
@@ -692,14 +783,16 @@ export function BottomComposer({
     // step records only on a confirmed-successful outcome — a failed handoff
     // ({ ok: false }: agent offline, install error) must not check it off, matching
     // the success-gated terminal path above.
-    void dispatch(resolvedTarget.id, input)
-      .then((outcome) => {
-        if (outcome.ok) recordOnboardingAskedAi();
-      })
-      .finally(() => {
-        setPending(false);
-        clearComposer();
-      });
+    //
+    // `Promise.finally`, not `try`/`finally`: React Compiler cannot lower a
+    // TryStatement with no catch clause and fails the build on it, so the
+    // clean-up-regardless has to ride the promise rather than the syntax.
+    const outcome = await dispatch(resolvedTarget.id, input).finally(() => {
+      setPending(false);
+      clearIfOwned();
+    });
+    if (outcome.ok) recordOnboardingAskedAi();
+    return outcome.ok;
   };
 
   // Compose the current draft (instruction + chips + pinned selection) into a
@@ -765,8 +858,78 @@ export function BottomComposer({
   };
 
   const submit = () => {
+    // The gate runs FIRST, for the queued path too. `canSend`'s content clause
+    // already counts an attached queue as content, so this does not reinstate
+    // the "type something first" requirement a batch is exempt from — it just
+    // stops the queued send from skipping the not-pending and has-a-target
+    // checks. Those were being caught downstream by `dispatchInFlight` and a
+    // toast in `dispatchComposed`, which is two unrelated mechanisms standing in
+    // for one guard.
     if (!canSend) return;
-    dispatchComposed(composeCurrentInput());
+    // Queued comments take over the send: the typed text becomes the shared
+    // instruction for the batch, and every queued comment rides along with its
+    // own doc + passage. One send, one agent turn.
+    if (hasQueuedComments) {
+      void submitQueuedComments();
+      return;
+    }
+    void dispatchComposed(composeCurrentInput());
+  };
+
+  /**
+   * Dispatch the queued comments as one turn. The server re-finds each anchor
+   * first (so a passage that moved is still found, and one that is gone is
+   * flagged rather than silently retargeted), then the batch resolves only if
+   * the hand-off actually happened.
+   *
+   * Re-entrant sends (a second Enter before the first batch completes) are held
+   * off by `dispatchQueueAsBatch` itself, not here — the queue-panel Send drains
+   * the same queue and needs the same guard.
+   */
+  const submitQueuedComments = async () => {
+    const { instruction, mentions } = inputRef.current?.getContent() ?? {
+      instruction: '',
+      mentions: [],
+    };
+    const shipped = await dispatchComments({
+      compose: async (items: readonly BatchPreparedItem[]) => {
+        const input = buildComposerHandoffInput({
+          // Project scope: a batch spans documents, so no single doc leads. Each
+          // comment names its own file in the composed instruction.
+          docName: null,
+          workspace,
+          instruction: composeCommentBatchInstruction(
+            items.map((item) => toCommentBatchItem(item.payload)),
+            instruction,
+            // The pinned selection is the one chip the batch cannot reconstruct —
+            // a passage that belongs to no comment. It used to render above the
+            // send and then be dropped by it.
+            pinnedSelection
+              ? { docName: pinnedSelection.docName, markdown: pinnedSelection.markdown }
+              : undefined,
+          ),
+          // Every touched doc, not only the batch's: a file chip or `@`-mention
+          // added while drafting is context for THIS send too. Deduped, so a doc
+          // that is both commented on and chipped is named once.
+          mentions: [
+            ...new Set([
+              ...items.map((item) => docNameToRelativePath(item.payload.docName)),
+              ...fileChips,
+              ...mentions,
+            ]),
+          ],
+        });
+        if (input === null) {
+          toast.error(t`Couldn't send your comments — please try again.`);
+          return false;
+        }
+        // `false`: this is the hand-off, not the send. `dispatchComments` decides
+        // what shipped, and the clear below is keyed off that — so a batch that
+        // fails to leave the queue keeps the instruction you typed for it.
+        return dispatchComposed(input, false);
+      },
+    });
+    if (shipped.length > 0) clearComposer();
   };
 
   // Dismissed: render nothing (the host shows the footer reopen badge). The
@@ -914,6 +1077,47 @@ export function BottomComposer({
             ) : null}
           </>
         ) : null}
+        {/* Queued comments ride the same chip row as files + the selection pill:
+            the queue lives in the composer you already use, not a separate
+            dispatch surface. The chip is the attach control too, so it renders on
+            the RAW queue rather than on what a send would carry — nothing else
+            would say a queue exists while the batch is still detached. */}
+        {/* Gated here as well as inside the chip: `ComposerContextChips` decides
+            whether to render its row at all by counting children, and an element
+            that returns null still counts as one. An empty queue has to
+            contribute NO child, or the chip row appears as an empty strip. */}
+        {queueSize > 0 && (
+          <>
+            <QueuedCommentsChip
+              // Attached, the count is what a SEND carries, so unchecking an item
+              // moves it. Detached the chip shows no number, so the raw queue is
+              // what decides it renders at all.
+              count={hasQueuedComments ? selectedCommentCount : queueSize}
+              // `hasQueuedComments`, not `commentsAttached`: unchecking the LAST
+              // item means nothing rides this message, which is the detached
+              // state however it was reached. Keying on the flag alone left a
+              // countless chip above a list of unchecked rows — attached in name,
+              // carrying nothing.
+              attached={hasQueuedComments}
+              expanded={commentsExpanded}
+              onAttach={() => {
+                setCommentsAttached(true);
+                // Deselection is sticky, so re-attaching has to re-check the
+                // queue — otherwise this puts an empty batch on the message and
+                // the chip bounces straight back to detached.
+                selectAllQueued();
+              }}
+              onToggleExpanded={() => setCommentsExpanded((open) => !open)}
+              onDismiss={() => {
+                setCommentsAttached(false);
+                setCommentsExpanded(false);
+              }}
+            />
+            {hasQueuedComments && commentsExpanded && (
+              <QueuedCommentsList threads={queuedComments} />
+            )}
+          </>
+        )}
       </ComposerContextChips>
       <div className="flex items-end gap-2">
         <div className="relative flex-1">

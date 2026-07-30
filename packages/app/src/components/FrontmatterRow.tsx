@@ -136,6 +136,16 @@ interface FrontmatterRowProps {
   onChangeType: (next: FrontmatterType) => void;
   /** Delete handler. Omit to hide the trash icon. */
   onRemove?: () => void;
+  /**
+   * Row-level affordance rendered beside the delete control — the document
+   * panel puts its "comment on this property" button here.
+   *
+   * A slot rather than a handler because the control owns a popover it has to
+   * anchor itself. Passing it in also keeps comments out of this file: the row
+   * is shared by templates, skills, and folder cards, none of which have
+   * comment threads.
+   */
+  actionSlot?: ReactNode;
 }
 
 /**
@@ -159,6 +169,7 @@ export function FrontmatterRow({
   onCommit,
   onChangeType,
   onRemove,
+  actionSlot,
 }: FrontmatterRowProps) {
   const { t } = useLingui();
   const isComplex = isComplexValue(value);
@@ -258,6 +269,7 @@ export function FrontmatterRow({
               )}
             </div>
             {badge ? <div className="shrink-0 min-h-7 flex items-center">{badge}</div> : null}
+            {actionSlot}
             {onRemove ? (
               <Button
                 type="button"

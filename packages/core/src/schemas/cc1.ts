@@ -104,6 +104,7 @@ export const DerivedViewChannelSchema = z.enum([
   'sync-status',
   'session-activity',
   'tags',
+  'comments',
   'lint-config',
 ]);
 export type DerivedViewChannel = z.infer<typeof DerivedViewChannelSchema>;

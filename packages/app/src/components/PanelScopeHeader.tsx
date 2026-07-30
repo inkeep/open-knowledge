@@ -11,9 +11,17 @@ export type PanelScope = 'doc' | 'project';
 export function PanelScopeHeader({
   scope,
   onScopeChange,
+  projectLabel,
 }: {
   scope: PanelScope;
   onScopeChange: (scope: PanelScope) => void;
+  /**
+   * Label for the project-scope side. Defaults to "Project". Comments override
+   * it with "Queue" — the project view there isn't "every comment in the
+   * project", it's specifically the batch waiting to be sent, and calling it
+   * Project sent people looking for a list they weren't going to find.
+   */
+  projectLabel?: string;
 }) {
   const { t } = useLingui();
   return (
@@ -34,7 +42,7 @@ export function PanelScopeHeader({
           <Trans>This doc</Trans>
         </ToggleGroupItem>
         <ToggleGroupItem value="project" className="flex-1" data-testid="panel-scope-project">
-          <Trans>Project</Trans>
+          {projectLabel ?? <Trans>Project</Trans>}
         </ToggleGroupItem>
       </ToggleGroup>
     </div>

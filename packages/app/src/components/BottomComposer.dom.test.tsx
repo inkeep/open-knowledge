@@ -81,6 +81,20 @@ vi.doMock('@/components/ui/dropdown-menu', () => ({
       {children}
     </button>
   ),
+  // The `+` context menu's Queue row is a checkbox item (attach / detach), so
+  // the passthrough has to cover it too or every test in this file dies on a
+  // missing export rather than on anything it means to assert.
+  DropdownMenuCheckboxItem: ({ children, disabled, checked, ...props }: MenuChild) => (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={checked === true}
+      disabled={disabled}
+      {...props}
+    >
+      {children}
+    </button>
+  ),
   DropdownMenuLabel: ({ children, ...props }: MenuChild) => <div {...props}>{children}</div>,
   DropdownMenuSeparator: () => <hr data-testid="menu-separator" />,
 }));

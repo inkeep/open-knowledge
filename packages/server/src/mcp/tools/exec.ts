@@ -44,6 +44,7 @@ import {
   enrichDirectoryRecursive,
   enrichPath,
   fetchBacklinkCountsBatch,
+  fetchCommentCountsBatch,
   pathToDocName,
 } from '../../content/enrichment.ts';
 import { resolveWithinRoot } from './path-safety.ts';
@@ -92,9 +93,13 @@ const SOFT_CAP_BYTES =
 const BINARY_EXT_RE = /\.(png|jpe?g|gif|webp|svg|pdf|zip|tar|gz|tgz|mp4|mov|mp3|wav|ico|bmp)$/i;
 
 export const DESCRIPTION = [
-  '**STOP — when the project has `.ok/`, do NOT use native `Read`/`Grep`/`Glob` on in-scope `.md`/`.mdx`; use `exec` (this tool).** Native tools skip the frontmatter, backlinks, shadow-repo activity, and git history `exec` returns per wiki file. Reserve native tools for source code, non-markdown, and projects without `.ok/`. (Full rule + escape hatch: the `open-knowledge` skill.)',
+  '**STOP — when the project has `.ok/`, do NOT use native `Read`/`Grep`/`Glob` on in-scope `.md`/`.mdx`; use `exec` (this tool).** Native tools skip the frontmatter, backlinks, unresolved comments, shadow-repo activity, and git history `exec` returns per wiki file. Reserve native tools for source code, non-markdown, and projects without `.ok/`. (Full rule + escape hatch: the `open-knowledge` skill.)',
   '',
   'Run a read-only bash-like command against the project content directory. Returns raw stdout plus enriched metadata for every wiki file referenced (frontmatter, backlink/forward-link counts, shadow-repo activity with agent/human attribution).',
+  '',
+  // Deliberately stops at "report": there is no MCP surface for resolving a
+  // thread, so an agent told to "address" one has no way to close the loop.
+  '`⚠ N unresolved comment(s)` = open human review requests — factor in before editing, and report them.',
   '',
   'Allowlist: cat, ls, grep, find, head, tail, wc, sort, uniq, cut. One command or a pipe (|) per call — NOT a shell: `&&`, `;`, redirections, subshells, and writes are rejected. To do several things, make separate exec calls or pass multiple paths to one command (e.g. `ls -A a b c`, `cat a b c`).',
   '',
@@ -278,7 +283,7 @@ function isDirectoryMeta(e: EnrichedEntry): e is DirectoryMeta {
   return (e as DirectoryMeta).type === 'directory';
 }
 
-function formatDirectoryEntry(d: DirectoryMeta): string {
+export function formatDirectoryEntry(d: DirectoryMeta): string {
   // When the folder's own `.ok/frontmatter.yml` supplied a title, lead with it
   // like file entries do; otherwise fall back to the path label. Either way show
   // the path in parens so agents can always resolve the on-disk location.
@@ -314,8 +319,45 @@ function formatDirectoryEntry(d: DirectoryMeta): string {
       `most recent: ${d.mostRecentMd.title ?? d.mostRecentMd.path} (${d.mostRecentMd.path}${when})`,
     );
   }
+  // After the counts, before the recency hint: it is a property of the subtree
+  // like the file counts are, not a property of any one file in it.
+  if (d.commentCount !== undefined && d.commentCount > 0) {
+    let line = `⚠ ${d.commentCount} unresolved comment${d.commentCount === 1 ? '' : 's'} in tree`;
+    if (d.commentedDocs && d.commentedDocs.length > 0) {
+      const where = d.commentedDocs.map((c) => `${c.docName} (${c.count})`).join(', ');
+      // The cap lives in `enrichDirectory`, so infer the elision from the
+      // totals rather than re-deriving it: listed docs summing below the total
+      // means the tail was dropped.
+      const listed = d.commentedDocs.reduce((sum, c) => sum + c.count, 0);
+      line += `: ${where}${listed < d.commentCount ? ', …' : ''}`;
+    }
+    parts.push(line);
+  }
   if (d.truncated) parts.push('scan truncated');
   return `- ${parts.join(' — ')}`;
+}
+
+/**
+ * How many comment bodies a single-file read inlines. Past a handful the entry
+ * stops being metadata about the file and becomes the review itself; the count
+ * still names the true total.
+ */
+const COMMENT_PREVIEW_CAP = 3;
+
+/**
+ * One comment, as the text channel renders it: the ask, the passage it sits on,
+ * and the two states that change what the reader should do about it.
+ *
+ * `queued` means staged to send and not yet sent — a comment that WAS sent is
+ * resolved and never reaches here. It is context for the reader ("a human is
+ * about to ask for this"), not a duplicate marker.
+ */
+function formatCommentPreview(c: NonNullable<EnrichedMeta['comments']>[number]): string {
+  const flags = [c.state === 'orphaned' ? 'passage gone' : null, c.queued ? 'queued' : null].filter(
+    (f) => f !== null,
+  );
+  const suffix = flags.length > 0 ? ` [${flags.join(', ')}]` : '';
+  return c.quote === '' ? `"${c.body}"${suffix}` : `"${c.body}" on “${c.quote}”${suffix}`;
 }
 
 export function formatFileEntry(m: EnrichedMeta): string {
@@ -330,6 +372,17 @@ export function formatFileEntry(m: EnrichedMeta): string {
   if (fmType) parts.push(`type: ${fmType}`);
   if (m.schemas_applicable && m.schemas_applicable.length > 0) {
     parts.push(`schemas: ${m.schemas_applicable.join(', ')}`);
+  }
+  // Leads the connective metadata, and prints only when there IS something
+  // outstanding — unlike `backlinks: 0`, which is a useful fact about a doc, a
+  // `comments: 0` on every read is noise on the overwhelmingly common case.
+  if (m.commentCount !== null && m.commentCount > 0) {
+    let line = `⚠ ${m.commentCount} unresolved comment${m.commentCount === 1 ? '' : 's'}`;
+    if (m.comments && m.comments.length > 0) {
+      const notes = m.comments.slice(0, COMMENT_PREVIEW_CAP).map(formatCommentPreview);
+      line += `: ${notes.join('; ')}${m.comments.length > COMMENT_PREVIEW_CAP ? '; …' : ''}`;
+    }
+    parts.push(line);
   }
   if (m.backlinkCount !== null) {
     // Source paths are populated on single-cat rich only (null on multi-path); render
@@ -654,6 +707,8 @@ export async function buildExecResult(
           projectHistory: null,
           projectHistorySource: null,
           graphRole: null,
+          commentCount: null,
+          comments: null,
         }),
       ),
     ),
@@ -666,7 +721,11 @@ export async function buildExecResult(
   // change away.
   const dirEnriched: DirectoryMeta[] = await Promise.all(
     dirs.map((p) =>
-      enrichDirectoryRecursive(p, 1, { projectDir: cwd, ...enrichSchemaDeps }).catch(
+      enrichDirectoryRecursive(p, 1, {
+        projectDir: cwd,
+        serverUrl: resolvedServerUrl,
+        ...enrichSchemaDeps,
+      }).catch(
         (): DirectoryMeta => ({
           path: p,
           type: 'directory',
@@ -683,12 +742,21 @@ export async function buildExecResult(
   // without N-amplifying /api/backlinks. Single-path rich cat already has it.
   if (!isSinglePathCat && resolvedServerUrl && fileEnriched.length > 0) {
     const docNames = fileEnriched.map((f) => pathToDocName(f.path));
-    const counts = await fetchBacklinkCountsBatch(resolvedServerUrl, docNames).catch(() => null);
-    if (counts) {
-      for (const f of fileEnriched) {
-        const c = counts.get(pathToDocName(f.path));
-        if (typeof c === 'number') f.backlinkCount = c;
-      }
+    // Both batches fire together — they are independent reads of two indexes,
+    // so serializing them would double the listing's added latency for nothing.
+    const [counts, commentCounts] = await Promise.all([
+      fetchBacklinkCountsBatch(resolvedServerUrl, docNames).catch(() => null),
+      fetchCommentCountsBatch(resolvedServerUrl, docNames).catch(() => null),
+    ]);
+    for (const f of fileEnriched) {
+      const docName = pathToDocName(f.path);
+      const c = counts?.get(docName);
+      if (typeof c === 'number') f.backlinkCount = c;
+      // Unlike backlinks, a slim entry carries the comment COUNT but never the
+      // bodies — the signal a listing needs is "something is waiting here", and
+      // the doc's own read has the text.
+      const comments = commentCounts?.get(docName);
+      if (typeof comments === 'number') f.commentCount = comments;
     }
   }
   // Preserve stdout order: walk `paths` and pick up the matching entry.
@@ -776,7 +844,7 @@ export function register(server: ServerInstance, deps: ExecDeps): void {
       },
       outputSchema: outputSchemaWithText({
         enrichedPaths: looseObjectArray.describe(
-          'Per-referenced-file metadata: frontmatter, backlink/forward-link counts, recent shadow-repo activity, and a route-only previewUrl.',
+          'Per-referenced-file metadata: frontmatter, backlink/forward-link counts, unresolved comment threads (`commentCount`, plus `comments` on a single-file read), recent shadow-repo activity, and a route-only previewUrl. Directory entries carry a recursive `commentCount` + `commentedDocs`.',
         ),
         stdoutTruncated: z
           .boolean()

@@ -55,7 +55,7 @@ import { AcpRegistry, loadCustomAgents } from './acp/registry.ts';
 import { AgentFocusBroadcaster } from './agent-focus.ts';
 import { AgentPresenceBroadcaster } from './agent-presence.ts';
 import { AgentSessionManager } from './agent-sessions.ts';
-import { createApiExtension, isSafeDocName } from './api-extension.ts';
+import { type CommentDocHooks, createApiExtension, isSafeDocName } from './api-extension.ts';
 import { assetReferencesChanged } from './asset-references.ts';
 import { seedBasenameIndex, seedSingleDirBasenameIndex } from './asset-walk.ts';
 import { HocuspocusAuthRejection, parseHocuspocusAuthToken } from './auth-token-schema.ts';
@@ -1042,7 +1042,9 @@ export function createServer(options: ServerOptions): ServerInstance {
     rejectReady = rej;
   });
 
-  function signalChannel(channel: 'files' | 'backlinks' | 'graph' | 'tags' | 'lint-config'): void {
+  function signalChannel(
+    channel: 'files' | 'backlinks' | 'graph' | 'tags' | 'comments' | 'lint-config',
+  ): void {
     cc1Broadcaster?.signal(channel);
   }
 
@@ -1113,6 +1115,12 @@ export function createServer(options: ServerOptions): ServerInstance {
   // Lambda-callback shape mirrors `onDiskFlush` (`persistenceOpts`) — keeps
   // the watcher reconcile cases free of direct cache references and avoids
   // extending `signalChannel`'s union for a per-event side effect.
+  // Comments follow their document's lifecycle. The comment service is built
+  // inside the API extension, further down, so the watcher and the settle
+  // extension reach it through this ref at call time rather than construction
+  // time.
+  const commentDocHooksRef: { current: CommentDocHooks | null } = { current: null };
+
   const onUpstreamRename = (oldDocName: string, newDocName: string): void => {
     if (isReservedForUserTree(oldDocName)) return;
     recentlyRemovedDocs.setRenamed(oldDocName, newDocName);
@@ -1144,6 +1152,11 @@ export function createServer(options: ServerOptions): ServerInstance {
       return;
     }
     recentlyRemovedDocs.setDeleted(docName);
+    // A comment's whole reason to exist is a passage in this document. Hooked
+    // here rather than in the delete routes because every delete path reaches
+    // disk, so the watcher sees them all — an in-app delete, the desktop trash
+    // flow, and a file removed outside the app alike.
+    commentDocHooksRef.current?.deleted(docName);
   };
   const onUpstreamAdd = (docName: string): void => {
     if (isReservedForUserTree(docName)) return;
@@ -1497,6 +1510,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     );
     const liveDerivedIndexExtension = createLiveDerivedIndexExtension({
       derivedDocumentIndex,
+      onDocumentSettled: (docName) => commentDocHooksRef.current?.changed(docName),
     });
     hocuspocus.configuration.extensions.push(liveDerivedIndexExtension);
 
@@ -1787,6 +1801,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       durabilityState,
       remotePublicHost: options.remotePublicHost,
       sessionManager,
+      commentDocHooksRef,
       contentDir,
       contentFilter,
       serverInstanceId,

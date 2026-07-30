@@ -60,6 +60,24 @@ function PanelBody({ className, ...props }: React.ComponentProps<'div'>) {
   );
 }
 
+/**
+ * Actions pinned below the scroll area. A sibling of `PanelBody` rather than
+ * content inside it, so a panel's primary action stays reachable no matter how
+ * long the list grows — twenty items must not push "send" off the bottom.
+ */
+function PanelFooter({ className, ...props }: React.ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="panel-footer"
+      className={cn(
+        'shrink-0 flex flex-wrap items-center justify-end gap-2 px-4 pt-2 pb-3',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 function PanelEmpty({ className, ...props }: React.ComponentProps<'p'>) {
   return (
     <p
@@ -76,4 +94,13 @@ function PanelError({ className, ...props }: React.ComponentProps<'p'>) {
   );
 }
 
-export { Panel, PanelBody, PanelCount, PanelEmpty, PanelError, PanelHeader, PanelTitle };
+export {
+  Panel,
+  PanelBody,
+  PanelCount,
+  PanelEmpty,
+  PanelError,
+  PanelFooter,
+  PanelHeader,
+  PanelTitle,
+};

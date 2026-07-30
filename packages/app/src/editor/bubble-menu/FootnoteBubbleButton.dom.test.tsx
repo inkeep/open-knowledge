@@ -13,8 +13,8 @@
  * tested through DOM observation rather than internal call patterns so the
  * tests survive refactors that preserve the behavioral contract.
  *
- * Repo convention (see `EditWithAiBubbleButton.dom.test.tsx`,
- * `ActivityPanelBurstRow.test.tsx`): no @testing-library/react interaction
+ * Repo convention (see `ActivityPanelBurstRow.test.tsx`): no
+ * @testing-library/react interaction
  * helpers — assert through queries on the rendered DOM after `render`.
  */
 

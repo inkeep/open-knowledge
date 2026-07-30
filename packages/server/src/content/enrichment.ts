@@ -55,6 +55,26 @@ interface BacklinkEntry {
   snippet?: string | null;
 }
 
+/**
+ * One unresolved comment thread on a doc, as rich enrichment surfaces it.
+ *
+ * `orphaned` says the quoted passage is gone, so the reader re-locates rather
+ * than trusting the quote. `queued` says the human staged this to send but has
+ * not sent it — sending auto-resolves a thread (`completeDispatch` writes
+ * `{ queued: false, state: 'resolved' }`) and resolved threads never reach this
+ * shape, so a queued comment is one nobody has been handed yet.
+ */
+interface CommentSummary {
+  threadId: string;
+  /** What the reviewer asked for. */
+  body: string;
+  /** The anchored passage — content-addressed, never an offset. */
+  quote: string;
+  state: 'anchored' | 'orphaned';
+  /** Staged in the dispatch queue, not yet sent to anyone. */
+  queued: boolean;
+}
+
 interface DocumentForwardLinkEntry {
   kind: 'doc';
   docName: string;
@@ -120,6 +140,24 @@ export interface DirectoryMeta {
   };
   /** `true` when the recursive scan hit `DIRECTORY_SCAN_CAP`. */
   truncated: boolean;
+  /**
+   * Unresolved comment threads anywhere under this folder — recursive, like
+   * `recursiveMdCount`, so a folder row answers "is there review waiting in
+   * here" without opening anything.
+   *
+   * Absent (not `0`) when there is no server to ask or the folder is clean:
+   * `DirectoryMeta` omits keys it has nothing to say about, matching `title` /
+   * `description` / `tags`. Unbounded by `DIRECTORY_SCAN_CAP` — it comes from
+   * the comment index, not the directory walk, so a truncated scan still
+   * reports the true count.
+   */
+  commentCount?: number;
+  /**
+   * Which docs the count came from, most-commented first, capped — enough to
+   * navigate straight to the file that needs attention instead of re-listing
+   * the folder. Absent whenever `commentCount` is.
+   */
+  commentedDocs?: { docName: string; count: number }[];
   /**
    * Templates available when creating a new doc inside this folder. Aggregated
    * leaf → root walk-up (closest-wins on filename collision). Empty array
@@ -226,6 +264,22 @@ export interface EnrichedMeta {
    * multi-path output, where the counts are not fully resolved.
    */
   graphRole: GraphRole | null;
+  /**
+   * Unresolved comment threads on this doc — review requests a human left that
+   * nobody has acted on. Null when Hocuspocus is unreachable (unknown), `0`
+   * when the doc is genuinely clean.
+   *
+   * Populated on both slim and rich enrichment: knowing a file you are about to
+   * edit carries an outstanding request matters as much in a listing as in a
+   * read, and the count comes from one batched call for the whole listing.
+   */
+  commentCount: number | null;
+  /**
+   * The threads themselves. Null on multi-path output (a 200-file listing must
+   * not carry 200 comment bodies) or when Hocuspocus is unreachable; populated
+   * on single-path rich enrichment, where the agent is about to act on the doc.
+   */
+  comments: CommentSummary[] | null;
   /**
    * Frontmatter schema files governing this doc, resolved server-side via the
    * enabled frontmatter plugin's `appliesTo` mappings. Absent when the plugin
@@ -414,6 +468,55 @@ async function fetchBacklinks(
 }
 
 /**
+ * Unresolved comment threads on one doc (rich enrichment). Null when there is
+ * no server to ask or the request fails — `[]` is the positive "nobody has an
+ * outstanding request on this doc" answer, so the two must stay distinct.
+ *
+ * Resolved threads are filtered server-side; the `state` filter here is the
+ * belt-and-braces half, since a stale build could serve them.
+ */
+async function fetchComments(
+  serverUrl: string | undefined,
+  docName: string,
+): Promise<CommentSummary[] | null> {
+  if (!serverUrl) return null;
+  const result = await httpGet(serverUrl, `/api/comments?doc=${encodeURIComponent(docName)}`);
+  if (!result.ok) return null;
+  return parseCommentThreads(result.threads);
+}
+
+/**
+ * `CommentThreadMeta` wire rows → the summary shape enrichment surfaces.
+ * Tolerant per element like the link parsers: one malformed thread must not
+ * blank a doc's whole comment signal.
+ *
+ * Resolved threads drop out here as well as server-side — this parser is the
+ * boundary the read surfaces trust, and a stale peer serving them must not put
+ * settled work back in front of an agent.
+ */
+export function parseCommentThreads(raw: unknown): CommentSummary[] {
+  if (!Array.isArray(raw)) return [];
+  const entries: CommentSummary[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'object' || item === null) continue;
+    const rec = item as Record<string, unknown>;
+    const state = rec.state;
+    if (state !== 'anchored' && state !== 'orphaned') continue;
+    if (typeof rec.threadId !== 'string' || rec.threadId === '') continue;
+    const anchor = typeof rec.anchor === 'object' && rec.anchor !== null ? rec.anchor : {};
+    const quote = (anchor as Record<string, unknown>).exact;
+    entries.push({
+      threadId: rec.threadId,
+      body: typeof rec.latestComment === 'string' ? rec.latestComment : '',
+      quote: typeof quote === 'string' ? quote : '',
+      state,
+      queued: rec.queued === true,
+    });
+  }
+  return entries;
+}
+
+/**
  * Chunk size for bulk backlink-count fetches. Keeps each URL comfortably
  * under typical 8KB HTTP URL limits even with long docNames (e.g. 100 x
  * ~70-char paths ≈ 7KB after comma-joining and percent-encoding).
@@ -455,6 +558,68 @@ export async function fetchBacklinkCountsBatch(
     if (!chunkResult) continue;
     anySuccess = true;
     for (const [name, val] of Object.entries(chunkResult)) {
+      if (typeof val === 'number' && Number.isFinite(val)) out.set(name, val);
+    }
+  }
+  return anySuccess ? out : null;
+}
+
+/**
+ * Bulk unresolved-comment-count fetch — the listing counterpart to
+ * {@link fetchComments}' single-doc read. Shares
+ * `fetchBacklinkCountsBatch`'s chunking and partial-merge contract; see there
+ * for the URL-length rationale.
+ *
+ * Unlike backlink counts this is also used for the slim path of a MULTI-file
+ * `cat`, so a two-file read still reports outstanding requests on both.
+ */
+export async function fetchCommentCountsBatch(
+  serverUrl: string | undefined,
+  docNames: string[],
+): Promise<Map<string, number> | null> {
+  if (!serverUrl || docNames.length === 0) return null;
+  const unique = [...new Set(docNames)];
+  const chunks: string[][] = [];
+  for (let i = 0; i < unique.length; i += BACKLINK_COUNT_CHUNK) {
+    chunks.push(unique.slice(i, i + BACKLINK_COUNT_CHUNK));
+  }
+  const results = await Promise.all(
+    chunks.map(async (chunk) => {
+      const param = encodeURIComponent(chunk.join(','));
+      const result = await httpGet(serverUrl, `/api/comment-counts?docNames=${param}`);
+      if (!result.ok) return null;
+      return (result.counts ?? {}) as Record<string, unknown>;
+    }),
+  );
+  return mergeCountChunks(results);
+}
+
+/**
+ * Unresolved-comment counts for every doc under a folder, in one request — the
+ * `ls` rollup. Returns the per-doc map rather than a total so the caller can
+ * both sum it and name the docs; empty map means a clean subtree.
+ */
+async function fetchCommentCountsUnderPrefix(
+  serverUrl: string | undefined,
+  prefix: string,
+): Promise<Map<string, number> | null> {
+  if (!serverUrl) return null;
+  const result = await httpGet(
+    serverUrl,
+    `/api/comment-counts?prefix=${encodeURIComponent(prefix)}`,
+  );
+  if (!result.ok) return null;
+  return mergeCountChunks([(result.counts ?? {}) as Record<string, unknown>]);
+}
+
+/** Merge count chunks, dropping non-numeric values. Null when every chunk failed. */
+function mergeCountChunks(chunks: (Record<string, unknown> | null)[]): Map<string, number> | null {
+  const out = new Map<string, number>();
+  let anySuccess = false;
+  for (const chunk of chunks) {
+    if (!chunk) continue;
+    anySuccess = true;
+    for (const [name, val] of Object.entries(chunk)) {
       if (typeof val === 'number' && Number.isFinite(val)) out.set(name, val);
     }
   }
@@ -569,12 +734,17 @@ export async function enrichPath(
       projectHistory: null,
       projectHistorySource: null,
       graphRole: null,
+      // Slim callers backfill this from one batched request for the whole
+      // listing (see `fetchCommentCountsBatch`) — per-path here would be the
+      // N-amplification the slim mode exists to avoid.
+      commentCount: null,
+      comments: null,
       ...schemasField,
     };
   }
 
-  // Rich mode — fan out all five data sources in parallel.
-  const [fm, backlinks, forwardLinks, shadow, project] = await Promise.all([
+  // Rich mode — fan out all six data sources in parallel.
+  const [fm, backlinks, forwardLinks, shadow, project, comments] = await Promise.all([
     fmPromise,
     fetchBacklinks(deps.serverUrl, pathToDocName(relPath)).catch(() => null),
     fetchForwardLinks(deps.serverUrl, pathToDocName(relPath)).catch(() => null),
@@ -586,6 +756,7 @@ export async function enrichPath(
       commits: [] as GitCommit[],
       source: 'git' as ProjectHistorySource,
     })),
+    fetchComments(deps.serverUrl, pathToDocName(relPath)).catch(() => null),
   ]);
 
   const lifted = liftOwnFrontmatter(fm);
@@ -604,6 +775,8 @@ export async function enrichPath(
     projectHistory: project.commits,
     projectHistorySource: project.source,
     graphRole: computeGraphRole(backlinks?.length ?? null, forwardLinks?.length ?? null),
+    commentCount: comments?.length ?? null,
+    comments,
     ...schemasField,
   };
 }
@@ -686,7 +859,7 @@ async function scanDirectory(absDir: string, projectDir: string): Promise<DirSca
  */
 export async function enrichDirectory(
   relPathInput: string,
-  deps: Pick<EnrichPathDeps, 'projectDir' | 'contentDir' | 'frontmatterSchemas'>,
+  deps: Pick<EnrichPathDeps, 'projectDir' | 'contentDir' | 'frontmatterSchemas' | 'serverUrl'>,
 ): Promise<DirectoryMeta> {
   // See `enrichPath` for the rationale — same `..`/absolute-path escape
   // class via `node:fs`-direct readdir / stat.
@@ -739,8 +912,30 @@ export async function enrichDirectory(
   const folderSchemas = schemasApplicableToFolder(deps, relPath);
   if (folderSchemas.length > 0) result.schemas_applicable = folderSchemas;
 
+  // One prefix query for the whole subtree, not one per file — the count is
+  // read off the in-memory comment index, so depth costs nothing here.
+  const commentCounts = await fetchCommentCountsUnderPrefix(deps.serverUrl, relPath).catch(
+    () => null,
+  );
+  if (commentCounts && commentCounts.size > 0) {
+    let total = 0;
+    for (const count of commentCounts.values()) total += count;
+    result.commentCount = total;
+    result.commentedDocs = [...commentCounts]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, FOLDER_COMMENTED_DOCS_CAP)
+      .map(([docName, count]) => ({ docName, count }));
+  }
+
   return result;
 }
+
+/**
+ * Cap on `commentedDocs`. The field is a pointer to where to look, not a
+ * report — `commentCount` already carries the true total, and an `ls` row that
+ * lists forty filenames stops being a row.
+ */
+const FOLDER_COMMENTED_DOCS_CAP = 5;
 
 /**
  * Recursively enrich a directory + its subfolders up to `depth` levels.
@@ -755,7 +950,7 @@ export async function enrichDirectory(
 export async function enrichDirectoryRecursive(
   relPathInput: string,
   depth: number,
-  deps: Pick<EnrichPathDeps, 'projectDir' | 'contentDir' | 'frontmatterSchemas'>,
+  deps: Pick<EnrichPathDeps, 'projectDir' | 'contentDir' | 'frontmatterSchemas' | 'serverUrl'>,
 ): Promise<DirectoryMeta> {
   const top = await enrichDirectory(relPathInput, deps);
   if (depth <= 1) return top;

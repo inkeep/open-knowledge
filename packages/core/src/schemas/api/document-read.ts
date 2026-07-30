@@ -212,6 +212,24 @@ export const BacklinkCountsSuccessSchema = z
 export type BacklinkCountsSuccess = z.infer<typeof BacklinkCountsSuccessSchema>;
 
 /**
+ * Success body for `GET /api/comment-counts?docNames=a,b,c` or `?prefix=folder`
+ * — unresolved comment threads per doc, the read-side signal MCP enrichment
+ * folds into `exec` output.
+ *
+ * Same `{ counts }` shape as backlink-counts, with the two modes differing in
+ * density: `docNames` answers for exactly the docs asked about (0 included, so
+ * "no comments" is distinguishable from "not asked"), while `prefix` returns
+ * only the docs under it that carry threads — a folder with no comments
+ * anywhere yields `{}` rather than a row per file.
+ */
+export const CommentCountsSuccessSchema = z
+  .object({
+    counts: z.record(z.string().min(1), z.number().int().nonnegative()),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type CommentCountsSuccess = z.infer<typeof CommentCountsSuccessSchema>;
+
+/**
  * Single forward-link entry returned by `/api/forward-links`. Discriminated
  * by `kind`: `'doc'` carries `docName` + optional `anchor`; `'external'`
  * carries `url`. `title` falls back to the docName / URL when no

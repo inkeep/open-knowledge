@@ -16,7 +16,7 @@ interface LegacyIndexOptions {
 }
 
 type LegacySignalChannel = (
-  channel: 'files' | 'backlinks' | 'graph' | 'tags' | 'lint-config',
+  channel: 'files' | 'backlinks' | 'graph' | 'tags' | 'lint-config' | 'comments',
 ) => void;
 
 export function createDerivedDocumentIndexApiPortStub(

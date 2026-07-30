@@ -97,6 +97,11 @@ const EXEMPT_HANDLERS = new Set([
   'handleAssetText',
   'handleBacklinks',
   'handleBacklinkCounts',
+  // GET /api/comment-counts — read-only unresolved-comment counts served from
+  // the in-memory comment index (per-doc or per-folder-prefix), feeding MCP
+  // read enrichment. No Y.Doc mutation, so the conflict-refusal gate doesn't
+  // apply; the thread-mutating routes are `/api/comments` + `/api/comment`.
+  'handleCommentCounts',
   'handleForwardLinks',
   // POST /api/link-preview — read-only external metadata fetch; never writes a
   // doc, so there is no in-conflict write to gate.
@@ -164,6 +169,14 @@ const EXEMPT_HANDLERS = new Set([
   // `renderer` pino log (diagnostics), targets no Y.Doc, so the per-doc
   // conflict gate does not apply.
   'handleClientLogs',
+  // `/api/comments` + `/api/comment` — comment-thread dispatchers. Threads live
+  // in `.ok/local/comments/`, entirely outside the CRDT/content plane: these
+  // routes never write document bytes, so the conflict-refusal gate has nothing
+  // to refuse. A doc in conflict can still be commented on (the comment is
+  // about the text, not a change to it); the anchor re-find reads the body but
+  // never mutates it.
+  'handleCommentsRoute',
+  'handleCommentRoute',
   'handleWorkspace',
   // `/api/config` — collab-bootstrap payload. GET reads server-lock. Does not
   // target a Y.Doc, so the per-doc conflict gate does not apply.

@@ -59,6 +59,7 @@ import {
   ClientLogsRequestSchema,
   ClientLogsSuccessSchema,
   CONFIG_DOC_NAME_OKIGNORE,
+  CommentCountsSuccessSchema,
   CreateFolderRequestSchema,
   CreateFolderSuccessSchema,
   CreatePageRequestSchema,
@@ -124,6 +125,7 @@ import {
   LintFixRequestSchema,
   LintFixResultSchema,
   type LintViolationWarning,
+  LOCAL_DIR,
   LocalOpAuthCancelRequestSchema,
   LocalOpAuthEmptySuccessSchema,
   type LocalOpAuthHostRequest,
@@ -311,6 +313,10 @@ import { isAllowedApiOrigin } from './api-origin.ts';
 import { collectReferencedAssets, toContentRelativePath } from './asset-references.ts';
 import { assetContentTypeForPath } from './asset-serve-middleware.ts';
 import { collabUrlFromRequestHeaders } from './collab-bootstrap-url.ts';
+import { createCommentApi } from './comments/comment-api.ts';
+import { CommentIndex } from './comments/comment-index.ts';
+import { CommentService } from './comments/comment-service.ts';
+import { CommentThreadStore } from './comments/thread-store.ts';
 import { getLocalDir } from './config/paths.ts';
 import { CONFIG_VALIDATION_REVERT_ORIGIN } from './config-edit-origin.ts';
 import { DocInConflictError, isDocInConflict, respondDocInConflict } from './conflict-errors.ts';
@@ -2793,7 +2799,16 @@ export interface ApiExtensionOptions {
   getDiskAckSVs?: () => Record<string, string>;
   contentRoot?: string;
   derivedDocumentIndex?: DerivedDocumentIndexApiPort;
-  signalChannel?: (channel: 'files' | 'lint-config') => void;
+  // `comments` joins main's narrowed channel union: the comment views are
+  // derived from document text the same way files and lint-config are, and the
+  // panel refetches off this signal.
+  signalChannel?: (channel: 'files' | 'lint-config' | 'comments') => void;
+  /**
+   * Optional seam for the document-lifecycle hooks that comments care about.
+   * Both callers (the settle extension, the file watcher) are constructed
+   * before the comment service exists, so they read this at call time.
+   */
+  commentDocHooksRef?: { current: CommentDocHooks | null };
   /**
    * Optional. When present, agent write handlers publish per-write attribution
    * entries on `__system__` awareness (`agentFocus` map) with writeKind +
@@ -3066,6 +3081,18 @@ function applyDiskEventToLiveAllFilesIndex(
   }
 }
 
+/**
+ * Document-lifecycle events comment threads have to follow. Both are fired from
+ * subsystems built before the comment service exists, so they arrive through a
+ * ref rather than a direct dependency.
+ */
+export interface CommentDocHooks {
+  /** The doc's content settled — re-anchor its threads. */
+  changed: (docName: string) => void;
+  /** The doc is gone — its threads go with it. */
+  deleted: (docName: string) => void;
+}
+
 export function createApiExtension(options: ApiExtensionOptions): Extension {
   const { durabilityState, remotePublicHost } = options;
   // Every local-op call site in this factory inherits the remote-origin
@@ -3267,6 +3294,93 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       return null;
     }
     return filePath;
+  }
+
+  // Comments (v1) — anchored threads stored under
+  // `<contentDir>/.ok/local/comments/`, machine-local and never committed.
+  // App-only HTTP surface (agents reach comments through dispatch, not MCP).
+  // Constructed here rather than by the routes map so the rename walk below can
+  // call `commentService.renameDoc(...)`. The store's directory is created
+  // lazily on first write, so constructing without awaiting is safe.
+  const commentService = new CommentService({
+    store: new CommentThreadStore(resolve(contentDir, OK_DIR, LOCAL_DIR), log),
+    index: new CommentIndex(),
+    getDocBody: (docName) => {
+      // Prefer the live CRDT body; fall back to disk. Offsets are measured
+      // against the body text (everything after the frontmatter).
+      try {
+        const doc = hocuspocus.documents.get(docName);
+        if (doc) return stripFrontmatter(doc.getText('source').toString()).body;
+      } catch {
+        /* fall through to disk */
+      }
+      try {
+        const filePath = resolveDocPath(docName);
+        if (filePath && existsSync(filePath)) {
+          return stripFrontmatter(readFileSync(filePath, 'utf-8')).body;
+        }
+      } catch {
+        /* unreadable — treat as absent */
+      }
+      return null;
+    },
+    // Property threads address a frontmatter key — and optionally a path into
+    // its value, and optionally a passage inside that. All of it re-finds
+    // against the parsed record. Same live-CRDT-then-disk order as the body read
+    // above, and the same null contract: null means the document could not be
+    // read, which leaves thread state alone rather than orphaning it. A doc with
+    // no frontmatter at all is an empty record — readable, just empty.
+    getDocFrontmatter: (docName: string): Record<string, unknown> | null => {
+      try {
+        const doc = hocuspocus.documents.get(docName);
+        if (doc) return parseFrontmatterRecord(doc.getText('source').toString()) ?? {};
+      } catch {
+        /* fall through to disk */
+      }
+      try {
+        const filePath = resolveDocPath(docName);
+        if (filePath && existsSync(filePath)) {
+          return parseFrontmatterRecord(readFileSync(filePath, 'utf-8')) ?? {};
+        }
+      } catch {
+        /* unreadable — treat as absent */
+      }
+      return null;
+    },
+  });
+
+  // A doc's threads follow its lifecycle.
+  if (options.commentDocHooksRef) {
+    options.commentDocHooksRef.current = {
+      // Settling a change re-anchors them, so a deleted passage reads as
+      // orphaned instead of staying healthy-looking until someone tries to send
+      // it. Only a state change is broadcast — the sweep runs on every settle
+      // and is silent when nothing crossed.
+      changed: (docName: string) => {
+        void commentService
+          .refindDoc(docName)
+          .then((changed) => {
+            if (changed) signalChannel?.('comments');
+          })
+          .catch((err) => {
+            log.warn({ err, docName }, '[comments] re-anchor after document change failed');
+          });
+      },
+      // The document is gone, so its comments go with it. Every delete route
+      // reaches disk, so the watcher sees all of them and this one hook covers
+      // in-app deletes, the desktop trash flow, and a file removed outside the
+      // app alike.
+      deleted: (docName: string) => {
+        void commentService
+          .deleteDoc(docName)
+          .then((count) => {
+            if (count > 0) signalChannel?.('comments');
+          })
+          .catch((err) => {
+            log.warn({ err, docName }, '[comments] cleanup after document delete failed');
+          });
+      },
+    };
   }
 
   function readPageTitleForDocName(docName: string): string {
@@ -5029,6 +5143,21 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                 newDocumentName: toDocName,
                 markdown: renamedSource.markdown,
               });
+              // Comment threads follow the doc. Awaited, so the rename cannot
+              // report done while cover sheets are still being rewritten — an
+              // in-flight rewrite leaves a window where a racing read sees the
+              // old docName. Still non-fatal: the in-memory index is updated
+              // synchronously inside renameDoc and a failed cover-sheet write is
+              // rebuilt from disk at boot, so a failure here must not take the
+              // rename down with it.
+              try {
+                await commentService.renameDoc(fromDocName, toDocName);
+              } catch (err) {
+                log.warn(
+                  { err, fromDocName, toDocName },
+                  '[comments] cover-sheet rename failed; index updated, disk self-corrects at boot',
+                );
+              }
               if (renamedSource.rewrites > 0) {
                 rewrittenDocs.push({ docName: toDocName, rewrites: renamedSource.rewrites });
               }
@@ -7398,6 +7527,75 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       }
     },
     { handler: 'backlink-counts', method: 'GET', skipBodyParse: true },
+  );
+
+  /**
+   * Bulk unresolved-comment-count lookup, the read-side counterpart to
+   * `/api/backlink-counts`. `GET /api/comment-counts?docNames=a,b,c` returns
+   * `{ counts: { a: 2, b: 0 } }`; `?prefix=folder` returns the same shape for
+   * every doc under that folder that carries threads (sparse — a comment-free
+   * subtree yields `{}`), which is how an `ls` entry gets a folder rollup
+   * without a request per file.
+   *
+   * Read-only, so it stays out of `MUTATING_ROUTES` — unlike `/api/comments`,
+   * whose POST creates threads. docNames failing `isSafeDocName` are silently
+   * dropped, matching backlink-counts; a malformed `prefix` is a 400 because
+   * dropping it would silently widen the query to the whole project.
+   */
+  const handleCommentCounts = withValidation(
+    EmptyRequestSchema,
+    async (req, res) => {
+      try {
+        const url = new URL(req.url ?? '', 'http://localhost');
+        const prefix = url.searchParams.get('prefix');
+        const raw = url.searchParams.get('docNames');
+        if (prefix === null && raw === null) {
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:invalid-request',
+            'Missing docNames or prefix parameter.',
+            { handler: 'comment-counts' },
+          );
+          return;
+        }
+        let counts: Record<string, number> = {};
+        if (prefix !== null) {
+          const trimmed = prefix.trim();
+          if (trimmed !== '' && !isSafeDocName(trimmed)) {
+            errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid prefix parameter.', {
+              handler: 'comment-counts',
+            });
+            return;
+          }
+          counts = Object.fromEntries(await commentService.countThreads({ prefix: trimmed }));
+        } else {
+          const docNames = (raw ?? '')
+            .split(',')
+            .map((name) => name.trim())
+            .filter((name) => name !== '' && isSafeDocName(name));
+          counts = Object.fromEntries(await commentService.countThreads({ docNames }));
+        }
+        successResponse(
+          res,
+          200,
+          CommentCountsSuccessSchema,
+          { counts },
+          {
+            handler: 'comment-counts',
+          },
+        );
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to read comment counts.',
+          { handler: 'comment-counts', cause: e },
+        );
+      }
+    },
+    { handler: 'comment-counts', method: 'GET', skipBodyParse: true },
   );
 
   const handleForwardLinks = withValidation(
@@ -20591,14 +20789,36 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     },
   );
 
+  // The comment store + service are constructed near `resolveDocPath` above so
+  // the rename walk can follow renames. Two dispatchers keep the surface to two
+  // paths; the mutating sub-handlers in `comment-api.ts` thread
+  // `extractActorIdentity` (same posture as the `handleSkill` / `handleTemplate`
+  // dispatchers in the attribution sweep).
+  const commentApi = createCommentApi({
+    service: commentService,
+    getPrincipal,
+    onChanged: () => signalChannel?.('comments'),
+  });
+  const handleCommentsRoute = methodRouter(
+    { GET: commentApi.list, POST: commentApi.create },
+    { handler: 'comments' },
+  );
+  const handleCommentRoute = methodRouter(
+    { GET: commentApi.read, POST: commentApi.mutate, DELETE: commentApi.remove },
+    { handler: 'comment' },
+  );
+
   const routes: Record<string, (req: IncomingMessage, res: ServerResponse) => Promise<void>> = {
     '/api/config': handleApiConfig,
+    '/api/comments': handleCommentsRoute,
+    '/api/comment': handleCommentRoute,
     '/api/asset': handleAsset,
     '/api/asset-text': handleAssetText,
     '/api/document': handleDocumentRead,
     '/api/documents': handleDocumentList,
     '/api/backlinks': handleBacklinks,
     '/api/backlink-counts': handleBacklinkCounts,
+    '/api/comment-counts': handleCommentCounts,
     '/api/link-preview': handleLinkPreview,
     '/api/forward-links': handleForwardLinks,
     '/api/link-graph': handleLinkGraph,
@@ -20711,6 +20931,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   // UI can bootstrap against the collab server; mutations require a
   // loopback Host header. /api/workspace enforces this inline already.
   const MUTATING_ROUTES: ReadonlySet<string> = new Set([
+    '/api/comments',
+    '/api/comment',
     '/api/upload',
     '/api/lint/markdownlint-config',
     '/api/lint/frontmatter-schema',

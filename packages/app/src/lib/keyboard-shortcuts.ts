@@ -521,6 +521,25 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     ],
   },
   {
+    id: 'add-comment',
+    category: 'wysiwyg',
+    title: msg`Comment on selection`,
+    description: msg`Open the comment composer on the current selection and add it to the dispatch queue.`,
+    scope: msg`Editor selection`,
+    bindings: [
+      {
+        // NOT ⌥⌘M, the comment chord most editors use: `toggle-editor-mode`
+        // already owns it here, and its matcher allows extra modifiers, so any
+        // Alt+M variant lands on the mode toggle instead. Shift keeps the M
+        // mnemonic while staying clear of it — the matcher below requires no
+        // Alt, which is what the mode toggle demands.
+        mac: '⇧⌘ M',
+        windowsLinux: 'Ctrl Shift M',
+        match: { key: 'm', mod: true, shiftKey: true },
+      },
+    ],
+  },
+  {
     // Jumps from the visual editor to the markdown behind the caret's block,
     // centered and highlighted. CmdOrCtrl+Alt+E stays clear of TipTap's ⌘E
     // inline-code binding (no Alt) and of the ⌥⌘M mode toggle above.

@@ -5,7 +5,12 @@ import { resolve } from 'node:path';
 import { commitWip, initShadowRepo, type WriterIdentity } from '@inkeep/open-knowledge-server';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { computeGraphRole, enrichDirectory, enrichPath } from './enrichment.ts';
+import {
+  computeGraphRole,
+  enrichDirectory,
+  enrichPath,
+  parseCommentThreads,
+} from './enrichment.ts';
 
 let tmpDir: string;
 
@@ -365,5 +370,78 @@ describe('schemas_applicable — read-time schema advertisement', () => {
       frontmatterSchemas: MAPPINGS,
     });
     expect(meta.schemas_applicable).toEqual(['.ok/schemas/doc.schema.json']);
+  });
+});
+
+/**
+ * The comment parser is the boundary between the comment store's wire shape and
+ * what an agent reads. The fixtures are `CommentThreadMeta` rows exactly as
+ * `GET /api/comments` serves them, so the field names this depends on
+ * (`latestComment`, `anchor.exact`, `state`, `queued`) are pinned against the
+ * real contract rather than assumed — rename one in `comments/types.ts` and
+ * these fail, instead of every read quietly reporting docs as comment-free.
+ */
+describe('parseCommentThreads', () => {
+  /** One row as the comment API serves it. */
+  const wireThread = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+    threadId: 't1',
+    docName: 'notes/rollout',
+    anchor: { exact: 'minimal downtime', prefix: 'with ', suffix: '.', start: 10, end: 26 },
+    state: 'anchored',
+    queued: false,
+    latestComment: 'still accurate?',
+    createdBy: 'principal-x',
+    createdAt: 1,
+    ...overrides,
+  });
+
+  test('lifts the ask and the anchored passage', () => {
+    expect(parseCommentThreads([wireThread()])).toEqual([
+      {
+        threadId: 't1',
+        body: 'still accurate?',
+        quote: 'minimal downtime',
+        state: 'anchored',
+        queued: false,
+      },
+    ]);
+  });
+
+  test('keeps orphaned threads, drops resolved ones', () => {
+    // An orphan is the case a reader most needs — the request stands, the quote
+    // can no longer be trusted. A resolved thread is settled work.
+    expect(parseCommentThreads([wireThread({ state: 'orphaned' })])[0]?.state).toBe('orphaned');
+    expect(parseCommentThreads([wireThread({ state: 'resolved' })])).toEqual([]);
+  });
+
+  test('carries the queued flag — staged to send, still outstanding', () => {
+    // Sending auto-resolves a thread, so `queued` only ever means "a human
+    // staged this and has not sent it". It must survive the parse, or a reader
+    // loses the fact that a request is already on its way.
+    expect(parseCommentThreads([wireThread({ queued: true })])[0]?.queued).toBe(true);
+  });
+
+  test('skips malformed rows without blanking the rest', () => {
+    // One bad row must not cost a doc its whole comment signal; the failure
+    // mode is an agent editing over a request it was never shown.
+    const parsed = parseCommentThreads([
+      null,
+      'nonsense',
+      wireThread({ threadId: '' }),
+      wireThread({ state: 'unheard-of' }),
+      wireThread({ threadId: 'good' }),
+    ]);
+    expect(parsed.map((c) => c.threadId)).toEqual(['good']);
+  });
+
+  test('tolerates a missing anchor or non-string body', () => {
+    expect(parseCommentThreads([wireThread({ anchor: undefined, latestComment: 7 })])).toEqual([
+      { threadId: 't1', body: '', quote: '', state: 'anchored', queued: false },
+    ]);
+  });
+
+  test('a non-array payload is no comments, not a crash', () => {
+    expect(parseCommentThreads(undefined)).toEqual([]);
+    expect(parseCommentThreads({ threads: [] })).toEqual([]);
   });
 });

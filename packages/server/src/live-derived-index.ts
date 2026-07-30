@@ -7,6 +7,17 @@ export const LIVE_DERIVED_INDEX_DEBOUNCE_MS = 100;
 
 export interface LiveDerivedIndexOptions {
   derivedDocumentIndex: DerivedDocumentIndexLivePort;
+  /**
+   * Optional. Re-anchors the doc's comment threads against its settled text, so
+   * a deleted passage reads as orphaned instead of staying healthy-looking
+   * until someone tries to send it.
+   *
+   * A callback rather than a direct dependency because the comment service is
+   * built inside the API extension, which is constructed after this one. It
+   * owns its own signalling — a state change is what warrants telling clients,
+   * and only it knows whether one happened.
+   */
+  onDocumentSettled?: (docName: string) => void;
   debounceMs?: number;
 }
 
@@ -32,7 +43,11 @@ function serializeLiveDocument(document: Document): string {
 }
 
 export function createLiveDerivedIndexExtension(options: LiveDerivedIndexOptions): Extension {
-  const { derivedDocumentIndex, debounceMs = LIVE_DERIVED_INDEX_DEBOUNCE_MS } = options;
+  const {
+    derivedDocumentIndex,
+    onDocumentSettled,
+    debounceMs = LIVE_DERIVED_INDEX_DEBOUNCE_MS,
+  } = options;
   const pendingByDoc = new Map<string, ReturnType<typeof setTimeout>>();
 
   function clearPending(docName: string): void {
@@ -57,6 +72,10 @@ export function createLiveDerivedIndexExtension(options: LiveDerivedIndexOptions
               `Failed to update derived views for ${docName}`,
             );
           });
+          // Anchors are measured against the doc BODY, not the source bytes
+          // above — so this re-reads rather than reusing `markdown`, which
+          // still carries the frontmatter region.
+          onDocumentSettled?.(docName);
         } catch (err) {
           getLogger('live-derived-index').error(
             { docName, err },

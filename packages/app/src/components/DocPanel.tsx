@@ -1,7 +1,8 @@
 import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { AlertTriangle, Clock, Link2, ListTree, Network } from 'lucide-react';
+import { AlertTriangle, Clock, Link2, ListTree, MessageSquare, Network } from 'lucide-react';
 import { lazy, Suspense, useEffect } from 'react';
+import { CommentsTab } from '@/comments/CommentsTab';
 import {
   composeFixAllProblemsTerminalPaste,
   composeLintFixTerminalPaste,
@@ -24,7 +25,7 @@ import { useDocLinkFindings } from '@/editor/validation-audit-client';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 import { type DocProblemCounts, patchDocValidationSource } from '@/lib/validation-store';
 
-export type PanelTab = 'outline' | 'links' | 'graph' | 'timeline' | 'problems';
+export type PanelTab = 'outline' | 'links' | 'graph' | 'timeline' | 'problems' | 'comments';
 
 export const TABS: { id: PanelTab; icon: typeof ListTree }[] = [
   { id: 'outline', icon: ListTree },
@@ -32,6 +33,12 @@ export const TABS: { id: PanelTab; icon: typeof ListTree }[] = [
   { id: 'graph', icon: Network },
   { id: 'timeline', icon: Clock },
   { id: 'problems', icon: AlertTriangle },
+];
+
+// A single Comments tab, carrying its own This-doc / Queue scope toggle.
+// Separate from TABS because single-file mode drops it.
+const COMMENT_TABS: { id: PanelTab; icon: typeof ListTree }[] = [
+  { id: 'comments', icon: MessageSquare },
 ];
 
 function countsOf(diagnostics: readonly { severity: string }[]): DocProblemCounts {
@@ -50,6 +57,7 @@ function tabLabel(id: PanelTab): string {
   if (id === 'links') return t`Links`;
   if (id === 'graph') return t`Graph`;
   if (id === 'problems') return t`Problems`;
+  if (id === 'comments') return t`Comments`;
   return t`Timeline`;
 }
 
@@ -170,9 +178,12 @@ export function DocPanel({
   // persisted now-hidden selection back to outline so the rail never renders a
   // hidden panel.
   const singleFile = useSingleFileMode();
-  const tabs = singleFile
+  const baseTabs = singleFile
     ? TABS.filter((tab) => tab.id === 'outline' || tab.id === 'problems')
     : TABS;
+  // Comments span docs (the queue is project-wide), so the tab is only offered
+  // when there is a project to span.
+  const tabs = singleFile ? baseTabs : [...baseTabs, ...COMMENT_TABS];
   const effectiveTab: PanelTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : 'outline';
   const showTabStrip = mode === 'doc' && tabs.length > 1;
   return (
@@ -256,6 +267,7 @@ export function DocPanel({
             </Suspense>
           )}
           {effectiveTab === 'timeline' && <TimelineContent docName={docName} />}
+          {effectiveTab === 'comments' && <CommentsTab docName={docName} />}
           {effectiveTab === 'problems' && (
             <ProblemsPanel
               docName={docName}

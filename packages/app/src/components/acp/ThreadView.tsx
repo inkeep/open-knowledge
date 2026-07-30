@@ -42,6 +42,14 @@ import {
   useRef,
   useState,
 } from 'react';
+import {
+  type CommentBatchItem,
+  composeCommentBatchInstruction,
+  useQueuedComments,
+} from '@/comments/comment-chips';
+import { prepareQueuedComments } from '@/comments/queue-attachment';
+import { refresh as refreshComments } from '@/comments/store';
+import { ComposerAddContextMenu } from '@/components/ComposerAddContextMenu';
 import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
 import { useOptionalPageList } from '@/components/PageListContext';
 import { Badge } from '@/components/ui/badge';
@@ -133,6 +141,11 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
   const client = getAgentThreadClient();
   const workspace = useWorkspace();
   const [draft, setDraft] = useState('');
+  // The comment batch riding the next message, captured when the composer's `+`
+  // switched Queue on. Held here rather than in the composer because `submit`
+  // lives here and is what folds it into the prompt — and cleared on send with
+  // the draft, so the batch never silently rides a second message.
+  const [attachedComments, setAttachedComments] = useState<CommentBatchItem[] | null>(null);
   const [followFile, setFollowFile] = useState(loadFollowFilePref);
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
@@ -293,7 +306,15 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
   const [failedPrompt, setFailedPrompt] = useState<string | null>(null);
 
   const submit = (): void => {
-    const text = draft.trim();
+    // The attached batch is composed in at SEND, with the draft as its leading
+    // instruction — so the textarea holds only the user's own words while they
+    // write, and toggling Queue off leaves nothing behind to clean up.
+    const typed = draft.trim();
+    const text =
+      attachedComments !== null ? composeCommentBatchInstruction(attachedComments, typed) : typed;
+    // An attached batch is a message on its own; only a bare draft needs words.
+    // `canQueue` rides alongside `canPrompt` (from main): a busy thread accepts a
+    // queued message, and a comment batch is as queueable as typed prose.
     if (text === '' || !(canPrompt || canQueue)) return;
     if (archived) {
       // Type-to-resume: the send respawns the agent and reconnects the
@@ -314,11 +335,13 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
         })
         .finally(() => setResumePending(false));
       setDraft('');
+      setAttachedComments(null);
       atBottomRef.current = true;
       return;
     }
     client.prompt(info.threadId, text);
     setDraft('');
+    setAttachedComments(null);
     atBottomRef.current = true;
   };
 
@@ -454,6 +477,8 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
         info={info}
         draft={draft}
         onDraftChange={setDraft}
+        commentsAttached={attachedComments !== null}
+        onAttachComments={setAttachedComments}
         onSubmit={submit}
         canPrompt={canPrompt}
         canQueue={canQueue}
@@ -1937,6 +1962,8 @@ function ThreadComposer({
   info,
   draft,
   onDraftChange,
+  commentsAttached,
+  onAttachComments,
   onSubmit,
   canPrompt,
   canQueue,
@@ -1951,6 +1978,10 @@ function ThreadComposer({
   info: ThreadInfo;
   draft: string;
   onDraftChange: (value: string) => void;
+  /** The comment queue is riding the next message — the `+` menu's toggle state. */
+  commentsAttached: boolean;
+  /** Capture the batch (`CommentBatchItem[]`) or detach it (`null`). */
+  onAttachComments: (items: CommentBatchItem[] | null) => void;
   onSubmit: () => void;
   canPrompt: boolean;
   /** A turn is running — sends queue behind it instead of dispatching. */
@@ -1971,6 +2002,14 @@ function ThreadComposer({
   // Naming the agent in the placeholder ("Message Claude") beats a generic
   // "Message the agent"; strip the "Agent" suffix so it reads as the brand.
   const agentName = agentDisplayName(info.agent.name);
+  const queuedComments = useQueuedComments();
+  // The queue is project-wide state that only gets loaded when something asks
+  // for it — an editor mounting a doc, or the Comments panel opening. A thread
+  // can be the first surface you open, so pull once on mount or the `+` reports
+  // an empty queue that isn't.
+  useEffect(() => {
+    void refreshComments().catch(() => undefined);
+  }, []);
 
   // Grow with content up to a cap. `draft` is the trigger, not read in the
   // body (the element's own scrollHeight is), so the analyzer sees it as
@@ -2047,7 +2086,35 @@ function ThreadComposer({
             it exposes no config options, and justify-between would then float the
             lone send button to the left. */}
         <div className="flex items-center gap-2 px-1.5 pt-1 pb-1.5">
-          <AgentSettingsPopover info={info} />
+          {/* Settings + `+` are one cluster of ghost controls, tightened to
+              `gap-0.5`: the row's `gap-2` is spacing between GROUPS, and at that
+              width the two read as unrelated buttons that happen to be near each
+              other. The right cluster keeps its own spacing via `ml-auto`, so
+              this doesn't move it. */}
+          <div className="flex items-center gap-0.5">
+            <AgentSettingsPopover info={info} />
+            {/* The same `+` the Ask AI composer carries, so "add context" is one
+                gesture wherever you are talking to an agent — and the same
+                toggle, so it is also one gesture to take it back off. The batch
+                is folded into the prompt at send, not pasted into the draft, so
+                the textarea holds only what you typed. Still NOT a dispatch:
+                nothing resolves. */}
+            <ComposerAddContextMenu
+              // This bar is `h-6` / `text-xs` controls (the settings trigger to
+              // its left); a composer-sized button would tower over them.
+              compact
+              queueCount={queuedComments.length}
+              queueAttached={commentsAttached}
+              onAddQueue={() => {
+                void prepareQueuedComments().then((items) => {
+                  if (items === null) return;
+                  onAttachComments(items);
+                  ref.current?.focus();
+                });
+              }}
+              onRemoveQueue={() => onAttachComments(null)}
+            />
+          </div>
           <div className="ml-auto flex items-center gap-1.5">
             {usagePercent !== null && usage?.used !== undefined && usage?.size !== undefined ? (
               <ContextUsageRing used={usage.used} size={usage.size} percent={usagePercent} />
@@ -2073,7 +2140,11 @@ function ThreadComposer({
               type="button"
               size="icon-sm"
               className="rounded-lg"
-              disabled={!(canPrompt || canQueue) || draft.trim() === ''}
+              // An attached batch IS a message — the comments carry their own
+              // requests, so an empty draft alongside them is a send, not a
+              // no-op. Gating on the draft alone left the button dead with a
+              // full queue attached.
+              disabled={!(canPrompt || canQueue) || (draft.trim() === '' && !commentsAttached)}
               onClick={onSubmit}
               aria-label={canQueue ? t`Queue message` : t`Send`}
               data-testid="agent-thread-send"

@@ -23,7 +23,7 @@
 
 import { useLingui } from '@lingui/react/macro';
 import { X } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { Children, type ReactNode } from 'react';
 import { FileEntryPathIcon } from '@/components/file-entry-icon';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -100,7 +100,11 @@ export function ComposerContextChips({
    *  (the expanded selection preview) drops onto its own line beneath the chips. */
   children?: ReactNode;
 }) {
-  if (files.length === 0 && children == null) return null;
+  // `Children.toArray` drops null / undefined / booleans, so a set of children
+  // that all render nothing counts as none. A plain `children == null` held only
+  // while there was ONE conditional child: a second turns it into an array, and
+  // `[null, false] == null` is false, so the row rendered as an empty strip.
+  if (files.length === 0 && Children.toArray(children).length === 0) return null;
   return (
     <div
       className={cn('flex flex-wrap items-center gap-1', className)}

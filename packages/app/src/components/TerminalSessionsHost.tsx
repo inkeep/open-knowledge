@@ -1,4 +1,4 @@
-import type { TerminalCli } from '@inkeep/open-knowledge-core';
+import { TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import type { ThreadInfo, ThreadStatus } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { useLingui } from '@lingui/react/macro';
 import { Loader2, SquareTerminalIcon } from 'lucide-react';
@@ -14,6 +14,7 @@ import {
 import { createPortal } from 'react-dom';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { ArchivedThreadChooser, ThreadHistoryMenu } from '@/components/acp/ThreadHistoryMenu';
+import { publishReusableSession } from '@/components/reusable-session-store';
 import { TabsContent } from '@/components/ui/tabs';
 import { isInAppAgentEnabled } from '@/lib/acp/agent-visibility';
 import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
@@ -420,9 +421,13 @@ export function TerminalSessionsHost({
   function setSessionPtyId(id: string, ptyId: string | null) {
     if (ptyId === null) {
       ptyIdBySessionRef.current.delete(id);
+      // A dead PTY makes its tab un-appendable, and the map is a ref — no
+      // render follows it, so the publish has to ride the mutation.
+      publishReusableSessionFrom(sessionsRef.current, activeSessionIdRef.current);
       return;
     }
     ptyIdBySessionRef.current.set(id, ptyId);
+    publishReusableSessionFrom(sessionsRef.current, activeSessionIdRef.current);
     const session = sessionsRef.current.find((s) => s.id === id);
     if (session != null && session.kind === 'terminal') {
       bridge?.terminal?.setMeta?.(ptyId, {
@@ -574,6 +579,78 @@ export function TerminalSessionsHost({
    * `submit` decide how the text lands: an Ask AI surface sends a complete
    * instruction and runs it; a ⌘J selection send is raw material and waits.
    */
+  /**
+   * Publish whether the ACTIVE session is one `dispatchAskAi` would reuse, so
+   * surfaces outside the dock can name the destination before a click.
+   *
+   * Deliberately re-derives the gate below rather than caching a flag: the two
+   * must agree, and the failure mode of drift is a button promising an append
+   * the host then refuses.
+   *
+   * The caller passes the session list + active id rather than this reading
+   * `sessionsRef` / `activeSessionIdRef`, because those refs are synced in an
+   * effect declared BELOW this one — an effect here reading them would see the
+   * previous commit and publish the previously-active tab. The render path
+   * passes state; the ptyId callback passes the refs, which are current by then.
+   */
+  function publishReusableSessionFrom(sessionList: readonly SessionDescriptor[], activeId: string) {
+    const active = sessionList.find((s) => s.id === activeId);
+    if (active == null) {
+      publishReusableSession(null);
+      return;
+    }
+    if (active.kind === 'thread') {
+      const info = threadInfoById.get(active.threadId);
+      publishReusableSession({
+        id: active.id,
+        kind: 'thread',
+        label: info?.agent.name ?? t`the open agent`,
+        agentId: info?.agent.id ?? '',
+        iconUrl: info?.agent.iconUrl,
+      });
+      return;
+    }
+    const livePtyId = ptyIdBySessionRef.current.get(active.id);
+    const cli = active.launch?.cli;
+    // Same three-part gate as the reuse branch below — a bare shell or a reload
+    // survivor is NOT appendable.
+    if (livePtyId == null || bridge?.terminal == null || cli == null) {
+      publishReusableSession(null);
+      return;
+    }
+    publishReusableSession({
+      id: active.id,
+      kind: 'terminal',
+      label: TERMINAL_CLIS[cli].displayName,
+      cli,
+    });
+  }
+
+  // Every input to the gate above: which tab is active, the session list (a
+  // thread arriving, a tab closing), and the thread infos that carry the label.
+  // PTY resolution is not renderable state, so `setSessionPtyId` re-publishes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: publishes from the state it is passed; `openThreadTabs` is a label input, read via threadInfoById
+  useEffect(() => {
+    publishReusableSessionFrom(sessions, activeSessionId);
+  }, [activeSessionId, sessions, openThreadTabs]);
+
+  /**
+   * Bring a hidden dock back before writing into the session it hosts.
+   *
+   * Collapsing hides the dock without ending anything, so a reuse still resolves
+   * and still lands — into a surface nobody can see. A fresh session is already
+   * covered (a new live thread auto-reveals), and reuse is the half that wasn't:
+   * a staged draft changes nothing the dock would otherwise surface, so without
+   * this the text arrives silently and the send reads as a no-op.
+   *
+   * Revealing is enough on its own — the reveal effect focuses the active
+   * session once the dock shows, which is why the focus calls below are only
+   * load-bearing when it was open already.
+   */
+  function revealForReuse() {
+    if (!visible) onVisibleChange(true);
+  }
+
   function dispatchAskAi({ text, newTab, submit }: ActiveTerminalInputDetail) {
     const activeId = activeSessionIdRef.current;
     const active = sessionsRef.current.find((s) => s.id === activeId);
@@ -584,6 +661,7 @@ export function TerminalSessionsHost({
         // pressed enter, and a thread the user is already in behaves the same.
         // `submit` only decides how a FRESH session receives the text.
         stageThreadDraft(active.threadId, text);
+        revealForReuse();
         queueMicrotask(() => focusSession(active));
         return;
       }
@@ -596,6 +674,7 @@ export function TerminalSessionsHost({
       // (see the `launch.cli` gate rationale above).
       if (livePtyId != null && terminal != null && active.launch?.cli != null) {
         terminal.input(livePtyId, text);
+        revealForReuse();
         queueMicrotask(() => focusTerminalSession(activeId));
         return;
       }

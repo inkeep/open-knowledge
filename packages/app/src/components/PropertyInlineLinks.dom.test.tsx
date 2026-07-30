@@ -10,7 +10,7 @@
  *      of property values (which have no embedded link syntax) pay zero
  *      DOM cost beyond a bare text node.
  *
- * Repo convention (see `EditWithAiBubbleButton.dom.test.tsx`,
+ * Repo convention (see `FootnoteBubbleButton.dom.test.tsx`,
  * `tag-pill-input.dom.test.tsx`): no @testing-library/react interaction
  * helpers — assert through queries on the rendered DOM after `render`.
  */

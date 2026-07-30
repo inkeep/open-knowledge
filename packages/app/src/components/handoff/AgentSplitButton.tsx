@@ -104,6 +104,7 @@ export function AgentSplitButton({
   terminal,
   terminals,
   menuEmptyState,
+  menuLeading,
   onMenuOpenChange,
   menuAlign = 'end',
   triggerAriaLabel,
@@ -143,6 +144,12 @@ export function AgentSplitButton({
   onOpenSettings: () => void;
   /** Rendered inside the menu when there are no app agents and no terminal. */
   menuEmptyState?: ReactNode;
+  /**
+   * Caller-owned rows rendered ABOVE the agent sections, separated from them.
+   * For surfaces with a second decision to make alongside which agent — the
+   * comment queue's send picks a destination here.
+   */
+  menuLeading?: ReactNode;
   onMenuOpenChange?: (open: boolean) => void;
   menuAlign?: 'start' | 'end';
   triggerAriaLabel: string;
@@ -191,6 +198,17 @@ export function AgentSplitButton({
           className="max-h-80 min-w-[200px]"
           data-testid={testIds.menu}
         >
+          {/* Caller-owned rows above the agent sections. The queue's send uses
+              it for WHERE the batch goes (append to the open conversation, or a
+              clean one) — a different axis from WHICH agent, and one only that
+              surface has. It leads because it is the decision being made; the
+              agent picker below is the standing preference. */}
+          {menuLeading ? (
+            <>
+              {menuLeading}
+              {showThreadAgents || hasOptions ? <DropdownMenuSeparator /> : null}
+            </>
+          ) : null}
           {showThreadAgents ? (
             // In-app agent threads lead the menu when any is enabled; an empty
             // section (all disabled) is hidden entirely.

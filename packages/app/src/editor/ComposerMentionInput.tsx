@@ -52,6 +52,7 @@ export function ComposerMentionInput({
   onContentChange,
   onMentionsChange,
   onSubmit,
+  onEscape,
   className,
   placeholder,
   initialDoc,
@@ -71,6 +72,15 @@ export function ComposerMentionInput({
    *  Optional — surfaces with no top-row chips omit it. */
   onMentionsChange?: (mentions: string[]) => void;
   onSubmit: () => void;
+  /**
+   * Escape, when the `@`-popup is NOT open.
+   *
+   * Hosts that live inside something dismissable — the comment composer — need
+   * Escape to close that thing, and cannot tell from outside whether the popup
+   * consumed the key first. Only this side knows, so it decides. Omitted, the
+   * field blurs as before.
+   */
+  onEscape?: () => void;
   className?: string;
   /** Static placeholder shown while empty (TipTap Placeholder extension). The
    *  bottom composer omits it and overlays its own rotating placeholder. */
@@ -88,11 +98,13 @@ export function ComposerMentionInput({
   const onContentChangeRef = useRef(onContentChange);
   const onMentionsChangeRef = useRef(onMentionsChange);
   const onSubmitRef = useRef(onSubmit);
+  const onEscapeRef = useRef(onEscape);
   useEffect(() => {
     onEmptyChangeRef.current = onEmptyChange;
     onContentChangeRef.current = onContentChange;
     onMentionsChangeRef.current = onMentionsChange;
     onSubmitRef.current = onSubmit;
+    onEscapeRef.current = onEscape;
   });
 
   const editor = useEditor({
@@ -115,6 +127,10 @@ export function ComposerMentionInput({
           // owns that) and must not blur the field; otherwise it dismisses.
           const suggestionActive = composerMentionSuggestionKey.getState(view.state)?.active;
           if (suggestionActive) return false;
+          if (onEscapeRef.current !== undefined) {
+            onEscapeRef.current();
+            return true;
+          }
           (view.dom as HTMLElement).blur();
           return true;
         }

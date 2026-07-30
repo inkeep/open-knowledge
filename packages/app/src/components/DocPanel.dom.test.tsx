@@ -121,10 +121,10 @@ afterEach(() => {
 });
 
 describe('DocPanel — tab gating', () => {
-  test('project mode renders the full tab strip (outline + links + graph + timeline + problems)', () => {
+  test('project mode renders the full tab strip (outline + links + graph + timeline + problems + comments)', () => {
     singleFileValue = false;
     renderPanel('outline');
-    expect(screen.getAllByRole('tab')).toHaveLength(5);
+    expect(screen.getAllByRole('tab')).toHaveLength(6);
     expect(screen.getByTestId('outline-panel')).toBeTruthy();
   });
 

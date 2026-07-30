@@ -30,6 +30,8 @@ import {
 import { Trans, useLingui } from '@lingui/react/macro';
 import { AlertTriangle, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { CommentedDocProvider } from '@/comments/CommentedDocContext';
+import { PropertyCommentButton } from '@/comments/PropertyCommentButton';
 import { FrontmatterBindingProvider } from '@/components/FrontmatterBindingContext';
 import {
   type AddDraft,
@@ -416,84 +418,97 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
 
   return (
     <FrontmatterBindingProvider binding={binding}>
-      <PropertyDisclosure
-        ref={panelRef}
-        title={<Trans>Properties</Trans>}
-        count={renderKeys.length}
-        testId="property-panel"
-        className="pt-4"
-        contentClassName={PROP_CONTENT_SHIFT}
-        open={!collapsed}
-        onOpenChange={(open) => setCollapsed(!open)}
-      >
-        {parseError ? (
-          // No drag-handle gutter — cancel the content shift so the banner sits
-          // flush instead of hanging into the page margin (see PROP_CONTENT_SHIFT).
-          <div
-            role="alert"
-            data-testid="property-panel-yaml-error"
-            className={`mb-1 ${PROP_GUTTER_COMPENSATE} flex items-start gap-1.5 rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-[11px] text-destructive`}
-          >
-            <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
-            <div>
-              <Trans>
-                The properties block at the top of this doc has a formatting error. Switch to source
-                mode to fix it.
-              </Trans>
-              <span className="block text-[10px] opacity-80">{parseError}</span>
+      {/* Sibling to the binding: the recursive rows below host comment buttons,
+          and every one of them needs to know which document it belongs to.
+          Empty name means there is no document (an unattached provider), which
+          the buttons read as "render nothing". */}
+      <CommentedDocProvider docName={docName === '' ? null : docName}>
+        <PropertyDisclosure
+          ref={panelRef}
+          title={<Trans>Properties</Trans>}
+          count={renderKeys.length}
+          testId="property-panel"
+          className="pt-4"
+          contentClassName={PROP_CONTENT_SHIFT}
+          open={!collapsed}
+          onOpenChange={(open) => setCollapsed(!open)}
+        >
+          {parseError ? (
+            // No drag-handle gutter — cancel the content shift so the banner sits
+            // flush instead of hanging into the page margin (see PROP_CONTENT_SHIFT).
+            <div
+              role="alert"
+              data-testid="property-panel-yaml-error"
+              className={`mb-1 ${PROP_GUTTER_COMPENSATE} flex items-start gap-1.5 rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-[11px] text-destructive`}
+            >
+              <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
+              <div>
+                <Trans>
+                  The properties block at the top of this doc has a formatting error. Switch to
+                  source mode to fix it.
+                </Trans>
+                <span className="block text-[10px] opacity-80">{parseError}</span>
+              </div>
             </div>
-          </div>
-        ) : null}
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext
-            items={renderKeys.map((k, i) => rowId(k, i))}
-            strategy={verticalListSortingStrategy}
+          ) : null}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
           >
-            {renderKeys.map((key, idx) => {
-              const value = map[key];
-              if (value === undefined) return null;
-              const declared = overrides[key] ?? inferType(value);
-              const renameState = renaming?.key === key ? renaming : null;
-              const isDuplicate = (dupCount.get(key) ?? 0) > 1;
-              // File-owned key. The trash icon deletes the key from the
-              // file's own frontmatter.
-              // Position-aware sortable id: dup-name rows share the same
-              // `key` string, so we suffix with the source-order index so
-              // SortableContext can distinguish them. yaml@2 with
-              // `uniqueKeys: false` admits duplicates, and the panel
-              // surfaces them as distinct rows. The index is load-bearing
-              // here precisely because the YAML source order is the
-              // rendered order — biome/lint warns about index keys for
-              // unstable arrays, but FM rows are deterministic by source
-              // position.
-              return (
-                <FrontmatterRow
-                  // biome-ignore lint/suspicious/noArrayIndexKey: position-aware key for dup-name rows.
-                  key={`${key}-${idx}`}
-                  sortableId={rowId(key, idx)}
-                  keyName={key}
-                  value={value}
-                  declared={declared}
-                  enumConstraint={enumConstraints.get(key)}
-                  error={errors[key] ?? null}
-                  resetCounter={resetCounters[key] ?? 0}
-                  isDuplicate={isDuplicate}
-                  rename={{
-                    state: renameState,
-                    onBegin: () => beginRename(key),
-                    onChangeDraft: changeRenameDraft,
-                    onCommit: commitRename,
-                    onCancel: cancelRename,
-                  }}
-                  onCommit={(v) => commitProperty(key, v)}
-                  onChangeType={(t) => setType(key, t)}
-                  onRemove={() => removeProperty(key)}
-                />
-              );
-            })}
-          </SortableContext>
-        </DndContext>
-        {/*
+            <SortableContext
+              items={renderKeys.map((k, i) => rowId(k, i))}
+              strategy={verticalListSortingStrategy}
+            >
+              {renderKeys.map((key, idx) => {
+                const value = map[key];
+                if (value === undefined) return null;
+                const declared = overrides[key] ?? inferType(value);
+                const renameState = renaming?.key === key ? renaming : null;
+                const isDuplicate = (dupCount.get(key) ?? 0) > 1;
+                // File-owned key. The trash icon deletes the key from the
+                // file's own frontmatter.
+                // Position-aware sortable id: dup-name rows share the same
+                // `key` string, so we suffix with the source-order index so
+                // SortableContext can distinguish them. yaml@2 with
+                // `uniqueKeys: false` admits duplicates, and the panel
+                // surfaces them as distinct rows. The index is load-bearing
+                // here precisely because the YAML source order is the
+                // rendered order — biome/lint warns about index keys for
+                // unstable arrays, but FM rows are deterministic by source
+                // position.
+                return (
+                  <FrontmatterRow
+                    // biome-ignore lint/suspicious/noArrayIndexKey: position-aware key for dup-name rows.
+                    key={`${key}-${idx}`}
+                    sortableId={rowId(key, idx)}
+                    keyName={key}
+                    value={value}
+                    declared={declared}
+                    enumConstraint={enumConstraints.get(key)}
+                    error={errors[key] ?? null}
+                    resetCounter={resetCounters[key] ?? 0}
+                    isDuplicate={isDuplicate}
+                    rename={{
+                      state: renameState,
+                      onBegin: () => beginRename(key),
+                      onChangeDraft: changeRenameDraft,
+                      onCommit: commitRename,
+                      onCancel: cancelRename,
+                    }}
+                    onCommit={(v) => commitProperty(key, v)}
+                    onChangeType={(t) => setType(key, t)}
+                    onRemove={() => removeProperty(key)}
+                    // Top-level row: the key IS the whole address. Nested rows
+                    // pass their own path (see ObjectWidget). The button itself
+                    // decides whether a document is behind it.
+                    actionSlot={<PropertyCommentButton propertyKey={key} />}
+                  />
+                );
+              })}
+            </SortableContext>
+          </DndContext>
+          {/*
             Tags discoverability affordance — render an empty, pinned-at-
             end `tags` row when the key is absent from the file YAML
             (`map`). The first commit from this virtual row writes the YAML
@@ -503,70 +518,71 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
             the virtual row is purely for "this doc has no tags field yet,
             but you can add one here."
           */}
-        {!reserved.has('tags') && !Object.hasOwn(map, 'tags') ? (
-          <FrontmatterRow
-            key="virtual-tags"
-            keyName="tags"
-            value={[]}
-            declared="list"
-            enumConstraint={enumConstraints.get('tags')}
-            error={errors.tags ?? null}
-            resetCounter={resetCounters.tags ?? 0}
-            isPlaceholder
-            onCommit={(v) => commitProperty('tags', v)}
-            // No type-change for the virtual row — the chip widget is
-            // the only meaningful editor for `tags`, and
-            // `isPlaceholder` hides the type-icon dropdown anyway.
-            // The handler is required by the type but never reaches
-            // user input here.
-            onChangeType={() => {}}
-          />
-        ) : null}
-        {adding ? (
-          // No drag-handle gutter — cancel the content shift so the add form
-          // sits flush with the rows (see PROP_CONTENT_SHIFT).
-          <div className={PROP_GUTTER_COMPENSATE}>
-            <AddPropertyRow
-              draft={adding}
-              onChangeName={changeAddName}
-              onChangeType={changeAddType}
-              onChangeValue={changeAddValue}
-              onCommit={commitAdd}
-              onCancel={cancelAdd}
+          {!reserved.has('tags') && !Object.hasOwn(map, 'tags') ? (
+            <FrontmatterRow
+              key="virtual-tags"
+              keyName="tags"
+              value={[]}
+              declared="list"
+              enumConstraint={enumConstraints.get('tags')}
+              error={errors.tags ?? null}
+              resetCounter={resetCounters.tags ?? 0}
+              isPlaceholder
+              onCommit={(v) => commitProperty('tags', v)}
+              // No type-change for the virtual row — the chip widget is
+              // the only meaningful editor for `tags`, and
+              // `isPlaceholder` hides the type-icon dropdown anyway.
+              // The handler is required by the type but never reaches
+              // user input here.
+              onChangeType={() => {}}
             />
-          </div>
-        ) : (
-          // Wrapper mirrors FrontmatterRow's flex layout above: an
-          // aria-hidden `w-4` spacer occupies the drag-handle column,
-          // gap-1 separates it from the Button (which itself starts at
-          // the TypeIcon column edge). Result: the Button's hover
-          // background starts at 20px (=16+4) — the same x as the
-          // TypeIconButton in the rows above — instead of stretching
-          // all the way to the row's left edge as `pl-7` would. The
-          // `+` icon center still lands at ~35px (20+8+7), within ±2px
-          // of the TypeIconButton icon center (34px).
-          <div className="mt-1 flex items-center gap-1">
-            <span aria-hidden className="h-7 w-4 shrink-0" />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              data-testid="add-property-trigger"
-              onClick={beginAdd}
-              // Visible label is just "Add"; the aria-label restores the
-              // action's object so screen readers don't announce a
-              // context-free "Add, button".
-              aria-label={t`Add property`}
-              className="flex items-center gap-1.5 rounded px-2 py-1 font-medium text-sm hover:bg-muted/50 hover:text-foreground"
-            >
-              <Plus className="size-3.5" />
-              <span>
-                <Trans>Add</Trans>
-              </span>
-            </Button>
-          </div>
-        )}
-      </PropertyDisclosure>
+          ) : null}
+          {adding ? (
+            // No drag-handle gutter — cancel the content shift so the add form
+            // sits flush with the rows (see PROP_CONTENT_SHIFT).
+            <div className={PROP_GUTTER_COMPENSATE}>
+              <AddPropertyRow
+                draft={adding}
+                onChangeName={changeAddName}
+                onChangeType={changeAddType}
+                onChangeValue={changeAddValue}
+                onCommit={commitAdd}
+                onCancel={cancelAdd}
+              />
+            </div>
+          ) : (
+            // Wrapper mirrors FrontmatterRow's flex layout above: an
+            // aria-hidden `w-4` spacer occupies the drag-handle column,
+            // gap-1 separates it from the Button (which itself starts at
+            // the TypeIcon column edge). Result: the Button's hover
+            // background starts at 20px (=16+4) — the same x as the
+            // TypeIconButton in the rows above — instead of stretching
+            // all the way to the row's left edge as `pl-7` would. The
+            // `+` icon center still lands at ~35px (20+8+7), within ±2px
+            // of the TypeIconButton icon center (34px).
+            <div className="mt-1 flex items-center gap-1">
+              <span aria-hidden className="h-7 w-4 shrink-0" />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-testid="add-property-trigger"
+                onClick={beginAdd}
+                // Visible label is just "Add"; the aria-label restores the
+                // action's object so screen readers don't announce a
+                // context-free "Add, button".
+                aria-label={t`Add property`}
+                className="flex items-center gap-1.5 rounded px-2 py-1 font-medium text-sm hover:bg-muted/50 hover:text-foreground"
+              >
+                <Plus className="size-3.5" />
+                <span>
+                  <Trans>Add</Trans>
+                </span>
+              </Button>
+            </div>
+          )}
+        </PropertyDisclosure>
+      </CommentedDocProvider>
     </FrontmatterBindingProvider>
   );
 }

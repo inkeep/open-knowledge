@@ -104,6 +104,11 @@ const EXEMPT_HANDLERS = new Set([
   'handleAssetText',
   'handleBacklinks',
   'handleBacklinkCounts',
+  // GET /api/comment-counts — read-only count lookup over the comment index.
+  // It creates and edits nothing, so there is no authorship to attribute; the
+  // thread mutations that DO need identity go through `/api/comment`'s
+  // `extractActorIdentity` boundary.
+  'handleCommentCounts',
   'handleForwardLinks',
   // POST /api/link-preview — read-only external metadata fetch for the editor
   // hover card. No Y.Doc / vault mutation and no agent-authored content; its
@@ -221,6 +226,15 @@ const EXEMPT_HANDLERS = new Set([
   // to the `renderer` pino log (diagnostics), no Y.Docs / agent content; gated
   // by `checkLocalOpSecurity` like the local-op handlers. No identity needed.
   'handleClientLogs',
+  // `/api/comments` + `/api/comment` — comment-thread dispatchers (methodRouter
+  // GET list/read + POST create/mutate). Same posture as the `handleSkill` /
+  // `handleTemplate` dispatchers: the route-registry entry is the dispatcher,
+  // and the mutating sub-handlers thread `extractActorIdentity` themselves in
+  // `packages/server/src/comments/comment-api.ts`. Thread text is machine-local
+  // (`.ok/local/comments/`), never committed, and the app is the only client
+  // (agents reach comments via dispatch, not MCP).
+  'handleCommentsRoute',
+  'handleCommentRoute',
   'handleWorkspace',
   'handleRescueList',
   'handleSyncStatus',

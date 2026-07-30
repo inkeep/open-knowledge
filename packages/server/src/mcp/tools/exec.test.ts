@@ -6,11 +6,12 @@ import { commitWip, initShadowRepo, type WriterIdentity } from '@inkeep/open-kno
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
-import type { EnrichedMeta } from '../../content/enrichment.ts';
+import type { DirectoryMeta, EnrichedMeta } from '../../content/enrichment.ts';
 import {
   buildExecResult,
   DESCRIPTION,
   type ExecStructuredResult,
+  formatDirectoryEntry,
   formatFileEntry,
   RESULT_BODY_BUDGET_BYTES,
   WIRE_BODY_COPIES,
@@ -932,6 +933,8 @@ describe('formatFileEntry rendering', () => {
       projectHistory: null,
       projectHistorySource: null,
       graphRole: 'hub',
+      commentCount: null,
+      comments: null,
     });
     expect(line).toContain('graph: hub');
     expect(line).toContain('status: canonical');
@@ -956,6 +959,8 @@ describe('formatFileEntry rendering', () => {
       projectHistory: null,
       projectHistorySource: null,
       graphRole: null,
+      commentCount: null,
+      comments: null,
     });
     expect(line).toContain('backlinks: 2 (login.md, sessions.md)');
     expect(line).toContain('forward links: 1 (tokens.md)');
@@ -976,6 +981,8 @@ describe('formatFileEntry rendering', () => {
       projectHistory: null,
       projectHistorySource: null,
       graphRole: null,
+      commentCount: null,
+      comments: null,
     });
     expect(line).not.toContain('graph:');
   });
@@ -999,6 +1006,8 @@ describe('formatFileEntry rendering', () => {
       projectHistory: null,
       projectHistorySource: null,
       graphRole: null,
+      commentCount: null,
+      comments: null,
     });
     expect(line).toContain('backlinks: 7 (src1.md, src2.md, src3.md, src4.md, src5.md, …)');
     expect(line).toContain('forward links: 7 (dst1.md, dst2.md, dst3.md, dst4.md, dst5.md, …)');
@@ -1019,8 +1028,150 @@ describe('formatFileEntry rendering', () => {
       projectHistory: null,
       projectHistorySource: null,
       graphRole: null,
+      commentCount: null,
+      comments: null,
     });
     expect(line).toContain('forward links: 1 (https://example.com)');
+  });
+});
+
+/**
+ * Unresolved comments on the text channel.
+ *
+ * The structured field alone is not enough — several MCP hosts surface only
+ * `content[].text`, so a comment an agent never sees is a comment that gets
+ * silently edited over. These pin what that line says and, as importantly,
+ * when it says nothing.
+ */
+describe('formatFileEntry — unresolved comments', () => {
+  const base: EnrichedMeta = {
+    path: 'architecture/auth.md',
+    title: 'Authentication',
+    tags: [],
+    frontmatter: {},
+    backlinkCount: null,
+    backlinks: null,
+    forwardLinkCount: null,
+    forwardLinks: null,
+    history: null,
+    historySource: null,
+    projectHistory: null,
+    projectHistorySource: null,
+    graphRole: null,
+    commentCount: null,
+    comments: null,
+  };
+
+  test('a listing entry reports the count alone', () => {
+    // Slim enrichment has the count and not the bodies — a 200-file `ls` must
+    // not carry 200 comment texts.
+    const line = formatFileEntry({ ...base, commentCount: 2 });
+    expect(line).toContain('2 unresolved comments');
+    expect(line).toContain('⚠');
+  });
+
+  test('a single-file read inlines the ask and the passage', () => {
+    const line = formatFileEntry({
+      ...base,
+      commentCount: 1,
+      comments: [
+        {
+          threadId: 'c1',
+          body: 'tighten this claim',
+          quote: 'always converges',
+          state: 'anchored',
+          queued: false,
+        },
+      ],
+    });
+    expect(line).toContain('1 unresolved comment:');
+    expect(line).toContain('"tighten this claim"');
+    expect(line).toContain('always converges');
+  });
+
+  test('marks queued and orphaned threads', () => {
+    // `queued` = staged to send, not yet sent (a sent comment resolves and
+    // never reaches a read); `passage gone` says do not trust the quote.
+    const line = formatFileEntry({
+      ...base,
+      commentCount: 2,
+      comments: [
+        { threadId: 'c1', body: 'a', quote: 'x', state: 'anchored', queued: true },
+        { threadId: 'c2', body: 'b', quote: 'y', state: 'orphaned', queued: false },
+      ],
+    });
+    expect(line).toContain('[queued]');
+    expect(line).toContain('[passage gone]');
+  });
+
+  test('caps inlined bodies and elides the rest', () => {
+    const line = formatFileEntry({
+      ...base,
+      commentCount: 5,
+      comments: [1, 2, 3, 4, 5].map((n) => ({
+        threadId: `c${n}`,
+        body: `note ${n}`,
+        quote: `q${n}`,
+        state: 'anchored' as const,
+        queued: false,
+      })),
+    });
+    expect(line).toContain('5 unresolved comments:');
+    expect(line).toContain('note 3');
+    expect(line).not.toContain('note 4');
+    expect(line).toContain('…');
+  });
+
+  test('says nothing when there are none, and nothing when unknown', () => {
+    // The overwhelmingly common case is a doc with no comments. A
+    // `comments: 0` on every entry would be pure noise, unlike `backlinks: 0`
+    // which is a real fact about a doc's place in the graph. `null` (no server
+    // to ask) is likewise silent rather than reported as zero.
+    expect(formatFileEntry({ ...base, commentCount: 0 })).not.toContain('unresolved');
+    expect(formatFileEntry(base)).not.toContain('unresolved');
+  });
+});
+
+describe('formatDirectoryEntry — folder comment rollup', () => {
+  const base: DirectoryMeta = {
+    path: 'specs',
+    type: 'directory',
+    directMdCount: 3,
+    recursiveMdCount: 9,
+    childDirCount: 2,
+    truncated: false,
+  };
+
+  test('reports the subtree total and where to look', () => {
+    const line = formatDirectoryEntry({
+      ...base,
+      commentCount: 4,
+      commentedDocs: [
+        { docName: 'specs/auth', count: 3 },
+        { docName: 'specs/nested/tokens', count: 1 },
+      ],
+    });
+    expect(line).toContain('4 unresolved comments in tree');
+    expect(line).toContain('specs/auth (3)');
+    expect(line).toContain('specs/nested/tokens (1)');
+    expect(line).not.toContain(', …');
+  });
+
+  test('elides when the named docs do not account for the total', () => {
+    // `commentedDocs` is capped in enrichment, so the renderer infers the tail
+    // from the arithmetic rather than re-deriving the cap.
+    const line = formatDirectoryEntry({
+      ...base,
+      commentCount: 10,
+      commentedDocs: [{ docName: 'specs/auth', count: 3 }],
+    });
+    expect(line).toContain('10 unresolved comments in tree');
+    expect(line).toContain(', …');
+  });
+
+  test('a clean or unknown folder says nothing', () => {
+    expect(formatDirectoryEntry(base)).not.toContain('unresolved');
+    expect(formatDirectoryEntry({ ...base, commentCount: 0 })).not.toContain('unresolved');
   });
 });
 

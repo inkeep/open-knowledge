@@ -5798,3 +5798,21 @@ html.electron-mode [data-slot="sidebar-inner"] {
   box-shadow: none;
   background: transparent;
 }
+
+/* A comment highlight inside a property value.
+ *
+ * The document body tints commented passages with a ProseMirror decoration.
+ * A property value is a `<textarea>`, whose text no decoration can reach — so
+ * the highlight is the field's own selection, recoloured to match. The fill
+ * comes from `--comment-reveal-fill`, set alongside the attribute in
+ * `property-row-rect.ts`, so the amber has one definition rather than two that
+ * can drift apart.
+ *
+ * Attribute-scoped on purpose: without it every ordinary selection in the field
+ * would read as a comment. */
+[data-comment-reveal]::selection {
+  background-color: var(--comment-reveal-fill);
+}
+[data-comment-reveal]::-moz-selection {
+  background-color: var(--comment-reveal-fill);
+}

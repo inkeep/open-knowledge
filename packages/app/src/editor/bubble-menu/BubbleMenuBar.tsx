@@ -4,11 +4,11 @@ import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import { useRef, useState } from 'react';
+import { CommentBubbleButton } from '@/comments/CommentBubbleButton';
 import { Separator } from '@/components/ui/separator';
 import { BlockTypeSelector } from './BlockTypeSelector';
 import { deriveEditorClipOptions } from './bubble-menu-clip';
 import { shouldShowBubbleMenu } from './bubble-menu-state';
-import { EditWithAiBubbleButton } from './EditWithAiBubbleButton';
 import { FileBubbleButtons, isFileNodeSelected } from './FileBubbleButtons';
 import { FootnoteBubbleButton } from './FootnoteBubbleButton';
 import { ImageAlignButtons, isImageNodeSelected } from './ImageAlignButtons';
@@ -138,11 +138,7 @@ export function BubbleMenuBar({
           />
           <FootnoteBubbleButton key={`${tooltipKey}-footnote`} editor={editor} />
           <ViewInSourceBubbleButton key={`${tooltipKey}-view-source`} editor={editor} />
-          <EditWithAiBubbleButton
-            key={`${tooltipKey}-edit-ai`}
-            editor={editor}
-            shortcutEnabled={shortcutEnabled}
-          />
+          <CommentBubbleButton key={`${tooltipKey}-comment`} />
         </>
       )}
     </BubbleMenu>

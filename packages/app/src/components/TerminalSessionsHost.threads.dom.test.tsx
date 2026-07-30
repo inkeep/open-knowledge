@@ -18,6 +18,7 @@ import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { requestPreferredSession } from './handoff/preferred-session-events';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
 import { subscribeToTerminalLaunchRequests } from './handoff/terminal-launch-events';
+import { _resetReusableSession, getReusableSession } from './reusable-session-store';
 
 // A tiny controllable stand-in for the server-authoritative thread store.
 let openThreads: ThreadInfo[] = [];
@@ -118,6 +119,10 @@ vi.doMock('@tanstack/react-query', () => ({
 
 const { TerminalSessionsHost } = await import('./TerminalSessionsHost');
 
+/** Two distinguishable agents, so a stale publish names a visibly wrong one. */
+const FIRST_AGENT = { id: 'a1', name: 'First Agent', source: 'registry' } as const;
+const SECOND_AGENT = { id: 'a2', name: 'Second Agent', source: 'registry' } as const;
+
 function makeThread(overrides: Partial<ThreadInfo> & { threadId: string }): ThreadInfo {
   return {
     agent: { id: 'a', name: 'Agent', source: 'registry' },
@@ -189,7 +194,10 @@ describe('TerminalSessionsHost — agent-thread hosting (web / no bridge)', () =
     catalogData = undefined;
     mockRegisteredAgent = null;
   });
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    _resetReusableSession();
+  });
 
   test('a server thread becomes a tab rendering its ThreadView', async () => {
     render(<Harness />);
@@ -228,6 +236,28 @@ describe('TerminalSessionsHost — agent-thread hosting (web / no bridge)', () =
     setOpenThreads([makeThread({ threadId: 't2', title: 'Two' })]);
     await waitFor(() => expect(screen.queryByRole('tab', { name: /One/ })).toBeNull());
     expect(screen.getByRole('tab', { name: /Two/ })).toBeDefined();
+  });
+
+  test('the appendable-session signal names the ACTIVE tab, not the previous one', async () => {
+    // Regression: the publish effect read `activeSessionIdRef` / `sessionsRef`,
+    // which are synced by an effect declared BELOW it — so it saw the previous
+    // commit and published the tab you just switched AWAY from. The queue's
+    // send button reads this to name its destination, so the symptom was
+    // "Send → Cursor" while sitting in Claude Agent.
+    render(<Harness />);
+    setOpenThreads([makeThread({ threadId: 't1', title: 'One', agent: FIRST_AGENT })]);
+    await screen.findByRole('tab', { name: /One/ });
+    await waitFor(() => expect(getReusableSession()?.label).toBe('First Agent'));
+
+    // A second thread arrives and auto-reveals as the active tab.
+    setOpenThreads([
+      makeThread({ threadId: 't1', title: 'One', agent: FIRST_AGENT }),
+      makeThread({ threadId: 't2', title: 'Two', agent: SECOND_AGENT }),
+    ]);
+    await screen.findByRole('tab', { name: /Two/ });
+
+    await waitFor(() => expect(getReusableSession()?.label).toBe('Second Agent'));
+    expect(getReusableSession()).toMatchObject({ id: 't2', kind: 'thread', agentId: 'a2' });
   });
 
   test('closing a thread tab archives it via the client (not a local remove)', async () => {
@@ -410,6 +440,30 @@ describe('TerminalSessionsHost — agent-thread hosting (web / no bridge)', () =
 
       expect(staged).toEqual(['fix this lint error']);
       expect(launchAgentThread).not.toHaveBeenCalled();
+    });
+
+    test('reusing a thread reveals a collapsed dock', async () => {
+      mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
+      // Seeded BEFORE mount so the live count never increases — the auto-reveal
+      // that covers a fresh thread cannot fire, which is exactly the state a
+      // user is in after collapsing a dock they had been working in.
+      setOpenThreads([makeThread({ threadId: 't1', title: 'Work' })]);
+      const onVisibleChange = vi.fn((_v: boolean) => {});
+      render(<Harness initialVisible={false} onVisibleChange={onVisibleChange} />);
+      await screen.findByTestId('thread-view');
+      expect(onVisibleChange).not.toHaveBeenCalled();
+
+      const staged: string[] = [];
+      const stopStaging = subscribeStagedThreadDraft('t1', (text) => staged.push(text));
+      await act(async () => {
+        requestActiveTerminalInput('fix this lint error', { submit: false });
+      });
+      stopStaging();
+
+      // The draft lands in the session AND the dock comes back, so the send is
+      // visibly a send. Staging into a hidden surface reads as a no-op.
+      expect(staged).toEqual(['fix this lint error']);
+      expect(onVisibleChange).toHaveBeenCalledWith(true);
     });
 
     test('newTab forces a fresh thread even with one open (⇧⌘J)', async () => {

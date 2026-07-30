@@ -225,6 +225,8 @@ msgid "{0} hex value"
 msgstr ""
 
 #. placeholder {0}: resolvedTarget.displayName
+#. placeholder {0}: target.displayName
+#: src/comments/use-comment-delivery.ts
 #: src/components/BottomComposer.tsx
 msgid "{0} isn't installed yet — opening its download page."
 msgstr ""
@@ -347,6 +349,10 @@ msgstr ""
 msgid "{conflictCount, plural, one {# file conflicted} other {# files conflicted}}"
 msgstr ""
 
+#: src/comments/comment-chips.tsx
+msgid "{count, plural, one {# comment} other {# comments}}"
+msgstr ""
+
 #: src/components/TrashFailureModal.tsx
 msgid "{count, plural, one {# item could not be moved to the Trash. Do you want to permanently delete instead?} other {# items could not be moved to the Trash. Do you want to permanently delete instead?}}"
 msgstr ""
@@ -407,6 +413,7 @@ msgstr ""
 msgid "{displayName} ({bin}) isn't installed or on your PATH."
 msgstr ""
 
+#: src/comments/use-comment-agent-picker.ts
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
@@ -430,6 +437,11 @@ msgstr ""
 #. placeholder {0}: entries.length
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "{enabledCount}/{0} on"
+msgstr ""
+
+#. placeholder {0}: ids.length
+#: src/comments/store.ts
+msgid "{failed} of {0} comments could not be removed from the queue."
 msgstr ""
 
 #: src/components/FileTree.tsx
@@ -567,6 +579,10 @@ msgstr ""
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
+msgstr ""
+
+#: src/components/ComposerAddContextMenu.tsx
+msgid "{queueCount, plural, one {# comment} other {# comments}}"
 msgstr ""
 
 #: src/components/ActivityModeContent.tsx
@@ -904,6 +920,11 @@ msgstr ""
 msgid "Add"
 msgstr ""
 
+#: src/comments/CommentSelectionAffordance.tsx
+#: src/comments/PropertyCommentButton.tsx
+msgid "Add a comment"
+msgstr ""
+
 #: src/components/settings/SearchSection.tsx
 msgid "Add a key"
 msgstr ""
@@ -922,6 +943,14 @@ msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Add at least one letter or number."
+msgstr ""
+
+#: src/comments/CommentSelectionAffordance.tsx
+msgid "Add Comment"
+msgstr ""
+
+#: src/components/ComposerAddContextMenu.tsx
+msgid "Add context to this message"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -994,6 +1023,14 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Add the next matching source selection."
+msgstr ""
+
+#: src/comments/comment-chips.tsx
+msgid "Add the queued comments to this message"
+msgstr ""
+
+#: src/comments/PropertyCommentButton.tsx
+msgid "Add to queue"
 msgstr ""
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
@@ -1253,11 +1290,11 @@ msgstr ""
 msgid "Ask {agentName}"
 msgstr ""
 
+#: src/comments/CommentBubbleButton.tsx
 #: src/components/BottomComposer.tsx
 #: src/components/EditorFooter.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/ProblemsPanel.tsx
-#: src/editor/bubble-menu/EditWithAiBubbleButton.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Ask AI"
 msgstr ""
@@ -1611,6 +1648,7 @@ msgstr ""
 msgid "Can't safely edit this tool's config"
 msgstr ""
 
+#: src/comments/PropertyCommentButton.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
@@ -1695,6 +1733,7 @@ msgstr ""
 msgid "Checked by: {0}"
 msgstr ""
 
+#: src/comments/CommentQueuePanel.tsx
 #: src/components/BottomComposer.tsx
 msgid "Checking for agents"
 msgstr ""
@@ -1741,6 +1780,10 @@ msgstr ""
 msgid "Choose what a new session starts"
 msgstr ""
 
+#: src/comments/CommentQueuePanel.tsx
+msgid "Choose where to send the queue"
+msgstr ""
+
 #: src/components/settings/SharingSection.tsx
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
 msgstr ""
@@ -1777,6 +1820,7 @@ msgstr ""
 msgid "Cleanup log"
 msgstr ""
 
+#: src/comments/CommentQueuePanel.tsx
 #: src/components/settings/SearchSection.tsx
 msgid "Clear"
 msgstr ""
@@ -1862,6 +1906,7 @@ msgstr ""
 msgid "Cloning..."
 msgstr ""
 
+#: src/comments/CommentsPanel.tsx
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -1889,6 +1934,10 @@ msgstr ""
 
 #: src/components/EditorTabs.tsx
 msgid "Close all unpinned"
+msgstr ""
+
+#: src/comments/CommentMarginRail.tsx
+msgid "Close comment"
 msgstr ""
 
 #: src/components/AgentDiffPane.tsx
@@ -2015,6 +2064,19 @@ msgstr ""
 
 #: src/components/settings/TerminalSection.tsx
 msgid "Commands run with the full access of your macOS user account on this machine. Turn this off to disable the shell."
+msgstr ""
+
+#: src/comments/PropertyCommentButton.tsx
+msgid "Comment on {address}"
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Comment on selection"
+msgstr ""
+
+#: src/comments/CommentsPanel.tsx
+#: src/components/DocPanel.tsx
+msgid "Comments"
 msgstr ""
 
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -2503,6 +2565,15 @@ msgstr ""
 msgid "Could not write project files. Try a different location."
 msgstr ""
 
+#. placeholder {0}: err.message
+#: src/comments/store.ts
+msgid "Couldn't add that comment: {0}"
+msgstr ""
+
+#: src/comments/store.ts
+msgid "Couldn't add that comment."
+msgstr ""
+
 #. placeholder {0}: err instanceof Error ? err.message : String(err)
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -2560,6 +2631,10 @@ msgstr ""
 
 #: src/components/TemplateDeleteDialog.tsx
 msgid "Couldn't delete template: {error}"
+msgstr ""
+
+#: src/comments/store.ts
+msgid "Couldn't delete that comment."
 msgstr ""
 
 #: src/components/settings/AccountSection.tsx
@@ -2639,12 +2714,24 @@ msgstr ""
 msgid "Couldn't open the terminal — please try again."
 msgstr ""
 
+#: src/comments/use-comment-delivery.ts
+msgid "Couldn't open the terminal — the comments stay queued."
+msgstr ""
+
 #: src/components/NewWorktreeDialog.tsx
 msgid "Couldn't open the worktree. Try again."
 msgstr ""
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Couldn't pull from GitHub. Check your connection and sign-in, then retry."
+msgstr ""
+
+#: src/comments/store.ts
+msgid "Couldn't queue that comment."
+msgstr ""
+
+#: src/comments/store.ts
+msgid "Couldn't re-place that comment."
 msgstr ""
 
 #: src/components/ConnectingBanner.tsx
@@ -2667,12 +2754,29 @@ msgstr ""
 msgid "Couldn't reach the endpoint. Check the URL and that the server is up."
 msgstr ""
 
+#: src/comments/store.ts
+msgid "Couldn't read the queued comments — nothing was sent."
+msgstr ""
+
+#. placeholder {0}: err.message
+#: src/comments/store.ts
+msgid "Couldn't read the queued comments: {0}"
+msgstr ""
+
+#: src/comments/queue-attachment.ts
+msgid "Couldn't read the queued comments."
+msgstr ""
+
 #: src/components/EditorActivityPool.tsx
 msgid "Couldn't reconnect after server restart"
 msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Couldn't remove <0>{targetGitPath}</0>: {removeGitError}"
+msgstr ""
+
+#: src/comments/store.ts
+msgid "Couldn't remove that comment from the queue."
 msgstr ""
 
 #. placeholder {0}: skill.name
@@ -2689,6 +2793,14 @@ msgstr ""
 #. placeholder {0}: result.error
 #: src/components/ManagedArtifactProperties.tsx
 msgid "Couldn't rename template: {0}"
+msgstr ""
+
+#: src/comments/store.ts
+msgid "Couldn't reopen that comment."
+msgstr ""
+
+#: src/comments/store.ts
+msgid "Couldn't resolve that comment."
 msgstr ""
 
 #: src/components/DiffViewBoundary.tsx
@@ -2724,6 +2836,10 @@ msgstr ""
 msgid "Couldn't save template: {error}"
 msgstr ""
 
+#: src/comments/store.ts
+msgid "Couldn't save that edit."
+msgstr ""
+
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't save the key — please try again."
 msgstr ""
@@ -2734,6 +2850,14 @@ msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Couldn't send the report"
+msgstr ""
+
+#: src/components/BottomComposer.tsx
+msgid "Couldn't send your comments — please try again."
+msgstr ""
+
+#: src/comments/use-comment-delivery.ts
+msgid "Couldn't send your comments — the workspace isn't ready."
 msgstr ""
 
 #: src/components/BottomComposer.tsx
@@ -2781,6 +2905,10 @@ msgstr ""
 
 #: src/components/settings/SharingSection.tsx
 msgid "Couldn't update skills sharing — {detail}."
+msgstr ""
+
+#: src/comments/use-comment-delivery.ts
+msgid "Couldn't work out where to send the comments — they stay queued."
 msgstr ""
 
 #: src/components/ConsentDialogBody.tsx
@@ -3077,6 +3205,10 @@ msgstr ""
 msgid "Delete selected table"
 msgstr ""
 
+#: src/comments/CommentsPanel.tsx
+msgid "Delete this comment"
+msgstr ""
+
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this conversation?"
 msgstr ""
@@ -3236,6 +3368,10 @@ msgstr ""
 
 #: src/components/TemplateProperties.tsx
 msgid "Disambiguates similarly-named templates in the menu."
+msgstr ""
+
+#: src/comments/CommentSelectionAffordance.tsx
+msgid "Discard this comment"
 msgstr ""
 
 #: src/components/settings/AccountSection.tsx
@@ -3515,6 +3651,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Edit source pane and code property fields"
+msgstr ""
+
+#: src/comments/CommentsPanel.tsx
+msgid "Edit this comment"
 msgstr ""
 
 #: src/editor/slash-command/embed-starter-items.tsx
@@ -4603,6 +4743,16 @@ msgstr ""
 msgid "Go to line {0} in {1}"
 msgstr ""
 
+#. placeholder {0}: docBasename(thread.docName)
+#: src/comments/comment-chips.tsx
+#: src/comments/CommentQueuePanel.tsx
+msgid "Go to this comment in {0}"
+msgstr ""
+
+#: src/comments/comment-chips.tsx
+msgid "gone"
+msgstr ""
+
 #: src/components/FeedbackForm.tsx
 msgid "Good"
 msgstr ""
@@ -4757,8 +4907,16 @@ msgstr ""
 msgid "Hide problem indicators"
 msgstr ""
 
+#: src/comments/comment-chips.tsx
+msgid "Hide queued comments"
+msgstr ""
+
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Hide replace"
+msgstr ""
+
+#: src/comments/CommentsPanel.tsx
+msgid "Hide resolved"
 msgstr ""
 
 #: src/components/BottomComposer.tsx
@@ -4922,6 +5080,14 @@ msgstr ""
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
+msgstr ""
+
+#: src/comments/CommentQueuePanel.tsx
+msgid "Include in dispatch"
+msgstr ""
+
+#: src/comments/comment-chips.tsx
+msgid "Include this comment in the next send"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -5179,6 +5345,10 @@ msgstr ""
 msgid "Jump to tab 1-8"
 msgstr ""
 
+#: src/comments/CommentsPanel.tsx
+msgid "Jump to the anchored text"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Jump to the markdown source for the block at the cursor, centered and highlighted."
 msgstr ""
@@ -5258,6 +5428,10 @@ msgstr ""
 
 #: src/components/settings/LintingSection.tsx
 msgid "Learn more about {title}"
+msgstr ""
+
+#: src/comments/comment-chips.tsx
+msgid "Leave these comments out of this message"
 msgstr ""
 
 #: src/components/settings/TerminalSection.tsx
@@ -6015,10 +6189,19 @@ msgstr ""
 msgid "No active or recent OpenKnowledge projects were found."
 msgstr ""
 
+#: src/comments/use-comment-delivery.ts
+msgid "No agent is set up yet — opening Configure agents."
+msgstr ""
+
+#: src/components/BottomComposer.tsx
+msgid "No agent is set up yet — pick one from the send menu."
+msgstr ""
+
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "No agents available."
 msgstr ""
 
+#: src/comments/CommentQueuePanel.tsx
 #: src/components/BottomComposer.tsx
 msgid "No agents enabled"
 msgstr ""
@@ -6045,6 +6228,10 @@ msgstr ""
 
 #: src/components/ConnectingBanner.tsx
 msgid "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
+msgstr ""
+
+#: src/comments/CommentsPanel.tsx
+msgid "No comments yet. Select text in the document to add one."
 msgstr ""
 
 #: src/components/AgentDiffPane.tsx
@@ -6379,6 +6566,14 @@ msgstr ""
 msgid "nothing ({0} is not a valid pattern)"
 msgstr ""
 
+#: src/components/ComposerAddContextMenu.tsx
+msgid "Nothing queued"
+msgstr ""
+
+#: src/comments/CommentQueuePanel.tsx
+msgid "Nothing queued. Comment on a passage to add it here."
+msgstr ""
+
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
 msgstr ""
@@ -6447,6 +6642,14 @@ msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "On — your search queries and the text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
+msgstr ""
+
+#: src/comments/PropertyCommentButton.tsx
+msgid "On <0>{address}</0>"
+msgstr ""
+
+#: src/comments/PropertyCommentButton.tsx
+msgid "On selected text in <0>{address}</0>"
 msgstr ""
 
 #. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
@@ -6572,6 +6775,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open CodeMirror's lint diagnostics panel."
+msgstr ""
+
+#: src/comments/CommentMarginRail.tsx
+msgid "Open comment"
 msgstr ""
 
 #: src/components/FileTree.tsx
@@ -6709,6 +6916,10 @@ msgstr ""
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Open that worktree instead"
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Open the comment composer on the current selection and add it to the dispatch queue."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -6868,6 +7079,10 @@ msgstr ""
 
 #: src/components/GraphPanel.tsx
 msgid "Orphan mode"
+msgstr ""
+
+#: src/comments/CommentsPanel.tsx
+msgid "Orphaned"
 msgstr ""
 
 #: src/components/GraphPanel.tsx
@@ -7380,10 +7595,19 @@ msgstr ""
 msgid "Pushing"
 msgstr ""
 
+#: src/comments/comment-chips.tsx
+#: src/comments/CommentQueuePanel.tsx
+#: src/comments/CommentsPanel.tsx
+#: src/comments/CommentsTab.tsx
+#: src/components/ComposerAddContextMenu.tsx
+msgid "Queue"
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "Queue message"
 msgstr ""
 
+#: src/comments/CommentsPanel.tsx
 #: src/components/acp/ThreadView.tsx
 msgid "Queued"
 msgstr ""
@@ -7406,6 +7630,10 @@ msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "Re-embedding happens as searches run, so coverage restarts at zero and refills."
+msgstr ""
+
+#: src/comments/CommentsPanel.tsx
+msgid "Re-place on selected text"
 msgstr ""
 
 #: src/components/ProblemsPanel.tsx
@@ -7594,9 +7822,17 @@ msgstr ""
 msgid "Remove field {field}"
 msgstr ""
 
+#: src/comments/CommentQueuePanel.tsx
+msgid "Remove from queue"
+msgstr ""
+
 #: src/components/NavigatorApp.tsx
 #: src/components/recent-remove-controls.tsx
 msgid "Remove from recent projects"
+msgstr ""
+
+#: src/comments/CommentsPanel.tsx
+msgid "Remove from the queue"
 msgstr ""
 
 #. placeholder {0}: index + 1
@@ -7627,6 +7863,10 @@ msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Remove the parent <0>.git</0> folder"
+msgstr ""
+
+#: src/comments/comment-chips.tsx
+msgid "Remove this comment from the queue"
 msgstr ""
 
 #: src/lib/install-recent-removed-listener.ts
@@ -7704,6 +7944,10 @@ msgstr ""
 #: src/components/AgentDiffPane.tsx
 #: src/components/TimelineDiffPane.tsx
 msgid "Rendered"
+msgstr ""
+
+#: src/comments/CommentsPanel.tsx
+msgid "Reopen"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -7839,8 +8083,16 @@ msgstr ""
 msgid "Resize {handleKey}"
 msgstr ""
 
+#: src/comments/CommentsPanel.tsx
+msgid "Resolve"
+msgstr ""
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
+msgstr ""
+
+#: src/comments/CommentsPanel.tsx
+msgid "Resolved"
 msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
@@ -8287,6 +8539,10 @@ msgstr ""
 msgid "Select the full source document."
 msgstr ""
 
+#: src/comments/CommentsPanel.tsx
+msgid "Select this text in the property"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select, enter, or leave block components and fallback source blocks from keyboard boundaries."
 msgstr ""
@@ -8345,8 +8601,20 @@ msgstr ""
 msgid "Send feedback…"
 msgstr ""
 
+#: src/comments/QueueNewChatRow.tsx
+msgid "Send queue to"
+msgstr ""
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
+msgstr ""
+
+#: src/comments/CommentSelectionAffordance.tsx
+msgid "Send to AI"
+msgstr ""
+
+#: src/comments/CommentQueuePanel.tsx
+msgid "Send to chat"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
@@ -8372,6 +8640,10 @@ msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>~/.ok/secrets.yml</1>), never in the project."
+msgstr ""
+
+#: src/comments/store.ts
+msgid "Sent, but the comments could not be marked done — they are still queued."
 msgstr ""
 
 #: src/editor/slash-command/items.tsx
@@ -8658,8 +8930,17 @@ msgstr ""
 msgid "Show problem indicators"
 msgstr ""
 
+#: src/comments/comment-chips.tsx
+msgid "Show queued comments"
+msgstr ""
+
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Show replace"
+msgstr ""
+
+#. placeholder {0}: resolved.length
+#: src/comments/CommentsPanel.tsx
+msgid "Show resolved ({0})"
 msgstr ""
 
 #: src/components/BottomComposer.tsx
@@ -8894,6 +9175,11 @@ msgstr ""
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 msgid "Start {agentName}, {hint}"
+msgstr ""
+
+#: src/comments/CommentQueuePanel.tsx
+#: src/comments/QueueNewChatRow.tsx
+msgid "Start a new chat"
 msgstr ""
 
 #: src/components/NavigatorApp.tsx
@@ -9366,6 +9652,10 @@ msgstr ""
 msgid "Thanks for the report!"
 msgstr ""
 
+#: src/comments/use-comment-delivery.ts
+msgid "That app isn't available — the comments stay queued."
+msgstr ""
+
 #: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "That branch is already open in another worktree."
@@ -9398,6 +9688,10 @@ msgstr ""
 
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
+msgstr ""
+
+#: src/comments/CommentsPanel.tsx
+msgid "The anchored text is gone. You can re-place it on selected text."
 msgstr ""
 
 #: src/components/ProblemsPanel.tsx
@@ -9463,6 +9757,10 @@ msgstr ""
 msgid "The model id your endpoint serves. Its vector size is detected automatically — clear the field to go back to {DEFAULT_EMBEDDINGS_MODEL}."
 msgstr ""
 
+#: src/components/TerminalSessionsHost.tsx
+msgid "the open agent"
+msgstr ""
+
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
 msgstr ""
@@ -9482,6 +9780,10 @@ msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "The provider rejected the request. Check the API key and the model id."
+msgstr ""
+
+#: src/comments/comment-chips.tsx
+msgid "The quoted text is no longer in the document — the agent will be told."
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
@@ -9506,6 +9808,10 @@ msgstr ""
 
 #: src/components/TerminalGate.tsx
 msgid "The terminal is turned off for this project. Turn it back on to run commands here."
+msgstr ""
+
+#: src/comments/use-comment-delivery.ts
+msgid "The terminal isn't available here — the comments stay queued."
 msgstr ""
 
 #. placeholder {0}: info.exitCode
@@ -9610,6 +9916,10 @@ msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "This branch is checked out in:"
+msgstr ""
+
+#: src/comments/CommentsPanel.tsx
+msgid "This comment is on the whole property"
 msgstr ""
 
 #: src/components/PanelScopeHeader.tsx
@@ -10531,6 +10841,10 @@ msgstr ""
 
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"
+msgstr ""
+
+#: src/components/BottomComposer.tsx
+msgid "Work through these comments"
 msgstr ""
 
 #: src/components/McpConsentDialogBody.tsx

@@ -67,6 +67,19 @@ vi.doMock('@/components/ui/dropdown-menu', () => ({
       {children}
     </button>
   ),
+  // The composer's `+` context menu renders a checkbox row (attach / detach the
+  // comment queue); without it every test here dies on a missing mock export.
+  DropdownMenuCheckboxItem: ({ children, disabled, checked, ...props }: MenuChild) => (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={checked === true}
+      disabled={disabled}
+      {...props}
+    >
+      {children}
+    </button>
+  ),
   DropdownMenuLabel: ({ children, ...props }: MenuChild) => <div {...props}>{children}</div>,
   DropdownMenuSeparator: () => <hr data-testid="menu-separator" />,
 }));

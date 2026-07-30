@@ -42,8 +42,18 @@ export function createSuggestionPopup(
   reveal: () => void;
 } {
   const popup = document.createElement('div');
+  // Identifies every suggestion popup as one, from outside the editor. They are
+  // portaled to `document.body`, so a host that dismisses on outside-click — the
+  // comment composer — would otherwise read a click on `@`-mention results as a
+  // click away and close itself mid-pick.
+  popup.dataset.suggestionPopup = label;
   popup.style.position = 'fixed';
-  popup.style.zIndex = '50';
+  // Above every host that can own a suggestion field. At 50 it sat UNDER the
+  // comment composer's `z-[60]` card, so `@`-mention results were half-hidden by
+  // the box you were typing in. 70 is the same rung `SrcAutocomplete` picked to
+  // clear the PropPanel's `z-[60]` popover — a suggestion list has to be above
+  // whatever spawned it, and 60 is the ceiling for those hosts.
+  popup.style.zIndex = '70';
   // Hide until reveal() — callers stage real content first, then unhide.
   // This eliminates the "flash at wrong position" visible during the initial
   // sync placement (before computePosition's first resolution) and during
