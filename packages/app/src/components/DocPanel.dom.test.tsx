@@ -151,7 +151,9 @@ describe('DocPanel — Problems fix/ask-ai wiring', () => {
     renderPanel('problems');
     expect(lastProblemsProps?.onAskAi).toBeUndefined();
     expect(typeof lastProblemsProps?.onFix).toBe('function');
-    expect(typeof lastProblemsProps?.onFixAll).toBe('function');
+    expect(typeof lastProblemsProps?.onAutoFix).toBe('function');
+    // Both AI hand-offs need somewhere to send the paste.
+    expect(lastProblemsProps?.onFixWithAi).toBeUndefined();
   });
 
   test('desktop host (terminal launch available) passes onAskAi alongside the fix handlers', () => {
@@ -159,7 +161,8 @@ describe('DocPanel — Problems fix/ask-ai wiring', () => {
     terminalLaunchValue = { launchInTerminal: () => {}, installedClis: {} };
     renderPanel('problems');
     expect(typeof lastProblemsProps?.onAskAi).toBe('function');
-    expect(typeof lastProblemsProps?.onFixAll).toBe('function');
+    expect(typeof lastProblemsProps?.onAutoFix).toBe('function');
+    expect(typeof lastProblemsProps?.onFixWithAi).toBe('function');
   });
 
   test('without a matching provider every fix/ask handler is withheld', () => {
@@ -167,8 +170,11 @@ describe('DocPanel — Problems fix/ask-ai wiring', () => {
     terminalLaunchValue = { launchInTerminal: () => {}, installedClis: {} };
     renderPanel('problems');
     expect(lastProblemsProps?.onFix).toBeUndefined();
-    expect(lastProblemsProps?.onFixAll).toBeUndefined();
+    expect(lastProblemsProps?.onAutoFix).toBeUndefined();
     expect(lastProblemsProps?.onAskAi).toBeUndefined();
+    // The bulk hand-off is the exception: it reads nothing off the open doc's
+    // CRDT, so a settling provider does not withhold it.
+    expect(typeof lastProblemsProps?.onFixWithAi).toBe('function');
   });
 });
 

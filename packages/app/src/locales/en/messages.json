@@ -263,6 +263,7 @@
     "4hJhzz": ["Table"],
     "4ieVh2": ["Pick “Custom” above to use this palette."],
     "4jDd0j": ["Anyone can see"],
+    "4m-xuX": ["Auto-fix — nothing to fix"],
     "4mLBx9": ["Subscriptions aren't available right now."],
     "4niEzY": ["Sandboxed HTML embed — write HTML, see the rendered preview live."],
     "4nj6n8": ["/api/config returned HTTP ", ["code"]],
@@ -313,7 +314,6 @@
     "5Y17qa": ["Applies to (globs — leading ! excludes; empty means every doc)"],
     "5ZB7XC": ["File drop zone"],
     "5ZbJFS": ["Your current version is saved first, so this is reversible."],
-    "5_8TCr": ["Fix all (", ["count"], ")"],
     "5_j-DA": ["Kill Terminal"],
     "5aahsI": ["nothing (", ["0"], " is not a valid pattern)"],
     "5e1Dri": ["The menu label agents pick this template by (required)."],
@@ -1031,7 +1031,6 @@
     "ItxGi3": ["Attachments must total under 3 MB."],
     "Ix0K8o": ["Hide external URL nodes"],
     "IxyZXD": ["Screenshot"],
-    "Izb10l": ["Fix all ", ["count"], " fixable problems"],
     "J2Mv98": ["Name (e.g. ", ["login"], ")"],
     "J2_JuX": ["nothing (", ["0"], " cannot match a doc)"],
     "J2eKUI": ["File"],
@@ -1479,6 +1478,7 @@
     "RXEbZy": ["In app"],
     "RXNu_r": ["Shared via git with everyone working on this project."],
     "RY6Bq1": ["Open shared ", ["targetNoun"]],
+    "RZXTlY": ["Auto-fix (", ["count"], ")"],
     "R_U_A4": ["Add file or folder pattern, e.g. guides/**/*"],
     "RaPMZv": ["Keyboard shortcuts available in the editor and workspace."],
     "Rah7yq": ["What should the AI do? (optional)"],
@@ -1546,6 +1546,7 @@
     "Skr_7L": ["Search worktrees"],
     "SlfejT": ["Error"],
     "Sq8lf2": ["Editors to install skills into"],
+    "SqIoy_": ["Auto-fix — no problems here have an automatic fix"],
     "SrOuyg": ["Document panels"],
     "SvBFYA": ["No recent projects"],
     "Sxx_Zz": [
@@ -1745,6 +1746,7 @@
     "WyXG7w": ["Close all"],
     "Wyxs0x": ["Path cannot contain \"..\""],
     "X0ttSN": ["No tags match \"", ["tagListQuery"], "\"."],
+    "X3MMeA": ["None of these problems have an automatic fix."],
     "X7u0xR": [["0"], " templates available"],
     "X8kjQX": ["Re-authenticate with GitHub"],
     "X9VpsP": ["Loading folder contents"],
@@ -2269,6 +2271,7 @@
       "> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
     ],
     "g85bAo": ["Synced ", ["lastSyncedRelative"]],
+    "gAhHu7": ["Auto-fix applies only to problems with a known mechanical fix."],
     "gBbxn_": ["Checking sign-in status"],
     "gGVP4q": ["Click <0>+</0> <1/> <2>Create skill</2> <3/> <4>Upload skill</4>."],
     "gHSAWT": ["Create worktree <0>“<1>", ["typedName"], "</1>”</0>"],
@@ -2309,6 +2312,7 @@
     ],
     "gwEcOD": ["Your local copy is behind."],
     "gwykHF": ["This doc hasn't synced to GitHub yet. The link will work after the next sync."],
+    "gyHDWC": ["Fix all with AI (", ["count"], ")"],
     "h-AdvS": ["The folders and templates are already here, so there's nothing to add."],
     "h06R3C": ["No pages are missing outgoing graph links."],
     "h16FyT": ["Lists"],
@@ -2629,6 +2633,24 @@
     "mdzKSV": [["nodeCount", "plural", { "one": ["#", " node"], "other": ["#", " nodes"] }]],
     "mf37rL": ["Retrying"],
     "mg0YGL": ["Source multi-cursor and multi-select"],
+    "mgDKWS": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            "Hands the ",
+            "#",
+            " problem to your AI agent, including what has no automatic fix."
+          ],
+          "other": [
+            "Hands all ",
+            "#",
+            " problems to your AI agent, including what has no automatic fix."
+          ]
+        }
+      ]
+    ],
     "mk2poV": ["e.g. server.ts"],
     "mmpzAq": ["Wrap long lines in the markdown source editor."],
     "mo22UP": ["Toggle inline code formatting."],
@@ -3107,6 +3129,16 @@
       "</0> to copy the link below, or open OK in the desktop app."
     ],
     "vja0Dg": ["Open session dock"],
+    "vjwsDi": [
+      [
+        "count",
+        "plural",
+        {
+          "one": ["Instantly fixes the ", "#", " problem that has a known automatic fix."],
+          "other": ["Instantly fixes the ", "#", " problems that have a known automatic fix."]
+        }
+      ]
+    ],
     "vppAju": ["Where newly added attachments are placed."],
     "vv7kpg": ["Cancelled"],
     "vvWZnu": ["Diff unavailable"],
@@ -3290,6 +3322,7 @@
     "z60Lgn": [
       "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
     ],
+    "zA9zRL": ["None of these problems have an automatic fix. Try Fix all with AI."],
     "zAJzIg": ["Problems in ", ["0"]],
     "zAsDLY": ["Graph visualization of document links"],
     "zBUqvf": ["Set up OpenKnowledge integrations…"],

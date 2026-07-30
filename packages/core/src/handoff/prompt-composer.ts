@@ -1275,3 +1275,36 @@ export function composeLintFixPrompt(input: LintFixPromptInput): string {
   );
   return lines.join('\n');
 }
+
+/**
+ * Bulk problem-fix composer for the Problems panel's "Fix all with AI" button.
+ * `relativePath` names the open document (doc scope) or is null for the whole
+ * project. Unlike `composeLintFixPrompt` this enumerates nothing: it names a
+ * SCOPE and points at the tool that reads it.
+ *
+ * Deliberately no diagnostic list. OK's `audit` tool returns exactly what the
+ * panel shows — every lint violation plus every broken internal link, by file
+ * with lines — for one doc or the whole project, so an embedded list would be
+ * redundant with a call the agent makes anyway, and staler: the paste waits in
+ * a live session until the user submits it, and anything fixed in between makes
+ * a baked-in list wrong. Enumerating also piped doc-derived lint messages into
+ * the instruction plane, which this shape removes entirely.
+ *
+ * `lint`'s `fix: true` is per-document (it rejects a project-wide call), so the
+ * project variant says file-by-file rather than implying one bulk autofix.
+ */
+export function composeFixAllProblemsPrompt(relativePath: string | null): string {
+  if (relativePath === null) {
+    return [
+      "Fix every problem across this project's documents using OpenKnowledge.",
+      '',
+      "Run the `audit` tool for the current list of lint violations and broken links, then work file by file — the `lint` tool with `fix: true` clears one document's mechanically-fixable problems at a time — and re-audit until it reports no problems.",
+    ].join('\n');
+  }
+  const safePath = sanitizePathForAtMention(relativePath);
+  return [
+    `Fix every problem in @${safePath} using OpenKnowledge.`,
+    '',
+    `Run the \`audit\` tool scoped to it for the current list of lint violations and broken links, then fix each one — the \`lint\` tool with \`fix: true\` clears the mechanically-fixable ones — and re-audit @${safePath} until it reports no problems.`,
+  ].join('\n');
+}

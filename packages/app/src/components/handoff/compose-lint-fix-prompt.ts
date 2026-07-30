@@ -1,4 +1,5 @@
 import {
+  composeFixAllProblemsPrompt,
   composeLintFixPrompt,
   type LintDiagnostic,
   MARKDOWNLINT_RULE_CATALOG,
@@ -6,6 +7,18 @@ import {
 import { docNameToRelativePath } from '@/lib/workspace-paths';
 
 const ALIAS_BY_CODE = new Map(MARKDOWNLINT_RULE_CATALOG.map((rule) => [rule.id, rule.alias]));
+
+/** The diagnostic fields both composers read. Structural over the wire shape:
+ *  the unified Problems panel hands diagnostics whose `source` is any validator
+ *  id, not the in-process lint-plugin literal union. */
+type ComposableDiagnostic = Pick<LintDiagnostic, 'code' | 'message' | 'range'> & {
+  readonly source: string;
+};
+
+/** Rule alias, when the diagnostic came from markdownlint and the code is known. */
+function aliasOf(diagnostic: ComposableDiagnostic): string | undefined {
+  return diagnostic.source === 'markdownlint' ? ALIAS_BY_CODE.get(diagnostic.code) : undefined;
+}
 
 /**
  * Grounded lint-fix paste for a terminal CLI: the doc named as an `@`-mention,
@@ -19,21 +32,29 @@ const ALIAS_BY_CODE = new Map(MARKDOWNLINT_RULE_CATALOG.map((rule) => [rule.id, 
  */
 export function composeLintFixTerminalPaste(
   docName: string,
-  // Structural over the fields actually read: the unified Problems panel
-  // hands wire-shape diagnostics whose `source` is any validator id, not the
-  // in-process lint-plugin literal union. `LintDiagnostic` remains assignable.
-  diagnostic: Pick<LintDiagnostic, 'code' | 'message' | 'range'> & { source: string },
+  diagnostic: ComposableDiagnostic,
   lineText: string | undefined,
 ): string {
   return composeLintFixPrompt({
     relativePath: docNameToRelativePath(docName),
     source: diagnostic.source,
     code: diagnostic.code,
-    ruleAlias:
-      diagnostic.source === 'markdownlint' ? ALIAS_BY_CODE.get(diagnostic.code) : undefined,
+    ruleAlias: aliasOf(diagnostic),
     message: diagnostic.message,
     line: diagnostic.range.start.line + 1,
     column: diagnostic.range.start.character + 1,
     lineText,
   });
+}
+
+/**
+ * Bulk sibling of {@link composeLintFixTerminalPaste} for the Problems panel's
+ * "Fix all with AI" button. `docName` names the open doc (doc scope) or is null
+ * for the whole project; only the doc case needs the docName-to-path mapping.
+ *
+ * Carries no diagnostics — see `composeFixAllProblemsPrompt` for why the agent
+ * reads its own list instead.
+ */
+export function composeFixAllProblemsTerminalPaste(docName: string | null): string {
+  return composeFixAllProblemsPrompt(docName === null ? null : docNameToRelativePath(docName));
 }

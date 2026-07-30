@@ -1,6 +1,9 @@
 import type { LintDiagnostic } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
-import { composeLintFixTerminalPaste } from './compose-lint-fix-prompt.ts';
+import {
+  composeFixAllProblemsTerminalPaste,
+  composeLintFixTerminalPaste,
+} from './compose-lint-fix-prompt.ts';
 
 function diag(over: Partial<LintDiagnostic> = {}): LintDiagnostic {
   return {
@@ -35,5 +38,20 @@ describe('composeLintFixTerminalPaste', () => {
     );
     expect(paste).toContain('frontmatter/FM001 at');
     expect(paste).not.toContain('FM001 (');
+  });
+});
+
+describe('composeFixAllProblemsTerminalPaste', () => {
+  test('maps an extension-less docName to its path for the doc scope', () => {
+    const paste = composeFixAllProblemsTerminalPaste('guides/setup');
+    expect(paste).toContain('@guides/setup.md');
+    expect(paste).not.toContain('setup.md.md');
+    expect(paste).toContain('Run the `audit` tool scoped to it');
+  });
+
+  test('null docName asks for the whole project and mentions no doc', () => {
+    const paste = composeFixAllProblemsTerminalPaste(null);
+    expect(paste).toContain("across this project's documents");
+    expect(paste).not.toContain('@');
   });
 });

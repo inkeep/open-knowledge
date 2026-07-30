@@ -2,11 +2,15 @@ import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { AlertTriangle, Clock, Link2, ListTree, Network } from 'lucide-react';
 import { lazy, Suspense, useEffect } from 'react';
-import { composeLintFixTerminalPaste } from '@/components/handoff/compose-lint-fix-prompt';
+import {
+  composeFixAllProblemsTerminalPaste,
+  composeLintFixTerminalPaste,
+} from '@/components/handoff/compose-lint-fix-prompt';
 import { useTerminalLaunch } from '@/components/handoff/TerminalLaunchContext';
 import { requestActiveTerminalInput } from '@/components/handoff/terminal-input-events';
 import { LinksPanel } from '@/components/LinksPanel';
 import { OutlinePanel } from '@/components/OutlinePanel';
+import type { PanelScope } from '@/components/PanelScopeHeader';
 import { type DiagnosticLike, ProblemsPanel } from '@/components/ProblemsPanel';
 import { TimelineContent } from '@/components/TimelinePanel';
 import { Badge } from '@/components/ui/badge';
@@ -125,9 +129,9 @@ export function DocPanel({
       applyLintFixes(lintProvider, diagnostic.fixes);
     }
   };
-  // Fix-all stays lint-only by construction: only the live lint diagnostics
+  // Auto-fix stays lint-only by construction: only the live lint diagnostics
   // carry deterministic fixes (broken links need content edits).
-  const handleFixAll = () => {
+  const handleAutoFix = () => {
     if (lintProvider !== null) {
       applyLintFixes(lintProvider, collectFixes(lintDiagnostics));
     }
@@ -148,6 +152,17 @@ export function DocPanel({
     requestActiveTerminalInput(composeLintFixTerminalPaste(docName, diagnostic, lineText), {
       submit: true,
     });
+  };
+  // Bulk sibling of the per-row hand-off. Needs no `lintProvider`: the prompt
+  // names a scope and the agent reads its own problem list, so nothing is read
+  // out of the open doc's CRDT.
+  const handleFixWithAi = (scope: PanelScope) => {
+    requestActiveTerminalInput(
+      composeFixAllProblemsTerminalPaste(scope === 'doc' ? docName : null),
+      {
+        submit: true,
+      },
+    );
   };
   // Single-file `ok <file>` keeps only the Outline + Problems tabs. Links/Graph
   // need a multi-doc knowledge base, and Timeline is git history — all empty or
@@ -246,8 +261,9 @@ export function DocPanel({
               docName={docName}
               diagnostics={diagnostics}
               onFix={lintProvider !== null ? handleFix : undefined}
-              onFixAll={lintProvider !== null ? handleFixAll : undefined}
+              onAutoFix={lintProvider !== null ? handleAutoFix : undefined}
               onAskAi={lintProvider !== null && terminalLaunch !== null ? handleAskAi : undefined}
+              onFixWithAi={terminalLaunch !== null ? handleFixWithAi : undefined}
             />
           )}
         </div>

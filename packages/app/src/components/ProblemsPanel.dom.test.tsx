@@ -8,8 +8,8 @@
  */
 
 import type { LintDiagnostic, ValidationAuditResponse } from '@inkeep/open-knowledge-core';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { cleanup, fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
+import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
@@ -163,6 +163,15 @@ afterEach(() => {
   window.location.hash = '';
 });
 
+/**
+ * Production mounts the panel under main.tsx's root TooltipProvider. The action
+ * row's Auto-fix / Fix all with AI buttons always carry tooltips, so every
+ * render here needs one — Radix throws without an ancestor provider.
+ */
+function render(ui: ReactElement) {
+  return rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
+}
+
 describe('ProblemsPanel', () => {
   test('shows the empty state when there are no diagnostics', () => {
     render(<ProblemsPanel docName="notes" diagnostics={[]} />);
@@ -171,11 +180,7 @@ describe('ProblemsPanel', () => {
 
   test('a compact Checked-by line reveals the active plugins in a tooltip', async () => {
     projectLintConfigData = lintConfigWith({ markdownlint: true, frontmatter: true });
-    render(
-      <TooltipProvider>
-        <ProblemsPanel docName="notes" diagnostics={[]} />
-      </TooltipProvider>,
-    );
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
     const trigger = screen.getByTestId('problems-active-plugins');
     // The pill itself carries only the count — names live in the tooltip.
     expect(trigger.textContent).toContain('2 plugins');
@@ -190,11 +195,7 @@ describe('ProblemsPanel', () => {
 
   test('only enabled plugins appear in the tooltip', async () => {
     projectLintConfigData = lintConfigWith({ markdownlint: true, frontmatter: false });
-    render(
-      <TooltipProvider>
-        <ProblemsPanel docName="notes" diagnostics={[]} />
-      </TooltipProvider>,
-    );
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
     const trigger = screen.getByTestId('problems-active-plugins');
     expect(trigger.textContent).toContain('1 plugin');
     fireEvent.focus(trigger);
@@ -265,7 +266,7 @@ describe('ProblemsPanel', () => {
     expect(screen.queryByRole('button', { name: /Fix markdownlint/ })).toBeNull();
   });
 
-  test('doc-scope Fix all renders when onFixAll is provided and calls it on click', () => {
+  test('doc-scope Auto-fix renders when onAutoFix is provided and calls it on click', () => {
     const fixable = diag({
       code: 'MD010',
       fixes: [
@@ -276,17 +277,17 @@ describe('ProblemsPanel', () => {
       ],
     });
     const unfixable = diag({ line: 5, code: 'MD025', message: 'Multiple H1' });
-    const onFixAll = vi.fn(() => {});
+    const onAutoFix = vi.fn(() => {});
     render(
-      <ProblemsPanel docName="notes" diagnostics={[fixable, unfixable]} onFixAll={onFixAll} />,
+      <ProblemsPanel docName="notes" diagnostics={[fixable, unfixable]} onAutoFix={onAutoFix} />,
     );
-    const button = screen.getByTestId('problems-fix-all') as HTMLButtonElement;
+    const button = screen.getByTestId('problems-auto-fix') as HTMLButtonElement;
     expect(button.disabled).toBe(false);
     // The label sizes the click before it happens: only the fixable diagnostic
     // counts, not the total problem count.
     expect(button.textContent).toContain('(1)');
     button.click();
-    expect(onFixAll).toHaveBeenCalledTimes(1);
+    expect(onAutoFix).toHaveBeenCalledTimes(1);
   });
 
   test('Ask AI renders on fixable AND unfixable rows only when onAskAi is provided', () => {
@@ -318,27 +319,143 @@ describe('ProblemsPanel', () => {
     expect(screen.queryByTestId('problems-ask-ai')).toBeNull();
   });
 
-  test('doc-scope Fix all is disabled when no diagnostic is fixable', () => {
-    const onFixAll = vi.fn(() => {});
+  test('doc-scope Auto-fix is disabled when no diagnostic is fixable', () => {
+    const onAutoFix = vi.fn(() => {});
     render(
       <ProblemsPanel
         docName="notes"
         diagnostics={[diag({ code: 'MD025', message: 'Multiple H1' })]}
-        onFixAll={onFixAll}
+        onAutoFix={onAutoFix}
       />,
     );
-    const disabledButton = screen.getByTestId('problems-fix-all') as HTMLButtonElement;
+    const disabledButton = screen.getByTestId('problems-auto-fix') as HTMLButtonElement;
     expect(disabledButton.disabled).toBe(true);
     expect(disabledButton.textContent).toContain('(0)');
   });
 
-  test('doc-scope Fix all is absent without onFixAll or without diagnostics', () => {
+  test('doc-scope Auto-fix is absent without onAutoFix or without diagnostics', () => {
     const { unmount } = render(<ProblemsPanel docName="notes" diagnostics={[diag({})]} />);
-    expect(screen.queryByTestId('problems-fix-all')).toBeNull();
+    expect(screen.queryByTestId('problems-auto-fix')).toBeNull();
     unmount();
     // Empty state renders no action row at all.
-    render(<ProblemsPanel docName="notes" diagnostics={[]} onFixAll={vi.fn(() => {})} />);
-    expect(screen.queryByTestId('problems-fix-all')).toBeNull();
+    render(<ProblemsPanel docName="notes" diagnostics={[]} onAutoFix={vi.fn(() => {})} />);
+    expect(screen.queryByTestId('problems-auto-fix')).toBeNull();
+  });
+
+  test('doc-scope Fix all with AI counts every problem, not the unfixable remainder', () => {
+    const fixable = diag({
+      code: 'MD010',
+      fixes: [
+        {
+          range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
+          newText: '  ',
+        },
+      ],
+    });
+    const unfixable = diag({ line: 5, code: 'MD025', message: 'Multiple H1' });
+    const onFixWithAi = vi.fn(() => {});
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[fixable, unfixable]}
+        onAutoFix={vi.fn(() => {})}
+        onFixWithAi={onFixWithAi}
+      />,
+    );
+    const aiButton = screen.getByTestId('problems-fix-with-ai') as HTMLButtonElement;
+    // The two buttons are "the mechanical subset" (1) and "the whole list" (2),
+    // not two halves of a partition.
+    expect(screen.getByTestId('problems-auto-fix').textContent).toContain('(1)');
+    expect(aiButton.textContent).toContain('(2)');
+    expect(aiButton.disabled).toBe(false);
+  });
+
+  test('doc-scope Fix all with AI reports its scope and ships no diagnostics', () => {
+    const onFixWithAi = vi.fn(() => {});
+    render(
+      <ProblemsPanel
+        docName="nested/notes"
+        diagnostics={[diag({ line: 9, code: 'MD025' }), diag({ line: 2, code: 'MD010' })]}
+        onFixWithAi={onFixWithAi}
+      />,
+    );
+    screen.getByTestId('problems-fix-with-ai').click();
+    // Scope only: the prompt names it and the agent reads its own list, so a
+    // stale snapshot never travels with the hand-off.
+    expect(onFixWithAi.mock.calls).toEqual([['doc']]);
+  });
+
+  test('doc-scope Fix all with AI is withheld on web (no onFixWithAi)', () => {
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[diag({})]}
+        onAutoFix={vi.fn(() => {})}
+        onAskAi={undefined}
+      />,
+    );
+    expect(screen.queryByTestId('problems-fix-with-ai')).toBeNull();
+  });
+
+  test('the actions row renders for AI alone when nothing is deterministically fixable', () => {
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[diag({ code: 'MD025' })]}
+        onFixWithAi={vi.fn(() => {})}
+      />,
+    );
+    // Mike's case inverted: no Auto-fix affordance at all, but the panel still
+    // offers an enabled action rather than looking inert.
+    expect(screen.queryByTestId('problems-auto-fix')).toBeNull();
+    expect((screen.getByTestId('problems-fix-with-ai') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test('disabled Auto-fix names the reason in its accessible name', () => {
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[diag({ code: 'MD025' })]}
+        onAutoFix={vi.fn(() => {})}
+        onFixWithAi={vi.fn(() => {})}
+      />,
+    );
+    const button = screen.getByTestId('problems-auto-fix') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    // The tooltip describes the wrapper span (a disabled button emits no
+    // pointer events), so the name is all a screen-reader user gets.
+    expect(button.getAttribute('aria-label')).toContain('no problems here have an automatic fix');
+  });
+
+  test('the nothing-fixable tooltip withholds the AI pointer on web', async () => {
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[diag({ code: 'MD025', message: 'Multiple H1' })]}
+        onAutoFix={vi.fn(() => {})}
+      />,
+    );
+    // The tooltip hangs off the wrapper span (a disabled button emits no
+    // pointer events), so focus it rather than the control.
+    fireEvent.focus(screen.getByTestId('problems-auto-fix').parentElement as HTMLElement);
+    const tip = await screen.findByTestId('problems-auto-fix-tip');
+    expect(tip.textContent).toContain('None of these problems have an automatic fix');
+    // Pointing at a button that was never rendered sends the user hunting.
+    expect(tip.textContent).not.toMatch(/Fix all with AI/);
+  });
+
+  test('the nothing-fixable tooltip keeps the AI pointer when that button exists', async () => {
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[diag({ code: 'MD025', message: 'Multiple H1' })]}
+        onAutoFix={vi.fn(() => {})}
+        onFixWithAi={vi.fn(() => {})}
+      />,
+    );
+    fireEvent.focus(screen.getByTestId('problems-auto-fix').parentElement as HTMLElement);
+    const tip = await screen.findByTestId('problems-auto-fix-tip');
+    expect(tip.textContent).toContain('Try Fix all with AI');
   });
 
   test('renders a row per diagnostic, sorted by line', () => {
@@ -393,12 +510,12 @@ describe('ProblemsPanel', () => {
     expect(addPageCalls).toEqual(['ghost']);
   });
 
-  test('the create action is never counted by Fix all', () => {
+  test('the create action is never counted by Auto-fix', () => {
     render(
-      <ProblemsPanel docName="notes" diagnostics={[linkDiag({})]} onFixAll={vi.fn(() => {})} />,
+      <ProblemsPanel docName="notes" diagnostics={[linkDiag({})]} onAutoFix={vi.fn(() => {})} />,
     );
-    // A dead link is not deterministically fixable — the Fix all label counts 0.
-    const button = screen.getByTestId('problems-fix-all') as HTMLButtonElement;
+    // A dead link is not deterministically fixable — the Auto-fix label counts 0.
+    const button = screen.getByTestId('problems-auto-fix') as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     expect(button.textContent).toContain('(0)');
   });
@@ -640,7 +757,7 @@ describe('ProblemsPanel — project scope', () => {
     }
   });
 
-  test('project Fix all sweeps only fixable files, re-audits, and stays quiet on success', async () => {
+  test('project Auto-fix sweeps only fixable files, re-audits, and stays quiet on success', async () => {
     const fixableEdit = {
       range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
       newText: '  ',
@@ -659,8 +776,8 @@ describe('ProblemsPanel — project scope', () => {
 
     // Counts fixable problems across the audit (a.md + nested/c.md), not files
     // and not the unfixable b.md diagnostic.
-    expect(screen.getByTestId('problems-fix-all').textContent).toContain('(2)');
-    fireEvent.click(screen.getByTestId('problems-fix-all'));
+    expect(screen.getByTestId('problems-auto-fix').textContent).toContain('(2)');
+    fireEvent.click(screen.getByTestId('problems-auto-fix'));
     // Only the two files carrying fixable diagnostics are swept, extension-less.
     await waitFor(() => expect(fixLintDocCalls).toEqual(['a', 'nested/c']));
     // The sweep ends in a fresh audit fetch (initial activation + re-audit).
@@ -668,7 +785,7 @@ describe('ProblemsPanel — project scope', () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 
-  test('project Fix all continues past per-file failures and surfaces one error toast', async () => {
+  test('project Auto-fix continues past per-file failures and surfaces one error toast', async () => {
     const fixableEdit = {
       range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
       newText: '  ',
@@ -686,7 +803,7 @@ describe('ProblemsPanel — project scope', () => {
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(screen.getByText('bad.md')).toBeTruthy());
 
-    fireEvent.click(screen.getByTestId('problems-fix-all'));
+    fireEvent.click(screen.getByTestId('problems-auto-fix'));
     // The failed file does not stop the sweep.
     await waitFor(() => expect(fixLintDocCalls).toEqual(['bad', 'good']));
     await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
@@ -708,14 +825,14 @@ describe('ProblemsPanel — project scope', () => {
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(screen.getByText('bad.md')).toBeTruthy());
 
-    fireEvent.click(screen.getByTestId('problems-fix-all'));
+    fireEvent.click(screen.getByTestId('problems-auto-fix'));
     await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
     // Null detail → just the filename, no ` — ` suffix.
     const options = toastError.mock.calls[0]?.[1] as { description?: string } | undefined;
     expect(options?.description).toBe('bad.md');
   });
 
-  test('project Fix all is disabled while loading and when nothing is fixable', async () => {
+  test('project Auto-fix is disabled while loading and when nothing is fixable', async () => {
     runLintAuditImpl = async () =>
       auditResult({
         files: [{ file: 'plain.md', diagnostics: [diag({ code: 'MD025' })] }],
@@ -724,9 +841,102 @@ describe('ProblemsPanel — project scope', () => {
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(screen.getByText('plain.md')).toBeTruthy());
     // Loaded audit with zero fixable files keeps the button disabled.
-    expect((screen.getByTestId('problems-fix-all') as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByTestId('problems-fix-all'));
+    expect((screen.getByTestId('problems-auto-fix') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId('problems-auto-fix'));
     expect(fixLintDocCalls).toEqual([]);
+  });
+
+  test('project Fix all with AI reports the project scope once the audit loads', async () => {
+    runLintAuditImpl = async () =>
+      auditResult({
+        files: [
+          { file: 'a.md', diagnostics: [diag({ line: 1, code: 'MD010' })] },
+          {
+            file: 'nested/c.md',
+            diagnostics: [diag({ line: 4, code: 'MD025' }), diag({ line: 7, code: 'MD013' })],
+          },
+        ],
+      });
+    const onFixWithAi = vi.fn(() => {});
+    render(<ProblemsPanel docName="notes" diagnostics={[]} onFixWithAi={onFixWithAi} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('a.md')).toBeTruthy());
+
+    // The label still counts every problem across the audit, fixable or not —
+    // that number is the panel's own, not something handed to the agent.
+    expect(screen.getByTestId('problems-fix-with-ai').textContent).toContain('(3)');
+    fireEvent.click(screen.getByTestId('problems-fix-with-ai'));
+    expect(onFixWithAi.mock.calls).toEqual([['project']]);
+  });
+
+  test('project Fix all with AI stays hidden until the audit has something to describe', async () => {
+    runLintAuditImpl = async () => auditResult({ files: [], fileCount: 3 });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} onFixWithAi={vi.fn(() => {})} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByTestId('problems-audit-summary')).toBeTruthy());
+    // A clean project has no problems to hand over, so the button is absent
+    // rather than an enabled no-op.
+    expect(screen.queryByTestId('problems-fix-with-ai')).toBeNull();
+  });
+
+  test('a clean project audit makes no claim about problems lacking an automatic fix', async () => {
+    runLintAuditImpl = async () => auditResult({ files: [], fileCount: 3 });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('No problems across 3 documents.')).toBeTruthy());
+
+    const button = screen.getByTestId('problems-auto-fix');
+    fireEvent.focus(button.parentElement as HTMLElement);
+    const tip = await screen.findByTestId('problems-auto-fix-tip');
+    // Zero problems means neither claim is true: nothing lacks a fix, and there
+    // is no AI hand-off to point at.
+    expect(tip.textContent).not.toMatch(/None of these problems/);
+    expect(tip.textContent).not.toMatch(/Fix all with AI/);
+    expect(button.getAttribute('aria-label')).not.toContain(
+      'no problems here have an automatic fix',
+    );
+    // Pin the positive value too: the negative assertions above would also pass
+    // on an empty or drifted label, so they cannot tell "correct" from "gone".
+    expect(button.getAttribute('aria-label')).toBe('Auto-fix — nothing to fix');
+  });
+
+  test('project Fix all with AI is disabled mid-sweep and usable again once it ends', async () => {
+    const fixableEdit = {
+      range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
+      newText: '  ',
+    };
+    runLintAuditImpl = async () =>
+      auditResult({ files: [{ file: 'a.md', diagnostics: [diag({ fixes: [fixableEdit] })] }] });
+    let releaseFix: (() => void) | undefined;
+    fixLintDocImpl = async () => {
+      await new Promise<void>((resolve) => {
+        releaseFix = resolve;
+      });
+      return { ok: true };
+    };
+    render(<ProblemsPanel docName="notes" diagnostics={[]} onFixWithAi={vi.fn(() => {})} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('a.md')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('problems-auto-fix'));
+    await waitFor(() =>
+      expect((screen.getByTestId('problems-fix-with-ai') as HTMLButtonElement).disabled).toBe(true),
+    );
+
+    // A finished sweep has to hand both affordances back, or the panel stays
+    // permanently inert after one auto-fix. `waitFor` is load-bearing rather
+    // than stylistic: the sweep closes with a re-audit, and during that reload
+    // the AI button is absent (its handler is withheld until the audit loads).
+    releaseFix?.();
+    await waitFor(() =>
+      expect((screen.getByTestId('problems-fix-with-ai') as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    );
+    const autoFix = screen.getByTestId('problems-auto-fix') as HTMLButtonElement;
+    expect(autoFix.disabled).toBe(false);
+    expect(autoFix.textContent).not.toContain('Fixing');
+    expect(autoFix.textContent).toContain('(1)');
   });
 
   test('doc-scope content and count stay doc-scoped while project scope is active', async () => {

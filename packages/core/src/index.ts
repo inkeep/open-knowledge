@@ -462,6 +462,7 @@ export {
   composeCreatePrompt,
   composeEmptySpacePrompt,
   composeFilePrompt,
+  composeFixAllProblemsPrompt,
   composeFolderPrompt,
   composeLintFixPrompt,
   composeSelectionPrompt,

@@ -169,38 +169,146 @@ function CreatePageButton({
   );
 }
 
-/** "Fix all" action shared by both scopes — same look, same position in the
- *  actions row; only the click handler's blast radius differs. The label
- *  carries the deterministically-fixable problem count so the click's effect
- *  is sized before it happens; `children` overrides it (sweep progress). */
-function FixAllButton({
+/**
+ * Wraps a possibly-disabled action in a tooltip. A disabled button emits no
+ * pointer events, so the trigger hangs off a wrapper span that still receives
+ * hover — the whole point here is explaining why Auto-fix is greyed out, which
+ * is exactly when the button itself cannot report it. Keyboard users get the
+ * same reason from the button's own `aria-label`, since the tooltip describes
+ * the span rather than the control.
+ */
+function ActionTooltip({
+  tip,
+  testId,
+  children,
+}: {
+  tip: ReactNode;
+  testId: string;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {/* `shrink-0` rides the span, not the button: the span is what the
+            actions row lays out, so without it a narrow rail squeezes the
+            wrapper and truncates the label the count lives in. */}
+        <span className="inline-flex shrink-0">{children}</span>
+      </TooltipTrigger>
+      <TooltipContent data-testid={testId}>{tip}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Deterministic-fix action shared by both scopes — same look, same position in
+ *  the actions row; only the click handler's blast radius differs. "Auto-fix"
+ *  names the mechanism, so it reads as distinct from the AI action beside it
+ *  rather than as a smaller version of it; the count sizes the click before it
+ *  happens. `children` overrides the label (sweep progress). */
+function AutoFixButton({
   count,
+  problemCount,
+  aiAvailable,
   disabled,
   onClick,
   children,
 }: {
   count: number;
+  problemCount: number;
+  aiAvailable: boolean;
   disabled: boolean;
   onClick: () => void;
   children?: ReactNode;
 }) {
   const { t } = useLingui();
   return (
-    <Button
-      size="sm"
-      variant="ghost"
-      className="h-6 shrink-0 px-2 text-xs"
-      disabled={disabled}
-      onClick={onClick}
-      // When `children` is present (project sweep: "Fixing 3/10"), drop the
-      // static label so the visible progress text is the accessible name —
-      // otherwise the aria-label would override it and freeze the announcement.
-      aria-label={children === undefined ? t`Fix all ${count} fixable problems` : undefined}
-      data-testid="problems-fix-all"
+    <ActionTooltip
+      testId="problems-auto-fix-tip"
+      tip={
+        count > 0 ? (
+          <Plural
+            value={count}
+            one="Instantly fixes the # problem that has a known automatic fix."
+            other="Instantly fixes the # problems that have a known automatic fix."
+          />
+        ) : problemCount === 0 ? (
+          // Deliberately state-agnostic: the project scope also reports zero
+          // problems while its audit is loading, idle, or failed, so this must
+          // hold without claiming the list is clean.
+          <Trans>Auto-fix applies only to problems with a known mechanical fix.</Trans>
+        ) : aiAvailable ? (
+          <Trans>None of these problems have an automatic fix. Try Fix all with AI.</Trans>
+        ) : (
+          <Trans>None of these problems have an automatic fix.</Trans>
+        )
+      }
     >
-      <Wrench aria-hidden="true" className="size-3" />
-      {children ?? <Trans>Fix all ({count})</Trans>}
-    </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-6 shrink-0 px-2 text-xs"
+        disabled={disabled}
+        onClick={onClick}
+        // When `children` is present (project sweep: "Fixing 3/10"), drop the
+        // static label so the visible progress text is the accessible name —
+        // otherwise the aria-label would override it and freeze the announcement.
+        // A disabled button spells its reason out instead: the tooltip describes
+        // the wrapper span, so the name is all a screen-reader user gets from
+        // the control. Everything else falls back to the visible label.
+        aria-label={
+          children !== undefined
+            ? undefined
+            : problemCount === 0
+              ? t`Auto-fix — nothing to fix`
+              : count === 0
+                ? t`Auto-fix — no problems here have an automatic fix`
+                : undefined
+        }
+        data-testid="problems-auto-fix"
+      >
+        <Wrench aria-hidden="true" className="size-3" />
+        {children ?? <Trans>Auto-fix ({count})</Trans>}
+      </Button>
+    </ActionTooltip>
+  );
+}
+
+/** Bulk AI hand-off beside Auto-fix. Counts EVERY problem, not the complement
+ *  of the auto-fixable ones: the two buttons are "the mechanical subset" and
+ *  "the whole list", so the user picks a lane instead of reasoning about which
+ *  problems fall in which set. Clicking Auto-fix first simply leaves this one
+ *  pointed at what survived. */
+function FixWithAiButton({
+  count,
+  disabled,
+  onClick,
+}: {
+  count: number;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <ActionTooltip
+      testId="problems-fix-with-ai-tip"
+      tip={
+        <Plural
+          value={count}
+          one="Hands the # problem to your AI agent, including what has no automatic fix."
+          other="Hands all # problems to your AI agent, including what has no automatic fix."
+        />
+      }
+    >
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-6 shrink-0 px-2 text-xs"
+        disabled={disabled}
+        onClick={onClick}
+        data-testid="problems-fix-with-ai"
+      >
+        <Sparkles aria-hidden="true" className="size-3" />
+        <Trans>Fix all with AI ({count})</Trans>
+      </Button>
+    </ActionTooltip>
   );
 }
 
@@ -219,8 +327,9 @@ export function ProblemsPanel({
   docName,
   diagnostics,
   onFix,
-  onFixAll,
+  onAutoFix,
   onAskAi,
+  onFixWithAi,
 }: {
   docName: string;
   /** Live lint diagnostics for the open doc PLUS its broken-link findings —
@@ -230,13 +339,18 @@ export function ProblemsPanel({
    *  (e.g. unit harness), fixable rows render no Fix button. */
   onFix?: (diagnostic: DiagnosticLike) => void;
   /** Apply every fixable diagnostic's auto-fix in this doc. When absent, the
-   *  doc-scope Fix all button is not rendered. */
-  onFixAll?: () => void;
+   *  doc-scope Auto-fix button is not rendered. */
+  onAutoFix?: () => void;
   /** Hand one diagnostic to the docked terminal's agent as a grounded fix
    *  prompt. Desktop-only — absent on web, where rows render no Ask AI button.
    *  Offered on every row, fixable or not: AI is most useful exactly where no
    *  deterministic fix exists. */
   onAskAi?: (diagnostic: DiagnosticLike) => void;
+  /** Hand this scope's problems to the agent in one prompt. Passes only the
+   *  scope: the prompt names it and the agent reads its own list, so the panel
+   *  ships no diagnostics. The caller composes and dispatches, so the panel
+   *  needs no opinion about which agent receives it. Desktop-only, as `onAskAi`. */
+  onFixWithAi?: (scope: PanelScope) => void;
 }) {
   const { t } = useLingui();
   const [scope, setScope] = useState<PanelScope>('doc');
@@ -269,6 +383,7 @@ export function ProblemsPanel({
   }, []);
 
   const sorted = [...diagnostics].sort(compareDiagnostics);
+  const docFixableCount = countFixable(sorted);
 
   /**
    * One-shot fix for a dead link: create the missing target page (the same
@@ -454,15 +569,29 @@ export function ProblemsPanel({
             )
           ) : (
             <>
-              {onFixAll !== undefined && (
-                <div className="flex items-center justify-end gap-2 px-2 pb-1">
-                  <FixAllButton
-                    count={countFixable(sorted)}
-                    disabled={countFixable(sorted) === 0}
-                    onClick={onFixAll}
-                  />
+              {onAutoFix !== undefined || onFixWithAi !== undefined ? (
+                // Wraps rather than clips: the buttons are `shrink-0` so their
+                // counts stay readable, which in a hand-narrowed rail means the
+                // second one drops to its own right-aligned line.
+                <div className="flex flex-wrap items-center justify-end gap-1 px-2 pb-1">
+                  {onAutoFix !== undefined && (
+                    <AutoFixButton
+                      count={docFixableCount}
+                      problemCount={sorted.length}
+                      aiAvailable={onFixWithAi !== undefined}
+                      disabled={docFixableCount === 0}
+                      onClick={onAutoFix}
+                    />
+                  )}
+                  {onFixWithAi !== undefined && (
+                    <FixWithAiButton
+                      count={sorted.length}
+                      disabled={false}
+                      onClick={() => onFixWithAi('doc')}
+                    />
+                  )}
                 </div>
-              )}
+              ) : null}
               <ul aria-label={t`Problems`} className="flex flex-col gap-0.5">
                 {sorted.map((diagnostic) => {
                   const displayLine = diagnostic.range.start.line + 1;
@@ -541,8 +670,18 @@ export function ProblemsPanel({
           onRefresh={() => void loadAudit()}
           onNavigate={handleProjectNav}
           fixableCount={projectFixableFiles.reduce((n, f) => n + countFixable(f.diagnostics), 0)}
+          problemCount={
+            audit.status === 'loaded'
+              ? audit.result.files.reduce((n, f) => n + f.diagnostics.length, 0)
+              : 0
+          }
           fixing={projectFixing}
-          onFixAll={() => void fixAllProjectFiles()}
+          onAutoFix={() => void fixAllProjectFiles()}
+          onFixWithAi={
+            onFixWithAi === undefined || audit.status !== 'loaded'
+              ? undefined
+              : () => onFixWithAi('project')
+          }
           onCreateTarget={pageList !== null ? (d) => void createLinkTarget(d) : undefined}
           creatingTarget={creatingTarget}
         />
@@ -556,8 +695,10 @@ function ProjectAuditBody({
   onRefresh,
   onNavigate,
   fixableCount,
+  problemCount,
   fixing,
-  onFixAll,
+  onAutoFix,
+  onFixWithAi,
   onCreateTarget,
   creatingTarget,
 }: {
@@ -565,11 +706,16 @@ function ProjectAuditBody({
   onRefresh: () => void;
   onNavigate: (filePath: string, diagnostic: DiagnosticLike) => void;
   /** Auto-fixable diagnostics across the loaded audit (same unit the doc
-   *  scope's Fix all counts — problems, not files). */
+   *  scope's Auto-fix counts — problems, not files). */
   fixableCount: number;
-  /** Sweep progress while a project Fix all is running, else null. */
+  /** Every diagnostic across the loaded audit, fixable or not. */
+  problemCount: number;
+  /** Sweep progress while a project auto-fix is running, else null. */
   fixing: { done: number; total: number } | null;
-  onFixAll: () => void;
+  onAutoFix: () => void;
+  /** Hand the whole audit to the agent; absent on web and until the audit
+   *  loads (there is nothing to describe before then). */
+  onFixWithAi?: () => void;
   /** Create a dead-link row's missing target page; absent in bare harnesses. */
   onCreateTarget?: (diagnostic: DiagnosticLike) => void;
   creatingTarget: string | null;
@@ -578,37 +724,26 @@ function ProjectAuditBody({
   const loading = audit.status === 'loading' || audit.status === 'idle';
   return (
     <PanelBody className="px-2 py-2" data-testid="problems-project-scope">
-      <div className="flex items-center justify-between gap-2 px-2 pb-1">
-        <p className="text-xs text-muted-foreground" data-testid="problems-audit-summary">
-          {audit.status === 'loaded' && (
-            <>
-              <Plural value={audit.result.errorCount} one="# error" other="# errors" />
-              {' · '}
-              <Plural value={audit.result.warningCount} one="# warning" other="# warnings" />
-            </>
-          )}
-        </p>
-        <div className="flex shrink-0 items-center gap-1">
-          {/* The Fix all button is disabled during a sweep, so AT can't focus it
-              to hear the "Fixing N/M" progress — announce it from a live region
-              instead. Rendered only while sweeping so it never coexists with the
-              loading skeleton's own role="status". */}
-          {fixing !== null ? (
-            <span className="sr-only" role="status">
-              {t`Fixing ${fixing.done} of ${fixing.total} files`}
-            </span>
-          ) : null}
-          <FixAllButton
-            count={fixableCount}
-            disabled={loading || fixing !== null || fixableCount === 0}
-            onClick={onFixAll}
+      {/* Two rows, not one: the count summary plus two labelled actions plus
+          refresh need ~400px, and the rail is narrower than that — on one row
+          the buttons (deliberately `shrink-0`, so a count is never truncated)
+          squeezed the summary into a three-line wrap mid-phrase. Refresh rides
+          with the summary because both concern the audit data rather than the
+          problems, which also leaves the action row matching the doc scope's. */}
+      <div className="flex flex-col gap-1 px-2 pb-1">
+        <div className="flex items-center justify-between gap-2">
+          <p
+            className="min-w-0 truncate text-xs text-muted-foreground"
+            data-testid="problems-audit-summary"
           >
-            {fixing !== null ? (
-              <Trans>
-                Fixing {fixing.done}/{fixing.total}
-              </Trans>
-            ) : undefined}
-          </FixAllButton>
+            {audit.status === 'loaded' && (
+              <>
+                <Plural value={audit.result.errorCount} one="# error" other="# errors" />
+                {' · '}
+                <Plural value={audit.result.warningCount} one="# warning" other="# warnings" />
+              </>
+            )}
+          </p>
           <Button
             variant="ghost"
             size="icon"
@@ -620,6 +755,39 @@ function ProjectAuditBody({
           >
             <RefreshCw aria-hidden="true" className="size-3.5" />
           </Button>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-1">
+          {/* The Auto-fix button is disabled during a sweep, so AT can't focus it
+              to hear the "Fixing N/M" progress — announce it from a live region
+              instead. Rendered only while sweeping so it never coexists with the
+              loading skeleton's own role="status". */}
+          {fixing !== null ? (
+            <span className="sr-only" role="status">
+              {t`Fixing ${fixing.done} of ${fixing.total} files`}
+            </span>
+          ) : null}
+          <AutoFixButton
+            count={fixableCount}
+            problemCount={problemCount}
+            aiAvailable={onFixWithAi !== undefined}
+            disabled={loading || fixing !== null || fixableCount === 0}
+            onClick={onAutoFix}
+          >
+            {fixing !== null ? (
+              <Trans>
+                Fixing {fixing.done}/{fixing.total}
+              </Trans>
+            ) : undefined}
+          </AutoFixButton>
+          {onFixWithAi !== undefined && problemCount > 0 ? (
+            <FixWithAiButton
+              count={problemCount}
+              // The sweep rewrites the same files this would hand over, so a
+              // mid-sweep hand-off would describe problems that are already gone.
+              disabled={fixing !== null}
+              onClick={onFixWithAi}
+            />
+          ) : null}
         </div>
       </div>
 

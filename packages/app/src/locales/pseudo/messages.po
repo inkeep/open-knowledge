@@ -354,6 +354,14 @@ msgstr ""
 msgid "{count, plural, one {# more participant} other {# more participants}}"
 msgstr ""
 
+#: src/components/ProblemsPanel.tsx
+msgid "{count, plural, one {Hands the # problem to your AI agent, including what has no automatic fix.} other {Hands all # problems to your AI agent, including what has no automatic fix.}}"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "{count, plural, one {Instantly fixes the # problem that has a known automatic fix.} other {Instantly fixes the # problems that have a known automatic fix.}}"
+msgstr ""
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "{count, plural, one {matches # file} other {matches # files}}"
 msgstr ""
@@ -1304,6 +1312,22 @@ msgstr ""
 
 #: src/components/acp/ThreadView.tsx
 msgid "Auto-denied"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "Auto-fix — no problems here have an automatic fix"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "Auto-fix — nothing to fix"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "Auto-fix ({count})"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "Auto-fix applies only to problems with a known mechanical fix."
 msgstr ""
 
 #: src/components/FolderTimelineCard.tsx
@@ -4281,11 +4305,7 @@ msgid "Fix {flatId}"
 msgstr ""
 
 #: src/components/ProblemsPanel.tsx
-msgid "Fix all ({count})"
-msgstr ""
-
-#: src/components/ProblemsPanel.tsx
-msgid "Fix all {count} fixable problems"
+msgid "Fix all with AI ({count})"
 msgstr ""
 
 #: src/components/settings/AttachmentsSection.tsx
@@ -6279,6 +6299,14 @@ msgstr ""
 
 #: src/components/settings/SyncSection.tsx
 msgid "None"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "None of these problems have an automatic fix."
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "None of these problems have an automatic fix. Try Fix all with AI."
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx

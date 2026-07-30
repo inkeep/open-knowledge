@@ -9,6 +9,7 @@ import {
   composeCreatePrompt,
   composeEmptySpacePrompt,
   composeFilePrompt,
+  composeFixAllProblemsPrompt,
   composeFolderPrompt,
   composeLintFixPrompt,
   composeSelectionPrompt,
@@ -1666,4 +1667,46 @@ test('composeLintFixPrompt sanitizes the @-mention path like the selection compo
   });
   // Whitespace + zero-width bytes collapse so the mention stays one token.
   expect(prompt).toContain('@my_docs/note_.md');
+});
+
+// --- composeFixAllProblemsPrompt ---------------------------------------------
+
+test('composeFixAllProblemsPrompt names the doc scope and points at audit', () => {
+  const prompt = composeFixAllProblemsPrompt('guides/setup.md');
+  expect(prompt).toContain('Fix every problem in @guides/setup.md using OpenKnowledge.');
+  expect(prompt).toContain('Run the `audit` tool scoped to it');
+  expect(prompt).toContain('lint violations and broken links');
+  expect(prompt).toContain('re-audit @guides/setup.md until it reports no problems');
+  // The mechanically-fixable subset is a tool call, not hand-editing.
+  expect(prompt).toContain('`lint` tool with `fix: true`');
+});
+
+test('composeFixAllProblemsPrompt names the project scope with no doc mention', () => {
+  const prompt = composeFixAllProblemsPrompt(null);
+  expect(prompt).toContain(
+    "Fix every problem across this project's documents using OpenKnowledge.",
+  );
+  expect(prompt).toContain('Run the `audit` tool for the current list');
+  // `lint` rejects fix:true without a document, so the project variant must not
+  // imply one bulk autofix call.
+  expect(prompt).toContain('work file by file');
+  expect(prompt).toContain("clears one document's mechanically-fixable problems at a time");
+  expect(prompt).not.toContain('@');
+});
+
+test('composeFixAllProblemsPrompt enumerates no diagnostics in either scope', () => {
+  for (const prompt of [composeFixAllProblemsPrompt('a.md'), composeFixAllProblemsPrompt(null)]) {
+    // No per-problem lines, so no doc-derived text reaches the instruction plane
+    // and no truncation bound is needed.
+    expect(prompt).not.toContain('>');
+    expect(prompt).not.toMatch(/line \d+, column \d+/);
+    // Small enough that the terminal argv budget is not in play at all.
+    expect(quotedByteLength(prompt)).toBeLessThan(1000);
+  }
+});
+
+test('composeFixAllProblemsPrompt sanitizes the @-mention path', () => {
+  const prompt = composeFixAllProblemsPrompt('my docs/note\u200b.md');
+  expect(prompt).toContain('@my_docs/note_.md');
+  expect(prompt).not.toContain('@my docs/');
 });
