@@ -36,13 +36,15 @@ import {
 // Kept to a single block so the violation maps to one line/node.
 const HARD_TAB_BODY = '# Heading\n\n\tindented with a hard tab\n';
 const CLEAN_BODY = '# Heading\n\nA clean paragraph with no violations.\n';
-const MD010 = 'markdownlint/MD010';
+// The Problems row names its producing plugin in the chip, so the subline
+// carries the bare rule code rather than a `source/code` pair.
+const MD010 = 'MD010';
 // An H1 followed by an H3 skips a level → MD001 (heading-increment). The hard
 // tab keeps a second, independent violation in the doc so "MD010 still fires"
 // is the positive signal that a re-lint ran with the new config (an MD001
 // zero-count alone would also pass against a dead linter).
 const MD001_AND_TAB_BODY = '# Heading\n\n### Skipped level\n\n\tindented with a hard tab\n';
-const MD001 = 'markdownlint/MD001';
+const MD001 = 'MD001';
 
 /** Switch to source mode and wait for CodeMirror to paint. */
 async function switchToSource(page: Page) {
@@ -503,7 +505,7 @@ test.describe('markdown lint — WYSIWYG block decorations + navigation', () => 
     const tallBody = `# Top heading\n\n${filler}\n\nParagraph with trailing spaces here.   \n\n### Bottom heading\n`;
     await seed(api, testDocName, tallBody);
     await openProblemsTab(page);
-    await expect(page.getByText('markdownlint/MD009')).toBeVisible();
+    await expect(page.getByText('MD009')).toBeVisible();
 
     const scroller = page.getByTestId('editor-scroll-container');
     await expect(scroller).toBeVisible();
@@ -555,7 +557,7 @@ test.describe('markdown lint — WYSIWYG block decorations + navigation', () => 
     await seed(api, testDocName, tallBody);
     await switchToSource(page);
     await openProblemsTab(page);
-    await expect(page.getByText('markdownlint/MD009')).toBeVisible();
+    await expect(page.getByText('MD009')).toBeVisible();
 
     const scroller = page.getByTestId('editor-scroll-container');
     await expect(scroller).toBeVisible();
@@ -575,7 +577,7 @@ test.describe('markdown lint — WYSIWYG block decorations + navigation', () => 
   }) => {
     await seed(api, testDocName, MD009_BODY);
     await openProblemsTab(page);
-    await expect(page.getByText('markdownlint/MD009')).toBeVisible();
+    await expect(page.getByText('MD009')).toBeVisible();
 
     await page.locator('ul[aria-label="Problems"] > li button').first().click();
 
@@ -661,13 +663,13 @@ test.describe('markdown lint — auto-fix', () => {
   }) => {
     await seed(api, testDocName, FIXABLE_BODY);
     await openProblemsTab(page);
-    await expect(page.getByText('markdownlint/MD009')).toBeVisible();
+    await expect(page.getByText('MD009')).toBeVisible();
     const fix = page.getByTestId('problems-fix').first();
     await expect(fix).toBeAttached();
     await fix.click();
     // The write lands on Y.Text('source'); useDocDiagnostics re-lints and the
     // row disappears, and the WYSIWYG squiggle clears without navigating.
-    await expect(page.getByText('markdownlint/MD009')).toHaveCount(0);
+    await expect(page.getByText('MD009')).toHaveCount(0);
     await expect(page.getByText('No problems found')).toBeVisible();
     await expect(page.locator('.ProseMirror .ok-lint-block')).toHaveCount(0);
   });

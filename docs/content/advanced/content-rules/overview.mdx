@@ -18,6 +18,8 @@ This page covers what's the same whatever linter runs; each linter's page covers
   - **This doc** — live diagnostics for the open document, in both WYSIWYG and source mode. Click a problem to jump to it: source mode lands on the exact line and column, WYSIWYG scrolls to the block it falls in.
   - **Project** — an on-demand audit of every in-scope document. It runs when you first open the scope and on the refresh button — never in the background. Results group per file with error/warning totals; configuration problems (a malformed config file, a broken `extends`) surface at the top. Clicking a problem opens the offending doc at that position.
 
+In both scopes, each row tags the validator that produced it in uppercase — for example `MARKDOWNLINT`, `FRONTMATTER`, or `LINKS` — next to the rule code, and a finding that repeats collapses into one row with an instance count you can expand to reach the individual lines.
+
 The panel is also available in [single-file sessions](/docs/features/editor#open-a-single-file) (`ok <file>`).
 
 ## Enabling a linter

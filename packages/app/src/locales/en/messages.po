@@ -209,6 +209,11 @@ msgstr "{0, plural, one {No problems across # document.} other {No problems acro
 msgid "{0} added, {1} removed"
 msgstr "{0} added, {1} removed"
 
+#. placeholder {0}: diagnostic.message
+#: src/components/ProblemsPanel.tsx
+msgid "{0} at line {displayLine}"
+msgstr "{0} at line {displayLine}"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} can't continue this conversation — the transcript is kept, but the agent session is gone."
@@ -457,6 +462,10 @@ msgstr "{hours}h ago"
 #: src/components/TimelinePanel.tsx
 msgid "{hrs}h ago"
 msgstr "{hrs}h ago"
+
+#: src/components/ProblemsPanel.tsx
+msgid "{instanceCount, plural, one {# instance} other {# instances}}"
+msgstr "{instanceCount, plural, one {# instance} other {# instances}}"
 
 #: src/components/PropertyWidgets.tsx
 msgid "{keyName} type: {typeLabel} (inherited from folder properties; not editable here)"
@@ -4583,14 +4592,16 @@ msgstr "Go back"
 msgid "Go to line"
 msgstr "Go to line"
 
+#. placeholder {0}: diagnostic.range.start.line + 1
 #: src/components/ProblemsPanel.tsx
-msgid "Go to line {displayLine}"
-msgstr "Go to line {displayLine}"
+msgid "Go to line {0}"
+msgstr "Go to line {0}"
 
-#. placeholder {0}: file.file
+#. placeholder {0}: diagnostic.range.start.line + 1
+#. placeholder {1}: file.file
 #: src/components/ProblemsPanel.tsx
-msgid "Go to line {displayLine} in {0}"
-msgstr "Go to line {displayLine} in {0}"
+msgid "Go to line {0} in {1}"
+msgstr "Go to line {0} in {1}"
 
 #: src/components/FeedbackForm.tsx
 msgid "Good"
@@ -5269,10 +5280,6 @@ msgstr "Light, dark, or follow the OS."
 msgid "line {displayLine}"
 msgstr "line {displayLine}"
 
-#: src/components/ProblemsPanel.tsx
-msgid "link"
-msgstr "link"
-
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 #: src/editor/slash-command/component-items.tsx
 msgid "Link"
@@ -5318,10 +5325,6 @@ msgstr "Links"
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Links & images"
 msgstr "Links & images"
-
-#: src/components/ProblemsPanel.tsx
-msgid "lint"
-msgstr "lint"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Lint plugins — which rule families run and their per-rule settings — are configured on their own tab under This project → Plugins."
@@ -6392,6 +6395,11 @@ msgstr "Numbered list of items."
 msgid "Object"
 msgstr "Object"
 
+#. placeholder {0}: first.message
+#: src/components/ProblemsPanel.tsx
+msgid "Occurrences of {0}"
+msgstr "Occurrences of {0}"
+
 #. placeholder {0}: basenameOf(project.mainRoot ?? '')
 #: src/components/NavigatorApp.tsx
 msgid "of {0}"
@@ -7388,6 +7396,10 @@ msgstr "Re-authenticate with GitHub Enterprise Server"
 msgid "Re-embedding happens as searches run, so coverage restarts at zero and refills."
 msgstr "Re-embedding happens as searches run, so coverage restarts at zero and refills."
 
+#: src/components/ProblemsPanel.tsx
+msgid "Re-run the project audit"
+msgstr "Re-run the project audit"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
@@ -7464,10 +7476,6 @@ msgstr "Redo"
 #: src/components/BugReportHistory.tsx
 msgid "Reference <0>{0}</0>"
 msgstr "Reference <0>{0}</0>"
-
-#: src/components/ProblemsPanel.tsx
-msgid "Refresh audit"
-msgstr "Refresh audit"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/settings/IntegrationsSection.tsx

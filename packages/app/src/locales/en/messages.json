@@ -789,6 +789,7 @@
     "EOjU5V": ["Inline Math Properties"],
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " tokens used"],
     "ETyvvg": ["No language match."],
+    "EUiJEM": ["Occurrences of ", ["0"]],
     "EWCJFu": ["Created ", ["target"]],
     "EWPtMO": ["Code"],
     "EWX92Z": ["Collapse Ask AI"],
@@ -1001,6 +1002,7 @@
     "I5685_": ["Try a prompt"],
     "I5AfhE": ["Sync status unavailable — server unreachable."],
     "I7Exsw": ["Follow us on X"],
+    "I7y_vn": ["Re-run the project audit"],
     "IA1wNb": ["The Claude Desktop App didn't open the file. Is it installed? (", ["msg"], ")"],
     "IA6JW2": ["Detecting"],
     "ICoNYz": ["You can also manage this in Settings."],
@@ -1153,7 +1155,6 @@
     "Lcehxn": ["Save resolution"],
     "LdABLa": ["Could not open ", ["target"], ". Try opening it manually."],
     "LdKIHS": ["Draft a spec"],
-    "LdyooL": ["link"],
     "LeGeTf": ["OpenKnowledge on GitHub"],
     "LhQlGR": [
       "This project is running an older version of OpenKnowledge (v",
@@ -1524,7 +1525,6 @@
     "SItQRc": ["How do you like OpenKnowledge?"],
     "SOPwPh": ["Restore to this edit"],
     "SQWJ-i": ["Restore sessions"],
-    "STOrpI": ["lint"],
     "STTOnz": [["keyName"], " type: complex value (nested; read-only)"],
     "SUOoXn": ["Failed to open project."],
     "SVLPt5": [["formatted"], " GitHub stars"],
@@ -1718,7 +1718,6 @@
     "WPwDin": ["Open folder on disk"],
     "WR0y2O": ["Share folder"],
     "WRNXKp": ["Searching"],
-    "WRdYfS": ["Refresh audit"],
     "WWcqsG": ["Start here: what this is and how it's organized."],
     "WZ-vBy": [
       "Permanently deletes <0>",
@@ -1968,7 +1967,6 @@
     "aENGMB": [
       "Semantic search adds meaning-based ranking to the search tool so conceptually-related pages surface even without shared keywords."
     ],
-    "aHPdYV": ["Go to line ", ["displayLine"]],
     "aM23Wr": ["page-name"],
     "aOp3hw": ["Couldn't move to Trash"],
     "aQD_86": ["Failed to update the embeddings provider — ", ["detail"]],
@@ -2400,6 +2398,9 @@
     "iSnkwB": ["Failed to open cloned project."],
     "iTylMl": ["Templates"],
     "iXTp5j": ["Scope: "],
+    "iZCZmF": [
+      ["instanceCount", "plural", { "one": ["#", " instance"], "other": ["#", " instances"] }]
+    ],
     "idD8Ev": ["Saved"],
     "idni-S": ["Values for ", ["keyName"]],
     "ig5vUe": ["Failed to load file"],
@@ -2493,7 +2494,6 @@
     ],
     "kCjkGY": ["This may take a moment. Your markdown content is kept."],
     "kCqCyf": ["Open CodeMirror's lint diagnostics panel."],
-    "kDwcbW": ["Go to line ", ["displayLine"], " in ", ["0"]],
     "kFLlsI": ["Insert a footnote reference + matching definition stub."],
     "kLv8d3": [
       "Your copy of branch <0>",
@@ -3038,6 +3038,7 @@
     "uA_jXp": ["Switch and update branch"],
     "uBAxNB": ["Editor"],
     "uCaIdy": ["GitHub sign-in is missing or expired. Reconnect to resume syncing."],
+    "uCe4AX": [["0"], " at line ", ["displayLine"]],
     "uDlyqd": [
       "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
     ],
@@ -3118,6 +3119,7 @@
       "). Check the API key and the model id."
     ],
     "vbK_ZG": ["Files sidebar"],
+    "vbMHjo": ["Go to line ", ["0"]],
     "ve8vEM": ["Code expired — please try again"],
     "vfRlCI": ["Could not copy full path"],
     "vfWA_g": ["You picked ~/Desktop. OpenKnowledge will index everything on your desktop."],
@@ -3212,6 +3214,7 @@
     "xG4tb6": ["Lost connection to \"", ["docName"], "\"."],
     "xHGM4U": ["Hide HTML preview"],
     "xK291b": ["Two-page (odd)"],
+    "xKDsGS": ["Go to line ", ["0"], " in ", ["1"]],
     "xMsnTe": ["Send & continue"],
     "xNyj3h": ["Reinstall for Claude Chat & Cowork"],
     "xOTzt5": ["just now"],

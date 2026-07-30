@@ -103,13 +103,16 @@ test.describe('unified Problems — project scope', () => {
     await expect(page.getByText(`${lintDocName}.md`)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(`${linkDocName}.md`)).toBeVisible();
 
-    // Rows are source-tagged: at least one lint chip and one link chip.
+    // Rows name their producing validator, not a generic category.
     const tags = page.getByTestId('problems-source-tag');
-    await expect(tags.filter({ hasText: 'lint' }).first()).toBeVisible();
-    await expect(tags.filter({ hasText: 'link' }).first()).toBeVisible();
+    await expect(tags.filter({ hasText: 'markdownlint' }).first()).toBeVisible();
+    await expect(tags.filter({ hasText: 'links' }).first()).toBeVisible();
 
-    // The dead link names its unresolved target and reads as links/dead-link.
-    await expect(page.getByText('links/dead-link').first()).toBeVisible();
+    // The chip carries the producer, so the subline shows the bare rule code.
+    await expect(page.getByText('dead-link').first()).toBeVisible();
+    // `getByText` substring-matches by default, so asserting `dead-link` alone
+    // also passes against the old `links/dead-link`. Pin the absence too.
+    await expect(page.getByText('links/dead-link')).toHaveCount(0);
   });
 });
 

@@ -486,14 +486,178 @@ describe('ProblemsPanel', () => {
     }
   });
 
-  test('every row carries a source tag: lint for validators, link for dead links', () => {
+  test('every row names the validator that produced it, not a generic category', () => {
     render(
-      <ProblemsPanel docName="notes" diagnostics={[diag({ line: 2 }), linkDiag({ line: 5 })]} />,
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[
+          diag({ line: 2 }),
+          diag({ line: 3, source: 'frontmatter', code: 'required', message: 'Missing title' }),
+          linkDiag({ line: 5 }),
+        ]}
+      />,
     );
     const tags = screen.getAllByTestId('problems-source-tag');
-    expect(tags).toHaveLength(2);
-    expect(tags[0]?.textContent).toBe('lint');
-    expect(tags[1]?.textContent).toBe('link');
+    // Each chip is the producing validator's own name, not a shared "lint"
+    // label — so two different validators read as two distinct chips.
+    expect(tags.map((tag) => tag.textContent)).toEqual(['markdownlint', 'frontmatter', 'links']);
+    // The chip carries the producer, so the subline drops the duplicate prefix
+    // and shows the bare rule code.
+    const row = screen.getByRole('button', { name: /Hard tabs/ });
+    expect(row.textContent).toContain('MD010 · line 2');
+    expect(row.textContent).not.toContain('markdownlint/MD010');
+  });
+
+  test('repeated findings collapse into one row with an instance count', () => {
+    const repeated = [4, 9, 12].map((line) =>
+      diag({
+        line,
+        source: 'frontmatter',
+        code: 'required',
+        message: 'Frontmatter property is missing',
+      }),
+    );
+    render(<ProblemsPanel docName="notes" diagnostics={[...repeated, diag({ line: 2 })]} />);
+    // One collapsed group for the repeat, one plain row for the singleton.
+    const groups = screen.getAllByTestId('problems-duplicate-group');
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.textContent).toContain('3 instances');
+    // Collapsed by default: the occurrences are not in the tree yet.
+    expect(screen.queryByTestId('problems-duplicate-instances')).toBeNull();
+    // The message appears once, not three times.
+    expect(screen.getAllByText('Frontmatter property is missing')).toHaveLength(1);
+    // The collapsed header's subline shows the bare rule code — a group spans
+    // many lines, so it names none of them.
+    expect(groups[0]?.textContent).toContain('required');
+    expect(groups[0]?.textContent).not.toMatch(/line \d/);
+  });
+
+  test('expanding a group lists each occurrence, and one click jumps to its line', () => {
+    let received: { line: number; column: number } | null = null;
+    const listener = (e: Event) => {
+      received = (e as CustomEvent<{ line: number; column: number }>).detail;
+    };
+    window.addEventListener(LINT_NAV_EVENT, listener);
+    try {
+      render(
+        <ProblemsPanel
+          docName="notes"
+          diagnostics={[4, 9].map((line) => diag({ line, message: 'Hard tabs' }))}
+        />,
+      );
+      fireEvent.click(
+        screen.getByTestId('problems-duplicate-group').querySelector('button') as HTMLElement,
+      );
+      const occurrences = screen
+        .getByTestId('problems-duplicate-instances')
+        .querySelectorAll('button');
+      expect(occurrences).toHaveLength(2);
+      // Each occurrence keeps the message in its accessible name so it still
+      // reads as a whole finding out of list context.
+      expect(occurrences[1]?.getAttribute('aria-label')).toBe('Hard tabs at line 9');
+      fireEvent.click(occurrences[1] as HTMLElement);
+      expect(received).toEqual({ line: 9, column: 1 });
+    } finally {
+      window.removeEventListener(LINT_NAV_EVENT, listener);
+    }
+  });
+
+  test('an expanded occurrence keeps its own Fix action', () => {
+    const fixAt = (line: number) =>
+      diag({
+        line,
+        fixes: [
+          {
+            range: {
+              start: { line: line - 1, character: 0 },
+              end: { line: line - 1, character: 1 },
+            },
+            newText: '  ',
+          },
+        ],
+      });
+    const onFix = vi.fn(() => {});
+    render(<ProblemsPanel docName="notes" diagnostics={[fixAt(4), fixAt(9)]} onFix={onFix} />);
+    // Collapsed, the group header carries no per-occurrence Fix.
+    expect(screen.queryByTestId('problems-fix')).toBeNull();
+    fireEvent.click(
+      screen.getByTestId('problems-duplicate-group').querySelector('button') as HTMLElement,
+    );
+    const fixButtons = screen.getAllByTestId('problems-fix');
+    expect(fixButtons).toHaveLength(2);
+    fixButtons[1]?.click();
+    expect(onFix).toHaveBeenCalledTimes(1);
+    expect((onFix.mock.calls[0] as unknown[])[0]).toMatchObject({
+      range: { start: { line: 8, character: 0 } },
+    });
+  });
+
+  test('an expanded group exposes an Ask AI action per occurrence', () => {
+    const onAskAi = vi.fn(() => {});
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[4, 9].map((line) => diag({ line, message: 'Hard tabs' }))}
+        onAskAi={onAskAi}
+      />,
+    );
+    // Collapsed, the group header carries no per-occurrence Ask AI.
+    expect(screen.queryByTestId('problems-ask-ai')).toBeNull();
+    fireEvent.click(
+      screen.getByTestId('problems-duplicate-group').querySelector('button') as HTMLElement,
+    );
+    // One Ask AI per expanded occurrence — the grouped path renders the same
+    // per-occurrence actions as an ungrouped row.
+    expect(screen.getAllByTestId('problems-ask-ai')).toHaveLength(2);
+  });
+
+  test('same message from different rules stays ungrouped', () => {
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[
+          diag({ line: 2, code: 'MD010', message: 'Same text' }),
+          diag({ line: 5, code: 'MD012', message: 'Same text' }),
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId('problems-duplicate-group')).toBeNull();
+    expect(screen.getAllByText('Same text')).toHaveLength(2);
+  });
+
+  test('dead links to different targets stay ungrouped', () => {
+    const deadLinkTo = (line: number, target: string) => ({
+      ...linkDiag({ line }),
+      linkTarget: target,
+      message: `Link target "${target}" does not resolve to an existing document.`,
+    });
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[deadLinkTo(2, 'alpha'), deadLinkTo(5, 'beta')]}
+      />,
+    );
+    // Same source and code (`links`/`dead-link`), different target: the key's
+    // target/message axis keeps them apart, so each keeps its own Create action.
+    expect(screen.queryByTestId('problems-duplicate-group')).toBeNull();
+    expect(screen.getAllByTestId('problems-create-page')).toHaveLength(2);
+  });
+
+  test('dead links to one target group, and each occurrence keeps its Create action', () => {
+    // Same source, code, target and message: the group key collapses them, so the
+    // Create action has to survive the grouped path, not just the plain-row one.
+    render(
+      <ProblemsPanel
+        docName="notes"
+        diagnostics={[linkDiag({ line: 3 }), linkDiag({ line: 8 })]}
+      />,
+    );
+    const group = screen.getByTestId('problems-duplicate-group');
+    // Collapsed, the header offers no per-occurrence Create.
+    expect(screen.queryByTestId('problems-create-page')).toBeNull();
+    fireEvent.click(group.querySelector('button') as HTMLElement);
+    // One Create per expanded occurrence, each carrying its own target.
+    expect(screen.getAllByTestId('problems-create-page')).toHaveLength(2);
   });
 
   test('a dead-link row offers the one-shot Create page action; lint rows do not', async () => {
@@ -604,10 +768,49 @@ describe('ProblemsPanel — project scope', () => {
     await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
 
     const tags = screen.getAllByTestId('problems-source-tag');
-    expect(tags.map((tag) => tag.textContent)).toEqual(['lint', 'link']);
+    expect(tags.map((tag) => tag.textContent)).toEqual(['markdownlint', 'links']);
     // The rollup summary carries the merged plane's counts.
     expect(screen.getByTestId('problems-audit-summary').textContent).toContain('1 error');
     expect(screen.getByTestId('problems-audit-summary').textContent).toContain('1 warning');
+  });
+
+  test('repeats collapse inside a file group while the file count stays the total', async () => {
+    runLintAuditImpl = async () =>
+      auditResult({
+        files: [
+          {
+            file: 'guides/setup.md',
+            diagnostics: [2, 6, 11].map((line) =>
+              diag({ line, source: 'frontmatter', code: 'required', message: 'Missing title' }),
+            ),
+          },
+        ],
+        warningCount: 3,
+      });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
+
+    expect(screen.getAllByTestId('problems-duplicate-group')).toHaveLength(1);
+    expect(screen.getAllByText('Missing title')).toHaveLength(1);
+    // The per-file badge still counts problems, not collapsed rows.
+    expect(screen.getByTestId('problems-audit-file-count').textContent).toBe('3');
+  });
+
+  test('the refresh icon explains itself in a tooltip', async () => {
+    runLintAuditImpl = async () => auditResult({ fileCount: 2 });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    // The tooltip only opens once the audit lands — the button is disabled
+    // (and so not hoverable) while it runs.
+    await waitFor(() =>
+      expect((screen.getByTestId('problems-audit-refresh') as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    );
+    fireEvent.focus(screen.getByTestId('problems-audit-refresh'));
+    const tooltip = await screen.findByTestId('problems-audit-refresh-tooltip');
+    expect(tooltip.textContent).toContain('Re-run the project audit');
   });
 
   test('a project-scope dead-link row creates its target and re-audits the plane', async () => {
@@ -647,7 +850,7 @@ describe('ProblemsPanel — project scope', () => {
 
     runLintAuditImpl = async () =>
       auditResult({ files: [{ file: 'second.md', diagnostics: [diag({})] }] });
-    fireEvent.click(screen.getByLabelText('Refresh audit'));
+    fireEvent.click(screen.getByLabelText('Re-run the project audit'));
     await waitFor(() => expect(screen.getByText('second.md')).toBeTruthy());
     expect(auditCalls).toBe(2);
     expect(screen.queryByText('first.md')).toBeNull();
@@ -664,11 +867,15 @@ describe('ProblemsPanel — project scope', () => {
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     const status = await screen.findByRole('status');
     expect(status.getAttribute('aria-busy')).toBe('true');
-    expect((screen.getByLabelText('Refresh audit') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Re-run the project audit') as HTMLButtonElement).disabled).toBe(
+      true,
+    );
 
     resolveAudit(auditResult({ fileCount: 2 }));
     await waitFor(() => expect(screen.getByText('No problems across 2 documents.')).toBeTruthy());
-    expect((screen.getByLabelText('Refresh audit') as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByLabelText('Re-run the project audit') as HTMLButtonElement).disabled).toBe(
+      false,
+    );
   });
 
   test('a failed audit surfaces the error and refresh retries it', async () => {
@@ -681,7 +888,7 @@ describe('ProblemsPanel — project scope', () => {
 
     runLintAuditImpl = async () =>
       auditResult({ files: [{ file: 'retried.md', diagnostics: [diag({})] }] });
-    fireEvent.click(screen.getByLabelText('Refresh audit'));
+    fireEvent.click(screen.getByLabelText('Re-run the project audit'));
     await waitFor(() => expect(screen.getByText('retried.md')).toBeTruthy());
     expect(screen.queryByText('The audit could not be completed. Try again.')).toBeNull();
   });
@@ -724,6 +931,58 @@ describe('ProblemsPanel — project scope', () => {
       });
       // The in-doc nav event stays quiet on cross-doc clicks — it carries no
       // docName and would move the cursor in the doc that is still open.
+      expect(navEvents).toBe(0);
+    } finally {
+      window.removeEventListener(LINT_NAV_EVENT, listener);
+    }
+  });
+
+  test('a grouped project-scope occurrence banks the clicked line, not the group first', async () => {
+    runLintAuditImpl = async () =>
+      auditResult({
+        files: [
+          {
+            file: 'guides/setup.md',
+            diagnostics: [4, 9].map((line) =>
+              diag({
+                line,
+                source: 'frontmatter',
+                code: 'required',
+                message: 'Frontmatter property is missing',
+              }),
+            ),
+          },
+        ],
+      });
+    let navEvents = 0;
+    const listener = () => {
+      navEvents += 1;
+    };
+    window.addEventListener(LINT_NAV_EVENT, listener);
+    try {
+      render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+      fireEvent.click(screen.getByTestId('panel-scope-project'));
+      await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
+
+      // Expand the collapsed duplicate group, then click the SECOND occurrence.
+      fireEvent.click(
+        screen.getByTestId('problems-duplicate-group').querySelector('button') as HTMLElement,
+      );
+      const occurrences = screen
+        .getByTestId('problems-duplicate-instances')
+        .querySelectorAll('button');
+      expect(occurrences).toHaveLength(2);
+      fireEvent.click(occurrences[1] as HTMLElement);
+
+      // Cross-doc nav banks the intent by hash; the banked line is the clicked
+      // occurrence (9), not the group's first (4) — the click carries its own
+      // diagnostic through the project-scope onNavigate wrapper.
+      expect(window.location.hash).toBe('#/guides/setup');
+      expect(consumePendingSourceNavigation('guides/setup')).toEqual({
+        kind: 'lint',
+        detail: { line: 9, column: 1 },
+      });
+      // Cross-doc clicks stay off the in-doc event (it carries no docName).
       expect(navEvents).toBe(0);
     } finally {
       window.removeEventListener(LINT_NAV_EVENT, listener);

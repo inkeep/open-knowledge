@@ -209,6 +209,11 @@ msgstr ""
 msgid "{0} added, {1} removed"
 msgstr ""
 
+#. placeholder {0}: diagnostic.message
+#: src/components/ProblemsPanel.tsx
+msgid "{0} at line {displayLine}"
+msgstr ""
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} can't continue this conversation — the transcript is kept, but the agent session is gone."
@@ -456,6 +461,10 @@ msgstr ""
 
 #: src/components/TimelinePanel.tsx
 msgid "{hrs}h ago"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "{instanceCount, plural, one {# instance} other {# instances}}"
 msgstr ""
 
 #: src/components/PropertyWidgets.tsx
@@ -4579,13 +4588,15 @@ msgstr ""
 msgid "Go to line"
 msgstr ""
 
+#. placeholder {0}: diagnostic.range.start.line + 1
 #: src/components/ProblemsPanel.tsx
-msgid "Go to line {displayLine}"
+msgid "Go to line {0}"
 msgstr ""
 
-#. placeholder {0}: file.file
+#. placeholder {0}: diagnostic.range.start.line + 1
+#. placeholder {1}: file.file
 #: src/components/ProblemsPanel.tsx
-msgid "Go to line {displayLine} in {0}"
+msgid "Go to line {0} in {1}"
 msgstr ""
 
 #: src/components/FeedbackForm.tsx
@@ -5265,10 +5276,6 @@ msgstr ""
 msgid "line {displayLine}"
 msgstr ""
 
-#: src/components/ProblemsPanel.tsx
-msgid "link"
-msgstr ""
-
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 #: src/editor/slash-command/component-items.tsx
 msgid "Link"
@@ -5313,10 +5320,6 @@ msgstr ""
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Links & images"
-msgstr ""
-
-#: src/components/ProblemsPanel.tsx
-msgid "lint"
 msgstr ""
 
 #: src/components/settings/ContentRulesSection.tsx
@@ -6388,6 +6391,11 @@ msgstr ""
 msgid "Object"
 msgstr ""
 
+#. placeholder {0}: first.message
+#: src/components/ProblemsPanel.tsx
+msgid "Occurrences of {0}"
+msgstr ""
+
 #. placeholder {0}: basenameOf(project.mainRoot ?? '')
 #: src/components/NavigatorApp.tsx
 msgid "of {0}"
@@ -7384,6 +7392,10 @@ msgstr ""
 msgid "Re-embedding happens as searches run, so coverage restarts at zero and refills."
 msgstr ""
 
+#: src/components/ProblemsPanel.tsx
+msgid "Re-run the project audit"
+msgstr ""
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr ""
@@ -7459,10 +7471,6 @@ msgstr ""
 #. placeholder {0}: row.reference
 #: src/components/BugReportHistory.tsx
 msgid "Reference <0>{0}</0>"
-msgstr ""
-
-#: src/components/ProblemsPanel.tsx
-msgid "Refresh audit"
 msgstr ""
 
 #: src/components/InstallInClaudeDesktopDialog.tsx

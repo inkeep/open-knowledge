@@ -11,7 +11,7 @@ import {
   Sparkles,
   Wrench,
 } from 'lucide-react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactElement, type ReactNode, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useOptionalPageList } from '@/components/PageListContext';
 import { type PanelScope, PanelScopeHeader } from '@/components/PanelScopeHeader';
@@ -78,13 +78,20 @@ type ProjectAuditState =
   | { status: 'loaded'; result: ValidationAuditResponse }
   | { status: 'failed' };
 
-/** Message line + source chip + `source/code · line` subline shared by doc- and project-scope rows. */
-function DiagnosticRowBody({ diagnostic }: { diagnostic: DiagnosticLike }) {
+/** Message line + producer chip + `code · line` subline shared by doc- and project-scope rows. */
+function DiagnosticRowBody({
+  diagnostic,
+  instanceCount,
+}: {
+  diagnostic: DiagnosticLike;
+  /** When above 1, the row counts occurrences instead of naming a single line. */
+  instanceCount?: number;
+}) {
   const { t } = useLingui();
   const Icon = diagnostic.severity === 'error' ? AlertCircle : AlertTriangle;
-  const flatId = `${diagnostic.source}/${diagnostic.code}`;
   const displayLine = diagnostic.range.start.line + 1;
   const isLink = diagnostic.source === 'links';
+  const grouped = instanceCount !== undefined && instanceCount > 1;
   return (
     <>
       <span className="flex items-start gap-1.5 text-sm">
@@ -95,12 +102,40 @@ function DiagnosticRowBody({ diagnostic }: { diagnostic: DiagnosticLike }) {
             diagnostic.severity === 'error' ? 'text-destructive' : 'text-amber-500',
           )}
         />
-        <span className="text-foreground">{diagnostic.message}</span>
+        <span className="min-w-0 flex-1 text-foreground">{diagnostic.message}</span>
+        {grouped ? (
+          // Count and disclosure both sit on the right so a grouped row keeps
+          // the exact left edge of an ungrouped one — a leading chevron indents
+          // the icon and message and leaves the list visibly ragged, and
+          // reserving a twistie gutter on every row would cost width this panel
+          // does not have. The count rides the message line — the `flex-1`
+          // element that absorbs panel narrowing and wraps — not the subline,
+          // whose code text already ellipsis-truncates.
+          <span className="mt-0.5 flex shrink-0 items-center gap-1">
+            <Badge
+              variant="gray"
+              data-testid="problems-instance-count"
+              className="h-4 px-1 font-sans text-[10px] leading-none"
+            >
+              <Plural value={instanceCount} one="# instance" other="# instances" />
+            </Badge>
+            <ChevronRight
+              aria-hidden="true"
+              className="size-3 text-muted-foreground transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none"
+            />
+          </span>
+        ) : null}
       </span>
       <span className="flex items-center gap-1.5 ps-5 font-mono text-xs text-muted-foreground">
-        {/* Source tag: the unified plane mixes validators per file, so every
-            row names its category at a glance (the flatId spells the full
-            validator id for the detail-oriented). */}
+        {/* The chip names the validator that PRODUCED the finding, not a generic
+            category — `frontmatter/required` and `markdownlint/MD041` are
+            otherwise indistinguishable at a glance, and the plane keeps
+            absorbing validators. Rendered from the machine `source` verbatim so
+            a new validator needs no table here, and untranslated because those
+            ids are brand names. (The header and settings sidebar show the
+            friendlier `lint-plugin-meta` label instead — e.g. `frontmatter` →
+            "Frontmatter schemas" — which `links` has no entry for.) The subline
+            then carries the bare rule code, not the redundant `source/code`. */}
         <Badge
           variant="gray"
           data-testid="problems-source-tag"
@@ -109,20 +144,141 @@ function DiagnosticRowBody({ diagnostic }: { diagnostic: DiagnosticLike }) {
             isLink && 'gap-0.5',
           )}
         >
-          {isLink ? (
-            <>
-              <Link2 aria-hidden="true" className="size-2.5" />
-              <Trans>link</Trans>
-            </>
-          ) : (
-            <Trans>lint</Trans>
-          )}
+          {isLink ? <Link2 aria-hidden="true" className="size-2.5" /> : null}
+          {diagnostic.source}
         </Badge>
+        {/* A group spans many lines, so only a single finding names one. */}
         <span className="min-w-0 truncate">
-          {flatId} · {t`line ${displayLine}`}
+          {grouped ? diagnostic.code : `${diagnostic.code} · ${t`line ${displayLine}`}`}
         </span>
       </span>
     </>
+  );
+}
+
+/** Repeats of one finding — same producer, rule, message and link target. */
+interface DiagnosticGroup {
+  key: string;
+  /** At least one, ordered by line then column. */
+  instances: [DiagnosticLike, ...DiagnosticLike[]];
+}
+
+/**
+ * Collapse repeats of one finding into a single group. A schema rule that fires
+ * on every document property (or a hard-tab rule on every indented line) would
+ * otherwise bury the rest of the plane under identical rows. Insertion order is
+ * first occurrence, so the grouped list stays line-sorted.
+ */
+function groupDiagnostics(sorted: readonly DiagnosticLike[]): DiagnosticGroup[] {
+  const byKey = new Map<string, DiagnosticGroup>();
+  for (const diagnostic of sorted) {
+    // NUL-joined: the message is free text and could otherwise forge a key
+    // that collides with another rule's group.
+    const key = `${diagnostic.source}/${diagnostic.code}\u0000${diagnostic.linkTarget ?? ''}\u0000${diagnostic.message}`;
+    const existing = byKey.get(key);
+    if (existing === undefined) byKey.set(key, { key, instances: [diagnostic] });
+    else existing.instances.push(diagnostic);
+  }
+  return [...byKey.values()];
+}
+
+/**
+ * One row per distinct finding. A lone occurrence renders exactly as before; a
+ * repeated one collapses behind an instance count and expands to per-line
+ * occurrences, each keeping its own actions (a fix is per-occurrence).
+ */
+function DiagnosticGroupItem({
+  group,
+  onNavigate,
+  navTitle,
+  renderActions,
+}: {
+  group: DiagnosticGroup;
+  onNavigate: (diagnostic: DiagnosticLike) => void;
+  /** Hover title for one occurrence. */
+  navTitle: (diagnostic: DiagnosticLike) => string;
+  /** Hover-revealed actions for one occurrence; null when it offers none. The
+   *  consumer keys the overlay on a strict `=== null`, so the sentinel must be
+   *  `null` (not `undefined`/`false`) — hence `ReactElement | null`, not `ReactNode`. */
+  renderActions: (diagnostic: DiagnosticLike) => ReactElement | null;
+}) {
+  const { t } = useLingui();
+  // `groupDiagnostics` seeds every group with one instance and only ever pushes,
+  // so the non-empty tuple type guarantees a first element.
+  const first = group.instances[0];
+
+  if (group.instances.length === 1) {
+    const actions = renderActions(first);
+    return (
+      <li className="group relative rounded transition-colors hover:bg-muted">
+        {/* Full-width message: the actions are pulled out of flow (absolute,
+            below) so the diagnostic text uses the whole row and wraps, instead
+            of being squeezed to make room for the buttons. */}
+        <button
+          type="button"
+          onClick={() => onNavigate(first)}
+          className="flex w-full cursor-pointer flex-col gap-0.5 rounded px-2 py-1.5 text-left"
+          title={navTitle(first)}
+        >
+          <DiagnosticRowBody diagnostic={first} />
+        </button>
+        {actions === null ? null : (
+          // Bottom-right, revealed on hover/focus. `bg-muted` matches the row's
+          // own hover background so it cleanly occludes the subline underneath.
+          <div className="absolute bottom-1 right-1 flex items-center gap-1 rounded bg-muted opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none">
+            {actions}
+          </div>
+        )}
+      </li>
+    );
+  }
+
+  return (
+    <li className="rounded" data-testid="problems-duplicate-group">
+      <Collapsible>
+        {/* Same padding and column layout as the single-finding row above, so
+            both left edges line up; the disclosure chevron rides the right. */}
+        <CollapsibleTrigger className="group flex w-full cursor-pointer flex-col gap-0.5 rounded px-2 py-1.5 text-left transition-colors hover:bg-muted">
+          <DiagnosticRowBody diagnostic={first} instanceCount={group.instances.length} />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="overflow-hidden data-[state=open]:animate-[collapsible-down_150ms_ease-out] data-[state=closed]:animate-[collapsible-up_150ms_ease-in] motion-reduce:animate-none">
+          <ul
+            aria-label={t`Occurrences of ${first.message}`}
+            className="flex flex-col gap-0.5 pb-1 ps-5"
+            data-testid="problems-duplicate-instances"
+          >
+            {group.instances.map((diagnostic) => {
+              const actions = renderActions(diagnostic);
+              const displayLine = diagnostic.range.start.line + 1;
+              return (
+                <li
+                  key={diagnosticKey(diagnostic)}
+                  className="group relative rounded transition-colors hover:bg-muted"
+                >
+                  <button
+                    type="button"
+                    onClick={() => onNavigate(diagnostic)}
+                    className="flex w-full cursor-pointer rounded px-2 py-1 text-left font-mono text-xs text-muted-foreground"
+                    title={navTitle(diagnostic)}
+                    // The visible text is just the line number; the message
+                    // rides the accessible name so the occurrence still reads
+                    // as a whole finding out of list context.
+                    aria-label={t`${diagnostic.message} at line ${displayLine}`}
+                  >
+                    {t`line ${displayLine}`}
+                  </button>
+                  {actions === null ? null : (
+                    <div className="absolute bottom-0.5 right-1 flex items-center gap-1 rounded bg-muted opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none">
+                      {actions}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </CollapsibleContent>
+      </Collapsible>
+    </li>
   );
 }
 
@@ -510,6 +666,52 @@ export function ProblemsPanel({
     window.location.hash = hashFromDocName(targetDocName);
   }
 
+  /** Per-occurrence actions in doc scope: create the missing page, fix, ask AI. */
+  function renderDocActions(diagnostic: DiagnosticLike): ReactElement | null {
+    const fixable = onFix !== undefined && (diagnostic.fixes?.length ?? 0) > 0;
+    const canCreate = diagnostic.linkTarget !== undefined && pageList !== null;
+    if (!fixable && !canCreate && onAskAi === undefined) return null;
+    const flatId = `${diagnostic.source}/${diagnostic.code}`;
+    return (
+      <>
+        {canCreate ? (
+          <CreatePageButton
+            target={diagnostic.linkTarget ?? ''}
+            creating={creatingTarget === diagnostic.linkTarget}
+            disabled={creatingTarget !== null}
+            onCreate={() => void createLinkTarget(diagnostic)}
+          />
+        ) : null}
+        {fixable ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 shrink-0 px-2 text-xs"
+            onClick={() => onFix?.(diagnostic)}
+            aria-label={t`Fix ${flatId}`}
+            data-testid="problems-fix"
+          >
+            <Wrench aria-hidden="true" className="size-3" />
+            <Trans>Fix</Trans>
+          </Button>
+        ) : null}
+        {onAskAi !== undefined ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 shrink-0 px-2 text-xs"
+            onClick={() => onAskAi(diagnostic)}
+            aria-label={t`Ask AI to fix ${flatId}`}
+            data-testid="problems-ask-ai"
+          >
+            <Sparkles aria-hidden="true" className="size-3" />
+            <Trans>Ask AI</Trans>
+          </Button>
+        ) : null}
+      </>
+    );
+  }
+
   return (
     <Panel>
       <PanelHeader>
@@ -593,73 +795,15 @@ export function ProblemsPanel({
                 </div>
               ) : null}
               <ul aria-label={t`Problems`} className="flex flex-col gap-0.5">
-                {sorted.map((diagnostic) => {
-                  const displayLine = diagnostic.range.start.line + 1;
-                  const fixable = onFix !== undefined && (diagnostic.fixes?.length ?? 0) > 0;
-                  const canCreate = diagnostic.linkTarget !== undefined && pageList !== null;
-                  const flatId = `${diagnostic.source}/${diagnostic.code}`;
-                  return (
-                    <li
-                      key={diagnosticKey(diagnostic)}
-                      className="group relative rounded transition-colors hover:bg-muted"
-                    >
-                      {/* Full-width message: the actions are pulled out of flow
-                          (absolute, below) so the diagnostic text uses the whole
-                          row and wraps like the project scope, instead of being
-                          squeezed to make room for the buttons. */}
-                      <button
-                        type="button"
-                        onClick={() => handleNav(diagnostic)}
-                        className="flex w-full cursor-pointer flex-col gap-0.5 rounded px-2 py-1.5 text-left"
-                        title={t`Go to line ${displayLine}`}
-                      >
-                        <DiagnosticRowBody diagnostic={diagnostic} />
-                      </button>
-                      {fixable || onAskAi !== undefined || canCreate ? (
-                        // Bottom-right, revealed on hover/focus. `bg-muted`
-                        // matches the row's own hover background so it cleanly
-                        // occludes the `source/code · line` subline underneath
-                        // if a long id would otherwise run beneath it.
-                        <div className="absolute bottom-1 right-1 flex items-center gap-1 rounded bg-muted opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none">
-                          {canCreate ? (
-                            <CreatePageButton
-                              target={diagnostic.linkTarget ?? ''}
-                              creating={creatingTarget === diagnostic.linkTarget}
-                              disabled={creatingTarget !== null}
-                              onCreate={() => void createLinkTarget(diagnostic)}
-                            />
-                          ) : null}
-                          {fixable ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 shrink-0 px-2 text-xs"
-                              onClick={() => onFix?.(diagnostic)}
-                              aria-label={t`Fix ${flatId}`}
-                              data-testid="problems-fix"
-                            >
-                              <Wrench aria-hidden="true" className="size-3" />
-                              <Trans>Fix</Trans>
-                            </Button>
-                          ) : null}
-                          {onAskAi !== undefined ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 shrink-0 px-2 text-xs"
-                              onClick={() => onAskAi(diagnostic)}
-                              aria-label={t`Ask AI to fix ${flatId}`}
-                              data-testid="problems-ask-ai"
-                            >
-                              <Sparkles aria-hidden="true" className="size-3" />
-                              <Trans>Ask AI</Trans>
-                            </Button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </li>
-                  );
-                })}
+                {groupDiagnostics(sorted).map((group) => (
+                  <DiagnosticGroupItem
+                    key={group.key}
+                    group={group}
+                    onNavigate={handleNav}
+                    navTitle={(diagnostic) => t`Go to line ${diagnostic.range.start.line + 1}`}
+                    renderActions={renderDocActions}
+                  />
+                ))}
               </ul>
             </>
           )}
@@ -744,17 +888,26 @@ function ProjectAuditBody({
               </>
             )}
           </p>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6 shrink-0 text-muted-foreground"
-            aria-label={t`Refresh audit`}
-            data-testid="problems-audit-refresh"
-            disabled={loading || fixing !== null}
-            onClick={onRefresh}
-          >
-            <RefreshCw aria-hidden="true" className="size-3.5" />
-          </Button>
+          {/* Icon-only, so the label lives in a tooltip as well as the
+              accessible name — nothing on the button says what it does. */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-6 shrink-0 text-muted-foreground"
+                aria-label={t`Re-run the project audit`}
+                data-testid="problems-audit-refresh"
+                disabled={loading || fixing !== null}
+                onClick={onRefresh}
+              >
+                <RefreshCw aria-hidden="true" className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent data-testid="problems-audit-refresh-tooltip">
+              <Trans>Re-run the project audit</Trans>
+            </TooltipContent>
+          </Tooltip>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1">
           {/* The Auto-fix button is disabled during a sweep, so AT can't focus it
@@ -909,39 +1062,30 @@ function ProjectFileGroup({
           {sorted.length}
         </Badge>
       </CollapsibleTrigger>
-      <CollapsibleContent className="overflow-hidden data-[state=open]:animate-[collapsible-down_150ms_ease-out] data-[state=closed]:animate-[collapsible-up_150ms_ease-in]">
+      <CollapsibleContent className="overflow-hidden data-[state=open]:animate-[collapsible-down_150ms_ease-out] data-[state=closed]:animate-[collapsible-up_150ms_ease-in] motion-reduce:animate-none">
         <ul aria-label={t`Problems in ${file.file}`} className="flex flex-col gap-0.5 pb-1 ps-3">
-          {sorted.map((diagnostic) => {
-            const displayLine = diagnostic.range.start.line + 1;
-            const canCreate = diagnostic.linkTarget !== undefined && onCreateTarget !== undefined;
-            return (
-              <li
-                key={diagnosticKey(diagnostic)}
-                className="group relative rounded transition-colors hover:bg-muted"
-              >
-                <button
-                  type="button"
-                  onClick={() => onNavigate(file.file, diagnostic)}
-                  className="flex w-full cursor-pointer flex-col gap-0.5 rounded px-2 py-1.5 text-left"
-                  title={t`Go to line ${displayLine} in ${file.file}`}
-                >
-                  <DiagnosticRowBody diagnostic={diagnostic} />
-                </button>
-                {canCreate ? (
-                  // Same hover-revealed overlay contract as the doc scope's
-                  // Fix / Ask AI actions.
-                  <div className="absolute bottom-1 right-1 flex items-center gap-1 rounded bg-muted opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none">
-                    <CreatePageButton
-                      target={diagnostic.linkTarget ?? ''}
-                      creating={creatingTarget === diagnostic.linkTarget}
-                      disabled={creatingTarget !== null}
-                      onCreate={() => onCreateTarget?.(diagnostic)}
-                    />
-                  </div>
-                ) : null}
-              </li>
-            );
-          })}
+          {groupDiagnostics(sorted).map((group) => (
+            <DiagnosticGroupItem
+              key={group.key}
+              group={group}
+              onNavigate={(diagnostic) => onNavigate(file.file, diagnostic)}
+              navTitle={(diagnostic) =>
+                t`Go to line ${diagnostic.range.start.line + 1} in ${file.file}`
+              }
+              // Same hover-revealed overlay contract as the doc scope, minus
+              // the fix / ask-AI actions (both are this-doc only).
+              renderActions={(diagnostic) =>
+                diagnostic.linkTarget === undefined || onCreateTarget === undefined ? null : (
+                  <CreatePageButton
+                    target={diagnostic.linkTarget}
+                    creating={creatingTarget === diagnostic.linkTarget}
+                    disabled={creatingTarget !== null}
+                    onCreate={() => onCreateTarget(diagnostic)}
+                  />
+                )
+              }
+            />
+          ))}
         </ul>
       </CollapsibleContent>
     </Collapsible>
