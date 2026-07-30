@@ -4809,6 +4809,11 @@ function registerIpcHandlers() {
           // Records uploading → sent/upload-failed/email-drafted on the sidecar
           // and holds the in-flight lock, for the first send and a list retry.
           sidecar: bugReportSidecar.sendHooks,
+          // Same per-window capture `create` stages into the zip, uploaded
+          // separately as its own Linear asset so the ticket embeds it inline.
+          // Still present here because the dialog has not closed yet; a list retry
+          // in a later session finds nothing and files without the inline image.
+          screenshotPngBytes: () => bugReportScreenshots.get(event.sender.id)?.png ?? null,
         },
         request,
       );

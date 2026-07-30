@@ -379,6 +379,12 @@ function ReportBugDialog({
         projectSlug: report.summary.projectSlug,
         note: composeNote(note, noteContextLines),
       },
+      // Read consent off the bundle's own inventory rather than the checkbox
+      // state: the inventory is what `create` acted on and what the reporter
+      // reviewed, so it cannot drift from the artifact being sent if the checkbox
+      // is toggled after create. Main uses this to decide whether to upload the
+      // screenshot separately for inline display in the ticket.
+      includeScreenshot: report.summary.files.includes(BUG_REPORT_SCREENSHOT_ZIP_ENTRY),
     });
     if (opSeqRef.current !== seq) return;
     if (result.ok) {

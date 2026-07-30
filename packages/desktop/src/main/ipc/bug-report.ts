@@ -83,6 +83,18 @@ export interface OkBugReportSendRequest {
   /** Zip produced by a prior `create` — the exact file the user reviewed is what uploads. */
   zipPath: string;
   metadata: OkBugReportSendMetadata;
+  /**
+   * Whether the bundle contains the app screenshot, derived by the renderer from
+   * the bundle's own file inventory. Gates the separate screenshot upload that
+   * embeds the picture inline in the ticket.
+   *
+   * This has to be carried explicitly because `create` owns the consent decision
+   * and `send` is a separate operation that cannot see it: main still holds the
+   * capture for the window, so without this gate a reporter who unchecked the
+   * screenshot would have it uploaded anyway. Fail-closed — absent means no
+   * upload, which is also what a list retry in a later session gets.
+   */
+  includeScreenshot?: boolean;
 }
 
 export interface OkBugReportCrashAckRequest {
@@ -433,6 +445,14 @@ export interface BugReportSendDeps {
    * transport omit it).
    */
   sidecar?: BugReportSendSidecarHooks;
+  /**
+   * Main-owned PNG bytes of the screenshot captured when the report dialog
+   * opened, uploaded as its own Linear asset so the ticket embeds it inline.
+   * Returns null when nothing was captured, when the reporter opted out, or on a
+   * list retry in a later session. Absent (or null) simply means the ticket files
+   * without the inline image.
+   */
+  screenshotPngBytes?: () => Buffer | null;
 }
 
 /**
@@ -450,6 +470,15 @@ interface BugReportUploadTimeouts {
 const MINT_TIMEOUT_MS = 30_000;
 const PUT_TIMEOUT_MS = 120_000;
 const COMPLETE_TIMEOUT_MS = 30_000;
+
+// The screenshot upload gets its own, much tighter ceilings rather than
+// inheriting the bundle's. The bundle's 120s PUT allowance exists for a
+// multi-megabyte zip on a bad connection; the screenshot is one PNG of one
+// screen, and it is best-effort. Reusing 120s would mean a hung screenshot
+// upload silently delays the user's report by two minutes to add a nicety, which
+// inverts the priority. Give up quickly instead and file the report.
+const SCREENSHOT_MINT_TIMEOUT_MS = 10_000;
+const SCREENSHOT_PUT_TIMEOUT_MS = 20_000;
 
 /**
  * Ceiling on the zip size `send` will buffer into main-process memory for the
@@ -545,6 +574,7 @@ function isSendRequest(request: unknown): request is OkBugReportSendRequest {
   if (typeof request !== 'object' || request === null) return false;
   const r = request as Record<string, unknown>;
   if (r.kind !== 'send' || typeof r.zipPath !== 'string') return false;
+  if (r.includeScreenshot !== undefined && typeof r.includeScreenshot !== 'boolean') return false;
   if (typeof r.metadata !== 'object' || r.metadata === null) return false;
   const m = r.metadata as Record<string, unknown>;
   return (
@@ -620,6 +650,93 @@ type BugReportUploadOutcome =
   | { ok: false; reason: string; cause?: unknown };
 
 /**
+ * Trace a skipped screenshot and return null in one expression. Every exit from
+ * `uploadScreenshotAsset` is a non-failure (the report still files), but it must
+ * leave a trace: a screenshot that silently vanishes is indistinguishable from
+ * one that was never requested, which is how the server-side predecessor stayed
+ * broken unnoticed.
+ */
+function logScreenshotSkip(reason: string, cause?: unknown): null {
+  logIpcError({
+    event: 'ipc.error',
+    channel: 'ok:bug-report:dispatch',
+    reason: `screenshot-upload-skipped: ${reason}`,
+    handler: 'uploadScreenshotAsset',
+    ...(cause === undefined ? {} : { cause }),
+  });
+  return null;
+}
+
+/**
+ * Mint + PUT the screenshot PNG as its own Linear asset and return the asset URL
+ * for the ticket description to embed inline. Returns null on ANY failure and
+ * never throws — the caller must be able to file the report regardless.
+ *
+ * Kept separate from the bundle upload so its failures cannot be confused with
+ * the bundle's: a rejected screenshot mint must not surface as `mint-rejected`
+ * and abandon a report whose bundle already landed.
+ */
+async function uploadScreenshotAsset(
+  base: URL,
+  screenshotBytes: Uint8Array,
+  metadata: BugReportWireMetadata,
+  timeouts?: Partial<BugReportUploadTimeouts>,
+): Promise<string | null> {
+  try {
+    const mintRes = await fetch(new URL('/api/bug-report', base), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        filename: BUG_REPORT_SCREENSHOT_ZIP_NAME,
+        sizeBytes: screenshotBytes.byteLength,
+        contentType: 'image/png',
+        metadata,
+      }),
+      redirect: 'manual',
+      signal: AbortSignal.timeout(timeouts?.mintMs ?? SCREENSHOT_MINT_TIMEOUT_MS),
+    });
+    // A 400 here is the expected answer from an intake deployed before it learned
+    // the image content type, so this is a normal outcome, not an error path.
+    if (!mintRes.ok) return logScreenshotSkip(`mint responded ${mintRes.status}`);
+    const mint = parseMintResponse(await mintRes.json().catch(() => null));
+    if (mint === null) return logScreenshotSkip('mint response malformed');
+    // Same transport gate the bundle's minted URL gets: a misconfigured or
+    // compromised intake must not be able to downgrade this PUT to cleartext.
+    if (parseTransportSafeUrl(mint.uploadUrl) === null) {
+      return logScreenshotSkip('mint named a non-https upload URL');
+    }
+
+    // Re-pack into a plain ArrayBuffer-backed view: fetch's BodyInit typing
+    // rejects the ArrayBufferLike backing a Buffer carries, same trap the bundle
+    // PUT documents above.
+    const body = new Uint8Array(screenshotBytes.byteLength);
+    body.set(screenshotBytes);
+    const putRes = await fetch(mint.uploadUrl, {
+      method: 'PUT',
+      headers: { 'content-type': 'image/png', ...mint.headers },
+      body,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(timeouts?.putMs ?? SCREENSHOT_PUT_TIMEOUT_MS),
+    });
+    if (
+      putRes.type === 'opaqueredirect' ||
+      putRes.status === 0 ||
+      (putRes.status >= 300 && putRes.status < 400)
+    ) {
+      return logScreenshotSkip('upload redirected');
+    }
+    if (!putRes.ok) return logScreenshotSkip(`upload responded ${putRes.status}`);
+    return mint.assetUrl;
+  } catch (err) {
+    // Offline, timeout, DNS — the bundle has already landed by this point, so the
+    // only correct move is to carry on and file the report without the inline
+    // image. Still traced: a silently dropped screenshot with no log line is the
+    // exact failure mode that hid this feature being broken for two weeks.
+    return logScreenshotSkip('transport error', err);
+  }
+}
+
+/**
  * Two-step client upload (mint → direct PUT → completion), keeping the zip
  * bytes out of the intake function body: the endpoint mints a short-lived
  * signed upload URL, the client PUTs the bytes straight to storage with the
@@ -632,6 +749,7 @@ async function uploadBugReport(
   zipPath: string,
   metadata: BugReportWireMetadata,
   timeouts?: Partial<BugReportUploadTimeouts>,
+  screenshotBytes?: Uint8Array | null,
 ): Promise<BugReportUploadOutcome> {
   const base = parseTransportSafeUrl(baseUrl);
   if (base === null) {
@@ -712,11 +830,33 @@ async function uploadBugReport(
     }
     if (!putRes.ok) return { ok: false, reason: `upload-rejected: ${putRes.status}` };
 
+    // Upload the screenshot as its own Linear asset so the ticket can embed it
+    // inline. Deliberately client-side: the intake cannot read the bytes back out
+    // of the bundle it just received, because Linear serves uploaded assets
+    // behind authentication and the workspace API key does not authorize the raw
+    // asset URL. Only this process, which holds the PNG before it zips it, can
+    // supply them.
+    //
+    // Strictly best-effort and strictly after the bundle PUT: every failure path
+    // yields null and the report files exactly as it does today. A screenshot is
+    // never worth losing a report over.
+    const screenshotAssetUrl =
+      screenshotBytes === undefined || screenshotBytes === null
+        ? null
+        : await uploadScreenshotAsset(base, screenshotBytes, metadata, timeouts);
+
     step = 'complete';
     const completeRes = await fetch(new URL('/api/bug-report/complete', base), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ assetUrl: mint.assetUrl, metadata }),
+      body: JSON.stringify(
+        // Omit the key entirely rather than sending null: the intake treats the
+        // field as optional, and an older deployment that has not learned it yet
+        // strips unknown keys instead of rejecting the body.
+        screenshotAssetUrl === null
+          ? { assetUrl: mint.assetUrl, metadata }
+          : { assetUrl: mint.assetUrl, screenshotAssetUrl, metadata },
+      ),
       redirect: 'manual',
       signal: AbortSignal.timeout(timeouts?.completeMs ?? COMPLETE_TIMEOUT_MS),
     });
@@ -930,12 +1070,28 @@ export async function handleBugReportSend(
       return { ok: false, reason: 'send-failed', fallback };
     }
   }
+  // Consent gate first, bytes second. main holds the capture for this window
+  // regardless of what the reporter chose, so reading it without checking
+  // `includeScreenshot` would upload a screenshot the reporter declined. The flag
+  // reflects the bundle's own inventory, so it is the same decision the reporter
+  // reviewed. Absent (a list retry, or an older renderer) means no upload.
+  const screenshotBytes =
+    request.includeScreenshot === true ? (deps.screenshotPngBytes?.() ?? null) : null;
+  if (request.includeScreenshot === true && screenshotBytes === null) {
+    // Consent was given and the capture is gone — a list retry in a later session
+    // is the ordinary cause. Distinct from consent being withheld, and traced for
+    // the same reason every other skip is: a screenshot that vanishes silently is
+    // indistinguishable from one that was never asked for.
+    logScreenshotSkip('capture unavailable at send time');
+  }
+
   const wireMetadata: BugReportWireMetadata = { ...metadata, ...hostFacts };
   const outcome = await uploadBugReport(
     deps.intakeBaseUrl,
     canonicalZipPath,
     wireMetadata,
     deps.timeouts,
+    screenshotBytes,
   );
   if (outcome.ok) {
     await runSidecarHook(

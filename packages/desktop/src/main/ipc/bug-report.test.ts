@@ -346,9 +346,16 @@ function startIntakeStub(
     completeBody?: unknown;
     /** Record the completion request but never respond. */
     stallComplete?: boolean;
+    /** Status for the SECOND mint (the image/png screenshot mint) only. */
+    screenshotMintStatus?: number;
+    /** Status for the screenshot PUT only (the second PUT to /upload/dest). */
+    screenshotPutStatus?: number;
+    /** Body for the screenshot mint only, for the malformed / non-https guards. */
+    screenshotMintBody?: unknown;
   } = {},
 ): Promise<IntakeStub> {
   const requests: RecordedRequest[] = [];
+  let putCount = 0;
   let url = '';
   const server = createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -363,6 +370,22 @@ function startIntakeStub(
       };
       if (method === 'POST' && path === '/api/bug-report') {
         if (overrides.stallMint === true) return;
+        // The screenshot mint is distinguishable by its content type, which lets a
+        // test fail only that one and prove the report still files.
+        let mintedContentType: unknown;
+        try {
+          mintedContentType = (
+            JSON.parse(Buffer.concat(chunks).toString('utf8')) as { contentType?: unknown }
+          ).contentType;
+        } catch {
+          mintedContentType = undefined;
+        }
+        if (mintedContentType === 'image/png' && overrides.screenshotMintStatus !== undefined) {
+          return respond(overrides.screenshotMintStatus, { error: 'screenshot mint refused' });
+        }
+        if (mintedContentType === 'image/png' && overrides.screenshotMintBody !== undefined) {
+          return respond(200, overrides.screenshotMintBody);
+        }
         respond(
           overrides.mintStatus ?? 200,
           overrides.mintBody ?? {
@@ -373,6 +396,12 @@ function startIntakeStub(
         );
       } else if (method === 'PUT' && path === '/upload/dest') {
         if (overrides.stallPut === true) return;
+        // The screenshot PUT is the second one; failing only it proves the report
+        // survives a screenshot upload that is refused after a successful mint.
+        putCount += 1;
+        if (putCount === 2 && overrides.screenshotPutStatus !== undefined) {
+          return respond(overrides.screenshotPutStatus, { error: 'screenshot put refused' });
+        }
         const putStatus = overrides.putStatus ?? 200;
         if (putStatus >= 300 && putStatus < 400) {
           // A redirecting storage endpoint — the client must refuse to chase it.
@@ -442,16 +471,23 @@ function makeZipFixture(bugReportsRoot: string): string {
 }
 
 /** Deps plus a zip fixture placed inside the deps' containment root. */
-function makeSendRig(intakeBaseUrl: string | undefined): {
+function makeSendRig(
+  intakeBaseUrl: string | undefined,
+  screenshotPng?: Buffer,
+): {
   deps: BugReportSendDeps;
   zipPath: string;
 } {
   const bugReportsRoot = makeBugReportsRoot();
+  const deps = makeSendDeps(intakeBaseUrl, bugReportsRoot);
   return {
-    deps: makeSendDeps(intakeBaseUrl, bugReportsRoot),
+    deps: screenshotPng === undefined ? deps : { ...deps, screenshotPngBytes: () => screenshotPng },
     zipPath: makeZipFixture(bugReportsRoot),
   };
 }
+
+// Minimal PNG signature — enough to assert the exact bytes reach the PUT.
+const SCREENSHOT_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x07, 0x09]);
 
 describe('resolveBugReportIntakeUrl', () => {
   test('an explicit env URL always wins', () => {
@@ -470,6 +506,220 @@ describe('resolveBugReportIntakeUrl', () => {
 
   test('a surrounding-whitespace env value is trimmed', () => {
     expect(resolveBugReportIntakeUrl({ envUrl: '  https://x.test  ' })).toBe('https://x.test');
+  });
+});
+
+describe('handleBugReportSend — inline screenshot upload', () => {
+  test('uploads the screenshot as its own asset and passes its URL to completion', async () => {
+    // Client-side by necessity: the intake cannot read the screenshot back out of
+    // the bundle it just received, because Linear serves uploaded assets behind
+    // authentication and the workspace API key does not authorize the raw asset
+    // URL. Only this process holds the PNG before it is zipped.
+    const stub = await startIntakeStub();
+    const { deps, zipPath } = makeSendRig(stub.url, SCREENSHOT_PNG);
+
+    const result = await handleBugReportSend(deps, {
+      kind: 'send',
+      zipPath,
+      metadata: SEND_METADATA,
+      includeScreenshot: true,
+    });
+
+    expect(result).toEqual({ ok: true, reference: 'OK-1042' });
+
+    // The screenshot rides AFTER the bundle PUT and BEFORE completion, so a
+    // screenshot failure can never strand a bundle that already landed.
+    expect(stub.requests.map((r) => `${r.method} ${r.path}`)).toEqual([
+      'POST /api/bug-report',
+      'PUT /upload/dest',
+      'POST /api/bug-report',
+      'PUT /upload/dest',
+      'POST /api/bug-report/complete',
+    ]);
+
+    const [, , imageMint, imagePut, complete] = stub.requests;
+    expect(JSON.parse(imageMint?.body.toString('utf8') ?? '')).toEqual({
+      filename: 'screenshot.png',
+      sizeBytes: SCREENSHOT_PNG.byteLength,
+      contentType: 'image/png',
+      metadata: { ...SEND_METADATA, ...SEND_HOST },
+    });
+    expect(imagePut?.headers['content-type']).toBe('image/png');
+    expect(imagePut?.body.equals(SCREENSHOT_PNG)).toBe(true);
+
+    expect(JSON.parse(complete?.body.toString('utf8') ?? '')).toMatchObject({
+      screenshotAssetUrl: 'https://uploads.example.invalid/asset/dest',
+    });
+  });
+
+  test('omits the screenshot key entirely when no capture is available', async () => {
+    // A list retry in a later session, a reporter who unchecked the box, or a
+    // failed capture. The key is omitted rather than sent as null so an intake
+    // that predates the field is unaffected.
+    const stub = await startIntakeStub();
+    const { deps, zipPath } = makeSendRig(stub.url);
+
+    const result = await handleBugReportSend(deps, {
+      kind: 'send',
+      zipPath,
+      metadata: SEND_METADATA,
+    });
+
+    expect(result).toEqual({ ok: true, reference: 'OK-1042' });
+    expect(stub.requests).toHaveLength(3);
+    const body = JSON.parse(stub.requests[2]?.body.toString('utf8') ?? '') as Record<
+      string,
+      unknown
+    >;
+    expect('screenshotAssetUrl' in body).toBe(false);
+  });
+
+  test('still files the report when the screenshot PUT is refused', async () => {
+    // The mint succeeds and the upload itself fails, which is a different branch
+    // from a refused mint and the one an intake-side storage hiccup takes.
+    const stub = await startIntakeStub({ screenshotPutStatus: 500 });
+    const { deps, zipPath } = makeSendRig(stub.url, SCREENSHOT_PNG);
+
+    const result = await handleBugReportSend(deps, {
+      kind: 'send',
+      zipPath,
+      metadata: SEND_METADATA,
+      includeScreenshot: true,
+    });
+
+    expect(result).toEqual({ ok: true, reference: 'OK-1042' });
+    expect(stub.requests.map((r) => `${r.method} ${r.path}`)).toEqual([
+      'POST /api/bug-report',
+      'PUT /upload/dest',
+      'POST /api/bug-report',
+      'PUT /upload/dest',
+      'POST /api/bug-report/complete',
+    ]);
+    const body = JSON.parse(stub.requests[4]?.body.toString('utf8') ?? '') as Record<
+      string,
+      unknown
+    >;
+    expect('screenshotAssetUrl' in body).toBe(false);
+  });
+
+  test('files the report when the screenshot mint body is malformed', async () => {
+    // Guard: a 200 whose body does not parse into a mint must not proceed with
+    // undefined fields. Without the guard the throw is swallowed by the catch-all
+    // and the regression looks identical to a refused mint.
+    const stub = await startIntakeStub({ screenshotMintBody: { nope: true } });
+    const { deps, zipPath } = makeSendRig(stub.url, SCREENSHOT_PNG);
+
+    const result = await handleBugReportSend(deps, {
+      kind: 'send',
+      zipPath,
+      metadata: SEND_METADATA,
+      includeScreenshot: true,
+    });
+
+    expect(result).toEqual({ ok: true, reference: 'OK-1042' });
+    // Mint attempted, no PUT followed it.
+    expect(stub.requests.map((r) => `${r.method} ${r.path}`)).toEqual([
+      'POST /api/bug-report',
+      'PUT /upload/dest',
+      'POST /api/bug-report',
+      'POST /api/bug-report/complete',
+    ]);
+  });
+
+  test('refuses a screenshot upload URL that is not https', async () => {
+    // The same transport gate the bundle's minted URL gets: a compromised or
+    // misconfigured intake must not be able to downgrade this PUT to cleartext.
+    const stub = await startIntakeStub({
+      screenshotMintBody: {
+        uploadUrl: 'http://insecure.example.invalid/upload',
+        assetUrl: 'https://uploads.example.invalid/asset/dest',
+        headers: {},
+      },
+    });
+    const { deps, zipPath } = makeSendRig(stub.url, SCREENSHOT_PNG);
+
+    const result = await handleBugReportSend(deps, {
+      kind: 'send',
+      zipPath,
+      metadata: SEND_METADATA,
+      includeScreenshot: true,
+    });
+
+    expect(result).toEqual({ ok: true, reference: 'OK-1042' });
+    // No cleartext PUT was issued anywhere in the sequence.
+    expect(stub.requests.some((r) => r.path.includes('insecure'))).toBe(false);
+    const body = JSON.parse(stub.requests[3]?.body.toString('utf8') ?? '') as Record<
+      string,
+      unknown
+    >;
+    expect('screenshotAssetUrl' in body).toBe(false);
+  });
+
+  test('does not upload the screenshot when the reporter did not include it', async () => {
+    // The consent gate. main still holds the capture for this window, so without
+    // the gate an unchecked screenshot would be uploaded and embedded anyway.
+    const stub = await startIntakeStub();
+    const { deps, zipPath } = makeSendRig(stub.url, SCREENSHOT_PNG);
+
+    const result = await handleBugReportSend(deps, {
+      kind: 'send',
+      zipPath,
+      metadata: SEND_METADATA,
+      includeScreenshot: false,
+    });
+
+    expect(result).toEqual({ ok: true, reference: 'OK-1042' });
+    // Bundle mint + bundle PUT + completion. No screenshot mint, no screenshot PUT.
+    expect(stub.requests).toHaveLength(3);
+    const body = JSON.parse(stub.requests[2]?.body.toString('utf8') ?? '') as Record<
+      string,
+      unknown
+    >;
+    expect('screenshotAssetUrl' in body).toBe(false);
+  });
+
+  test('does not upload the screenshot when consent is absent (list retry)', async () => {
+    // Fail-closed: an omitted flag must behave like an explicit false.
+    const stub = await startIntakeStub();
+    const { deps, zipPath } = makeSendRig(stub.url, SCREENSHOT_PNG);
+
+    const result = await handleBugReportSend(deps, {
+      kind: 'send',
+      zipPath,
+      metadata: SEND_METADATA,
+    });
+
+    expect(result).toEqual({ ok: true, reference: 'OK-1042' });
+    expect(stub.requests).toHaveLength(3);
+  });
+
+  test('still files the report when the screenshot mint is refused', async () => {
+    // The expected answer from an intake deployed before it learned the image
+    // content type, and the load-bearing best-effort contract: a screenshot is
+    // never worth losing a report over, and the bundle has already landed.
+    const stub = await startIntakeStub({ screenshotMintStatus: 400 });
+    const { deps, zipPath } = makeSendRig(stub.url, SCREENSHOT_PNG);
+
+    const result = await handleBugReportSend(deps, {
+      kind: 'send',
+      zipPath,
+      metadata: SEND_METADATA,
+      includeScreenshot: true,
+    });
+
+    expect(result).toEqual({ ok: true, reference: 'OK-1042' });
+    // No screenshot PUT was attempted, and completion still ran.
+    expect(stub.requests.map((r) => `${r.method} ${r.path}`)).toEqual([
+      'POST /api/bug-report',
+      'PUT /upload/dest',
+      'POST /api/bug-report',
+      'POST /api/bug-report/complete',
+    ]);
+    const body = JSON.parse(stub.requests[3]?.body.toString('utf8') ?? '') as Record<
+      string,
+      unknown
+    >;
+    expect('screenshotAssetUrl' in body).toBe(false);
   });
 });
 

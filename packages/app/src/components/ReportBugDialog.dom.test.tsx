@@ -353,6 +353,10 @@ describe('ReportBugDialog', () => {
           projectSlug: 'demo-project',
           note: 'upload me',
         },
+        // Consent for the separate screenshot upload, read off the bundle's own
+        // file inventory. This fixture's summary carries no screenshot entry, so
+        // main must be told not to upload the capture it may still be holding.
+        includeScreenshot: false,
       },
     ]);
     expect(screen.getByDisplayValue('OK-8H3KQD')).not.toBeNull();
@@ -750,6 +754,30 @@ describe('ReportBugDialog', () => {
     // it must NOT trip the crash-dump "not redacted" wording.
     expect(screen.getByText(/6\.8 MB · secrets redacted · 3 files/)).not.toBeNull();
     expect(screen.queryByText(/crash dump not redacted/)).toBeNull();
+  });
+
+  test('a screenshot-bearing bundle tells main to upload the screenshot', async () => {
+    // The consent signal for the separate screenshot upload is read off the
+    // bundle's file inventory, not the checkbox state, so it cannot drift from the
+    // artifact the reporter reviewed if the checkbox is toggled after create.
+    const log = installBridge({
+      captureScreenshot: () => Promise.resolve(SCREENSHOT),
+      create: () =>
+        Promise.resolve({
+          ...CREATE_OK,
+          summary: { ...SUMMARY, files: [...SUMMARY.files, 'extra/screenshot.png'] },
+        }),
+    });
+    await renderDialog();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+
+    await vi.waitFor(() => {
+      expect(log.sendCalls).toHaveLength(1);
+    });
+    expect(log.sendCalls[0]?.includeScreenshot).toBe(true);
   });
 
   test('the capture waits for the launcher (⌘K palette) to clear before revealing', async () => {
