@@ -5,24 +5,36 @@
  * `useSyncExternalStore`-compatible) rather than React context — the file
  * tree consumes it from a MutationObserver callback outside React.
  *
- * Counts are tracked per validator source so the three freshness triggers can
- * write independently without clobbering each other:
+ * Counts are tracked per validator source so the freshness triggers can write
+ * independently without clobbering each other:
  *  1. a project audit replaces the WHOLE store (both sources, every doc);
  *  2. the open doc's lint entry is written live off the `useDocDiagnostics`
  *     debounce, and its links entry off the doc-scoped audit fetch;
  *  3. a persisted doc (CC1 `disk-ack`, the one per-doc channel) is re-validated
- *     alone and patched (both sources).
- * Never a background whole-project walk.
+ *     alone and patched (both sources);
+ *  4. a lint-config change (plugin enabled, rule toggled, schema edited)
+ *     replaces the whole store from the counts-only audit plane — the config
+ *     that produced every existing entry no longer holds;
+ *  5. opening the project replaces the whole store once, so a KB configured in
+ *     an earlier session is correct on arrival instead of empty until the user
+ *     opens files or audits by hand (no project-size cap — the on-demand and
+ *     config-change audits have none either).
+ * No trigger polls. The two whole-project walks (4 and 5) fetch counts only,
+ * single-flight, and coalesce server-side.
  */
 
+import {
+  countDiagnosticsBySource,
+  type ValidationDocCounts,
+  type ValidationSourceCounts,
+  type ValidationSourceKey,
+} from '@inkeep/open-knowledge-core';
 import { filePathToDocName } from '@/lib/doc-hash';
 
-export interface DocProblemCounts {
-  errorCount: number;
-  warningCount: number;
-}
+/** Alias kept for existing call sites; the shape lives in core with the predicate. */
+export type DocProblemCounts = ValidationSourceCounts;
 
-export type ValidationSourceKey = 'lint' | 'links';
+export type { ValidationSourceKey };
 
 interface DiagnosticShape {
   severity: string;
@@ -58,19 +70,14 @@ function rebuildSnapshotAndNotify(): void {
   for (const listener of listeners) listener();
 }
 
-/** Split one doc's diagnostics into per-source counts ('links' vs everything else). */
-function countBySource(diagnostics: readonly DiagnosticShape[]): SourceCounts {
-  const counts: SourceCounts = {
-    lint: { errorCount: 0, warningCount: 0 },
-    links: { errorCount: 0, warningCount: 0 },
-  };
-  for (const diagnostic of diagnostics) {
-    const bucket = diagnostic.source === 'links' ? counts.links : counts.lint;
-    if (diagnostic.severity === 'error') bucket.errorCount += 1;
-    else bucket.warningCount += 1;
-  }
-  return counts;
-}
+/**
+ * Split one doc's diagnostics into per-source counts. This is the SAME core
+ * predicate the server tallies its counts-only audit plane with, so an entry
+ * written from the enumerated plane and one written from the counts plane can
+ * never disagree about the same doc.
+ */
+const countBySource: (diagnostics: readonly DiagnosticShape[]) => SourceCounts =
+  countDiagnosticsBySource;
 
 export function subscribeToValidationStore(listener: () => void): () => void {
   listeners.add(listener);
@@ -94,6 +101,20 @@ export function replaceValidationFromAudit(
   entries.clear();
   for (const file of files) {
     entries.set(filePathToDocName(file.file), countBySource(file.diagnostics));
+  }
+  rebuildSnapshotAndNotify();
+}
+
+/**
+ * Trigger 4 — a counts-only project audit, same full-plane truth as trigger 1
+ * but tallied server-side. Entries are already split by source, so nothing is
+ * re-derived here; docs healed since the last audit drop out as they do for
+ * trigger 1.
+ */
+export function replaceValidationFromCounts(files: readonly ValidationDocCounts[]): void {
+  entries.clear();
+  for (const file of files) {
+    entries.set(filePathToDocName(file.file), { lint: file.lint, links: file.links });
   }
   rebuildSnapshotAndNotify();
 }

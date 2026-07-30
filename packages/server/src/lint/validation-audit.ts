@@ -9,15 +9,18 @@
  */
 
 import {
+  countDiagnosticsBySource,
   DEFAULT_LINKS_VALIDATION,
   type LinksValidationSetting,
   type LinterConfig,
   SUPPORTED_DOC_EXTENSIONS,
   type ValidationDiagnostic,
+  type ValidationDocCounts,
 } from '@inkeep/open-knowledge-core';
 import type { DerivedDocumentIndexApiPort } from '../derived-document-index.ts';
 import { getLogger } from '../logger.ts';
-import { auditProject } from './audit.ts';
+import { AuditSupersededError, auditProject } from './audit.ts';
+import type { AuditCache } from './audit-cache.ts';
 
 type DeadLinksResult = Awaited<ReturnType<DerivedDocumentIndexApiPort['getDeadLinks']>>;
 
@@ -40,6 +43,36 @@ export interface ValidationAuditResult {
   errorCount: number;
   warningCount: number;
   warnings: string[];
+}
+
+export interface ValidationAuditCountsResult {
+  files: ValidationDocCounts[];
+  fileCount: number;
+  errorCount: number;
+  warningCount: number;
+  warnings: string[];
+}
+
+/**
+ * Tally an audit result into the counts-only plane. A derivation of the
+ * enumerated plane, never a second determination — same walk, same predicate
+ * (`countDiagnosticsBySource`), only the diagnostic bodies dropped. Callers
+ * that keep file-tree tints fresh want the tallies and would discard the
+ * bodies immediately; on a large KB those bodies are tens of MB per request.
+ */
+export function toValidationCountsPlane(
+  result: ValidationAuditResult,
+): ValidationAuditCountsResult {
+  return {
+    files: result.files.map((entry) => ({
+      file: entry.file,
+      ...countDiagnosticsBySource(entry.diagnostics),
+    })),
+    fileCount: result.fileCount,
+    errorCount: result.errorCount,
+    warningCount: result.warningCount,
+    warnings: result.warnings,
+  };
 }
 
 export interface ValidationScope {
@@ -80,6 +113,10 @@ export interface ValidationAuditDeps {
   admittedDocNames: () => Iterable<string> | Promise<Iterable<string>>;
   /** docName → on-disk contentDir-relative path, null when no file exists yet. */
   docFilePathFor: (docName: string) => string | null;
+  /** Shared across audits so an unchanged-config re-walk does no lint work. */
+  cache?: AuditCache;
+  /** Lint config + active branch, as one equality token (see `AuditOptions.auditGeneration`). */
+  auditGeneration?: () => string;
 }
 
 /**
@@ -105,6 +142,10 @@ export async function runValidationAudit(
       try {
         return await validator.run(scope);
       } catch (error) {
+        // Supersession is not a validator failure — it invalidates the WHOLE
+        // plane, so degrading it to a warning would publish the surviving
+        // validators' findings as if they were a complete answer.
+        if (error instanceof AuditSupersededError) throw error;
         // The plane's warning carries only `.message`; the stack goes to the
         // server log or a deep validator throw is undebuggable in production.
         getLogger('validation-audit').error(
@@ -169,6 +210,8 @@ function createLintValidator(deps: ValidationAuditDeps): ProjectValidator {
         baseConfig: deps.baseConfig,
         targetPath: scope.targetPath,
         liveSourceFor: deps.liveSourceFor,
+        cache: deps.cache,
+        auditGeneration: deps.auditGeneration,
       });
       return { files: audit.files, fileCount: audit.fileCount, warnings: audit.warnings };
     },

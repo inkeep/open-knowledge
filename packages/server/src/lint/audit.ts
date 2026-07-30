@@ -8,6 +8,7 @@
 
 import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
+import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
 import {
   fixDocument,
   type LintDiagnostic,
@@ -18,6 +19,7 @@ import {
 import { SymlinkEscapeError } from '../apply-managed-rename.ts';
 import { createContentFilter } from '../content-filter.ts';
 import { isWithinContentDir } from '../content-path.ts';
+import { AuditCache } from './audit-cache.ts';
 import { unmatchedAppliesToProblems } from './frontmatter-schemas.ts';
 import { composeFrontmatterSchemasConfig, resolveEffectiveLinterConfig } from './resolve-config.ts';
 
@@ -35,6 +37,36 @@ export interface AuditResult {
   warnings: string[];
 }
 
+/**
+ * Raised when the world the walk was linting changed underneath it — the lint
+ * configuration, or the branch whose content it was reading. Either way the
+ * walk's own result would mix docs from both sides of the change, so the
+ * caller must discard it rather than publish a plane that is true of no
+ * single configuration and no single branch.
+ */
+export class AuditSupersededError extends Error {
+  constructor(message = 'the lint configuration or branch changed during the audit walk') {
+    super(message);
+    this.name = 'AuditSupersededError';
+  }
+}
+
+/**
+ * How long the walk may hold the loop between yields. Time-sliced rather than
+ * every-N-documents because per-doc cost spans orders of magnitude (a stub vs
+ * a thousand-line doc under every rule), so a fixed count gives slices whose
+ * length is unbounded in the worst case.
+ *
+ * At this size a whole-project walk gives up the loop tens of times per second
+ * — enough that HTTP requests, CC1 signals, fs-watcher events and persistence
+ * timers keep being serviced — for a few percent of added wall time.
+ *
+ * It is a floor, not a ceiling: the yield sits between documents, so a single
+ * document costlier than the slice still holds the loop for its own duration.
+ * Going finer would need the lint engines themselves to become interruptible.
+ */
+const YIELD_SLICE_MS = 8;
+
 export interface AuditOptions {
   projectDir: string;
   contentDir: string;
@@ -48,6 +80,30 @@ export interface AuditOptions {
    * problems the live doc no longer has, and every "fix" is a clean no-op.
    */
   liveSourceFor?: (docRelPath: string) => string | null;
+  /**
+   * Reuse per-file results across audits at unchanged config. Omitted → every
+   * doc is re-linted. Docs served from `liveSourceFor` bypass it regardless:
+   * their bytes move without touching the disk stamp the key rests on.
+   */
+  cache?: AuditCache;
+  /**
+   * Reads a token naming the world this walk's plane would be true of: the
+   * lint configuration in force AND the branch whose content is on disk.
+   * Injected rather than imported so this module stays free of server HTTP
+   * state. Compared for equality only — a branch label has no order — so it is
+   * a token, not a counter.
+   *
+   * Both inputs move underneath a walk. The walk resolves the native
+   * `.markdownlint.*` cascade per document, so a config write landing between
+   * two of its yields would leave earlier docs linted under the old rules and
+   * later ones under the new; a branch switch replaces the content set
+   * wholesale on disk, so one landing mid-walk leaves earlier docs read from
+   * the old branch and later ones from the new. Either way the result is a
+   * plane true of no single world. Sampled at each yield; a move abandons the
+   * walk with {@link AuditSupersededError}. Omitted → no supersession check,
+   * which is correct for callers that cannot observe either change.
+   */
+  auditGeneration?: () => string;
 }
 
 /** Lint a single document (live CRDT source when loaded, else disk) with its
@@ -55,24 +111,50 @@ export interface AuditOptions {
 export async function lintDoc(
   opts: AuditOptions & { docRelPath: string; onConfigProblem?: (problem: string) => void },
 ): Promise<FileLintResult> {
-  const { projectDir, contentDir, baseConfig, docRelPath, onConfigProblem, liveSourceFor } = opts;
+  const { projectDir, contentDir, baseConfig, docRelPath, onConfigProblem, liveSourceFor, cache } =
+    opts;
   const live = liveSourceFor?.(docRelPath) ?? null;
-  let text: string;
-  if (live !== null) {
-    text = live;
-  } else {
-    // Symlinks inside the content dir are supported (realpath-based identity),
-    // but an escape must be refused before the read: lint diagnostics echo
-    // source text, so linting an escaped symlink is an arbitrary-file read.
-    const canonical = resolveCanonicalDocPath(join(contentDir, docRelPath), contentDir);
-    text = readFileSync(canonical, 'utf-8');
-  }
+  // Resolved before the cache probe because the resolved config IS part of the
+  // key — and unconditionally, so a config-resolution problem still reaches
+  // `onConfigProblem` on a cache hit (the audit aggregates those into its
+  // top-level warnings, which must not thin out as the cache warms).
   const cfg = resolveEffectiveLinterConfig(contentDir, baseConfig, {
     docName: docRelPath,
     projectDir,
     onProblem: onConfigProblem,
   });
-  return { file: docRelPath, diagnostics: await lintDocument(text, cfg, docRelPath) };
+  if (live !== null) {
+    return { file: docRelPath, diagnostics: await lintDocument(live, cfg, docRelPath) };
+  }
+  // Symlinks inside the content dir are supported (realpath-based identity),
+  // but an escape must be refused before the read: lint diagnostics echo
+  // source text, so linting an escaped symlink is an arbitrary-file read.
+  const canonical = resolveCanonicalDocPath(join(contentDir, docRelPath), contentDir);
+  let cacheKey: string | null = null;
+  if (cache !== undefined) {
+    // A missing/unreadable stamp just skips the cache — the read below reports
+    // the real failure, and guessing a key would be worse than re-linting.
+    try {
+      const stat = statSync(canonical);
+      cacheKey = AuditCache.key({
+        contentDir,
+        docRelPath,
+        mtimeMs: stat.mtimeMs,
+        size: stat.size,
+        configFingerprint: AuditCache.fingerprintConfig(cfg),
+      });
+    } catch {
+      cacheKey = null;
+    }
+    if (cacheKey !== null) {
+      const cached = cache.get(cacheKey);
+      if (cached !== null) return { file: docRelPath, diagnostics: cached };
+    }
+  }
+  const text = readFileSync(canonical, 'utf-8');
+  const diagnostics = await lintDocument(text, cfg, docRelPath);
+  if (cacheKey !== null) cache?.set(cacheKey, diagnostics);
+  return { file: docRelPath, diagnostics };
 }
 
 /**
@@ -155,8 +237,11 @@ export function collectDocFiles(opts: {
 export async function auditProject(
   opts: AuditOptions & { targetPath?: string },
 ): Promise<AuditResult> {
-  const { projectDir, contentDir, baseConfig, targetPath } = opts;
+  const { projectDir, contentDir, baseConfig, targetPath, auditGeneration } = opts;
   const warnings: string[] = [];
+  // Sampled before the first yield, so it is the generation every doc in this
+  // walk is linted under until proven otherwise.
+  const startGeneration = auditGeneration?.();
 
   const docFiles: string[] = [];
   const scope = resolveScope(targetPath, contentDir);
@@ -223,7 +308,18 @@ export async function auditProject(
       onConfigProblem(problem);
     }
   }
+  let sliceStartedAt = performance.now();
   for (const rel of docFiles) {
+    if (performance.now() - sliceStartedAt >= YIELD_SLICE_MS) {
+      // A macrotask, not a microtask: `await Promise.resolve()` (or an async
+      // callee that never awaits real I/O, which is what the lint engines are)
+      // drains on the same turn and never lets the loop reach its poll phase.
+      await yieldToEventLoop();
+      if (auditGeneration !== undefined && auditGeneration() !== startGeneration) {
+        throw new AuditSupersededError();
+      }
+      sliceStartedAt = performance.now();
+    }
     let result: FileLintResult;
     try {
       result = await lintDoc({
@@ -233,6 +329,7 @@ export async function auditProject(
         docRelPath: rel,
         onConfigProblem,
         liveSourceFor: opts.liveSourceFor,
+        cache: opts.cache,
       });
     } catch (e) {
       warnings.push(`could not lint ${rel}: ${errMsg(e)}`);

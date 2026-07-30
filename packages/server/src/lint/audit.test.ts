@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { DEFAULT_LINTER_CONFIG, type LinterConfig } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { auditProject, lintDoc } from './audit.ts';
+import { AuditCache } from './audit-cache.ts';
 
 let root: string;
 
@@ -197,5 +198,120 @@ describe('auditProject', () => {
     });
     expect(audit.files).toEqual([]);
     expect(audit.warningCount).toBe(0);
+  });
+
+  describe('with a result cache', () => {
+    test('a second audit at unchanged config re-lints nothing and agrees', async () => {
+      write('a.md', DOC_WITH_TAB);
+      write('b.md', DOC_WITH_TAB);
+      write('clean.md', CLEAN_DOC);
+      const cache = new AuditCache();
+      const opts = { projectDir: root, contentDir: root, baseConfig: base, cache };
+
+      const first = await auditProject(opts);
+      expect(cache.stats()).toMatchObject({ hits: 0, misses: 3, entries: 3 });
+
+      const second = await auditProject(opts);
+      expect(cache.stats().hits).toBe(3);
+      // The cached plane must be indistinguishable from the freshly-linted one.
+      expect(second.files).toEqual(first.files);
+      expect(second.warningCount).toBe(first.warningCount);
+      expect(second.errorCount).toBe(first.errorCount);
+    });
+
+    test('editing a doc invalidates only that doc', async () => {
+      write('a.md', DOC_WITH_TAB);
+      write('b.md', DOC_WITH_TAB);
+      const cache = new AuditCache();
+      const opts = { projectDir: root, contentDir: root, baseConfig: base, cache };
+      await auditProject(opts);
+
+      // A different length guarantees a distinct stamp regardless of timer
+      // granularity, which is the property the key actually rests on.
+      write('a.md', `${DOC_WITH_TAB}\nAnother\tline with a tab.\n`);
+      const after = await auditProject(opts);
+
+      expect(cache.stats().hits).toBe(1);
+      expect(after.files.map((f) => f.file).sort()).toEqual(['a.md', 'b.md']);
+    });
+
+    test('a rule change invalidates every doc', async () => {
+      write('a.md', DOC_WITH_TAB);
+      write('b.md', DOC_WITH_TAB);
+      const cache = new AuditCache();
+      await auditProject({ projectDir: root, contentDir: root, baseConfig: base, cache });
+      expect(cache.stats().misses).toBe(2);
+
+      const md010Off: LinterConfig = {
+        ...base,
+        plugins: {
+          ...base.plugins,
+          markdownlint: { ...base.plugins.markdownlint, rules: { MD010: false } },
+        },
+      };
+      const after = await auditProject({
+        projectDir: root,
+        contentDir: root,
+        baseConfig: md010Off,
+        cache,
+      });
+
+      // Nothing carries over: the config every entry was linted under is gone.
+      expect(cache.stats().hits).toBe(0);
+      expect(after.files.some((f) => f.diagnostics.some((d) => d.code === 'MD010'))).toBe(false);
+    });
+
+    test('editing the native .markdownlint.json invalidates the cache', async () => {
+      // The base config is unchanged here — only the on-disk cascade moved. The
+      // key rests on the RESOLVED config, so this has to invalidate too, or a
+      // native-file edit would serve diagnostics for the superseded rules.
+      write('a.md', DOC_WITH_TAB);
+      write('.markdownlint.json', JSON.stringify({ MD010: true }));
+      const cache = new AuditCache();
+      const opts = { projectDir: root, contentDir: root, baseConfig: base, cache };
+
+      const before = await auditProject(opts);
+      expect(before.files.some((f) => f.diagnostics.some((d) => d.code === 'MD010'))).toBe(true);
+
+      write('.markdownlint.json', JSON.stringify({ MD010: false }));
+      const after = await auditProject(opts);
+
+      expect(cache.stats().hits).toBe(0);
+      expect(after.files.some((f) => f.diagnostics.some((d) => d.code === 'MD010'))).toBe(false);
+    });
+
+    test('a doc served from the live CRDT overlay is never cached', async () => {
+      write('loaded.md', CLEAN_DOC);
+      const cache = new AuditCache();
+      const opts = {
+        projectDir: root,
+        contentDir: root,
+        baseConfig: base,
+        cache,
+        // Live bytes move without touching the disk stamp the key rests on, so
+        // caching them would serve a stale plane for the doc being edited.
+        liveSourceFor: (rel: string) => (rel === 'loaded.md' ? DOC_WITH_TAB : null),
+      };
+      const first = await auditProject(opts);
+      const second = await auditProject(opts);
+
+      expect(cache.stats()).toMatchObject({ hits: 0, misses: 0, entries: 0 });
+      expect(first.files.map((f) => f.file)).toEqual(['loaded.md']);
+      expect(second.files).toEqual(first.files);
+    });
+
+    test('config-resolution problems still surface on a cache hit', async () => {
+      write('a.md', DOC_WITH_TAB);
+      write('.markdownlint.json', '{ not valid json');
+      const cache = new AuditCache();
+      const opts = { projectDir: root, contentDir: root, baseConfig: base, cache };
+
+      const first = await auditProject(opts);
+      expect(first.warnings.length).toBeGreaterThan(0);
+      // The warning channel must not thin out as the cache warms — a malformed
+      // config file has to keep reporting itself on every audit.
+      const second = await auditProject(opts);
+      expect(second.warnings).toEqual(first.warnings);
+    });
   });
 });

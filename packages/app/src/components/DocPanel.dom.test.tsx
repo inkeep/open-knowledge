@@ -65,6 +65,7 @@ vi.doMock('@/editor/useDocDiagnostics', () => ({
   useDocDiagnostics: () => diagnosticsValue,
 }));
 vi.doMock('@/editor/validation-audit-client', () => ({
+  AUDIT_SUPERSEDED: 'audit-superseded',
   runValidationAudit: async () => null,
   useDocLinkFindings: () => [],
 }));

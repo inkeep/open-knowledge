@@ -11,6 +11,8 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  type ValidationAuditCountsResponse,
+  ValidationAuditCountsResponseSchema,
   type ValidationAuditResponse,
   ValidationAuditResponseSchema,
 } from '@inkeep/open-knowledge-core';
@@ -179,4 +181,79 @@ describe('GET /api/audit', () => {
     const both = await fetch(api('/api/audit?doc=a&path=b.md'));
     expect(both.status).toBe(400);
   });
+
+  test(
+    'counts=1 returns the same plane tallied per file and per source',
+    async () => {
+      const folder = join(server.contentDir, 'audit-counts');
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, 'tabbed.md'), TABBED_BODY, 'utf-8');
+      try {
+        const enumeratedRes = await fetch(api('/api/audit?path=audit-counts'));
+        const countsRes = await fetch(api('/api/audit?path=audit-counts&counts=1'));
+        expect(enumeratedRes.status).toBe(200);
+        expect(countsRes.status).toBe(200);
+
+        const enumerated = ValidationAuditResponseSchema.parse(
+          await enumeratedRes.json(),
+        ) satisfies ValidationAuditResponse;
+        const counts = ValidationAuditCountsResponseSchema.parse(
+          await countsRes.json(),
+        ) satisfies ValidationAuditCountsResponse;
+
+        // Same files, same rollups — the counts plane is a derivation, not a
+        // second determination.
+        expect(counts.files.map((f) => f.file)).toEqual(enumerated.files.map((f) => f.file));
+        expect(counts.errorCount).toBe(enumerated.errorCount);
+        expect(counts.warningCount).toBe(enumerated.warningCount);
+        expect(counts.fileCount).toBe(enumerated.fileCount);
+
+        const tabbed = counts.files.find((f) => f.file.endsWith('tabbed.md'));
+        expect(tabbed).toBeDefined();
+        expect(tabbed?.lint.warningCount).toBeGreaterThan(0);
+        // The tallies carry no diagnostic bodies — that is the whole point of
+        // the mode, and the wire schema is strict about the file shape.
+        expect(Object.keys(tabbed ?? {}).sort()).toEqual(['file', 'links', 'lint']);
+      } finally {
+        rmSync(folder, { recursive: true, force: true });
+      }
+    },
+    HARNESS_BOOT_TIMEOUT_MS,
+  );
+
+  test(
+    'concurrent identical audits are coalesced and agree',
+    async () => {
+      const folder = join(server.contentDir, 'audit-coalesce');
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, 'tabbed.md'), TABBED_BODY, 'utf-8');
+      try {
+        // Several windows firing the same freshness pass at once, plus a panel
+        // refresh: all in flight together, all must resolve to one truth.
+        const responses = await Promise.all([
+          fetch(api('/api/audit?path=audit-coalesce&counts=1')),
+          fetch(api('/api/audit?path=audit-coalesce&counts=1')),
+          fetch(api('/api/audit?path=audit-coalesce&counts=1')),
+          fetch(api('/api/audit?path=audit-coalesce')),
+        ]);
+        for (const response of responses) expect(response.status).toBe(200);
+
+        const bodies = await Promise.all(responses.map((r) => r.json()));
+        const countsBodies = bodies
+          .slice(0, 3)
+          .map((body) => ValidationAuditCountsResponseSchema.parse(body));
+        expect(countsBodies[1]).toEqual(countsBodies[0]);
+        expect(countsBodies[2]).toEqual(countsBodies[0]);
+
+        // The enumerated joiner shares the same underlying walk, so its rollups
+        // must match the tallied ones rather than reflecting a separate pass.
+        const enumerated = ValidationAuditResponseSchema.parse(bodies[3]);
+        expect(enumerated.errorCount).toBe(countsBodies[0]?.errorCount);
+        expect(enumerated.warningCount).toBe(countsBodies[0]?.warningCount);
+      } finally {
+        rmSync(folder, { recursive: true, force: true });
+      }
+    },
+    HARNESS_BOOT_TIMEOUT_MS,
+  );
 });

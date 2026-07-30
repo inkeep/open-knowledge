@@ -301,6 +301,10 @@ export const URN_HTTP_ONLY: ReadonlySet<ProblemType> = new Set<ProblemType>([
   // native `.markdownlint.*` file can't be written). HTTP-only — the lint
   // config surface is REST, with no IPC counterpart.
   'urn:ok:error:config-not-writable',
+  // Audit superseded by a concurrent lint-config change (`GET /api/audit`,
+  // `GET /api/lint/audit` → 409). HTTP-only — the audit surface is REST, with
+  // no IPC counterpart.
+  'urn:ok:error:audit-superseded',
 ]);
 
 /**

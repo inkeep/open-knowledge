@@ -10,6 +10,7 @@ import {
   patchDocValidationFromAudit,
   patchDocValidationSource,
   replaceValidationFromAudit,
+  replaceValidationFromCounts,
   resetValidationStoreForTest,
   subscribeToValidationStore,
 } from './validation-store';
@@ -83,5 +84,57 @@ describe('validation store', () => {
   test('all-zero docs never appear in the snapshot', () => {
     patchDocValidationSource('clean', 'lint', { errorCount: 0, warningCount: 0 });
     expect(getValidationSnapshot().has('clean')).toBe(false);
+  });
+
+  test('replaceValidationFromCounts merges per-source tallies from the counts plane', () => {
+    replaceValidationFromCounts([
+      {
+        file: 'guides/setup.md',
+        lint: { errorCount: 2, warningCount: 1 },
+        links: { errorCount: 0, warningCount: 3 },
+      },
+      {
+        file: 'clean.md',
+        lint: { errorCount: 0, warningCount: 0 },
+        links: { errorCount: 0, warningCount: 0 },
+      },
+    ]);
+    const snapshot = getValidationSnapshot();
+    // Keyed by extension-less docName, same as the enumerated plane.
+    expect(snapshot.get('guides/setup')).toEqual({ errorCount: 2, warningCount: 4 });
+    // A doc the audit reported with no problems is absent, not present-at-zero.
+    expect(snapshot.has('clean.md')).toBe(false);
+    expect(snapshot.has('clean')).toBe(false);
+  });
+
+  test('replaceValidationFromCounts is full-plane truth — healed docs drop out', () => {
+    patchDocValidationFromAudit('gone', [lintError]);
+    expect(getValidationSnapshot().has('gone')).toBe(true);
+
+    replaceValidationFromCounts([
+      {
+        file: 'other.md',
+        lint: { errorCount: 1, warningCount: 0 },
+        links: { errorCount: 0, warningCount: 0 },
+      },
+    ]);
+    expect(getValidationSnapshot().has('gone')).toBe(false);
+    expect(getValidationSnapshot().has('other')).toBe(true);
+  });
+
+  test('the counts plane and the enumerated plane agree for the same doc', () => {
+    // The two triggers must never disagree about one doc's totals; both route
+    // their bucketing through the shared core predicate.
+    replaceValidationFromAudit([{ file: 'a.md', diagnostics: [lintError, lintWarning, deadLink] }]);
+    const fromDiagnostics = getValidationSnapshot().get('a');
+
+    replaceValidationFromCounts([
+      {
+        file: 'a.md',
+        lint: { errorCount: 1, warningCount: 1 },
+        links: { errorCount: 1, warningCount: 0 },
+      },
+    ]);
+    expect(getValidationSnapshot().get('a')).toEqual(fromDiagnostics);
   });
 });

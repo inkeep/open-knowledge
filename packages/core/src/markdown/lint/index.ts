@@ -55,8 +55,12 @@ export {
   MarkdownlintRuleWriteRequestSchema,
   type PersistedLinterConfig,
   toEffectiveBase,
+  type ValidationAuditCountsResponse,
+  ValidationAuditCountsResponseSchema,
   type ValidationAuditResponse,
   ValidationAuditResponseSchema,
+  type ValidationDocCounts,
+  ValidationDocCountsSchema,
   type ValidationDocResult,
   ValidationDocResultSchema,
 } from './config-schemas.ts';
@@ -119,3 +123,10 @@ export type {
   ValidationSource,
 } from './types.ts';
 export { DEFAULT_LINKS_VALIDATION, LINKS_VALIDATION_SETTINGS } from './types.ts';
+export {
+  countDiagnosticsBySource,
+  type ValidationCountsBySource,
+  type ValidationSourceCounts,
+  type ValidationSourceKey,
+  ZERO_SOURCE_COUNTS,
+} from './validation-counts.ts';

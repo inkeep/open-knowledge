@@ -30,9 +30,13 @@ import {
 } from '@/components/ui/panel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { fixLintDoc, useProjectLintConfig } from '@/editor/lint-config-client';
+import {
+  fixLintDoc,
+  subscribeToLintConfigChanged,
+  useProjectLintConfig,
+} from '@/editor/lint-config-client';
 import { rememberPendingSourceNavigation } from '@/editor/source-editor-navigation';
-import { runValidationAudit } from '@/editor/validation-audit-client';
+import { AUDIT_SUPERSEDED, runValidationAudit } from '@/editor/validation-audit-client';
 import { createPageFromSeedAndUpdate } from '@/lib/create-page';
 import { filePathToDocName, hashFromDocName } from '@/lib/doc-hash';
 import { openProjectPluginsSettings } from '@/lib/use-settings-route';
@@ -537,6 +541,22 @@ export function ProblemsPanel({
       mountedRef.current = false;
     };
   }, []);
+  // Latest-ref for the config-change subscription below: that subscription is
+  // installed once and must not be torn down and re-added on every render, so it
+  // calls through this instead of closing over a particular render's state.
+  const onLintConfigChangedRef = useRef<() => void>(() => {});
+  // The last SETTLED audit plane, i.e. what an abandoned walk falls back to.
+  // A latest-ref rather than the `audit` closure because `loadAudit` runs from
+  // callbacks that outlive their render (a project sweep, a page create), and
+  // `loading` is deliberately never recorded so chained supersessions restore
+  // the last real plane instead of the spinner the previous one left behind.
+  const settledAuditRef = useRef<ProjectAuditState>({ status: 'idle' });
+  useEffect(() => {
+    if (audit.status !== 'loading') settledAuditRef.current = audit;
+  });
+  // Load generation, so restoring an abandoned walk's fallback cannot clobber a
+  // replacement load that started after it.
+  const loadGenRef = useRef(0);
 
   const sorted = [...diagnostics].sort(compareDiagnostics);
   const docFixableCount = countFixable(sorted);
@@ -572,8 +592,27 @@ export function ProblemsPanel({
   }
 
   async function loadAudit() {
+    loadGenRef.current += 1;
+    const generation = loadGenRef.current;
+    const fallback = settledAuditRef.current;
     setAudit({ status: 'loading' });
     const result = await runValidationAudit();
+    // A superseded walk carries no plane, so the panel keeps the one it had —
+    // briefly-stale counts, with the refresh affordance back. It must not wait
+    // for the replacement the config change schedules: the `lint-config` push
+    // that would deliver it has no reconnect replay, so a socket drop inside the
+    // server's debounce window loses it and leaves the panel on a spinner with
+    // refresh disabled, which nothing else can clear. A first activation has no
+    // plane to keep, so it degrades to the retryable failure state instead —
+    // that state's refresh button is the way out.
+    if (result === AUDIT_SUPERSEDED) {
+      // Skipped when a later load is already in flight: its own settlement is
+      // fresher than this fallback, and it owns the panel from here.
+      if (loadGenRef.current === generation && mountedRef.current) {
+        setAudit(fallback.status === 'idle' ? { status: 'failed' } : fallback);
+      }
+      return;
+    }
     // A successful whole-project audit is full-plane truth — refresh the
     // shared validation store (freshness trigger 1) so the file tree's tints
     // update in the same pass. Deliberately BEFORE the mounted guard: the
@@ -638,6 +677,28 @@ export function ProblemsPanel({
     // until an explicit refresh (a failed run keeps its error until retried).
     if (next === 'project' && audit.status === 'idle') void loadAudit();
   }
+
+  // A loaded project snapshot was computed under a lint config that a rule
+  // toggle has now replaced, so serving it on is showing problems for rules the
+  // project no longer has (and hiding ones it just gained). Refresh in place —
+  // only when a snapshot exists, so a config change never provokes a
+  // whole-project walk for a panel sitting in doc scope. The server can coalesce
+  // this with the file-tree freshness pass firing off the same event, but only
+  // while both requests are in flight together: this one goes out immediately
+  // and that pass debounces first, so the common case is two walks, not one.
+  useEffect(() => {
+    onLintConfigChangedRef.current = () => {
+      // Also while a walk is in flight: a config change landing mid-walk
+      // supersedes that walk, and this is what starts its replacement — the
+      // abandoned walk only restores the plane it had, which is stale under the
+      // new config. Still skipped when the panel has never loaded (a config
+      // change must not provoke a walk for one sitting in doc scope) and when a
+      // run failed, where the refresh affordance is deliberately the only retry.
+      if (audit.status === 'idle' || audit.status === 'failed') return;
+      void loadAudit();
+    };
+  });
+  useEffect(() => subscribeToLintConfigChanged(() => onLintConfigChangedRef.current()), []);
 
   function handleNav(diagnostic: DiagnosticLike) {
     const detail = lintNavDetailOf(diagnostic);

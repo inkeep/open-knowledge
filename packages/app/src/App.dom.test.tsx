@@ -89,6 +89,18 @@ vi.doMock('@/components/PageListContext', () => ({
     pagesBySlug,
     pagesByBasename,
   }),
+  // ValidationFreshness (mounted in the App body) reads the doc count through the
+  // optional variant to budget its on-open audit.
+  useOptionalPageList: () => ({
+    assetPaths,
+    filePaths,
+    folderPaths,
+    loading,
+    pageMeta,
+    pages,
+    pagesBySlug,
+    pagesByBasename,
+  }),
 }));
 
 vi.doMock('@/components/navigation-targets', () => ({

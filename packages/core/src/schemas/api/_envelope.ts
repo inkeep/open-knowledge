@@ -392,6 +392,13 @@ export const ProblemTypeSchema = z.enum([
   // "change the resource (convert to JSON/JSONC/YAML) and retry" — not a
   // never-retry malformed request.
   'urn:ok:error:config-not-writable',
+  // `GET /api/audit` + `GET /api/lint/audit` abandon (409) a walk whose lint
+  // configuration changed underneath it. The walk resolves the native
+  // markdownlint cascade per document and yields between documents, so its
+  // result would otherwise mix both configurations — a plane true of neither.
+  // Retryable and self-correcting: the same mutation broadcasts `lint-config`,
+  // so the caller is already scheduling the walk that supersedes this one.
+  'urn:ok:error:audit-superseded',
 ]) satisfies StandardSchemaV1;
 export type ProblemType = z.infer<typeof ProblemTypeSchema>;
 

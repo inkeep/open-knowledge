@@ -184,6 +184,28 @@ export const ValidationAuditResponseSchema = z.object({
 export type ValidationDocResult = z.infer<typeof ValidationDocResultSchema>;
 export type ValidationAuditResponse = z.infer<typeof ValidationAuditResponseSchema>;
 
+const ValidationSourceCountsSchema = z.object({
+  errorCount: z.number().int().nonnegative(),
+  warningCount: z.number().int().nonnegative(),
+});
+
+export const ValidationDocCountsSchema = z.object({
+  file: z.string(),
+  lint: ValidationSourceCountsSchema,
+  links: ValidationSourceCountsSchema,
+});
+
+export const ValidationAuditCountsResponseSchema = z.object({
+  files: z.array(ValidationDocCountsSchema),
+  fileCount: z.number().int().nonnegative(),
+  errorCount: z.number().int().nonnegative(),
+  warningCount: z.number().int().nonnegative(),
+  warnings: z.array(z.string()),
+});
+
+export type ValidationDocCounts = z.infer<typeof ValidationDocCountsSchema>;
+export type ValidationAuditCountsResponse = z.infer<typeof ValidationAuditCountsResponseSchema>;
+
 export const LintFixRequestSchema = z
   .object({
     docName: safeDocNameField,

@@ -12,6 +12,7 @@ import {
   DEFAULT_LINTER_CONFIG,
   type LinterConfig,
   SUPPORTED_DOC_EXTENSIONS,
+  ValidationAuditCountsResponseSchema,
   ValidationAuditResponseSchema,
 } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -19,6 +20,7 @@ import { BacklinkIndex } from '../backlink-index.ts';
 import {
   createProjectValidators,
   runValidationAudit,
+  toValidationCountsPlane,
   type ValidationAuditDeps,
 } from './validation-audit.ts';
 
@@ -344,5 +346,62 @@ describe('runValidationAudit', () => {
     });
     // An undefined position would fail the wire schema and 500 the route.
     expect(ValidationAuditResponseSchema.parse(result)).toEqual(result);
+  });
+});
+
+describe('toValidationCountsPlane', () => {
+  test('tallies the merged plane per file and per source, dropping the bodies', async () => {
+    // One doc carrying BOTH a lint finding and a dead link, so the split is
+    // observable rather than inferred.
+    seedDoc('a', '# A\n\n\tTab line.\n\nSee [[ghost]].\n');
+    seedDoc('b', '# B\n\n\tTab line.\n');
+    const result = await runValidationAudit(createProjectValidators(deps()));
+    const counts = toValidationCountsPlane(result);
+
+    expect(ValidationAuditCountsResponseSchema.safeParse(counts).success).toBe(true);
+    const a = counts.files.find((f) => f.file === 'a.md');
+    expect(a?.links).toEqual({ errorCount: 0, warningCount: 1 });
+    expect(a?.lint.warningCount).toBeGreaterThan(0);
+    expect(a?.lint.errorCount).toBe(0);
+
+    // Rollups and the file set carry over from the enumerated plane verbatim.
+    expect(counts.files.map((f) => f.file)).toEqual(result.files.map((f) => f.file));
+    expect(counts.fileCount).toBe(result.fileCount);
+    expect(counts.errorCount).toBe(result.errorCount);
+    expect(counts.warningCount).toBe(result.warningCount);
+    expect(counts.warnings).toEqual(result.warnings);
+  });
+
+  test('per-file tallies sum to the plane rollups', async () => {
+    seedDoc('a', '# A\n\n\tTab.\n\nSee [[ghost]] and [[phantom]].\n');
+    seedDoc('b', '# B\n\n\tTab.\n');
+    const result = await runValidationAudit(createProjectValidators(deps()));
+    const counts = toValidationCountsPlane(result);
+
+    const errors = counts.files.reduce((n, f) => n + f.lint.errorCount + f.links.errorCount, 0);
+    const warnings = counts.files.reduce(
+      (n, f) => n + f.lint.warningCount + f.links.warningCount,
+      0,
+    );
+    expect(errors).toBe(result.errorCount);
+    expect(warnings).toBe(result.warningCount);
+  });
+
+  test('an empty plane tallies to an empty plane', () => {
+    expect(
+      toValidationCountsPlane({
+        files: [],
+        fileCount: 7,
+        errorCount: 0,
+        warningCount: 0,
+        warnings: ['a config warning'],
+      }),
+    ).toEqual({
+      files: [],
+      fileCount: 7,
+      errorCount: 0,
+      warningCount: 0,
+      warnings: ['a config warning'],
+    });
   });
 });

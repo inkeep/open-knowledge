@@ -33,7 +33,10 @@ vi.doMock('@lingui/core/macro', () => linguiMacroMock);
 vi.doMock('@lingui/react/macro', () => linguiMacroMock);
 
 let auditCalls = 0;
-let runLintAuditImpl: () => Promise<ValidationAuditResponse | null> = async () => null;
+/** Mirrors the client's exported sentinel; the mock below replaces the module. */
+const AUDIT_SUPERSEDED = 'audit-superseded' as const;
+let runLintAuditImpl: () => Promise<ValidationAuditResponse | null | typeof AUDIT_SUPERSEDED> =
+  async () => null;
 let fixLintDocCalls: string[] = [];
 let fixLintDocImpl: (docName: string) => Promise<{ ok: boolean; errorDetail?: string | null }> =
   async () => ({ ok: true });
@@ -42,9 +45,17 @@ const toastError = vi.fn((_message: string) => {});
 
 const toastSuccess = vi.fn((_message: string) => {});
 vi.doMock('sonner', () => ({ toast: { error: toastError, success: toastSuccess } }));
+// Captured so a test can fire a config change the way a rule toggle does.
+const lintConfigListeners = new Set<() => void>();
+function emitLintConfigChangedForTest(): void {
+  for (const listener of lintConfigListeners) listener();
+}
 vi.doMock('@/editor/lint-config-client', () => ({
   emitLintConfigChanged: () => {},
-  subscribeToLintConfigChanged: () => () => {},
+  subscribeToLintConfigChanged: (onChange: () => void) => {
+    lintConfigListeners.add(onChange);
+    return () => lintConfigListeners.delete(onChange);
+  },
   fixLintDoc: (docName: string) => {
     fixLintDocCalls.push(docName);
     return fixLintDocImpl(docName);
@@ -56,6 +67,7 @@ vi.doMock('@/editor/lint-config-client', () => ({
 }));
 // The panel's project scope now consumes the unified audit plane.
 vi.doMock('@/editor/validation-audit-client', () => ({
+  AUDIT_SUPERSEDED,
   runValidationAudit: () => {
     auditCalls += 1;
     return runLintAuditImpl();
@@ -155,6 +167,7 @@ beforeEach(() => {
   addPageCalls.length = 0;
   toastError.mockClear();
   toastSuccess.mockClear();
+  lintConfigListeners.clear();
 });
 
 afterEach(() => {
@@ -1213,5 +1226,151 @@ describe('ProblemsPanel — project scope', () => {
 
     fireEvent.click(screen.getByTestId('panel-scope-doc'));
     expect(screen.getByText('Hard tabs')).toBeTruthy();
+  });
+
+  test('a lint-config change refreshes a LOADED project snapshot in place', async () => {
+    runLintAuditImpl = async () =>
+      auditResult({ files: [{ file: 'notes.md', diagnostics: [diag({})] }] });
+    render(<ProblemsPanel docName="other" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(auditCalls).toBe(1));
+
+    // A rule toggle invalidates the snapshot's config: serving it on would show
+    // problems for rules the project no longer has.
+    emitLintConfigChangedForTest();
+    await waitFor(() => expect(auditCalls).toBe(2));
+  });
+
+  test('a lint-config change does NOT audit while the panel sits in doc scope', async () => {
+    runLintAuditImpl = async () => auditResult();
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+
+    emitLintConfigChangedForTest();
+    emitLintConfigChangedForTest();
+
+    // Doc scope holds no project snapshot to invalidate, so a config change must
+    // not provoke a whole-project walk here.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(auditCalls).toBe(0);
+  });
+
+  test('a lint-config change does not resurrect a snapshot the panel never loaded', async () => {
+    runLintAuditImpl = async () => null;
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    // Enter project scope and let the audit FAIL, so status is 'failed'.
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(auditCalls).toBe(1));
+    await waitFor(() => expect(screen.getByText(/could not be completed/i)).toBeTruthy());
+
+    emitLintConfigChangedForTest();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // A failed run keeps its error until the user retries — the refresh
+    // affordance is the retry, not a config event.
+    expect(auditCalls).toBe(1);
+  });
+
+  test('a superseded walk re-loads in place instead of surfacing an error', async () => {
+    runLintAuditImpl = async () =>
+      auditResult({ files: [{ file: 'guides/setup.md', diagnostics: [diag({ line: 4 })] }] });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
+    expect(auditCalls).toBe(1);
+
+    // The server abandons a walk whose config moved under it. The same config
+    // change drives the replacement, so the panel must neither render a failure
+    // nor sit on a spinner no later event clears.
+    runLintAuditImpl = async () => AUDIT_SUPERSEDED;
+    emitLintConfigChangedForTest();
+    await waitFor(() => expect(auditCalls).toBe(2));
+
+    runLintAuditImpl = async () =>
+      auditResult({ files: [{ file: 'guides/setup.md', diagnostics: [diag({ line: 4 })] }] });
+    emitLintConfigChangedForTest();
+    await waitFor(() => expect(auditCalls).toBe(3));
+    await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
+    expect(screen.queryByText(/could not be completed/i)).toBeNull();
+  });
+
+  test('a superseded refresh leaves the panel on its previous plane, not a spinner', async () => {
+    runLintAuditImpl = async () =>
+      auditResult({ files: [{ file: 'guides/setup.md', diagnostics: [diag({ line: 4 })] }] });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
+
+    // Refresh, and let the server abandon the walk. Nothing else is coming: the
+    // `lint-config` push that would carry a replacement has no reconnect replay,
+    // so the panel has to recover on its own or it sits on a spinner forever
+    // with its only retry affordance disabled.
+    runLintAuditImpl = async () => AUDIT_SUPERSEDED;
+    fireEvent.click(screen.getByLabelText('Re-run the project audit'));
+    await waitFor(() => expect(auditCalls).toBe(2));
+
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText('Re-run the project audit') as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    // The stale-but-real plane is still on screen, and no error was invented.
+    expect(screen.getByText('guides/setup.md')).toBeTruthy();
+    expect(screen.queryByText(/could not be completed/i)).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+
+    // And the recovered affordance actually works.
+    runLintAuditImpl = async () =>
+      auditResult({ files: [{ file: 'after-retry.md', diagnostics: [diag({})] }] });
+    fireEvent.click(screen.getByLabelText('Re-run the project audit'));
+    await waitFor(() => expect(screen.getByText('after-retry.md')).toBeTruthy());
+  });
+
+  test('a first activation that is superseded offers the retry rather than spinning', async () => {
+    // Nothing has ever loaded, so there is no plane to fall back to — the panel
+    // must still surface a reachable retry instead of an endless skeleton.
+    runLintAuditImpl = async () => AUDIT_SUPERSEDED;
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+
+    await waitFor(() =>
+      expect(screen.getByText('The audit could not be completed. Try again.')).toBeTruthy(),
+    );
+    expect((screen.getByLabelText('Re-run the project audit') as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+
+    runLintAuditImpl = async () =>
+      auditResult({ files: [{ file: 'retried.md', diagnostics: [diag({})] }] });
+    fireEvent.click(screen.getByLabelText('Re-run the project audit'));
+    await waitFor(() => expect(screen.getByText('retried.md')).toBeTruthy());
+  });
+
+  test('a superseded walk never overwrites a replacement load that started after it', async () => {
+    runLintAuditImpl = async () =>
+      auditResult({ files: [{ file: 'first.md', diagnostics: [diag({})] }] });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('first.md')).toBeTruthy());
+
+    // Refresh into a walk the server will abandon, held open so a config change
+    // can start its replacement while it is still in flight.
+    let releaseSuperseded: () => void = () => {};
+    runLintAuditImpl = () =>
+      new Promise((resolve) => {
+        releaseSuperseded = () => resolve(AUDIT_SUPERSEDED);
+      });
+    fireEvent.click(screen.getByLabelText('Re-run the project audit'));
+    await waitFor(() => expect(auditCalls).toBe(2));
+
+    runLintAuditImpl = async () =>
+      auditResult({ files: [{ file: 'second.md', diagnostics: [diag({})] }] });
+    emitLintConfigChangedForTest();
+    await waitFor(() => expect(screen.getByText('second.md')).toBeTruthy());
+
+    // The abandoned walk settles last. Its fallback is the plane from BEFORE the
+    // replacement ran, so landing it would roll the panel back to stale truth.
+    releaseSuperseded();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByText('second.md')).toBeTruthy();
+    expect(screen.queryByText('first.md')).toBeNull();
   });
 });

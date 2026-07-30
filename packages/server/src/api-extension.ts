@@ -256,6 +256,7 @@ import {
   UploadRequestSchema,
   unwrapFrontmatterFences,
   updateWorkspaceSearchCorpus,
+  ValidationAuditCountsResponseSchema,
   ValidationAuditResponseSchema,
   type ValidationDiagnostic,
   type WorkspaceSearchCorpus,
@@ -374,7 +375,14 @@ import {
   recordSkillInstall,
   removeSkillInstall,
 } from './installed-skills-marker.ts';
-import { auditProject, collectDocFiles, lintAndFixSource, lintDoc } from './lint/audit.ts';
+import {
+  AuditSupersededError,
+  auditProject,
+  collectDocFiles,
+  lintAndFixSource,
+  lintDoc,
+} from './lint/audit.ts';
+import { AuditCache } from './lint/audit-cache.ts';
 import {
   createEmptyFrontmatterSchemaFile,
   deleteFrontmatterSchemaFile,
@@ -395,7 +403,13 @@ import {
   resolveEffectiveLinterConfig,
   resolveNativeConfigForDoc,
 } from './lint/resolve-config.ts';
-import { createProjectValidators, runValidationAudit } from './lint/validation-audit.ts';
+import {
+  createProjectValidators,
+  type ProjectValidator,
+  runValidationAudit,
+  toValidationCountsPlane,
+  type ValidationAuditResult,
+} from './lint/validation-audit.ts';
 import { validateMermaidFences } from './mermaid-validator.ts';
 import {
   extractPageIcon,
@@ -19580,6 +19594,40 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   // The editor reads the effective config; the Settings GUI writes native
   // `.markdownlint.*` rules through the markdownlint-config endpoint.
 
+  /**
+   * Monotonic counter over server-side lint-config mutations, and the config
+   * half of {@link readAuditGeneration}: neither the native markdownlint rules
+   * nor the frontmatter-schema bodies appear in the base config, so a rule
+   * toggle moves no fingerprint and would otherwise be invisible to the audit.
+   *
+   * Bumped only through {@link signalLintConfigChanged}, which is also the sole
+   * `lint-config` CC1 emitter here — the two must move together or a mutation
+   * that converges other windows would leave audits on the superseded config.
+   */
+  let lintConfigEpoch = 0;
+  function signalLintConfigChanged(): void {
+    lintConfigEpoch += 1;
+    signalChannel?.('lint-config');
+  }
+
+  /**
+   * The world an audit plane would be true of: the lint configuration in force
+   * plus the branch whose content is on disk. The audit's coalescing key and
+   * its in-flight walks both rest on this one reader, so the two stay in step
+   * by construction.
+   *
+   * Branch belongs here for the same reason the config epoch does, one layer
+   * down: a switch replaces the content set wholesale, so a request issued
+   * after one must not attach to a walk started before it, and a walk spanning
+   * one must abandon itself rather than publish half of each branch.
+   *
+   * Compared for equality only, never ordered — a branch label carries no
+   * order. The space separator is unambiguous because a branch label is either
+   * a git branch name (refnames admit no spaces) or a `detached-<oid>` literal.
+   */
+  const readAuditGeneration = (): string =>
+    `${lintConfigEpoch} ${durabilityState.getActiveBranch()}`;
+
   // Content-rule violations on a post-write document, for the agent write/edit
   // advisory channel — the full validation plane, not just lint: every enabled
   // lint source PLUS broken internal links, so an agent that writes a dead
@@ -19756,7 +19804,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       // toggle in one window leaves the rest linting against a stale config
       // until they happen to refetch, which is what the frontmatter sibling
       // below already avoids.
-      signalChannel?.('lint-config');
+      signalLintConfigChanged();
       try {
         const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
         const configProblems: string[] = [];
@@ -19847,7 +19895,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       if (writeResult.action === 'created' || writeResult.action === 'deleted') {
         signalChannel?.('files');
       }
-      signalChannel?.('lint-config');
+      signalLintConfigChanged();
       try {
         const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
         const configProblems: string[] = [];
@@ -20007,6 +20055,57 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     { handler: 'lint', method: 'GET', skipBodyParse: true },
   );
 
+  // One cache per server instance (not module-scoped): its keys carry contentDir,
+  // but a per-server lifetime also means a restart starts cold, which is the
+  // right blast radius for a disk-stamp-keyed cache.
+  const auditCache = new AuditCache();
+  /**
+   * Audits in flight, keyed by scope + config fingerprint. Every window runs the
+   * freshness triggers independently, and the Problems panel can refresh at the
+   * same moment, so a single config change can ask for the same whole-project
+   * walk several times over. Coalescing makes them one walk instead of N cold
+   * ones that each finish too late to warm the others' cache.
+   *
+   * The walk yields to the event loop, so a request issued after a config
+   * mutation or a branch switch IS parsed while an earlier walk is still
+   * running and could attach to it. The fingerprint alone would not stop that:
+   * it covers the BASE config, which never carries markdownlint `rules` (those
+   * come from the native `.markdownlint.*` cascade) nor frontmatter-schema
+   * bodies, and says nothing at all about which branch's content is on disk.
+   * {@link readAuditGeneration} is what makes the key move, which is why it is
+   * read here per request rather than captured once. The per-file cache keys on
+   * the fully-resolved config and the file's disk stamp, so nothing is cached
+   * under the wrong rules or the wrong branch's bytes either way.
+   */
+  const auditFlight = createSingleFlight<ValidationAuditResult>();
+
+  function runCoalescedAudit(
+    validators: readonly ProjectValidator[],
+    targetPath: string | undefined,
+    configFingerprint: string,
+  ): Promise<ValidationAuditResult> {
+    const key = `${configFingerprint} ${readAuditGeneration()} ${targetPath ?? ''}`;
+    return auditFlight.run(key, () => runValidationAudit(validators, { targetPath })).promise;
+  }
+
+  /**
+   * A superseded walk has no plane to report, so the caller gets a retryable
+   * 409 rather than a stale or mixed one. The store-side effect is exactly the
+   * effect of any failed audit — previous entries stand — and whichever change
+   * superseded this walk has already broadcast its own CC1 channel
+   * (`lint-config` for a config mutation, `branch-switched` for a switch), so
+   * the corrective walk is scheduled without the caller doing anything.
+   */
+  function respondAuditSuperseded(res: ServerResponse, handler: string): void {
+    errorResponse(
+      res,
+      409,
+      'urn:ok:error:audit-superseded',
+      'The lint configuration or branch changed while the audit was running; re-run it.',
+      { handler },
+    );
+  }
+
   const handleLintAudit = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -20030,9 +20129,15 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           baseConfig,
           targetPath: target,
           liveSourceFor: liveLintSourceFor,
+          cache: auditCache,
+          auditGeneration: readAuditGeneration,
         });
         successResponse(res, 200, LintAuditResponseSchema, result, { handler: 'lint-audit' });
       } catch (e) {
+        if (e instanceof AuditSupersededError) {
+          respondAuditSuperseded(res, 'lint-audit');
+          return;
+        }
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to audit project.', {
           handler: 'lint-audit',
           cause: e,
@@ -20089,10 +20194,33 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           linksValidation: getLinksValidationSetting?.(),
           admittedDocNames: collectAdmittedDocNames,
           docFilePathFor: (docName) => resolveDocFilePath(contentDir, docName),
+          cache: auditCache,
+          auditGeneration: readAuditGeneration,
         });
-        const result = await runValidationAudit(validators, { targetPath: target });
+        const result = await runCoalescedAudit(
+          validators,
+          target,
+          AuditCache.fingerprintConfig(baseConfig),
+        );
+        // `counts=1` tallies the same plane instead of enumerating it — the
+        // freshness path behind file-tree tints wants per-file counts, and on a
+        // large KB the enumerated bodies are tens of MB it discards on arrival.
+        if (url.searchParams.get('counts') === '1') {
+          successResponse(
+            res,
+            200,
+            ValidationAuditCountsResponseSchema,
+            toValidationCountsPlane(result),
+            { handler: 'audit' },
+          );
+          return;
+        }
         successResponse(res, 200, ValidationAuditResponseSchema, result, { handler: 'audit' });
       } catch (e) {
+        if (e instanceof AuditSupersededError) {
+          respondAuditSuperseded(res, 'audit');
+          return;
+        }
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to audit project.', {
           handler: 'audit',
           cause: e,

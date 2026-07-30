@@ -517,6 +517,7 @@ export {
   type CompiledAppliesTo,
   canonicalRuleId,
   compileAppliesTo,
+  countDiagnosticsBySource,
   DEFAULT_LINKS_VALIDATION,
   DEFAULT_LINTER_CONFIG,
   DEFAULT_MARKDOWNLINT_CONFIG,
@@ -587,12 +588,20 @@ export {
   selectApplicableFrontmatterSchemas,
   summarizeAppliesTo,
   toEffectiveBase,
+  type ValidationAuditCountsResponse,
+  ValidationAuditCountsResponseSchema,
   type ValidationAuditResponse,
   ValidationAuditResponseSchema,
+  type ValidationCountsBySource,
   type ValidationDiagnostic,
+  type ValidationDocCounts,
+  ValidationDocCountsSchema,
   type ValidationDocResult,
   ValidationDocResultSchema,
   type ValidationSource,
+  type ValidationSourceCounts,
+  type ValidationSourceKey,
+  ZERO_SOURCE_COUNTS,
 } from './markdown/lint/index.ts';
 export { markdownToHtml, mdastToHtml } from './markdown/mdast-to-html.ts';
 export { normalizeDocRelativeAssetUrl } from './markdown/resolve-image-url.ts';
