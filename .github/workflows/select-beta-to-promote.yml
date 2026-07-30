@@ -420,20 +420,22 @@ jobs:
           FAST_TIER_ARMED: ${{ env.FAST_TIER_ARMED }}
         run: node .github/scripts/evaluate-smoke-alarm.mjs
 
-      # Routed to the same channels as the per-cut smoke alert, not to a
+      # Routed to the same channel as the per-cut smoke alert, not to a
       # workflow annotation alone — an annotation on a scheduled job nobody
-      # opens is indistinguishable from silence.
+      # opens is indistinguishable from silence. Slack only, for the reason the
+      # per-cut alert is: Discord carries shipped releases, not gate health.
       - name: Page the release channel
         if: steps.alarm.outputs.alarm == 'true'
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           REASONS: ${{ steps.alarm.outputs.reasons }}
         run: |
           set -uo pipefail
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           TEXT="🚨 DMG SMOKE GATE ALARM — ${REASONS}. Investigate before trusting the fast tier. ${RUN_URL}"
-          payload="$(jq -nc --arg t "$TEXT" '{content: $t, text: $t}')"
+          # `text` only: `content` was Discord's field, and Slack is now the
+          # sole recipient.
+          payload="$(jq -nc --arg t "$TEXT" '{text: $t}')"
           post() {
             local webhook="$1" label="$2"
             if [[ -z "$webhook" ]]; then
@@ -447,5 +449,4 @@ jobs:
             fi
           }
           post "${SLACK_WEBHOOK_URL:-}" Slack
-          post "${DISCORD_WEBHOOK_URL:-}" Discord
           echo "::warning::DMG smoke gate alarm: ${REASONS}"

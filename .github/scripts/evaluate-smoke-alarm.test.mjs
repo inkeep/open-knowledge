@@ -209,6 +209,30 @@ describe('buildHistory', () => {
     expect(wf).toContain("Smoke the fast-tier candidate's DMG");
     expect(wf).toContain('Dispatch promote-stable for the smoke-proven candidate');
   });
+
+  test('the alarm pages Slack and never Discord', () => {
+    // Same rule as the per-cut blocked-release alert in desktop-release.yml
+    // (see build-smoke-alert-payload.mjs's module docstring for why): Discord
+    // carries shipped releases, not gate health. Without this the aggregate
+    // alarm is the one remaining path that could quietly re-acquire a Discord
+    // leg.
+    const wf = readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        '..',
+        'workflows',
+        'select-beta-to-promote.yml',
+      ),
+      'utf8',
+    );
+    const step = wf.slice(wf.indexOf('- name: Page the release channel'));
+    expect(step).toContain('SLACK_WEBHOOK_URL');
+    expect(step).not.toContain('DISCORD_WEBHOOK_URL');
+    // Scoped to a `post … Discord` leg, not to the word: the step's comments
+    // explain why Discord is absent, and a ratchet that bans naming the thing
+    // it rules out would be paid for in workarounds.
+    expect(step).not.toMatch(/^\s*post\s+.*Discord\s*$/m);
+  });
 });
 
 describe('classifyHistoryFailure', () => {

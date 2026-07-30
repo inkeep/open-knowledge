@@ -3,9 +3,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
-  ALERT_COLOR_DECIMAL,
-  buildDiscordPayload,
-  buildPayload,
   buildSlackPayload,
   describeVerdict,
   parseArgs,
@@ -17,6 +14,17 @@ const desktopRelease = readFileSync(
   join(REPO_ROOT, '.github', 'workflows', 'desktop-release.yml'),
   'utf8',
 );
+
+/**
+ * Exact bounds of the alert step: its `- name:` up to the next sibling step.
+ * The fixed-length slices this replaces (400 / 4000 / 5000 chars) could run
+ * past the step and assert against a neighbouring step's shell.
+ */
+const alertStep = () => {
+  const rest = desktopRelease.slice(desktopRelease.indexOf('- name: Alert on a blocked release'));
+  const end = rest.indexOf('\n      - name: ');
+  return end === -1 ? rest : rest.slice(0, end);
+};
 
 const base = {
   tag: 'v1.2.3',
@@ -30,10 +38,6 @@ describe('alert content', () => {
     const slack = JSON.stringify(buildSlackPayload(base));
     for (const needle of ['v1.2.3', 'fail', base.runUrl, 'event_type=desktop-release']) {
       expect(slack).toContain(needle);
-    }
-    const discord = JSON.stringify(buildDiscordPayload(base));
-    for (const needle of ['v1.2.3', 'fail', base.runUrl, 'event_type=desktop-release']) {
-      expect(discord).toContain(needle);
     }
   });
 
@@ -64,28 +68,15 @@ describe('alert content', () => {
 });
 
 describe('distinctness from the routine release announcement', () => {
-  test('does not reuse the celebratory headline or the announcement colour', () => {
+  test('does not reuse the celebratory headline', () => {
     const slack = JSON.stringify(buildSlackPayload(base));
-    const discord = buildDiscordPayload(base);
     expect(slack).not.toContain('🎉');
     expect(slack).not.toContain('released');
     expect(slack).toContain('🚨');
     expect(slack).toContain('RELEASE BLOCKED');
-    // 3638527 is the blue the routine announcement uses in desktop-release.yml.
-    expect(desktopRelease).toContain('color: 3638527');
-    expect(discord.embeds[0].color).toBe(ALERT_COLOR_DECIMAL);
-    expect(discord.embeds[0].color).not.toBe(3638527);
   });
 
-  test('the Discord alert suppresses mentions like the announcement does', () => {
-    expect(buildDiscordPayload(base).allowed_mentions).toEqual({ parse: [] });
-  });
-
-  test('bold markup is Discord-flavoured in the Discord payload', () => {
-    const discord = buildDiscordPayload(base);
-    expect(discord.embeds[0].description).toContain('**Tag:**');
-    expect(discord.embeds[0].description).not.toMatch(/(^|[^*])\*Tag:\*/);
-    // Slack keeps its own single-asterisk mrkdwn.
+  test('uses Slack mrkdwn bold', () => {
     expect(buildSlackPayload(base).blocks[1].text.text).toContain('*Tag:*');
   });
 });
@@ -100,7 +91,7 @@ describe('escaping', () => {
     const slack = buildSlackPayload(nasty);
     const roundTripped = JSON.parse(JSON.stringify(slack));
     expect(roundTripped.text).toContain('v1.0.0"; rm -rf /; echo "');
-    expect(JSON.stringify(buildDiscordPayload(nasty))).toContain('line one\\nline');
+    expect(JSON.stringify(slack)).toContain('line one\\nline');
   });
 });
 
@@ -110,8 +101,6 @@ describe('parseArgs', () => {
   test('reads every flag the workflow step passes', () => {
     const parsed = parseArgs(
       argv(
-        '--channel',
-        'discord',
         '--tag',
         'v1.2.3',
         '--verdict',
@@ -123,7 +112,6 @@ describe('parseArgs', () => {
       ),
     );
     expect(parsed).toEqual({
-      channel: 'discord',
       tag: 'v1.2.3',
       verdict: 'error',
       reason: 'mount failed',
@@ -132,75 +120,70 @@ describe('parseArgs', () => {
     });
   });
 
-  test('rejects a missing or unknown channel rather than emitting a half-built payload', () => {
-    expect(() => parseArgs(argv('--tag', 'v1'))).toThrow(/--channel/);
-    expect(() => parseArgs(argv('--channel', 'email', '--tag', 'v1'))).toThrow(/--channel/);
-  });
-
   test('rejects a missing tag', () => {
-    expect(() => parseArgs(argv('--channel', 'slack'))).toThrow(/--tag/);
+    expect(() => parseArgs(argv('--verdict', 'fail'))).toThrow(/--tag/);
   });
 
   test('defaults an absent verdict to error rather than silently claiming a pass', () => {
-    expect(parseArgs(argv('--channel', 'slack', '--tag', 'v1')).verdict).toBe('error');
-  });
-
-  test('buildPayload dispatches on channel', () => {
-    expect(buildPayload({ ...base, channel: 'slack' }).blocks).toBeDefined();
-    expect(buildPayload({ ...base, channel: 'discord' }).embeds).toBeDefined();
+    expect(parseArgs(argv('--tag', 'v1')).verdict).toBe('error');
   });
 });
 
 describe('workflow wiring', () => {
   test('the alert step is failure-conditioned, not success-conditioned', () => {
-    const step = desktopRelease.slice(desktopRelease.indexOf('- name: Alert on a blocked release'));
-    expect(step.slice(0, 400)).toContain('if: failure()');
-    expect(step.slice(0, 400)).not.toContain('if: success()');
+    expect(alertStep()).toContain('if: failure()');
+    expect(alertStep()).not.toContain('if: success()');
   });
 
   test('the alert reads its builder from the workflow commit, not the release tag', () => {
     // On repository_dispatch the workflow runs from the default branch while
     // the job checks out client_payload.ref — a tag that can predate this
     // script. v0.41.0 lost its Slack announcement to exactly that.
-    const step = desktopRelease.slice(desktopRelease.indexOf('- name: Alert on a blocked release'));
+    const step = alertStep();
     expect(step).toContain('git fetch --depth=1 origin "$GITHUB_SHA"');
     expect(step).toContain(
       'git show "${GITHUB_SHA}:.github/scripts/build-smoke-alert-payload.mjs"',
     );
   });
 
-  test('the alert reuses the existing webhook secrets and introduces none', () => {
-    const step = desktopRelease
-      .slice(desktopRelease.indexOf('- name: Alert on a blocked release'))
-      .slice(0, 4000);
-    expect(step).toContain('secrets.SLACK_WEBHOOK_URL');
-    expect(step).toContain('secrets.DISCORD_WEBHOOK_URL');
-    const secretNames = new Set(
-      [...desktopRelease.matchAll(/secrets\.([A-Z0-9_]+)/g)].map((m) => m[1]),
-    );
-    expect(secretNames.has('SLACK_WEBHOOK_URL')).toBe(true);
-    expect(secretNames.has('DISCORD_WEBHOOK_URL')).toBe(true);
+  test('the alert reuses the existing webhook secret and introduces none', () => {
+    // "Introduces none" is a claim about THIS step, so it has to be measured at
+    // step scope: every secret the step names must already be consumed
+    // elsewhere in the workflow. Scanning the whole file for the secret the
+    // step uses proves nothing — the announcement steps reference it too, so
+    // the assertion holds even if this step is deleted outright.
+    expect(alertStep()).toContain('secrets.SLACK_WEBHOOK_URL');
+    const secretsIn = (yaml) =>
+      new Set([...yaml.matchAll(/secrets\.([A-Z0-9_]+)/g)].map((m) => m[1]));
+    const stepSecrets = secretsIn(alertStep());
+    const elsewhere = secretsIn(desktopRelease.split(alertStep()).join(''));
+    expect(stepSecrets.size).toBeGreaterThan(0);
+    for (const name of stepSecrets) {
+      expect(elsewhere.has(name), `${name} is introduced by the alert step`).toBe(true);
+    }
   });
 
   test('an unset webhook is a notice-level skip, and a failed POST is a warning', () => {
-    const step = desktopRelease
-      .slice(desktopRelease.indexOf('- name: Alert on a blocked release'))
-      .slice(0, 5000);
+    const step = alertStep();
     // Unset secret: annotate and return 0 — never fail the step.
     expect(step).toContain('::notice::${label} webhook not set');
     expect(step).toMatch(/if \[\[ -z "\$webhook" \]\]; then[\s\S]{0,200}?return 0/);
     // A dead webhook warns; it must not mask the smoke failure that caused it.
     expect(step).toContain('::warning::${label} smoke alert failed to POST');
-    // Both channels are actually driven.
-    expect(step).toContain('post slack "${SLACK_WEBHOOK_URL:-}"');
-    expect(step).toContain('post discord "${DISCORD_WEBHOOK_URL:-}"');
+    // The channel is actually driven.
+    expect(step).toContain('post "${SLACK_WEBHOOK_URL:-}" Slack');
+  });
+
+  test('a blocked release never pages Discord', () => {
+    // Rationale: this module's docstring. This test is the ratchet for it.
+    const step = alertStep();
+    expect(step).not.toMatch(/^\s*post\s+.*Discord\s*$/m);
+    expect(step).not.toContain('DISCORD_WEBHOOK_URL');
   });
 
   test('the annotation is emitted in addition to the page, not instead of it', () => {
-    const step = desktopRelease
-      .slice(desktopRelease.indexOf('- name: Alert on a blocked release'))
-      .slice(0, 5000);
-    const slackAt = step.indexOf('post slack');
+    const step = alertStep();
+    const slackAt = step.indexOf('post "${SLACK_WEBHOOK_URL:-}" Slack');
     const annotationAt = step.indexOf('::error::RELEASE BLOCKED');
     expect(slackAt).toBeGreaterThan(-1);
     expect(annotationAt).toBeGreaterThan(slackAt);

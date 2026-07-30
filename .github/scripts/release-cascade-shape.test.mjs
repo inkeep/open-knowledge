@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, test } from 'vitest';
-import { buildDiscordPayload, buildSlackPayload } from './build-smoke-alert-payload.mjs';
+import { buildSlackPayload } from './build-smoke-alert-payload.mjs';
 import { selectPromotion } from './select-beta-to-promote.mjs';
 import { smokePackagedDmg, VERDICT } from './smoke-packaged-dmg.mjs';
 
@@ -200,7 +200,7 @@ describe('a deliberately broken DMG never reads as a pass', () => {
   });
 });
 
-describe('a forced smoke failure pages both channels, not just an annotation', () => {
+describe('a forced smoke failure pages Slack, not just an annotation', () => {
   const forced = {
     tag: 'v9.9.9',
     verdict: 'fail',
@@ -208,24 +208,20 @@ describe('a forced smoke failure pages both channels, not just an annotation', (
     runUrl: 'https://example.test/run/1',
   };
 
-  test('both payloads are produced and both name the blocked release', () => {
+  test('the payload is produced and names the blocked release', () => {
     const slack = buildSlackPayload(forced);
-    const discord = buildDiscordPayload(forced);
     expect(slack.blocks.length).toBeGreaterThan(0);
-    expect(discord.embeds.length).toBeGreaterThan(0);
-    for (const s of [JSON.stringify(slack), JSON.stringify(discord)]) {
-      expect(s).toContain('RELEASE BLOCKED');
-      expect(s).toContain('v9.9.9');
-    }
+    const s = JSON.stringify(slack);
+    expect(s).toContain('RELEASE BLOCKED');
+    expect(s).toContain('v9.9.9');
   });
 
-  test('the workflow posts to both webhooks in addition to annotating', () => {
+  test('the workflow posts to the Slack webhook in addition to annotating', () => {
     const step = desktopRelease.slice(
       desktopRelease.indexOf('- name: Alert on a blocked release'),
       desktopRelease.indexOf('- name: Warn on stuck draft'),
     );
-    expect(step).toContain('post slack');
-    expect(step).toContain('post discord');
+    expect(step).toContain('post "${SLACK_WEBHOOK_URL:-}" Slack');
     expect(step).toContain('::error::RELEASE BLOCKED');
   });
 });

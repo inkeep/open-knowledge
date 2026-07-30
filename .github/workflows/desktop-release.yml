@@ -785,7 +785,7 @@ jobs:
       # Without this a blocked release is silent: the Release simply never
       # appears and nobody learns why until someone goes looking. The alert is
       # deliberately loud and visually unlike the routine
-      # "🎉 OpenKnowledge X.Y.Z released" post that lands in the same channels.
+      # "🎉 OpenKnowledge X.Y.Z released" post that lands in the same channel.
       #
       # `if: failure()` (not `success()`) — this is the one step that must run
       # precisely when the rest of the job did not. It fires for ANY job
@@ -794,9 +794,13 @@ jobs:
       # came from elsewhere, which is the honest reading (the gate never
       # returned a product verdict).
       #
-      # No new secret: SLACK_WEBHOOK_URL / DISCORD_WEBHOOK_URL already exist
-      # and are consumed by the announcement steps above with the same
-      # unset -> ::notice:: -> skip tolerance.
+      # No new secret: SLACK_WEBHOOK_URL already exists and is consumed by the
+      # announcement step above with the same unset -> ::notice:: -> skip
+      # tolerance.
+      #
+      # Slack only, deliberately — rationale lives in the module docstring of
+      # .github/scripts/build-smoke-alert-payload.mjs. Ratcheted by
+      # build-smoke-alert-payload.test.mjs so this cannot drift back.
       - name: Alert on a blocked release (FR5c)
         # Stable only, matching the gate's own scope. A failed beta cut keeps
         # its existing STUCK-DRAFT warning below; paging the release channel for
@@ -804,7 +808,6 @@ jobs:
         if: failure() && steps.channel.outputs.channel == 'latest'
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
           SMOKE_VERDICT: ${{ steps.dmg_smoke.outputs.verdict }}
           SMOKE_REASON: ${{ steps.dmg_smoke.outputs.reason }}
@@ -837,21 +840,21 @@ jobs:
           # `${var^}` (bash 4) is deliberately avoided: macOS runners ship
           # bash 3.2, so the label is passed in already-cased instead.
           post() {
-            local channel="$1" webhook="$2" label="$3"
+            local webhook="$1" label="$2"
             if [[ -z "$webhook" ]]; then
               echo "::notice::${label} webhook not set — skipping the ${label} smoke alert for ${RELEASE_TAG}."
               return 0
             fi
             local payload=""
             if [[ -f "$BUILDER" ]]; then
-              payload="$(node "$BUILDER" --channel "$channel" --tag "$RELEASE_TAG" \
+              payload="$(node "$BUILDER" --tag "$RELEASE_TAG" \
                 --verdict "$VERDICT" --reason "$REASON" --run-url "$RUN_URL" || true)"
             fi
             if [[ -z "$payload" ]]; then
               # Never go silent. Losing the formatting is a degradation; losing
               # the page is the outage this step exists to prevent.
               echo "::warning::Smoke-alert payload builder unavailable for ${RELEASE_TAG}; sending the plain-text alert."
-              payload="$(jq -nc --arg t "🚨 RELEASE BLOCKED: ${RELEASE_TAG} DMG smoke ${VERDICT} — nothing shipped. ${REASON} ${RUN_URL}" '{content: $t, text: $t}')"
+              payload="$(jq -nc --arg t "🚨 RELEASE BLOCKED: ${RELEASE_TAG} DMG smoke ${VERDICT} — nothing shipped. ${REASON} ${RUN_URL}" '{text: $t}')"
             fi
             # The failing curl sits in an `if` condition, so a webhook outage
             # routes to the warning instead of masking the smoke failure.
@@ -862,8 +865,7 @@ jobs:
             fi
           }
 
-          post slack "${SLACK_WEBHOOK_URL:-}" Slack
-          post discord "${DISCORD_WEBHOOK_URL:-}" Discord
+          post "${SLACK_WEBHOOK_URL:-}" Slack
           # The annotation is emitted IN ADDITION to the page, so the run page
           # tells the same story as the channel.
           echo "::error::RELEASE BLOCKED: ${RELEASE_TAG} DMG smoke ${VERDICT} — ${REASON}. The Release stays a draft and npm latest is untouched."
