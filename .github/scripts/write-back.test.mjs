@@ -6,6 +6,7 @@ import {
   DEFAULT_RELEASE_LOOKBACK,
   deriveVersionForFixRefs,
   findChangesetPath,
+  isFixRepoInRemit,
   makeReleaseWindow,
   notificationMarkerUrl,
   parseChangeset,
@@ -178,6 +179,58 @@ describe('version derivation', () => {
 
     // Merged but with no usable sha is neither a fix nor an answer.
     expect(() => parseMergeShaOutput('2026-07-23T14:19:56Z\nnot-a-sha', at)).toThrow(/merge_commit_sha/);
+  });
+
+  test('a fix reference in a repo this workflow cannot reach is skipped, not attempted', () => {
+    // The Linear backlog carries pre-Open-Knowledge tickets whose fix references
+    // point at other products' private repos. The cross-repo token is scoped to
+    // agents-private, so those reads 404 permanently — attempting them turned
+    // every run red on 39 candidates that will never resolve.
+    const logs = [];
+    expect(
+      derive({
+        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/management/pull/272' }],
+        selfRepo: 'inkeep/open-knowledge',
+        resolvePrMergeSha: () => {
+          throw new Error('must not be attempted: this repo is out of remit');
+        },
+        log: (m) => logs.push(m),
+      }),
+    ).toBeNull();
+    expect(logs.join(' ')).toContain('outside');
+  });
+
+  test('the two repos it CAN read are still attempted, so the 404 bug cannot come back', () => {
+    // A blanket 404 suppression would have masked the missing-permission bug on
+    // agents-private. These two must always reach the API.
+    for (const url of [
+      'https://github.com/inkeep/agents-private/pull/2864',
+      'https://github.com/inkeep/open-knowledge/pull/12',
+    ]) {
+      let attempted = false;
+      expect(
+        derive({
+          fixReferences: [{ channel: 'pull-request', url }],
+          selfRepo: 'inkeep/open-knowledge',
+          resolvePrMergeSha: () => {
+            attempted = true;
+            return PRIVATE_SHA;
+          },
+        }),
+      ).toBe('0.36.0');
+      expect(attempted, `${url} must be attempted`).toBe(true);
+    }
+  });
+
+  test('remit is decided by repo identity, and a bare commit SHA needs no repo at all', () => {
+    const at = { defaultRepo: 'inkeep/agents-private', selfRepo: 'inkeep/open-knowledge' };
+    expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'agents-private' }, at)).toBe(true);
+    expect(isFixRepoInRemit({ kind: 'pr', owner: 'InKeep', repo: 'Agents-Private' }, at)).toBe(true);
+    expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'open-knowledge' }, at)).toBe(true);
+    expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'management' }, at)).toBe(false);
+    expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'open-knowledge-legacy' }, at)).toBe(false);
+    // Resolved against local git history rather than a repo API.
+    expect(isFixRepoInRemit({ kind: 'sha', sha: PRIVATE_SHA }, at)).toBe(true);
   });
 
   test('an unreadable pull request still throws, because that one is not an answer', () => {

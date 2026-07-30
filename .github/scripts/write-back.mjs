@@ -133,6 +133,30 @@ export function notificationMarkerUrl({ version, originUrl }) {
  * Any reference that has not shipped makes the whole answer null. Part of a fix
  * being out is not the fix being out.
  */
+/**
+ * Whether a fix reference names a repository this workflow can actually read.
+ *
+ * Two, and only two: this repo, and the private monorepo the mirror flows from.
+ * The cross-repo token is an App installation scoped to the latter, so a fix
+ * reference pointing anywhere else — and the Linear backlog is full of them,
+ * from products that predate this one — is unreadable and always will be.
+ *
+ * Distinguishing that from an unreadable `agents-private` matters more than it
+ * looks. Both surface as a bare 404, but one is a permanent fact about a stale
+ * ticket and the other is the missing-permission bug this whole path was built
+ * to fix. Suppressing 404s wholesale would have hidden the latter, so the test
+ * is repo identity rather than the response.
+ */
+export function isFixRepoInRemit({ kind, owner, repo }, { defaultRepo = DEFAULT_PRIVATE_REPO, selfRepo } = {}) {
+  // A raw commit SHA is resolved against local git history, not a repo API.
+  if (kind === 'sha') return true;
+  const target = `${owner}/${repo}`.toLowerCase();
+  const reachable = [defaultRepo, selfRepo]
+    .map((r) => String(r ?? '').trim().toLowerCase())
+    .filter(Boolean);
+  return reachable.includes(target);
+}
+
 export function deriveVersionForFixRefs({
   fixReferences = [],
   stableTags,
@@ -140,6 +164,7 @@ export function deriveVersionForFixRefs({
   contains,
   resolvePrMergeSha,
   defaultRepo = DEFAULT_PRIVATE_REPO,
+  selfRepo = process.env.GITHUB_REPOSITORY,
   log = () => {},
 }) {
   const usable = fixReferences.filter((ref) => ref.channel !== 'commit' || FULL_SHA_RE.test(ref.sha ?? ''));
@@ -148,6 +173,13 @@ export function deriveVersionForFixRefs({
   let highest = null;
   for (const ref of usable) {
     const parsed = parseFixRef(ref.channel === 'commit' ? ref.sha : ref.url, { defaultRepo });
+    if (!isFixRepoInRemit(parsed, { defaultRepo, selfRepo })) {
+      log(
+        `::notice::write-back: ${ref.url} lives in ${parsed.owner}/${parsed.repo}, which is outside this ` +
+          'workflow\'s reach; no version can be derived for it.',
+      );
+      return null;
+    }
     const privateSha = resolvePrivateSha(parsed, { resolvePrMergeSha });
     if (!privateSha) {
       log(`::notice::write-back: ${ref.url} was closed without merging, so it carries no fix commit.`);
