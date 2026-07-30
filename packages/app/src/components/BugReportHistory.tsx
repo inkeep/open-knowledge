@@ -318,7 +318,28 @@ export function BugReportPreviousReports() {
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-auto w-full justify-between px-0 py-1">
+        {/* The hover surface needs breathing room around the label, but the
+            label has to stay flush with the report rows below. Padding paired
+            with an equal negative margin buys the padding without moving the
+            text. The width has to grow by the same 1rem explicitly: a `<button>`
+            resolves `width: auto` to fit-content even at `display: flex`, so
+            plain `w-full` would leave the surface 8px short on the right while
+            the negative margin pulled it 8px left. The vertical pair nets out to
+            the original `py-1`, leaving the row's own height unchanged.
+
+            The ghost variant's `data-[state=open]:bg-muted` would leave the
+            surface filled for as long as the disclosure stays expanded, which
+            reads as a stuck hover next to the rows it just revealed. Dropping
+            it back to transparent keeps the fill a hover/focus affordance;
+            the rotated chevron already carries the open state. The paired
+            `data-[state=open]:hover:` is required, not belt-and-braces: the
+            open-state rule otherwise outranks the variant's plain `hover:` and
+            hovering an expanded row goes dead. */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-mx-2 -my-0.5 h-auto w-[calc(100%+1rem)] justify-between px-2 py-1.5 data-[state=open]:bg-transparent data-[state=open]:hover:bg-muted"
+        >
           <span className="text-sm font-medium">
             <Trans>Previous reports</Trans>{' '}
             <span className="font-normal text-muted-foreground">({history.reports.length})</span>

@@ -215,7 +215,7 @@ function DocumentErrorFallback({
         </Button>
         {restartBridge ? (
           <Button
-            variant="secondary"
+            variant="outline-mono"
             onClick={() => {
               restartCollabServer(restartBridge)
                 .then((result) => {
