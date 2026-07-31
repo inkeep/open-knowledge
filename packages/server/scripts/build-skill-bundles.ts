@@ -29,9 +29,10 @@
  */
 
 import { cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BUNDLE_IDS, type BundleId } from '../src/skill-bundles.ts';
+import { enumeratePackSkills } from '../src/skill-pack-sources.ts';
 
 // Re-export the canonical bundle-id list (single source: `skill-bundles.ts`) so
 // existing consumers that import `BUNDLE_IDS` from this script keep working. The
@@ -134,14 +135,18 @@ export function buildSkillBundles(paths: SkillBundlePaths = defaultPaths()): Com
 }
 
 /**
- * Compose every per-pack skill (`packs/<id>/SKILL.md`) into the dist tree the
- * same way the named bundles are composed. Pack skills carry no `_shared`
- * placeholders today, so composition is an identity transform — but routing
- * them through `composeSkill` keeps them on the same mechanism, and (critically)
- * gets them INTO `dist/assets/skills/packs/<id>/` so the published CLI + desktop
- * bundles actually ship them. Without this, `resolveBundledSkillDir('packs/<id>')`
- * only resolves against the source tree (dev), and `ok seed`'s pack-skill
- * install silently no-ops in any built artifact. Returns the pack ids built.
+ * Compose every per-pack skill into the dist tree the same way the named bundles
+ * are composed. Pack skills carry no `_shared` placeholders today, so composition
+ * is an identity transform — but routing them through `composeSkill` keeps them
+ * on the same mechanism, and (critically) gets them INTO
+ * `dist/assets/skills/packs/<id>/` so the published CLI + desktop bundles actually
+ * ship them. Without this, `resolveBundledSkillDir('packs/<id>')` only resolves
+ * against the source tree (dev), and `ok seed`'s pack-skill install silently
+ * no-ops in any built artifact.
+ *
+ * A decomposed pack holds several `SKILL.md` files (root + one per member
+ * scenario dir); the dist tree keeps that nested layout verbatim, since the
+ * installer and the mirror both enumerate it. Returns the skill names built.
  */
 export function buildPackSkills(paths: SkillBundlePaths = defaultPaths()): string[] {
   const packsSrc = join(paths.skillsDir, 'packs');
@@ -151,17 +156,23 @@ export function buildPackSkills(paths: SkillBundlePaths = defaultPaths()): strin
   for (const entry of readdirSync(packsSrc, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const sourceDir = join(packsSrc, entry.name);
-    const sourcePath = join(sourceDir, 'SKILL.md');
-    if (!existsSync(sourcePath)) continue;
-    const { composed } = composeSkill(readFileSync(sourcePath, 'utf-8'), resolve);
+    const skills = enumeratePackSkills(entry.name, sourceDir);
+    if (skills.length === 0) continue;
     const outDir = join(paths.distDir, 'packs', entry.name);
-    const outputPath = join(outDir, 'SKILL.md');
     rmSync(outDir, { recursive: true, force: true });
-    // Copy the full pack dir (seed content + any references) then overwrite the
-    // composed SKILL.md — same completeness rule as the named bundles.
+    // Copy the full pack dir (seed content + any references + member skill dirs)
+    // then overwrite each composed SKILL.md — same completeness rule as the
+    // named bundles.
     cpSync(sourceDir, outDir, { recursive: true });
-    writeFileSync(outputPath, composed, 'utf-8');
-    built.push(entry.name);
+    for (const skill of skills) {
+      const rel = relative(sourceDir, skill.sourceDir);
+      const { composed } = composeSkill(
+        readFileSync(join(skill.sourceDir, 'SKILL.md'), 'utf-8'),
+        resolve,
+      );
+      writeFileSync(join(outDir, rel, 'SKILL.md'), composed, 'utf-8');
+      built.push(skill.name);
+    }
   }
   return built;
 }

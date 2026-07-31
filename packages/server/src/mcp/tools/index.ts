@@ -2,9 +2,8 @@
  * MCP tool registry.
  *
  * Reads:     exec, search, history, links, skills, config, palette, preview_url, share_link, lint, audit
- * Writes:    write, edit, delete, move, checkpoint, restore_version
+ * Writes:    write, edit, delete, move, install, import, checkpoint, restore_version
  * Conflicts: conflicts, resolve_conflict
- * Workflow:  workflow (kind: ingest | research | consolidate | discover)
  *
  * `write` / `edit` / `delete` / `move` are native CRUD verbs, polymorphic
  * over document / folder / template / asset via a nested target object
@@ -19,16 +18,13 @@
  *     defaults / template menus on every wiki file or directory referenced.
  *   - `search` — ranked workspace retrieval (Orama; mirrors cmd-K).
  *
- * - `workflow` returns instructional text (kind: ingest | research |
- *   consolidate | discover) and needs no server connection; its discover
- *   body's Phase 5 (link-graph activation) checks for Hocuspocus itself.
  * - Document tools make HTTP calls to Hocuspocus and require `serverUrl`.
  * - `search` calls `POST /api/search` and requires Hocuspocus.
  *
- * Project-level scaffolding has two paths: `ok seed` CLI for empty repos
- * (Karpathy three-layer + `log.md` + per-layer folder defaults) and the
- * `workflow({ kind: "discover" })` primer for existing-content repos (extracts conventions
- * from siblings; sets folder frontmatter + templates + `.okignore`).
+ * Procedural guidance (capture a source, research a topic, promote research to
+ * canonical, onboard an existing repo, generate a codebase wiki) is NOT an MCP
+ * tool — it ships as skill guidance (`assets/skills/`), loaded on description
+ * match rather than costing tool-list tokens every turn.
  *
  * To add a new tool: create `packages/server/src/mcp/tools/<name>.ts` with a
  * `register(...)` export, then import and call it from here.
@@ -47,6 +43,7 @@ import { register as registerEdit } from './edit.ts';
 import { register as registerExec } from './exec.ts';
 import { register as registerPreviewUrl } from './get-preview-url.ts';
 import { register as registerHistory } from './history.ts';
+import { register as registerImport } from './import.ts';
 import { register as registerInstall } from './install.ts';
 import { register as registerLinks } from './links.ts';
 import { register as registerLint } from './lint.ts';
@@ -58,7 +55,6 @@ import { register as registerSearch } from './search.ts';
 import { register as registerShareLink } from './share-link.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import { register as registerSkills } from './skills.ts';
-import { register as registerWorkflow } from './workflow.ts';
 import { register as registerWrite } from './write.ts';
 
 /**
@@ -126,11 +122,6 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     config: opts.config,
   });
 
-  // Workflow primers — return instructional text (kind: ingest | research |
-  // consolidate | discover), no server connection needed. discover's Phase 5
-  // (link-graph activation) checks for Hocuspocus in its own body.
-  registerWorkflow(registrationServer, { config: opts.config, resolveCwd: named('workflow') });
-
   // Search — exec covers cat / ls / grep / find via fs-direct shell. `search`
   // is the ranked-retrieval read (Orama; mirrors cmd-K).
   registerSearch(registrationServer, {
@@ -196,11 +187,20 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     identityRef: opts.identityRef,
   });
   // `install` — project an authored skill into the editor host dirs
-  // (Draft → Installed). The one new verb beyond the `skill` CRUD target.
+  // The one new verb beyond the `skill` CRUD target.
   registerInstall(registrationServer, {
     serverUrl: opts.serverUrl,
     config: opts.config,
     resolveCwd: named('install'),
+    identityRef: opts.identityRef,
+  });
+  // `import` — acquire a skill from skills.sh / github / git URL / local path into
+  // `.ok/skills` as versioned content (the marketplace on-ramp). Pairs with
+  // `install` (the off-ramp to editor dirs).
+  registerImport(registrationServer, {
+    serverUrl: opts.serverUrl,
+    config: opts.config,
+    resolveCwd: named('import'),
     identityRef: opts.identityRef,
   });
   registerHistory(registrationServer, {

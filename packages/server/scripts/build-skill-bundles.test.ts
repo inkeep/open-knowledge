@@ -221,10 +221,32 @@ describe('buildPackSkills', () => {
     const packDir = join(paths.skillsDir, 'packs', 'demo-pack');
     mkdirSync(packDir, { recursive: true });
     writeFileSync(join(packDir, 'SKILL.md'), '# demo pack\n');
-    expect(buildPackSkills(paths)).toEqual(['demo-pack']);
+    expect(buildPackSkills(paths)).toEqual(['open-knowledge-pack-demo-pack']);
     const out = join(paths.distDir, 'packs', 'demo-pack', 'SKILL.md');
     expect(existsSync(out)).toBe(true);
     expect(readFileSync(out, 'utf-8')).toBe('# demo pack\n');
+  });
+
+  test('composes a decomposed pack — root skill plus every member SKILL.md', () => {
+    const paths = fixture({ discovery: '# d\n', project: '# p\n' });
+    const packDir = join(paths.skillsDir, 'packs', 'demo-pack');
+    mkdirSync(join(packDir, 'do-a-thing'), { recursive: true });
+    mkdirSync(join(packDir, 'references'), { recursive: true });
+    writeFileSync(join(packDir, 'SKILL.md'), '# demo pack\n');
+    writeFileSync(join(packDir, 'do-a-thing', 'SKILL.md'), '# do a thing\n');
+    writeFileSync(join(packDir, 'references', 'notes.md'), '# notes\n');
+
+    expect(buildPackSkills(paths)).toEqual([
+      'open-knowledge-pack-demo-pack',
+      'open-knowledge-pack-demo-pack-do-a-thing',
+    ]);
+    // dist keeps the nested layout verbatim — the installer and the public skills
+    // mirror both enumerate it from there.
+    const distPack = join(paths.distDir, 'packs', 'demo-pack');
+    expect(readFileSync(join(distPack, 'SKILL.md'), 'utf-8')).toBe('# demo pack\n');
+    expect(readFileSync(join(distPack, 'do-a-thing', 'SKILL.md'), 'utf-8')).toBe('# do a thing\n');
+    // `references/` carries no SKILL.md, so it rides along with the skill that owns it.
+    expect(existsSync(join(distPack, 'references', 'notes.md'))).toBe(true);
   });
 
   test('returns [] when there is no packs/ directory', () => {

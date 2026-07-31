@@ -382,6 +382,8 @@ export interface CommitWipOptions {
   date?: string;
 }
 
+const wipCommitQueues = new Map<string, Promise<unknown>>();
+
 export async function commitWip(
   shadow: ShadowHandle,
   writer: WriterIdentity,
@@ -398,10 +400,21 @@ export async function commitWip(
         'shadow.branch': branch,
       },
     },
-    async () =>
-      shadowOpGateFor(shadow).withMutator(() =>
-        commitWipInner(shadow, writer, contentRoot, message, branch, opts?.date),
-      ),
+    async () => {
+      // The shadow op gate's `withMutator` is SHARED (mutators run concurrently;
+      // only gc is exclusive), so it does NOT serialize two in-flight flushes
+      // for the same writer — they'd race on the fixed-path `index-wip-<writer>`
+      // and commit stale trees. The per-writer promise queue below is the
+      // serialization; the gate still fences us against gc.
+      const key = `${shadow.gitDir}\0${writer.id}`;
+      const flush = () =>
+        shadowOpGateFor(shadow).withMutator(() =>
+          commitWipInner(shadow, writer, contentRoot, message, branch, opts?.date),
+        );
+      const run = (wipCommitQueues.get(key) ?? Promise.resolve()).then(flush, flush);
+      wipCommitQueues.set(key, run);
+      return run;
+    },
   );
 }
 

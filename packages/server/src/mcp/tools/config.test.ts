@@ -131,3 +131,57 @@ describe('config tool', () => {
     expect(result.structuredContent?.value).toBe('light');
   });
 });
+
+describe('config stays a pure read', () => {
+  // MCP annotations are per-tool and static, so a single mutating field costs
+  // every plain config READ its auto-approval — for users who never touch
+  // skills. The folder-topology verb that briefly lived here moved to `install`
+  // for exactly that reason; this pins the hints so it cannot drift back.
+  test('registers with readOnlyHint and idempotentHint', () => {
+    let annotations: Record<string, unknown> | undefined;
+    let inputKeys: string[] = [];
+    const server = {
+      registerTool(
+        _name: string,
+        cfg: { annotations?: Record<string, unknown>; inputSchema: Record<string, unknown> },
+      ) {
+        annotations = cfg.annotations;
+        inputKeys = Object.keys(cfg.inputSchema);
+      },
+      tool() {
+        throw new Error('legacy tool() should not be called by config');
+      },
+    } as unknown as ServerInstance;
+    register(server, { config: BASE_CONFIG, resolveCwd: async () => process.cwd() });
+
+    expect(annotations).toEqual({ readOnlyHint: true, idempotentHint: true });
+    expect(inputKeys).not.toContain('skillFolders');
+  });
+
+  // The description IS the contract an agent reads. When `skillFolders` moved to
+  // `install`, the schema lost it but the description still advertised it — so
+  // an agent would pass an argument that is silently dropped, believe the
+  // folder operation ran, and never see an error. Same for the output shape.
+  test('neither advertises nor can return the folder verb it no longer accepts', () => {
+    let description = '';
+    let outputKeys: string[] = [];
+    const server = {
+      registerTool(
+        _name: string,
+        cfg: { description: string; outputSchema: { shape?: Record<string, unknown> } },
+      ) {
+        description = cfg.description;
+        outputKeys = Object.keys(cfg.outputSchema.shape ?? {});
+      },
+      tool() {
+        throw new Error('legacy tool() should not be called by config');
+      },
+    } as unknown as ServerInstance;
+    register(server, { config: BASE_CONFIG, resolveCwd: async () => process.cwd() });
+
+    // It may POINT AT the verb's new home; it must not document taking it.
+    expect(description).not.toMatch(/action:\s*"(link|unlink|add-root)"/);
+    expect(description).toContain('`install`');
+    expect(outputKeys).not.toContain('folder');
+  });
+});

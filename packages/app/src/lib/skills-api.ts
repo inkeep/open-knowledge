@@ -1,8 +1,17 @@
 import type {
+  SkillDetail,
+  SkillDiscover,
   SkillFrontmatter,
   SkillInstallWarningCode,
+  SkillPreview,
+  SkillRefResolution,
   SkillScope,
+  SkillsImportBulkSuccess,
+  SkillsInstalledSuccess,
+  SkillsListEntry,
+  SkillsSearchSuccess,
 } from '@inkeep/open-knowledge-core';
+import { SkillsListSuccessSchema } from '@inkeep/open-knowledge-core';
 import { emitSkillsChanged } from '@/lib/documents-events';
 import { parseApiError } from '@/lib/parse-api-error';
 
@@ -22,16 +31,222 @@ async function readErrorBody(res: Response): Promise<string> {
 type WriteResult<T> = ({ ok: true } & T) | { ok: false; error: string };
 
 /**
- * PUT `/api/skill` — create or overwrite `<root>/.ok/skills/<name>/SKILL.md`.
- * `frontmatter.name` must equal `name` (server-enforced); the form keeps them
- * in lockstep.
+ * Shared GET → `WriteResult<T>` wrapper for the read-only skill endpoints. Every
+ * `/api/skills/*` GET degrades identically: a non-`ok` response surfaces the
+ * server error body; a thrown fetch/JSON error (network failure, abort, non-JSON
+ * body) becomes `{ ok: false }` so the caller's `.then` still runs and the pane
+ * degrades instead of spinning forever. `T` is spread into the success result.
+ */
+async function getJson<T extends object>(
+  url: string,
+  signal?: AbortSignal,
+): Promise<WriteResult<T>> {
+  try {
+    const res = await fetch(url, signal ? { signal } : undefined);
+    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
+    const body = (await res.json()) as T;
+    return { ok: true, ...body };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Write-side counterpart to `getJson`: the POST/PUT/DELETE shape every mutating
+ * wrapper below repeated verbatim — send, surface the server's error body on a
+ * non-`ok` response, tolerate an empty or non-JSON success body, and turn a
+ * thrown fetch into `{ ok: false }` rather than letting it escape into a click
+ * handler.
+ *
+ * Deliberately does NOT emit `skills-changed` or apply per-endpoint defaults:
+ * which writes invalidate the list is a per-endpoint decision (one of them
+ * deliberately does not emit), and burying that here would hide the exception.
+ */
+async function sendJson<T extends object>(
+  url: string,
+  method: 'POST' | 'PUT' | 'DELETE',
+  body?: unknown,
+): Promise<WriteResult<T>> {
+  try {
+    const res = await fetch(url, {
+      method,
+      ...(body === undefined
+        ? {}
+        : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+    });
+    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
+    const payload = (await res.json().catch(() => null)) as T | null;
+    return { ok: true, ...((payload ?? {}) as T) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * GET `/api/skills/search?q=` — proxy skill discovery over skills.sh (with a
+ * degraded GitHub-topic fallback). `degraded` true = the fallback answered, so
+ * the caller should drop the install-count sort. Sub-2-char queries short-circuit
+ * to an empty result (mirrors the server's minimum-length guard).
+ */
+export async function searchSkills(query: string): Promise<WriteResult<SkillsSearchSuccess>> {
+  const q = query.trim();
+  if (q.length < 2) return { ok: true, results: [], backend: 'skills.sh', degraded: false };
+  return getJson<SkillsSearchSuccess>(`/api/skills/search?q=${encodeURIComponent(q)}`);
+}
+
+/**
+ * GET `/api/skills/popular` — the Discover blank-state list (server-scraped from
+ * the skills.sh front page, cached + best-effort). A non-`ok` result OR an empty
+ * `results` means the caller should fall back to the topic chips.
+ */
+export async function fetchPopularSkills(): Promise<WriteResult<SkillsSearchSuccess>> {
+  return getJson<SkillsSearchSuccess>('/api/skills/popular?limit=24');
+}
+
+/**
+ * `GET /api/skills` — the managed-skill list, schema-validated.
+ *
+ * The one wrapper for this endpoint. Call sites used to `fetch` it directly and
+ * cast the body with `as { skills?: SkillsListEntry[] }`, which silently accepts
+ * a response the `.strict()` schema would reject — so server field drift was
+ * loud in one path and invisible in the others.
+ */
+export async function listSkills(
+  scope?: SkillScope,
+  signal?: AbortSignal,
+): Promise<{ ok: true; skills: SkillsListEntry[] } | { ok: false; error: string }> {
+  const res = await getJson<Record<string, unknown>>(
+    scope ? `/api/skills?scope=${scope}` : '/api/skills',
+    signal,
+  );
+  if (!res.ok) return res;
+  // `getJson` merges its own `ok: true` into the body, which the `.strict()`
+  // schema rejects — validate the server's fields, not the envelope.
+  const { ok: _envelope, ...body } = res;
+  const parsed = SkillsListSuccessSchema.safeParse(body);
+  return parsed.success
+    ? { ok: true, skills: parsed.data.skills }
+    : { ok: false, error: 'The skills list did not match its schema.' };
+}
+
+/**
+ * GET `/api/skills/detail?source=&name=` — enrich one discovery result for the
+ * info modal (skills.sh Open Graph preview + repo/skills.sh links). The server
+ * degrades to a repo-link-only payload when the skills.sh page is unreachable,
+ * so a non-`ok` result here means the request itself failed, not "no preview".
+ */
+export async function fetchSkillDetail(input: {
+  source: string;
+  name: string;
+}): Promise<WriteResult<SkillDetail>> {
+  const params = new URLSearchParams({ source: input.source, name: input.name });
+  return getJson<SkillDetail>(`/api/skills/detail?${params.toString()}`);
+}
+
+/**
+ * GET `/api/skills/preview?source=&name=` — fetch an un-imported skill's full
+ * `SKILL.md` text so the Explore modal can render it through the read-only
+ * markdown viewer before importing. The server shallow-clones the source (same
+ * machinery as import), so this is slower than `fetchSkillDetail` and can fail
+ * on network / rate limits; a non-`ok` result means the caller should fall back
+ * to the Open Graph card rather than block the modal.
+ */
+export async function fetchSkillPreview(
+  input: { source: string; name: string },
+  signal?: AbortSignal,
+): Promise<WriteResult<SkillPreview>> {
+  const params = new URLSearchParams({ source: input.source, name: input.name });
+  return getJson<SkillPreview>(`/api/skills/preview?${params.toString()}`, signal);
+}
+
+/**
+ * GET `/api/skills/resolve-ref` — resolve a skill's `/other-skill` reference by
+ * trusted-provenance precedence (local install / same-source sibling / same-
+ * publisher exact match). Never a marketplace-wide fuzzy search. `from` is the
+ * referencing skill's name (for its origin lookup); `scope` its scope.
+ */
+export async function resolveSkillRef(
+  input: { ref: string; scope: SkillScope; from: string },
+  signal?: AbortSignal,
+): Promise<WriteResult<SkillRefResolution>> {
+  const params = new URLSearchParams({
+    ref: input.ref,
+    scope: input.scope,
+    from: input.from,
+  });
+  return getJson<SkillRefResolution>(`/api/skills/resolve-ref?${params.toString()}`, signal);
+}
+
+/**
+ * GET `/api/skills/discover?source=` — enumerate every skill in a remote/local
+ * import source so the Import modal can offer a picker of what to ingest instead
+ * of a blind free-text "which skill" box. Same shallow-clone machinery as
+ * import, so it's slow and can fail on network / a bad source; a non-`ok` result
+ * means the caller should let the user import blind (the server still errors with
+ * the skill list if the source turns out to hold several).
+ */
+export async function discoverSkillsInSource(
+  source: string,
+  signal?: AbortSignal,
+): Promise<WriteResult<SkillDiscover>> {
+  return getJson<SkillDiscover>(
+    `/api/skills/discover?source=${encodeURIComponent(source)}`,
+    signal,
+  );
+}
+
+/**
+ * GET `/api/skills/installed` — enumerate skills OK detected across your other
+ * tools (Claude/Codex/Cursor plugins, `~/.ok/skills`), deduped across homes.
+ * Backs the Import modal's Detected tab. Read-only; scripts are surfaced here,
+ * never run. A non-`ok` result means the request failed (the caller shows the
+ * error), distinct from an `ok` result with an empty `skills` (nothing detected).
+ */
+export async function listDetectedSkills(): Promise<WriteResult<SkillsInstalledSuccess>> {
+  return getJson<SkillsInstalledSuccess>('/api/skills/installed');
+}
+
+/**
+ * POST `/api/skill/edit-external` — register a detected (unmanaged) skill for
+ * in-place editing and get back the synthetic editable doc name
+ * (`__extskill__/<name>`). `home` is the skill's own on-disk dir
+ * (`CatalogSkill.home`). The doc autosaves back to the real harness file with no
+ * copy/symlink/`.ok`.
+ */
+export async function editExternalSkill(input: {
+  name: string;
+  home: string;
+}): Promise<WriteResult<{ docName: string }>> {
+  try {
+    const res = await fetch('/api/skill/edit-external', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
+    const body = (await res.json().catch(() => null)) as { docName?: unknown } | null;
+    if (!body || typeof body.docName !== 'string') {
+      return { ok: false, error: 'Server returned a malformed response.' };
+    }
+    return { ok: true, docName: body.docName };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * PUT `/api/skill` — create or overwrite a skill. A NEW skill is born
+ * IN-PLACE at the scope's default skill home (store retirement); an existing
+ * one is edited at its real dir. `path` is the base-relative SKILL.md path
+ * the server wrote — pass it to `openSkill` so a fresh create opens its REAL
+ * doc before the skills list catches up.
  */
 export async function saveSkill(input: {
   scope: SkillScope;
   name: string;
   frontmatter: SkillFrontmatter;
   body: string;
-}): Promise<WriteResult<{ created: boolean; warnings: string[] }>> {
+}): Promise<WriteResult<{ created: boolean; warnings: string[]; path?: string }>> {
   try {
     const res = await fetch('/api/skill', {
       method: 'PUT',
@@ -42,70 +257,171 @@ export async function saveSkill(input: {
     const payload = (await res.json().catch(() => null)) as {
       created?: boolean;
       warnings?: string[];
+      path?: string;
     } | null;
     emitSkillsChanged();
-    return { ok: true, created: payload?.created ?? false, warnings: payload?.warnings ?? [] };
+    return {
+      ok: true,
+      created: payload?.created ?? false,
+      warnings: payload?.warnings ?? [],
+      ...(typeof payload?.path === 'string' ? { path: payload.path } : {}),
+    };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
 /**
- * PUT `/api/skill-file` — create or overwrite ONE bundle file (`references/**`
- * or `scripts/**`) beside a skill's `SKILL.md`. The server routes by scope×type
- * (project `.md` → CRDT content/index path so it joins the graph; global refs +
- * all scripts → fs-direct). Used to carry the full bundle on a cross-scope move.
+ * POST `/api/skill/import` — acquire a skill from a remote/local source into
+ * `.ok/skills/<name>` as versioned content. The server
+ * fetches, writes via the content spine, records upstream provenance, and never
+ * executes scripts. A name collision lands under `<name>-imported`; an identical
+ * re-import is a no-op (`alreadyImported`).
  */
-async function saveSkillFile(input: {
-  scope: SkillScope;
-  name: string;
-  path: string;
-  content: string;
-}): Promise<WriteResult<{ created: boolean }>> {
+export async function importSkill(input: {
+  source: string;
+  skill?: string;
+  scope?: SkillScope;
+  /** false = import only, no default-editor auto-projection (the caller
+   *  installs explicitly afterwards). */
+  install?: boolean;
+}): Promise<
+  | {
+      ok: true;
+      name: string;
+      alreadyImported: boolean;
+      collisionRenamedFrom?: string;
+      warnings: string[];
+    }
+  // `skills` rides the failure branch only for the multi-skill guard, so the
+  // Import form can recover into the picker instead of dead-ending.
+  | { ok: false; error: string; skills?: string[] }
+> {
   try {
-    const res = await fetch('/api/skill-file', {
-      method: 'PUT',
+    const res = await fetch('/api/skill/import', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     });
-    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
-    const payload = (await res.json().catch(() => null)) as { created?: boolean } | null;
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as {
+        title?: unknown;
+        detail?: unknown;
+      } | null;
+      const error = parseApiError(body) ?? `HTTP ${res.status}`;
+      // The multi-skill guard rejects a blind import of a bundle and returns the
+      // choosable names in `detail` (comma-joined; skill names are comma-free
+      // kebab identifiers). Surface them so the caller can offer the picker even
+      // when pre-import discovery flaked but import's own clone saw the bundle.
+      const skills =
+        typeof body?.detail === 'string' && /multiple skills/i.test(String(body?.title ?? ''))
+          ? String(body.detail)
+              .split(', ')
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : undefined;
+      return skills ? { ok: false, error, skills } : { ok: false, error };
+    }
+    const payload = (await res.json().catch(() => null)) as {
+      name?: string;
+      alreadyImported?: boolean;
+      collisionRenamedFrom?: string;
+      warnings?: string[];
+    } | null;
+    // A successful import always returns a JSON body with a real `name`. A null
+    // payload (e.g. a proxy returned HTML on a 200) is a failure, not a success
+    // we paper over by echoing the raw source as the skill name.
+    if (!payload || typeof payload.name !== 'string') {
+      return { ok: false, error: 'Server returned a malformed import response.' };
+    }
     emitSkillsChanged();
-    return { ok: true, created: payload?.created ?? false };
+    return {
+      ok: true,
+      name: payload.name,
+      alreadyImported: payload?.alreadyImported ?? false,
+      collisionRenamedFrom: payload?.collisionRenamedFrom,
+      warnings: payload?.warnings ?? [],
+    };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
-/** GET `/api/skills/management` — project-managed opt-in state + import count.
- *  `managed: null` = undecided. Returns null on any failure (caller hides UI). */
-export async function getSkillsManagement(): Promise<{
-  managed: boolean | null;
-  importable: number;
-} | null> {
+/**
+ * POST `/api/skills/import-bulk` — acquire SEVERAL named skills from one source
+ * in a single server-side clone (the plugin case). Always resolves `ok` when the
+ * source itself was reachable: per-skill outcomes ride `results`, so a caller
+ * reports counts and lists what failed rather than treating one bad bundle as a
+ * failed request.
+ */
+export async function importSkillsBulk(input: {
+  source: string;
+  skills: string[];
+  scope: SkillScope;
+  /** false = import only, no default-editor auto-projection. */
+  install?: boolean;
+}): Promise<WriteResult<SkillsImportBulkSuccess>> {
   try {
-    const res = await fetch('/api/skills/management');
-    if (!res.ok) return null;
-    return (await res.json()) as { managed: boolean | null; importable: number };
-  } catch {
-    return null;
+    const res = await fetch('/api/skills/import-bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
+    const payload = (await res.json().catch(() => null)) as SkillsImportBulkSuccess | null;
+    if (!payload || !Array.isArray(payload.results)) {
+      return { ok: false, error: 'Server returned a malformed import response.' };
+    }
+    emitSkillsChanged();
+    return { ok: true, ...payload };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
-/** PUT `/api/skills/management` — record the opt-in; enabling imports editor
- *  skills server-side. Emits `skills-changed` so the list re-fetches. */
-export async function setSkillsManagement(manageEditorSkills: boolean): Promise<boolean> {
+/**
+ * POST `/api/skill-upload` — acquire a skill from UPLOADED BYTES (a `.zip` of a
+ * skill dir, or a folder's files via `webkitdirectory`) instead of a fetched
+ * source. Multipart: `scope` rides the query string, the file parts are the
+ * body. Mirrors the import result shape (same server spine); the server unpacks
+ * to a temp dir and never runs scripts.
+ */
+export async function uploadSkill(
+  formData: FormData,
+  scope: SkillScope,
+): Promise<
+  WriteResult<{
+    name: string;
+    alreadyImported: boolean;
+    collisionRenamedFrom?: string;
+    warnings: string[];
+  }>
+> {
   try {
-    const res = await fetch('/api/skills/management', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ manageEditorSkills }),
+    const res = await fetch(`/api/skill-upload?scope=${encodeURIComponent(scope)}`, {
+      method: 'POST',
+      body: formData,
     });
-    if (!res.ok) return false;
+    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
+    const payload = (await res.json().catch(() => null)) as {
+      name?: string;
+      alreadyImported?: boolean;
+      collisionRenamedFrom?: string;
+      warnings?: string[];
+    } | null;
+    if (!payload || typeof payload.name !== 'string') {
+      return { ok: false, error: 'Server returned a malformed upload response.' };
+    }
     emitSkillsChanged();
-    return true;
-  } catch {
-    return false;
+    return {
+      ok: true,
+      name: payload.name,
+      alreadyImported: payload?.alreadyImported ?? false,
+      collisionRenamedFrom: payload?.collisionRenamedFrom,
+      warnings: payload?.warnings ?? [],
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -121,11 +437,10 @@ function nextCopyName(base: string, existing: ReadonlySet<string>): string {
 }
 
 /**
- * Duplicate a skill within its scope. Reads the source `SKILL.md` (GET) and
- * writes a copy under a fresh `<name>-copy[-N]` name (PUT via `saveSkill`) — a
- * client-side compose over the existing endpoints, since skills are plain files
- * (no CRDT). `existingNames` is the scope's current name set, used to pick a
- * non-colliding name without overwriting.
+ * Duplicate a complete skill bundle within its scope. The server copies the
+ * directory recursively so references, scripts, and binary assets stay intact.
+ * `existingNames` picks a friendly non-colliding name before the server performs
+ * its authoritative destination check.
  */
 export async function duplicateSkill(input: {
   scope: SkillScope;
@@ -133,133 +448,57 @@ export async function duplicateSkill(input: {
   existingNames: ReadonlySet<string>;
 }): Promise<WriteResult<{ name: string }>> {
   try {
-    const params = new URLSearchParams({ name: input.name, scope: input.scope });
-    const getRes = await fetch(`/api/skill?${params.toString()}`);
-    if (!getRes.ok) return { ok: false, error: await readErrorBody(getRes) };
-    const detail = (await getRes.json().catch(() => null)) as {
-      skill?: { frontmatter?: { description?: unknown }; body?: unknown };
-    } | null;
-    const description =
-      typeof detail?.skill?.frontmatter?.description === 'string'
-        ? detail.skill.frontmatter.description
-        : '';
-    const body = typeof detail?.skill?.body === 'string' ? detail.skill.body : '';
     const toName = nextCopyName(input.name, input.existingNames);
-    const saved = await saveSkill({
-      scope: input.scope,
-      name: toName,
-      frontmatter: { name: toName, description },
-      body,
+    const res = await fetch('/api/skill/duplicate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scope: input.scope,
+        name: input.name,
+        toName,
+      }),
     });
-    if (!saved.ok) return { ok: false, error: saved.error };
-    return { ok: true, name: toName };
+    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
+    const payload = (await res.json().catch(() => null)) as { name?: unknown } | null;
+    if (typeof payload?.name !== 'string') {
+      return { ok: false, error: 'Server returned a malformed duplicate response.' };
+    }
+    emitSkillsChanged();
+    return { ok: true, name: payload.name };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
 /**
- * Move a skill across scopes (project ↔ global). Each scope has its own store
- * (project = `<contentDir>/.ok/skills`, content-versioned; global =
- * `<home>/.ok/skills`, unversioned), so this composes the existing endpoints —
- * read the source `SKILL.md`, write it under the destination scope, then delete
- * the source (whose DELETE also tears down the open live doc + uninstalls the
- * old scope's editor-host projections).
- * Refuses if the destination scope already has a skill of that name (no
- * overwrite). Project → global drops version history (global is unversioned
- * by design); the moved skill lands as a Draft to (re)install for its new scope.
- * Not atomic: if the delete fails, the copy already exists in the destination —
- * surfaced in `error` so the caller can tell the user.
+ * Move a skill across scopes (project ↔ global) via the server-side atomic
+ * `POST /api/skill/move-scope`. The server copies the whole bundle verbatim
+ * (binaries included), removes the source, and transfers install projections in
+ * ONE request — no client-orchestrated copy+delete, so nothing can race the
+ * live-doc bridge and double the skill's content on a round-trip. Refuses (409)
+ * if the destination scope already has a skill of that name — no overwrite.
+ * Project → global drops version history (global is unversioned by design).
  */
 export async function moveSkillScope(input: {
   name: string;
   fromScope: SkillScope;
   toScope: SkillScope;
-}): Promise<WriteResult<{ scope: SkillScope; skippedBinaryFiles?: string[] }>> {
+}): Promise<WriteResult<{ scope: SkillScope; path?: string }>> {
   const { name, fromScope, toScope } = input;
   if (fromScope === toScope) return { ok: true, scope: toScope };
   try {
-    const getRes = await fetch(`/api/skill?name=${encodeURIComponent(name)}&scope=${fromScope}`);
-    if (!getRes.ok) return { ok: false, error: await readErrorBody(getRes) };
-    const detail = (await getRes.json().catch(() => null)) as {
-      skill?: { frontmatter?: { description?: unknown }; body?: unknown };
-    } | null;
-    const description =
-      typeof detail?.skill?.frontmatter?.description === 'string'
-        ? detail.skill.frontmatter.description
-        : '';
-    const body = typeof detail?.skill?.body === 'string' ? detail.skill.body : '';
-
-    // Don't overwrite an existing destination-scope skill of the same name.
-    // Only a clean 404 proves the destination is free: a transient failure
-    // (5xx / network) is NOT "absent", and proceeding would overwrite a
-    // destination that might exist and then delete the source (data loss).
-    const destRes = await fetch(`/api/skill?name=${encodeURIComponent(name)}&scope=${toScope}`);
-    if (destRes.ok) {
-      return { ok: false, error: `A ${toScope} skill named "${name}" already exists.` };
-    }
-    if (destRes.status !== 404) {
-      return {
-        ok: false,
-        error: `Couldn't verify the ${toScope} destination "${name}" is free (HTTP ${destRes.status}); aborting before any write so an existing skill can't be overwritten. Retry in a moment.`,
-      };
-    }
-
-    const saved = await saveSkill({
-      scope: toScope,
-      name,
-      frontmatter: { name, description },
-      body,
+    const res = await fetch('/api/skill/move-scope', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name, fromScope, toScope }),
     });
-    if (!saved.ok) return saved;
-
-    // Carry the full bundle: `saveSkill` only writes SKILL.md, so without this
-    // the references + scripts are lost on a cross-scope move. Copy every
-    // bundle file to the destination BEFORE deleting the source — abort on any
-    // copy failure without deleting, so a partial copy never loses the original
-    // (it stays intact at the source scope). Null-text entries are binary /
-    // oversize files outside the text-only bundle contract; skip them.
-    const bundled = await getSkillBundledFiles(fromScope, name);
-    if (!bundled.ok) {
-      return {
-        ok: false,
-        error: `Copied "${name}" to ${toScope}, but reading its bundle files failed (${bundled.error}); the ${fromScope} original is intact. Delete the partial ${toScope} copy and retry.`,
-      };
-    }
-    const skippedBinaryFiles: string[] = [];
-    for (const file of bundled.files) {
-      // Binary / oversize files (null text) are outside the text-only bundle
-      // contract — skip them, but collect so the move isn't a SILENT drop.
-      if (file.text === null) {
-        skippedBinaryFiles.push(file.path);
-        continue;
-      }
-      const copied = await saveSkillFile({
-        scope: toScope,
-        name,
-        path: file.path,
-        content: file.text,
-      });
-      if (!copied.ok) {
-        return {
-          ok: false,
-          error: `Copied "${name}" to ${toScope}, but copying its bundle file "${file.path}" failed (${copied.error}); the ${fromScope} original is intact. Delete the partial ${toScope} copy and retry.`,
-        };
-      }
-    }
-
-    const del = await deleteSkill(fromScope, name);
-    if (!del.ok) {
-      return {
-        ok: false,
-        error: `Copied to ${toScope}, but couldn't remove the ${fromScope} copy: ${del.error}`,
-      };
-    }
+    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
+    const payload = (await res.json().catch(() => null)) as { path?: string } | null;
     emitSkillsChanged();
     return {
       ok: true,
       scope: toScope,
-      ...(skippedBinaryFiles.length > 0 ? { skippedBinaryFiles } : {}),
+      ...(typeof payload?.path === 'string' ? { path: payload.path } : {}),
     };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -278,7 +517,7 @@ export async function moveSkill(input: {
   toName: string;
   frontmatter?: SkillFrontmatter;
   body?: string;
-}): Promise<WriteResult<{ committed: boolean }>> {
+}): Promise<WriteResult<{ committed: boolean; to?: string }>> {
   try {
     const res = await fetch('/api/skill', {
       method: 'POST',
@@ -286,9 +525,16 @@ export async function moveSkill(input: {
       body: JSON.stringify(input),
     });
     if (!res.ok) return { ok: false, error: await readErrorBody(res) };
-    const payload = (await res.json().catch(() => null)) as { committed?: boolean } | null;
+    const payload = (await res.json().catch(() => null)) as {
+      committed?: boolean;
+      to?: string;
+    } | null;
     emitSkillsChanged();
-    return { ok: true, committed: payload?.committed ?? false };
+    return {
+      ok: true,
+      committed: payload?.committed ?? false,
+      ...(typeof payload?.to === 'string' ? { to: payload.to } : {}),
+    };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -311,6 +557,88 @@ export async function deleteSkill(
   }
 }
 
+/** POST `/api/skill/install` fork op — resolve a same-name divergence: align
+ *  the fork to the source, make the fork the source, or keep both by renaming
+ *  the fork. Every path stashes the discarded bytes out-of-tree first. */
+export async function resolveSkillFork(input: {
+  scope: SkillScope;
+  name: string;
+  editor: string;
+  action: 'align' | 'make-source' | 'rename';
+  toName?: string;
+}): Promise<WriteResult<Record<never, never>>> {
+  const res = await sendJson('/api/skill/install', 'POST', {
+    scope: input.scope,
+    name: input.name,
+    fork: {
+      editor: input.editor,
+      action: input.action,
+      ...(input.toName !== undefined ? { toName: input.toName } : {}),
+    },
+  });
+  if (!res.ok) return res;
+  emitSkillsChanged();
+  return { ok: true };
+}
+
+/** PUT `/api/skill-file` — write/create ONE bundle file. Nested paths create
+ *  their folders implicitly (the server mkdirs parents). */
+export async function writeSkillFile(input: {
+  scope: SkillScope;
+  name: string;
+  path: string;
+  content: string;
+}): Promise<WriteResult<{ path: string }>> {
+  try {
+    const res = await fetch('/api/skill-file', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
+    const payload = (await res.json().catch(() => null)) as { path?: string } | null;
+    emitSkillsChanged();
+    return { ok: true, path: payload?.path ?? input.path };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** POST `/api/skill-file/rename` — rename/move ONE bundle file inside a skill.
+ *  For a project `.md` reference the response carries the old + new live doc
+ *  names so an open tab can retarget. */
+export async function renameSkillFile(input: {
+  scope: SkillScope;
+  name: string;
+  from: string;
+  to: string;
+}): Promise<WriteResult<{ from: string; to: string; fromDocName?: string; toDocName?: string }>> {
+  try {
+    const res = await fetch('/api/skill-file/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
+    const payload = (await res.json().catch(() => null)) as {
+      from?: string;
+      to?: string;
+      fromDocName?: string;
+      toDocName?: string;
+    } | null;
+    emitSkillsChanged();
+    return {
+      ok: true,
+      from: payload?.from ?? input.from,
+      to: payload?.to ?? input.to,
+      ...(payload?.fromDocName !== undefined ? { fromDocName: payload.fromDocName } : {}),
+      ...(payload?.toDocName !== undefined ? { toDocName: payload.toDocName } : {}),
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 /** One bundled file beside a skill's `SKILL.md`, with inline read-only text. */
 export interface SkillBundledFile {
   path: string;
@@ -327,9 +655,11 @@ export interface SkillBundledFile {
 export async function getSkillBundledFiles(
   scope: SkillScope,
   name: string,
+  /** Which same-named bundle to list. Omitted = the by-name default. */
+  host?: string,
 ): Promise<WriteResult<{ files: SkillBundledFile[] }>> {
   try {
-    const params = new URLSearchParams({ name, scope });
+    const params = new URLSearchParams({ name, scope, ...(host ? { host } : {}) });
     const res = await fetch(`/api/skill?${params.toString()}`);
     if (!res.ok) return { ok: false, error: await readErrorBody(res) };
     const detail = (await res.json().catch(() => null)) as {
@@ -360,6 +690,8 @@ async function getSkillFile(input: {
   scope: SkillScope;
   name: string;
   path: string;
+  /** Which same-named bundle owns this file. Omitted = the by-name default. */
+  host?: string;
   signal?: AbortSignal;
 }): Promise<SkillFileReadResult> {
   try {
@@ -367,6 +699,7 @@ async function getSkillFile(input: {
       name: input.name,
       scope: input.scope,
       path: input.path,
+      ...(input.host ? { host: input.host } : {}),
     });
     const res = await fetch(`/api/skill-file?${params.toString()}`, { signal: input.signal });
     if (!res.ok) {
@@ -393,6 +726,8 @@ export function loadSkillFileText(
     scope: SkillScope;
     name: string;
     path: string;
+    /** Which same-named bundle owns this file; omitted = by-name default. */
+    host?: string;
   },
   signal?: AbortSignal,
 ): Promise<{ ok: true; text: string } | { ok: false; status?: number }> {
@@ -412,6 +747,8 @@ export async function installSkill(input: {
   scope: SkillScope;
   name: string;
   targets?: string[];
+  /** Persist + apply the per-skill symlink-installs preference. */
+  linkMode?: boolean;
 }): Promise<
   WriteResult<{
     hosts: string[];
@@ -447,58 +784,190 @@ export async function installSkill(input: {
 }
 
 /**
- * POST `/api/skill/uninstall` — remove a skill's editor-host projections + drop
- * its marker entry, leaving the source intact (the skill demotes to Draft). The
- * inverse of `installSkill`.
+ * POST `/api/skill/install` with a one-shot custom placement: copy or symlink
+ * the skill bundle under an arbitrary project-relative dir. Never overwrites.
  */
-export async function uninstallSkill(input: {
+export async function placeSkill(input: {
   scope: SkillScope;
   name: string;
-}): Promise<WriteResult<{ uninstalled: boolean }>> {
+  dir: string;
+  mode: 'copy' | 'link';
+}): Promise<WriteResult<{ placedAt: string }>> {
   try {
-    const res = await fetch('/api/skill/uninstall', {
+    const res = await fetch('/api/skill/install', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
+      body: JSON.stringify({
+        scope: input.scope,
+        name: input.name,
+        place: { dir: input.dir, mode: input.mode },
+      }),
     });
     if (!res.ok) return { ok: false, error: await readErrorBody(res) };
-    const payload = (await res.json().catch(() => null)) as { uninstalled?: boolean } | null;
+    const body = (await res.json().catch(() => null)) as { placedAt?: string } | null;
     emitSkillsChanged();
-    return { ok: true, uninstalled: payload?.uninstalled ?? false };
+    return { ok: true, placedAt: body?.placedAt ?? input.dir };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
-/**
- * POST `/api/skill/update` — refresh an installed starter-pack skill from OK's
- * currently-bundled source. The server checkpoints the current doc first
- * (reversible via version history), then overwrites it. Opt-in: only called when
- * the skills list reports `updateAvailable`. Returns the now-installed `version`
- * (and the prior one + the pre-update checkpoint ref, when available).
- */
-export async function updatePackSkill(input: {
+/** POST `/api/skill/install` with a one-shot placement REMOVAL (inverse of
+ *  `placeSkill`). Lossless-only — a hand-edited copy is refused server-side. */
+export async function unplaceSkill(input: {
   scope: SkillScope;
   name: string;
-}): Promise<WriteResult<{ version: string; previousVersion?: string; checkpointRef?: string }>> {
+  path: string;
+}): Promise<WriteResult<Record<never, never>>> {
+  const res = await sendJson('/api/skill/install', 'POST', {
+    scope: input.scope,
+    name: input.name,
+    unplace: { path: input.path },
+  });
+  if (!res.ok) return res;
+  emitSkillsChanged();
+  return { ok: true };
+}
+
+/** POST `/api/skill/install` with a one-shot SOURCE move: make one host's
+ *  location the skill's real folder; every other installed location becomes a
+ *  symlink to it (sticky). */
+export async function setSkillSource(input: {
+  scope: SkillScope;
+  name: string;
+  target: string;
+}): Promise<WriteResult<Record<never, never>>> {
+  const res = await sendJson('/api/skill/install', 'POST', {
+    scope: input.scope,
+    name: input.name,
+    setSource: input.target,
+  });
+  if (!res.ok) return res;
+  emitSkillsChanged();
+  return { ok: true };
+}
+
+/** POST `/api/skill/install` converting ONE location between an independent
+ *  copy and a symlink to the source. Sibling locations and the skill-wide
+ *  preference are untouched; a hand-edited copy is refused server-side. */
+export async function convertSkillLocation(input: {
+  scope: SkillScope;
+  name: string;
+  target: string;
+  mode: 'copy' | 'link';
+}): Promise<WriteResult<Record<never, never>>> {
+  const res = await sendJson('/api/skill/install', 'POST', {
+    scope: input.scope,
+    name: input.name,
+    convert: { target: input.target, mode: input.mode },
+  });
+  if (!res.ok) return res;
+  emitSkillsChanged();
+  return { ok: true };
+}
+
+/**
+ * POST `/api/skill/reimport` — refresh an IMPORTED skill from its recorded
+ * upstream (`.ok/skills-lock.json`). `updated` is false when the source content
+ * was unchanged (already up to date). Project scope only.
+ */
+/**
+ * One folder-topology verb (link / unlink / add-root) — the same
+ * `PUT /api/skill-targets` the Settings Folders surface uses, callable from
+ * any surface without the settings hook. `unlink` + `exclude` is the
+ * "stop this agent reading that skill" remedy: the folder keeps every other
+ * skill it sees (as per-skill links) and stops following its target root.
+ */
+export async function putSkillFolderAction(action: {
+  scope: SkillScope;
+  root: string;
+  action: 'link' | 'unlink' | 'add-root';
+  target?: string;
+  exclude?: string[];
+}): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    const res = await fetch('/api/skill/update', {
+    const res = await fetch('/api/skill-targets', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderAction: action }),
+    });
+    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function reimportSkill(input: {
+  name: string;
+  scope: SkillScope;
+  /** Preview only — fetch upstream and return the diff bodies WITHOUT writing. */
+  dryRun?: boolean;
+  /** Toggle-persist mode: only flips the lockfile's per-skill `autoUpdate`
+   *  flag (no fetch, nothing rewritten). */
+  setAutoUpdate?: boolean;
+}): Promise<
+  WriteResult<{
+    updated: boolean;
+    source: string;
+    localBody?: string;
+    upstreamBody?: string;
+    gitTracked?: boolean;
+    warnings: string[];
+  }>
+> {
+  try {
+    const res = await fetch('/api/skill/reimport', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     });
     if (!res.ok) return { ok: false, error: await readErrorBody(res) };
     const payload = (await res.json().catch(() => null)) as {
-      version?: string;
-      previousVersion?: string;
-      checkpointRef?: string;
+      updated?: boolean;
+      source?: string;
+      localBody?: string;
+      upstreamBody?: string;
+      gitTracked?: boolean;
+      warnings?: string[];
+    } | null;
+    // A dry run writes nothing — don't invalidate the skills list on a preview.
+    if (!input.dryRun) emitSkillsChanged();
+    return {
+      ok: true,
+      updated: payload?.updated ?? false,
+      source: payload?.source ?? '',
+      localBody: payload?.localBody,
+      upstreamBody: payload?.upstreamBody,
+      ...(payload?.gitTracked !== undefined ? { gitTracked: payload.gitTracked } : {}),
+      warnings: payload?.warnings ?? [],
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * POST `/api/skill/revert` — discard local edits and restore an imported skill to
+ * the exact bytes recorded when it was installed/last updated. Project scope only.
+ */
+export async function revertSkill(input: {
+  name: string;
+}): Promise<WriteResult<{ warnings: string[] }>> {
+  try {
+    const res = await fetch('/api/skill/revert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
+    const payload = (await res.json().catch(() => null)) as {
+      warnings?: string[];
     } | null;
     emitSkillsChanged();
     return {
       ok: true,
-      version: payload?.version ?? '',
-      previousVersion: payload?.previousVersion,
-      checkpointRef: payload?.checkpointRef,
+      warnings: payload?.warnings ?? [],
     };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };

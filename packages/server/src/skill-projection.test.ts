@@ -4,6 +4,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readlinkSync,
   rmSync,
   symlinkSync,
@@ -11,11 +12,14 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   hostSkillsRootEscapes,
+  projectInPlaceSkill,
   projectSkill,
   readSkillBundledFiles,
+  removeInPlaceSkillCopies,
   reverseProjectSkill,
   skillHostDir,
   validateSkillForInstall,
@@ -92,6 +96,14 @@ describe('validateSkillForInstall', () => {
     expect(validateSkillForInstall(noFm, 'nofm').ok).toBe(false);
   });
 
+  test('an empty description is a non-blocking warning, not an error (PRD-7596)', () => {
+    const dir = makeSkill('nodesc', '# x', 'name: nodesc\ndescription: ');
+    const v = validateSkillForInstall(dir, 'nodesc');
+    expect(v.ok).toBe(true);
+    expect(v.errors).toEqual([]);
+    expect(v.warnings.some((w) => w.includes('no `description`'))).toBe(true);
+  });
+
   test('flags a scripts/ dir', () => {
     const dir = makeSkill('with-scripts', '# x');
     mkdirSync(join(dir, 'scripts'));
@@ -101,6 +113,81 @@ describe('validateSkillForInstall', () => {
 });
 
 describe('projectSkill / reverseProjectSkill', () => {
+  test('an in-place canonical already at a host destination is left intact', () => {
+    const dir = join(root, '.claude', 'skills', 'in-place');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'SKILL.md'), '---\nname: in-place\ndescription: d\n---\n\n# Keep me\n');
+
+    expect(projectSkill(dir, 'in-place', root, ['claude'])).toEqual(['claude']);
+    expect(lstatSync(dir).isDirectory()).toBe(true);
+    expect(lstatSync(dir).isSymbolicLink()).toBe(false);
+    expect(readFileSync(join(dir, 'SKILL.md'), 'utf-8')).toContain('# Keep me');
+  });
+
+  // The shape that destroyed a real skill: `.claude/skills` is a FOLDER symlink
+  // to `.agents/skills`, which is where the canonical lives. Writing the claude
+  // projection resolves onto the canonical itself — the rm deletes the real
+  // bundle and the symlink replacing it points at its own path. Every later host
+  // then re-destroys it, because once the canonical is a self-link `realpathSync`
+  // throws and the per-destination `sameEntry` check can no longer see it.
+  test('never writes through a host root that ALIASES the canonical root', () => {
+    const agentsSkills = join(root, '.agents', 'skills');
+    mkdirSync(agentsSkills, { recursive: true });
+    const dir = join(agentsSkills, 'aliased');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'SKILL.md'), '---\nname: aliased\ndescription: d\n---\n\n# Keep me\n');
+
+    // `.claude/skills` and `.cursor/skills` both alias the canonical root.
+    mkdirSync(join(root, '.claude'), { recursive: true });
+    mkdirSync(join(root, '.cursor'), { recursive: true });
+    symlinkSync('../.agents/skills', join(root, '.claude', 'skills'), 'dir');
+    symlinkSync('../.agents/skills', join(root, '.cursor', 'skills'), 'dir');
+
+    projectSkill(dir, 'aliased', root, ['claude', 'cursor', 'codex']);
+
+    // The canonical is still a real directory holding its real bytes.
+    expect(lstatSync(dir).isSymbolicLink()).toBe(false);
+    expect(lstatSync(dir).isDirectory()).toBe(true);
+    expect(readFileSync(join(dir, 'SKILL.md'), 'utf-8')).toContain('# Keep me');
+    // And it did not become self-referential.
+    expect(existsSync(join(dir, 'SKILL.md'))).toBe(true);
+
+    // A NON-aliased host still gets its link.
+    const codexLink = join(root, '.codex', 'skills', 'aliased');
+    expect(lstatSync(codexLink).isSymbolicLink()).toBe(true);
+    expect(readFileSync(join(codexLink, 'SKILL.md'), 'utf-8')).toContain('# Keep me');
+  });
+
+  // The shape that dangled a real skill: the canonical is itself a SYMLINK,
+  // because `source` was pointed at another location. cpSync defaults to
+  // dereference:false, so a "copy" projection would write a link to that other
+  // location — and the host then holds nothing of its own. A copy must stand
+  // alone; that is the entire difference from link mode.
+  test('copy mode materializes bytes even when the canonical is a symlink', () => {
+    const realDir = join(root, 'elsewhere', 'aliased-src');
+    mkdirSync(realDir, { recursive: true });
+    writeFileSync(
+      join(realDir, 'SKILL.md'),
+      '---\nname: aliased-src\ndescription: d\n---\n\n# Real bytes\n',
+    );
+    // The canonical path is a link to it — what `source` leaves behind.
+    const canonical = join(root, '.agents', 'skills', 'aliased-src');
+    mkdirSync(join(root, '.agents', 'skills'), { recursive: true });
+    symlinkSync(realDir, canonical, 'dir');
+
+    projectSkill(canonical, 'aliased-src', root, ['claude'], 'copy');
+
+    const dest = join(root, '.claude', 'skills', 'aliased-src');
+    // A real directory holding real bytes — NOT a link back to the source.
+    expect(lstatSync(dest).isSymbolicLink()).toBe(false);
+    expect(lstatSync(dest).isDirectory()).toBe(true);
+    expect(readFileSync(join(dest, 'SKILL.md'), 'utf-8')).toContain('# Real bytes');
+
+    // Deleting the original tree must not empty the copy.
+    rmSync(realDir, { recursive: true, force: true });
+    expect(existsSync(join(dest, 'SKILL.md'))).toBe(true);
+  });
+
   test('installs a symlink into each editor host dir and reverse removes the link', () => {
     const dir = makeSkill('trip-log', '# Steps');
     const written = projectSkill(dir, 'trip-log', root, [
@@ -228,5 +315,85 @@ describe('hostSkillsRootEscapes', () => {
     } finally {
       rmSync(outside, { recursive: true, force: true });
     }
+  });
+});
+
+describe('projectInPlaceSkill / removeInPlaceSkillCopies (in-place fan-out guards)', () => {
+  /** Author a real skill bundle at any root-relative dir. */
+  function makeAt(rel: string, body: string): string {
+    const dir = join(root, rel);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'SKILL.md'),
+      `---\nname: ${rel.split('/').pop()}\ndescription: Use when testing.\n---\n${body}`,
+    );
+    return dir;
+  }
+  const hashOf = (dir: string) => parseSkillDir(dir)?.contentHash ?? '';
+
+  test('copies into absent editors; only the canonical host itself is never written', () => {
+    const canonical = makeAt('.agents/skills/foo', '# Body');
+    const r = projectInPlaceSkill({
+      canonicalAbs: canonical,
+      canonicalHash: hashOf(canonical),
+      canonicalRootRel: '.agents/skills',
+      name: 'foo',
+      cwd: root,
+      targets: ['claude', 'codex', 'opencode'],
+    });
+    // Every checked editor gets a real copy in its own dir — the vendor
+    // capability table is deleted; writes are only skipped for the canonical
+    // host itself and for aliased roots (observable facts).
+    expect(r.conflicted).toEqual([]);
+    expect(r.hosts.sort()).toEqual(['claude', 'codex', 'opencode']);
+    expect(lstatSync(join(root, '.claude/skills/foo')).isDirectory()).toBe(true);
+    expect(lstatSync(join(root, '.claude/skills/foo')).isSymbolicLink()).toBe(false);
+    expect(lstatSync(join(root, '.codex/skills/foo')).isDirectory()).toBe(true);
+    expect(lstatSync(join(root, '.opencode/skills/foo')).isDirectory()).toBe(true);
+  });
+
+  test('NEVER clobbers a differing real dir (fork) — surfaced as conflicted', () => {
+    const canonical = makeAt('.claude/skills/foo', '# Canonical');
+    makeAt('.cursor/skills/foo', '# A DIFFERENT skill');
+    const r = projectInPlaceSkill({
+      canonicalAbs: canonical,
+      canonicalHash: hashOf(canonical),
+      canonicalRootRel: '.claude/skills',
+      name: 'foo',
+      cwd: root,
+      targets: ['cursor'],
+    });
+    expect(r.conflicted).toEqual(['cursor']);
+    expect(r.hosts).toEqual([]);
+    expect(readFileSync(join(root, '.cursor/skills/foo/SKILL.md'), 'utf-8')).toContain(
+      '# A DIFFERENT skill',
+    );
+  });
+
+  test('remove deletes only lossless occurrences; canonical + forks survive', () => {
+    const canonical = makeAt('.claude/skills/foo', '# Canonical');
+    const hash = hashOf(canonical);
+    // Same-hash copy (lossless) + a fork (must survive) + an old symlink projection.
+    const copy = makeAt('.cursor/skills/foo', '# Canonical');
+    writeFileSync(
+      join(root, '.cursor/skills/foo/SKILL.md'),
+      readFileSync(join(canonical, 'SKILL.md')),
+    );
+    const fork = makeAt('.codex/skills/foo', '# FORKED content');
+    mkdirSync(join(root, '.opencode/skills'), { recursive: true });
+    symlinkSync(canonical, join(root, '.opencode/skills/foo'), 'dir');
+
+    const removed = removeInPlaceSkillCopies({
+      canonicalAbs: canonical,
+      canonicalHash: hash,
+      name: 'foo',
+      cwd: root,
+      targets: ['claude', 'cursor', 'codex', 'opencode'],
+    });
+    expect(removed.sort()).toEqual(['cursor', 'opencode']);
+    expect(existsSync(canonical)).toBe(true); // NEVER the canonical
+    expect(existsSync(fork)).toBe(true); // NEVER a differing dir
+    expect(existsSync(copy)).toBe(false);
+    expect(existsSync(join(root, '.opencode/skills/foo'))).toBe(false);
   });
 });

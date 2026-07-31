@@ -36,8 +36,8 @@
  * This file uses only `node:fs` (no other server/runtime deps) so it is safe
  * to include from any workspace package.
  */
-import { existsSync } from 'node:fs';
-import { resolve, sep } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fnv1aDigest } from './bridge/hash-util.ts';
 import { discoverGitRepository } from './git-repository.ts';
 
@@ -882,4 +882,36 @@ export function parseWriterId(id: string): ParsedWriter {
     return { id, classification: 'classified-openknowledge-service', isAgent: null };
   // Unreachable given the regex, but keeps the type narrowing honest.
   return { id, classification: 'unknown', isAgent: null };
+}
+
+/**
+ * Resolve a project directory to a STABLE project identity for detected-skill
+ * project-scoping. A linked git worktree has its own absolute root, which
+ * matches ZERO of Claude's `installed_plugins.json` records (those key on the
+ * parent checkout's path) — so scoping detected skills against the raw worktree
+ * path drops the parent's project skills. Re-anchor a linked worktree onto its
+ * main-worktree root (the admin dir's `commondir` file points back at the shared
+ * `.git`; its parent is the main work tree) and re-apply `projectSubPath` for
+ * the subtree-rooted case, yielding an identity bit-identical to the main
+ * checkout's. Main worktrees, non-git dirs, and unusable `.git` states resolve
+ * to the input path unchanged.
+ *
+ * Only ONE operand is resolvable here — the recorded `projectPath` may be a
+ * foreign or vanished path — so the caller normalizes its OWN `projectDir` to
+ * this identity before the exact `samePath` compare in `isDetectedSkillInProject`.
+ */
+export function resolveProjectIdentity(projectDir: string): string {
+  const detail = resolveGitDirDetailed(projectDir);
+  if (detail.kind !== 'linked') return resolve(projectDir);
+  try {
+    const commondir = readFileSync(join(detail.path, 'commondir'), 'utf-8').trim();
+    if (commondir === '') return resolve(projectDir);
+    const mainRoot = dirname(resolve(detail.path, commondir));
+    return resolve(mainRoot, detail.projectSubPath);
+  } catch {
+    // Unreadable/absent commondir (corrupt worktree admin) — degrade to the raw
+    // path. Same net effect as pre-normalization: the parent's project skills
+    // stay dropped, but nothing else leaks in. No worse than a main checkout.
+    return resolve(projectDir);
+  }
 }

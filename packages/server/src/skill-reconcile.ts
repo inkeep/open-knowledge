@@ -1,9 +1,8 @@
 /**
- * Skill install reconcile — the detect / adopt / heal pass that runs on project
- * open (and on skill create/delete). It brings the on-disk reality into line
- * with the symlink install model: every editor skill entry is either absent or
- * a symlink into `.ok/skills/<name>`; no real-dir skill copies linger in editor
- * dirs. Install state is the on-disk symlink reality — the marker is only a
+ * Skill install reconcile — the heal pass that runs on project open (and on
+ * skill create/delete). It brings editor-dir entries of skills OK ALREADY OWNS
+ * (a `.ok/skills/<name>` source exists) into line with the symlink install
+ * model. Install state is the on-disk symlink reality — the marker is only a
  * cache, refreshed here as a side effect.
  *
  * Per-entry taxonomy for an editor skill dir entry `<name>`:
@@ -15,41 +14,30 @@
  * | symlink → existing path outside `.ok/skills`    | foreign link   | leave untouched              |
  * | symlink dangling or into `.ok/skills`, source present | drifted link | heal → re-point          |
  * | symlink dangling or into `.ok/skills`, no source | orphan link   | remove the dangling link     |
- * | real dir, `.ok/skills/<name>` absent            | foreign/legacy | adopt → move in + symlink *(only if project OK-managed; else leave untouched)* |
  * | real dir, source present, same content          | redundant copy | replace with a symlink       |
  * | real dir, same skill (frontmatter-only diff)     | redundant copy | replace with a symlink       |
- * | real dir, source present, different skill        | collision      | suffix-adopt `<name>-<editor>` *(only if project OK-managed; else leave untouched)* |
+ * | real dir, no source / different skill            | in-place skill | none (indexed in place)      |
  *
- * **Project-managed gate.** The two IMPORT rows (adopt, collision) write a
- * NON-`.ok` skill into `.ok/skills`, so they only run when the project is
- * OK-managed (`manageEditorSkills`, default off — `isProjectSkillManaged`,
- * `skill-management.ts`). Off ⇒ the foreign editor entry is left untouched
- * (`result.skipped`). Membership in `.ok/skills` is the ownership boundary: every
- * other row manages a skill OK already owns and runs regardless of the gate.
- * The same boundary governs symlinks: a link whose target resolves to a real
- * path OUTSIDE `.ok/skills` (e.g. a repo that checks editor-dir links into its
- * own shared skill store) is foreign and is never healed or removed — only
- * dangling links and links into `.ok/skills` are reconcile-managed.
+ * There is NO adopt path: a real-dir editor skill that isn't a copy of an
+ * existing `.ok/skills` source is an IN-PLACE skill — the in-place
+ * registry versions it where it lives; reconcile never moves or rewrites it
+ * (`result.skipped` counts them, diagnostic-only). Membership in `.ok/skills`
+ * is the ownership boundary for every mutating row above. The same boundary
+ * governs symlinks: a link whose target resolves to a real path OUTSIDE
+ * `.ok/skills` (e.g. a repo that checks editor-dir links into its own shared
+ * skill store) is foreign and is never healed or removed — only dangling links
+ * and links into `.ok/skills` are reconcile-managed.
  *
  * "Same content" is byte-equality; "same skill" additionally treats two copies
  * as one when their SKILL.md differs only in frontmatter serialization (folded
  * vs flow YAML) or additive fields (one carries `argument-hint`, the other does
- * not) with an identical body and identical sibling files. Only a genuinely
- * different skill — different body, or a shared frontmatter field with a
- * conflicting value — is a collision. Without this, the cross-harness skill sync
- * (which reformats / extends frontmatter across runs) would make every managed
- * skill re-collide on each boot and spawn `<name>-<editor>` duplicates.
+ * not) with an identical body and identical sibling files. Without this, the
+ * cross-harness skill sync (which reformats / extends frontmatter across runs)
+ * would misread every managed skill as a distinct in-place skill on each boot.
  *
  * Detection scans every editor's skills root AND the generic `.agents/skills`
- * broadcast dir, since a foreign skill can pre-exist in any of them. OK's own
- * shipped bundle (`open-knowledge` / `open-knowledge-discovery`) is a copy
- * exception and is left untouched.
- *
- * Adopt moves a foreign source into `.ok/skills`, making it a managed
- * (versionable) skill. Shadow attribution of a boot-time adopt is deferred to
- * the source's next edit through the normal skills-write spine — the moved
- * bytes land safely under `.ok/skills` and are never deleted (collisions are
- * suffix-adopted, recoverable).
+ * broadcast dir. OK's own shipped bundle (`open-knowledge` /
+ * `open-knowledge-discovery`) is a copy exception and is left untouched.
  */
 
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, statSync } from 'node:fs';
@@ -63,17 +51,10 @@ import {
   unwrapFrontmatterFences,
 } from '@inkeep/open-knowledge-core';
 import { parse as parseYaml } from 'yaml';
-import {
-  tracedCpSync,
-  tracedMkdirSync,
-  tracedRenameSync,
-  tracedRmSync,
-  tracedSymlinkSync,
-} from './fs-traced.ts';
+import { tracedMkdirSync, tracedRmSync, tracedSymlinkSync } from './fs-traced.ts';
 import { readInstalledSkills, recordSkillInstall } from './installed-skills-marker.ts';
 import { getLogger } from './logger.ts';
 import { INTERNAL_BUNDLE_SKILL_NAMES } from './skill-bundles.ts';
-import { isProjectSkillManaged } from './skill-management.ts';
 import { hostSkillsRootEscapes, validateSkillForInstall } from './skill-projection.ts';
 
 const logger = getLogger('skill-reconcile');
@@ -96,17 +77,14 @@ interface ReconcileAction {
 
 export interface ReconcileResult {
   healed: ReconcileAction[];
-  adopted: ReconcileAction[];
   replaced: ReconcileAction[];
-  collided: ReconcileAction[];
   orphansRemoved: ReconcileAction[];
   /**
-   * Foreign editor-dir skills left UNTOUCHED: real dirs (no `.ok/skills/<name>`
-   * source, or a colliding different skill) skipped because the project is not
-   * OK-managed (`manageEditorSkills` off — these would have been adopted/
-   * suffix-adopted only after an explicit import opt-in, see
-   * `skill-management.ts`), and symlinks resolving to a real path outside
-   * `.ok/skills` (skipped unconditionally — OK does not own them).
+   * Editor-dir skills with no `.ok/skills/<name>` source (or a genuinely
+   * different skill sharing a source's name) — these are IN-PLACE skills
+   * versioned where they live, and reconcile never touches them — plus
+   * symlinks resolving to a real path outside `.ok/skills` (foreign installs,
+   * skipped unconditionally: OK does not own them). Diagnostic-only count.
    */
   skipped: ReconcileAction[];
 }
@@ -141,24 +119,6 @@ function relativeLinkTarget(hostRoot: string, sourceDir: string): string {
  *  multi-MB reference dataset. "Not equal" is the safe default: the collision
  *  path preserves both copies (suffix-adopt), never deletes. */
 const DIRS_EQUAL_MAX_BYTES = 1_048_576;
-
-/** Recursively compare two dirs by file set + byte content (size-capped). */
-function dirsEqual(a: string, b: string): boolean {
-  const listA = listFiles(a);
-  const listB = listFiles(b);
-  if (listA.length !== listB.length) return false;
-  let total = 0;
-  for (let i = 0; i < listA.length; i += 1) {
-    if (listA[i] !== listB[i]) return false;
-    const rel = listA[i] as string;
-    const fileA = join(a, rel);
-    const fileB = join(b, rel);
-    total += statSync(fileA).size + statSync(fileB).size;
-    if (total > DIRS_EQUAL_MAX_BYTES) return false; // too large to byte-compare cheaply
-    if (!readFileSync(fileA).equals(readFileSync(fileB))) return false;
-  }
-  return true;
-}
 
 /**
  * Parse a SKILL.md into its frontmatter object + body. Frontmatter is parsed as
@@ -213,8 +173,8 @@ function skillManifestsSame(mdA: string, mdB: string): boolean {
  * This is the gate that prevents the cross-harness sync's reformatted /
  * field-extended host copies (folded vs flow `description:`, a newly-added
  * `argument-hint:`) from misreading as a collision and spawning duplicate
- * `<name>-<editor>` skills. Byte-equality (`dirsEqual`) is the fast path; this is
- * the identity-aware fallback before declaring a true collision.
+ * `<name>-<editor>` skills. Identity-aware: byte-identical files pass trivially,
+ * and only SKILL.md may differ (modulo frontmatter) before declaring a collision.
  */
 function sameSkillModuloFrontmatter(a: string, b: string): boolean {
   const listA = listFiles(a);
@@ -246,21 +206,6 @@ function listFiles(dir: string, prefix = ''): string[] {
     else if (entry.isFile()) out.push(rel);
   }
   return out.sort();
-}
-
-/** Move a directory, falling back to copy+remove when rename crosses devices. */
-function moveDir(from: string, to: string): void {
-  tracedMkdirSync(dirname(to), { recursive: true });
-  try {
-    tracedRenameSync(from, to);
-  } catch (err: unknown) {
-    // ONLY fall back to copy+remove on a cross-device rename. A bare catch would
-    // copy+delete on EACCES/ENOSPC/ENOENT too — a partial copy followed by a
-    // successful delete destroys the user's source.
-    if (!(err instanceof Error) || (err as NodeJS.ErrnoException).code !== 'EXDEV') throw err;
-    tracedCpSync(from, to, { recursive: true });
-    tracedRmSync(from, { recursive: true, force: true });
-  }
 }
 
 /** Place a symlink at `linkPath` pointing to the in-project `sourceDir`. */
@@ -307,66 +252,81 @@ function isForeignSymlink(linkPath: string, skillsRoot: string): boolean {
   }
 }
 
+/** Editor-suffix tokens a collision suffix-adopt appends (`<name>-<editor>`, or `-agents` for the generic dir). */
+const SUFFIX_TOKENS: readonly string[] = [...PROJECT_SKILL_EDITOR_IDS, 'agents'];
+
+/** If `name` ends in a known `-<editor>` collision suffix, return the base name; else null. */
+function suffixBase(name: string): string | null {
+  for (const token of SUFFIX_TOKENS) {
+    const suffix = `-${token}`;
+    if (name.length > suffix.length && name.endsWith(suffix)) return name.slice(0, -suffix.length);
+  }
+  return null;
+}
+
 /**
- * Count the distinct editor-dir skills that an import would ADOPT — real-dir
- * skills (valid name, not OK's shipped bundle) that are NOT already a managed /
- * redundant copy of an existing `.ok/skills/<name>`. These are exactly the
- * entries the gated adopt + collision branches act on when the project is
- * OK-managed; with management off they are left untouched. Deduped by name
- * across detection roots (a skill mirrored into both `.agents` and `.codex`
- * counts once) so the count reads as "N skills you could import", not N copies.
- * Drives the import-prompt affordance — non-mutating.
+ * One-shot, idempotent collapse of accreted `<name>-<editor>` suffix duplicates
+ * in `.ok/skills`. The collision suffix-adopt path (above) spawned these when a
+ * version-skewed harness copy was misread as a distinct skill; the
+ * `sameSkillModuloFrontmatter` identity gate now prevents NEW ones, but the
+ * already-on-disk dupes never get collapsed. For each `.ok/skills/<name>-<token>`
+ * whose base `.ok/skills/<name>` exists AND is identity-equal, re-point any
+ * harness symlink from the suffixed source to the base, then remove the suffixed
+ * source. Never touches a base, and never a genuinely-different suffixed skill —
+ * the reconcile never-delete invariant. Idempotent: once the suffixed dir is
+ * gone, subsequent runs find nothing to collapse.
+ *
+ * CRDT-safety caveat: `.ok/skills/<name>/SKILL` is CRDT content (skills-as-
+ * content), and this pass holds no handle to the live document manager, so it
+ * cannot prove a suffixed dir isn't backing a loaded Y.Doc. It is scoped to the
+ * dormant DUPLICATE artifact (never the base a user edits) and only when
+ * byte/identity-equal, which makes a desync improbable; the residual risk (a
+ * client editing the suffixed dupe during a runtime opt-in reconcile) is
+ * accepted and logged, pending a future live-doc guard.
  */
-export function countImportableEditorSkills(opts: {
-  projectDir: string;
-  skillsRoot: string;
-}): number {
+function collapseAccretedSuffixDupes(opts: { projectDir: string; skillsRoot: string }): void {
   const { projectDir, skillsRoot } = opts;
-  const importable = new Set<string>();
-  for (const { rel } of detectionRoots()) {
-    const hostRoot = resolve(projectDir, rel);
-    if (!existsSync(hostRoot) || hostSkillsRootEscapes(projectDir, hostRoot)) continue;
-    let entries: string[];
+  if (!existsSync(skillsRoot)) return;
+  let entries: string[];
+  try {
+    entries = readdirSync(skillsRoot);
+  } catch {
+    return;
+  }
+  const roots = detectionRoots();
+  for (const suffixed of entries) {
+    const base = suffixBase(suffixed);
+    if (base === null) continue;
+    const suffixedDir = resolve(skillsRoot, suffixed);
+    const baseDir = resolve(skillsRoot, base);
+    if (!existsSync(baseDir)) continue;
     try {
-      entries = readdirSync(hostRoot);
-    } catch (err) {
-      // A host root we can see but not read (EACCES/corruption) is skipped —
-      // log it so a permissions issue doesn't silently masquerade as "nothing
-      // to reconcile" (no heal/adopt/orphan-removal, no evidence why).
-      logger.warn({ hostRoot, err }, 'reconcile: skipped unreadable host skills root');
-      continue;
-    }
-    for (const name of entries) {
-      if (SHIPPED_BUNDLE_NAMES.has(name) || !SKILL_NAME_REGEX.test(name)) continue;
-      const entryPath = join(hostRoot, name);
-      let stat: ReturnType<typeof lstatSync>;
-      try {
-        stat = lstatSync(entryPath);
-      } catch {
-        continue;
-      }
-      // Only real dirs are import candidates — symlinks are either managed,
-      // foreign (left untouched), or orphans handled by reconcile; never adopted.
+      const stat = lstatSync(suffixedDir);
+      // Only a real source dir is a collapse candidate (a symlink is not an
+      // accreted `.ok/skills` source). SKILL.md must be present on both sides.
       if (stat.isSymbolicLink() || !stat.isDirectory()) continue;
-      const sourceDir = resolve(skillsRoot, name);
-      if (
-        existsSync(sourceDir) &&
-        (dirsEqual(entryPath, sourceDir) || sameSkillModuloFrontmatter(entryPath, sourceDir))
-      ) {
-        // Redundant copy of an already-managed `.ok` skill — collapses to a
-        // symlink regardless of the gate, so it is not "importable".
+      if (!existsSync(join(suffixedDir, 'SKILL.md')) || !existsSync(join(baseDir, 'SKILL.md'))) {
         continue;
       }
-      importable.add(name);
+      if (!sameSkillModuloFrontmatter(baseDir, suffixedDir)) continue;
+      for (const { rel } of roots) {
+        const hostRoot = resolve(projectDir, rel);
+        if (hostSkillsRootEscapes(projectDir, hostRoot)) continue;
+        const linkPath = join(hostRoot, suffixed);
+        if (pointsAtSource(linkPath, suffixedDir)) linkInto(hostRoot, linkPath, baseDir);
+      }
+      tracedRmSync(suffixedDir, { recursive: true, force: true });
+      logger.info({ base, suffixed }, 'collapsed accreted suffix-duplicate skill into its base');
+    } catch (err) {
+      logger.warn({ err, base, suffixed }, 'suffix-dupe collapse skipped one entry after error');
     }
   }
-  return importable.size;
 }
 
 /**
  * Reconcile every editor skill dir under `projectDir` against the `.ok/skills`
  * source tree. Best-effort + isolated: one entry's failure is logged and
- * skipped, never aborting the pass. Marker host sets are refreshed for adopts /
+ * skipped, never aborting the pass. Marker host sets are refreshed for
  * redundant-copy replacements so the Skills list badges them Installed.
  */
 export async function reconcileSkillInstalls(opts: {
@@ -377,17 +337,10 @@ export async function reconcileSkillInstalls(opts: {
   const { projectDir, skillsRoot } = opts;
   const result: ReconcileResult = {
     healed: [],
-    adopted: [],
     replaced: [],
-    collided: [],
     orphansRemoved: [],
     skipped: [],
   };
-  // Project-level gate: may OK ADOPT non-`.ok` editor skills here? Default off.
-  // Read once per pass (env + the per-machine marker). Managing skills that
-  // already have a `.ok/skills` entry — heal / orphan / redundant-collapse — is
-  // independent of this and always runs.
-  const managed = isProjectSkillManaged(projectDir);
   // Marker host additions to apply after the FS pass (name → set of editor ids).
   const markerAdds = new Map<string, Set<EditorId>>();
   const addMarkerHost = (name: string, editor: EditorId | null) => {
@@ -438,11 +391,10 @@ export async function reconcileSkillInstalls(opts: {
         }
         if (!stat.isDirectory()) continue; // ignore stray files
 
-        // Only adopt foreign real-dir copies whose name is a valid skill id.
-        // A host-dir entry like `My Skill/` or `notes.bak/` is not a skill and
-        // must not be projected into `.ok/skills/` (where the name becomes the
-        // skill identity). The symlink heal/orphan paths above stay name-agnostic
-        // — managed links always already carry a valid name.
+        // Only manage real-dir copies whose name is a valid skill id. A host-dir
+        // entry like `My Skill/` or `notes.bak/` is not a skill. The symlink
+        // heal/orphan paths above stay name-agnostic — managed links always
+        // already carry a valid name.
         if (!SKILL_NAME_REGEX.test(name)) {
           logger.warn(
             { skill: name, editor },
@@ -451,70 +403,31 @@ export async function reconcileSkillInstalls(opts: {
           continue;
         }
 
-        // ALWAYS-ON: a real-dir copy of an EXISTING `.ok` skill (byte-identical, or
-        // the same skill differing only in SKILL.md frontmatter serialization /
-        // additive fields per `sameSkillModuloFrontmatter` — the cross-harness sync
-        // reformats / field-extends host copies across runs) → collapse to a
-        // symlink. This manages a skill OK already owns (it has a `.ok/skills`
-        // entry), so it runs regardless of the project-managed gate. linkInto
-        // removes entryPath internally before linking.
-        if (
-          sourceExists &&
-          (dirsEqual(entryPath, sourceDir) || sameSkillModuloFrontmatter(entryPath, sourceDir))
-        ) {
+        // A real-dir copy of an EXISTING `.ok` skill (byte-identical, or the
+        // same skill differing only in SKILL.md frontmatter serialization /
+        // additive fields per `sameSkillModuloFrontmatter` — the cross-harness
+        // sync reformats / field-extends host copies across runs) → collapse to
+        // a symlink. This manages a skill OK already owns (it has a `.ok/skills`
+        // entry). linkInto removes entryPath internally before linking.
+        if (sourceExists && sameSkillModuloFrontmatter(entryPath, sourceDir)) {
           linkInto(hostRoot, entryPath, sourceDir);
           result.replaced.push({ name, editor });
           addMarkerHost(name, editor);
           continue;
         }
 
-        // Beyond here we would IMPORT a non-`.ok` skill — either adopt a foreign
-        // real-dir with no source, or suffix-adopt a colliding different skill.
-        // Both are gated on the project being OK-managed (`manageEditorSkills`).
-        // Default off: leave the foreign editor skill UNTOUCHED — OK does not own
-        // skills the user never asked it to manage. Membership in `.ok/skills` is
-        // the ownership boundary; an explicit import opt-in flips this on.
-        if (!managed) {
-          result.skipped.push({ name, editor });
-          continue;
-        }
-
-        if (!sourceExists) {
-          // Foreign / legacy copy: adopt into `.ok/skills`, then symlink.
-          moveDir(entryPath, sourceDir);
-          linkInto(hostRoot, entryPath, sourceDir);
-          result.adopted.push({ name, editor });
-          addMarkerHost(name, editor);
-        } else {
-          // Collision: a genuinely different skill shares the name (body differs,
-          // or a shared frontmatter field carries a conflicting value). Suffix-adopt
-          // the foreign copy (never delete — recoverable), link it under the
-          // suffixed name, and leave the OK-managed `<name>` for an explicit
-          // install rather than silently re-pointing it here.
-          const suffixed = `${name}-${editor ?? 'agents'}`;
-          const suffixedSource = resolve(skillsRoot, suffixed);
-          if (existsSync(suffixedSource)) {
-            // The suffixed slot is already taken by another foreign copy. NEVER
-            // delete the user's content (the invariant above) — skip and let them
-            // resolve manually rather than destroying it.
-            logger.warn(
-              { skill: name, editor, suffixed },
-              'collision: suffixed slot already occupied — skipping (manual resolution needed)',
-            );
-            continue;
-          }
-          moveDir(entryPath, suffixedSource);
-          linkInto(hostRoot, join(hostRoot, suffixed), suffixedSource);
-          result.collided.push({ name, editor });
-          addMarkerHost(suffixed, editor);
-        }
+        // Anything else is an IN-PLACE skill (no `.ok/skills` source, or a
+        // genuinely different skill sharing a source's name). It is
+        // versioned where it lives via the in-place registry — reconcile NEVER
+        // moves, rewrites, or symlinks it.
+        result.skipped.push({ name, editor });
       } catch (err) {
         logger.warn({ err, skill: name, editor }, 'reconcile skipped one skill entry after error');
       }
     }
   }
 
-  // Refresh the marker for newly adopted / replaced skills so the list badges
+  // Refresh the marker for newly replaced skills so the list badges
   // them Installed. Truth is detection; this keeps the cache consistent.
   if (markerAdds.size > 0) {
     const marker = readInstalledSkills(projectDir);
@@ -534,6 +447,15 @@ export async function reconcileSkillInstalls(opts: {
         logger.warn({ err, skill: name }, 'reconcile marker update failed (non-fatal)');
       }
     }
+  }
+
+  // Hygiene: collapse any accreted `<name>-<editor>` suffix duplicates now that
+  // links are settled (runs after the main pass so it re-points, rather than
+  // racing, the just-healed links). Guarded + idempotent; never deletes a base.
+  try {
+    collapseAccretedSuffixDupes({ projectDir, skillsRoot });
+  } catch (err) {
+    logger.warn({ err }, 'suffix-dupe collapse pass failed (non-fatal)');
   }
 
   return result;

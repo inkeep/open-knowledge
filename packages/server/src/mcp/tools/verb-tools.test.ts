@@ -325,10 +325,9 @@ describe('D13 migration meta-test — no retired tool name survives in the skill
     'rename_folder',
     // merges/splits + get_ prefix drops. Only snake_case names that can't
     // collide with prose are listed here — `ingest` / `research` / `consolidate` /
-    // `discover` survive as `workflow({ kind })` values, and `version` (now split
-    // into the standalone `checkpoint` + `restore_version` tools) is an ordinary
-    // English word; all are guarded by the registry test, not this bare-substring
-    // scan.
+    // `discover` / `workflow` and `version` (now split into the standalone
+    // `checkpoint` + `restore_version` tools) are ordinary English words; all are
+    // guarded by the registry test, not this bare-substring scan.
     'get_history',
     'get_config',
     'get_preview_url',

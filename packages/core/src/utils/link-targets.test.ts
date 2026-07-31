@@ -83,6 +83,33 @@ describe('classifyMarkdownHref', () => {
       ext: 'pdf',
     });
   });
+
+  test('skill bundle ref from a SKILL doc resolves into the skill dir (§8.2)', () => {
+    // Generic relative resolution would map `references/setup` to the content
+    // root; the bundle overlay reaches the real ref doc under the skill dir.
+    expect(classifyMarkdownHref('references/setup.md', '.ok/skills/demo/SKILL')).toEqual({
+      kind: 'doc',
+      docName: '.ok/skills/demo/references/setup',
+      anchor: null,
+    });
+    expect(classifyMarkdownHref('references/setup#usage', '.ok/skills/demo/SKILL')).toEqual({
+      kind: 'doc',
+      docName: '.ok/skills/demo/references/setup',
+      anchor: 'usage',
+    });
+    expect(classifyMarkdownHref('scripts/run', '.ok/skills/demo/SKILL')).toEqual({
+      kind: 'doc',
+      docName: '.ok/skills/demo/scripts/run',
+      anchor: null,
+    });
+  });
+
+  test('bundle overlay is narrow: non-skill source is unaffected', () => {
+    // `references/x` from a normal doc still resolves generically, not into a skill dir.
+    expect(classifyMarkdownHref('references/setup.md', 'docs/index')?.docName).not.toBe(
+      '.ok/skills/docs/references/setup',
+    );
+  });
 });
 
 describe('classifyWikiLinkTarget', () => {
@@ -206,5 +233,35 @@ describe('buildAbsoluteMarkdownHref', () => {
 
   test('honors a non-default extension', () => {
     expect(buildAbsoluteMarkdownHref('guides/widget', '.mdx')).toBe('/guides/widget.mdx');
+  });
+});
+
+describe('/<skill-name> targets', () => {
+  test('resolves to a sibling skill from a project skill body', () => {
+    expect(classifyMarkdownHref('/graphics', '.agents/skills/brand/SKILL')).toEqual({
+      kind: 'doc',
+      docName: '.agents/skills/graphics/SKILL',
+      anchor: null,
+    });
+  });
+
+  test('resolves from a bundle reference too, against the skill root', () => {
+    expect(classifyMarkdownHref('/gslides', '.claude/skills/brand/references/tone')).toEqual({
+      kind: 'doc',
+      docName: '.claude/skills/gslides/SKILL',
+      anchor: null,
+    });
+  });
+
+  test('a nested path is a path, not a skill name', () => {
+    const target = classifyMarkdownHref('/a/b', '.agents/skills/brand/SKILL');
+    expect(target?.kind === 'doc' ? target.docName : null).not.toBe('.agents/skills/a/SKILL');
+  });
+
+  test('outside a skill it stays an ordinary path', () => {
+    const target = classifyMarkdownHref('/graphics', 'notes/index');
+    expect(target?.kind === 'doc' ? target.docName : null).not.toBe(
+      '.agents/skills/graphics/SKILL',
+    );
   });
 });

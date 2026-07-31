@@ -409,6 +409,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
             pinnedTabIds: [],
             activeDocName: null,
             activeTabId: null,
+            activeTabByMode: { files: null, skills: null },
             updatedAt: null,
           }),
           setSessionState: async () => {},

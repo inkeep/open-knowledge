@@ -4,11 +4,58 @@ import {
   deriveKnownFolderPaths,
   docNameForNavigationTarget,
   downgradeFolderIndexForHashNav,
+  isSkillFocusedTarget,
   largeFileNavigationTarget,
   okContentNavigationTarget,
+  type ResolvedNavigationTarget,
   resolveNavigationTarget,
   withLargeFileOpenGuard,
 } from './navigation-targets';
+
+describe('isSkillFocusedTarget', () => {
+  const doc = (docName: string): ResolvedNavigationTarget => ({
+    kind: 'doc',
+    target: docName,
+    docName,
+  });
+
+  test('true for the Skills hub, a bundle-file viewer, and skill docs (project + global)', () => {
+    expect(isSkillFocusedTarget({ kind: 'skills', target: 'skills' })).toBe(true);
+    expect(
+      isSkillFocusedTarget({
+        kind: 'skill-file',
+        target: 'x',
+        scope: 'global',
+        name: 'demo',
+        path: 'references/notes.md',
+      }),
+    ).toBe(true);
+    expect(isSkillFocusedTarget(doc('.ok/skills/my-skill/SKILL'))).toBe(true);
+    expect(isSkillFocusedTarget(doc('__skill__/global/demo'))).toBe(true);
+  });
+
+  test('true for a bundle reached through a symlinked skill dir', () => {
+    // A skill dir can be a symlink to somewhere else inside the content dir, so
+    // the same bytes also index under the real path. Following a `references/…`
+    // link out of the skill can land on that name — same file, no dot-dir — and
+    // dropping to Files there looked like the Skills surface had broken.
+    expect(
+      isSkillFocusedTarget(doc('plugins/ok/skills/bake-lume-golden/references/version-pinning')),
+    ).toBe(true);
+    expect(isSkillFocusedTarget(doc('plugins/ok/skills/bake-lume-golden/SKILL'))).toBe(true);
+  });
+
+  test('false for plain docs, folders, assets, and no target', () => {
+    expect(isSkillFocusedTarget(doc('notes/daily'))).toBe(false);
+    expect(isSkillFocusedTarget({ kind: 'folder', target: 'docs', folderPath: 'docs' })).toBe(
+      false,
+    );
+    expect(
+      isSkillFocusedTarget({ kind: 'asset', target: 'a.png', assetPath: 'a.png', mediaKind: null }),
+    ).toBe(false);
+    expect(isSkillFocusedTarget(null)).toBe(false);
+  });
+});
 
 describe('deriveKnownFolderPaths', () => {
   test('derives ancestor folders from admitted doc names', () => {
@@ -32,29 +79,39 @@ describe('resolveNavigationTarget', () => {
     }
   });
 
-  test('resolves a GLOBAL skill bundle reference node to a read-only skill-file target', () => {
-    // A global skill's references live at `~/.ok/skills/<name>/references/…`,
-    // OUTSIDE the project — a graph click must open the scope-aware skill-file
-    // viewer, not a phantom doc tab. The node name is ext-less; the resolver
-    // reconstructs the `.md` on-disk path the `/api/skill-file` endpoint reads.
+  test('resolves a PROJECT skill content doc without page-index membership', () => {
+    // A freshly created/imported project skill lags the page index by the async
+    // files refetch; it must still resolve to the skill DOC (not the read-only
+    // asset viewer), else it strands the editor + flips the sidebar to Files.
+    const target = '.ok/skills/new-skill/SKILL';
+    expect(resolveNavigationTarget(target, { pages: new Set() })).toEqual({
+      kind: 'doc',
+      target,
+      docName: target,
+    });
+    // isSkillFocusedTarget on that result keeps the sidebar on Skills.
+    expect(isSkillFocusedTarget(resolveNavigationTarget(target, { pages: new Set() }))).toBe(true);
+  });
+
+  test('resolves a GLOBAL skill bundle .md reference to an EDITABLE doc target', () => {
+    // Global skill `.md` references are now editable managed-artifact live docs
+    // (per-file skill editability), backed by `<home>/.ok/skills/<name>/<rel>.md`
+    // via managedArtifactAbsPath — they open in the editor, not the read-only
+    // skill-file viewer. The synthetic name is passed straight through as the doc.
     expect(
       resolveNavigationTarget('__skill__/global/demo/references/notes', { pages: new Set() }),
     ).toEqual({
-      kind: 'skill-file',
-      target: 'global/demo/references/notes.md',
-      scope: 'global',
-      name: 'demo',
-      path: 'references/notes.md',
+      kind: 'doc',
+      target: '__skill__/global/demo/references/notes',
+      docName: '__skill__/global/demo/references/notes',
     });
     // Nested reference.
     expect(
       resolveNavigationTarget('__skill__/global/demo/references/sub/deep', { pages: new Set() }),
     ).toEqual({
-      kind: 'skill-file',
-      target: 'global/demo/references/sub/deep.md',
-      scope: 'global',
-      name: 'demo',
-      path: 'references/sub/deep.md',
+      kind: 'doc',
+      target: '__skill__/global/demo/references/sub/deep',
+      docName: '__skill__/global/demo/references/sub/deep',
     });
   });
 

@@ -316,7 +316,7 @@ export function AppMenubar() {
             checked={view?.showSkillsSection ?? true}
             onSelect={() => dispatch({ kind: 'menu-action', action: 'toggle-show-skills-section' })}
           >
-            {t`Show skills section`}
+            {t`Skills section`}
           </MenubarCheckboxItem>
           <MenubarSeparator />
           {(view?.canExpandAll ?? true) && (

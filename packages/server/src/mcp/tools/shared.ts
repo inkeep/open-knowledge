@@ -216,6 +216,20 @@ export function nestDocResult(
 }
 
 /**
+ * `Error: <title> (<detail>)` for a failed `httpPost`/`httpGet` result.
+ *
+ * The server routinely puts the actionable sentence in RFC 9457 `detail` and
+ * only the class of failure in `title` — "Skill not found." vs. 'Skill "x" not
+ * found in project scope — create it with write({ skill }) first.' A tool that
+ * prints `result.error` alone hands the agent the diagnosis without the remedy.
+ */
+export function errorTextWithDetail(result: { [key: string]: unknown }): string {
+  const detail = typeof result.detail === 'string' ? ` (${result.detail})` : '';
+  const title = typeof result.error === 'string' ? result.error : 'request failed';
+  return `Error: ${title}${detail}`;
+}
+
+/**
  * Wrap a single string into the content shape MCP tools require for text results.
  * Pass `isError: true` to signal a tool-level error to the caller.
  */
@@ -290,9 +304,7 @@ export function outputSchemaWithText<S extends z.ZodRawShape>(
  * and the visible body silently vanishes
  * ([anthropics/claude-code#55677](https://github.com/anthropics/claude-code/issues/55677)).
  * Without a structured mirror of the body, `exec` arrives at the
- * model as `{previewUrl: null}` (file contents dropped),
- * the `workflow` tool (any `kind`: ingest/research/consolidate/discover)
- * arrives as `{previewUrl: null}` (the workflow prompt dropped), etc.
+ * model as `{previewUrl: null}` (file contents dropped), etc.
  *
  * Mitigation: every result built by this helper carries the same visible body
  * under `structuredContent.text`. The key MUST NOT carry a leading underscore
@@ -328,140 +340,7 @@ export function textPlusStructured<T>(text: string, structured: T, isError?: boo
 
 /** Error message for tools that require Hocuspocus to be running. */
 export const HOCUSPOCUS_NOT_RUNNING_ERROR =
-  'Error: Hocuspocus server is not running. Start it with `ok start`, then retry.\nFor disk-only writes without real-time sync, use your native Edit tool directly.';
-
-// ─── Karpathy three-layer wiki frame (shared by the three Karpathy-layer tools) ───
-//
-// The three Karpathy-layer workflow tools — `ingest`, `research`, `consolidate`
-// — accrete a persistent knowledge base over time, following the pattern
-// described in Karpathy's "LLM Wiki: Personal Knowledge Bases" gist:
-//
-//   https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f
-//
-// A fourth instructional workflow tool — `discover` — sits alongside these
-// at the project-metadata layer (brownfield onboarding) but does NOT use
-// this Karpathy frame. `discover` ships its own self-contained body via
-// `discover-body.ts` and does not use `buildWorkflowHandler` below.
-//
-// Project-level scaffolding for fresh repos lives OUTSIDE this MCP surface
-// — users run `ok seed` once from a terminal to populate the
-// `external-sources/`, `research/`, `articles/` layout plus matching
-// per-folder `.ok/` frontmatter + templates.
-//
-// Each Karpathy-layer tool body prepends a common "Where this fits" section
-// so the agent orients on the layer + sibling tools + typical flow before
-// diving into step-by-step instructions. One definition, three consumers.
-
-type WorkflowRole = 'ingest' | 'research' | 'consolidate';
-
-const ROLE_LABEL: Record<WorkflowRole, string> = {
-  ingest: 'raw-sources layer (preserve external material, no analysis)',
-  research: 'wiki layer, provisional (synthesize findings that can still change)',
-  consolidate: 'wiki layer, canonical (promote stabilized research to source-of-truth)',
-};
-
-const ROLE_BEFORE: Record<WorkflowRole, string> = {
-  ingest: 'user shares a URL or file they want preserved, or `research` needs raw sources',
-  research: '`ingest` has captured the relevant sources (or the user points at one)',
-  consolidate:
-    '`research` has produced a provisional article AND a decision has actually been made',
-};
-
-const ROLE_AFTER: Record<WorkflowRole, string> = {
-  ingest:
-    'often `research` on the same topic — or just stop; raw preservation is frequently enough on its own',
-  research:
-    'usually stop (research lives as provisional indefinitely) or `consolidate` once a decision lands',
-  consolidate:
-    'update 2–3 neighbor docs to link the new canonical article; research articles it supersedes gain a `superseded_by` pointer',
-};
-
-/**
- * Prepend a "Where this fits" orientation block to a workflow tool body.
- * Names Karpathy's three-layer pattern, the tool's role, and the typical
- * Before/After flow. Keep this short — the bulk of instructional depth lives
- * in each tool's own step-by-step body that follows.
- *
- * Internal helper for `buildWorkflowHandler` below; tool files don't import
- * it directly any more.
- */
-function buildWorkflowFrame(role: WorkflowRole): string {
-  return `## Where this fits
-
-OpenKnowledge accretes a persistent wiki through three workflow tools, mapped to [Karpathy's three-layer knowledge-base pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f):
-
-- **Raw sources** (immutable) — \`ingest\`
-- **Wiki, provisional** — \`research\`
-- **Wiki, canonical** — \`consolidate\`
-
-(Project-level folder structure: \`ok seed\` for fresh repos with the Karpathy three-layer; \`workflow({ kind: "discover" })\` for existing-content repos that need conventions extracted from siblings. Neither is required — these three tools work against any folder structure the project already uses.)
-
-**This tool operates in the ${ROLE_LABEL[role]}.**
-
-- **Before this:** ${ROLE_BEFORE[role]}
-- **After this:** ${ROLE_AFTER[role]}
-
-Karpathy's insight: "The tedious part of maintaining a knowledge base is not the reading or the thinking — it's the bookkeeping." Humans abandon wikis because maintenance costs exceed perceived value. These tools exist so an agent can do the bookkeeping (fetching, summarizing, cross-linking, superseding) without fatigue. Follow the steps below faithfully — skipping the cross-linking, supersedes chains, or raw-source preservation is what turns a useful wiki back into an abandoned one.
-
-`;
-}
-
-/**
- * Dependency shape shared by the three Karpathy-layer workflow tools
- * (`ingest`, `research`, `consolidate`). Each needs the same two resolvers
- * (config + cwd) so they collapse into one named contract.
- *
- * `discover` is a fourth instructional workflow tool but operates at the
- * project-metadata layer rather than the Karpathy three-layer, so it does
- * NOT use this dependency shape or `buildWorkflowHandler` below — it
- * defines its own `DiscoverDeps` interface and uses `registerTool` directly
- * (matching the convention of `registerTool`-based config tools like
- * `config`).
- */
-export interface WorkflowToolDeps {
-  config: ConfigOrResolver;
-  resolveCwd: (explicit?: string) => Promise<string>;
-}
-
-/**
- * Build the async callback shared by the three Karpathy-layer workflow tools
- * — `ingest` / `research` / `consolidate`. Not used by `discover`, which
- * ships its own handler (it lives at the project-metadata layer and does NOT
- * prepend the Karpathy frame).
- *
- * Hoists the four behaviors that were copy-pasted across the three workflow
- * tool files:
- *
- *   1. resolve the project's config + cwd context (consistent error path)
- *   2. read the primary arg by name out of the validated zod input
- *   3. prepend `buildWorkflowFrame(role)` to the tool-specific body
- *   4. return `{ previewUrl: null }` in structuredContent — workflow tools
- *      are primers keyed on a single argument; the target document path is
- *      chosen by the agent during the prompt's later steps, so there is no
- *      single canonical document to preview at call time, uniform with
- *      `checkpoint`
- *
- * Each workflow tool registers with its own literal-typed zod input schema
- * so MCP's callback-arg inference stays precise — only the schema literal
- * (one tool-specific arg + optional `cwd`) and `DESCRIPTION` remain per-tool.
- * The schema's `cwd` field uses the shared `ROUTED_CWD_DESCRIPTION` string.
- */
-export function buildWorkflowHandler(
-  role: WorkflowRole,
-  deps: WorkflowToolDeps,
-  argName: string,
-  buildBody: (argValue: string, contentDir: string) => string,
-) {
-  return async (args: Record<string, unknown>) => {
-    const cwd = typeof args.cwd === 'string' ? args.cwd : undefined;
-    const context = await resolveProjectConfigContext(deps.resolveCwd, deps.config, cwd);
-    if (!context.ok) return textResult(`Error: ${context.error}`, true);
-    const rawArg = args[argName];
-    const argValue = typeof rawArg === 'string' ? rawArg : '';
-    const body = `${buildWorkflowFrame(role)}${buildBody(argValue, context.config.content.dir)}`;
-    return textPlusStructured(body, { previewUrl: null });
-  };
-}
+  'Error: Hocuspocus server is not running. Start it with `ok start`, then retry.\nDo not fall back to native file edits for in-scope markdown; route writes through OpenKnowledge so attribution and live sync stay intact.';
 
 /**
  * Either an eagerly-known server URL, an absent URL, or a lazy resolver that
@@ -536,6 +415,35 @@ export async function resolveProjectConfigContext(
  * should call `resolveServerUrl` directly instead — this wrapper flattens the
  * error to a string. Reference pattern: `get-preview-url.ts`.
  */
+/**
+ * `resolveProjectServerContext` plus the two guards every tool that talks to the
+ * server repeats verbatim: surface a resolution failure, then require a running
+ * server. Roughly twenty call sites carried the same three lines.
+ *
+ * On failure the caller returns `guard.result` unchanged, so the error text and
+ * the `isError` flag stay exactly what those call sites produced.
+ */
+export async function requireProjectServer(
+  resolveCwd: (explicit?: string) => Promise<string>,
+  config: ConfigOrResolver,
+  serverUrl: ServerUrlOrResolver,
+  explicitCwd?: string,
+): Promise<
+  | { ok: true; cwd: string; executionCwd: string; config: Config; url: string }
+  | { ok: false; result: ReturnType<typeof textResult> }
+> {
+  const context = await resolveProjectServerContext(resolveCwd, config, serverUrl, explicitCwd);
+  if (!context.ok) return { ok: false, result: textResult(`Error: ${context.error}`, true) };
+  if (!context.url) return { ok: false, result: textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true) };
+  return {
+    ok: true,
+    cwd: context.cwd,
+    executionCwd: context.executionCwd,
+    config: context.config,
+    url: context.url,
+  };
+}
+
 export async function resolveProjectServerContext(
   resolveCwd: (explicit?: string) => Promise<string>,
   config: ConfigOrResolver,
@@ -596,7 +504,7 @@ export function okReservedPathRedirect(path: string): string | null {
   const p = path.replace(/^\/+/, '');
   if (p !== '.ok' && !p.startsWith('.ok/')) return null;
   if (p.startsWith('.ok/skills/')) {
-    return 'Skills are authored with the `skill` target, not a raw document path: `write({ skill: { name, description, body?, scope? } })` writes `.ok/skills/<name>/SKILL.md`. To author or improve a skill, use the `open-knowledge-write-skill` skill.';
+    return 'Skills are authored with the `skill` target, not a raw document path: `write({ skill: { name, description, body?, scope? } })` writes the SKILL.md wherever the skill lives (a NEW skill lands at the project default skill home, e.g. `.agents/skills/<name>/`). To author or improve a skill, use the `open-knowledge-write-skill` skill.';
   }
   if (p.startsWith('.ok/templates/')) {
     return 'Templates are authored with the `template` target (`write({ template: { … } })`), not a raw document path.';
@@ -788,6 +696,31 @@ export async function httpGet(
   // guard, which must NOT treat a transient destination-read failure as "free".
   // The network-error catch above has no Response, so it omits httpStatus.
   return { ...normalizeResponse(res, body), httpStatus: res.status };
+}
+
+/**
+ * `httpGet` + array-field unwrap. The read-only `skills` MCP paths all GET a
+ * `{ [field]: unknown[] }` body and want that field as a row array (`[]` when
+ * absent or non-array). Returns `{ error }` on a non-ok response so the caller
+ * keeps its own `textResult` early-return; otherwise `{ rows, data }`, where
+ * `data` is the ok-stripped body for callers that also read scalar fields
+ * (e.g. search's `backend` / `degraded`).
+ */
+export async function httpGetRows(
+  baseUrl: string,
+  path: string,
+  field: string,
+): Promise<
+  { error: string } | { rows: Array<Record<string, unknown>>; data: Record<string, unknown> }
+> {
+  const result = await httpGet(baseUrl, path);
+  if (!result.ok) {
+    return { error: typeof result.error === 'string' ? result.error : 'request failed' };
+  }
+  const { ok: _ok, ...data } = result;
+  const raw = (data as Record<string, unknown>)[field];
+  const rows = Array.isArray(raw) ? (raw as Array<Record<string, unknown>>) : [];
+  return { rows, data };
 }
 
 /**

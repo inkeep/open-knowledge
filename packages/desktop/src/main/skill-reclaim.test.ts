@@ -257,7 +257,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
     expect(deps.stateWrites).toEqual([{ home, version: '1.0.0' }]);
   });
 
-  test('central store overwrites existing files even when same path is present', async () => {
+  test('seed-if-absent: existing central store is left untouched (no overwrite)', async () => {
     const home = makeHome();
     const bundle = setupBundle();
     const central = join(home, '.agents', 'skills', 'open-knowledge-discovery');
@@ -273,10 +273,14 @@ describe('reclaimUserSkillsOnLaunch', () => {
       deps,
     });
     expect(r.status).toBe('done');
-    expect(readFileSync(join(central, 'SKILL.md'), 'utf8')).toContain('v-new');
-    // stale files inside the dir must be removed before cpSync (replaceDir contract)
-    expect(existsSync(join(central, 'orphan.md'))).toBe(false);
-    expect(existsSync(join(central, 'extra.md'))).toBe(true);
+    // Present → skipped-present: existing content + files are preserved, and the
+    // bundle's extra files are NOT injected. Updates flow through skills.sh.
+    expect(readFileSync(join(central, 'SKILL.md'), 'utf8')).toContain('v-old');
+    expect(existsSync(join(central, 'orphan.md'))).toBe(true);
+    expect(existsSync(join(central, 'extra.md'))).toBe(false);
+    if (r.status === 'done') {
+      expect(r.entries.find((e) => e.kind === 'central')?.status).toBe('skipped-present');
+    }
   });
 
   test('per-host write happens only when the host dir exists; missing host is skipped-host-absent', async () => {
@@ -344,7 +348,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
     ).toHaveLength(1);
   });
 
-  test('per-host overwrite when SKILL.md already exists (force-write)', async () => {
+  test('seed-if-absent: existing per-host SKILL.md is left untouched (no force-write)', async () => {
     const home = makeHome();
     const dest = join(home, '.claude', 'skills', 'open-knowledge-discovery');
     mkdirSync(dest, { recursive: true });
@@ -361,9 +365,11 @@ describe('reclaimUserSkillsOnLaunch', () => {
     expect(r.status).toBe('done');
     if (r.status === 'done') {
       const claude = r.entries.find((e) => e.kind === 'host' && e.editorId === 'claude');
-      expect(claude?.status).toBe('overwritten');
+      expect(claude?.status).toBe('skipped-present');
     }
-    expect(readFileSync(join(dest, 'SKILL.md'), 'utf8')).toContain('v-new');
+    // Existing content is preserved — updates flow through the manual skills.sh
+    // path, not this launch hook.
+    expect(readFileSync(join(dest, 'SKILL.md'), 'utf8')).toContain('v-old');
   });
 
   test('pre-split open-knowledge dirs are removed at every host before the discovery bundle lands', async () => {
@@ -544,7 +550,7 @@ describe('reclaimUserSkillsOnLaunch — per-bundle opt-in gate', () => {
       deps,
     });
     expect(r.status).toBe('done');
-    // Force-written (grandfathered install stays) + decision materialized.
+    // Grandfathered install stays (seed-if-absent leaves it) + decision materialized.
     expect(existsSync(join(home, ...DISCOVERY_DIR, 'SKILL.md'))).toBe(true);
     expect(deps.decisionWrites).toEqual([
       { bundleName: 'open-knowledge-discovery', enabled: true },
@@ -554,9 +560,11 @@ describe('reclaimUserSkillsOnLaunch — per-bundle opt-in gate', () => {
 
   test('mixed decision: declined bundle is removed while the enabled bundle installs', async () => {
     const home = makeHome();
-    // Seed both bundles on disk, then decline ONLY write-skill.
-    for (const name of ['open-knowledge-discovery', 'open-knowledge-write-skill']) {
-      const dir = join(home, '.agents', 'skills', name);
+    // Seed only write-skill on disk (the one being declined+removed). Discovery
+    // is absent so seed-if-absent freshly writes it → an install event fires;
+    // a pre-present discovery would be a no-op under seed-if-absent.
+    {
+      const dir = join(home, '.agents', 'skills', 'open-knowledge-write-skill');
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, 'SKILL.md'), 'preexisting');
     }
@@ -624,7 +632,7 @@ describe('reclaimProjectSkillsOnProjectOpen', () => {
     expect(existsSync(join(projectDir, '.agents'))).toBe(false);
   });
 
-  test('codex project skill at .codex/skills/open-knowledge is reclaimed when present', async () => {
+  test('codex project skill at .codex/skills/open-knowledge is left present, not overwritten', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
     cleanupPaths.push(projectDir);
     const codexSkill = join(projectDir, '.codex', 'skills', 'open-knowledge');
@@ -641,13 +649,13 @@ describe('reclaimProjectSkillsOnProjectOpen', () => {
     expect(r.status).toBe('done');
     if (r.status === 'done') {
       const codex = r.entries.find((e) => e.editorId === 'codex');
-      expect(codex?.status).toBe('reclaimed');
+      expect(codex?.status).toBe('present');
     }
-    expect(readFileSync(join(codexSkill, 'SKILL.md'), 'utf8')).toContain('v-new');
+    expect(readFileSync(join(codexSkill, 'SKILL.md'), 'utf8')).toContain('v-old');
     expect(existsSync(join(projectDir, '.claude'))).toBe(false);
   });
 
-  test('existing SKILL.md is reclaimed with latest content', async () => {
+  test('seed-if-absent: existing project SKILL.md keeps its content', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
     cleanupPaths.push(projectDir);
     const claudeSkill = join(projectDir, '.claude', 'skills', 'open-knowledge');
@@ -664,9 +672,9 @@ describe('reclaimProjectSkillsOnProjectOpen', () => {
     expect(r.status).toBe('done');
     if (r.status === 'done') {
       const claude = r.entries.find((e) => e.editorId === 'claude');
-      expect(claude?.status).toBe('reclaimed');
+      expect(claude?.status).toBe('present');
     }
-    expect(readFileSync(join(claudeSkill, 'SKILL.md'), 'utf8')).toContain('v-new');
+    expect(readFileSync(join(claudeSkill, 'SKILL.md'), 'utf8')).toContain('v-old');
     // Other host stayed no-token.
     expect(existsSync(join(projectDir, '.cursor'))).toBe(false);
   });
@@ -674,22 +682,21 @@ describe('reclaimProjectSkillsOnProjectOpen', () => {
   test('a host whose replaceDir throws is reported failed, not crashed', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
     cleanupPaths.push(projectDir);
-    const claudeSkill = join(projectDir, '.claude', 'skills', 'open-knowledge');
-    mkdirSync(claudeSkill, { recursive: true });
-    writeFileSync(join(claudeSkill, 'SKILL.md'), '---\nname: open-knowledge\n---\n# v-old\n');
     const r = await reclaimProjectSkillsOnProjectOpen({
       projectDir,
       executablePath: EXE,
       isPackaged: true,
       platform: 'darwin',
+      createIfWired: true,
       deps: { resolveBundledSkillDir: () => setupBundle() },
-      // existsSync:true makes every host look reclaim-eligible; the throwing
-      // mkdirSync forces replaceDir to fail for each one.
+      // No SKILL.md on disk (existsSync false for skill files) but every host's
+      // config reads back the OK marker → the create path fires for each; the
+      // throwing mkdirSync then forces replaceDir to fail.
       fs: {
-        existsSync: () => true,
+        existsSync: (p: string) => !String(p).endsWith('SKILL.md'),
         isDirectory: () => false,
         readdirSync: () => [],
-        readFileSync: () => Buffer.from(''),
+        readFileSync: () => Buffer.from(OK_WIRED_MCP_JSON),
         writeFileSync: () => {
           throw new Error('EACCES: permission denied');
         },
@@ -870,7 +877,7 @@ describe('reclaimProjectSkillsOnProjectOpen — createIfWired (managed heal path
     expect(existsSync(join(projectDir, '.claude'))).toBe(false);
   });
 
-  test('existing SKILL.md is refreshed (reclaimed), not re-created, even when wired', async () => {
+  test('existing SKILL.md is left present even when wired (never re-created)', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
     cleanupPaths.push(projectDir);
     const claudeSkill = join(projectDir, '.claude', 'skills', 'open-knowledge');
@@ -887,9 +894,9 @@ describe('reclaimProjectSkillsOnProjectOpen — createIfWired (managed heal path
     });
     expect(r.status).toBe('done');
     if (r.status === 'done') {
-      expect(r.entries.find((e) => e.editorId === 'claude')?.status).toBe('reclaimed');
+      expect(r.entries.find((e) => e.editorId === 'claude')?.status).toBe('present');
     }
-    expect(readFileSync(join(claudeSkill, 'SKILL.md'), 'utf8')).toContain('v-new');
+    expect(readFileSync(join(claudeSkill, 'SKILL.md'), 'utf8')).toContain('v-old');
   });
 
   test('refuses to create through a host-dir symlink escaping the project', async () => {

@@ -1,8 +1,11 @@
 /**
- * Global-scope skills: authored at `<home>/.ok/skills/`, listed
- * alongside project skills, edited, installed into the user-global host dirs
- * (`<home>/.{host}/skills/`), and deleted — but UNVERSIONED (no shadow repo for
- * the user home), so history is always empty and restore is refused.
+ * Global-scope skills: store retirement — authored IN-PLACE in the user-home
+ * `.agents/skills` hub, listed alongside project skills, edited, installed into
+ * the user-global editor host dirs (`<home>/.{host}/skills/`), and deleted — but
+ * UNVERSIONED (no shadow repo for the user home), so history is always empty and
+ * restore is refused. Nothing authors into `<home>/.ok/skills` anymore; the scan
+ * (not an install marker) owns the host set, and a skill that exists is never a
+ * hostless Draft.
  *
  * Hermetic via the `configHomedirOverride` seam (the single user-home override
  * that also resolves `~/.ok/global.yml`), so global writes land in a
@@ -10,7 +13,7 @@
  * `$HOME`, so an env override wouldn't work — the seam is threaded explicitly.)
  */
 
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -35,6 +38,10 @@ const putSkill = (body: Record<string, unknown>) =>
 
 beforeAll(async () => {
   tmpHome = mkdtempSync(join(tmpdir(), 'ok-personal-home-'));
+  // Store retirement: global skills author IN-PLACE. Seed the `.agents` hub so a
+  // fresh global skill lands there (the vendor-neutral default home), not the
+  // retired `~/.ok/skills` store and not directly into an editor dir.
+  mkdirSync(join(tmpHome, '.agents', 'skills'), { recursive: true });
   server = await createTestServer({ configHomedirOverride: tmpHome });
 }, HARNESS_BOOT_TIMEOUT_MS);
 afterAll(async () => {
@@ -43,7 +50,7 @@ afterAll(async () => {
 });
 
 describe('global-scope skills', () => {
-  test('PUT global → writes under <home>/.ok/skills/', async () => {
+  test('PUT global → authors in-place under <home>/.agents/skills/', async () => {
     const res = await putSkill({
       scope: 'global',
       name: 'daily-standup',
@@ -52,7 +59,7 @@ describe('global-scope skills', () => {
     });
     expect(res.status).toBe(200);
     // The source landed in the overridden home, not the project content dir.
-    expect(existsSync(join(tmpHome, '.ok', 'skills', 'daily-standup', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(tmpHome, '.agents', 'skills', 'daily-standup', 'SKILL.md'))).toBe(true);
   });
 
   test('GET global returns the payload', async () => {
@@ -81,9 +88,10 @@ describe('global-scope skills', () => {
       const project = parsed.data.skills.find((s) => s.name === 'project-only');
       expect(personal?.scope).toBe('global');
       expect(project?.scope).toBe('project');
-      // Global install isn't wired yet → not installed, no hosts.
-      expect(personal?.installed).toBe(false);
-      expect(personal?.hosts).toEqual([]);
+      // No Draft: a global skill authored in the `.agents` hub is installed there
+      // (its host set is the hub it lives in), never a hostless Draft.
+      expect(personal?.installed).toBe(true);
+      expect(personal?.hosts).toEqual(['agents']);
     }
   });
 
@@ -115,10 +123,9 @@ describe('global-scope skills', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { hosts: string[] };
     expect(body.hosts).toContain('claude');
-    // Projected verbatim into the overridden home's global host dir, and the
-    // user-level install marker recorded it.
+    // Projected verbatim into the overridden home's global editor host dir (disk
+    // is truth — the scan, not an install marker, owns the host set).
     expect(existsSync(join(tmpHome, '.claude', 'skills', 'daily-standup', 'SKILL.md'))).toBe(true);
-    expect(existsSync(join(tmpHome, '.ok', 'local', 'installed-skills.json'))).toBe(true);
   });
 
   test('list reflects the global skill as installed after install', async () => {
@@ -132,26 +139,26 @@ describe('global-scope skills', () => {
     }
   });
 
-  test('uninstall demotes the global skill to Draft (source kept, projection gone)', async () => {
+  test('uninstall consolidates to the hub: editor projection gone, hub source kept', async () => {
     const res = await fetch(`${base()}/api/skill/uninstall`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scope: 'global', name: 'daily-standup' }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { uninstalled: boolean };
-    expect(body.uninstalled).toBe(true);
-    // Source kept; global projection removed.
-    expect(existsSync(join(tmpHome, '.ok', 'skills', 'daily-standup', 'SKILL.md'))).toBe(true);
+    // Uninstall removes the EDITOR projection and keeps the vendor-neutral hub
+    // source (consolidate-to-hub) — not the reverse. The skill stays in `.agents`.
+    expect(existsSync(join(tmpHome, '.agents', 'skills', 'daily-standup', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(tmpHome, '.claude', 'skills', 'daily-standup'))).toBe(false);
-    // List now shows it as a Draft again.
+    // Store retirement + no Draft: it stays installed in the hub, never demoted
+    // to a hostless Draft.
     const list = await fetch(`${base()}/api/skills`);
     const parsed = SkillsListSuccessSchema.safeParse(await list.json());
     expect(parsed.success).toBe(true);
     if (parsed.success) {
       const personal = parsed.data.skills.find((s) => s.name === 'daily-standup');
-      expect(personal?.installed).toBe(false);
-      expect(personal?.hosts).toEqual([]);
+      expect(personal?.installed).toBe(true);
+      expect(personal?.hosts).toEqual(['agents']);
     }
   });
 
@@ -160,7 +167,7 @@ describe('global-scope skills', () => {
       method: 'DELETE',
     });
     expect(res.status).toBe(200);
-    expect(existsSync(join(tmpHome, '.ok', 'skills', 'daily-standup'))).toBe(false);
+    expect(existsSync(join(tmpHome, '.agents', 'skills', 'daily-standup'))).toBe(false);
     // Reverse-projection cleaned the global host dir too.
     expect(existsSync(join(tmpHome, '.claude', 'skills', 'daily-standup'))).toBe(false);
   });

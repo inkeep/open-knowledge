@@ -4566,6 +4566,11 @@ Homepage: https://github.com/pillarjs/path-to-regexp
 
 Copyright (c) 2014 Blake Embrey (hello@blakeembrey.com)
 
+### `pend@1.2.0`
+Homepage: https://github.com/andrewrk/node-pend
+
+Copyright (c) 2014 Andrew Kelley
+
 ### `picomatch@4.0.5`
 Homepage: https://github.com/micromatch/picomatch
 
@@ -5558,6 +5563,11 @@ Copyright (c) 2014 - Kevin Jahns <kevin.jahns@rwth-aachen.de>. - Chair of Comput
 Homepage: https://github.com/yjs/y-protocols#readme
 
 Copyright (c) 2019 Kevin Jahns <kevin.jahns@protonmail.com>.
+
+### `yauzl@3.4.0`
+Homepage: https://github.com/thejoshwolfe/yauzl
+
+Copyright (c) 2014 Josh Wolfe
 
 ### `yazl@3.3.1`
 Homepage: https://github.com/thejoshwolfe/yazl

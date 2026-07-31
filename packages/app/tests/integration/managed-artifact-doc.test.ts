@@ -106,11 +106,10 @@ describe('skill + template CRDT docs — end to end', () => {
     await client.cleanup();
   }, 30_000);
 
-  test('PUT /api/skill routes the body through the open project skill content doc', async () => {
-    const docName = '.ok/skills/put-routed/SKILL';
-    const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
-
-    const res = await fetch(`http://127.0.0.1:${server.port}/api/skill`, {
+  test('PUT /api/skill creates IN-PLACE, then routes edits through the open real doc', async () => {
+    // CREATE (store retirement): a new skill is born at the scope's default
+    // skill home (fs-direct, same spine as import), NOT in `.ok/skills`.
+    const createRes = await fetch(`http://127.0.0.1:${server.port}/api/skill`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -119,20 +118,36 @@ describe('skill + template CRDT docs — end to end', () => {
         frontmatter: { name: 'put-routed', description: 'Use when proving the CRDT write path.' },
       }),
     });
-    expect(res.status).toBe(200);
+    expect(createRes.status).toBe(200);
+    const createBody = (await createRes.json()) as { path: string; created: boolean };
+    expect(createBody.created).toBe(true);
+    expect(createBody.path.startsWith('.ok/skills/')).toBe(false);
+    const skillFile = resolve(server.contentDir, createBody.path);
+    expect(await pollFor(skillFile)).toBe(true);
+
+    // EDIT: with a client bound to the skill's REAL content doc, the PUT
+    // mutates the SAME Y.Doc — proof edits route through the doc, not a
+    // side-channel fs write.
+    const docName = createBody.path.replace(/\.md$/i, '');
+    const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
+    const editRes = await fetch(`http://127.0.0.1:${server.port}/api/skill`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'put-routed',
+        body: '# Routed\n\nEdited via CRDT.\n',
+        frontmatter: { name: 'put-routed', description: 'Use when proving the CRDT write path.' },
+      }),
+    });
+    expect(editRes.status).toBe(200);
 
     const expected =
-      '---\nname: put-routed\ndescription: Use when proving the CRDT write path.\n---\n# Routed\n\nVia CRDT.\n';
+      '---\nname: put-routed\ndescription: Use when proving the CRDT write path.\n---\n# Routed\n\nEdited via CRDT.\n';
     const start = Date.now();
     while (Date.now() - start < 5000 && client.ytext.toString() !== expected) {
       await new Promise((r) => setTimeout(r, 50));
     }
-    // The HTTP PUT mutated the SAME Y.Doc the editor client is bound to —
-    // proof the write routes through the doc, not a side-channel fs write.
     expect(client.ytext.toString()).toBe(expected);
-
-    const skillFile = resolve(server.contentDir, '.ok', 'skills', 'put-routed', 'SKILL.md');
-    expect(await pollFor(skillFile)).toBe(true);
     expect(readFileSync(skillFile, 'utf-8')).toBe(expected);
 
     await client.cleanup();

@@ -33,8 +33,9 @@ A short table the agent reads when tempted:
 
 ## Running it
 
-With a server: drive the scenarios through the agent simulator
-(`cd packages/app && pnpm exec tsx src/server/agent-sim.ts`). Without one: walk the
-pressured prompt with the user and read the response for the rule holding.
+Drive each scenario through a fresh agent session (a new chat, a sub-agent, or a
+second terminal) so nothing from this conversation leaks in. If you cannot run
+one, walk the pressured prompt with the user and read the response for the rule
+holding.
 Read the full transcript, not just the final answer — discipline fails in the
 reasoning, not always in the output.

@@ -2,7 +2,8 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { OK_PROJECT_MARKER } from '@inkeep/open-knowledge-core';
 import { isProjectRoot } from '../fs/find-project-root.ts';
-import { resolvePackSkillSource } from './install-pack-skill.ts';
+import { scanInPlaceSkills } from '../in-place-skills.ts';
+import { resolvePackSkillSources } from './install-pack-skill.ts';
 import { assertEntryPathInProject } from './path-safety.ts';
 import { DEFAULT_PACK_ID, resolvePack, STARTER_FOLDER_FRONTMATTER_FILENAME } from './starter.ts';
 import type { FileEntry, ScaffoldPlan, SeedOptions, SkipEntry } from './types.ts';
@@ -199,19 +200,24 @@ export async function planSeed(opts: SeedOptions = {}): Promise<ScaffoldPlan> {
     }
   }
 
-  // 3. Pack skill. The skill is authored/installed by `applySeed` →
-  //    `installPackSkill` (not a `created` FileEntry — it's a recursive dir
-  //    copy), so report it separately: a project whose folders/templates exist
-  //    but whose `.ok/skills/<pack-skill>/` is absent (deleted, or a project
-  //    seeded before skills-as-content) is NOT fully set up. Callers fold
-  //    `packSkill.pending` into "is there work to do?" alongside `created`.
-  const packSkillSource = resolvePackSkillSource(pack.id);
-  const packSkill = packSkillSource
-    ? {
-        name: packSkillSource.name,
-        pending: !existsSync(join(projectDir, '.ok', 'skills', packSkillSource.name, 'SKILL.md')),
-      }
-    : undefined;
+  // 3. Pack skills. They are authored/installed by `applySeed` →
+  //    `installPackSkill` (not `created` FileEntries — they're recursive dir
+  //    copies), so report them separately: a project whose folders/templates exist
+  //    but whose pack skill is absent (deleted, or a project seeded before
+  //    skills-as-content) is NOT fully set up. Callers fold
+  //    `packSkills[].pending` into "is there work to do?" alongside `created`.
+  //    A decomposed pack ships several skills; each is pending independently.
+  //    Presence is scan-based (in-place editor-dir skills, same source of truth
+  //    `installPackSkill` dedups against), with the legacy `.ok/skills` store
+  //    still honored for pre-inversion projects.
+  const sources = resolvePackSkillSources(pack.id);
+  const inPlaceNames =
+    sources.length > 0 ? new Set(scanInPlaceSkills(projectDir).map((sk) => sk.name)) : null;
+  const packSkills = sources.map(({ name }) => ({
+    name,
+    pending:
+      !inPlaceNames?.has(name) && !existsSync(join(projectDir, '.ok', 'skills', name, 'SKILL.md')),
+  }));
 
-  return { created, skipped, warnings, ...(packSkill ? { packSkill } : {}) };
+  return { created, skipped, warnings, ...(packSkills.length > 0 ? { packSkills } : {}) };
 }

@@ -36,6 +36,8 @@ const DESCRIPTION = [
   '',
   'Note: the `server.*`, `mcp.*`, and `github.*` config sub-trees, plus `preview.baseUrl` and `preview.scriptSrc`, were removed; their values are now built-in constants in `@inkeep/open-knowledge-core` (or, for the preview iframe, a fixed open network policy). Reading those keys returns `exists: false`. (`appearance.preview.autoOpen` is still a live key.)',
   '',
+  "This tool is a pure READ. Folder-level skill topology (link / unlink / add-root) moved to the `install` tool's `skillFolders` argument, so this one keeps its read-only annotation and stays auto-approvable.",
+  '',
   '**Parameters:**',
   '- `key` (optional) — Dotted config key. `"content"` returns the content sub-tree; `"appearance.theme"` returns just that leaf. Omit for full config.',
   '- `cwd` (optional) — Project root (see `cwd` description below).',
@@ -88,10 +90,10 @@ export function register(server: ServerInstance, deps: GetConfigDeps): void {
       description: DESCRIPTION,
       inputSchema: InputSchema,
       outputSchema: OutputSchema,
-      annotations: {
-        readOnlyHint: true,
-        idempotentHint: true,
-      },
+      // Pure read. The folder-topology verb that briefly lived here moved to
+      // `install`: MCP annotations are per-tool and static, so one mutating
+      // field cost every plain config READ its auto-approval.
+      annotations: { readOnlyHint: true, idempotentHint: true },
     },
     async (args: { key?: string; cwd?: string }) => {
       const context = await resolveProjectConfigContext(deps.resolveCwd, deps.config, args.cwd);

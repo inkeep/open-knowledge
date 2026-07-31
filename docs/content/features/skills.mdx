@@ -1,10 +1,10 @@
 ---
 title: Skills
 icon: LuGraduationCap
-description: "What's different about skills in OpenKnowledge: you edit them in the WYSIWYG editor like any doc, version them with your base, and symlink one skill into every editor you use."
+description: "Create, import, version, and install Agent Skills across your editors from one OpenKnowledge source."
 ---
 
-A skill in OpenKnowledge is content, not a config file: authored in the WYSIWYG editor, versioned with your base, and symlinked into every editor from one source.
+A skill in OpenKnowledge is content, not a config file: authored or imported in the WYSIWYG editor, versioned with your base, and installed into every editor from one source.
 
 ```html preview
 <div style="padding:18px">
@@ -23,7 +23,7 @@ A skill in OpenKnowledge is content, not a config file: authored in the WYSIWYG 
       <div id="eds" class="eds"></div>
     </div>
   </div>
-  <div class="cap">One <code>.ok/skills</code> source, symlinked into each editor. Edit once, no re-install, no drift.</div>
+  <div class="cap">One canonical skill folder, mirrored into each editor. Edit once, no re-install, no drift.</div>
 </div>
 <style>
 .flow{display:grid;grid-template-columns:1.15fr auto 1fr;gap:16px;align-items:center}
@@ -60,42 +60,59 @@ if(!reduce)setInterval(run,3400);
 
 A project skill is not a raw text file you hand-edit in a dotfile. It is a document in your base: written in the same WYSIWYG editor, versioned, with the same backlinks and live preview as the rest of your knowledge. Improving a skill is the same flow as improving any page.
 
-## Write once, install everywhere
+## One source, every editor
 
-`install` **symlinks** the skill into each editor's skills directory (Claude Code, Cursor, Codex, OpenCode, Pi). Every editor points at the one `.ok/skills/<name>` source, so nothing is copied and nothing drifts: edit the skill once and every agent has the change, with no re-install.
+A skill is a **real folder** in your agent's skills directory — `.claude/skills`, `.cursor/skills`, `.codex/skills`, `.opencode/skills`, or the vendor-neutral `.agents/skills` hub. OpenKnowledge keeps one real folder per skill name and mirrors it into your other editors. A new location is a symlink to that source by default, since it duplicates no bytes and cannot drift; you can convert any location to an independent copy when you want one, and a new location otherwise follows the form the skill's existing locations already use. Edit the source once and every agent has the change.
 
-## Create and install a skill
+## Create, import, and install skills
 
-Create a skill from the sidebar's **Skills** section: **New skill** asks for a scope, a name (the id agents use to invoke it), and a description (what agents match on to decide when to use it), then opens the new `SKILL.md` as an editor tab. A skill can also bundle `references/` and `scripts/` files beside its `SKILL.md`; agents read those through the [`skills` MCP tool](/docs/reference/mcp), never by browsing `.ok/`.
+Open the **Skills** tab to add skills three ways:
 
-A new skill starts as a **Draft**: authored but installed nowhere. Install it from the skill's toolbar, per editor or all at once, and it becomes **Installed**. The project's default editor set lives in **Settings → Skills**, saved to `.ok/skill-targets.json` in the base so teammates inherit it.
+- **Explore** searches skills.sh, previews a skill before it lands in your base, and imports it with one click.
+- **Upload** imports a skill from skills.sh, GitHub, a git URL, a local path, a `.zip` / `.skill` archive, or a folder containing `SKILL.md`.
+- **New** asks for a name (the id agents use to invoke it) and a description (what agents match on to decide when to use it), then opens the new `SKILL.md` as an editor tab. The scope comes from the section you create it in.
+
+Agents use the same marketplace flow over MCP: `skills({ query: "..." })` searches skills.sh, then `import({ source, skill: name })` imports the selected result.
+
+A skill is live for its agent the moment it lands — there is no separate "install" step to flip. The skill's **install** menu instead controls *where* it is available: add or remove editors, flip any editor between a copy and a symlink, or relocate the canonical source. If a source bundles several skills, OpenKnowledge asks which one to import; scripts are stored as versioned content for review and never run during import. **Settings → Skills** lists this project's and your user-level skill folders, and lets you point one editor's skills folder at another's. Per-skill reach lives in each skill's install menu.
+
+A skill can also bundle `references/` and `scripts/` files beside its `SKILL.md`; agents read those through the [`skills` MCP tool](../reference/mcp.mdx).
 
 ## Two scopes
 
 - **Project** skills live in the base, versioned and shared with it like any other content.
-- **Global** skills live in `~/.ok/skills` and follow you across every project on your machine. Outside any base, they carry no version history.
+- **Global** skills live in your home editor dirs (`~/.agents/skills`, `~/.claude/skills`, …) and follow you across every project on your machine. Outside any base, they carry no version history.
 
 The skill that makes an agent behave well the moment you connect it (read and write through the tools, cite sources, keep the link graph healthy) is neither: `open-knowledge` is built into the product and never appears in your skills list.
 
-Moving a skill between scopes re-creates it in the destination scope: history does not transfer, and it lands as a Draft you install again.
+Moving a skill between scopes re-creates it in the destination scope: history does not transfer, but the locations it occupied are re-projected for you.
 
-## Import existing editor skills
+## Skills from your other tools
 
-By default, OpenKnowledge manages only the skills under `.ok/skills`: anything you already keep in `.claude/skills`, `.cursor/skills`, and the like is left alone. When the app finds editor skills it could manage, it offers to import them, moving each one into `.ok/skills` and replacing the editor copy with a symlink.
+Skills you already keep in `.claude/skills`, `.cursor/skills`, and the like are versioned **in place, automatically** — OpenKnowledge reads and versions them where they live. There is no store to opt into and no `ok skills manage` switch.
 
-The same switch is available from the CLI:
-
-```bash
-ok skills manage --on       # import existing editor skills and adopt new ones
-ok skills manage --off      # stop adopting; existing skills and symlinks stay
-ok skills manage --status   # print the current setting
-```
-
-Skills already under `.ok/skills` stay managed either way.
+The Skills sidebar lists what OpenKnowledge found across your other tools: the Claude, Codex, Cursor, OpenCode, Copilot, Pi, and Agents skill dirs, plus Claude plugins. They appear as **Detected** rows. Click one to edit it in place; changes save straight to that editor's own copy. From the CLI, `ok skills installed` lists every skill across your agents (read-only) and `ok skills import <source>` brings a new one in.
 
 <Callout type="warn">
 Skills are an open standard, and a skill can carry scripts that run on your machine. Treat a third-party skill like installing software. Use trusted sources, and read what it does first.
 </Callout>
+
+## Staying up to date
+
+An imported skill records where it came from, so its toolbar can show an **Update from source** action when upstream moves.
+
+Updates from a remote source (skills.sh, GitHub, a git URL) are **not** applied automatically. A skill's instructions run in your agent, so continuing to trust a publisher is an explicit, per-skill opt-in: the **Auto-update** toggle starts off, and until you turn it on you get a diff to review before anything is rewritten. Skills imported from a local path on your own machine stay in sync by default, since the source is already yours.
+
+## Skills we publish
+
+OpenKnowledge's own skills are published at [inkeep/open-knowledge-skills](https://github.com/inkeep/open-knowledge-skills), and they install like any other Claude Code plugin marketplace:
+
+```bash
+/plugin marketplace add inkeep/open-knowledge-skills
+/plugin install open-knowledge@open-knowledge-skills
+```
+
+`open-knowledge` is the platform skill that teaches an agent to read, search, link, and write markdown through the MCP server. The starter packs ship there too, and `ok seed --pack <id>` installs a pack's skills directly.
 
 ## Up next
 

@@ -46,6 +46,7 @@ import { requestDocPanelTab } from '@/components/doc-panel-events';
 import { GithubIcon } from '@/components/icons/github';
 import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
 import type { OkDesktopBridge, OkMenuAction } from '@/lib/desktop-bridge-types';
+import { hashFromSkills } from '@/lib/doc-hash';
 import { i18n } from '@/lib/i18n';
 import type { KeyboardShortcutId } from '@/lib/keyboard-shortcuts';
 import { SETTINGS_OPEN_HASH } from '@/lib/use-settings-route';
@@ -92,6 +93,8 @@ export function projectContextualTargetKind(
     case 'large-file':
       return 'asset';
     case 'missing':
+    case 'skills':
+    case 'skill-preview':
       return 'none';
   }
 }
@@ -124,6 +127,8 @@ export interface PaletteCommandContext {
   /** Close the palette and open the persisted report history / retry list. */
   openBugReportHistory(): void;
   openFeedbackDialog(): void;
+  /** Create a blank project-scope skill and open it in the editor. */
+  createBlankSkill(): void;
 }
 
 /** Render-order buckets; the palette renders each group under its own heading. */
@@ -173,10 +178,12 @@ const PALETTE_COMMAND_LABELS = {
   newFolder: msg`New folder`,
   openGraph: msg`Open graph`,
   initializeStarterPack: msg`Initialize starter pack`,
+  newSkill: msg`New skill`,
   newProject: msg`New project`,
   openFolderOnDisk: msg`Open folder on disk`,
   openFileOnDisk: msg`Open file on disk`,
   switchProject: msg`Switch project`,
+  openSkills: msg`Skills`,
   settings: msg`Settings`,
   installClaudeDesktop: msg`Install for Claude Chat & Cowork (Desktop App)`,
   reportBug: msg`Report a bug`,
@@ -201,7 +208,7 @@ const PALETTE_COMMAND_LABELS = {
   showHiddenFiles: msg`Show hidden files`,
   showOkFolders: msg`Show .ok folders`,
   showOnlyMarkdownFiles: msg`Show only markdown files`,
-  showSkillsSection: msg`Show skills section`,
+  showSkillsSection: msg`Skills section`,
   expandAll: msg`Expand all`,
   collapseAll: msg`Collapse all`,
   newTerminal: msg`New Terminal`,
@@ -226,10 +233,12 @@ const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'new-folder': FolderPlus,
   'open-graph': Network,
   'initialize-starter-pack': Package,
+  'new-skill': Sparkles,
   'new-project': Plus,
   'open-folder': FolderOpen,
   'open-file': FileText,
   'switch-project': LayoutGrid,
+  'open-skills': Package,
   settings: Settings,
   'install-claude-desktop': Download,
   'report-bug': Bug,
@@ -284,6 +293,10 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
     ctx.closePalette();
     ctx.openSeedDialog();
   },
+  'new-skill': (ctx) => {
+    ctx.closePalette();
+    ctx.createBlankSkill();
+  },
   'new-project': (ctx) => {
     ctx.closePalette();
     ctx.openCreateProjectDialog();
@@ -309,6 +322,10 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
     const bridge = ctx.bridge;
     if (!bridge) return;
     ctx.runAction(() => bridge.navigator.open(), t`Failed to open Project Navigator.`);
+  },
+  'open-skills': (ctx) => {
+    ctx.closePalette();
+    window.location.hash = hashFromSkills();
   },
   settings: (ctx) => {
     ctx.closePalette();

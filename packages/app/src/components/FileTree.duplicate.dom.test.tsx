@@ -312,6 +312,7 @@ vi.doMock('@/editor/DocumentContext', () => ({
     prewarm: () => {},
     reconcileLocalRemoval: reconcileLocalRemovalMock,
     reconcileLocalRename: reconcileLocalRenameMock,
+    setSkillsSidebar: () => {},
   }),
 }));
 

@@ -52,6 +52,15 @@ function writeStaleSkillFiles(destDir: string, marker: string): void {
   writeFileSync(join(destDir, 'leftover.md'), `to-be-orphaned-${marker}`);
 }
 
+// A `.mcp.json` carrying the `# ok-mcp-v1` chain sentinel — the wired signal
+// `editorWiredForOk` matches. Shared by every describe that exercises the
+// create-if-wired path.
+const OK_WIRED_MCP_JSON = JSON.stringify({
+  mcpServers: {
+    'open-knowledge': { command: '/bin/sh', args: ['-l', '-c', '# ok-mcp-v1\nexec ok mcp'] },
+  },
+});
+
 function depsBuilder(opts: {
   projectBundleDir: string;
   discoveryBundleDir: string;
@@ -109,7 +118,7 @@ describe('repairSkills — project sweep (AC-A1, AC-A2, AC-A3)', () => {
     rmSync(scratch.root, { recursive: true, force: true });
   });
 
-  it('AC-A1: replaces an existing SKILL.md directory with bundled content (orphans removed)', async () => {
+  it('AC-A1: leaves an existing SKILL.md directory untouched (seed-if-absent)', async () => {
     const claudeDest = join(scratch.project, '.claude', 'skills', PROJECT_SKILL_DIR_NAME);
     writeStaleSkillFiles(claudeDest, 'A1');
 
@@ -132,16 +141,14 @@ describe('repairSkills — project sweep (AC-A1, AC-A2, AC-A3)', () => {
     expect(result.project.outcome).toBe('done');
     if (result.project.outcome !== 'done') throw new Error('unreachable');
     const claudeEntry = result.project.entries.find((e) => e.editorId === 'claude');
-    expect(claudeEntry?.outcome).toBe('reclaimed');
+    expect(claudeEntry?.outcome).toBe('present');
 
-    expect(readFileSync(join(claudeDest, 'SKILL.md'), 'utf-8')).toContain('bundled-9.9.9-content');
-    expect(readFileSync(join(claudeDest, 'references.md'), 'utf-8')).toBe(
-      'bundled-9.9.9-references',
-    );
-    // Orphan from the stale dir is gone — replaceDir wiped first.
-    expect(existsSync(join(claudeDest, 'leftover.md'))).toBe(false);
+    // Seed-if-absent: the existing copy (and its files) are preserved — updates
+    // flow through the manual skills.sh path, not this sweep.
+    expect(readFileSync(join(claudeDest, 'SKILL.md'), 'utf-8')).toBe('stale-A1');
+    expect(existsSync(join(claudeDest, 'leftover.md'))).toBe(true);
 
-    expect(logEvents.some((e) => e.event === 'project-skill-reclaim-reclaimed')).toBe(true);
+    expect(logEvents.some((e) => e.event === 'project-skill-reclaim-reclaimed')).toBe(false);
   });
 
   it('AC-A2: greenfield host (no SKILL.md) reports no-token and creates nothing', async () => {
@@ -172,11 +179,14 @@ describe('repairSkills — project sweep (AC-A1, AC-A2, AC-A3)', () => {
   });
 
   it('AC-A3: per-host write failure does not stop the other hosts', async () => {
-    // Seed both .claude and .cursor with stale SKILL.md.
+    // Wire both .claude and .cursor with no SKILL.md on disk, so the create
+    // path runs for each (seed-if-absent only writes when absent). Claude's
+    // write is then broken so the sweep must still create cursor's.
     const claudeDest = join(scratch.project, '.claude', 'skills', PROJECT_SKILL_DIR_NAME);
     const cursorDest = join(scratch.project, '.cursor', 'skills', PROJECT_SKILL_DIR_NAME);
-    writeStaleSkillFiles(claudeDest, 'a3-claude');
-    writeStaleSkillFiles(cursorDest, 'a3-cursor');
+    writeFileSync(join(scratch.project, '.mcp.json'), OK_WIRED_MCP_JSON);
+    mkdirSync(join(scratch.project, '.cursor'), { recursive: true });
+    writeFileSync(join(scratch.project, '.cursor', 'mcp.json'), OK_WIRED_MCP_JSON);
 
     // Break the project bundle source for one host only by injecting a deps
     // override that throws on the SECOND resolve call. Easier: use a custom
@@ -226,9 +236,9 @@ describe('repairSkills — project sweep (AC-A1, AC-A2, AC-A3)', () => {
     const cursor = result.project.entries.find((e) => e.editorId === 'cursor');
     expect(claude?.outcome).toBe('failed');
     expect(claude?.error).toContain('simulated rm failure');
-    expect(cursor?.outcome).toBe('reclaimed');
-    // Cursor's stale orphan got cleaned even though Claude's failed.
-    expect(existsSync(join(cursorDest, 'leftover.md'))).toBe(false);
+    // Cursor's skill still gets created even though Claude's write failed.
+    expect(cursor?.outcome).toBe('created');
+    expect(readFileSync(join(cursorDest, 'SKILL.md'), 'utf-8')).toContain('bundled-9.9.9-content');
   });
 });
 
@@ -238,12 +248,6 @@ describe('repairSkills — project sweep create-if-wired gate', () => {
   let discoveryBundleDir: string;
   let logEvents: RepairSkillsLogEvent[];
 
-  // A `.mcp.json` carrying the `# ok-mcp-v1` chain sentinel — the wired signal.
-  const OK_WIRED_MCP_JSON = JSON.stringify({
-    mcpServers: {
-      'open-knowledge': { command: '/bin/sh', args: ['-l', '-c', '# ok-mcp-v1\nexec ok mcp'] },
-    },
-  });
   const UNWIRED_MCP_JSON = JSON.stringify({ mcpServers: { other: { command: 'node' } } });
   // The Windows chain sentinel counts as wired too — an `ok start` on
   // Windows (or a shared repo initialized there) must still get skills.
@@ -416,7 +420,7 @@ describe('repairSkills — project sweep create-if-wired gate', () => {
     }
   });
 
-  it('refreshes (reclaimed) rather than re-creating when SKILL.md already exists and is wired', async () => {
+  it('leaves an existing SKILL.md present, not re-created, even when wired', async () => {
     const claudeDest = join(scratch.project, '.claude', 'skills', PROJECT_SKILL_DIR_NAME);
     writeStaleSkillFiles(claudeDest, 'wired-refresh');
     writeFileSync(join(scratch.project, '.mcp.json'), OK_WIRED_MCP_JSON);
@@ -437,9 +441,10 @@ describe('repairSkills — project sweep create-if-wired gate', () => {
 
     if (result.status !== 'done' || result.project.outcome !== 'done')
       throw new Error('unreachable');
-    expect(result.project.entries.find((e) => e.editorId === 'claude')?.outcome).toBe('reclaimed');
-    expect(readFileSync(join(claudeDest, 'SKILL.md'), 'utf-8')).toContain('bundled-9.9.9-content');
-    expect(existsSync(join(claudeDest, 'leftover.md'))).toBe(false);
+    expect(result.project.entries.find((e) => e.editorId === 'claude')?.outcome).toBe('present');
+    // Seed-if-absent: existing content preserved (updates flow through skills.sh).
+    expect(readFileSync(join(claudeDest, 'SKILL.md'), 'utf-8')).toBe('stale-wired-refresh');
+    expect(existsSync(join(claudeDest, 'leftover.md'))).toBe(true);
   });
 
   it('refuses to create through a host dir symlink escaping the project (create path)', async () => {
@@ -580,11 +585,11 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
   });
 
   it('mixed decision: the declined bundle is removed while the enabled bundle still installs', async () => {
-    // Seed both on disk, then decline ONLY write-skill. discovery must install
-    // (version mismatch) and write-skill must be torn down — the two gates run
-    // independently per bundle.
-    for (const name of ['open-knowledge-discovery', 'open-knowledge-write-skill']) {
-      const dir = join(scratch.home, '.agents', 'skills', name);
+    // Seed ONLY write-skill (the declined one) on disk; leave discovery absent
+    // so seed-if-absent freshly writes it. discovery must install and write-skill
+    // must be torn down — the two gates run independently per bundle.
+    {
+      const dir = join(scratch.home, '.agents', 'skills', 'open-knowledge-write-skill');
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, 'SKILL.md'), 'preexisting');
     }
@@ -612,11 +617,9 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
 
     if (result.status !== 'done' || result.user.outcome !== 'done') throw new Error('unreachable');
     expect(removals).toEqual(['write-skill']);
-    expect(
-      result.user.entries.some(
-        (e) => e.kind === 'central' && (e.outcome === 'written' || e.outcome === 'overwritten'),
-      ),
-    ).toBe(true);
+    expect(result.user.entries.some((e) => e.kind === 'central' && e.outcome === 'written')).toBe(
+      true,
+    );
     expect(written).toHaveLength(1);
   });
 
@@ -1148,7 +1151,7 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
     expect(recordedEvents).toHaveLength(0);
   });
 
-  it('emits outcome=failed reason=no-hosts-installed when central fails AND no per-host dirs exist', async () => {
+  it('emits outcome=failed reason=central-write-failed when central fails AND no per-host dirs exist', async () => {
     // Strictly synthetic existsSync — only paths we name as "present" return
     // true. Lets the test assert "no host dirs visible" deterministically
     // without depending on what the central-write side effects leave on disk.
@@ -1195,11 +1198,11 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
 
     // No host dirs are present, so every host (claude, cursor, codex) hits
     // skipped-host-absent. The only failure is the central write itself, so
-    // `no-hosts-installed` is the precise reason.
+    // `central-write-failed` is the precise reason.
     expect(presentPaths.size).toBe(0); // sanity: no host dirs marked present
     expect(recordedEvents).toHaveLength(1);
     expect(recordedEvents[0]?.outcome).toBe('failed');
-    expect(recordedEvents[0]?.reason).toBe('no-hosts-installed');
+    expect(recordedEvents[0]?.reason).toBe('central-write-failed');
   });
 
   it('emits outcome=failed reason=all-writes-failed when central AND per-host writes all throw', async () => {
@@ -1290,7 +1293,7 @@ describe('formatRepairSkillsResult — done-branch stdout formatting', () => {
       project: {
         outcome: 'done',
         entries: [
-          { editorId: 'claude', hostDir: '.claude', path: '/x', outcome: 'reclaimed' },
+          { editorId: 'claude', hostDir: '.claude', path: '/x', outcome: 'present' },
           { editorId: 'cursor', hostDir: '.cursor', path: '/y', outcome: 'no-token' },
           {
             editorId: 'codex',
@@ -1311,7 +1314,7 @@ describe('formatRepairSkillsResult — done-branch stdout formatting', () => {
             editorId: 'claude',
             hostDir: '.claude',
             path: '/c',
-            outcome: 'overwritten',
+            outcome: 'written',
           },
           {
             kind: 'host',
@@ -1331,8 +1334,8 @@ describe('formatRepairSkillsResult — done-branch stdout formatting', () => {
       },
     });
     expect(out).toContain('Skill reclaim complete.');
-    expect(out).toContain('Project: 1 reclaimed, 0 created, 1 no-token, 1 failed.');
-    expect(out).toContain('User (9.9.9): 2 written, 2 skipped, 0 failed.');
+    expect(out).toContain('Project: 1 present, 0 created, 1 no-token, 1 failed.');
+    expect(out).toContain('User (9.9.9): 2 written, 0 present, 2 skipped, 0 failed.');
   });
 
   it('renders skip reason when the user sweep version-skips', () => {
@@ -1374,7 +1377,7 @@ describe('repairSkillsResultExitCode (PR feedback: standalone exit code mapping)
           editorId: 'claude',
           hostDir: '.claude',
           path: '/tmp/x',
-          outcome: opts.projectFailed ? 'failed' : 'reclaimed',
+          outcome: opts.projectFailed ? 'failed' : 'created',
           ...(opts.projectFailed ? { error: 'simulated' } : {}),
         },
       ],
@@ -1526,16 +1529,15 @@ describe('repairSkills — symlink-escape guard (parity with writeProjectSkill)'
     rmSync(escapeRoot, { recursive: true, force: true });
   });
 
-  it('refuses to rewrite when a host dir is a symlink escaping the project root', async () => {
-    // Plant `.claude` as a symlink to a directory outside the project, and
-    // pre-create a SKILL.md inside that escape target so the no-create gate
-    // is satisfied (this is the bait an attacker would set).
+  it('refuses to create through a host dir that is a symlink escaping the project root', async () => {
+    // Plant `.claude` as a symlink to a directory outside the project, wire the
+    // editor (so the create path runs — seed-if-absent leaves the skill ABSENT
+    // there), and confirm the symlink-escape guard fires before any write.
     const realFs = await import('node:fs');
     const escapeTarget = join(escapeRoot, 'evil-claude');
-    mkdirSync(join(escapeTarget, 'skills', PROJECT_SKILL_DIR_NAME), { recursive: true });
-    writeFileSync(join(escapeTarget, 'skills', PROJECT_SKILL_DIR_NAME, 'SKILL.md'), 'bait');
-
+    mkdirSync(escapeTarget, { recursive: true });
     realFs.symlinkSync(escapeTarget, join(scratch.project, '.claude'));
+    writeFileSync(join(scratch.project, '.mcp.json'), OK_WIRED_MCP_JSON);
 
     const witnessFile = join(escapeTarget, 'witness.txt');
     writeFileSync(witnessFile, 'should-not-be-touched');

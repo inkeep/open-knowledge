@@ -52,6 +52,29 @@ describe.skipIf(RUNNING_IN_CI)('startManagedArtifactWatcher', () => {
     await eventually(() => seen.some(([p, c]) => p === leaf && c === 'v1'));
   }, 25_000);
 
+  test('fires onUnlink (not onChange) when a SKILL.md is deleted', async () => {
+    const skillsRoot = resolve(root, '.ok', 'skills');
+    const skillDir = resolve(skillsRoot, 'demo');
+    mkdirSync(skillDir, { recursive: true });
+    const leaf = resolve(skillDir, 'SKILL.md');
+    writeFileSync(leaf, 'v1', 'utf-8');
+
+    const changed: string[] = [];
+    const unlinked: string[] = [];
+    cleanup = await startManagedArtifactWatcher(
+      [skillsRoot],
+      (p) => changed.push(p),
+      undefined,
+      (p) => unlinked.push(p),
+    );
+
+    rmSync(leaf, { force: true });
+
+    // Deletion drives the list-refresh callback, not the reconcile-into-open-doc path.
+    await eventually(() => unlinked.includes(leaf));
+    expect(changed).not.toContain(leaf);
+  }, 25_000);
+
   test('fires onChange on edit; ignores non-SKILL.md siblings', async () => {
     const skillsRoot = resolve(root, '.ok', 'skills');
     const skillDir = resolve(skillsRoot, 'demo');

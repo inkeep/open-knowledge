@@ -1,42 +1,27 @@
 /**
- * Sidebar search affordance — a labeled `<button>` styled to look like an
- * input. Visible label, leading magnifying-glass icon, trailing always-visible
- * keyboard-shortcut keycap. Clicking invokes the consumer's `onClick` handler;
- * the component owns no semantics beyond that. The keycap is presentational —
- * the component does NOT install a key listener. Callers wire the keyboard
- * binding separately (the editor app registers the global ⌘K/Ctrl+K listener
- * inside CommandPalette at the App root).
+ * Sidebar search affordance — an icon-only `<button>` (magnifying glass) that
+ * sits at the trailing edge of the Files/Skills chrome row. Clicking invokes the
+ * consumer's `onClick` handler; the component owns no semantics beyond that. The
+ * component does NOT install a key listener — callers wire the keyboard binding
+ * separately (the editor app registers the global ⌘K/Ctrl+K listener inside
+ * CommandPalette at the App root); the shortcut shown in the tooltip is
+ * presentational.
  *
- * Accessibility: no `aria-label` on the button — the visible "Search" span is
- * contained in the button's accessible name (WCAG 2.5.3 Label in Name; voice-
- * input tools like macOS Voice Control and Dragon match "Click Search" against
- * the substring). The leading Search icon carries `aria-hidden="true"` —
- * decorative, the visible label is the accessible name. The kbd's content is
- * also picked up into the accessible name; that's a minor verbosity, not a
- * violation. (kbd intentionally lacks aria-hidden — Biome's
- * a11y/noAriaHiddenOnFocusable rule flags `aria-hidden="true"` on `<kbd>`
- * because the element has no implicit-role-map entry, so the rule
- * conservatively treats it as potentially interactive. `<kbd>` isn't
- * actually focusable by default, but the outcome — keeping the kbd's
- * content in the accessible name — is what we want regardless.)
- *
- * The kbd's foreground is `text-foreground/70` (not the inherited
- * `text-muted-foreground` from the parent Button) so the keyboard hint hits
- * WCAG 1.4.3 AA contrast (~5.3:1 over `bg-muted` in light theme; ~6.5:1 in
- * dark). The hint is informational — without it, the "discoverable from
- * the surface itself" promise fails for low-vision sighted users. The parent
- * Button's `text-muted-foreground` "Search" label still sits at ~3:1 against
- * the same backgrounds; that's a codebase-wide muted-foreground token
- * concern (also affects every other muted-text-on-muted-bg surface), not
- * fixable here without touching the design-token system.
+ * Accessibility: icon-only, so the button carries a translated `aria-label`
+ * ("Search") as its accessible name (WCAG 2.5.3 Label in Name; voice-input tools
+ * like macOS Voice Control and Dragon match "Click Search" against it). The
+ * Search icon is `aria-hidden`. The keyboard hint moves into the tooltip (with a
+ * `text-foreground/70` kbd for WCAG 1.4.3 AA contrast over the dark tooltip
+ * surface); it is discoverable on hover/focus rather than always-visible.
  */
 
 import { incrementJsxRenderFailure } from '@inkeep/open-knowledge-core';
-import { Trans } from '@lingui/react/macro';
+import { useLingui } from '@lingui/react/macro';
 import { Search } from 'lucide-react';
 import type { ErrorInfo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatShortcut } from '@/lib/keyboard-shortcuts';
 import { cn } from '@/lib/utils';
 
@@ -76,28 +61,34 @@ export function onPillRenderError(error: unknown, info: ErrorInfo): void {
 }
 
 export function SidebarSearchBar({ onClick, className }: SidebarSearchBarProps) {
+  const { t } = useLingui();
+  const label = t`Search`;
   return (
-    <Button
-      variant="outline"
-      onClick={onClick}
-      // First use of `data-telemetry-event` in the codebase. Convention:
-      // `ok.<surface>.<element>.<interaction>` (dot-separated, snake_case
-      // for multi-word segments — same shape as the existing `ok.*` OTel
-      // span/metric namespace in packages/server/src/telemetry.ts and
-      // packages/app/src/telemetry-impl.ts). Stable DOM selector for
-      // future click-analytics; not auto-consumed by the existing
-      // UserInteractionInstrumentation.
-      data-telemetry-event="ok.sidebar.search_pill.click"
-      className={cn(
-        'rounded-lg h-9 w-full justify-start gap-2 px-3 font-normal text-muted-foreground',
-        className,
-      )}
-    >
-      <Search aria-hidden="true" />
-      <span className="flex-1 text-left text-sm">
-        <Trans>Search</Trans>
-      </span>
-      <Kbd className="text-foreground/70">{formatShortcut('command-palette')}</Kbd>
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onClick}
+          aria-label={label}
+          // `data-telemetry-event` convention:
+          // `ok.<surface>.<element>.<interaction>` (dot-separated, snake_case
+          // for multi-word segments — same shape as the existing `ok.*` OTel
+          // span/metric namespace in packages/server/src/telemetry.ts and
+          // packages/app/src/telemetry-impl.ts). Stable DOM selector for
+          // future click-analytics; not auto-consumed by the existing
+          // UserInteractionInstrumentation. Kept as `search_pill` so historical
+          // analytics stay on one key across the pill→icon redesign.
+          data-telemetry-event="ok.sidebar.search_pill.click"
+          className={cn('shrink-0 text-muted-foreground', className)}
+        >
+          <Search aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        {label}
+        <Kbd className="text-foreground/70">{formatShortcut('command-palette')}</Kbd>
+      </TooltipContent>
+    </Tooltip>
   );
 }

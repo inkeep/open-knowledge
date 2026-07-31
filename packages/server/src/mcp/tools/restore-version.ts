@@ -38,7 +38,7 @@ export const DESCRIPTION = [
   '',
   '**Parameters:**',
   '- `document` — The document to restore (path, no extension; trailing `.md`/`.mdx` is stripped). Append-only via the CRDT layer; all connected editors see the change live.',
-  '- `skill` — The skill NAME to restore (PROJECT-scope skills only — global skills are unversioned). Rewrites `.ok/skills/<name>/` to the target version (fs-direct). Run `install` afterward to push it to your editors.',
+  '- `skill` — The skill NAME to restore (PROJECT-scope skills only — global skills are unversioned). Rewrites the skill folder to the target version (fs-direct); every recorded copy re-syncs from it, so there is nothing to re-install.',
   '- `version` — The 40-character commit SHA to restore to. Copy it from the `history` tool (same field name there).',
   '- `summary` — Optional one-line summary (≤80 chars). Avoid secrets or PII — persisted to git history.',
   '',
@@ -65,9 +65,7 @@ export function register(server: ServerInstance, deps: RestoreVersionDeps): void
         skill: z
           .string()
           .optional()
-          .describe(
-            'Skill name to restore (`.ok/skills/<name>/`). Mutually exclusive with `document`.',
-          ),
+          .describe('Skill name to restore. Mutually exclusive with `document`.'),
         version: versionInputSchema.describe(
           "The 40-character commit SHA to restore to — copy it straight from a `history` entry's `version` field (same name there).",
         ),

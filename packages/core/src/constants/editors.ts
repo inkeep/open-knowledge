@@ -123,6 +123,32 @@ export const EDITOR_PROJECT_SKILL_ROOT = {
   hermes: null,
 } as const satisfies Record<EditorId, string | null>;
 
+/**
+ * User-global skills root per editor (`~`-relative, POSIX), or `null` when OK
+ * reads no user-global skill dir for it — either it keeps no skills (`lm-studio`
+ * and `hermes` are config-only) or its skills live in a shared hub OK already
+ * scans (`claude-desktop` shares `~/.claude/skills`; `openclaw` reads the
+ * `~/.agents/skills` hub). Unlike the project map, the user dir does NOT follow
+ * the `<dotdir>/skills` convention for every editor — Pi nests its agent home
+ * (`.pi/agent/skills`) and Copilot uses `.copilot`, not `.github` — so this is
+ * its own map, not derivable from `EDITOR_PROJECT_SKILL_ROOT`. It is the single
+ * source `harnessHomes()` (skill detection) and the "Detected" location tooltip
+ * derive from, so adding a detectable editor here onboards it everywhere.
+ */
+export const EDITOR_USER_SKILL_ROOT = {
+  claude: '.claude/skills',
+  'claude-desktop': null,
+  cursor: '.cursor/skills',
+  codex: '.codex/skills',
+  copilot: '.copilot/skills',
+  opencode: '.opencode/skills',
+  openclaw: null,
+  pi: '.pi/agent/skills',
+  antigravity: '.gemini/skills',
+  'lm-studio': null,
+  hermes: null,
+} as const satisfies Record<EditorId, string | null>;
+
 /** Editor ids that have a project skill surface (valid install-projection targets). */
 export const PROJECT_SKILL_EDITOR_IDS = ALL_EDITOR_IDS.filter(
   (id) => EDITOR_PROJECT_SKILL_ROOT[id] !== null,
@@ -131,10 +157,10 @@ export const PROJECT_SKILL_EDITOR_IDS = ALL_EDITOR_IDS.filter(
 /**
  * Reserved name of OpenKnowledge's built-in project-skill bundle — the ONE skill
  * OK ships and re-projects into every wired editor's host dir on every project
- * open (`.{host}/skills/open-knowledge/`). Mirrors `BUNDLE_SKILL_NAME.project`
- * (and `SHIPPED_SKILL_NAME`) in `@inkeep/open-knowledge-server`; duplicated here
- * because core cannot depend on server, and pinned in lock-step by a server-side
- * test. Authored / pack skills take other names — the reserved `open-knowledge*`
+ * open (`.{host}/skills/open-knowledge/`). Mirrors `RESERVED_SKILL_PREFIX` in
+ * `@inkeep/open-knowledge-server`; duplicated here because core cannot depend on
+ * server, and pinned in lock-step by a server-side test. Authored / pack skills
+ * take other names — the reserved `open-knowledge*`
  * prefix keeps them from shadowing this bundle.
  */
 export const RESERVED_PROJECT_SKILL_NAME = 'open-knowledge';

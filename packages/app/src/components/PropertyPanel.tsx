@@ -29,7 +29,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { AlertTriangle, Plus } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { CommentedDocProvider } from '@/comments/CommentedDocContext';
 import { PropertyCommentButton } from '@/comments/PropertyCommentButton';
 import { FrontmatterBindingProvider } from '@/components/FrontmatterBindingContext';
@@ -58,6 +58,14 @@ interface PropertyPanelProps {
    * panel renders every field unchanged.
    */
   reservedKeys?: readonly string[];
+  /**
+   * Identity rows rendered at the TOP of the Properties disclosure, above the
+   * auto-rendered frontmatter rows. The skill panel passes its `name` row here
+   * so `name` reads as the first property (with a fixed, non-editable key) while
+   * still committing a rename rather than a plain patch. Keep the corresponding
+   * keys in `reservedKeys` so they aren't double-rendered as frontmatter rows.
+   */
+  identitySlot?: ReactNode;
 }
 
 function readInitialSnapshot(provider: PropertyPanelProps['provider']): FrontmatterSnapshot {
@@ -67,7 +75,7 @@ function readInitialSnapshot(provider: PropertyPanelProps['provider']): Frontmat
   return { map, keys, parseError };
 }
 
-export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
+export function PropertyPanel({ provider, reservedKeys, identitySlot }: PropertyPanelProps) {
   const { t } = useLingui();
   const reserved = new Set(reservedKeys ?? []);
   // Binding for read + write — over the YAML region of `Y.Text('source')`.
@@ -400,7 +408,7 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
   const dupCount = new Map<string, number>();
   for (const k of renderKeys) dupCount.set(k, (dupCount.get(k) ?? 0) + 1);
 
-  if (renderKeys.length === 0 && !adding && !parseError) return null;
+  if (renderKeys.length === 0 && !adding && !parseError && !identitySlot) return null;
 
   // Flush-left alignment. Sortable rows carry a drag-handle gutter (FrontmatterRow:
   // a `w-4` handle + `gap-1` = 1.25rem) that pushes the type-icon column right of
@@ -451,6 +459,9 @@ export function PropertyPanel({ provider, reservedKeys }: PropertyPanelProps) {
               </div>
             </div>
           ) : null}
+          {/* Identity rows (e.g. a skill's `name`) render first — they are the
+              doc's fixed-key properties, above the free-form frontmatter rows. */}
+          {identitySlot}
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}

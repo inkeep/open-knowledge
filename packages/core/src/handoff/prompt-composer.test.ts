@@ -410,6 +410,21 @@ test('composeCreatePrompt degrades an empty brief to a scenario-appropriate bare
   );
 });
 
+test('composeCreatePrompt skill frames the brief as a new skill authored via write-skill', () => {
+  const out = composeCreatePrompt('a PR reviewer', false, 'skill', []);
+  expect(out).toContain("I want to create a new Open Knowledge skill. Here's what it should do:");
+  expect(out).toContain('> a PR reviewer');
+  expect(out).toContain('Use your open-knowledge-write-skill skill to author it');
+});
+
+test('composeCreatePrompt skill empty brief degrades to a bare write-skill directive', () => {
+  const expected =
+    "Let's create a new Open Knowledge skill." +
+    ' Use your open-knowledge-write-skill skill to author it with the Open Knowledge tools.';
+  expect(composeCreatePrompt('', false, 'skill', [])).toBe(expected);
+  expect(composeCreatePrompt('   \n  ', false, 'skill', [])).toBe(expected);
+});
+
 test('composeCreatePrompt does NOT sanitize the brief — user input is trusted, not a path', () => {
   // The path composers defang filenames (control bytes, backticks) because
   // filenames cross a privilege boundary. The create brief is the user's own

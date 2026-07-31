@@ -8,7 +8,7 @@
  *   - document → CRDT (`POST /api/agent-write-md`) [Requires: Hocuspocus]
  *   - folder   → `POST /api/create-folder` (mkdir) + `PUT /api/folder-config` frontmatter (attributed) [Requires: Hocuspocus]
  *   - template → `PUT /api/template` (server, attributed) → `<folder>/.ok/templates/<name>.md`
- *   - skill    → `PUT /api/skill` (server, attributed) → `.ok/skills/<name>/SKILL.md` (authored via the `skill` target, never a raw `document` path under `.ok/skills/`)
+ *   - skill    → `PUT /api/skill` (server, attributed) → the skill's bundle dir at the project's default skill home (authored via the `skill` target, never a raw `document` path into a skills folder)
  *   - asset    → multipart `POST /api/upload` [Requires: Hocuspocus]
  *
  * The "exactly one target" constraint is the one soft constraint the SDK
@@ -92,7 +92,7 @@ const BASE_DESCRIPTION = [
   '- `document` — Create or overwrite a doc via the CRDT layer [Requires: Hocuspocus server]. `{ path, content }`, or `{ path, template }` to instantiate from a folder template (mutually exclusive with `content`). Optional `frontmatter` (its own YAML) and `position` (`replace` default for a new doc; required for an existing one) — note supplying `frontmatter` alongside literal `content` forces `position: replace` (the only position that persists a YAML block), overriding an explicit `append`/`prepend`. Example: `{ document: { path: "meetings/standup", content: "# Standup\\n..." } }`.',
   '- `folder` — Create a NEW folder (optionally with its own properties) [Requires: Hocuspocus server]. `{ path, frontmatter? }`. To change an EXISTING folder use `edit`. Example: `{ folder: { path: "ideas" } }`.',
   '- `template` — Create a reusable starting shape for new docs in a folder. `{ path: "<folder>/<name>", content, frontmatter: { title, description?, tags? } }`.',
-  '- `skill` — Create or overwrite an agent SKILL (`.ok/skills/<name>/SKILL.md`): reusable agent guidance you author in OK and `install` into your editors. `{ name, description, body, scope? }`. `name` is the identity (lowercase-hyphen); `description` is the trigger (when to use it). Example: `{ skill: { name: "trip-log", description: "Use when logging a fishing trip.", body: "# Steps\\n..." } }`.',
+  '- `skill` — Create or overwrite an agent SKILL: reusable agent guidance you author in OK and `install` into your editors. A NEW skill lands at the project\'s default skill home (e.g. `.agents/skills/<name>/`); an existing one is edited at its real folder. `{ name, description, body, scope? }`. `name` is the identity (lowercase-hyphen); `description` is the trigger (when to use it). Example: `{ skill: { name: "trip-log", description: "Use when logging a fishing trip.", body: "# Steps\\n..." } }`.',
   '- `asset` — Upload a binary (image/file) via the media route [Requires: Hocuspocus server]. `{ path: "<folder>/<file.ext>", content(base64) | source(local path) }`.',
   '- `documents` — Batch: `[{ path, content?|template?, frontmatter?, position?, summary? }, ...]` written in order; the response reports each.',
   '- `summary` — Optional one-line user-outcome (≤80 chars) for the timeline, for a single `document`/`folder`/`template`/`asset` write. For a `documents` batch, give each entry its own `summary` instead (a top-level `summary` is ignored on the batch path). Avoid secrets or PII — persisted to git history.',
@@ -946,7 +946,7 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
           })
           .optional()
           .describe(
-            'Create or overwrite an agent SKILL bundle (`.ok/skills/<name>/`). SKILL.md is authored via `description`+`body`; `references/**` and `scripts/**` via the `files` array. Example: { skill: { name: "trip-log", description: "Use when logging a fishing trip.", body: "# Steps\\n...", files: [{ path: "references/gear.md", content: "..." }] } }',
+            'Create or overwrite an agent SKILL bundle (a NEW skill lands at the project\'s default skill home, e.g. `.agents/skills/<name>/`). SKILL.md is authored via `description`+`body`; bundle files (any path — `references/**`, `scripts/**`, `assets/**`, …) via the `files` array. Example: { skill: { name: "trip-log", description: "Use when logging a fishing trip.", body: "# Steps\\n...", files: [{ path: "references/gear.md", content: "..." }] } }',
           ),
         asset: z
           .object({

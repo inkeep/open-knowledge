@@ -28,6 +28,7 @@ import {
   parseWriterId,
   readContributors,
   resolveGitDir,
+  resolveProjectIdentity,
   resolveShadowDir,
 } from './shadow-repo-layout.ts';
 
@@ -1610,5 +1611,43 @@ describe('composeCommitSubject — line-terminator stripping (commit-injection g
     // subject line, where parseOkActors does not match it (the prefix
     // `ok-actor: ` only fires when it begins a body line).
     expect(subject.split('\n').length).toBe(1);
+  });
+});
+
+describe('resolveProjectIdentity', () => {
+  test('re-anchors a linked worktree onto its main-worktree root', () => {
+    const main = resolve(tmp, 'main');
+    const adminDir = resolve(main, '.git', 'worktrees', 'wt');
+    mkdirSync(adminDir, { recursive: true });
+    // commondir points from the per-worktree admin dir back at the shared `.git`.
+    writeFileSync(resolve(adminDir, 'commondir'), '../..\n');
+    const wt = resolve(tmp, 'wt');
+    mkdirSync(wt, { recursive: true });
+    writeFileSync(resolve(wt, '.git'), `gitdir: ${adminDir}\n`);
+
+    // Bit-identical to the main checkout's own identity (not the worktree path).
+    expect(resolveProjectIdentity(wt)).toBe(main);
+  });
+
+  test('leaves a main worktree (real `.git` dir) unchanged', () => {
+    const main = resolve(tmp, 'main');
+    mkdirSync(resolve(main, '.git'), { recursive: true });
+    expect(resolveProjectIdentity(main)).toBe(main);
+  });
+
+  test('leaves a non-git dir unchanged', () => {
+    const plain = resolve(tmp, 'plain');
+    mkdirSync(plain, { recursive: true });
+    expect(resolveProjectIdentity(plain)).toBe(plain);
+  });
+
+  test('degrades to the raw worktree path when commondir is unreadable', () => {
+    const main = resolve(tmp, 'main');
+    const adminDir = resolve(main, '.git', 'worktrees', 'wt');
+    mkdirSync(adminDir, { recursive: true }); // no commondir file written
+    const wt = resolve(tmp, 'wt');
+    mkdirSync(wt, { recursive: true });
+    writeFileSync(resolve(wt, '.git'), `gitdir: ${adminDir}\n`);
+    expect(resolveProjectIdentity(wt)).toBe(wt);
   });
 });

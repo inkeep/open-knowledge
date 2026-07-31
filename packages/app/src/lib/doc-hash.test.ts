@@ -4,17 +4,22 @@ import {
   assetPathFromHash,
   docNameFromHash,
   encodeShareTargetForHash,
+  encodeSkillPreviewSegments,
   hashFromAssetPath,
   hashFromDocName,
   hashFromFolderPath,
   hashFromSkillFile,
+  hashFromSkillPreview,
   isContentRootHash,
   isManagedHashHistoryState,
   markCurrentHashHistoryEntry,
   pushHashWithoutNavigation,
   replaceHashWithoutNavigation,
   type SkillFileHashTarget,
+  type SkillPreviewHashTarget,
+  selectedPathForSkillPreview,
   skillFileFromHash,
+  skillPreviewFromHash,
 } from './doc-hash';
 import { skillLiveDocName, templateDocName } from './managed-artifact-doc-name';
 
@@ -394,6 +399,27 @@ describe('skill-file hash', () => {
     expect(skillFileFromHash(hashFromSkillFile(target))).toEqual(target);
   });
 
+  test('round-trips the host that separates two same-named skills', () => {
+    const target = {
+      scope: 'project',
+      name: 'review',
+      path: 'references/guide.md',
+      host: 'codex',
+    } satisfies SkillFileHashTarget;
+    const hash = hashFromSkillFile(target);
+    expect(skillFileFromHash(hash)).toEqual(target);
+    // Distinct from the same file in the same-named skill next door.
+    expect(hash).not.toBe(hashFromSkillFile({ ...target, host: 'claude' }));
+  });
+
+  test('a hash written before hosts existed still parses (by-name default)', () => {
+    expect(skillFileFromHash('#/__skill-file__/global/trip-log/references/guide.md')).toEqual({
+      scope: 'global',
+      name: 'trip-log',
+      path: 'references/guide.md',
+    });
+  });
+
   test('a skill-file hash is not read as a docName or asset path', () => {
     const hash = hashFromSkillFile({ scope: 'global', name: 'x', path: 'scripts/run.sh' });
     expect(docNameFromHash(hash)).toBeNull();
@@ -412,5 +438,124 @@ describe('skill-file hash', () => {
     // hand-edited or stale hash with a bogus scope must not become a target.
     expect(skillFileFromHash('#/__skill-file__/bogus/trip-log/references/x.md')).toBeNull();
     expect(skillFileFromHash('#/__skill-file__/personal/trip-log/references/x.md')).toBeNull();
+  });
+});
+
+describe('skill-preview hash', () => {
+  test('preserves a file selection only for the same preview identity', () => {
+    const alpha = {
+      flavor: 'explore',
+      source: 'owner/a',
+      name: 'alpha',
+      subtitle: 'owner/a',
+      path: 'references/details.md',
+    } satisfies SkillPreviewHashTarget;
+    const beta = {
+      flavor: 'explore',
+      source: 'owner/b',
+      name: 'beta',
+      subtitle: 'owner/b',
+    } satisfies SkillPreviewHashTarget;
+
+    expect(selectedPathForSkillPreview(hashFromSkillPreview(alpha), alpha)).toBe(
+      'references/details.md',
+    );
+    expect(selectedPathForSkillPreview(hashFromSkillPreview(alpha), beta)).toBeUndefined();
+  });
+
+  test('round-trips explore + detected targets, defaulting an absent level', () => {
+    // A level-less target comes back AT the default rather than level-less: the
+    // identity carries exactly one spelling, so two callers who disagree about
+    // passing a level cannot open two tabs for one preview.
+    const cases: SkillPreviewHashTarget[] = [
+      { flavor: 'explore', source: 'owner/repo', name: 'ai-sdk', subtitle: 'owner/repo' },
+      { flavor: 'detected', source: '/Users/me/.ok/skills/1on1', name: '1on1', subtitle: 'claude' },
+    ];
+    for (const target of cases) {
+      expect(skillPreviewFromHash(hashFromSkillPreview(target))).toEqual({
+        ...target,
+        level: 'project',
+      });
+    }
+    // An EXPLICIT level survives untouched.
+    const global = {
+      flavor: 'explore',
+      source: 'owner/repo',
+      name: 'ai-sdk',
+      subtitle: 'owner/repo',
+      level: 'global',
+    } satisfies SkillPreviewHashTarget;
+    expect(skillPreviewFromHash(hashFromSkillPreview(global))).toEqual(global);
+  });
+
+  test('a level-less and a project-level target share ONE identity', () => {
+    // The duplicate-tab bug: same skill, same source, two tab ids.
+    const withoutLevel = {
+      flavor: 'explore',
+      source: 'open.feishu.cn',
+      name: 'lark-doc',
+      subtitle: 'open.feishu.cn',
+    } satisfies SkillPreviewHashTarget;
+    const withLevel = { ...withoutLevel, level: 'project' } satisfies SkillPreviewHashTarget;
+    expect(encodeSkillPreviewSegments(withoutLevel)).toBe(encodeSkillPreviewSegments(withLevel));
+  });
+
+  test('round-trips a selected-file path (with and without a level)', () => {
+    const cases: SkillPreviewHashTarget[] = [
+      // path, no level → the level defaults, so path stays the 6th segment.
+      {
+        flavor: 'detected',
+        source: '/x/1on1',
+        name: '1on1',
+        subtitle: 'claude',
+        path: 'references/notes.md',
+      },
+      // path + level.
+      {
+        flavor: 'detected',
+        source: '/x/1on1',
+        name: '1on1',
+        subtitle: 'claude',
+        level: 'global',
+        path: 'references/sub/deep.md',
+      },
+      // a scripts path.
+      { flavor: 'explore', source: 'o/r', name: 'x', subtitle: 'o/r', path: 'scripts/run.sh' },
+    ];
+    for (const target of cases) {
+      expect(skillPreviewFromHash(hashFromSkillPreview(target))).toEqual({
+        level: 'project',
+        ...target,
+      });
+    }
+  });
+
+  test('path is NOT part of the tab-identity encoding (one tab, body switches)', () => {
+    // encodeSkillPreviewSegments drives the persisted tab id; adding a path must
+    // NOT change it, or every file click would spawn a separate preview tab.
+    const base: SkillPreviewHashTarget = {
+      flavor: 'detected',
+      source: '/x/1on1',
+      name: '1on1',
+      subtitle: 'claude',
+      level: 'global',
+    };
+    expect(encodeSkillPreviewSegments({ ...base, path: 'references/notes.md' })).toBe(
+      encodeSkillPreviewSegments(base),
+    );
+  });
+
+  test('rejects an unknown flavor', () => {
+    expect(skillPreviewFromHash('#/__skill-preview__/bogus/owner%2Frepo/x/y')).toBeNull();
+  });
+
+  test('docNameFromHash ignores the skill-preview route', () => {
+    const hash = hashFromSkillPreview({
+      flavor: 'explore',
+      source: 'o/r',
+      name: 'x',
+      subtitle: 'o/r',
+    });
+    expect(docNameFromHash(hash)).toBeNull();
   });
 });

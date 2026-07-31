@@ -444,7 +444,16 @@ describe('AgentPresenceBroadcaster', () => {
 
     // Discover agent-write handlers via `applyAgentMarkdownWrite(` /
     // `applyAgentUndo(` / `applyPatchToFm(` call sites.
-    const handlerCallSites = src.match(/apply(?:AgentMarkdownWrite|AgentUndo|PatchToFm)\(/g) ?? [];
+    //
+    // `applyPatchToFm` also has non-doc uses — rewriting the frontmatter of a
+    // file on disk, with no CRDT write and no agent identity, so there is no
+    // presence to broadcast. Those sites carry the marker below, on the line
+    // before the call, and are not handlers. The marker suppresses discovery
+    // ONLY; it can't weaken the shape assertions for the real handlers.
+    const NOT_AN_AGENT_WRITE = 'presence-exempt: no CRDT write, no agent identity';
+    const handlerCallSites = [
+      ...src.matchAll(/apply(?:AgentMarkdownWrite|AgentUndo|PatchToFm)\(/g),
+    ].filter((m) => !src.slice(Math.max(0, m.index - 200), m.index).includes(NOT_AN_AGENT_WRITE));
     const expectedCount = handlerCallSites.length;
     expect(expectedCount).toBeGreaterThanOrEqual(5); // 3 write + 1 undo + 1 fm-patch
 

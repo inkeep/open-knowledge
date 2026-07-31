@@ -323,3 +323,21 @@ describe('makeLinkResolutionAttrsComputer', () => {
     expect(computer(makeMarkInfo({ href: null }), null)).toBeNull();
   });
 });
+
+describe('skill-internal relative links', () => {
+  const SKILL_DOC = '.agents/skills/bake-lume-golden/SKILL';
+  const REF = '.agents/skills/bake-lume-golden/references/per-layer-diagnosis';
+
+  test("a skill's own references/ link resolves against the page cache", () => {
+    const cache = makeCache({
+      pages: [SKILL_DOC, REF],
+      folderPaths: [
+        '.agents/skills/bake-lume-golden',
+        '.agents/skills/bake-lume-golden/references',
+      ],
+    });
+    expect(computeLinkResolutionState('references/per-layer-diagnosis.md', SKILL_DOC, cache)).toBe(
+      'resolved',
+    );
+  });
+});

@@ -941,7 +941,7 @@ describe('buildMenuTemplate — View → Show .ok folders', () => {
   });
 });
 
-describe('buildMenuTemplate — View → Show only markdown files / Show skills section', () => {
+describe('buildMenuTemplate — View → Show only markdown files / Skills section', () => {
   test('Show only markdown files renders as a checkbox, unchecked by default', () => {
     const template = buildMenuTemplate(
       makeDeps({ onToggleShowOnlyMarkdownFiles: vi.fn(() => {}) }),
@@ -963,29 +963,29 @@ describe('buildMenuTemplate — View → Show only markdown files / Show skills 
     expect(findByLabel(template, 'Show only markdown files')?.checked).toBe(true);
   });
 
-  test('Show skills section renders as a checkbox, CHECKED by default (section is default-on)', () => {
+  test('Skills section renders as a checkbox, CHECKED by default (section is default-on)', () => {
     // The unwired-checked default must match the renderer's resolved config
     // default (showSkillsSection ?? true) so the menu reads correctly before
     // the first renderer push lands — the inverse of Show hidden files.
     const template = buildMenuTemplate(makeDeps({ onToggleShowSkillsSection: vi.fn(() => {}) }));
-    const item = findByLabel(template, 'Show skills section');
+    const item = findByLabel(template, 'Skills section');
     expect(item).toBeDefined();
     expect(item?.type).toBe('checkbox');
     expect(item?.checked).toBe(true);
     expect(item?.enabled).toBe(true);
   });
 
-  test('Show skills section reflects showSkillsSectionChecked', () => {
+  test('Skills section reflects showSkillsSectionChecked', () => {
     const template = buildMenuTemplate(
       makeDeps({ onToggleShowSkillsSection: vi.fn(() => {}), showSkillsSectionChecked: false }),
     );
-    expect(findByLabel(template, 'Show skills section')?.checked).toBe(false);
+    expect(findByLabel(template, 'Skills section')?.checked).toBe(false);
   });
 
   test('both DISABLED when their toggle handler is missing (unit-test default)', () => {
     const template = buildMenuTemplate(makeDeps());
     expect(findByLabel(template, 'Show only markdown files')?.enabled).toBe(false);
-    expect(findByLabel(template, 'Show skills section')?.enabled).toBe(false);
+    expect(findByLabel(template, 'Skills section')?.enabled).toBe(false);
   });
 
   test('neither binds a keyboard accelerator (only Show hidden files carries Cmd+Shift+.)', () => {
@@ -996,7 +996,7 @@ describe('buildMenuTemplate — View → Show only markdown files / Show skills 
       }),
     );
     expect(findByLabel(template, 'Show only markdown files')?.accelerator).toBeUndefined();
-    expect(findByLabel(template, 'Show skills section')?.accelerator).toBeUndefined();
+    expect(findByLabel(template, 'Skills section')?.accelerator).toBeUndefined();
   });
 
   test('clicks dispatch their toggle deps', () => {
@@ -1007,7 +1007,7 @@ describe('buildMenuTemplate — View → Show only markdown files / Show skills 
     );
     (findByLabel(template, 'Show only markdown files')?.click as (() => void) | undefined)?.();
     expect(onToggleShowOnlyMarkdownFiles).toHaveBeenCalledTimes(1);
-    (findByLabel(template, 'Show skills section')?.click as (() => void) | undefined)?.();
+    (findByLabel(template, 'Skills section')?.click as (() => void) | undefined)?.();
     expect(onToggleShowSkillsSection).toHaveBeenCalledTimes(1);
   });
 
@@ -1017,11 +1017,11 @@ describe('buildMenuTemplate — View → Show only markdown files / Show skills 
       (findByLabel(template, 'Show only markdown files')?.click as (() => void) | undefined)?.(),
     ).not.toThrow();
     expect(() =>
-      (findByLabel(template, 'Show skills section')?.click as (() => void) | undefined)?.(),
+      (findByLabel(template, 'Skills section')?.click as (() => void) | undefined)?.(),
     ).not.toThrow();
   });
 
-  test('order: Show hidden files → Show .ok folders → Show only markdown files → Show skills section → expand/collapse', () => {
+  test('order: Show hidden files → Show .ok folders → Show only markdown files → Skills section → expand/collapse', () => {
     // Same order as the tree-options popover Show group so every surface
     // presents the visibility toggles identically.
     const template = buildMenuTemplate(
@@ -1039,7 +1039,7 @@ describe('buildMenuTemplate — View → Show only markdown files / Show skills 
     const hiddenIdx = labels.indexOf('Show hidden files');
     const okIdx = labels.indexOf('Show .ok folders');
     const onlyMdIdx = labels.indexOf('Show only markdown files');
-    const skillsIdx = labels.indexOf('Show skills section');
+    const skillsIdx = labels.indexOf('Skills section');
     const expandIdx = labels.indexOf('Expand all');
     expect(hiddenIdx).toBeGreaterThan(-1);
     expect(okIdx).toBe(hiddenIdx + 1);

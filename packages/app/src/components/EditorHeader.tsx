@@ -48,7 +48,7 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
   // own header treatment: neither skills nor templates are shareable (the
   // synthetic doc name isn't a real on-disk path to share), so the ShareButton
   // trigger gates on this. The agent-handoff for a skill lives in the Skills
-  // sidebar (SkillRow / skill-actions), not the header.
+  // sidebar (SkillsSidebarSection / skill-actions), not the header.
   const managedArtifact = activeDocName ? parseManagedArtifactName(activeDocName) : null;
   const { state: sidebarState, isDraggingRail } = useSidebar();
   // No-project single-file session (`ok <file>`): drop the project chrome

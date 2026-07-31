@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { installPackSkill } from './install-pack-skill.ts';
+import { join, resolve } from 'node:path';
+import { scanInPlaceSkills } from '../in-place-skills.ts';
+import { installPackSkill, resolvePackSkillSources } from './install-pack-skill.ts';
 import { assertEntryPathInProject } from './path-safety.ts';
 import { buildStarterFolderFrontmatterYaml, DEFAULT_PACK_ID, resolvePack } from './starter.ts';
 import type { ApplyError, ApplyResult, FileEntry, ScaffoldPlan, SeedOptions } from './types.ts';
@@ -142,11 +143,26 @@ export async function applySeed(plan: ScaffoldPlan, opts: SeedOptions = {}): Pro
     }
   }
 
-  // Author + install the pack's project-local skill (into `.ok/skills/` so it
-  // shows in the Skills list + into each set-up editor's host dir). Single site
-  // for every seed entry point (CLI / desktop IPC / HTTP), since they all call
-  // applySeed. No-op when no editor is set up or the pack ships no skill.
+  // Author + install the pack's project-local skills IN PLACE (the default
+  // skill home — same landing as creates/imports; store retirement) + fan out
+  // to each set-up editor. Single site for every seed entry point (CLI /
+  // desktop IPC / HTTP), since they all call applySeed. No-op when no editor
+  // is set up or the pack ships no skill.
   const packSkillsInstalled = await installPackSkill(projectDir, pack.id);
+
+  // `installPackSkill` logs and skips a skill whose source it could not author,
+  // so a decomposed pack can land some skills and drop others while still
+  // reporting the editors it reached. Surface the gap on the same `errors`
+  // channel as file entries: a partial install must not read as a clean seed.
+  // The skill can live at ANY root under the in-place model — the scan is the
+  // presence truth (a legacy `.ok/skills` resident counts too).
+  const presentNames = new Set(scanInPlaceSkills(projectDir).map((sk) => sk.name));
+  for (const { name } of resolvePackSkillSources(pack.id)) {
+    const inStore = existsSync(join(projectDir, '.ok', 'skills', name, 'SKILL.md'));
+    if (!presentNames.has(name) && !inStore) {
+      errors.push({ path: name, error: 'skill source could not be authored' });
+    }
+  }
 
   return {
     applied,

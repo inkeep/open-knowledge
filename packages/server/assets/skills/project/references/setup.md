@@ -24,3 +24,9 @@ ok start
 ## Rung 3 — Desktop app, optional
 
 For a native editor with the file tree, property panel, and built-in preview, install the OK Desktop app. The quickstart link above has the current download — it tracks the latest release, so grab it there rather than from a pinned URL.
+
+## Tool visibility — before you conclude the MCP is missing
+
+**MCP tool visibility — not seeing `exec` is NOT the escape hatch.** MCP wiring varies by client (Claude Code, Cursor, Codex, Windsurf, VS Code). Server labels are user-defined; tools may not appear as top-level symbols named `exec`. If OpenKnowledge is registered as an MCP server here, route markdown reads through its `exec` / `search` via your client's documented MCP invocation (including any generic "call MCP tool" flow). Registration is the test, not top-level-symbol visibility.
+
+**Your initial tool list is NOT exhaustive — run tool discovery before concluding the MCP is missing.** Some clients (notably Codex) defer MCP tools behind a lazy `tool_search` / tool-discovery step, so `mcp__open-knowledge__*` is absent from the upfront tool set and only appears after you search for it. Absence from the visible list means "I have not discovered it yet," NOT "it is not registered." If you don't see the tools, your first move is to run your client's tool-discovery / `tool_search` for `open-knowledge` (or `exec` / `search` / `write`) — do not infer unavailability from the initial list.

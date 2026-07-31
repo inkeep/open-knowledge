@@ -11,7 +11,7 @@ import { dirname, join, posix, win32 } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { __testing, resolveBundledSkillDir } from './build-skill-zip.ts';
 
-const { computeWrapperFolderName, extractMetadataVersion, toPosixZipPath } = __testing;
+const { computeWrapperFolderName, toPosixZipPath } = __testing;
 
 /** Build the `Contents/Resources/cli/dist/assets/skills/<which>` subpath that
  *  a co-installed OK Desktop ships, rooted at an arbitrary `appsRoot`. */
@@ -28,24 +28,6 @@ function desktopSkillDir(appsRoot: string, which: 'discovery' | 'project'): stri
     which,
   );
 }
-
-describe('extractMetadataVersion', () => {
-  const FM_BODY = 'name: open-knowledge\nmetadata:\n  version: "1.2.3"\n';
-
-  test('reads metadata.version from a bare-fence SKILL.md', () => {
-    expect(extractMetadataVersion(`---\n${FM_BODY}---\n\n# Skill\n`)).toBe('1.2.3');
-  });
-
-  test('tolerates trailing whitespace on the fence lines (core fence contract)', () => {
-    expect(extractMetadataVersion(`--- \n${FM_BODY}--- \n\n# Skill\n`)).toBe('1.2.3');
-    expect(extractMetadataVersion(`---\t\n${FM_BODY}---\n\n# Skill\n`)).toBe('1.2.3');
-  });
-
-  test('returns undefined when frontmatter or metadata.version is absent', () => {
-    expect(extractMetadataVersion('# No frontmatter\n')).toBeUndefined();
-    expect(extractMetadataVersion('---\nname: open-knowledge\n---\n')).toBeUndefined();
-  });
-});
 
 describe('computeWrapperFolderName', () => {
   test('POSIX: returns last segment', () => {

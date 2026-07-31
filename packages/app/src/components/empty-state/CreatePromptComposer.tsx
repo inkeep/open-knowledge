@@ -408,8 +408,16 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
             doc/file corpus to insert reference chips. */}
         <ComposerMentionInput
           ref={inputRef}
-          ariaLabel={t`Describe the project you want to create`}
-          placeholder={t`A team knowledge base, a personal wiki, project docs...`}
+          ariaLabel={
+            scenario === 'skill'
+              ? t`Describe the skill you want to create`
+              : t`Describe the project you want to create`
+          }
+          placeholder={
+            scenario === 'skill'
+              ? t`A PR reviewer, a release-notes writer, a deploy checklist...`
+              : t`A team knowledge base, a personal wiki, project docs...`
+          }
           onEmptyChange={handleEmptyChange}
           onContentChange={setComposerDraftDoc}
           onSubmit={handleSubmit}
@@ -624,10 +632,11 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
       </div>
       {/* Starter-brief chips — below the card, centered. Clicking one prefills
           the field (no auto-create), so they read as suggestions rather than
-          card actions. Wraps on narrow widths. Suppressed for `existing-repo`:
-          the repo's own contents are the starting point, so we don't pitch
-          generic prefills there (the embedded copy-list still shows them). */}
-      {scenario !== 'existing-repo' && suggestions.length > 0 ? (
+          card actions. Wraps on narrow widths. Only `new-project` pitches these
+          generic KB prefills: `existing-repo` starts from the repo's own
+          contents, and `skill` authoring has nothing to do with them (the
+          embedded copy-list still shows the full set). */}
+      {scenario === 'new-project' && suggestions.length > 0 ? (
         <div className="flex flex-wrap items-center justify-center gap-2">
           <span className="text-1sm text-muted-foreground">
             <Trans>Try a prompt</Trans>

@@ -76,6 +76,7 @@ import {
 import { Kbd } from '@/components/ui/kbd';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import type { TagSummaryEntry } from '@/editor/extensions/tag-suggestion';
+import { useCreateBlankSkill } from '@/hooks/use-create-blank-skill';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { useSemanticSearchStatus } from '@/hooks/use-semantic-search-status';
 import { useWorktrees } from '@/hooks/use-worktrees';
@@ -360,6 +361,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   // chunk + the `bugReport.list()` fetch don't run on every palette open.
   const [historyEverOpened, setHistoryEverOpened] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const { createBlank: createBlankSkill } = useCreateBlankSkill();
   // Tag-mode state. Loaded lazily on first `tag:` keystroke; cached for
   // the lifetime of the palette session (cleared on close in the open-
   // toggle effect). Loading flag drives the `tag-list` placeholder UI;
@@ -914,6 +916,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
       setReportBugHistoryOpen(true);
     },
     openFeedbackDialog: () => setFeedbackOpen(true),
+    createBlankSkill: () => void createBlankSkill('project'),
   };
   const visibleFixedCommands = inExclusiveMode
     ? []

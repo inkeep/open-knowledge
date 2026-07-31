@@ -70,7 +70,7 @@ ok seed --pack plain-notes
 The pack creates `notes/` and `daily/` at the project root (no subfolder), each with its `.ok/frontmatter.yml` guidance and template. That's the whole footprint — minimal on purpose.
 
 <Callout type="info" title="Seeding also installs a skill">
-  `ok seed --pack plain-notes` installs the **Plain notes** project skill into your agent editors (Claude Code, Cursor, Codex, OpenCode). It's the "how to work here" guidance that gives the agent the linking habit and the daily-chain behavior — read automatically, and editable like any other doc. It lands as a real `SKILL.md` committed to your repo under `.ok/skills/`, symlinked into each detected editor. See [Skills](../features/skills.mdx) and [what OpenKnowledge writes to disk](../reference/what-open-knowledge-writes.mdx).
+  `ok seed --pack plain-notes` installs the **Plain notes** project skill into your agent editors (Claude Code, Cursor, Codex, OpenCode). It's the "how to work here" guidance that gives the agent the linking habit and the daily-chain behavior — read automatically, and editable like any other doc. It lands as a real `SKILL.md` committed to your repo in your project's skills directory (`.agents/skills/` when you have one, otherwise your editor's), copied into the skills directory of each editor already set up for the project. The copies refresh from the source until you hand-edit one. See [Skills](../features/skills.mdx) and [what OpenKnowledge writes to disk](../reference/what-open-knowledge-writes.mdx).
 </Callout>
 
 ## Cadence

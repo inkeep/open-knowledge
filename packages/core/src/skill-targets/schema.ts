@@ -2,11 +2,11 @@
  * Schema for the per-project skill-targets store at
  * `<projectDir>/.ok/skill-targets.json`.
  *
- * The editable set of editor host dirs OK projects skills into. Unlike the
- * installed-skills marker (`.ok/local/`, per-machine), this lives at `.ok/`
- * root — COMMITTED, so teammates inherit one target set. Changing it
- * re-projects every managed skill (authored + OK's shipped `open-knowledge`
- * bundle) to the new set and reverse-projects from dropped editors.
+ * RETIRED with the `.ok/skills` store. Nothing reads or writes this file any
+ * more: targets are DETECTED from the editors a project is already configured
+ * for, and a skill's reach is per-skill in its install menu. The shape is kept
+ * only so an existing committed file still parses — a project that has one can
+ * delete it, and new projects never get one.
  *
  * Kept out of `config.yml` deliberately: config is a CRDT Y.Text doc with no
  * programmatic field-patch path, whereas this is a plain atomically-writable
@@ -20,16 +20,6 @@
 
 import { z } from 'zod';
 import { type EditorId, PROJECT_SKILL_EDITOR_IDS } from '../constants/editors.ts';
-import { OK_DIR } from '../constants/ok-dir.ts';
-
-/** Filename of the committed skill-targets store under `.ok/`. */
-export const SKILL_TARGETS_FILENAME = 'skill-targets.json';
-
-/** Path segments relative to the project root (committed — NOT under `local/`). */
-export const SKILL_TARGETS_REL = [OK_DIR, SKILL_TARGETS_FILENAME] as const;
-
-/** Schema major version. Bump on breaking shape changes with a migrator. */
-export const SKILL_TARGETS_SCHEMA_VERSION = 1;
 
 /**
  * Editor ids valid as install-projection targets. Runtime values come from the
@@ -55,24 +45,14 @@ export const SkillTargetEditorSchema = z.enum(
 );
 export type SkillTargetEditor = z.infer<typeof SkillTargetEditorSchema>;
 
-export const SkillTargetsSchema = z.looseObject({
-  schema: z.literal(SKILL_TARGETS_SCHEMA_VERSION),
-  targets: z.array(SkillTargetEditorSchema).default([]),
-});
-export type SkillTargets = z.infer<typeof SkillTargetsSchema>;
-
 /**
- * Parse + validate raw skill-targets JSON. Returns `null` on parse error or
- * schema violation (fail-soft — a corrupt store is treated as "unset", so OK
- * falls back to detection rather than throwing).
+ * The install-verb target vocabulary: the per-project editor set plus the
+ * `.agents` hub pseudo-host. ONE membership predicate — the scattered
+ * `h === 'agents' || EDITORS.includes(h)` copies it replaces were the
+ * breeding ground for vocabulary-gap bugs (a host id the predicate can't
+ * express gets silently dropped from set-exact semantics).
  */
-export function parseSkillTargets(raw: string): SkillTargets | null {
-  let json: unknown;
-  try {
-    json = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  const parsed = SkillTargetsSchema.safeParse(json);
-  return parsed.success ? parsed.data : null;
+export type SkillInstallTarget = SkillTargetEditor | 'agents';
+export function isSkillInstallTarget(host: string): host is SkillInstallTarget {
+  return host === 'agents' || (PROJECT_SKILL_EDITOR_IDS as readonly string[]).includes(host);
 }

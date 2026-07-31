@@ -286,6 +286,16 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     availability: {},
     palette: { group: 'commands', visibility: 'always' },
   },
+  {
+    // Palette-only: "New skill" was never a native-menu leaf (it lives in the
+    // Skills sidebar/hub), so the menu-parity backfill structurally never picked
+    // it up. Creates a blank project-scope skill and opens it — no install.
+    id: 'new-skill',
+    labelKey: 'newSkill',
+    keywords: ['skill', 'create', 'author', 'new'],
+    availability: { singleFileHidden: true },
+    palette: { group: 'commands', visibility: 'always' },
+  },
   // ── Project group (palette) / File-project (menu) ───────────────────────────
   {
     id: 'new-project',
@@ -334,6 +344,14 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
         menuLabelKey: 'openFile',
       },
     ],
+  },
+  {
+    id: 'open-skills',
+    labelKey: 'openSkills',
+    keywords: ['skills marketplace explore import discover'],
+    availability: { singleFileHidden: true },
+    palette: { group: 'project', visibility: 'always' },
+    menu: [],
   },
   {
     id: 'switch-project',

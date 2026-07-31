@@ -29,11 +29,13 @@ export const appDomVitestConfig = {
     environmentOptions: {
       jsdom: { url: 'http://localhost:5173', pretendToBeVisual: true },
     },
-    include: ['**/*.dom.test.tsx'],
+    // `.tsx` mounts React; `.ts` is the same jsdom tier for DOM-only tests
+    // that never render a component (shadow-root helpers, for instance).
+    include: ['**/*.dom.test.ts?(x)'],
     // The base config excludes `**/*.dom.test.tsx` so the unit tier stays
     // no-DOM; this is the one project that runs them, so drop that single
     // exclusion while keeping node_modules / .spec / .e2e out.
-    exclude: appVitestConfig.test.exclude.filter((pattern) => pattern !== '**/*.dom.test.tsx'),
+    exclude: appVitestConfig.test.exclude.filter((pattern) => pattern !== '**/*.dom.test.ts?(x)'),
     setupFiles: [...appVitestConfig.test.setupFiles, jsdomSetupPath],
     // Per-test budget carried over from the bun `--timeout 30000`. Declared
     // literally (not only inherited) so the CI test-coverage meta-guard reads it

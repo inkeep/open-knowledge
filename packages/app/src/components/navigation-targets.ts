@@ -6,13 +6,15 @@ import {
   isMermaidDocFile,
   managedArtifactDocNameFromContentTarget,
   mediaKindForSidebarAssetExtension,
-  parseGlobalSkillBundleDoc,
   parseManagedArtifactName,
   projectSkillContentDocName,
   type SkillScope,
   toWikiLinkSlug,
 } from '@inkeep/open-knowledge-core';
+import { isSkillBundleShapedPath, isSkillDocName } from '@/editor/editor-tabs';
+import type { SkillPreviewFlavor } from '@/lib/doc-hash';
 import { normalizeDocNameInput } from '@/lib/doc-paths';
+import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name';
 import { computeAncestors, hasOkPathSegment } from './file-tree-utils';
 
 export type ResolvedNavigationTarget =
@@ -50,6 +52,36 @@ export type ResolvedNavigationTarget =
       name: string;
       /** Skill-relative path, e.g. `references/x.md` or `scripts/run.sh`. */
       path: string;
+      /**
+       * Which same-named bundle owns this file. Several distinct-content skills
+       * can share a name across host dirs; without this the read resolves to
+       * whichever one a bare name lookup lands on. Omitted = by-name default.
+       */
+      host?: string;
+    }
+  | {
+      // The Skills destination hub — a full-pane view with the My Skills dock +
+      // internal Explore / Installed / Sources tabs. A synthetic tab kind (like
+      // `skill-file`), opened via the `#/__skills__` hash; never resolved from a
+      // doc name, so it does not participate in `resolveNavigationTarget`.
+      kind: 'skills';
+      target: string;
+    }
+  | {
+      // A pre-install, read-only preview of an un-imported skill, opened full-pane
+      // with a Manage/Import action. Synthetic (like `skills`/`skill-file`), keyed
+      // by import coordinates via the `#/__skill-preview__/…` hash, never resolved
+      // from a doc name — the skill is not a project doc until it is managed.
+      kind: 'skill-preview';
+      target: string;
+      flavor: SkillPreviewFlavor;
+      source: string;
+      name: string;
+      subtitle: string;
+      level?: SkillScope;
+      /** Selected bundle file within the preview (from the hash) — the FILES list
+       *  + a sidebar click share one selection on a single preview tab. */
+      path?: string;
     }
   | {
       kind: 'large-file';
@@ -62,6 +94,34 @@ export type ResolvedNavigationTarget =
       kind: 'missing';
       target: string;
     };
+
+/**
+ * Everything `resolveNavigationTarget` can yield — the content targets, minus the
+ * synthetic `skills` hub (which is created only from the `#/__skills__` hash, never
+ * resolved from a doc name). Consumers of resolver output narrow to this so they
+ * don't carry an unreachable `skills` case.
+ */
+export type ResolvedContentTarget = Exclude<
+  ResolvedNavigationTarget,
+  { kind: 'skills' | 'skill-preview' }
+>;
+
+/**
+ * `true` when the active target is skill work — the Skills hub, a read-only
+ * bundle-file viewer, or a skill's SKILL.md/reference opened as a plain `doc`
+ * (project skills are content docs under `.ok/skills/`; global skills use the
+ * `__skill__/` managed-artifact name). Drives the sidebar's Files/Skills focus
+ * and the surface a freshly-opened new tab inherits, so both read from one rule.
+ */
+export function isSkillFocusedTarget(target: ResolvedNavigationTarget | null): boolean {
+  if (!target) return false;
+  if (target.kind === 'skills' || target.kind === 'skill-file' || target.kind === 'skill-preview')
+    return true;
+  return (
+    target.kind === 'doc' &&
+    (isSkillDocName(target.docName) || isSkillBundleShapedPath(target.docName))
+  );
+}
 
 interface DocumentSizeMeta {
   size?: number;
@@ -173,7 +233,7 @@ function okReadOnlyAssetPath(docName: string, docExt?: string): string {
 export function okContentNavigationTarget(
   docName: string,
   options: { pages: ReadonlySet<string>; docExt?: string },
-): ResolvedNavigationTarget | null {
+): ResolvedContentTarget | null {
   if (!hasOkPathSegment(docName)) return null;
   const artifactDocName = managedArtifactDocNameFromContentTarget(docName);
   if (artifactDocName) {
@@ -203,33 +263,21 @@ export function resolveNavigationTarget(
     pagesBySlug?: ReadonlyMap<string, string>;
     pagesByBasename?: ReadonlyMap<string, string>;
   },
-): ResolvedNavigationTarget {
+): ResolvedContentTarget {
   // Managed-artifact docs (skills/templates) are real docs addressed by their
   // exact synthetic name, but they live OUTSIDE the page list — so the
   // membership checks below would mark them 'missing'. Resolve them directly as
   // a doc target so every consumer (hash nav, graph, links) treats them as real
   // instead of broken/uncreated.
   if (isManagedArtifactDocName(target)) {
-    // A GLOBAL skill bundle REFERENCE graph node (`__skill__/global/<name>/
-    // references/<rel>`) is not an editor doc — it lives at `~/.ok/skills/`,
-    // outside the project, and opens read-only in the skill-file viewer. Resolve
-    // it to a `skill-file` target so a graph click routes there instead of a
-    // phantom doc tab. The node name is ext-less (content-doc style); global
-    // bundle nodes are `.md` references by construction, so reconstruct the
-    // on-disk path the scope-aware `/api/skill-file` endpoint reads. The global
-    // SKILL doc itself (`kind: 'skill'`) keeps opening as a normal editor tab and
-    // falls through below.
-    const globalBundle = parseGlobalSkillBundleDoc(target);
-    if (globalBundle?.kind === 'reference') {
-      const path = `references/${globalBundle.rel}.md`;
-      return {
-        kind: 'skill-file',
-        target: `global/${globalBundle.name}/${path}`,
-        scope: 'global',
-        name: globalBundle.name,
-        path,
-      };
-    }
+    // A GLOBAL skill bundle `.md` REFERENCE (`__skill__/global/<name>/
+    // references/<rel>`) is an EDITABLE managed-artifact live doc (the per-file
+    // skill-editability feature), backed by `<home>/.ok/skills/<name>/<rel>.md`
+    // via `managedArtifactAbsPath`. It falls through to the `{kind: 'doc'}`
+    // return below so a graph click / tree open lands in the editor, not the
+    // read-only skill-file viewer. Scripts + binary are not `__skill__/...` docs
+    // (they open through the skill-file viewer directly), so only editable `.md`
+    // references reach here.
     // A project skill is a CONTENT doc (`.ok/skills/<name>/SKILL`), never the
     // synthetic `__skill__/project/<name>`. A stale deep-link / bookmark in that
     // dead form must redirect to the live content doc rather than open a phantom
@@ -239,6 +287,19 @@ export function resolveNavigationTarget(
       const docName = projectSkillContentDocName(parsed.name);
       return { kind: 'doc', target: docName, docName };
     }
+    return { kind: 'doc', target, docName: target };
+  }
+  // A PROJECT skill's SKILL.md content doc (`.ok/skills/<name>/SKILL`) is a real
+  // editable skill doc, addressed STRUCTURALLY — resolve it directly without
+  // page-index membership. A freshly created/imported project skill lags the
+  // index by the async `files` refetch; falling through to the pages-dependent
+  // resolution below would (transiently) route it to the read-only asset viewer,
+  // which strands the editor AND flips the sidebar to Files (an asset target is
+  // not skill-focused, so `skillFocused` resolves false). Global skills use the
+  // `__skill__/…` managed-artifact name (handled above); this is the project-scope
+  // counterpart. Once the index catches up the pages branch resolves to the same
+  // `{kind:'doc'}`, so this only removes the transient-strand window.
+  if (parseProjectSkillContentDocName(target)) {
     return { kind: 'doc', target, docName: target };
   }
   // A doc that links to a skill/template by its on-disk file path
@@ -404,6 +465,8 @@ export function docNameForNavigationTarget(target: ResolvedNavigationTarget): st
       return target.target;
     case 'asset':
     case 'skill-file':
+    case 'skills':
+    case 'skill-preview':
     case 'folder':
       return null;
   }

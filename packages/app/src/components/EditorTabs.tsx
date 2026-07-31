@@ -1055,11 +1055,24 @@ export function EditorTabs() {
                 );
               }
 
-              if (tab.kind === 'asset' || tab.kind === 'skill-file') {
-                // Skill bundle files share the asset tab's read-only chrome.
-                // Label off the skill-relative path (`references/x.md`) for the
-                // skill-file case, the asset path otherwise.
-                const labelPath = tab.kind === 'asset' ? tab.assetPath : tab.path;
+              if (
+                tab.kind === 'asset' ||
+                tab.kind === 'skill-file' ||
+                tab.kind === 'skills' ||
+                tab.kind === 'skill-preview'
+              ) {
+                // Assets, skill bundle files, the Skills hub, and a pre-install
+                // skill preview share the asset tab's read-only chrome. Label off
+                // the asset path, the skill-relative path (`references/x.md`), the
+                // previewed skill's name, or a fixed "Skills" label.
+                const labelPath =
+                  tab.kind === 'asset'
+                    ? tab.assetPath
+                    : tab.kind === 'skill-file'
+                      ? tab.path
+                      : tab.kind === 'skill-preview'
+                        ? tab.name
+                        : t`Skills`;
                 const { baseName, label, prefix } = tabParts(labelPath, '');
                 const accessibleLabel = `${prefix}${label}`;
                 return (

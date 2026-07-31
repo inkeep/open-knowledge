@@ -213,7 +213,7 @@ describe('hook-timeout STOP rule — beforeAll must carry an explicit timeout', 
     expect(scanBeforeAllSites('beforeAll(boot,);')[0]?.hasTimeoutArg).toBe(false);
 
     // Adjacent negative: import specifier is not a call site.
-    expect(scanBeforeAllSites("import { beforeAll, test } from 'bun:test';").length).toBe(0);
+    expect(scanBeforeAllSites("import { beforeAll, test } from 'vitest';").length).toBe(0);
 
     // Adjacent negative: mentions inside comments and strings are skipped.
     const inertMentions = [

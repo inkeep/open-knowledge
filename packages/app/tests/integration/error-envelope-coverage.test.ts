@@ -137,6 +137,15 @@ function isNonJsonEmit(body: string): boolean {
 // and is scanned separately under its own name.
 const DISPATCHER_RE = /(?:return|await)\s+handle\w+\(\s*req\s*,\s*res\b/;
 
+// Shared response spine: `respondSkillImport(res, ...)` is the common
+// success+error emitter for the import and upload handlers — it flows the 2xx
+// body through `successResponse(...)` itself (verified by the dedicated test
+// below). A handler that delegates its success emit to the spine therefore
+// satisfies the wire-boundary contract even though its own body has no literal
+// `successResponse(` call, exactly like the `handle*(req, res)` dispatcher case.
+const SHARED_SUCCESS_SPINE_NAME = 'respondSkillImport';
+const SHARED_SUCCESS_SPINE_RE = new RegExp(`\\b${SHARED_SUCCESS_SPINE_NAME}\\(\\s*res\\b`);
+
 type EmitClass = 'json' | 'non-json' | 'dispatcher';
 
 /**
@@ -268,7 +277,11 @@ describe('error envelope coverage (FR17, D36 a) — fail-on-any-occurrence', () 
       if (!body) continue;
       const cls = classifyHandlerEmit(body);
       counts[cls]++;
-      if (cls === 'json' && !body.includes('successResponse(')) {
+      if (
+        cls === 'json' &&
+        !body.includes('successResponse(') &&
+        !SHARED_SUCCESS_SPINE_RE.test(body)
+      ) {
         failures.push(
           `${name}: JSON-emitting handler missing successResponse(...) — every 2xx success body must flow through the helper`,
         );
@@ -285,6 +298,34 @@ describe('error envelope coverage (FR17, D36 a) — fail-on-any-occurrence', () 
     expect(counts.json).toBeGreaterThanOrEqual(60);
     expect(counts['non-json']).toBeGreaterThanOrEqual(4);
     expect(counts.dispatcher).toBeGreaterThanOrEqual(3);
+  });
+
+  test('the shared success spine flows 2xx through successResponse (delegation is not a bypass)', () => {
+    // The successResponse per-handler scan accepts a handler that delegates its
+    // 2xx emit to `respondSkillImport(res, ...)` (the import/upload spine). That
+    // delegation is only sound if the spine itself flows through
+    // `successResponse(...)` and emits no inline `{ ok: false }` envelope — the
+    // spine is NOT a `handle*` route handler, so the per-handler scans above
+    // never see it. Pin it directly so the exemption can't silently rot.
+    // The spine may be sync or async (it became sync when the acquisition half
+    // split off into a pure `runSkillImport`), so both forms have to match — an
+    // `async`-only probe would silently stop finding it and pass vacuously.
+    const spineDecl = new RegExp(`\\n {2}(?:async )?function ${SHARED_SUCCESS_SPINE_NAME}\\(`);
+    const declMatch = spineDecl.exec(source);
+    expect(declMatch).not.toBeNull();
+    const start = declMatch?.index ?? -1;
+    expect(start).toBeGreaterThan(-1);
+    const afterStart = start + 1;
+    const nextFn = source.indexOf('\n  async function ', afterStart);
+    const nextSyncFn = source.indexOf('\n  function ', afterStart);
+    const nextConst = source.indexOf('\n  const handle', afterStart);
+    const bounds = [nextFn, nextSyncFn, nextConst].filter((i) => i !== -1);
+    const end = bounds.length === 0 ? source.length : Math.min(...bounds);
+    const spineBody = source.slice(start, end);
+    expect(spineBody.includes('successResponse(')).toBe(true);
+    expect(INLINE_ERROR_RE.test(spineBody)).toBe(false);
+    expect(INLINE_SUCCESS_WRAPPER_RE.test(spineBody)).toBe(false);
+    expect(INLINE_BARE_SUCCESS_RE.test(spineBody)).toBe(false);
   });
 
   test('zero inline { ok: false } envelopes anywhere in api-extension.ts', () => {

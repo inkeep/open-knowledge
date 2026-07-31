@@ -65,14 +65,17 @@ const REQUIRED_HANDLERS = [
   // `.md` references are real CRDT content docs, so their CRDT paired-write
   // path must refuse a mid-conflict doc via `checkSkillDocConflictGate`. The
   // `/api/skill` + `/api/skill-file` dispatchers route to the gated PUT
-  // sub-handlers; `/api/skill/update` gates inline. (DELETE sub-handlers tear
+  // sub-handlers. (DELETE sub-handlers tear
   // the doc down rather than mutate its body, and global skills + scripts are
   // fs-direct non-CRDT artifacts the gate no-ops on.)
   'handleSkill',
   'handleSkillPut',
   'handleSkillFile',
   'handleSkillFilePut',
-  'handleSkillUpdate',
+  // `/api/skill-file/rename` — a project `.md` reference is a live content
+  // doc; its identity move refuses a mid-conflict doc via
+  // `checkSkillDocConflictGate` before teardown.
+  'handleSkillFileRename',
   // `/api/lint/fix` — auto-fix a document's markdownlint violations through
   // `applyAgentMarkdownWrite`, which refuses a mid-conflict doc
   // (`DocInConflictError` → `respondDocInConflict`), so the gate rides the
@@ -232,7 +235,34 @@ const EXEMPT_HANDLERS = new Set([
   'handleSkillUninstall',
   'handleSkillTargets',
   'handleSkillRestore',
+  'handleSkillRevert',
   'handleSkillsManagement',
+  // Skill discovery + import (skills marketplace). Search/detail/installed are
+  // read-only proxies; import/reimport/upload materialize an upstream (or
+  // uploaded) skill to disk fs-direct (like seed/clone) rather than mutating a
+  // Y.Doc body, so the per-doc conflict gate doesn't apply.
+  'handleSkillsInstalled',
+  'handleSkillsSearch',
+  'handleSkillsDetail',
+  'handleSkillsDiscover',
+  'handleSkillsPreview',
+  'handleSkillsResolveRef',
+  'handleSkillsPopular',
+  'handleSkillImport',
+  'handleSkillsImportBulk',
+  // `/api/skill/edit-external` — arms the external-skill registry only; authors
+  // no CRDT doc body (autosave-out happens later through persistence), so the
+  // per-doc conflict gate doesn't apply.
+  'handleSkillEditExternal',
+  'handleSkillReimport',
+  'handleSkillUpload',
+  // Cross-scope skill move: copies the bundle dir + removes the source
+  // fs-direct (like import/delete), not a Y.Doc body write, so the per-doc
+  // conflict gate doesn't apply.
+  'handleSkillMoveScope',
+  // Skill duplicate copies an unopened bundle to a new, absent directory
+  // fs-direct; it does not mutate an existing Y.Doc body.
+  'handleSkillDuplicate',
   'handleSeedPlan',
   'handleSeedApply',
   'handleSeedPacks',

@@ -64,10 +64,10 @@ describe('Tier-3 substrate-additive contract — package.json + vitest config in
     expect(appVitestConfig.ssr.resolve.conditions).toContain('development');
   });
 
-  test('unit-tier vitest config excludes **/*.dom.test.tsx (Tier-3 stays out of the unit run)', () => {
+  test('unit-tier vitest config excludes **/*.dom.test.ts?(x) (Tier-3 stays out of the unit run)', () => {
     // The bun `--path-ignore-patterns='**/*.dom.test.tsx'` flag is now the
     // config `test.exclude` glob; the dom tier runs in its own jsdom project.
-    expect(appVitestConfig.test.exclude).toContain('**/*.dom.test.tsx');
+    expect(appVitestConfig.test.exclude).toContain('**/*.dom.test.ts?(x)');
   });
 
   test('unit-tier vitest config runs in the node environment (no jsdom in the unit substrate)', () => {
@@ -103,8 +103,8 @@ describe('Tier-3 substrate-additive contract — package.json + vitest config in
     expect(appDomVitestConfig.ssr.resolve.conditions).toContain('development');
   });
 
-  test('dom project scopes include to the .dom.test.tsx routing suffix', () => {
-    expect(appDomVitestConfig.test.include).toEqual(['**/*.dom.test.tsx']);
+  test('dom project scopes include to the .dom.test suffix', () => {
+    expect(appDomVitestConfig.test.include).toEqual(['**/*.dom.test.ts?(x)']);
   });
 
   test('dom project sets isolate:true for a fresh per-file module registry', () => {

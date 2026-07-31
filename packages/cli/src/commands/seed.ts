@@ -99,7 +99,10 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
     };
   }
 
-  if (plan.created.length === 0) {
+  // A pending pack skill is outstanding work even when every folder/template
+  // already exists (see ScaffoldPlan.packSkills) — `applySeed` would still author
+  // and install it, so this is not a no-op. SeedDialog folds the same two signals.
+  if (plan.created.length === 0 && !plan.packSkills?.some((s) => s.pending)) {
     const packName = STARTER_PACKS[packId].name;
     return {
       status: 'no-op',
@@ -156,12 +159,13 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
 
   const packName = STARTER_PACKS[packId].name;
 
-  // `applySeed` installs the pack's project-local skill for every editor set up
+  // `applySeed` installs the pack's project-local skills for every editor set up
   // for this project (single install site shared with the desktop IPC + HTTP
-  // seed paths). Surface which editors got it.
+  // seed paths). Surface which editors got them. A decomposed pack ships several
+  // skills; `packSkillsInstalled` names the editors, not the skills.
   const skillLine =
     applyResult.packSkillsInstalled.length > 0
-      ? `\n${dim(`Installed the ${packName} skill for: ${applyResult.packSkillsInstalled.join(', ')}`)}`
+      ? `\n${dim(`Installed the ${packName} skills for: ${applyResult.packSkillsInstalled.join(', ')}`)}`
       : '';
 
   return {

@@ -14,7 +14,15 @@
  */
 
 import { createHash } from 'node:crypto';
-import { type Dirent, lstatSync, readdirSync, realpathSync, type Stats, statSync } from 'node:fs';
+import {
+  type Dirent,
+  existsSync,
+  lstatSync,
+  readdirSync,
+  realpathSync,
+  type Stats,
+  statSync,
+} from 'node:fs';
 import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, extname, join, relative } from 'node:path';
 import { LINKABLE_ASSET_EXTENSIONS } from '@inkeep/open-knowledge-core';
@@ -1721,6 +1729,7 @@ async function startParcelWatcher(
   onDiskEvent: (event: DiskEvent) => Promise<void>,
   aliasMap: Map<string, string>,
   onAfterMutation: () => void,
+  onRawBatch?: (absPaths: readonly string[]) => void,
 ): Promise<AsyncSubscription | null> {
   let parcel: typeof import('@parcel/watcher');
   try {
@@ -1750,6 +1759,10 @@ async function startParcelWatcher(
           return;
         }
         try {
+          // Raw (pre-admission) batch hook — the live in-place-skill re-scan
+          // trigger reads paths admission drops (a NEW skill dir is excluded
+          // until re-scanned).
+          onRawBatch?.(events.map((e) => e.path));
           await handleRawEvents(
             events.map((e) => ({ type: e.type, path: e.path })),
             contentDir,
@@ -1812,7 +1825,24 @@ export function isChokidarPathIgnored(
       return false;
     }
   }
-  return isDirectory ? contentFilter.isDirExcluded(rel) : contentFilter.isExcluded(rel);
+  if (isDirectory) {
+    // Never prune dirs that ARE or LEAD TO a skills root — an excluded-yet-
+    // watched skills tree is how the live re-scan hears about a host dir's
+    // FIRST skill on this backend (the raw pre-admission batch fires off the
+    // bundle-dir event; admission flips via the rebuild). Shape-matched like
+    // the scan (any `.x/skills`), so custom roots need no ledger read; bounded
+    // to root + one bundle level so the extra watch surface stays tiny. `.ok`
+    // stays fully pruned (retiring store; internal state).
+    const m = /^(\.[A-Za-z0-9_-]+)(\/skills(\/[^/]+)?)?$/.exec(rel);
+    if (m && m[1] !== '.ok') {
+      if (m[2] !== undefined) return false; // `.x/skills` (+ bundle dir)
+      // Bare `.x`: watch only when it actually carries a skills dir — keeps
+      // `.git` and friends pruned.
+      if (existsSync(join(contentDir, rel, 'skills'))) return false;
+    }
+    return contentFilter.isDirExcluded(rel);
+  }
+  return contentFilter.isExcluded(rel);
 }
 
 /**
@@ -1830,6 +1860,11 @@ async function startChokidarWatcher(
   onDiskEvent: (event: DiskEvent) => Promise<void>,
   aliasMap: Map<string, string>,
   onAfterMutation: () => void,
+  // NOTE: chokidar prunes excluded dirs at the ignored() predicate, so a
+  // host dir with no admitted skill yet emits no events — the live re-scan
+  // trigger is parcel-first; on the chokidar fallback a brand-new first
+  // skill in a host dir still needs a restart (or an ignore-file touch).
+  onRawBatch?: (absPaths: readonly string[]) => void,
 ): Promise<AsyncSubscription> {
   const { watch } = await import('chokidar');
   // The chosen backend is already recorded on the `watching … backend:
@@ -1864,6 +1899,7 @@ async function startChokidarWatcher(
       const batch = pendingEvents;
       pendingEvents = [];
       batchTimer = null;
+      onRawBatch?.(batch.map((e) => e.path));
       handleRawEvents(
         batch,
         contentDir,
@@ -1933,8 +1969,15 @@ export async function startWatcher(
   contentDirRaw: string,
   onDiskEvent: (event: DiskEvent) => Promise<void>,
   contentFilter?: ContentFilter,
-  opts: { forceBackend?: 'parcel' | 'chokidar' } = {},
+  opts: {
+    forceBackend?: 'parcel' | 'chokidar';
+    /** Raw PRE-admission event-batch hook (absolute paths) — fires before
+     *  `handleRawEvents` filters, so callers can react to paths admission
+     *  drops (the live in-place-skill re-scan trigger). */
+    onRawBatch?: (absPaths: readonly string[]) => void;
+  } = {},
 ): Promise<WatcherHandle> {
+  const { onRawBatch } = opts;
   let contentDir: string;
   try {
     contentDir = realpathSync(contentDirRaw);
@@ -1979,13 +2022,18 @@ export async function startWatcher(
 
   let subscription: AsyncSubscription;
   let backend: WatcherBackend;
+  // Packaged-parity escape hatch: the packaged app always runs the chokidar
+  // fallback (no bundled @parcel/watcher), so tests + local debugging can
+  // force that backend to exercise the same code path.
+  const forceChokidar = process.env.OK_FILE_WATCHER_BACKEND === 'chokidar';
   try {
     // `forceBackend` is a test seam (mirrors head-watcher): 'chokidar' skips
     // the parcel attempt so the fallback can be exercised on a host where the
     // native module IS resolvable; 'parcel' throws instead of degrading so a
-    // test can't silently pass on the wrong backend.
+    // test can't silently pass on the wrong backend. The `OK_FILE_WATCHER_BACKEND`
+    // env var (packaged-parity escape hatch) forces chokidar the same way.
     const parcelSub =
-      opts.forceBackend === 'chokidar'
+      forceChokidar || opts.forceBackend === 'chokidar'
         ? null
         : await startParcelWatcher(
             contentDir,
@@ -1995,6 +2043,7 @@ export async function startWatcher(
             onDiskEvent,
             aliasMap,
             bumpFileIndexGeneration,
+            onRawBatch,
           );
     if (parcelSub) {
       subscription = parcelSub;
@@ -2011,6 +2060,7 @@ export async function startWatcher(
         onDiskEvent,
         aliasMap,
         bumpFileIndexGeneration,
+        onRawBatch,
       );
       backend = 'chokidar';
     }

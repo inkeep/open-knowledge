@@ -1,7 +1,12 @@
-import { parseManagedArtifactName, type SkillScope } from '@inkeep/open-knowledge-core';
-import { Trans, useLingui } from '@lingui/react/macro';
-import { ListPlus, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import {
+  parseExternalSkillDocName,
+  parseManagedArtifactName,
+  type SkillScope,
+} from '@inkeep/open-knowledge-core';
+import { useLingui } from '@lingui/react/macro';
+import { PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { lazy, Suspense } from 'react';
+import { AddPropertiesButton } from '@/components/AddPropertiesButton';
 import { Button } from '@/components/ui/button.tsx';
 import { Kbd } from '@/components/ui/kbd';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -13,11 +18,17 @@ import { EditorBreadcrumb } from './EditorBreadcrumb';
 import { EditorModeToggle } from './EditorModeToggle';
 import { NotInSidebarIndicator } from './NotInSidebarIndicator';
 
-// Lazy-loaded: skill install/history chrome (+ the shared useSkillActions
-// dialogs) only mounts when the active doc is a skill, so it stays out of the
-// eager toolbar bundle that every document loads.
-const SkillEditorActions = lazy(async () => ({
-  default: (await import('./SkillEditorActions')).SkillEditorActions,
+// Lazy-loaded: the skill-specific toolbar cluster (level + install + overflow)
+// only mounts when the active doc is a skill, so it stays out of the eager
+// toolbar bundle that every document loads.
+const SkillToolbarControls = lazy(async () => ({
+  default: (await import('./SkillToolbarControls')).SkillToolbarControls,
+}));
+
+// Import-provenance line shown in the toolbar's left cell for skill docs —
+// lazy for the same reason as the skill cluster above.
+const SkillOriginInline = lazy(async () => ({
+  default: (await import('./SkillOriginInline')).SkillOriginInline,
 }));
 
 interface EditorToolbarProps {
@@ -64,8 +75,15 @@ export function EditorToolbar({
       : projectSkillName
         ? { scope: 'project', name: projectSkillName }
         : null;
+  // A detected-skill edit buffer (`__extskill__/<name>`): reduced mode —
+  // no level/install/history/scope-move/provenance chrome; the edit-in-place
+  // banner above the editor carries the messaging.
+  const externalSkill = activeDocName ? parseExternalSkillDocName(activeDocName) : null;
   return (
-    <div data-testid="editor-toolbar" className="pointer-events-none absolute inset-x-0 top-0 z-10">
+    <div
+      data-testid="editor-toolbar"
+      className="pointer-events-none absolute inset-x-0 top-0 z-10 @container/toolbar"
+    >
       {/*
         Outer wrapper mirrors the editor's content-column grid so the inner
         3-col layout aligns with the WYSIWYG content area. Without this, the
@@ -85,8 +103,19 @@ export function EditorToolbar({
           <div className="pointer-events-auto flex min-w-0 items-center gap-2">
             {/* Skills show their identity (name/scope) in the panel, so the
                 `.ok/skills/<name>` path breadcrumb is noise — suppress it for
-                both scopes to match the global-skill editor. */}
-            {activeSkill ? null : <EditorBreadcrumb docName={activeDocName} />}
+                both scopes to match the global-skill editor. The cell instead
+                carries the skill's import provenance (source + Update). The
+                source text hides as the pane narrows, but the Update action
+                stays (handled inside SkillOriginInline). */}
+            {activeSkill ? (
+              <Suspense fallback={null}>
+                <SkillOriginInline scope={activeSkill.scope} name={activeSkill.name} />
+              </Suspense>
+            ) : externalSkill ? // Identity + reduced-mode messaging live in the edit-in-place banner
+            // (SkillEditBanner) above the editor, not here — keep the cell empty.
+            null : (
+              <EditorBreadcrumb docName={activeDocName} />
+            )}
             {/* Self-gating: renders only when a visibility toggle hides this
                 doc's tree row, and never for skills/templates (their names
                 attribute no axis). */}
@@ -119,40 +148,29 @@ export function EditorToolbar({
       */}
       <div
         className={cn(
-          'pointer-events-auto absolute top-0 right-0 flex items-center justify-end gap-1 py-2 pr-2',
+          'pointer-events-auto absolute top-0 right-0 flex min-w-0 max-w-[calc(50%_-_3rem)] items-center justify-end gap-1 py-2 pr-2',
           // Clear the far-right "Open session dock" reveal tab (icon-sm, flush to the
           // edge) so the action buttons sit to its left in the same row.
           reserveRightGutter && 'pr-9',
         )}
       >
-        {activeSkill ? (
+        {activeSkill && activeDocName ? (
+          // Skill docs carry level + install + add-properties, which collapse
+          // into an overflow menu on a narrow pane (handled inside).
           <Suspense fallback={null}>
-            <SkillEditorActions scope={activeSkill.scope} name={activeSkill.name} />
+            <SkillToolbarControls
+              scope={activeSkill.scope}
+              name={activeSkill.name}
+              showAddPropertyButton={showAddPropertyButton}
+              onAddProperty={onAddProperty}
+            />
           </Suspense>
-        ) : null}
-        {showAddPropertyButton && (
-          // PropertyPanel only mounts in WYSIWYG mode (gated in
-          // EditorActivityPool). Hiding the button in source mode prevents
-          // the click → CustomEvent → no-listener no-op that surfaces as
-          // unresponsive UI. Source-mode users edit FM directly in the
-          // CodeMirror YAML.
-          <Tooltip>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={t`Add properties`}
-              onClick={onAddProperty}
-              data-testid="add-properties-button"
-              asChild
-            >
-              <TooltipTrigger>
-                <ListPlus />
-              </TooltipTrigger>
-            </Button>
-            <TooltipContent side="bottom">
-              <Trans>Add properties</Trans>
-            </TooltipContent>
-          </Tooltip>
+        ) : externalSkill ? // Detected-skill edit buffer: reduced mode. Messaging lives in the
+        // edit-in-place banner above the editor, so nothing renders here.
+        null : (
+          // Non-skill docs only carry add-properties here (no level/install), so
+          // there's nothing to overflow — the breadcrumb truncates on its own.
+          showAddPropertyButton && <AddPropertiesButton onAddProperty={onAddProperty} />
         )}
         <Tooltip>
           <Button

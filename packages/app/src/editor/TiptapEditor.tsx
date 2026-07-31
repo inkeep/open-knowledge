@@ -60,6 +60,7 @@ import { setEditorSourceMode } from './extensions/editor-mode-context.ts';
 import { FrozenTableHeaders } from './extensions/frozen-table-headers.ts';
 import { MarkdownLintDecorations } from './extensions/markdown-lint-decorations.ts';
 import { sharedExtensions } from './extensions/shared.ts';
+import { SkillPathLinks } from './extensions/skill-path-links';
 import { uploadDecorationPlugin } from './image-upload/index.ts';
 import type { LandingHandle } from './landing-controller';
 import { startWysiwygLanding } from './mode-switch-landing';
@@ -396,6 +397,8 @@ export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[]
       placeholder: placeholder ?? "Type '/' for commands",
       showOnlyCurrent: true,
     }),
+    // Skill docs: backticked bundle paths become clickable (display-only).
+    SkillPathLinks.configure({ docName: provider.configuration.name ?? '' }),
     // Collaboration (with `ySyncOptions.mapping` forwarded when a pre-warm
     // mapping is supplied) — paired with its currency guard below via
     // `buildPrewarmBoundCollaboration`.

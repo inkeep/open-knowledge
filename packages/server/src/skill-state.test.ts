@@ -75,17 +75,16 @@ describe('readServerPackageVersion', () => {
   });
 });
 
-describe('build-time invariant — package.json version matches SKILL.md metadata.version', () => {
-  // Both bundles version in lockstep with the server package.
-  for (const bundle of ['discovery', 'project'] as const) {
-    test(`${bundle} bundle SKILL.md metadata.version === server package.json version`, async () => {
+describe('built-in SKILL.md carries no version stamp', () => {
+  // Built-ins update through the skills.sh reimport path, not an app-bundled
+  // version stamp. A `version:` field in frontmatter is the merge-conflict
+  // footgun this removed — guard that it stays gone.
+  for (const bundle of ['discovery', 'project', 'write-skill'] as const) {
+    test(`${bundle} bundle SKILL.md frontmatter has no version: field`, async () => {
       const skillMdUrl = new URL(`../assets/skills/${bundle}/SKILL.md`, import.meta.url);
       const skillMd = await readFile(fileURLToPath(skillMdUrl), 'utf-8');
-      const versionMatch = skillMd.match(/^\s*version:\s*"?([^"\n]+)"?\s*$/m);
-      expect(versionMatch).not.toBeNull();
-      const skillMdVersion = versionMatch?.[1]?.trim();
-      const pkgVersion = await readServerPackageVersion();
-      expect(skillMdVersion).toBe(pkgVersion);
+      const frontmatter = skillMd.split(/^---$/m)[1] ?? '';
+      expect(frontmatter).not.toMatch(/^\s*version:/m);
     });
   }
 });

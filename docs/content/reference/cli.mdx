@@ -125,7 +125,8 @@ Serve this project's web UI and `/mcp` endpoint to your other devices through an
 | `ok migrate notion <dir>` | Clean up a Notion export in place, dry-run unless `--apply` (see [migrating from Notion](/docs/migrate/notion)) |
 | `ok config validate` | Validate the merged config (defaults → user → project) |
 | `ok config migrate` | Remove deprecated keys from `config.yml` (`--dry-run` to preview; `--scope` project, user, or both) |
-| `ok skills manage` | Control whether OpenKnowledge adopts your editor skills into this project (`--on`, `--off`, `--status`; default off) |
+| `ok skills installed` | List every skill installed across your agents (read-only, cross-harness) |
+| `ok skills import <source>` | Import a skill as versioned content from skills.sh, a GitHub `owner/repo`, a git URL, or a local path |
 | `ok bug-report` | Package a support bundle — recent app logs, the project's server logs and lock diagnostics, and system info — as an auto-redacted zip under `~/.ok/bug-reports/`, revealed in Finder when it's done (`--no-reveal` to skip). Collects the same `standard` set as the desktop app's **Help → Report a bug…**; `ok diagnose bundle` produces the `full` superset (telemetry spans, live server state) into the project's `.ok/local/diagnostics/` |
 
 ## Global flags
@@ -140,7 +141,7 @@ The rest of the CLI exists mostly for tooling and automation. Your AI editor spa
 
 `ok deinit` reverses `ok init` for one project: it removes the project's `.ok/` directory, its editor MCP entries, git-exclude lines, and shadow repo, leaving your markdown untouched.
 
-`ok uninstall` removes OpenKnowledge from the whole machine — running servers, credentials, the PATH shim, its own editor MCP entries, skill bundles, app data, and `~/.ok`. Your markdown content stays, and skills you authored under `~/.ok/skills` are kept unless you pass `--purge-content`. It never deletes the CLI binary itself; it ends by printing the removal command (`npm uninstall -g @inkeep/open-knowledge` for the install above).
+`ok uninstall` removes OpenKnowledge from the whole machine — running servers, credentials, the PATH shim, its own editor MCP entries, skill bundles, app data, and `~/.ok`. Your markdown content stays, and your global skills in your editors' skill dirs (`~/.agents/skills`, `~/.claude/skills`, and the like) are never touched. It never deletes the CLI binary itself; it ends by printing the removal command (`npm uninstall -g @inkeep/open-knowledge` for the install above).
 
 Both commands print their plan and ask before acting; `--dry-run` previews without changing anything. Once `ok uninstall` has finished successfully, an interactive run also asks one optional question about why you're leaving — you can skip it, and `--yes`, `--json`, and non-interactive runs never ask. Anything you do answer is [sent to us](/docs/reference/what-open-knowledge-writes#what-leaves-your-machine).
 

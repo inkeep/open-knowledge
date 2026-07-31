@@ -21,9 +21,9 @@ import { listNames } from './git-paths.ts';
 import { type ShadowHandle, shadowGit } from './shadow-repo.ts';
 
 /** Shadow-repo path of a project-scope skill's source dir for a content root. */
-function skillShadowPath(contentRoot: string, name: string): string {
+function skillShadowPath(contentRoot: string, skillDirRel: string): string {
   const root = contentRoot === '.' ? '' : contentRoot.replace(/^\.\//, '');
-  return root ? `${root}/.ok/skills/${name}` : `.ok/skills/${name}`;
+  return root ? `${root}/${skillDirRel}` : skillDirRel;
 }
 
 /**
@@ -57,10 +57,12 @@ export function isGitObjectNotFound(message: string): boolean {
 }
 
 /**
- * Restore `.ok/skills/<name>/` to its state at shadow-repo commit `version`.
- * Reads the tree at that SHA and rewrites it into the content dir, clearing the
- * current dir first (authoritative). Returns the restored file list (skill-dir
- * relative) or a structured error.
+ * Restore a project skill's bundle dir to its state at shadow-repo commit
+ * `version`. Defaults to the `.ok/skills/<name>` store; an IN-PLACE skill
+ * passes its real bundle dir via `skillDirRel`. Reads the tree
+ * at that SHA and rewrites it into the content dir, clearing the current dir
+ * first (authoritative). Returns the restored file list (skill-dir relative)
+ * or a structured error.
  */
 export async function restoreSkillVersion(opts: {
   shadow: ShadowHandle;
@@ -68,17 +70,41 @@ export async function restoreSkillVersion(opts: {
   contentRoot: string;
   name: string;
   version: string;
+  /** contentDir-relative bundle dir (POSIX); defaults to `.ok/skills/<name>`. */
+  skillDirRel?: string;
 }): Promise<RestoreSkillResult> {
   const { shadow, contentDir, contentRoot, name, version } = opts;
+  const skillDirRel = opts.skillDirRel ?? `.ok/skills/${name}`;
   if (!existsSync(shadow.workTree) || !existsSync(shadow.gitDir)) {
     return { ok: false, code: 'no-shadow', error: 'No shadow repo — nothing to restore from.' };
   }
-  const shadowPath = skillShadowPath(contentRoot, name);
   const sg = shadowGit(shadow);
 
-  let files: string[];
+  // The bundle may have LIVED SOMEWHERE ELSE at `version` — an in-place skill
+  // whose baseline predates its store→in-place migration sits at
+  // `.ok/skills/<name>` in that commit's tree. Try the current dir first, then
+  // the historical store path; the RESTORE DESTINATION is always the current
+  // dir, so a cross-location restore also completes the relocation.
+  const candidateRels = [...new Set([skillDirRel, `.ok/skills/${name}`])];
+  let files: string[] = [];
+  let shadowPath = skillShadowPath(contentRoot, skillDirRel);
   try {
-    files = await listNames(sg, ['ls-tree', '-r', '--name-only', version, '--', shadowPath]);
+    for (const rel of candidateRels) {
+      const candidatePath = skillShadowPath(contentRoot, rel);
+      const found = await listNames(sg, [
+        'ls-tree',
+        '-r',
+        '--name-only',
+        version,
+        '--',
+        candidatePath,
+      ]);
+      if (found.length > 0) {
+        files = found;
+        shadowPath = candidatePath;
+        break;
+      }
+    }
   } catch (e) {
     // Distinguish "this commit/SHA genuinely isn't in the shadow repo" (a client
     // 404) from a git I/O failure — git binary missing, repo corrupt, etc. (a
@@ -107,7 +133,7 @@ export async function restoreSkillVersion(opts: {
   // authoritatively, so a `git show` failure or an escaping path mid-rewrite
   // would leave a torn skill. Read-all-and-validate-first means any failure
   // aborts before a single destructive write.
-  const skillDirAbs = resolve(contentDir, '.ok', 'skills', name);
+  const skillDirAbs = resolve(contentDir, skillDirRel);
   const containmentPrefix = skillDirAbs + sep;
   const staged: Array<{ rel: string; destAbs: string; content: string }> = [];
   for (const shadowFile of files) {

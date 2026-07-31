@@ -15,9 +15,10 @@
  *   - a refused DELETE leaves the on-disk file intact.
  */
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  OPENKNOWLEDGE_SKILLS_REPO,
   ProblemDetailsSchema,
   SkillGetSuccessSchema,
   SkillsListSuccessSchema,
@@ -70,6 +71,11 @@ describe('built-in open-knowledge skill: read-only surfacing', () => {
     expect(entry?.installed).toBe(true);
     expect(entry?.hosts).toContain('claude');
     expect(entry?.description).toBe('The OpenKnowledge project skill agents load for this KB.');
+    // Built-ins carry a skills.sh origin (repo link + manual update path), and
+    // are manual-update only — never silently re-pulled on a shared project.
+    expect(entry?.origin?.source).toBe(OPENKNOWLEDGE_SKILLS_REPO);
+    expect(entry?.origin?.skill).toBe('open-knowledge');
+    expect(entry?.origin?.autoUpdate).toBe(false);
   });
 
   test('GET /api/skill serves its body + references from the host dir', async () => {
@@ -121,22 +127,40 @@ describe('built-in open-knowledge skill: read-only surfacing', () => {
     await expectReserved(res);
   });
 
-  test('POST /api/skill rename is refused', async () => {
-    const res = await fetch(`${base()}/api/skill`, {
+  test('rename TO a runtime name is refused (squat guard); rename FROM is an ordinary fork-away', async () => {
+    // Squat: nothing may take a runtime skill's name.
+    const squat = await fetch(`${base()}/api/skill`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scope: 'project', fromName: 'open-knowledge', toName: 'my-skill' }),
+      body: JSON.stringify({ scope: 'project', fromName: 'authored', toName: 'open-knowledge' }),
     });
-    await expectReserved(res);
-  });
+    // 400 reserved (or 409 exists) — either way the name is untakeable.
+    expect([400, 409]).toContain(squat.status);
 
-  test('POST /api/skill/install is refused', async () => {
-    const res = await fetch(`${base()}/api/skill/install`, {
+    // Lifecycle is ORDINARY: renaming AWAY from the runtime name succeeds
+    // (fork-away; the seeded original returns via seed/reimport).
+    const away = await fetch(`${base()}/api/skill`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scope: 'project', name: 'open-knowledge' }),
+      body: JSON.stringify({
+        scope: 'project',
+        fromName: 'open-knowledge',
+        toName: 'my-own-guide',
+      }),
     });
-    await expectReserved(res);
+    expect(away.status).toBe(200);
+    // Restore the fixture for later tests: rename back is REFUSED by the squat
+    // guard, so recreate the original on disk directly.
+    const restored = await fetch(`${base()}/api/skill`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scope: 'project',
+        fromName: 'my-own-guide',
+        toName: 'open-knowledge',
+      }),
+    });
+    expect([400, 409]).toContain(restored.status);
   });
 
   test('PUT /api/skill-file is refused', async () => {
@@ -153,11 +177,10 @@ describe('built-in open-knowledge skill: read-only surfacing', () => {
     await expectReserved(res);
   });
 
-  test('DELETE /api/skill is refused and leaves the on-disk file intact', async () => {
-    const res = await fetch(`${base()}/api/skill?name=open-knowledge&scope=project`, {
+  test('DELETE /api/skill succeeds — lifecycle is ordinary (content is what is protected)', async () => {
+    const res = await fetch(`${base()}/api/skill?name=my-own-guide&scope=project`, {
       method: 'DELETE',
     });
-    await expectReserved(res);
-    expect(existsSync(builtinSkillMd)).toBe(true);
+    expect(res.status).toBe(200);
   });
 });

@@ -3,8 +3,7 @@
  *
  * ZIPs a bundled SKILL.md source as `<skill-name>/SKILL.md` (wrapper-folder-
  * at-root — Claude Desktop's upload silently rejects flat ZIPs) and runs
- * structural smoke-tests: size ceiling, `name:` match, optional
- * `metadata.version:` match against caller-supplied `expectedSkillVersion`.
+ * structural smoke-tests: size ceiling + `name:` match.
  *
  * Two skill bundles ship side by side:
  *   - `discovery` (`name: open-knowledge-discovery`) — slim, install/share
@@ -12,10 +11,9 @@
  *   - `project`   (`name: open-knowledge`)           — the rich agent-runtime
  *     contract. Project-local install + the `.skill` ZIP (Cowork) only.
  *
- * This module is a pure ZIP-builder. Version provenance is the caller's
- * concern: install-flow callers ship whatever SKILL.md is currently bundled;
- * release-build callers compare against an externally-known CLI version
- * (e.g. via `resolvePackageVersion` in `./resolve-package-version.ts`).
+ * This module is a pure ZIP-builder. The bundled SKILL.md carries no version
+ * stamp; built-ins update through the normal skills.sh reimport path like any
+ * other skill (no SKILL ↔ CLI version invariant to assert here).
  *
  * ZIP library: `yazl` (pure JS, ~20 KB, zero deps) — Windows has no `zip`
  * in PATH and `ok cowork` must work on every CLI user's machine.
@@ -31,7 +29,6 @@ import { readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { stripFrontmatter, unwrapFrontmatterFences } from '@inkeep/open-knowledge-core';
 import yazl from 'yazl';
 import { BUNDLE_SKILL_NAME, type BundleId } from './skill-bundles.ts';
 
@@ -60,14 +57,6 @@ export interface BuildSkillZipOptions {
   /** Output file path. Defaults to `./openknowledge.skill` in cwd. */
   outputPath?: string;
   /**
-   * When set, validate that SKILL.md's `metadata.version` matches this value.
-   * Used by release builds to assert SKILL ↔ CLI version alignment before
-   * publish. Omit to skip the check — install-flow callers (desktop IPC,
-   * `ok cowork`) don't need it because they ship whatever SKILL.md
-   * version is currently bundled with their installed CLI.
-   */
-  expectedSkillVersion?: string;
-  /**
    * Forwarded to `resolveBundledSkillDir`. Defaults to `false` — every
    * `buildSkillZip` caller feeds an install-state gate that compares the
    * built version against `readServerPackageVersion()` (this server's own
@@ -91,8 +80,6 @@ export interface BuildSkillZipResult {
   size: number;
   /** Hex-encoded SHA256. */
   sha256: string;
-  /** SKILL.md `metadata.version:`, or `undefined` if absent. */
-  skillVersion?: string;
 }
 
 export interface ResolveBundledSkillDirOptions {
@@ -248,32 +235,6 @@ async function sha256OfFile(path: string): Promise<string> {
 }
 
 /**
- * Parse SKILL.md frontmatter `metadata.version:` without pulling in a YAML
- * library. Handles `metadata: { version: "x" }` flow and block forms. Returns
- * `undefined` if the field is absent. Fence recognition is core's contract
- * (`stripFrontmatter`/`unwrapFrontmatterFences`), so fence lines with
- * trailing spaces/tabs are tolerated like every other recognizer.
- */
-function extractMetadataVersion(markdown: string): string | undefined {
-  const { frontmatter: fenced } = stripFrontmatter(markdown);
-  if (fenced === '') return undefined;
-  const frontmatter = unwrapFrontmatterFences(fenced);
-
-  // Match `metadata:` block then a subsequent `  version: "..."` line.
-  const metaStart = frontmatter.search(/^metadata:/m);
-  if (metaStart < 0) return undefined;
-  // Scan lines after `metadata:` until an un-indented line breaks the block.
-  const rest = frontmatter.slice(metaStart);
-  const lines = rest.split('\n').slice(1);
-  for (const line of lines) {
-    if (/^[^\s]/.test(line)) break; // left-flush line ends the block
-    const m = line.match(/^\s+version:\s*["']?([^"'\s]+)["']?$/);
-    if (m) return m[1];
-  }
-  return undefined;
-}
-
-/**
  * Run the structural smoke-tests on a built `.skill`. Throws on any failure
  * with a user-facing message. Size check is on the input file path, not an
  * in-memory blob, so callers need not load the ZIP twice.
@@ -285,9 +246,8 @@ function extractMetadataVersion(markdown: string): string | undefined {
  */
 export async function validateSkillZip(
   outputPath: string,
-  expectedSkillVersion: string | undefined,
   opts: { bundle?: BundleId; sourceDir?: string } = {},
-): Promise<{ size: number; sha256: string; skillVersion?: string }> {
+): Promise<{ size: number; sha256: string }> {
   const bundle: BundleId = opts.bundle ?? 'project';
   const size = statSync(outputPath).size;
   if (size > MAX_ZIP_BYTES) {
@@ -296,9 +256,9 @@ export async function validateSkillZip(
 
   const sha256 = await sha256OfFile(outputPath);
 
-  // For the version + name checks, parse the SKILL.md we zipped from — the
-  // caller already had it on disk. yazl does not mutate content, and the
-  // size + SHA256 checks above would already catch any fs/yazl byte-mangling.
+  // For the name check, parse the SKILL.md we zipped from — the caller already
+  // had it on disk. yazl does not mutate content, and the size + SHA256 checks
+  // above would already catch any fs/yazl byte-mangling.
   //
   // `buildSkillZip` always passes `sourceDir`, so the fallback only fires on a
   // direct `validateSkillZip` call. checkDesktop:false there — validation must
@@ -315,32 +275,13 @@ export async function validateSkillZip(
     );
   }
 
-  // Smoke-test: metadata.version matches the caller-asserted version.
-  const skillVersion = extractMetadataVersion(skillMd);
-  if (expectedSkillVersion !== undefined) {
-    if (!skillVersion) {
-      throw new Error(
-        `SKILL.md metadata.version missing. Add it to packages/server/assets/skills/${bundle}/SKILL.md.`,
-      );
-    }
-    if (skillVersion !== expectedSkillVersion) {
-      throw new Error(
-        `SKILL.md metadata.version (${skillVersion}) does not match expected version (${expectedSkillVersion}).`,
-      );
-    }
-  }
-
-  return { size, sha256, skillVersion };
+  return { size, sha256 };
 }
 
 /**
  * Build the `.skill` artifact + run validation. Default output is
  * `./openknowledge.skill` in cwd; default bundle is `'project'` (the rich
  * bundle — Track 2 ships rich-only).
- *
- * Pass `expectedSkillVersion` only from release-build paths that need to
- * assert SKILL ↔ CLI version alignment. Install-flow callers (desktop IPC,
- * `ok cowork`) omit it and ship whatever SKILL.md is bundled.
  */
 export async function buildSkillZip(opts: BuildSkillZipOptions = {}): Promise<BuildSkillZipResult> {
   const bundle: BundleId = opts.bundle ?? 'project';
@@ -352,15 +293,11 @@ export async function buildSkillZip(opts: BuildSkillZipOptions = {}): Promise<Bu
   // basename — keeps the archive root stable (`open-knowledge/`) regardless of
   // the `discovery/` | `project/` source-tree directory name.
   await zipDirectory(sourceDir, outputPath, BUNDLE_SKILL_NAME[bundle]);
-  const { size, sha256, skillVersion } = await validateSkillZip(
-    outputPath,
-    opts.expectedSkillVersion,
-    { bundle, sourceDir },
-  );
+  const { size, sha256 } = await validateSkillZip(outputPath, { bundle, sourceDir });
 
-  return { outputPath, size, sha256, skillVersion };
+  return { outputPath, size, sha256 };
 }
 
 // Test-only helpers. Not part of the public surface.
 /** @internal */
-export const __testing = { extractMetadataVersion, computeWrapperFolderName, toPosixZipPath };
+export const __testing = { computeWrapperFolderName, toPosixZipPath };

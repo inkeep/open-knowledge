@@ -11,10 +11,9 @@
  * the chrome (notably the bottom-left ProjectSwitcher) was frozen behind
  * `body { pointer-events: none }`.
  *
- * The surface is now a Radix `Popover` (it hosts an instruction prompt box, so
- * it can no longer be a dropdown menu — a text field cannot live inside one).
- * Popover is non-modal by default, so the trap cannot recur; this test pins
- * that contract.
+ * The surface is a Radix `Popover` (kept for the editor-header drag-zone
+ * dismissal handling the non-modal popover semantics support). Popover is
+ * non-modal by default, so the trap cannot recur; this test pins that contract.
  *
  * The macOS `-webkit-app-region` swallow itself is not reproducible in jsdom
  * (the existing source-guard test in `OpenInAgentMenu.test.ts` documents that).

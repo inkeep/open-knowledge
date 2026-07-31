@@ -160,7 +160,7 @@ describe('createLiveDerivedIndexExtension', () => {
     await conn.disconnect();
   });
 
-  test('beforeUnloadDocument cancels pending timers', async () => {
+  test('beforeUnloadDocument flushes the pending update instead of dropping it', async () => {
     const recordLiveDocument = vi.fn(async () => {});
     const extension = createLiveDerivedIndexExtension({
       derivedDocumentIndex: createDerivedIndexPort(recordLiveDocument),
@@ -181,9 +181,16 @@ describe('createLiveDerivedIndexExtension', () => {
       documentName: 'unload-doc',
       instance: hp,
     });
-    await wait(40);
+    // The update must already have been applied by the unload itself, before
+    // the debounce would have fired. Dropping it instead leaves the doc's links
+    // and tags missing from the derived views with nothing left to re-index
+    // them: a write followed by a prompt unload never registers at all.
+    expect(recordLiveDocument).toHaveBeenCalledTimes(1);
+    expect(recordLiveDocument.mock.calls[0]?.[1]).toContain('# Hello');
 
-    expect(recordLiveDocument).not.toHaveBeenCalled();
+    await wait(40);
+    // ...and the cancelled timer does not fire a second time.
+    expect(recordLiveDocument).toHaveBeenCalledTimes(1);
     await conn.disconnect();
   });
 

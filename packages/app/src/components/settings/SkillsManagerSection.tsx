@@ -1,219 +1,39 @@
-import type { SkillScope, SkillsListEntry } from '@inkeep/open-knowledge-core';
-import { Trans, useLingui } from '@lingui/react/macro';
-import { Plus } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
-import { NewSkillDialog } from '@/components/NewSkillDialog';
-import { SkillRow } from '@/components/SkillRow';
+import type { SkillScope } from '@inkeep/open-knowledge-core';
+import { Trans } from '@lingui/react/macro';
 import { SkillTargetsPicker } from '@/components/settings/SkillTargetsPicker';
-import { useSkillActions } from '@/components/skill-actions';
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { useSkills } from '@/hooks/use-skills';
-import { skillLiveDocName } from '@/lib/managed-artifact-doc-name';
-import { openManagedArtifactTab, openSkillFileTab } from '@/lib/open-managed-artifact-tab';
-import { SKILL_SCOPE_ORDER, useSkillScopeLabels } from '@/lib/skill-scope';
-import { useSettingsRoute } from '@/lib/use-settings-route';
 
 /**
- * Settings → Skills. Lists the project's authored skills (under
- * `<projectRoot>/.ok/skills/<name>/`) grouped by scope, so where each skill
- * lives is unmistakable: project skills are shared via git with everyone on
- * the project; global skills follow you across every project on this
- * computer. Each row badges its install-state (Installed vs Draft) and the
- * editor hosts it's projected into, and carries Install / Edit / Delete.
- *
- * Create + edit author the skill's `SKILL.md` (name + description + body);
- * Install projects it into the project's target editors (see `SkillTargetsPicker`).
+ * Settings → Skills, one page per scope: THIS PROJECT carries the project
+ * skill folders, USER carries the global (user-home) ones — matching the
+ * settings nav's own scope split. Per-skill reach lives in each skill's
+ * install menu; authoring and browsing live in the editor's Skills sidebar.
  */
-
-interface ScopeGroupChrome {
-  /** Group heading. */
-  title: ReactNode;
-  /** One-line scope explainer under the heading. */
-  blurb: ReactNode;
-  /** Shown when this scope has zero skills. */
-  empty: ReactNode;
-}
-
-function useScopeChrome(): Record<SkillScope, ScopeGroupChrome> {
-  const { t } = useLingui();
-  const labels = useSkillScopeLabels();
-  return {
-    global: {
-      title: labels.global,
-      blurb: t`Available in every project on this computer.`,
-      empty: t`No global skills yet.`,
-    },
-    project: {
-      title: labels.project,
-      blurb: t`Shared via git with everyone working on this project.`,
-      empty: t`No project skills yet. Author one to teach agents a repeatable task scoped to this knowledge base.`,
-    },
-  };
-}
-
-export function SkillsManagerSection() {
-  const state = useSkills();
-  const chrome = useScopeChrome();
-  const titleId = 'settings-skills-title';
-
-  const settingsRoute = useSettingsRoute();
-  const [newSkillOpen, setNewSkillOpen] = useState(false);
-
-  // Open the skill as the active editor tab and close Settings so it's visible —
-  // editing a skill is editing a document (the tab + sidebar + chrome are the
-  // doc shell). Setting the artifact hash also closes Settings (it's hash-driven),
-  // so the explicit close() is a belt-and-suspenders no-op once the hash flips.
-  // A managed built-in skill (`open-knowledge`) has no editable content doc, so
-  // its `SKILL.md` opens in the read-only bundle-file viewer instead.
-  function openSkillTab(skill: Pick<SkillsListEntry, 'scope' | 'name' | 'managed'>) {
-    if (skill.managed) {
-      openSkillFileTab({ scope: skill.scope, name: skill.name, path: 'SKILL.md' });
-    } else {
-      openManagedArtifactTab(skillLiveDocName(skill.scope, skill.name));
-    }
-    settingsRoute.close();
-  }
-
-  // Install/uninstall side effects + the delete/history dialogs are shared with
-  // the file-sidebar Skills section via this hook (no duplicated flow).
-  const actions = useSkillActions();
+export function SkillsManagerSection({ scope }: { scope: SkillScope }) {
+  const titleId = `settings-skills-title-${scope}`;
 
   return (
     <section aria-labelledby={titleId} className="space-y-4" data-testid="settings-skills-section">
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h3 id={titleId} className="text-base font-semibold">
-            <Trans>Skills</Trans>
-          </h3>
-          <p className="text-sm text-muted-foreground">
+      <div className="space-y-1">
+        <h3 id={titleId} className="text-base font-semibold">
+          <Trans>Skills</Trans>
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          {scope === 'project' ? (
             <Trans>
-              Skills teach agents repeatable tasks. Author them here; install a skill to project it
-              into your editors' skill folders.
+              Skills teach agents repeatable tasks. Author and manage them from the Skills section
+              in the editor; each skill's install menu controls where it lives. These are this
+              project's skill folders.
             </Trans>
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="shrink-0 font-mono uppercase"
-          onClick={() => setNewSkillOpen(true)}
-          data-testid="settings-skills-new-button"
-        >
-          <Plus className="size-3.5" aria-hidden />
-          <Trans>New skill</Trans>
-        </Button>
+          ) : (
+            <Trans>
+              Your user-level skill folders — available in every project on this machine. Each
+              skill's install menu controls where it lives.
+            </Trans>
+          )}
+        </p>
       </div>
 
-      <SkillTargetsPicker />
-
-      {state.status === 'error' ? (
-        <div
-          className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
-          role="alert"
-          data-testid="settings-skills-error"
-        >
-          <Trans>Failed to load skills: {state.message}</Trans>
-        </div>
-      ) : state.status === 'idle' || state.status === 'loading' ? (
-        <div className="rounded-lg border bg-card p-3 space-y-2">
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
-        </div>
-      ) : (
-        SKILL_SCOPE_ORDER.map((scope) => {
-          const skills = state.data
-            .filter((s) => s.scope === scope)
-            .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
-          // Global store isn't enumerated yet — hide its group
-          // entirely until it can hold skills, rather than show a permanently
-          // empty section. The project group always renders so its empty state
-          // guides first-time authoring.
-          if (scope === 'global' && skills.length === 0) return null;
-          return (
-            <ScopeGroup
-              key={scope}
-              chrome={chrome[scope]}
-              scope={scope}
-              skills={skills}
-              installingName={actions.installingName}
-              onEdit={(skill) => openSkillTab(skill)}
-              onDelete={actions.requestDelete}
-              onInstall={actions.install}
-              onUninstall={actions.uninstall}
-            />
-          );
-        })
-      )}
-
-      {actions.dialogs}
-
-      <NewSkillDialog
-        defaultScope="project"
-        open={newSkillOpen}
-        onOpenChange={setNewSkillOpen}
-        onCreated={({ scope, name }) => openSkillTab({ scope, name })}
-      />
-    </section>
-  );
-}
-
-function ScopeGroup({
-  chrome,
-  scope,
-  skills,
-  installingName,
-  onEdit,
-  onDelete,
-  onInstall,
-  onUninstall,
-}: {
-  chrome: ScopeGroupChrome;
-  scope: SkillScope;
-  skills: readonly SkillsListEntry[];
-  installingName: string | null;
-  onEdit: (skill: SkillsListEntry) => void;
-  onDelete: (skill: SkillsListEntry) => void;
-  onInstall: (skill: SkillsListEntry) => void;
-  onUninstall: (skill: SkillsListEntry) => void;
-}) {
-  const headingId = `settings-skills-${scope}-heading`;
-  return (
-    <section
-      aria-labelledby={headingId}
-      className="space-y-2"
-      data-testid={`skills-group-${scope}`}
-    >
-      <div>
-        <h4 id={headingId} className="text-sm font-medium">
-          {chrome.title}
-        </h4>
-        <p className="text-1sm text-muted-foreground">{chrome.blurb}</p>
-      </div>
-      <div className="rounded-lg border bg-card">
-        {skills.length === 0 ? (
-          <p
-            className="px-3 py-4 text-sm text-muted-foreground"
-            data-testid={`skills-group-${scope}-empty`}
-          >
-            {chrome.empty}
-          </p>
-        ) : (
-          <ul className="space-y-1 p-2" data-testid={`skills-group-${scope}-list`}>
-            {skills.map((skill) => (
-              <SkillRow
-                key={skill.name}
-                skill={skill}
-                installing={installingName === skill.name}
-                onEdit={() => onEdit(skill)}
-                onDelete={() => onDelete(skill)}
-                onInstall={() => onInstall(skill)}
-                onUninstall={() => onUninstall(skill)}
-              />
-            ))}
-          </ul>
-        )}
-      </div>
+      <SkillTargetsPicker scope={scope} />
     </section>
   );
 }

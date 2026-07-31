@@ -47,6 +47,8 @@ import {
   markCurrentHashHistoryEntry,
   replaceHashWithoutNavigation,
   skillFileFromHash,
+  skillPreviewFromHash,
+  skillsFromHash,
 } from '@/lib/doc-hash';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
@@ -234,10 +236,33 @@ function NavigationHandler() {
         mark('ok/nav/hash-change', { docName: null, kind: 'skill-file' });
         openHashTarget({
           kind: 'skill-file',
-          target: `${skillFile.scope}/${skillFile.name}/${skillFile.path}`,
+          // Host is part of the tab identity — two same-named skills in
+          // different host dirs must not share a tab.
+          target: `${skillFile.scope}/${skillFile.name}${skillFile.host ? `:${skillFile.host}` : ''}/${skillFile.path}`,
           scope: skillFile.scope,
           name: skillFile.name,
           path: skillFile.path,
+          ...(skillFile.host ? { host: skillFile.host } : {}),
+        });
+        return;
+      }
+      if (skillsFromHash(window.location.hash)) {
+        mark('ok/nav/hash-change', { docName: null, kind: 'skills' });
+        openTargetTransition({ kind: 'skills', target: 'skills' });
+        return;
+      }
+      const skillPreview = skillPreviewFromHash(window.location.hash);
+      if (skillPreview) {
+        mark('ok/nav/hash-change', { docName: null, kind: 'skill-preview' });
+        openTargetTransition({
+          kind: 'skill-preview',
+          target: `${skillPreview.flavor}/${skillPreview.source}/${skillPreview.name}`,
+          flavor: skillPreview.flavor,
+          source: skillPreview.source,
+          name: skillPreview.name,
+          subtitle: skillPreview.subtitle,
+          level: skillPreview.level,
+          path: skillPreview.path,
         });
         return;
       }

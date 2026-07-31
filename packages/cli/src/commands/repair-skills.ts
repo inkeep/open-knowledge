@@ -1,22 +1,23 @@
 /**
- * CLI parity for the Desktop's skill-reclaim sweeps:
- *   - `reclaimProjectSkillsOnProjectOpen` (refresh existing SKILL.md + create
- *     for OK-wired editors; here it is always create-enabled because the sweep
- *     only ever runs inside a confirmed `.ok/` project)
- *   - `reclaimUserSkillsOnLaunch` (force-write user-global central + per-host)
+ * CLI parity for the Desktop's skill-reclaim sweeps, both SEED-IF-ABSENT:
+ *   - `reclaimProjectSkillsOnProjectOpen` (leave an existing SKILL.md untouched;
+ *     create one for an OK-wired editor that has none — here always create-
+ *     enabled because the sweep only ever runs inside a confirmed `.ok/` project)
+ *   - `reclaimUserSkillsOnLaunch` (seed the user-global central + per-host dirs
+ *     only when absent)
  *
- * Why this exists: a teammate using only `@inkeep/open-knowledge` (no
- * Desktop install) sees `SKILL.md` written once by `ok init` and never
- * refreshed. The Desktop already has these two sweeps; this is the CLI
- * port. Wired into `bootStartServer` and exposed as `ok repair-skills` for
- * explicit invocation. Reference: packages/desktop/src/main/skill-reclaim.ts.
+ * Why this exists: a teammate using only `@inkeep/open-knowledge` (no Desktop
+ * install) needs the built-in skills present without a Desktop launch. The
+ * built-ins are seeded when missing and then left alone — a present copy may be
+ * a user-applied skills.sh update, so updates flow through the manual "update
+ * available" path, never a force-refresh. Wired
+ * into `bootStartServer` and exposed as `ok repair-skills` for explicit
+ * invocation. Reference: packages/desktop/src/main/skill-reclaim.ts.
  *
- * Version-gate asymmetry with Desktop: the user-scope sweep here checks
- * `~/.ok/skill-state.yml`'s `cli-hosts` entry and skips when the recorded
- * version equals the bundled version. Desktop force-writes every launch.
- * Justified by invocation frequency — `ok start` runs many times per day
- * vs. an Electron app launching 1-2 times. The project-scope sweep is NOT
- * version-gated (drift via manual edits can outlast a version bump).
+ * The user-scope sweep records `~/.ok/skill-state.yml`'s `cli-hosts` entry on a
+ * clean reconcile and skips early when the recorded version equals the bundled
+ * version AND every enabled built-in is on disk. The project-scope sweep is NOT
+ * version-gated (a deleted project skill must re-seed regardless).
  */
 import {
   existsSync as fsExistsSync,
@@ -181,11 +182,11 @@ export interface RepairSkillsContext {
   confirmLegacyCleanup?: (plan: LegacyFanoutSweepPlan) => Promise<boolean>;
 }
 
-export type ProjectSkillOutcome = 'no-token' | 'reclaimed' | 'created' | 'failed';
-export type UserSkillCentralOutcome = 'written' | 'overwritten' | 'failed';
+export type ProjectSkillOutcome = 'no-token' | 'present' | 'created' | 'failed';
+export type UserSkillCentralOutcome = 'written' | 'skipped-present' | 'failed';
 export type UserSkillHostOutcome =
   | 'written'
-  | 'overwritten'
+  | 'skipped-present'
   | 'skipped-host-absent'
   | 'skipped-collapsed-with-central'
   | 'failed';
@@ -284,9 +285,9 @@ function copyDirContents(sourceDir: string, destDir: string, fs: RepairSkillsFsO
 /**
  * Install ONE user-global bundle into the central store + each per-host dir,
  * under its own `bundleDirName`. Returns the per-write entries and whether the
- * CENTRAL write landed (the version-advance gate keys off every bundle's
- * central). Looped over `USER_GLOBAL_BUNDLE_IDS` by `runUserSweep` so each
- * user-global built-in (discovery + write-skill) is force-installed.
+ * CENTRAL write landed (a fresh seed, for the outcome telemetry). Looped over
+ * `USER_GLOBAL_BUNDLE_IDS` by `runUserSweep` so each user-global built-in
+ * (discovery + write-skill) is seeded when absent.
  */
 function installUserBundleToHostDirs(
   home: string,
@@ -298,27 +299,35 @@ function installUserBundleToHostDirs(
 ): { entries: UserSkillEntry[]; centralWritten: boolean } {
   const entries: UserSkillEntry[] = [];
   const centralDest = join(home, '.agents', 'skills', bundleDirName);
-  const centralExistedBefore = fs.existsSync(centralDest);
   let centralWritten = false;
-  try {
-    replaceDir(sourceDir, centralDest, fs);
-    centralWritten = true;
-    entries.push({
-      kind: 'central',
-      path: centralDest,
-      outcome: centralExistedBefore ? 'overwritten' : 'written',
-    });
-    logger({
-      event: 'user-skill-reclaim-central-written',
-      scope: 'user',
-      path: centralDest,
-      preexisting: centralExistedBefore,
-      version,
-    });
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    entries.push({ kind: 'central', path: centralDest, outcome: 'failed', error });
-    logger({ event: 'user-skill-reclaim-central-failed', scope: 'user', path: centralDest, error });
+  // SEED-IF-ABSENT: guarantee the built-in is PRESENT
+  // but never OVERWRITE an existing copy — that copy may be a user-applied
+  // skills.sh update. Updates flow through the manual "update available" path,
+  // not this sweep. Matches the desktop reclaim's gate exactly.
+  if (fs.existsSync(centralDest)) {
+    entries.push({ kind: 'central', path: centralDest, outcome: 'skipped-present' });
+  } else {
+    try {
+      replaceDir(sourceDir, centralDest, fs);
+      centralWritten = true;
+      entries.push({ kind: 'central', path: centralDest, outcome: 'written' });
+      logger({
+        event: 'user-skill-reclaim-central-written',
+        scope: 'user',
+        path: centralDest,
+        preexisting: false,
+        version,
+      });
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      entries.push({ kind: 'central', path: centralDest, outcome: 'failed', error });
+      logger({
+        event: 'user-skill-reclaim-central-failed',
+        scope: 'user',
+        path: centralDest,
+        error,
+      });
+    }
   }
 
   for (const host of HOSTS_WITH_USER_SKILL_DIR) {
@@ -347,7 +356,17 @@ function installUserBundleToHostDirs(
       });
       continue;
     }
-    const existedBefore = fs.existsSync(hostDest);
+    // Seed-if-absent per host too: an existing host copy is left as-is.
+    if (fs.existsSync(hostDest)) {
+      entries.push({
+        kind: 'host',
+        editorId: host.editorId,
+        hostDir: host.hostDir,
+        path: hostDest,
+        outcome: 'skipped-present',
+      });
+      continue;
+    }
     try {
       replaceDir(sourceDir, hostDest, fs);
       entries.push({
@@ -355,7 +374,7 @@ function installUserBundleToHostDirs(
         editorId: host.editorId,
         hostDir: host.hostDir,
         path: hostDest,
-        outcome: existedBefore ? 'overwritten' : 'written',
+        outcome: 'written',
       });
       logger({
         event: 'user-skill-reclaim-host-written',
@@ -363,7 +382,7 @@ function installUserBundleToHostDirs(
         editorId: host.editorId,
         hostDir: host.hostDir,
         path: hostDest,
-        preexisting: existedBefore,
+        preexisting: false,
         version,
       });
     } catch (err) {
@@ -447,21 +466,27 @@ function runProjectSweep(
     const dest = join(projectDir, host.hostDir, 'skills', PROJECT_SKILL_DIR_NAME);
     const skillFile = join(dest, 'SKILL.md');
     const skillExists = fs.existsSync(skillFile);
-    // Create only when the editor is OK-wired for this project. The config read
-    // is skipped on the refresh path. The host's `editorId` is a valid
-    // `EDITOR_TARGETS` key by the coverage meta-test, so the lookup +
-    // `projectConfigPath` resolution reuse the single source of truth (no
-    // duplicated per-editor path table).
+    // Seed-if-absent: an existing project skill is left untouched (a pulled/
+    // shared project never silently changes; updates flow through skills.sh).
+    if (skillExists) {
+      entries.push({
+        editorId: host.editorId,
+        hostDir: host.hostDir,
+        path: dest,
+        outcome: 'present',
+      });
+      continue;
+    }
+    // Create only when the editor is OK-wired for this project. The host's
+    // `editorId` is a valid `EDITOR_TARGETS` key by the coverage meta-test, so
+    // the lookup + `projectConfigPath` resolution reuse the single source of
+    // truth (no duplicated per-editor path table).
     const projectConfigPath =
       EDITOR_TARGETS[host.editorId as EditorId]?.projectConfigPath?.(projectDir);
-    const wired = !skillExists && editorWiredForOk(projectConfigPath, fs);
-    if (!skillExists && !wired) {
-      // Three scenarios surface here: (a) greenfield host that never ran
-      // `ok init` AND isn't OK-wired — nothing to do; (b) a host wired for some
-      // OTHER editor's MCP but not this one — also nothing; (c) the rare torn
-      // case — a prior `replaceDir` crashed between `rmSync(dest)` and
-      // `copyDirContents`, leaving the destination absent while the config
-      // still carries the marker (this re-creates it via the `wired` path).
+    const wired = editorWiredForOk(projectConfigPath, fs);
+    if (!wired) {
+      // Greenfield host that never ran `ok init` AND isn't OK-wired, or a host
+      // wired for some OTHER editor's MCP but not this one — nothing to do.
       entries.push({
         editorId: host.editorId,
         hostDir: host.hostDir,
@@ -486,15 +511,14 @@ function runProjectSweep(
       // and the create path authors a fresh dir, so the guard is mandatory.
       assertProjectPathSafe(dest, projectDir);
       replaceDir(sourceDir, dest, fs);
-      const outcome: ProjectSkillOutcome = skillExists ? 'reclaimed' : 'created';
       entries.push({
         editorId: host.editorId,
         hostDir: host.hostDir,
         path: dest,
-        outcome,
+        outcome: 'created',
       });
       logger({
-        event: skillExists ? 'project-skill-reclaim-reclaimed' : 'project-skill-reclaim-created',
+        event: 'project-skill-reclaim-created',
         scope: 'project',
         editorId: host.editorId,
         path: dest,
@@ -679,7 +703,7 @@ async function runUserSweep(
   // excluded by choice, not failure, so they don't block the advance.
   const allBundlesResolved = resolvedBundles.length === USER_GLOBAL_BUNDLE_IDS.length;
   // (2) Every gated bundle's central write landed.
-  let allGatedCentralsWritten = true;
+  const bundleResults: Array<{ id: BundleId; centralWritten: boolean }> = [];
   for (const { id, sourceDir } of gatedBundles) {
     const result = installUserBundleToHostDirs(
       home,
@@ -690,18 +714,17 @@ async function runUserSweep(
       bundledVersion,
     );
     entries.push(...result.entries);
-    if (!result.centralWritten) allGatedCentralsWritten = false;
+    bundleResults.push({ id, centralWritten: result.centralWritten });
   }
 
-  // Gate version advance on EVERY bundle's central write landing — the same
-  // central-gate rationale, generalized across the bundle set. A partial
-  // failure leaves the version unrecorded so the next boot retries; per-host
-  // writes are idempotent (`replaceDir`). The Desktop has the same gate shape
-  // but force-writes every launch (no version gate) so it self-heals.
-  const anyCentralWritten = entries.some(
-    (e) => e.kind === 'central' && (e.outcome === 'written' || e.outcome === 'overwritten'),
-  );
-  if (allBundlesResolved && allGatedCentralsWritten && anyCentralWritten) {
+  // Seed-if-absent: a present built-in is left untouched (updates flow through
+  // the skills.sh path, not this sweep). A clean reconcile — every enabled
+  // built-in now present, whether freshly seeded or already there, with no
+  // central-write failure — advances the recorded version so the version
+  // fast-path can skip next launch. Only a genuine central-write failure holds
+  // the version back for a retry; per-host failures don't roll back.
+  const anyCentralFailed = entries.some((e) => e.kind === 'central' && e.outcome === 'failed');
+  if (allBundlesResolved && !anyCentralFailed) {
     let stateWriteError: string | null = null;
     try {
       await deps.writeRecordedVersion(home, bundledVersion);
@@ -719,23 +742,25 @@ async function runUserSweep(
         error: stateWriteError,
       });
     }
-    // One outcome event per installed bundle, gated on the state-file write —
-    // an `installed` event paired with a stale `skill-state.yml` would mislead
-    // any operator chasing "did the install actually land?".
-    for (const { id } of gatedBundles) {
+    // One outcome event per bundle, gated on the state-file write: `installed`
+    // for a fresh seed, `skip-current` for a built-in that was already present.
+    for (const { id, centralWritten } of bundleResults) {
       recordEventSoft({
         ts: nowIso(),
         surface: 'cli-start',
         target: 'cli-hosts',
         bundle: id,
-        outcome: stateWriteError === null ? 'installed' : 'failed',
+        outcome:
+          stateWriteError !== null ? 'failed' : centralWritten ? 'installed' : 'skip-current',
         version: bundledVersion,
         ...(stateWriteError === null ? {} : { reason: `state-write-failed:${stateWriteError}` }),
       });
     }
   } else {
-    // central write failed for at least one bundle. Split the reason by whether
-    // any HOST write actually threw vs every host being absent/collapsed.
+    // Two independent causes land here and the reason has to name which: a
+    // bundle whose assets never resolved (nothing was even attempted for it —
+    // partially-present assets, so retry next boot) or a central write that
+    // threw. The write case then splits on whether any HOST write also threw.
     const anyHostFailed = entries.some((e) => e.kind === 'host' && e.outcome === 'failed');
     recordEventSoft({
       ts: nowIso(),
@@ -743,7 +768,11 @@ async function runUserSweep(
       target: 'cli-hosts',
       outcome: 'failed',
       version: bundledVersion,
-      reason: anyHostFailed ? 'all-writes-failed' : 'no-hosts-installed',
+      reason: !allBundlesResolved
+        ? 'bundle-unresolved'
+        : anyHostFailed
+          ? 'all-writes-failed'
+          : 'central-write-failed',
     });
   }
 
@@ -755,12 +784,13 @@ async function runUserSweep(
  * bundled version. Invoked from `bootStartServer` on every `ok start` boot
  * and from the standalone `ok repair-skills` subcommand.
  *
- * Project sweep: refreshes a host's SKILL.md when one already exists, and
- * creates it for any host whose project MCP config is OK-wired (carries
- * `# ok-mcp-v1`). Greenfield / non-OK-wired hosts untouched.
+ * Project sweep: leaves a host's SKILL.md untouched when one already exists,
+ * and creates it for any host whose project MCP config is OK-wired (carries
+ * `# ok-mcp-v1`) but has none. Greenfield / non-OK-wired hosts untouched.
  *
- * User sweep: version-gated against `~/.ok/skill-state.yml`'s `cli-hosts`
- * entry — skipped when the recorded version equals the bundled version.
+ * User sweep: seed-if-absent, version-gated against `~/.ok/skill-state.yml`'s
+ * `cli-hosts` entry — skipped early when the recorded version equals the bundled
+ * version and every enabled built-in is already on disk.
  *
  * `OK_RECLAIM_DISABLE=1` short-circuits the entire sweep. Mirrors the env
  * gate on the desktop's `reclaimUserSkillsOnLaunch` /
@@ -854,26 +884,25 @@ function formatRepairSkillsResult(result: RepairSkillsResult): string {
   }
   const lines: string[] = ['Skill reclaim complete.'];
   if (result.project.outcome === 'done') {
-    const reclaimed = result.project.entries.filter((e) => e.outcome === 'reclaimed').length;
+    const present = result.project.entries.filter((e) => e.outcome === 'present').length;
     const created = result.project.entries.filter((e) => e.outcome === 'created').length;
     const noToken = result.project.entries.filter((e) => e.outcome === 'no-token').length;
     const failed = result.project.entries.filter((e) => e.outcome === 'failed').length;
     lines.push(
-      `  Project: ${reclaimed} reclaimed, ${created} created, ${noToken} no-token, ${failed} failed.`,
+      `  Project: ${present} present, ${created} created, ${noToken} no-token, ${failed} failed.`,
     );
   } else {
     lines.push(`  Project: skipped (${result.project.reason}).`);
   }
   if (result.user.outcome === 'done') {
-    const written = result.user.entries.filter(
-      (e) => e.outcome === 'written' || e.outcome === 'overwritten',
-    ).length;
+    const written = result.user.entries.filter((e) => e.outcome === 'written').length;
+    const present = result.user.entries.filter((e) => e.outcome === 'skipped-present').length;
     const skipped = result.user.entries.filter(
       (e) => e.outcome === 'skipped-host-absent' || e.outcome === 'skipped-collapsed-with-central',
     ).length;
     const failed = result.user.entries.filter((e) => e.outcome === 'failed').length;
     lines.push(
-      `  User (${result.user.version}): ${written} written, ${skipped} skipped, ${failed} failed.`,
+      `  User (${result.user.version}): ${written} written, ${present} present, ${skipped} skipped, ${failed} failed.`,
     );
   } else {
     lines.push(`  User: skipped (${result.user.reason}).`);

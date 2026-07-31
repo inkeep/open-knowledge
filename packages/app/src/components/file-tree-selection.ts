@@ -72,6 +72,9 @@ export function resolveFileTreeSelection(
       };
     case 'asset':
     case 'skill-file':
+    // The Skills hub + pre-install skill preview have no file-tree selection.
+    case 'skills':
+    case 'skill-preview':
       return {
         selectedFilePath: null,
         selectedFolderPath: null,

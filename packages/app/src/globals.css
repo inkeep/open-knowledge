@@ -162,6 +162,13 @@
   --color-gray-900: oklch(0.216 0.006 56.043);
   --color-gray-950: oklch(0.147 0.004 49.25);
 
+  /* File-tree muted foreground (disclosure carets, indent guides). Pierre
+     declares `--trees-fg-muted` on `:host` inside its shadow root, so that var
+     is unreachable from sidebar chrome rendered outside the tree. This token is
+     the shared source: `createFileTreeStyle` feeds it into the tree, and
+     out-of-tree rows use the generated `text-tree-muted` utility to match. */
+  --color-tree-muted: light-dark(var(--color-gray-400), var(--color-gray-500));
+
   /* brand colors */
   --color-azure-blue: #3784ff;
   --color-sky-blue: #69a3ff;
@@ -1931,6 +1938,51 @@
   vertical-align: -2px;
   line-height: 1;
   font-size: 0.95em;
+}
+
+/* `/skill-name` references in skill-doc prose: installed reads as a link;
+   missing reads as the broken-link treatment with an install path on click. */
+.ProseMirror .ok-skill-ref,
+.cm-skill-ref {
+  cursor: pointer;
+  color: var(--color-azure-blue);
+  @apply dark:text-sky-blue;
+}
+.ProseMirror .ok-skill-ref:hover,
+.cm-skill-ref:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.ProseMirror .ok-skill-ref-missing,
+.cm-skill-ref-missing {
+  color: var(--muted-foreground);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+/* In-viewer find (§8.4): CSS Custom Highlight API paint — DOM untouched. */
+::highlight(ok-find) {
+  background-color: color-mix(in srgb, var(--color-azure-blue) 30%, transparent);
+}
+::highlight(ok-find-active) {
+  background-color: color-mix(in srgb, var(--color-azure-blue) 60%, transparent);
+}
+
+/* Skill-doc bundle-path affordance — code spans shaped like `references/…` /
+   `scripts/…` get a link cursor; the visible affordance is hover-only (link
+   tint + solid underline). Dotted-at-rest was tried and read as the
+   unresolved/spellcheck error style, and wrapped chips in tables stacked
+   rows of dots. Decoration-only; bytes and chip styling untouched. */
+.ProseMirror .ok-skill-path-link,
+.cm-skill-path-link {
+  cursor: pointer;
+}
+.ProseMirror .ok-skill-path-link:hover,
+.cm-skill-path-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  color: var(--color-azure-blue);
+  @apply dark:text-sky-blue;
 }
 
 /* Resolution states — the decoration plugin writes `data-resolution-state`

@@ -93,6 +93,8 @@ interface ProjectSessionState {
   activeDocName: string | null;
   /** Most recently active tab, including folder overview tabs. */
   activeTabId: string | null;
+  /** Last-active tab per sidebar surface (Files vs Skills), each an open-tab id or null. */
+  activeTabByMode: { files: string | null; skills: string | null };
   /** ISO-8601 timestamp of the last tab-session write. */
   updatedAt: string | null;
 }
@@ -332,8 +334,16 @@ function emptyProjectSessionState(): ProjectSessionState {
     pinnedTabIds: [],
     activeDocName: null,
     activeTabId: null,
+    activeTabByMode: { files: null, skills: null },
     updatedAt: null,
   };
+}
+
+/** A per-surface active-tab slot: a string that is still an open tab, else null. */
+function readModeSlot(source: unknown, key: 'files' | 'skills', openTabs: string[]): string | null {
+  if (typeof source !== 'object' || source === null) return null;
+  const value = (source as Record<string, unknown>)[key];
+  return typeof value === 'string' && openTabs.includes(value) ? value : null;
 }
 
 function sanitizeStringArray(value: unknown): string[] {
@@ -371,6 +381,12 @@ function parseProjectSessionState(raw: unknown): ProjectSessionState {
     pinnedTabIds,
     activeDocName,
     activeTabId,
+    // Persist per-surface active as open-tab ids; the app re-validates surface
+    // membership via parseEditorTabSessionState on read.
+    activeTabByMode: {
+      files: readModeSlot(obj.activeTabByMode, 'files', openTabs),
+      skills: readModeSlot(obj.activeTabByMode, 'skills', openTabs),
+    },
     updatedAt: typeof obj.updatedAt === 'string' ? obj.updatedAt : null,
   };
 }

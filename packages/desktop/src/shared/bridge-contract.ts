@@ -274,6 +274,7 @@ interface ProjectSessionState {
   pinnedTabIds: string[];
   activeDocName: string | null;
   activeTabId: string | null;
+  activeTabByMode: { files: string | null; skills: string | null };
   updatedAt: string | null;
 }
 

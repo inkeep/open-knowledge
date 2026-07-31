@@ -26,12 +26,13 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { atomicWriteFile } from '@inkeep/open-knowledge-core/server';
 import { tracedMkdir, tracedRename, tracedWriteFile } from './fs-traced.ts';
+import { createKeyedSerializer } from './keyed-serializer.ts';
 import { getLogger } from './logger.ts';
 
 const logger = getLogger('installed-skills-marker');
 
 /** Routes core's atomic write through the server's traced fs primitives. */
-const TRACED_FS_ADAPTER = {
+export const TRACED_FS_ADAPTER = {
   writeFile: (path: string, content: string, opts: { encoding: 'utf-8'; mode?: number }) =>
     tracedWriteFile(path, content, opts),
   rename: (from: string, to: string) => tracedRename(from, to),
@@ -47,24 +48,11 @@ export function installedSkillsPath(projectDir: string): string {
  * `removeSkillInstall` each read the whole marker, merge one entry, and rewrite
  * — two concurrent calls (e.g. parallel MCP installs of different skills) would
  * otherwise read the same snapshot and the second write would clobber the
- * first's entry. The server is single-per-contentDir (server.lock), so an
- * in-process promise chain keyed by marker path is sufficient.
+ * first's entry.
  */
-const markerWriteChains = new Map<string, Promise<unknown>>();
+const serializeMarkerWrite = createKeyedSerializer();
 function withMarkerLock<T>(projectDir: string, fn: () => Promise<T>): Promise<T> {
-  const key = installedSkillsPath(projectDir);
-  const prior = markerWriteChains.get(key) ?? Promise.resolve();
-  const run = prior.then(fn, fn);
-  // Tail swallows errors so one failed write doesn't poison the chain for the
-  // next caller (the failure still rejects the `run` returned to this caller).
-  markerWriteChains.set(
-    key,
-    run.then(
-      () => undefined,
-      () => undefined,
-    ),
-  );
-  return run;
+  return serializeMarkerWrite(installedSkillsPath(projectDir), fn);
 }
 
 /**

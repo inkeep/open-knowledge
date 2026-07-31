@@ -459,6 +459,69 @@ describe('ContentFilter', () => {
     });
   });
 
+  describe('in-place skill admission (allow-list)', () => {
+    test('a gitignored bundle is NOT admitted, even on the allow-list', () => {
+      // Projecting a skill into every editor dir and gitignoring the copies is a
+      // normal setup. Admitting an ignored path makes the sync engine try to
+      // commit it; git refuses and sync strands offline. The skill still LISTS
+      // as its own row — the scan is independent of content admission.
+      writeFileSync(join(projectDir, '.gitignore'), '.claude/skills/open-knowledge/\n');
+      const filter = createContentFilter({
+        projectDir,
+        contentDir: projectDir,
+        inPlaceSkillDirs: new Set([
+          '.claude/skills/open-knowledge',
+          '.agents/skills/open-knowledge',
+        ]),
+      });
+
+      expect(filter.isExcluded('.claude/skills/open-knowledge/SKILL.md')).toBe(true);
+      expect(filter.isPathIgnored('.claude/skills/open-knowledge/SKILL.md')).toBe(true);
+      // Its same-named, NOT-ignored sibling stays admitted — being gitignored is
+      // a property of the path, never of the name it shares.
+      expect(filter.isExcluded('.agents/skills/open-knowledge/SKILL.md')).toBe(false);
+      expect(filter.isPathIgnored('.agents/skills/open-knowledge/SKILL.md')).toBe(false);
+    });
+
+    test('admits ONLY the registry canonical bundle dirs out of the editor host dirs', () => {
+      const filter = createContentFilter({
+        projectDir,
+        contentDir: projectDir,
+        inPlaceSkillDirs: new Set(['.claude/skills/foo', '.codex/skills/bar']),
+      });
+
+      // Admitted: files under the canonical bundle dirs (SKILL, references, assets).
+      expect(filter.isExcluded('.claude/skills/foo/SKILL.md')).toBe(false);
+      expect(filter.isExcluded('.claude/skills/foo/references/patterns.md')).toBe(false);
+      expect(filter.isExcluded('.claude/skills/foo/diagram.png')).toBe(false);
+      expect(filter.isExcluded('.codex/skills/bar/SKILL.md')).toBe(false);
+      // Descendable ancestors so the walk reaches them.
+      expect(filter.isDirExcluded('.claude')).toBe(false);
+      expect(filter.isDirExcluded('.claude/skills')).toBe(false);
+      expect(filter.isDirExcluded('.claude/skills/foo')).toBe(false);
+      // asset-serve path (isPathIgnored) admits the same files.
+      expect(filter.isPathIgnored('.claude/skills/foo/diagram.png')).toBe(false);
+
+      // NOT admitted: a same-editor skill NOT in the allow-list (a copy/conflict/other).
+      expect(filter.isExcluded('.claude/skills/other/SKILL.md')).toBe(true);
+      expect(filter.isDirExcluded('.claude/skills/other')).toBe(true);
+      // NOT admitted: non-skill editor children stay excluded.
+      expect(filter.isExcluded('.claude/plugins/p/manifest.md')).toBe(true);
+      expect(filter.isDirExcluded('.claude/plugins')).toBe(true);
+      expect(filter.isExcluded('.claude/settings.local.json')).toBe(true);
+      expect(filter.isExcluded('.cursor/mcp.json')).toBe(true);
+      // Secret floor still wins inside an admitted skill dir.
+      expect(filter.isExcluded('.claude/skills/foo/.env')).toBe(true);
+      expect(filter.isDirExcluded('.claude/skills/foo/.ssh')).toBe(true);
+    });
+
+    test('empty/omitted allow-list = feature off (editor dirs stay fully skipped)', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      expect(filter.isExcluded('.claude/skills/foo/SKILL.md')).toBe(true);
+      expect(filter.isDirExcluded('.claude')).toBe(true);
+    });
+  });
+
   describe('isDirExcluded', () => {
     test('excludes directories matching gitignore directory patterns (trailing slash)', () => {
       writeFileSync(join(projectDir, '.gitignore'), 'node_modules/\ndist/\n');

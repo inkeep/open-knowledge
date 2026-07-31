@@ -79,6 +79,7 @@ describe('state-store (recent projects + LRU)', () => {
       pinnedTabIds: ['README'],
       activeDocName: 'docs/guide',
       activeTabId: 'docs/guide',
+      activeTabByMode: { files: null, skills: null },
       updatedAt: '2026-05-06T00:00:00Z',
     });
     expect(getProjectSessionState(state, '/tmp/b')).toEqual({
@@ -86,6 +87,7 @@ describe('state-store (recent projects + LRU)', () => {
       pinnedTabIds: [],
       activeDocName: null,
       activeTabId: null,
+      activeTabByMode: { files: null, skills: null },
       updatedAt: null,
     });
   });
@@ -104,7 +106,24 @@ describe('state-store (recent projects + LRU)', () => {
       pinnedTabIds: [folderTabId],
       activeDocName: null,
       activeTabId: folderTabId,
+      activeTabByMode: { files: null, skills: null },
       updatedAt: '2026-05-06T00:00:00Z',
+    });
+  });
+
+  test('project session state round-trips per-surface active tabs', () => {
+    const state = setProjectSessionState(emptyState(), '/tmp/a', {
+      openTabs: ['README', 'docs/guide'],
+      pinnedTabIds: [],
+      activeDocName: 'docs/guide',
+      activeTabId: 'docs/guide',
+      // 'docs/guide' is open → kept; 'gone' is not an open tab → dropped to null.
+      activeTabByMode: { files: 'docs/guide', skills: 'gone' },
+      updatedAt: '2026-05-06T00:00:00Z',
+    });
+    expect(getProjectSessionState(state, '/tmp/a').activeTabByMode).toEqual({
+      files: 'docs/guide',
+      skills: null,
     });
   });
 
@@ -122,6 +141,7 @@ describe('state-store (recent projects + LRU)', () => {
       pinnedTabIds: [],
       activeDocName: null,
       activeTabId: null,
+      activeTabByMode: { files: null, skills: null },
       updatedAt: null,
     });
   });
@@ -157,6 +177,7 @@ describe('state-store (recent projects + LRU)', () => {
       pinnedTabIds: ['README'],
       activeDocName: 'docs/guide',
       activeTabId: 'docs/guide',
+      activeTabByMode: { files: null, skills: null },
       updatedAt: '2026-05-06T00:00:00Z',
     });
   });

@@ -1,4 +1,4 @@
-import { hashFromDocName, hashFromSkillFile, type SkillFileHashTarget } from '@/lib/doc-hash';
+import { hashFromDocName, hashFromSkillPreview, type SkillPreviewHashTarget } from '@/lib/doc-hash';
 
 /**
  * Open a managed-artifact doc (skill/template) as the ACTIVE editor tab.
@@ -19,14 +19,13 @@ export function openManagedArtifactTab(docName: string): void {
 }
 
 /**
- * Open a skill bundle file (`SKILL.md` / `references/**` / `scripts/**`) in the
- * READ-ONLY viewer, by the same hash-nav mechanism as {@link openManagedArtifactTab}.
- * Used for OK's built-in `open-knowledge` skill (managed, read-only): it has no
- * editable CRDT content doc, so its `SKILL.md` opens through the scope-aware
- * `/api/skill-file` viewer rather than the editor.
+ * Open a pre-install skill preview as the ACTIVE tab. Same hash-driven nav as
+ * `openManagedArtifactTab`; kept in this module (not inline in a component) so the
+ * `window.location.hash` mutation stays out of React-Compiler-compiled component
+ * bodies, which reject in-render mutation of global values.
  */
-export function openSkillFileTab(target: SkillFileHashTarget): void {
+export function openSkillPreviewTab(target: SkillPreviewHashTarget): void {
   if (typeof window === 'undefined') return;
-  const hash = hashFromSkillFile(target);
+  const hash = hashFromSkillPreview(target);
   if (window.location.hash !== hash) window.location.hash = hash;
 }

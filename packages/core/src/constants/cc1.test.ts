@@ -2,9 +2,63 @@ import { describe, expect, test } from 'vitest';
 import {
   managedArtifactDocNameFromContentTarget,
   parseGlobalSkillBundleDoc,
+  parseManagedArtifactName,
   parseProjectSkillBundleDoc,
   resolveSkillBundleWikiTarget,
+  skillFileLiveDocName,
+  skillLiveDocName,
 } from './cc1.ts';
+
+describe('parseManagedArtifactName — skill name/rel split (per-file editability)', () => {
+  test('bare skill doc → rel is null (back-compat, unchanged)', () => {
+    expect(parseManagedArtifactName('__skill__/global/demo')).toEqual({
+      kind: 'skill',
+      scope: 'global',
+      name: 'demo',
+      rel: null,
+    });
+    expect(parseManagedArtifactName('__skill__/project/demo')).toEqual({
+      kind: 'skill',
+      scope: 'project',
+      name: 'demo',
+      rel: null,
+    });
+  });
+
+  test('per-file skill doc → name is the first segment, rel is the remainder', () => {
+    expect(parseManagedArtifactName('__skill__/global/demo/references/patterns')).toEqual({
+      kind: 'skill',
+      scope: 'global',
+      name: 'demo',
+      rel: 'references/patterns',
+    });
+    expect(parseManagedArtifactName('__skill__/global/demo/references/sub/deep')).toEqual({
+      kind: 'skill',
+      scope: 'global',
+      name: 'demo',
+      rel: 'references/sub/deep',
+    });
+  });
+
+  test('skillFileLiveDocName round-trips through parseManagedArtifactName (global)', () => {
+    const doc = skillFileLiveDocName('global', 'demo', 'references/patterns.md');
+    expect(doc).toBe('__skill__/global/demo/references/patterns'); // ext-less
+    expect(parseManagedArtifactName(doc)).toEqual({
+      kind: 'skill',
+      scope: 'global',
+      name: 'demo',
+      rel: 'references/patterns',
+    });
+  });
+
+  test('skillFileLiveDocName(project) is a content doc, not a managed-artifact name', () => {
+    expect(skillFileLiveDocName('project', 'demo', 'references/patterns.md')).toBe(
+      '.ok/skills/demo/references/patterns',
+    );
+    // The bare SKILL doc name is unchanged.
+    expect(skillLiveDocName('global', 'demo')).toBe('__skill__/global/demo');
+  });
+});
 
 // The shared normalizer maps a content link target / doc name that points at a
 // TEMPLATE file on disk to its managed-artifact doc name. It is the single
@@ -78,6 +132,29 @@ describe('resolveSkillBundleWikiTarget', () => {
     expect(resolveSkillBundleWikiTarget('scripts/run', skill)).toBe('.ok/skills/demo/scripts/run');
   });
 
+  test('resolves from a REFERENCE doc, an IN-PLACE bundle, a GLOBAL artifact, and an extskill', () => {
+    // Bundle paths are authored bundle-root-relative regardless of which bundle
+    // doc mentions them — a reference doc resolves against its own bundle root.
+    expect(
+      resolveSkillBundleWikiTarget('references/sibling', '.ok/skills/demo/references/notes'),
+    ).toBe('.ok/skills/demo/references/sibling');
+    expect(
+      resolveSkillBundleWikiTarget('references/notes', '.agents/skills/demo/references/deep/x'),
+    ).toBe('.agents/skills/demo/references/notes');
+    expect(resolveSkillBundleWikiTarget('scripts/run', '__skill__/global/demo')).toBe(
+      '__skill__/global/demo/scripts/run',
+    );
+    expect(
+      resolveSkillBundleWikiTarget('references/notes', '__skill__/global/demo/references/other'),
+    ).toBe('__skill__/global/demo/references/notes');
+    expect(resolveSkillBundleWikiTarget('references/notes', '__extskill__/demo')).toBe(
+      '__extskill__/demo/references/notes',
+    );
+    expect(
+      resolveSkillBundleWikiTarget('references/notes', '__extskill__/demo/references/other'),
+    ).toBe('__extskill__/demo/references/notes');
+  });
+
   test('leaves bare names and non-bundle targets to KB-wide resolution', () => {
     // Bare name (no slash) keeps Obsidian-style page-set resolution.
     expect(resolveSkillBundleWikiTarget('notes', skill)).toBeNull();
@@ -92,13 +169,23 @@ describe('resolveSkillBundleWikiTarget', () => {
     expect(resolveSkillBundleWikiTarget('references/../../escape', skill)).toBeNull();
   });
 
-  test('returns null when the source is not a project skill SKILL doc', () => {
+  test('returns null when the source is not a bundle doc at all', () => {
     expect(resolveSkillBundleWikiTarget('references/notes', 'notes/index')).toBeNull();
-    expect(
-      resolveSkillBundleWikiTarget('references/notes', '.ok/skills/demo/references/x'),
-    ).toBeNull();
-    // Global skills are managed-artifact docs, not content SKILL docs.
-    expect(resolveSkillBundleWikiTarget('references/notes', '__skill__/global/demo')).toBeNull();
+    expect(resolveSkillBundleWikiTarget('references/notes', 'docs/guide')).toBeNull();
+    // A template artifact is managed but not a skill bundle.
+    expect(resolveSkillBundleWikiTarget('references/notes', '__template__/x/y')).toBeNull();
+  });
+
+  test('resolves for an IN-PLACE editor-dir skill too (.claude/.codex/.github/skills)', () => {
+    expect(resolveSkillBundleWikiTarget('references/notes', '.claude/skills/demo/SKILL')).toBe(
+      '.claude/skills/demo/references/notes',
+    );
+    expect(resolveSkillBundleWikiTarget('references/x', '.codex/skills/demo/SKILL')).toBe(
+      '.codex/skills/demo/references/x',
+    );
+    expect(resolveSkillBundleWikiTarget('references/y', '.github/skills/demo/SKILL')).toBe(
+      '.github/skills/demo/references/y',
+    );
   });
 });
 
@@ -122,6 +209,21 @@ describe('parseProjectSkillBundleDoc', () => {
       kind: 'reference',
       rel: 'sub/deep',
     });
+  });
+
+  test('parses an IN-PLACE editor-dir skill (SKILL + references), same shape as .ok/skills', () => {
+    expect(parseProjectSkillBundleDoc('.claude/skills/demo/SKILL')).toEqual({
+      name: 'demo',
+      kind: 'skill',
+      rel: null,
+    });
+    expect(parseProjectSkillBundleDoc('.codex/skills/demo/references/notes')).toEqual({
+      name: 'demo',
+      kind: 'reference',
+      rel: 'notes',
+    });
+    // scripts/** still not graph nodes, in any root.
+    expect(parseProjectSkillBundleDoc('.claude/skills/demo/scripts/run')).toBeNull();
   });
 
   test('rejects non-bundle docs, scripts, global skills, and the bare skill dir', () => {

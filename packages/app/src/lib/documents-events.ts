@@ -1,3 +1,4 @@
+import type { SkillScope } from '@inkeep/open-knowledge-core';
 import { DerivedViewChannelSchema } from '@inkeep/open-knowledge-core';
 import type { DerivedViewChannel } from '@/lib/cc1';
 
@@ -135,4 +136,31 @@ export function subscribeToSkillsChanged(onChange: () => void): () => void {
   const listener = () => onChange();
   window.addEventListener(SKILLS_CHANGED_EVENT, listener);
   return () => window.removeEventListener(SKILLS_CHANGED_EVENT, listener);
+}
+
+// Optimistic cross-scope-move overlay. A scope-move copies the whole bundle to
+// the destination and deletes the source LAST, so the source row lingers in the
+// dock through the (potentially slow) copy. A mover hides the source row the
+// instant it's clicked and clears the hint once the move settles — on success
+// the delete has already removed it; on failure the row must come back.
+// `useSkills` filters hidden keys out of its list, so every consumer (dock,
+// sidebar, Settings) reflects the pending move uniformly.
+const hiddenMovingSkills = new Set<string>();
+const movingSkillKey = (scope: SkillScope, name: string) => `${scope}\u0000${name}`;
+
+export function beginOptimisticSkillMove(fromScope: SkillScope, name: string): void {
+  hiddenMovingSkills.add(movingSkillKey(fromScope, name));
+  emitSkillsChanged();
+}
+
+export function endOptimisticSkillMove(fromScope: SkillScope, name: string): void {
+  if (hiddenMovingSkills.delete(movingSkillKey(fromScope, name))) emitSkillsChanged();
+}
+
+/** Drop rows a scope-move is optimistically relocating away from their source. */
+export function applyOptimisticSkillMoves<T extends { scope: SkillScope; name: string }>(
+  skills: readonly T[],
+): readonly T[] {
+  if (hiddenMovingSkills.size === 0) return skills;
+  return skills.filter((s) => !hiddenMovingSkills.has(movingSkillKey(s.scope, s.name)));
 }

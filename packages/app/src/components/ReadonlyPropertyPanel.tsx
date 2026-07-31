@@ -21,6 +21,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { Trans } from '@lingui/react/macro';
 import { PropertyDisclosure } from '@/components/PropertyDisclosure';
+import { PropertyDisplayRow } from '@/components/PropertyDisplayRow';
 import { ComplexValueWidget, isComplexValue, TYPE_ICON } from '@/components/PropertyWidgets';
 
 /**
@@ -67,24 +68,14 @@ export function ReadonlyPropertyPanel({ text }: { text: string }) {
 function ReadonlyRow({ keyName, value }: { keyName: string; value: FrontmatterValue }) {
   const Icon = TYPE_ICON[inferType(value)];
   return (
-    <div
-      className="group flex items-start gap-1 py-0.5"
-      data-testid="readonly-property-row"
-      data-key={keyName}
+    <PropertyDisplayRow
+      icon={<Icon className="size-3.5" />}
+      label={keyName}
+      testId="readonly-property-row"
+      dataKey={keyName}
     >
-      <span
-        aria-hidden
-        className="flex size-7 shrink-0 items-center justify-center rounded text-muted-foreground"
-      >
-        <Icon className="size-3.5" />
-      </span>
-      <span className="flex h-7 w-32 shrink-0 items-center truncate px-2 text-sm text-muted-foreground">
-        {keyName}
-      </span>
-      <div className="min-w-0 flex-1">
-        <ReadonlyValue keyName={keyName} value={value} />
-      </div>
-    </div>
+      <ReadonlyValue keyName={keyName} value={value} />
+    </PropertyDisplayRow>
   );
 }
 

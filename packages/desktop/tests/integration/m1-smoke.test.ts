@@ -798,6 +798,7 @@ describe('M1 smoke', () => {
     const desktopBridgePath = join(__dirname, '..', '..', 'src', 'shared', 'bridge-contract.ts');
     const ipcChannelsPath = join(__dirname, '..', '..', 'src', 'shared', 'ipc-channels.ts');
     const stateStorePath = join(__dirname, '..', '..', 'src', 'main', 'state-store.ts');
+    const coreBridgePath = join(__dirname, '..', '..', '..', 'core', 'src', 'desktop-bridge.ts');
     const { readFileSync } = await import('node:fs');
 
     const extractInterfaceFields = (src: string, interfaceName: string): Set<string> => {
@@ -857,6 +858,13 @@ describe('M1 smoke', () => {
         label: 'desktop/state-store.ts (ProjectSessionState)',
         fields: extractInterfaceFields(
           readFileSync(stateStorePath, 'utf-8'),
+          'ProjectSessionState',
+        ),
+      },
+      {
+        label: 'core/desktop-bridge.ts (ProjectSessionState)',
+        fields: extractInterfaceFields(
+          readFileSync(coreBridgePath, 'utf-8'),
           'ProjectSessionState',
         ),
       },

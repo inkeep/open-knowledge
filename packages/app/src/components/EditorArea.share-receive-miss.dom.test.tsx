@@ -29,6 +29,9 @@ vi.doMock('@/components/PropertyContext', () => ({
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => docCtx,
   useDocumentTransition: () => ({ openDocumentTransition: null }),
+  // EditorArea imports isSkillsNewTabId; keep it in the partial mock so the
+  // module link can't detonate on load-order (see mock-module-completeness).
+  isSkillsNewTabId: () => false,
 }));
 vi.doMock('@/hooks/use-document-stats', () => ({ useDocumentStats: () => null }));
 vi.doMock('@/hooks/use-selection-stats', () => ({ useSelectionStats: () => null }));

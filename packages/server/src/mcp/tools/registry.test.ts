@@ -12,7 +12,6 @@
  *     (the interim single `version` tool was split).
  *   - `conflicts` absorbed list_conflicts + get_conflict_content.
  *   - `palette` absorbed get_components + get_authoring_palette.
- *   - `workflow({ kind })` absorbed ingest / research / consolidate / discover.
  *   - `history` / `config` / `preview_url` dropped the `get_` prefix.
  *   - read_document / grep / list_documents were dropped (exec subsumes).
  *
@@ -51,13 +50,13 @@ const EXPECTED_TOOLS = [
   'move',
   // Skill install-projection — the one new verb beyond the CRUD set.
   'install',
+  // Skill import/acquire (skills marketplace slice 3) — the on-ramp paired with install.
+  'import',
   'checkpoint',
   'restore_version',
   // GitHub-sync conflicts
   'conflicts',
   'resolve_conflict',
-  // Workflow
-  'workflow',
 ] as const;
 
 const RETIRED_TOOL_NAMES = [
@@ -98,11 +97,12 @@ const RETIRED_TOOL_NAMES = [
   // Components/palette merge → palette({ components? })
   'get_components',
   'get_authoring_palette',
-  // Workflow primers → workflow({ kind })
+  // Workflow primers → relocated into skill guidance (assets/skills/)
   'ingest',
   'research',
   'consolidate',
   'discover',
+  'workflow',
   // get_ prefix drops → history / config / preview_url
   'get_history',
   'get_config',
@@ -177,6 +177,8 @@ describe('registerAllTools — full tool surface (SPEC.md §9.1 / AC8 + install 
  * otherwise). `audit` is a pure read (unified lint + link validation report; no
  * fix shape). `exec` is read-only (sandboxed allowlist). `install` is NOT here — it projects executable skill
  * scripts into the agent's own config dir, which no KB version history undoes.
+ * `import` is likewise gated — it fetches skill content from an arbitrary
+ * remote git URL (remote-code acquisition).
  */
 const OK_AUTO_APPROVED_TOOLS = [
   'exec',
@@ -193,7 +195,6 @@ const OK_AUTO_APPROVED_TOOLS = [
   'restore_version',
   'conflicts',
   'resolve_conflict',
-  'workflow',
   'lint',
   'audit',
 ] as const;

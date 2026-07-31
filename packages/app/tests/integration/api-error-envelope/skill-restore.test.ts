@@ -16,9 +16,11 @@ import {
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
 // Project skills are content docs, so their version history comes from the
-// unified document-history path (`/api/history?docName=.ok/skills/<name>/SKILL`),
-// NOT a bespoke skill-history endpoint (removed — it was a buggy duplicate).
-const SKILL_DOC_NAME = '.ok/skills/trip-log/SKILL';
+// unified document-history path (`/api/history?docName=<real-dir>/SKILL`), NOT a
+// bespoke skill-history endpoint (removed — it was a buggy duplicate). Store
+// retirement: a fresh project skill authors IN-PLACE at the default home
+// (`.claude/skills` in a bare contentDir), not the retired `.ok/skills` store.
+const SKILL_DOC_NAME = '.claude/skills/trip-log/SKILL';
 
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
 import { createTestServer, type TestServer } from '../test-harness';
@@ -54,8 +56,11 @@ afterAll(async () => {
 
 describe('skill restore (R6)', () => {
   test('history → restore reverts the source to an earlier version', async () => {
-    expect((await writeSkill('# Version ONE')).status).toBe(200);
-    expect((await writeSkill('# Version TWO')).status).toBe(200);
+    // Both the create and the edit land as their own committed version on the
+    // skill's timeline (the create is attributed under the content-doc key
+    // `/api/history` filters on, so it is restorable — not just edits).
+    expect((await writeSkill('# Version ONE')).status).toBe(200); // create → commit 1
+    expect((await writeSkill('# Version TWO')).status).toBe(200); // edit → commit 2
     expect(await getBody()).toContain('Version TWO');
 
     // The unified document timeline shows the skill's attributed versions
@@ -84,7 +89,7 @@ describe('skill restore (R6)', () => {
     expect(restored.success).toBe(true);
     if (restored.success) expect(restored.data.restoredFiles).toContain('SKILL.md');
 
-    // The source reverted to Version ONE.
+    // The source reverted to the created version (Version ONE).
     expect(await getBody()).toContain('Version ONE');
     expect(await getBody()).not.toContain('Version TWO');
   });

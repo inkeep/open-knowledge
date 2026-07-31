@@ -16,6 +16,11 @@ export function docNameFromHash(hash: string): string | null {
   // Skill bundle files (`#/__skill-file__/…`) are a viewer route, not a doc —
   // they resolve via `skillFileFromHash`, so don't mis-read them as a docName.
   if (hash.startsWith(SKILL_FILE_HASH_PREFIX)) return null;
+  // The Skills hub (`#/__skills__`) is a full-pane destination, not a doc.
+  if (hash.startsWith(SKILLS_HASH_PREFIX)) return null;
+  // A pre-install skill preview (`#/__skill-preview__/…`) is a full-pane viewer
+  // keyed by import coordinates, not a doc — it resolves via `skillPreviewFromHash`.
+  if (hash.startsWith(SKILL_PREVIEW_HASH_PREFIX)) return null;
   // Skill (`#/__skill__/…`) and template (`#/__template__/…`) hashes ARE
   // documents — they open as ordinary editor tabs, so they resolve to their
   // synthetic doc name here like any other `#/<docName>` hash (per-segment
@@ -189,6 +194,132 @@ export function hashFromAssetPath(assetPath: string): string {
 
 const SKILL_FILE_HASH_PREFIX = '#/__skill-file__/';
 
+// The Skills destination hub is a singleton full-pane route; its hash carries no
+// coordinates. Opened via `#/__skills__`.
+const SKILLS_HASH_PREFIX = '#/__skills__';
+export function hashFromSkills(): string {
+  return SKILLS_HASH_PREFIX;
+}
+export function skillsFromHash(hash: string): boolean {
+  return hash === SKILLS_HASH_PREFIX || hash.startsWith(`${SKILLS_HASH_PREFIX}/`);
+}
+
+/**
+ * A pre-install skill preview is a full-pane read-only view of an un-imported
+ * skill, opened before it exists as a project doc — so its hash carries the
+ * import coordinates the preview + Manage need rather than a doc name. `flavor`
+ * selects the acquire path (`explore` = skills.sh `owner/repo`; `detected` = a
+ * skill found in another tool, managed by name + harness). Each coordinate is
+ * one percent-encoded segment (source/subtitle may themselves contain `/`).
+ */
+const SKILL_PREVIEW_HASH_PREFIX = '#/__skill-preview__/';
+/** The skill-preview surfaces, single-sourced. Add a flavor here and every
+ *  hash/tab-id validator + target type picks it up. */
+const SKILL_PREVIEW_FLAVORS = ['explore', 'detected', 'builtin'] as const;
+export type SkillPreviewFlavor = (typeof SKILL_PREVIEW_FLAVORS)[number];
+/** Type-guard for an untrusted flavor (from a `window.location` hash or a
+ *  persisted, hand-editable tab id). */
+function isSkillPreviewFlavor(v: string | undefined): v is SkillPreviewFlavor {
+  return v !== undefined && (SKILL_PREVIEW_FLAVORS as readonly string[]).includes(v);
+}
+export interface SkillPreviewHashTarget {
+  flavor: SkillPreviewFlavor;
+  source: string;
+  name: string;
+  /** Repo (explore) or harness home (detected); doubles as the detected skill's source harness. */
+  subtitle: string;
+  /** The scope the skill sits at (detected: its provenance level). Read-only display. */
+  level?: SkillScope;
+  /** The selected bundle file within the preview (`SKILL.md` / `references/x.md`);
+   *  absent = SKILL.md. Drives the FILES-list selection + deep-link, so a sidebar
+   *  click and the preview's own FILES list share one selection. NOT part of the
+   *  tab IDENTITY ({@link encodeSkillPreviewSegments} omits it) — one preview tab
+   *  switches its body across files instead of spawning a tab per file. */
+  path?: string;
+}
+
+/**
+ * The level a preview sits at when a caller names none. Matches what
+ * `SkillPreviewTab` itself falls back to, so normalizing an absent level here
+ * changes no behavior — it only removes the second spelling of one identity.
+ */
+const DEFAULT_PREVIEW_LEVEL: SkillScope = 'project';
+
+/** Encode a skill-preview target's IDENTITY segments — shared by the location
+ *  hash ({@link hashFromSkillPreview}) and the persisted tab id
+ *  (`skillPreviewTabId`), which differ only in their prefix. Deliberately omits
+ *  `path`: the tab identity is path-independent so one preview tab is reused as
+ *  the selection changes. The hash appends `path` separately (see
+ *  {@link hashFromSkillPreview}).
+ *
+ *  `level` is ALWAYS encoded, defaulted rather than dropped. It is optional on
+ *  the target, and while it was optional here too the same preview had two
+ *  spellings — a caller that passed the level and one that did not produced
+ *  different tab ids for the same skill, so the same source+name opened a
+ *  SECOND tab with an identical label, and closing one left its twin behind. */
+export function encodeSkillPreviewSegments(target: SkillPreviewHashTarget): string {
+  return [
+    target.flavor,
+    target.source,
+    target.name,
+    target.subtitle,
+    target.level ?? DEFAULT_PREVIEW_LEVEL,
+  ]
+    .map(encodeURIComponent)
+    .join('/');
+}
+
+/** Decode skill-preview coordinate segments from an untrusted, hand-editable
+ *  string (a `window.location` hash or a persisted tab id); null when malformed
+ *  or the flavor / required coordinates don't validate. A 6th segment is the
+ *  selected-file `path` (hash only; tab ids never carry it). */
+export function decodeSkillPreviewSegments(body: string): SkillPreviewHashTarget | null {
+  if (!body) return null;
+  let segments: string[];
+  try {
+    segments = body.split('/').map(decodeURIComponent);
+  } catch {
+    return null;
+  }
+  if (segments.length < 4 || segments.length > 6) return null;
+  const [flavor, source, name, subtitle, level, path] = segments;
+  if (!isSkillPreviewFlavor(flavor)) return null;
+  if (!source || !name) return null;
+  return {
+    flavor,
+    source,
+    name,
+    subtitle: subtitle ?? '',
+    ...(level && isSkillScope(level) ? { level } : {}),
+    ...(path ? { path } : {}),
+  };
+}
+
+export function hashFromSkillPreview(target: SkillPreviewHashTarget): string {
+  let body = encodeSkillPreviewSegments(target);
+  // The identity is always 5 segments now (level defaulted, never dropped), so
+  // `path` is unambiguously the 6th with no padding.
+  if (target.path) body += `/${encodeURIComponent(target.path)}`;
+  return `${SKILL_PREVIEW_HASH_PREFIX}${body}`;
+}
+
+export function skillPreviewFromHash(hash: string): SkillPreviewHashTarget | null {
+  if (!hash.startsWith(SKILL_PREVIEW_HASH_PREFIX)) return null;
+  return decodeSkillPreviewSegments(hash.slice(SKILL_PREVIEW_HASH_PREFIX.length));
+}
+
+/** Preserve a preview's hash-only file selection only for that same tab identity. */
+export function selectedPathForSkillPreview(
+  hash: string,
+  target: SkillPreviewHashTarget,
+): string | undefined {
+  const hashTarget = skillPreviewFromHash(hash);
+  if (!hashTarget) return undefined;
+  return encodeSkillPreviewSegments(hashTarget) === encodeSkillPreviewSegments(target)
+    ? hashTarget.path
+    : undefined;
+}
+
 /**
  * A skill bundle file (`references/**` / `scripts/**`) is neither a content doc
  * nor a content-dir asset — for a GLOBAL skill it lives under `~/.ok/skills/`,
@@ -202,10 +333,23 @@ export interface SkillFileHashTarget {
   scope: SkillScope;
   name: string;
   path: string;
+  /**
+   * Which same-named bundle this file belongs to. Several distinct-content
+   * skills can share a name across host dirs, so without it a reopened tab
+   * refetches whichever bundle a bare name lookup lands on — the wrong bytes.
+   * Omitted (and on any hash written before this existed) = the by-name default.
+   */
+  host?: string;
 }
 
+/** `:` can't appear in a skill name (`^[a-z0-9-]+$`), so it can't be mistaken
+ *  for one — which is what makes host-less legacy hashes still parse. */
+const SKILL_FILE_HOST_SEP = ':';
+
 export function hashFromSkillFile(target: SkillFileHashTarget): string {
-  const head = [target.scope, target.name].map(encodeURIComponent).join('/');
+  const named =
+    target.host === undefined ? target.name : `${target.name}${SKILL_FILE_HOST_SEP}${target.host}`;
+  const head = [target.scope, named].map(encodeURIComponent).join('/');
   const tail = target.path.split('/').map(encodeURIComponent).join('/');
   return `${SKILL_FILE_HASH_PREFIX}${head}/${tail}`;
 }
@@ -222,10 +366,14 @@ export function skillFileFromHash(hash: string): SkillFileHashTarget | null {
   }
   // scope + name + at least one path segment.
   if (segments.length < 3) return null;
-  const [scope, name, ...rest] = segments;
+  const [scope, named, ...rest] = segments;
   const path = rest.join('/');
   // The hash is from `window.location` — untrusted/editable — so validate the
   // scope against the known set rather than letting any string through.
-  if (!scope || !name || !path || !isSkillScope(scope)) return null;
-  return { scope, name, path };
+  if (!scope || !named || !path || !isSkillScope(scope)) return null;
+  const sep = named.indexOf(SKILL_FILE_HOST_SEP);
+  const name = sep === -1 ? named : named.slice(0, sep);
+  const host = sep === -1 ? undefined : named.slice(sep + 1);
+  if (!name) return null;
+  return { scope, name, path, ...(host ? { host } : {}) };
 }

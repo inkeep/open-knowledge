@@ -112,7 +112,7 @@ The terminal is also the editor's AI-chat surface: the **Show terminal** tab sta
 
 Rename a tab by double-clicking it or pressing `F2`; the name you set pins over whatever title the running program reports, and clearing it falls back to that title. Reorder tabs by dragging, or move the active tab with `Cmd+Shift+←` / `Cmd+Shift+→` — untitled tabs keep a number that stays with their session as the strip is rearranged.
 
-The shells run at full user privilege. To turn the terminal off for a project on this machine, use **Settings ▸ Terminal** or set `terminal.enabled: false` in `.ok/local/config.yml` (see the [configuration reference](/docs/reference/configuration)); the setting is project-local, never shared via git or sync, and not agent-settable — only a human can flip it.
+The shells run at full user privilege. To turn the terminal off for a project on this machine, use **Settings ▸ Terminal** or set `terminal.enabled: false` in `.ok/local/config.yml` (see the [configuration reference](../reference/configuration.mdx)); the setting is project-local, never shared via git or sync, and not agent-settable — only a human can flip it.
 
 ## Properties
 
@@ -120,7 +120,7 @@ Every doc can carry a bit of structured information at the top: a `status`, an `
 
 In the raw markdown file, these properties live in a fenced block at the very top of the file, between two `---` lines. Markdown tools call that block *frontmatter*: it's just a small chunk of YAML, the doc's "labels." You never have to write it by hand: the **Properties** panel on the right of the editor shows each field as an ordinary form input (text, number, checkbox, date, or list) and saves your changes back into the file. Edit the panel or the raw block in source mode; changes propagate live either way.
 
-A folder can describe itself (its own properties, just like a doc's) and offer templates that give new docs their starting properties. See [Folders and templates](/docs/advanced/folders-and-templates#folder-properties) for how that works.
+A folder can describe itself (its own properties, just like a doc's) and offer templates that give new docs their starting properties. See [Folders and templates](../advanced/folders-and-templates.mdx#folder-properties) for how that works.
 
 ## File sidebar
 
@@ -152,13 +152,13 @@ Expand all and Collapse all only appear when they have work to do: Expand all is
 
 ### Creating files and folders
 
-Pick **New File**, **New from template**, or **New Folder** from any of the three menus. The sidebar shows an inline rename field at the target location; type a name and press Enter. **New from template** opens the [template picker](/docs/advanced/folders-and-templates#templates) (the same dialog the toolbar's create buttons use) and respects the folder's `templates_available` cascade.
+Pick **New File**, **New from template**, or **New Folder** from any of the three menus. The sidebar shows an inline rename field at the target location; type a name and press Enter. **New from template** opens the [template picker](../advanced/folders-and-templates.mdx#templates) (the same dialog the toolbar's create buttons use) and respects the folder's `templates_available` cascade.
 
 Right-click on empty space drops the new item at the project root. Right-click on a folder drops it inside that folder.
 
 ### Hiding files and folders
 
-**Hide this file** on a file row, or **Hide folder** on a folder row, appends a matching pattern to `.okignore`. See [Ignore patterns](/docs/features/ignore-patterns) for the full pattern syntax. The item disappears from the tree, search, and the agent's MCP tools immediately; nothing is deleted on disk.
+**Hide this file** on a file row, or **Hide folder** on a folder row, appends a matching pattern to `.okignore`. See [Ignore patterns](./ignore-patterns.mdx) for the full pattern syntax. The item disappears from the tree, search, and the agent's MCP tools immediately; nothing is deleted on disk.
 
 ### Show Hidden Files
 
@@ -176,7 +176,7 @@ On very large trees the disk walk is capped per level, and the sidebar shows a n
 
 ### Open with AI
 
-**Open with AI ▸** dispatches the project, the folder, or the file to one of your installed agents. The agent receives a short text prompt asking it to open the target in the OpenKnowledge web preview, then grounds the rest of the conversation via the [OpenKnowledge MCP](/docs/reference/mcp). Three scopes, three prompt shapes:
+**Open with AI ▸** dispatches the project, the folder, or the file to one of your installed agents. The agent receives a short text prompt asking it to open the target in the OpenKnowledge web preview, then grounds the rest of the conversation via the [OpenKnowledge MCP](../reference/mcp.mdx). Three scopes, three prompt shapes:
 
 | Scope | Triggered from | Prompt template |
 | --- | --- | --- |
@@ -184,13 +184,13 @@ On very large trees the disk walk is capped per level, and the sidebar shows a n
 | Folder | Folder row menu (folder view active) | ``Let's work on the `<folder>` folder using OpenKnowledge. Open the OK editor in web view.`` |
 | File | File row menu (doc active) | ``Let's work on `<path>` using OpenKnowledge. Open the OK editor in web view.`` |
 
-The trailing `Open the OK editor in web view.` directive is dropped when the [`appearance.preview.autoOpen`](/docs/reference/configuration) preference is off, so the receiving agent honors the same "leave my preview alone" choice on its first turn; only the `Let's work on … using OpenKnowledge.` opener is sent.
+The trailing `Open the OK editor in web view.` directive is dropped when the [`appearance.preview.autoOpen`](../reference/configuration.mdx) preference is off, so the receiving agent honors the same "leave my preview alone" choice on its first turn; only the `Let's work on … using OpenKnowledge.` opener is sent.
 
 To send your own freetext instruction along with the handoff, use the bottom [Ask AI](#ask-ai) composer (or the empty-state create composer on a fresh project) rather than these one-click submenus.
 
 **Install detection** filters the submenu to just the agents you have. The desktop app probes locally; the web build asks the server (`GET /api/installed-agents`), so the answer reflects the machine the server runs on — exact on `localhost`, while against a remote server (a hosted preview, SSH tunnel, remote dev) it's the server's installs that count. When nothing is detected, the submenu shows a disabled "No installed agents found" row.
 
-See the [per-integration pages](/docs/integrations/claude-code) for what each agent receives once dispatched.
+See the [per-integration pages](../integrations/claude-code.mdx) for what each agent receives once dispatched.
 
 The menu is organized into two sections. **Terminal** (desktop app only) leads: a row for each agent CLI — **Claude**, **Codex**, **OpenCode**, **Cursor**, and **Pi** — that runs the corresponding CLI (`claude`, `codex`, `opencode`, `pi`; Cursor's is `cursor-agent`) in OpenKnowledge's [docked terminal](#terminal) with the same scoped prompt. **Desktop** follows, listing the installed agent apps (Claude, Codex, Cursor); selecting one launches it via its deep link. Because both sections can list the same name, a Terminal **Claude** (the CLI) and a Desktop **Claude** (the app) can appear together; screen readers tell them apart by the Terminal row's "Claude CLI" accessible name. Each section renders only when it has something to launch, so on the web build — which has no docked terminal — the Terminal section is absent and a CLI pick falls back to the first installed Desktop app target.
 
@@ -198,9 +198,9 @@ The empty-state create composer on a fresh project carries the same Desktop / Te
 
 When Claude or Codex launches from the docked terminal, OpenKnowledge auto-approves its own MCP tools, so the agent searches, reads, and edits the knowledge base without a per-call approval prompt. Claude additionally auto-approves the `ok open` command. OpenCode, Cursor, and Pi launch unchanged.
 
-Four tools stay gated: `delete` and `move` (knowledge-base-wide blast radius), `share_link` (publishes content), and `install` (writes executable skill scripts into the agent's own config directory). For Claude, everything outside OpenKnowledge still prompts too, including shell commands and non-OK file edits. The guarantee is best-effort per agent: Claude uses an explicit allow/deny list, while Codex uses its own **approve** mode (auto-approve except potentially-unsafe actions) and only gets it once its OpenKnowledge entry is already configured, so run `ok init` for Codex if it keeps asking.
+Five tools stay gated: `delete` and `move` (knowledge-base-wide blast radius), `share_link` (publishes content), `install` (writes executable skill scripts into the agent's own config directory), and `import` (acquires skill content from an external source). For Claude, everything outside OpenKnowledge still prompts too, including shell commands and non-OK file edits. The guarantee is best-effort per agent: Claude uses an explicit allow/deny list, while Codex uses its own **approve** mode (auto-approve except potentially-unsafe actions) and only gets it once its OpenKnowledge entry is already configured, so run `ok init` for Codex if it keeps asking.
 
-Turn it off in **Settings → Terminal → “Let agents use OpenKnowledge without asking”** ([`agents.autoApproveOkTools`](/docs/reference/configuration)). It applies to every project on this machine and defaults on.
+Turn it off in **Settings → Terminal → “Let agents use OpenKnowledge without asking”** ([`agents.autoApproveOkTools`](../reference/configuration.mdx)). It applies to every project on this machine and defaults on.
 
 ## Command palette
 
@@ -301,14 +301,14 @@ Toggling the menu checkboxes flips the underlying config field, which propagates
 
 ## Real-time collaboration
 
-Everything in the editor (body, frontmatter, sidebar toggles) is backed by a CRDT. You and multiple AI agents writing through MCP can edit the same doc concurrently. Per-user presence is shown in the editor header; the **agent activity** view ([Agent activity](/docs/features/agent-activity)) groups every burst of agent edits with per-burst diffs and selective undo.
+Everything in the editor (body, frontmatter, sidebar toggles) is backed by a CRDT. You and multiple AI agents writing through MCP can edit the same doc concurrently. Per-user presence is shown in the editor header; the **agent activity** view ([Agent activity](./agent-activity.mdx)) groups every burst of agent edits with per-burst diffs and selective undo.
 
-For recovery + history, see [Timeline and recovery](/docs/features/timeline-and-recovery).
+For recovery + history, see [Timeline and recovery](./timeline-and-recovery.mdx).
 
 ## See also
 
-- [Ignore patterns](/docs/features/ignore-patterns): `.okignore` syntax and Hide-from-tree mechanics
-- [Configuration reference](/docs/reference/configuration): `.ok/config.yml` schema including `appearance.sidebar.*`
-- [Agent activity](/docs/features/agent-activity): review and undo per-session agent edits
-- [Timeline and recovery](/docs/features/timeline-and-recovery): version history and restore
+- [Ignore patterns](./ignore-patterns.mdx): `.okignore` syntax and Hide-from-tree mechanics
+- [Configuration reference](../reference/configuration.mdx): `.ok/config.yml` schema including `appearance.sidebar.*`
+- [Agent activity](./agent-activity.mdx): review and undo per-session agent edits
+- [Timeline and recovery](./timeline-and-recovery.mdx): version history and restore
 

@@ -196,6 +196,18 @@ test('direct create, duplicate, rename, and delete keep links and tags in lockst
   }
 });
 
+/**
+ * Content-doc name for a skill, taken from the path the SERVER reports.
+ *
+ * Never hardcode it. The `.ok/skills` store is retired, so a skill lands at the
+ * project's DEFAULT skill home — `resolveDefaultSkillHomeRel` picks `.agents/skills`,
+ * else the first existing editor root, else `.claude/skills`. Which of those wins
+ * depends on what exists in the content dir, so a literal that holds locally can
+ * fail on another machine.
+ */
+const docNameFromPath = (skillMdPath: unknown): string =>
+  String(skillMdPath).replace(/\.mdx?$/i, '');
+
 test('project skill moves refresh backlinks and tags at the relocated content doc name', async () => {
   const server = await createTestServer();
   const relationSignals = connectRelationSignals(server.port);
@@ -221,14 +233,12 @@ test('project skill moves refresh backlinks and tags at the relocated content do
       ),
     );
     expect(created.status).toBe(200);
+    const createdDoc = docNameFromPath(created.body.path);
 
     await pollUntil(async () => {
       const tags = await tagDocuments(server.baseUrl, 'skill-lifecycle');
       const backlinks = await backlinkSources(server.baseUrl, 'skill-target');
-      return (
-        tags.includes('.ok/skills/lifecycle-skill/SKILL') &&
-        backlinks.includes('.ok/skills/lifecycle-skill/SKILL')
-      );
+      return tags.includes(createdDoc) && backlinks.includes(createdDoc);
     });
 
     const moved = await expectRelationSignalsAfter(relationSignals.signals, () =>
@@ -240,13 +250,33 @@ test('project skill moves refresh backlinks and tags at the relocated content do
     );
     expect(moved.status).toBe(200);
 
-    await pollUntil(async () => {
-      const expected = '.ok/skills/relocated-skill/SKILL';
-      const old = '.ok/skills/lifecycle-skill/SKILL';
-      const tags = await tagDocuments(server.baseUrl, 'skill-lifecycle');
-      const backlinks = await backlinkSources(server.baseUrl, 'skill-target');
-      return tags.includes(expected) && !tags.includes(old) && backlinks.includes(expected);
-    });
+    // Stuck (not slow) on CI while passing locally, so capture what the index
+    // actually holds and put it in the failure — a bare `pollUntil` timeout says
+    // only "never became true", which is not a diagnosis.
+    const expected = createdDoc.replace('lifecycle-skill', 'relocated-skill');
+    let lastTags: string[] = [];
+    let lastBacklinks: string[] = [];
+    try {
+      await pollUntil(async () => {
+        lastTags = await tagDocuments(server.baseUrl, 'skill-lifecycle');
+        lastBacklinks = await backlinkSources(server.baseUrl, 'skill-target');
+        return (
+          lastTags.includes(expected) &&
+          !lastTags.includes(createdDoc) &&
+          lastBacklinks.includes(expected)
+        );
+      }, 20_000);
+    } catch (err) {
+      throw new Error(
+        `post-rename re-index never settled.
+  created doc : ${createdDoc}
+  expected    : ${expected}
+  tags now    : ${JSON.stringify(lastTags)}
+  backlinks   : ${JSON.stringify(lastBacklinks)}
+  has expected=${lastTags.includes(expected)} still-has-old=${lastTags.includes(createdDoc)} backlink-ok=${lastBacklinks.includes(expected)}
+${String(err)}`,
+      );
+    }
   } finally {
     relationSignals.destroy();
     await server.cleanup();

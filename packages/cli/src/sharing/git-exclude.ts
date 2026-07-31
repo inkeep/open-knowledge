@@ -25,10 +25,10 @@ import {
   EDITOR_PROJECT_SKILL_ROOT,
   type EditorId,
   INSTALLED_SKILLS_REL,
+  LEGACY_SKILL_STORE_ROOT,
   OK_DIR,
   parseInstalledSkills,
   RESERVED_PROJECT_SKILL_NAME,
-  SKILL_CONTENT_ROOT,
 } from '@inkeep/open-knowledge-core';
 import { discoverGitRepository } from '@inkeep/open-knowledge-core/git-repository';
 import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
@@ -62,7 +62,7 @@ const OK_BLANKET = `${OK_DIR}/`;
 // reach folder-nested `.ok/` dirs, matching OK_BLANKET's reach. A plain
 // `!.ok/skills/` after `.ok/` does NOT re-include (git prunes the excluded dir).
 const OK_CARVE_CHILDREN = `**/${OK_DIR}/*`;
-const OK_CARVE_SKILLS_REINCLUDE = `!**/${SKILL_CONTENT_ROOT}/`;
+const OK_CARVE_SKILLS_REINCLUDE = `!**/${LEGACY_SKILL_STORE_ROOT}/`;
 
 /**
  * Result of an `addOkPathsToGitExclude` / `removeOkPathsFromGitExclude` call

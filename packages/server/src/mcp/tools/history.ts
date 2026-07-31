@@ -5,13 +5,13 @@
  * Returns timeline entries from the shadow repo with commit SHAs
  * that can be passed to `restore_version({ document, version })`.
  */
-import { projectSkillContentDocName } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import { resolvePreviewUrlForTool } from './preview-url.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpGet,
+  httpGetRows,
   looseObjectArray,
   normalizeDocName,
   outputSchemaWithText,
@@ -60,7 +60,7 @@ const DESCRIPTION = [
   '**Parameters (pass EXACTLY ONE of `document` / `folder` / `skill`):**',
   '- `document` — Document name to query history for, typically without extension. A trailing `.md` or `.mdx` is stripped automatically.',
   '- `folder` — Folder path for the FOLDER timeline: attributed activity over the folder\'s `.ok/` artifacts (templates + frontmatter) — who created / edited / renamed / moved / deleted them, when. `""` = project root.',
-  "- `skill` — Skill NAME to query version history for (the attributed `.ok/skills/<name>/` versions). PROJECT-scope skills only — global skills are unversioned. Pass an entry's `version` to `restore_version({ skill, version })`.",
+  "- `skill` — Skill NAME to query version history for (the skill folder's attributed versions). PROJECT-scope skills only — global skills are unversioned. Pass an entry's `version` to `restore_version({ skill, version })`.",
   '- `branch` (optional) — Branch name (default: current branch)',
   '- `limit` (optional) — Maximum entries to return (default 50, max 200)',
   '- `offset` (optional) — Number of entries to skip for pagination (default 0)',
@@ -95,7 +95,7 @@ export function register(server: ServerInstance, deps: GetHistoryDeps): void {
           .string()
           .optional()
           .describe(
-            'Skill name to query version history for (`.ok/skills/<name>/`). Mutually exclusive with `document` / `folder`.',
+            'Skill name to query version history for. Mutually exclusive with `document` / `folder`.',
           ),
         branch: z.string().optional().describe('Branch name (default: current branch)'),
         limit: z
@@ -175,12 +175,28 @@ export function register(server: ServerInstance, deps: GetHistoryDeps): void {
       if (isFolder) {
         params.set('folder', args.folder ?? '');
       } else if (args.skill !== undefined) {
-        // Project skills are content docs (`.ok/skills/<name>/SKILL`), so a skill
-        // shares the document-history path — `getDocumentHistory`'s correct,
-        // multi-writer-filtered timeline. (The old `/api/skill/history` route was
-        // a buggy duplicate: it ran a naive `git log` over whole-tree snapshot
-        // refs and surfaced commits that touched OTHER skills.)
-        const docName = projectSkillContentDocName(args.skill);
+        // A project skill is a content doc, so it shares the document-history
+        // path — `getDocumentHistory`'s multi-writer-filtered timeline. (The old
+        // `/api/skill/history` route was a buggy duplicate: a naive `git log`
+        // over whole-tree snapshot refs, surfacing commits that touched OTHER
+        // skills.)
+        //
+        // The doc name is the skill's REAL dir + `/SKILL`. Deriving it from the
+        // name assumed the retired `.ok/skills` store, and `/api/history` takes
+        // `docName` literally — so an in-place skill's timeline came back empty
+        // and the preview pointed at a doc that does not exist.
+        const listed = await httpGetRows(url, '/api/skills', 'skills');
+        if ('error' in listed) return textResult(`Error: ${listed.error}`, true);
+        const entry = listed.rows.find(
+          (r) => r.name === args.skill && r.scope === 'project' && typeof r.path === 'string',
+        );
+        if (!entry) {
+          return textResult(
+            `Error: No project skill named "${args.skill}". Global skills are unversioned.`,
+            true,
+          );
+        }
+        const docName = String(entry.path).replace(/\/SKILL\.mdx?$/i, '/SKILL');
         params.set('docName', docName);
         previewDocName = docName;
       } else {

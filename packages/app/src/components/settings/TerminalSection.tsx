@@ -122,7 +122,7 @@ export function TerminalSection() {
             className="text-1sm text-muted-foreground"
             data-testid="settings-terminal-autoapprove-body"
           >
-            {t`Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs "ok open"). Deleting, moving, sharing, installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent.`}
+            {t`Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs "ok open"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent.`}
           </p>
           {autoApproveOn && codexNeedsInit ? (
             <p

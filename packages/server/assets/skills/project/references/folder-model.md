@@ -33,7 +33,7 @@ A doc's frontmatter is exactly its own on-disk YAML — folder frontmatter never
 
 Before creating or editing docs in a folder, **always** call `exec("ls -A <folder>")` once. The response carries the folder's own `title`/`description`/`tags` + `templates_available` (the template menu for `write({ document: { template } })`). Skipping this is how agents land docs that violate folder discipline.
 
-0. **First-contact check.** If the folder has no frontmatter of its own AND `templates_available` is empty AND `exec("ls -A")` shows substantial content elsewhere, the project hasn't been onboarded — STOP and invoke `workflow({ kind: 'discover' })`. Skip on subsequent writes once confirmed.
+0. **First-contact check.** If the folder has no frontmatter of its own AND `templates_available` is empty AND `exec("ls -A")` shows substantial content elsewhere, the project hasn't been onboarded — STOP and run `onboard-existing-repo.md`. Skip on subsequent writes once confirmed.
 1. **Read the folder's description** — its `title`/`description`/`tags` tell you what the folder is for. (These describe the folder; they are NOT defaults the doc inherits.)
 2. **Read `templates_available`** — each entry has `name`, `title`, `description`, `scope` (`local` / `inherited`). If one matches, **prefer it** over free-form markdown (it's the folder's contract — templates carry frontmatter + body structure hand-authored docs routinely miss).
 3. **Read recent siblings** — new docs should match the shape of existing ones (filename, frontmatter, body structure).

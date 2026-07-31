@@ -59,6 +59,7 @@ import {
 } from './git-preflight.ts';
 import { emitPreflightFailureSpan } from './git-preflight-telemetry.ts';
 import { attachIdleShutdown, type IdleShutdownHandle } from './idle-shutdown.ts';
+import { scanGlobalInPlaceSkills, scanInPlaceSkills } from './in-place-skills.ts';
 import { resolveLocalSinkConfig } from './local-sink-resolver.ts';
 import { getLogger, loggerFactory, type PinoLogger } from './logger.ts';
 import { createMcpHttpHandler } from './mcp-http.ts';
@@ -67,6 +68,11 @@ import { MissingOkConfigError } from './missing-ok-config-error.ts';
 import { RemoteConfigError, resolveRemoteAccess } from './remote-access.ts';
 import { createServer, type ServerInstance, type ServerOptions } from './server-factory.ts';
 import { installServerMemoryGauge, installServerRuntimeGauges } from './server-memory-telemetry.ts';
+import {
+  genuineInPlaceNames,
+  migrateStoreSkillsInPlace,
+  USER_HOST_ROOTS_BY_PRECEDENCE,
+} from './skill-migrate.ts';
 import { reconcileSkillInstalls } from './skill-reconcile.ts';
 import { initTelemetry, shutdownTelemetry, withSpan } from './telemetry.ts';
 import {
@@ -1128,30 +1134,80 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     }
   };
 
-  // Reconcile on open (best-effort, non-fatal): bring editor skill dirs into
-  // line with the symlink model — heal drifted/broken links, adopt foreign or
-  // legacy-copy skills into `.ok/skills` and symlink them, drop orphan links.
-  // One hook covers CLI `ok start`, desktop, and dev. The shipped bundle sweep
-  // (no-create, copy) owns OK's own bundle.
+  // Store→in-place migration (best-effort, non-fatal, idempotent): relocate any
+  // remaining `.ok/skills/<name>` bundles to their precedence editor-dir paths
+  // — conflicts are skipped, never clobbered. Runs BEFORE the
+  // reconcile pass so reconcile sees the post-migration reality; the live
+  // in-place re-scan admits the moved bundles without a restart.
+  try {
+    const m = await migrateStoreSkillsInPlace({
+      projectDir,
+      skillsRoot: resolve(opts.contentDir, OK_DIR, 'skills'),
+      inPlaceNames: genuineInPlaceNames(opts.contentDir, scanInPlaceSkills(opts.contentDir)),
+    });
+    if (m.migrated.length + m.skipped.length > 0) {
+      log.info?.(
+        {
+          event: 'store-skills-migrated-in-place',
+          migrated: m.migrated,
+          skipped: m.skipped,
+        },
+        `Migrated ${m.migrated.length} store skill(s) in place (${m.skipped.length} skipped).`,
+      );
+    }
+  } catch (err) {
+    log.warn?.(
+      { event: 'store-skill-migration-failed', error: String(err) },
+      'Store-skill in-place migration failed (non-fatal).',
+    );
+  }
+
+  // GLOBAL store migration (store retirement): same pass over `~/.ok/skills`,
+  // targeting the user-home editor dirs (`~/.claude/skills`, …, `~/.agents`
+  // hub). Move-not-delete, conflicts skip, built-ins skip, placements of
+  // in-place skills skip. Runs once per boot; empty store is a no-op.
+  try {
+    const home = homedir();
+    const gm = await migrateStoreSkillsInPlace({
+      projectDir: home,
+      skillsRoot: resolve(home, OK_DIR, 'skills'),
+      hostRoots: USER_HOST_ROOTS_BY_PRECEDENCE,
+      inPlaceNames: genuineInPlaceNames(home, scanGlobalInPlaceSkills(home)),
+    });
+    if (gm.migrated.length + gm.skipped.length > 0) {
+      log.info?.(
+        {
+          event: 'global-store-skills-migrated-in-place',
+          migrated: gm.migrated,
+          skipped: gm.skipped,
+        },
+        `Migrated ${gm.migrated.length} global store skill(s) in place (${gm.skipped.length} skipped).`,
+      );
+    }
+  } catch (err) {
+    log.warn?.(
+      { event: 'global-store-skill-migration-failed', error: String(err) },
+      'Global store-skill in-place migration failed (non-fatal).',
+    );
+  }
+
+  // Reconcile on open (best-effort, non-fatal): heal drifted/broken symlinks of
+  // skills OK already owns in `.ok/skills`, collapse redundant editor-dir copies
+  // of them, drop orphan links. In-place editor-dir skills are never
+  // touched. One hook covers CLI `ok start`, desktop, and dev. The shipped
+  // bundle sweep (no-create, copy) owns OK's own bundle.
   try {
     const r = await reconcileSkillInstalls({
       projectDir,
       skillsRoot: resolve(opts.contentDir, OK_DIR, 'skills'),
     });
-    const changed =
-      r.healed.length +
-      r.adopted.length +
-      r.replaced.length +
-      r.collided.length +
-      r.orphansRemoved.length;
+    const changed = r.healed.length + r.replaced.length + r.orphansRemoved.length;
     if (changed > 0) {
       log.info?.(
         {
           event: 'installed-skills-reconciled',
           healed: r.healed.length,
-          adopted: r.adopted.length,
           replaced: r.replaced.length,
-          collided: r.collided.length,
           orphansRemoved: r.orphansRemoved.length,
         },
         `Reconciled ${changed} editor skill entr${changed === 1 ? 'y' : 'ies'} to the symlink model.`,

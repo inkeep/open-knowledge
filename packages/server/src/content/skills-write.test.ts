@@ -92,10 +92,11 @@ describe('applySkillWrite', () => {
     if (!result.ok) expect(result.error.code).toBe('RESERVED_NAME');
   });
 
-  test('rejects empty description and over-long description', () => {
+  test('allows empty description (draft) and rejects over-long description', () => {
+    // Empty description is a valid draft — "Start blank" creates with no
+    // description and the author fills it in the live editor.
     const empty = applySkillWrite({ skillsRoot, name: 'a', body: 'b', frontmatter: fm('a', '') });
-    expect(empty.ok).toBe(false);
-    if (!empty.ok) expect(empty.error.code).toBe('SKILL_DESCRIPTION_REQUIRED');
+    expect(empty.ok).toBe(true);
 
     const long = applySkillWrite({
       skillsRoot,
@@ -271,6 +272,52 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     if (!tooLarge.ok) expect(tooLarge.error.code).toBe('FILE_TOO_LARGE');
   });
 
+  test('accepts full-directory bundle files (root, non-standard subdir, binary)', () => {
+    seedSkill();
+    const skillDir = join(skillsRoot, 'trip-log');
+
+    // Root-level file — the old references/scripts-only gate rejected these.
+    const rootFile = applySkillBundleFileWrite({
+      skillsRoot,
+      name: 'trip-log',
+      relPath: 'config.json',
+      content: '{"a":1}',
+    });
+    expect(rootFile.ok).toBe(true);
+    expect(readFileSync(join(skillDir, 'config.json'), 'utf-8')).toBe('{"a":1}');
+
+    // Non-standard subdir.
+    const asset = applySkillBundleFileWrite({
+      skillsRoot,
+      name: 'trip-log',
+      relPath: 'assets/note.txt',
+      content: 'hi',
+    });
+    expect(asset.ok).toBe(true);
+
+    // Binary bytes (round-trip exact).
+    const png = new Uint8Array([0x89, 0x50, 0x00, 0xff]);
+    const bin = applySkillBundleFileWrite({
+      skillsRoot,
+      name: 'trip-log',
+      relPath: 'assets/logo.png',
+      content: null,
+      bytes: png,
+    });
+    expect(bin.ok).toBe(true);
+    expect(Array.from(readFileSync(join(skillDir, 'assets', 'logo.png')))).toEqual(Array.from(png));
+
+    // SKILL.md is not writable as a bundle file (it has its own write path).
+    const skillMd = applySkillBundleFileWrite({
+      skillsRoot,
+      name: 'trip-log',
+      relPath: 'SKILL.md',
+      content: 'nope',
+    });
+    expect(skillMd.ok).toBe(false);
+    if (!skillMd.ok) expect(skillMd.error.code).toBe('BAD_FILE_PATH');
+  });
+
   test('enforces the per-skill file-count cap', () => {
     seedSkill();
     for (let i = 0; i < 50; i++) {
@@ -290,6 +337,30 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     });
     expect(overflow.ok).toBe(false);
     if (!overflow.ok) expect(overflow.error.code).toBe('TOO_MANY_FILES');
+  });
+
+  test('accepts an explicit bounded policy for bulk import without changing edit defaults', () => {
+    seedSkill();
+    for (let i = 0; i < 50; i++) {
+      expect(
+        applySkillBundleFileWrite({
+          skillsRoot,
+          name: 'trip-log',
+          relPath: `references/r${i}.md`,
+          content: `# ${i}`,
+        }).ok,
+      ).toBe(true);
+    }
+
+    const imported = applySkillBundleFileWrite({
+      skillsRoot,
+      name: 'trip-log',
+      relPath: 'assets/large.bin',
+      content: null,
+      bytes: new Uint8Array(256 * 1024 + 1),
+      limits: { maxFiles: 512, maxFileBytes: 16 * 1024 * 1024 },
+    });
+    expect(imported.ok).toBe(true);
   });
 
   test('deletes a bundle file and prunes the emptied dir; no-op reports existed:false', () => {

@@ -1,7 +1,6 @@
 ---
 name: open-knowledge-pack-worldbuilding
-version: "0.18.0"
-description: "How to work in a Worldbuilding project (the `worldbuilding` starter pack): a fiction encyclopedia of characters, settings, themes, factions, and lore. Read when the project has these folders. Carries the auto-stub and consistency behaviors so that guidance does not live inside template bodies or folder descriptions. Complements the platform `open-knowledge` skill; does not replace it."
+description: "How to work in a Worldbuilding project (the `worldbuilding` starter pack): a fiction encyclopedia of characters, settings, themes, factions, and lore. Read when the project has these folders, OR when asked to add a character, setting, faction, or piece of lore, or to check the world for internal consistency. Carries the auto-stub and consistency behaviors so that guidance does not live inside template bodies or folder descriptions. Complements the platform `open-knowledge` skill; does not replace it."
 compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack worldbuilding`."
 metadata:
   pack: "worldbuilding"
@@ -12,7 +11,7 @@ metadata:
 
 This project is a fiction encyclopedia. The graph is the product: characters, settings, themes, factions, and lore that link to each other. The agent's main jobs are auto-stubbing new entities as they're mentioned and flagging contradictions. This skill holds those behaviors so templates and folder descriptions stay clean.
 
-> Pack guidance. The platform `open-knowledge` skill still governs every markdown operation.
+> This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the worldbuilding conventions on top.
 
 ## Folders
 

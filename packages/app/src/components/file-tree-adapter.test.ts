@@ -59,6 +59,27 @@ describe('file-tree-adapter', () => {
     ]);
   });
 
+  test('de-dupes entries that map to the same tree path', () => {
+    // Two refreshes can race the same doc into `documents` (a stale size=0 and
+    // the fresh size=40), which would otherwise crash `@pierre/trees`
+    // `resetPaths` with a Duplicate path throw. First occurrence wins.
+    const stale: FileEntry = {
+      kind: 'document',
+      docName: 'note',
+      docExt: '.mdx',
+      size: 0,
+      modified: '2026-01-01T00:00:00Z',
+    };
+    const fresh: FileEntry = {
+      kind: 'document',
+      docName: 'note',
+      docExt: '.mdx',
+      size: 40,
+      modified: '2026-01-01T00:00:01Z',
+    };
+    expect(documentsToTreePaths([stale, fresh])).toEqual(['note.mdx']);
+  });
+
   test('converts Trees file and directory paths back to app paths', () => {
     expect(treeFilePathToDocName('docs/guide.md')).toBe('docs/guide');
     expect(treeFilePathToDocName('docs/guide')).toBe('docs/guide');

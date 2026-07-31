@@ -1,7 +1,7 @@
 import { SKILL_NAME_REGEX, type SkillsListEntry } from '@inkeep/open-knowledge-core';
-import { Trans, useLingui } from '@lingui/react/macro';
+import { Trans } from '@lingui/react/macro';
 import { useEffect, useId, useState } from 'react';
-import { toast } from 'sonner';
+import { useRenameSkill } from '@/components/ManagedArtifactProperties';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -13,7 +13,6 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { moveSkill } from '@/lib/skills-api';
 
 interface Props {
   /** The skill to rename; `null` keeps the dialog closed. */
@@ -32,7 +31,7 @@ interface Props {
  * the editor — mirroring the file row's Rename.
  */
 export function SkillRenameDialog({ skill, existingNames, onOpenChange, onRenamed }: Props) {
-  const { t } = useLingui();
+  const renameSkill = useRenameSkill();
   const open = skill !== null;
   const inputId = useId();
   const [name, setName] = useState('');
@@ -48,20 +47,23 @@ export function SkillRenameDialog({ skill, existingNames, onOpenChange, onRename
 
   const trimmed = name.trim();
   const unchanged = trimmed === skill.name;
-  const invalid = trimmed === '' || !SKILL_NAME_REGEX.test(trimmed);
+  // A space is the most common mistake, so message it explicitly (§12.9); the
+  // 64-char cap is also enforced by the input's maxLength (§12.10).
+  const hasSpace = /\s/.test(name);
+  const tooLong = trimmed.length > 64;
+  const invalid = trimmed === '' || !SKILL_NAME_REGEX.test(trimmed) || tooLong;
   const collides = !invalid && !unchanged && existingNames.has(trimmed);
   const canSave = !invalid && !collides && !unchanged && !saving;
 
   async function submit() {
     if (!skill || !canSave) return;
     setSaving(true);
-    const result = await moveSkill({ scope: skill.scope, fromName: skill.name, toName: trimmed });
+    // Shared flow: POST the move, toast, AND retarget the open tab. Before this the
+    // dialog only did the move + toast, so renaming the skill you were viewing left
+    // the tab stranded on the deleted source doc.
+    const result = await renameSkill({ scope: skill.scope, name: skill.name }, trimmed);
     setSaving(false);
-    if (!result.ok) {
-      toast.error(t`Couldn't rename "${skill.name}": ${result.error}`);
-      return;
-    }
-    toast.success(t`Renamed to "${trimmed}"`);
+    if (!result.ok) return; // the shared hook already surfaced the error toast
     onRenamed?.(trimmed);
     onOpenChange(false);
   }
@@ -91,6 +93,7 @@ export function SkillRenameDialog({ skill, existingNames, onOpenChange, onRename
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"
+            maxLength={64}
             aria-invalid={invalid || collides}
             aria-describedby={
               (invalid && trimmed !== '') || collides ? `${inputId}-error` : undefined
@@ -99,9 +102,17 @@ export function SkillRenameDialog({ skill, existingNames, onOpenChange, onRename
           />
           {invalid && trimmed !== '' ? (
             <p id={`${inputId}-error`} className="text-xs text-destructive">
-              <Trans>
-                Use lowercase letters, digits, and <code className="font-mono">-</code> only.
-              </Trans>
+              {hasSpace ? (
+                <Trans>
+                  No spaces — use <code className="font-mono">-</code> instead.
+                </Trans>
+              ) : tooLong ? (
+                <Trans>Keep the name to 64 characters or fewer.</Trans>
+              ) : (
+                <Trans>
+                  Use lowercase letters, digits, and <code className="font-mono">-</code> only.
+                </Trans>
+              )}
             </p>
           ) : collides ? (
             <p id={`${inputId}-error`} className="text-xs text-destructive">
@@ -110,7 +121,12 @@ export function SkillRenameDialog({ skill, existingNames, onOpenChange, onRename
           ) : null}
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>
+          <Button
+            variant="outline"
+            className="font-mono uppercase"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
             <Trans>Cancel</Trans>
           </Button>
           <Button onClick={() => void submit()} disabled={!canSave}>

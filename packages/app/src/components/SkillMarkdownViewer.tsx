@@ -22,7 +22,9 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ReadonlyPropertyPanel } from '@/components/ReadonlyPropertyPanel';
+import type { InternalLink } from '@/editor/extensions/internal-link';
 import { sharedExtensions } from '@/editor/extensions/shared.ts';
+import { SkillPathLinks } from '@/editor/extensions/skill-path-links';
 import { getSharedMarkdownManager } from '@/editor/utils/md-singleton';
 
 /**
@@ -31,13 +33,71 @@ import { getSharedMarkdownManager } from '@/editor/utils/md-singleton';
  * `[text]` dep rebuilds the editor on content change; `useEditor` destroys the
  * prior instance on teardown, so there is no manual lifecycle bookkeeping.
  */
-export function SkillMarkdownViewer({ fileName, text }: { fileName: string; text: string }) {
+export function SkillMarkdownViewer({
+  fileName,
+  text,
+  flow = false,
+  linkBaseDocName,
+  skillPathLinkDocName,
+  onBundlePathClick,
+}: {
+  fileName: string;
+  text: string;
+  /**
+   * Flow mode: render as an auto-height block inside a caller-owned scroll (so
+   * the full-page skill preview can stack properties above and the file list
+   * below the prose in ONE doc-width scroll), instead of a full-height,
+   * self-scrolling `<main>` pane. Default is the standalone pane.
+   */
+  flow?: boolean;
+  /**
+   * The live doc name of THIS bundle file (`skillFileLiveDocName(scope, name,
+   * rel)`), used only as the RELATIVE-link base so a `[…](references/x.md)` link
+   * in a skill's SKILL.md / reference resolves to the sibling bundle doc instead
+   * of a content-dir path that doesn't exist — otherwise valid skill references
+   * render as broken links (§8.3). Omit for previews with no resolved skill
+   * identity (an un-imported explore skill has no bundle docs to link to).
+   */
+  linkBaseDocName?: string;
+  /**
+   * The skill's SKILL doc name (`skillLiveDocName(scope, name)`). When set, the
+   * `references/…` / `scripts/…` bundle-path code chips become clickable — the
+   * same navigation the editable editor has — so a read-only skill (built-ins,
+   * scripts) can jump to its sibling bundle files instead of dead chips (
+   * part 2). `skillBundlePathNavHash` keeps built-ins + scripts read-only.
+   */
+  skillPathLinkDocName?: string;
+  /**
+   * Context override for a clicked bundle-path chip. The in-preview file list
+   * passes this to SWITCH its selected file instead of navigating away to a
+   * standalone skill-file view. Return `true` to mark the click handled.
+   */
+  onBundlePathClick?: (path: string) => boolean;
+}) {
   // The markdown pipeline expects a frontmatter-free body (parse() contract);
   // the YAML region is metadata, not prose, so it is not rendered here.
   const body = stripFrontmatter(text).body;
+  // Reconfigure only the internal-link extension (`name === 'link'`) with this
+  // file's doc name so relative links resolve against the skill bundle dir; the
+  // rest of `sharedExtensions` is reused unchanged.
+  const baseExtensions = linkBaseDocName
+    ? sharedExtensions.map((ext) =>
+        ext.name === 'link'
+          ? (ext as typeof InternalLink).configure({ docName: linkBaseDocName })
+          : ext,
+      )
+    : sharedExtensions;
+  // Add the bundle-path link affordance (clickable `references/…` chips) when the
+  // skill identity is known. Read-only editor still fires ProseMirror handleClick.
+  const extensions = skillPathLinkDocName
+    ? [
+        ...baseExtensions,
+        SkillPathLinks.configure({ docName: skillPathLinkDocName, onBundlePathClick }),
+      ]
+    : baseExtensions;
   const editor = useEditor(
     {
-      extensions: sharedExtensions,
+      extensions,
       editable: false,
       // `parseWithFallback`, not `parse`: a bundle `.md`/`.mdx` is untrusted
       // on-disk content authored in any external editor. `parse()` throws on a
@@ -52,7 +112,7 @@ export function SkillMarkdownViewer({ fileName, text }: { fileName: string; text
         },
       },
     },
-    [text],
+    [text, linkBaseDocName, skillPathLinkDocName],
   );
 
   // Portal the EditorContent into a private target so TipTap's
@@ -78,34 +138,53 @@ export function SkillMarkdownViewer({ fileName, text }: { fileName: string; text
     };
   }, [portalTarget]);
 
+  // Mirror the editor's content-column grid so prose width + side rails match
+  // the real editor layout. In flow mode this is the whole surface (the caller
+  // owns the scroll); otherwise it lives inside a self-scrolling pane.
+  const grid = (
+    <div className="tiptap-editor">
+      <div ref={portalSlotRef} style={{ display: 'contents' }} />
+    </div>
+  );
   return (
-    <main
-      className="flex h-full min-h-0 flex-col bg-background"
-      aria-label={fileName}
-      data-skill-markdown-viewer=""
-      // This component only renders the loaded state (loading/error live in
-      // `useViewerText`); the sibling `-state` attr mirrors the `TextViewer`
-      // convention so tests can assert the surface the same way.
-      data-skill-markdown-viewer-state="loaded"
-    >
-      <div className="editor-doc-scroll min-h-0 flex-1 overflow-auto">
-        {/* Frontmatter shows as a read-only Properties panel above the body —
-            the editable skill/document panel isn't reachable here (no CRDT
-            provider), so the file's metadata would otherwise be invisible.
-            `text` still carries the YAML region; the panel parses it and the
-            editor below renders the frontmatter-stripped body. */}
-        <ReadonlyPropertyPanel text={text} />
-        {/* Mirror the editor's content-column grid so prose width + side rails
-            match the real editor layout. */}
-        <div className="tiptap-editor">
-          <div ref={portalSlotRef} style={{ display: 'contents' }} />
-        </div>
-      </div>
+    <>
+      {flow ? (
+        <article
+          className="bg-background"
+          aria-label={fileName}
+          data-skill-markdown-viewer=""
+          data-skill-markdown-viewer-state="loaded"
+        >
+          {grid}
+        </article>
+      ) : (
+        <main
+          className="flex h-full min-h-0 flex-col bg-background"
+          aria-label={fileName}
+          data-skill-markdown-viewer=""
+          // This component only renders the loaded state (loading/error live in
+          // `useViewerText`); the sibling `-state` attr mirrors the `TextViewer`
+          // convention so tests can assert the surface the same way.
+          data-skill-markdown-viewer-state="loaded"
+        >
+          <div className="editor-doc-scroll min-h-0 flex-1 overflow-auto subtle-scrollbar scroll-fade-mask">
+            {/* Read-only frontmatter Properties panel: the editable panel isn't
+                reachable here (no CRDT provider), so metadata would be invisible. */}
+            <ReadonlyPropertyPanel text={text} />
+            {grid}
+          </div>
+        </main>
+      )}
       {createPortal(
         // biome-ignore lint/plugin/no-unportaled-editor-content: portaled site — view.dom parent is the exclusively-owned portalTarget per the H6 contract (PRECEDENTS.md #44)
-        <EditorContent editor={editor} className="tiptap-editor-portal-content h-full" />,
+        <EditorContent
+          editor={editor}
+          // Fill the scroll pane in standalone mode; size to content in flow mode
+          // so stacked properties/files above and below aren't crushed.
+          className={flow ? 'tiptap-editor-portal-content' : 'tiptap-editor-portal-content h-full'}
+        />,
         portalTarget,
       )}
-    </main>
+    </>
   );
 }

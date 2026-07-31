@@ -52,9 +52,9 @@ The difference from a folder of notes or a RAG app is who maintains it, and how 
 
 The structure you and the agent author (folders, titles, backlinks, a one-line purpose per folder) *is* the index. No second copy, nothing to keep in sync. The agent retrieves across it with [agentic search](../reference/agentic-search.mdx) — searching, grepping, and following backlinks over your live files, no vector database — and you teach it conventions with [skills](../features/skills.mdx) authored in the same editor as your docs.
 
-The rest of this guide builds one end to end. The pattern is Andrej Karpathy's, from [his April 2026 gist on LLM-curated wikis](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). OpenKnowledge ships the **Knowledge base** starter pack as a direct implementation, with one extension Karpathy doesn't formalize: **the wiki layer is split** into `research/` (status: provisional) and `articles/` (status: canonical), with the `consolidate` workflow as the explicit promotion step, so premature canonicalization becomes a thing you opt into rather than something that drifts in.
+The rest of this guide builds one end to end. The pattern is Andrej Karpathy's, from [his April 2026 gist on LLM-curated wikis](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). OpenKnowledge ships the **Knowledge base** starter pack as a direct implementation, with one extension Karpathy doesn't formalize: **the wiki layer is split** into `research/` (status: provisional) and `articles/` (status: canonical), with the `consolidate` procedure as the explicit promotion step, so premature canonicalization becomes a thing you opt into rather than something that drifts in.
 
-The point of this guide is to show how **OpenKnowledge's features compose** to make the pattern feel native: the starter-pack picker scaffolds the layout in one click; per-folder templates + agent-readable folder frontmatter teach the LLM the conventions (Karpathy's centralized `CLAUDE.md` / `AGENTS.md` schema, distributed per-folder); the `workflow` tool's `ingest`, `research`, and `consolidate` kinds cover the sources → provisional → canonical pipeline; the WYSIWYG editor + CRDT keep editing frictionless; the activity panel attributes every write; the `links` tool keeps the source graph clean. Every step uses three or four of these together. That's the product.
+The point of this guide is to show how **OpenKnowledge's features compose** to make the pattern feel native: the starter-pack picker scaffolds the layout in one click; per-folder templates + agent-readable folder frontmatter teach the LLM the conventions (Karpathy's centralized `CLAUDE.md` / `AGENTS.md` schema, distributed per-folder); the platform skill's `ingest` procedure plus the pack's `research` and `consolidate` skills cover the sources → provisional → canonical pipeline; the WYSIWYG editor + CRDT keep editing frictionless; the activity panel attributes every write; the `links` tool keeps the source graph clean. Every step uses three or four of these together. That's the product.
 
 If you're new to LLM-curated PKM, the draw is an agent that remembers your context without the vault turning into a junk drawer of unprocessed clips — notes that compound instead of rotting. If you're already practicing Karpathy's pattern in Obsidian, plain folders, or Claude projects, the question is what OpenKnowledge does differently and what carries over.
 
@@ -134,7 +134,7 @@ The **Knowledge base** pack scaffolds Karpathy's pattern with one significant ad
 
 | Karpathy | OpenKnowledge |
 |---|---|
-| Raw sources (verbatim, immutable) | `external-sources/` + `clip` template + `ingest` workflow |
+| Raw sources (verbatim, immutable) | `external-sources/` + `clip` template + the `ingest` procedure |
 | The wiki (single LLM-owned layer) | **Split**: `research/` (provisional, status:`provisional`, sources cited) + `articles/` (canonical, status:`canonical`, supersedes chain); `consolidate` promotes |
 | `log.md` (append-only record) | `log.md` at project root, written by the pack |
 | `index.md` (static content catalog) | Provided dynamically via `exec` (`ls`) + the file sidebar. The agent reads folder frontmatter + per-doc metadata on every list call, so a static index isn't required. You can still hand-write `index.md` if you prefer. |
@@ -160,16 +160,16 @@ You'll get `external-sources/`, `research/`, `articles/`, the three matching tem
 The starter-pack picker is idempotent (safe to re-run on the same project).
 
 <Callout type="info" title="Seeding also installs a skill">
-  `ok seed --pack knowledge-base` (or the desktop starter-pack picker) installs the **Knowledge base** project skill into your agent editors (Claude Code, Cursor, Codex, OpenCode). It's the "how to work here" guidance behind the layer discipline described below — the `ingest` / `research` / `consolidate` conventions and the provisional-to-canonical promotion — read automatically, and editable like any other doc. It lands as a single `SKILL.md` in your repo under `.ok/skills/`, symlinked into the skills folder of each editor already set up for the project. See [Skills](../features/skills.mdx) and [what OpenKnowledge writes to disk](../reference/what-open-knowledge-writes.mdx).
+  `ok seed --pack knowledge-base` (or the desktop starter-pack picker) installs the **Knowledge base** project skill into your agent editors (Claude Code, Cursor, Codex, OpenCode). It's the "how to work here" guidance behind the layer discipline described below — the `ingest` / `research` / `consolidate` conventions and the provisional-to-canonical promotion — read automatically, and editable like any other doc. It lands as a real `SKILL.md` in your agent editors' skills dirs (`.claude/skills`, `.cursor/skills`, …), versioned with your repo — one canonical copy mirrored into each editor already set up for the project. See [Skills](../features/skills.mdx) and [what OpenKnowledge writes to disk](../reference/what-open-knowledge-writes.mdx).
 </Callout>
 
 ### 3. Confirm your agent host is wired
 
 If you accepted the desktop app's first-launch offer to wire up your agent assistant, you're done. If not, in your agent assistant, ask:
 
-<CopyPrompt>list the workflow tools available</CopyPrompt>
+<CopyPrompt>list the OpenKnowledge tools available</CopyPrompt>
 
-You should see `mcp__open-knowledge__workflow` (its `kind` covers `ingest` / `research` / `consolidate` / `discover` / `wiki`), alongside the standard reads/writes (`exec`, `search`, `write`, `links`, etc.). The workflow guides cover the sources → provisional → canonical pipeline described in the mapping table above.
+You should see the standard reads/writes (`exec`, `search`, `write`, `edit`, `links`, etc.). The `ingest` / `research` / `consolidate` procedures aren't tools — they ship as guidance inside the Knowledge base pack skill your agent loads when the work fits a layer, covering the sources → provisional → canonical pipeline described in the mapping table above.
 
 ### 4. Ingest the five sources
 
@@ -177,7 +177,7 @@ For each source, paste the URL into your agent and say:
 
 <CopyPrompt>ingest this: https://github.com/example/framework</CopyPrompt>
 
-The agent fetches the URL, calls `ingest`, and writes the verbatim content to `external-sources/framework-readme.md` with frontmatter capturing the URL, fetch date, and any author metadata it can extract. **Never copy-paste raw URLs into chat as "sources" without ingesting.** The knowledge base is closed-loop. Every claim must cite a local doc.
+The agent fetches the URL, follows the platform skill's `ingest` procedure, and writes the verbatim content to `external-sources/framework-readme.md` with frontmatter capturing the URL, fetch date, and any author metadata it can extract. **Never copy-paste raw URLs into chat as "sources" without ingesting.** The knowledge base is closed-loop. Every claim must cite a local doc.
 
 Five ingests, five files. After the fifth, ask:
 
@@ -189,7 +189,7 @@ Your agent uses `exec("ls external-sources/")` to read frontmatter and per-file 
 
 <CopyPrompt>research the agent-framework question; synthesize the five sources in external-sources/</CopyPrompt>
 
-Running `workflow({ kind: "research", topic: "agent-framework evaluation" })` spins up a step-by-step research flow: it confirms scoping, lists what's covered by the existing sources, identifies gaps (maybe one source you haven't ingested yet), and produces a `research/agent-framework-evaluation.md` with `status: provisional` and a `sources:` array listing the five paths.
+That kicks off the pack skill's step-by-step research procedure: it confirms scoping, lists what's covered by the existing sources, identifies gaps (maybe one source you haven't ingested yet), and produces a `research/agent-framework-evaluation.md` with `status: provisional` and a `sources:` array listing the five paths.
 
 Every claim in the log cites a specific source path. You can now ask:
 
@@ -213,9 +213,9 @@ You don't consolidate yet in our scenario; the team hasn't decided. Maybe in two
 
 <CopyPrompt>consolidate the agent-framework research into a canonical article</CopyPrompt>
 
-The `workflow` tool's `consolidate` kind starts with a STOP gate asking whether the decision is actually made. If yes, it writes `articles/agent-framework-evaluation.md` with `status: canonical` and a `supersedes:` chain pointing back to the research log. That `research/` doc isn't deleted; it's superseded, so the evidence chain stays intact.
+The `consolidate` procedure starts with a STOP gate asking whether the decision is actually made. If yes, it writes `articles/agent-framework-evaluation.md` with `status: canonical` and a `supersedes:` chain pointing back to the research log. That `research/` doc isn't deleted; it's superseded, so the evidence chain stays intact.
 
-**What just composed.** Five sources became one canonical article via: the **Knowledge base starter pack** (three folders, three templates, agent-readable folder frontmatter, one click), the **`workflow` tool's `ingest` / `research` / `consolidate` kinds** (mapping 1:1 to Karpathy's layers), the **agent activity panel** (every fetch + write attributed), the **wikilink graph + frontmatter `sources:` arrays** (citation chain audit-able doc by doc), and the **WYSIWYG editor** (review and refine without leaving the same surface). The same vault, the same product, the whole stack working as one thing.
+**What just composed.** Five sources became one canonical article via: the **Knowledge base starter pack** (three folders, three templates, agent-readable folder frontmatter, one click), the platform skill's **`ingest`** procedure and the pack's **`research` / `consolidate`** skills (mapping 1:1 to Karpathy's layers), the **agent activity panel** (every fetch + write attributed), the **wikilink graph + frontmatter `sources:` arrays** (citation chain audit-able doc by doc), and the **WYSIWYG editor** (review and refine without leaving the same surface). The same vault, the same product, the whole stack working as one thing.
 
 ## The promotion rhythm
 
@@ -227,7 +227,7 @@ When to use each tool, and when *not* to:
 | You searched the web yourself to ground a claim | `ingest` | Closed-loop: the KB doesn't cite the live web, only local docs |
 | You're synthesizing 2+ sources into an answer | `research` | Provisional article, citations required, status:provisional |
 | Team decided; this is the canonical position | `consolidate` | Writes status:canonical with supersedes chain |
-| You just want to write a note | `write` | Not every doc needs the workflow (scratch notes, project pages, runbooks) |
+| You just want to write a note | `write` | Not every doc needs the pipeline (scratch notes, project pages, runbooks) |
 | You ran a one-off query and the answer's useful | Save the chat to a new doc in `research/` | Per Karpathy, good answers get filed back into the wiki as new pages; don't let them die in chat history |
 
 **Anti-pattern: consolidating too early.** If you `consolidate` before the team has actually decided, you'll be rewriting canonical articles every week. Status `provisional` exists for a reason. Keep things in `research/` until decisions are real.
@@ -238,9 +238,9 @@ When to use each tool, and when *not* to:
 
 | When | Do | Composes |
 |---|---|---|
-| **As sources arrive** | `ingest` (30 sec per source) | MCP tool + `external-sources/.ok/` frontmatter + `clip` template + agent activity panel |
-| **Weekly** | A `research` pass to synthesize recent ingests; ask the agent to flag contradictions | `research` workflow + folder frontmatter discipline + wikilink graph |
-| **Per-decision** | `consolidate` to canonical | `consolidate` workflow + supersedes chain + `articles/` template |
+| **As sources arrive** | `ingest` (30 sec per source) | pack-skill procedure + `external-sources/.ok/` frontmatter + `clip` template + agent activity panel |
+| **Weekly** | A `research` pass to synthesize recent ingests; ask the agent to flag contradictions | `research` procedure + folder frontmatter discipline + wikilink graph |
+| **Per-decision** | `consolidate` to canonical | `consolidate` procedure + supersedes chain + `articles/` template |
 | **Monthly** | *"find stale claims in `articles/`, orphans, missing cross-refs"* | `links` (orphans, dead links, backlinks) |
 
 The compounding move: end each ingest session with one synthesis query. The answer becomes a `research/` doc. The wiki grows.

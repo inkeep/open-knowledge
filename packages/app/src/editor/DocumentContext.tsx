@@ -6,7 +6,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { createContext, type ReactNode, use, useEffect, useRef, useState } from 'react';
 import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
-import { docNameForNavigationTarget } from '@/components/navigation-targets';
+import { docNameForNavigationTarget, isSkillFocusedTarget } from '@/components/navigation-targets';
 import { consumePrewarmClick } from '@/components/prewarm-correlation';
 import {
   assetPathFromHash,
@@ -15,7 +15,11 @@ import {
   hashFromDocName,
   hashFromFolderPath,
   hashFromSkillFile,
+  hashFromSkillPreview,
+  hashFromSkills,
+  selectedPathForSkillPreview,
   skillFileFromHash,
+  skillPreviewFromHash,
 } from '@/lib/doc-hash';
 import { emitBranchChanged, emitDocumentsChanged } from '@/lib/documents-events';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
@@ -42,6 +46,7 @@ import {
   filterClosableTabIds,
   filterOpenTabsForKnownTargets,
   folderTabId,
+  isSkillTabId,
   localTabSessionStorageKey,
   nextActiveTabAfterClose,
   nextActiveTabAfterCloseMany,
@@ -56,7 +61,9 @@ import {
   remapVisibleTabsForRename,
   removeOpenTab,
   removePinnedTab,
+  shouldPersistTabSession,
   skillFileTabId,
+  skillPreviewTabId,
   tabIdForNavigationTarget,
   writeLocalTabSessionState,
 } from './editor-tabs';
@@ -182,6 +189,21 @@ interface DocumentContextValue {
   activeNewTabId: string | null;
   /** True when the active editor surface is the empty "New tab" placeholder. */
   isNewTabActive: boolean;
+  /**
+   * Explicit Files/Skills surface pin. `null` = autofollow the active doc's
+   * surface (the default); `true`/`false` = an explicit toggle. The pin only
+   * survives until the next navigation — `commitActiveTabId` re-arms it to
+   * `null` — so autofollow keeps working after a toggle. Not persisted. Prefer
+   * reading `skillFocused` (the resolved surface); this is the raw override.
+   */
+  skillsSidebar: boolean | null;
+  setSkillsSidebar: (on: boolean | null) => void;
+  /**
+   * The resolved active surface: `skillsSidebar ?? (active doc/new-tab is a
+   * skill)`. Drives BOTH the sidebar navigator and the editor tab-strip mode
+   * filter, so the two never disagree. `true` = Skills, `false` = Files.
+   */
+  skillFocused: boolean;
   /** Open an empty tab placeholder that the next sidebar document click can fill. */
   openNewTab: () => void;
   /** Activate an existing empty tab placeholder. */
@@ -455,6 +477,25 @@ function readInitialLocalActiveTabId(): string | null {
   );
 }
 
+// New tabs are ephemeral placeholders (never persisted) keyed only by identity,
+// so their id doubles as the surface tag: a skills-mode new tab carries the
+// `skills:` infix, and its empty state renders the Skills home instead of the
+// Files "Create something great" one.
+const NEW_TAB_PREFIX = 'new-tab:';
+const SKILLS_NEW_TAB_PREFIX = 'new-tab:skills:';
+export function isSkillsNewTabId(id: string | null | undefined): boolean {
+  return id?.startsWith(SKILLS_NEW_TAB_PREFIX) ?? false;
+}
+
+/**
+ * Which surface a visible tab id belongs to (Skills vs Files) — covers both real
+ * open tabs (`isSkillTabId`) and ephemeral new-tab placeholders (`isSkillsNewTabId`).
+ * Drives the mode filter that shows one surface's tabs at a time.
+ */
+function tabIdIsSkillSurface(id: string): boolean {
+  return isSkillsNewTabId(id) || isSkillTabId(id);
+}
+
 function hashFromTabId(tabId: string): string {
   const tab = parseEditorTabId(tabId);
   switch (tab.kind) {
@@ -466,6 +507,15 @@ function hashFromTabId(tabId: string): string {
       return hashFromAssetPath(tab.assetPath);
     case 'skill-file':
       return hashFromSkillFile({ scope: tab.scope, name: tab.name, path: tab.path });
+    case 'skills':
+      return hashFromSkills();
+    case 'skill-preview':
+      return hashFromSkillPreview({
+        flavor: tab.flavor,
+        source: tab.source,
+        name: tab.name,
+        subtitle: tab.subtitle,
+      });
   }
 }
 
@@ -485,6 +535,8 @@ function tabIdFromHash(hash: string): string | null {
   if (assetPath) return assetTabId(assetPath);
   const skillFile = skillFileFromHash(hash);
   if (skillFile) return skillFileTabId(skillFile);
+  const skillPreview = skillPreviewFromHash(hash);
+  if (skillPreview) return skillPreviewTabId(skillPreview);
   const docName = docNameFromHash(hash);
   if (!docName) return null;
   const trimmed = docName.trim();
@@ -551,6 +603,13 @@ function navigationTargetKey(target: ResolvedNavigationTarget): string {
       return `asset:${target.assetPath}:${target.mediaKind ?? ''}`;
     case 'skill-file':
       return `skill-file:${target.scope}:${target.name}:${target.path}`;
+    case 'skills':
+      return 'skills:hub';
+    case 'skill-preview':
+      // `path` is part of the key so selecting a different file within the SAME
+      // preview updates the active target (the tab id stays path-less, so it is
+      // one tab whose body switches — not a new tab).
+      return `skill-preview:${target.flavor}:${target.source}:${target.name}:${target.subtitle}:${target.path ?? ''}`;
     case 'large-file':
       return `large-file:${target.docName}:${target.size}:${target.limit}`;
     case 'missing':
@@ -639,6 +698,14 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const [newTabIds, setNewTabIds] = useState<string[]>([]);
   const [visibleTabIds, setVisibleTabIds] = useState<string[]>(openTabs);
   const [activeNewTabId, setActiveNewTabId] = useState<string | null>(null);
+  const [skillsSidebar, setSkillsSidebarState] = useState<boolean | null>(null);
+  // Per-surface active-tab memory: switching Files/Skills restores the tab you
+  // last had active in that surface (or clears to its empty/home state). Kept in
+  // a ref — it's read imperatively on toggle, never rendered.
+  const activeTabByModeRef = useRef<{ files: string | null; skills: string | null }>({
+    files: null,
+    skills: null,
+  });
   const [tabSessionLoaded, setTabSessionLoaded] = useState(false);
   const activeTargetRef = useRef<ResolvedNavigationTarget | null>(activeTarget);
   const activeTabIdRef = useRef<string | null>(activeTabId);
@@ -650,6 +717,10 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const nextNewTabOrdinalRef = useRef(1);
   const recentlyClosedTabsRef = useRef<string[]>([]);
   const tabSessionUserClosedRef = useRef(false);
+  // Only true once a session read RESOLVES this mount. Guards the persist
+  // effect below so a failed restore never overwrites the stored session with
+  // our empty in-memory state (a rejected read leaves it false → no write).
+  const restoreSucceededRef = useRef(false);
   const [tabIdentityResolved, setTabIdentityResolved] = useState(false);
   const [principal, setPrincipal] = useState<Principal | null>(null);
   const [systemProvider, setSystemProvider] = useState<HocuspocusProvider | null>(null);
@@ -664,8 +735,20 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   } = useCollabUrl();
 
   function commitActiveTabId(nextActiveTabId: string | null) {
+    const previousActiveTabId = activeTabIdRef.current;
     activeTabIdRef.current = nextActiveTabId;
     setActiveTabId(nextActiveTabId);
+    // Opening a DIFFERENT tab re-arms autofollow so the sidebar surface tracks
+    // the opened doc's mode (an explicit Files/Skills pin only survives until the
+    // next real navigation). Two things must NOT re-arm, or an explicit pin dies:
+    //  - Clears (null) — the toggle's empty-surface path pins then clears.
+    //  - Re-activating the SAME tab — a server-driven provider reset (e.g. the
+    //    auth rejection when the open skill doc is deleted) re-fires a hashchange
+    //    for the same doc; re-arming there drops the delete-time Skills pin, and
+    //    once the skill target clears autofollow falls back to Files.
+    if (nextActiveTabId !== null && nextActiveTabId !== previousActiveTabId) {
+      setSkillsSidebarState(null);
+    }
   }
 
   function commitActiveNewTabId(nextActiveNewTabId: string | null) {
@@ -807,8 +890,13 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     let nextActiveTabId: string | null = null;
     const currentActiveTabId =
       activeTabId ?? activeTabIdForTarget(activeTarget, snapshot.activeDocName);
+    // Keep the successor on the active tab's SURFACE (Files vs Skills): closing
+    // the last skill tab must not teleport focus to a Files tab (and vice
+    // versa) — the surface's empty/home state should show instead.
+    const activeIsSkill = currentActiveTabId ? tabIdIsSkillSurface(currentActiveTabId) : false;
     updateOpenTabs((current) => {
-      nextActiveTabId = nextActiveTabAfterCloseMany(current, currentActiveTabId, closingTabIds);
+      const sameSurface = current.filter((id) => tabIdIsSkillSurface(id) === activeIsSkill);
+      nextActiveTabId = nextActiveTabAfterCloseMany(sameSurface, currentActiveTabId, closingTabIds);
       return current.filter((tabId) => !closingTabIds.has(tabId));
     });
     if (!currentActiveTabId || !closingTabIds.has(currentActiveTabId)) {
@@ -826,6 +914,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       setLocationHash(hashFromTabId(nextActiveTabId));
       return;
     }
+    // No tab left on this surface → pin it so its empty/home state shows.
+    setSkillsSidebarState(activeIsSkill);
     if (collabUrl !== null) getPool(collabUrl).clearActive();
     setActiveTarget(null);
     commitActiveTabId(null);
@@ -945,6 +1035,34 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
 
   const isNewTabActive = activeNewTabId !== null;
 
+  // The active sidebar/tab surface. An explicit pin (`skillsSidebar`
+  // true/false) wins; the default `null` follows whichever surface the open doc
+  // / new tab belongs to. Single source for the sidebar AND the editor-tab
+  // strip's mode filter, so the two never disagree.
+  //
+  // Both trees pin as they open, so clicking a row keeps you where you are —
+  // a skill's file opened from Files stays in Files, and the reverse. Autofollow
+  // is therefore the rule for navigation that carries no surface intent of its
+  // own: a deep link, the command palette, session restore.
+  const skillFocused =
+    skillsSidebar ?? (isSkillFocusedTarget(activeTarget) || isSkillsNewTabId(activeNewTabId));
+
+  // Remember the active tab per surface so a Files↔Skills toggle can restore it.
+  // Runs on every activeTabId change (incl. session restore) so both surfaces
+  // stay current even before the first toggle.
+  useEffect(() => {
+    if (!activeTabId) return;
+    const mode = isSkillTabId(activeTabId) ? 'skills' : 'files';
+    activeTabByModeRef.current[mode] = activeTabId;
+  }, [activeTabId]);
+
+  // Show only the current surface's tabs. Filtering here (not in EditorTabs)
+  // keeps the strip, keyboard cycle/jump, and drag-reorder all consistent;
+  // reorderTabs' backstop re-adds any hidden-surface tab, so none are dropped.
+  const visibleTabIdsForMode = visibleTabIds.filter(
+    (id) => tabIdIsSkillSurface(id) === skillFocused,
+  );
+
   useEffect(() => {
     if (collabUrl === null || tabSessionLoaded || !tabIdentityResolved) return;
     let cancelled = false;
@@ -967,6 +1085,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
 
     loaded
       .then((raw) => {
+        restoreSucceededRef.current = true;
         if (cancelled) return;
         const state = parseEditorTabSessionState(raw, MAX_POOL);
         if (tabSessionUserClosedRef.current) return;
@@ -983,6 +1102,14 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         const normalizedPinnedTabIds = normalizePinnedTabIds(mergedPinnedTabIds, nextTabs);
         openTabsRef.current = nextTabs;
         pinnedTabIdsRef.current = normalizedPinnedTabIds;
+        // Restore each surface's last-active tab, but only fill slots not already
+        // set by a tab opened during the async restore window (additive, matching
+        // the openTabs merge above). Persisted ids were validated against the
+        // saved openTabs, a subset of nextTabs, so they remain valid here.
+        activeTabByModeRef.current = {
+          files: activeTabByModeRef.current.files ?? state.activeTabByMode.files,
+          skills: activeTabByModeRef.current.skills ?? state.activeTabByMode.skills,
+        };
         setOpenTabs((current) => (sameTabIds(current, nextTabs) ? current : nextTabs));
         setPinnedTabIds((current) =>
           sameTabIds(current, normalizedPinnedTabIds) ? current : normalizedPinnedTabIds,
@@ -1037,10 +1164,12 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!tabSessionLoaded) return;
+    if (!shouldPersistTabSession(restoreSucceededRef.current, openTabs.length)) return;
     const state = createEditorTabSessionState(
       openTabs,
       activeTabId ?? activeTabIdForTarget(activeTarget, snapshot.activeDocName),
       pinnedTabIds,
+      activeTabByModeRef.current,
     );
     const bridge = getDesktopBridge();
     if (bridge) {
@@ -1352,6 +1481,28 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       p.setActive(docName);
     } else {
       p.clearActive();
+      if (target.kind === 'skills') {
+        // Skills is a new-tab surface, not a standing titled tab: focus an
+        // existing skills new tab or open one, so it reads as "New tab" and
+        // never persists across reloads. Renders via `isSkillsNewTabId`
+        // (activeTarget stays null), same path as a `+`-opened skills new tab.
+        const existing = newTabIdsRef.current.find(isSkillsNewTabId);
+        if (existing) {
+          commitActiveNewTabId(existing);
+        } else {
+          const nextNewTabId = `${SKILLS_NEW_TAB_PREFIX}${nextNewTabOrdinalRef.current}`;
+          nextNewTabOrdinalRef.current += 1;
+          commitNewTabIds([...newTabIdsRef.current, nextNewTabId]);
+          commitActiveNewTabId(nextNewTabId);
+        }
+        commitActiveTabId(null);
+        setActiveTarget(null);
+        // Opening the Skills surface re-arms autofollow (commitActiveTabId(null)
+        // above does not), so `skillFocused` tracks the skills new tab even if a
+        // Files pin was active.
+        setSkillsSidebarState(null);
+        return;
+      }
       const nextTabId = tabIdForNavigationTarget(target);
       if (nextTabId) {
         const opened = openTab(openTabsRef.current, nextTabId, {
@@ -1408,25 +1559,65 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (tab.kind === 'skill-file') {
+      // Carry the host through: dropping it here would re-resolve the file
+      // against whichever same-named skill a bare name lookup lands on, so
+      // re-activating the tab could swap in another skill's bytes.
       setActiveTarget({
         kind: 'skill-file',
-        target: `${tab.scope}/${tab.name}/${tab.path}`,
+        target: `${tab.scope}/${tab.name}${tab.host ? `:${tab.host}` : ''}/${tab.path}`,
         scope: tab.scope,
         name: tab.name,
         path: tab.path,
+        ...(tab.host ? { host: tab.host } : {}),
       });
-      const nextHash = hashFromSkillFile({ scope: tab.scope, name: tab.name, path: tab.path });
+      const nextHash = hashFromSkillFile({
+        scope: tab.scope,
+        name: tab.name,
+        path: tab.path,
+        ...(tab.host ? { host: tab.host } : {}),
+      });
       if (window.location.hash !== nextHash) window.location.hash = nextHash;
       return;
     }
-    setActiveTarget({ kind: 'folder', target: tab.folderPath, folderPath: tab.folderPath });
-    const nextHash = hashFromFolderPath(tab.folderPath);
-    if (window.location.hash !== nextHash) window.location.hash = nextHash;
+    if (tab.kind === 'skill-preview') {
+      // The tab IDENTITY is path-less (one preview tab), so the selected-file
+      // `path` lives only in the hash. Preserve it only when that hash describes
+      // THIS preview; otherwise a bundle path selected in the prior preview
+      // would leak into the newly activated tab.
+      const hashPath = selectedPathForSkillPreview(window.location.hash, tab);
+      const previewTarget = {
+        flavor: tab.flavor,
+        source: tab.source,
+        name: tab.name,
+        subtitle: tab.subtitle,
+        level: tab.level,
+        ...(hashPath ? { path: hashPath } : {}),
+      };
+      setActiveTarget({
+        kind: 'skill-preview',
+        target: `${tab.flavor}/${tab.source}/${tab.name}`,
+        ...previewTarget,
+      });
+      const nextHash = hashFromSkillPreview(previewTarget);
+      if (window.location.hash !== nextHash) window.location.hash = nextHash;
+      return;
+    }
+    if (tab.kind === 'folder') {
+      setActiveTarget({ kind: 'folder', target: tab.folderPath, folderPath: tab.folderPath });
+      const nextHash = hashFromFolderPath(tab.folderPath);
+      if (window.location.hash !== nextHash) window.location.hash = nextHash;
+    }
+    // A `skills` tab id is unreachable here (isValidTabId prunes it so it never
+    // enters the open-tab list) — no branch, so it no-ops rather than restoring
+    // the retired standing Skills tab.
   };
 
   const openNewTabById = () => {
-    // Open a blank tab — additive, no close-during-restore mark.
-    const nextNewTabId = `new-tab:${nextNewTabOrdinalRef.current}`;
+    // Open a blank tab — additive, no close-during-restore mark. Inherit the
+    // current surface (incl. an explicit Files/Skills pin) so a new tab opened
+    // from Skills lands on the Skills home, not the Files empty state.
+    const prefix = skillFocused ? SKILLS_NEW_TAB_PREFIX : NEW_TAB_PREFIX;
+    const nextNewTabId = `${prefix}${nextNewTabOrdinalRef.current}`;
     nextNewTabOrdinalRef.current += 1;
     commitNewTabIds([...newTabIdsRef.current, nextNewTabId]);
     commitActiveNewTabId(nextNewTabId);
@@ -1441,10 +1632,51 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Files/Skills toggle. `null` just re-arms autofollow. An explicit surface
+  // choice restores that surface's last-active tab (so the editor swaps to it),
+  // or — when it has none open — pins the surface and clears the editor so its
+  // empty/home state shows. A no-op when already on the requested surface.
+  const setSkillsSidebar = (next: boolean | null) => {
+    if (next === null) {
+      setSkillsSidebarState(null);
+      return;
+    }
+    const targetMode = next ? 'skills' : 'files';
+    if ((skillFocused ? 'skills' : 'files') === targetMode) {
+      setSkillsSidebarState(next);
+      return;
+    }
+    const remembered = activeTabByModeRef.current[targetMode];
+    if (remembered && openTabsRef.current.includes(remembered)) {
+      // activateTabById re-arms autofollow; `skillFocused` then tracks the
+      // restored tab's own surface, which equals targetMode.
+      activateTabById(remembered);
+      return;
+    }
+    // Target surface has no open tab → pin it and clear the editor so its
+    // empty/home surface renders (Skills hub for skills, "create" for files).
+    setSkillsSidebarState(next);
+    if (collabUrl !== null) getPool(collabUrl).clearActive();
+    commitActiveNewTabId(null);
+    commitActiveTabId(null);
+    setActiveTarget(null);
+    if (window.location.hash !== '') window.location.hash = '';
+  };
+
   const closeTabById = (tabId: string) => {
     if (pinnedTabIdsRef.current.includes(tabId)) return;
-    if (!openTabsRef.current.includes(tabId)) return;
+    if (!openTabsRef.current.includes(tabId)) {
+      // A tab the user can SEE must always be closable. `visibleTabIds` is
+      // normally a subset of openTabs ∪ newTabIds, but if the two ever diverge
+      // the strip renders a tab whose close is a silent no-op — un-closable
+      // short of a restart. Prune it here rather than returning into that trap.
+      if (visibleTabIdsRef.current.includes(tabId)) {
+        commitVisibleTabIds(visibleTabIdsRef.current.filter((id) => id !== tabId));
+      }
+      return;
+    }
     markTabSessionClosedDuringRestore();
+    const closingIsSkill = tabIdIsSkillSurface(tabId);
     let nextActiveTabId: string | null = null;
     const closingDocName = docNameForTabId(tabId);
     pushRecentlyClosedTabs([tabId]);
@@ -1457,7 +1689,10 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     const currentActiveTabId =
       activeTabId ?? activeTabIdForTarget(activeTarget, snapshot.activeDocName);
     updateOpenTabs((current) => {
-      nextActiveTabId = nextActiveTabAfterClose(current, currentActiveTabId, tabId);
+      // Pick the successor from the SAME surface, so closing the last Skills tab
+      // lands on the Skills empty state instead of jumping to a Files tab.
+      const sameSurface = current.filter((id) => tabIdIsSkillSurface(id) === closingIsSkill);
+      nextActiveTabId = nextActiveTabAfterClose(sameSurface, currentActiveTabId, tabId);
       return removeOpenTab(current, tabId);
     });
     if (currentActiveTabId !== tabId) return;
@@ -1466,6 +1701,9 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       window.location.hash = hashFromTabId(nextActiveTabId);
       return;
     }
+    // No tab left on this surface → pin it so its own empty/home state shows
+    // rather than falling back to Files via autofollow.
+    setSkillsSidebarState(closingIsSkill);
     if (collabUrl !== null) {
       const p = getPool(collabUrl);
       p.clearActive();
@@ -1500,12 +1738,20 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     }
 
     commitActiveNewTabId(null);
-    const nextActiveTabId = openTabsRef.current[openTabsRef.current.length - 1] ?? null;
+    // Fall back to the most-recent open tab on the closed placeholder's OWN
+    // surface, so closing a Skills "New tab" stays in Skills.
+    const closingNewIsSkill = isSkillsNewTabId(tabId);
+    const sameSurfaceOpen = openTabsRef.current.filter(
+      (id) => tabIdIsSkillSurface(id) === closingNewIsSkill,
+    );
+    const nextActiveTabId = sameSurfaceOpen[sameSurfaceOpen.length - 1] ?? null;
     if (nextActiveTabId) {
       commitActiveTabId(nextActiveTabId);
       window.location.hash = hashFromTabId(nextActiveTabId);
       return;
     }
+    // Nothing open on this surface → pin it so its empty/home state shows.
+    setSkillsSidebarState(closingNewIsSkill);
     if (collabUrl !== null) {
       const p = getPool(collabUrl);
       p.clearActive();
@@ -1560,9 +1806,12 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     activeTabId,
     activeDocName: snapshot.activeDocName,
     activeProvider: snapshot.activeProvider,
+    skillsSidebar,
+    setSkillsSidebar,
+    skillFocused,
     openTabs,
     pinnedTabIds,
-    visibleTabIds,
+    visibleTabIds: visibleTabIdsForMode,
     tabSessionLoaded,
     syncState: snapshot.syncState,
     serverRestartRecovery: snapshot.serverRestartRecovery,
@@ -1793,12 +2042,18 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const nextActiveTabId = nextActiveTabAfterCloseMany(openTabs, tabToReplace, staleTabIds);
+      // Keep the successor on the evicted tab's surface, so deleting the open
+      // skill doc lands on the Skills empty state instead of a Files tab.
+      const activeIsSkill = tabIdIsSkillSurface(tabToReplace);
+      const sameSurface = openTabs.filter((id) => tabIdIsSkillSurface(id) === activeIsSkill);
+      const nextActiveTabId = nextActiveTabAfterCloseMany(sameSurface, tabToReplace, staleTabIds);
       if (nextActiveTabId) {
         commitActiveTabId(nextActiveTabId);
         window.location.hash = hashFromTabId(nextActiveTabId);
         return;
       }
+      // No tab left on this surface → pin it so its empty/home state shows.
+      setSkillsSidebarState(activeIsSkill);
       if (collabUrl !== null) {
         const p = getPool(collabUrl);
         p.clearActive();

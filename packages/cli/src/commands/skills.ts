@@ -1,20 +1,18 @@
 /**
- * `ok skills manage --on | --off | --status` — the headless opt-in for
- * project-level skill management, mirroring the Desktop / `ok ui` prompt.
- *
- * `--on` flips the project to OK-managed (records `manageEditorSkills: true` in
- * `<project>/.ok/local/skill-management.json`): on the next `ok start` / project
- * open, `reconcileSkillInstalls` imports existing editor skills into `.ok/skills`
- * and adopts newly-installed ones thereafter. `--off` is non-destructive — it
- * stops future adoption; existing `.ok/skills` content + editor symlinks stay.
- * Skills that already have a `.ok/skills` entry are managed regardless of this
- * flag.
+ * `ok skills` — headless skill utilities: `installed` (read-only cross-agent
+ * enumeration) and `import` (bring a skill in as versioned content). Skills OK
+ * finds in editor dirs are versioned in place automatically — there
+ * is no manage opt-in.
  */
 
 import { resolve as resolvePath } from 'node:path';
-import { isProjectSkillManaged, writeSkillManagement } from '@inkeep/open-knowledge-server';
+import { isDetectedSkillInProject } from '@inkeep/open-knowledge-core';
+import { resolveProjectIdentity } from '@inkeep/open-knowledge-core/shadow-repo-layout';
+import { enumerateInstalledSkills } from '@inkeep/open-knowledge-core/skills-catalog';
+import { findEnclosingProjectRoot, resolveLockDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { accent, dim, error as errorColor, info, success } from '../ui/colors.ts';
+import { inspectLock } from './lock-state.ts';
 
 export function skillsCommand(): Command {
   const skills = new Command('skills').description(
@@ -22,59 +20,107 @@ export function skillsCommand(): Command {
   );
 
   skills
-    .command('manage')
+    .command('installed')
+    .description('List every skill installed across all your agents (read-only).')
+    .option('--json', 'Emit the raw enumeration as JSON.')
+    .action((opts: { json?: boolean }) => {
+      // Same project/global classifier as the sidebar + adopt: resolve the
+      // enclosing OK project (worktree→parent identity), scan its harness dirs,
+      // and drop skills bound to a different project. Falls back to cwd when not
+      // inside a project.
+      const cwd = resolvePath(process.cwd());
+      const identity = resolveProjectIdentity(findEnclosingProjectRoot(cwd)?.rootPath ?? cwd);
+      const enumerated = enumerateInstalledSkills({ projectDir: identity });
+      const result = {
+        ...enumerated,
+        skills: enumerated.skills.filter((s) => isDetectedSkillInProject(s.provenance, identity)),
+      };
+      if (opts.json) {
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+        return;
+      }
+      if (result.skills.length === 0) {
+        process.stdout.write(`${dim('No installed skills found across any agent.')}\n`);
+        return;
+      }
+      process.stdout.write(`${accent(`${result.skills.length} installed skill(s):`)}\n`);
+      for (const s of result.skills) {
+        const ver = s.provenance.version ? dim(` v${s.provenance.version}`) : '';
+        const cap = [
+          s.inert.commands && 'commands',
+          s.inert.hooks && 'hooks',
+          s.inert.mcp && 'mcp',
+        ].filter(Boolean);
+        const capStr = cap.length > 0 ? dim(` [${cap.join(', ')}]`) : '';
+        process.stdout.write(
+          `  ${success(s.name)}${ver}  ${dim(s.sourceHarnesses.join(', '))}${capStr}\n`,
+        );
+      }
+      process.stdout.write(`\n${accent(`${result.packs.length} pack(s):`)}\n`);
+      for (const p of result.packs) {
+        process.stdout.write(
+          `  ${info(p.name)} ${dim(`v${p.version}`)} — ${p.skills.length} skill(s)\n`,
+        );
+      }
+    });
+
+  skills
+    .command('import <source>')
     .description(
-      'Control whether OK adopts your editor skills into this project. Default: off — OK only manages skills already under .ok/skills.',
+      'Import a skill into this project as versioned content (github owner/repo, a git URL, or a local path).',
     )
-    .option(
-      '--on',
-      'Make this project OK-managed: import existing editor skills and adopt new ones.',
-    )
-    .option(
-      '--off',
-      'Stop adopting editor skills (non-destructive — existing .ok/skills + symlinks stay).',
-    )
-    .option('--status', 'Print the current setting.')
-    .action(async (opts: { on?: boolean; off?: boolean; status?: boolean }) => {
-      // No subcommand-level `--cwd`; the program-level `--cwd` preAction hook has
-      // already chdir'd, so process.cwd() reflects the user's project.
-      const projectDir = resolvePath(process.cwd());
-      const chosen = [opts.on, opts.off, opts.status].filter(Boolean).length;
-      if (chosen !== 1) {
+    .option('--skill <name>', 'Pick one skill from a multi-skill source.')
+    .option('--scope <scope>', 'project (default) or global.', 'project')
+    .action(async (source: string, opts: { skill?: string; scope?: string }) => {
+      // Import WRITES through the CRDT/attribution spine, so it needs a running
+      // server for this project (unlike the read-only `installed` subcommand).
+      const lockDir = resolveLockDir(process.cwd());
+      const state = inspectLock(lockDir, 'server');
+      if (state.status !== 'alive') {
         process.stderr.write(
-          `${errorColor('Error:')} pass exactly one of --on, --off, --status.\n`,
+          `${errorColor('Error:')} no running Open Knowledge server for this project. Start it with ${accent('ok start')} and retry.\n`,
         );
         process.exitCode = 1;
         return;
       }
-
-      if (opts.status) {
-        // Effective state (honors the OK_RECLAIM_DISABLE / OK_SKILL_MANAGE env
-        // overrides reconcile reads), not just the raw marker — this is the
-        // surface people use to debug "why aren't my skills being adopted?".
-        const managed = isProjectSkillManaged(projectDir);
-        process.stdout.write(
-          `Skill management for ${accent(projectDir)}: ${managed ? success('on') : dim('off (default)')}\n`,
-        );
-        return;
-      }
-
-      const manageEditorSkills = Boolean(opts.on);
+      let res: Response;
       try {
-        await writeSkillManagement(projectDir, { manageEditorSkills, surface: 'cli' });
+        res = await fetch(`http://127.0.0.1:${state.lock.port}/api/skill/import`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source,
+            ...(opts.skill ? { skill: opts.skill } : {}),
+            scope: opts.scope === 'global' ? 'global' : 'project',
+          }),
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        process.stderr.write(
-          `${errorColor('Error:')} could not write skill-management marker: ${msg}\n`,
-        );
+        process.stderr.write(`${errorColor('Error:')} could not reach the server: ${msg}\n`);
         process.exitCode = 1;
         return;
       }
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!res.ok) {
+        const detail = (body.detail as string) ?? (body.title as string) ?? `HTTP ${res.status}`;
+        process.stderr.write(`${errorColor('Import failed:')} ${detail}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const name = body.name as string;
+      if (body.alreadyImported) {
+        process.stdout.write(`${info('Already imported:')} ${accent(name)} (identical content).\n`);
+        return;
+      }
+      const prov = (body.provenance ?? {}) as { source?: string; publisher?: string };
+      const renamed = body.collisionRenamedFrom as string | undefined;
       process.stdout.write(
-        manageEditorSkills
-          ? `${success('OK now manages skills for this project.')} Existing editor skills are imported into ${accent('.ok/skills')} on the next ${accent('ok start')} / project open, and new ones adopted automatically.\n`
-          : `${info('OK will no longer adopt editor skills here.')} Existing ${accent('.ok/skills')} content + symlinks are left intact.\n`,
+        `${success('Imported')} ${accent(name)}${renamed ? dim(` (renamed from ${renamed} — name was taken)`) : ''} from ${dim(prov.source ?? source)}${prov.publisher ? dim(` · ${prov.publisher}`) : ''}.\n` +
+          `${dim("Saved as versioned content in this project's skill home. Scripts shown, never run. Use the skill's install menu (or the install MCP verb) to add it to your other editors.")}\n`,
       );
+      for (const w of (body.warnings as string[]) ?? []) {
+        process.stdout.write(`  ${dim(`! ${w}`)}\n`);
+      }
     });
 
   return skills;

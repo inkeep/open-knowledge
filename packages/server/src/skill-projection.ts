@@ -12,8 +12,7 @@
  * editor dir crosses the home dir). Install is authoritative: any prior entry
  * (stale link, broken link, or a legacy real-dir copy) is removed before the
  * link is made. OK's own shipped bundle is the one copy exception
- * (`projectBundleSkill`) — it ships inside the app asar with no `.ok/skills`
- * source to link to.
+ * — it ships inside the app asar with no `.ok/skills` source to link to.
  *
  * Host writes go through the traced fs primitives (`fs.*` spans). Host dirs
  * live OUTSIDE the content/CRDT plane and outside `.ok/` — this is a
@@ -32,12 +31,20 @@ import {
   containsXmlTag,
   EDITOR_PROJECT_CONFIG_PATH,
   EDITOR_PROJECT_SKILL_ROOT,
+  EDITOR_USER_SKILL_ROOT,
   type EditorId,
+  PACK_SKILL_PREFIX,
   PROJECT_SKILL_EDITOR_IDS,
 } from '@inkeep/open-knowledge-core';
+import { parseSkillDir, type SkillHostId } from '@inkeep/open-knowledge-core/skills-catalog';
 import { parse as parseYaml } from 'yaml';
-import { resolveBundledSkillDir } from './build-skill-zip.ts';
-import { tracedCpSync, tracedMkdirSync, tracedRmSync, tracedSymlinkSync } from './fs-traced.ts';
+import {
+  tracedCpSync,
+  tracedMkdirSync,
+  tracedRenameSync,
+  tracedRmSync,
+  tracedSymlinkSync,
+} from './fs-traced.ts';
 
 /**
  * Narrow a persisted `string[]` host list (from the marker, whose JSON is
@@ -52,18 +59,6 @@ export function resolvedHosts(hosts: readonly string[]): EditorId[] {
 
 /** Reserved skill-name prefix — OK's own shipped skills. */
 const RESERVED_SKILL_PREFIX = 'open-knowledge';
-
-/**
- * Starter-pack project skills (`open-knowledge-pack-<packId>`, seeded by
- * `installPackSkill`). They sit under the reserved prefix but are OK's own
- * shipped content, so they're exempt from the reserved-name install block —
- * otherwise a pack skill couldn't be re-installed after a user uninstalls it
- * (the seed copies it in directly, but a user-triggered reinstall re-validates).
- */
-export const PACK_SKILL_PREFIX = 'open-knowledge-pack-';
-
-/** OK's shipped project-skill bundle name (lives at `.{host}/skills/open-knowledge/`). */
-const SHIPPED_SKILL_NAME = 'open-knowledge';
 
 // Intentionally NOT core's `stripFrontmatter` (used by skill-reconcile): this is
 // a validity GATE, not a comparison parse. It requires a leading `---` block and
@@ -90,6 +85,14 @@ function parseFrontmatter(raw: string): Record<string, unknown> | null {
 export interface SkillValidity {
   ok: boolean;
   errors: string[];
+  /**
+   * Non-blocking advisories — the skill still installs. An empty `description`
+   * lands here (not `errors`): a missing description makes the skill less useful
+   * to agents, but hard-blocking install on it meant an already-installed skill
+   * red-errored on every install click with no way forward. Surfaced
+   * as a `no-description` warning instead.
+   */
+  warnings: string[];
   /** True when the skill ships a `scripts/` dir (projected but flagged). */
   hasScripts: boolean;
 }
@@ -107,6 +110,7 @@ export function validateSkillForInstall(
   opts?: { allowReservedName?: boolean },
 ): SkillValidity {
   const errors: string[] = [];
+  const warnings: string[] = [];
   const skillMd = join(skillDir, 'SKILL.md');
   const hasScripts =
     existsSync(join(skillDir, 'scripts')) && statSync(join(skillDir, 'scripts')).isDirectory();
@@ -120,14 +124,14 @@ export function validateSkillForInstall(
   }
   if (!existsSync(skillMd)) {
     errors.push(`No SKILL.md found at ${skillDir}.`);
-    return { ok: errors.length === 0, errors, hasScripts };
+    return { ok: errors.length === 0, errors, warnings, hasScripts };
   }
   let raw: string;
   try {
     raw = readFileSync(skillMd, 'utf-8');
   } catch (e) {
     errors.push(`Cannot read SKILL.md: ${(e as Error).message}.`);
-    return { ok: false, errors, hasScripts };
+    return { ok: false, errors, warnings, hasScripts };
   }
   if (CONFLICT_MARKER_RES.some((re) => re.test(raw))) {
     errors.push(
@@ -148,7 +152,10 @@ export function validateSkillForInstall(
       );
     }
     if (typeof fmDesc !== 'string' || fmDesc.length === 0) {
-      errors.push('SKILL.md frontmatter.description is missing or empty.');
+      // Non-blocking: a description-less skill still installs. Hard-
+      // blocking here made an already-installed skill red-error on every install
+      // click. The nudge to add one is surfaced as a `no-description` warning.
+      warnings.push('This skill has no `description`. Add one so agents know when to use it.');
     }
     if (
       (typeof fmName === 'string' && containsXmlTag(fmName)) ||
@@ -159,7 +166,7 @@ export function validateSkillForInstall(
       );
     }
   }
-  return { ok: errors.length === 0, errors, hasScripts };
+  return { ok: errors.length === 0, errors, warnings, hasScripts };
 }
 
 /**
@@ -189,19 +196,49 @@ export function resolveSkillTargets(cwd: string, explicit?: readonly string[]): 
 }
 
 /**
- * Absolute host skills dir for a skill name + editor, or `null` when the
- * editor has no project skill surface (e.g. Claude Desktop).
+ * The editor → skills-root map for a projection SCOPE. Project scope uses each
+ * editor's project root (`.github/skills` for Copilot); global scope uses the
+ * USER root (`.copilot/skills`). The two diverge ONLY for Copilot and pi — every
+ * other editor's project and user roots are the same relative path — so a global
+ * projection MUST pass the user map or Copilot/pi land in the wrong home dir and
+ * silently drop. Inert for all other editors.
  */
-export function skillHostDir(cwd: string, editor: EditorId, name: string): string | null {
-  const root = EDITOR_PROJECT_SKILL_ROOT[editor];
+export type SkillProjectionRoots = Record<EditorId, string | null>;
+export function skillProjectionRoots(scope: 'project' | 'global'): SkillProjectionRoots {
+  return scope === 'global' ? EDITOR_USER_SKILL_ROOT : EDITOR_PROJECT_SKILL_ROOT;
+}
+
+/**
+ * Absolute host skills dir for a skill name + editor, or `null` when the
+ * editor has no skill surface (e.g. Claude Desktop). `roots` selects the
+ * project-vs-user root map (defaults to project; pass the user map for global).
+ */
+export function skillHostDir(
+  cwd: string,
+  editor: EditorId,
+  name: string,
+  roots: SkillProjectionRoots = EDITOR_PROJECT_SKILL_ROOT,
+): string | null {
+  const root = roots[editor];
   return root === null ? null : resolve(cwd, root, name);
+}
+
+/** Host-dir resolution for install targets INCLUDING the `.agents` hub. */
+function skillTargetDir(
+  cwd: string,
+  target: SkillHostId,
+  name: string,
+  roots: SkillProjectionRoots = EDITOR_PROJECT_SKILL_ROOT,
+): string | null {
+  if (target === 'agents') return resolve(cwd, '.agents/skills', name);
+  return skillHostDir(cwd, target, name, roots);
 }
 
 /**
  * True when an editor's host skills root (`<cwd>/.claude/skills` etc.) EXISTS and
  * is a symlink resolving OUTSIDE the project — a write through it would escape the
  * project tree. A not-yet-created root is fine (it's created inside `cwd`). Shared
- * by `projectSkill`/`projectBundleSkill` and the seed (`installPackSkill`) so every
+ * by `projectSkill` and the seed (`installPackSkill`) so every
  * projection write applies the same symlink-escape refusal.
  */
 export function hostSkillsRootEscapes(cwd: string, hostRoot: string): boolean {
@@ -213,6 +250,29 @@ export function hostSkillsRootEscapes(cwd: string, hostRoot: string): boolean {
     return rel.startsWith('..') || isAbsolute(rel);
   } catch {
     return true;
+  }
+}
+
+/**
+ * Whether a host skills root is the SAME directory as the canonical's own root,
+ * reached through a folder-level alias (`.claude/skills -> ../.agents/skills`).
+ *
+ * Sibling of `hostSkillsRootEscapes`: that one refuses roots pointing OUT of the
+ * project, this one refuses roots pointing back IN at the canonical. Both compare
+ * roots only — never the per-skill destination — so a bundle already broken by a
+ * previous bad write cannot hide the collision by making `realpathSync` throw.
+ *
+ * A root that does not resolve is not an alias; the caller's own guards handle it.
+ *
+ * Module-private: `projectSkill` is the only write path that needs it, and the
+ * behaviour is covered through that entry point rather than directly.
+ */
+function isAliasOfCanonicalRoot(hostRoot: string, canonicalRoot: string): boolean {
+  if (!existsSync(hostRoot) || !existsSync(canonicalRoot)) return false;
+  try {
+    return realpathSync(hostRoot) === realpathSync(canonicalRoot);
+  } catch {
+    return false;
   }
 }
 
@@ -229,30 +289,407 @@ function skillLinkTarget(cwd: string, hostRoot: string, skillDir: string): strin
 }
 
 /**
- * Install a skill source dir into each target editor's host dir by SYMLINK.
- * Removes any existing entry first (authoritative replace — a stale/broken
- * link or a legacy real-dir copy is dropped before the link is made). Returns
- * the editor ids actually written (skipping editors with no skill surface).
+ * Install a skill source dir into each target editor's host dir.
+ *
+ * `mode` selects how: `symlink` (default) links back to the skill's single
+ * source folder — right for locally-authored skills, whose source lives in the
+ * project alongside the link. `copy` writes a verbatim recursive copy — right
+ * for anything a whole team will clone: seeded starter packs and
+ * acquired/imported skills, which must survive Windows (where a committed
+ * symlink needs `core.symlinks`) and CI, and — for a global-scope source —
+ * a machine that has no such source at all. The rm-first authoritative-replace + the symlink-escape guard apply
+ * identically to both. Returns the editor ids actually written.
  */
 export function projectSkill(
   skillDir: string,
   name: string,
   cwd: string,
   targets: readonly EditorId[],
+  mode: 'symlink' | 'copy' = 'symlink',
+  roots: SkillProjectionRoots = EDITOR_PROJECT_SKILL_ROOT,
 ): EditorId[] {
   const written: EditorId[] = [];
   for (const editor of targets) {
-    const dest = skillHostDir(cwd, editor, name);
+    const dest = skillHostDir(cwd, editor, name, roots);
     if (dest === null) continue;
     const hostRoot = dirname(dest);
     // Refuse to write through a host root that symlink-escapes the project.
     if (hostSkillsRootEscapes(cwd, hostRoot)) continue;
+    // Refuse to write through a host root that ALIASES the canonical's own root
+    // (`.claude/skills -> ../.agents/skills`). Writing there resolves onto the
+    // canonical itself: the rm below deletes the real bundle and the symlink
+    // that replaces it points at its own path, so the skill is destroyed and
+    // every later host then re-destroys it (once the canonical is a self-link,
+    // `realpathSync` throws and the `sameEntry` check below can no longer see
+    // the collision). Compared on the ROOTS, never on `dest`, so it still holds
+    // after such a cycle exists on disk.
+    if (isAliasOfCanonicalRoot(hostRoot, dirname(skillDir))) {
+      // Present by construction — the host reads the canonical directly. Report
+      // it as projected (same as the `sameEntry` case below); dropping it would
+      // understate the host set and strand the marker.
+      written.push(editor);
+      continue;
+    }
+    // An in-place skill may already live at the requested host destination.
+    // Treat that host as projected without replacing the canonical directory
+    // with a copy/symlink to itself.
+    let sameEntry = resolve(dest) === resolve(skillDir);
+    if (!sameEntry && existsSync(dest)) {
+      try {
+        sameEntry = realpathSync(dest) === realpathSync(skillDir);
+      } catch {
+        sameEntry = false;
+      }
+    }
+    if (sameEntry) {
+      written.push(editor);
+      continue;
+    }
     tracedRmSync(dest, { recursive: true, force: true });
     tracedMkdirSync(hostRoot, { recursive: true });
-    tracedSymlinkSync(skillLinkTarget(cwd, hostRoot, skillDir), dest, 'dir');
+    if (mode === 'copy') {
+      // A copy must stand alone — that is the whole difference from `link` mode.
+      // Without `dereference` a canonical that is itself a symlink (the `source`
+      // verb points it elsewhere) would be projected as a link, so the host
+      // silently tracks the source instead of holding its own bytes.
+      tracedCpSync(skillDir, dest, { recursive: true, dereference: true });
+    } else {
+      tracedSymlinkSync(skillLinkTarget(cwd, hostRoot, skillDir), dest, 'dir');
+    }
     written.push(editor);
   }
   return written;
+}
+
+/** What occupies a host dest for an in-place fan-out decision. `canonical-dir`
+ *  is the canonical bundle ITSELF (never touched); `link-to-canonical` is a live
+ *  symlink resolving to it (kept on install, removable on uninstall). */
+export function classifyInPlaceDest(
+  dest: string,
+  canonicalAbs: string,
+  canonicalHash: string,
+): 'absent' | 'canonical-dir' | 'link-to-canonical' | 'link' | 'same-copy' | 'different' {
+  let st: ReturnType<typeof lstatSync>;
+  try {
+    st = lstatSync(dest);
+  } catch {
+    return 'absent';
+  }
+  if (st.isSymbolicLink()) {
+    try {
+      if (realpathSync(dest) === realpathSync(canonicalAbs)) return 'link-to-canonical';
+    } catch {
+      // dangling — plain removable link
+    }
+    return 'link';
+  }
+  if (!st.isDirectory()) return 'different'; // stray file — never touch
+  try {
+    if (realpathSync(dest) === realpathSync(canonicalAbs)) return 'canonical-dir';
+  } catch {
+    return 'different';
+  }
+  return parseSkillDir(dest)?.contentHash === canonicalHash ? 'same-copy' : 'different';
+}
+
+/**
+ * Fan-out for an IN-PLACE skill: copy the
+ * canonical native bundle into each target editor's host dir. Safety rules:
+ *  - NEVER clobbers a DIFFERENT real dir (a fork / user content) — reported in
+ *    `conflicted`, untouched.
+ *  - The canonical itself and same-hash copies count as already-installed.
+ *  - A symlink dest (an old store projection, possibly dangling) is replaced
+ *    with a copy.
+ *  - An editor whose own root IS the canonical's root is already covered —
+ *    nothing is written for it. Aliased roots (folder symlinks) are never
+ *    write targets: writes never go through an alias.
+ */
+export function projectInPlaceSkill(opts: {
+  canonicalAbs: string;
+  canonicalHash: string;
+  /** cwd-relative skills ROOT holding the canonical (e.g. `.agents/skills`). */
+  canonicalRootRel: string;
+  name: string;
+  cwd: string;
+  targets: readonly SkillHostId[];
+  /** `link` = create symlinks to the canonical instead of copies (per-skill
+   *  preference); a lossless same-hash COPY is converted to a link, and vice
+   *  versa in copy mode. Default `copy`. */
+  mode?: 'copy' | 'link';
+  /** With copy mode: ALSO convert existing links-to-canonical into copies —
+   *  only for an EXPLICIT user copy choice (lossless; links otherwise kept). */
+  convertLinks?: boolean;
+  /** Project-vs-user root map; defaults to project roots. */
+  roots?: SkillProjectionRoots;
+}): { hosts: SkillHostId[]; conflicted: SkillHostId[] } {
+  const { canonicalAbs, canonicalHash, canonicalRootRel, name, cwd, targets } = opts;
+  const roots = opts.roots ?? EDITOR_PROJECT_SKILL_ROOT;
+  const mode = opts.mode ?? 'copy';
+  const hosts: SkillHostId[] = [];
+  const conflicted: SkillHostId[] = [];
+  const materialize = (dest: string, hostRoot: string): void => {
+    tracedRmSync(dest, { recursive: true, force: true });
+    tracedMkdirSync(hostRoot, { recursive: true });
+    if (mode === 'link') {
+      tracedSymlinkSync(skillLinkTarget(cwd, hostRoot, canonicalAbs), dest, 'dir');
+    } else {
+      // `canonicalAbs` is a symlink whenever `source` points the skill at another
+      // location, and cpSync's default would copy that link — so the "copy" host
+      // would silently track the source instead of holding its own bytes.
+      tracedCpSync(canonicalAbs, dest, { recursive: true, dereference: true });
+    }
+  };
+  for (const editor of targets) {
+    if (
+      editor === 'agents'
+        ? canonicalRootRel === '.agents/skills'
+        : roots[editor] === canonicalRootRel
+    ) {
+      // This host's own dir IS the canonical root — never CREATE a copy here.
+      // But an EXISTING lossless occurrence in the editor's own dir must still
+      // follow an explicit mode flip: a leftover same-hash copy in link mode
+      // (or link in explicit copy mode) is stale, double-loads, and contradicts
+      // the skill-wide mode the menu shows.
+      const own = skillTargetDir(cwd, editor, name, roots);
+      if (own !== null && !hostSkillsRootEscapes(cwd, dirname(own))) {
+        const cls = classifyInPlaceDest(own, canonicalAbs, canonicalHash);
+        if (
+          (mode === 'link' && cls === 'same-copy') ||
+          (mode === 'copy' && opts.convertLinks === true && cls === 'link-to-canonical')
+        ) {
+          materialize(own, dirname(own));
+        }
+      }
+      hosts.push(editor);
+      continue;
+    }
+    const dest = skillTargetDir(cwd, editor, name, roots);
+    if (dest === null) continue;
+    const hostRoot = dirname(dest);
+    if (hostSkillsRootEscapes(cwd, hostRoot)) continue;
+    // Writes never go through an alias: a host root that physically resolves
+    // somewhere else (the folder or a parent is a symlink) is a derived view
+    // of that other location, never a write target — materializing an absent
+    // dest here would land the bytes in the aliased-to root. Skipped, and NOT
+    // counted as a host: `hosts` = physical locations only (an alias-covered
+    // editor is an audience icon, never an installed-location count).
+    try {
+      const rootReal = realpathSync(hostRoot);
+      if (rootReal !== join(realpathSync(cwd), relative(cwd, hostRoot))) continue;
+    } catch {
+      // hostRoot absent — a real, creatable location
+    }
+    switch (classifyInPlaceDest(dest, canonicalAbs, canonicalHash)) {
+      case 'canonical-dir':
+        hosts.push(editor);
+        break;
+      case 'link-to-canonical':
+        // A live link is already the freshest projection AND may be
+        // user-authored — kept, unless the user EXPLICITLY chose copies
+        // (unsymlink), which is a lossless conversion.
+        if (mode === 'copy' && opts.convertLinks === true) materialize(dest, hostRoot);
+        hosts.push(editor);
+        break;
+      case 'same-copy':
+        // Lossless conversion when the preference is link; already right in copy mode.
+        if (mode === 'link') materialize(dest, hostRoot);
+        hosts.push(editor);
+        break;
+      case 'different':
+        conflicted.push(editor);
+        break;
+      case 'link':
+      case 'absent':
+        materialize(dest, hostRoot);
+        hosts.push(editor);
+        break;
+    }
+  }
+  return { hosts, conflicted };
+}
+
+/**
+ * Move an in-place skill's SOURCE (canonical) to another host dir — the
+ * user-directed "untoggle the source" action. The new target must be usable:
+ * absent (the bundle MOVES there), a live link or same-hash copy (it becomes
+ * the real dir), never a DIFFERENT bundle. Afterwards every sibling symlink
+ * that pointed at the old source is re-pointed at the new one, so nothing
+ * dangles. Identity note: the tracked path (docName) re-roots — an accepted
+ * trade-off, here as an explicit user choice.
+ */
+export function relocateInPlaceCanonical(opts: {
+  canonicalAbs: string;
+  canonicalHash: string;
+  name: string;
+  cwd: string;
+  newTarget: SkillHostId;
+  /** Custom-root destination bundle dir (absolute) — overrides the host-dir
+   *  mapping when the new source lives at a custom path (e.g. `.ok/skills`). */
+  destDirAbs?: string;
+  /** Leave a SYMLINK→dest at the old source path (the promote/downgrade swap:
+   *  the clicked location becomes the real folder, the old one a link).
+   *  Uncheck-driven relocation passes false — unchecking means REMOVE. */
+  leaveLinkBehind?: boolean;
+  /** Project-vs-user root map; defaults to project roots. */
+  roots?: SkillProjectionRoots;
+}): { ok: true; newAbs: string } | { ok: false; reason: 'target-unusable' | 'target-missing' } {
+  const { canonicalHash, name, cwd, newTarget } = opts;
+  const roots = opts.roots ?? EDITOR_PROJECT_SKILL_ROOT;
+  // THE GUARD (the whole reason this survived a rewrite): this primitive moves
+  // a skill's LAST REAL DIRECTORY, so it must be handed one. If the caller's
+  // "canonical" path is a symlink (mis-election, races), operate on the REAL
+  // directory it resolves to — renaming the link file instead of the folder is
+  // exactly how a skill's bytes got orphaned into a self-link loop.
+  let canonicalAbs: string;
+  try {
+    canonicalAbs = realpathSync(opts.canonicalAbs);
+  } catch {
+    return { ok: false, reason: 'target-unusable' }; // dangling — nothing real to move
+  }
+  try {
+    if (lstatSync(canonicalAbs).isSymbolicLink() || !lstatSync(canonicalAbs).isDirectory()) {
+      return { ok: false, reason: 'target-unusable' };
+    }
+  } catch {
+    return { ok: false, reason: 'target-unusable' };
+  }
+  const dest = opts.destDirAbs ?? skillTargetDir(cwd, newTarget, name, roots);
+  if (dest === null) return { ok: false, reason: 'target-missing' };
+  if (resolve(dest) === canonicalAbs) return { ok: true, newAbs: dest }; // already the source
+  const hostRoot = dirname(dest);
+  if (hostSkillsRootEscapes(cwd, hostRoot)) return { ok: false, reason: 'target-unusable' };
+  switch (classifyInPlaceDest(dest, canonicalAbs, canonicalHash)) {
+    case 'canonical-dir':
+      return { ok: true, newAbs: dest }; // already the source
+    case 'different':
+      return { ok: false, reason: 'target-unusable' };
+    case 'same-copy':
+      // The copy IS the bundle (byte-identical real dir) — it becomes the
+      // source. Only NOW is removing the old dir lossless; verify dest is a
+      // real dir one more time before the delete (paranoia is the point).
+      try {
+        if (lstatSync(dest).isSymbolicLink() || !existsSync(join(dest, 'SKILL.md'))) {
+          return { ok: false, reason: 'target-unusable' };
+        }
+      } catch {
+        return { ok: false, reason: 'target-unusable' };
+      }
+      tracedRmSync(canonicalAbs, { recursive: true, force: true });
+      break;
+    case 'link':
+    case 'link-to-canonical':
+      tracedRmSync(dest, { recursive: true, force: true });
+      tracedMkdirSync(hostRoot, { recursive: true });
+      tracedRenameSync(canonicalAbs, dest);
+      break;
+    case 'absent':
+      tracedMkdirSync(hostRoot, { recursive: true });
+      tracedRenameSync(canonicalAbs, dest);
+      break;
+  }
+  // POST-CONDITION: the destination must now be a real directory holding the
+  // bundle. If it isn't, something raced us — fail loudly rather than continue
+  // wiring links to a phantom.
+  if (!existsSync(join(dest, 'SKILL.md')) || lstatSync(dest).isSymbolicLink()) {
+    return { ok: false, reason: 'target-unusable' };
+  }
+  // The promote/downgrade swap: old source path becomes a link to the new one.
+  if (opts.leaveLinkBehind === true && !existsSync(canonicalAbs)) {
+    tracedSymlinkSync(skillLinkTarget(cwd, dirname(canonicalAbs), dest), canonicalAbs, 'dir');
+  }
+  // Re-point sibling links that referenced the old source (now gone/dangling).
+  for (const host of ALL_TARGET_HOSTS) {
+    const sib = skillTargetDir(cwd, host, name, roots);
+    if (sib === null || resolve(sib) === resolve(dest) || resolve(sib) === canonicalAbs) continue;
+    try {
+      if (!lstatSync(sib).isSymbolicLink()) continue;
+    } catch {
+      continue;
+    }
+    let resolved: string | null = null;
+    try {
+      resolved = realpathSync(sib);
+    } catch {
+      resolved = null; // dangling — re-point it
+    }
+    // Re-point when: dangling, pointed at the old source, or resolves to the
+    // new dest THROUGH another link (chain) — links always point DIRECTLY at
+    // the real dir, so removing any one link can never strand another.
+    if (resolved === null || resolved === canonicalAbs || resolved === resolve(dest)) {
+      tracedRmSync(sib, { recursive: true, force: true });
+      tracedSymlinkSync(skillLinkTarget(cwd, dirname(sib), dest), sib, 'dir');
+    }
+  }
+  return { ok: true, newAbs: dest };
+}
+
+/** Every install-target host (editors with a project dir + the .agents hub). */
+const ALL_TARGET_HOSTS: readonly SkillHostId[] = [
+  'agents',
+  ...(PROJECT_SKILL_EDITOR_IDS as readonly EditorId[]),
+];
+
+/**
+ * Uninstall counterpart of {@link projectInPlaceSkill}: remove a target editor's
+ * occurrence ONLY when doing so loses nothing — a symlink, or a real dir
+ * byte-identical (same bundle hash) to the canonical. The canonical itself and
+ * any DIFFERENT real dir (fork / user content) are never removed.
+ */
+export function removeInPlaceSkillCopies(opts: {
+  canonicalAbs: string;
+  canonicalHash: string;
+  name: string;
+  cwd: string;
+  targets: readonly SkillHostId[];
+  /** Project-vs-user root map; defaults to project roots. */
+  roots?: SkillProjectionRoots;
+}): SkillHostId[] {
+  const { canonicalHash, name, cwd, targets } = opts;
+  const roots = opts.roots ?? EDITOR_PROJECT_SKILL_ROOT;
+  // Operate against the REAL canonical dir (a symlink path handed here would
+  // make the canonical-protection classify miss) — same guard as relocation.
+  let canonicalAbs: string;
+  try {
+    canonicalAbs = realpathSync(opts.canonicalAbs);
+  } catch {
+    return [];
+  }
+  const removed: SkillHostId[] = [];
+  for (const editor of targets) {
+    const dest = skillTargetDir(cwd, editor, name, roots);
+    if (dest === null) continue;
+    if (hostSkillsRootEscapes(cwd, dirname(dest))) continue;
+    switch (classifyInPlaceDest(dest, canonicalAbs, canonicalHash)) {
+      case 'same-copy':
+      case 'link':
+      case 'link-to-canonical':
+        tracedRmSync(dest, { recursive: true, force: true });
+        removed.push(editor);
+        break;
+      default:
+        break; // absent, the canonical itself, or a differing dir — never removed
+    }
+  }
+  // Removing an occurrence (real copy OR a link other links chained through)
+  // can orphan sibling links — re-point survivors at the canonical.
+  if (removed.length > 0) {
+    for (const host of ALL_TARGET_HOSTS) {
+      const sib = skillTargetDir(cwd, host, name, roots);
+      if (sib === null) continue;
+      try {
+        if (!lstatSync(sib).isSymbolicLink()) continue;
+      } catch {
+        continue;
+      }
+      try {
+        realpathSync(sib);
+      } catch {
+        tracedRmSync(sib, { recursive: true, force: true });
+        tracedSymlinkSync(skillLinkTarget(cwd, dirname(sib), canonicalAbs), sib, 'dir');
+      }
+    }
+  }
+  return removed;
 }
 
 /**
@@ -264,10 +701,11 @@ export function reverseProjectSkill(
   name: string,
   cwd: string,
   targets: readonly EditorId[],
+  roots: SkillProjectionRoots = EDITOR_PROJECT_SKILL_ROOT,
 ): EditorId[] {
   const removed: EditorId[] = [];
   for (const editor of targets) {
-    const dest = skillHostDir(cwd, editor, name);
+    const dest = skillHostDir(cwd, editor, name, roots);
     if (dest === null) continue;
     // `lstatSync` does NOT follow the link, so a DANGLING projection symlink
     // (target gone after the source was deleted) is still detected + removed.
@@ -285,37 +723,6 @@ export function reverseProjectSkill(
     removed.push(editor);
   }
   return removed;
-}
-
-/**
- * Project OK's shipped `open-knowledge` bundle into each target editor's host
- * dir, so OK's own project skill follows the same `skill_targets` set as
- * authored skills. Source is the bundled asset (`resolveBundledSkillDir`),
- * NOT a `.ok/skills/` dir. Returns the editor ids written; `[]` when the
- * bundle can't be resolved (e.g. a dev tree with no built assets).
- */
-export function projectBundleSkill(cwd: string, targets: readonly EditorId[]): EditorId[] {
-  let bundleDir: string;
-  try {
-    bundleDir = resolveBundledSkillDir('project', { checkDesktop: true });
-  } catch {
-    return [];
-  }
-  const written: EditorId[] = [];
-  for (const editor of targets) {
-    const dest = skillHostDir(cwd, editor, SHIPPED_SKILL_NAME);
-    if (dest === null) continue;
-    if (hostSkillsRootEscapes(cwd, dirname(dest))) continue;
-    tracedRmSync(dest, { recursive: true, force: true });
-    tracedCpSync(bundleDir, dest, { recursive: true });
-    written.push(editor);
-  }
-  return written;
-}
-
-/** Remove OK's shipped bundle projection from each target editor's host dir. */
-export function reverseBundleSkill(cwd: string, targets: readonly EditorId[]): EditorId[] {
-  return reverseProjectSkill(SHIPPED_SKILL_NAME, cwd, targets);
 }
 
 /** Max bytes inlined as text for a bundled skill file; larger files report `text: null`. */

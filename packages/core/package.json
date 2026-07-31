@@ -35,6 +35,11 @@
       "types": "./src/helper-bundle.ts",
       "default": "./dist/helper-bundle.mjs"
     },
+    "./skills-catalog": {
+      "development": "./src/skills-catalog/index.ts",
+      "types": "./src/skills-catalog/index.ts",
+      "default": "./dist/skills-catalog.mjs"
+    },
     "./acp/thread-protocol": {
       "development": "./src/acp/thread-protocol.ts",
       "types": "./src/acp/thread-protocol.ts",

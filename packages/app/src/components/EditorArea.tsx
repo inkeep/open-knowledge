@@ -2,6 +2,7 @@ import {
   detectEmbeddedHostFromBrowser,
   isFrontmatterSchemaAsset,
   isMarkdownlintJsonConfig,
+  parseExternalSkillDocName,
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useTheme } from 'next-themes';
@@ -31,9 +32,15 @@ import { MountStalledAffordance } from '@/components/MountStalledAffordance';
 import { PropertyProvider, useProperties } from '@/components/PropertyContext';
 import { ShareReceiveMissPanel } from '@/components/ShareReceiveMissPanel';
 import { SkillFileViewer } from '@/components/SkillFileViewer';
+import { SkillPreviewTab } from '@/components/SkillPreviewTab';
+import { SkillsBasePage } from '@/components/SkillsBasePage';
 import { SettingsDialogShell } from '@/components/settings/SettingsDialogShell';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
-import { useDocumentContext, useDocumentTransition } from '@/editor/DocumentContext';
+import {
+  isSkillsNewTabId,
+  useDocumentContext,
+  useDocumentTransition,
+} from '@/editor/DocumentContext';
 import { FindReplaceController } from '@/editor/find-replace/FindReplaceController';
 import { mountPromiseHasResolved } from '@/editor/mount-promise';
 import { syncPromiseHasResolved } from '@/editor/sync-promise';
@@ -81,6 +88,12 @@ const LazyActivityModeContent = lazy(async () => {
   const mod = await import('@/components/ActivityModeContent');
   return { default: mod.ActivityModeContent };
 });
+
+// The edit-in-place banner only mounts for a detected-skill buffer, so keep it
+// (and the Manage-adopt flow it pulls in) out of the eager editor bundle.
+const SkillEditBanner = lazy(async () => ({
+  default: (await import('@/components/SkillEditBanner')).SkillEditBanner,
+}));
 
 // The two config-file editors render only when a `.markdownlint.*` or
 // `*.schema.json` file is opened — rare next to ordinary document editing — so
@@ -258,6 +271,8 @@ function EditorAreaInner({
     activeDocName,
     activeProvider,
     activeTarget,
+    activeNewTabId,
+    skillsSidebar,
     recycleDocument,
     docPanelMode,
     docPanelAgentId,
@@ -967,10 +982,29 @@ function EditorAreaInner({
     // coordinates so navigating between bundle files re-fetches.
     viewContent = (
       <SkillFileViewer
-        key={`${activeTarget.scope}/${activeTarget.name}/${activeTarget.path}`}
+        key={`${activeTarget.scope}/${activeTarget.name}/${activeTarget.host ?? ''}/${activeTarget.path}`}
         scope={activeTarget.scope}
         name={activeTarget.name}
         path={activeTarget.path}
+        host={activeTarget.host}
+      />
+    );
+  } else if (activeTarget?.kind === 'skill-preview') {
+    // A pre-install, read-only skill preview opened full-pane with a Manage action.
+    // Keyed by the preview's identity so navigating between previews remounts a
+    // fresh instance — otherwise the per-skill `detail` state (skills.sh URL, OG
+    // image) bleeds across tabs and a switched-back preview shows the prior
+    // skill's link. Same reset pattern as AssetPreview / SkillFileViewer above.
+    viewContent = (
+      <SkillPreviewTab
+        key={`${activeTarget.flavor}:${activeTarget.source}:${activeTarget.name}:${activeTarget.level ?? ''}`}
+        flavor={activeTarget.flavor}
+        source={activeTarget.source}
+        name={activeTarget.name}
+        subtitle={activeTarget.subtitle}
+        level={activeTarget.level}
+        path={activeTarget.path}
+        reserveRightGutter={rightRevealTabPresent}
       />
     );
   } else if (shareReceiveMiss) {
@@ -1036,6 +1070,15 @@ function EditorAreaInner({
         // panels' doc-panel pixel-width sticky restore.
         return <EditorSkeleton />;
       }
+    } else if (isSkillsNewTabId(activeNewTabId) || skillsSidebar) {
+      // In Skills mode the empty/base state IS the Skills base page ("Create a
+      // skill") — the sidebar toggle keeps the current doc open and only swaps
+      // this base surface, so with no doc active we show Skills' home instead of
+      // the Files "Create something great" one. Same page a Skills-mode new tab
+      // renders.
+      // Same signal the Files empty state below keys off: an open dock already
+      // carries an AI entry point, so the Skills composer would compete with it.
+      viewContent = <SkillsBasePage sessionsDockOpen={terminalVisible} />;
     } else {
       // The empty state collapses to the header-only view while a terminal is
       // open in EITHER dock — the open terminal is its own AI entry point, so
@@ -1074,8 +1117,17 @@ function EditorAreaInner({
       // live-edit affordance that doesn't apply to a read-only diff.
       !(timelineDiff && timelineDiff.docName === activeDocName) &&
       !(agentDiff && agentDiffDoc === activeDocName);
+    const externalSkillEdit = activeDocName ? parseExternalSkillDocName(activeDocName) : null;
     const editorContent = (
       <div className="relative flex h-full flex-col">
+        {/* Detected-skill edit-in-place banner: a real layout row above the editor
+            (not the toolbar's absolute overlay), so it reads like the read-only
+            preview banner and carries the Manage upgrade. */}
+        {externalSkillEdit ? (
+          <Suspense fallback={null}>
+            <SkillEditBanner name={externalSkillEdit.name} />
+          </Suspense>
+        ) : null}
         <div className="relative min-h-0 flex-1">
           {/* Hybrid Activity + Suspense + ErrorBoundary render tree.
           EditorActivityPool keeps Tiptap eager and lazy-loads SourceEditor on

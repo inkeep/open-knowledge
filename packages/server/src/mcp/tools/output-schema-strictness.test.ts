@@ -223,11 +223,10 @@ describe('MCP outputSchema strictness — auto-discovered registerTool sweep (no
     'history',
     'checkpoint',
     'restore_version',
-    // Write-spine + workflow output schemas (bounded per-target/per-kind unions).
+    // Write-spine output schemas (bounded per-target/per-kind unions).
     'delete',
     'move',
     'conflicts',
-    'workflow',
     'exec',
     'edit',
     'write',

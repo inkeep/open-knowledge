@@ -64,15 +64,18 @@ export const TEMPLATE_WATCH_OPTIONS: ManagedArtifactWatchOptions = {
  * can write immediately without racing the first event.
  *
  * On `add` / `change` of a leaf (per `opts.acceptLeaf`): reads the file and
- * fires `onChange(absPath, content)`. `unlink` is logged but does NOT fire
- * `onChange` (the live doc retains its current state — deletion is a separate,
- * explicit surface). Read errors and handler throws are logged + dropped so one
- * bad event can't tear down the watcher.
+ * fires `onChange(absPath, content)`. `unlink` does NOT fire `onChange` (the
+ * live doc retains its current state — deletion of live content is a separate,
+ * explicit surface) but DOES fire the optional `onUnlink(absPath)`, so callers
+ * can refresh DERIVED views (e.g. the skills list) without touching open docs.
+ * Read errors and handler throws are logged + dropped so one bad event can't
+ * tear down the watcher.
  */
 export async function startManagedArtifactWatcher(
   roots: ReadonlyArray<string>,
   onChange: (absPath: string, content: string) => void,
   opts: ManagedArtifactWatchOptions = SKILL_WATCH_OPTIONS,
+  onUnlink?: (absPath: string) => void,
 ): Promise<ManagedArtifactWatcherUnsubscribe> {
   const log = getLogger('managed-artifact-watcher');
   const { watch } = await import('chokidar');
@@ -138,6 +141,13 @@ export async function startManagedArtifactWatcher(
     if (!opts.acceptLeaf(path)) return;
     lastContent.delete(path);
     log.debug({ path }, 'managed-artifact leaf unlinked; live doc retained at current state');
+    if (onUnlink) {
+      try {
+        onUnlink(path);
+      } catch (err) {
+        log.warn({ err, path }, 'managed-artifact unlink handler threw');
+      }
+    }
   });
   watcher.on('error', (err) => {
     log.warn({ err, watchRoots }, '[managed-artifact-watcher] chokidar error');

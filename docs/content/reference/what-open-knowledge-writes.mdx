@@ -73,7 +73,7 @@ Delete the block and the app **won't re-add it** — the removal is recorded and
 
 ### User-global Agent Skills
 
-OpenKnowledge ships two user-global [Agent Skills](/docs/features/skills) — `open-knowledge-discovery` (helps your coding agent recognize and route through OpenKnowledge projects) and `open-knowledge-write-skill` (a workflow for authoring new skills). They install into each detected editor's global skill folder (`~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`) plus the shared `~/.agents/skills/` hub.
+OpenKnowledge ships two user-global [Agent Skills](../features/skills.mdx) — `open-knowledge-discovery` (helps your coding agent recognize and route through OpenKnowledge projects) and `open-knowledge-write-skill` (a workflow for authoring new skills). They install into each detected editor's global skill folder (`~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`) plus the shared `~/.agents/skills/` hub.
 
 These are **consent-gated**, one checkbox per skill in the same first-launch dialog (both checked by default). Uncheck one and it is never installed; uncheck an already-installed one and its copies are **removed**. The choice is recorded in `~/.ok/skill-state.yml` and honored by every install path — the desktop app, `ok init`, and `ok start` — so a skill you declined is never re-added. Machines that already had the skills before the consent dialog are treated as consented (left in place). Re-enable later from **File → Set up OpenKnowledge integrations…**.
 
@@ -83,13 +83,13 @@ When you initialize or open a project, the app scaffolds the same project files 
 
 | Path | What it is | Scope |
 | --- | --- | --- |
-| `.ok/`, `.ok/config.yml` | Project directory and its [config](/docs/reference/configuration) | In-project, committed |
+| `.ok/`, `.ok/config.yml` | Project directory and its [config](./configuration.mdx) | In-project, committed |
 | `.ok/.gitignore` | Keeps machine-local runtime state (`local/`, `principal.json`, `server.lock`, …) out of git | In-project, committed |
-| `.okignore` | Paths excluded from the editor, search, and agents — see [Ignore patterns](/docs/features/ignore-patterns) | In-project, committed |
+| `.okignore` | Paths excluded from the editor, search, and agents — see [Ignore patterns](../features/ignore-patterns.mdx) | In-project, committed |
 | `.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`, `opencode.json` | Project-scoped MCP registration for the four MCP-capable project editors (Claude, Cursor, Codex, OpenCode), written regardless of what's installed so the repo is ready for teammates | In-project, committed |
-| `.pi/extensions/open-knowledge.ts` | Managed bridge extension connecting [Pi](/docs/integrations/pi) (which has no MCP support) to the project | In-project, committed |
+| `.pi/extensions/open-knowledge.ts` | Managed bridge extension connecting [Pi](../integrations/pi.mdx) (which has no MCP support) to the project | In-project, committed |
 | `.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.github/skills/`, `.opencode/skills/`, `.pi/skills/` | Project-local "rich" OpenKnowledge skill (`SKILL.md`) for Claude, Cursor, Codex, GitHub Copilot, OpenCode, and Pi | In-project, committed |
-| `.ok/skill-targets.json` | Committed list of which editors receive skills, written when you customize the targets | In-project, committed |
+| `.ok/skills-lock.json` | Provenance for imported skills — source, selected skill, commit/ref when available, content hash, publisher, and import time | In-project, committed |
 | `~/.claude.json`, `~/Library/Application Support/Claude/claude_desktop_config.json`, `~/.cursor/mcp.json`, `~/.codex/config.toml`, `~/.copilot/mcp-config.json`, `~/.config/opencode/opencode.json`, `~/.openclaw/openclaw.json`, `~/.gemini/config/mcp_config.json`, `~/.lmstudio/mcp.json`, `~/.hermes/config.yaml` | User-level `open-knowledge` MCP registration, one per detected editor, so it's available in every project (`~/.copilot/mcp-config.json` only when `~/.copilot/` exists; `~/.openclaw/openclaw.json` only when `~/.openclaw/` exists; `~/.gemini/config/mcp_config.json` is Antigravity's shared IDE + `agy` config, only when `~/.gemini/` exists; `~/.lmstudio/mcp.json` and `~/.hermes/config.yaml` only when those apps are installed) | Outside-project (editor config) |
 
 ### While a project is open
@@ -105,23 +105,23 @@ The app runs a collaboration server for the open project. It writes runtime stat
 | `.ok/local/telemetry/spans-*.jsonl` | Local diagnostic spans, rotated at ~50 MB | In-project, gitignored |
 | `.ok/local/logs/server-*.jsonl` | Local server logs, rotated at ~25 MB | In-project, gitignored |
 | `.ok/local/cache/<branch>/backlinks.json` | Backlink-graph cache | In-project, gitignored |
-| `.ok/local/skill-management.json`, `.ok/local/installed-skills.json` | Skill-management toggle (`ok skills manage`) and per-project skill-install markers | In-project, gitignored |
+| `.ok/local/installed-skills.json` | Per-project skill-install markers (which editors each skill is projected into) | In-project, gitignored |
 | `.ok/worktrees/<branch>/` | Git worktree checkout created when you open a branch in its own window (project switcher); the path is also added to `.git/info/exclude` | In-project, gitignored |
 | `.git/ok/` — or `.git/worktrees/<name>/ok/` in a linked worktree, or the enclosing repo's `.git/ok-<slug>/` when your project is a subfolder of a larger repo | Shadow git repo holding per-writer work-in-progress refs; always inside a git admin dir, never in your content tree | In-project, gitignored (inside `.git/`) |
 
-Diagnostic logs and telemetry are **on by default but local-only** — credential-bearing attributes are redacted (`[REDACTED]`) before anything is written, the files rotate at the size caps above, and nothing leaves the machine until you explicitly run `ok diagnose bundle`. Turn the local sink off with `telemetry.localSink.enabled: false`; see [Configuration](/docs/reference/configuration).
+Diagnostic logs and telemetry are **on by default but local-only** — credential-bearing attributes are redacted (`[REDACTED]`) before anything is written, the files rotate at the size caps above, and nothing leaves the machine until you explicitly run `ok diagnose bundle`. Turn the local sink off with `telemetry.localSink.enabled: false`; see [Configuration](./configuration.mdx).
 
-On each launch and project open, the app also runs **repair sweeps**: it rewrites *existing* `open-knowledge` MCP entries (in the editor configs above) and the OpenKnowledge skill bundles (`open-knowledge-discovery` and `open-knowledge-write-skill`, in `~/.agents/skills/` and each detected editor's `~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`) to the current canonical form — a no-op when nothing has drifted. It also removes any stale `open-knowledge-ui` entry left in `.claude/launch.json` by an older OK version. It **never adds** an MCP entry to an editor that doesn't already have one; and when you turn on skill management for a project, it also adopts your existing editor skills into `.ok/skills/`. Same `OK_RECLAIM_DISABLE=1` opt-out.
+On each launch and project open, the app also runs **repair sweeps**: it rewrites *existing* `open-knowledge` MCP entries (in the editor configs above) to the current canonical form, and **seeds** the built-in OpenKnowledge skill bundles (`open-knowledge-discovery` and `open-knowledge-write-skill`, in `~/.agents/skills/` and each detected editor's `~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`) **only when they are missing** — an existing copy is left untouched (updates to a built-in flow through the skills.sh "update available" path, never a force-refresh). It also removes any stale `open-knowledge-ui` entry left in `.claude/launch.json` by an older OK version. It **never adds** an MCP entry to an editor that doesn't already have one. Same `OK_RECLAIM_DISABLE=1` opt-out.
 
 ### Home directory and credentials (`~/.ok/`)
 
 | Path | What it is | Sensitive? |
 | --- | --- | --- |
-| `~/.ok/global.yml` | User-global [config](/docs/reference/configuration) (applies to every project) | No |
-| `~/.ok/secrets.yml` | Embeddings provider API key for [semantic search](/docs/reference/configuration#semantic-search), if you set one. Written `0600`; never in `config.yml` | **Yes** (`0600`) |
+| `~/.ok/global.yml` | User-global [config](./configuration.mdx) (applies to every project) | No |
+| `~/.ok/secrets.yml` | Embeddings provider API key for [semantic search](./configuration.mdx#semantic-search), if you set one. Written `0600`; never in `config.yml` | **Yes** (`0600`) |
 | `~/.ok/auth.yml` | Auth-token fallback, used only when the Keychain is unavailable. Written `0600` | **Yes** (`0600`) |
 | `~/.ok/skill-state.yml`, `~/.ok/skill-install-events.jsonl` | Skill-install bookkeeping | No |
-| `~/.ok/skills/<name>/` | Your global-scope authored skills (kept by `ok uninstall` unless `--purge-content`) | No |
+| `~/.agents/skills/<name>/`, `~/.claude/skills/<name>/`, … | Your global-scope skills, versioned in place in your home editor dirs (kept by `ok uninstall` unless `--purge-content`) | No |
 | `~/.ok/stats.jsonl` | Local "open with AI" handoff stats — local-only, no phone-home | No |
 | `~/.ok/mcp-status.json` | First-launch MCP consent record | No |
 | `~/.ok/logs/`, `~/.ok/bug-reports/` | Desktop and CLI logs, and bug-report bundles from `ok bug-report` and the app's **Help → Report a bug…** dialog (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`) | No |
@@ -154,14 +154,14 @@ Installing `@inkeep/open-knowledge` from npm (or invoking it with `npx`) drops t
 
 | Path | What it is | Scope |
 | --- | --- | --- |
-| `.ok/`, `.ok/config.yml` | Project directory and its [config](/docs/reference/configuration) | In-project, committed |
+| `.ok/`, `.ok/config.yml` | Project directory and its [config](./configuration.mdx) | In-project, committed |
 | `.ok/.gitignore` | Keeps machine-local runtime state (`local/`, `principal.json`, `server.lock`, …) out of git | In-project, committed |
-| `.okignore` | Paths excluded from the editor, search, and agents — see [Ignore patterns](/docs/features/ignore-patterns) | In-project, committed |
+| `.okignore` | Paths excluded from the editor, search, and agents — see [Ignore patterns](../features/ignore-patterns.mdx) | In-project, committed |
 | `.gitignore` (project root) | Seeded (with `.DS_Store`) **only** when `ok init` creates a new git repo | In-project, committed |
 | `.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`, `opencode.json` | Project-scoped MCP registration for the four MCP-capable project editors (Claude, Cursor, Codex, OpenCode) regardless of what's installed — prepares the repo for teammates (with `--scope project` or `both`) | In-project, committed |
-| `.pi/extensions/open-knowledge.ts` | Managed bridge extension connecting [Pi](/docs/integrations/pi) (which has no MCP support) to the project | In-project, committed |
+| `.pi/extensions/open-knowledge.ts` | Managed bridge extension connecting [Pi](../integrations/pi.mdx) (which has no MCP support) to the project | In-project, committed |
 | `.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.github/skills/`, `.opencode/skills/`, `.pi/skills/` | Project-local "rich" OpenKnowledge skill (`SKILL.md`) for Claude, Cursor, Codex, GitHub Copilot, OpenCode, and Pi | In-project, committed |
-| `.ok/skill-targets.json` | Committed list of which editors receive skills, written when you customize the targets | In-project, committed |
+| `.ok/skills-lock.json` | Provenance for imported skills — source, selected skill, commit/ref when available, content hash, publisher, and import time | In-project, committed |
 
 With `--scope user` or `both` (the default), `ok init` also registers the `open-knowledge` MCP server in each detected editor's **user-level** config, so it's available in every project:
 
@@ -218,10 +218,10 @@ On Windows, Claude Desktop and OpenCode configs live under `%APPDATA%\Claude\` a
 | `.ok/local/telemetry/spans-*.jsonl` | Local diagnostic spans, rotated at ~50 MB | In-project, gitignored |
 | `.ok/local/logs/server-*.jsonl` | Local server logs, rotated at ~25 MB | In-project, gitignored |
 | `.ok/local/cache/<branch>/backlinks.json` | Backlink-graph cache | In-project, gitignored |
-| `.ok/local/skill-management.json`, `.ok/local/installed-skills.json` | Skill-management toggle (`ok skills manage`) and per-project skill-install markers | In-project, gitignored |
+| `.ok/local/installed-skills.json` | Per-project skill-install markers (which editors each skill is projected into) | In-project, gitignored |
 | `.git/ok/` — or `.git/worktrees/<name>/ok/` in a linked worktree, or the enclosing repo's `.git/ok-<slug>/` when your project is a subfolder of a larger repo | Shadow git repo holding per-writer work-in-progress refs (powers the timeline); always inside a git admin dir, never in your content tree | In-project, gitignored (inside `.git/`) |
 
-Diagnostic logs and telemetry are **on by default but local-only** — credential-bearing attributes are redacted (`[REDACTED]`) before anything is written, the files rotate at the size caps above, and nothing leaves the machine until you explicitly run `ok diagnose bundle`. Turn the local sink off with `telemetry.localSink.enabled: false`; see [Configuration](/docs/reference/configuration).
+Diagnostic logs and telemetry are **on by default but local-only** — credential-bearing attributes are redacted (`[REDACTED]`) before anything is written, the files rotate at the size caps above, and nothing leaves the machine until you explicitly run `ok diagnose bundle`. Turn the local sink off with `telemetry.localSink.enabled: false`; see [Configuration](./configuration.mdx).
 
 On each boot, `ok start` also runs **repair sweeps**: it re-checks a few things that drift as OpenKnowledge updates and rewrites any that have fallen out of the current canonical form — a no-op when nothing has changed, and it **never adds** an entry that isn't already there.
 
@@ -241,11 +241,11 @@ Disable all three with `OK_RECLAIM_DISABLE=1`.
 
 | Path | What it is | Sensitive? |
 | --- | --- | --- |
-| `~/.ok/global.yml` | User-global [config](/docs/reference/configuration) (applies to every project) | No |
-| `~/.ok/secrets.yml` | Embeddings provider API key for [semantic search](/docs/reference/configuration#semantic-search), if you set one. Written `0600`; never in `config.yml` | **Yes** (`0600`) |
+| `~/.ok/global.yml` | User-global [config](./configuration.mdx) (applies to every project) | No |
+| `~/.ok/secrets.yml` | Embeddings provider API key for [semantic search](./configuration.mdx#semantic-search), if you set one. Written `0600`; never in `config.yml` | **Yes** (`0600`) |
 | `~/.ok/auth.yml` | Auth-token fallback, used when no OS credential store is reachable. Written `0600` | **Yes** (`0600`) |
 | `~/.ok/skill-state.yml`, `~/.ok/skill-install-events.jsonl` | Skill-install bookkeeping | No |
-| `~/.ok/skills/<name>/` | Your global-scope authored skills (kept by `ok uninstall` unless `--purge-content`) | No |
+| `~/.agents/skills/<name>/`, `~/.claude/skills/<name>/`, … | Your global-scope skills, versioned in place in your home editor dirs (kept by `ok uninstall` unless `--purge-content`) | No |
 | `~/.ok/stats.jsonl` | Local "open with AI" handoff stats — local-only, no phone-home | No |
 | `~/.ok/logs/` | CLI logs (`cli.<date>.log`), size- and age-capped | No |
 | `~/.ok/bug-reports/` | Bug-report bundles from `ok bug-report` — the desktop app's **Help → Report a bug…** dialog writes here too (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`) | No |
@@ -269,7 +269,7 @@ Disable all three with `OK_RECLAIM_DISABLE=1`.
 | Local diagnostic logs and telemetry | `telemetry.localSink.enabled: false` in config |
 | Auto-starting the MCP server | `OK_MCP_AUTOSTART=0` |
 
-To review the footprint after the fact, `ok diagnose` reports what's on disk (and the desktop `path-install.json` records exactly which shell/`PATH` changes were made). To reverse it, `ok deinit` removes OpenKnowledge from one project and `ok uninstall` removes it from the whole machine — both keep your markdown content (and your authored `~/.ok/skills`) unless you pass `--purge-content`, and both take `--dry-run` to preview. See the [CLI reference](/docs/reference/cli) for the full semantics.
+To review the footprint after the fact, `ok diagnose` reports what's on disk (and the desktop `path-install.json` records exactly which shell/`PATH` changes were made). To reverse it, `ok deinit` removes OpenKnowledge from one project and `ok uninstall` removes it from the whole machine — both keep your markdown content, and your global skills in your editors' skill dirs (`~/.agents/skills`, `~/.claude/skills`, and the like) are never touched, and both take `--dry-run` to preview. See the [CLI reference](./cli.mdx) for the full semantics.
 
 In the desktop app you don't need the CLI for finer control. **Settings → AI tools & CLI** (under User) lists every global component OpenKnowledge manages — each editor's `open-knowledge` MCP entry, the `ok` PATH command, and the user-global skills — with a checkbox reflecting its live installed state; toggling a row installs or removes just that one component. **Settings → This project → AI tools** does the same for the open project's local footprint — its project-scoped MCP configs and the project skill. Removal keeps the same guest discipline as install: only entries OpenKnowledge recognizably wrote are removed, and anything you customized is left intact.
 
@@ -280,9 +280,9 @@ By default, **nothing.** Everything above is written to your own disk. The only 
 | What | When | Where it goes |
 | --- | --- | --- |
 | Diagnostic bundle | Only when you run `ok diagnose bundle` (you can inspect it first) | Wherever you send it |
-| In-app bug report | Only when you click **Send** in the desktop app's **Help → Report a bug…** dialog — it builds a secret-redacted zip you can reveal and inspect first, and nothing is sent without that explicit click. After a crash, the same dialog adds an **off-by-default** "Include crash dump" checkbox: a crash dump is a memory snapshot that can contain document content and can't be redacted, and it is only ever attached when you check that box | By default, Send makes no network request — it opens a prefilled email draft to support@inkeep.com that you send yourself, naming the zip to attach. Only when an operator has configured a bug-report intake endpoint ([`OK_BUG_REPORT_INTAKE_URL`](/docs/reference/configuration#environment-variables)) does Send upload the zip there, falling back to the same email draft if the upload fails |
+| In-app bug report | Only when you click **Send** in the desktop app's **Help → Report a bug…** dialog — it builds a secret-redacted zip you can reveal and inspect first, and nothing is sent without that explicit click. After a crash, the same dialog adds an **off-by-default** "Include crash dump" checkbox: a crash dump is a memory snapshot that can contain document content and can't be redacted, and it is only ever attached when you check that box | By default, Send makes no network request — it opens a prefilled email draft to support@inkeep.com that you send yourself, naming the zip to attach. Only when an operator has configured a bug-report intake endpoint ([`OK_BUG_REPORT_INTAKE_URL`](./configuration.mdx#environment-variables)) does Send upload the zip there, falling back to the same email draft if the upload fails |
 | Uninstall feedback | Only after an uninstall has already succeeded, and only if you pick a reason, type a note, or give an email address on the optional "Before you go" screen (desktop app) or prompt (`ok uninstall`). Skipping it, `--yes`, `--json`, and any non-interactive run send nothing | `openknowledge.ai/api/feedback` — the reason you picked, your note, your email address if you gave one, plus the app version and platform. It files one ticket for the team; nothing from your notes is included |
-| Semantic search embeddings | Only when you enable [semantic search](/docs/reference/configuration#semantic-search) **and** set a key — off by default | Your configured embeddings provider (OpenAI by default) |
+| Semantic search embeddings | Only when you enable [semantic search](./configuration.mdx#semantic-search) **and** set a key — off by default | Your configured embeddings provider (OpenAI by default) |
 | GitHub sync / share | When you sync, clone, publish, or share | GitHub |
 | Update check | Automatically — on launch and periodically while the desktop app runs | OpenKnowledge update service (`openknowledge.ai/updates`), which redirects to GitHub; sends the app version and channel |
 | First-launch share check | Once, automatically, on the desktop app's first launch | `openknowledge.ai/continue` — redeems a share link if you installed from one |

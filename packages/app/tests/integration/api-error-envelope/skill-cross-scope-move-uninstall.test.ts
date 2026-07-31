@@ -27,6 +27,9 @@ import { createTestServer, type TestServer } from '../test-harness';
 let server: TestServer;
 let tmpHome: string;
 const base = () => `http://127.0.0.1:${server.port}`;
+// Default skill home per base (existence-activated `.agents`, else `.claude`).
+const skillsRootIn = (b: string) =>
+  existsSync(join(b, '.agents')) ? join(b, '.agents', 'skills') : join(b, '.claude', 'skills');
 
 /** The editors a project install fans out to (claude + cursor + codex). */
 const EDITORS = ['claude', 'cursor', 'codex'] as const;
@@ -58,11 +61,11 @@ const installSkill = (scope: 'global' | 'project', name: string, targets: readon
     body: JSON.stringify({ scope, name, targets }),
   });
 
-/** Source skills root for a scope (where `.ok/skills/<name>/` lives). */
+/** Source skill dir for a scope — creates land at the default skill home (`.claude/skills` in a fresh tree; store retirement). */
 const skillSrc = (scope: 'global' | 'project', name: string) =>
   scope === 'global'
-    ? join(tmpHome, '.ok', 'skills', name)
-    : join(server.contentDir, '.ok', 'skills', name);
+    ? join(skillsRootIn(tmpHome), name)
+    : join(skillsRootIn(server.contentDir), name);
 
 /** Editor-host projection dir for a scope×editor (the install base differs). */
 const projectionDir = (
@@ -82,9 +85,17 @@ const projectionDir = (
  * — a moved skill lands as a Draft to re-install for its new scope, so any
  * surviving SOURCE-scope projection is a true orphan.
  */
-async function moveCrossScope(from: 'global' | 'project', to: 'global' | 'project', name: string) {
-  expect((await putSkill(to, name)).status).toBe(200);
+async function moveCrossScope(
+  from: 'global' | 'project',
+  to: 'global' | 'project',
+  name: string,
+): Promise<string> {
+  const put = await putSkill(to, name);
+  expect(put.status).toBe(200);
+  const payload = (await put.json()) as { path: string };
   expect((await delSkill(from, name)).status).toBe(200);
+  // The destination's REAL dir (creates land at the default skill home).
+  return payload.path.replace(/\/SKILL\.md$/, '');
 }
 
 beforeAll(async () => {
@@ -159,17 +170,21 @@ describe('cross-scope move removes the SOURCE projections in both directions', (
       expect(existsSync(join(projectionDir('global', e, N), 'SKILL.md'))).toBe(true);
     }
 
-    await moveCrossScope('global', 'project', N);
+    const destPath = await moveCrossScope('global', 'project', N);
 
     // Every global-scope source projection is torn down (no orphans).
     for (const e of EDITORS) {
       expect(existsSync(projectionDir('global', e, N))).toBe(false);
     }
-    // Source dir gone; destination exists as an un-projected Draft.
+    // Source dir gone; destination exists (at the server-reported real path).
     expect(existsSync(skillSrc('global', N))).toBe(false);
-    expect(existsSync(join(skillSrc('project', N), 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(server.contentDir, destPath, 'SKILL.md'))).toBe(true);
     for (const e of EDITORS) {
-      expect(existsSync(projectionDir('project', e, N))).toBe(false);
+      const dir = projectionDir('project', e, N);
+      // In-place model: the destination default home may BE an editor's dir —
+      // that occurrence is the skill itself, not a stale projection.
+      if (dir === join(server.contentDir, destPath)) continue;
+      expect(existsSync(dir)).toBe(false);
     }
   });
 });

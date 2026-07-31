@@ -7,7 +7,11 @@
  * so loading spinners and error messages are identical — only the loaded branch
  * differs (rendered markdown instead of CodeMirror source).
  */
-import type { SkillScope } from '@inkeep/open-knowledge-core';
+import {
+  type SkillScope,
+  skillFileLiveDocName,
+  skillLiveDocName,
+} from '@inkeep/open-knowledge-core';
 import { SkillMarkdownViewer } from '@/components/SkillMarkdownViewer';
 import { ViewerErrorPane, ViewerLoadingPane } from '@/components/ViewerStatusPane';
 import { loadSkillFileText } from '@/lib/skills-api';
@@ -19,15 +23,18 @@ export function SkillMarkdownLoader({
   scope,
   name,
   path,
+  host,
   fileName,
 }: {
   scope: SkillScope;
   name: string;
   path: string;
+  /** Which same-named bundle this file belongs to; omitted = by-name default. */
+  host?: string;
   fileName: string;
 }) {
   const fetchState = useViewerText({
-    loadText: (signal) => loadSkillFileText({ scope, name, path }, signal),
+    loadText: (signal) => loadSkillFileText({ scope, name, path, host }, signal),
   });
 
   if (fetchState.status === 'loading') {
@@ -39,5 +46,14 @@ export function SkillMarkdownLoader({
       <ViewerErrorPane fileName={fileName} dataAttr={DATA_ATTR} message={fetchState.message} />
     );
   }
-  return <SkillMarkdownViewer fileName={fileName} text={fetchState.content} />;
+  return (
+    <SkillMarkdownViewer
+      fileName={fileName}
+      text={fetchState.content}
+      // Relative links in this reference resolve against its own bundle doc.
+      linkBaseDocName={skillFileLiveDocName(scope, name, path)}
+      // The skill identity that makes `references/…` bundle-path chips clickable.
+      skillPathLinkDocName={skillLiveDocName(scope, name)}
+    />
+  );
 }

@@ -165,14 +165,14 @@ export function resolveTemplatePath(
 // separately and the server composes the SKILL.md.
 
 export const SKILL_NAME_DESCRIBE =
-  'Skill name — the skill\'s identity AND its directory under `.ok/skills/<name>/`. Lowercase letters, digits, hyphens only (≤64 chars; no slashes, dots, spaces, or uppercase). Example: "trip-log".';
+  'Skill name — the skill\'s identity AND its bundle-dir name, wherever the skill lives (e.g. `.agents/skills/<name>/`). Lowercase letters, digits, hyphens only (≤64 chars; no slashes, dots, spaces, or uppercase). Example: "trip-log".';
 export const SKILL_DESCRIPTION_DESCRIBE =
   'One-line description (≤1024 chars) — the PRIMARY triggering surface telling an agent WHEN to use this skill. No XML tags (`<...>`), which break the skill loader.';
 export const SKILL_BODY_DESCRIBE =
   'SKILL.md body (markdown guidance). Authored WITHOUT frontmatter — `name` + `description` are passed separately and composed server-side. Keep under ~500 lines; move depth into one-level-deep `references/`.';
 // Local — only consumed by `SkillScopeArg` below.
 const SKILL_SCOPE_DESCRIBE =
-  'Level: "project" (default — a Project skill: lives in this KB\'s `.ok/skills/`, shared with teammates via git) or "global" (a Global skill: your user-level `~/.ok/skills/` store, available in every project on this machine — not shared, not version-tracked). Pass the literal value "global" for a Global skill.';
+  'Level: "project" (default — a Project skill: lives in this KB wherever its folder is, shared with teammates via git) or "global" (a Global skill: lives under your user home, available in every project on this machine — not shared, not version-tracked). Pass the literal value "global" for a Global skill.';
 
 /**
  * Shared skill `scope` argument for the CRUD verb tools — the single source for

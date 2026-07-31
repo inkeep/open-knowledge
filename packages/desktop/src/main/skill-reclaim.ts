@@ -30,10 +30,10 @@
  *
  * Project-scope variant: same primitive, scoped to `<projectDir>/.<host>/
  * skills/open-knowledge/` — the rich `project` bundle keeps `name:
- * open-knowledge` so the dir name is unchanged. Per-host gate: always refresh
- * a host whose `SKILL.md` already exists; additionally, when `createIfWired`
- * is set (managed-project opens only), CREATE the skill for any host whose
- * project MCP config already carries the OK marker. This heals the cohort of
+ * open-knowledge` so the dir name is unchanged. Seed-if-absent: a host whose
+ * `SKILL.md` already exists is left untouched; when `createIfWired` is set
+ * (managed-project opens only), CREATE the skill for any host whose project MCP
+ * config already carries the OK marker but has none. This heals the cohort of
  * managed projects onboarded before the project-skill writer existed — they
  * have OK MCP wiring but no skill, and the old no-create gate never fixed
  * them. Non-OK folders (no marker) and greenfield hosts still get nothing.
@@ -187,11 +187,18 @@ function copyDirContents(sourceDir: string, destDir: string, fs: SkillFsOps): vo
  * Failures are logged + swallowed.
  */
 function removeLegacyUserSkillDirs(home: string, fs: SkillFsOps, logger: SkillReclaimLogger): void {
-  // Sweep each install host PLUS `.agents` — the central store's parent, and
-  // codex's former home before it moved to `.codex`. A pre-split
-  // `~/.agents/skills/open-knowledge` (the central store's old name) must
-  // still be cleaned even though `.agents` is no longer a per-host install dir.
-  const legacyHostDirs = [...HOSTS_WITH_USER_SKILL_DIR.map((h) => h.hostDir), '.agents'];
+  // Sweep each install host PLUS `.agents` (the central store's parent /
+  // codex's former home) PLUS the hosts the external `skills` CLI's
+  // `--agent '*'` fanned to that were never OK install targets — a survivor
+  // in ANY user root now lists as a phantom global skill (the in-place scan
+  // no longer name-filters built-ins; `.pi/agent/skills` shipped one).
+  const legacyHostDirs = [
+    ...HOSTS_WITH_USER_SKILL_DIR.map((h) => h.hostDir),
+    '.agents',
+    '.pi/agent',
+    '.copilot',
+    '.gemini',
+  ];
   for (const hostDir of legacyHostDirs) {
     const legacyDir = join(home, hostDir, 'skills', LEGACY_SKILL_DIR_NAME);
     if (!fs.existsSync(legacyDir)) continue;
@@ -216,13 +223,18 @@ function removeLegacyUserSkillDirs(home: string, fs: SkillFsOps, logger: SkillRe
 // ---------------------------------------------------------------------------
 
 type UserSkillReclaimEntry =
-  | { kind: 'central'; path: string; status: 'written' | 'overwritten' | 'failed'; error?: string }
+  | {
+      kind: 'central';
+      path: string;
+      status: 'written' | 'skipped-present' | 'failed';
+      error?: string;
+    }
   | {
       kind: 'host';
       hostDir: string;
       editorId: string;
       path: string;
-      status: 'written' | 'overwritten' | 'skipped-host-absent' | 'failed';
+      status: 'written' | 'skipped-present' | 'skipped-host-absent' | 'failed';
       error?: string;
     };
 
@@ -296,24 +308,28 @@ function installUserBundleToHostDirs(
 ): UserSkillReclaimEntry[] {
   const entries: UserSkillReclaimEntry[] = [];
   const centralDest = join(home, '.agents', 'skills', bundleDirName);
-  const centralExistedBefore = fs.existsSync(centralDest);
-  try {
-    replaceDir(sourceDir, centralDest, fs);
-    entries.push({
-      kind: 'central',
-      path: centralDest,
-      status: centralExistedBefore ? 'overwritten' : 'written',
-    });
-    logger.event({
-      event: 'user-skill-reclaim-central-written',
-      path: centralDest,
-      preexisting: centralExistedBefore,
-      version,
-    });
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    entries.push({ kind: 'central', path: centralDest, status: 'failed', error });
-    logger.event({ event: 'user-skill-reclaim-central-failed', path: centralDest, error });
+  // SEED-IF-ABSENT: the reclaim guarantees the
+  // built-in is PRESENT (offline-safe), but never OVERWRITES an existing copy —
+  // that copy may be a user-applied skills.sh update, and force-refreshing it
+  // would clobber the update + churn a version string every launch. Updates now
+  // flow through the manual "update available" path, not this launch hook.
+  if (fs.existsSync(centralDest)) {
+    entries.push({ kind: 'central', path: centralDest, status: 'skipped-present' });
+  } else {
+    try {
+      replaceDir(sourceDir, centralDest, fs);
+      entries.push({ kind: 'central', path: centralDest, status: 'written' });
+      logger.event({
+        event: 'user-skill-reclaim-central-written',
+        path: centralDest,
+        preexisting: false,
+        version,
+      });
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      entries.push({ kind: 'central', path: centralDest, status: 'failed', error });
+      logger.event({ event: 'user-skill-reclaim-central-failed', path: centralDest, error });
+    }
   }
 
   for (const host of HOSTS_WITH_USER_SKILL_DIR) {
@@ -336,7 +352,18 @@ function installUserBundleToHostDirs(
       });
       continue;
     }
-    const existedBefore = fs.existsSync(hostDest);
+    // Seed-if-absent per host too: an existing host copy is left as-is (it may
+    // be a user-applied update or a symlink they chose).
+    if (fs.existsSync(hostDest)) {
+      entries.push({
+        kind: 'host',
+        hostDir: host.hostDir,
+        editorId: host.editorId,
+        path: hostDest,
+        status: 'skipped-present',
+      });
+      continue;
+    }
     try {
       replaceDir(sourceDir, hostDest, fs);
       entries.push({
@@ -344,13 +371,13 @@ function installUserBundleToHostDirs(
         hostDir: host.hostDir,
         editorId: host.editorId,
         path: hostDest,
-        status: existedBefore ? 'overwritten' : 'written',
+        status: 'written',
       });
       logger.event({
         event: 'user-skill-reclaim-host-written',
         editorId: host.editorId,
         path: hostDest,
-        preexisting: existedBefore,
+        preexisting: false,
         version,
       });
     } catch (err) {
@@ -375,11 +402,12 @@ function installUserBundleToHostDirs(
 }
 
 /**
- * Force-write the bundled SKILL into the user-level central store and into
- * every detected per-host directory. Always overwrites — no version-skip
- * gate. Records progress to `~/.ok/skill-state.yml` and the JSONL event log
- * even on partial failure (state advances on the central store write; per-
- * host failures don't roll back).
+ * SEED-IF-ABSENT the bundled SKILL into the user-level central store and into
+ * every detected per-host directory: write ONLY when the destination dir is
+ * absent, never overwrite an existing (possibly user-updated) copy. Updates to
+ * the built-ins flow through the normal skills.sh "update available" path, not
+ * this launch hook. Records progress to `~/.ok/skill-state.yml` and the JSONL
+ * event log even on partial failure.
  */
 export async function reclaimUserSkillsOnLaunch(
   opts: ReclaimUserSkillsOpts,
@@ -513,8 +541,8 @@ export async function reclaimUserSkillsOnLaunch(
     return { status: 'skipped', reason: 'all-bundles-declined' };
   }
 
-  // Force-install each enabled user-global bundle (discovery + write-skill)
-  // into the central store + per-host dirs, each under its own name.
+  // Seed each enabled user-global bundle (discovery + write-skill) into the
+  // central store + per-host dirs (if-absent), each under its own name.
   const entries: UserSkillReclaimEntry[] = [];
   for (const bundle of gatedBundles) {
     entries.push(
@@ -522,9 +550,8 @@ export async function reclaimUserSkillsOnLaunch(
     );
   }
 
-  const anyWriteSucceeded = entries.some(
-    (e) => e.status === 'written' || e.status === 'overwritten',
-  );
+  const anyWriteSucceeded = entries.some((e) => e.status === 'written');
+  const anyFailed = entries.some((e) => e.status === 'failed');
   if (anyWriteSucceeded) {
     let stateWriteError: string | null = null;
     try {
@@ -555,7 +582,7 @@ export async function reclaimUserSkillsOnLaunch(
         })
         .catch(() => {});
     }
-  } else {
+  } else if (anyFailed) {
     await deps
       .recordSkillInstallEvent({
         ts: nowDate().toISOString(),
@@ -567,6 +594,8 @@ export async function reclaimUserSkillsOnLaunch(
       })
       .catch(() => {});
   }
+  // else: seed-if-absent no-op — every target was already present. Nothing was
+  // written and nothing failed, so no state advance and no outcome event.
 
   return { status: 'done', version, entries };
 }
@@ -579,7 +608,7 @@ type ProjectSkillReclaimEntry = {
   editorId: string;
   hostDir: string;
   path: string;
-  status: 'no-token' | 'reclaimed' | 'created' | 'failed';
+  status: 'no-token' | 'present' | 'created' | 'failed';
   error?: string;
 };
 
@@ -638,12 +667,13 @@ function editorWiredForOk(configPath: string | undefined, fs: SkillFsOps): boole
 }
 
 /**
- * Project-scope SKILL reclaim. Per-host gate: write
- * `<projectDir>/.<host>/skills/open-knowledge/` when `SKILL.md` already exists
- * (refresh, always) OR — when `createIfWired` is set — when that editor's
- * project MCP config carries `OK_MCP_MARKER` (create; heals the managed
- * MCP-but-no-skill cohort). Without `createIfWired` this stays no-create:
- * greenfield / non-OK folders get nothing.
+ * Project-scope SKILL reclaim, SEED-IF-ABSENT. Per-host gate: write
+ * `<projectDir>/.<host>/skills/open-knowledge/` ONLY when `SKILL.md` is absent
+ * AND — with `createIfWired` set — that editor's project MCP config carries
+ * `OK_MCP_MARKER` (create; heals the managed MCP-but-no-skill cohort). An
+ * existing project skill is left untouched (updates flow through the manual
+ * skills.sh path, so a pulled/shared project never silently changes). Without
+ * `createIfWired` this stays no-create: greenfield / non-OK folders get nothing.
  */
 export async function reclaimProjectSkillsOnProjectOpen(
   opts: ReclaimProjectSkillsOpts,
@@ -688,12 +718,22 @@ export async function reclaimProjectSkillsOnProjectOpen(
     const dest = join(projectDir, host.hostDir, 'skills', PROJECT_SKILL_DIR_NAME);
     const skillFile = join(dest, 'SKILL.md');
     const skillExists = fs.existsSync(skillFile);
+    if (skillExists) {
+      // Seed-if-absent: an existing project skill is left untouched.
+      entries.push({
+        editorId: host.editorId,
+        hostDir: host.hostDir,
+        path: dest,
+        status: 'present',
+      });
+      continue;
+    }
     // Create only when explicitly enabled AND the editor is OK-wired for this
     // project. The config path comes from `EDITOR_TARGETS` (single source of
-    // truth); the read is skipped entirely on the refresh path.
+    // truth).
     const projectConfigPath = EDITOR_TARGETS[host.editorId]?.projectConfigPath?.(projectDir);
-    const wired = !skillExists && createIfWired && editorWiredForOk(projectConfigPath, fs);
-    if (!skillExists && !wired) {
+    const wired = createIfWired && editorWiredForOk(projectConfigPath, fs);
+    if (!wired) {
       entries.push({
         editorId: host.editorId,
         hostDir: host.hostDir,
@@ -710,20 +750,17 @@ export async function reclaimProjectSkillsOnProjectOpen(
     try {
       // Symlink-escape guard before `replaceDir`'s rmSync — a planted
       // `.claude -> /etc` (or symlinked ancestor escaping projectDir) must not
-      // route the recursive removal + copy through the symlink target. Matters
-      // most on the create path (fresh dir), but a planted SKILL.md symlink can
-      // also satisfy the refresh gate, so guard both.
+      // route the recursive removal + copy through the symlink target.
       assertProjectPathSafe(dest, projectDir);
       replaceDir(sourceDir, dest, fs);
-      const status = skillExists ? 'reclaimed' : 'created';
       entries.push({
         editorId: host.editorId,
         hostDir: host.hostDir,
         path: dest,
-        status,
+        status: 'created',
       });
       logger.event({
-        event: skillExists ? 'project-skill-reclaim-reclaimed' : 'project-skill-reclaim-created',
+        event: 'project-skill-reclaim-created',
         editorId: host.editorId,
         path: dest,
       });

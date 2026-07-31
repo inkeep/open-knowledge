@@ -39,6 +39,7 @@ import {
   SELECTION_STATS_DEBOUNCE_MS,
   selectionStatsFromSource,
 } from './selection-stats';
+import { createSkillPathLinksSourceExtension } from './skill-path-links-source';
 import {
   clearPendingSourceNavigation,
   consumePendingSourceNavigation,
@@ -301,6 +302,9 @@ export function SourceEditor({
                 currentDocName: resolvedDocName,
               }),
               createSourcePolishExtension(),
+              // Skill docs: backticked bundle paths are clickable (shared
+              // contract with the WYSIWYG extension; no-op for normal docs).
+              createSkillPathLinksSourceExtension(resolvedDocName),
               // Transient highlight for a mode-switch jump that lands in source.
               landingFlashSource(),
               lintCompartment.of(createMarkdownLintExtension(linterConfig, docName)),

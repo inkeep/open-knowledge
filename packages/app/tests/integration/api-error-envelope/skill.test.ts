@@ -57,7 +57,10 @@ describe('skill envelope (RFC 9457) + CRUD lifecycle', () => {
     expect(parsed.success).toBe(true);
     if (parsed.success) {
       expect(parsed.data.created).toBe(true);
-      expect(parsed.data.path).toBe('trip-log/SKILL.md');
+      // Store retirement: authored IN-PLACE (default home editor dir), not the
+      // retired `.ok/skills` store — the path ends with the real bundle path.
+      expect(parsed.data.path).toMatch(/\/trip-log\/SKILL\.md$/);
+      expect(parsed.data.path).not.toContain('.ok/skills');
     }
     expect((body as Record<string, unknown>).ok).toBeUndefined();
   });
@@ -139,10 +142,10 @@ describe('skill envelope (RFC 9457) + CRUD lifecycle', () => {
     if (parsed.success) {
       const entry = parsed.data.skills.find((s) => s.name === 'trip-log');
       expect(entry).toBeDefined();
-      // A freshly written, never-installed skill enriches to Draft (no
-      // marker record) with no host dirs.
-      expect(entry?.installed).toBe(false);
-      expect(entry?.hosts).toEqual([]);
+      // Store retirement + no Draft: a skill that exists lives in-place, so it is
+      // ALWAYS installed where it physically is (never a hostless Draft).
+      expect(entry?.installed).toBe(true);
+      expect(entry?.hosts?.length ?? 0).toBeGreaterThan(0);
     }
   });
 

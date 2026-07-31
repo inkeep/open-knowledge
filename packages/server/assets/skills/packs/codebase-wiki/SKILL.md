@@ -1,7 +1,6 @@
 ---
 name: open-knowledge-pack-codebase-wiki
-version: "0.18.0"
-description: "How to work in a Codebase Wiki project (the `codebase-wiki` starter pack): an agent-authored, source-grounded wiki of the surrounding codebase. Read when the project has a `wiki/` knowledge base with `architecture/`, `modules/`, `flows/`, `concepts/`, and `guides/` sections plus `wiki/OVERVIEW.md`. Carries the per-folder rules and freshness + log discipline, summarizes the audience/depth knobs and source-reference convention, and points to the `workflow({ kind: 'wiki' })` guide for the full generate/refresh procedure. Complements the platform `open-knowledge` skill; does not replace it."
+description: "How to work in a Codebase Wiki project (the `codebase-wiki` starter pack): an agent-authored, source-grounded wiki of the surrounding codebase. Read when the project has a `wiki/` knowledge base with `architecture/`, `modules/`, `flows/`, `concepts/`, and `guides/` sections plus `wiki/OVERVIEW.md`, or when asked to generate or refresh a wiki of this codebase. Carries the per-folder rules and freshness + log discipline, summarizes the audience/depth knobs and source-reference convention, and bundles the full generate/refresh procedure in `references/`. Complements the platform `open-knowledge` skill; does not replace it."
 compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack codebase-wiki`."
 metadata:
   pack: "codebase-wiki"
@@ -12,7 +11,7 @@ metadata:
 
 This project holds an **agent-authored wiki of a codebase** — DeepWiki, but living in the repo. A coding agent reads the source and writes a navigable, diagram-rich, source-grounded wiki as markdown under `wiki/`. It is version-controlled and diffable, private by default, human+agent co-editable, renders in OK's live preview, and doubles as durable grounding context for future agent sessions. There is no separate Q&A surface — Q&A is "the OK-grounded agent + `search`".
 
-> This is pack guidance. The platform `open-knowledge` skill still governs every markdown operation (read/write/preview/linking/grounding). This layers the wiki workflow on top.
+> This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the wiki workflow on top.
 
 ## The shape
 
@@ -30,7 +29,7 @@ wiki/
 
 ## Generating + refreshing
 
-Don't free-hand it — call **`workflow({ kind: "wiki" })`** and follow the phased, STOP-gated guide. It auto-detects mode: a stubbed `OVERVIEW.md` (empty `source_commit`) → **generate** (survey → overview → architecture → modules → flows → concepts → link-graph audit); a stamped `source_commit` → **refresh** (diff `source_commit..HEAD`, update only affected pages, re-stamp).
+Don't free-hand it — read **[references/generate-and-refresh.md](references/generate-and-refresh.md)** and follow the phased, STOP-gated procedure. It auto-detects mode: a stubbed `OVERVIEW.md` (empty `source_commit`) → **generate** (survey → overview → architecture → modules → flows → concepts → link-graph audit); a stamped `source_commit` → **refresh** (diff `source_commit..HEAD`, update only affected pages, re-stamp).
 
 **Two toolsets.** Read source code with NATIVE tools (`Read`/`Grep`/`Glob`/`Bash`) — OK MCP does not index non-markdown source. Author and audit the wiki with OK MCP verbs (`write`/`edit` for pages, `links`/`search` for the graph). Never hand-write wiki markdown with native `Write`/`Edit`.
 
@@ -41,14 +40,14 @@ Two natural-language knobs, read from the user's request (e.g. "build the wiki, 
 - **`audience`** — `internal` (default) or `public`. `public` means polished prose, no secrets / internal infra / ticket numbers, and GitHub-URL source references.
 - **`depth`** — `tour` | `standard` (default) | `exhaustive`. Scales coverage from OVERVIEW + architecture + top flows up through per-package module pages, concepts, and task guides.
 
-The `workflow({ kind: "wiki" })` guide is the authoritative source for exactly how each knob shapes the output — invoke it before generating.
+[references/generate-and-refresh.md](references/generate-and-refresh.md) is the authoritative source for exactly how each knob shapes the output — read it before generating.
 
 ## Source-reference convention
 
 - **Intra-wiki navigation** → OK doc links — they build the backlink / hub / orphan graph, so link liberally; density is how the wiki stays navigable.
 - **Code references** → relative links + symbol code-spans (`internal`) or GitHub blob URLs (`public`). Source-file links stay out of the navigation graph (`links` tracks only `.md`/`.mdx` edges, so they never show as graph dead-links or orphans) — but a wrong-depth path still surfaces in the write/edit `brokenLinks` response (`no-such-file`, or `unresolvable` if it overshoots the content root), so count the `../` hops from the page's folder. Never invent paths — reference only files you actually read.
 
-The full rules — the GitHub-URL / relative fallback, the `#Lxx` caveat, and the exact code-span shape — live in the `workflow({ kind: "wiki" })` guide.
+The full rules — the GitHub-URL / relative fallback, the `#Lxx` caveat, and the exact code-span shape — live in [references/generate-and-refresh.md](references/generate-and-refresh.md).
 
 ## Per-folder rules
 
@@ -81,4 +80,4 @@ The full rules — the GitHub-URL / relative fallback, the `#Lxx` caveat, and th
 
 ## Templates
 
-Each folder ships a starter template (`architecture-page`, `module-page`, `flow-page`, `concept-page`, `guide-page`). Create with `write({ document: { path, template: "<name>" } })`. Templates carry only structure (headings + frontmatter scaffold); what each section is for is described above and in the `workflow({ kind: "wiki" })` guide, not repeated inside document bodies.
+Each folder ships a starter template (`architecture-page`, `module-page`, `flow-page`, `concept-page`, `guide-page`). Create with `write({ document: { path, template: "<name>" } })`. Templates carry only structure (headings + frontmatter scaffold); what each section is for is described above and in [references/generate-and-refresh.md](references/generate-and-refresh.md), not repeated inside document bodies.

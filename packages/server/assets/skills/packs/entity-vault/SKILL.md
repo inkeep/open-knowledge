@@ -1,7 +1,6 @@
 ---
 name: open-knowledge-pack-entity-vault
-version: "0.18.0"
-description: "How to work in a Personal CRM project (the `entity-vault` starter pack, GBrain-compatible): a typed-entity vault of people, companies, meetings, and concepts, each a dossier with a rewritable summary plus an append-only timeline. Read when the project has these folders. Carries the dossier convention and entity-extraction behaviors so that guidance does not live inside template bodies or folder descriptions. Complements the platform `open-knowledge` skill; does not replace it."
+description: "How to work in a Personal CRM project (the `entity-vault` starter pack, GBrain-compatible): a typed-entity vault of people, companies, meetings, and concepts, each a dossier with a rewritable summary plus an append-only timeline. Read when the project has these folders, OR when asked to capture notes about a person or company, log a meeting, prep for an upcoming meeting, or answer who someone is and what was last said. Carries the dossier convention and entity-extraction behaviors so that guidance does not live inside template bodies or folder descriptions. Complements the platform `open-knowledge` skill; does not replace it."
 compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack entity-vault`."
 metadata:
   pack: "entity-vault"
@@ -12,7 +11,7 @@ metadata:
 
 A Personal CRM built as a typed-entity vault, inspired by Garry Tan's gbrain. Each entity is a dossier; the agent keeps dossiers current by extracting entities from meeting notes and original thinking. This skill holds those behaviors so templates and folder descriptions stay clean. The Markdown shape is **GBrain-compatible**: if the external `gbrain` CLI is installed, it can import/sync the same vault.
 
-> Pack guidance. The platform `open-knowledge` skill still governs every markdown operation.
+> This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the dossier conventions on top.
 
 ## The dossier convention (the load-bearing rule)
 

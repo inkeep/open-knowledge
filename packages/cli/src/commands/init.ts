@@ -2317,20 +2317,10 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
     lines.push(`  1. Open your editor (${info(configuredLabels.join(' / '))})`);
     lines.push('  2. Approve the MCP server when prompted');
     lines.push('  3. (Optional) scaffold the starter knowledge-base structure:');
-    lines.push(
-      `     - ${info('ok seed')}                              — empty repo, Karpathy 3-layer`,
-    );
-    lines.push(
-      `     - ${info('mcp__open-knowledge__discover')}      — existing repo, extract conventions`,
-    );
-    lines.push('  4. Use the MCP workflow tools as you build the wiki:');
-    lines.push(`     - ${info('mcp__open-knowledge__ingest')}        — capture an external source`);
-    lines.push(
-      `     - ${info('mcp__open-knowledge__research')}      — gather sources and write findings`,
-    );
-    lines.push(
-      `     - ${info('mcp__open-knowledge__consolidate')}   — promote research to canonical articles`,
-    );
+    lines.push(`     - ${info('ok seed --list-packs')}   — browse the starter packs`);
+    lines.push(`     - ${info('ok seed')}                — scaffold an empty repo`);
+    lines.push('  4. Ask your agent to capture a source, research a topic, or build a wiki —');
+    lines.push('     the procedures ship as skills alongside the MCP tools.');
   }
 
   return lines.join('\n');

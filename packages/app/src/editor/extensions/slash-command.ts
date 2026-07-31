@@ -1,4 +1,4 @@
-import { Extension } from '@tiptap/core';
+import { type Editor, Extension } from '@tiptap/core';
 import { type EditorState, PluginKey } from '@tiptap/pm/state';
 import { ReactRenderer } from '@tiptap/react';
 import Suggestion, { type SuggestionKeyDownProps, type SuggestionProps } from '@tiptap/suggestion';
@@ -35,7 +35,7 @@ export interface SlashCommandOptions {
    * })
    * ```
    */
-  itemsSources: (() => SlashCommandItem[])[];
+  itemsSources: ((ctx?: { editor?: Editor }) => SlashCommandItem[])[];
 
   /**
    * Category labels to display in the menu. Defaults include:
@@ -66,15 +66,16 @@ export interface SlashCommandOptions {
  * exercise the exact transform the extension runs rather than a re-derivation.
  */
 export function buildSlashMenuItems(options: {
-  sources: (() => SlashCommandItem[])[];
+  sources: ((ctx?: { editor?: Editor }) => SlashCommandItem[])[];
   categoryOrder: string[];
   query: string;
   state: EditorState;
+  editor?: Editor;
 }): SlashCommandItem[] {
-  const { sources, categoryOrder, query, state } = options;
+  const { sources, categoryOrder, query, state, editor } = options;
   const allItems = sources.flatMap((source) => {
     try {
-      return source();
+      return source(editor !== undefined ? { editor } : undefined);
     } catch (err) {
       console.error('[slash-command] item source threw an error', err);
       return [];
@@ -155,9 +156,21 @@ export const SlashCommand = Extension.create<SlashCommandOptions>({
         items: ({ query, editor }) =>
           buildSlashMenuItems({
             sources: extension.options.itemsSources,
-            categoryOrder: Object.keys(extension.options.categoryLabels),
+            // Explicit global order: the skills group leads (skill docs only —
+            // empty elsewhere), then the unlabeled built-ins, then the labeled
+            // component groups. Relying on the unknown-category fallback made
+            // the built-ins' position an accident of the fallback rank.
+            categoryOrder: [
+              ...new Set([
+                'skills',
+                'basic',
+                'insert',
+                ...Object.keys(extension.options.categoryLabels),
+              ]),
+            ],
             query,
             state: editor.state,
+            editor,
           }),
 
         command: ({ editor, range, props: item }) => applySlashCommandItem({ editor, item, range }),

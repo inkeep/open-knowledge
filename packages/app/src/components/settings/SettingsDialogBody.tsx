@@ -166,7 +166,10 @@ export function SettingsDialogBody({
     return <ProjectTemplatesSection />;
   }
   if (activeId === 'skills') {
-    return <SkillsManagerSection />;
+    return <SkillsManagerSection scope="project" />;
+  }
+  if (activeId === 'user-skills') {
+    return <SkillsManagerSection scope="global" />;
   }
   if (activeId === 'sharing') {
     return <SharingSection />;

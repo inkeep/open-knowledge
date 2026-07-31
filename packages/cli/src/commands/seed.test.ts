@@ -133,6 +133,23 @@ describe('runSeed — no-op', () => {
     expect(second.exitCode).toBe(0);
     expect(second.message).toContain('already seeded');
   });
+
+  test('is NOT a no-op when folders exist but a pack skill is missing', async () => {
+    // A project whose pack skill was deleted has every folder yet no skill.
+    // Re-seeding must re-author it, not report "already seeded, nothing to do".
+    // Pack skills land in-place (editor skill dirs) with the legacy `.ok/skills`
+    // store still honored — remove every home so the skill is truly gone.
+    scaffoldOkDir(testDir);
+    await runSeed({ cwd: testDir, yes: true });
+    rmSync(join(testDir, OK_DIR, 'skills'), { recursive: true, force: true });
+    for (const dir of ['.agents', '.claude', '.cursor', '.codex', '.opencode', '.pi']) {
+      rmSync(join(testDir, dir), { recursive: true, force: true });
+    }
+
+    const second = await runSeed({ cwd: testDir, dryRun: true });
+    expect(second.status).not.toBe('no-op');
+    expect(second.plan?.packSkills?.some((s) => s.pending)).toBe(true);
+  });
 });
 
 describe('runSeed — prerequisite', () => {

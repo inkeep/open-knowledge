@@ -345,6 +345,12 @@
       // mirror-excluded.
       "!packages/md-conformance/conformance-catalog.json",
       "!packages/md-conformance/corpora/gfm-extensions.json"
-    ]
+    ],
+    // `packages/server/src/api-extension.ts` grew past biome's 1 MiB default,
+    // at which point biome silently stops checking it and warns instead — and
+    // `--error-on-warnings` turns that into a red lint job. Raised so the file
+    // keeps being linted. The real fix is splitting the module; this keeps the
+    // gate honest until then.
+    "maxSize": 2097152
   }
 }

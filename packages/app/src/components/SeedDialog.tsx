@@ -195,7 +195,9 @@ export function SeedDialog({ open, onOpenChange, onSeedApplied, initialPackId }:
           // predates skills-as-content) reports "already set up" while its skill
           // is missing. `applySeed` always (re)authors the skill, so reaching
           // apply with only the skill pending fixes it.
-          const hasWork = result.plan.created.length > 0 || result.plan.packSkill?.pending === true;
+          const hasWork =
+            result.plan.created.length > 0 ||
+            result.plan.packSkills?.some((s) => s.pending) === true;
           setPhase(
             hasWork
               ? { kind: 'plan', plan: result.plan }
@@ -238,7 +240,7 @@ export function SeedDialog({ open, onOpenChange, onSeedApplied, initialPackId }:
       // A skill-only apply (folders/templates already present, skill was
       // missing) writes 0 file/folder entries but DID (re)install the skill —
       // so it isn't "nothing to do".
-      const skillReinstalled = planAtClick.packSkill?.pending === true;
+      const skillReinstalled = planAtClick.packSkills?.some((s) => s.pending) === true;
       const message =
         projectEntries > 0
           ? t`${packName} initialized (${plural(projectEntries, { one: '# entry', other: '# entries' })})`
@@ -482,7 +484,7 @@ function SeedDialogBody({
 
   return (
     <div className="space-y-6 py-1 text-sm">
-      {phase.plan.created.length > 0 || phase.plan.packSkill?.pending ? (
+      {phase.plan.created.length > 0 || phase.plan.packSkills?.some((s) => s.pending) ? (
         <CreatedItemsList plan={phase.plan} selectedPack={selectedPack} />
       ) : null}
       {phase.plan.warnings.length > 0 ? (

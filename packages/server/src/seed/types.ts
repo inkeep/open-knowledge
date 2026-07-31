@@ -55,7 +55,7 @@ export interface ScaffoldPlan {
    * it. Folders/templates being present does NOT imply the skill is — so callers
    * must treat a pending skill as outstanding work, not "already set up".
    */
-  packSkill?: { name: string; pending: boolean };
+  packSkills?: { name: string; pending: boolean }[];
 }
 
 /**

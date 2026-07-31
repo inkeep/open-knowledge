@@ -92,7 +92,23 @@ export function treePathToAppPath(treePath: string): string {
 }
 
 export function documentsToTreePaths(documents: readonly FileEntry[]): string[] {
-  return documents.map(fileEntryToTreePath);
+  // De-dupe by tree path. Two entries with the same tree path are the same tree
+  // node — the model can only hold one, and `@pierre/trees` `resetPaths` hard-
+  // throws `Duplicate path` (crashing the whole editor) on a collision. A brief
+  // double-entry for one doc is reachable when two refreshes race (e.g. a stale
+  // size=0 fetch and the fresh size=40 fetch landing in `documents` together),
+  // so unique-ify here at the single feed every `resetPaths` call routes through
+  // rather than trusting every async `setDocuments` producer to dedupe. First
+  // occurrence wins (stable order); the next refresh reconciles the metadata.
+  const seen = new Set<string>();
+  const paths: string[] = [];
+  for (const entry of documents) {
+    const path = fileEntryToTreePath(entry);
+    if (seen.has(path)) continue;
+    seen.add(path);
+    paths.push(path);
+  }
+  return paths;
 }
 
 export function treePathSignature(paths: readonly string[]): string {

@@ -146,6 +146,9 @@ vi.doMock('@/editor/DocumentContext', () => ({
     collabUrl: 'ws://test',
     activeProvider,
   }),
+  // EditorArea imports isSkillsNewTabId; keep it in the partial mock so the
+  // module link can't detonate on load-order (see mock-module-completeness).
+  isSkillsNewTabId: () => false,
 }));
 
 vi.doMock('@/editor/use-editor-mode', () => ({

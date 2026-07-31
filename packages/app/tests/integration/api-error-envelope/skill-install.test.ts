@@ -42,10 +42,14 @@ const installSkill = (body: Record<string, unknown>) =>
 
 const hostSkillMd = (editorRoot: string, name: string) =>
   join(server.contentDir, editorRoot, 'skills', name, 'SKILL.md');
-const markerPath = () => join(server.contentDir, '.ok', 'local', 'installed-skills.json');
 
 beforeAll(async () => {
   server = await createTestServer();
+  // Store retirement: skills author IN-PLACE. Seed the vendor-neutral `.agents`
+  // hub as the default authoring home so a fresh skill lands there (not directly
+  // into an editor dir like `.claude`), preserving the author → install-into-
+  // editors distinction these lifecycle assertions rely on.
+  mkdirSync(join(server.contentDir, '.agents', 'skills'), { recursive: true });
 }, HARNESS_BOOT_TIMEOUT_MS);
 afterAll(async () => {
   await server.cleanup();
@@ -64,17 +68,12 @@ describe('skill install-projection lifecycle', () => {
       expect(parsed.data.scripts).toBe(false);
     }
 
-    // Verbatim projections exist in each host dir.
+    // Store retirement: the on-disk projections ARE the truth (the scan, not the
+    // install marker, owns the host set for an in-place skill) — verbatim copies
+    // exist in each editor host dir.
     expect(existsSync(hostSkillMd('.claude', 'trip-log'))).toBe(true);
     expect(existsSync(hostSkillMd('.cursor', 'trip-log'))).toBe(true);
     expect(readFileSync(hostSkillMd('.claude', 'trip-log'), 'utf-8')).toContain('# Steps');
-
-    // marker records the install.
-    const marker = JSON.parse(readFileSync(markerPath(), 'utf-8')) as {
-      skills: Record<string, { hosts: string[]; scope: string }>;
-    };
-    expect(marker.skills['trip-log']?.hosts.sort()).toEqual(['claude', 'cursor']);
-    expect(marker.skills['trip-log']?.scope).toBe('project');
   });
 
   test('delete reverse-projects (uninstall) + drops the marker entry', async () => {
@@ -82,23 +81,14 @@ describe('skill install-projection lifecycle', () => {
       method: 'DELETE',
     });
     expect(res.status).toBe(200);
+    // Delete reverse-projects: the editor host-dir copies are gone (disk truth).
     expect(existsSync(hostSkillMd('.claude', 'trip-log'))).toBe(false);
     expect(existsSync(hostSkillMd('.cursor', 'trip-log'))).toBe(false);
-    const marker = JSON.parse(readFileSync(markerPath(), 'utf-8')) as {
-      skills: Record<string, unknown>;
-    };
-    expect(marker.skills['trip-log']).toBeUndefined();
   });
 
-  test('rename of an installed skill carries the install-state to the new name', async () => {
+  test('rename of an installed skill carries the projection to the new name', async () => {
     expect((await putSkill('rename-me')).status).toBe(200);
     expect((await installSkill({ name: 'rename-me', targets: ['claude'] })).status).toBe(200);
-
-    const readMarker = () =>
-      JSON.parse(readFileSync(markerPath(), 'utf-8')) as {
-        skills: Record<string, { hosts: string[] }>;
-      };
-    expect(readMarker().skills['rename-me']?.hosts).toEqual(['claude']);
     expect(existsSync(hostSkillMd('.claude', 'rename-me'))).toBe(true);
 
     // Rename via POST /api/skill (the move spine).
@@ -109,11 +99,8 @@ describe('skill install-projection lifecycle', () => {
     });
     expect(moveRes.status).toBe(200);
 
-    // Install-state carries over: new name recorded with the prior hosts, old
-    // name dropped, and the host projection follows the rename.
-    const after = readMarker();
-    expect(after.skills['rename-me']).toBeUndefined();
-    expect(after.skills['renamed-ok']?.hosts).toEqual(['claude']);
+    // Install-state carries over (disk truth — the scan owns the host set): the
+    // claude projection follows the rename, new name present, old name gone.
     expect(existsSync(hostSkillMd('.claude', 'rename-me'))).toBe(false);
     expect(existsSync(hostSkillMd('.claude', 'renamed-ok'))).toBe(true);
   });
@@ -153,7 +140,10 @@ describe('skill install-projection lifecycle', () => {
     const parsed = SkillInstallSuccessSchema.safeParse(await res.json());
     expect(parsed.success).toBe(true);
     if (parsed.success) {
-      expect(parsed.data.hosts).toEqual([]);
+      // No editor targets + none configured: nothing projects into an editor, so
+      // the skill stays where it authored — the `.agents` hub. Store retirement +
+      // no Draft: it is never hostless; its host set is the hub it lives in.
+      expect(parsed.data.hosts).toEqual(['agents']);
       expect(parsed.data.warnings.some((w) => w.includes('No project-configured editors'))).toBe(
         true,
       );

@@ -295,9 +295,11 @@ export function composeEmptySpacePrompt(
  * prompt framing. `new-project` (OnboardingView, no content yet) pitches
  * standing up a fresh project; `existing-repo` (CreateView, project already has
  * content) frames the brief as work over the existing project — no "new
- * project" wording, no scaffold-from-scratch directive.
+ * project" wording, no scaffold-from-scratch directive; `skill` (the Skills
+ * home) frames the brief as a new skill to author via the built-in
+ * `open-knowledge-write-skill` skill.
  */
-export type CreateScenario = 'new-project' | 'existing-repo';
+export type CreateScenario = 'new-project' | 'existing-repo' | 'skill';
 
 /**
  * Create-scope composer — the empty-state "Create with <agent>" prompt. The
@@ -358,6 +360,27 @@ export function composeCreatePrompt(
               blockquote(trimmed),
             ].join('\n');
       const base = mentionBlock === '' ? briefPart : [briefPart, '', mentionBlock].join('\n');
+      return withTrailer(base);
+    }
+
+    if (scenario === 'skill') {
+      const writeSkill =
+        'Use your open-knowledge-write-skill skill to author it with the Open Knowledge tools.';
+      const base =
+        trimmed === ''
+          ? mentionBlock === ''
+            ? `Let's create a new Open Knowledge skill. ${writeSkill}`
+            : [`Let's create a new Open Knowledge skill. ${writeSkill}`, '', mentionBlock].join(
+                '\n',
+              )
+          : [
+              "I want to create a new Open Knowledge skill. Here's what it should do:",
+              '',
+              blockquote(trimmed),
+              ...(mentionBlock === '' ? [] : ['', mentionBlock]),
+              '',
+              writeSkill,
+            ].join('\n');
       return withTrailer(base);
     }
 

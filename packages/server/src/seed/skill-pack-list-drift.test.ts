@@ -10,7 +10,7 @@ import { STARTER_PACK_IDS } from './starter.ts';
 // here until the skill is updated in lock-step.
 //
 // The skill is split into a lean core SKILL.md + on-demand `references/*.md`, and
-// the pack list lives in a reference (`workflow-guides.md`). Read the WHOLE
+// the pack list lives in a reference (`starter-packs.md`). Read the WHOLE
 // bundle (core + every reference) so the guard finds the list wherever it lives.
 const SKILL_DIR = join(import.meta.dir, '../../assets/skills/project');
 // Matches each pack bullet: `- \`<id>\` — <hint>` (em-dash). Verified unique to

@@ -77,7 +77,10 @@ export async function writeSkill(
   const path = typeof result.path === 'string' ? result.path : undefined;
   const warnings = Array.isArray(result.warnings) ? (result.warnings as string[]) : [];
   const lines = [
-    `${created ? 'Created' : 'Updated'} skill "${input.name}"${path ? ` (${path})` : ''}. Run \`install\` to (re)project it into your editors.`,
+    // Name `add` explicitly. A bare `install` is a set-exact reconciliation
+    // against the project's detected editors, not the additive top-up this
+    // sentence is recommending.
+    `${created ? 'Created' : 'Updated'} skill "${input.name}"${path ? ` (${path})` : ''} — live for that folder's agent. Use \`install\` with \`add\` to put it in your other editors.`,
     ...warnings,
   ];
   // Skill scope mirrors the server's PUT default (`project`) when omitted; the
@@ -166,7 +169,9 @@ export async function writeSkillFile(
   const path = typeof result.path === 'string' ? result.path : input.path;
   const kind = result.kind === 'script' ? 'script' : 'reference';
   return textPlusStructured(
-    `${created ? 'Created' : 'Updated'} skill ${kind} "${input.path}" in "${input.name}". Run \`install\` if not yet projected.`,
+    // No install nudge: the file lands in the skill's own bundle, and every
+    // recorded copy re-syncs from the source without being told to.
+    `${created ? 'Created' : 'Updated'} skill ${kind} "${input.path}" in "${input.name}".`,
     { skill: { ok: true, file: { path, kind, created } } },
   );
 }
@@ -281,7 +286,7 @@ export async function moveSkill(
   return textPlusStructured(
     `${committed ? 'Renamed' : 'Moved'} skill ${from} → ${to}.${
       committed ? '' : ' (Untracked `.ok/` — moved on disk without git history.)'
-    } Run \`install\` to re-project under the new name.`,
+    } Every location it occupied now holds the new name.`,
     { ok: true, kind: 'skill', committed },
   );
 }
@@ -296,7 +301,7 @@ export async function moveSkill(
  * unversioned, and a project↔global move re-creates the skill fresh in its
  * new scope — so a project→global move drops the timeline and a
  * global→project move starts a new one. History-preserving cross-scope move
- * is Future Work. The moved skill lands as an un-projected Draft in its new
+ * is Future Work. The moved skill lands uninstalled-elsewhere in its new
  * scope (same as the editor), so the result prompts the agent to re-`install`.
  */
 export async function moveSkillCrossScope(
@@ -431,7 +436,7 @@ export async function moveSkillCrossScope(
       ? ` ${skippedBinary.length} binary/oversize bundle file(s) were NOT copied (outside the text-only bundle contract): ${skippedBinary.join(', ')}.`
       : '';
   return textPlusStructured(
-    `Moved skill "${input.fromName}" (${fromLabel}) → "${input.toName}" (${toLabel}) with its references and scripts. History did not transfer — it lands as a fresh Draft in the ${toLabel} level. Run \`install\` to project it for the new level.${skippedNote}`,
+    `Moved skill "${input.fromName}" (${fromLabel}) → "${input.toName}" (${toLabel}) with its references and scripts, and re-projected into the locations it occupied. History did not transfer — it starts fresh at the ${toLabel} level.${skippedNote}`,
     {
       ok: true,
       kind: 'skill',

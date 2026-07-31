@@ -16,6 +16,7 @@ import { LandingFlash } from '../plugins/landing-flash-wysiwyg';
 import { getComponentItems, getInlineComponentItems } from '../slash-command/component-items';
 import { getEmbedStarterItems } from '../slash-command/embed-starter-items';
 import { getSlashCommandItems } from '../slash-command/items';
+import { getSkillReferenceItems } from '../slash-command/skill-reference-items';
 
 import { BlockMover } from './block-mover';
 // BridgeIdPlugin — SelectionStatePlugin consumes it to resolve stable
@@ -98,8 +99,11 @@ export const sharedExtensions = [
   // phrasing-only). Client producer-input gate; never in core sharedExtensions.
   CellInsertionGate,
   SlashCommand.configure({
-    itemsSources: [...SLASH_ITEM_SOURCES],
+    itemsSources: [...SLASH_ITEM_SOURCES, getSkillReferenceItems],
     categoryLabels: {
+      // First key = top group: in a skill doc, `/` surfaces skill references
+      // before the block/component items.
+      skills: 'Skills',
       content: 'Components',
       layout: 'Layout',
       media: 'Media',

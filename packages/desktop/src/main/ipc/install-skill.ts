@@ -154,8 +154,11 @@ export async function handleBuildAndOpen(deps: InstallSkillIpcDeps): Promise<Bui
 
   let builtVersion: string | undefined;
   try {
-    const build = await buildSkillZip({ outputPath });
-    builtVersion = build.skillVersion;
+    await buildSkillZip({ outputPath });
+    // The install-state gate keys on the server PACKAGE version (the single
+    // version axis), NOT a SKILL.md field — the bundled SKILL.md carries no
+    // version stamp. Record the same value the gate above reads back.
+    builtVersion = await readServerPackageVersion().catch(() => undefined);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await report('failed', undefined, `build-failed:${message}`);

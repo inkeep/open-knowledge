@@ -42,7 +42,9 @@ const SOURCE = '---\nname: foo\ndescription: initial desc\n---\n\n# Body\n';
 describe('SkillProperties (CRDT)', () => {
   test('renders the reused document property panel with the doc frontmatter', () => {
     const { provider } = makeProvider(SOURCE);
-    renderPanel(<SkillProperties provider={provider} name="foo" onRename={() => {}} />);
+    renderPanel(
+      <SkillProperties provider={provider} scope="project" name="foo" onRename={() => {}} />,
+    );
     // The frontmatter editor IS the document PropertyPanel (same component).
     expect(screen.getByTestId('property-panel')).toBeTruthy();
     // The description frontmatter value renders through it (not a bespoke row).
@@ -52,7 +54,9 @@ describe('SkillProperties (CRDT)', () => {
   test('committing a changed name fires onRename (a git-mv rename), not a patch', () => {
     const { provider, ytext } = makeProvider(SOURCE);
     const onRename = vi.fn((_next: string) => {});
-    renderPanel(<SkillProperties provider={provider} name="foo" onRename={onRename} />);
+    renderPanel(
+      <SkillProperties provider={provider} scope="project" name="foo" onRename={onRename} />,
+    );
     const nameInput = screen.getByTestId('skill-name-input');
     fireEvent.change(nameInput, { target: { value: 'bar' } });
     fireEvent.blur(nameInput);
@@ -64,9 +68,22 @@ describe('SkillProperties (CRDT)', () => {
   test('an unchanged name does not fire onRename', () => {
     const { provider } = makeProvider(SOURCE);
     const onRename = vi.fn((_next: string) => {});
-    renderPanel(<SkillProperties provider={provider} name="foo" onRename={onRename} />);
+    renderPanel(
+      <SkillProperties provider={provider} scope="project" name="foo" onRename={onRename} />,
+    );
     const nameInput = screen.getByTestId('skill-name-input');
     fireEvent.blur(nameInput);
     expect(onRename).not.toHaveBeenCalled();
+  });
+
+  test('renders the name identity field inside the Properties panel', () => {
+    const { provider } = makeProvider(SOURCE);
+    renderPanel(
+      <SkillProperties provider={provider} scope="project" name="foo" onRename={() => {}} />,
+    );
+    // `name` is the first row INSIDE the shared property panel (identitySlot),
+    // not a separate section above it.
+    const panel = screen.getByTestId('property-panel');
+    expect(panel.contains(screen.getByTestId('skill-name-input'))).toBe(true);
   });
 });

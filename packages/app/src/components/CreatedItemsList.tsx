@@ -103,7 +103,7 @@ export function CreatedItemsList({
   const { t } = useLingui();
   const folders = describeFolderCards(plan, selectedPack);
   const files = describeFileCards(plan);
-  const skill = plan.packSkill?.pending ? plan.packSkill : undefined;
+  const pendingSkills = (plan.packSkills ?? []).filter((s) => s.pending);
   // Derive the counts straight from the rows so the summary line always
   // matches what's rendered. Counting `plan.created` directly diverged in
   // subfolder mode, where the plan also creates the parent folder (e.g.
@@ -111,7 +111,7 @@ export function CreatedItemsList({
   const folderCount = folders.length;
   const fileCount = files.length;
   const templateCount = folders.reduce((sum, f) => sum + f.templateCount, 0);
-  const skillCount = skill ? 1 : 0;
+  const skillCount = pendingSkills.length;
 
   // One-line blurbs for the reserved root files, grounded in each file's
   // frontmatter `description` (authored in `packs`' `rootFiles`, server-side).
@@ -189,20 +189,16 @@ export function CreatedItemsList({
     title: file.name,
     description: fileDescriptions[file.name],
   }));
-  const skillRows: PreviewRow[] = skill
-    ? [
-        {
-          key: `skill:${skill.name}`,
-          icon: Hexagon,
-          // Drop the shared `open-knowledge-pack-` prefix (identical across
-          // packs, non-distinguishing) so the name reads + fits; full name
-          // stays on hover.
-          name: skillDisplayName(skill.name),
-          title: skill.name,
-          description: t`Guides your AI agents on how to work here.`,
-        },
-      ]
-    : [];
+  const skillRows: PreviewRow[] = pendingSkills.map((skill) => ({
+    key: `skill:${skill.name}`,
+    icon: Hexagon,
+    // Drop the shared `open-knowledge-pack-` prefix (identical across
+    // packs, non-distinguishing) so the name reads + fits; full name
+    // stays on hover.
+    name: skillDisplayName(skill.name),
+    title: skill.name,
+    description: t`Guides your AI agents on how to work here.`,
+  }));
 
   // Ordered, non-empty sections. Labels pluralize with their own count so a
   // single item reads "Skill" / "File", not "Skills" / "Files".
@@ -218,10 +214,8 @@ export function CreatedItemsList({
       rows: fileRows,
     },
     {
-      // Only ever 0 or 1 pack skill, so no plural arm (the section is hidden
-      // when empty; when shown it's always exactly one).
       key: 'skill',
-      label: t`Skill`,
+      label: t`${plural(skillRows.length, { one: 'Skill', other: 'Skills' })}`,
       rows: skillRows,
     },
   ].filter((s) => s.rows.length > 0);

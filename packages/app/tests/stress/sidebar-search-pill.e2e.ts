@@ -1,42 +1,42 @@
 /**
- * E2E regression coverage for the sidebar search pill (the labeled
- * Search affordance that replaces the icon-only entry point in
- * FileSidebar's chrome row).
+ * E2E regression coverage for the sidebar search affordance — an icon-only
+ * Search button pinned to the right end of the Files/Skills chrome row.
  *
- * The pill row lives as a sibling between SidebarHeader and SidebarContent;
- * source-level guards in FileSidebar.test.ts pin the structural wiring.
- * This file is the DOM-bound complement, covering:
+ * The button shares its row with the Files/Skills toggle, as a sibling between
+ * SidebarHeader and SidebarContent. This file is the DOM-bound complement to the
+ * source-level guards, covering:
  *
- *   - discovery: pill renders above the FileTree on initial sidebar load,
- *     without hover/focus
- *   - mouse path: clicking the pill opens the CommandPalette
+ *   - discovery: the icon button renders above the FileTree on initial sidebar
+ *     load, without hover/focus
+ *   - mouse path: clicking it opens the CommandPalette
  *   - keyboard path: ⌘K / Ctrl+K still opens the palette (regression guard
  *     for the global keydown listener inside CommandPalette)
- *   - divergent click-while-open semantics: pill click is a no-op when the
+ *   - divergent click-while-open semantics: the button click is a no-op when the
  *     palette is open (mirrors the legacy icon); ⌘K-while-open toggles
  *     closed (preserves the global-shortcut contract)
  *   - project actions live with the project-root row rather than
  *     SidebarHeader; the legacy Search ToolbarButton remains absent
- *   - accessible-name calculation returns "Search" with no aria-label
- *     override; lucide icon carries aria-hidden
+ *   - accessible-name calculation returns "Search" via the button's aria-label
+ *     (icon-only, no visible label); the lucide icon carries aria-hidden
  *   - compositional journey: discovery → click → query → result selection
  *     navigates to the matching doc
- *   - visual anatomy: rounded-lg border-radius (not rounded-full, not
- *     rounded-md), DOM order svg → label → kbd, ~36px tall, full-width
- *   - kbd hint adapts to platform — '⌘ K' on Mac, 'Ctrl K' elsewhere
+ *   - visual anatomy: icon-only, no in-button label/kbd, roughly square
+ *     (size-icon-sm ~28px), right-aligned (ml-auto) at the row's trailing edge
+ *   - the ⌘K / Ctrl+K hint lives in the hover tooltip (platform-aware), not in
+ *     the button itself
  *   - both responsive paths render cleanly (inline ≥1280px and
  *     push-translate <1280px)
- *   - hover and focus-visible states from the shadcn Button cva are not
- *     suppressed by the pill overrides
- *   - the pill follows the sidebar offcanvas during collapse
- *   - web-mode 'Files' label still renders alongside the pill
- *   - empty-workspace path (hasFolders === false) renders the pill while the
+ *   - hover and focus-visible states from the shadcn Button cva render
+ *   - the button follows the sidebar offcanvas during collapse
+ *   - web-mode 'Files' label still renders alongside the button
+ *   - empty-workspace path (hasFolders === false) renders the button while the
  *     project-root action row retains all 4 controls — the Tree view options
  *     trigger is state-independent (its Show group always has content)
- *   - the multi-scope search backend still yields results when the pill
+ *   - the multi-scope search backend still yields results when the button
  *     opens the palette (no regression in palette functionality)
  *   - the locked `data-telemetry-event="ok.sidebar.search_pill.click"`
- *     stable selector
+ *     stable selector (kept across the pill→icon redesign so historical
+ *     click-analytics stay on one key)
  *
  * Not covered here (handled separately): render-throw inside the
  * ErrorBoundary — source-level guards pin the boundary wiring + onError
@@ -64,7 +64,9 @@ const pill = (page: Page) => page.locator('[data-telemetry-event="ok.sidebar.sea
 const cmdkRoot = (page: Page) => page.locator('[cmdk-root]');
 const cmdkInput = (page: Page) => page.locator('[data-slot="command-input"]');
 const sidebarHeader = (page: Page) => page.locator('[data-slot="sidebar-header"]');
-const projectRootToolbar = (page: Page) =>
+// The project actions sit inline on the project-root row, with the folder they
+// act on — the header keeps only back/forward, which are global.
+const projectActionsToolbar = (page: Page) =>
   page
     .locator('[data-sidebar-root-context]')
     .locator('xpath=ancestor::*[@data-slot="sidebar-group"][1]')
@@ -134,7 +136,7 @@ async function restoreRequiredFixtureEntries({
 }
 
 test.describe('sidebar-search-pill — discovery, click, keyboard, semantics', () => {
-  test('pill renders above FileTree on initial sidebar load with the locked telemetry attribute', async ({
+  test('icon button renders above FileTree on initial sidebar load with the locked telemetry attribute', async ({
     page,
     api,
   }) => {
@@ -146,10 +148,12 @@ test.describe('sidebar-search-pill — discovery, click, keyboard, semantics', (
     // anchor used by command-palette-flicker.e2e.ts.
     await page.waitForSelector('[role="treeitem"]', { timeout: 15_000 });
 
-    // Pill is visible without hover/focus.
+    // Button is visible without hover/focus.
     await expect(pill(page)).toBeVisible();
 
-    // Pill has the leading <svg> and a <kbd> inside it (icon left, kbd right).
+    // Icon-only: exactly the leading <svg>, and NO in-button <kbd> or visible
+    // label span — the label + ⌘K hint moved into the (hover-only, portalled)
+    // tooltip.
     const childCount = await pill(page).evaluate((el) => ({
       hasSvg: !!el.querySelector('svg'),
       hasKbd: !!el.querySelector('kbd'),
@@ -158,8 +162,8 @@ test.describe('sidebar-search-pill — discovery, click, keyboard, semantics', (
       ),
     }));
     expect(childCount.hasSvg).toBe(true);
-    expect(childCount.hasKbd).toBe(true);
-    expect(childCount.hasLabelSpan).toBe(true);
+    expect(childCount.hasKbd).toBe(false);
+    expect(childCount.hasLabelSpan).toBe(false);
 
     // Locked telemetry attribute value.
     await expect(pill(page)).toHaveAttribute(
@@ -316,8 +320,7 @@ test.describe('sidebar-search-pill — discovery, click, keyboard, semantics', (
     const searchInsideHeader = sidebarHeader(page).getByRole('button', { name: 'Search' });
     await expect(searchInsideHeader).toHaveCount(0);
 
-    // The toolbar is nested under the project-root group, beside the root row.
-    const toolbar = projectRootToolbar(page);
+    const toolbar = projectActionsToolbar(page);
     await expect(toolbar).toBeVisible();
 
     // The four expected project actions are present. `'New from template'`
@@ -336,7 +339,7 @@ test.describe('sidebar-search-pill — discovery, click, keyboard, semantics', (
     await expect(toolbar.getByRole('button', { name: 'New folder' })).toBeVisible();
   });
 
-  test('pill has accessible name "Search" with no aria-label override; lucide icon is aria-hidden', async ({
+  test('icon button has accessible name "Search" via aria-label; icon is aria-hidden; no visible label', async ({
     page,
     api,
   }) => {
@@ -345,36 +348,26 @@ test.describe('sidebar-search-pill — discovery, click, keyboard, semantics', (
     await page.goto('/#/q007');
     await page.waitForSelector('[role="treeitem"]', { timeout: 15_000 });
 
-    // Exactly one button with accessible name matching /^Search/.
-    const matchingPills = page.getByRole('button', { name: /^Search/ });
+    // Exactly one expanded-sidebar button with accessible name 'Search'.
+    // (EditorHeader renders its own 'Search (Ctrl+K)' button only when the
+    // sidebar is COLLAPSED, so at the desktop expanded viewport this is unique.)
+    const matchingPills = page.getByRole('button', { name: 'Search', exact: true });
     await expect(matchingPills).toHaveCount(1);
 
-    // Button element has NO aria-label attribute (visible text IS the name).
+    // Icon-only, so the accessible name comes from an explicit aria-label
+    // (the visible-label pill contract is gone).
     const ariaLabel = await pill(page).getAttribute('aria-label');
-    expect(ariaLabel).toBeNull();
+    expect(ariaLabel).toBe('Search');
 
-    // Visible <span>Search</span> is present.
-    const labelText = await pill(page).locator('span', { hasText: 'Search' }).first().textContent();
-    expect(labelText?.trim()).toBe('Search');
+    // No visible "Search" label span inside the button.
+    const hasLabelSpan = await pill(page).evaluate((el) =>
+      Array.from(el.querySelectorAll('span')).some((sp) => sp.textContent === 'Search'),
+    );
+    expect(hasLabelSpan).toBe(false);
 
-    // The leading lucide Search icon carries aria-hidden="true".
+    // The lucide Search icon carries aria-hidden="true".
     const svgAriaHidden = await pill(page).locator('svg').first().getAttribute('aria-hidden');
     expect(svgAriaHidden).toBe('true');
-
-    // Definitive accessible-name check via Playwright's role-name match
-    // (above `matchingPills.count() === 1` already passed, proving the
-    // AAM resolved a name starting with "Search"). Additionally compute
-    // the name from non-aria-hidden text content — the kbd's text may
-    // contribute (minor verbosity, intentional), but the visible "Search"
-    // span MUST lead.
-    const accessibleName = await pill(page).evaluate((el) => {
-      const clone = el.cloneNode(true) as HTMLElement;
-      for (const n of clone.querySelectorAll('[aria-hidden="true"]')) {
-        n.remove();
-      }
-      return (clone.textContent || '').trim();
-    });
-    expect(accessibleName).toMatch(/^Search/);
   });
 
   test('compositional journey — discovery → click → query → result selection navigates to the matching doc', async ({
@@ -434,7 +427,7 @@ test.describe('sidebar-search-pill — discovery, click, keyboard, semantics', (
 });
 
 test.describe('sidebar-search-pill — visual anatomy and layout', () => {
-  test('pill border-radius is rounded-lg (~10px) — NOT rounded-full, NOT rounded-md', async ({
+  test('icon button has a small (non-pill) corner radius — NOT rounded-full', async ({
     page,
     api,
   }) => {
@@ -452,21 +445,17 @@ test.describe('sidebar-search-pill — visual anatomy and layout', () => {
       };
     });
 
-    // rounded-lg maps to --radius-lg which is var(--radius) per
-    // globals.css (search for the `--radius-lg` and `--radius`
-    // declarations — line numbers drift; token names are stable). Today
-    // it evaluates to 10px. Primary contract: not rounded-full (9999px,
-    // would render as a pure pill). The 7-12px band tolerates minor
-    // token shifts; --radius-md in this project also lands at 8px
-    // (`calc(var(--radius) * 0.8)`), so this band does NOT distinguish
-    // rounded-lg from rounded-md — source-level guards in
-    // SidebarSearchBar.test.ts pin the `rounded-lg` class literal.
+    // The Button `size-icon-sm` variant applies `rounded-[min(var(--radius-md),12px)]`,
+    // which lands around 8px today. Primary contract: it is a small square-ish
+    // corner, NOT rounded-full (which on a ~28px square would render as a circle,
+    // ~14px). The 4-13px band tolerates minor token shifts while still excluding
+    // the pill/circle case.
     const r = Number.parseFloat(styles.radiusTopLeft);
-    expect(r).toBeGreaterThanOrEqual(7);
-    expect(r).toBeLessThanOrEqual(12);
+    expect(r).toBeGreaterThanOrEqual(4);
+    expect(r).toBeLessThanOrEqual(13);
   });
 
-  test('kbd hint adapts to platform — Mac shows ⌘ K, non-Mac shows Ctrl K', async ({
+  test('hover tooltip carries the platform-aware kbd hint — Mac shows ⌘ K, non-Mac shows Ctrl K', async ({
     page,
     api,
   }) => {
@@ -475,9 +464,16 @@ test.describe('sidebar-search-pill — visual anatomy and layout', () => {
     await page.goto('/#/q010');
     await page.waitForSelector('[role="treeitem"]', { timeout: 15_000 });
 
-    const isMac = await page.evaluate(() => navigator.userAgent.includes('Mac'));
-    const kbdText = await pill(page).locator('kbd').textContent();
+    // The kbd hint moved out of the button and into the hover tooltip (a Radix
+    // portal). Hover the icon, then read the kbd from the tooltip content.
+    // Radix renders the content twice (the visible tooltip plus an accessibility
+    // copy), so scope to the first match to avoid a strict-mode violation.
+    await pill(page).hover();
+    const tooltipKbd = page.locator('[data-slot="tooltip-content"] kbd').first();
+    await expect(tooltipKbd).toBeVisible({ timeout: 2_000 });
 
+    const isMac = await page.evaluate(() => navigator.userAgent.includes('Mac'));
+    const kbdText = await tooltipKbd.textContent();
     if (isMac) {
       expect(kbdText).toBe('⌘ K');
     } else {
@@ -485,7 +481,7 @@ test.describe('sidebar-search-pill — visual anatomy and layout', () => {
     }
   });
 
-  test('visual anatomy — DOM order is svg → label-span → kbd; LTR positions; ~36px tall; full-width', async ({
+  test('visual anatomy — icon-only, roughly square (~28px), right-aligned at the row trailing edge', async ({
     page,
     api,
   }) => {
@@ -498,46 +494,31 @@ test.describe('sidebar-search-pill — visual anatomy and layout', () => {
       const button = el as HTMLElement;
       const rect = button.getBoundingClientRect();
       const svg = button.querySelector('svg');
-      const span = button.querySelector('span');
-      const kbd = button.querySelector('kbd');
-      if (!svg || !span || !kbd) {
-        return { ok: false as const };
-      }
-      const svgRect = svg.getBoundingClientRect();
-      const spanRect = span.getBoundingClientRect();
-      const kbdRect = kbd.getBoundingClientRect();
-      // DOM order check via Node.compareDocumentPosition.
-      const svgBeforeSpan =
-        (svg.compareDocumentPosition(span) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-      const spanBeforeKbd =
-        (span.compareDocumentPosition(kbd) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+      const parent = button.parentElement;
+      if (!svg || !parent) return { ok: false as const };
+      const parentRect = parent.getBoundingClientRect();
       return {
         ok: true as const,
         height: rect.height,
         width: rect.width,
-        svgRight: svgRect.right,
-        spanLeft: spanRect.left,
-        spanRight: spanRect.right,
-        kbdLeft: kbdRect.left,
-        svgBeforeSpan,
-        spanBeforeKbd,
+        hasSvg: true,
+        // Distance from the button's right edge to its row's right edge — ml-auto
+        // pins it to the trailing edge, so this gap is small.
+        rightGap: parentRect.right - rect.right,
       };
     });
-    if (!layout.ok) throw new Error('pill structural children missing');
+    if (!layout.ok) throw new Error('search icon button or its row parent missing');
 
-    // DOM order
-    expect(layout.svgBeforeSpan).toBe(true);
-    expect(layout.spanBeforeKbd).toBe(true);
-    // LTR position — small fp tolerance because flex layout may produce
-    // sub-pixel overlap.
-    expect(layout.svgRight).toBeLessThanOrEqual(layout.spanLeft + 1);
-    expect(layout.spanRight).toBeLessThanOrEqual(layout.kbdLeft + 1);
-    // Height ~36px — h-9 in Tailwind v4 = 36px.
-    expect(layout.height).toBeGreaterThanOrEqual(34);
-    expect(layout.height).toBeLessThanOrEqual(40);
-    // Full-width — w-full inside `px-2` parent. The pill should be at
-    // least 200px wide at a 1440px viewport.
-    expect(layout.width).toBeGreaterThan(200);
+    // size-icon-sm → `size-7` = 28px square. Roughly square, compact — NOT the
+    // old full-width (>200px) pill.
+    expect(layout.height).toBeGreaterThanOrEqual(24);
+    expect(layout.height).toBeLessThanOrEqual(32);
+    expect(layout.width).toBeGreaterThanOrEqual(24);
+    expect(layout.width).toBeLessThanOrEqual(32);
+    // Right-aligned via `ml-auto`: its right edge sits near the row's right edge
+    // (allow for the row's own trailing padding).
+    expect(layout.rightGap).toBeGreaterThanOrEqual(-1);
+    expect(layout.rightGap).toBeLessThanOrEqual(12);
   });
 
   test('desktop viewport (≥1280px) renders the pill cleanly within sidebar bounds', async ({
@@ -620,28 +601,16 @@ test.describe('sidebar-search-pill — visual anatomy and layout', () => {
         rightDelta: parentRect.right - pillRect.right,
       };
     });
-    if (!fit.ok) throw new Error('pill parent wrapper not found');
-    // Pill fits inside its immediate parent (no horizontal overflow).
-    // `leftDelta` and `rightDelta` should both be ≥ 0 (within 1px fp).
+    if (!fit.ok) throw new Error('search icon button parent wrapper not found');
+    // Icon button fits inside its immediate parent (no horizontal overflow).
+    // `leftDelta` and `rightDelta` should both be ≥ 0 (within 1px fp) — the
+    // button is right-aligned (`ml-auto`), so `leftDelta` is large (toggle +
+    // gap sit to its left) and `rightDelta` is small.
     expect(fit.leftDelta).toBeGreaterThanOrEqual(-1);
     expect(fit.rightDelta).toBeGreaterThanOrEqual(-1);
-    // Sidebar primitive width is 288px (18rem); parent is 288 - 2*8(px-2)
-    // = 272px. Pill should occupy nearly the full parent width. (The
-    // pill row uses px-2 to align with Pierre Trees' 8px padding-inline,
-    // so the pill's left/right edges match the FileTree row content
-    // area underneath.)
-    expect(fit.pillWidth).toBeGreaterThan(150);
-    expect(fit.pillWidth).toBeLessThanOrEqual(280);
-
-    // kbd remains visible without overflow-ellipsis.
-    const kbd = pill(page).locator('kbd');
-    await expect(kbd).toBeVisible();
-    const kbdOverflow = await kbd.evaluate((el) => {
-      const cs = window.getComputedStyle(el as HTMLElement);
-      return { textOverflow: cs.textOverflow, overflow: cs.overflow };
-    });
-    // Either default 'clip' or 'visible' — NOT a forced 'ellipsis' truncation.
-    expect(kbdOverflow.textOverflow === 'clip' || kbdOverflow.textOverflow === '').toBeTruthy();
+    // Compact icon button (size-icon-sm ~28px), never overflowing the row.
+    expect(fit.pillWidth).toBeGreaterThanOrEqual(24);
+    expect(fit.pillWidth).toBeLessThanOrEqual(32);
   });
 
   test('hover and focus-visible states render via shadcn Button cva (not suppressed by pill overrides)', async ({
@@ -809,8 +778,10 @@ test.describe('sidebar-search-pill — Electron host & sidebar-state', () => {
     await page.goto('/#/q022');
     await page.waitForSelector('[role="treeitem"]', { timeout: 15_000 });
 
-    // 'Files' label visible in web mode (no okDesktop shim).
-    const filesLabel = page.getByText('Files', { exact: true });
+    // 'Files' label visible in web mode (no okDesktop shim). Scope to the
+    // font-mono group label — the Files/Skills sidebar toggle also renders a
+    // "Files" segment, so a bare exact-text match is ambiguous (strict-mode).
+    const filesLabel = page.getByText('Files', { exact: true }).and(page.locator('.font-mono'));
     await expect(filesLabel).toBeVisible();
     const klass = (await filesLabel.getAttribute('class')) ?? '';
     expect(klass).toContain('font-mono');
@@ -851,7 +822,7 @@ test.describe('sidebar-search-pill — Electron host & sidebar-state', () => {
       .toBe('expanded');
   });
 
-  test('empty workspace — pill and the project-root 4-button toolbar remain available', async ({
+  test('empty workspace — pill and the 4-button project-actions toolbar remain available', async ({
     page,
     api,
     workerServer,
@@ -886,7 +857,7 @@ test.describe('sidebar-search-pill — Electron host & sidebar-state', () => {
       await page.setViewportSize(DESKTOP_VIEWPORT);
       await page.goto('/');
 
-      const toolbar = projectRootToolbar(page);
+      const toolbar = projectActionsToolbar(page);
       await expect(toolbar).toBeVisible({ timeout: 15_000 });
 
       // Four core project actions are present. ASCII-only substring match for
@@ -901,10 +872,9 @@ test.describe('sidebar-search-pill — Electron host & sidebar-state', () => {
       // hides with the Expand/Collapse-all commands.
       await expect(toolbar.getByRole('button', { name: 'Tree view options' })).toBeVisible();
 
-      // Pill renders normally.
+      // Search icon button renders normally (icon-only — no in-button kbd).
       await expect(pill(page)).toBeVisible();
       await expect(pill(page).locator('svg')).toBeVisible();
-      await expect(pill(page).locator('kbd')).toBeVisible();
     } finally {
       await restoreRequiredFixtureEntries({ api, baseURL: workerServer.baseURL });
     }

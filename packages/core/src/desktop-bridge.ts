@@ -134,6 +134,7 @@ interface ProjectSessionState {
   pinnedTabIds: string[];
   activeDocName: string | null;
   activeTabId: string | null;
+  activeTabByMode: { files: string | null; skills: string | null };
   updatedAt: string | null;
 }
 
@@ -636,7 +637,7 @@ interface OkScaffoldPlan {
   warnings: string[];
   /** The pack's project-local skill, when it ships one. `pending` = the skill
    *  source is absent from `.ok/skills/` and apply would (re)author it. */
-  packSkill?: { name: string; pending: boolean };
+  packSkills?: { name: string; pending: boolean }[];
 }
 interface OkScaffoldApplyError {
   path: string;

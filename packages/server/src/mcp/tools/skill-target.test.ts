@@ -150,7 +150,7 @@ describe('moveSkillCrossScope — write-dest-then-delete-source compose', () => 
       return { ok: false, error: 'unexpected' };
     };
 
-  test('reads source, writes destination, THEN deletes source — and prompts re-install', async () => {
+  test('reads source, writes destination, THEN deletes source — and reports the re-projection', async () => {
     const base = getSourceExistsDestAbsent('global');
     const calls = mockFetch((method, path) => {
       if (method === 'PUT') return { ok: true, created: true, path: 'trip-log/SKILL.md' };
@@ -170,7 +170,11 @@ describe('moveSkillCrossScope — write-dest-then-delete-source compose', () => 
     expect(calls.findIndex((c) => c.method === 'PUT')).toBeLessThan(
       calls.findIndex((c) => c.method === 'DELETE'),
     );
-    expect(text(r)).toContain('install');
+    // The move re-projects into the locations the skill already occupied, so the
+    // message must NOT send the agent to `install` — a bare install is a
+    // set-exact reconciliation, not the additive top-up that advice implied.
+    expect(text(r)).toContain('re-projected');
+    expect(text(r)).not.toContain('Run `install`');
     expect(text(r)).toContain('Global');
   });
 

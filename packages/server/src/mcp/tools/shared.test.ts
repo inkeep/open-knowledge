@@ -266,9 +266,16 @@ describe('normalizeDocName', () => {
 });
 
 describe('HOCUSPOCUS_NOT_RUNNING_ERROR', () => {
-  test('contains actionable guidance', () => {
+  test('names the recovery command', () => {
     expect(HOCUSPOCUS_NOT_RUNNING_ERROR).toContain('ok start');
-    expect(HOCUSPOCUS_NOT_RUNNING_ERROR).toContain('native Edit tool');
+  });
+
+  test('does not offer a native-edit escape hatch', () => {
+    // This string is a live runtime error an agent reads mid-task. Telling it to
+    // fall back to native edits trains exactly the unattributed disk write the
+    // project skill forbids, so the escape hatch must stay gone.
+    expect(HOCUSPOCUS_NOT_RUNNING_ERROR).toContain('Do not fall back to native file edits');
+    expect(HOCUSPOCUS_NOT_RUNNING_ERROR).toContain('route writes through OpenKnowledge');
   });
 });
 

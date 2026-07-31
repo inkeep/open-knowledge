@@ -15,15 +15,17 @@
 
 import {
   MANAGED_ARTIFACT_PREFIX_TEMPLATE,
+  parseProjectSkillBundleDoc,
   projectSkillContentDocName,
-  SKILL_CONTENT_ROOT,
+  type SkillsListEntry,
+  skillFileLiveDocName,
   skillLiveDocName,
+  stripMdExt,
 } from '@inkeep/open-knowledge-core';
 
-// `projectSkillContentDocName` + `skillLiveDocName` (and the `.ok/skills` root,
-// `SKILL_CONTENT_ROOT`) are the SINGLE source of truth in core, shared with the
-// server. Re-exported here so existing app call sites keep importing them from
-// this module unchanged.
+// `projectSkillContentDocName` + `skillLiveDocName` are the SINGLE source of
+// truth in core, shared with the server. Re-exported here so existing app call
+// sites keep importing them from this module unchanged.
 export { projectSkillContentDocName, skillLiveDocName };
 
 // NOTE: there is intentionally no `skillDocName(scope, name)` builder. Project
@@ -41,22 +43,41 @@ export function templateDocName(folder: string, name: string): string {
   return `${MANAGED_ARTIFACT_PREFIX_TEMPLATE}${trimmed ? `${trimmed}/` : ''}${name}`;
 }
 
-/** A path inside a PROJECT skill's source dir (`.ok/skills/<name>/<relPath>`) — a
- *  nested content doc or asset. */
-export function projectSkillFilePath(name: string, relPath: string): string {
-  return `${SKILL_CONTENT_ROOT}/${name}/${relPath}`;
+/**
+ * Live CRDT doc name for a skill LIST ENTRY. A project entry is a content doc
+ * at its REAL path (ext-less) — `.ok/skills/<name>/SKILL` for store skills,
+ * `.claude/skills/<name>/SKILL` (etc.) for in-place editor-dir skills
+ * — so when an entry is at hand, use this instead of the store-hardcoded
+ * `skillLiveDocName`. Global entries keep the managed-artifact scheme.
+ */
+export function skillEntryLiveDocName(
+  skill: Pick<SkillsListEntry, 'scope' | 'name' | 'path'>,
+): string {
+  return skill.scope === 'project'
+    ? stripMdExt(skill.path)
+    : skillLiveDocName(skill.scope, skill.name);
+}
+
+/** Per-bundle-file analogue of {@link skillEntryLiveDocName}: the live doc name
+ *  for `rel` (e.g. `references/patterns.md`) inside the entry's real dir. */
+export function skillEntryFileLiveDocName(
+  skill: Pick<SkillsListEntry, 'scope' | 'name' | 'path'>,
+  rel: string,
+): string {
+  if (skill.scope !== 'project') return skillFileLiveDocName(skill.scope, skill.name, rel);
+  const dir = skill.path.replace(/\/SKILL\.mdx?$/i, '');
+  return `${dir}/${stripMdExt(rel)}`;
 }
 
 /**
  * Parse a project-skill `SKILL.md` content doc name back to its skill name, or
  * null when it isn't one. Lets the editor render the unified skill identity panel
  * for project skills (which open as content docs) the same as global skills.
+ * Shape-matched via the shared core parser, so it covers BOTH the `.ok/skills`
+ * store AND in-place editor-dir skills (`.claude/skills/<name>/SKILL`, …).
  * Skill names are slash-free by grammar, so a nested path is rejected.
  */
 export function parseProjectSkillContentDocName(docName: string): string | null {
-  const prefix = `${SKILL_CONTENT_ROOT}/`;
-  const suffix = '/SKILL';
-  if (!docName.startsWith(prefix) || !docName.endsWith(suffix)) return null;
-  const name = docName.slice(prefix.length, docName.length - suffix.length);
-  return name && !name.includes('/') ? name : null;
+  const parsed = parseProjectSkillBundleDoc(docName);
+  return parsed?.kind === 'skill' ? parsed.name : null;
 }

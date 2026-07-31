@@ -56,6 +56,16 @@ export const InstalledSkillEntrySchema = z.looseObject({
   scope: InstalledSkillScopeSchema,
   scripts: z.boolean(),
   installedAt: z.iso.datetime(),
+  // Projection mode (marketplace slice 4): locally-authored skills project as a
+  // `symlink` back to the `.ok/skills` source; acquired/imported skills project
+  // as a verbatim `copy` so they survive a fresh clone / Windows / CI where the
+  // source link would dangle. Optional + defaulted-on-read so markers written by
+  // an older OK (symlink-only) parse unchanged.
+  projection: z.enum(['symlink', 'copy']).optional(),
+  // sha256 of the projected bundle at install time — recorded for `copy` entries
+  // ONLY (a symlink has no snapshot to drift). Lets reconcile detect a
+  // locally-edited projected copy.
+  contentHash: z.string().optional(),
 });
 export type InstalledSkillEntry = z.infer<typeof InstalledSkillEntrySchema>;
 

@@ -1,7 +1,6 @@
 ---
 name: open-knowledge-pack-okf
-version: "0.18.0"
-description: "How to work in an OKF starter project (the `okf` starter pack): a knowledge base that is conformant with Google's Open Knowledge Format (OKF) from commit one — `concepts/`, `references/`, `notes/`, a reserved `index.md` navigation hub, and a reserved `log.md` change history. Read when the project has these folders + reserved files. Carries the OKF conventions (non-empty `type` on every non-reserved doc; reserved files carry no frontmatter) as guidance, not enforcement. Complements the platform `open-knowledge` skill; does not replace it."
+description: "How to work in an OKF starter project (the `okf` starter pack): a knowledge base that is conformant with Google's Open Knowledge Format (OKF) from commit one — `concepts/`, `references/`, `notes/`, a reserved `index.md` navigation hub, and a reserved `log.md` change history. Read when the project has these folders plus reserved files, OR when asked whether a document is OKF-conformant, or to add a document to an OKF knowledge base. Carries the OKF conventions (non-empty `type` on every non-reserved doc; reserved files carry no frontmatter) as guidance, not enforcement. Complements the platform `open-knowledge` skill; does not replace it."
 compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack okf`."
 # `type` keeps this skill doc OKF-conformant: it installs as project-local
 # markdown under `.claude`/`.cursor`/`.agents` skills dirs, which OK admits into
@@ -17,7 +16,7 @@ metadata:
 
 This project was scaffolded to be conformant with **Google's Open Knowledge Format (OKF) v0.1** from the first commit — markdown + YAML frontmatter, a standard-markdown link graph, and two reserved files. Conformance here is pre-populated, **not enforced**: OpenKnowledge's native frontmatter schema stays open-shaped, nothing is linted, and you are free to author however you like. This skill explains the conventions so the kit stays OKF-portable as it grows.
 
-> This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/grounding rules) still governs every markdown operation — this layers OKF conventions on top.
+> This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the OKF conventions on top.
 
 ## The one rule (keep the kit conformant)
 

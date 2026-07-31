@@ -359,6 +359,35 @@ describe('commitWip', () => {
     expect(parent).toBe(sha1);
   });
 
+  test('CONCURRENT same-writer commits serialize: linear chain, no stale tree (P0 pin)', async () => {
+    // Without per-writer serialization the two flushes share the fixed-path
+    // index file `index-wip-<writer.id>`: the second's read-tree reseeds it
+    // from the old ref between the first's add and write-tree, committing a
+    // STALE tree (fresh files missing, old entries resurrected) and both
+    // commits claim the same parent (lost update).
+    writeFileSync(resolve(contentDir, 'a.md'), '# A\n');
+    const base = await commitWip(shadow, writer, 'content/docs', 'WIP: base');
+
+    writeFileSync(resolve(contentDir, 'b.md'), '# B\n');
+    writeFileSync(resolve(contentDir, 'c.md'), '# C\n');
+    const [s1, s2] = await Promise.all([
+      commitWip(shadow, writer, 'content/docs', 'WIP: concurrent 1'),
+      commitWip(shadow, writer, 'content/docs', 'WIP: concurrent 2'),
+    ]);
+
+    const sg = shadowGit(shadow);
+    // Linear chain off base — the two flushes must not share a parent.
+    const p1 = (await sg.raw('log', '-1', '--format=%P', s1)).trim();
+    const p2 = (await sg.raw('log', '-1', '--format=%P', s2)).trim();
+    expect([p1, p2].sort()).toEqual([base, s1].sort());
+    // The ref's final tree holds EVERY file — nothing dropped by a reseed.
+    const files = (await sg.raw('ls-tree', '-r', '--name-only', `refs/wip/main/${writer.id}`))
+      .trim()
+      .split('\n')
+      .sort();
+    expect(files).toEqual(['content/docs/a.md', 'content/docs/b.md', 'content/docs/c.md']);
+  });
+
   test('different writers get independent refs', async () => {
     const agent: WriterIdentity = {
       id: 'agent-cursor',

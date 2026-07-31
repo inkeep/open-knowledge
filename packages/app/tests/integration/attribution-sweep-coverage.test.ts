@@ -63,12 +63,34 @@ const REQUIRED_HANDLERS = [
   // call site. Renamed handleUploadImage → handleUploadAsset
   // because the route is no longer image-specific after the upload unification.
   'handleUploadAsset',
-  // `/api/skill/update` — refresh an installed starter-pack skill from OK's
-  // bundled source. A mutating CRDT content-doc write (composeAndWriteRawBody
-  // through the project skill content doc), so it threads identity at entry
-  // (extractActorIdentity for the timeline + extractAgentIdentity for the
-  // session) like the other content-write handlers.
-  'handleSkillUpdate',
+  // `/api/skill/import` — acquire a skill into `.ok/skills` as content. A
+  // mutating write through the same content writers an authored skill uses
+  // (`applySkillWrite` + `applySkillBundleFileWrite`), so it threads identity
+  // at entry (`extractActorIdentity`) and shadow-commits the project artifact.
+  'handleSkillImport',
+  // `/api/skills/import-bulk` — the same acquisition spine as
+  // `/api/skill/import`, run once per selected skill against a single clone, so
+  // it threads identity at entry exactly the same way.
+  'handleSkillsImportBulk',
+  // `/api/skill/reimport` — refresh an imported skill from its recorded
+  // upstream (`.ok/skills-lock.json`). Re-fetches and rewrites the skill via
+  // the same content writers as import, so it threads identity at entry
+  // (`extractActorIdentity`) like `handleSkillImport`.
+  'handleSkillReimport',
+  // `/api/skill-upload` — materialize an uploaded skill archive into
+  // `.ok/skills` via the shared `finishSkillImport` spine (the same content
+  // writers as import), so it threads identity at entry (`extractActorIdentity`)
+  // like `handleSkillImport`.
+  'handleSkillUpload',
+  // `/api/skill/move-scope` — relocate a skill across scopes (project ↔ global).
+  // Copies the bundle verbatim + removes the source in one atomic op; the
+  // project-scope side is shadow-committed, so it threads identity at entry
+  // (`extractActorIdentity`) like the other mutating skill handlers.
+  'handleSkillMoveScope',
+  // `/api/skill/duplicate` — copy a complete skill bundle under a new project
+  // artifact identity. Project copies are shadow-committed, so attribution is
+  // extracted at the route boundary like import and cross-scope move.
+  'handleSkillDuplicate',
   // `/api/lint/fix` — apply markdownlint's auto-fixes to a document through the
   // agent-write spine (applyAgentMarkdownWrite). A mutating CRDT content-doc
   // write, so it threads extractAgentIdentity at entry to attribute the fix to
@@ -182,7 +204,42 @@ const EXEMPT_HANDLERS = new Set([
   // route-registry entry is the dispatcher, exempt by the same rationale as
   // `handleSkill` / `handleTemplate`.
   'handleSkillFile',
+  // `/api/skill-file/rename` — moves ONE bundle file; threads
+  // `extractActorIdentity` itself (folder timeline) and rides the same
+  // project-config posture as its PUT/DELETE siblings.
+  'handleSkillFileRename',
   'handleSkillsList',
+  // `/api/skills/search` + `/api/skills/detail` — read-only skill-discovery
+  // proxies (GET). Search proxies skills.sh with a GitHub-topic fallback;
+  // detail enriches one result from the skills.sh page's Open Graph tags.
+  // Neither writes, so there is nothing to attribute.
+  'handleSkillsSearch',
+  'handleSkillsDetail',
+  // `/api/skill/edit-external` — arms the external-skill registry (name → real
+  // dir) so a detected skill opens as an editable `__extskill__/` buffer. Authors
+  // no CRDT content itself; the autosave-out writes happen later through
+  // persistence (classified `file-system`). Loopback-gated local-op, same
+  // exempt posture as `handleSkillInstall` / `handleInstallSkill`.
+  'handleSkillEditExternal',
+  // `/api/skills/discover` — read-only peek at a remote source (throwaway
+  // shallow clone) enumerating the skills it bundles so Import can offer a
+  // picker. Writes nothing to attribute.
+  'handleSkillsDiscover',
+  // `/api/skills/popular` — read-only Discover blank-state list, scraped from the
+  // skills.sh front page + cached. Writes nothing to attribute.
+  'handleSkillsPopular',
+  // `/api/skills/preview` — fetches an un-imported skill's SKILL.md text (via a
+  // throwaway shallow clone) so the Explore modal can render it before import.
+  // Read-only; writes nothing to attribute.
+  'handleSkillsPreview',
+  // `/api/skills/resolve-ref` — resolves a skill's `/other-skill` reference by
+  // trusted-provenance precedence (local / same-source clone / same-publisher
+  // search). Read-only lookup; writes nothing to attribute.
+  'handleSkillsResolveRef',
+  // `/api/skills/installed` — read-only cross-harness installed-skill
+  // enumeration (marketplace slice 1). Reads harness skill dirs + the Claude
+  // plugin manifest; performs no writes, so there is nothing to attribute.
+  'handleSkillsInstalled',
   // `/api/skill/install` — projects a skill's source into editor host dirs on
   // this machine. A local-op projection (writes `.{host}/skills/`, OUTSIDE the
   // content/CRDT plane), not an attributed content mutation — the SOURCE edit
@@ -197,16 +254,15 @@ const EXEMPT_HANDLERS = new Set([
   // action (local-op projection), not agent-authored content; same exempt
   // posture as `handleSkillInstall`.
   'handleSkillTargets',
-  // `/api/skills/management` — GET reads / PUT records the per-machine
-  // project-managed opt-in + runs the import reconcile (local-op projection).
-  // A user/UI project-config action, not agent-authored content; same exempt
-  // posture as `handleSkillTargets`.
-  'handleSkillsManagement',
   // `/api/skill/restore` (fs-direct restore of a `.ok/skills/` artifact). Same
   // project-config posture as the other skill handlers — restore threads
   // `extractActorIdentity` to attribute the new version, but the artifact is
   // config, not agent-authored doc content.
   'handleSkillRestore',
+  // `/api/skill/revert` (fs-direct restore to the install baseline). Threads
+  // `extractActorIdentity` to attribute the revert as a new version, same posture
+  // as restore.
+  'handleSkillRevert',
   'handleSuggestLinks',
   'handlePageHeadings',
   'handleHistory',

@@ -1,7 +1,6 @@
 import { SKILL_NAME_REGEX, type SkillScope } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { useId, useState } from 'react';
-import { toast } from 'sonner';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -13,206 +12,148 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { useSkills } from '@/hooks/use-skills';
-import { SKILL_SCOPE_ORDER, skillNameSetsByScope, useSkillScopeLabels } from '@/lib/skill-scope';
-import { saveSkill } from '@/lib/skills-api';
-
-interface Props {
-  defaultScope: SkillScope;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  /** Called after a successful create with the new skill's scope + name. */
-  onCreated: (created: { scope: SkillScope; name: string }) => void;
-}
+import { DEFAULT_NEW_SKILL_DESCRIPTION } from '@/hooks/use-create-blank-skill';
 
 /**
- * Create a new skill: pick a scope (Project vs Global), name it, describe it.
- * On create the `SKILL.md` is written and the caller opens it as an editor tab —
- * the live CRDT editor takes over from there (body + description edits are CRDT
- * mutations). Nothing is written until Create, so there are no orphaned drafts.
+ * Name + description prompt for creating a skill. Before this, "New
+ * skill" immediately created `new-skill` with an empty description — no chance
+ * to name it, and the empty description then blocked Install. Both fields are
+ * PRE-FILLED (first-free `new-skill[-N]` + a placeholder description) so the
+ * fast path is still one click (open → Create), while anyone who wants to name
+ * it up front can. The name grammar mirrors the skill slug (`[a-z0-9-]+`).
  */
-export function NewSkillDialog({ defaultScope, open, onOpenChange, onCreated }: Props) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        {open ? (
-          <Body defaultScope={defaultScope} onOpenChange={onOpenChange} onCreated={onCreated} />
-        ) : null}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function Body({
-  defaultScope,
+export function NewSkillDialog({
+  open,
   onOpenChange,
-  onCreated,
+  scope,
+  existingNames,
+  busy,
+  onCreate,
 }: {
-  defaultScope: SkillScope;
+  open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreated: (created: { scope: SkillScope; name: string }) => void;
+  scope: SkillScope;
+  /** Names already taken in this scope, for the duplicate check + default suffix. */
+  existingNames: ReadonlySet<string>;
+  busy: boolean;
+  onCreate: (input: { name: string; description: string }) => void;
 }) {
   const { t } = useLingui();
-  const nameId = useId();
-  const descriptionId = useId();
-  const scopeId = useId();
-  const scopeLabels = useSkillScopeLabels();
-  const skillsState = useSkills();
-  const nameSets = skillNameSetsByScope(skillsState.status === 'ready' ? skillsState.data : []);
-
-  const [scope, setScope] = useState<SkillScope>(defaultScope);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [touched, setTouched] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const nameId = useId();
+  const descriptionId = useId();
+  const errorId = useId();
+  const nameRef = useRef<HTMLInputElement>(null);
 
-  const trimmedName = name.trim();
-  const nameInvalid = trimmedName === '' || !SKILL_NAME_REGEX.test(trimmedName);
-  const nameCollides = !nameInvalid && nameSets[scope].has(trimmedName);
-  const canCreate = !creating && !nameInvalid && !nameCollides;
+  useEffect(() => {
+    if (!open) return;
+    let next = 'new-skill';
+    for (let i = 2; existingNames.has(next); i++) next = `new-skill-${i}`;
+    setName(next);
+    setDescription(DEFAULT_NEW_SKILL_DESCRIPTION);
+    setError(null);
+  }, [open, existingNames]);
 
-  // Lenient sanitize while TYPING: lowercase, illegal-char runs → a single
-  // hyphen, collapse hyphen runs, trim only LEADING hyphens. Trailing hyphens
-  // are kept so a hyphenated name (`image-location`) can be typed at all — the
-  // `-` is momentarily trailing as you type it, and trimming it on every
-  // keystroke (the old behavior) made hyphens impossible to enter. A trailing
-  // hyphen is trimmed on blur.
-  function sanitizeNameInput(text: string): string {
-    return text
-      .toLowerCase()
-      .replace(/[^a-z0-9-]+/g, '-')
-      .replace(/-{2,}/g, '-')
-      .replace(/^-+/, '');
+  function validationError(candidate: string): string | null {
+    const trimmed = candidate.trim();
+    if (!trimmed) return t`Name cannot be empty`;
+    if (!SKILL_NAME_REGEX.test(trimmed)) return t`Use lowercase letters, numbers, and hyphens only`;
+    if (existingNames.has(trimmed)) return t`A skill named "${trimmed}" already exists here`;
+    return null;
   }
 
-  async function create() {
-    if (!canCreate) {
-      setTouched(true);
+  function submit() {
+    const trimmed = name.trim();
+    const err = validationError(trimmed);
+    if (err) {
+      setError(err);
+      nameRef.current?.focus();
       return;
     }
-    setCreating(true);
-    const result = await saveSkill({
-      scope,
-      name: trimmedName,
-      frontmatter: { name: trimmedName, description: description.trim() },
-      body: '',
-    });
-    setCreating(false);
-    if (!result.ok) {
-      toast.error(t`Couldn't create skill: ${result.error}`);
-      return;
-    }
-    toast.success(t`Skill "${trimmedName}" created`);
-    onCreated({ scope, name: trimmedName });
-    onOpenChange(false);
+    // Empty description falls back to the placeholder so the skill stays
+    // installable — the same default the fast paths use.
+    onCreate({ name: trimmed, description: description.trim() || DEFAULT_NEW_SKILL_DESCRIPTION });
   }
-
-  const showNameError = touched && (nameInvalid || nameCollides);
 
   return (
-    <>
-      <DialogHeader>
-        <DialogTitle>
-          <Trans>New skill</Trans>
-        </DialogTitle>
-        <DialogDescription>
-          <Trans>Teach agents a repeatable task. You can edit the body after creating.</Trans>
-        </DialogDescription>
-      </DialogHeader>
-      <DialogBody className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={scopeId}>
-            <Trans>Scope</Trans>
-          </Label>
-          <Select value={scope} onValueChange={(v) => setScope(v as SkillScope)}>
-            <SelectTrigger id={scopeId} size="sm" className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SKILL_SCOPE_ORDER.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {scopeLabels[s]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={nameId}>
-            <Trans>Name</Trans>
-          </Label>
-          <Input
-            id={nameId}
-            data-testid="skill-name-input"
-            value={name}
-            onChange={(e) => setName(sanitizeNameInput(e.target.value))}
-            onBlur={() => {
-              setTouched(true);
-              setName((n) => n.replace(/-+$/, ''));
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void create();
-            }}
-            aria-invalid={showNameError}
-            className="font-mono"
-          />
-          {showNameError ? (
-            <p className="text-[11px] text-destructive">
-              {nameCollides ? (
-                <Trans>A skill with this name already exists.</Trans>
-              ) : (
-                <Trans>Use lowercase letters, digits, and hyphens only.</Trans>
-              )}
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            <Trans>New skill</Trans>
+          </DialogTitle>
+          <DialogDescription>
+            {scope === 'global' ? (
+              <Trans>Create a personal skill, available across every project.</Trans>
+            ) : (
+              <Trans>Create a skill for this project.</Trans>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody className="space-y-4">
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium" htmlFor={nameId}>
+              <Trans>Name</Trans>
+            </label>
+            <Input
+              ref={nameRef}
+              id={nameId}
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                setError(null);
+              }}
+              placeholder="my-skill"
+              autoFocus
+              onFocus={(e) => e.currentTarget.select()}
+              aria-invalid={error ? true : undefined}
+              aria-describedby={error ? errorId : undefined}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !busy) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+            />
+            {error ? (
+              <p id={errorId} role="alert" className="text-1sm text-destructive">
+                {error}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium" htmlFor={descriptionId}>
+              <Trans>Description</Trans>
+            </label>
+            <Textarea
+              id={descriptionId}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+              placeholder={DEFAULT_NEW_SKILL_DESCRIPTION}
+            />
+            <p className="text-2xs text-muted-foreground">
+              <Trans>Tells agents when to reach for this skill. You can edit it later.</Trans>
             </p>
-          ) : (
-            <p className="text-[11px] text-muted-foreground">
-              <Trans>The folder on disk and the id agents use to invoke this skill.</Trans>
-            </p>
-          )}
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={descriptionId}>
-            <Trans>Description</Trans>
-          </Label>
-          <Textarea
-            id={descriptionId}
-            data-testid="skill-description-input"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="min-h-16 resize-none"
-          />
-          <p className="text-[11px] text-muted-foreground">
-            <Trans>What agents match on to decide when to use the skill.</Trans>
-          </p>
-        </div>
-      </DialogBody>
-      <DialogFooter>
-        <Button
-          variant="outline"
-          className="font-mono uppercase"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => onOpenChange(false)}
-          disabled={creating}
-        >
-          <Trans>Cancel</Trans>
-        </Button>
-        <Button
-          data-testid="skill-create-button"
-          onClick={() => void create()}
-          disabled={!canCreate}
-        >
-          {creating ? <Trans>Creating</Trans> : <Trans>Create skill</Trans>}
-        </Button>
-      </DialogFooter>
-    </>
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            className="font-mono uppercase"
+            onClick={() => onOpenChange(false)}
+            disabled={busy}
+          >
+            <Trans>Cancel</Trans>
+          </Button>
+          <Button onClick={submit} disabled={busy || !name.trim()}>
+            {busy ? <Trans>Creating</Trans> : <Trans>Create</Trans>}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -246,7 +246,7 @@ describe('SeedDialog runtime behavior', () => {
       ok: true,
       plan: {
         ...plainNotesPlan,
-        packSkill: { name: 'open-knowledge-pack-plain-notes', pending: true },
+        packSkills: [{ name: 'open-knowledge-pack-plain-notes', pending: true }],
       },
     });
 

@@ -1,3 +1,4 @@
+import { resolveSkillBundleWikiTarget, resolveSkillSlashTarget } from '../constants/cc1.ts';
 import { DEFAULT_DOC_EXTENSION } from '../constants/doc-extensions.ts';
 import { type ResolvedInternalHref, resolveInternalHref } from './resolve-internal-href.ts';
 
@@ -84,6 +85,37 @@ export function classifyMarkdownHref(
 
   if (isExternalHref(trimmed)) {
     return { kind: 'external', url: trimmed };
+  }
+
+  // A skill bundle ref (`references/x`, `scripts/x`) inside a project SKILL doc
+  // resolves into the skill dir, not the content root, so generic relative
+  // resolution maps it to the wrong (nonexistent) doc and the link reads broken /
+  // won't navigate. Apply the shared skill-bundle overlay (the same helper the
+  // backlink index uses for `[[wiki]]` bundle refs) so markdown links reach the
+  // real ref doc. Narrow by design: non-skill sources / non-bundle targets return
+  // null and fall through unchanged.
+  const hashAt = trimmed.indexOf('#');
+  const bundlePath = hashAt < 0 ? trimmed : trimmed.slice(0, hashAt);
+  const bundleDoc = resolveSkillBundleWikiTarget(bundlePath, sourceDocName);
+  if (bundleDoc) {
+    return {
+      kind: 'doc',
+      docName: bundleDoc,
+      anchor: hashAt < 0 ? null : trimmed.slice(hashAt + 1),
+    };
+  }
+
+  // `/<skill-name>` inside a skill names a SIBLING SKILL, the way a slash
+  // command names one — it is not a root-relative path. Skill bodies routinely
+  // cross-reference each other that way, and read as a path it points at a
+  // root doc that does not exist, so following one offered to create a page.
+  const slashDoc = resolveSkillSlashTarget(bundlePath, sourceDocName);
+  if (slashDoc) {
+    return {
+      kind: 'doc',
+      docName: slashDoc,
+      anchor: hashAt < 0 ? null : trimmed.slice(hashAt + 1),
+    };
   }
 
   const internal = resolveInternalHref(trimmed, sourceDocName);

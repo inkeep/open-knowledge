@@ -90,14 +90,6 @@ vi.doMock('@/lib/share/run-share-action', () => ({
 
 vi.doMock('@/components/ui/button', () => ({ Button }));
 
-vi.doMock('@/components/ui/collapsible', () => ({
-  Collapsible: ({ children, defaultOpen: _defaultOpen, ...props }: Record<string, unknown>) => (
-    <div {...props}>{children as ReactNode}</div>
-  ),
-  CollapsibleContent: ElementPassThrough,
-  CollapsibleTrigger: Button,
-}));
-
 vi.doMock('@/components/ui/sidebar', () => ({
   Sidebar: ElementPassThrough,
   SidebarContent: ElementPassThrough,
@@ -187,6 +179,9 @@ vi.doMock('@/editor/DocumentContext', () => ({
     activeDocName: 'notes/source',
     activeTarget: { kind: 'doc', target: 'notes/source', docName: 'notes/source' },
   }),
+  // FileSidebar imports isSkillsNewTabId; the partial mock must keep that
+  // export or the module link fails (activeNewTabId is unset here → false).
+  isSkillsNewTabId: () => false,
 }));
 
 vi.doMock('@/hooks/use-folder-config', () => ({
@@ -212,6 +207,8 @@ vi.doMock('sonner', () => ({
 
 const { FileSidebar } = await import('./FileSidebar');
 
+// The real TooltipProvider, not a mock — the sidebar's toolbar renders Radix
+// tooltips that throw without a provider in scope.
 function renderSidebar() {
   return render(<FileSidebar onOpenSearch={() => {}} />, { wrapper: TooltipProvider });
 }
@@ -227,13 +224,6 @@ describe('FileSidebar project-root Share', () => {
 
   afterEach(() => {
     cleanup();
-  });
-
-  test('the project-root header is marked so right-clicks open the project menu', async () => {
-    renderSidebar();
-    const header = await screen.findByText('open-knowledge');
-    // The header (or an ancestor) carries the right-click-exemption marker.
-    expect(header.closest('[data-sidebar-root-context]')).not.toBeNull();
   });
 
   test('empty-space menu shows Share and dispatches a root-scope share input', async () => {

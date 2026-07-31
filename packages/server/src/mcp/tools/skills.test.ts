@@ -7,7 +7,7 @@
  * round-trip (a project `.md` ref joining the link graph, a script round-trip
  * read) lives in the integration suite.
  */
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { BUNDLE_SKILL_NAME } from '../../skill-bundles.ts';
 import { HOCUSPOCUS_NOT_RUNNING_ERROR, type ServerInstance } from './shared.ts';
@@ -21,6 +21,16 @@ interface ToolResult {
   isError?: true;
 }
 type Handler = (args: Record<string, unknown>) => Promise<ToolResult>;
+
+let originalFetch: typeof fetch;
+
+beforeEach(() => {
+  originalFetch = globalThis.fetch;
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
 
 function captureSkills(serverUrl: string | undefined): Handler {
   let handler: Handler | undefined;
@@ -76,6 +86,58 @@ describe('skills read tool — server-required', () => {
   });
 });
 
+describe('skills read tool — marketplace search overload', () => {
+  test('`query` cannot be combined with managed-skill selectors', async () => {
+    const handler = captureSkills(undefined);
+    const r = await handler({ query: 'review bot', name: 'trip-log' });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain('do not combine');
+  });
+
+  test('`query` calls skills search and returns import-ready marketplace rows', async () => {
+    const calls: string[] = [];
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      calls.push(String(url));
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          results: [
+            {
+              name: 'review-bot',
+              source: 'acme/skills',
+              description: 'Review pull requests',
+              installs: 42,
+              publisher: 'acme',
+              ignored: 'not projected',
+            },
+            { name: 123, source: 'bad-row' },
+          ],
+          backend: 'skills.sh',
+          degraded: false,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }) as unknown as typeof fetch;
+
+    const handler = captureSkills('http://localhost:4321');
+    const r = await handler({ query: 'review bot' });
+
+    expect(r.isError).toBeUndefined();
+    expect(calls).toEqual(['http://localhost:4321/api/skills/search?q=review%20bot']);
+    expect(r.structuredContent?.results).toEqual([
+      {
+        name: 'review-bot',
+        source: 'acme/skills',
+        description: 'Review pull requests',
+        installs: 42,
+        publisher: 'acme',
+      },
+    ]);
+    expect(r.structuredContent?.backend).toBe('skills.sh');
+    expect(r.structuredContent?.degraded).toBe(false);
+  });
+});
+
 describe('skills read tool — built-in OK skills short-circuit before the network', () => {
   // No server URL at all: reaching the teaching error proves the built-in guard
   // fires before any cwd/server resolution. This is the exact collision from the
@@ -112,5 +174,69 @@ describe('skills read tool — built-in OK skills short-circuit before the netwo
     const r = await handler({ name: 'open-knowledge-pack-fishing' });
     expect(r.isError).toBe(true);
     expect(text(r)).toContain(HOCUSPOCUS_NOT_RUNNING_ERROR);
+  });
+});
+
+describe('skills LIST — scope filters, and mode is always answered', () => {
+  let originalFetch: typeof fetch;
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function stubList() {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            skills: [
+              { name: 'proj-a', scope: 'project', installed: true, hosts: ['claude'] },
+              {
+                name: 'glob-a',
+                scope: 'global',
+                installed: true,
+                hosts: ['claude'],
+                linkMode: true,
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    ) as unknown as typeof fetch;
+  }
+
+  test('`scope` filters the list instead of being ignored', async () => {
+    stubList();
+    const r = await captureSkills('http://127.0.0.1:4321')({ scope: 'global' });
+    const skills = r.structuredContent?.skills as Array<{ name: string; scope: string }>;
+    expect(skills.map((s) => s.name)).toEqual(['glob-a']);
+  });
+
+  test('omitting `scope` still lists both levels', async () => {
+    stubList();
+    const r = await captureSkills('http://127.0.0.1:4321')({});
+    const skills = r.structuredContent?.skills as Array<{ name: string }>;
+    expect(skills.map((s) => s.name)).toEqual(['proj-a', 'glob-a']);
+  });
+
+  test('`mode` is present on every row — a copy-form skill says so', async () => {
+    // It used to be omitted unless the server reported linkMode, so an agent
+    // could not tell "this skill uses copies" from "unknown" and would guess.
+    stubList();
+    const r = await captureSkills('http://127.0.0.1:4321')({});
+    const skills = r.structuredContent?.skills as Array<{ name: string; mode: string }>;
+    expect(skills.map((s) => [s.name, s.mode])).toEqual([
+      ['proj-a', 'copy'],
+      ['glob-a', 'link'],
+    ]);
+  });
+
+  test('a too-short query is refused, not answered as an empty skills.sh result', async () => {
+    const r = await captureSkills('http://127.0.0.1:4321')({ query: 'k' });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain('at least 2 characters');
+    expect(r.structuredContent?.backend).toBeUndefined();
   });
 });

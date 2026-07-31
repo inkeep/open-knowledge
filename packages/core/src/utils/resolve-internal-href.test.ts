@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { skillFileLiveDocName } from '../constants/cc1.ts';
 import { resolveInternalHref } from './resolve-internal-href.ts';
 
 describe('resolveInternalHref', () => {
@@ -69,5 +70,28 @@ describe('resolveInternalHref', () => {
   test('returns null when relative traversal would escape the content root', () => {
     expect(resolveInternalHref('../../escape.md', 'folder/page')).toBeNull();
     expect(resolveInternalHref('../../../way-out.md', 'deep/a/b')).toBeNull();
+  });
+
+  // A skill's SKILL.md links to its references with skill-relative paths
+  // (`references/setup.md`). With the file's own bundle doc as the base, those
+  // resolve to the sibling reference doc instead of a nonexistent content path —
+  // the fix for §8.3 (valid skill references rendering as broken links).
+  describe('skill bundle relative references (§8.3)', () => {
+    for (const scope of ['global', 'project'] as const) {
+      test(`references/setup.md from a ${scope} SKILL.md → the reference doc`, () => {
+        const base = skillFileLiveDocName(scope, 'demo', 'SKILL');
+        expect(resolveInternalHref('references/setup.md', base)).toEqual({
+          docName: skillFileLiveDocName(scope, 'demo', 'references/setup'),
+          anchor: null,
+        });
+      });
+      test(`a sibling link from a ${scope} reference resolves within references/`, () => {
+        const base = skillFileLiveDocName(scope, 'demo', 'references/setup');
+        expect(resolveInternalHref('anti-patterns.md', base)).toEqual({
+          docName: skillFileLiveDocName(scope, 'demo', 'references/anti-patterns'),
+          anchor: null,
+        });
+      });
+    }
   });
 });

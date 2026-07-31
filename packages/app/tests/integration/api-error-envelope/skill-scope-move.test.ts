@@ -4,7 +4,7 @@
  *
  * Was the bug: after a global skill is DELETEd, a
  * subsequent `PUT /api/skill scope=global` of the SAME name returned 200 but
- * never wrote `<home>/.ok/skills/<name>/SKILL.md` to disk. The delete unloads
+ * never wrote the global SKILL.md to disk. The delete unloads
  * the live doc (`captureAndCloseDocuments`) to stop the OLD doc resurrecting the
  * file, but the re-create then short-circuited as a no-op because the parallel
  * managed-artifact LKG cache was never evicted on delete — an identical-content
@@ -24,9 +24,17 @@
  * Hermetic global home via `configHomedirOverride`.
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { SkillsListSuccessSchema } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -35,6 +43,12 @@ import { createTestServer, pollUntil, type TestServer } from '../test-harness';
 let server: TestServer;
 let tmpHome: string;
 const base = () => `http://127.0.0.1:${server.port}`;
+// Creates land at the DEFAULT skill home (existence-activated: `.agents` when
+// the tree has it — the harness seeds every editor dir — else `.claude`).
+const skillsRootIn = (b: string) =>
+  existsSync(join(b, '.agents')) ? join(b, '.agents', 'skills') : join(b, '.claude', 'skills');
+const skillsRootRelIn = (b: string) =>
+  existsSync(join(b, '.agents')) ? '.agents/skills' : '.claude/skills';
 const NAME = 'trip-log';
 
 const putSkill = (scope: 'global' | 'project', name = NAME) =>
@@ -52,7 +66,11 @@ const putSkill = (scope: 'global' | 'project', name = NAME) =>
 const delSkill = (scope: 'global' | 'project', name = NAME) =>
   fetch(`${base()}/api/skill?name=${name}&scope=${scope}`, { method: 'DELETE' });
 
-/** Replicate the client `moveSkillScope` server compose: PUT dest, DELETE source. */
+/**
+ * The LEGACY compose (PUT dest, DELETE source) exercised via the raw endpoints.
+ * The current client uses the atomic `POST /api/skill/move-scope` (E2 below);
+ * this stays as coverage of the underlying PUT/DELETE + LKG-eviction behavior.
+ */
 async function move(from: 'global' | 'project', to: 'global' | 'project') {
   expect((await putSkill(to)).status).toBe(200);
   expect((await delSkill(from)).status).toBe(200);
@@ -77,10 +95,10 @@ async function bundleFilePaths(scope: 'global' | 'project', name: string): Promi
 }
 
 /**
- * Replicate the FIXED cross-scope compose (both `moveSkillCrossScope` MCP +
- * client `moveSkillScope`): PUT dest SKILL.md → copy EVERY bundle file
- * (GET-source + PUT-dest) → only THEN DELETE source. Copy-all-before-delete is
- * the data-safety ordering both composers use.
+ * The LEGACY full-bundle compose: PUT dest SKILL.md → copy every text bundle
+ * file (GET-source + PUT-dest) → only THEN DELETE source. The current client
+ * uses the atomic endpoint (E2), which copies the whole dir verbatim including
+ * binaries; this stays as coverage of the per-file endpoints + graph rejoin.
  */
 async function moveFullBundle(from: 'global' | 'project', to: 'global' | 'project', name: string) {
   expect((await putSkill(to, name)).status).toBe(200);
@@ -119,12 +137,12 @@ describe('E1: cross-scope move / global re-create', () => {
   test('re-create a global skill after deleting it (no project involved)', async () => {
     const N = 'recreate-probe';
     expect((await putSkill('global', N)).status).toBe(200);
-    expect(existsSync(join(tmpHome, '.ok', 'skills', N, 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(skillsRootIn(tmpHome), N, 'SKILL.md'))).toBe(true);
     expect((await delSkill('global', N)).status).toBe(200);
-    expect(existsSync(join(tmpHome, '.ok', 'skills', N, 'SKILL.md'))).toBe(false);
+    expect(existsSync(join(skillsRootIn(tmpHome), N, 'SKILL.md'))).toBe(false);
     // Re-create after delete — this PUT returns 200 but currently does NOT persist.
     expect((await putSkill('global', N)).status).toBe(200);
-    expect(existsSync(join(tmpHome, '.ok', 'skills', N, 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(skillsRootIn(tmpHome), N, 'SKILL.md'))).toBe(true);
   });
 
   test('global → project → global: list shows it under global at each step', async () => {
@@ -159,13 +177,13 @@ describe('E1: cross-scope move / global re-create', () => {
     await moveFullBundle('global', 'project', N);
 
     // (a) both bundle files now live at the PROJECT skill path on disk…
-    const projRef = join(server.contentDir, '.ok', 'skills', N, 'references', 'notes.md');
-    const projScript = join(server.contentDir, '.ok', 'skills', N, 'scripts', 'run.sh');
+    const projRef = join(skillsRootIn(server.contentDir), N, 'references', 'notes.md');
+    const projScript = join(skillsRootIn(server.contentDir), N, 'scripts', 'run.sh');
     expect(existsSync(projRef)).toBe(true);
     expect(existsSync(projScript)).toBe(true);
     expect(readFileSync(projScript, 'utf-8')).toBe(script);
     // (b) the source GLOBAL dir is gone.
-    expect(existsSync(join(tmpHome, '.ok', 'skills', N))).toBe(false);
+    expect(existsSync(join(skillsRootIn(tmpHome), N))).toBe(false);
     expect(await scopeOf(N)).toBe('project');
 
     // (c) the project `.md` reference participates in the backlink graph at its
@@ -177,7 +195,132 @@ describe('E1: cross-scope move / global re-create', () => {
     });
     expect(target.ok).toBe(true);
     await pollUntil(async () =>
-      (await backlinkSources('xs-target')).includes(`.ok/skills/${N}/references/notes`),
+      (await backlinkSources('xs-target')).includes(
+        `${skillsRootRelIn(server.contentDir)}/${N}/references/notes`,
+      ),
     );
   }, 20000);
+});
+
+/** The FIXED atomic cross-scope move — one server request, no client compose. */
+const moveScope = (name: string, fromScope: 'global' | 'project', toScope: 'global' | 'project') =>
+  fetch(`${base()}/api/skill/move-scope`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, fromScope, toScope }),
+  });
+
+const readSkillBody = async (scope: 'global' | 'project', name: string): Promise<string> => {
+  const res = await fetch(`${base()}/api/skill?name=${name}&scope=${scope}`);
+  const detail = (await res.json().catch(() => null)) as { skill?: { body?: string } } | null;
+  return detail?.skill?.body ?? '';
+};
+
+describe('E2: atomic /api/skill/move-scope', () => {
+  /**
+   * The doubling regression: the old client dance wrote the destination through
+   * the CRDT content-doc path while a stale live doc was open — the bridge MERGED
+   * old+new, so a round-trip nested a second frontmatter+body into SKILL.md
+   * ("test" → "test\n---\n...\n---\ntest"). The atomic copy with the live docs
+   * closed must round-trip byte-identically.
+   */
+  test('global → project → global keeps SKILL.md body byte-identical (no doubling)', async () => {
+    const N = 'atomic-trip';
+    expect((await putSkill('global', N)).status).toBe(200);
+    const before = await readSkillBody('global', N);
+
+    expect((await moveScope(N, 'global', 'project')).status).toBe(200);
+    expect(await scopeOf(N)).toBe('project');
+    expect((await moveScope(N, 'project', 'global')).status).toBe(200);
+    expect(await scopeOf(N)).toBe('global');
+
+    expect(await readSkillBody('global', N)).toBe(before);
+    // On disk: exactly ONE frontmatter delimiter pair — no nested block.
+    const md = readFileSync(join(skillsRootIn(tmpHome), N, 'SKILL.md'), 'utf-8');
+    expect(md.match(/^---$/gm)?.length).toBe(2);
+  });
+
+  test('carries a raw binary bundle file (the text-only copy silently dropped it)', async () => {
+    const N = 'atomic-binary';
+    expect((await putSkill('global', N)).status).toBe(200);
+    const bin = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0xff, 0xfe]);
+    const srcAsset = join(skillsRootIn(tmpHome), N, 'references', 'logo.png');
+    mkdirSync(dirname(srcAsset), { recursive: true });
+    writeFileSync(srcAsset, bin);
+
+    expect((await moveScope(N, 'global', 'project')).status).toBe(200);
+
+    const destAsset = join(skillsRootIn(server.contentDir), N, 'references', 'logo.png');
+    expect(existsSync(destAsset)).toBe(true);
+    expect(readFileSync(destAsset).equals(bin)).toBe(true);
+    // Source dir fully removed — no residue to re-copy on a move back.
+    expect(existsSync(join(skillsRootIn(tmpHome), N))).toBe(false);
+  });
+
+  test('transfers imported provenance and keeps copy projections across scopes', async () => {
+    const N = 'atomic-provenance';
+    expect((await putSkill('global', N)).status).toBe(200);
+
+    const globalLockPath = join(tmpHome, '.ok', 'skills-lock.json');
+    mkdirSync(dirname(globalLockPath), { recursive: true });
+    writeFileSync(
+      globalLockPath,
+      `${JSON.stringify(
+        {
+          schema: 1,
+          skills: {
+            [N]: {
+              source: 'https://github.com/acme/skills',
+              contentHash: 'upstream-hash',
+              localHash: 'pre-move-local-hash',
+              importedAt: '2026-07-29T12:00:00.000Z',
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    const install = await fetch(`${base()}/api/skill/install`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scope: 'global',
+        name: N,
+        targets: ['claude', 'cursor'],
+        linkMode: false,
+      }),
+    });
+    expect(install.status).toBe(200);
+
+    expect((await moveScope(N, 'global', 'project')).status).toBe(200);
+
+    const globalLock = JSON.parse(readFileSync(globalLockPath, 'utf-8')) as {
+      skills: Record<string, unknown>;
+    };
+    const projectLock = JSON.parse(
+      readFileSync(join(server.contentDir, '.ok', 'skills-lock.json'), 'utf-8'),
+    ) as { skills: Record<string, { source: string; localHash?: string }> };
+    expect(globalLock.skills[N]).toBeUndefined();
+    expect(projectLock.skills[N]?.source).toBe('https://github.com/acme/skills');
+    expect(projectLock.skills[N]?.localHash).not.toBe('pre-move-local-hash');
+    expect(lstatSync(join(server.contentDir, '.cursor', 'skills', N)).isSymbolicLink()).toBe(false);
+
+    const listed = (await fetch(`${base()}/api/skills?scope=project`).then((r) => r.json())) as {
+      skills: Array<{ name: string; origin?: { source: string } }>;
+    };
+    expect(listed.skills.find((skill) => skill.name === N)?.origin?.source).toBe(
+      'https://github.com/acme/skills',
+    );
+  });
+
+  test('refuses (409) when the destination scope already has that name; source untouched', async () => {
+    const N = 'atomic-dup';
+    expect((await putSkill('global', N)).status).toBe(200);
+    expect((await putSkill('project', N)).status).toBe(200);
+    expect((await moveScope(N, 'global', 'project')).status).toBe(409);
+    // Both copies still exist — a refused move must not delete the source.
+    expect(existsSync(join(skillsRootIn(tmpHome), N, 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(skillsRootIn(server.contentDir), N, 'SKILL.md'))).toBe(true);
+  });
 });

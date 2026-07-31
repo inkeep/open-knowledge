@@ -87,7 +87,7 @@ export const okVitestBase = {
     hookTimeout: 30_000,
     setupFiles: [bunGlobalShimPath],
     include: ['**/*.test.ts?(x)'],
-    exclude: [...configDefaults.exclude, '**/*.spec.*', '**/*.e2e.*', '**/*.dom.test.tsx'],
+    exclude: [...configDefaults.exclude, '**/*.spec.*', '**/*.e2e.*', '**/*.dom.test.ts?(x)'],
     // Vitest 4 flattened the pool sizing knobs to top-level `maxWorkers`/
     // `minWorkers` (the old `poolOptions.forks.maxForks` is a no-op here).
     ...(boundedMaxForks === undefined ? {} : { minWorkers: 1, maxWorkers: boundedMaxForks }),

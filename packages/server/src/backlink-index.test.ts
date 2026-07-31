@@ -910,6 +910,67 @@ describe('BacklinkIndex structural skill-bundle edges', () => {
   const SKILL = '.ok/skills/demo/SKILL';
   const REF = '.ok/skills/demo/references/notes';
 
+  test('IN-PLACE bundles (editor-dir shapes) draw the same structural edges', () => {
+    // The store-retirement regression pin: after skills moved in place, the
+    // pairing minted the retired `.ok/skills/<name>/SKILL` shape and every
+    // in-place bundle silently lost its edges. Pairing is same-root now.
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-skill-inplace-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      const skill = '.agents/skills/demo/SKILL';
+      const ref = '.agents/skills/demo/references/notes';
+      index.updateDocumentFromMarkdown(skill, 'See `references/notes.md`.\n');
+      index.updateDocumentFromMarkdown(ref, '# Notes\n\nNo links.\n');
+      expect(index.getForwardLinks(skill)).toEqual([ref]);
+      expect(index.getBacklinks(ref)).toEqual([{ source: skill, anchor: null, snippet: null }]);
+      // Roots never cross: a same-name bundle in ANOTHER editor dir is a
+      // different physical bundle and draws no edge to this one.
+      const otherRef = '.claude/skills/demo/references/other';
+      index.updateDocumentFromMarkdown(otherRef, 'Standalone.\n');
+      expect(index.getForwardLinks(skill)).toEqual([ref]);
+      expect(index.getForwardLinks(otherRef)).toEqual([]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('/skill-name refs draw same-scope edges to the referenced SKILL doc, both directions', () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-skill-refs-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    try {
+      const index = new BacklinkIndex({ projectDir, contentDir });
+      const analyze = '.agents/skills/analyze/SKILL';
+      const research = '.agents/skills/research/SKILL';
+      index.updateDocumentFromMarkdown(analyze, 'For reports use `/research` or /research.\n');
+      // Referenced skill not indexed yet → no edge (no dead-ref graph noise).
+      expect(index.getForwardLinks(analyze)).toEqual([]);
+      // The moment the referenced skill is indexed, the edge appears — read-time
+      // resolution, no re-parse of the referencing doc.
+      index.updateDocumentFromMarkdown(research, '# Research skill\n');
+      expect(index.getForwardLinks(analyze)).toEqual([research]);
+      expect(index.getBacklinks(research)).toEqual([
+        { source: analyze, anchor: null, snippet: null },
+      ]);
+      // Stop-listed roots and plain prose never fabricate edges.
+      index.updateDocumentFromMarkdown(analyze, 'Files under /tmp and half/way.\n');
+      expect(index.getForwardLinks(analyze)).toEqual([]);
+      // SAME-SCOPE ONLY: a project ref never resolves to a global bundle node.
+      index.registerGlobalSkillBundleNode('__skill__/global/deploy/SKILL');
+      index.updateDocumentFromMarkdown(analyze, 'Use /deploy.\n');
+      expect(index.getForwardLinks(analyze)).toEqual([]);
+      // Deleting the referenced skill removes the edge again.
+      index.updateDocumentFromMarkdown(analyze, 'Use /research.\n');
+      expect(index.getForwardLinks(analyze)).toEqual([research]);
+      index.deleteDocument(research);
+      expect(index.getForwardLinks(analyze)).toEqual([]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   test('connects a SKILL doc and its reference with NO authored link between them', () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-skill-struct-'));
     const contentDir = join(projectDir, 'content');

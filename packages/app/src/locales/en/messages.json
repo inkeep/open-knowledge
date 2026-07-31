@@ -27,6 +27,7 @@
     ],
     "-g6KIS": ["Unrecognized link"],
     "-imiMK": ["Follow — updates flow in from your remote; your edits stay on this computer."],
+    "-kKdCC": ["Installed ", ["imported"], " skills from ", ["0"]],
     "-kbIAr": ["Links & images"],
     "-lCAuQ": ["Loading graph"],
     "-o5XAG": [
@@ -35,9 +36,10 @@
     "-q4abP": [
       "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
     ],
-    "-r_Kx7": ["Create skill"],
     "-slrNR": ["Toggle a task list."],
     "-uaQnI": ["No matching worktrees or branches."],
+    "-yPBXI": ["Choose file"],
+    "-ySLQJ": ["Git & PRs"],
     "-zA2E7": ["Couldn't create the worktree. Try a different name."],
     "-zy2Nq": ["Type"],
     "0-31GV": ["Removing"],
@@ -57,7 +59,9 @@
     "0E9DR6": ["Type to find a doc"],
     "0Er6-M": ["Restarting"],
     "0Gd0NU": ["Shared"],
-    "0LBDjY": ["\"", ["0"], "\" uninstalled — back to a draft"],
+    "0J6nhG": [
+      "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill. A symlink is a pointer to the source instead, so nothing can drift, but a location stops working if the source is deleted."
+    ],
     "0NA4b3": ["Keep my version"],
     "0NkNB5": [["0"], "mo ago"],
     "0QVrvp": ["Maximum agents already running"],
@@ -71,6 +75,20 @@
       ["fileName"],
       ") in ",
       ["targetLabel"]
+    ],
+    "0dslv8": [
+      ["0"],
+      " reads this skill via ",
+      ["poolRootRel"],
+      ". Click to stop ",
+      ["1"],
+      " getting \"",
+      ["2"],
+      "\" — ",
+      ["subRoot"],
+      " keeps its other skills but stops following ",
+      ["poolRootRel"],
+      "."
     ],
     "0eHrMb": ["Could not complete delete"],
     "0g7rCZ": ["Duplicated to \"", ["0"], "\""],
@@ -92,6 +110,7 @@
     "0yL--g": ["Review conflicts"],
     "0zAhu6": ["every doc"],
     "10g8I_": ["Turn off Only markdown files"],
+    "11ukmX": ["Rename failed: ", ["0"]],
     "12F9WL": ["(no id)"],
     "151wvk": ["Show sidebar"],
     "161NCV": ["Stopping"],
@@ -105,15 +124,17 @@
     "1FLarN": ["Describe what you want to create to continue"],
     "1GhYxC": ["of ", ["totalPages"]],
     "1HBhDS": ["Checking out files"],
+    "1LtA5r": ["Symlinks the skill to ", ["path"]],
     "1OKzC_": ["Your report couldn't be sent. Try again or email it instead."],
     "1QfxQT": ["Dismiss"],
     "1RluQD": ["Show replace"],
     "1TNIig": ["Open"],
     "1Ta7Fd": ["Open ", ["basename"]],
+    "1V17kO": ["Loading both versions"],
+    "1VpfKR": ["Create a skill for this project."],
     "1XSMhZ": [
       "Switching to <0>local-only</0> will refuse until they're untracked via<1> git rm --cached</1>."
     ],
-    "1YJ4Yg": ["Update available", ["0"]],
     "1ZpfyB": ["Open with AI ", ["displayName"], ", ", ["hint"]],
     "1a6ICf": ["Following the agent's edits"],
     "1bDVu5": ["Workspace Command Palette"],
@@ -122,6 +143,7 @@
     "1hvhf0": ["The folder on disk and the id agents use to invoke this skill."],
     "1njn7W": ["Light"],
     "1nke1r": ["Open ", ["0"], " on GitHub (opens in a new tab)"],
+    "1oSHI0": ["Couldn't install ", ["skillName"], ": ", ["0"]],
     "1t_NnN": ["Reject"],
     "1u-mAI": ["Couldn't start the sync. Check your connection, then retry."],
     "2-CeZn": [
@@ -150,6 +172,7 @@
     "2GT3Hf": ["Global"],
     "2H43L8": ["Secrets like API keys and tokens are redacted automatically."],
     "2IYGkU": ["This doc has unpushed changes. Recipients will see the last pushed version."],
+    "2M0JF6": ["Auto-update"],
     "2QM24L": ["All tags"],
     "2RBzMG": ["Network error — check your connection and try again"],
     "2Snes1": ["This sends the link's address off your machine"],
@@ -157,7 +180,6 @@
     "2XQ8Ww": ["Open preview when agent edits"],
     "2YOwme": ["Restarted — now running v", ["appRuntime"], "."],
     "2YZwPB": ["Forward-links response did not match expected shape."],
-    "2bVHbB": ["Available in every project on this computer."],
     "2hYmUH": ["my@email.com"],
     "2hpdRq": ["Hide panel (", ["panelShortcutLabel"], ")"],
     "2j1kfc": ["Enter a valid URL (for example https://api.openai.com/v1)."],
@@ -196,7 +218,6 @@
     "3HAPpl": ["No schemas match your search."],
     "3HNlwb": ["Hello, world!"],
     "3Ib6FN": ["Move down"],
-    "3Ijjy1": ["Couldn't load this skill's files."],
     "3J7d2N": ["Big section heading."],
     "3JYy1p": ["Branch ", ["0"], " no longer exists. Cloned to default branch."],
     "3LbBJn": ["Attach images"],
@@ -221,6 +242,7 @@
     "3h5zMp": ["Something went wrong loading the settings panel."],
     "3iyGWF": ["Open recent project"],
     "3jod3l": ["Connect GitHub"],
+    "3l32hp": ["Part of the ", ["plugin"], " plugin"],
     "3l_cXP": ["Take a look if you'd like. This exact file is what we receive."],
     "3m2GBo": ["Searching docs"],
     "3mFsc3": ["Restore with remote changes"],
@@ -228,21 +250,16 @@
     "3oEK1e": ["Resuming the conversation"],
     "3oh0nQ": ["Nested .okignore error in ", ["path"]],
     "3pU8e-": ["Pin tab"],
+    "3v62tp": ["Popular on skills.sh"],
     "3wiBAs": ["Where should it live?"],
     "3y6XTb": ["Semantic search"],
     "3zyg_A": ["Ignore patterns"],
     "438Fca": ["Cloned successfully, but could not open the project."],
+    "43qzxu": ["DevOps"],
     "44DSl0": [
       "Already have a git repository? Add it with <0>git remote add origin <url></0> in this project's folder. This page updates automatically once a remote is detected."
     ],
     "45MZFs": ["Commands"],
-    "47EXvY": [
-      "This replaces the current skill content with the bundled version ",
-      ["0"],
-      " (you have ",
-      ["1"],
-      "). Any local edits will be replaced — your current version is saved to history first, so you can restore it."
-    ],
     "484LKL": ["Remove link"],
     "494br3": ["Shared with everyone on this project — committed to config.yml via git."],
     "4A3Yzu": ["Code block"],
@@ -257,9 +274,6 @@
     "4PYsOz": ["Hide Files (", ["sidebarShortcutLabel"], ")"],
     "4Sxexw": ["Source undo or redo"],
     "4TzU0n": ["Initialize"],
-    "4XL6N4": [
-      "Detected from the editors this project is set up for. Adjust to control where every skill installs."
-    ],
     "4_5_n5": [["failed"], " of ", ["0"], " comments could not be removed from the queue."],
     "4buZWd": ["Inherited from ", ["path"]],
     "4cEClj": ["Sessions"],
@@ -271,13 +285,16 @@
     "4ieVh2": ["Pick “Custom” above to use this palette."],
     "4jDd0j": ["Anyone can see"],
     "4m-xuX": ["Auto-fix — nothing to fix"],
+    "4mDIcg": ["Pick the skills to install. Each one lands as an editable skill you own."],
     "4mLBx9": ["Subscriptions aren't available right now."],
     "4niEzY": ["Sandboxed HTML embed — write HTML, see the rendered preview live."],
     "4nj6n8": ["/api/config returned HTTP ", ["code"]],
+    "4pDZ2N": ["Removed \"", ["0"], "\" from every other location — its source folder still loads"],
     "4rjwLG": ["Create with ", ["0"], " CLI"],
     "4sKwf6": ["File already exists"],
     "4uNLmk": ["Pulling"],
     "4v2Yyz": ["Select every visible file-tree row when focus is in the Files sidebar."],
+    "4wo5UV": ["Install selected"],
     "4xtLTl": ["Hidden folder “", ["basename"], "”"],
     "4zEZS5": [
       "Auto-sync is on for this worktree, inherited from ",
@@ -296,6 +313,7 @@
     "5ALjdr": ["Move through visual-editor find results from the find field."],
     "5Ajb15": ["The formula <0>c = √(a² + b²)</0> renders inline."],
     "5AzM72": ["This setting is per-machine and isn't shared with collaborators."],
+    "5BlXTD": ["Couldn't load the version preview. You can still choose how to resolve it below."],
     "5ClEAu": ["Inline hashtag for cross-doc grouping."],
     "5D3Ior": ["Hide folder"],
     "5F5HYj": [["ahead"], " ahead, ", ["behind"], " behind"],
@@ -366,13 +384,18 @@
     "62Pc08": ["Install for Claude Chat & Cowork (Desktop App)"],
     "62bOuM": ["Latest edit"],
     "636K3K": ["Delete adjacent chip"],
+    "67TEhP": [
+      "Your user-level skill folders — available in every project on this machine. Each skill's install menu controls where it lives."
+    ],
     "67f-3g": ["Duplicate succeeded but the sidebar may be out of date — refresh to resync"],
     "69KLIV": ["Escape"],
     "6Aih4U": ["Offline"],
-    "6EKG_c": ["What agents match on to decide when to use the skill."],
     "6HCOwA": ["Failed to open."],
     "6KCH4m": ["Hidden files"],
     "6LbUG7": ["The repository is private and your GitHub account doesn't have access to it."],
+    "6Mbe-P": [
+      "Describe what it should do, or add one yourself. OpenKnowledge keeps your skills in one place, versions them, and installs them into agents like Claude, Codex, and Cursor."
+    ],
     "6MnZEC": ["Terminal failed to load"],
     "6O626z": ["No headings match \"", ["trimmedAnchorQuery"], "\""],
     "6Pxqwv": [
@@ -392,8 +415,9 @@
     "6cyguR": ["Connect GitHub to continue."],
     "6eniID": ["Map the architecture"],
     "6fGjTz": ["Show fewer"],
-    "6g2jsp": ["Update skill"],
+    "6f_UX4": ["Install on all agents"],
     "6gRgw8": ["Retry"],
+    "6h4-4a": ["Switch between Files and Skills"],
     "6h4zVU": ["What would you like to create?"],
     "6hYjww": ["Create a token on ", ["host"]],
     "6hfDJr": ["Server error: ", ["status"]],
@@ -438,19 +462,33 @@
     "7YRrJ9": [
       "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
+    "7ZkJdV": ["No agents selected — the skills are saved but not installed anywhere."],
     "7_bFEL": ["Drag ", ["patternText"], " to reorder"],
     "7apDiJ": [
       "A folder named <0>",
       ["sanitized"],
       "</0> already has files here. Pick a different name."
     ],
+    "7bIiJ7": [
+      "This moves <0>",
+      ["name"],
+      "</0> from ",
+      ["0"],
+      " to ",
+      ["1"],
+      ", relocating its files on disk and re-installing it in your editors at the ",
+      ["2"],
+      " level."
+    ],
     "7cAW1G": ["No API key is set for this endpoint. Add one above."],
     "7d1a0d": ["Public"],
+    "7dZnmw": ["Relevance"],
     "7hctf2": ["Describe the project you want to create"],
     "7iTyyh": [["queueCount", "plural", { "one": ["#", " comment"], "other": ["#", " comments"] }]],
     "7jIIFX": ["You're all set up!"],
     "7kb4LU": ["Approved"],
     "7l15X4": ["failed"],
+    "7m3Ade": ["installs:"],
     "7qRHf0": ["Install for Claude Chat & Cowork"],
     "7uBlRT": ["Copy the focused file-tree item so Paste can duplicate it."],
     "7vQdBK": ["Loading the conversation"],
@@ -465,6 +503,7 @@
       ") in the project root"
     ],
     "89y7ar": [["sizeText"], " · secrets redacted"],
+    "8AjnFz": ["\"", ["0"], "\" was already imported (identical content)."],
     "8F1i42": ["Page not found"],
     "8FqTCr": [
       [
@@ -474,6 +513,11 @@
       ]
     ],
     "8Gzz2G": ["worktree of ", ["worktreeOf"]],
+    "8HvJlU": [
+      "A DIFFERENT skill named like this one lives at ",
+      ["0"],
+      " — that folder is not this skill. Rename or delete one of the two to resolve."
+    ],
     "8IP5jY": ["Each selected tool gets an OpenKnowledge MCP entry."],
     "8Jm2EP": ["Toggle heading levels 1 through 6."],
     "8L0EPw": ["or paste a token"],
@@ -483,6 +527,7 @@
     "8PmoQF": ["Open the insert menu in an empty or active text position."],
     "8RtNI0": ["Failed to load documents"],
     "8TvlHF": ["Crash dump"],
+    "8Uv5e6": ["Agents"],
     "8Vq20-": ["Switch worktree"],
     "8Wav8y": [
       "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
@@ -494,6 +539,7 @@
     "8cpOa8": ["Couldn't disconnect — please try again."],
     "8cpeU3": ["Shared repositories"],
     "8eW0WQ": ["No matching repositories."],
+    "8fDf7j": ["hooks"],
     "8fRyLo": ["Invalid patch payload"],
     "8fc_3j": ["Protected branch — cannot push"],
     "8jeVmd": ["The terminal isn't available here — the comments stay queued."],
@@ -501,9 +547,11 @@
     "8lwQlE": [["0"], " added, ", ["1"], " removed"],
     "8m8diM": ["No location selected. Use Browse to choose a folder."],
     "8nWu1k": ["Empty diagram"],
+    "8qgfac": ["MCP servers"],
     "8ruqQi": ["Broken internal links"],
     "8sMErm": ["Enable Follow?"],
     "8t9CRE": ["Starting ", ["agentName"], "…"],
+    "8t9T3-": ["No skills found."],
     "8tjQCz": ["Explore"],
     "8uAWix": [
       "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
@@ -514,6 +562,7 @@
     "8ycqHY": ["Add the queued comments to this message"],
     "92rbk2": ["Mirror loading <0>", ["mirrorRef"], "</0>"],
     "96G6Re": ["New folder"],
+    "96pApd": ["Read-only file in the ", ["name"], " skill"],
     "96w9hU": ["Something went wrong opening this file (HTTP ", ["status"], ")."],
     "98FP1E": [
       "This schema carries root-level advanced rules the editor does not show (",
@@ -522,6 +571,8 @@
     ],
     "99eR72": ["Visual editor table selection"],
     "9Bd18D": ["Failed to load hub pages"],
+    "9HKBNN": ["commands"],
+    "9J8xNg": ["Imported ", ["importedLabel"]],
     "9KooKn": ["Run a project audit from the Problems panel."],
     "9NJWgv": ["Backlinks"],
     "9OIqw4": ["You don't have write access to this repo."],
@@ -534,6 +585,12 @@
     "9Vh9Jf": ["Reopen this window to sign in with your browser"],
     "9Vnjc9": ["Enter"],
     "9XIEYq": ["Attach the file in an email to <0/>"],
+    "9_2oe6": [
+      "Turn ",
+      ["0"],
+      " back into a real directory holding a per-skill symlink for each skill it currently sees — nothing stops working, and each skill's menu manages it from there."
+    ],
+    "9_euHO": ["View ", ["name"]],
     "9aVlF2": ["Change provider"],
     "9bCiQ8": ["No pages are missing incoming graph links."],
     "9bG48P": ["Sending"],
@@ -553,15 +610,21 @@
     "9fhQRL": ["Beta channel"],
     "9fvog2": ["Preview unavailable: ", ["errorDetail"]],
     "9i21pa": ["Commits happen automatically"],
+    "9ieZhu": ["Installed at ", ["path"], " — click to remove"],
     "9jnjV0": ["Embed an audio file with native player controls."],
+    "9lso1Y": ["Creates the <0>", ["folderPart"], "/</0> folder"],
+    "9m4D_h": ["GitHub, a git URL, or a local path."],
     "9mEZeD": [["name"], " CLI"],
     "9nIrRp": ["Nested fields"],
     "9npOH9": ["Open file"],
     "9o1bIV": [["behind"], " behind"],
     "9oE4C3": ["Browse your repos:"],
+    "9p_QBN": ["Auto-update is off — use Update to pull new versions"],
     "9sBe85": ["Follow us on"],
     "9tJX8r": ["By meaning"],
     "9uI_rE": ["Undo"],
+    "9uRLEH": ["Couldn't open \"", ["name"], "\" — it isn't in the project's skills yet."],
+    "9wQrUU": ["Refactoring"],
     "9xCnv8": ["Hide Terminal"],
     "9zb2WA": ["Connecting"],
     "A1taO8": ["Search"],
@@ -574,6 +637,7 @@
       "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
     ],
     "AB4qw9": ["New terminal"],
+    "ACKMCN": ["Failed to load skill settings: ", ["0"]],
     "AE7BY3": ["The terminal session ended."],
     "AIVHDc": ["Choose what a new session starts"],
     "AIn2Yv": [["displayName"], " CLI, ", ["hint"]],
@@ -586,10 +650,12 @@
       "Commands run with the full access of your macOS user account on this machine. Turn this off to disable the shell."
     ],
     "ASqqsQ": ["Maximum ", ["MAX_ATTACHMENTS"], " attachments"],
+    "AT0e50": ["Keep both"],
     "ATGYL1": ["Email address"],
     "AVW-K9": ["Failed to load orphan pages"],
     "AWOSPo": ["Zoom in"],
     "AYfna1": ["Remove from queue"],
+    "AYoYhU": ["Update failed: ", ["0"]],
     "AaaESH": [
       "Auto-sync is off for this worktree, inherited from ",
       ["project"],
@@ -606,6 +672,7 @@
       "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
     ],
     "Aif3E7": ["Enable semantic search"],
+    "AkA6DO": ["Part of the ", ["0"], " plugin — read-only; open it to edit a copy"],
     "Am78jY": ["Drag ", ["keyName"], " to reorder"],
     "ApeA0n": ["Undid ", ["dropCount"], " edits on ", ["docName"]],
     "Aq-O0x": ["status"],
@@ -627,6 +694,7 @@
       ]
     ],
     "B6Lac2": ["+", ["overflowCount"], " more"],
+    "B6NpZ7": ["Renamed to \"", ["next"], "\""],
     "BAH4qX": ["Selected graph item"],
     "BBqGS9": ["Desktop"],
     "BD0XSC": ["Failed to load project templates"],
@@ -640,7 +708,9 @@
       ]
     ],
     "BGHHtQ": ["Single page"],
+    "BGtzlf": [["uploadFolderName"], " — 1 file"],
     "BH56dn": ["Custom display text"],
+    "BKI4hX": ["Find in file"],
     "BQKHuL": ["Restart terminal"],
     "BQu9Pg": ["Symlink"],
     "BUyQnq": ["Couldn't restart the server. Try `ok start` in this folder."],
@@ -652,10 +722,12 @@
     "Bh9671": [
       "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
     ],
+    "BhLPRk": ["Reverted \"", ["name"], "\" to the installed version"],
     "BjitBo": ["Download ", ["0"]],
     "BkGtRl": [
       "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
     ],
+    "BlLxpG": ["Search skills"],
     "Bn9-El": ["default"],
     "Bv5a9_": ["Selection statistics"],
     "Bx4EXG": ["Actions for ", ["label"]],
@@ -668,9 +740,11 @@
     ],
     "C-twqs": ["Recovered content"],
     "C-xgad": ["or use a starter pack"],
+    "C0Ciaj": ["Imported as \"", ["0"], "\" — the name \"", ["1"], "\" was taken."],
+    "C0cll5": ["Installed at ", ["0"], " — click to remove"],
     "C0hoX6": ["Always included"],
+    "C3Zc44": ["Explore skills"],
     "C62P6b": ["Editor selection"],
-    "C7XjNB": ["Global Skill"],
     "C9TBvF": ["No Outgoing"],
     "CB7c0Z": ["Save queued message"],
     "CBsdhe": ["The agent isn't stopping. Force stop closes this thread and quits the agent."],
@@ -700,12 +774,12 @@
     ],
     "C_cPoW": ["Your GitHub session expired — sign in again to verify push access."],
     "ChAtFg": ["You don't have permission to push to this repo"],
-    "CifUuG": ["Update available"],
     "Ck9XRt": ["Couldn't save the key — please try again."],
     "CmeH9S": ["Add property to ", ["keyName"]],
     "CnOGgs": ["Sync mode"],
     "CoHvYd": ["Moved ", ["0"], " to position ", ["1"], " of ", ["2"]],
     "CooKEf": ["Dock sessions at the bottom"],
+    "Cu6GXQ": ["The source folder itself does not move."],
     "CvsD6Y": ["via ", ["viaTags"]],
     "CwOXMT": ["Value for ", ["keyName"]],
     "CxVk-w": ["Comment on ", ["address"]],
@@ -744,6 +818,7 @@
     ],
     "DUWgfT": ["Re-authenticate with GitHub Enterprise Server"],
     "DVh_Tb": ["Failed to clean up after trash"],
+    "DWJtEo": ["What happens next"],
     "DXd9LM": ["New worktree"],
     "D_WKe_": ["Click an agent's avatar in the presence bar to view their session."],
     "DbCfXV": ["Search (", ["searchShortcutLabel"], ")"],
@@ -751,15 +826,6 @@
     "DcLaew": ["Custom theme"],
     "DeDYLr": ["Unrecognized wiki link"],
     "DgcGrb": [["fileCount", "plural", { "one": ["file"], "other": ["files"] }]],
-    "DhK_hZ": [
-      "Moved \"",
-      ["name"],
-      "\" to ",
-      ["0"],
-      " (",
-      ["skipped"],
-      " binary file(s) not copied)"
-    ],
     "DhLHEb": ["Failed to load activity"],
     "DiFKSL": ["Counting markdown files"],
     "Dnn2XG": ["Automatic"],
@@ -770,6 +836,8 @@
     "Dub54T": [
       "Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or open OK in the desktop app."
     ],
+    "Dut9Ht": ["Describe the skill you want to create"],
+    "Dvr1Sg": ["Copying"],
     "Dvwa0U": ["Create a worktree from this branch"],
     "Dw1T_W": ["Rename ", ["label"]],
     "Dz7fsq": ["Zoom In"],
@@ -790,6 +858,7 @@
     "E9bKSA": ["Creating"],
     "E9gh86": ["You can attach up to ", ["MAX_ATTACHMENTS"], " images."],
     "EARn6h": ["Couldn't share skills — ", ["detail"], "."],
+    "EBS8_X": ["Browse skills.sh"],
     "EBVbtP": ["Could not duplicate item"],
     "EDl9kS": ["Subscribe"],
     "EDm3wJ": ["Loading diff renderer"],
@@ -804,6 +873,8 @@
     "ENpRJV": ["External link previews"],
     "EO4Dt1": ["Enable ", ["file"]],
     "EOjU5V": ["Inline Math Properties"],
+    "EPGePE": ["Uploaded as \"", ["0"], "\" — the name \"", ["1"], "\" was taken."],
+    "EPKVES": ["Update \"", ["skillName"], "\" over your edits?"],
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " tokens used"],
     "ETyvvg": ["No language match."],
     "EUiJEM": ["Occurrences of ", ["0"]],
@@ -817,7 +888,6 @@
       "\" to the Trash. Do you want to permanently delete instead?"
     ],
     "E_tNGD": ["Connected as @", ["login"]],
-    "Ea1prf": ["Choose which editors every skill in this project installs into."],
     "EarrCe": ["Search emoji"],
     "Eax_et": ["Accent"],
     "EbMUlU": ["Agent mode"],
@@ -826,6 +896,7 @@
     "EcM3k7": ["Failed to clean up pending ", ["kind"]],
     "EdQY6l": ["None"],
     "EeUucb": ["Rule editing is available for the project's root markdownlint config"],
+    "Ef6ukL": ["via parent"],
     "Ef7StM": ["Unknown"],
     "EhDLBx": ["You modified <0>", ["filePath"], "</0> locally, but it was deleted upstream."],
     "Ehkru0": ["Open, navigate, accept, or dismiss CodeMirror completion suggestions."],
@@ -848,10 +919,14 @@
       "Embeddings are computed only when a search runs and are cached locally under <0>.ok/local</0>."
     ],
     "EoaQyO": ["Append-only log of what changed."],
+    "EpZQFw": ["subagents"],
     "EqrC_R": ["Undo failed: ", ["message"]],
     "EqtBXb": ["Visual editor find open"],
     "ErRi6L": ["Template \"", ["label"], "\" deleted"],
     "Es-eZU": ["Remove from recent projects"],
+    "Es3G-g": [
+      "Lives in this project (wherever the skill's folder is) and is shared with collaborators through git."
+    ],
     "Ev2r9A": ["No results"],
     "EvPX7f": ["Opens a folder picker to choose where to clone the repository."],
     "Evq3lu": ["Orphan mode"],
@@ -870,6 +945,7 @@
       "Run a real terminal docked inside OpenKnowledge, starting in this project's folder."
     ],
     "FCKppt": ["Endpoint"],
+    "FCMaBz": ["Which skill"],
     "FCxvG5": ["First item"],
     "FDBwmS": ["Open folder…"],
     "FEK4oC": [
@@ -883,7 +959,6 @@
     "FNTx6u": ["Search \"", ["semanticSubmitQuery"], "\" by meaning"],
     "FOGD7m": ["Create something great."],
     "FRYB1Q": ["/api/config returned a malformed body"],
-    "FRqZ9v": ["Couldn't update skill: ", ["0"]],
     "FTBN5g": [
       "How validation findings surface across the project. These choices are committed to config.yml and shared with every collaborator via git."
     ],
@@ -897,13 +972,19 @@
     "FWSjnp": ["Edit source pane and code property fields"],
     "FXk_zY": ["Adds a guided workflow for authoring new Agent Skills."],
     "FZtBeR": ["Enable ", ["0"]],
+    "FeXcUS": [
+      ["display"],
+      " is a symlink to the source while the skill's other locations are copies. Click to make it an independent copy."
+    ],
     "FgQ7XZ": ["Couldn't load your bug reports."],
     "FgRAvd": ["Logs & system info"],
+    "Fhp4Gn": ["View plugin"],
     "FjkaiT": ["Zoom out"],
     "FqGWeR": ["Couldn't reach the agent registry."],
     "FqTpiN": ["Bird wiki"],
     "Fqr8BP": ["Multi-page PDF viewer with toolbar controls (thumbnails, page nav, zoom)."],
     "Fqx38P": ["What got in the way?"],
+    "Fr8JGg": ["Zip file"],
     "Fsx78O": ["Add the <0>ok</0> command to your terminal"],
     "FvMSms": ["Renaming changes the file on disk and the id agents use to pick this template."],
     "FvpFSZ": ["Reveal in Finder, ", ["hint"]],
@@ -921,11 +1002,13 @@
     "G1XxbZ": ["Checkbox"],
     "G4-bgo": ["Ask AI (from selection)"],
     "G4m8rL": ["Comment on selection"],
+    "G6Lrs_": ["Stop ", ["0"], " reading this skill"],
     "G7-rf8": ["Pattern syntax error: ", ["message"]],
     "G7bn_N": ["Start an agent"],
     "G7cMuO": ["HTML preview"],
     "G8t9NN": ["Add a property"],
     "GA-UkN": [["keyName"], " type: ", ["typeLabel"], ". Click to change."],
+    "GBQjiV": ["Add skill"],
     "GDvlUT": ["Role"],
     "GF51cw": [
       "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime."
@@ -952,13 +1035,13 @@
       "Details about the error you just hit are included. Secrets like API keys and tokens are redacted automatically."
     ],
     "G_686w": ["Task List"],
-    "G_efLf": ["Installed into"],
     "G_hVTP": ["Enable Themes"],
     "G_mWXb": ["Filter languages"],
     "GamjcN": ["Template saved"],
     "GemPfn": ["Failed to parse forward-links error response (HTTP ", ["status"], ")"],
     "Gfr4fu": ["Server can't open documents"],
     "GhjUB_": ["Reconnected"],
+    "GidGkh": ["Update from source"],
     "GkYV_4": ["Renamed ", ["0"], " → ", ["1"]],
     "Gp_twO": ["Local path"],
     "GsBUCk": ["Loading settings"],
@@ -981,15 +1064,22 @@
     "H3oH0g": ["Redo"],
     "H6nKok": ["Show in File Manager"],
     "H86f9p": ["Collapse"],
+    "HAvHev": ["Auto-update off for \"", ["name"], "\""],
     "HAvRAI": [["skillCount", "plural", { "one": ["skill"], "other": ["skills"] }]],
     "HCn0Ay": ["Toggle strikethrough formatting."],
     "HFqQui": ["Hide queued comments"],
     "HGNCsl": ["Connection lost — keep this tab open, your edits will sync when reconnected"],
     "HIb0vl": ["Network error — please try again"],
+    "HKH-W-": ["Data"],
     "HM56Bx": ["Creating..."],
     "HPTPGr": ["Create a new spec file for my user story"],
     "HSh8u_": ["Folders"],
     "HTW0Zw": ["One more step: run <0>claude</0> in this project and approve OpenKnowledge once."],
+    "HbcQYf": [
+      "Replace the symlink at ",
+      ["display"],
+      " with an independent copy of the skill? Nothing else moves."
+    ],
     "HdkSiO": ["New file"],
     "HfI1dR": ["I already have it locally →"],
     "Hhe73G": ["Couldn't queue that comment."],
@@ -1016,12 +1106,15 @@
       "OpenKnowledge stores its configuration and internal files inside a newly created <0>.ok</0> directory in your project root folder."
     ],
     "Hrz9NY": ["Wiki link"],
-    "HyvSqq": ["Project Skill"],
+    "HzVAoz": [
+      "Move or rename this file inside the skill — the path stays under references/ or scripts/."
+    ],
     "HzVv6g": ["Paste"],
     "I-xnra": [["0"], " hex value"],
     "I1gRhX": ["Failed to rename"],
     "I5685_": ["Try a prompt"],
     "I5AfhE": ["Sync status unavailable — server unreachable."],
+    "I6gXOa": ["Path"],
     "I7Exsw": ["Follow us on X"],
     "I7y_vn": ["Re-run the project audit"],
     "IA1wNb": ["The Claude Desktop App didn't open the file. Is it installed? (", ["msg"], ")"],
@@ -1031,6 +1124,7 @@
     "IFezUv": ["The audit could not be completed. Try again."],
     "IInnZo": ["Conflict"],
     "IKoTAC": ["Keep disabled"],
+    "IO8REi": ["Couldn't open \"", ["name"], "\": ", ["0"]],
     "IQPyrD": ["Missing page — click to create"],
     "IQgeSn": ["Failed to save the schema field"],
     "IRv9cH": ["Cloned ", ["repoName"], "."],
@@ -1053,6 +1147,7 @@
     "IrC12v": ["Application"],
     "IreQBq": ["Repository"],
     "It9ARY": ["Toggle the right document panel."],
+    "It9oAP": ["The ", ["editor"], " version is now the source"],
     "ItxGi3": ["Attachments must total under 3 MB."],
     "Ix0K8o": ["Hide external URL nodes"],
     "IxHMdF": ["Couldn't delete that comment."],
@@ -1064,9 +1159,11 @@
     "J6N5MX": ["Couldn't construct the share URL. Try Done and re-share."],
     "J6mxC1": ["A network problem or GitHub outage interrupted the clone."],
     "J7nMqi": ["Uninstall OpenKnowledge"],
+    "J86siq": ["Install from ", ["plugin"]],
     "JCxGEX": [
       "No disconnected pages. Pages appear here only when they have no incoming and no outgoing graph edges."
     ],
+    "JDHcCM": ["Loading popular skills"],
     "JE21eh": ["Symlink to ", ["targetPath"]],
     "JG_8KT": ["Couldn't pull from GitHub. Check your connection and sign-in, then retry."],
     "JHf6qZ": ["you@company.com"],
@@ -1098,19 +1195,23 @@
     "K0N7zS": ["Config sharing status read failed"],
     "K1ckLX": ["Failed to create folder"],
     "K2v7QF": ["Couldn't share skills"],
+    "K4G55s": ["Checking source"],
     "K6MQQk": ["Sync is failing. See the sync status for details."],
     "K6jjWB": [["packName"], " was already set up. Nothing to do."],
     "K6jxcj": ["Add a key"],
+    "K7NMEc": [["uploadFolderName"], " — ", ["0"], " files"],
     "K8-WWn": ["Move between table cells"],
     "K9J00P": ["Clone failed — connection error"],
     "KDuPiY": ["Uploading ", ["fileName"]],
     "KDw4GX": ["Try again"],
+    "KFd4xz": ["absent"],
     "KH5bQi": [
       "Using the <0>OK_EMBEDDINGS_API_KEY</0> environment variable (managed outside OpenKnowledge)."
     ],
     "KIIamL": [
       "OpenKnowledge will create commits and push them to your remote automatically. If you do not want automatic commits in your git history, you should not enable auto-sync."
     ],
+    "KN5RGc": ["Built-in (read-only)"],
     "KOZud0": [
       "Build a competitor research knowledge base. Start with an overview page, then add cross-linked pages for each competitor, their products and pricing, and the sources behind every claim."
     ],
@@ -1140,7 +1241,6 @@
     "KpOJFY": ["Enable external link previews"],
     "Kr3VPS": ["Codex will still ask until you run \"ok init\" in a terminal for this project."],
     "KsAPaB": ["This branch is checked out in:"],
-    "KszKI_": ["Skill level"],
     "KtACeE": ["Default: <0>", ["0"], "</0>"],
     "KujtjC": ["Find"],
     "L-rMC9": ["Reset to default"],
@@ -1151,6 +1251,7 @@
     "L6Hhh6": ["(root)"],
     "L8fKuc": ["Run this in your terminal"],
     "L9Y9Om": ["Top linked pages"],
+    "LBv_TR": ["Convert locations to symlinks"],
     "LBwUR6": ["Branch switch timed out — try opening the ", ["targetNoun"], " manually."],
     "LCUy_N": ["Session ended"],
     "LDuM35": ["Replace current match from field"],
@@ -1176,6 +1277,7 @@
     "LXdWeS": ["Medium section heading."],
     "LXfNU-": ["Navigation and suggestions"],
     "LYufDw": ["Failed to enable semantic search — ", ["detail"]],
+    "Lbl6KA": ["Couldn't install from ", ["0"], ": ", ["1"]],
     "LbmLyU": ["Can't safely edit this tool's config"],
     "Lcehxn": ["Save resolution"],
     "LdABLa": ["Could not open ", ["target"], ". Try opening it manually."],
@@ -1227,6 +1329,7 @@
     "M7SqjM": ["Reopen"],
     "M92_0q": ["Close comment"],
     "M9597s": ["Preparing share URL..."],
+    "MBKkUy": ["skills.sh is unavailable; showing GitHub results (no install ranking)."],
     "MBe6TE": ["The quoted text is no longer in the document — the agent will be told."],
     "MCjC9A": ["Delete ", ["deleteDescriptorLabel"]],
     "MDBJwN": ["Hard to use"],
@@ -1237,16 +1340,26 @@
     ],
     "MHrjPM": ["Title"],
     "MI6Z0f": ["Pick an emoji to insert at the cursor."],
+    "MIF36T": ["Couldn't resolve the fork: ", ["0"]],
     "MJqRO6": ["Your report is being sent."],
     "MJuO1q": ["Context window:"],
     "MKEPCY": ["Follow"],
+    "MQ5LOx": [
+      "Turn ",
+      ["display"],
+      " back into a real directory holding a per-skill symlink for each skill it currently sees — nothing stops working, and each skill's menu manages it from there."
+    ],
     "MQIM_Y": ["Couldn't copy. Select the URL above to copy it manually."],
     "MRZxAn": ["Edited"],
+    "MS8lMS": [
+      "A symlink is a pointer to the source folder rather than a folder of its own. Every location reads the exact same bytes, so nothing can drift, and a location stops working if the source is deleted."
+    ],
     "MTs6g3": ["Couldn't reconnect after server restart"],
     "MUBR8r": ["Rename succeeded but the tabstrip may be out of date — refresh to resync"],
     "MUrVEo": ["No recent projects."],
     "MV-Dkb": ["Found ", ["countDisplay"], " markdown files"],
     "MVxpbf": ["Find and replace"],
+    "MXSt4t": ["Created ", ["0"]],
     "MZSBsh": [
       "No templates yet. Add one to give new docs in this folder a ready-made starting point."
     ],
@@ -1256,7 +1369,6 @@
     "Mh_4hd": ["Previous tab"],
     "Mj8R8K": ["Couldn't install skill: ", ["0"]],
     "MmDDWK": ["Recently opened"],
-    "MmqnGI": ["No global skills yet."],
     "Mnavhe": [["propPanelDescriptorLabel"], " Properties"],
     "MqQoV-": ["Describe what you want to build, start a blank file, or scaffold from a template."],
     "MqsbfN": ["Turn on external link previews?"],
@@ -1264,13 +1376,6 @@
     "MuxcRB": [["0"], " lets ", ["1"], " act without asking"],
     "My0wYT": [
       "When you hover an external link, its URL is sent to the destination site to fetch the page's preview metadata — one request per previewed link."
-    ],
-    "My9uXI": [
-      "Updated \"",
-      ["display"],
-      "\" to ",
-      ["0"],
-      " — your previous version is in history if you need to restore it."
     ],
     "MysZUL": ["Connecting to ", ["agentName"], "…"],
     "N-IonL": [
@@ -1283,11 +1388,15 @@
     "N2S1rs": ["Empty"],
     "N2eHWq": ["Code Block"],
     "N3_ozB": ["Hubs"],
+    "N40H-G": ["All"],
     "N55YNr": [
       "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
     ],
+    "NCmYhK": [
+      "Skills teach agents repeatable tasks. Author and manage them from the Skills section in the editor; each skill's install menu controls where it lives. These are this project's skill folders."
+    ],
+    "NErvOX": ["Saved to"],
     "NEzPEh": ["Create a new branch, or check out an existing one, in its own window."],
-    "NF_Wcg": ["Show skills section"],
     "NIWAux": ["No docs registered under #", ["tagDocsName"], "."],
     "NJyQi_": ["Branch ", ["shareBranch"], " no longer exists on the remote."],
     "NKkZXl": ["Initialize and open"],
@@ -1332,6 +1441,7 @@
       " from the project and removes its mapping from config.yml."
     ],
     "NzluOx": ["(optional)"],
+    "O-m8q9": ["Browse all"],
     "O0Z2Xr": ["Outgoing"],
     "O2UpM1": ["Browse"],
     "O3oNi5": ["Email"],
@@ -1344,7 +1454,6 @@
     "ODGGlj": ["Folder name: ", ["detail"]],
     "OEEQKT": ["Good"],
     "OETysD": ["No hub pages yet. Hubs appear once pages accumulate inbound graph links."],
-    "OEu_0l": ["Failed to load skills: ", ["0"]],
     "OFBmkg": [
       "Search files, commands, projects, and AI handoff actions. With text selected in the visual editor, this chord adds a link instead."
     ],
@@ -1354,6 +1463,7 @@
     "OLBz-_": ["Mermaid diagram failed to render."],
     "OLIKgw": ["Drag item ", ["0"], " to reorder"],
     "ONPvOb": ["Loading agent activity"],
+    "ONWvwQ": ["Upload"],
     "ONgEZF": ["Loading headings for ", ["pageTarget"]],
     "OOIVJo": ["Uninstalled \"", ["0"], "\" from ", ["1"]],
     "OPOiKn": ["Content rules"],
@@ -1363,7 +1473,6 @@
     "OXb_Df": ["Settings content"],
     "OXdGnd": ["Problems"],
     "OYnx7O": ["Path cannot start with \"/\""],
-    "OZJeTZ": ["Skill"],
     "OZavHH": ["everything under ", ["0"], "/"],
     "Oawo4U": ["The report service couldn't be reached."],
     "OcBurH": [
@@ -1410,20 +1519,23 @@
     "PPFQ3o": ["Installed \"", ["0"], "\" into ", ["1"]],
     "PQCdtv": ["\"", ["docName"], "\" doesn't exist."],
     "PR9FSv": ["Move to the next visual-editor find result."],
+    "PRgIJh": ["Couldn't update ", ["subRoot"], ": ", ["0"]],
     "PRnH8G": ["of ", ["0"]],
     "PTb1Nx": ["Sync is paused. Turn it back on to resume."],
     "PVUn_c": ["Open folder"],
     "PVggyD": ["Frontmatter schemas"],
     "PYmp-0": ["Import as template"],
+    "PZn2LP": ["Keep source"],
     "PZtgO0": ["Opening worktree"],
     "P_bX4O": ["How to set up"],
     "Pck6eI": [
       "Pick a built-in IDE palette. The dark IDE themes override the light/dark setting in Preferences."
     ],
     "PdA9NZ": [["ahead"], " ahead"],
-    "PdJZ5p": ["No skills yet."],
+    "Pg83C9": ["Uploaded \"", ["0"], "\"."],
     "Pgu10b": ["Saved as <0>", ["slug"], ".md</0>"],
     "PgzIpb": ["Move to the previous visual-editor find result."],
+    "PhIa-X": ["Replace these copies with symlinks to the source?"],
     "PhLu69": [
       "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
     ],
@@ -1432,6 +1544,7 @@
     "PkeYXL": ["Expanded graph mode"],
     "Pkw7J9": ["This folder is empty."],
     "PlGC6r": ["the git exclude file isn't writable"],
+    "Pp0Vgd": ["Click to install in ", ["label"]],
     "PpJy-V": ["The endpoint didn't respond in time."],
     "PqYWiC": [
       "Couldn't restart the server automatically. Try running `ok stop all` in a terminal, then reopen this project — or restart your computer if it persists."
@@ -1439,6 +1552,7 @@
     "PrJYSN": ["This folder isn't on GitHub yet. The link won't work until it's pushed."],
     "PrVaZo": ["Uninstall OpenKnowledge?"],
     "PrhzDE": ["Pan up"],
+    "Q-DKvr": ["Install from ", ["source"]],
     "Q1mtyd": ["Hide sidebar"],
     "Q5fqMz": ["Connection error — try again"],
     "Q6hhn8": ["Preferences"],
@@ -1446,13 +1560,20 @@
     "Q7cNKe": ["Skills are now shared. Commit .ok/skills to share them with your team."],
     "Q7xfEj": ["done"],
     "Q8A-U_": ["Connected to"],
+    "QASTNu": [
+      "The ",
+      ["editor"],
+      " folder holds a different version of this skill. Pick which one wins, or keep both under different names. Whatever you replace is backed up first."
+    ],
     "QAi7Q9": [
       "Branch <0>",
       ["trimmed"],
       "</0> already has a worktree — it'll open in its own window."
     ],
+    "QB-moX": ["Install it to your other editors (Claude Code, Cursor, Codex) to share it."],
     "QDZbvN": [["diffDays"], "d ago"],
     "QHCx0c": ["Bug report history"],
+    "QKgePK": ["Aligned ", ["editor"], " to the source (its bytes are backed up)"],
     "QLgdT6": ["any doc named ", ["0"]],
     "QM3SBZ": ["Plan (", ["done"], "/", ["0"], ")"],
     "QOINDn": ["empty"],
@@ -1460,6 +1581,7 @@
     "QQghPu": ["Install in Claude Desktop"],
     "QR5SP1": ["created template"],
     "QTsvh1": ["This agent needs you to sign in first — see the notice below."],
+    "QWdKwH": ["Move"],
     "QYTOaN": ["You can change this later in <0>Settings → Sync</0>."],
     "QYfQdv": [["displayName"], " CLI"],
     "QcpeeE": ["Navigate to ", ["docName"]],
@@ -1507,11 +1629,11 @@
       "We'll build <0>openknowledge.skill</0>, save it to <1>~/Downloads</1>, and open the Claude Desktop App for you."
     ],
     "RO-yts": ["Failed to disable link previews — ", ["detail"]],
+    "RO9IbI": ["Revert failed: ", ["0"]],
     "RQWuCs": ["Queue message"],
     "RSqaSd": ["Project root"],
     "RVZJWQ": ["Search projects..."],
     "RXEbZy": ["In app"],
-    "RXNu_r": ["Shared via git with everyone working on this project."],
     "RY6Bq1": ["Open shared ", ["targetNoun"]],
     "RZXTlY": ["Auto-fix (", ["count"], ")"],
     "R_U_A4": ["Add file or folder pattern, e.g. guides/**/*"],
@@ -1530,12 +1652,12 @@
     ],
     "Rj01Fz": ["Links"],
     "RlCInP": ["Slash commands"],
-    "RlLl3G": ["Actions for ", ["0"]],
     "RmBY0A": ["No git remote"],
     "RnrnTe": ["Already set up — ok is available in your terminal"],
     "RoafuO": ["Send feedback"],
     "RobAKV": ["Update the destination and optional section anchor."],
     "Rq1vFD": ["Tree view options"],
+    "RqSvT0": ["Importing"],
     "RrAIZx": ["What config sharing covers"],
     "Rsdhj9": ["Configuration warnings"],
     "Rx5ReQ": ["Rename ", ["keyName"]],
@@ -1564,6 +1686,7 @@
     "SUOoXn": ["Failed to open project."],
     "SVLPt5": [["formatted"], " GitHub stars"],
     "SXCSQd": ["Copied path"],
+    "SXEdCq": ["Move to ", ["0"], "?"],
     "SYfHmN": ["Unpin tab"],
     "Sc1bKE": [
       "Local collaboration data for \"",
@@ -1580,7 +1703,6 @@
     "SkMZlS": ["Couldn't remove <0>", ["targetGitPath"], "</0>: ", ["removeGitError"]],
     "Skr_7L": ["Search worktrees"],
     "SlfejT": ["Error"],
-    "Sq8lf2": ["Editors to install skills into"],
     "SqIoy_": ["Auto-fix — no problems here have an automatic fix"],
     "SrOuyg": ["Document panels"],
     "SvBFYA": ["No recent projects"],
@@ -1615,8 +1737,11 @@
     "Te6sK2": [
       "Heads up: editing any rule or option here creates a <0>.markdownlint.json</0> file in your project to save your changes."
     ],
+    "TgZOXj": ["Choose folder"],
     "ThmUrC": ["Could not finalize project setup. Try again."],
     "Tjc1pH": ["Section <0>(optional heading anchor)</0>"],
+    "Tn5sik": ["Tells agents when to reach for this skill. You can edit it later."],
+    "Tq3pcs": ["Keep mine"],
     "TsZmgr": ["The file on disk, and the id agents use."],
     "TvY_XA": ["Documentation"],
     "TwYboS": ["Navigate CodeMirror source search results or dismiss the search panel."],
@@ -1630,19 +1755,28 @@
     "U4nTfu": ["Enable Follow"],
     "U5Spo9": ["Content directory must be inside the project"],
     "U6wmNc": ["Sync paused"],
-    "U7HJ4y": ["Managed by OpenKnowledge (read-only)"],
     "U88xbi": ["Failed to create the schema file"],
     "U8CD-l": ["Copy full path, No workspace"],
     "U9tm58": ["Hide problem indicators"],
     "UBv8UK": ["Delete Permanently"],
     "UDFrWm": ["Checking GitHub connection..."],
+    "UDb2YD": ["React"],
     "UEdTEN": ["Orphaned"],
     "UGeJuP": ["Allowed values (empty = any)"],
+    "UHwc0P": [
+      "This is a preview of ",
+      ["boldName"],
+      ", detected in ",
+      ["boldHarness"],
+      " at the ",
+      ["boldLevel"],
+      " level."
+    ],
     "UL8A9w": ["Tag"],
-    "UMrOy2": ["Skill \"", ["trimmedName"], "\" created"],
+    "UNwKSz": ["Auto-update on for \"", ["name"], "\""],
+    "UPWItY": ["A folder containing SKILL.md."],
     "UPjaXD": ["Couldn't duplicate \"", ["0"], "\": ", ["1"]],
     "UQAp48": ["Search templates"],
-    "UQMMvx": ["Moved \"", ["name"], "\" to ", ["0"]],
     "URmyfc": ["Details"],
     "UTNVyS": ["Select the full source document."],
     "UTZ97u": ["Selection must be inside the project"],
@@ -1665,6 +1799,16 @@
       ["shareBranch"],
       "</0> recently. Switch and update to open it."
     ],
+    "UceXfW": [
+      ["boldName"],
+      " is part of the <0>",
+      ["0"],
+      "</0> plugin",
+      ["pluginVersion"],
+      " — read-only. ",
+      ["boldHarness"],
+      " replaces plugin files on update."
+    ],
     "Uci-Ph": ["Ordered List"],
     "Ud0Pj9": [
       "<0>Mirror source removed.</0> The doc <1>",
@@ -1676,6 +1820,7 @@
     ],
     "UhpfxY": ["Pan left"],
     "UkQGhd": ["Hide replace"],
+    "Uobeu9": ["Adds the skill to ", ["rootRel"], " — also read by ", ["0"]],
     "Uoux8m": ["Include this comment in the next send"],
     "Up2_7p": ["Copy full path"],
     "UpCz01": ["This doc"],
@@ -1705,10 +1850,11 @@
     "VFQXPl": [
       "External link previews show a card with the site name, page title, and description when you hover a link."
     ],
-    "VITWk5": ["Managed by OpenKnowledge"],
     "VIiaFH": ["Couldn't read the queued comments: ", ["0"]],
     "VIwCaD": ["Entry"],
+    "VJaBca": ["Choose a skill folder"],
     "VM7H66": ["This file is binary and can't be shown as text."],
+    "VNNRfN": ["make source"],
     "VNgKZz": ["Advanced settings"],
     "VTulZj": ["Open in worktree"],
     "VUijjF": ["Embed an image with optional alt text."],
@@ -1723,18 +1869,22 @@
     "VbyRUy": ["Comments"],
     "VcqWBy": ["Upload may have succeeded but the sidebar is out of date — refresh to resync"],
     "VdXv4D": ["Clone from GitHub"],
+    "VeVIIk": ["Loading skills"],
     "Vftef5": ["Common markdown issues — hard tabs, heading increments, list markers, and more."],
     "Vlc75q": ["Keep file deleted"],
     "VmJT51": ["Loading your reports"],
+    "VmXASo": ["(symlink)"],
     "VsaI0G": [["folderCount", "plural", { "one": ["folder"], "other": ["folders"] }]],
     "VuxVSP": ["Start source completion"],
     "VvS_k_": ["Config sharing is now local-only."],
+    "VxLvKE": ["Revert to installed version"],
     "VxO6wR": ["Delete selected files or folders"],
     "VzGJRl": ["Add link"],
     "W-ntoW": ["heading-slug"],
     "W0i24j": ["Object"],
     "W1SI2K": [["0", "plural", { "one": ["#", " warning"], "other": ["#", " warnings"] }]],
     "W1qRuM": ["This document is already active in the editor. Use Open to collapse the graph."],
+    "W3Tsgy": ["Detected in ", ["0"]],
     "W5A0Ly": ["An unexpected error occurred."],
     "W7XJN4": [
       "Can't nest projects. An OpenKnowledge project already exists at <0>",
@@ -1765,6 +1915,7 @@
     ],
     "Waiy-j": ["The agent's persona, values, and voice."],
     "WamGNs": ["Failed to load PDF: ", ["error"]],
+    "Wboy1j": ["~/.myteam/skills"],
     "WcWS__": ["Download file"],
     "Wcv-Zi": ["Make this knowledge base available as a Claude Skill."],
     "We7h2I": ["📝 or assets/icon.png"],
@@ -1775,7 +1926,14 @@
     "WhOsNE": ["Strikethrough"],
     "Wi-VWy": ["Couldn't send the report"],
     "WkTLN7": ["Show only markdown files"],
+    "WkyP2p": ["Skills section"],
     "WmPbvm": ["Get product updates in your inbox."],
+    "WnsbUT": [
+      "This permanently removes ",
+      ["0"],
+      ". The plugin it was copied from is untouched — its read-only version will show up as detected again."
+    ],
+    "WpE38V": ["Found one skill: ", ["0"]],
     "Wq6Wcm": ["Please enter a valid email address."],
     "WqLq6M": ["Open with AI ", ["displayName"]],
     "Wtw22s": ["Installing"],
@@ -1792,6 +1950,7 @@
     "XAyxsa": ["Check out remote branch"],
     "XDzAnp": ["Opens in a new tab"],
     "XH30C4": ["document"],
+    "XIltnd": ["A skill named \"", ["trimmed"], "\" already exists here"],
     "XJOV1Y": ["Activity"],
     "XK5cbh": ["Traverse OpenKnowledge navigation history forward."],
     "XNBGZw": ["Message not sent: ", ["0"]],
@@ -1799,10 +1958,12 @@
     "XPqe3B": ["Create new tag #", ["tagValue"]],
     "XQkJlB": ["No open conversations. Reopen a past one, or start a session with the ＋ button."],
     "XRuL0i": ["Create page"],
+    "XSb9HS": ["Discard local edits, restore the installed version"],
     "XT-L4j": ["Turn on an agent to create with AI"],
     "XU0OXn": ["Enable auto-sync"],
     "XU5AOg": ["Input"],
     "XV5sC0": ["Open worktree"],
+    "XVnIvs": ["Install skills"],
     "XW18jo": ["Page headings response did not match success schema"],
     "XYlJJT": ["Setting up"],
     "XZkdtg": ["Switch branch"],
@@ -1812,6 +1973,7 @@
     "XfA5xx": [["label"], " enabled"],
     "XfzqjK": ["template \"", ["name"], "\""],
     "Xg-Ntj": ["The token needs the repo and read:user scopes."],
+    "XgqUOy": ["No skill found at that source. Import will report why if you continue."],
     "Xisk4u": ["Edited ", ["editedAgo"]],
     "Xk0-VC": [
       "Previews of links to other documents in this project are always on and read from the local index — nothing leaves your computer for those."
@@ -1824,7 +1986,7 @@
     "XopE_I": ["Failed to parse backlinks error response (HTTP ", ["status"], ")"],
     "Xp7Kq4": ["Another sync operation is in progress. Try again in a moment."],
     "XpIZmv": ["Fenced code block with monospace text."],
-    "XqNHcm": ["Couldn't update skill targets: ", ["0"]],
+    "XszXjc": ["Renamed to ", ["0"]],
     "XtRoxT": ["Page ", ["pageNumber"]],
     "XuQzrk": [
       "Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again."
@@ -1843,9 +2005,11 @@
       "</1> because it contains a <2>.git</2> folder (one .ok/ per git repo). <3>Content directory</3> defaults to <4>.</4> (the whole repo); type a sub-folder to narrow it."
     ],
     "Y2tU6I": ["Delete ", ["0"]],
+    "Y5la_5": ["Install into"],
     "Y6PKd1": ["Remove ", ["name"], " from recent projects"],
     "Y6SK9K": ["Show source"],
     "Y8ViJx": ["A newer version may have been deployed since this tab opened."],
+    "Y9c_nf": ["0/0"],
     "YBt9YP": ["Beta"],
     "YC6_wP": ["Edit ", ["keyName"]],
     "YDL7N6": [
@@ -1864,6 +2028,7 @@
     "YRavYS": [
       "A personal color-theme picker — not shared with your project. When on, it appears under Plugins in the sidebar."
     ],
+    "YS9mSt": ["Updated \"", ["name"], "\" from ", ["0"]],
     "YSFv5w": ["No git repository — config sharing does not apply here."],
     "YTLmTM": ["Remove the parent <0>.git</0> folder"],
     "YW7Q86": ["Search settings not yet loaded — try again in a moment"],
@@ -1875,6 +2040,7 @@
     "Yi0VMG": ["Upload ", ["keyName"]],
     "YjMLg2": ["Off — external links show only their URL. No requests leave this computer."],
     "YjhKI5": ["Cloning..."],
+    "YjiZAs": ["changed outside"],
     "YkvmF4": ["New session"],
     "YlDuro": ["Fit height"],
     "Yp-Hi_": ["Open settings"],
@@ -1882,7 +2048,9 @@
       ["behind", "plural", { "one": ["#", " commit behind"], "other": ["#", " commits behind"] }]
     ],
     "YwPUUP": ["This pack is already set up here."],
+    "Yy90sM": ["Skill \"", ["name"], "\" created"],
     "YyXtnN": ["Underline"],
+    "Yzs3QX": ["More skill actions"],
     "Z1LF1M": ["Sharing a doc needs a GitHub repository. Create one for this project."],
     "Z2M5XM": ["Reason: ", ["reason"], " (", ["osDetail"], ")"],
     "Z3FXyt": ["Loading..."],
@@ -1900,7 +2068,8 @@
     ],
     "Z8KDox": ["Enter a folder name (e.g. brain)."],
     "Z8lGw6": ["Share"],
-    "ZARuZJ": ["Couldn't load files"],
+    "Z8nach": ["Upload failed: ", ["0"]],
+    "ZBF9fn": ["Manage skill folders"],
     "ZBt4rI": ["Instruction for the AI"],
     "ZBxvV3": ["New Terminal"],
     "ZDOq9A": ["What you share is sent to the OpenKnowledge team."],
@@ -1911,6 +2080,7 @@
     "ZQLDTl": ["created folder"],
     "ZU8VV_": ["Remove failed: ", ["error"]],
     "ZVOhXM": ["Failed to update sync — ", ["detail"]],
+    "ZW2yR_": ["Add custom path"],
     "ZW3mlR": ["Diff render mode"],
     "ZWgr0b": ["In a subfolder"],
     "ZWolSV": [
@@ -1957,12 +2127,14 @@
     ],
     "_FLBbi": [["sizeText"], " · secrets redacted · crash dump not redacted"],
     "_GRWOJ": ["Change the embeddings provider?"],
+    "_HgF9q": ["Sort by"],
     "_IGfXZ": ["OpenKnowledge quit unexpectedly last time."],
     "_IX_7x": ["Other"],
     "_JOGC0": ["Send feedback…"],
     "_LczaQ": ["Denied — ", ["optionName"]],
     "_NWEid": ["Search schema files by path"],
     "_NX6gG": ["Managing project AI tools is unavailable in this build."],
+    "_O7dJS": ["Different version here — click to compare and resolve"],
     "_PACVa": ["Release notes"],
     "_PBJRl": ["Add at least one letter or number."],
     "_Pmhxt": ["… earlier output trimmed"],
@@ -1986,7 +2158,7 @@
     "_eguJc": ["Uploading"],
     "_gO_m8": ["Waiting for your approval"],
     "_gkGSK": ["deleted template"],
-    "_hPpdX": ["Skill renamed"],
+    "_mcDqU": [["count"], " skills at this source"],
     "_pY_Vq": ["The repository was moved, renamed, or deleted."],
     "_qD6mn": ["Pick the folder where you've cloned it."],
     "_rP3HI": [["minutes"], "m ago"],
@@ -1995,6 +2167,7 @@
     "_yB-24": ["everything under any ", ["0"], "/ folder"],
     "a-cKXz": ["Select all source"],
     "a3H_MR": ["Open and focus the Ask AI composer for the current editor selection."],
+    "a3LDKx": ["Security"],
     "a45f2c": ["Glob patterns this schema applies to"],
     "a4FRQv": ["Undo to this edit?"],
     "a5Gha5": ["Local changes blocked the merge"],
@@ -2016,8 +2189,16 @@
     "aOp3hw": ["Couldn't move to Trash"],
     "aQD_86": ["Failed to update the embeddings provider — ", ["detail"]],
     "aQyGJc": ["Something else"],
+    "aR4DgO": [
+      "This repo bundles ",
+      ["count"],
+      " skills, plus ",
+      ["0"],
+      ". Install any of them from the plugin."
+    ],
     "aRI3Om": ["Close Window"],
     "aWlJai": ["Starting sign-in flow"],
+    "a_2_uB": ["Couldn't create ", ["trimmed"], ": ", ["0"]],
     "a_u4ck": ["Loading tags"],
     "aaE55D": ["Clear ", ["keyName"]],
     "aaI6cN": [
@@ -2026,6 +2207,7 @@
     "aalx4E": ["Editing broken MDX source: ", ["reason"]],
     "abiHje": ["Delete selected items"],
     "adsMWO": ["Resolving deltas"],
+    "ah_ekO": ["\"", ["name"], "\" is already up to date"],
     "aiArms": ["We couldn't clone this repository."],
     "ajHi4O": [
       "Auto-sync is paused — you don't have permission to push to this repo. Switch to Follow to keep receiving updates."
@@ -2042,6 +2224,7 @@
     "az8lvo": ["Off"],
     "b18t0_": ["Close diff"],
     "b24kPi": ["Queue"],
+    "b2ezG_": ["Kept both — \"", ["0"], "\" is its own skill now"],
     "b3Thhd": ["Upload failed"],
     "b4AQFK": ["Open activity panel for ", ["tooltipName"], ", editing ", ["realCurrentDoc"]],
     "b4VvP-": [
@@ -2075,6 +2258,7 @@
     "bkQRMh": ["Paragraph"],
     "blFttG": ["Search projects"],
     "bmC18N": ["Clearing local collaboration data for \"", ["docName"], "\" before reconnecting."],
+    "bpytj4": ["Move to ", ["0"]],
     "brCtGB": ["History unavailable"],
     "buNXgr": ["Switch between the visual and source editors, keeping your place."],
     "bultyE": [
@@ -2105,6 +2289,8 @@
     "cHhH3i": ["a required git tool"],
     "cIptmH": ["In the Claude Desktop App"],
     "cKjLuT": ["(project + user)"],
+    "cLP0Lf": ["Remote skill source"],
+    "cMMb6H": ["Installed ", ["imported"], ", but ", ["failed"], " failed: ", ["failedNames"]],
     "cN1Gcp": ["A worktree folder for ", ["shareBranch"], " already exists."],
     "cOJyVj": ["Disable Themes"],
     "cOSAfL": ["No repositories found on your GitHub account."],
@@ -2175,6 +2361,7 @@
       "</1>, in its own worktree under <2>.ok/worktrees/</2>."
     ],
     "dIYSqk": ["remote"],
+    "dJXrT9": ["New from scratch"],
     "dJw2_7": ["Saved with the project for your team."],
     "dMsx3p": ["Home page and navigation hub."],
     "dNM58w": ["Claude Code (claude) isn't installed or on your PATH."],
@@ -2183,7 +2370,6 @@
     "dPOFid": ["Show or hide terminal"],
     "dQHSCs": ["Convert (delete original)"],
     "dTaauv": ["Reason: ", ["reason"]],
-    "dUCQo4": ["Renamed to \"", ["trimmed"], "\""],
     "dUQ7_J": [
       "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords. This setting applies only to this computer."
     ],
@@ -2234,6 +2420,7 @@
     "e4GHWP": ["Pull"],
     "e4PbgC": ["Duplicate the file-tree item copied from the Files sidebar."],
     "e60wew": ["Allowed element values for ", ["field"]],
+    "e6dMJT": ["From ", ["harnessLabel"]],
     "e8L17t": ["A non-empty folder already exists at this path. Pick a different folder."],
     "e8zRrb": ["Show Files"],
     "e8zYa8": ["Could not open ", ["shareBranch"], " in a worktree. Try again."],
@@ -2245,21 +2432,21 @@
     "eJitUk": ["Upload from computer"],
     "eKThTQ": ["Failed to reorder"],
     "eNQGRb": ["Inline LaTeX math rendered with KaTeX."],
+    "eNhWUl": ["A PR reviewer, a release-notes writer, a deploy checklist..."],
     "ePK91l": ["Edit"],
     "eQkgKV": ["Installed"],
     "eQxm13": ["Failed to update attachment location — ", ["detail"]],
     "eTL5y9": ["Show selection preview"],
     "eTsJYJ": ["description"],
+    "eUFXS1": ["Sort skills"],
     "eVPynQ": ["Open <0><1>", ["verificationUri"], "</1><2/></0> and enter this code:"],
     "eaHUxx": ["Files toolbar"],
     "eazHgv": [
       "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
     ],
     "eiUA4k": [["count", "plural", { "one": ["#", " comment"], "other": ["#", " comments"] }]],
-    "el312q": ["Install skills into"],
     "emgiet": ["Authoritative content; mirrored verbatim everywhere it's referenced."],
     "enPTnx": ["line ", ["displayLine"]],
-    "eneWvv": ["Draft"],
     "eoEUI3": ["Couldn't resolve that comment."],
     "epuNYK": [
       "Mark a block as the source of truth. Mirrors elsewhere update live as you edit it."
@@ -2276,13 +2463,19 @@
       " can't continue this conversation — the transcript is kept, but the agent session is gone."
     ],
     "f65AOQ": ["Start from"],
+    "f8fH8W": ["Design"],
     "f8jU-L": [["0"], "/", ["1"], " — ", ["2"]],
     "f9lQNJ": ["Adds a managed block to"],
     "fBHvBn": ["There's no project folder for this window, so a terminal can't start here."],
+    "fBoO7w": ["This is a preview of ", ["boldName"], ". Install it into your agents."],
+    "fDjZxw": ["Copies the skill to ", ["0"]],
     "fG0X0e": ["Install ", ["brand"], " →"],
+    "fGqEFq": ["Install ", ["0"]],
+    "fIJtam": ["Reverting"],
     "fIgqfQ": ["Reinstalling"],
     "fJ3EbT": ["Themes"],
     "fJgQHX": ["Failed to create file"],
+    "fMsFdZ": ["Couldn't save the auto-update setting: ", ["0"]],
     "fNr-MX": ["Disable semantic search"],
     "fR-Kdc": ["(project-level only)"],
     "fRVBiq": [
@@ -2290,6 +2483,7 @@
     ],
     "fSRzLo": ["Show document panel"],
     "fVcm9t": [["0", "plural", { "one": ["#", " doc"], "other": ["#", " docs"] }]],
+    "fVzizW": ["Use a relative path inside the skill (no .., no spaces; SKILL.md is managed)."],
     "fWi7pn": ["Initialize starter pack"],
     "fWsBTs": ["Something went wrong. Please try again."],
     "fYKgzG": ["Failed to load recent projects."],
@@ -2301,15 +2495,17 @@
     "fbdLmk": ["Toggle bold formatting."],
     "fbsiBw": ["Something went wrong starting the terminal."],
     "fcgvCA": ["Claude"],
+    "fdeFfN": ["(binary file, not previewable)"],
     "fevEu0": ["Pull latest changes"],
+    "fg1U4e": ["Skill discovery powered by <0>skills.sh</0>"],
     "fiMNLl": ["Sync settings not yet loaded — try again in a moment"],
     "fj5YiP": ["Downloads a fresh copy from GitHub."],
     "fnlBN4": ["Auto-approve settings not yet loaded — try again in a moment"],
-    "fo0VXg": ["Uninstall"],
     "fqSfXY": ["Replace"],
     "fru3T7": ["Could not fix ", ["0"], " of ", ["1"], " files."],
     "ft-BOm": ["Report a bug…"],
     "fuJZKk": ["Search branches"],
+    "fvrHin": ["Available in every project on this machine. Not shared through git."],
     "fwhX-N": ["Indent or outdent source"],
     "fwrPh4": ["Please enter a valid email."],
     "fxJk_6": ["<0>Have more to add?</0> Write to <1/> and mention your reference."],
@@ -2324,6 +2520,11 @@
       ["descriptorLabel"],
       "> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
     ],
+    "g5w1sF": [
+      "Pick a folder to merge INTO ",
+      ["display"],
+      ". That folder becomes a symlink to this one, so its agent reads everything placed here. This folder stays real. Conflicting skills abort the merge."
+    ],
     "g85bAo": ["Synced ", ["lastSyncedRelative"]],
     "gAhHu7": ["Auto-fix applies only to problems with a known mechanical fix."],
     "gBbxn_": ["Checking sign-in status"],
@@ -2334,6 +2535,8 @@
     ],
     "gJR87V": ["Could not create the project folder. Pick a different folder."],
     "gKi-a_": ["New project"],
+    "gL_sdV": ["Popular"],
+    "gN3JX8": ["skills.sh"],
     "gOD68k": ["Open a single markdown file — no project setup."],
     "gQV-9w": [
       "Branch switched but the ",
@@ -2343,6 +2546,7 @@
     "gUlRQj": ["Orphans"],
     "gYz2ep": ["Expires in ", ["timeLabel"]],
     "gZElfU": ["Fixing ", ["0"], " of ", ["1"], " files"],
+    "gZiT5e": ["Replace these symlinks with independent copies?"],
     "gbHcbI": ["Failed to delete property"],
     "gfdqcY": ["Couldn't apply the change: ", ["0"]],
     "gfohmY": ["Connect tools"],
@@ -2361,6 +2565,7 @@
     "gp3I7-": ["Before syncing, set your identity for git commits:"],
     "gtEbeW": ["Highlight"],
     "gtGQ9S": ["Start ", ["agentName"], ", ", ["hint"]],
+    "gv5w9J": ["owner/repo, a git URL, or a local path"],
     "gvApb7": [
       "Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later."
     ],
@@ -2370,6 +2575,7 @@
     "h-AdvS": ["The folders and templates are already here, so there's nothing to add."],
     "h06R3C": ["No pages are missing outgoing graph links."],
     "h16FyT": ["Lists"],
+    "h2N-1n": ["Installed in ", ["0"]],
     "h3QZcB": [
       "A branch named ",
       ["shareBranch"],
@@ -2392,6 +2598,7 @@
     "hLod4_": ["Convert to template"],
     "hLy8b1": ["Updated to Version ", ["version"]],
     "hQXiDc": ["Search branches..."],
+    "hQjvzi": ["A .zip or .skill archive."],
     "hSBIG-": ["A title, description, tags — anything that describes this folder."],
     "hSySVc": ["Install handoff failed: ", ["msg"]],
     "hXUWyd": ["Value is required"],
@@ -2410,8 +2617,10 @@
       "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
     ],
     "hnq8fP": ["Remove ", ["label"], " from context"],
+    "hp8OtS": ["Added"],
     "hpDtUm": ["External wiki link"],
     "hpzRlK": ["Reopen closed tab"],
+    "hqCwRf": ["No file selected"],
     "hqVQbT": ["Add Comment"],
     "hvZwVx": ["Convert"],
     "hwFOFD": ["Settings failed to load"],
@@ -2421,6 +2630,7 @@
     "hyCxJY": ["Open that worktree instead"],
     "hynz2K": ["Download started"],
     "i-ShMB": ["Diagram"],
+    "i-wHEp": ["Editing ", ["boldName"], " in place. Changes save straight to your editor's copy."],
     "i09An-": ["Restored an earlier version (", ["0"], ")"],
     "i1flq_": ["Wiki link suggestions"],
     "i3f2kh": ["No matching commands."],
@@ -2435,7 +2645,6 @@
       "</0>. It may not have been pushed yet."
     ],
     "i9toLO": ["Agent configuration file"],
-    "iAoh55": ["Update \"", ["0"], "\"?"],
     "iDZtvM": ["Failed to load templates: ", ["message"]],
     "iEQQyu": ["Agent"],
     "iEYxO4": ["Show thumbnails"],
@@ -2445,24 +2654,44 @@
     "iIaSUD": ["Whitespace"],
     "iKSP5j": ["Word wrap"],
     "iKZkk1": ["Property value"],
+    "iKvAeG": ["Checking"],
     "iMYFJM": ["This window can't store a token — open Settings from the main app window."],
     "iMkWoF": ["Turn on"],
     "iO8V-7": ["Create worktree"],
+    "iOAsF1": [
+      "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill."
+    ],
     "iOHg1t": ["Open embedded URL in new tab"],
     "iRdfLr": ["Dev instance: ", ["label"]],
     "iSLIjg": ["Connect"],
     "iSQTsg": ["Ordered list"],
     "iSnkwB": ["Failed to open cloned project."],
     "iTylMl": ["Templates"],
+    "iUwpZI": ["No spaces — use <0>-</0> instead."],
     "iXTp5j": ["Scope: "],
+    "iYUTsI": ["This source bundles several skills — choose one, then Import."],
     "iZCZmF": [
       ["instanceCount", "plural", { "one": ["#", " instance"], "other": ["#", " instances"] }]
     ],
+    "iaPtht": ["copy"],
     "idD8Ev": ["Saved"],
     "idni-S": ["Values for ", ["keyName"]],
     "ig5vUe": ["Failed to load file"],
     "ii5mVn": ["Report this error"],
     "iilQXA": ["Folder duplicated"],
+    "iiqOKM": [
+      "Stop ",
+      ["0"],
+      " reading \"",
+      ["1"],
+      "\"? ",
+      ["subRoot"],
+      " will keep its other skills (as symlinks) but stop following ",
+      ["poolRootRel"],
+      " — new skills added there won't reach ",
+      ["2"],
+      " automatically."
+    ],
     "ijLc3m": ["Bullet list"],
     "ilodsp": ["Let agents use OpenKnowledge without asking"],
     "ioMn4Z": ["New from Template…"],
@@ -2479,8 +2708,12 @@
     ],
     "iuTKci": ["No edits yet."],
     "iv452l": ["Documentation for ", ["0"], " (opens in browser)"],
+    "ivwdwq": ["Create a skill."],
     "iy64Li": ["Full sync — your edits are committed and pushed to your remote automatically."],
     "iycx_A": ["Pushing"],
+    "iz1LdD": [
+      "Changed outside OK since it last wrote here — the state shown is what's on disk now"
+    ],
     "j0ItfO": ["Show resolved (", ["0"], ")"],
     "j2229h": ["Removing OpenKnowledge files…"],
     "j2kt1j": [
@@ -2492,8 +2725,12 @@
     "jAMpHn": ["What is a starter pack?"],
     "jBVUXo": ["Couldn't open the terminal — please try again."],
     "jC8LSZ": ["Reset view filters"],
+    "jENU1Q": [
+      "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+    ],
     "jEZ6Lf": ["provisional"],
     "jEdF24": ["Missing page: ", ["linkTitle"], ". Click to create."],
+    "jJdwCB": ["Revert"],
     "jKd3AP": ["Could not enable the terminal: ", ["0"]],
     "jL3gox": ["Select a value"],
     "jO18NZ": ["I'm switching to another tool"],
@@ -2503,7 +2740,6 @@
     "jSO1X5": ["Inherited templates can't be renamed here — rename it in the folder that owns it."],
     "jSY41h": ["\"", ["docName"], "\" took too long. Check your connection."],
     "jTLWxh": ["Embed an external page in an inline iframe (docs, demos, Figma, CodeSandbox)."],
-    "jX0IPx": ["A skill with this name already exists."],
     "jZ_E5M": ["Fetch failed — check the server logs for details."],
     "j_Z6g7": ["Shared default"],
     "jbSG8V": ["Show Files (", ["sidebarShortcutLabel"], ")"],
@@ -2515,8 +2751,13 @@
     "jnCROW": [
       "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
     ],
+    "jng7Ko": ["conflict"],
     "jol95m": ["Failed to open Project Navigator."],
     "jpctdh": ["View"],
+    "jpoCue": [".myteam/skills"],
+    "jqe7Yq": [
+      "Opens Settings → Skills, where you link a whole folder into another so both agents read the same skills, and add custom skill roots."
+    ],
     "jtg_8-": [
       "Build a knowledge wiki about the different types of flightless birds. Start with an overview page, then add cross-linked pages for each major group (ratites like ostriches, emus, and kiwis; penguins; and flightless rails), the regions they live in, and a timeline of how flightlessness evolved."
     ],
@@ -2553,6 +2794,9 @@
     "kCjkGY": ["This may take a moment. Your markdown content is kept."],
     "kCqCyf": ["Open CodeMirror's lint diagnostics panel."],
     "kFLlsI": ["Insert a footnote reference + matching definition stub."],
+    "kKw0H3": [
+      "You edited this skill locally and the source has new changes. Taking upstream replaces your version; your edits stay recoverable in version history."
+    ],
     "kLv8d3": [
       "Your copy of branch <0>",
       ["shareBranch"],
@@ -2587,6 +2831,7 @@
     "keop3U": [
       "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
     ],
+    "kfL8BJ": ["Import failed: ", ["0"]],
     "khCa4M": ["Teaches coding agents in this project to read and write through OpenKnowledge."],
     "kj9pAE": ["Creating page"],
     "kknhfj": ["No changes"],
@@ -2595,6 +2840,7 @@
     "knjOzA": ["Tag value"],
     "ko386X": ["A document has a conflict — resolve it to keep it up to date."],
     "kolRU1": ["Do you want to permanently delete instead?"],
+    "koo58J": ["Upload skill"],
     "kooyLJ": ["Failed to rename the field"],
     "kpqWwG": ["This ", ["targetNoun"], " was removed from branch <0>", ["branch"], "</0>."],
     "kq-Qj4": ["Couldn't work out where to send the comments — they stay queued."],
@@ -2641,8 +2887,13 @@
     "lHwYMr": ["Server error: ", ["status"], " ", ["statusText"]],
     "lI0Td2": ["Use letters, digits, <0>_</0> and <1>-</1> only."],
     "lISYEX": ["Couldn't reopen that comment."],
+    "lK9c4T": ["Keep the name to 64 characters or fewer."],
     "lKQnp-": ["Installed ", ["0"], " ", ["1"]],
+    "lM4c-I": [
+      "A path inside the skill — any folder works (e.g. references/notes.md). Folders in the path are created for you."
+    ],
     "lPzyrU": ["All hunks resolved"],
+    "lUtr1r": [["0"], " of ", ["1"], " selected"],
     "lVWEIL": ["Indexed ", ["embedded"], " of ", ["total"], " pages."],
     "lWNpNB": ["Add cursors or select matching occurrences through CodeMirror."],
     "lXKZGw": ["Heading 1"],
@@ -2652,7 +2903,12 @@
     "l_UFPv": ["Properties"],
     "lb_UU4": ["Sync now"],
     "lbkOif": ["Undo or redo visual-editor changes through TipTap collaboration history."],
+    "leF0i_": ["New file in this skill"],
+    "leiGnv": [["dir"], " (symlink)"],
     "lhjq3G": ["Reset ", ["labelText"], " to default"],
+    "lj4cNf": [
+      "Pick the skills to install. Each one lands as an editable skill you own; the plugin's hooks, commands, and MCP servers are not installed."
+    ],
     "ljFWEt": ["No settings found"],
     "ljHjfg": ["That branch is already open in another worktree."],
     "lkYioO": ["Show or hide document panel"],
@@ -2662,9 +2918,15 @@
     ],
     "lond3p": ["Shows above the code body. Round-trips as `title=\"...\"` in markdown."],
     "lrhetp": ["+ ", ["overflow"], " more"],
+    "lwCV5v": ["Couldn't open ", ["0"], " for editing: ", ["1"]],
     "lyWa43": ["Project-level disconnected pages"],
     "lzmtKp": ["Failed to load folder properties: ", ["message"]],
     "lzwo7p": ["Could not open GitHub sign-in. Please try again."],
+    "m0eHej": [
+      "Replace the copy at ",
+      ["display"],
+      " with a symlink to the skill's source folder? Nothing else moves."
+    ],
     "m16xKo": ["Add"],
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m6YGpY": ["Active panel content for the selected tab shows here."],
@@ -2677,15 +2939,14 @@
     "mLAjyL": [
       "Give the AI tools you use access to read and update your projects. Checking a box sets it up right away; unchecking removes it."
     ],
-    "mPneVR": ["Updated \"", ["display"], "\" to ", ["0"], "."],
     "mPy9lS": [
       "Organize my existing specs into a linked index grouped by area, and flag any that have drifted out of sync with the current code."
     ],
+    "mShKiV": ["Upload a skill"],
     "mToVM9": ["Message ", ["agentName"]],
     "mU3j1b": ["Remove item ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflict)"],
     "mWVJRX": ["Collapsible section with a clickable summary."],
-    "mY8U64": ["Teach agents a repeatable task. You can edit the body after creating."],
     "mYGY3B": ["Date"],
     "mYzDD_": ["A worktree folder for that branch already exists."],
     "mZ1r4i": ["Create a document from ", ["label"]],
@@ -2731,15 +2992,11 @@
     "msuDyW": [
       "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
     ],
-    "mu1O0q": [
-      "Open Knowledge can manage ",
-      ["0"],
-      " editor skill(s) for this project. Import moves them into .ok/skills and replaces the .claude, .codex, etc. copies with symlinks — one place to edit, in sync everywhere. If those folders are committed to git, review the change first; symlinks can behave differently on some editors and on Windows."
-    ],
     "mwMF9u": ["Open CodeMirror search in source editor mode."],
     "mxGJVE": ["Switch worktree…"],
     "mxY24F": ["Duplicate the focused file-tree item when focus is in the Files sidebar."],
     "n2lRue": ["Commit or stash changes to switch:"],
+    "n3T3EE": ["Installed in ", ["label"], " — click to remove"],
     "n3wx1q": ["Restore to this version?"],
     "n5n_vi": ["Private repository"],
     "n6hXUm": [
@@ -2750,27 +3007,19 @@
       "Connects automatically the next time you open this project in a trusted Codex session."
     ],
     "nBHvPL": ["Cancel editing"],
+    "nBgzKO": ["Make this the source — the skill's real folder moves here"],
     "nCzR-G": ["Copy code ", ["userCode"]],
-    "nD7Fx9": [
-      "This replaces the current skill content with the bundled version ",
-      ["0"],
-      ". Any local edits will be replaced — your current version is saved to history first, so you can restore it."
-    ],
     "nDT8qt": ["Initialized ", ["0"], " but could not open it."],
     "nG-XA9": ["The anchored text is gone. You can re-place it on selected text."],
     "nGAFeH": [
       "Reports you've generated on this Mac. Retry a send, reveal a file, or delete one you no longer need."
     ],
-    "nJq7et": ["Couldn't uninstall skill: ", ["0"]],
     "nMSYz5": [
       "This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects."
     ],
     "nNYV3Y": ["and ", ["remaining"], " more"],
     "nOEDQs": ["Failed to update sync mode — ", ["detail"]],
     "nP-KFo": ["New ", ["0"], " chat"],
-    "nP76lk": [
-      "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
-    ],
     "nTwL53": ["Open a doc to share its URL."],
     "nUNZL4": ["Ask ", ["0"]],
     "nWv1ja": ["Manage hidden files in Settings → Ignore patterns."],
@@ -2782,6 +3031,7 @@
     ],
     "ndwmea": ["unavailable on this platform"],
     "neRy3o": ["Split list item"],
+    "nf0wk0": ["symlinked via parent"],
     "nfPccR": [
       [
         "laterEdits",
@@ -2821,10 +3071,12 @@
     ],
     "nzHlj8": ["Close ", ["0"]],
     "nzaV6Q": ["Page thumbnails"],
+    "o0bHtA": ["By OpenKnowledge"],
     "o2yoFu": ["Reveal in Finder, No workspace"],
     "o49mDZ": ["Loading timeline history"],
     "o4dcAf": ["Reveal in File Explorer, ", ["hint"]],
     "o9CrsQ": ["research-note"],
+    "o9fPtM": ["Auto-update from source"],
     "oAFVKX": ["Failed to update the project sync default — ", ["detail"]],
     "oAGN8p": [
       "Remote branch <0>",
@@ -2842,6 +3094,7 @@
     "oQA-cA": ["Full path"],
     "oS1YpJ": ["Open the Project Navigator."],
     "oWsZk8": ["Create missing page ", ["target"]],
+    "oX-rVu": ["Install failed: ", ["0"]],
     "oXKEsy": ["Delete an adjacent wiki-link or tag chip."],
     "oXlLi4": [
       "Project plugins are your project's authoring standard — turn them on or off here. The choice is committed to config.yml and shared with every collaborator via git. Each enabled plugin gets its own page under Plugins in the settings sidebar."
@@ -2858,6 +3111,7 @@
     "ojGc_T": ["Open comment"],
     "omXJcU": ["Close others"],
     "onTlRk": ["Couldn't update skills sharing"],
+    "opPbzN": ["Copies the skill to ", ["path"]],
     "optX0N": [["0"], "h ago"],
     "oqB2ez": ["Previous match"],
     "os6dRM": ["Couldn't remove that comment from the queue."],
@@ -2874,6 +3128,11 @@
     "oxdGJn": ["Before you go, mind sharing why?"],
     "p0Iq25": ["Insert link"],
     "p2LEhJ": ["Personal access token"],
+    "p3m_Gk": [
+      "OK last set this folder to ",
+      ["0"],
+      " — something outside OK changed it since. The state shown is what's on disk now; your next Symlink/Unlink wins."
+    ],
     "p8TjFD": ["Collapse session dock"],
     "p98xmP": ["Applies to"],
     "p9sdCy": ["New ignore pattern"],
@@ -2885,10 +3144,13 @@
     "pFagOn": ["Source editing"],
     "pHYP6v": ["Open <0>Customize</0> in the sidebar <1/> <2>Skills</2>."],
     "pQf2Ux": [".ok/skills is back to local-only."],
+    "pSimwP": ["New name for the ", ["editor"], " version"],
     "pTPqMK": ["Toggle a fenced code block."],
+    "pTyA_t": ["tags"],
     "pUKV4K": ["Auto-denied"],
     "pWT04I": ["Checking..."],
     "pWbsW6": ["Loading docs"],
+    "pXB6SL": ["The skill's own folder — the source other locations copy or link from"],
     "pZAs1T": ["Failed to load outgoing links"],
     "paCw0z": ["everything under ", ["0"], "/ folders inside ", ["1"], "/"],
     "pajIrl": ["Could not turn off the terminal: ", ["0"]],
@@ -2904,6 +3166,7 @@
     "ppDgFi": ["Restart with this app's version"],
     "psfGPX": ["MCP connections"],
     "psl2Sj": ["Your change is still being saved — run the test again in a moment."],
+    "ptQ3_N": ["unlink"],
     "pvnfJD": ["Dark"],
     "pzutoc": ["Italic"],
     "q2kXMG": ["Inline Math"],
@@ -2912,6 +3175,7 @@
     "q4YJl_": ["The terminal session ended (exit code ", ["0"], ")."],
     "q6-JVU": ["Loading pages"],
     "q7F5am": ["title"],
+    "q8aCbb": ["Two versions of \"", ["0"], "\" — source vs ", ["editor"]],
     "qAQVSD": ["Page headings response was not JSON"],
     "qAhFeg": [
       ["userName"],
@@ -2923,12 +3187,15 @@
     "qEEfPk": ["Bug report ", ["0"]],
     "qEIFZu": ["Key ending in ", ["keyHint"]],
     "qEue6Q": [" or "],
+    "qFKsNl": ["Imported \"", ["0"], "\"."],
     "qFWMl-": ["View as text"],
     "qIJIrD": ["Testing"],
+    "qJSo0_": ["What is the difference between copies and symlinks?"],
     "qNOgUu": ["Edits at the source land here — no copy-paste drift."],
     "qRZh7J": ["Let Tab leave the source editor instead of indenting."],
     "qSKu2v": ["Source navigation and selection"],
     "qSxaOz": ["Accept their deletion"],
+    "qTcVwj": ["Browse or upload a skill for this project."],
     "qTcZZu": ["Failed to load tags. Press <0>Esc</0> and re-open to retry."],
     "qX-ABr": ["Or to use browser sign-in instead:"],
     "qXN416": ["Couldn't share skills: internal error. Please restart the app."],
@@ -2945,6 +3212,8 @@
     "qiRoLb": ["Summarize everything I changed this week"],
     "qioCwA": ["Jump to page ", ["pageNumber"]],
     "qjHMHf": ["Failed to disable sync — ", ["detail"]],
+    "qkqG0b": ["Take upstream"],
+    "qlAIQ1": ["Remote"],
     "qmL1UG": ["Uploading securely"],
     "qo4zCg": ["Path cannot contain backslashes"],
     "qokN44": ["Show queued comments"],
@@ -2970,6 +3239,7 @@
       "Tell us what went wrong and we'll gather the logs. Nothing leaves your Mac until you've reviewed it."
     ],
     "rDOuNw": ["Failed to import template"],
+    "rFL-yb": ["Edit a copy"],
     "rFTdVq": ["Show in Explorer"],
     "rFmBG3": ["Color theme"],
     "rFw02Q": ["Uploading ", ["keyName"]],
@@ -2989,6 +3259,7 @@
     "rZVMkf": ["Visual editor replace input focused"],
     "rageVb": ["Custom HTML with a live preview pane (sandboxed iframe)."],
     "rbrHTd": ["Approved — ", ["optionName"]],
+    "rcJmK8": ["Convert locations to copies"],
     "rdU729": ["Layout"],
     "rfFpcF": ["Remove ", ["chip"]],
     "rg7hNd": ["Rate your experience"],
@@ -2996,6 +3267,11 @@
     "ri6zS-": ["The schema file does not exist or failed to load — adding a field creates it."],
     "riqekz": ["Suggestion menu navigation"],
     "rlUzXK": ["Could not validate folder. Please try again."],
+    "rmorj0": [
+      "This is a preview of ",
+      ["boldName"],
+      " — a built-in skill shipped with Open Knowledge. It's read-only."
+    ],
     "rn7n0G": ["Resume sync"],
     "rnX-1S": ["Enable plugins"],
     "roAe2K": ["Link URL"],
@@ -3004,13 +3280,18 @@
     "rscgd_": ["Go to this comment in ", ["0"]],
     "rssK8c": ["Ignore patterns (raw text)"],
     "rtdR4v": ["Show or hide Files"],
+    "rucNcu": [
+      "Saved into this project's skills folder (e.g. <0>.agents/skills</0>), versioned alongside your project."
+    ],
     "rwrPbS": ["Component boundary navigation"],
     "rxWGWX": ["Forward"],
     "s-MGs7": ["Resources"],
     "s-XOaI": ["File name"],
+    "s-pW_v": ["Couldn't install: ", ["0"]],
     "s0-xF4": ["Tell us how it's going"],
     "s061i4": ["Relative path"],
     "s0IDhW": ["This file could not be found."],
+    "s0Iold": ["Edited locally since it was installed"],
     "s0J_k9": [["0", "plural", { "one": ["#", " key"], "other": ["#", " keys"] }]],
     "s0_GnA": ["Opening ", ["openingLabel"], "…"],
     "s1c0ja": ["Bullet List"],
@@ -3023,13 +3304,15 @@
     ],
     "sER-bs": ["Files"],
     "sFhaTJ": ["Disambiguates similarly-named templates in the menu."],
-    "sHrqDx": ["Couldn't rename skill: ", ["0"]],
     "sICrVf": ["Restored to the version from ", ["0"]],
     "sIGbBZ": ["Convert selection to footnote"],
     "sIxSSP": ["Resolve conflict in your terminal"],
     "sJK6pq": ["Permission denied"],
     "sJWhgo": ["Unknown component: ", ["unregisteredComponentName"]],
     "sKEgGd": ["Send to chat"],
+    "sLcbHt": [
+      "Symlink another folder into one of these so both agents read the same skills; unlink to manage a folder's skills one by one again."
+    ],
     "sNeKjP": ["Failed to store the token — try again"],
     "sOxZaS": ["Failed to load graph"],
     "sZ2IOu": [
@@ -3057,6 +3340,11 @@
       " · crash dump not redacted"
     ],
     "snrVQ7": ["probe failed"],
+    "ssk6rl": [
+      "The skill's own folder (",
+      ["path"],
+      ") — the source other locations copy or link from"
+    ],
     "ssuwjF": ["Branch"],
     "stlgky": [
       "On — your search queries and the text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
@@ -3066,10 +3354,10 @@
     "sxjyRq": ["Worktrees"],
     "sxkWRg": ["Advanced"],
     "syi2ye": [["percent"], "% used (", ["left"], "% left)"],
+    "szy9BS": ["Use lowercase letters, numbers, and hyphens only"],
     "t-JXbf": ["Notion-style inline row for a downloadable file. Drag-drop also works."],
     "t18QYR": ["Unpin ", ["accessibleLabel"]],
     "t2TkQ3": ["Sync paused — resolve conflicts to resume."],
-    "t422_7": ["Uninstall everywhere"],
     "t4sFKC": [
       "New branch <0>",
       ["trimmed"],
@@ -3077,6 +3365,8 @@
     ],
     "t6w1cq": ["Open a blank editor tab."],
     "t9Qn8y": ["No agents enabled"],
+    "tA0b9E": ["the default skills folder (the exact path appears once saved)"],
+    "tA2-xC": ["\"", ["0"], "\" was already added (identical content)."],
     "tAPZEx": ["Below"],
     "tHKQ6j": ["Renaming"],
     "tKlWWY": ["Emoji"],
@@ -3084,6 +3374,7 @@
     "tP5DDk": ["Apply link"],
     "tUvUfp": ["Use a folder you already have."],
     "t_YqKh": ["Remove"],
+    "tc65fD": ["Most installed"],
     "tcjTlU": ["Starter packs"],
     "teD0H9": ["Couldn't open a worktree for that branch."],
     "teFjfG": ["No agent is set up yet — pick one from the send menu."],
@@ -3094,10 +3385,19 @@
     "tgWuMB": ["Modified"],
     "thnPBX": ["Activate the next editor tab."],
     "ti6aF_": ["Ask ", ["0"], " CLI"],
+    "tiFPjk": ["source"],
     "tiWX6q": ["Source editor"],
     "tjXez2": ["blog-post"],
+    "tkIXtS": [
+      "Installed ",
+      ["imported"],
+      " skills (",
+      ["alreadyImported"],
+      " were already present)"
+    ],
     "tnG-m6": ["Auto-sync is paused — sign in to resume."],
     "toyw51": ["Mermaid diagram controls"],
+    "tqQBwN": ["Any scripts are shown for review, never run."],
     "tsiTqO": ["Paste your API key"],
     "tsyExA": ["Connect your AI tools to OpenKnowledge"],
     "tzGWeg": ["Preparing to uninstall OpenKnowledge"],
@@ -3119,12 +3419,10 @@
       "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
     ],
     "uF9ruK": ["Saving"],
-    "uFOL2y": [
-      "No project skills yet. Author one to teach agents a repeatable task scoped to this knowledge base."
-    ],
     "uFQbYd": ["Home page and entry point."],
     "uGaIIS": ["Check out worktree"],
     "uH_S-u": [["loadErrorTitle"], ": ", ["message"]],
+    "uJfwF8": ["Already installed — nothing new to import."],
     "uKRYiW": ["Sync status unavailable — server error."],
     "uL_Wx8": ["The terminal stopped unexpectedly."],
     "uM6jnS": ["Restore failed"],
@@ -3135,6 +3433,7 @@
       "Couldn't restart the server — it's running under a different account. Restart your computer to clear it, then reopen this project."
     ],
     "uR2YT3": ["Show problem indicators"],
+    "uUCrBv": ["symlink"],
     "uUiiyC": [
       "You don't have permission to push to this repo. Follow can still keep your copy up to date."
     ],
@@ -3146,6 +3445,10 @@
     "uaUc6t": ["Restart server"],
     "ubMwcO": ["The terminal session ended (signal ", ["0"], ")."],
     "ucXZ0k": ["Loading agents…"],
+    "ugQcJX": [
+      ["display"],
+      " is an independent copy while the skill's other locations are symlinks. Click to make it a symlink to the source."
+    ],
     "ugoTXs": ["folder"],
     "uhJEA2": [
       [
@@ -3173,12 +3476,12 @@
       ]
     ],
     "v77jrg": ["Visual editor selection"],
-    "v7hK0U": ["Use lowercase letters, digits, and hyphens only."],
     "v7lbnC": ["Find next match"],
     "vAYoCZ": ["Couldn't open the worktree. Try again."],
     "vDXqVv": ["Insert a markdown hard break."],
     "vEJDlt": ["The file is in your Trash; the file-watcher will reconcile."],
     "vF68cg": ["Fields"],
+    "vGQxBT": ["Updates from the source apply automatically (unless edited locally)"],
     "vGeNNQ": ["Copy a prompt and paste it into your agent to set up your project."],
     "vIxrEk": ["Fit width"],
     "vLyv1R": ["Hide"],
@@ -3208,6 +3511,7 @@
       ["copyShortcut"],
       "</0> to copy the link below, or open OK in the desktop app."
     ],
+    "vjW-SM": ["Saved into your global skills folder (e.g. <0>~/.agents/skills</0>)."],
     "vja0Dg": ["Open session dock"],
     "vjwsDi": [
       [
@@ -3222,6 +3526,7 @@
     "vppAju": ["Where newly added attachments are placed."],
     "vv7kpg": ["Cancelled"],
     "vvWZnu": ["Diff unavailable"],
+    "vy_VIN": ["Tracked in git — updates flow through your repo (pull or CI), not auto-update"],
     "w3tVpc": ["No links yet. Add wiki links or markdown links to build a graph."],
     "w3vFfL": ["Hide Files"],
     "w4ZzmQ": ["Couldn't reach the embeddings provider — retry"],
@@ -3232,13 +3537,16 @@
     "w6sBjd": ["Terminal settings not yet loaded — try again in a moment"],
     "w6sT-y": ["Follow the agent's edits"],
     "w7SsvI": ["That folder isn't an OpenKnowledge project yet. Initialize it and open?"],
+    "w7bnEb": ["Create a personal skill, available across every project."],
     "w7nm4K": ["Indented blockquote for citations."],
     "wDgmsr": ["\"", ["0"], "\" install refreshed (", ["1"], ")"],
+    "wErce0": ["Choose a skill archive"],
     "wF2wqQ": ["Unknown date"],
     "wGSHzy": ["Activate one of the first eight editor tabs."],
     "wJijgU": ["Location"],
     "wJo9oS": ["Close find"],
     "wQp1V3": ["Mirror of <0>", ["src"], "</0>"],
+    "wQvvZY": ["New skill file"],
     "wT4iQr": ["Open visual-editor find with replace controls expanded."],
     "wTcjov": ["No workspace"],
     "wU8WyK": ["Element fields"],
@@ -3250,17 +3558,14 @@
       "\" from recent projects. Its folder no longer exists."
     ],
     "w_Sphq": ["Attachments"],
-    "waFx9W": ["Managed"],
     "wbv9xO": ["Create new project"],
     "wcfO9r": ["No bug reports yet."],
     "wdxz7K": ["Source"],
     "weP6me": ["Couldn't load docs — type @ again to retry"],
+    "wefL17": [["source"], " publishes ", ["count"], " skills. Install any of them together."],
     "wgNoIs": ["Select all"],
     "wlwXUk": [
       "You picked ~/Downloads. Files there are usually transient — consider a stable folder instead."
-    ],
-    "wn8EJi": [
-      "Skills teach agents repeatable tasks. Author them here; install a skill to project it into your editors' skill folders."
     ],
     "wndeIl": ["Project-level pages with neither incoming nor outgoing graph edges."],
     "ws5o1F": ["Checked by: ", ["0"]],
@@ -3270,7 +3575,6 @@
     "wzq9Rv": [
       "A branch with that name already exists. Open its worktree from the switcher instead."
     ],
-    "x-5mJ1": ["Install on all"],
     "x2fr_j": ["Graph"],
     "x3-2ta": [
       ["packName"],
@@ -3283,6 +3587,7 @@
       "Semantic search is on, but no API key is set — search falls back to keyword matching. Add one below."
     ],
     "x57cJf": ["Open link"],
+    "xBFg6z": ["From the ", ["0"], " plugin"],
     "xCJdfg": ["Clear"],
     "xCdTnb": ["Close new tab"],
     "xDBki3": ["Heading suggestions"],
@@ -3299,6 +3604,7 @@
     "xSVO3J": ["What gets created"],
     "xV5sXw": [["0"], "w ago"],
     "xWEvuo": ["Ask AI"],
+    "xWomUD": ["Use ", ["editor"], " version"],
     "xXo8FT": ["Save failed: ", ["error"]],
     "xYMPyY": [
       "Paste was incomplete — ",
@@ -3318,10 +3624,10 @@
     "xiv-dW": ["No files yet."],
     "xlQpTE": ["More refusal options"],
     "xloBjn": ["Relative Path"],
-    "xnP32l": ["No description yet — add one so agents know when to use this skill."],
     "xo6PEb": ["Choose where to send the queue"],
     "xrVr_k": ["Couldn't create skill: ", ["0"]],
     "xsZhu-": ["Page number"],
+    "xtJgSe": ["This source bundles several skills — choose the one to import."],
     "xzAmL_": ["Auto-approved"],
     "xzktOa": ["Edit wiki link"],
     "y1t8bQ": ["Settings sections"],
@@ -3348,9 +3654,13 @@
     ],
     "yHikCO": ["Open CodeMirror's go-to-line prompt."],
     "yIPXut": ["Preparing search"],
+    "yK1m_z": [["0", "plural", { "one": ["Skill"], "other": ["Skills"] }]],
     "yKu_3Y": ["Restore"],
     "yLEyuq": ["Product updates in your inbox."],
     "yLq4w4": ["Separator"],
+    "yLwx9e": [
+      "A parent directory is the symlink — unlink that folder itself to take this one back."
+    ],
     "yMgL_E": ["Find field navigation"],
     "yQE2r9": ["Loading"],
     "yQyglE": ["No matching docs"],
@@ -3365,7 +3675,9 @@
     "y_5CE8": ["Item ", ["0"]],
     "y_K0Dz": ["What happened?"],
     "yaPGPa": ["Open a project to manage its AI tool connections."],
+    "ybWWR2": ["Symlinks the skill to ", ["0"]],
     "ycIX5i": ["You're signed out — sign in to resume syncing."],
+    "yckias": ["Rename file"],
     "ydzS9x": ["Exit"],
     "yf5auF": ["Search rules by id, alias, or name"],
     "yf5r22": [
@@ -3375,10 +3687,11 @@
       " (inherited from folder properties; not editable here)"
     ],
     "ygCKqB": ["Stop"],
+    "yg_6wQ": ["Search failed. Try again."],
+    "yhI6P0": ["Moved \"", ["0"], "\" to ", ["1"]],
     "yhdqox": [
       "Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working."
     ],
-    "yitgD9": ["Failed to load skill targets: ", ["0"]],
     "yjExfe": ["Branch <0>", ["shareBranch"], "</0> is checked out in:"],
     "ylXj1N": ["Selected"],
     "ymWJLd": ["Show ", ["0"], " more"],
@@ -3437,6 +3750,7 @@
       ["date"],
       "}</1> fills in on create."
     ],
+    "zt9ZgM": ["This repo bundles ", ["count"], " skills. Install any of them from the plugin."],
     "ztKII6": ["Failed to add item"],
     "zvjCD4": ["Detailed diagnostics"],
     "zwBp5t": ["Private"],

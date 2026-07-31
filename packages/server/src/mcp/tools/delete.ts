@@ -136,13 +136,13 @@ export function register(server: ServerInstance, deps: DeleteDeps): void {
               .min(1)
               .optional()
               .describe(
-                'Skill-relative bundle file paths to delete (`references/...`/`scripts/...`). Omit to delete the WHOLE skill (`.ok/skills/<name>/`).',
+                'Skill-relative bundle file paths to delete (`references/...`/`scripts/...`). Omit to delete the WHOLE skill folder.',
               ),
             scope: SkillScopeArg.optional(),
           })
           .optional()
           .describe(
-            'A skill to delete — the whole skill (`.ok/skills/<name>/`), or specific bundle files when `files` is set.',
+            'A skill to delete — the whole skill folder, or specific bundle files when `files` is set.',
           ),
         asset: z
           .object({

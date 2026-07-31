@@ -4,8 +4,7 @@
  * CLI (`claude` / `codex` / `cursor-agent`) in the docked terminal. The rows are
  * desktop-gated: they render only when a `TerminalLaunchProvider` value is
  * present (the web host passes `null`, so the section is absent). Clicking a row
- * routes the handoff input — with the typed instruction threaded on — plus the
- * chosen CLI to the launcher.
+ * routes the handoff input plus the chosen CLI to the launcher.
  */
 
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
@@ -157,17 +156,6 @@ describe('Open-with-AI Terminal CLI rows', () => {
     // `toStrictEqual` proves the launched input is the bare `input` with no
     // `instruction` key, and that the chosen CLI is threaded through.
     expect(calls).toStrictEqual([{ input, cli: 'codex' }]);
-  });
-
-  test('typing an instruction threads it onto the launched input', async () => {
-    const calls: LaunchCall[] = [];
-    await renderMenu({ launcher: (i, cli) => calls.push({ input: i, cli }) });
-    await openMenu();
-    await userEvent.type(screen.getByTestId('open-in-agent-instruction'), 'Add error handling');
-    await userEvent.click(screen.getByTestId('open-in-agent-terminal-cursor'));
-    expect(calls).toStrictEqual([
-      { input: { ...input, instruction: 'Add error handling' }, cli: 'cursor' },
-    ]);
   });
 
   test('the trigger is disabled when there is no handoff input', async () => {

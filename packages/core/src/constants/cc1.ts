@@ -69,6 +69,18 @@ export const MANAGED_ARTIFACT_PREFIX_SKILL = '__skill__/';
 export const MANAGED_ARTIFACT_PREFIX_TEMPLATE = '__template__/';
 
 /**
+ * Prefix for an EDITABLE-UNMANAGED skill doc (`__extskill__/<name>` +
+ * `__extskill__/<name>/<rel>` for a bundle file). A detected skill in another
+ * editor (`~/.claude/skills/<name>`, …) lives OUTSIDE the project's contentDir;
+ * this synthetic doc lets it open as an editable managed-artifact-style buffer
+ * that continuously autosaves back to the real harness file — with none of the
+ * managed benefits (history/Revert/install/scope-move). Unlike `__skill__/`,
+ * this prefix carries NO scope: the real on-disk dir is held in the server's
+ * external-skill registry, keyed by name.
+ */
+export const MANAGED_ARTIFACT_PREFIX_EXTSKILL = '__extskill__/';
+
+/**
  * Canonical skill/managed-artifact scope values — the single source for the
  * `global | project` axis. `cc1.ts` imports nothing, so it is the correct
  * lowest layer to own this; the wire schemas (`SkillScopeSchema`,
@@ -79,25 +91,97 @@ export const MANAGED_ARTIFACT_PREFIX_TEMPLATE = '__template__/';
 export const MANAGED_ARTIFACT_SCOPES = ['project', 'global'] as const;
 export type ManagedArtifactScope = (typeof MANAGED_ARTIFACT_SCOPES)[number];
 
-/** True when `name` is a skill or template synthetic doc name. */
+/** True when `name` is a skill, template, or editable-unmanaged-skill synthetic
+ *  doc name. All three are managed-artifact-CLASS docs: editable content docs
+ *  hidden from the Files tree, with custom persistence (the observer bridge runs
+ *  so WYSIWYG works). Only `__extskill__/` writes OUTSIDE the project boundary. */
 export function isManagedArtifactDocName(name: string): boolean {
   return (
     name.startsWith(MANAGED_ARTIFACT_PREFIX_SKILL) ||
-    name.startsWith(MANAGED_ARTIFACT_PREFIX_TEMPLATE)
+    name.startsWith(MANAGED_ARTIFACT_PREFIX_TEMPLATE) ||
+    name.startsWith(MANAGED_ARTIFACT_PREFIX_EXTSKILL)
   );
 }
 
+/** The synthetic editable doc name for an unmanaged skill's `SKILL.md`
+ *  (`__extskill__/<name>`). The single builder shared by the client open path
+ *  and the server endpoint response so both address the same key. */
+export function externalSkillLiveDocName(name: string): string {
+  return `${MANAGED_ARTIFACT_PREFIX_EXTSKILL}${name}`;
+}
+
+/** The synthetic editable doc name for an unmanaged skill's BUNDLE file
+ *  (`__extskill__/<name>/<relNoExt>`) — the per-file analogue of
+ *  {@link externalSkillLiveDocName} and the sibling of {@link skillFileLiveDocName}.
+ *  `rel` is a `.md`/`.mdx` reference path; the extension is stripped (the server
+ *  binds the ext-less name to the real file on disk, `.md` preferred). */
+export function externalSkillFileLiveDocName(name: string, rel: string): string {
+  const relNoExt = stripMdExt(rel);
+  return `${MANAGED_ARTIFACT_PREFIX_EXTSKILL}${name}/${relNoExt}`;
+}
+
+/** True when `name` is an editable-unmanaged-skill doc (`__extskill__/…`). The
+ *  single reduced-mode signal: a doc for which the managed-only affordances
+ *  (history/Revert/install/scope-move/Modified-Update) are hidden. */
+export function isExternalSkillDocName(name: string): boolean {
+  return name.startsWith(MANAGED_ARTIFACT_PREFIX_EXTSKILL);
+}
+
 /**
- * Scope-relative root holding every skill's source dir: `<contentDir>/.ok/skills`
- * for project skills (git-committed, shared via the project repo) and
- * `<home>/.ok/skills` for global skills (user-level). SINGLE source of truth
- * for the `.ok/skills/...` path shared by the content filter (admission), the
- * doc-name routing (app + server), and the timeline query. The prefix is baked
- * into the shadow-repo object-store key scheme, so a change here is a one-way
- * door that must stay atomic across every consumer — hence one compile-time
- * constant rather than independent copies per package.
+ * Parse an `__extskill__/<name>` / `__extskill__/<name>/<rel>` doc name into its
+ * skill name + optional bundle-relative path (`references/x`, ext-less), or null
+ * when it isn't one. Deliberately NOT folded into `parseManagedArtifactName`:
+ * that returns a scope-typed shape (`global | project`), and an editable-
+ * unmanaged skill has NO scope — its real dir lives in the server's external-
+ * skill registry. The name grammar is the shared skill slug (`[a-z0-9-]+`); the
+ * security-critical containment gate is `externalSkillAbsPath` (server). */
+export function parseExternalSkillDocName(
+  name: string,
+): { name: string; rel: string | null } | null {
+  if (!name.startsWith(MANAGED_ARTIFACT_PREFIX_EXTSKILL)) return null;
+  const rest = name.slice(MANAGED_ARTIFACT_PREFIX_EXTSKILL.length);
+  const slash = rest.indexOf('/');
+  const skillName = slash < 0 ? rest : rest.slice(0, slash);
+  const rel = slash < 0 ? null : rest.slice(slash + 1);
+  // cc1 imports nothing (lowest layer), so the slug grammar is inlined rather
+  // than importing SKILL_NAME_REGEX. `externalSkillAbsPath` re-checks it.
+  if (!/^[a-z0-9-]+$/.test(skillName)) return null;
+  return { name: skillName, rel: rel && rel.length > 0 ? rel : null };
+}
+
+/**
+ * The RETIRED skill store's path (`<contentDir>/.ok/skills`, `<home>/.ok/skills`).
+ *
+ * Skills live IN PLACE now — the source folder IS the skill, at an editor dir,
+ * the `.agents/skills` hub, or a custom root. This is NOT where skills live and
+ * must never be a default for a fresh write. It survives for three reasons, all
+ * legacy-shaped:
+ *
+ *  1. Residents that have not drained. The boot migration moves them out, but a
+ *     name that collides at its target never moves.
+ *  2. Restoring a version whose commit predates the migration — the bundle sat
+ *     here in that commit's tree.
+ *  3. The git carve-out: this is the one skill root inside `.ok/`, which OK
+ *     hides from git wholesale in local-only mode (see `content-filter.ts`).
+ *
+ * `.ok/skills` is otherwise an ORDINARY custom root — you may place a skill
+ * there and it is not relocated, ranked, or marked differently from
+ * `.team/skills`. If you are reaching for this constant to answer "where does a
+ * skill live", you want the entry's real `path` instead.
+ *
+ * The prefix is baked into the shadow-repo object-store key scheme, so a change
+ * here is a one-way door that must stay atomic across every consumer.
  */
-export const SKILL_CONTENT_ROOT = '.ok/skills';
+/**
+ * Drop a trailing `.md` / `.mdx`. Content docs are addressed extension-less, so
+ * this conversion happens at every boundary that turns a real path into a doc
+ * name — one spelling keeps the `.mdx` grammar in one place.
+ */
+export function stripMdExt(path: string): string {
+  return path.replace(/\.mdx?$/i, '');
+}
+
+export const LEGACY_SKILL_STORE_ROOT = '.ok/skills';
 
 /**
  * The CONTENT doc name for a PROJECT skill's `SKILL.md`
@@ -106,7 +190,7 @@ export const SKILL_CONTENT_ROOT = '.ok/skills';
  * `__skill__/global/<name>` managed-artifact docs.
  */
 export function projectSkillContentDocName(name: string): string {
-  return `${SKILL_CONTENT_ROOT}/${name}/SKILL`;
+  return `${LEGACY_SKILL_STORE_ROOT}/${name}/SKILL`;
 }
 
 /**
@@ -135,15 +219,60 @@ const SKILL_BUNDLE_SUBDIRS = ['references', 'scripts'] as const;
  * (`[[notes]]` resolving against the page set) is untouched. `..` escapes and
  * targets that leave the skill dir return null.
  */
+/**
+ * A `/<skill-name>` reference from inside a skill bundle → that sibling skill's
+ * doc.
+ *
+ * The leading slash is the agent-facing convention for naming a skill (the way
+ * a slash command names one), not a filesystem path. Skill bodies routinely
+ * cross-reference each other that way — "consumer skills (`/graphics`,
+ * `/motion-video`) load this" — and read as a path it points at a root-level
+ * doc that does not exist, so following one offered to CREATE a page instead of
+ * opening the skill.
+ *
+ * Resolves against the SOURCE skill's own root, so it finds siblings in
+ * whichever dir the bundle lives in. A single segment only: `/a/b` is a path,
+ * not a skill name.
+ */
+export function resolveSkillSlashTarget(target: string, sourceDocName: string): string | null {
+  const trimmed = target.trim();
+  if (!trimmed.startsWith('/')) return null;
+  const name = trimmed.slice(1);
+  if (name === '' || name.includes('/')) return null;
+
+  const projectRoot = /^(\.[A-Za-z0-9_-]+\/skills)\/[^/]+\/(?:SKILL|references\/.+)$/.exec(
+    sourceDocName,
+  );
+  if (projectRoot) return `${projectRoot[1] as string}/${name}/SKILL`;
+
+  const globalSkill = /^__skill__\/(global)\/[^/]+(?:\/references\/.+)?$/.exec(sourceDocName);
+  if (globalSkill) return skillLiveDocName('global', name);
+
+  return null;
+}
+
 export function resolveSkillBundleWikiTarget(target: string, sourceDocName: string): string | null {
-  const skillDirMatch = /^(\.ok\/skills\/[^/]+)\/SKILL$/.exec(sourceDocName);
+  // The source may be ANY doc of a bundle — the SKILL doc or a reference doc —
+  // under any bundle scheme:
+  //  - project skill roots (`.ok/skills` store or in-place `.<editor>/skills/…`;
+  //    one shape-regex, no editor list to keep in lock-step),
+  //  - global managed artifacts (`__skill__/global/<name>[/references/…]`),
+  //  - editable-unmanaged externals (`__extskill__/<name>[/<rel>]`).
+  // Bundle paths are authored bundle-ROOT-relative by convention regardless of
+  // which bundle doc mentions them, so every source resolves against its own
+  // bundle root. Only admitted docs reach the index, so the broad shape match
+  // draws no spurious edges.
+  const skillDirMatch =
+    /^(\.[A-Za-z0-9_-]+\/skills\/[^/]+)\/(?:SKILL|references\/.+)$/.exec(sourceDocName) ??
+    /^(__skill__\/global\/[^/]+)(?:\/references\/.+)?$/.exec(sourceDocName) ??
+    /^(__extskill__\/[^/]+)(?:\/.+)?$/.exec(sourceDocName);
   if (!skillDirMatch) return null;
   const skillDir = skillDirMatch[1] as string;
 
   const trimmed = target.trim();
   // Strip a trailing markdown extension so `[[references/x.md]]` and
   // `[[references/x]]` resolve identically (refs are ext-less content docs).
-  const withoutExt = trimmed.replace(/\.mdx?$/i, '');
+  const withoutExt = stripMdExt(trimmed);
   const segments = withoutExt.split('/').filter((s) => s !== '' && s !== '.');
   const [first] = segments;
   if (!first || !(SKILL_BUNDLE_SUBDIRS as readonly string[]).includes(first)) return null;
@@ -170,7 +299,11 @@ export type ParsedProjectSkillBundleDoc =
   | { name: string; kind: 'skill'; rel: null }
   | { name: string; kind: 'reference'; rel: string };
 
-const PROJECT_SKILL_BUNDLE_DOC_RE = /^\.ok\/skills\/([^/]+)\/(SKILL|references\/.+)$/;
+// Any skill root: the `.ok/skills` store OR an in-place editor dir
+// (`.claude/skills`, `.codex/skills`, `.github/skills`, …). Shape-matched (every
+// root is `.<editor>/skills/`) so no editor list to keep in lock-step; only
+// admitted skills reach the index, so a broad match draws no spurious edges.
+const PROJECT_SKILL_BUNDLE_DOC_RE = /^\.[A-Za-z0-9_-]+\/skills\/([^/]+)\/(SKILL|references\/.+)$/;
 
 export function parseProjectSkillBundleDoc(docName: string): ParsedProjectSkillBundleDoc | null {
   const match = PROJECT_SKILL_BUNDLE_DOC_RE.exec(docName);
@@ -233,6 +366,27 @@ export function skillLiveDocName(scope: ManagedArtifactScope, name: string): str
 }
 
 /**
+ * The LIVE CRDT doc name for a skill's bundle FILE — the per-file analogue of
+ * {@link skillLiveDocName}, for editing a `.md`/`.mdx` reference in place. `rel`
+ * is the bundle-relative path (e.g. `references/patterns.md`); the returned name
+ * is ext-less (matching the SKILL-doc convention). Project skill files are
+ * content docs (`.ok/skills/<name>/<rel>`, resolved by the page index); global
+ * skill files are managed-artifact docs (`__skill__/global/<name>/<rel>`,
+ * resolved by `managedArtifactAbsPath`). Both open editable through the same
+ * routing the SKILL.md uses.
+ */
+export function skillFileLiveDocName(
+  scope: ManagedArtifactScope,
+  name: string,
+  rel: string,
+): string {
+  const relNoExt = stripMdExt(rel);
+  return scope === 'project'
+    ? `${LEGACY_SKILL_STORE_ROOT}/${name}/${relNoExt}`
+    : `${MANAGED_ARTIFACT_PREFIX_SKILL}${scope}/${name}/${relNoExt}`;
+}
+
+/**
  * Parsed managed-artifact doc name. The two kinds are addressed DIFFERENTLY:
  *  - skill: `__skill__/<scope>/<name>` — `scope` ∈ {global, project}; the
  *    skill folder lives under `<scope-root>/.ok/skills/<name>/`.
@@ -243,7 +397,7 @@ export function skillLiveDocName(scope: ManagedArtifactScope, name: string): str
  *    scope — they are folder-local with leaf→root inheritance.
  */
 export type ParsedManagedArtifactName =
-  | { kind: 'skill'; scope: ManagedArtifactScope; name: string }
+  | { kind: 'skill'; scope: ManagedArtifactScope; name: string; rel: string | null }
   | { kind: 'template'; folder: string; name: string };
 
 /** Percent-decode each `/`-separated segment; returns `''` unchanged. */
@@ -274,7 +428,15 @@ export function parseManagedArtifactName(name: string): ParsedManagedArtifactNam
     if (scope !== 'global' && scope !== 'project') return null;
     const encoded = rest.slice(slash + 1);
     if (!encoded) return null;
-    return { kind: 'skill', scope, name: decodeManagedSegments(encoded) };
+    // `<name>` is a single slug segment; anything after it is a bundle-relative
+    // FILE path (`rel`) into the skill dir — `null` for the bare SKILL.md doc
+    // (`__skill__/<scope>/<name>`), so existing callers are unchanged.
+    const decoded = decodeManagedSegments(encoded);
+    const nameEnd = decoded.indexOf('/');
+    const skillName = nameEnd < 0 ? decoded : decoded.slice(0, nameEnd);
+    if (!skillName) return null;
+    const rel = nameEnd < 0 ? null : decoded.slice(nameEnd + 1);
+    return { kind: 'skill', scope, name: skillName, rel };
   }
   if (name.startsWith(MANAGED_ARTIFACT_PREFIX_TEMPLATE)) {
     // Folder-addressed: split on the LAST slash — everything before is the

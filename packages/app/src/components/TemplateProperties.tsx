@@ -2,8 +2,9 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { TEMPLATE_NAME_REGEX } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { FolderGit2, Type } from 'lucide-react';
-import { type ReactNode, useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { PropertyDisclosure } from '@/components/PropertyDisclosure';
+import { PropertyDisplayRow } from '@/components/PropertyDisplayRow';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useFrontmatterField } from '@/lib/use-frontmatter-field';
@@ -54,15 +55,19 @@ export function TemplateProperties({
 
   return (
     <PropertyDisclosure title={<Trans>Properties</Trans>} className="pt-4 pb-2">
-      <PropertyRow icon={<FolderGit2 className="size-3.5" />} label={t`folder`} htmlFor={folderId}>
+      <PropertyDisplayRow
+        icon={<FolderGit2 className="size-3.5" />}
+        label={t`folder`}
+        htmlFor={folderId}
+      >
         <Input
           id={folderId}
           value={folder || '/'}
           readOnly
           className="h-8 border-input bg-transparent px-2 font-mono text-muted-foreground shadow-none"
         />
-      </PropertyRow>
-      <PropertyRow icon={<Type className="size-3.5" />} label={t`name`} htmlFor={nameId}>
+      </PropertyDisplayRow>
+      <PropertyDisplayRow icon={<Type className="size-3.5" />} label={t`name`} htmlFor={nameId}>
         <Input
           id={nameId}
           data-testid="template-name-input"
@@ -91,8 +96,8 @@ export function TemplateProperties({
             <Trans>The template's filename (without `.md`).</Trans>
           </p>
         )}
-      </PropertyRow>
-      <PropertyRow icon={<Type className="size-3.5" />} label={t`title`} htmlFor={titleId}>
+      </PropertyDisplayRow>
+      <PropertyDisplayRow icon={<Type className="size-3.5" />} label={t`title`} htmlFor={titleId}>
         <Input
           id={titleId}
           data-testid="template-title-input"
@@ -105,8 +110,8 @@ export function TemplateProperties({
         <p className="px-1 pt-0.5 text-[11px] text-muted-foreground">
           <Trans>The menu label agents pick this template by (required).</Trans>
         </p>
-      </PropertyRow>
-      <PropertyRow
+      </PropertyDisplayRow>
+      <PropertyDisplayRow
         icon={<Type className="size-3.5" />}
         label={t`description`}
         htmlFor={descriptionId}
@@ -123,30 +128,7 @@ export function TemplateProperties({
         <p className="px-1 pt-0.5 text-[11px] text-muted-foreground">
           <Trans>Disambiguates similarly-named templates in the menu.</Trans>
         </p>
-      </PropertyRow>
+      </PropertyDisplayRow>
     </PropertyDisclosure>
-  );
-}
-
-/** One property row: type icon + fixed-width label column + inline value. */
-function PropertyRow({
-  icon,
-  label,
-  htmlFor,
-  children,
-}: {
-  icon: ReactNode;
-  label: string;
-  htmlFor: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex items-start gap-1 py-0.5">
-      <label htmlFor={htmlFor} className="flex w-32 shrink-0 items-center gap-1 pt-1.5">
-        <span className="text-muted-foreground">{icon}</span>
-        <span className="truncate text-muted-foreground">{label}</span>
-      </label>
-      <div className="min-w-0 flex-1">{children}</div>
-    </div>
   );
 }

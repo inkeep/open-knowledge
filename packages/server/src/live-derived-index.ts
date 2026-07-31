@@ -48,42 +48,76 @@ export function createLiveDerivedIndexExtension(options: LiveDerivedIndexOptions
     onDocumentSettled,
     debounceMs = LIVE_DERIVED_INDEX_DEBOUNCE_MS,
   } = options;
-  const pendingByDoc = new Map<string, ReturnType<typeof setTimeout>>();
+  // The document and its capture token ride along with the timer so a pending
+  // update can be APPLIED on unload, not just cancelled.
+  const pendingByDoc = new Map<
+    string,
+    { timer: ReturnType<typeof setTimeout>; document: Document; token: number }
+  >();
 
   function clearPending(docName: string): void {
     const pending = pendingByDoc.get(docName);
     if (pending) {
-      clearTimeout(pending);
+      clearTimeout(pending.timer);
       pendingByDoc.delete(docName);
     }
   }
 
+  function runUpdate(docName: string, document: Document, token: number): Promise<void> {
+    let markdown: string;
+    try {
+      markdown = serializeLiveDocument(document);
+    } catch (err) {
+      getLogger('live-derived-index').error(
+        { docName, err },
+        `Failed to update derived views for ${docName}`,
+      );
+      return Promise.resolve();
+    }
+    return derivedDocumentIndex
+      .recordLiveDocument(docName, markdown, token)
+      .then(() => {
+        // Anchors are measured against the doc BODY, not the source bytes
+        // above, so the consumer re-reads rather than reusing `markdown`.
+        // Lives here rather than at the debounce call site so the
+        // apply-on-unload path notifies too.
+        onDocumentSettled?.(docName);
+      })
+      .catch((err) => {
+        getLogger('live-derived-index').error(
+          { docName, err },
+          `Failed to update derived views for ${docName}`,
+        );
+      });
+  }
+
+  /**
+   * Apply a pending update NOW rather than waiting out its debounce. A document
+   * that unloads inside the debounce window would otherwise lose the update
+   * entirely, leaving its links and tags absent from the derived views until
+   * something else re-indexes it — a write followed by a prompt unload (an
+   * API-only create on an idle server, say) would simply never register.
+   */
+  async function flushPending(docName: string): Promise<void> {
+    const pending = pendingByDoc.get(docName);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pendingByDoc.delete(docName);
+    // Awaited, unlike the debounced path: the document is going away, so the
+    // record has to land before the unload completes.
+    await runUpdate(docName, pending.document, pending.token);
+  }
+
   function schedule(docName: string, document: Document, token: number): void {
     clearPending(docName);
-    pendingByDoc.set(
-      docName,
-      setTimeout(() => {
+    pendingByDoc.set(docName, {
+      document,
+      token,
+      timer: setTimeout(() => {
         pendingByDoc.delete(docName);
-        try {
-          const markdown = serializeLiveDocument(document);
-          void derivedDocumentIndex.recordLiveDocument(docName, markdown, token).catch((err) => {
-            getLogger('live-derived-index').error(
-              { docName, err },
-              `Failed to update derived views for ${docName}`,
-            );
-          });
-          // Anchors are measured against the doc BODY, not the source bytes
-          // above — so this re-reads rather than reusing `markdown`, which
-          // still carries the frontmatter region.
-          onDocumentSettled?.(docName);
-        } catch (err) {
-          getLogger('live-derived-index').error(
-            { docName, err },
-            `Failed to update derived views for ${docName}`,
-          );
-        }
+        void runUpdate(docName, document, token);
       }, debounceMs),
-    );
+    });
   }
 
   return {
@@ -110,12 +144,12 @@ export function createLiveDerivedIndexExtension(options: LiveDerivedIndexOptions
     },
 
     async beforeUnloadDocument({ documentName }) {
-      clearPending(documentName);
+      await flushPending(documentName);
     },
 
     async onDestroy() {
-      for (const timeout of pendingByDoc.values()) {
-        clearTimeout(timeout);
+      for (const { timer } of pendingByDoc.values()) {
+        clearTimeout(timer);
       }
       pendingByDoc.clear();
     },

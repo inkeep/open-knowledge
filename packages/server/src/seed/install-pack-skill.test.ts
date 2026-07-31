@@ -8,9 +8,10 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { OPENKNOWLEDGE_SKILLS_REPO } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { readInstalledSkills } from '../installed-skills-marker.ts';
-import { installPackSkill } from './install-pack-skill.ts';
+import { installPackSkill, resolvePackSkillSources } from './install-pack-skill.ts';
 
 /** Simulate `ok init` having installed the platform skill for an editor dir. */
 function setUpEditor(proj: string, editorDir: string): void {
@@ -24,26 +25,38 @@ function tmpProject(): string {
 }
 
 describe('installPackSkill', () => {
-  test('authors the pack skill into .ok/skills + installs it for a set-up editor', async () => {
+  test('authors the pack skill IN PLACE at the default home (store retirement)', async () => {
     const proj = tmpProject();
     setUpEditor(proj, '.claude');
     const installed = await installPackSkill(proj, 'knowledge-base');
     expect(installed).toEqual(['Claude Code']);
-    // (1) Source under `.ok/skills/` — this is what makes it show in the Skills
-    // list + be editable (the fork model).
-    expect(
-      existsSync(join(proj, '.ok', 'skills', 'open-knowledge-pack-knowledge-base', 'SKILL.md')),
-    ).toBe(true);
-    // (2) Projected into the editor host dir.
+    // The source lands at the project's default skill home (here `.claude/
+    // skills` — the first existing editor root), NOT the retired `.ok/skills`
+    // store. The scan is the host-set truth; no install marker is written.
     expect(
       existsSync(join(proj, '.claude', 'skills', 'open-knowledge-pack-knowledge-base', 'SKILL.md')),
     ).toBe(true);
-    // (3) marker records it Installed with its hosts — so the list badges
-    // it Installed and the Uninstall action can demote it back to a Draft.
-    const marker = readInstalledSkills(proj).skills['open-knowledge-pack-knowledge-base'];
-    expect(marker).toBeDefined();
-    expect(marker?.scope).toBe('project');
-    expect(marker?.hosts).toEqual(['claude']);
+    expect(existsSync(join(proj, '.ok', 'skills', 'open-knowledge-pack-knowledge-base'))).toBe(
+      false,
+    );
+    expect(readInstalledSkills(proj).skills['open-knowledge-pack-knowledge-base']).toBeUndefined();
+  });
+
+  test('records skills.sh provenance in .ok/skills-lock.json for reimport', async () => {
+    const proj = tmpProject();
+    setUpEditor(proj, '.claude');
+    await installPackSkill(proj, 'knowledge-base');
+    // Provenance makes a seeded pack update through the SAME reimport path as any
+    // imported skill: deterministic source (the open-knowledge-skills projection),
+    // the skill selector is the skill's own name, plus its content hash.
+    const lock = JSON.parse(readFileSync(join(proj, '.ok', 'skills-lock.json'), 'utf-8')) as {
+      skills: Record<string, { source: string; skill: string; contentHash: string }>;
+    };
+    const entry = lock.skills['open-knowledge-pack-knowledge-base'];
+    expect(entry).toBeDefined();
+    expect(entry.source).toBe(OPENKNOWLEDGE_SKILLS_REPO);
+    expect(entry.skill).toBe('open-knowledge-pack-knowledge-base');
+    expect(entry.contentHash).toMatch(/^[a-f0-9]{64}$/);
   });
 
   test('installs for every set-up editor (claude + cursor + codex)', async () => {
@@ -56,8 +69,16 @@ describe('installPackSkill', () => {
       'Codex',
       'Cursor',
     ]);
-    const marker = readInstalledSkills(proj).skills['open-knowledge-pack-entity-vault'];
-    expect(marker?.hosts.sort()).toEqual(['claude', 'codex', 'cursor']);
+    // Source at the default home; real copies fanned to the other editors.
+    expect(
+      existsSync(join(proj, '.claude', 'skills', 'open-knowledge-pack-entity-vault', 'SKILL.md')),
+    ).toBe(true);
+    expect(
+      existsSync(join(proj, '.cursor', 'skills', 'open-knowledge-pack-entity-vault', 'SKILL.md')),
+    ).toBe(true);
+    expect(
+      existsSync(join(proj, '.codex', 'skills', 'open-knowledge-pack-entity-vault', 'SKILL.md')),
+    ).toBe(true);
   });
 
   test('installs the codebase-wiki pack skill from the source assets', async () => {
@@ -71,11 +92,43 @@ describe('installPackSkill', () => {
     ).toBe(true);
   });
 
-  test('no-op when no editor is set up (no platform skill present)', async () => {
+  test('a decomposed pack installs its root skill plus every member skill', async () => {
+    // `software-lifecycle` ships an orientation SKILL.md at the pack root plus one
+    // scenario skill per subdirectory. Each installs as its own top-level skill
+    // (name == leaf dir, per the Agent Skills standard).
+    //
+    // Assert against `resolvePackSkillSources` rather than a hardcoded name list:
+    // it probes a co-installed OK Desktop bundle first, so a machine with an older
+    // desktop build resolves a different (possibly not-yet-decomposed) pack. The
+    // invariant under test is "every resolved source installs, and members are not
+    // nested inside the root skill" — not which sources this machine resolves.
     const proj = tmpProject();
-    // The source is still authored (so it lists), but no editor → no install,
-    // no marker. It shows as a Draft.
+    setUpEditor(proj, '.claude');
+    const sources = resolvePackSkillSources('software-lifecycle');
+    expect(sources.length).toBeGreaterThan(0);
+    expect(await installPackSkill(proj, 'software-lifecycle')).toEqual(['Claude Code']);
+
+    for (const { name } of sources) {
+      expect(existsSync(join(proj, '.claude', 'skills', name, 'SKILL.md'))).toBe(true);
+      expect(existsSync(join(proj, '.ok', 'skills', name))).toBe(false);
+    }
+    // The root skill's copy carries no member subdirectory — that would ship each
+    // scenario skill twice, once nested inside a skill that is not its own.
+    const root = sources.find((s) => s.name === 'open-knowledge-pack-software-lifecycle');
+    expect(root).toBeDefined();
+    for (const member of root?.excludeDirs ?? []) {
+      expect(existsSync(join(proj, '.claude', 'skills', root?.name ?? '', member))).toBe(false);
+    }
+  });
+
+  test('no editor set up: the source is still authored at the fallback home', async () => {
+    const proj = tmpProject();
+    // No set-up editor → nothing fanned/labelled, but the source still lands
+    // (default fallback home) so the skill lists for that folder's agent.
     expect(await installPackSkill(proj, 'knowledge-base')).toEqual([]);
+    expect(
+      existsSync(join(proj, '.claude', 'skills', 'open-knowledge-pack-knowledge-base', 'SKILL.md')),
+    ).toBe(true);
     expect(readInstalledSkills(proj).skills['open-knowledge-pack-knowledge-base']).toBeUndefined();
   });
 
@@ -94,7 +147,7 @@ describe('installPackSkill', () => {
     await installPackSkill(proj, 'knowledge-base');
     const sourcePath = join(
       proj,
-      '.ok',
+      '.claude',
       'skills',
       'open-knowledge-pack-knowledge-base',
       'SKILL.md',
@@ -126,8 +179,8 @@ describe('installPackSkill', () => {
     writeFileSync(join(outside, 'skills', 'open-knowledge', 'SKILL.md'), '# platform\n');
     expect(await installPackSkill(proj, 'knowledge-base')).toEqual([]);
     expect(existsSync(join(outside, 'skills', 'open-knowledge-pack-knowledge-base'))).toBe(false);
-    // No editor projection happened, so no marker — but the source was still
-    // authored into the project's own `.ok/skills/`.
+    // The escaping root is ALSO the would-be default home — the whole install
+    // is refused (never author through an out-of-project symlink).
     expect(readInstalledSkills(proj).skills['open-knowledge-pack-knowledge-base']).toBeUndefined();
   });
 });

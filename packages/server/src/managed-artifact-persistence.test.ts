@@ -1,10 +1,19 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { LINEAGE_EPOCH_KEY } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { FILE_WATCHER_ORIGIN } from './external-change.ts';
+import { registerExternalSkill, unregisterExternalSkill } from './external-skill-registry.ts';
 import {
   applyExternalManagedArtifactChange,
   loadManagedArtifactDoc,
@@ -42,13 +51,47 @@ afterEach(() => {
 });
 
 describe('managedArtifactAbsPath', () => {
-  test('project + global scope resolve under the right .ok/skills root', () => {
+  test('global with no native/store resolves to the IN-PLACE default home, never the store', () => {
     const ctx = makeCtx();
+    // Project managed docs keep the legacy `.ok/skills` content path (project
+    // skills open as content docs; this branch is effectively dead).
     expect(managedArtifactAbsPath('__skill__/project/my-skill', ctx)).toBe(
       resolve(projectDir, '.ok', 'skills', 'my-skill', 'SKILL.md'),
     );
+    // Store retirement: a global skill with neither a native copy nor a store
+    // resident resolves to the in-place default home — NEVER `~/.ok/skills`.
+    // Defaulting to the store re-created the remnant on every stray global write
+    // (a global doc autosaving after the skill was moved away). Fresh home has no
+    // editor dirs → `.claude/skills`.
     expect(managedArtifactAbsPath('__skill__/global/my-skill', ctx)).toBe(
-      resolve(home, '.ok', 'skills', 'my-skill', 'SKILL.md'),
+      resolve(home, '.claude', 'skills', 'my-skill', 'SKILL.md'),
+    );
+  });
+
+  test('global skill absent from the store resolves to its native editor dir (R12)', () => {
+    const ctx = makeCtx();
+    // Native-only skill: `~/.claude/skills/native-one` and no store entry.
+    const nativeDir = resolve(home, '.claude', 'skills', 'native-one');
+    mkdirSync(nativeDir, { recursive: true });
+    writeFileSync(join(nativeDir, 'SKILL.md'), '---\nname: native-one\ndescription: d\n---\n# N');
+    expect(managedArtifactAbsPath('__skill__/global/native-one', ctx)).toBe(
+      resolve(nativeDir, 'SKILL.md'),
+    );
+    // Bundle files resolve inside the native dir too.
+    expect(managedArtifactAbsPath('__skill__/global/native-one/references/x', ctx)).toBe(
+      resolve(nativeDir, 'references', 'x.md'),
+    );
+    // Store retirement: NATIVE wins even when a legacy store resident also
+    // exists (was: store wins). The store is drained, never re-blessed.
+    const storeDir = resolve(home, '.ok', 'skills', 'native-one');
+    mkdirSync(storeDir, { recursive: true });
+    writeFileSync(join(storeDir, 'SKILL.md'), '---\nname: native-one\ndescription: d\n---\n# S');
+    expect(managedArtifactAbsPath('__skill__/global/native-one', ctx)).toBe(
+      resolve(nativeDir, 'SKILL.md'),
+    );
+    // A PROJECT-scope name never probes user dirs.
+    expect(managedArtifactAbsPath('__skill__/project/native-one', ctx)).toBe(
+      resolve(projectDir, '.ok', 'skills', 'native-one', 'SKILL.md'),
     );
   });
 
@@ -57,15 +100,46 @@ describe('managedArtifactAbsPath', () => {
     for (const bad of [
       '__skill__/project/..',
       '__skill__/project/../../etc/passwd',
-      '__skill__/project/foo/bar', // slash in name (decoded)
-      '__skill__/project/Foo', // uppercase
-      '__skill__/project/foo.bar', // dot
+      '__skill__/project/foo/../bar', // rel escape (`..` in the bundle path)
+      '__skill__/global/foo/references/../../escape', // rel escape (global)
+      '__skill__/project/Foo', // uppercase name
+      '__skill__/project/foo.bar', // dot in name
       '__skill__/project/', // empty name
       '__skill__/bogus/foo', // bad scope
       'notes/foo', // not managed-artifact
     ]) {
       expect(() => managedArtifactAbsPath(bad, ctx)).toThrow();
     }
+  });
+
+  test('resolves a bundle FILE (rel) inside the resolved skill dir (per-file editability)', () => {
+    const ctx = makeCtx();
+    // Store retirement: with no native/store, a global skill resolves under the
+    // in-place default home (`.claude/skills` in a fresh home), not `.ok/skills`.
+    // Not-yet-created file → ext-less doc name binds to `.md` by default.
+    expect(managedArtifactAbsPath('__skill__/global/demo/references/patterns', ctx)).toBe(
+      resolve(home, '.claude', 'skills', 'demo', 'references', 'patterns.md'),
+    );
+    // An existing `.mdx` on disk wins over the default `.md` (resolved dir).
+    const dir = resolve(home, '.claude', 'skills', 'demo', 'references');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(resolve(dir, 'guide.mdx'), '# G\n', 'utf-8');
+    expect(managedArtifactAbsPath('__skill__/global/demo/references/guide', ctx)).toBe(
+      resolve(dir, 'guide.mdx'),
+    );
+  });
+
+  test('store retirement: a legacy store resident with NO native is still read (drain-pending)', () => {
+    const ctx = makeCtx();
+    // Only a `~/.ok/skills` resident, no native copy: reads still resolve to it
+    // so an un-drained skill stays editable until the boot migration relocates
+    // it. (Once a native exists, native wins — covered above.)
+    const storeDir = resolve(home, '.ok', 'skills', 'legacy-only');
+    mkdirSync(storeDir, { recursive: true });
+    writeFileSync(join(storeDir, 'SKILL.md'), '---\nname: legacy-only\ndescription: d\n---\n# L');
+    expect(managedArtifactAbsPath('__skill__/global/legacy-only', ctx)).toBe(
+      resolve(storeDir, 'SKILL.md'),
+    );
   });
 
   test('templates resolve folder-addressed under <folder>/.ok/templates/<name>.md', () => {
@@ -248,6 +322,14 @@ describe('concurrent-writer reconcile', () => {
     expect(outcome).toBe('reconciled');
     expect(readFileSync(path, 'utf-8')).toBe(otherWriter); // disk preserved
     expect(reconciled.get(docName)).toBe(otherWriter);
+
+    // R7 data-safety: the user's replaced bytes are stashed out-of-tree,
+    // bounded per doc — "keep mine" stays recoverable.
+    const safe = docName.replace(/[^A-Za-z0-9._-]+/g, '__');
+    const stashDir = resolve(home, '.ok', 'edit-backups', 'discarded', safe);
+    const stashed = readdirSync(stashDir);
+    expect(stashed).toHaveLength(1);
+    expect(readFileSync(resolve(stashDir, stashed[0] as string), 'utf-8')).toContain('local edit');
   });
 
   /**
@@ -352,6 +434,33 @@ describe('managedArtifactDocNameForPath (reverse resolver)', () => {
     expect(
       managedArtifactDocNameForPath(resolve(home, '.ok/skills/notes-helper/SKILL.md'), ctx),
     ).toBe('__skill__/global/notes-helper');
+    // A global skill's `.md`/`.mdx` bundle FILE maps to its per-file live doc
+    // (ext-less); non-md files (scripts, binary) do not.
+    expect(
+      managedArtifactDocNameForPath(resolve(home, '.ok/skills/nh/references/patterns.md'), ctx),
+    ).toBe('__skill__/global/nh/references/patterns');
+    expect(
+      managedArtifactDocNameForPath(resolve(home, '.ok/skills/nh/references/guide.mdx'), ctx),
+    ).toBe('__skill__/global/nh/references/guide');
+    expect(
+      managedArtifactDocNameForPath(resolve(home, '.ok/skills/nh/scripts/run.sh'), ctx),
+    ).toBeNull();
+  });
+
+  test('maps NATIVE-root global skill leaves (in-place skills), same doc names as the store', () => {
+    const ctx = makeCtx();
+    // The skills watcher watches every global root, so the reverse mapping must
+    // cover the native user roots too — a `.agents`/`.claude` event that maps to
+    // null is silently dropped and an open-but-empty doc never seeds from disk.
+    expect(
+      managedArtifactDocNameForPath(resolve(home, '.agents/skills/notes-helper/SKILL.md'), ctx),
+    ).toBe('__skill__/global/notes-helper');
+    expect(
+      managedArtifactDocNameForPath(resolve(home, '.claude/skills/nh/references/patterns.md'), ctx),
+    ).toBe('__skill__/global/nh/references/patterns');
+    expect(
+      managedArtifactDocNameForPath(resolve(home, '.agents/skills/nh/scripts/run.sh'), ctx),
+    ).toBeNull();
   });
 
   test('maps a template .md leaf back to its folder-addressed doc name', () => {
@@ -372,6 +481,7 @@ describe('managedArtifactDocNameForPath (reverse resolver)', () => {
     // not round-trip through the managed-artifact reverse resolver anymore.
     for (const name of [
       '__skill__/global/beta-2',
+      '__skill__/global/beta-2/references/patterns', // per-file bundle doc
       '__template__/daily',
       '__template__/notes/sub/meeting',
     ]) {
@@ -435,9 +545,19 @@ describe('managedArtifactContributorAttribution (editor-edit versioning)', () =>
 });
 
 describe('managedArtifactSkillsRoots', () => {
-  test('returns the global skills root only (project skills are content)', () => {
+  test('covers every native user root, with the legacy store included but not privileged', () => {
     const ctx = makeCtx();
-    expect(managedArtifactSkillsRoots(ctx)).toEqual([resolve(home, '.ok', 'skills')]);
+    const roots = managedArtifactSkillsRoots(ctx);
+    // Global skills live IN PLACE, so the native roots are what matters here.
+    expect(roots).toContain(resolve(home, '.claude', 'skills'));
+    expect(roots).toContain(resolve(home, '.agents', 'skills'));
+    // The retired store is still watched — a resident that collides at its
+    // migration target never drains — but it is an ordinary member of the list,
+    // NOT the first entry it used to be pinned as.
+    expect(roots).toContain(resolve(home, '.ok', 'skills'));
+    expect(roots[0]).not.toBe(resolve(home, '.ok', 'skills'));
+    // All under the ctx home — no absolute leaks from another machine state.
+    expect(roots.every((r) => r.startsWith(home))).toBe(true);
   });
 });
 
@@ -475,5 +595,86 @@ describe('managedArtifactTimelinePaths', () => {
 
   test('ordinary doc → not managed', () => {
     expect(managedArtifactTimelinePaths('docs/getting-started')).toEqual({ managed: false });
+  });
+});
+
+describe('__extskill__ editable-unmanaged skill — guarded external write-back', () => {
+  const docName = '__extskill__/borrowed';
+  let skillDir: string; // a detected skill living OUTSIDE projectDir/home
+
+  beforeEach(() => {
+    skillDir = mkdtempSync(join(tmpdir(), 'ok-extskill-'));
+    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: borrowed\n---\n\n# Original\n');
+  });
+  afterEach(() => {
+    unregisterExternalSkill('borrowed');
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+
+  test('unregistered doc is a no-op (load seeds nothing, store writes nothing)', async () => {
+    const ctx = makeCtx();
+    const doc = new Y.Doc();
+    loadManagedArtifactDoc(doc, docName, ctx);
+    expect(doc.getText('source').length).toBe(0);
+    doc.transact(() => doc.getText('source').insert(0, 'edit'), 'agent');
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('no-op');
+  });
+
+  test('load seeds from the real harness file; store writes back byte-identical', async () => {
+    registerExternalSkill('borrowed', skillDir);
+    const ctx = makeCtx();
+    const doc = new Y.Doc();
+    loadManagedArtifactDoc(doc, docName, ctx);
+    expect(doc.getText('source').toString()).toBe('---\nname: borrowed\n---\n\n# Original\n');
+
+    const edited = '---\nname: borrowed\n---\n\n# Edited café 日本語\n';
+    doc.transact(() => {
+      const src = doc.getText('source');
+      src.delete(0, src.length);
+      src.insert(0, edited);
+    }, 'agent');
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('persisted');
+    // The write landed on the REAL harness file, verbatim (precedent #57).
+    expect(readFileSync(join(skillDir, 'SKILL.md'), 'utf-8')).toBe(edited);
+  });
+
+  test('a bundle FILE (references/x) binds the ext-less doc name to the real .md and writes back', async () => {
+    // The reference-file doc name is ext-less; it must resolve to the real
+    // `references/anti-patterns.md` on disk (not an extension-less path), load
+    // its bytes, and autosave back to that same file.
+    mkdirSync(join(skillDir, 'references'), { recursive: true });
+    writeFileSync(join(skillDir, 'references', 'anti-patterns.md'), '# Anti-patterns\n');
+    registerExternalSkill('borrowed', skillDir);
+    const bundleDoc = '__extskill__/borrowed/references/anti-patterns';
+    const ctx = makeCtx();
+    const doc = new Y.Doc();
+    loadManagedArtifactDoc(doc, bundleDoc, ctx);
+    expect(doc.getText('source').toString()).toBe('# Anti-patterns\n');
+
+    const edited = '# Anti-patterns edited\n';
+    doc.transact(() => {
+      const src = doc.getText('source');
+      src.delete(0, src.length);
+      src.insert(0, edited);
+    }, 'agent');
+    expect(await storeManagedArtifactDoc(doc, bundleDoc, 'agent', ctx)).toBe('persisted');
+    expect(readFileSync(join(skillDir, 'references', 'anti-patterns.md'), 'utf-8')).toBe(edited);
+  });
+
+  test('first edit snapshots the pre-edit bytes out-of-tree (data-safety floor)', async () => {
+    registerExternalSkill('borrowed', skillDir);
+    const ctx = makeCtx();
+    const doc = new Y.Doc();
+    loadManagedArtifactDoc(doc, docName, ctx);
+    doc.transact(() => {
+      const src = doc.getText('source');
+      src.delete(0, src.length);
+      src.insert(0, 'clobbered\n');
+    }, 'agent');
+    await storeManagedArtifactDoc(doc, docName, 'agent', ctx);
+    const backup = join(home, '.ok', 'edit-backups', 'borrowed', 'SKILL.md.bak');
+    expect(existsSync(backup)).toBe(true);
+    // The snapshot is the PRE-edit content, so a bad edit stays recoverable.
+    expect(readFileSync(backup, 'utf-8')).toBe('---\nname: borrowed\n---\n\n# Original\n');
   });
 });

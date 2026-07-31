@@ -293,21 +293,35 @@ export function projectFull(descriptor: JsxComponentMeta): ComponentEntryFull {
 }
 
 /**
- * Render the inline inventory text that gets baked into the JSON-schema
- * `description` of `write` and `edit`. The footer leads with
- * the canonical-preference framing and lists every canonical with its kind +
- * description so agents can pick the right one without a separate listing call.
+ * The canonical inventory: one line per component, id + kind + one-liner. This
+ * is the DISCOVERY half of the surface — an agent that never sees these ids
+ * never learns `Mirror` or `Tabs` exist, so it never thinks to ask `palette`
+ * for their schemas. Both `write` and `edit` carry it.
  *
  * Computed once at server boot (registry is module-init pure-data). When the
  * registry changes, server restart applies the new text.
  */
-export function renderInventoryFooter(): string {
+export function renderInventoryList(): string {
   const lite = getAgentCanonicalDescriptors().map(projectLite);
   const lines = lite.map((entry) => `- \`${entry.id}\` (${entry.kind}) — ${entry.description}`);
   return [
     '',
-    '**Custom canonical components.** OK `.md` / `.mdx` supports the JSX components below — use whichever is semantically useful in any part of the doc. For full source syntax + parameter schemas, call `palette({ components: [ids] })` with the ids you want to use. Fenced code blocks render naturally and don\'t need a fetch — including ` ```mermaid ` for diagrams (mermaid label text has sharp edges — `palette({ components: ["Mermaid"] })` lists them; parse failures come back as `warnings` entries on write/edit) and ` ```html preview ` for interactive HTML/JS/CSS pages (the fence info-string `preview` token renders the block as a live iframe; works for `html` / `htm` / `xml`; optional `h=` / `w=` tokens set size, e.g. ` ```html preview h=400px `). Use ` ```html preview ` whenever you want anything interactive or JS-powered (charts, demos, calculators, animations) — just author the standalone HTML page in the fence. Call `palette` for the markdown-native component forms (write `> [!NOTE]`, not `<Callout>`), copy-ready themed `html preview` starters, and the theme tokens (`var(--chart-1)`, `var(--foreground)`, …) an embed should reference so it tracks the reader\'s light/dark theme. Arbitrary `<TagName>` JSX falls through as raw MDX when no canonical fits.',
+    '**Custom canonical components.** OK `.md` / `.mdx` supports the JSX components below. For source syntax + parameter schemas, call `palette({ components: [ids] })`. Arbitrary `<TagName>` JSX falls through as raw MDX when no canonical fits.',
     '',
     ...lines,
+  ].join('\n');
+}
+
+/**
+ * Discovery list + the authoring REFERENCE half (fence syntax, `html preview`
+ * sizing tokens, theme tokens). Only `write` carries the reference half: it is
+ * always-on context, and `palette` is its on-demand home — the text below says
+ * so itself. `edit` composes `renderInventoryList()` alone.
+ */
+export function renderInventoryFooter(): string {
+  return [
+    renderInventoryList(),
+    '',
+    'Fenced code blocks render naturally and don\'t need a fetch — including ` ```mermaid ` for diagrams (mermaid label text has sharp edges — `palette({ components: ["Mermaid"] })` lists them; parse failures come back as `warnings` entries on write/edit) and ` ```html preview ` for interactive HTML/JS/CSS pages (the fence info-string `preview` token renders the block as a live iframe; works for `html` / `htm` / `xml`; optional `h=` / `w=` tokens set size, e.g. ` ```html preview h=400px `). Use ` ```html preview ` whenever you want anything interactive or JS-powered (charts, demos, calculators, animations) — just author the standalone HTML page in the fence. Call `palette` for the markdown-native component forms (write `> [!NOTE]`, not `<Callout>`), copy-ready themed `html preview` starters, and the theme tokens (`var(--chart-1)`, `var(--foreground)`, …) an embed should reference so it tracks the reader\'s light/dark theme.',
   ].join('\n');
 }

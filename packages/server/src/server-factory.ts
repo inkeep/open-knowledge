@@ -8,7 +8,8 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, join, relative, resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import type { Document, Extension } from '@hocuspocus/server';
 import { Hocuspocus, IncomingMessage, MessageType } from '@hocuspocus/server';
 import {
@@ -129,6 +130,7 @@ import type {
 } from './github-permissions.ts';
 import { type HeadWatcherHandle, readProjectHeadState, startHeadWatcher } from './head-watcher.ts';
 import { errnoCode } from './http/handler-utils.ts';
+import { scanGlobalInPlaceSkills, scanInPlaceSkillDirs } from './in-place-skills.ts';
 import { createLiveDerivedIndexExtension } from './live-derived-index.ts';
 import { getLogger } from './logger.ts';
 import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
@@ -139,6 +141,7 @@ import {
 } from './maintenance-coordinator.ts';
 import {
   applyExternalManagedArtifactChange,
+  homeFor,
   managedArtifactDocNameForPath,
   managedArtifactSkillsRoots,
 } from './managed-artifact-persistence.ts';
@@ -201,6 +204,7 @@ import {
   saveInMemoryCheckpoint,
   shadowGit,
 } from './shadow-repo.ts';
+import { resyncRecordedSkillCopies } from './skill-placements.ts';
 import { assertCompatibleStateManifest } from './state-manifest.ts';
 import { SyncEngine } from './sync-engine.ts';
 import { createSyncHandshakeSpanExtension } from './sync-handshake-span-extension.ts';
@@ -989,6 +993,10 @@ export function createServer(options: ServerOptions): ServerInstance {
   // manager (agent-undo) and the file-watcher intake path (dirty-open-doc).
   let bridgeLossReporter: BridgeDeriveLossReporter | undefined;
   let cc1Broadcaster: CC1Broadcaster | null = null;
+  // Debounced live in-place-skill re-scan trigger (armed by the raw watcher
+  // batch hook; cleared on shutdown so no rebuild fires post-destroy).
+  let inPlaceRescanTimer: ReturnType<typeof setTimeout> | null = null;
+  const IN_PLACE_RESCAN_DEBOUNCE_MS = 500;
   let agentFocusBroadcaster: AgentFocusBroadcaster | null = null;
   let agentPresenceBroadcaster: AgentPresenceBroadcaster | null = null;
   let invalidateReferencedAssetsCache: (() => void) | null = null;
@@ -1168,6 +1176,12 @@ export function createServer(options: ServerOptions): ServerInstance {
       projectDir,
       contentDir,
       singleDocRelPath,
+      // In-place skill versioning: admit editor-dir skills (`.claude/skills/**`,
+      // …) as content, deduped to one canonical per skill. Scanned at boot and
+      // re-scanned on every filter rebuild (the raw-batch trigger below fires
+      // one when a host skills dir changes).
+      inPlaceSkillDirs: scanInPlaceSkillDirs(contentDir),
+      rescanInPlaceSkillDirs: () => scanInPlaceSkillDirs(contentDir),
       onAfterRebuild: () => {
         // Re-derive relationship views against the freshly rebuilt admission
         // boundary. The coordinator serializes rapid successive rebuilds.
@@ -2770,6 +2784,10 @@ export function createServer(options: ServerOptions): ServerInstance {
         try {
           // Phase 1: stop watchers FIRST so L1 disk writes don't trigger reconcile loops
           try {
+            if (inPlaceRescanTimer) {
+              clearTimeout(inPlaceRescanTimer);
+              inPlaceRescanTimer = null;
+            }
             if (headWatcher) {
               await headWatcher.unsubscribe();
               headWatcher = null;
@@ -3349,6 +3367,14 @@ export function createServer(options: ServerOptions): ServerInstance {
           persistence.managedArtifactCtx,
         );
         log.info({ docName, outcome }, '[managed-artifact-watcher] external change');
+        // Refresh the skills list in every connected client. `useSkills` (sidebar
+        // Skills navigator + Settings) refetches only on the local `skills-changed`
+        // window event or the `files` CC1 signal — and this disk-watch path is the
+        // ONLY thing that fires when a skill is created/edited in ANOTHER instance
+        // or the CLI (global skills live in the shared `~/.ok/skills`, so every
+        // project's server watches them). Without this signal the other window's
+        // skills list stays stale until a manual reload.
+        signalChannel('files');
         // A global SKILL.md add/change reconciles the whole bundle into the graph:
         // re-ingest registers the SKILL node + its current references (and prunes
         // any that vanished). Node-only + idempotent, so the (cheap, bounded) full
@@ -3362,17 +3388,66 @@ export function createServer(options: ServerOptions): ServerInstance {
         }
       };
 
+      // A skill deleted by another instance / the CLI unlinks its `SKILL.md`.
+      // That doesn't fire the reconcile above (unlink deliberately retains any
+      // open doc), so refresh the skills list here — `useSkills` refetches on
+      // `files`, and re-ingest prunes the vanished skill from the graph. The open
+      // doc, if any, is left as-is; deleting live content is a separate surface.
+      const handleManagedArtifactUnlink = (absPath: string): void => {
+        const docName = managedArtifactDocNameForPath(absPath, persistence.managedArtifactCtx);
+        signalChannel('files');
+        if (docName && parseGlobalSkillBundleDoc(docName)) {
+          // Same re-ingest the change handler above runs; here it PRUNES the
+          // vanished skill from the graph.
+          void derivedDocumentIndex.refreshGlobalSkillNodes().catch((err) => {
+            log.warn({ err, docName }, '[backlinks] global skill bundle prune failed');
+          });
+        }
+      };
+
       try {
+        // Watch every known global root, but never CONJURE a vendor tree: the
+        // watcher mkdir -p's what it is handed, so passing all of them made a
+        // plain markdown user grow ~/.gemini, ~/.pi, ~/.opencode … on first
+        // boot just by starting OK. An existing parent means the tool is
+        // actually installed, and creating its `skills/` leaf is expected.
         const skillsRoots = managedArtifactSkillsRoots(persistence.managedArtifactCtx);
         const skillsCleanup = await startManagedArtifactWatcher(
           skillsRoots,
           reconcileManagedArtifactDisk,
+          undefined,
+          handleManagedArtifactUnlink,
         );
         configFileWatcherCleanups.push({ docName: '__skill-files__', cleanup: skillsCleanup });
         log.info({ roots: skillsRoots }, '[managed-artifact-watcher] skills started');
       } catch (err) {
         log.warn({ err }, '[managed-artifact-watcher] skills failed to start');
         degraded.push('managed-artifact-watcher:skills');
+      }
+
+      // Install-state (`~/.ok/skill-state.yml`) is user-global and shared by every
+      // project's server. Installing / uninstalling a skill in ANOTHER instance
+      // rewrites this file but touches no `SKILL.md`, so the skills-tree watcher
+      // above never fires. Watch it here and refresh the skills list (`useSkills`
+      // keys off the `files` signal) so an uninstall in project A drops the
+      // installed badge in project B live, without a reload.
+      try {
+        // Addressed directly, NOT as `skillsRoots[0]/..`: that derivation only
+        // pointed here while `.ok/skills` was the sole global root, and now
+        // resolves to whichever editor root happens to sort first.
+        const skillStatePath = resolve(
+          homeFor(persistence.managedArtifactCtx),
+          '.ok',
+          'skill-state.yml',
+        );
+        const skillStateCleanup = await startConfigFileWatcher(skillStatePath, () => {
+          signalChannel('files');
+        });
+        configFileWatcherCleanups.push({ docName: '__skill-state__', cleanup: skillStateCleanup });
+        log.info({ path: skillStatePath }, '[skill-state-watcher] started');
+      } catch (err) {
+        log.warn({ err }, '[skill-state-watcher] failed to start');
+        degraded.push('skill-state-watcher');
       }
 
       // Template watcher. Templates live in any folder's `.ok/templates/`, so the
@@ -3598,9 +3673,87 @@ export function createServer(options: ServerOptions): ServerInstance {
         // index. Wrap it in its own span + time it separately so the seed walk's
         // cost is visible apart from the surrounding index work.
         const seedWalkStartMono = performance.now();
+        // Live in-place-skill re-scan: raw (pre-admission) watcher events under
+        // an editor host skills dir — excluding the `.ok/skills` store, whose
+        // events are ordinary admitted content — debounce into a re-scan; only
+        // an actually-changed canonical set triggers the (index-re-deriving)
+        // filter rebuild, so editing an admitted skill's files stays cheap.
+        const HOST_SKILLS_EVENT_RE = /^\.(?!ok\/)[A-Za-z0-9_-]+\/skills\//;
+        let lastInPlaceDirs = contentFilter ? scanInPlaceSkillDirs(contentDir) : new Set<string>();
+        const onRawBatch = (absPaths: readonly string[]): void => {
+          if (
+            !absPaths.some((p) =>
+              HOST_SKILLS_EVENT_RE.test(relative(contentDir, p).split(sep).join('/')),
+            )
+          ) {
+            return;
+          }
+          if (inPlaceRescanTimer) clearTimeout(inPlaceRescanTimer);
+          inPlaceRescanTimer = setTimeout(() => {
+            inPlaceRescanTimer = null;
+            try {
+              // Forward re-sync FIRST (lossless, hash-gated): a canonical edit
+              // refreshes OK-recorded copies, so they rejoin the identity group
+              // in the scan below instead of surfacing as stale forks.
+              void resyncRecordedSkillCopies(projectDir, contentDir)
+                .then((n) => {
+                  if (n > 0) {
+                    log.info({ refreshed: n }, '[in-place-skills] re-synced recorded copies');
+                    cc1Broadcaster?.signal('files');
+                  }
+                })
+                .catch((err) => log.warn({ err }, '[in-place-skills] copy re-sync failed'));
+              const next = scanInPlaceSkillDirs(contentDir);
+              const changed =
+                next.size !== lastInPlaceDirs.size ||
+                [...next].some((d) => !lastInPlaceDirs.has(d));
+              if (!changed) return;
+              lastInPlaceDirs = next;
+              void contentFilter
+                .rebuildIgnorePatterns()
+                .then((result) => {
+                  if (result.ok) {
+                    log.info(
+                      { skillDirs: next.size },
+                      '[in-place-skills] canonical set changed — filter rebuilt',
+                    );
+                    cc1Broadcaster?.signal('files');
+                  } else {
+                    log.warn(
+                      { error: result.error.message },
+                      '[in-place-skills] filter rebuild failed after skill re-scan',
+                    );
+                  }
+                })
+                .catch((err) => log.warn({ err }, '[in-place-skills] rebuild threw'));
+            } catch (err) {
+              log.warn({ err }, '[in-place-skills] re-scan trigger failed');
+            }
+          }, IN_PLACE_RESCAN_DEBOUNCE_MS);
+        };
         watcher = await withSpan('ok.boot.seed-walk', undefined, async () =>
-          startWatcher(contentDir, onDiskEvent, contentFilter),
+          startWatcher(contentDir, onDiskEvent, contentFilter, { onRawBatch }),
         );
+        // Record observed same-hash copy pairs + refresh any recorded copy whose
+        // canonical moved while the server was down (lossless, hash-gated).
+        // Lives HERE (not boot.ts) so every entrypoint — CLI, desktop, dev,
+        // test harness — gets the pairing; without it the first canonical edit
+        // forks a pre-existing copy instead of re-syncing it.
+        void resyncRecordedSkillCopies(projectDir, contentDir)
+          .then((n) => {
+            if (n > 0) log.info({ refreshed: n }, '[in-place-skills] boot copy re-sync');
+          })
+          .catch((err) => log.warn({ err }, '[in-place-skills] boot copy re-sync failed'));
+        // GLOBAL tier: native user-dir skills have no watcher, so their
+        // recorded copies pair + refresh at boot only.
+        {
+          const home = configHomedirOverride ?? homedir();
+          void resyncRecordedSkillCopies(home, home, scanGlobalInPlaceSkills(home))
+            .then((n) => {
+              if (n > 0) log.info({ refreshed: n }, '[in-place-skills] global boot copy re-sync');
+            })
+            .catch((err) => log.warn({ err }, '[in-place-skills] global copy re-sync failed'));
+        }
         recordBootPhase('seedWalkMs', Math.round(performance.now() - seedWalkStartMono));
 
         // Origin-existence self-heal for journaled removal entries. Disk is

@@ -4911,6 +4911,7 @@ function registerIpcHandlers() {
         pinnedTabIds: [],
         activeDocName: null,
         activeTabId: null,
+        activeTabByMode: { files: null, skills: null },
         updatedAt: null,
       };
     const ctx = wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike);
@@ -4920,6 +4921,7 @@ function registerIpcHandlers() {
         pinnedTabIds: [],
         activeDocName: null,
         activeTabId: null,
+        activeTabByMode: { files: null, skills: null },
         updatedAt: null,
       };
     return getProjectSessionState(appState, ctx.projectPath);

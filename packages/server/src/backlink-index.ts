@@ -5,6 +5,7 @@ import {
   type BrokenLinkReason,
   classifyMarkdownHref,
   classifyWikiLinkTarget,
+  extractSkillRefs,
   getWikiLinkText,
   isOrphanMode,
   MANAGED_ARTIFACT_PREFIX_SKILL,
@@ -135,6 +136,12 @@ interface BranchGraphState {
   forward: Map<string, Set<string>>;
   externalForward: Map<string, Map<string, { label: string | null; snippet: string | null }>>;
   externalBackward: Map<string, Map<string, { label: string | null; snippet: string | null }>>;
+  /** Per skill-bundle doc: the `/skill-name` reference tokens its body authors
+   *  (names only, unresolved). Resolution to a SKILL doc happens at READ time
+   *  against the live node registry — exactly like structural bundle edges —
+   *  so an edge appears the moment the referenced skill is indexed, without
+   *  re-parsing the referencing doc. */
+  skillRefs: Map<string, Set<string>>;
 }
 
 interface SerializedBranchGraphState {
@@ -144,6 +151,8 @@ interface SerializedBranchGraphState {
     string,
     Array<{ url: string; label: string | null; snippet: string | null }>
   >;
+  /** `/skill-name` reference tokens per skill-bundle doc (see BranchGraphState). */
+  skillRefs?: Record<string, string[]>;
   /**
    * Per-doc mtime snapshot written by rebuildFromDisk / reconcileWithDisk.
    * Used on next startup to skip re-parsing files whose mtime hasn't changed.
@@ -164,6 +173,7 @@ function createEmptyState(): BranchGraphState {
     forward: new Map(),
     externalForward: new Map(),
     externalBackward: new Map(),
+    skillRefs: new Map(),
   };
 }
 
@@ -182,10 +192,18 @@ function parseSkillBundleDocAnyScope(
 ): { name: string; kind: 'skill' | 'reference'; skillDocName: string } | null {
   const project = parseProjectSkillBundleDoc(docName);
   if (project) {
+    // The SKILL doc name derives from the bundle doc's OWN root — a reference
+    // at `.agents/skills/<name>/references/x` pairs with
+    // `.agents/skills/<name>/SKILL`. Minting a shape here (the old
+    // `skillLiveDocName` route) silently broke every in-place bundle after the
+    // store retirement: it produced `.ok/skills/<name>/SKILL`, which matches no
+    // live in-place doc, so the structural edges never drew.
+    const skillDocName =
+      project.kind === 'skill' ? docName : `${docName.split('/references/')[0]}/SKILL`;
     return {
       name: project.name,
       kind: project.kind,
-      skillDocName: skillLiveDocName('project', project.name),
+      skillDocName,
     };
   }
   const global = parseGlobalSkillBundleDoc(docName);
@@ -955,6 +973,9 @@ function serializeState(state: BranchGraphState): SerializedBranchGraphState {
           .sort((a, b) => a.url.localeCompare(b.url)),
       ]),
     ),
+    skillRefs: Object.fromEntries(
+      [...state.skillRefs.entries()].map(([source, names]) => [source, [...names].sort()]),
+    ),
   };
 }
 
@@ -1026,6 +1047,9 @@ function deserializeState(data: SerializedBranchGraphState): BranchGraphState {
     ),
     externalForward,
     externalBackward: buildExternalBackward(externalForward),
+    skillRefs: new Map(
+      Object.entries(data.skillRefs ?? {}).map(([source, names]) => [source, new Set(names)]),
+    ),
   };
 }
 
@@ -1102,6 +1126,83 @@ export class BacklinkIndex {
       if (state.forward.has(parsed.skillDocName)) neighbors.add(parsed.skillDocName);
     }
     return neighbors;
+  }
+
+  /**
+   * Skill-REFERENCE neighbors of a skill bundle doc: edges drawn from the
+   * `/skill-name` tokens its body authors (the cross-agent invocation
+   * convention the editor renders as chips) to the referenced skill's SKILL
+   * doc. Same read-time-resolution model as `structuralBundleNeighbors` — the
+   * recorded ref NAMES resolve against the live node registry on every query,
+   * so the edge appears the moment the referenced skill is indexed and
+   * disappears with it, no re-parse of the referencing doc needed.
+   *
+   * Scope-symmetric and SAME-SCOPE ONLY (both directions), mirroring the
+   * structural-edge rule and the editor's same-scope reference picker: a
+   * project skill's `/name` resolves to the project bundle, a global skill's
+   * to `__skill__/global/<name>/SKILL` — never across the boundary, so a
+   * global bundle still never links into a project's KB.
+   */
+  private skillRefNeighbors(docName: string, branch = this.activeBranch): Set<string> {
+    const neighbors = new Set<string>();
+    const state = this.getState(branch);
+    if (!state.forward.has(docName)) return neighbors;
+    const parsed = parseSkillBundleDocAnyScope(docName);
+    if (!parsed) return neighbors;
+    const globalScope = docName.startsWith(MANAGED_ARTIFACT_PREFIX_SKILL);
+    // OUTGOING: this doc's authored refs → each referenced skill's SKILL doc.
+    const refs = state.skillRefs.get(docName);
+    if (refs) {
+      for (const ref of refs) {
+        if (ref === parsed.name) continue; // self-reference draws no edge
+        if (globalScope) {
+          const target = skillLiveDocName('global', ref);
+          if (state.forward.has(target)) neighbors.add(target);
+        } else {
+          for (const candidate of state.forward.keys()) {
+            const other = parseSkillBundleDocAnyScope(candidate);
+            if (
+              other?.kind === 'skill' &&
+              other.name === ref &&
+              !candidate.startsWith(MANAGED_ARTIFACT_PREFIX_SKILL)
+            ) {
+              neighbors.add(candidate);
+            }
+          }
+        }
+      }
+    }
+    // INCOMING: only a SKILL doc is a ref target; every same-scope bundle doc
+    // whose recorded refs name this skill draws the reverse edge.
+    if (parsed.kind === 'skill') {
+      for (const [source, names] of state.skillRefs) {
+        if (source === docName || !names.has(parsed.name)) continue;
+        if (source.startsWith(MANAGED_ARTIFACT_PREFIX_SKILL) !== globalScope) continue;
+        if (state.forward.has(source)) neighbors.add(source);
+      }
+    }
+    return neighbors;
+  }
+
+  /** Union of the two derived (non-authored) edge families of a skill bundle
+   *  doc: structural within-bundle partners + `/skill-name` reference edges.
+   *  The single seam every read path (backlinks, forward links, graph
+   *  traversal) uses, so the two families can never diverge per surface. */
+  private bundleNeighbors(docName: string, branch = this.activeBranch): Set<string> {
+    const neighbors = this.structuralBundleNeighbors(docName, branch);
+    for (const n of this.skillRefNeighbors(docName, branch)) neighbors.add(n);
+    return neighbors;
+  }
+
+  /** Record (or clear) the `/skill-name` ref tokens a skill bundle doc's body
+   *  authors. No-op for non-bundle docs — plain prose mentioning `/tmp`-style
+   *  tokens must never fabricate graph edges. */
+  private recordSkillRefs(docName: string, body: string, branch = this.activeBranch): void {
+    const state = this.getState(branch);
+    if (!parseSkillBundleDocAnyScope(docName)) return;
+    const refs = extractSkillRefs(body);
+    if (refs.length === 0) state.skillRefs.delete(docName);
+    else state.skillRefs.set(docName, new Set(refs));
   }
 
   getActiveBranch(): string {
@@ -1255,6 +1356,7 @@ export class BacklinkIndex {
         ...wikiExternalLinks,
         ...mdExternalLinks.filter((link) => !externalSeen.has(link.url)),
       ];
+      this.recordSkillRefs(docName, body, branch);
       this.updateDocument(docName, merged, mergedExternal, branch);
     } catch (err) {
       log.warn({ docName, err }, `Failed to scan ${docName} for link extraction`);
@@ -1281,6 +1383,7 @@ export class BacklinkIndex {
     }
     state.forward.delete(docName);
     state.externalForward.delete(docName);
+    state.skillRefs.delete(docName);
   }
 
   renameDocument(
@@ -1304,7 +1407,7 @@ export class BacklinkIndex {
     }
     // Structural skill-bundle edges are undirected, so a SKILL↔reference partner
     // is a backlink source even when neither doc authored a link to the other.
-    for (const partner of this.structuralBundleNeighbors(target, branch)) {
+    for (const partner of this.bundleNeighbors(target, branch)) {
       if (!entries.has(partner))
         entries.set(partner, { source: partner, anchor: null, snippet: null });
     }
@@ -1321,7 +1424,7 @@ export class BacklinkIndex {
   getBacklinkCount(target: string, branch = this.activeBranch): number {
     const state = this.getState(branch);
     const authored = state.backward.get(target);
-    const structural = this.structuralBundleNeighbors(target, branch);
+    const structural = this.bundleNeighbors(target, branch);
     if (structural.size === 0) return authored?.size ?? 0;
     const union = new Set(authored?.keys() ?? []);
     for (const partner of structural) union.add(partner);
@@ -1334,7 +1437,7 @@ export class BacklinkIndex {
     // Undirected structural skill-bundle edges surface as forward links too, so a
     // SKILL doc lists its references (and a reference lists its SKILL) even with
     // no authored link between them.
-    for (const partner of this.structuralBundleNeighbors(source, branch)) targets.add(partner);
+    for (const partner of this.bundleNeighbors(source, branch)) targets.add(partner);
     return [...targets].sort((a, b) => a.localeCompare(b));
   }
 
@@ -1525,7 +1628,7 @@ export class BacklinkIndex {
     for (const source of state.forward.keys()) {
       const parsed = parseSkillBundleDocAnyScope(source);
       if (parsed?.kind !== 'skill') continue;
-      for (const target of this.structuralBundleNeighbors(source, branch)) {
+      for (const target of this.bundleNeighbors(source, branch)) {
         if (state.forward.get(source)?.has(target) || state.forward.get(target)?.has(source)) {
           continue;
         }
@@ -1594,7 +1697,7 @@ export class BacklinkIndex {
           neighbors.add(source);
         }
         // Structural skill-bundle partners are undirected neighbors for traversal.
-        for (const partner of this.structuralBundleNeighbors(current.nodeId, branch)) {
+        for (const partner of this.bundleNeighbors(current.nodeId, branch)) {
           neighbors.add(partner);
         }
       }
@@ -1630,7 +1733,7 @@ export class BacklinkIndex {
     for (const source of visited) {
       const parsed = parseSkillBundleDocAnyScope(source);
       if (parsed?.kind !== 'skill') continue;
-      for (const target of this.structuralBundleNeighbors(source, branch)) {
+      for (const target of this.bundleNeighbors(source, branch)) {
         if (!visited.has(target)) continue;
         if (state.forward.get(source)?.has(target) || state.forward.get(target)?.has(source)) {
           continue;
@@ -2004,6 +2107,16 @@ export class BacklinkIndex {
           if (parseGlobalSkillBundleDoc(skillDocName)) {
             this.registerNodeOnly(skillDocName, branch);
             live.add(skillDocName);
+            // `/skill-name` REF tokens are the one body-derived signal global
+            // bundles record (names only; resolution is same-scope, so a
+            // global bundle still never links into a project's KB). Wiki/md
+            // links stay unparsed (within-bundle-only rule).
+            try {
+              const raw = await readFile(join(dir, 'SKILL.md'), 'utf-8');
+              this.recordSkillRefs(skillDocName, stripFrontmatter(raw).body, branch);
+            } catch (err) {
+              log.warn({ dir, err }, 'global skill ref-scan failed; edges skipped');
+            }
           }
         }
         // Reference docs: `<dir>/references/**.md` → ext-less bundle doc names.

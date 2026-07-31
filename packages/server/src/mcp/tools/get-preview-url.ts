@@ -150,7 +150,7 @@ const InputSchema = {
         .string()
         .min(1)
         .regex(SKILL_NAME_REGEX, 'Skill name must be lowercase letters, digits, and hyphens only.')
-        .describe('Skill name (the `.ok/skills/<name>` identity).'),
+        .describe('Skill name (the bundle-dir identity, wherever the skill lives).'),
       scope: z
         .enum(MANAGED_ARTIFACT_SCOPES)
         .optional()

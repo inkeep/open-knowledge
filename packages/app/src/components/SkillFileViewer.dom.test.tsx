@@ -109,4 +109,31 @@ describe('SkillFileViewer — scope-aware bundle-file read + render dispatch', (
     // No content-dir "Open file" handoff for a skill file (no asset URL).
     expect(container.querySelector('a[href*="/api/asset"]')).toBeNull();
   });
+
+  test('a references/ bundle-path chip is decorated as a clickable skill-path link (PRD-7607 part 2)', async () => {
+    loadSkillFileTextMock.mockResolvedValueOnce({
+      ok: true,
+      text: 'See `references/pressure-testing.md` for the drill.\n',
+    });
+    const { container } = render(
+      <SkillFileViewer scope="global" name="trip-log" path="references/guide.md" />,
+    );
+    // The bundle path in inline code gets the SkillPathLinks decoration, so a
+    // read-only skill can navigate to its sibling files (not a dead chip).
+    await waitFor(() => {
+      expect(container.querySelector('.ok-skill-path-link[data-skill-path]')).not.toBeNull();
+    });
+    expect(container.querySelector('[data-skill-path]')?.getAttribute('data-skill-path')).toBe(
+      'references/pressure-testing.md',
+    );
+  });
+
+  test('shows the read-only eye banner so the read-only state is visible (§8.11)', () => {
+    loadSkillFileTextMock.mockResolvedValueOnce({ ok: true, text: 'echo hi\n' });
+    const { container } = render(
+      <SkillFileViewer scope="global" name="trip-log" path="scripts/run.sh" />,
+    );
+    // The banner renders immediately (not gated on the async read).
+    expect(container.textContent).toContain('Read-only file in the trip-log skill');
+  });
 });

@@ -216,6 +216,9 @@ export function SettingsDialogShell({
         { id: 'account', label: t`Account` },
         // User-scope plugin management (toggle personal plugins like Themes).
         { id: 'user-plugins-manage', label: t`Plugins` },
+        // GLOBAL skill folders (user-home skills roots) — the user-scope half
+        // of the Skills surface; project folders live under This project.
+        { id: 'user-skills', label: t`Skills` },
         // Machine-level OK footprint (per-editor MCP entries, Agent Skills,
         // the ok PATH command) — user-scoped, and desktop-only because the
         // install actors live in the Electron main process.

@@ -42,7 +42,7 @@ const DESCRIPTION = [
   '- `from` — Current path. Doc: docName (trailing `.md`/`.mdx` stripped). Folder: relative path, no leading/trailing slash. Asset: the file path incl. extension.',
   '- `to` — New path. Same shape as `from`.',
   '- `template` — Move/rename a TEMPLATE instead of a doc/folder/asset: `{ from: "<folder>/<name>", to: "<folder>/<name>" }` (nested — a flat path cannot disambiguate a template under `.ok/templates/` from a same-named doc). Mutually exclusive with flat `from`/`to`. Inherited templates are not moved (move the local copy / the owning folder); templates carry no inbound links, so nothing is rewritten.',
-  '- `skill` — Move/rename a SKILL: `{ from: "<name>", to: "<name>", scope?, toScope? }` (nested). Within one level (omit `toScope`, or `toScope` === `scope`): renames `.ok/skills/<from>/` → `.ok/skills/<to>/` and keeps the SKILL.md `name` in sync. ACROSS levels (`toScope` differs from `scope`, e.g. `scope: "project"` + `toScope: "global"`): moves the skill between the Project level (this KB) and the Global level (`~/.ok/skills`); history does NOT transfer (it re-creates fresh in the new level) and the moved skill lands as an un-projected Draft. Run `install` afterward to (re)project it. Mutually exclusive with flat `from`/`to`.',
+  '- `skill` — Move/rename a SKILL: `{ from: "<name>", to: "<name>", scope?, toScope? }` (nested). Within one level (omit `toScope`, or `toScope` === `scope`): renames the skill folder and keeps the SKILL.md `name` in sync. ACROSS levels (`toScope` differs from `scope`): moves the skill between the Project level (this KB) and the Global level (your user home); history does NOT transfer (it re-creates fresh in the new level), and the skill is re-projected into the locations it already occupied. Mutually exclusive with flat `from`/`to`.',
   '- `summary` — Optional one-line user-outcome (≤80 chars). If omitted, defaults to "Renamed X → Y". Avoid secrets or PII — persisted to git history.',
   '',
   '**Errors:** 400 — invalid path / excluded by `.gitignore`/`.okignore`; 404 — source does not exist; 409 — destination already exists (`colliding[]` returned).',
@@ -176,18 +176,18 @@ export function register(server: ServerInstance, deps: MoveDeps): void {
               .enum(MANAGED_ARTIFACT_SCOPES)
               .optional()
               .describe(
-                'Source level (default "project"). "project" = this KB\'s `.ok/skills/`; "global" = the Global `~/.ok/skills/`.',
+                'Source level (default "project"). "project" = this KB; "global" = your user home.',
               ),
             toScope: z
               .enum(MANAGED_ARTIFACT_SCOPES)
               .optional()
               .describe(
-                'Destination level. Omit (or set equal to `scope`) for a within-level rename. Set to the OTHER level to move the skill across levels (project↔global) — history does not transfer and it lands as a Draft.',
+                'Destination level. Omit (or set equal to `scope`) for a within-level rename. Set to the OTHER level to move the skill across levels (project↔global) — history does not transfer and it lands with no locations beyond its source.',
               ),
           })
           .optional()
           .describe(
-            'Move/rename a SKILL: `{ from: "<name>", to: "<name>", scope?, toScope? }`. Within one level: renames `.ok/skills/<name>/` and keeps SKILL.md `name` in sync. Across levels (`toScope` differs from `scope`): moves between Project and Global, resetting history. Mutually exclusive with flat `from`/`to`.',
+            'Move/rename a SKILL: `{ from: "<name>", to: "<name>", scope?, toScope? }`. Within one level: renames the skill folder and keeps SKILL.md `name` in sync. Across levels (`toScope` differs from `scope`): moves between Project and Global, resetting history. Mutually exclusive with flat `from`/`to`.',
           ),
         summary: summaryArgSchema.describe(
           'Optional one-line user-outcome (≤80 chars). Defaults to "Renamed X → Y". Persisted to git history.',
@@ -206,7 +206,7 @@ export function register(server: ServerInstance, deps: MoveDeps): void {
           .boolean()
           .optional()
           .describe(
-            'Template move only: `true` = tracked `git mv` (history preserved), `false` = plain disk rename (untracked / local-only `.ok/`).',
+            'Template move, or a skill move WITHIN one level: `true` = tracked `git mv` (history preserved), `false` = plain disk rename. Always `false` on a cross-level skill move — history does not transfer.',
           ),
         renamed: z
           .array(
@@ -238,7 +238,13 @@ export function register(server: ServerInstance, deps: MoveDeps): void {
           .boolean()
           .optional()
           .describe(
-            'Skill cross-level move only: `true` when the skill was moved between the Project and Global levels (history reset; lands as a Draft — re-run `install`).',
+            'Skill cross-level move only: `true` when the skill was moved between the Project and Global levels. History resets; the locations it occupied are re-projected.',
+          ),
+        skippedBinaryFiles: z
+          .array(z.string())
+          .optional()
+          .describe(
+            'Skill cross-level move only: bundle files NOT copied because they fall outside the text-only bundle contract (binary or oversize). The move still succeeded and the source is gone, so these are the files you must carry over by hand.',
           ),
         bothScopes: z
           .boolean()

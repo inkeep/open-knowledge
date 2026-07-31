@@ -40,7 +40,11 @@ export const MENU_LABELS = {
   showHiddenFiles: 'Show hidden files',
   showOkFolders: 'Show .ok folders',
   showOnlyMarkdownFiles: 'Show only markdown files',
-  showSkillsSection: 'Show skills section',
+  // Deliberately verb-less (unlike the sibling "Show …" filters): this toggles a
+  // whole sidebar section, and "Show skills section" read as an action that only
+  // ever shows — confusing when the item is checked and clicking it hides (7605).
+  // The checkbox check state carries the current-visibility signal.
+  showSkillsSection: 'Skills section',
   expandAll: 'Expand all',
   collapseAll: 'Collapse all',
   // Move to Trash keeps "Trash" capitalized — the macOS destination proper noun,
@@ -71,6 +75,7 @@ export const MENU_LABELS = {
   // native menu appends the … ellipsis at its call site where the command opens
   // a new surface (Switch project…, Settings…).
   switchProject: 'Switch project',
+  openSkills: 'Skills',
   settings: 'Settings',
   // Open folder's palette row is the descriptive "Open folder on disk"; the
   // native File menu renders the terser "Open folder…" via `openFolder` above.
@@ -84,6 +89,7 @@ export const MENU_LABELS = {
   // test guards them and the registry keeps a single label source.
   openGraph: 'Open graph',
   initializeStarterPack: 'Initialize starter pack',
+  newSkill: 'New skill',
   // State-aware Show/Hide toggles — both surfaces render both variants; the
   // native menu is a single row whose label flips on the pushed view-menu-state.
   sidebarShow: 'Show sidebar',

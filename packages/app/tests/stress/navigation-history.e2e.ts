@@ -116,10 +116,12 @@ test('browser history traverses every user-facing navigation target and truncate
       }),
     });
     expect(skillResponse.status).toBe(200);
-    expect(await skillResponse.json()).toMatchObject({
-      created: true,
-      path: expect.stringContaining(skillName),
-    });
+    const skillJson = (await skillResponse.json()) as { created: boolean; path: string };
+    expect(skillJson).toMatchObject({ created: true, path: expect.stringContaining(skillName) });
+    // Project skills are content docs at their real in-place dir, so opening one
+    // from the tree is its own navigation target — derive the hash rather than
+    // hardcoding a skills root.
+    const skillDocHash = `#/${skillJson.path.replace(/\.mdx?$/, '')}`;
 
     const skillFileResponse = await fetch(`${workerServer.baseURL}/api/skill-file`, {
       method: 'PUT',
@@ -162,13 +164,32 @@ test('browser history traverses every user-facing navigation target and truncate
     await expectAsset(page, assetHash, assetName);
 
     const sidebar = page.locator('[data-slot="sidebar-container"]');
-    await sidebar.getByRole('button', { name: 'Skills', exact: true }).click();
-    await sidebar.getByRole('button', { name: 'Project', exact: true }).click();
-    await sidebar.getByText(skillName, { exact: true }).click();
-    await sidebar.getByText('scripts/', { exact: true }).click();
-    await sidebar.getByTestId(`skill-file-${bundlePath}`).click();
+    // The surface switch is an icon-first ToggleGroup (Radix radios, not
+    // buttons), so address it by test id rather than by role+name.
+    // Switching to Skills clears the hash (the Skills base page) and so is its
+    // own history entry — the traversal below accounts for it.
+    await sidebar.getByTestId('sidebar-skills-toggle').click();
+    await expectHash(page, '');
+    // Pierre's tree renders each label twice (a visible copy and an
+    // aria-hidden overflow measurement copy), so take the first match.
+    const projectGroup = sidebar.getByText('Project', { exact: true }).first();
+    await projectGroup.waitFor({ timeout: 15_000 });
+    const skillRow = sidebar.getByText(skillName, { exact: true }).first();
+    // The scope group's expanded state is persisted, so it can already be open;
+    // clicking unconditionally would collapse it and hide the skill.
+    if (!(await skillRow.isVisible())) {
+      await projectGroup.click();
+    }
+    await skillRow.click();
+    await sidebar.getByText('scripts', { exact: true }).first().click();
+    // Rows label the stem; the extension renders as a separate badge.
+    await sidebar.getByText(bundleFile.replace(/\.ts$/, ''), { exact: true }).first().click();
     await expectSkillFile(page, skillFileHash, bundleFile, bundleMarker);
 
+    await page.goBack();
+    await expectDocument(page, skillDocHash, `Navigation Skill ${id}`);
+    await page.goBack();
+    await expectHash(page, '');
     await page.goBack();
     await expectAsset(page, assetHash, assetName);
     await page.goBack();
@@ -189,10 +210,21 @@ test('browser history traverses every user-facing navigation target and truncate
     await page.goForward();
     await expectAsset(page, assetHash, assetName);
     await page.goForward();
+    await expectHash(page, '');
+    await page.goForward();
+    await expectDocument(page, skillDocHash, `Navigation Skill ${id}`);
+    await page.goForward();
     await expectSkillFile(page, skillFileHash, bundleFile, bundleMarker);
 
     await page.goBack();
+    await expectDocument(page, skillDocHash, `Navigation Skill ${id}`);
+    await page.goBack();
+    await expectHash(page, '');
+    await page.goBack();
     await expectAsset(page, assetHash, assetName);
+    // Back on the asset, the sidebar is still showing Skills — switch to Files
+    // so the tree row below is the one being clicked.
+    await sidebar.getByTestId('sidebar-files-toggle').click();
     await sidebarTreeItem(page, `${baselineDoc}.md`).click();
     await expectDocument(page, baselineHash, `Navigation Baseline ${id}`);
     await page.goForward();

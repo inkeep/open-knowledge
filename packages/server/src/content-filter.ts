@@ -24,7 +24,11 @@ import { readdir, readFile as readFileAsync } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { LINKABLE_ASSET_EXTENSIONS, OK_DIR, SKILL_CONTENT_ROOT } from '@inkeep/open-knowledge-core';
+import {
+  LEGACY_SKILL_STORE_ROOT,
+  LINKABLE_ASSET_EXTENSIONS,
+  OK_DIR,
+} from '@inkeep/open-knowledge-core';
 import ignore, { type Ignore } from 'ignore';
 import { isReservedForUserTree } from './cc1-broadcast.ts';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
@@ -180,19 +184,32 @@ function pathHasAlwaysSkipSegment(relativePath: string, showOk?: boolean): boole
 }
 
 /**
- * The ONE carve-out from the blanket `.ok/` exclusion: project skills live at
- * `.ok/skills/<name>/**` and are real indexed content (skills-as-content). Every
- * `.ok` exclusion site consults these so skill files reach the index / tree /
- * asset serving, while the rest of `.ok/` stays hidden. Paths are contentDir-
- * relative, '/'-joined, no leading slash. Project scope only — global skills
- * live under `~/.ok/skills`, served by the dedicated global route, not the
- * content index. `SKILL_CONTENT_ROOT` is the shared `.ok/skills` constant from
- * core (single source of truth across app + server).
+ * The ONE carve-out from the blanket `.ok/` exclusion, and it is deliberate
+ * rather than residue from the retired store.
+ *
+ * Skills now live IN PLACE (`.claude/skills/<name>`, the `.agents/skills` hub, a
+ * custom root); `.ok/skills` is an ordinary custom root you may still place at,
+ * plus whatever has not drained. But it is the ONE skill root that sits inside
+ * `.ok/`, which OK hides from git wholesale in local-only mode. Git will not
+ * re-include a path whose parent is excluded, so the sharing feature replaces
+ * that blanket with a children-exclude plus a `!**\/.ok/skills/` re-include
+ * (`cli/src/sharing/git-exclude.ts`).
+ *
+ * This carve-out is the index-side half of that: without it, a skill sitting at
+ * `.ok/skills` in a local-only project would be admitted by neither the ignore
+ * rules nor the in-place allow-list, and would silently vanish from the UI while
+ * still being on disk. Removing it to make the root "ordinary" would hide
+ * people's skills, so it stays — and it is the reason `.ok/skills` can never be
+ * QUITE as ordinary as `.tim/skills`, which git never hid in the first place.
+ *
+ * Paths are contentDir-relative, '/'-joined, no leading slash. Project scope
+ * only — global skills are served by the dedicated global route, not the content
+ * index.
  */
 
 /** True for a FILE under `.ok/skills/<name>/...` (at least one segment past the root). */
 function isSkillContentFile(relativePath: string): boolean {
-  return relativePath.startsWith(`${SKILL_CONTENT_ROOT}/`);
+  return relativePath.startsWith(`${LEGACY_SKILL_STORE_ROOT}/`);
 }
 
 /**
@@ -204,8 +221,8 @@ function isSkillContentFile(relativePath: string): boolean {
 function isSkillContentAncestorDir(relativePath: string): boolean {
   return (
     relativePath === '.ok' ||
-    relativePath === SKILL_CONTENT_ROOT ||
-    relativePath.startsWith(`${SKILL_CONTENT_ROOT}/`)
+    relativePath === LEGACY_SKILL_STORE_ROOT ||
+    relativePath.startsWith(`${LEGACY_SKILL_STORE_ROOT}/`)
   );
 }
 
@@ -226,6 +243,46 @@ function isSkillContentAncestorDir(relativePath: string): boolean {
 function globBlocksSkillContent(pattern: string): boolean {
   const p = pattern.replace(/^\/+/, '').replace(/\/+$/, '').trim();
   return p === '.ok' || p === '.ok/**' || p === '**/.ok' || p === '**/.ok/**';
+}
+
+/**
+ * In-place skill admission (spec: in-place skill versioning). Unlike the
+ * `.ok/skills` carve-out (a fixed prefix), in-place skills live in the various
+ * editor host dirs (`.claude/skills/<name>`, `.codex/skills/<name>`, …), which
+ * are otherwise wholesale-skipped. So admission is a registry-driven ALLOW-LIST
+ * keyed on the exact canonical bundle dirs, NOT a path prefix — copies and
+ * conflicts are absent from the set and stay excluded. `dirs` are contentDir-
+ * relative, '/'-joined, no leading/trailing slash.
+ */
+
+/** True for a FILE under one of the admitted in-place skill bundle dirs. */
+function isInPlaceSkillFile(relativePath: string, dirs: ReadonlySet<string>): boolean {
+  if (dirs.size === 0) return false;
+  for (const d of dirs) {
+    if (relativePath.startsWith(`${d}/`)) return true;
+  }
+  return false;
+}
+
+/**
+ * True for a DIR that must stay descendable to reach an admitted in-place skill
+ * bundle: the bundle dir itself, anything under it, and every ancestor on the way
+ * (`.claude`, `.claude/skills`) so the walk can descend to it. Ancestors admit
+ * only the descent — the file-level predicates + secret/always-skip floors keep
+ * every non-skill editor child (`.claude/plugins`, config, secrets) excluded.
+ */
+function isInPlaceSkillAncestorDir(relativePath: string, dirs: ReadonlySet<string>): boolean {
+  if (dirs.size === 0) return false;
+  for (const d of dirs) {
+    if (
+      d === relativePath ||
+      d.startsWith(`${relativePath}/`) ||
+      relativePath.startsWith(`${d}/`)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -548,6 +605,29 @@ export interface ContentFilterOptions {
    */
   singleDocRelPath?: string;
   /**
+   * In-place skill admission (spec: in-place skill versioning). The set of
+   * contentDir-relative CANONICAL skill bundle dirs (`<editor>/skills/<name>`)
+   * to admit as content. A gitignored bundle is NOT admitted: the user has said
+   * that path stays out of git, and admitting it makes the sync engine try to
+   * commit an ignored path, which git refuses and which strands sync offline.
+   * Such a bundle still LISTS as its own skill row (the scan is independent of
+   * admission) — it is readable and comparable, just not a tracked content doc.
+   * An ALLOW-LIST:
+   * only these exact bundle dirs (and their ancestor chain, so the walk descends
+   * to reach them) are admitted out of the otherwise-skipped editor host dirs;
+   * copies + conflicts are simply absent, so never admitted. Empty / omitted =
+   * feature off (editor host dirs stay fully skipped, current behavior). The
+   * secret floor still runs first, so secrets under a skill dir stay excluded.
+   */
+  inPlaceSkillDirs?: ReadonlySet<string>;
+  /**
+   * Optional provider re-run inside `rebuildIgnorePatterns()` to refresh the
+   * in-place skill allow-list (live re-scan on skill add/remove). Throws are
+   * swallowed — the previous set is kept. Absent = the construction-time set
+   * is permanent.
+   */
+  rescanInPlaceSkillDirs?: () => ReadonlySet<string>;
+  /**
    * Optional callback fired AFTER a successful in-place rebuild via
    * `rebuildIgnorePatterns()`. The caller wires backlink-index and tag-index
    * `rebuildFromDisk()` / `init()` here so derived views re-derive against
@@ -676,6 +756,10 @@ export interface ContentFilter {
  */
 export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
   const { projectDir, contentDir, onAfterRebuild, singleDocRelPath } = opts;
+  // Registry-driven allow-list of canonical in-place skill bundle dirs. Empty =
+  // feature off (editor host dirs stay fully skipped). Refreshed per rebuild
+  // via `rescanInPlaceSkillDirs` when provided (live re-scan).
+  let inPlaceSkillDirs: ReadonlySet<string> = opts.inPlaceSkillDirs ?? new Set();
 
   // Precompute the contentDir-to-projectDir prefix for path conversion.
   // When contentDir is outside projectDir, the relative path starts with ".."
@@ -898,7 +982,11 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       // file-level carve-out must defer to the always-skip floor under bypass
       // too — otherwise a caller passing `bypassFilters` straight to `isExcluded`
       // on a `.ok/skills/...` path would get inconsistent admission.
-      if (!opts?.bypassFilters && isSkillContentFile(relativePath)) {
+      if (
+        !opts?.bypassFilters &&
+        (isSkillContentFile(relativePath) ||
+          (isInPlaceSkillFile(relativePath, inPlaceSkillDirs) && !isIgnored(relativePath)))
+      ) {
         if (singleDocRelPath !== undefined) return relativePath !== singleDocRelPath;
         if (isSupportedDocFile(relativePath)) return false;
         const ext = extname(relativePath).slice(1).toLowerCase();
@@ -967,7 +1055,12 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       // under Show All Files the always-skip floor below must still prune `.ok`
       // (it's an internal dir, not user content — surfacing it as a folder broke
       // the showAll folder-listing contract and the hasFolders gate).
-      if (!opts?.bypassFilters && isSkillContentAncestorDir(relativePath)) return false;
+      if (
+        !opts?.bypassFilters &&
+        (isSkillContentAncestorDir(relativePath) ||
+          isInPlaceSkillAncestorDir(relativePath, inPlaceSkillDirs))
+      )
+        return false;
       // Always-skip floor — prune VCS / dependency / OK-state dirs even under
       // bypass. Show All Files must never descend into `.git/`, `node_modules/`,
       // or `.ok/`: on a repo-root content dir those trees (a multi-GB `.git`,
@@ -1024,7 +1117,11 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       // Skills-as-content: project skill files under `.ok/skills/**` are
       // servable content (asset-serve consults `isPathIgnored`). Admit them
       // before the `.ok` always-skip floor.
-      if (isSkillContentFile(relativePath)) return false;
+      if (
+        isSkillContentFile(relativePath) ||
+        (isInPlaceSkillFile(relativePath, inPlaceSkillDirs) && !isIgnored(relativePath))
+      )
+        return false;
       if (pathHasAlwaysSkipSegment(relativePath)) return true;
       if (isAlwaysSkipFile(relativePath)) return true;
       if (opts?.bypassFilters) return false;
@@ -1069,6 +1166,18 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
     },
 
     async rebuildIgnorePatterns(): Promise<RebuildResult> {
+      // Refresh the in-place skill allow-list first (live re-scan): the new
+      // set governs the dirCount refresh + every predicate after the swap. A
+      // provider throw keeps the previous set (fail-soft, matching the
+      // per-file ignore-read semantics).
+      if (opts.rescanInPlaceSkillDirs) {
+        try {
+          inPlaceSkillDirs = opts.rescanInPlaceSkillDirs();
+        } catch (err) {
+          log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
+        }
+      }
+
       // Snapshot for rollback. dirCount is too large to snapshot — we re-walk
       // it from the rolled-back ig instance if rebuild fails partway.
       const prevIg = ig;
@@ -1388,6 +1497,7 @@ async function initContentDirStateAsync(
  */
 export async function createContentFilterAsync(opts: ContentFilterOptions): Promise<ContentFilter> {
   const { projectDir, contentDir, onAfterRebuild, singleDocRelPath } = opts;
+  let inPlaceSkillDirs: ReadonlySet<string> = opts.inPlaceSkillDirs ?? new Set();
 
   const contentRelPrefix = toPosix(relative(projectDir, contentDir));
   const contentOutsideProject = contentRelPrefix.startsWith('..');
@@ -1530,7 +1640,11 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       // Skills-as-content carve-out — admit project skill docs + linkable assets
       // under `.ok/skills/**` (see sync variant for rationale, incl. the
       // `!bypassFilters` gate that mirrors `isDirExcluded`).
-      if (!opts?.bypassFilters && isSkillContentFile(relativePath)) {
+      if (
+        !opts?.bypassFilters &&
+        (isSkillContentFile(relativePath) ||
+          (isInPlaceSkillFile(relativePath, inPlaceSkillDirs) && !isIgnored(relativePath)))
+      ) {
         if (singleDocRelPath !== undefined) return relativePath !== singleDocRelPath;
         if (isSupportedDocFile(relativePath)) return false;
         const skillExt = extname(relativePath).slice(1).toLowerCase();
@@ -1565,7 +1679,12 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       // Skills-as-content: keep `.ok` / `.ok/skills` / `.ok/skills/**`
       // descendable for the NORMAL index walk only (see sync variant); under
       // bypass the always-skip floor below keeps `.ok` pruned.
-      if (!opts?.bypassFilters && isSkillContentAncestorDir(relativePath)) return false;
+      if (
+        !opts?.bypassFilters &&
+        (isSkillContentAncestorDir(relativePath) ||
+          isInPlaceSkillAncestorDir(relativePath, inPlaceSkillDirs))
+      )
+        return false;
       // Always-skip floor — survives bypass; load-bearing OOM fix for the
       // `?showAll=true` walk. `showOk` re-admits `.ok` minus
       // `worktrees`/`local` (see sync variant for rationale).
@@ -1603,7 +1722,11 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       // Skills-as-content: project skill files under `.ok/skills/**` are
       // servable content (asset-serve consults `isPathIgnored`). Admit them
       // before the `.ok` always-skip floor.
-      if (isSkillContentFile(relativePath)) return false;
+      if (
+        isSkillContentFile(relativePath) ||
+        (isInPlaceSkillFile(relativePath, inPlaceSkillDirs) && !isIgnored(relativePath))
+      )
+        return false;
       if (pathHasAlwaysSkipSegment(relativePath)) return true;
       if (isAlwaysSkipFile(relativePath)) return true;
       if (opts?.bypassFilters) return false;
@@ -1644,6 +1767,15 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
     },
 
     async rebuildIgnorePatterns(): Promise<RebuildResult> {
+      // Refresh the in-place skill allow-list first (live re-scan) — mirrors
+      // the sync factory; a provider throw keeps the previous set.
+      if (opts.rescanInPlaceSkillDirs) {
+        try {
+          inPlaceSkillDirs = opts.rescanInPlaceSkillDirs();
+        } catch (err) {
+          log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
+        }
+      }
       const prevIg = ig;
       const prevOkignoreIg = okignoreIg;
       const prevWatcherGlobs = watcherIgnoreGlobs;

@@ -13,7 +13,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import {
   type FrontmatterPatch,
-  renderInventoryFooter,
+  renderInventoryList,
   stripFrontmatter,
   unwrapFrontmatterFences,
 } from '@inkeep/open-knowledge-core';
@@ -78,13 +78,17 @@ const BASE_DESCRIPTION = [
   '- `document` — Edit a doc [Requires: Hocuspocus server]. Body: `{ path, find, replace, occurrence? }` (occurrence = which match, 1 = first). Metadata: `{ path, frontmatter }` (merge-patch; `null` deletes a key). Body find/replace is body-only; frontmatter-intersecting finds are rejected.',
   '- `folder` — Edit a folder (folders have no body): `{ path, frontmatter }` (merge-patch).',
   '- `template` — Edit a template: `{ path: "<folder>/<name>", ... }`; body `find`/`replace`/`occurrence?` or metadata `frontmatter`.',
-  "- `skill` — Edit a SKILL: `{ name, ... }`; body `find`/`replace`/`occurrence?` OR a `description` change (a skill's only metadata leaf). Run `install` afterward to update your editors.",
+  "- `skill` — Edit a SKILL: `{ name, ... }`; body `find`/`replace`/`occurrence?` OR a `description` change (a skill's only metadata leaf). Every recorded copy re-syncs from the source, so there is nothing to re-install.",
   '- `summary` — Optional one-line user-outcome (≤80 chars) recorded in the timeline for any `document`, `folder`, `template`, or `skill` edit. Avoid secrets or PII — persisted to git history.',
   '',
   'Responses may include `structuredContent.document.warnings` — advisory entries discriminated by `kind`: `content-divergence` / `disk-edit-reconciled` (write-integrity — re-read the doc with `exec("cat <path>")`) and `mermaid-parse-error` (the edit landed but that fence will not render — fix it and re-edit).',
 ].join('\n');
 
-const DESCRIPTION = `${BASE_DESCRIPTION}\n${renderInventoryFooter()}`;
+// Discovery list only. An agent that never sees the component ids never asks
+// `palette` for their schemas, so the inventory stays. The authoring reference
+// (fence syntax, sizing + theme tokens) rides `write` alone — it is always-on
+// context whose on-demand home is `palette`.
+const DESCRIPTION = `${BASE_DESCRIPTION}\n${renderInventoryList()}`;
 
 interface EditDeps {
   serverUrl: ServerUrlOrResolver;

@@ -1,7 +1,7 @@
 /**
  * Starter packs for the `ok seed` scaffolder.
  *
- * Seven packs ship today:
+ * Eight packs ship today:
  *   - `knowledge-base`     — Karpathy three-layer source-grounded KB
  *   - `software-lifecycle` — proposals / decisions / specs / postmortems / guides
  *   - `codebase-wiki`      — agent-authored wiki of a codebase (architecture / modules / flows / concepts / guides)
@@ -168,7 +168,7 @@ const KNOWLEDGE_BASE_TEMPLATES: Readonly<Record<string, string>> = {
   clip: `---
 template:
   title: External Source
-  description: Capture a URL or article text verbatim as raw reference material. For binary files (PDFs, images, audio), use the \`ingest\` tool instead — this \`clip\` template is for text sources only.
+  description: Capture a URL or article text verbatim as raw reference material. For binary files (PDFs, images, audio), ask your agent to ingest the source instead — this \`clip\` template is for text sources only.
 type: source
 description: "Raw source text captured verbatim for reference, with its original URL and fetch date."
 source_url:
@@ -506,7 +506,7 @@ tags: [postmortem]
 // OK knowledge base. Version-controlled, private by default, human+agent
 // co-editable, and durable grounding context for future agent sessions.
 //
-// Two natural-language knobs the `wiki` workflow reads from the user's request
+// Two natural-language knobs the wiki generate/refresh procedure reads from the user's request
 // (zero engine config; the chosen profile is recorded in OVERVIEW frontmatter
 // so refreshes stay consistent):
 //   - audience: `internal` (default) | `public`
@@ -661,12 +661,12 @@ tags: [wiki, guide]
 `,
 };
 
-// OVERVIEW is the wiki hub. Seeded as a stub; the `wiki` workflow fills the
+// OVERVIEW is the wiki hub. Seeded as a stub; the wiki generate/refresh procedure fills the
 // body and stamps `profile` + `source_commit` (git HEAD at generation) into
 // frontmatter as the freshness anchor that refresh mode diffs against.
 const CODEBASE_WIKI_OVERVIEW_MD = `---
 title: Codebase Wiki — Overview
-description: Home page and navigation hub for this codebase wiki. Generated and refreshed by the wiki workflow.
+description: Home page and navigation hub for this codebase wiki. Generated and refreshed by your agent.
 profile:
 source_commit:
 tags: [wiki, overview]
@@ -674,7 +674,7 @@ tags: [wiki, overview]
 
 # Overview
 
-The home page and navigation hub for this codebase's wiki. It is a stub until you run the wiki workflow — ask your agent to "build the wiki" (optionally naming an audience and depth, e.g. "public, exhaustive"), or call \`workflow({ kind: "wiki" })\` directly.
+The home page and navigation hub for this codebase's wiki. It is a stub until it is generated — ask your agent to "build the wiki" (optionally naming an audience and depth, e.g. "public, exhaustive"). The full generate/refresh procedure ships with this pack's skill.
 
 Once generated, this page carries: what the project is, a big-picture architecture diagram, and a navigation map linking every section below.
 
@@ -1652,7 +1652,7 @@ export const STARTER_PACKS: Readonly<Record<PackId, StarterPack>> = {
     id: 'codebase-wiki',
     name: 'Codebase wiki',
     // Picker cards line-clamp descriptions to 2 lines (PackCardGrid); the
-    // longer pitch lives in the pack's SKILL.md + the `wiki` workflow guide.
+    // longer pitch lives in the pack's SKILL.md + its generate/refresh reference.
     description: 'A wiki to help navigate your codebase.',
     // Nested folder paths (`wiki/...`) already place everything under `wiki/`,
     // so there is no recommended subfolder to pre-fill.

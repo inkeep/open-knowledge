@@ -1,5 +1,9 @@
 import { hashFromSkillFile } from '@/lib/doc-hash';
-import { type ResolvedNavigationTarget, resolveNavigationTarget } from './navigation-targets';
+import {
+  type ResolvedContentTarget,
+  type ResolvedNavigationTarget,
+  resolveNavigationTarget,
+} from './navigation-targets';
 
 type TargetDisplayState = 'doc' | 'folder' | 'missing';
 
@@ -17,7 +21,7 @@ interface TargetNavigationIntent {
   displayState: TargetDisplayState;
 }
 
-function getTargetDisplayState(resolvedTarget: ResolvedNavigationTarget): TargetDisplayState {
+function getTargetDisplayState(resolvedTarget: ResolvedContentTarget): TargetDisplayState {
   switch (resolvedTarget.kind) {
     case 'doc':
     case 'large-file':
@@ -56,6 +60,7 @@ export function resolveTargetNavigationIntent(
             scope: resolvedTarget.scope,
             name: resolvedTarget.name,
             path: resolvedTarget.path,
+            ...(resolvedTarget.host ? { host: resolvedTarget.host } : {}),
           })
         : null,
     displayState: getTargetDisplayState(resolvedTarget),

@@ -15,6 +15,7 @@ import { lstatSync, realpathSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { ALLOWED_GIT_TRANSPORTS } from '@inkeep/open-knowledge-core/skills-catalog';
 import { errorResponse } from './http/error-response.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
@@ -24,12 +25,9 @@ const log = getLogger('local-op-security');
 
 // ─── Protocol checks ─────────────────────────────────────────────────────────
 
-const ALLOWED_URL_PATTERNS: RegExp[] = [
-  /^https?:\/\//i,
-  /^ssh:\/\//i,
-  /^git:\/\//i,
-  /^git@[^:]+:/, // SCP-style: git@github.com:owner/repo
-];
+// One list, defined in core, so the two enforcement points cannot drift. The
+// BLOCKED patterns below stay additive on top of it as defence in depth.
+const ALLOWED_URL_PATTERNS: readonly RegExp[] = ALLOWED_GIT_TRANSPORTS;
 
 const BLOCKED_URL_PATTERNS: RegExp[] = [
   /^file:\/\//i,

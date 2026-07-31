@@ -8,7 +8,7 @@
  *     name IS the skill name (load-bearing: it becomes the projected dir name
  *     and the agent-facing identity).
  *   - Frontmatter is the Agent Skills schema verbatim: `name` (required, ==dir,
- *     `^[a-z0-9-]+$`, ≤64) + `description` (required, ≤1024). NO `version`
+ *     `^[a-z0-9-]+$`, ≤64) + `description` (string, empty allowed for drafts, ≤1024). NO `version`
  *     field; NO XML tags anywhere in `name`/`description` (breaks Claude Cowork
  *     and the skill loader). OK must NOT inject its own descriptive frontmatter.
  *
@@ -23,17 +23,7 @@
  * exactly as `applyTemplateMove`).
  */
 
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  renameSync,
-  rmdirSync,
-  rmSync,
-  statSync,
-  unlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { isAbsolute, join, normalize, sep } from 'node:path';
 import {
   containsXmlTag,
@@ -41,6 +31,17 @@ import {
   type SkillFrontmatter,
 } from '@inkeep/open-knowledge-core';
 import { stringify as stringifyYaml } from 'yaml';
+// STOP rule: every server-side disk write carries an `fs.*` span. This module
+// predated the rule and was converted wholesale rather than only where new
+// call sites landed, so the next writer here inherits the traced set.
+import {
+  tracedMkdirSync,
+  tracedRenameSync,
+  tracedRmdirSync,
+  tracedRmSync,
+  tracedUnlinkSync,
+  tracedWriteFileSync,
+} from '../fs-traced.ts';
 
 // ── Schema constants (Agent Skills standard) ──────────────────────────────
 const NAME_MAX = 64;
@@ -145,7 +146,7 @@ export function applySkillWrite(input: WriteSkillInput): SkillWriteResult {
   const { skillDir, filePath } = skillPaths(input.skillsRoot, input.name);
 
   try {
-    mkdirSync(skillDir, { recursive: true });
+    tracedMkdirSync(skillDir, { recursive: true });
   } catch (err) {
     return {
       ok: false,
@@ -161,11 +162,11 @@ export function applySkillWrite(input: WriteSkillInput): SkillWriteResult {
   // Atomic write: tmp + rename so the file-watcher sees one event.
   const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
   try {
-    writeFileSync(tmpPath, content, 'utf-8');
-    renameSync(tmpPath, filePath);
+    tracedWriteFileSync(tmpPath, content, 'utf-8');
+    tracedRenameSync(tmpPath, filePath);
   } catch (err) {
     try {
-      unlinkSync(tmpPath);
+      tracedUnlinkSync(tmpPath);
     } catch {
       // Best effort — tmp may not exist or already moved.
     }
@@ -201,6 +202,11 @@ export const BUNDLE_FILE_MAX_BYTES = 256 * 1024;
  *  cap). */
 export const BUNDLE_MAX_FILES = 50;
 
+export interface BundleFileWriteLimits {
+  readonly maxFileBytes: number;
+  readonly maxFiles: number;
+}
+
 interface BundleFileInput {
   skillsRoot: string;
   /** Skill name (== directory). */
@@ -232,18 +238,21 @@ function resolveBundleFileAbs(
     .replace(/\\/g, '/')
     .split('/')
     .filter((s) => s !== '' && s !== '.');
-  if (segments.length < 2 || segments.some((s) => s === '..')) {
+  // Any file in the skill directory is a legitimate bundle file (root files,
+  // `assets/`, `.claude-plugin/`, `scripts/`, `references/`, any subdir) — full
+  // directory fidelity. `SKILL.md` is written through its own path, not here.
+  if (segments.length === 0 || segments.some((s) => s === '..')) {
     return {
       ok: false,
       error: { code: 'BAD_FILE_PATH', message: `Invalid skill file path: ${relPath}` },
     };
   }
-  if (segments[0] !== 'references' && segments[0] !== 'scripts') {
+  if (segments.length === 1 && segments[0] === SKILL_FILE) {
     return {
       ok: false,
       error: {
         code: 'BAD_FILE_PATH',
-        message: `Skill file must be under references/ or scripts/: ${relPath}`,
+        message: 'SKILL.md is written through the skill write path, not as a bundle file.',
       },
     };
   }
@@ -290,8 +299,16 @@ export function countBundleFiles(skillDir: string): number {
  * its skill), an over-cap file, and a per-skill file-count overflow.
  */
 export function applySkillBundleFileWrite(
-  input: BundleFileInput & { content: string },
+  input: BundleFileInput & {
+    content: string | null;
+    bytes?: Uint8Array;
+    limits?: BundleFileWriteLimits;
+  },
 ): BundleFileWriteResult {
+  // Text files carry `content`; binary files carry raw `bytes`. Exactly one is
+  // the payload (a text file has `content: string`; a binary file `content: null`
+  // + `bytes`). `payload` is what lands on disk.
+  const payload: string | Uint8Array = input.bytes ?? input.content ?? '';
   const base = validateBase(input.skillsRoot);
   if (!base.ok) return { ok: false, error: base.error };
   const nameCheck = validateName(input.name);
@@ -311,30 +328,33 @@ export function applySkillBundleFileWrite(
   if (!resolved.ok) return { ok: false, error: resolved.error };
   const { abs } = resolved;
 
-  const byteLength = Buffer.byteLength(input.content, 'utf-8');
-  if (byteLength > BUNDLE_FILE_MAX_BYTES) {
+  const byteLength =
+    typeof payload === 'string' ? Buffer.byteLength(payload, 'utf-8') : payload.length;
+  const maxFileBytes = input.limits?.maxFileBytes ?? BUNDLE_FILE_MAX_BYTES;
+  const maxFiles = input.limits?.maxFiles ?? BUNDLE_MAX_FILES;
+  if (byteLength > maxFileBytes) {
     return {
       ok: false,
       error: {
         code: 'FILE_TOO_LARGE',
-        message: `Skill file ${input.relPath} is ${byteLength} bytes — the per-file cap is ${BUNDLE_FILE_MAX_BYTES}.`,
+        message: `Skill file ${input.relPath} is ${byteLength} bytes — the per-file cap is ${maxFileBytes}.`,
       },
     };
   }
 
   const created = !existsSync(abs);
-  if (created && countBundleFiles(skillDir) >= BUNDLE_MAX_FILES) {
+  if (created && countBundleFiles(skillDir) >= maxFiles) {
     return {
       ok: false,
       error: {
         code: 'TOO_MANY_FILES',
-        message: `Skill "${input.name}" already holds ${BUNDLE_MAX_FILES} bundle files (the cap) — delete one before adding another.`,
+        message: `Skill "${input.name}" already holds ${maxFiles} bundle files (the cap) — delete one before adding another.`,
       },
     };
   }
 
   try {
-    mkdirSync(join(abs, '..'), { recursive: true });
+    tracedMkdirSync(join(abs, '..'), { recursive: true });
   } catch (err) {
     return {
       ok: false,
@@ -346,11 +366,12 @@ export function applySkillBundleFileWrite(
   }
   const tmpPath = `${abs}.tmp.${process.pid}.${Date.now()}`;
   try {
-    writeFileSync(tmpPath, input.content, 'utf-8');
-    renameSync(tmpPath, abs);
+    if (typeof payload === 'string') tracedWriteFileSync(tmpPath, payload, 'utf-8');
+    else tracedWriteFileSync(tmpPath, payload);
+    tracedRenameSync(tmpPath, abs);
   } catch (err) {
     try {
-      unlinkSync(tmpPath);
+      tracedUnlinkSync(tmpPath);
     } catch {
       // Best effort — tmp may not exist or already moved.
     }
@@ -374,6 +395,70 @@ export function applySkillBundleFileWrite(
  * `existed: false`. Prunes a now-empty `references/`/`scripts/` dir; never
  * touches SKILL.md or the skill dir itself.
  */
+export type BundleFileRenameResult =
+  | { ok: true }
+  | { ok: false; error: { code: string; message: string } };
+
+/**
+ * Rename/move ONE bundle file inside a skill dir. Both paths run the same
+ * allowlist + containment gate as write/delete (`resolveBundleFileAbs`), so a
+ * rename can move between allowed roots (`references/` ↔ `scripts/`) but never
+ * escape the skill dir or touch `SKILL.md`. Refuses to clobber: an existing
+ * destination is an error, never an overwrite. Prunes a now-empty source root
+ * dir, mirroring delete.
+ */
+export function applySkillBundleFileRename(
+  input: BundleFileInput & { toRelPath: string },
+): BundleFileRenameResult {
+  const base = validateBase(input.skillsRoot);
+  if (!base.ok) return { ok: false, error: base.error };
+  const nameCheck = validateName(input.name);
+  if (!nameCheck.ok) return { ok: false, error: nameCheck.error };
+
+  const { skillDir } = skillPaths(input.skillsRoot, input.name);
+  const from = resolveBundleFileAbs(skillDir, input.relPath);
+  if (!from.ok) return { ok: false, error: from.error };
+  const to = resolveBundleFileAbs(skillDir, input.toRelPath);
+  if (!to.ok) return { ok: false, error: to.error };
+
+  if (!existsSync(from.abs)) {
+    return {
+      ok: false,
+      error: { code: 'FILE_NOT_FOUND', message: `No bundle file at ${input.relPath}.` },
+    };
+  }
+  if (existsSync(to.abs)) {
+    return {
+      ok: false,
+      error: {
+        code: 'DEST_EXISTS',
+        message: `A bundle file already exists at ${input.toRelPath} — renames never overwrite.`,
+      },
+    };
+  }
+  try {
+    tracedMkdirSync(join(to.abs, '..'), { recursive: true });
+    tracedRenameSync(from.abs, to.abs);
+  } catch (err) {
+    return {
+      ok: false,
+      error: {
+        code: 'RENAME_FAILED',
+        message: `Failed to rename ${input.relPath} -> ${input.toRelPath}: ${(err as Error).message}`,
+      },
+    };
+  }
+  const parent = join(from.abs, '..');
+  if (parent !== skillDir && isEmpty(parent)) {
+    try {
+      tracedRmdirSync(parent);
+    } catch {
+      // Non-fatal: an unprunable empty dir is cosmetic.
+    }
+  }
+  return { ok: true };
+}
+
 export function applySkillBundleFileDelete(input: BundleFileInput): BundleFileDeleteResult {
   const base = validateBase(input.skillsRoot);
   if (!base.ok) return { ok: false, error: base.error };
@@ -388,7 +473,7 @@ export function applySkillBundleFileDelete(input: BundleFileInput): BundleFileDe
   const existed = existsSync(abs);
   if (existed) {
     try {
-      unlinkSync(abs);
+      tracedUnlinkSync(abs);
     } catch (err) {
       return {
         ok: false,
@@ -403,7 +488,7 @@ export function applySkillBundleFileDelete(input: BundleFileInput): BundleFileDe
     const parent = join(abs, '..');
     if (parent !== skillDir && isEmpty(parent)) {
       try {
-        rmdirSync(parent);
+        tracedRmdirSync(parent);
       } catch {
         // race / non-empty — leave it.
       }
@@ -425,7 +510,7 @@ export function applySkillDelete(input: DeleteSkillInput): SkillDeleteResult {
   if (existed) {
     try {
       // Remove the whole skill dir (SKILL.md + references/ + scripts/).
-      rmSync(skillDir, { recursive: true, force: true });
+      tracedRmSync(skillDir, { recursive: true, force: true });
     } catch (err) {
       return {
         ok: false,
@@ -554,7 +639,7 @@ function validateName(
 /**
  * Validate the skill frontmatter against the Agent Skills schema:
  *   - `name` non-empty, ==dir name, no XML tags.
- *   - `description` non-empty, ≤1024, no XML tags.
+ *   - `description` a string (empty allowed for drafts), ≤1024, no XML tags.
  *   - NO `version` (or other unknown) keys — the loader ignores them and a
  *     KB-injected `version` would mislead; reject so authors don't rely on it.
  * The no-XML-tag rule is load-bearing: `<...>` in name/description breaks the
@@ -597,13 +682,18 @@ function validateFrontmatter(
       },
     };
   }
-  if (typeof fm.description !== 'string' || fm.description.length === 0) {
+  // An empty description is a valid DRAFT: "Start blank" and the New Skill
+  // dialog create with no description and the author fills it in the live
+  // editor. Symmetric with skill-get, which tolerates a missing description so
+  // the editor can load and fix it rather than 500. A non-string is still a
+  // hard error.
+  if (typeof fm.description !== 'string') {
     return {
       ok: false,
       error: {
         code: 'SKILL_DESCRIPTION_REQUIRED',
         message:
-          'Skill frontmatter.description is required — it is the primary triggering surface (when to use the skill).',
+          'Skill frontmatter.description must be a string — it is the primary triggering surface (when to use the skill).',
       },
     };
   }
@@ -644,7 +734,7 @@ function skillPaths(skillsRoot: string, name: string): { skillDir: string; fileP
 function cleanEmptyDirs(skillsRoot: string): void {
   if (existsSync(skillsRoot) && isEmpty(skillsRoot)) {
     try {
-      rmdirSync(skillsRoot);
+      tracedRmdirSync(skillsRoot);
     } catch {
       // race / permission — leave it
     }
@@ -653,7 +743,7 @@ function cleanEmptyDirs(skillsRoot: string): void {
   const okDir = normalize(join(skillsRoot, '..'));
   if (okDir.endsWith(`${sep}.ok`) && existsSync(okDir) && isEmpty(okDir)) {
     try {
-      rmdirSync(okDir);
+      tracedRmdirSync(okDir);
     } catch {
       // non-empty (frontmatter.yml / templates / local) — leave it
     }

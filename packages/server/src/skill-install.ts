@@ -644,12 +644,22 @@ export async function buildAndOpenSkill(
     };
   }
 
+  // The Cowork install-state gate keys on the server PACKAGE version (the
+  // single version axis), NOT a SKILL.md metadata field — the bundled SKILL.md
+  // carries no version stamp. Record the same value the gate above reads back.
+  let installedVersion: string | undefined;
+  try {
+    installedVersion = await readServerPackageVersion();
+  } catch {
+    installedVersion = undefined;
+  }
+
   const baseResult: BuildAndOpenSkillResult = {
     status: 'built',
     outputPath: build.outputPath,
     size: build.size,
     sha256: build.sha256,
-    skillVersion: build.skillVersion,
+    skillVersion: installedVersion,
   };
 
   // Write the per-target install-state on every successful build, even when
@@ -657,12 +667,12 @@ export async function buildAndOpenSkill(
   // a future click should skip the rebuild even if Claude Desktop didn't
   // launch. Write failures fall through (fail-soft) — gate works for this
   // session via the stale-version path; next session re-records.
-  if (build.skillVersion) {
+  if (installedVersion) {
     try {
       await writeTargetVersion(
         home,
         'claude-cowork',
-        build.skillVersion,
+        installedVersion,
         'server-build-and-open',
         logger,
       );
@@ -671,7 +681,7 @@ export async function buildAndOpenSkill(
         {
           event: 'skill-install.state-write-failed',
           target: 'claude-cowork',
-          version: build.skillVersion,
+          version: installedVersion,
           err,
         },
         'Skill bundle built but install-state write failed; gate will re-trigger build on next click.',
@@ -680,19 +690,19 @@ export async function buildAndOpenSkill(
   }
 
   if (opts.noOpen) {
-    await report('built', build.skillVersion);
+    await report('built', installedVersion);
     return baseResult;
   }
 
   const invocation = invokeFileAssociation(build.outputPath, platformName, spawnFn);
   if (!invocation.ok) {
-    await report('built', build.skillVersion, `handoff-${invocation.reason}`);
+    await report('built', installedVersion, `handoff-${invocation.reason}`);
     return {
       ...baseResult,
       handoffError: { reason: invocation.reason, message: invocation.message },
     };
   }
 
-  await report('installed', build.skillVersion);
+  await report('installed', installedVersion);
   return { ...baseResult, status: 'installed' };
 }

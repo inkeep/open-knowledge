@@ -542,13 +542,6 @@ export {
   type SkillInstallEventSurface,
 } from './skill-install-events.ts';
 export {
-  isProjectSkillManaged,
-  readSkillManagement,
-  type SkillManagement,
-  skillManagementPath,
-  writeSkillManagement,
-} from './skill-management.ts';
-export {
   readAllTargets,
   readBundleDecision,
   readServerPackageVersion,

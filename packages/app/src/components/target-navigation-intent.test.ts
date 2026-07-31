@@ -111,25 +111,24 @@ describe('resolveTargetNavigationIntent', () => {
     });
   });
 
-  test('a GLOBAL skill bundle reference node carries the skill-file viewer hash', () => {
-    // The graph click path uses `intent.hash` when present so the node routes to
-    // the read-only skill-file viewer (`#/__skill-file__/…`) instead of wrapping
-    // its synthetic docName as a `#/<doc>` hash (which would open a phantom tab).
+  test('a GLOBAL skill bundle reference node routes to its editable doc', () => {
+    // Global skill references are editable managed-artifact docs, so the graph
+    // click path routes to the editable doc (`kind: 'doc'`, no viewer hash)
+    // rather than the read-only skill-file viewer. It still resolves to a real
+    // openable target, not a phantom `#/<doc>` tab.
     expect(
       resolveTargetNavigationIntent('__skill__/global/demo/references/notes', {
         pages: new Set(),
       }),
     ).toEqual({
       resolvedTarget: {
-        kind: 'skill-file',
-        target: 'global/demo/references/notes.md',
-        scope: 'global',
-        name: 'demo',
-        path: 'references/notes.md',
+        kind: 'doc',
+        docName: '__skill__/global/demo/references/notes',
+        target: '__skill__/global/demo/references/notes',
       },
-      hashDocName: 'global/demo/references/notes.md',
-      hash: '#/__skill-file__/global/demo/references/notes.md',
-      // Resolves to a real openable viewer, so it renders as a resolved node
+      hashDocName: '__skill__/global/demo/references/notes',
+      hash: null,
+      // Resolves to a real openable doc, so it renders as a resolved node
       // (not the dashed-red "missing" treatment).
       displayState: 'doc',
     });

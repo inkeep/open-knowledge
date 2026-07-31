@@ -86,7 +86,7 @@ your-project/
 Each folder carries its `.ok/frontmatter.yml` guidance and templates. If a draft needs research notes, the agent creates `drafts/<slug>/research/` on demand rather than cluttering the top level.
 
 <Callout type="info" title="Seeding also installs a skill">
-  `ok seed --pack writing-pipeline` installs the **Writing pipeline** project skill into your agent editors (Claude Code, Cursor, Codex, OpenCode). It's the "how to work here" guidance behind the behaviors below — the stage promotions, the idle-draft nudges, the publish-time URL fill — read automatically, and editable like any other doc. It lands as a single `SKILL.md` under `.ok/skills/`, committed to your repo and symlinked into each detected editor's skills directory. See [Skills](../features/skills.mdx) and [what OpenKnowledge writes to disk](../reference/what-open-knowledge-writes.mdx).
+  `ok seed --pack writing-pipeline` installs the **Writing pipeline** project skill into your agent editors (Claude Code, Cursor, Codex, OpenCode). It's the "how to work here" guidance behind the behaviors below — the stage promotions, the idle-draft nudges, the publish-time URL fill — read automatically, and editable like any other doc. It lands as a single `SKILL.md` in your project's skills directory (`.agents/skills/` when you have one, otherwise your editor's), committed to your repo and copied into the skills directory of each editor already set up for the project. The copies refresh from the source until you hand-edit one. See [Skills](../features/skills.mdx) and [what OpenKnowledge writes to disk](../reference/what-open-knowledge-writes.mdx).
 </Callout>
 
 ## What the agent does for you

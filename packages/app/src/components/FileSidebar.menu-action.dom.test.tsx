@@ -1,6 +1,7 @@
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { __resetSkillsSectionVisibleCacheForTests } from '@/components/skills-section-visible-cache';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { ResolvedNavigationTarget } from './navigation-targets';
 
@@ -221,6 +222,9 @@ vi.doMock('@/editor/DocumentContext', () => ({
     activeDocName: 'notes/source',
     activeTarget,
   }),
+  // FileSidebar imports isSkillsNewTabId; the partial mock must keep that
+  // export or the module link fails (activeNewTabId is unset here → false).
+  isSkillsNewTabId: () => false,
 }));
 
 vi.doMock('@/hooks/use-folder-config', () => ({
@@ -272,6 +276,12 @@ describe('FileSidebar menu-action runtime routing', () => {
     menuActionCallback = null;
     activeTarget = ACTIVE_TARGET;
     mergedConfig = DEFAULT_MERGED_CONFIG;
+    // The section's last-known visibility is cached at module scope so the
+    // sidebar can render the right surface before config loads. Without this
+    // reset a test that hides the Skills section leaks into later ones, which
+    // then render a surface with no FileTree — and the tree-derived View menu
+    // gates read false. Same reset the sibling FileSidebar suite does.
+    __resetSkillsSectionVisibleCacheForTests();
     for (const fn of [
       notifyViewMenuStateChangedMock,
       toggleSidebarMock,
