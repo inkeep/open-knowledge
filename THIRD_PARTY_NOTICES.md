@@ -6276,6 +6276,7 @@ The following MIT-licensed packages are patched in this repository via pnpm's `p
 | `@tiptap/extension-drag-handle@3.22.3` | `patches/@tiptap%2Fextension-drag-handle@3.22.3.patch` |
 | `@tiptap/y-tiptap@3.0.3` | `patches/@tiptap%2Fy-tiptap@3.0.3.patch` |
 | `react-medium-image-zoom@5.4.3` | `patches/react-medium-image-zoom@5.4.3.patch` |
+| `react-resizable-panels@4.12.1` | `patches/react-resizable-panels@4.12.1.patch` |
 | `y-indexeddb@9.0.12` | `patches/y-indexeddb@9.0.12.patch` |
 | `y-prosemirror@1.3.7` | `patches/y-prosemirror@1.3.7.patch` |
 
