@@ -1270,6 +1270,75 @@ describe('buildMenuTemplate — View → Show/Hide Terminal', () => {
   });
 });
 
+describe('buildMenuTemplate — View → Show/Hide Agents', () => {
+  // The ACP twin of the Terminal toggle: same single-row Show/Hide pattern, same
+  // hidden-by-default inversion, ⌘L instead of ⌘J. It sits after Terminal in the
+  // View panel cluster so the two panel toggles read as a pair.
+
+  test('renders "Show Agents" when agentPanelVisible is unset or false', () => {
+    const unset = buildMenuTemplate(makeDeps({ onToggleAgentPanel: vi.fn(() => {}) }));
+    expect(findByLabel(unset, 'Show Agents')).toBeDefined();
+    expect(findByLabel(unset, 'Hide Agents')).toBeUndefined();
+
+    const hidden = buildMenuTemplate(
+      makeDeps({ onToggleAgentPanel: vi.fn(() => {}), agentPanelVisible: false }),
+    );
+    expect(findByLabel(hidden, 'Show Agents')).toBeDefined();
+  });
+
+  test('renders "Hide Agents" when agentPanelVisible is true', () => {
+    const visible = buildMenuTemplate(
+      makeDeps({ onToggleAgentPanel: vi.fn(() => {}), agentPanelVisible: true }),
+    );
+    expect(findByLabel(visible, 'Hide Agents')).toBeDefined();
+    expect(findByLabel(visible, 'Show Agents')).toBeUndefined();
+  });
+
+  test('Agents binds CmdOrCtrl+L (the terminal keeps ⌘J)', () => {
+    const template = buildMenuTemplate(
+      makeDeps({ onToggleAgentPanel: vi.fn(() => {}), onToggleTerminal: vi.fn(() => {}) }),
+    );
+    expect(findByLabel(template, 'Show Agents')?.accelerator).toBe('CmdOrCtrl+L');
+    expect(findByLabel(template, 'Show Terminal')?.accelerator).toBe('CmdOrCtrl+J');
+  });
+
+  test('Agents click dispatches deps.onToggleAgentPanel', () => {
+    const onToggleAgentPanel = vi.fn(() => {});
+    const template = buildMenuTemplate(makeDeps({ onToggleAgentPanel }));
+    (findByLabel(template, 'Show Agents')?.click as (() => void) | undefined)?.();
+    expect(onToggleAgentPanel).toHaveBeenCalledTimes(1);
+  });
+
+  test('Agents DISABLED when the toggle handler is missing', () => {
+    expect(findByLabel(buildMenuTemplate(makeDeps()), 'Show Agents')?.enabled).toBe(false);
+  });
+
+  // The panel is server-hosted, not pty-backed, so its toggle must survive the
+  // off-mac strip that darkens every terminal handler (index.ts's darwin gate).
+  // A regression that folded it into that branch would kill agents on win/linux.
+  test('Agents stays wired when every terminal handler is stripped (off-mac shape)', () => {
+    const template = buildMenuTemplate(
+      makeDeps({
+        onToggleAgentPanel: vi.fn(() => {}),
+        onToggleTerminal: undefined,
+        onNewTerminal: undefined,
+        onKillTerminal: undefined,
+      }),
+    );
+    expect(findByLabel(template, 'Show Agents')?.enabled).toBe(true);
+    expect(findByLabel(template, 'Show Terminal')?.enabled).toBe(false);
+  });
+
+  test('Agents follows the Terminal toggle in the View panel cluster', () => {
+    const template = buildMenuTemplate(
+      makeDeps({ onToggleTerminal: vi.fn(() => {}), onToggleAgentPanel: vi.fn(() => {}) }),
+    );
+    const sub = findByLabel(template, 'View')?.submenu as MenuItemConstructorOptions[] | undefined;
+    const labels = sub?.map((i) => i.label ?? `[role:${i.role ?? 'sep'}]`) ?? [];
+    expect(labels.indexOf('Show Agents')).toBeGreaterThan(labels.indexOf('Show Terminal'));
+  });
+});
+
 describe('buildMenuTemplate — top-level Terminal menu (New / Kill)', () => {
   // VS Code-style top-level Terminal menu, placed between View and Window. The
   // View → Show/Hide Terminal toggle is kept too (⌘J muscle memory); this menu

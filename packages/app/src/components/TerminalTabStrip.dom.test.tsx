@@ -23,7 +23,7 @@ function stubNewButton(onClick: () => void) {
 function renderStrip(props?: {
   sessions?: readonly TerminalTabDescriptor[];
   activeSessionId?: string;
-  dockPosition?: 'bottom' | 'right';
+  edge?: 'bottom' | 'right';
   draggable?: boolean;
   /** Omit the rename handler to assert the affordance is inert without it. */
   renameDisabled?: boolean;
@@ -35,13 +35,12 @@ function renderStrip(props?: {
   const onNewButtonClick = vi.fn(() => {});
   const onClose = vi.fn((_id: string) => {});
   const onRename = vi.fn((_id: string, _label: string) => {});
-  const onToggleDock = vi.fn(() => {});
   const onCollapse = vi.fn(() => {});
   const view = render(
     // The app mounts a root TooltipProvider (main.tsx); the strip's control
     // tooltips need that context, so the isolated render supplies its own.
     // `draggable` mirrors the standalone terminal window's prop shape (same
-    // chrome, no dock/collapse controls); the default mirrors the dock.
+    // chrome, no collapse control); the default mirrors a docked panel.
     <TooltipProvider>
       <TerminalTabStrip
         sessions={props?.sessions ?? SESSIONS}
@@ -58,8 +57,7 @@ function renderStrip(props?: {
         }
         onClose={onClose}
         onRename={props?.renameDisabled ? undefined : onRename}
-        dockPosition={props?.draggable ? undefined : (props?.dockPosition ?? 'bottom')}
-        onToggleDock={props?.draggable ? undefined : onToggleDock}
+        edge={props?.draggable ? undefined : (props?.edge ?? 'bottom')}
         onCollapse={props?.draggable ? undefined : onCollapse}
         draggable={props?.draggable}
       />
@@ -71,7 +69,6 @@ function renderStrip(props?: {
     onNewButtonClick,
     onClose,
     onRename,
-    onToggleDock,
     onCollapse,
     rerender: view.rerender,
   };
@@ -82,9 +79,23 @@ describe('TerminalTabStrip', () => {
 
   test('renders one tab per session inside a labeled tablist', () => {
     renderStrip();
-    const tablist = screen.getByRole('tablist', { name: 'Sessions' });
+    const tablist = screen.getByRole('tablist', { name: 'Terminal sessions' });
     const tabs = within(tablist).getAllByRole('tab');
     expect(tabs.map((tab) => tab.textContent)).toEqual(['Terminal 1', 'Terminal 2', 'Terminal 3']);
+  });
+
+  // Both panels can be open at once, so a shared "Sessions" name would leave a
+  // screen-reader user with two indistinguishable tablists (WCAG 1.3.1). The
+  // names must differ by edge, not merely exist.
+  test('names the tablist for its own panel so two open panels are distinguishable', () => {
+    renderStrip({ edge: 'right' });
+    expect(screen.getByRole('tablist', { name: 'Agent sessions' })).toBeTruthy();
+    expect(screen.queryByRole('tablist', { name: 'Terminal sessions' })).toBeNull();
+
+    cleanup();
+    renderStrip({ edge: 'bottom' });
+    expect(screen.getByRole('tablist', { name: 'Terminal sessions' })).toBeTruthy();
+    expect(screen.queryByRole('tablist', { name: 'Agent sessions' })).toBeNull();
   });
 
   test('hovering a tab surfaces the full (untruncated) title in a tooltip', async () => {
@@ -124,7 +135,7 @@ describe('TerminalTabStrip', () => {
       renderStrip({ activeSessionId: 's3' });
       expect(scrolled.some((element) => element.getAttribute('data-tab-id') === 's3')).toBe(true);
       expect(
-        within(screen.getByRole('tablist', { name: 'Sessions' }))
+        within(screen.getByRole('tablist', { name: 'Terminal sessions' }))
           .getAllByRole('tab')
           .map((tab) => tab.textContent),
       ).toEqual(['Terminal 1', 'Terminal 2', 'Terminal 3']);
@@ -192,33 +203,29 @@ describe('TerminalTabStrip', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  test('the New button hugs the last tab, preceding the trailing dock-toggle / collapse controls', () => {
+  test('the New button hugs the last tab, preceding the trailing collapse control', () => {
     renderStrip();
     const newButton = screen.getByRole('button', { name: 'New session' });
-    const dockToggle = screen.getByRole('button', { name: 'Dock sessions on the right' });
-    const collapse = screen.getByRole('button', { name: 'Collapse session dock' });
+    const collapse = screen.getByRole('button', { name: 'Collapse panel' });
     // The New button sits immediately right of the tablist; the spacer pushes the
-    // trailing group (dock-toggle … collapse) to the far right.
+    // trailing group to the far right.
     expect(
-      newButton.compareDocumentPosition(dockToggle) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      dockToggle.compareDocumentPosition(collapse) & Node.DOCUMENT_POSITION_FOLLOWING,
+      newButton.compareDocumentPosition(collapse) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
-  test('trailing controls render at the far right, immediately left of the dock-toggle', () => {
+  test('trailing controls render at the far right, immediately left of the collapse control', () => {
     renderStrip({ withTrailing: true });
     const trailing = screen.getByRole('button', { name: 'Restore sessions' });
     const newButton = screen.getByRole('button', { name: 'New session' });
-    const dockToggle = screen.getByRole('button', { name: 'Dock sessions on the right' });
+    const collapse = screen.getByRole('button', { name: 'Collapse panel' });
     // The New button hugs the tabs on the left; the trailing control sits in the
-    // far-right cluster, before the dock-toggle.
+    // far-right cluster, before the collapse control.
     expect(
       newButton.compareDocumentPosition(trailing) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      trailing.compareDocumentPosition(dockToggle) & Node.DOCUMENT_POSITION_FOLLOWING,
+      trailing.compareDocumentPosition(collapse) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
@@ -234,29 +241,21 @@ describe('TerminalTabStrip', () => {
     expect(onNewButtonClick).not.toHaveBeenCalled();
   });
 
-  test('the dock-toggle reports onToggleDock and labels the resulting position', async () => {
-    const user = userEvent.setup();
-    // Bottom-docked → the toggle moves it to the right.
-    const bottom = renderStrip({ dockPosition: 'bottom' });
-    const toRight = screen.getByRole('button', { name: 'Dock sessions on the right' });
-    await user.click(toRight);
-    expect(bottom.onToggleDock).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('button', { name: 'Dock sessions at the bottom' })).toBeNull();
+  // Each panel owns one edge now, so the strip offers no way to move it — a
+  // leftover dock-toggle would be a control with nothing to do.
+  test('offers no dock-position control on either edge', () => {
+    renderStrip({ edge: 'bottom' });
+    expect(screen.queryByRole('button', { name: /Dock sessions/ })).toBeNull();
     cleanup();
-
-    // Right-docked → the toggle moves it to the bottom (label flips).
-    const right = renderStrip({ dockPosition: 'right' });
-    const toBottom = screen.getByRole('button', { name: 'Dock sessions at the bottom' });
-    await user.click(toBottom);
-    expect(right.onToggleDock).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('button', { name: 'Dock sessions on the right' })).toBeNull();
+    renderStrip({ edge: 'right' });
+    expect(screen.queryByRole('button', { name: /Dock sessions/ })).toBeNull();
   });
 
   test('the collapse control reports onCollapse and never onClose / new-button', async () => {
     const user = userEvent.setup();
     const { onCollapse, onClose, onNewButtonClick } = renderStrip();
 
-    await user.click(screen.getByRole('button', { name: 'Collapse session dock' }));
+    await user.click(screen.getByRole('button', { name: 'Collapse panel' }));
 
     expect(onCollapse).toHaveBeenCalledTimes(1);
     expect(onClose).not.toHaveBeenCalled();
@@ -270,8 +269,7 @@ describe('TerminalTabStrip', () => {
 
   test('every strip-owned icon-only control exposes an accessible name', () => {
     renderStrip();
-    expect(screen.getByRole('button', { name: 'Dock sessions on the right' })).toBeDefined();
-    expect(screen.getByRole('button', { name: 'Collapse session dock' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Collapse panel' })).toBeDefined();
     for (const label of ['Terminal 1', 'Terminal 2', 'Terminal 3']) {
       expect(screen.getByRole('button', { name: `Close ${label}` })).toBeDefined();
     }
@@ -283,10 +281,9 @@ describe('TerminalTabStrip', () => {
   test('window mode marks the bar as the draggable macOS title region; dock mode does not', () => {
     renderStrip({ draggable: true });
     expect(document.querySelector('[data-electron-drag]')).not.toBeNull();
-    // The window has no dock-toggle/collapse — window management is the OS
-    // title bar's job — but keeps the New button (feature parity).
-    expect(screen.queryByRole('button', { name: /Dock sessions/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Collapse session dock' })).toBeNull();
+    // The window has no collapse control — window management is the OS title
+    // bar's job — but keeps the New button (feature parity).
+    expect(screen.queryByRole('button', { name: 'Collapse panel' })).toBeNull();
     expect(screen.getByRole('button', { name: 'New session' })).toBeDefined();
     cleanup();
     renderStrip();
@@ -451,8 +448,7 @@ describe('TerminalTabStrip', () => {
           newButton={stubNewButton(() => {})}
           onClose={() => {}}
           onRename={() => {}}
-          dockPosition="bottom"
-          onToggleDock={() => {}}
+          edge="bottom"
           onCollapse={() => {}}
         />
       </TooltipProvider>,
@@ -482,7 +478,7 @@ describe('TerminalTabStrip', () => {
     expect(document.querySelectorAll('[data-terminal-tab-sortable]')).toHaveLength(3);
     // The dnd-kit wrapper is not focusable and adds no role — the Radix tablist
     // still sees exactly three tabs.
-    const tablist = screen.getByRole('tablist', { name: 'Sessions' });
+    const tablist = screen.getByRole('tablist', { name: 'Terminal sessions' });
     expect(within(tablist).getAllByRole('tab')).toHaveLength(3);
     expect(within(tablist).queryAllByRole('button', { name: /^Terminal/ })).toHaveLength(0);
   });

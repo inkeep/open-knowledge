@@ -301,6 +301,15 @@ export interface MenuDeps {
   terminalVisible?: boolean;
   onToggleTerminal?(): void;
   /**
+   * Right agents-panel visibility — drives the View → Show/Hide Agents label.
+   * Starts hidden like the terminal, so `undefined`/`false` reads as "Show
+   * Agents". Independent of `terminalVisible`: the two panels own different
+   * edges and open/close on their own. Unlike the terminal handlers, this one
+   * stays wired off-mac — agent threads are server-hosted, not pty-backed.
+   */
+  agentPanelVisible?: boolean;
+  onToggleAgentPanel?(): void;
+  /**
    * Top-level Terminal menu actions. `onNewTerminal` opens a new terminal tab
    * (revealing the dock if hidden; it never hides an already-open terminal,
    * unlike the View toggle). `onKillTerminal` closes the active tab — killing
@@ -511,6 +520,10 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
   'toggle-terminal': {
     click: (d) => () => d.onToggleTerminal?.(),
     enabled: (d) => d.onToggleTerminal !== undefined,
+  },
+  'toggle-agent-panel': {
+    click: (d) => () => d.onToggleAgentPanel?.(),
+    enabled: (d) => d.onToggleAgentPanel !== undefined,
   },
   'toggle-show-hidden-files': {
     click: (d) => () => d.onToggleShowHiddenFiles?.(),

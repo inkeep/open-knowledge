@@ -321,7 +321,7 @@ describe('selectDesktopRootApp routing', () => {
     const { bridge } = makeBridge();
     render(<TooltipProvider>{selectDesktopRootApp(bridge)}</TooltipProvider>);
     expect(
-      await screen.findByRole('tablist', { name: 'Sessions' }, { timeout: 5000 }),
+      await screen.findByRole('tablist', { name: 'Terminal sessions' }, { timeout: 5000 }),
     ).toBeTruthy();
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
   });

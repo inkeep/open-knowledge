@@ -16,6 +16,7 @@ import {
 import { VIEW_IN_SOURCE_EVENT, type ViewInSourceDetail } from '@/editor/view-in-source-event';
 import { subscribeToPreferredSessionRequests } from './handoff/preferred-session-events';
 import { subscribeToActiveTerminalInput } from './handoff/terminal-input-events';
+import { requestAgentThreadLaunch } from './handoff/thread-launch-events';
 
 // The doc the mocked DocumentContext reports (see the useDocumentContext mock).
 const TEST_DOC = 'docs/notes';
@@ -159,11 +160,11 @@ vi.doMock('./EditorHeader', () => ({
   EditorHeader: () => <div data-testid="editor-header" />,
 }));
 
-// EditorArea renders the bottom layout shell + reports the terminal placement up;
-// the live session host now lives in EditorPane as a sibling of EditorArea (so a
-// dock toggle can't remount it). EditorPane still owns the open/⌘J/menu/telemetry
-// state. The EditorArea mock is a bare stand-in; the TerminalSessionsHost mock
-// (below) surfaces the threaded `visible` + `launch` props so these tests keep
+// EditorArea renders the layout shells + reports both panels' placements up; the
+// live session hosts live in EditorPane as siblings of EditorArea (so a view-kind
+// change can't remount them). EditorPane still owns the open/⌘J/⌘L/menu/telemetry
+// state. The EditorArea mock is a bare stand-in; the SessionsHost mock (below)
+// surfaces the threaded `surface` + `visible` + `launch` props so these tests keep
 // asserting EditorPane's wiring across the prop boundary.
 vi.doMock('./EditorArea', () => ({
   EditorArea: () => <div data-testid="editor-area" />,
@@ -173,27 +174,37 @@ vi.doMock('./EditorArea', () => ({
 vi.doMock('./acp/AgentThreadClientBinder', () => ({
   AgentThreadClientBinder: () => null,
 }));
-// The sessions host now mounts UNCONDITIONALLY (web too) — a shell and an agent
-// are just tabs of a different kind. It receives `bridge` (null on web) so these
-// tests assert EditorPane's wiring across the prop boundary, including which host
-// gets a live bridge.
-vi.doMock('./TerminalSessionsHost', () => ({
-  TerminalSessionsHost: ({
+// EditorPane mounts the host twice — the agents panel unconditionally (agent
+// threads are server-hosted, so it works on web) and the terminal dock only where
+// a shell can spawn. One mock serves both; the testid is keyed by `surface` so a
+// test can assert on the panel it means. `data-terminal-capable` pins the GLOBAL
+// capability fact both hosts need for the Ask-AI arbitration.
+vi.doMock('./SessionsHost', () => ({
+  SessionsHost: ({
+    surface,
     bridge,
+    terminalCapable,
     visible,
     launch,
+    threadLaunch,
   }: {
+    surface: string;
     bridge?: unknown;
+    terminalCapable?: boolean;
     visible?: boolean;
     launch?: { nonce: number; stagePaste?: string } | null;
+    threadLaunch?: { nonce: number; agentId?: string; prompt?: string | null } | null;
   }) => {
     return (
       <div
-        data-testid="terminal-dock"
+        data-testid={surface === 'agents-panel' ? 'agents-panel' : 'terminal-dock'}
         data-has-bridge={String(bridge != null)}
+        data-terminal-capable={String(terminalCapable === true)}
         data-visible={String(visible)}
         data-launch-nonce={launch ? String(launch.nonce) : 'none'}
         data-launch-stage={launch?.stagePaste ?? 'none'}
+        data-thread-launch-nonce={threadLaunch ? String(threadLaunch.nonce) : 'none'}
+        data-thread-launch-agent={threadLaunch?.agentId ?? 'none'}
       />
     );
   },
@@ -405,17 +416,25 @@ describe('EditorPane auto-sync onboarding gate', () => {
 
 // Minimal faithful stand-in for the desktop bridge surfaces EditorPane's
 // terminal wiring touches: `onMenuAction` (subscribe), the View-menu-state push,
-// `terminal.getDockState` (read once on mount to restore dock visibility after a
-// reload), and `terminal.cliInstalledMap` (read once on mount for the New-chat
-// default CLI). The real `window.okDesktop` always exposes these, so an empty
-// `{}` stub would no longer model the boundary now that EditorPane calls them on
-// mount. getDockState resolves `visible: false` so the restore is a no-op —
-// these tests exercise the start-hidden toggle/launch behavior.
+// `terminal.getDockState` (read once on mount to restore BOTH panels' visibility
+// after a reload), and `terminal.cliInstalledMap` (read once on mount for the
+// New-chat default CLI). The real `window.okDesktop` always exposes these, so an
+// empty `{}` stub would no longer model the boundary now that EditorPane calls
+// them on mount. getDockState resolves both panels hidden so the restore is a
+// no-op — these tests exercise the start-hidden toggle/launch behavior.
+type DockStateResult = { terminalVisible: boolean; agentPanelVisible: boolean };
 function makeOkDesktopStub(
-  getDockState: () => Promise<{ visible: boolean }> = async () => ({ visible: false }),
+  getDockState: () => Promise<DockStateResult> = async () => ({
+    terminalVisible: false,
+    agentPanelVisible: false,
+  }),
 ) {
   const menuHandlers: Array<(action: string) => void> = [];
-  const viewMenuPushes: Array<{ terminalVisible?: boolean; canViewInSource?: boolean }> = [];
+  const viewMenuPushes: Array<{
+    terminalVisible?: boolean;
+    agentPanelVisible?: boolean;
+    canViewInSource?: boolean;
+  }> = [];
   return {
     viewMenuPushes,
     dispatchMenuAction(action: string) {
@@ -436,6 +455,7 @@ function makeOkDesktopStub(
       editor: {
         notifyViewMenuStateChanged(state: {
           terminalVisible?: boolean;
+          agentPanelVisible?: boolean;
           canViewInSource?: boolean;
         }) {
           viewMenuPushes.push(state);
@@ -454,7 +474,7 @@ function makeOkDesktopStub(
   };
 }
 
-describe('EditorPane terminal dock wiring', () => {
+describe('EditorPane session-panel wiring', () => {
   afterEach(() => {
     cleanup();
     delete (window as { okDesktop?: unknown }).okDesktop;
@@ -464,41 +484,85 @@ describe('EditorPane terminal dock wiring', () => {
     clearPendingSourceNavigationsForTest();
   });
 
-  test('web host mounts the sessions host (host-agnostic) with no desktop bridge', async () => {
+  test('web host mounts the agents panel only — no shell can spawn, so no terminal dock', async () => {
     await renderEditorPane();
 
-    // The unified sessions dock is host-agnostic now — it mounts on web too (thread
-    // tabs only), just without a desktop bridge (terminal-kind affordances gate on
-    // the bridge inside the host).
-    const dock = screen.getByTestId('terminal-dock');
-    expect(dock).toBeTruthy();
-    expect(dock.getAttribute('data-has-bridge')).toBe('false');
+    // Agent threads are server-hosted, so the agents panel is universal. The
+    // terminal dock is NOT mounted where no PTY can spawn: an empty dock there
+    // would be a control that can never do anything.
+    const agents = screen.getByTestId('agents-panel');
+    expect(agents.getAttribute('data-has-bridge')).toBe('false');
+    expect(agents.getAttribute('data-terminal-capable')).toBe('false');
+    expect(screen.queryByTestId('terminal-dock')).toBeNull();
     expect(screen.getByTestId('editor-header')).toBeTruthy();
     expect(screen.getByTestId('editor-area')).toBeTruthy();
   });
 
-  test('desktop host mounts the sessions host with a live bridge under the editor area', async () => {
+  test('desktop host mounts BOTH panels as siblings of the editor area', async () => {
     (window as { okDesktop?: unknown }).okDesktop = makeOkDesktopStub().stub;
     await renderEditorPane();
 
-    // The header and the live session host are both siblings of the editor area
-    // (the host lives in EditorPane so a dock toggle can't remount it). On desktop
-    // the host gets a live bridge.
+    // Both hosts live in EditorPane (above EditorArea) so a view-kind change
+    // can't remount them, and both get the live bridge + the same global
+    // terminal-capability fact the Ask-AI arbitration resolves against.
     expect(screen.getByTestId('editor-header')).toBeTruthy();
     expect(screen.getByTestId('editor-area')).toBeTruthy();
-    const dock = screen.getByTestId('terminal-dock');
-    expect(dock).not.toBeNull();
-    expect(dock.getAttribute('data-has-bridge')).toBe('true');
+    for (const testid of ['terminal-dock', 'agents-panel']) {
+      const panel = screen.getByTestId(testid);
+      expect(panel.getAttribute('data-has-bridge')).toBe('true');
+      expect(panel.getAttribute('data-terminal-capable')).toBe('true');
+    }
   });
 
-  test('desktop: toggle-terminal menu action flips dock visibility and pushes the view-menu state', async () => {
+  test('desktop: the two panels open and close independently', async () => {
+    const desk = makeOkDesktopStub();
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+    await renderEditorPane();
+
+    const terminal = () => screen.getByTestId('terminal-dock').getAttribute('data-visible');
+    const agents = () => screen.getByTestId('agents-panel').getAttribute('data-visible');
+    expect(terminal()).toBe('false');
+    expect(agents()).toBe('false');
+
+    // ⌘L opens the agents panel and leaves the terminal alone.
+    act(() => desk.dispatchMenuAction('toggle-agent-panel'));
+    expect(agents()).toBe('true');
+    expect(terminal()).toBe('false');
+
+    // ⌘J then opens the terminal — both are up at once, the whole point of the
+    // split. Toggling one must never close the other.
+    act(() => desk.dispatchMenuAction('toggle-terminal'));
+    expect(agents()).toBe('true');
+    expect(terminal()).toBe('true');
+
+    act(() => desk.dispatchMenuAction('toggle-agent-panel'));
+    expect(agents()).toBe('false');
+    expect(terminal()).toBe('true');
+  });
+
+  test('desktop: each panel pushes its own view-menu field, never the other', async () => {
+    const desk = makeOkDesktopStub();
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+    await renderEditorPane();
+
+    act(() => desk.dispatchMenuAction('toggle-agent-panel'));
+
+    // The agents push carries agentPanelVisible ONLY — main merges partials, so a
+    // push that also carried terminalVisible would clobber the terminal's
+    // retained per-window state on every ⌘L.
+    const agentsPush = desk.viewMenuPushes.at(-1);
+    expect(agentsPush).toEqual({ agentPanelVisible: true });
+  });
+
+  test('desktop: toggle-terminal flips terminal visibility and pushes the view-menu state', async () => {
     const desk = makeOkDesktopStub();
     (window as { okDesktop?: unknown }).okDesktop = desk.stub;
     await renderEditorPane();
 
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
     // Mount pushes terminalVisible:false so the View menu reads "Show Terminal".
-    expect(desk.viewMenuPushes.at(-1)).toEqual({ terminalVisible: false });
+    // Both panels push on mount, so name the field rather than taking the last.
+    expect(desk.viewMenuPushes).toContainEqual({ terminalVisible: false });
 
     act(() => desk.dispatchMenuAction('toggle-terminal'));
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('true');
@@ -676,12 +740,18 @@ describe('EditorPane terminal dock wiring', () => {
       config: { ptyAvailable: true },
       onMenuAction: () => () => {},
       editor: {
-        notifyViewMenuStateChanged(state: { terminalVisible?: boolean }) {
+        notifyViewMenuStateChanged(state: {
+          terminalVisible?: boolean;
+          agentPanelVisible?: boolean;
+        }) {
           if (state.terminalVisible !== undefined) retainedDockVisible = state.terminalVisible;
         },
       },
       terminal: {
-        getDockState: async () => ({ visible: retainedDockVisible }),
+        getDockState: async () => ({
+          terminalVisible: retainedDockVisible,
+          agentPanelVisible: false,
+        }),
       },
     };
 
@@ -691,6 +761,70 @@ describe('EditorPane terminal dock wiring', () => {
     // restore reveal is NOT counted as a user-initiated terminal open.
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('true');
     expect(terminalOpenedCalls).toHaveLength(0);
+  });
+
+  // The agents half of "each panel keeps its own reload state". The terminal
+  // half is covered above; without this the `if (state.agentPanelVisible)`
+  // restore branch is never exercised, so deleting it — or letting the field
+  // name drift across the IPC seam — would leave the panel collapsed after every
+  // reload with nothing catching it.
+  test('desktop: a reload re-expands an agents panel that was open before it', async () => {
+    (window as { okDesktop?: unknown }).okDesktop = {
+      config: { ptyAvailable: true },
+      onMenuAction: () => () => {},
+      editor: { notifyViewMenuStateChanged() {} },
+      terminal: {
+        getDockState: async () => ({ terminalVisible: false, agentPanelVisible: true }),
+      },
+    };
+
+    await renderEditorPane();
+
+    expect(screen.getByTestId('agents-panel').getAttribute('data-visible')).toBe('true');
+    // Independent: restoring one panel must not drag the other open with it.
+    expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
+  });
+
+  test('desktop: a reload with BOTH panels retained restores both', async () => {
+    (window as { okDesktop?: unknown }).okDesktop = {
+      config: { ptyAvailable: true },
+      onMenuAction: () => () => {},
+      editor: { notifyViewMenuStateChanged() {} },
+      terminal: {
+        getDockState: async () => ({ terminalVisible: true, agentPanelVisible: true }),
+      },
+    };
+
+    await renderEditorPane();
+
+    expect(screen.getByTestId('agents-panel').getAttribute('data-visible')).toBe('true');
+    expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('true');
+  });
+
+  // The agents panel's launch intent had no coverage: the host mock captured
+  // `launch` but dropped `threadLaunch`, so nothing proved EditorPane forwards it
+  // (or that it reveals the panel first — a thread launched into a hidden panel
+  // is invisible work).
+  test('an agent-thread launch request reveals the agents panel and forwards the intent', async () => {
+    await renderEditorPane();
+    expect(screen.getByTestId('agents-panel').getAttribute('data-visible')).toBe('false');
+
+    await act(async () => {
+      requestAgentThreadLaunch({
+        agentSource: 'registry',
+        agentId: 'acme-agent',
+        prompt: 'summarize this doc',
+        docName: TEST_DOC,
+        titleHint: null,
+      });
+    });
+
+    const agents = screen.getByTestId('agents-panel');
+    expect(agents.getAttribute('data-visible')).toBe('true');
+    expect(agents.getAttribute('data-thread-launch-agent')).toBe('acme-agent');
+    // A fresh one-shot: the nonce is what makes a repeat request a NEW launch
+    // rather than a no-op re-render of the same intent.
+    expect(agents.getAttribute('data-thread-launch-nonce')).not.toBe('none');
   });
 
   test('desktop: a rejecting getDockState still settles the gate so the view-menu push converges', async () => {
@@ -705,15 +839,35 @@ describe('EditorPane terminal dock wiring', () => {
     (window as { okDesktop?: unknown }).okDesktop = desk.stub;
     await renderEditorPane();
 
-    expect(desk.viewMenuPushes.at(-1)).toEqual({ terminalVisible: false });
+    expect(desk.viewMenuPushes).toContainEqual({ terminalVisible: false });
     // With no restored state the dock stays hidden (the breadcrumb is logged).
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
   });
 
-  test('web host: a Cmd/Ctrl+J keydown is intercepted (the toggle handler is wired)', async () => {
+  // With no selection AND no shell to spawn, ⌘J has nothing to do on the web
+  // host, so it must leave the browser's own ⌘J alone. It used to preventDefault
+  // and then hit a guard that can never be false — swallowing the chord for a
+  // no-op. The selection-send path below is the half that DOES act here.
+  test('web host: a Cmd/Ctrl+J keydown with no selection is NOT swallowed', async () => {
     await renderEditorPane();
 
     const init: KeyboardEventInit = { key: 'j', cancelable: true, bubbles: true };
+    if (isMacOS()) init.metaKey = true;
+    else init.ctrlKey = true;
+    const event = new KeyboardEvent('keydown', init);
+    window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  // ⌘L's twin. On desktop the native menu accelerator covers this, but the web
+  // host has only the renderer listener and no fallback — if it were ever moved
+  // inside the `window.okDesktop != null` early-return, or bound to the wrong
+  // phase, ⌘L would silently do nothing there.
+  test('web host: a Cmd/Ctrl+L keydown is intercepted (the agents toggle is wired)', async () => {
+    await renderEditorPane();
+
+    const init: KeyboardEventInit = { key: 'l', cancelable: true, bubbles: true };
     if (isMacOS()) init.metaKey = true;
     else init.ctrlKey = true;
     const event = new KeyboardEvent('keydown', init);
@@ -749,13 +903,15 @@ describe('EditorPane terminal dock wiring', () => {
     input.stop();
     preferred.stop();
 
-    // The dock reveals and the host is asked to open the user's preferred AI.
-    // EditorPane deliberately names no CLI: resolving here could only ever yield
-    // a CLI, which is what made ⇧⌘J ignore a preferred ACP agent.
-    const dock = screen.getByTestId('terminal-dock');
-    expect(dock.getAttribute('data-visible')).toBe('true');
+    // The hosts are asked to open the user's preferred AI. EditorPane names no
+    // CLI and reveals NO panel: resolving here could only ever yield a CLI (what
+    // made ⇧⌘J ignore a preferred ACP agent), and with two panels this pane
+    // cannot know which one should end up on screen — the host that owns the
+    // resolved kind reveals itself.
     expect(preferred.count).toBe(1);
-    expect(dock.getAttribute('data-launch-nonce')).toBe('none');
+    expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
+    expect(screen.getByTestId('agents-panel').getAttribute('data-visible')).toBe('false');
+    expect(screen.getByTestId('terminal-dock').getAttribute('data-launch-nonce')).toBe('none');
     expect(input.texts).toEqual([]);
   });
 
@@ -772,11 +928,10 @@ describe('EditorPane terminal dock wiring', () => {
     input.stop();
     preferred.stop();
 
-    // The passage rides the Ask-AI channel with `newTab` set, so the host opens a
-    // fresh session in whichever family the user prefers instead of reusing one.
-    // Nothing is auto-run and no CLI is named here.
+    // The passage rides the Ask-AI channel with `newTab` set, so the host that
+    // owns the preferred family opens a fresh session instead of reusing one, and
+    // reveals its own panel. Nothing is auto-run and no CLI is named here.
     const dock = screen.getByTestId('terminal-dock');
-    expect(dock.getAttribute('data-visible')).toBe('true');
     expect(input.details).toHaveLength(1);
     expect(input.details[0]?.newTab).toBe(true);
     expect(input.details[0]?.text).toContain('some highlighted text');
@@ -801,14 +956,20 @@ describe('EditorPane terminal dock wiring', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  test('web host: ⇧⌘J is a no-op (no terminal to open)', async () => {
+  test('web host: ⇧⌘J still asks for a preferred-AI session (the agents panel can answer)', async () => {
     await renderEditorPane();
+    const preferred = capturePreferredSessionRequests();
     const event = new KeyboardEvent('keydown', shiftJKeydownInit());
-    window.dispatchEvent(event);
-    expect(event.defaultPrevented).toBe(false);
-    // The sessions dock still mounts host-agnostic (thread tabs), but ⇧⌘J is a
-    // terminal-launch accelerator: with no desktop bridge it stages nothing.
-    expect(screen.getByTestId('terminal-dock').getAttribute('data-launch-nonce')).toBe('none');
+    act(() => {
+      window.dispatchEvent(event);
+    });
+    preferred.stop();
+
+    // ⇧⌘J used to be gated on a terminal being available, which made it dead on
+    // web. Agent threads are server-hosted, so the agents panel can always answer
+    // — the chord is universal now and claims the keystroke.
+    expect(event.defaultPrevented).toBe(true);
+    expect(preferred.count).toBe(1);
   });
 
   test('desktop: ⌘J with a selection sends the passage to the host for reuse (no toggle, no launch)', async () => {
@@ -823,10 +984,11 @@ describe('EditorPane terminal dock wiring', () => {
     input.stop();
 
     // ⌘J means "continue where I am when that makes sense", so `newTab` is unset
-    // and the host decides: a running CLI or an open agent thread takes the
-    // passage, otherwise it launches the preferred AI. EditorPane reveals the dock
-    // and stages nothing itself — whether the active tab is a CLI, a bare shell, or
-    // an agent thread is knowledge only the host has.
+    // and the hosts decide: a running CLI or an open agent thread takes the
+    // passage, otherwise the owner of the preferred family launches one and
+    // reveals itself. EditorPane stages nothing and reveals nothing — whether the
+    // active tab is a CLI, a bare shell, or an agent thread is knowledge only a
+    // host has.
     const dock = screen.getByTestId('terminal-dock');
     expect(input.details).toHaveLength(1);
     expect(input.details[0]?.newTab).toBe(false);
@@ -835,7 +997,8 @@ describe('EditorPane terminal dock wiring', () => {
     // Trailing soft newlines land the caret on a blank line below the passage.
     expect(input.details[0]?.text.endsWith('\n\n')).toBe(true);
     expect(dock.getAttribute('data-launch-nonce')).toBe('none');
-    expect(dock.getAttribute('data-visible')).toBe('true');
+    // The selection send replaces the toggle, so ⌘J did NOT open the terminal.
+    expect(dock.getAttribute('data-visible')).toBe('false');
   });
 
   test('desktop: ⌘J with no selection still toggles and stages nothing', async () => {

@@ -19,7 +19,11 @@ import { TabsContent } from '@/components/ui/tabs';
 import { isInAppAgentEnabled } from '@/lib/acp/agent-visibility';
 import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
 import { launchAgentThread } from '@/lib/acp/launch-agent-thread';
-import { enabledTerminalClis, resolveLauncherSelection } from '@/lib/acp/launcher-selection';
+import {
+  enabledTerminalClis,
+  type LauncherSelection,
+  resolveLauncherSelection,
+} from '@/lib/acp/launcher-selection';
 import {
   getDefaultRegisteredAgent,
   pickEffectiveDefaultAgent,
@@ -38,6 +42,7 @@ import { stageThreadDraft } from '@/lib/acp/thread-draft-staging';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import {
   type DockSessionOrder,
+  type DockSurface,
   readDockSessionOrder,
   readWebDockSessionOrder,
   writeDockSessionOrder,
@@ -45,16 +50,13 @@ import {
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import type { NewSessionChoice } from '@/lib/new-session-choice';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
-import type { TerminalDockPosition } from '@/lib/terminal-dock-store';
+import { usePreferBareTerminal, writePreferBareTerminal } from '@/lib/terminal-new-tab-store';
 import {
-  getInitialPreferBareTerminal,
-  writePreferBareTerminal,
-} from '@/lib/terminal-new-tab-store';
-import {
-  loadStickyAgent,
+  parseStickyCliId,
   saveStickyAgent,
   terminalCliId,
   threadAgentId,
+  useStickyAgent,
 } from '@/lib/unified-agent-store';
 import { openAgentSettings } from '@/lib/use-settings-route';
 import { cn } from '@/lib/utils';
@@ -77,16 +79,20 @@ import {
 import { requestTerminalLaunch } from './handoff/terminal-launch-events';
 import { TerminalGate } from './TerminalGate';
 import { TerminalNewChatButton } from './TerminalNewChatButton';
-import { type TerminalTabDescriptor, TerminalTabStrip } from './TerminalTabStrip';
+import {
+  type SessionPanelEdge,
+  type TerminalTabDescriptor,
+  TerminalTabStrip,
+} from './TerminalTabStrip';
 
-/** A session the host keeps as a tab. Two kinds share one ordered list + one
- *  active id (the unified sessions dock). Terminal fields carry PTY state; the
- *  thread variant carries only its server-owned `threadId` (its live title +
- *  status come from the thread store). `ordinal` is a shared monotonic number the
- *  panel render sorts by (so a tab reorder never moves a panel's DOM node); the
- *  terminal positional label ("Terminal N") also reads it. `id` is a stable
- *  client identity: `terminal-session-<n>` for a terminal, the threadId itself
- *  for a thread. */
+/** A session the host keeps as a tab. A given host instance holds ONE kind (see
+ *  {@link SessionSurface}); the union is shared because the tab model is. Terminal
+ *  fields carry PTY state; the thread member carries only its server-owned
+ *  `threadId` (its live title + status come from the thread store). `ordinal` is a
+ *  monotonic number the panel render sorts by (so a tab reorder never moves a
+ *  panel's DOM node); the terminal positional label ("Terminal N") also reads it.
+ *  `id` is a stable client identity: `terminal-session-<n>` for a terminal, the
+ *  threadId itself for a thread. */
 interface BaseSessionDescriptor {
   readonly id: string;
   readonly ordinal: number;
@@ -149,11 +155,21 @@ function focusInsideHost(hostEl: HTMLElement | null): boolean {
   return hostEl?.contains(document.activeElement) ?? false;
 }
 
+/**
+ * Which surface a host instance is. Each owns one edge and one session kind:
+ * the terminal dock owns the bottom and PTYs, the agents panel owns the right
+ * and ACP threads, and the standalone terminal window is its own window. The
+ * host is one component because the tab mechanics (order, active tab, rename,
+ * reorder, reload placement, focus) are identical across all three; only the
+ * kind gates and chrome differ.
+ */
+export type SessionSurface = 'terminal-dock' | 'agents-panel' | 'terminal-window';
+
 /** Focus-gate for the host's capture-phase chords (⌘1–9, ⌘⇧←/→): always in the
- *  window variant (the whole window IS the terminal), in the dock only while
- *  focus sits inside the host. */
-function chordTargetsHost(hostEl: HTMLElement | null, variant: 'dock' | 'window'): boolean {
-  return variant === 'window' || focusInsideHost(hostEl);
+ *  standalone window (the whole window IS the terminal), in a docked panel only
+ *  while focus sits inside the host. */
+function chordTargetsHost(hostEl: HTMLElement | null, isWindow: boolean): boolean {
+  return isWindow || focusInsideHost(hostEl);
 }
 
 /** Colour of a thread tab's status dot, by lifecycle. Transitional states pulse;
@@ -206,24 +222,34 @@ function threadTabIcon(info: ThreadInfo | undefined): ReactNode {
   );
 }
 
-interface TerminalSessionsHostProps {
+interface SessionsHostProps {
   /**
-   * Desktop bridge, or `null` on the web host. The host mounts unconditionally
-   * now — a shell and an agent are just tabs of a different kind in one dock, and
-   * agents are server-hosted, so the dock is host-agnostic. Terminal-*kind*
-   * affordances (creation, PTY bodies, reload adopt) gate on the bridge exposing a
-   * `terminal` surface; thread tabs work with no bridge at all.
+   * Desktop bridge, or `null` on the web host. Passed to EVERY surface, including
+   * the agents panel — the panel has no terminal affordances but still persists
+   * its tab order through main's per-window store. Terminal-*kind* affordances
+   * (creation, PTY bodies, reload adopt) additionally gate on {@link terminalCapable}
+   * and the bridge exposing a `terminal` surface; thread tabs need neither.
    */
   readonly bridge: OkDesktopBridge | null;
   /**
-   * Which surface hosts the sessions. `'dock'` (default) is the editor's sessions
-   * dock: terminals AND agent threads, visibility-driven seeding, dock-toggle +
-   * collapse controls, ⌘1–9 scoped to focus inside the host. `'window'` is the
-   * standalone terminal window: terminals ONLY (no agent threads), always visible,
-   * seeds its first tab on mount, the tab row doubles as the macOS title bar, no
-   * dock/collapse controls, and ⌘1–9 is scope-free.
+   * Whether this host CAN spawn a PTY at all — the caller's `terminal` surface +
+   * `ptyAvailable` check. Read by every surface, not just the terminal ones: the
+   * Ask-AI arbitration resolves the preferred AI against the whole space (see
+   * {@link SessionsHost}), so the agents panel needs the same global answer the
+   * terminal dock would compute or the two would disagree about where a passage
+   * belongs.
    */
-  readonly variant?: 'dock' | 'window';
+  readonly terminalCapable?: boolean;
+  /**
+   * Which surface this host is. `'terminal-dock'` is the bottom panel: terminals
+   * only, visibility-driven seeding, a collapse control, ⌘1–9 scoped to focus
+   * inside the host. `'agents-panel'` is the right panel: agent threads only,
+   * otherwise identical chrome. `'terminal-window'` is the standalone terminal
+   * window: terminals only, always visible, seeds its first tab on mount, the tab
+   * row doubles as the macOS title bar, no collapse control, and ⌘1–9 is
+   * scope-free.
+   */
+  readonly surface: SessionSurface;
   /** Controlled visibility. The host reflects it and reports close-last back
    *  through {@link onVisibleChange}; it never owns it. */
   readonly visible: boolean;
@@ -231,44 +257,67 @@ interface TerminalSessionsHostProps {
   /** "Open in terminal" launch intent — each new intent opens its own terminal tab. */
   readonly launch?: TerminalLaunchIntent | null;
   /** "Start an agent" launch intent — each new intent opens its own thread tab (or
-   *  the agent catalog when no concrete agent is resolvable). Dock variant only. */
+   *  the agent catalog when no concrete agent is resolvable). Agents panel only. */
   readonly threadLaunch?: ThreadLaunchIntent | null;
   /** Which CLIs are on PATH (desktop probe). The New split-button resolves its
    *  default CLI from this + the sticky pick. */
   readonly installedClis?: Partial<Record<TerminalCli, boolean>>;
-  /** The DOM container the live session subtree portals into right now (bottom
-   *  dock mount or right region tenant). Null only transiently before a container
-   *  attaches. */
+  /** The DOM container the live session subtree portals into. Null only
+   *  transiently before the container attaches. */
   readonly container: HTMLElement | null;
-  /** Whether the dock is actually on screen — drives focus in/out. */
+  /** Whether the panel is actually on screen — drives focus in/out. */
   readonly isShowing: boolean;
-  /** Return focus to the editor when the dock hides or the last tab closes. */
+  /** Return focus to the editor when the panel hides or the last tab closes. */
   readonly onRequestEditorFocus: () => void;
-  /** Current dock position — passed to the strip's dock-toggle + collapse controls. */
-  readonly dockPosition?: TerminalDockPosition;
-  /** Flip the dock between bottom and right. Dock variant only. */
-  readonly onToggleDock?: () => void;
-  /** Reports whether ANY session (terminal or thread) is open, so the placement
-   *  owner (EditorArea via EditorPane) can render the dock column/shell. */
-  readonly onHasSessionsChange?: (hasSessions: boolean) => void;
 }
 
 /**
- * Owns the unified session collection (terminals + agent threads) and the single
- * stable host div. Mounted ONCE at a stable position ABOVE the editor's resizable
- * panel group so a dock change cannot remount it — live shells, scrollback,
- * transcripts, and tabs survive the move. The sessions render into the host div
- * via a portal whose target never changes; the host div is appended into whichever
- * {@link container} is active (bottom dock ↔ right region).
- *
- * The tab strip + panels dispatch by `kind`: reorder / activate / rename / close
- * are strip-uniform, their behavior kind-specific. Terminals are host-owned (PTY
- * lifecycle); threads mirror the server-authoritative thread store (the host owns
- * only the dock/tab model — order, active, visibility — never thread lifecycle).
+ * The kinds the TERMINAL side owns — the exact complement of the agents panel's
+ * `thread` / `none`. Typed as a total `Record` on purpose: a bare `!agentsPanelKind`
+ * complement keeps the partition total, but "total" is not "correct" — a new
+ * `LauncherSelection` member would silently fall to the terminal dock, which may
+ * be the wrong owner. This makes adding one a compile error here instead.
  */
-export function TerminalSessionsHost({
+const TERMINAL_DOCK_KINDS: Record<Exclude<LauncherSelection['kind'], 'thread' | 'none'>, true> = {
+  cli: true,
+  terminal: true,
+  desktop: true,
+};
+
+/**
+ * Owns one panel's session collection and its single stable host div. Mounted
+ * ONCE at a stable position ABOVE the editor's resizable panel group so a layout
+ * change cannot remount it — live shells, scrollback, transcripts, and tabs
+ * survive. The sessions render into the host div via a portal whose target never
+ * changes; the host div is appended into whichever {@link container} is active.
+ *
+ * One component serves all three surfaces (see {@link SessionSurface}) because
+ * the tab model is identical: reorder / activate / rename / close are uniform,
+ * only their per-kind behavior differs. Terminals are host-owned (PTY lifecycle);
+ * threads mirror the server-authoritative thread store (the host owns only the
+ * tab model — order, active, visibility — never thread lifecycle).
+ *
+ * ── Launcher resolution ─────────────────────────────────────────────────────
+ * Every host resolves its New button through `resolveLauncherSelection`, and the
+ * pick sticks: the primary repeats whatever you last chose from the dropdown. The
+ * two panels differ only in which families they can offer — the agents panel gets
+ * in-app agents, the terminal ones get the CLIs plus a bare shell — because the
+ * `terminalAvailable` / `threadsAvailable` inputs are SURFACE-scoped, so a host
+ * can never resolve to something it cannot launch.
+ *
+ *   The two GLOBAL-scoped resolutions are the exception. `askAiSelection` (a
+ *   passage) and `preferredSessionSelection` (⇧⌘J) ask "what is the user's
+ *   preferred AI" across both families, so both docked hosts compute the SAME
+ *   answer and each claims only the kinds it owns ({@link claimsSessionKind}).
+ *   Scoping either by surface instead would make the terminal dock resolve a CLI
+ *   for a user whose preferred AI is an in-app agent — a session silently landing
+ *   in the wrong panel. That is why {@link SessionsHostProps.terminalCapable} is
+ *   read here even on the agents panel.
+ */
+export function SessionsHost({
   bridge,
-  variant = 'dock',
+  terminalCapable = false,
+  surface,
   visible,
   onVisibleChange,
   launch = null,
@@ -277,17 +326,22 @@ export function TerminalSessionsHost({
   container,
   isShowing,
   onRequestEditorFocus,
-  dockPosition,
-  onToggleDock,
-  onHasSessionsChange,
-}: TerminalSessionsHostProps) {
+}: SessionsHostProps) {
   const { t } = useLingui();
 
-  // Terminal affordances need a bridge that actually exposes the `terminal`
-  // surface (a session-only bridge, some E2E hosts, has none). Thread hosting is
-  // the dock variant only (the standalone terminal window is shells-only).
-  const terminalAvailable = bridge?.terminal != null;
-  const hostThreads = variant === 'dock';
+  const isWindow = surface === 'terminal-window';
+  const hostThreads = surface === 'agents-panel';
+  const hostTerminals = !hostThreads;
+  // Terminal affordances additionally need a bridge that actually exposes the
+  // `terminal` surface (a session-only bridge, some E2E hosts, has none).
+  const terminalAvailable = hostTerminals && terminalCapable && bridge?.terminal != null;
+  // Which edge this panel occupies — the strip points its collapse chevron by it.
+  const edge: SessionPanelEdge = hostThreads ? 'right' : 'bottom';
+  // Which per-window record this panel's tab order persists under. The two
+  // panels persist independently; the standalone window has nothing to restore
+  // into, so it does not persist at all.
+  const persistSurface: DockSurface = hostThreads ? 'agents' : 'terminal';
+  const persistsOrder = !isWindow;
 
   // The single stable host div for the session subtree. Created once via a
   // useState lazy initializer (never a render-time ref write — React Compiler
@@ -300,7 +354,8 @@ export function TerminalSessionsHost({
   });
 
   // Append the stable host div into the active container. A constant portal target
-  // plus DOM relocation means no remount on a dock move. useLayoutEffect runs
+  // plus DOM relocation means no remount when the container re-attaches (a
+  // view-kind change re-runs EditorArea's tree). useLayoutEffect runs
   // before the focus passive effects below, so the host is attached before a
   // focus-on-reveal.
   useLayoutEffect(() => {
@@ -312,7 +367,7 @@ export function TerminalSessionsHost({
   // reload, so the host rehydrates them on mount instead of starting fresh. When
   // it can, the synchronous terminal seed below stands down. Web + session-only
   // bridges keep the synchronous cold-start (no terminals to rehydrate).
-  const canRehydrate = typeof bridge?.terminal?.list === 'function';
+  const canRehydrate = hostTerminals && typeof bridge?.terminal?.list === 'function';
 
   // Seed the first terminal synchronously only on a terminal surface with no
   // rehydrate capability — web + session-only bridges never seed a terminal.
@@ -326,9 +381,12 @@ export function TerminalSessionsHost({
   // has no reload to restore, and its terminal persist goes through the bridge, not
   // localStorage — so a stale localStorage arrangement never yanks a fresh seed.
   const [webReloadOrder] = useState<DockSessionOrder | null>(() => {
-    if (canRehydrate || !hostThreads || coldSeedTerminal) return null;
-    // Only the web dock persists to localStorage; skip for the window variant.
-    return typeof bridge?.terminal?.getDockState === 'function' ? null : readWebDockSessionOrder();
+    if (canRehydrate || !persistsOrder || coldSeedTerminal) return null;
+    // Only the web backend is readable synchronously; a desktop host reads main's
+    // per-window record from the async restore effect below.
+    return typeof bridge?.terminal?.getDockState === 'function'
+      ? null
+      : readWebDockSessionOrder(persistSurface);
   });
   const reloadOrderRef = useRef<readonly string[]>(webReloadOrder?.order ?? []);
   // Active key still awaiting a matching session (reload restore). Cleared once
@@ -364,13 +422,13 @@ export function TerminalSessionsHost({
     coldSeedTerminal && launch ? launch.nonce : null,
   );
   const lastHandledThreadNonceRef = useRef<number | null>(null);
-  const prevVisibleRef = useRef(variant === 'window' ? false : visible);
+  const prevVisibleRef = useRef(isWindow ? false : visible);
   const ptyIdBySessionRef = useRef(new Map<string, string>());
   const stripLaunchNonceRef = useRef(0);
 
   // Live agent-thread tabs (server-authoritative). Always subscribed (the hook is
   // cheap + the store is empty until a URL is bound), reconciled into thread
-  // descriptors only in the dock variant.
+  // descriptors only on the agents panel.
   const openThreadTabs = useOpenAgentThreadTabs();
   const archivedThreads = useArchivedAgentThreads();
   // WS status for the agent-thread channel — drives a "reconnecting" banner shown
@@ -406,13 +464,13 @@ export function TerminalSessionsHost({
   /** Persist the current unified dock order + active key (reload-durable). Reads
    *  the post-commit refs so it is correct when called from a ptyId callback. */
   function persistDockOrderNow() {
-    if (!hostThreads) return; // the window variant IS the surface — nothing to restore into
+    if (!persistsOrder) return; // the standalone window IS the surface — nothing to restore into
     const ptyMap = ptyIdBySessionRef.current;
     const order = sessionsRef.current
       .map((session) => computePersistKey(session, ptyMap))
       .filter((key): key is string => key != null);
     const active = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
-    writeDockSessionOrder(bridge, {
+    writeDockSessionOrder(bridge, persistSurface, {
       order,
       activeKey: active != null ? computePersistKey(active, ptyMap) : null,
     });
@@ -461,19 +519,20 @@ export function TerminalSessionsHost({
     setActiveSessionId(id);
   }
 
-  // Sticky pick mirror (raw id from the shared Ask-AI store) so the New split
-  // button's primary reflects the last pick across agents/CLIs/bare and updates
-  // reactively when the user switches it from the dropdown.
-  const [stickyAgentId, setStickyAgentId] = useState<string | null>(() => loadStickyAgent());
-  const [preferBareTerminal, setPreferBareTerminal] = useState(() =>
-    getInitialPreferBareTerminal(),
-  );
+  // Sticky pick, read from the SHARED stores rather than a mount-time snapshot.
+  // Both session hosts partition Ask-AI and ⇧⌘J work by comparing the kind each
+  // one resolves, which is only sound while they read the same inputs. Local
+  // `useState` copies diverged the moment a New-dropdown pick mutated one host,
+  // and from then on both claimed — ⇧⌘J opened two sessions and a passage landed
+  // in both panels. Subscribing keeps the invariant true by construction.
+  const stickyAgentId = useStickyAgent();
+  const preferBareTerminal = usePreferBareTerminal();
 
-  // The shared, enablement-aware selection — the SAME `resolveLauncherSelection`
-  // the Ask + Create composers use, so a disabled agent / CLI is never what the
-  // dock primary launches (the old `resolveNewSessionChoice` forced a Claude CLI
-  // fallback that ignored the toggles). The dock offers no Desktop rows and falls
-  // back to a bare terminal, so it only ever yields agent / cli / terminal.
+  // This panel's New button — the same enablement-aware resolver the Ask + Create
+  // composers use, so a disabled agent / CLI is never what the primary launches.
+  // SURFACE-scoped, unlike `askAiSelection` below: `terminalAvailable` is false on
+  // the agents panel and `threadsAvailable` false on the terminal ones, so a host
+  // can only ever resolve to a family it can actually launch.
   const selection = resolveLauncherSelection({
     sticky: stickyAgentId,
     effectiveThreadAgent: effectiveDefaultAgent,
@@ -486,14 +545,22 @@ export function TerminalSessionsHost({
     preferBareTerminal,
     bareTerminalFallback: true,
   });
+  // A CLI counts only as an explicit remembered pick. `resolveLauncherSelection`
+  // also falls back to the first enabled CLI when nothing is picked — right for a
+  // composer, wrong here: the terminal dock IS the terminal, so a TUI is something
+  // you choose, never what a fresh ＋ hands you. Both CLI-less outcomes therefore
+  // collapse to a plain shell.
+  const pickedCli = parseStickyCliId(stickyAgentId);
   const newSessionChoice: NewSessionChoice =
     selection.kind === 'thread'
       ? { kind: 'agent', agent: selection.agent }
       : selection.kind === 'cli'
-        ? { kind: 'cli', cli: selection.cli }
+        ? selection.cli === pickedCli
+          ? { kind: 'cli', cli: selection.cli }
+          : { kind: 'terminal' }
         : selection.kind === 'terminal'
           ? { kind: 'terminal' }
-          : // 'none' (thread-only surface, nothing enabled) → primary opens Settings.
+          : // 'none' (nothing enabled to launch here) → primary opens Settings.
             { kind: 'agent', agent: null };
 
   // Tab-strip New-chat primary: open a promptless terminal session running `cli`.
@@ -502,7 +569,8 @@ export function TerminalSessionsHost({
     openSession({ prompt: null, cli, nonce: stripLaunchNonceRef.current });
   }
 
-  // Primary click: launch the current sticky pick across all three families.
+  // Primary click: launch this panel's current sticky pick — a bare shell, a CLI,
+  // or an in-app agent (Configure agents when nothing is enabled to launch).
   function launchSelectedNewTab() {
     if (newSessionChoice.kind === 'terminal') openSession(null);
     else if (newSessionChoice.kind === 'cli') openNewChatSession(newSessionChoice.cli);
@@ -516,22 +584,14 @@ export function TerminalSessionsHost({
     else openAgentSettings();
   }
 
-  // Seed the dock when it opens empty (⌘J / edge reveal with nothing latched) by
-  // repeating the choice shown on the New-session primary button — EXCEPT the
-  // neutral `choose` (no default agent). A passive reveal must NOT auto-open the
-  // agent catalog: revealing an empty dock just shows it empty; starting an
-  // in-app agent stays an explicit New-button click.
+  // Seed an empty terminal dock on reveal by repeating the New primary's pick —
+  // a bare shell or the picked CLI. The agents panel stays empty until the user
+  // explicitly starts an agent: a passive reveal must not auto-open a thread or
+  // the catalog. A terminal host with nothing enabled likewise just shows empty.
   function seedOnReveal() {
+    if (!hostTerminals) return;
     if (newSessionChoice.kind === 'terminal') openSession(null);
     else if (newSessionChoice.kind === 'cli') openNewChatSession(newSessionChoice.cli);
-    else if (newSessionChoice.kind === 'agent' && newSessionChoice.agent != null)
-      launchAgentThread(
-        { source: newSessionChoice.agent.source, id: newSessionChoice.agent.id },
-        null,
-        null,
-        null,
-      );
-    // `choose` → reveal the empty dock without auto-opening the catalog.
   }
 
   /**
@@ -541,6 +601,13 @@ export function TerminalSessionsHost({
    * pick was "Terminal" still gets their preferred agent for Ask AI, and when
    * nothing is enabled this yields `none` (→ Configure agents) rather than
    * silently opening a shell.
+   *
+   * GLOBAL capabilities, not this surface's: threads are server-hosted so they
+   * are always launchable, and terminal availability is the caller's whole-app
+   * fact. Both docked hosts therefore resolve the same preferred AI and
+   * {@link claimsSessionKind} decides which one answers. The standalone terminal
+   * window is the exception — it has no sibling host in its window, so it
+   * resolves threads away and answers everything itself.
    */
   const askAiSelection = resolveLauncherSelection({
     sticky: stickyAgentId,
@@ -548,18 +615,59 @@ export function TerminalSessionsHost({
     enabledClis: enabledTerminalClis(enabledOverrides, installedClis ?? {}),
     enabledDesktopTargets: [],
     installedClis: installedClis ?? {},
-    terminalAvailable,
-    threadsAvailable: hostThreads,
+    terminalAvailable: terminalCapable,
+    threadsAvailable: !isWindow,
     desktopSelectable: false,
     preferBareTerminal: false,
     bareTerminalFallback: false,
   });
 
   /**
+   * Where a promptless ⇧⌘J new session belongs. Globally scoped like
+   * {@link askAiSelection}, but with the bare-terminal knobs ON: ⇧⌘J carries no
+   * passage, so "Terminal" is a legitimate answer and a user whose last pick was
+   * a bare shell must get one rather than having it resolved away to an agent.
+   */
+  const preferredSessionSelection = resolveLauncherSelection({
+    sticky: stickyAgentId,
+    effectiveThreadAgent: effectiveDefaultAgent,
+    enabledClis: enabledTerminalClis(enabledOverrides, installedClis ?? {}),
+    enabledDesktopTargets: [],
+    installedClis: installedClis ?? {},
+    terminalAvailable: terminalCapable,
+    threadsAvailable: !isWindow,
+    desktopSelectable: false,
+    preferBareTerminal,
+    bareTerminalFallback: true,
+  });
+
+  /**
+   * Whether THIS surface owns a session of `kind`. The two docked panels
+   * PARTITION the space, so an Ask-AI passage or a ⇧⌘J new session lands in
+   * exactly one.
+   *
+   * The agents panel takes `thread`, and `none` too: `none`'s destination is
+   * Configure agents, and the agents panel is the one that mounts on every host
+   * (the terminal dock is absent wherever no shell can spawn), so routing the
+   * fallback there is what keeps it reachable. The terminal dock takes the
+   * COMPLEMENT rather than an enumerated list — written as a partition so a new
+   * `LauncherSelection` member lands somewhere instead of being dropped by both.
+   * That is also what lets the bare-terminal-aware ⇧⌘J resolution share this:
+   * its extra `terminal` kind falls to the terminal dock without a special case.
+   */
+  function claimsSessionKind(kind: LauncherSelection['kind']): boolean {
+    if (isWindow) return true; // no sibling host in that window — it answers everything
+    const agentsPanelKind = kind === 'thread' || kind === 'none';
+    return hostThreads ? agentsPanelKind : kind in TERMINAL_DOCK_KINDS;
+  }
+
+  /**
    * Route an "Ask AI" passage (selection bubble, code block, Problems panel, the
-   * ⌘J/⇧⌘J selection sends) to the user's preferred AI. This is the single place
-   * the which-AI decision is made, so every surface honors the preferred agent
-   * rather than a per-surface default.
+   * ⌘J/⇧⌘J selection sends) to the user's preferred AI. Both docked hosts
+   * subscribe and both resolve the same `askAiSelection`; `claimsSessionKind` makes
+   * exactly one of them act, and the winner reveals its own panel. That is what
+   * keeps "preferred AI decides" true across two independent panels rather than
+   * "whichever panel the user last touched".
    *
    * Reuse first, unless the caller asked for a fresh session (⇧⌘J): a live thread
    * takes the passage as a staged composer draft; a live CLI takes it as a
@@ -652,6 +760,11 @@ export function TerminalSessionsHost({
   }
 
   function dispatchAskAi({ text, newTab, submit }: ActiveTerminalInputDetail) {
+    // Not this panel's kind — the sibling host answers. Returning here (rather
+    // than falling through) is what stops a passage double-landing.
+    if (!claimsSessionKind(askAiSelection.kind)) return;
+    // The passage is landing here, so this panel must be on screen for it.
+    if (!visible) onVisibleChange(true);
     const activeId = activeSessionIdRef.current;
     const active = sessionsRef.current.find((s) => s.id === activeId);
     if (!newTab && active != null) {
@@ -700,17 +813,13 @@ export function TerminalSessionsHost({
 
   // Dropdown CLI pick: clear the bare-terminal preference, persist `cli`, open it.
   function pickNewChatCli(cli: TerminalCli) {
-    setPreferBareTerminal(false);
     writePreferBareTerminal(false);
-    const id = terminalCliId(cli);
-    setStickyAgentId(id);
-    saveStickyAgent(id);
+    saveStickyAgent(terminalCliId(cli));
     openNewChatSession(cli);
   }
 
   // Dropdown "Terminal" pick: persist the bare-shell preference, open a bare shell.
   function pickNewChatTerminal() {
-    setPreferBareTerminal(true);
     writePreferBareTerminal(true);
     openSession(null);
   }
@@ -720,11 +829,8 @@ export function TerminalSessionsHost({
   // a thread. Mirrors the catalog pick's "the agent you chose last is your agent".
   function pickNewChatAgent(agent: RegisteredAgent) {
     registerAgent(agent);
-    setPreferBareTerminal(false);
     writePreferBareTerminal(false);
-    const id = threadAgentId(agent);
-    setStickyAgentId(id);
-    saveStickyAgent(id);
+    saveStickyAgent(threadAgentId(agent));
     launchAgentThread({ source: agent.source, id: agent.id }, null, null, null);
   }
 
@@ -796,9 +902,11 @@ export function TerminalSessionsHost({
       if (next.every((session, index) => session === prev[index])) return prev;
       return next;
     });
-    // Persist the terminal-only display order to main (ptyIds in visual order) so a
-    // reorder survives a renderer reload — keeps `list()` self-consistent — and the
-    // unified cross-kind order for the mixed strip.
+    // Persist the terminal display order to main (ptyIds in visual order), which
+    // keeps `list()` self-consistent with what the strip shows. This covers
+    // terminals ONLY — each panel is single-kind now, and the order a panel
+    // restores after a reload comes from the separate `writeDockSessionOrder`
+    // effect below, not from here.
     const orderedPtyIds = newOrderIds
       .map((id) => ptyIdBySessionRef.current.get(id))
       .filter((ptyId): ptyId is string => ptyId != null);
@@ -819,11 +927,22 @@ export function TerminalSessionsHost({
     reorderSessions(ids);
     return { label: sessionLabel(current[from]), position: to + 1, total: current.length };
   }
+  // ⇧⌘J: a new session with the preferred AI. Both docked hosts subscribe, so the
+  // GLOBAL resolution picks the OWNER and the winner then launches its own primary
+  // and reveals itself. The claim is family-level, not exact: a global `cli` with
+  // no CLI actually picked hands the terminal dock a plain shell. That is the
+  // intended split of labor — global decides WHICH panel, the panel decides what.
+  function launchPreferredSession() {
+    if (!claimsSessionKind(preferredSessionSelection.kind)) return;
+    if (!visible) onVisibleChange(true);
+    launchSelectedNewTab();
+  }
+
   const moveActiveSessionRef = useRef(moveActiveSession);
   const openSessionRef = useRef(openSession);
   const seedOnRevealRef = useRef(seedOnReveal);
   const dispatchAskAiRef = useRef(dispatchAskAi);
-  const launchSelectedNewTabRef = useRef(launchSelectedNewTab);
+  const launchPreferredSessionRef = useRef(launchPreferredSession);
 
   // Close a tab — kind-dispatched. A terminal is removed from the list (its panel
   // unmounts, killing the PTY); a thread is archived server-side (discarded if it
@@ -859,7 +978,7 @@ export function TerminalSessionsHost({
     openSessionRef.current = openSession;
     seedOnRevealRef.current = seedOnReveal;
     dispatchAskAiRef.current = dispatchAskAi;
-    launchSelectedNewTabRef.current = launchSelectedNewTab;
+    launchPreferredSessionRef.current = launchPreferredSession;
     moveActiveSessionRef.current = moveActiveSession;
     activeSessionIdRef.current = activeSessionId;
     sessionsRef.current = sessions;
@@ -881,19 +1000,19 @@ export function TerminalSessionsHost({
   // changes (reorder, add, remove, activate). Reads the ptyId map by ref; the
   // computation uses only listed deps + the module-pure `computePersistKey`.
   useEffect(() => {
-    if (!hostThreads) return;
+    if (!persistsOrder) return;
     const ptyMap = ptyIdBySessionRef.current;
     const order = sessions
       .map((session) => computePersistKey(session, ptyMap))
       .filter((key): key is string => key != null);
     const active = sessions.find((s) => s.id === activeSessionId);
-    writeDockSessionOrder(bridge, {
+    writeDockSessionOrder(bridge, persistSurface, {
       order,
       activeKey: active != null ? computePersistKey(active, ptyMap) : null,
     });
-  }, [sessions, activeSessionId, hostThreads, bridge]);
+  }, [sessions, activeSessionId, persistsOrder, persistSurface, bridge]);
 
-  // ── Thread reconciliation (dock variant) ────────────────────────────────
+  // ── Thread reconciliation (agents panel) ────────────────────────────────
   // Mirror the server-authoritative open-thread list into thread descriptors: add
   // one per newly-open thread, drop one when its thread leaves the open set. The
   // host owns only order/active; the thread store owns thread lifecycle. Restored
@@ -1022,7 +1141,7 @@ export function TerminalSessionsHost({
     }
   }, [visible, launch, threadLaunch, sessions.length, rehydrationSettled, hostThreads]);
 
-  // "Start an agent" launch intent (dock variant): resolve the agent (concrete /
+  // "Start an agent" launch intent (agents panel): resolve the agent (concrete /
   // default-registered) and start a thread. Each new nonce opens its own thread
   // tab; the store reconcile + auto-reveal bring it to front + reveal. When no
   // agent resolves (nothing enabled yet), open Configure agents so the user can
@@ -1050,6 +1169,7 @@ export function TerminalSessionsHost({
   // survivor and read the persisted unified order + active key, so restored tabs
   // land in place and the active tab is restored across kinds.
   useEffect(() => {
+    if (!hostTerminals) return;
     if (typeof bridge?.terminal?.list !== 'function') return;
     if (rehydratedRef.current) return;
     rehydratedRef.current = true;
@@ -1057,7 +1177,7 @@ export function TerminalSessionsHost({
     void (async () => {
       // Read the persisted unified order first so terminal survivors are placed by
       // it (and threads, arriving async, land at their persisted slots too).
-      const persisted = await readDockSessionOrder(bridge).catch(() => null);
+      const persisted = await readDockSessionOrder(bridge, persistSurface).catch(() => null);
       if (!cancelled && persisted != null) {
         reloadOrderRef.current = persisted.order;
         pendingActiveKeyRef.current = persisted.activeKey;
@@ -1116,13 +1236,38 @@ export function TerminalSessionsHost({
       // rehydration on the second mount (see the original terminal host rationale).
       rehydratedRef.current = false;
     };
-  }, [bridge]);
+  }, [bridge, hostTerminals, persistSurface]);
 
-  // Web reload: no bridge to rehydrate, but a persisted active key may still be
-  // pending — bound its wait the same way so a stale key never blocks activation.
+  // Reload restore for a surface with no PTYs to rehydrate (the agents panel, and
+  // any host on web). There is no `list()` pass to hang the read off, so read the
+  // persisted order directly; sessions arriving async then land at their slots.
+  // The web backend was already read synchronously into the mount seed above.
+  useEffect(() => {
+    if (canRehydrate || !persistsOrder) return;
+    if (typeof bridge?.terminal?.getDockState !== 'function') return;
+    let cancelled = false;
+    void readDockSessionOrder(bridge, persistSurface).then((persisted) => {
+      if (cancelled || persisted == null) return;
+      reloadOrderRef.current = persisted.order;
+      // Never override a key the user's own activation already cleared. Tested
+      // through a local rather than in place: `??=` (and the equivalent
+      // self-assignment) is un-lowerable by the React Compiler, while an
+      // `if (x === null) x = …` on the ref itself trips oxlint's
+      // logical-assignment rule. Reading first satisfies both.
+      const activationTookOver = pendingActiveKeyRef.current !== null;
+      if (!activationTookOver) pendingActiveKeyRef.current = persisted.activeKey;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge, canRehydrate, persistsOrder, persistSurface]);
+
+  // Bound the reload-active wait on those same surfaces, so a restored active key
+  // whose session never materializes stops blocking live activation. Armed
+  // unconditionally (not gated on a key being pending yet) because the restore
+  // above resolves async — the key may not exist when this effect first runs.
   useEffect(() => {
     if (canRehydrate) return;
-    if (pendingActiveKeyRef.current == null) return;
     const timer = window.setTimeout(() => {
       pendingActiveKeyRef.current = null;
     }, 9_000);
@@ -1138,29 +1283,33 @@ export function TerminalSessionsHost({
     return subscribeToActiveTerminalInput((detail) => dispatchAskAiRef.current(detail));
   }, [terminalAvailable, hostThreads]);
 
-  // ⇧⌘J with no selection: open a new session with the preferred AI — the same
-  // resolution the New split-button primary uses, so it is never hardcoded to a CLI.
+  // ⇧⌘J with no selection: open a new session with the preferred AI. Arbitrated
+  // like an Ask-AI passage — the GLOBAL resolution decides which panel owns the
+  // new session, then that panel opens it with its own surface-scoped primary
+  // (which resolves to the same thing, since the kinds now agree) and reveals
+  // itself. Without the claim check both panels would each open a tab.
   useEffect(() => {
-    return subscribeToPreferredSessionRequests(() => launchSelectedNewTabRef.current());
+    return subscribeToPreferredSessionRequests(() => launchPreferredSessionRef.current());
   }, []);
 
-  // Terminal application-menu actions act on the tab collection.
+  // Terminal application-menu actions act on the tab collection — terminal
+  // surfaces only, so "Kill Terminal" can never close an agent conversation.
   useEffect(() => {
+    if (!hostTerminals) return;
     return subscribeLocalMenuAction((action) => {
       if (action === 'new-terminal') {
         if (terminalAvailable) openSessionRef.current(null);
       } else if (action === 'kill-terminal') closeActiveRef.current();
-      else if (action === 'close-active-tab-or-window' && variant === 'window')
-        closeActiveRef.current();
+      else if (action === 'close-active-tab-or-window' && isWindow) closeActiveRef.current();
     });
-  }, [variant, terminalAvailable]);
+  }, [isWindow, hostTerminals, terminalAvailable]);
 
   // ⌘1–⌘9 jump straight to the Nth tab (capture phase, focus-scoped in the dock).
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       if (!/^[1-9]$/.test(event.key)) return;
-      if (!chordTargetsHost(hostEl, variant)) return;
+      if (!chordTargetsHost(hostEl, isWindow)) return;
       // `chordTargetsHost` short-circuits to true in the dedicated terminal
       // window, so focus alone does not gate this there.
       if (isOverlayLayerOpen()) return;
@@ -1173,7 +1322,7 @@ export function TerminalSessionsHost({
     }
     window.addEventListener('keydown', onKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true });
-  }, [hostEl, variant]);
+  }, [hostEl, isWindow]);
 
   // ⌘⇧← / ⌘⇧→ move the ACTIVE tab one slot (capture phase + focus-gate).
   useEffect(() => {
@@ -1181,7 +1330,7 @@ export function TerminalSessionsHost({
       if (!event.metaKey || !event.shiftKey || event.ctrlKey || event.altKey) return;
       const direction = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
       if (direction === 0) return;
-      if (!chordTargetsHost(hostEl, variant)) return;
+      if (!chordTargetsHost(hostEl, isWindow)) return;
       if (isOverlayLayerOpen()) return;
       if (dragActiveRef.current) return;
       const target = event.target as HTMLElement | null;
@@ -1208,32 +1357,27 @@ export function TerminalSessionsHost({
         announceTimerRef.current = null;
       }
     };
-  }, [hostEl, variant, t]);
+  }, [hostEl, isWindow, t]);
 
   // Reflect terminal liveness to main so the Terminal menu's "Kill Terminal"
   // enables only while at least one TERMINAL session is live.
   useEffect(() => {
+    if (!hostTerminals) return;
     const terminalLive = sessions.some((s) => s.kind === 'terminal');
     // Mirror into the renderer store so the Cmd+K palette can gate "Kill
     // terminal" on a live session (the bridge push below is main-only).
     setViewMenuState({ terminalLive });
     bridge?.editor.notifyViewMenuStateChanged({ terminalLive });
-  }, [bridge, sessions]);
+  }, [bridge, sessions, hostTerminals]);
 
-  useEffect(() => {
-    onHasSessionsChange?.(sessions.length > 0);
-  }, [onHasSessionsChange, sessions.length]);
-
-  // Return focus out of the hidden dock so a keyboard user is never stranded.
-  // Only acts when focus is actually inside the dock.
+  // Return focus out of the hidden panel so a keyboard user is never stranded.
+  // Only acts when focus is actually inside the host.
   //
-  // Gate on `visible`, not just `isShowing`: a dock move (bottom ↔ right) keeps the
-  // dock `visible` but transiently drops `isShowing` to false for one commit
-  // while the destination container's callback ref attaches (`activeTerminalContainer`
-  // is null until then). Without the `visible` guard, clicking the dock-toggle —
-  // which lives inside this portaled host, so focus is inside it — would satisfy the
-  // focus-inside check and yank focus to the editor mid-move. A genuine hide (⌘J,
-  // collapse, close-last) always sets `visible` false, so focus-return still fires.
+  // Gate on `visible`, not just `isShowing`: `isShowing` also dips for a commit
+  // whenever the container's callback ref re-attaches, and a focus yank on that
+  // edge would steal the caret out of a panel that never actually closed. A
+  // genuine hide (the toggle, collapse, close-last) always sets `visible` false,
+  // so focus-return still fires.
   useLayoutEffect(() => {
     if (isShowing || visible) return;
     if (!focusInsideHost(hostEl)) return;
@@ -1280,19 +1424,18 @@ export function TerminalSessionsHost({
   );
 
   // The conversation-history menu rides in the strip's trailing controls, just
-  // left of the dock-toggle/collapse buttons — shown only with archived history to
-  // return to.
+  // left of the collapse button — shown only with archived history to return to.
   const trailingControls =
     hostThreads && archivedThreads.length > 0 ? (
       <ThreadHistoryMenu archived={archivedThreads} onOpenThread={openArchivedThread} />
     ) : null;
 
   // Render the strip (with the ＋ split button + a starting/empty body) whenever
-  // there are sessions, or the dock is visible in the dock variant — so a visible
-  // dock always shows immediate feedback while a session spins up, and an entry
-  // point when idle-empty. The standalone terminal window seeds on mount, so it
-  // shows the strip only once it has a tab (no empty flash).
-  const showStrip = sessions.length > 0 || (visible && hostThreads);
+  // there are sessions, or a docked panel is visible — so an open panel always
+  // shows immediate feedback while a session spins up, and an entry point when
+  // idle-empty. The standalone terminal window seeds on mount, so it shows the
+  // strip only once it has a tab (no empty flash).
+  const showStrip = sessions.length > 0 || (visible && !isWindow);
 
   const sessionViews = showStrip ? (
     <TerminalTabStrip
@@ -1315,16 +1458,15 @@ export function TerminalSessionsHost({
       onDragActiveChange={(active) => {
         dragActiveRef.current = active;
       }}
-      dockPosition={dockPosition}
-      onToggleDock={onToggleDock}
-      onCollapse={variant === 'window' ? undefined : () => onVisibleChange(false)}
-      draggable={variant === 'window'}
+      edge={edge}
+      onCollapse={isWindow ? undefined : () => onVisibleChange(false)}
+      draggable={isWindow}
       className="h-full"
     >
       {sessions.length === 0 ? (
-        // A terminal surface auto-seeds on reveal, so an empty dock is only ever a
-        // sub-frame transient there — render nothing (the ＋ button suffices) so no
-        // "no sessions" text flashes. On a thread-only surface an empty dock is a
+        // A terminal surface auto-seeds on reveal, so an empty panel is only ever
+        // a sub-frame transient there — render nothing (the ＋ button suffices) so
+        // no "no sessions" text flashes. On the agents panel an empty state is a
         // real resting state: offer the reopen-a-past-conversation chooser when
         // there is history, else the entry-point guidance.
         terminalAvailable ? null : hostThreads && archivedThreads.length > 0 ? (
@@ -1342,7 +1484,7 @@ export function TerminalSessionsHost({
             {...(session.kind === 'terminal' ? { 'data-terminal-session': session.id } : {})}
             className={cn(
               'm-0 flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden',
-              variant === 'window' && 'px-[22px] pb-[22px]',
+              isWindow && 'px-[22px] pb-[22px]',
             )}
           >
             {session.kind === 'terminal' ? (

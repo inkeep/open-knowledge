@@ -13,7 +13,7 @@
  *
  * a11y: this is a pointer-only progressive enhancement. The card keeps passive
  * semantics (no `role`/`tabindex`) — the real control is the inner textbox,
- * which keyboard + AT users already reach via Tab and the ⌘L shortcut — so it
+ * which keyboard + AT users already reach via Tab and the ⇧⌘L shortcut — so it
  * adds no interactive markup to announce and no tab-order change.
  */
 

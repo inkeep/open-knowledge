@@ -41,6 +41,7 @@ export const OK_MENU_ACTIONS = [
   'collapse-all-tree',
   'toggle-doc-panel',
   'toggle-terminal',
+  'toggle-agent-panel',
   'new-terminal',
   'kill-terminal',
   'new-worktree',

@@ -127,12 +127,10 @@ async function openRunningTerminal(app: ElectronApplication, page: Page): Promis
   });
   expect(label).toBeTruthy();
   await expect(page.locator('section[aria-label="Terminal"]')).toBeVisible({ timeout: 15_000 });
-  // Bottom-dock (default is the right column) so the terminal is wide enough for
-  // a printed URL to render on one row — the link-click assertions need it.
-  const toBottom = page.getByRole('button', { name: 'Dock terminal to the bottom' });
-  if (await toBottom.count()) await toBottom.click();
-  // The status container isn't "visible" to Playwright while right-docked; assert
-  // the attribute value instead (matches the terminal-dock smoke).
+  // The terminal is bottom-docked outright now, so it is already wide enough for
+  // a printed URL to render on one row — which the link-click assertions need.
+  // Assert the status attribute rather than visibility (matches the terminal-dock
+  // smoke), since the container can be off-viewport mid-spawn.
   await expect(page.locator('[data-terminal-status]')).toHaveAttribute(
     'data-terminal-status',
     'running',

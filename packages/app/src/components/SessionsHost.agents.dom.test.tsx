@@ -1,10 +1,16 @@
 /**
- * Behavioral tests for the sessions dock hosting AGENT THREADS (the unified-dock
- * half of the host). TerminalGate + ThreadView + the thread store are stubbed so
- * the assertions pin what the host owns for thread tabs: mirroring the server
- * thread list into tabs, kind-aware close (archive) + focus (composer), rename →
- * server, and auto-reveal on a new live thread. The terminal half is covered by
- * TerminalDock.dom.test.tsx (same host).
+ * Behavioral tests for the AGENTS PANEL surface of the shared session host.
+ * TerminalGate + ThreadView + the thread store are stubbed so the assertions pin
+ * what the host owns for thread tabs: mirroring the server thread list into tabs,
+ * close (archive) + focus (composer), rename → server, and auto-reveal on a new
+ * live thread. The terminal surface is covered by TerminalDock.dom.test.tsx (same
+ * component, different `surface`).
+ *
+ * The "Ask AI honors the preferred AI" block below is the regression guard for
+ * the cross-panel arbitration: both docked hosts resolve the SAME preferred AI
+ * from global capabilities, and each answers only for the kinds it owns. These
+ * tests assert the agents panel takes `thread` and `none`, and declines `cli`
+ * (which the terminal dock picks up off the same event).
  */
 
 import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
@@ -100,7 +106,7 @@ vi.doMock('@/lib/acp/registered-agents', () => ({
   useDefaultRegisteredAgent: () => mockRegisteredAgent,
   getDefaultRegisteredAgent: () => mockRegisteredAgent,
   registerAgent: () => {},
-  // Real code loaded here imports these too (TerminalSessionsHost →
+  // Real code loaded here imports these too (SessionsHost →
   // pickEffectiveDefaultAgent; catalog → hydrateRegisteredAgentMeta). A
   // mock.module replaces the whole module, so any omitted export becomes an
   // unresolved import that fails the file (and can cascade to siblings).
@@ -117,7 +123,7 @@ vi.doMock('@tanstack/react-query', () => ({
   useQuery: () => ({ data: catalogData, isLoading: false, isError: false }),
 }));
 
-const { TerminalSessionsHost } = await import('./TerminalSessionsHost');
+const { SessionsHost } = await import('./SessionsHost');
 
 /** Two distinguishable agents, so a stale publish names a visibly wrong one. */
 const FIRST_AGENT = { id: 'a1', name: 'First Agent', source: 'registry' } as const;
@@ -164,8 +170,13 @@ function Harness({
   return (
     <TooltipProvider>
       <div ref={setContainer} data-testid="dock-container" />
-      <TerminalSessionsHost
+      <SessionsHost
+        surface="agents-panel"
         bridge={bridge}
+        // The agents panel reads terminal capability for the GLOBAL Ask-AI
+        // resolution only — it never spawns a PTY itself. Mirrors EditorPane,
+        // which hands both hosts the same whole-app fact.
+        terminalCapable={bridge != null}
         visible={visible}
         onVisibleChange={(v) => {
           onVisibleChange?.(v);
@@ -175,13 +186,12 @@ function Harness({
         container={container}
         isShowing={visible && container != null}
         onRequestEditorFocus={() => {}}
-        dockPosition="bottom"
       />
     </TooltipProvider>
   );
 }
 
-describe('TerminalSessionsHost — agent-thread hosting (web / no bridge)', () => {
+describe('SessionsHost — agents panel (web / no bridge)', () => {
   beforeEach(() => {
     openThreads = [];
     archivedThreads = [];
@@ -515,7 +525,7 @@ describe('TerminalSessionsHost — agent-thread hosting (web / no bridge)', () =
     // Closes the triangle: the channel and `launchSelectedNewTab` are each tested
     // alone, but nothing fired a request into a mounted host. A stale closure or an
     // event-name drift would slip past both endpoint tests.
-    test('a promptless preferred-session request opens the preferred agent', async () => {
+    test('a promptless preferred-session request opens a thread when an agent is preferred', async () => {
       mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
       render(<Harness />);
       await screen.findByTestId('terminal-new-chat');
@@ -525,27 +535,39 @@ describe('TerminalSessionsHost — agent-thread hosting (web / no bridge)', () =
       });
 
       expect(launchAgentThread).toHaveBeenCalledTimes(1);
-      const [agent, prompt, , , stagedDraft] = launchAgentThread.mock.calls[0];
-      expect(agent).toEqual({ source: 'registry', id: 'acme-agent' });
-      // Promptless: ⇧⌘J with no selection carries nothing to run or stage.
-      // Normalized because this path omits the optional 5th arg rather than
-      // passing an explicit null — the invariant is "no staged draft", not which
-      // of the two nullish encodings the call site happens to use.
-      expect(prompt).toBeNull();
-      expect(stagedDraft ?? null).toBeNull();
+      expect(launchAgentThread.mock.calls[0][0]).toEqual({ source: 'registry', id: 'acme-agent' });
     });
 
-    // The CLI family must carry the SAME distinction, or ⇧⌘J would auto-run a
-    // raw passage the moment no agent is configured.
-    test.each([
-      { submit: true, stage: false, label: 'an Ask AI instruction runs' },
-      { submit: false, stage: true, label: 'a selection send stages' },
-    ])('with NO agent set up, $label on the CLI', async ({ submit, stage }) => {
-      const launches: { prompt: string; cli: string; stage: boolean }[] = [];
-      const stopLaunch = subscribeToTerminalLaunchRequests((prompt, cli, opts) =>
-        launches.push({ prompt, cli, stage: opts.stage }),
-      );
+    // The other half of the ⇧⌘J partition: no in-app agent means the preferred AI
+    // is a CLI or a shell, both of which belong to the terminal dock. Declining
+    // here is what stops the two panels each opening a session for one press.
+    test('a promptless preferred-session request is left to the terminal dock with no agent', async () => {
       render(<Harness bridge={makeTerminalBridge()} />);
+      await screen.findByTestId('terminal-new-chat');
+
+      await act(async () => {
+        requestPreferredSession();
+      });
+
+      expect(launchAgentThread).not.toHaveBeenCalled();
+    });
+
+    // Arbitration, the half this panel owns: with no in-app agent the preferred
+    // AI resolves to a CLI, which belongs to the TERMINAL dock. This panel must
+    // decline outright rather than launch one — a CLI started from here would
+    // have no PTY surface to live in, and the terminal dock (answering the same
+    // event, with the same resolution) would open a second one. The answering
+    // half is asserted in TerminalDock.dom.test.tsx.
+    test.each([
+      { submit: true, label: 'an Ask AI instruction' },
+      { submit: false, label: 'a selection send' },
+    ])('with NO agent set up, $label is left to the terminal dock', async ({ submit }) => {
+      const launches: unknown[] = [];
+      const stopLaunch = subscribeToTerminalLaunchRequests((prompt, cli, opts) =>
+        launches.push({ prompt, cli, ...opts }),
+      );
+      const onVisibleChange = vi.fn((_v: boolean) => {});
+      render(<Harness bridge={makeTerminalBridge()} onVisibleChange={onVisibleChange} />);
       await screen.findByTestId('terminal-new-chat');
 
       await act(async () => {
@@ -553,11 +575,11 @@ describe('TerminalSessionsHost — agent-thread hosting (web / no bridge)', () =
       });
       stopLaunch();
 
-      // No in-app agent → the CLI family is next in the uniform precedence, so the
-      // passage still reaches an AI. Claude here is the resolver's install-nudge
-      // default, not a hardcoded sender-side choice.
+      // Nothing at all: no thread, no CLI launch of its own, and — the part a
+      // silent mis-claim would break — no reveal of a panel that has no answer.
       expect(launchAgentThread).not.toHaveBeenCalled();
-      expect(launches).toEqual([{ prompt: 'fix this lint error', cli: 'claude', stage }]);
+      expect(launches).toEqual([]);
+      expect(onVisibleChange).not.toHaveBeenCalled();
     });
 
     test('with nothing set up, an Ask AI send opens Configure agents (no silent shell)', async () => {

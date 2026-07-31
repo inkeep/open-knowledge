@@ -16,14 +16,16 @@ import { emitCreateTopLevelFile } from '@/lib/create-file-events';
 import type { OkPackId } from '@/lib/desktop-bridge-types';
 import { subscribeToDocumentsChanged } from '@/lib/documents-events';
 import { fetchDocumentListShared } from '@/lib/documents-fetch';
-import type { TerminalDockPosition } from '@/lib/terminal-dock-store';
 import { cn } from '@/lib/utils';
 
 export function EmptyEditorState({
-  terminalDock = null,
+  terminalOpen = false,
+  agentsOpen = false,
 }: {
-  /** Where the visible terminal is docked, or null when no terminal is open. */
-  terminalDock?: TerminalDockPosition | null;
+  /** Whether the bottom terminal dock is open. */
+  terminalOpen?: boolean;
+  /** Whether the right agents panel is open. */
+  agentsOpen?: boolean;
 }) {
   const [seedDialogOpen, setSeedDialogOpen] = useState(false);
   const [seedDialogInitialPackId, setSeedDialogInitialPackId] = useState<OkPackId | undefined>(
@@ -109,15 +111,14 @@ export function EmptyEditorState({
     if (!next) setSeedDialogInitialPackId(undefined);
   }
 
-  // When the terminal is open (an empty-state CLI launch), keep the header —
-  // blob + headline + subtitle, left-aligned in the same column as the full
-  // view — but drop the composer bubble + starter-pack list: the terminal is
-  // its own AI entry point, so the composer would be a competing dispatch
-  // affordance in either dock position. Bottom dock: `justify-end`
-  // bottom-anchors the header just above the dock so it rides up/down as the
-  // terminal is resized (matching the prior blob-only pose). Right dock keeps
-  // its vertical space, so the header centers instead.
-  if (terminalDock !== null) {
+  // With a session panel open (an empty-state launch), keep the header — blob +
+  // headline + subtitle, left-aligned in the same column as the full view — but
+  // drop the composer bubble + starter-pack list: the panel is its own AI entry
+  // point, so the composer would be a competing dispatch affordance. An open
+  // BOTTOM dock takes vertical space, so `justify-end` bottom-anchors the header
+  // just above it and the header rides up/down as the dock is resized. The right
+  // agents panel leaves the vertical space intact, so the header centers.
+  if (terminalOpen || agentsOpen) {
     return (
       // `@container/emptystate` scopes the child media queries to the editor
       // pane's own width, not the window's — a narrow split-view pane gets the
@@ -126,7 +127,7 @@ export function EmptyEditorState({
       <div
         className={cn(
           '@container/emptystate flex min-h-0 flex-1 flex-col items-center pb-8 pt-10',
-          terminalDock === 'bottom' ? 'justify-end' : 'justify-center',
+          terminalOpen ? 'justify-end' : 'justify-center',
         )}
       >
         <div className="flex w-full flex-col items-center px-4 @md/emptystate:px-10 @2xl/emptystate:px-16">

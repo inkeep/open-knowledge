@@ -254,13 +254,9 @@ async function waitForStatus(page: Page, status: string, timeoutMs = 20_000): Pr
   });
 }
 
-/** Ensure the terminal is bottom-docked. The default dock is the right column, so
- *  the bottom-panel assertions (`#terminal-dock-panel`) first flip it down via the
- *  tab strip's dock-toggle button (which reads "Dock terminal to the bottom" while
- *  right-docked). A no-op if it is already bottom-docked. */
+/** Wait for the bottom terminal panel. The terminal owns the bottom edge outright
+ *  now — there is no dock position to flip — so this only settles the panel. */
 async function ensureBottomDock(page: Page): Promise<void> {
-  const toBottom = page.getByRole('button', { name: 'Dock terminal to the bottom' });
-  if (await toBottom.count()) await toBottom.click();
   await expect(page.locator('#terminal-dock-panel')).toBeVisible({ timeout: 10_000 });
 }
 
@@ -483,10 +479,10 @@ test.describe('Docked terminal — live Electron', () => {
       .toContain(`AFTER_COLS=${before}`);
   });
 
-  // Dock controls — the click toggle replaced the drag grip. This asserts the UI
-  // shape (dock-toggle + collapse present, no grip) in the live build. The default
-  // dock is the right column, so the toggle offers "Dock terminal to the bottom".
-  test('terminal tab strip exposes dock-toggle + collapse buttons and no drag grip', async ({
+  // Dock controls in the live build: collapse is the only chrome. The terminal
+  // owns the bottom edge, so there is no dock-toggle (and the older drag grip
+  // stays gone).
+  test('terminal tab strip exposes the collapse button and no way to move the dock', async ({
     captureStderrFor,
   }) => {
     const s = seed('dock-controls', { consent: true });
@@ -496,21 +492,19 @@ test.describe('Docked terminal — live Electron', () => {
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
-    await expect(page.getByRole('button', { name: /Dock terminal to the/ })).toBeVisible({
+    await expect(page.getByRole('button', { name: 'Collapse panel' })).toBeVisible({
       timeout: 10_000,
     });
-    await expect(page.getByRole('button', { name: 'Collapse terminal' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Dock terminal to the/ })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Drag to dock the terminal' })).toHaveCount(0);
   });
 
-  // Movable dock via the dock-toggle button — the default is the right column;
-  // clicking "Dock terminal to the bottom" re-docks it under the editor
-  // (#terminal-dock-panel), and clicking "Dock terminal to the right" moves it back
-  // to its own column (#terminal-column).
-  test('movable dock — the dock-toggle button moves the terminal between bottom and right', async ({
+  // The terminal is bottom-only now, and the agents panel owns the right column.
+  // A live-build guard that the two never share an edge.
+  test('the terminal lives in the bottom panel, never in the right column', async ({
     captureStderrFor,
   }) => {
-    const s = seed('dock-move', { consent: true });
+    const s = seed('dock-edges', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
@@ -518,58 +512,11 @@ test.describe('Docked terminal — live Electron', () => {
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
 
-    // Default dock is the right column.
-    await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible({
-      timeout: 10_000,
-    });
-
-    // Toggle → bottom dock.
-    await page.getByRole('button', { name: 'Dock terminal to the bottom' }).click();
     await expect(page.locator('#terminal-dock-panel section[aria-label="Terminal"]')).toBeVisible({
       timeout: 10_000,
     });
-
-    // Toggle → back to the right column.
-    await page.getByRole('button', { name: 'Dock terminal to the right' }).click();
-    await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible({
-      timeout: 10_000,
-    });
-  });
-
-  // Re-docking re-parents the SAME live terminal so the shell session + scrollback
-  // survive the move — the session host owns one stable host div that relocates
-  // across docks rather than remounting. Proven by element identity: the tagged
-  // xterm node is the same one before and after the toggle.
-  test('movable dock — preserves the same live terminal session across moves', async ({
-    captureStderrFor,
-  }) => {
-    const s = seed('dock-parity', { consent: true });
-    track(s.tmpHome, s.projectDir);
-    const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
-    const page = await findEditorWindow(app);
-    await openTerminal(app, page);
-    await waitForStatus(page, 'running', 25_000);
-
-    const xterm = page.locator('section[aria-label="Terminal"] .xterm');
-    await xterm.evaluate((el) => {
-      (el as HTMLElement).dataset.parityTag = 'OK_PARITY_TAG';
-    });
-    // Re-dock to the bottom; the SAME tagged node must reappear under the bottom
-    // panel (relocated, not re-spawned).
-    await page.getByRole('button', { name: 'Dock terminal to the bottom' }).click();
-    await expect
-      .poll(
-        () =>
-          page.evaluate(
-            () =>
-              document
-                .querySelector<HTMLElement>('.xterm[data-parity-tag="OK_PARITY_TAG"]')
-                ?.closest('#terminal-dock-panel') != null,
-          ),
-        { timeout: 10_000 },
-      )
-      .toBe(true);
+    // The right column is the agents panel's; no terminal ever renders there.
+    await expect(page.locator('#agents-column section[aria-label="Terminal"]')).toHaveCount(0);
   });
 
   // Panel is a labeled region; xterm screen-reader mode + contrast set.

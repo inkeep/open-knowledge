@@ -3,9 +3,12 @@
  *
  * The composer is a doc-scoped affordance shown in both the desktop app and a
  * user's own browser. It shows only when every gate input clears:
- *   1. The docked terminal is closed (`!terminalVisible`). The open terminal
- *      owns the bottom of the editor column and is its own AI entry point, so
- *      the composer would contend with it for the same real estate.
+ *   1. Neither session panel is open (`!terminalVisible && !agentsVisible`). Each
+ *      is already an AI entry point with its own prompt surface, so a third one
+ *      floating over the editor is a redundant place to type the same request.
+ *      The terminal additionally contends for the composer's real estate — it
+ *      owns the bottom of the same column — but redundancy alone is the reason
+ *      the agents panel suppresses it too, despite sitting off to the right.
  *   2. The host is not an embedded AI webview (`!isEmbedded`). When OK's preview
  *      is embedded inside a desktop agent (Claude Code / Codex / Cursor), that
  *      agent IS the AI surface, so a second dispatch affordance would be
@@ -28,6 +31,8 @@
 export interface BottomComposerGateInputs {
   /** Whether the docked terminal is currently visible. */
   terminalVisible: boolean;
+  /** Whether the right-side agents panel is currently visible. */
+  agentsVisible: boolean;
   /** Whether the app runs inside an embedded AI-editor webview. */
   isEmbedded: boolean;
   /** The active document name, or null when no doc is open. */
@@ -35,20 +40,25 @@ export interface BottomComposerGateInputs {
 }
 
 export function shouldShowBottomComposer(inputs: BottomComposerGateInputs): boolean {
-  return !inputs.terminalVisible && !inputs.isEmbedded && inputs.activeDocName !== null;
+  return (
+    !inputs.terminalVisible &&
+    !inputs.agentsVisible &&
+    !inputs.isEmbedded &&
+    inputs.activeDocName !== null
+  );
 }
 
 /**
  * Visibility predicate for the FOLDER-view bottom composer. The folder overview
  * renders its own composer docked below the folder list, scoped to the folder
  * (the folder is the top-row context chip + dispatch lead). It clears the same
- * embedded / terminal gates as the doc composer (gates 1-2) MINUS the
+ * embedded / session-panel gates as the doc composer (gates 1-2) MINUS the
  * doc-open requirement — folder scope has no open doc. The host already knows it
- * is in a folder view, so the `activeDocName` clause has no analogue here; this
- * is intentionally a 2-input predicate.
+ * is in a folder view, so the `activeDocName` clause has no analogue here; the
+ * missing input is intentional, not an oversight.
  */
 export function shouldShowFolderComposer(
   inputs: Omit<BottomComposerGateInputs, 'activeDocName'>,
 ): boolean {
-  return !inputs.terminalVisible && !inputs.isEmbedded;
+  return !inputs.terminalVisible && !inputs.agentsVisible && !inputs.isEmbedded;
 }

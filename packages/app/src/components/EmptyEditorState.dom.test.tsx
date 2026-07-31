@@ -67,26 +67,32 @@ afterEach(cleanup);
 // dependencies bind to the stubs rather than the real modules.
 const { EmptyEditorState } = await import('./EmptyEditorState');
 
-describe('EmptyEditorState terminal-aware collapse', () => {
-  test('no terminal: renders the full view (composer surface present)', async () => {
-    render(<EmptyEditorState terminalDock={null} />);
+describe('EmptyEditorState session-panel-aware collapse', () => {
+  test('neither panel open: renders the full view (composer surface present)', async () => {
+    render(<EmptyEditorState />);
     await waitFor(() => expect(screen.getByTestId('create-view')).toBeTruthy());
     expect(screen.queryByTestId('empty-state-header')).toBeNull();
   });
 
-  test('bottom-docked terminal: header-only, bottom-anchored above the dock', async () => {
-    render(<EmptyEditorState terminalDock="bottom" />);
+  test('terminal open: header-only, bottom-anchored above the dock', async () => {
+    render(<EmptyEditorState terminalOpen />);
     const header = await screen.findByTestId('empty-state-header');
     expect(screen.queryByTestId('create-view')).toBeNull();
-    const pose = header.closest('.justify-end');
-    expect(pose).not.toBeNull();
+    expect(header.closest('.justify-end')).not.toBeNull();
   });
 
-  test('right-docked terminal: header-only too (the composer bubble must not compete), centered', async () => {
-    render(<EmptyEditorState terminalDock="right" />);
+  test('agents panel open: header-only too (the composer bubble must not compete), centered', async () => {
+    render(<EmptyEditorState agentsOpen />);
     const header = await screen.findByTestId('empty-state-header');
     expect(screen.queryByTestId('create-view')).toBeNull();
-    const pose = header.closest('.justify-center');
-    expect(pose).not.toBeNull();
+    // The right column leaves the vertical space intact, so the header centers.
+    expect(header.closest('.justify-center')).not.toBeNull();
+  });
+
+  test('both panels open: the bottom dock wins the pose (it is what takes the space)', async () => {
+    render(<EmptyEditorState terminalOpen agentsOpen />);
+    const header = await screen.findByTestId('empty-state-header');
+    expect(screen.queryByTestId('create-view')).toBeNull();
+    expect(header.closest('.justify-end')).not.toBeNull();
   });
 });

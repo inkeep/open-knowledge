@@ -1,16 +1,16 @@
 /**
- * Window-scoped pub/sub carrying a raw text paste to the sessions dock's
- * preferred AI. The editor's "Ask AI" affordances (selection bubble, code block,
- * Problems panel) and the ⌘J / ⇧⌘J selection sends fire this so a passage lands
- * wherever the user's preferred AI actually is.
+ * Window-scoped pub/sub carrying a raw text paste to the user's preferred AI.
+ * The editor's "Ask AI" affordances (selection bubble, code block, Problems
+ * panel) and the ⌘J / ⇧⌘J selection sends fire this so a passage lands wherever
+ * that AI actually is.
  *
  * Mirrors the `terminal-launch-events` idiom, but the payload is verbatim text —
- * never a `<bin> '<prompt>'` command and never a `cli` discriminant. The host
- * (`TerminalSessionsHost`) owns both the PTY state AND the preferred-AI
- * resolution, so it alone decides reuse-vs-launch and which family to launch
- * into: a live session → write into it; nothing open → launch whatever
- * `resolveLauncherSelection` names. Senders deliberately carry no agent opinion,
- * so the host's preferred-AI resolution is the single source of that decision.
+ * never a `<bin> '<prompt>'` command and never a `cli` discriminant. Both docked
+ * `SessionsHost` instances subscribe; each owns its own session state and both
+ * resolve the preferred AI from the same global inputs, so they agree on the
+ * answer and only the panel that owns the resolved kind acts (reusing a live
+ * session or launching, then revealing itself). Senders deliberately carry no
+ * agent opinion, so that resolution is the single source of the decision.
  *
  * `newTab` distinguishes ⇧⌘J ("always a fresh session") from ⌘J ("continue where
  * I am when that makes sense"). It is a request, not a guarantee — the host still

@@ -14,7 +14,7 @@
  * carries a segmented "Ask <agent>" send control (the shared
  * `AgentSplitButton`: primary submit + joined agent-picker chevron), a
  * rotating-suggestion placeholder that cross-fades between prompts while
- * empty, and the ⌘L focus shortcut.
+ * empty, and the ⇧⌘L focus shortcut.
  *
  * Submitting dispatches the typed instruction to the resolved default agent
  * (first installed, or the user's sticky pick) scoped to the current doc or
@@ -122,10 +122,10 @@ function markdownRelativePathStem(path: string): string | null {
 }
 
 /**
- * Whether a keydown originated inside a native form field. ⌘L should still fire
+ * Whether a keydown originated inside a native form field. ⇧⌘L should still fire
  * from the ProseMirror body (a contentEditable root), so this is deliberately
  * NARROWER than `isEditableShortcutTarget` — only native INPUT/TEXTAREA/SELECT
- * are excluded, so ⌘L never steals a caret out of a real form field (e.g. the
+ * are excluded, so ⇧⌘L never steals a caret out of a real form field (e.g. the
  * rename input, a search box).
  */
 function isNativeTextControl(target: EventTarget | null): boolean {
@@ -221,7 +221,7 @@ export function BottomComposer({
    *  touched-file lifecycle, scroll-inset/caret machinery) are skipped. */
   folderPath?: string;
   /** When dismissed, the field collapses to nothing (the host shows a reopen
-   *  badge in the footer); the component stays mounted so ⌘L can reopen it. Doc
+   *  badge in the footer); the component stays mounted so ⇧⌘L can reopen it. Doc
    *  mode only — folder mode is always visible (no footer to dock a badge in). */
   dismissed?: boolean;
   onDismiss?: () => void;
@@ -385,7 +385,7 @@ export function BottomComposer({
     };
   }, [dismissed, surface, docName, folderMode]);
 
-  // Mirror the latest dismissed/onReopen into refs so the once-bound ⌘L handler
+  // Mirror the latest dismissed/onReopen into refs so the once-bound ⇧⌘L handler
   // reads current values without re-subscribing (refs written in an effect, not
   // during render, keeps React Compiler happy).
   const dismissedRef = useRef(dismissed);
@@ -395,7 +395,7 @@ export function BottomComposer({
     onReopenRef.current = onReopen;
   });
 
-  // Single open+focus path, shared by ⌘L and the editor's "Ask AI" selection
+  // Single open+focus path, shared by ⇧⌘L and the editor's "Ask AI" selection
   // affordance (the bubble-menu button dispatches the same event): if the field
   // is dismissed it reopens first (the reopen effect below then focuses on the
   // dismissed -> visible flip); otherwise it focuses the input directly.
@@ -407,13 +407,13 @@ export function BottomComposer({
     return subscribeToOpenAskAiComposer(openAndFocus);
   }, []);
 
-  // ⌘L routes through the shared event so the button and the shortcut never
+  // ⇧⌘L routes through the shared event so the button and the shortcut never
   // duplicate the reopen/focus logic.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!matchesKeyboardShortcut(event, 'open-ask-ai')) return;
       if (isOverlayLayerOpen()) return;
-      // Don't hijack ⌘L when the caret is in a native form field (rename input,
+      // Don't hijack ⇧⌘L when the caret is in a native form field (rename input,
       // search box, …) — only swallow it for the editor body / global context.
       if (isNativeTextControl(event.target)) return;
       event.preventDefault();
@@ -424,7 +424,7 @@ export function BottomComposer({
   }, []);
 
   // Focus the input only on a genuine reopen (dismissed true -> false), so a
-  // badge click or ⌘L lands the caret in the field. Comparing against the
+  // badge click or ⇧⌘L lands the caret in the field. Comparing against the
   // PREVIOUS dismissed value (rather than a "skip the first render" ref) keeps
   // the mount itself from focusing — and, crucially, survives React StrictMode's
   // dev-only effect double-invoke, which defeats a skip-first-render ref (the
@@ -933,7 +933,7 @@ export function BottomComposer({
   };
 
   // Dismissed: render nothing (the host shows the footer reopen badge). The
-  // component stays mounted above this point so the ⌘L handler can reopen it.
+  // component stays mounted above this point so the ⇧⌘L handler can reopen it.
   if (dismissed) return null;
 
   // Compact, Cursor-style selection chip: `name (range)` — the doc basename
@@ -962,7 +962,7 @@ export function BottomComposer({
   // the card stacks its children vertically. The card markup is mode-agnostic;
   // only the outer host wrapper (overlay vs in-flow) differs below.
   const card = (
-    // biome-ignore lint/a11y/noStaticElementInteractions: pointer clicks only delegate focus to the composer's editable; keyboard users focus it directly (Tab / ⌘L).
+    // biome-ignore lint/a11y/noStaticElementInteractions: pointer clicks only delegate focus to the composer's editable; keyboard users focus it directly (Tab / ⇧⌘L).
     <div
       ref={cardRef}
       // Click anywhere in the card's whitespace (padding, row gaps, the space

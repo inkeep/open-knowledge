@@ -206,16 +206,41 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     ],
   },
   {
-    id: 'open-ask-ai',
+    // The right-panel twin of ⌘J. Not desktop-scoped: agent threads are
+    // server-hosted, so the panel is there on the web host too, which is why
+    // this carries a `match` (the renderer owns the keydown where no native
+    // menu accelerator claims it).
+    id: 'toggle-agent-panel',
     category: 'general',
-    title: msg`Ask AI`,
-    description: msg`Open and focus the bottom Ask AI prompt composer.`,
-    scope: msg`OK Desktop`,
+    title: msg`Show or hide agents`,
+    description: msg`Toggle the right agents panel, where agent conversations live.`,
+    scope: msg`Global`,
     bindings: [
       {
         mac: '⌘ L',
         windowsLinux: 'Ctrl L',
         match: { key: 'l', mod: true },
+      },
+    ],
+  },
+  {
+    // Rehomed off ⌘L when the agents panel claimed it. Same L family (both are
+    // "talk to an AI"), one modifier deeper for the lighter-weight surface.
+    // SHIFT, not ALT: Ctrl+Alt+L is KDE Plasma's built-in alternate for Lock
+    // Session, grabbed by kglobalaccel at the shell level, so this renderer-only
+    // listener would never see it and the screen would lock instead. Ctrl+Shift+L
+    // is unclaimed by both KDE and GNOME defaults, and matches the chord Cursor
+    // uses to send a selection to chat.
+    id: 'open-ask-ai',
+    category: 'general',
+    title: msg`Ask AI`,
+    description: msg`Open and focus the bottom Ask AI prompt composer.`,
+    scope: msg`Global`,
+    bindings: [
+      {
+        mac: '⇧⌘ L',
+        windowsLinux: 'Ctrl Shift L',
+        match: { code: 'KeyL', anyMod: true, shiftKey: true, allowExtraModifiers: true },
       },
     ],
   },

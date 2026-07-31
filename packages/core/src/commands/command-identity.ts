@@ -168,7 +168,11 @@ export interface CommandStateToggle {
   readonly showKey: MenuLabelKey;
   readonly hideKey: MenuLabelKey;
   /** View-menu-state field driving the label. */
-  readonly stateField: 'sidebarVisible' | 'docPanelVisible' | 'terminalVisible';
+  readonly stateField:
+    | 'sidebarVisible'
+    | 'docPanelVisible'
+    | 'terminalVisible'
+    | 'agentPanelVisible';
   /** Menu default when the state is unknown (sidebar/doc-panel start visible → "Hide"). */
   readonly defaultVisible: boolean;
 }
@@ -584,6 +588,25 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     availability: { host: 'desktop' },
     palette: { group: 'view', visibility: 'search-only' },
     menu: [{ section: 'view-panels', order: 2, accelerator: 'CmdOrCtrl+J' }],
+  },
+  {
+    // The agents panel is the ACP twin of the terminal dock, but it is NOT
+    // desktop-gated: agent threads are server-hosted, so the panel works on the
+    // web host and on Windows/Linux where node-pty is unavailable.
+    id: 'toggle-agent-panel',
+    menuActionId: 'toggle-agent-panel',
+    labelKey: 'agentPanelShow',
+    keywords: ['agent', 'agents', 'chat', 'ai', 'ask', 'panel', 'toggle'],
+    shortcutId: 'toggle-agent-panel',
+    stateToggle: {
+      showKey: 'agentPanelShow',
+      hideKey: 'agentPanelHide',
+      stateField: 'agentPanelVisible',
+      defaultVisible: false,
+    },
+    availability: {},
+    palette: { group: 'view', visibility: 'search-only' },
+    menu: [{ section: 'view-panels', order: 3, accelerator: 'CmdOrCtrl+L' }],
   },
   {
     id: 'toggle-show-hidden-files',

@@ -3,7 +3,7 @@ import { App } from '@/App';
 import { NavigatorApp } from '@/components/NavigatorApp';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
-// Lazy-loaded: the terminal window statically imports TerminalSessionsHost
+// Lazy-loaded: the terminal window statically imports SessionsHost
 // (and through it the ACP thread-client chain), which must stay out of the
 // entry chunk — editor windows and the web distribution never render it.
 const TerminalWindowApp = lazy(() =>

@@ -106,6 +106,7 @@ export function TerminalNewChatButton({
   });
   const maxThreads = catalog.data?.maxThreads ?? 8;
   const atCap = liveThreadCount >= maxThreads;
+  const hasMenu = showAgents || showClis;
 
   // The `t` template macro is scope-bound, so the label is computed inline here
   // rather than in a helper that receives `t` as an argument.
@@ -128,10 +129,15 @@ export function TerminalNewChatButton({
             size="xs"
             aria-label={primaryLabel}
             data-testid="terminal-new-chat"
-            className="cursor-pointer gap-0.5 rounded-r-none px-1.5 text-muted-foreground hover:text-foreground"
+            className={cn(
+              'cursor-pointer gap-0.5 px-1.5 text-muted-foreground hover:text-foreground',
+              hasMenu && 'rounded-r-none',
+            )}
             onClick={onLaunchSelected}
           >
-            <NewSessionPrimaryIcon selected={selected} className="size-3.5" />
+            {selected.kind === 'terminal' ? null : (
+              <NewSessionPrimaryIcon selected={selected} className="size-3.5" />
+            )}
             <PlusIcon aria-hidden="true" className="size-3" />
           </Button>
         </TooltipTrigger>
@@ -140,18 +146,20 @@ export function TerminalNewChatButton({
         </TooltipContent>
       </Tooltip>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label={t`Choose what a new session starts`}
-            data-testid="terminal-new-chat-menu"
-            className="cursor-pointer rounded-l-none text-muted-foreground hover:text-foreground"
-          >
-            <ChevronDownIcon aria-hidden="true" className="size-3" />
-          </Button>
-        </DropdownMenuTrigger>
+        {hasMenu ? (
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={t`Choose what a new session starts`}
+              data-testid="terminal-new-chat-menu"
+              className="cursor-pointer rounded-l-none text-muted-foreground hover:text-foreground"
+            >
+              <ChevronDownIcon aria-hidden="true" className="size-3" />
+            </Button>
+          </DropdownMenuTrigger>
+        ) : null}
         <DropdownMenuContent align="start" className="max-h-80 min-w-[200px]">
           {/* Same section structure as the Ask-AI menus — an "In this app" group
               over the agent rows, a "Terminal" group over the CLIs, and a

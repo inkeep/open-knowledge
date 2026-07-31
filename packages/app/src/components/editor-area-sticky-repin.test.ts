@@ -16,15 +16,15 @@ describe('computeStickyRepinLayout', () => {
 
   test('pins two pixel panels; the residual (editor) absorbs the delta (editor | doc | terminal)', () => {
     const next = computeStickyRepinLayout({
-      currentLayout: { editor: 40, 'doc-panel': 25, 'terminal-column': 35 },
+      currentLayout: { editor: 40, 'doc-panel': 25, 'agents-column': 35 },
       containerPx: 1000,
-      pinnedPx: { 'doc-panel': 300, 'terminal-column': 400 },
+      pinnedPx: { 'doc-panel': 300, 'agents-column': 400 },
       residualId: 'editor',
     });
     expect(next['doc-panel']).toBeCloseTo(30, 6);
-    expect(next['terminal-column']).toBeCloseTo(40, 6);
+    expect(next['agents-column']).toBeCloseTo(40, 6);
     expect(next.editor).toBeCloseTo(30, 6);
-    expect(next.editor + next['doc-panel'] + next['terminal-column']).toBeCloseTo(100, 6);
+    expect(next.editor + next['doc-panel'] + next['agents-column']).toBeCloseTo(100, 6);
   });
 
   test('holds a collapsed doc panel at 0% and pins the terminal; editor absorbs (the VM scenario)', () => {
@@ -32,12 +32,12 @@ describe('computeStickyRepinLayout', () => {
     // the container. Only the terminal is pinned (the collapsed doc is left as-is);
     // the editor must absorb the freed width, not the terminal.
     const next = computeStickyRepinLayout({
-      currentLayout: { editor: 20, 'doc-panel': 0, 'terminal-column': 80 },
+      currentLayout: { editor: 20, 'doc-panel': 0, 'agents-column': 80 },
       containerPx: 1000,
-      pinnedPx: { 'terminal-column': 400 },
+      pinnedPx: { 'agents-column': 400 },
       residualId: 'editor',
     });
-    expect(next['terminal-column']).toBeCloseTo(40, 6);
+    expect(next['agents-column']).toBeCloseTo(40, 6);
     expect(next['doc-panel']).toBe(0);
     expect(next.editor).toBeCloseTo(60, 6);
   });
@@ -47,13 +47,13 @@ describe('computeStickyRepinLayout', () => {
     // residual — its share must pass through untouched while the residual
     // absorbs only what the pins leave.
     const next = computeStickyRepinLayout({
-      currentLayout: { editor: 30, 'doc-panel': 20, 'agent-panel': 15, 'terminal-column': 35 },
+      currentLayout: { editor: 30, 'doc-panel': 20, 'agent-panel': 15, 'agents-column': 35 },
       containerPx: 1000,
-      pinnedPx: { 'doc-panel': 250, 'terminal-column': 350 },
+      pinnedPx: { 'doc-panel': 250, 'agents-column': 350 },
       residualId: 'editor',
     });
     expect(next['doc-panel']).toBeCloseTo(25, 6);
-    expect(next['terminal-column']).toBeCloseTo(35, 6);
+    expect(next['agents-column']).toBeCloseTo(35, 6);
     expect(next['agent-panel']).toBeCloseTo(15, 6);
     expect(next.editor).toBeCloseTo(25, 6);
   });
@@ -84,7 +84,7 @@ describe('computeStickyRepinLayout', () => {
   });
 
   test('is a no-op when the residual panel id is absent from the layout', () => {
-    const input = { 'doc-panel': 40, 'terminal-column': 60 };
+    const input = { 'doc-panel': 40, 'agents-column': 60 };
     expect(
       computeStickyRepinLayout({
         currentLayout: input,
@@ -96,12 +96,12 @@ describe('computeStickyRepinLayout', () => {
   });
 
   test('is a no-op when the pins cannot fit (residual would be negative)', () => {
-    const input = { editor: 50, 'doc-panel': 25, 'terminal-column': 25 };
+    const input = { editor: 50, 'doc-panel': 25, 'agents-column': 25 };
     expect(
       computeStickyRepinLayout({
         currentLayout: input,
         containerPx: 1000,
-        pinnedPx: { 'doc-panel': 600, 'terminal-column': 600 },
+        pinnedPx: { 'doc-panel': 600, 'agents-column': 600 },
         residualId: 'editor',
       }),
     ).toBe(input);
@@ -111,10 +111,10 @@ describe('computeStickyRepinLayout', () => {
     const next = computeStickyRepinLayout({
       currentLayout: { editor: 70, 'doc-panel': 30 },
       containerPx: 1000,
-      pinnedPx: { 'doc-panel': 300, 'terminal-column': 400 },
+      pinnedPx: { 'doc-panel': 300, 'agents-column': 400 },
       residualId: 'editor',
     });
-    expect('terminal-column' in next).toBe(false);
+    expect('agents-column' in next).toBe(false);
     expect(next['doc-panel']).toBeCloseTo(30, 6);
     expect(next.editor).toBeCloseTo(70, 6);
   });

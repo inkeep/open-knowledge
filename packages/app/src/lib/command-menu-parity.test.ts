@@ -104,6 +104,8 @@ const PALETTE_COMMAND_LABELS = new Set<string>([
   'Hide document panel',
   'Show Terminal',
   'Hide Terminal',
+  'Show Agents',
+  'Hide Agents',
   'Show hidden files',
   'Show .ok folders',
   'Show only markdown files',
@@ -181,6 +183,8 @@ function makeFullDeps(): MenuDeps {
     onKillTerminal: noop,
     onNewTerminalWindow: noop,
     terminalLive: true,
+    agentPanelVisible: true,
+    onToggleAgentPanel: noop,
     canExpandAll: true,
     canCollapseAll: true,
     onExpandAll: noop,
@@ -357,6 +361,7 @@ describe('command-menu parity ratchet', () => {
     { menuLabel: 'Hide sidebar', shortcutId: 'toggle-files-sidebar' },
     { menuLabel: 'Hide document panel', shortcutId: 'toggle-document-panel' },
     { menuLabel: 'Hide Terminal', shortcutId: 'toggle-terminal-panel' },
+    { menuLabel: 'Hide Agents', shortcutId: 'toggle-agent-panel' },
   ];
 
   // Canonical token set — order-insensitive; treats Cmd/Ctrl as MOD and
@@ -418,7 +423,7 @@ describe('command-menu parity ratchet', () => {
       'components/FileSidebar.tsx',
       'components/EditorArea.tsx',
       'components/EditorPane.tsx',
-      'components/TerminalSessionsHost.tsx',
+      'components/SessionsHost.tsx',
       'components/ProjectSwitcher.tsx',
       'components/CreateProjectMenuTrigger.tsx',
       'components/ReportBugMenuTrigger.tsx',

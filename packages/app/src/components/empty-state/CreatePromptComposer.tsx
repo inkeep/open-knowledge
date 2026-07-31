@@ -393,7 +393,7 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
 
   return (
     <div className={cn('flex w-full flex-col gap-3', className)}>
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer clicks only delegate focus to the composer's editable; keyboard users focus it directly (Tab / ⌘L). */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer clicks only delegate focus to the composer's editable; keyboard users focus it directly (Tab / ⌥⌘L). */}
       <div
         // Click anywhere in the card's whitespace (the padding around the input,
         // the footer row beside the Create button) focuses the field — the

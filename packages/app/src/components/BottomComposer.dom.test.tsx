@@ -3,7 +3,7 @@
  *
  * The rich `@`-mention input (`ComposerMentionInput`) is mocked with a plain
  * textarea double that mirrors its imperative handle + `onEmptyChange`/`onSubmit`
- * contract, so these tests stay focused on the shell's responsibilities: the ⌘L
+ * contract, so these tests stay focused on the shell's responsibilities: the ⇧⌘L
  * focus shortcut, the rotating/reduced-motion placeholder, agent-picker +
  * sticky-default wiring, Claude CLI terminal routing, the pending + clear flow,
  * and the defensive null-input toast. The real input's mention behavior +
@@ -357,16 +357,32 @@ function getInput() {
   return screen.getByRole('textbox', { name: 'Ask AI' }) as HTMLTextAreaElement;
 }
 
-function dispatchOpenAskAiShortcut() {
+function makeOpenAskAiEvent() {
+  // ⇧⌘L on mac / Ctrl+Shift+L elsewhere. `code` (not `key`) is what the registry
+  // matches: shift makes the layout emit 'L', so keying off `key` would be
+  // case-sensitive for no reason.
   const meta = new KeyboardEvent('keydown', {
-    key: 'l',
+    key: 'L',
+    code: 'KeyL',
     metaKey: true,
+    shiftKey: true,
     bubbles: true,
     cancelable: true,
   });
-  const event = matchesKeyboardShortcut(meta, 'open-ask-ai')
+  return matchesKeyboardShortcut(meta, 'open-ask-ai')
     ? meta
-    : new KeyboardEvent('keydown', { key: 'l', ctrlKey: true, bubbles: true, cancelable: true });
+    : new KeyboardEvent('keydown', {
+        key: 'L',
+        code: 'KeyL',
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+}
+
+function dispatchOpenAskAiShortcut() {
+  const event = makeOpenAskAiEvent();
   act(() => {
     window.dispatchEvent(event);
   });
@@ -451,7 +467,7 @@ describe('BottomComposer (shell behavior)', () => {
     }
   });
 
-  test('the ⌘L shortcut focuses the persistent field', async () => {
+  test('the ⇧⌘L shortcut focuses the persistent field', async () => {
     await renderComposer();
     const input = getInput();
     expect(document.activeElement).not.toBe(input);
@@ -478,7 +494,7 @@ describe('BottomComposer (shell behavior)', () => {
     expect(document.activeElement).not.toBe(getInput());
   });
 
-  test('⌘L is ignored while a native form field is focused (no caret theft)', async () => {
+  test('⇧⌘L is ignored while a native form field is focused (no caret theft)', async () => {
     await renderComposer();
     const composerInput = getInput();
     // A real native form field elsewhere in the page (e.g. a rename / search box).
@@ -488,22 +504,9 @@ describe('BottomComposer (shell behavior)', () => {
       act(() => nativeField.focus());
       expect(document.activeElement).toBe(nativeField);
 
-      // Dispatch ⌘L FROM the native field — the window capture handler sees it
+      // Dispatch ⇧⌘L FROM the native field — the window capture handler sees it
       // with `event.target` = the native input and must bail before preventDefault.
-      const meta = new KeyboardEvent('keydown', {
-        key: 'l',
-        metaKey: true,
-        bubbles: true,
-        cancelable: true,
-      });
-      const event = matchesKeyboardShortcut(meta, 'open-ask-ai')
-        ? meta
-        : new KeyboardEvent('keydown', {
-            key: 'l',
-            ctrlKey: true,
-            bubbles: true,
-            cancelable: true,
-          });
+      const event = makeOpenAskAiEvent();
       act(() => {
         nativeField.dispatchEvent(event);
       });
@@ -1288,7 +1291,7 @@ describe('BottomComposer (dismiss / reopen)', () => {
     expect(screen.queryByRole('textbox', { name: 'Ask AI' })).toBeNull();
   });
 
-  test('⌘L while dismissed reopens (calls onReopen) instead of focusing', async () => {
+  test('⇧⌘L while dismissed reopens (calls onReopen) instead of focusing', async () => {
     const onReopen = vi.fn(() => {});
     await renderComposer('notes', { dismissed: true, onReopen });
 
@@ -1378,25 +1381,15 @@ describe('BottomComposer (failure + defensive guards)', () => {
 });
 
 /**
- * ⌘L is registered capture-phase on `window`, so it also outruns anything an
+ * ⇧⌘L is registered capture-phase on `window`, so it also outruns anything an
  * overlay installs. `defaultPrevented` is the load-bearing signal here: the
- * handler cancels the keystroke before emitting, so an uncancelled ⌘L proves
+ * handler cancels the keystroke before emitting, so an uncancelled ⇧⌘L proves
  * the handler declined rather than proving the focus trap bounced it back.
  */
-describe('BottomComposer ⌘L — overlay gate', () => {
-  function askAiEvent() {
-    const meta = new KeyboardEvent('keydown', {
-      key: 'l',
-      metaKey: true,
-      bubbles: true,
-      cancelable: true,
-    });
-    return matchesKeyboardShortcut(meta, 'open-ask-ai')
-      ? meta
-      : new KeyboardEvent('keydown', { key: 'l', ctrlKey: true, bubbles: true, cancelable: true });
-  }
+describe('BottomComposer ⇧⌘L — overlay gate', () => {
+  const askAiEvent = makeOpenAskAiEvent;
 
-  test('claims ⌘L with no overlay open', async () => {
+  test('claims ⇧⌘L with no overlay open', async () => {
     await renderComposer();
 
     const event = askAiEvent();
@@ -1407,7 +1400,7 @@ describe('BottomComposer ⌘L — overlay gate', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  test('declines ⌘L while an overlay owns the keyboard', async () => {
+  test('declines ⇧⌘L while an overlay owns the keyboard', async () => {
     enableInstalledDesktopTargets();
     const { BottomComposer } = await import('./BottomComposer');
     const { Dialog, DialogContent, DialogDescription, DialogTitle } = await import(

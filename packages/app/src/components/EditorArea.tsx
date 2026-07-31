@@ -5,7 +5,6 @@ import {
   parseExternalSkillDocName,
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { useTheme } from 'next-themes';
 import {
   lazy,
   type ReactNode,
@@ -48,6 +47,11 @@ import { useDocumentStats } from '@/hooks/use-document-stats';
 import { useLifecycleStatus } from '@/hooks/use-lifecycle-status';
 import { useSelectionStats } from '@/hooks/use-selection-stats';
 import { closeAgentDiff, useAgentDiffView } from '@/lib/agent-diff-store';
+import {
+  getInitialAgentsPanelWidth,
+  MIN_AGENTS_PANEL_WIDTH,
+  writeAgentsPanelWidth,
+} from '@/lib/agents-panel-width-store';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { docNameFromHash, hashFromDocName } from '@/lib/doc-hash';
 import { getInitialDocPanelWidth, writeDocPanelWidth } from '@/lib/doc-panel-width-store';
@@ -61,12 +65,6 @@ import {
 } from '@/lib/share/pending-receive-nav-store';
 import { RIGHT_COLLAPSE_THRESHOLD, resolvePartition } from '@/lib/sidebar-partition';
 import { applyToggle, readPins, resolveEffectiveState } from '@/lib/sidebar-pin-store';
-import type { TerminalDockPosition } from '@/lib/terminal-dock-store';
-import {
-  getInitialTerminalWidth,
-  MIN_TERMINAL_WIDTH,
-  writeTerminalWidth,
-} from '@/lib/terminal-width-store';
 import { closeTimelineDiff, useTimelineDiffView } from '@/lib/timeline-diff-store';
 import { useSettingsRoute } from '@/lib/use-settings-route';
 import { cn } from '@/lib/utils';
@@ -82,7 +80,6 @@ import { shouldPaintOverlay } from './editor-area-overlay';
 import { computeStickyRepinLayout } from './editor-area-sticky-repin';
 import { TerminalDock } from './TerminalDock';
 import { TerminalRevealTab } from './TerminalRevealTab';
-import { useLiveXtermTheme } from './use-live-xterm-theme';
 
 const LazyActivityModeContent = lazy(async () => {
   const mod = await import('@/components/ActivityModeContent');
@@ -144,23 +141,29 @@ const DOC_PANEL_MAX_SIZE = '600px';
 // residual absorber and intentionally has no id (an explicit id on it changes how
 // the library redistributes an imperative resize), so the right-rail layout assert
 // finds it as the one live panel id that is not one of these.
-const RIGHT_PANEL_IDS = new Set(['doc-panel', 'terminal-column', 'agent-panel']);
+const RIGHT_PANEL_IDS = new Set(['doc-panel', 'agents-column', 'agent-panel']);
 
 /**
- * Where + whether the terminal should attach right now. EditorArea computes this
- * (it knows the view kind and the bottom/right mount containers) and
- * reports it UP to EditorPane, which owns the long-lived session host. The host is
- * mounted above EditorArea so a dock toggle (which remounts EditorArea's subtree)
- * can't re-spawn the terminal — the VS Code / Zed pattern of owning the terminal
- * above the movable layout and re-attaching the view.
+ * Where + whether ONE session panel should attach right now. EditorArea computes
+ * this (it knows the view kind and the mount containers) and reports it UP to
+ * EditorPane, which owns the long-lived session hosts. The hosts are mounted
+ * above EditorArea so a view-kind change (which remounts EditorArea's subtree)
+ * can't re-spawn a PTY — the VS Code / Zed pattern of owning the terminal above
+ * the layout and re-attaching the view.
  */
-export interface TerminalPlacement {
-  /** The DOM container to portal the live terminal into (bottom dock or right region). */
+interface SessionPanelPlacement {
+  /** The DOM container to portal that panel's live sessions into. */
   readonly container: HTMLElement | null;
-  /** Whether the terminal is on screen (drives focus). */
+  /** Whether the panel is on screen (drives focus). */
   readonly isShowing: boolean;
-  readonly dockPosition: TerminalDockPosition;
-  /** Focus target for returning focus to the editor when the terminal hides. */
+}
+
+/** Both panels' placements plus the shared focus-return target, reported in one
+ *  callback so EditorPane takes a single state update per layout change. */
+export interface SessionPlacements {
+  readonly terminal: SessionPanelPlacement;
+  readonly agents: SessionPanelPlacement;
+  /** Focus target for returning focus to the editor when a panel hides. */
   readonly editorRegion: HTMLElement | null;
 }
 
@@ -171,31 +174,26 @@ interface EditorAreaProps {
   onActiveTabChange: (tab: PanelTab) => void;
   /**
    * Desktop bridge for the docked terminal — `null` on the web host (no shell).
-   * When present, the terminal docks either under the editor (bottom, via
-   * `TerminalDock`'s vertical split) or as its own resizable column to the right
-   * (`#terminal-column`, the far-right column past the doc/agent panel). The live
-   * session host is owned by EditorPane and portals into whichever container is
-   * active, so the PTY survives tab switches, view-kind changes, and dock moves.
-   * State is owned by EditorPane and threaded down via these props.
+   * When present, the terminal docks under the editor via `TerminalDock`'s
+   * vertical split. The live session host is owned by EditorPane and portals into
+   * the container this component renders, so the PTY survives tab switches and
+   * view-kind changes. State is owned by EditorPane and threaded down via these
+   * props.
    */
   terminalBridge?: OkDesktopBridge | null;
   terminalVisible?: boolean;
   onTerminalVisibleChange?: (visible: boolean) => void;
-  /** Terminal dock position (right default | bottom). When `'right'` the terminal
-   *  is its own column to the right of the doc/agent panel (MD | PANE | TERMINAL)
-   *  instead of docking under the editor. */
-  terminalDock?: TerminalDockPosition;
-  /** Whether the sessions dock currently holds any tab (terminal or thread),
-   *  reported up from the host. Placement predicates key off dock-visible-&-has-tabs
-   *  rather than the bridge, so the dock column renders on web (thread tabs only). */
-  terminalHasSessions?: boolean;
-  /** Report the terminal's attach point up to EditorPane (which owns the session
-   *  host). See {@link TerminalPlacement}. */
-  onTerminalPlacement?: (placement: TerminalPlacement) => void;
-  /** Reveal the sessions dock and seed the preferred New-session choice if none is
-   *  open — drives the edge "Open session dock" tab shown while the
-   *  dock is hidden. Provided on every host now (web reveals thread tabs). */
-  onRevealTerminal?: () => void;
+  /** Agents-panel visibility. Its own resizable column to the right of the
+   *  doc/agent panel (`#agents-column`, MD | PANE | AGENTS). Independent of the
+   *  terminal — both panels can be open at once. */
+  agentsVisible?: boolean;
+  onAgentsVisibleChange?: (visible: boolean) => void;
+  /** Report both panels' attach points up to EditorPane (which owns the session
+   *  hosts). See {@link SessionPlacements}. */
+  onSessionPlacements?: (placements: SessionPlacements) => void;
+  /** Reveal the agents panel — drives the right edge tab shown while it is
+   *  hidden. Provided on every host (agent threads are server-hosted). */
+  onRevealAgents?: () => void;
 }
 
 export function EditorArea(props: EditorAreaProps) {
@@ -255,18 +253,12 @@ function EditorAreaInner({
   terminalBridge,
   terminalVisible = false,
   onTerminalVisibleChange,
-  terminalDock = 'right',
-  terminalHasSessions = false,
-  onTerminalPlacement,
-  onRevealTerminal,
+  agentsVisible = false,
+  onAgentsVisibleChange,
+  onSessionPlacements,
+  onRevealAgents,
 }: EditorAreaProps) {
   const { t } = useLingui();
-  const { resolvedTheme } = useTheme();
-  // Paint the right-docked terminal column with the xterm canvas color so the tab
-  // strip + chrome read as one continuous surface with the terminal — matching the
-  // bottom dock (TerminalDock applies the same fill). Without it the strip shows
-  // the app background and reads as a black seam above the terminal.
-  const xtermBackground = useLiveXtermTheme(resolvedTheme).background;
   const {
     activeDocName,
     activeProvider,
@@ -392,10 +384,10 @@ function EditorAreaInner({
     rightPartitionRef.current = rightPartition;
   }, [rightPartition]);
   const panelRef = usePanelRef();
-  // Independent ref for the terminal column (MD | PANE | TERMINAL). Bound only
-  // while that column is mounted (right-docked + visible); the sticky-width RO
-  // pins it the same way it pins the doc panel.
-  const terminalColumnPanelRef = usePanelRef();
+  // Independent ref for the agents column (MD | PANE | AGENTS). Bound only while
+  // that column is mounted (agents panel visible); the sticky-width RO pins it
+  // the same way it pins the doc panel.
+  const agentsColumnPanelRef = usePanelRef();
   const [initialRightCollapsed] = useState(() => {
     const pins = readPins();
     return resolveEffectiveState('right', rightPartition, pins) === 'collapsed';
@@ -405,69 +397,53 @@ function EditorAreaInner({
   // the observer on every isCollapsed flip.
   const isCollapsedRef = useRef(isCollapsed);
 
-  // The terminal's right-dock mount point — a dedicated column to the right of the
-  // doc panels (MD | PANE | TERMINAL). The session host portals into this element
-  // when the terminal is right-docked and visible.
-  const [rightTerminalContainer, setRightTerminalContainer] = useState<HTMLDivElement | null>(null);
+  // The agents panel's mount point — a dedicated column to the right of the doc
+  // panels (MD | PANE | AGENTS), present across EVERY view kind (the column just
+  // has no doc panel beside it on asset / large-file / empty views).
+  const [agentsContainer, setAgentsContainer] = useState<HTMLDivElement | null>(null);
   // The bottom-dock mount + the editor-region focus target, reported up by
-  // TerminalDock (the bottom shell). The session host portals into the active
-  // container and returns focus to the editor region when the terminal hides.
+  // TerminalDock (the bottom shell). The terminal host portals into the container
+  // and both hosts return focus to the editor region when they hide.
   const [bottomTerminalContainer, setBottomTerminalContainer] = useState<HTMLDivElement | null>(
     null,
   );
   const [terminalEditorRegion, setTerminalEditorRegion] = useState<HTMLDivElement | null>(null);
 
-  // Terminal placement, computed early (before the view branches) so it can be
-  // reported up to EditorPane regardless of which branch renders. When right-
-  // docked the terminal is its own far-right column past the doc panels, present
-  // across EVERY view kind (the column just has no doc panel beside it on
-  // asset / large-file / empty views). This is why the dock stays on the right
-  // even when there's nothing else to put there.
-  // Whether the desktop bridge can host TERMINAL-kind tabs (a session-only bridge
-  // has no `terminal` surface). The dock, its placement, and the reveal tab now
-  // key off dock visibility rather than `terminalBridge != null`, so the column
-  // renders on the web host (thread tabs only). `terminalAvailable` gates only the
-  // terminal-*kind* reveal reason (a cold reveal that can spawn a shell).
-  const terminalAvailable = terminalBridge?.terminal != null;
-  const rightDocked = terminalDock === 'right';
-  const terminalDockPosition: TerminalDockPosition = rightDocked ? 'right' : 'bottom';
-  // Whether the far-right dock column participates in the panel group this render.
-  // Drives the panel-set-change layout assert below and the collapsed doc-panel
-  // neutralization — compute it up here so effects can depend on it. Un-gated from
-  // the bridge: on web the column hosts thread tabs. The host renders a starting /
-  // empty state while a session spins up, so keying off visibility (not has-tabs)
-  // keeps the dock's feedback immediate during the seconds-long agent spawn.
-  const terminalColumnPresent = rightDocked && terminalVisible;
-  // The edge "Show sessions" reveal tab is up while the dock is hidden. A terminal
-  // surface always shows it (revealing can seed a shell); a thread-only surface
-  // shows it only with latched tabs to return to (its cold entry is the handoff
-  // menu, not this tab). It floats over a corner other UI also wants: bottom-dock
-  // over the editor footer's bottom-right, right-dock over the far-right top.
-  const revealTabHidden =
-    !terminalVisible && onRevealTerminal != null && (terminalAvailable || terminalHasSessions);
-  const bottomRevealTabPresent = revealTabHidden && !rightDocked;
-  const rightRevealTabPresent = revealTabHidden && rightDocked;
-  const rightTerminalShowing = rightDocked && terminalVisible && rightTerminalContainer != null;
-  const activeTerminalContainer = rightTerminalShowing
-    ? rightTerminalContainer
-    : bottomTerminalContainer;
-  const terminalShowing =
-    (rightDocked ? rightTerminalShowing : terminalVisible) && activeTerminalContainer != null;
-  // Report the attach point up to EditorPane (which owns the long-lived session
-  // host). EditorArea only says where to attach — the VS Code / Zed pattern of
-  // owning the terminal above the layout that moves.
+  // Placements are computed early (before the view branches) so they can be
+  // reported up to EditorPane regardless of which branch renders.
+  //
+  // Whether the far-right agents column participates in the panel group this
+  // render. Drives the panel-set-change layout assert below and the collapsed
+  // doc-panel neutralization — compute it up here so effects can depend on it.
+  // Keyed off visibility rather than has-tabs so the panel's feedback is
+  // immediate during the seconds-long agent spawn.
+  const agentsColumnPresent = agentsVisible;
+  // The agents panel is the one surface with a persistent edge affordance: it is
+  // discoverable in a way a chord is not, and an agent conversation is the thing a
+  // user is most likely to want back. Ungated on having conversations — an empty
+  // panel opens on its New button, which is a fine cold entry.
+  //
+  // The terminal has NO reveal tab. It is a developer surface reached by ⌘J (and
+  // the View menu), and a second permanent tab hovering over the editor footer's
+  // bottom-right was clutter competing with the Ask AI composer for that corner.
+  const rightRevealTabPresent = !agentsVisible && onRevealAgents != null;
+  const terminalShowing = terminalVisible && bottomTerminalContainer != null;
+  const agentsShowing = agentsVisible && agentsContainer != null;
+  // Report the attach points up to EditorPane (which owns the long-lived session
+  // hosts). EditorArea only says where to attach — the VS Code / Zed pattern of
+  // owning the terminal above the layout that changes.
   useEffect(() => {
-    onTerminalPlacement?.({
-      container: activeTerminalContainer,
-      isShowing: terminalShowing,
-      dockPosition: terminalDockPosition,
+    onSessionPlacements?.({
+      terminal: { container: bottomTerminalContainer, isShowing: terminalShowing },
+      agents: { container: agentsContainer, isShowing: agentsShowing },
       editorRegion: terminalEditorRegion,
     });
   }, [
-    onTerminalPlacement,
-    activeTerminalContainer,
+    onSessionPlacements,
+    bottomTerminalContainer,
     terminalShowing,
-    terminalDockPosition,
+    agentsContainer,
+    agentsShowing,
     terminalEditorRegion,
   ]);
 
@@ -502,26 +478,26 @@ function EditorAreaInner({
     }, 100);
   }
 
-  // The terminal column carries the same sticky-pixel-width treatment as the doc
+  // The agents column carries the same sticky-pixel-width treatment as the doc
   // panel — its own persisted width, drag-tracking ref, and RO-pin — so it does
   // not grow proportionally when the container widens.
-  const [initialTerminalWidthPx] = useState(() => getInitialTerminalWidth());
-  const terminalWidthPxRef = useRef(initialTerminalWidthPx);
-  const [isDraggingTerminalHandle, setIsDraggingTerminalHandle] = useState(false);
-  const isDraggingTerminalHandleRef = useRef(false);
-  const terminalWriteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  function debouncedWriteTerminalWidth(px: number) {
-    if (terminalWriteTimerRef.current != null) clearTimeout(terminalWriteTimerRef.current);
-    terminalWriteTimerRef.current = setTimeout(() => {
-      writeTerminalWidth(px);
-      terminalWriteTimerRef.current = null;
+  const [initialAgentsWidthPx] = useState(() => getInitialAgentsPanelWidth());
+  const agentsWidthPxRef = useRef(initialAgentsWidthPx);
+  const [isDraggingAgentsHandle, setIsDraggingAgentsHandle] = useState(false);
+  const isDraggingAgentsHandleRef = useRef(false);
+  const agentsWriteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function debouncedWriteAgentsWidth(px: number) {
+    if (agentsWriteTimerRef.current != null) clearTimeout(agentsWriteTimerRef.current);
+    agentsWriteTimerRef.current = setTimeout(() => {
+      writeAgentsPanelWidth(px);
+      agentsWriteTimerRef.current = null;
     }, 100);
   }
 
   useEffect(
     () => () => {
       if (writeTimerRef.current != null) clearTimeout(writeTimerRef.current);
-      if (terminalWriteTimerRef.current != null) clearTimeout(terminalWriteTimerRef.current);
+      if (agentsWriteTimerRef.current != null) clearTimeout(agentsWriteTimerRef.current);
     },
     [],
   );
@@ -540,24 +516,24 @@ function EditorAreaInner({
   // Group-level imperative handle. Layout corrections MUST go through
   // `setLayout` (the whole layout in one shot): the per-panel imperative APIs
   // (`resize`/`collapse`/`expand`) always exchange space with the panel's flex
-  // NEIGHBOR, and in the EDITOR | doc-panel | terminal-column order that
+  // NEIGHBOR, and in the EDITOR | doc-panel | agents-column order that
   // neighbor is never the editor — a doc-panel collapse dumps its width into
-  // the terminal, and re-pinning the terminal hands it right back to the doc
+  // the agents column, and re-pinning it hands the width right back to the doc
   // panel. Only a full-layout write can route deltas to the editor. The layout
   // math lives in `computeStickyRepinLayout` (unit-tested).
   const groupRef = useGroupRef();
-  // Live mirror of `terminalColumnPresent` for subscribers with narrow deps.
-  const terminalColumnPresentRef = useRef(terminalColumnPresent);
+  // Live mirror of `agentsColumnPresent` for subscribers with narrow deps.
+  const agentsColumnPresentRef = useRef(agentsColumnPresent);
   useEffect(() => {
-    terminalColumnPresentRef.current = terminalColumnPresent;
-  }, [terminalColumnPresent]);
+    agentsColumnPresentRef.current = agentsColumnPresent;
+  }, [agentsColumnPresent]);
 
   // Pixel basis for px→% conversion in `assertRightRailLayout`. Layout
   // percentages are relative to the group's panel space; derive the basis from
   // a panel whose percentage and pixel width are both known (immune to the
   // separator widths the container includes), falling back to the container.
   function resolveGroupPxWidth(): number | null {
-    for (const ref of [panelRef, terminalColumnPanelRef]) {
+    for (const ref of [panelRef, agentsColumnPanelRef]) {
       const size = ref.current?.getSize();
       // The `> 1` floor excludes collapsed/near-zero panels: px / ~0% diverges
       // (Infinity at exactly 0), which would corrupt every layout assertion
@@ -572,12 +548,12 @@ function EditorAreaInner({
 
   // Write the intended right-rail layout in one `setLayout` call: the doc
   // panel at its persisted width (or pinned shut at 0 when collapsed), the
-  // terminal column at its persisted width, other rail panels (agent-panel)
+  // agents column at its persisted width, other rail panels (agent-panel)
   // untouched, and the EDITOR absorbing the remainder. This is the single
   // correction primitive for every path where the library would otherwise
   // misroute space.
   function assertRightRailLayout(docCollapsed: boolean) {
-    if (isDraggingDocHandleRef.current || isDraggingTerminalHandleRef.current) return;
+    if (isDraggingDocHandleRef.current || isDraggingAgentsHandleRef.current) return;
     const group = groupRef.current;
     if (group == null) return;
     // The imperative handles throw once their group/panel has unregistered,
@@ -595,8 +571,8 @@ function EditorAreaInner({
       if ('doc-panel' in layout) {
         pinnedPx['doc-panel'] = docCollapsed ? 0 : docPanelWidthPxRef.current;
       }
-      if ('terminal-column' in layout) {
-        pinnedPx['terminal-column'] = terminalWidthPxRef.current;
+      if ('agents-column' in layout) {
+        pinnedPx['agents-column'] = agentsWidthPxRef.current;
       }
       if (Object.keys(pinnedPx).length === 0) return;
       const next = computeStickyRepinLayout({
@@ -623,10 +599,10 @@ function EditorAreaInner({
 
   // Expand the doc panel from a non-toggle path (tab request, avatar click,
   // width-threshold crossing). Same routing rule as togglePanel: with the
-  // terminal column mounted, go through the full-layout assert so the width
-  // comes from the editor rather than the terminal.
+  // agents column mounted, go through the full-layout assert so the width
+  // comes from the editor rather than the agents column.
   function expandDocPanel() {
-    if (terminalColumnPresentRef.current) {
+    if (agentsColumnPresentRef.current) {
       assertRightRailLayout(false);
     } else {
       panelRef.current?.expand();
@@ -643,19 +619,19 @@ function EditorAreaInner({
     // threshold and immediately invokes the toggle before React commits the
     // new partition.
     const partition = rightPartitionRef.current;
-    // With the terminal column mounted, expand/collapse must route through the
+    // With the agents column mounted, expand/collapse must route through the
     // full-layout assert so the space comes from / returns to the editor — the
-    // per-panel APIs would exchange it with the terminal column instead.
+    // per-panel APIs would exchange it with the agents column instead.
     if (isCollapsed) {
       applyToggle('right', partition, 'open');
-      if (terminalColumnPresentRef.current) {
+      if (agentsColumnPresentRef.current) {
         assertRightRailLayout(false);
       } else {
         panelRef.current?.expand();
       }
     } else {
       applyToggle('right', partition, 'collapsed');
-      if (terminalColumnPresentRef.current) {
+      if (agentsColumnPresentRef.current) {
         assertRightRailLayout(true);
       } else {
         panelRef.current?.collapse();
@@ -676,7 +652,7 @@ function EditorAreaInner({
       // but until it does any effect reading `isCollapsed` (focus-safety,
       // notifyViewMenuStateChanged) would see the pre-collapse value.
       setIsCollapsed(nextCollapsed);
-      if (terminalColumnPresentRef.current) {
+      if (agentsColumnPresentRef.current) {
         assertRightRailLayout(nextCollapsed);
       } else if (nextCollapsed) {
         panelRef.current?.collapse();
@@ -697,8 +673,8 @@ function EditorAreaInner({
   // a window resize or a LEFT-sidebar collapse — not on a right-panel collapse,
   // which is internal flex redistribution. react-resizable-panels sizes every
   // panel as a percentage of the group, so without correction the pixel-sized
-  // doc panel and terminal column grow proportionally with the container (the
-  // terminal measured 480px → 673px on a left-sidebar collapse). One full-layout
+  // doc panel and agents column grow proportionally with the container (the
+  // column measured 480px → 673px on a left-sidebar collapse). One full-layout
   // write restores both pins with the container delta flowing to the editor;
   // sequential per-panel `resize` calls would fight each other — each one
   // re-balances against its flex neighbor, knocking the other off its pin.
@@ -756,8 +732,8 @@ function EditorAreaInner({
 
   // react-resizable-panels caches layouts keyed by the panel-ID set and
   // restores the cached layout whenever the set changes — so mounting or
-  // unmounting the terminal column would resurrect whatever doc-panel state the
-  // OTHER panel set last saw (e.g. hiding the terminal re-opened a doc panel
+  // unmounting the agents column would resurrect whatever doc-panel state the
+  // OTHER panel set last saw (e.g. hiding the panel re-opened a doc panel
   // the user had closed while it was up). Re-assert the intended layout on
   // every panel-set change: the doc panel keeps its pre-change collapsed state,
   // both rail widths stay pinned, and the editor absorbs the difference. The
@@ -765,15 +741,15 @@ function EditorAreaInner({
   // panel-set change triggers, so the correction is deferred one microtask to
   // land after it (still ahead of paint — `setLayout` notifies the panels'
   // external stores synchronously).
-  const prevTerminalColumnPresentRef = useRef(terminalColumnPresent);
+  const prevAgentsColumnPresentRef = useRef(agentsColumnPresent);
   useLayoutEffect(() => {
-    if (prevTerminalColumnPresentRef.current === terminalColumnPresent) return;
-    prevTerminalColumnPresentRef.current = terminalColumnPresent;
+    if (prevAgentsColumnPresentRef.current === agentsColumnPresent) return;
+    prevAgentsColumnPresentRef.current = agentsColumnPresent;
     const docCollapsed = isCollapsed;
     queueMicrotask(() => {
       assertRightRailLayoutRef.current(docCollapsed);
     });
-  }, [terminalColumnPresent, isCollapsed]);
+  }, [agentsColumnPresent, isCollapsed]);
 
   useLayoutEffect(() => {
     if (!isCollapsed) return;
@@ -866,7 +842,7 @@ function EditorAreaInner({
   let viewContent: ReactNode;
   let rightPanel: ReactNode = null;
 
-  // The terminal column (when right-docked + visible) is rendered once at the
+  // The agents column (when visible) is rendered once at the
   // panel-group level below, to the right of `rightPanel`, so the branches here
   // only resolve the view content and its own doc/agent panel.
   if (activeTarget?.kind === 'large-file') {
@@ -887,6 +863,7 @@ function EditorAreaInner({
     // list is a discrete table, not a continuous document.
     const showFolderComposer = shouldShowFolderComposer({
       terminalVisible,
+      agentsVisible,
       isEmbedded,
     });
     viewContent = (
@@ -1080,14 +1057,11 @@ function EditorAreaInner({
       // carries an AI entry point, so the Skills composer would compete with it.
       viewContent = <SkillsBasePage sessionsDockOpen={terminalVisible} />;
     } else {
-      // The empty state collapses to the header-only view while a terminal is
-      // open in EITHER dock — the open terminal is its own AI entry point, so
-      // the composer bubble + starter packs would compete with it. The dock
-      // position picks the header pose (bottom-anchored above the bottom dock;
-      // centered beside the right column).
-      viewContent = (
-        <EmptyEditorState terminalDock={terminalVisible ? terminalDockPosition : null} />
-      );
+      // The empty state collapses to the header-only view while EITHER session
+      // panel is open — an open panel is its own AI entry point, so the composer
+      // bubble + starter packs would compete with it. Which panel picks the
+      // header pose (bottom-anchored above the dock; centered beside the column).
+      viewContent = <EmptyEditorState terminalOpen={terminalVisible} agentsOpen={agentsVisible} />;
     }
   } else {
     const isSourceMode = editorMode === 'source';
@@ -1101,7 +1075,7 @@ function EditorAreaInner({
     }
 
     // Visibility for the open doc's "Ask AI" composer — the pure gate in
-    // bottom-composer-gate.ts (hidden while the docked terminal is open, in
+    // bottom-composer-gate.ts (hidden while either session panel is open, in
     // embedded webviews, and with no doc open). The folder overview mounts its
     // own instance under shouldShowFolderComposer. Positioning and the
     // --ask-composer-height scroll inset are documented at the render site
@@ -1109,6 +1083,7 @@ function EditorAreaInner({
     const showBottomComposer =
       shouldShowBottomComposer({
         terminalVisible,
+        agentsVisible,
         isEmbedded,
         activeDocName,
       }) &&
@@ -1235,7 +1210,7 @@ function EditorAreaInner({
               isPanelCollapsed={isPanelCollapsed}
               onTogglePanel={togglePanel}
               // When the doc panel is collapsed, the action cluster reaches the
-              // far-right corner where the terminal reveal tab sits — shift it left
+              // far-right corner where the agents reveal tab sits — shift it left
               // so the three stay in one row instead of overlapping.
               reserveRightGutter={rightRevealTabPresent && isPanelCollapsed}
             />
@@ -1264,15 +1239,14 @@ function EditorAreaInner({
               ? { onReopen: () => setComposerDismissed(false) }
               : null
           }
-          reserveRightGutter={bottomRevealTabPresent}
         />
       </div>
     );
 
     viewContent = editorContent;
-    // While the terminal column is open and the doc panel is closed, the
+    // While the agents column is open and the doc panel is closed, the
     // collapsed doc panel sits as a zero-width flex neighbor between the editor
-    // and the terminal. Its own handle is disabled whenever it is collapsed
+    // and the agents column. Its own handle is disabled whenever it is collapsed
     // (see the ResizableHandle below), but drags on the TERMINAL's handle still
     // route through the collapsed panel: the library snap-expands it once the
     // drag crosses half its min size, instead of returning the space to the
@@ -1280,9 +1254,9 @@ function EditorAreaInner({
     // skip it (deltas flow through to the editor) and `minSize 0` disarms the
     // snap-expand threshold. Imperative paths (`setLayout`, `expand`) still
     // move it, so the toolbar toggle keeps working. Scoped to
-    // terminal-column-present: without the terminal no drag can reach the
+    // agents-column-present: without that column no drag can reach the
     // collapsed panel at all.
-    const docPanelNeutralized = terminalColumnPresent && isCollapsed;
+    const docPanelNeutralized = agentsColumnPresent && isCollapsed;
     rightPanel = (
       <>
         <ResizableHandle
@@ -1290,9 +1264,9 @@ function EditorAreaInner({
           withHandle={!isCollapsed}
           // A collapsed panel is not drag-resizable: the toolbar toggle and
           // ⌥⌘B are its single open mechanism (mirrors TerminalDock's
-          // hidden-dock handle and the terminal column, which unmounts its
+          // hidden-dock handle and the agents column, which unmounts its
           // handle entirely when hidden). Disabling while collapsed also
-          // keeps this handle from overlapping the right-docked terminal's
+          // keeps this handle from overlapping the agents column's
           // handle at the same pixel seam, and from being a misclick target
           // under embedded AI-editor hosts whose own container chrome sits at
           // the iframe edge.
@@ -1353,64 +1327,58 @@ function EditorAreaInner({
   // A single TerminalDock wraps the active view's left column. The skeleton
   // below is structurally identical for every view kind, so the dock keeps one
   // React position and its PTY survives tab switches and view-kind changes. It
-  // renders on EVERY host now (web too) — the sessions dock is host-agnostic — so
-  // a bottom-docked thread has a mount container. The live session host lives in
-  // EditorPane (above this component) so a dock toggle — which remounts
-  // EditorArea's subtree — can't re-spawn it. Here we render only the bottom layout
-  // shell, which reports its mount + editor region up (via onTerminalPlacement).
+  // renders on every host; where no shell can spawn it simply stays collapsed.
+  // The live session host lives in EditorPane (above this component) so a
+  // view-kind change — which remounts EditorArea's subtree — can't re-spawn it.
+  // Here we render only the bottom layout
+  // shell, which reports its mount + editor region up (via onSessionPlacements).
   const leftColumn = (
     <TerminalDock
       visible={terminalVisible}
       onVisibleChange={onTerminalVisibleChange ?? (() => {})}
-      dockPosition={terminalDockPosition}
       onBottomContainer={setBottomTerminalContainer}
       onEditorRegion={setTerminalEditorRegion}
-      onReveal={onRevealTerminal}
-      showRevealTab={bottomRevealTabPresent}
     >
       {viewContent}
     </TerminalDock>
   );
 
   // The terminal column sits to the RIGHT of the doc/agent panel
-  // (MD | PANE | TERMINAL) when right-docked and visible — the far-right column,
-  // its own independent resizable column rather than a tenant of the panel region.
-  // The mount div is a callback ref so the session host (owned in EditorPane)
-  // portals into it; it unmounts to null when the terminal hides or bottom-docks.
-  const terminalColumn = terminalColumnPresent ? (
+  // (MD | PANE | AGENTS) — the far-right column, its own independent resizable
+  // column rather than a tenant of the panel region. The mount div is a callback
+  // ref so the session host (owned in EditorPane) portals into it; it unmounts to
+  // null when the panel hides.
+  const agentsColumn = agentsColumnPresent ? (
     <>
       <ResizableHandle
         withHandle
         onPointerDown={() => {
-          setIsDraggingTerminalHandle(true);
-          isDraggingTerminalHandleRef.current = true;
+          setIsDraggingAgentsHandle(true);
+          isDraggingAgentsHandleRef.current = true;
           const handleUp = () => {
-            setIsDraggingTerminalHandle(false);
-            isDraggingTerminalHandleRef.current = false;
+            setIsDraggingAgentsHandle(false);
+            isDraggingAgentsHandleRef.current = false;
             window.removeEventListener('pointerup', handleUp);
             // Drag-to-close: releasing with the column snapped shut hides the
-            // terminal (unmounting the column), mirroring the doc panel's
+            // agents panel (unmounting the column), mirroring the doc panel's
             // drag-to-close affordance. Deferred to pointerup — hiding
             // mid-drag would unmount the separator under the active drag.
-            if (terminalColumnPanelRef.current?.isCollapsed()) {
-              onTerminalVisibleChange?.(false);
+            if (agentsColumnPanelRef.current?.isCollapsed()) {
+              onAgentsVisibleChange?.(false);
             }
           };
           window.addEventListener('pointerup', handleUp);
         }}
       />
       <ResizablePanel
-        id="terminal-column"
-        panelRef={terminalColumnPanelRef}
-        // Paint the column with the xterm canvas color so the tab strip reads as
-        // one surface with the terminal (mirrors TerminalDock's bottom panel).
-        style={{ backgroundColor: xtermBackground }}
-        defaultSize={`${initialTerminalWidthPx}px`}
-        minSize={`${MIN_TERMINAL_WIDTH}px`}
-        // The terminal can be dragged wide — up to 95% of the group — leaving the
+        id="agents-column"
+        panelRef={agentsColumnPanelRef}
+        defaultSize={`${initialAgentsWidthPx}px`}
+        minSize={`${MIN_AGENTS_PANEL_WIDTH}px`}
+        // The panel can be dragged wide — up to 95% of the group — leaving the
         // editor a 5% sliver (its panel `minSize` while this column is mounted).
-        // Pair the two: the terminal's max plus the editor's min must sum to 100%
-        // or the drag can't reach it. Mirrors the bottom dock's 95%/5% split.
+        // Pair the two: this max plus the editor's min must sum to 100% or the
+        // drag can't reach it. Mirrors the bottom dock's 95%/5% split.
         maxSize="95%"
         // Collapsible so a drag past half the min width snaps the column shut —
         // the pointerup handler above turns that into a real hide.
@@ -1419,37 +1387,34 @@ function EditorAreaInner({
         onResize={(size) => {
           // Persist only on a user drag — the sticky-width RO replays the
           // persisted value through onResize too and must not overwrite it.
-          if (size.inPixels > 0 && isDraggingTerminalHandleRef.current) {
-            terminalWidthPxRef.current = size.inPixels;
-            debouncedWriteTerminalWidth(size.inPixels);
+          if (size.inPixels > 0 && isDraggingAgentsHandleRef.current) {
+            agentsWidthPxRef.current = size.inPixels;
+            debouncedWriteAgentsWidth(size.inPixels);
           }
         }}
         className={cn(
           'flex flex-col',
-          !isDraggingTerminalHandle &&
+          !isDraggingAgentsHandle &&
             'transition-[flex-grow] duration-200 ease-out motion-reduce:transition-none motion-reduce:duration-0',
         )}
       >
-        {/* Mount point for the session host's stable host div when right-docked. */}
-        <div
-          ref={setRightTerminalContainer}
-          className="flex min-h-0 flex-1 flex-col overflow-hidden"
-        />
+        {/* Mount point for the agents host's stable host div. */}
+        <div ref={setAgentsContainer} className="flex min-h-0 flex-1 flex-col overflow-hidden" />
       </ResizablePanel>
     </>
   ) : null;
 
   // The editor absorbs the residual width whenever something on the right claims
-  // space — the doc panel (when present and not collapsed) or the terminal column.
+  // space — the doc panel (when present and not collapsed) or the agents column.
   const editorAbsorbsResidual =
-    (rightPanel != null && !initialRightCollapsed) || terminalColumnPresent;
+    (rightPanel != null && !initialRightCollapsed) || agentsColumnPresent;
 
-  // The right-dock reveal tab pins to the far-right column edge here; the
-  // bottom-dock tab lives inside TerminalDock, pinned to the bottom of the editor
-  // column where that terminal docks. (Both gated by `revealTabHidden` above.)
+  // The agents reveal tab pins to the far-right column edge here; the terminal's
+  // tab lives inside TerminalDock, pinned to the bottom of the editor column.
+  // (Each gated by its own predicate above; both can be up at once.)
 
-  // Order: EDITOR | doc/agent panel | terminal column. The terminal is the
-  // far-right column when right-docked, so it renders AFTER `rightPanel`.
+  // Order: EDITOR | doc/agent panel | agents column. The agents panel is the
+  // far-right column, so it renders AFTER `rightPanel`.
   return (
     <div
       className="relative flex min-h-0 flex-1"
@@ -1461,7 +1426,7 @@ function EditorAreaInner({
       <ResizablePanelGroup
         orientation="horizontal"
         groupRef={groupRef}
-        data-dragging={isDraggingDocHandle || isDraggingTerminalHandle || undefined}
+        data-dragging={isDraggingDocHandle || isDraggingAgentsHandle || undefined}
       >
         <ResizablePanel
           // No explicit id: an id here changed how react-resizable-panels
@@ -1476,31 +1441,27 @@ function EditorAreaInner({
           // 95%/5% split (see the terminal column's maxSize below; the pair must
           // sum to 100% or the drag can't reach the max). Without the terminal
           // the 30% floor keeps the editor usable against the doc panel.
-          minSize={terminalColumnPresent ? '5%' : '30%'}
+          minSize={agentsColumnPresent ? '5%' : '30%'}
           // Editor takes full width only when nothing on the right claims space;
           // otherwise it absorbs the residual while the pixel-sized doc panel and
           // terminal column hold their widths.
           {...(editorAbsorbsResidual ? {} : { defaultSize: '100%' })}
           className={cn(
-            !(isDraggingDocHandle || isDraggingTerminalHandle) &&
+            !(isDraggingDocHandle || isDraggingAgentsHandle) &&
               'transition-[flex-grow] duration-200 ease-out motion-reduce:transition-none motion-reduce:duration-0',
           )}
         >
           {leftColumn}
         </ResizablePanel>
         {rightPanel}
-        {terminalColumn}
+        {agentsColumn}
       </ResizablePanelGroup>
       {rightRevealTabPresent ? (
         // Pinned to the far-right top, vertically in line with the toolbar's
         // action buttons. When the doc panel is collapsed those buttons reach this
         // same corner; the toolbar shifts its cluster left (reserveRightGutter) so
         // all three sit in one row rather than overlapping.
-        <TerminalRevealTab
-          dockPosition="right"
-          onReveal={onRevealTerminal}
-          className="top-2.5 right-0"
-        />
+        <TerminalRevealTab edge="right" onReveal={onRevealAgents} className="top-2.5 right-0" />
       ) : null}
     </div>
   );

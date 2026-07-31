@@ -16,7 +16,7 @@ export function mergeViewMenuState(
  * folders + Show only markdown files off, Show skills section on, both
  * Expand/Collapse rendered (no smart-hide), sidebar + doc panel assumed
  * visible (the common wide-window startup), terminal hidden with no live
- * session.
+ * session, agents panel hidden.
  *
  * `canViewInSource` is the one field that defaults to the RESTRICTIVE value
  * rather than the likely one: it gates a context-menu row, and a row offered
@@ -35,6 +35,7 @@ export function createDefaultEditorViewMenuState(): EditorViewMenuStateSnapshot 
     docPanelVisible: true,
     terminalVisible: false,
     terminalLive: false,
+    agentPanelVisible: false,
     canViewInSource: false,
   };
 }
@@ -58,6 +59,7 @@ type ViewMenuStateDeps = Pick<
   | 'docPanelVisible'
   | 'terminalVisible'
   | 'terminalLive'
+  | 'agentPanelVisible'
   | 'onToggleShowHiddenFiles'
   | 'onToggleShowOkFolders'
   | 'onToggleShowOnlyMarkdownFiles'
@@ -65,6 +67,7 @@ type ViewMenuStateDeps = Pick<
   | 'onToggleSidebar'
   | 'onToggleDocPanel'
   | 'onToggleTerminal'
+  | 'onToggleAgentPanel'
   | 'onNewTerminal'
   | 'onKillTerminal'
   | 'onExpandAll'
@@ -93,6 +96,7 @@ export function buildViewMenuStateDeps(
     docPanelVisible: state.docPanelVisible,
     terminalVisible: state.terminalVisible,
     terminalLive: state.terminalLive,
+    agentPanelVisible: state.agentPanelVisible,
     onToggleShowHiddenFiles: () => sendMenuAction('toggle-show-hidden-files'),
     onToggleShowOkFolders: () => sendMenuAction('toggle-show-ok-folders'),
     onToggleShowOnlyMarkdownFiles: () => sendMenuAction('toggle-show-only-markdown-files'),
@@ -100,6 +104,7 @@ export function buildViewMenuStateDeps(
     onToggleSidebar: () => sendMenuAction('toggle-sidebar'),
     onToggleDocPanel: () => sendMenuAction('toggle-doc-panel'),
     onToggleTerminal: () => sendMenuAction('toggle-terminal'),
+    onToggleAgentPanel: () => sendMenuAction('toggle-agent-panel'),
     onNewTerminal: () => sendMenuAction('new-terminal'),
     onKillTerminal: () => sendMenuAction('kill-terminal'),
     onExpandAll: () => sendMenuAction('expand-all-tree'),

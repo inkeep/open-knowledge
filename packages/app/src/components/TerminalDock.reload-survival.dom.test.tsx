@@ -99,11 +99,11 @@ vi.doMock('@/lib/terminal-height-store', () => ({
 }));
 
 const { TerminalDock } = await import('./TerminalDock');
-const { TerminalSessionsHost } = await import('./TerminalSessionsHost');
+const { SessionsHost } = await import('./SessionsHost');
 
 // Mirror EditorArea's wiring: the TerminalDock shell exposes the bottom mount, and
-// the once-mounted TerminalSessionsHost (which now owns the session collection +
-// reload rehydration) portals the live sessions into it. The rehydration the
+// the once-mounted SessionsHost (which owns the session collection + reload
+// rehydration) portals the live sessions into it. The rehydration the
 // renderer half is responsible for lives in the host, so reload-survival is
 // asserted through this pair, not TerminalDock alone.
 function ReloadHarness({
@@ -121,14 +121,15 @@ function ReloadHarness({
       <TerminalDock
         visible={visible}
         onVisibleChange={() => {}}
-        dockPosition="bottom"
         onBottomContainer={setBottomContainer}
         onEditorRegion={() => {}}
       >
         <div data-testid="editor-child" />
       </TerminalDock>
-      <TerminalSessionsHost
+      <SessionsHost
+        surface="terminal-dock"
         bridge={bridge}
+        terminalCapable
         visible={visible}
         onVisibleChange={() => {}}
         // biome-ignore lint/suspicious/noExplicitAny: test launch shape
@@ -136,8 +137,6 @@ function ReloadHarness({
         container={bottomContainer}
         isShowing={visible && bottomContainer != null}
         onRequestEditorFocus={() => {}}
-        dockPosition="bottom"
-        onToggleDock={() => {}}
       />
     </TooltipProvider>
   );
@@ -238,7 +237,7 @@ describe('issue #351 — the terminal dock rehydrates surviving sessions after a
     // Tabs come back in main's returned (reordered) order with the custom names
     // restored; the un-named survivor falls back to its RESTORED sticky ordinal
     // (Terminal 1), not a positional renumber to Terminal 2.
-    const tablist = screen.getByRole('tablist', { name: 'Sessions' });
+    const tablist = screen.getByRole('tablist', { name: 'Terminal sessions' });
     const tabs = within(tablist).getAllByRole('tab');
     expect(tabs.map((tab) => tab.textContent)).toEqual(['deploy', 'Terminal 1', 'logs']);
   });

@@ -242,6 +242,10 @@ export type OkMenuAction =
   | 'collapse-all-tree'
   | 'toggle-doc-panel'
   | 'toggle-terminal'
+  // Right agents-panel visibility (⌘L / Ctrl+L). The ACP twin of
+  // `toggle-terminal`, and deliberately NOT desktop-gated: agent threads are
+  // server-hosted, so the panel works on the web host and where pty does not.
+  | 'toggle-agent-panel'
   // Terminal application menu. `new-terminal` opens a new terminal tab
   // (revealing the dock if hidden; never hides, unlike the toggle).
   // `kill-terminal` closes the active tab, killing that session's PTY.
@@ -744,6 +748,7 @@ export interface OkEditorViewMenuStateSnapshot {
   readonly docPanelVisible?: boolean;
   readonly terminalVisible?: boolean;
   readonly terminalLive?: boolean;
+  readonly agentPanelVisible?: boolean;
   readonly canViewInSource?: boolean;
 }
 
@@ -1555,10 +1560,19 @@ export interface OkDesktopBridge {
      * survives a renderer reload. Fire-and-forget.
      */
     setOrder(orderedPtyIds: readonly string[]): void;
-    /** Per-window sessions-dock state (visibility + unified tab order + active key). Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
-    getDockState(): Promise<{ visible: boolean; order?: string[]; activeKey?: string | null }>;
-    /** Persist the unified sessions-dock order + active key per window. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
-    setDockState(state: { order: string[]; activeKey: string | null }): void;
+    /** Per-window panel state (per-surface visibility + tab order + active key). Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
+    getDockState(): Promise<{
+      terminalVisible: boolean;
+      agentPanelVisible: boolean;
+      terminal?: { order: string[]; activeKey: string | null };
+      agents?: { order: string[]; activeKey: string | null };
+    }>;
+    /** Persist one panel's tab order + active key per window. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
+    setDockState(state: {
+      surface: 'terminal' | 'agents';
+      order: string[];
+      activeKey: string | null;
+    }): void;
     onData(cb: (msg: OkPtyData) => void): OkUnsubscribe;
     onExit(cb: (msg: OkPtyExit) => void): OkUnsubscribe;
     claudePreflight(): Promise<ClaudeReadiness>;

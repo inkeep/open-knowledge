@@ -17,7 +17,7 @@ interface StickyRepinParams {
  * react-resizable-panels stores each panel as a percentage of the group, and
  * its per-panel imperative APIs (`resize`/`collapse`/`expand`) rebalance
  * against the panel's flex NEIGHBOR. In the EDITOR | doc-panel |
- * terminal-column order that neighbor is never the editor, so any per-panel
+ * agents-column order that neighbor is never the editor, so any per-panel
  * correction moves a boundary between the two right-side panels: a container
  * widening grows the terminal instead of the editor, a doc-panel collapse
  * dumps its width into the terminal, and re-pinning one panel knocks the

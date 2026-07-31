@@ -598,8 +598,8 @@ describe('M1 smoke', () => {
     expect(desktopMembers.size).toBeGreaterThan(0);
     expect(coreMembers.size).toBeGreaterThan(0);
     expect(appMembers.size).toBeGreaterThan(0);
-    // 26 baseline + 2 worktree + 2 Help + 3 sidebar + 2 navigation actions.
-    expect(desktopMembers.size).toBe(35);
+    // 26 baseline + 2 worktree + 2 Help + 3 sidebar + 2 navigation + 1 agents panel.
+    expect(desktopMembers.size).toBe(36);
     expect(desktopMembers).toEqual(coreMembers);
     expect(desktopMembers).toEqual(appMembers);
     // Pin the visibility toggles explicitly: a bare count check wouldn't

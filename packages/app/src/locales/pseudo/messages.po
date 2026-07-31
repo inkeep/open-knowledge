@@ -1206,7 +1206,7 @@ msgstr ""
 msgid "Advanced settings"
 msgstr ""
 
-#: src/components/TerminalSessionsHost.tsx
+#: src/components/SessionsHost.tsx
 #: src/presence/PresenceBar.tsx
 msgid "Agent"
 msgstr ""
@@ -1221,6 +1221,10 @@ msgstr ""
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent mode"
+msgstr ""
+
+#: src/components/TerminalTabStrip.tsx
+msgid "Agent sessions"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
@@ -2272,7 +2276,7 @@ msgid "Collapse graph"
 msgstr ""
 
 #: src/components/TerminalTabStrip.tsx
-msgid "Collapse session dock"
+msgid "Collapse panel"
 msgstr ""
 
 #: src/editor/slash-command/component-items.tsx
@@ -3753,14 +3757,6 @@ msgstr ""
 
 #: src/editor/composer-mention/ComposerMentionMenu.tsx
 msgid "Doc mention suggestions"
-msgstr ""
-
-#: src/components/TerminalTabStrip.tsx
-msgid "Dock sessions at the bottom"
-msgstr ""
-
-#: src/components/TerminalTabStrip.tsx
-msgid "Dock sessions on the right"
 msgstr ""
 
 #: src/components/ExploreSkills.tsx
@@ -5250,6 +5246,10 @@ msgstr ""
 msgid "Hide advanced"
 msgstr ""
 
+#: src/components/command-palette-commands.ts
+msgid "Hide Agents"
+msgstr ""
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide document panel"
@@ -6483,7 +6483,7 @@ msgstr ""
 #. placeholder {0}: moved.label
 #. placeholder {1}: moved.position
 #. placeholder {2}: moved.total
-#: src/components/TerminalSessionsHost.tsx
+#: src/components/SessionsHost.tsx
 msgid "Moved {0} to position {1} of {2}"
 msgstr ""
 
@@ -7326,6 +7326,10 @@ msgstr ""
 msgid "Open activity panel for {tooltipName}, editing {realCurrentDoc}"
 msgstr ""
 
+#: src/components/TerminalRevealTab.tsx
+msgid "Open agents panel"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
 msgstr ""
@@ -7457,10 +7461,6 @@ msgstr ""
 msgid "Open recent project"
 msgstr ""
 
-#: src/components/TerminalRevealTab.tsx
-msgid "Open session dock"
-msgstr ""
-
 #: src/components/settings/plugin-enabled-notice.ts
 msgid "Open settings"
 msgstr ""
@@ -7480,6 +7480,10 @@ msgstr ""
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Open source: {mirrorSrc}"
+msgstr ""
+
+#: src/components/TerminalRevealTab.tsx
+msgid "Open terminal"
 msgstr ""
 
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -8311,7 +8315,7 @@ msgstr ""
 msgid "Reconnecting after server restart"
 msgstr ""
 
-#: src/components/TerminalSessionsHost.tsx
+#: src/components/SessionsHost.tsx
 msgid "Reconnecting to the agent service…"
 msgstr ""
 
@@ -9395,10 +9399,6 @@ msgstr ""
 msgid "Session ended — undo unavailable"
 msgstr ""
 
-#: src/components/TerminalTabStrip.tsx
-msgid "Sessions"
-msgstr ""
-
 #: src/components/AuthModal.tsx
 msgid "Set git identity"
 msgstr ""
@@ -9560,6 +9560,10 @@ msgstr ""
 msgid "Show advanced"
 msgstr ""
 
+#: src/components/command-palette-commands.ts
+msgid "Show Agents"
+msgstr ""
+
 #: src/components/MermaidFileViewer.tsx
 msgid "Show diagram"
 msgstr ""
@@ -9614,6 +9618,10 @@ msgstr ""
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Show only markdown files"
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Show or hide agents"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -9915,7 +9923,7 @@ msgstr ""
 msgid "Start a new OpenKnowledge project."
 msgstr ""
 
-#: src/components/TerminalSessionsHost.tsx
+#: src/components/SessionsHost.tsx
 msgid "Start a session with the ＋ button, or launch an agent from a page."
 msgstr ""
 
@@ -10382,7 +10390,7 @@ msgid "Terminal"
 msgstr ""
 
 #. placeholder {0}: session.ordinal
-#: src/components/TerminalSessionsHost.tsx
+#: src/components/SessionsHost.tsx
 msgid "Terminal {0}"
 msgstr ""
 
@@ -10396,6 +10404,10 @@ msgstr ""
 
 #: src/components/TerminalGate.tsx
 msgid "Terminal failed to load"
+msgstr ""
+
+#: src/components/TerminalTabStrip.tsx
+msgid "Terminal sessions"
 msgstr ""
 
 #: src/components/TerminalGate.tsx
@@ -10552,7 +10564,7 @@ msgstr ""
 msgid "The model id your endpoint serves. Its vector size is detected automatically — clear the field to go back to {DEFAULT_EMBEDDINGS_MODEL}."
 msgstr ""
 
-#: src/components/TerminalSessionsHost.tsx
+#: src/components/SessionsHost.tsx
 msgid "the open agent"
 msgstr ""
 
@@ -11050,6 +11062,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle the left file sidebar."
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Toggle the right agents panel, where agent conversations live."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts

@@ -1210,7 +1210,7 @@ msgstr "Advanced"
 msgid "Advanced settings"
 msgstr "Advanced settings"
 
-#: src/components/TerminalSessionsHost.tsx
+#: src/components/SessionsHost.tsx
 #: src/presence/PresenceBar.tsx
 msgid "Agent"
 msgstr "Agent"
@@ -1226,6 +1226,10 @@ msgstr "Agent configuration file"
 #: src/components/acp/ThreadView.tsx
 msgid "Agent mode"
 msgstr "Agent mode"
+
+#: src/components/TerminalTabStrip.tsx
+msgid "Agent sessions"
+msgstr "Agent sessions"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent settings"
@@ -2276,8 +2280,8 @@ msgid "Collapse graph"
 msgstr "Collapse graph"
 
 #: src/components/TerminalTabStrip.tsx
-msgid "Collapse session dock"
-msgstr "Collapse session dock"
+msgid "Collapse panel"
+msgstr "Collapse panel"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Collapsible section with a clickable summary."
@@ -3758,14 +3762,6 @@ msgstr "Do you want to permanently delete instead?"
 #: src/editor/composer-mention/ComposerMentionMenu.tsx
 msgid "Doc mention suggestions"
 msgstr "Doc mention suggestions"
-
-#: src/components/TerminalTabStrip.tsx
-msgid "Dock sessions at the bottom"
-msgstr "Dock sessions at the bottom"
-
-#: src/components/TerminalTabStrip.tsx
-msgid "Dock sessions on the right"
-msgstr "Dock sessions on the right"
 
 #: src/components/ExploreSkills.tsx
 #: src/components/HelpPopover.tsx
@@ -5254,6 +5250,10 @@ msgstr "Hide"
 msgid "Hide advanced"
 msgstr "Hide advanced"
 
+#: src/components/command-palette-commands.ts
+msgid "Hide Agents"
+msgstr "Hide Agents"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide document panel"
@@ -6487,7 +6487,7 @@ msgstr "Moved \"{0}\" to {1}"
 #. placeholder {0}: moved.label
 #. placeholder {1}: moved.position
 #. placeholder {2}: moved.total
-#: src/components/TerminalSessionsHost.tsx
+#: src/components/SessionsHost.tsx
 msgid "Moved {0} to position {1} of {2}"
 msgstr "Moved {0} to position {1} of {2}"
 
@@ -7330,6 +7330,10 @@ msgstr "Open activity panel for {tooltipName}"
 msgid "Open activity panel for {tooltipName}, editing {realCurrentDoc}"
 msgstr "Open activity panel for {tooltipName}, editing {realCurrentDoc}"
 
+#: src/components/TerminalRevealTab.tsx
+msgid "Open agents panel"
+msgstr "Open agents panel"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
 msgstr "Open an existing project folder from disk."
@@ -7461,10 +7465,6 @@ msgstr "Open project menu"
 msgid "Open recent project"
 msgstr "Open recent project"
 
-#: src/components/TerminalRevealTab.tsx
-msgid "Open session dock"
-msgstr "Open session dock"
-
 #: src/components/settings/plugin-enabled-notice.ts
 msgid "Open settings"
 msgstr "Open settings"
@@ -7485,6 +7485,10 @@ msgstr "Open source lint panel"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Open source: {mirrorSrc}"
 msgstr "Open source: {mirrorSrc}"
+
+#: src/components/TerminalRevealTab.tsx
+msgid "Open terminal"
+msgstr "Open terminal"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Open that worktree instead"
@@ -8315,7 +8319,7 @@ msgstr "Reconnected"
 msgid "Reconnecting after server restart"
 msgstr "Reconnecting after server restart"
 
-#: src/components/TerminalSessionsHost.tsx
+#: src/components/SessionsHost.tsx
 msgid "Reconnecting to the agent service…"
 msgstr "Reconnecting to the agent service…"
 
@@ -9399,10 +9403,6 @@ msgstr "Session ended"
 msgid "Session ended — undo unavailable"
 msgstr "Session ended — undo unavailable"
 
-#: src/components/TerminalTabStrip.tsx
-msgid "Sessions"
-msgstr "Sessions"
-
 #: src/components/AuthModal.tsx
 msgid "Set git identity"
 msgstr "Set git identity"
@@ -9564,6 +9564,10 @@ msgstr "Show a preview card when you hover an external link in the editor. This 
 msgid "Show advanced"
 msgstr "Show advanced"
 
+#: src/components/command-palette-commands.ts
+msgid "Show Agents"
+msgstr "Show Agents"
+
 #: src/components/MermaidFileViewer.tsx
 msgid "Show diagram"
 msgstr "Show diagram"
@@ -9619,6 +9623,10 @@ msgstr "Show less"
 #: src/components/FileSidebar.tsx
 msgid "Show only markdown files"
 msgstr "Show only markdown files"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Show or hide agents"
+msgstr "Show or hide agents"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide document panel"
@@ -9919,7 +9927,7 @@ msgstr "Start a new chat"
 msgid "Start a new OpenKnowledge project."
 msgstr "Start a new OpenKnowledge project."
 
-#: src/components/TerminalSessionsHost.tsx
+#: src/components/SessionsHost.tsx
 msgid "Start a session with the ＋ button, or launch an agent from a page."
 msgstr "Start a session with the ＋ button, or launch an agent from a page."
 
@@ -10386,7 +10394,7 @@ msgid "Terminal"
 msgstr "Terminal"
 
 #. placeholder {0}: session.ordinal
-#: src/components/TerminalSessionsHost.tsx
+#: src/components/SessionsHost.tsx
 msgid "Terminal {0}"
 msgstr "Terminal {0}"
 
@@ -10401,6 +10409,10 @@ msgstr "Terminal disabled"
 #: src/components/TerminalGate.tsx
 msgid "Terminal failed to load"
 msgstr "Terminal failed to load"
+
+#: src/components/TerminalTabStrip.tsx
+msgid "Terminal sessions"
+msgstr "Terminal sessions"
 
 #: src/components/TerminalGate.tsx
 msgid "Terminal settings not loaded yet — try again in a moment."
@@ -10556,7 +10568,7 @@ msgstr "The menu label agents pick this template by (required)."
 msgid "The model id your endpoint serves. Its vector size is detected automatically — clear the field to go back to {DEFAULT_EMBEDDINGS_MODEL}."
 msgstr "The model id your endpoint serves. Its vector size is detected automatically — clear the field to go back to {DEFAULT_EMBEDDINGS_MODEL}."
 
-#: src/components/TerminalSessionsHost.tsx
+#: src/components/SessionsHost.tsx
 msgid "the open agent"
 msgstr "the open agent"
 
@@ -11055,6 +11067,10 @@ msgstr "Toggle the bottom terminal panel. With text selected, stage it for your 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle the left file sidebar."
 msgstr "Toggle the left file sidebar."
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Toggle the right agents panel, where agent conversations live."
+msgstr "Toggle the right agents panel, where agent conversations live."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle the right document panel."

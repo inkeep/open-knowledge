@@ -2,14 +2,12 @@ import { useTheme } from 'next-themes';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { usePanelRef } from 'react-resizable-panels';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
-import type { TerminalDockPosition } from '@/lib/terminal-dock-store';
 import {
   clampTerminalHeight,
   getInitialTerminalHeight,
   writeTerminalHeight,
 } from '@/lib/terminal-height-store';
 import { cn } from '@/lib/utils';
-import { TerminalRevealTab } from './TerminalRevealTab';
 import { useLiveXtermTheme } from './use-live-xterm-theme';
 
 const TERMINAL_PANEL_ID = 'terminal-dock-panel';
@@ -26,23 +24,14 @@ interface TerminalDockProps {
   /** The editor chrome (header + area) the terminal docks beneath. */
   readonly children: ReactNode;
   /**
-   * Controlled visibility. The bottom panel opens when the terminal is bottom-
-   * docked AND visible; drag-collapsing it reports back through {@link onVisibleChange}.
+   * Controlled visibility. Drag-collapsing the bottom panel reports back through
+   * {@link onVisibleChange}.
    */
   readonly visible: boolean;
   readonly onVisibleChange: (visible: boolean) => void;
   /**
-   * Where the terminal is docked. `'bottom'` opens this component's bottom panel;
-   * `'right'` keeps it collapsed (the terminal lives in the right region — the
-   * live session host portals into that container instead, mounted above this
-   * component so a dock change never remounts it).
-   */
-  readonly dockPosition?: TerminalDockPosition;
-  /**
    * Callback ref reporting the bottom-dock mount element up to EditorArea, which
-   * passes it to the session host as a portal target. The host div lands here when
-   * the terminal is bottom-docked; when right-docked the host attaches to the
-   * right column's container instead and this bottom panel stays collapsed + empty.
+   * passes it to the terminal session host as a portal target.
    */
   readonly onBottomContainer: (el: HTMLDivElement | null) => void;
   /**
@@ -50,19 +39,6 @@ interface TerminalDockProps {
    * the session host to return focus to the editor when the terminal hides.
    */
   readonly onEditorRegion: (el: HTMLDivElement | null) => void;
-  /**
-   * Reveal the sessions dock, launching the user's preferred New-session choice
-   * if none is open. Wired to the edge "Open session dock" tab this shell renders at
-   * the bottom of the editor region when {@link showRevealTab} is set. The
-   * right-dock reveal tab is owned by EditorArea instead (different container).
-   */
-  readonly onReveal?: () => void;
-  /**
-   * Whether to render the bottom edge reveal tab. EditorArea owns the predicate
-   * (dock-hidden with a reason to reveal: a terminal surface, or latched tabs to
-   * return to on the web host), so this shell just renders it when told.
-   */
-  readonly showRevealTab?: boolean;
 }
 
 /**
@@ -70,33 +46,21 @@ interface TerminalDockProps {
  * editor on top and a collapsible bottom panel beneath. It owns the bottom panel's
  * height (persist + drag) and collapse, and exposes the bottom mount + editor
  * region elements. It deliberately owns NO session state — the live terminal lives
- * in {@link TerminalSessionsHost}, mounted above the panel group, and portals into
- * the bottom mount this component renders. That separation is what lets the
- * terminal move docks (and the editor re-render) without re-spawning the PTY.
+ * in {@link SessionsHost}, mounted above the panel group, and portals into
+ * the bottom mount this component renders. That separation is what lets the editor
+ * re-render (and the view kind change) without re-spawning the PTY.
  */
 export function TerminalDock({
   children,
   visible,
   onVisibleChange,
-  dockPosition = 'bottom',
   onBottomContainer,
   onEditorRegion,
-  onReveal,
-  showRevealTab = false,
 }: TerminalDockProps) {
   const { resolvedTheme } = useTheme();
   const panelRef = usePanelRef();
   const [isCollapsed, setIsCollapsed] = useState(!visible);
   const xtermBackground = useLiveXtermTheme(resolvedTheme).background;
-  // A right-docked terminal keeps `visible` true while this panel sits collapsed
-  // and empty — the handle must gate on this, not `visible`, or the grabber
-  // lingers and drags up an empty panel.
-  const bottomOpen = visible && dockPosition === 'bottom';
-  // The edge "Show sessions" tab belongs to the bottom dock only — it hugs the
-  // bottom of the editor column, where a bottom-docked dock slides up from.
-  // EditorArea owns the predicate (dock hidden + a reason to reveal).
-  const showBottomRevealTab = showRevealTab && dockPosition === 'bottom' && onReveal != null;
-
   // Snapshot the persisted height once at mount; the ref carries the running value
   // during user drag.
   const [initialHeightPx] = useState(() => getInitialTerminalHeight());
@@ -129,7 +93,6 @@ export function TerminalDock({
         event: 'ok-terminal-dock-stranded-while-hidden',
         panelPx: Math.round(panelPx),
         panelPct: Number.isFinite(panelPct) ? Math.round(panelPct * 10) / 10 : null,
-        dockPosition,
         visible,
         // The height this shell would reopen at. Reading it against `innerHeight`
         // is what distinguishes a value clamped for the current viewport from one
@@ -158,13 +121,12 @@ export function TerminalDock({
   );
 
   // Drive the panel from the controlled prop: restore the persisted height when
-  // bottom-docked and visible, collapse otherwise (hidden, or right-docked where
-  // the terminal lives in the right region).
+  // visible, collapse when hidden.
   useEffect(() => {
     const panel = panelRef.current;
     if (panel == null) return;
     try {
-      if (bottomOpen) {
+      if (visible) {
         panel.resize(`${heightPxRef.current}px`);
       } else {
         panel.collapse();
@@ -173,10 +135,10 @@ export function TerminalDock({
       // The imperative panel handles throw once their group has unregistered
       // (same reason EditorArea's assertRightRailLayout wraps its calls). A throw
       // means the panel never resized, so no onResize fires and the invariant
-      // guard cannot see it: recovery is the next `bottomOpen` transition
+      // guard cannot see it: recovery is the next `visible` transition
       // re-running this effect, or any later change to the panel's own box.
     }
-  }, [bottomOpen, panelRef]);
+  }, [visible, panelRef]);
 
   // The persisted height is viewport-relative: `readTerminalHeight` caps it at
   // 50vh, but only at read time, and this shell snapshots it once at mount. A
@@ -190,7 +152,7 @@ export function TerminalDock({
       const next = clampTerminalHeight(heightPxRef.current);
       if (next === heightPxRef.current) return;
       heightPxRef.current = next;
-      if (!bottomOpen) return;
+      if (!visible) return;
       try {
         panelRef.current?.resize(`${next}px`);
       } catch {
@@ -199,7 +161,7 @@ export function TerminalDock({
     };
     window.addEventListener('resize', reclampToViewport);
     return () => window.removeEventListener('resize', reclampToViewport);
-  }, [bottomOpen, panelRef]);
+  }, [visible, panelRef]);
 
   return (
     <ResizablePanelGroup
@@ -209,36 +171,26 @@ export function TerminalDock({
     >
       <ResizablePanel minSize="5%" className="flex min-h-0 flex-col">
         {/* tabIndex -1 makes this a programmatic focus target for focus-return on
-            collapse without adding it to the tab order. `relative` anchors the
-            bottom-dock reveal tab to the bottom of the editor column. */}
+            collapse without adding it to the tab order. */}
         <div
           ref={onEditorRegion}
           tabIndex={-1}
           className="relative flex h-full min-h-0 flex-col outline-none"
         >
           {children}
-          {showBottomRevealTab && onReveal ? (
-            <TerminalRevealTab
-              dockPosition="bottom"
-              onReveal={onReveal}
-              className="right-3 bottom-0"
-            />
-          ) : null}
         </div>
       </ResizablePanel>
-      {/* The handle drags only while the bottom panel is open: you can resize it,
-          and drag all the way down to collapse (hide). Otherwise it is disabled —
-          when bottom-docked-and-hidden the reveal tab rendered above is the single
-          way back in, and when right-docked the ways in live outside this file
-          (EditorArea's reveal tab; the tab strip's dock-toggle) — so there is no
-          drag-up-to-open (which would be a second, redundant way in). Gating on
+      {/* The handle drags only while the panel is open: you can resize it, and
+          drag all the way down to collapse (hide). While hidden it is disabled —
+          the terminal has no edge tab, so ⌘J (or the View menu) is the way back
+          in and drag-up-to-open would be a hidden second entry point. Gating on
           controlled props (not `isCollapsed`) means an in-progress drag-to-collapse
           completes before the handle disables on the next commit. */}
       <ResizableHandle
-        withHandle={bottomOpen}
-        disabled={!bottomOpen}
+        withHandle={visible}
+        disabled={!visible}
         onPointerDown={() => {
-          if (!bottomOpen) return;
+          if (!visible) return;
           setIsDragging(true);
           isDraggingRef.current = true;
           const handleUp = () => {
@@ -258,7 +210,7 @@ export function TerminalDock({
         // the terminal — no app-background seam between the strip and canvas.
         style={{ backgroundColor: xtermBackground }}
         panelRef={panelRef}
-        defaultSize={bottomOpen ? `${initialHeightPx}px` : 0}
+        defaultSize={visible ? `${initialHeightPx}px` : 0}
         minSize="120px"
         // The terminal can be dragged tall — up to 95% of the dock — leaving the
         // editor a 5% sliver (its panel `minSize`). Pair the two: the terminal's max
@@ -270,9 +222,9 @@ export function TerminalDock({
           const collapsed = size.asPercentage === 0;
           setIsCollapsed(collapsed);
           // Invariant: the bottom panel occupies ZERO height whenever the dock is
-          // not open (hidden, or right-docked). The `bottomOpen` effect asserts
-          // that only on a TRANSITION, so any path leaving the panel expanded
-          // without flipping `bottomOpen` — a library re-layout, or a collapse
+          // hidden. The `visible` effect asserts that only on a TRANSITION, so
+          // any path leaving the panel expanded without flipping `visible` — a
+          // library re-layout, or a collapse
           // issued while the group was unmeasurable and therefore discarded —
           // strands the editor behind an empty band with no dock chrome and
           // nothing left to re-assert it. This is the panel's own resize signal,
@@ -284,7 +236,7 @@ export function TerminalDock({
           // `asPercentage` NaN, which compares false against 0 and would read as
           // "expanded", firing this guard spuriously on a panel that has no size
           // at all.
-          if (!bottomOpen && size.inPixels > 0 && !isDraggingRef.current) {
+          if (!visible && size.inPixels > 0 && !isDraggingRef.current) {
             reportStrandedDock(size.inPixels, size.asPercentage);
             try {
               panelRef.current?.collapse();
@@ -315,7 +267,7 @@ export function TerminalDock({
             'transition-[flex-grow] duration-150 ease-out motion-reduce:transition-none motion-reduce:duration-0',
         )}
       >
-        {/* Mount point for the session host's stable host div when bottom-docked. */}
+        {/* Mount point for the terminal host's stable host div. */}
         <div ref={onBottomContainer} className="flex min-h-0 flex-1 flex-col overflow-hidden" />
       </ResizablePanel>
     </ResizablePanelGroup>

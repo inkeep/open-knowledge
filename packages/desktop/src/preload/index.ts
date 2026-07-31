@@ -795,6 +795,7 @@ const bridge: OkDesktopBridge = {
     getDockState: () => invoke('ok:terminal:dock-state'),
     setDockState: (state) => {
       invoke('ok:terminal:set-dock-state', {
+        surface: state.surface,
         order: [...state.order],
         activeKey: state.activeKey,
       }).catch(() => {});

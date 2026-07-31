@@ -6,19 +6,12 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { Trans, useLingui } from '@lingui/react/macro';
-import {
-  ChevronDownIcon,
-  ChevronRightIcon,
-  PanelBottomIcon,
-  PanelRightIcon,
-  XIcon,
-} from 'lucide-react';
+import { ChevronDownIcon, ChevronRightIcon, XIcon } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupInput } from '@/components/ui/input-group';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import type { TerminalDockPosition } from '@/lib/terminal-dock-store';
 import { cn } from '@/lib/utils';
 import {
   createTabReorderModifier,
@@ -94,6 +87,11 @@ export interface TerminalTabDescriptor {
   readonly icon?: ReactNode;
 }
 
+/** Which edge of the editor a session panel occupies. The terminal dock owns the
+ *  bottom, the agents panel owns the right; the strip only needs it to point the
+ *  collapse chevron the way the panel slides shut. */
+export type SessionPanelEdge = 'bottom' | 'right';
+
 interface TerminalTabStripProps {
   /** Sessions in tab order. */
   readonly sessions: readonly TerminalTabDescriptor[];
@@ -113,7 +111,7 @@ interface TerminalTabStripProps {
    *  container so the fade mask never clips it. */
   readonly newButton?: ReactNode;
   /** Host-provided trailing control(s), rendered at the far right immediately
-   *  before the dock-toggle/collapse buttons (e.g. the conversation-history menu). */
+   *  before the collapse button (e.g. the conversation-history menu). */
   readonly trailingControls?: ReactNode;
   /** Fires with the session id when the user closes a tab. */
   readonly onClose: (id: string) => void;
@@ -135,14 +133,11 @@ interface TerminalTabStripProps {
    * the ⌘⇧←/→ keyboard-reorder chord while a drag is in flight.
    */
   readonly onDragActiveChange?: (active: boolean) => void;
-  /** Where the terminal is currently docked — drives the dock-toggle + collapse
-   *  button icons/labels. Absent on the standalone terminal window (nothing to
-   *  dock or collapse — the window is the terminal). */
-  readonly dockPosition?: TerminalDockPosition;
-  /** Fires when the user flips the dock between bottom and right. The toggle
-   *  button renders only when provided. */
-  readonly onToggleDock?: () => void;
-  /** Fires when the user collapses (hides) the terminal — sessions stay alive.
+  /** Which edge this panel occupies — drives the collapse chevron's direction.
+   *  Absent on the standalone terminal window (nothing to collapse — the window
+   *  is the terminal). */
+  readonly edge?: SessionPanelEdge;
+  /** Fires when the user collapses (hides) the panel — sessions stay alive.
    *  The collapse button renders only when provided. */
   readonly onCollapse?: () => void;
   /**
@@ -167,9 +162,9 @@ interface TerminalTabStripProps {
 }
 
 /**
- * Controlled tab widget for the terminal's concurrent sessions. Holds no
+ * Controlled tab widget for one session panel's concurrent sessions. Holds no
  * state of its own: the consumer owns the session list and active id and reacts
- * to the callbacks below (tab select/activate, new-chat launch/pick, close, dock,
+ * to the callbacks below (tab select/activate, new-chat launch/pick, close,
  * collapse).
  *
  * Each tab pairs a Radix tab trigger (the roving-focus, arrow-navigable target)
@@ -204,15 +199,14 @@ export function TerminalTabStrip({
   onRename,
   onReorder,
   onDragActiveChange,
-  dockPosition,
-  onToggleDock,
+  edge,
   onCollapse,
   children,
   className,
   draggable,
 }: TerminalTabStripProps) {
   const { t } = useLingui();
-  const rightDocked = dockPosition === 'right';
+  const rightEdge = edge === 'right';
 
   // Inline rename is transient presentation state owned here; the host owns the
   // durable custom label and receives the commit via onRename. Mirrors the
@@ -356,7 +350,11 @@ export function TerminalTabStrip({
         <TabsList
           ref={tabListRef}
           variant="line"
-          aria-label={t`Sessions`}
+          // Named per panel, not a shared "Sessions": both panels can be open at
+          // once, and two identically-named tablists give a screen-reader user no
+          // way to tell them apart (WCAG 1.3.1). The standalone terminal window
+          // has no edge and is a terminal, so it falls to the terminal name.
+          aria-label={rightEdge ? t`Agent sessions` : t`Terminal sessions`}
           // Remap a vertical wheel to horizontal scroll so the main scroll wheel
           // moves the tabs sideways, matching the editor tab strip (which native
           // overflow-x alone doesn't do for a plain vertical wheel).
@@ -527,42 +525,11 @@ export function TerminalTabStrip({
         {/* Spacer pushes the trailing controls to the far right. */}
         <div className="flex-1" />
         {/* Host-provided trailing controls (e.g. conversation history), just left
-            of the dock-toggle/collapse buttons. */}
+            of the collapse button. */}
         {trailingControls != null ? (
           <div className={cn('shrink-0', draggable && '[-webkit-app-region:no-drag]')}>
             {trailingControls}
           </div>
-        ) : null}
-        {onToggleDock != null ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                // Label names the resulting position, not the current one, so the
-                // action reads as "move it there" to a screen-reader user.
-                aria-label={
-                  rightDocked ? t`Dock sessions at the bottom` : t`Dock sessions on the right`
-                }
-                className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
-                onClick={onToggleDock}
-              >
-                {rightDocked ? (
-                  <PanelBottomIcon aria-hidden="true" />
-                ) : (
-                  <PanelRightIcon aria-hidden="true" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" sideOffset={8}>
-              {rightDocked ? (
-                <Trans>Dock sessions at the bottom</Trans>
-              ) : (
-                <Trans>Dock sessions on the right</Trans>
-              )}
-            </TooltipContent>
-          </Tooltip>
         ) : null}
         {onCollapse != null ? (
           <Tooltip>
@@ -571,13 +538,13 @@ export function TerminalTabStrip({
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                aria-label={t`Collapse session dock`}
+                aria-label={t`Collapse panel`}
                 className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
                 onClick={onCollapse}
               >
-                {/* Chevron points the way the panel slides shut: down for the bottom
-                    dock, right for the right column. */}
-                {rightDocked ? (
+                {/* Chevron points the way the panel slides shut: down for the
+                    bottom dock, right for the right column. */}
+                {rightEdge ? (
                   <ChevronRightIcon aria-hidden="true" />
                 ) : (
                   <ChevronDownIcon aria-hidden="true" />
@@ -585,7 +552,7 @@ export function TerminalTabStrip({
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={8}>
-              <Trans>Collapse session dock</Trans>
+              <Trans>Collapse panel</Trans>
             </TooltipContent>
           </Tooltip>
         ) : null}

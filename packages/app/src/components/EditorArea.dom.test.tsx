@@ -98,11 +98,21 @@ vi.doMock('@/editor/DocumentContext', () => ({
 }));
 
 vi.doMock('@/components/EmptyEditorState', () => ({
-  // Forward terminalDock so the EditorArea -> EmptyEditorState prop wiring is
-  // observable (the empty state collapses to the header-only view whenever a
-  // terminal is up, in either dock).
-  EmptyEditorState: ({ terminalDock }: { terminalDock?: string | null }) => (
-    <div data-testid="empty-editor-state" data-terminal-dock={String(terminalDock)} />
+  // Forward both panel flags so the EditorArea -> EmptyEditorState prop wiring is
+  // observable (the empty state collapses to the header-only view whenever
+  // either panel is up).
+  EmptyEditorState: ({
+    terminalOpen,
+    agentsOpen,
+  }: {
+    terminalOpen?: boolean;
+    agentsOpen?: boolean;
+  }) => (
+    <div
+      data-testid="empty-editor-state"
+      data-terminal-open={String(terminalOpen === true)}
+      data-agents-open={String(agentsOpen === true)}
+    />
   ),
 }));
 
@@ -230,6 +240,7 @@ vi.doMock('@/lib/use-settings-route', () => ({
 }));
 
 const { EditorArea } = await import('./EditorArea');
+const { TooltipProvider } = await import('@/components/ui/tooltip');
 
 function renderEditorArea() {
   return render(
@@ -289,7 +300,6 @@ describe('EditorArea empty-state terminal host', () => {
         terminalBridge={{} as never}
         terminalVisible
         onTerminalVisibleChange={() => {}}
-        terminalDock="bottom"
       />,
     );
 
@@ -297,33 +307,29 @@ describe('EditorArea empty-state terminal host', () => {
     expect(dock.getAttribute('data-visible')).toBe('true');
     const emptyState = dock.querySelector('[data-testid="empty-editor-state"]');
     expect(emptyState).not.toBeNull();
-    // EditorArea forwards the dock position so the empty state collapses to the
+    // EditorArea forwards the open panel so the empty state collapses to the
     // header-only view (composer bubble dropped) while the terminal is up.
-    expect(emptyState?.getAttribute('data-terminal-dock')).toBe('bottom');
+    expect(emptyState?.getAttribute('data-terminal-open')).toBe('true');
+    expect(emptyState?.getAttribute('data-agents-open')).toBe('false');
   });
 
-  test('collapses the empty state to the header-only view when the terminal is right-docked', () => {
+  test('collapses the empty state to the header-only view when the agents panel is open', () => {
     render(
       <EditorArea
         editorMode="wysiwyg"
         onModeChange={() => {}}
         activeTab="timeline"
         onActiveTabChange={() => {}}
-        terminalBridge={{} as never}
-        terminalVisible
-        onTerminalVisibleChange={() => {}}
-        // Right is the default dock. Either dock position collapses the empty
-        // state — the open terminal is its own AI entry point, so the composer
-        // bubble must not compete with it.
-        terminalDock="right"
+        // Either panel collapses the empty state — an open panel is its own AI
+        // entry point, so the composer bubble must not compete with it.
+        agentsVisible
+        onAgentsVisibleChange={() => {}}
       />,
     );
 
-    const dock = screen.getByTestId('terminal-dock');
-    expect(dock.getAttribute('data-visible')).toBe('true');
-    const emptyState = dock.querySelector('[data-testid="empty-editor-state"]');
-    expect(emptyState).not.toBeNull();
-    expect(emptyState?.getAttribute('data-terminal-dock')).toBe('right');
+    const emptyState = screen.getByTestId('empty-editor-state');
+    expect(emptyState.getAttribute('data-agents-open')).toBe('true');
+    expect(emptyState.getAttribute('data-terminal-open')).toBe('false');
   });
 
   test('renders the empty state; the dock shell is present but inactive on the web host', () => {
@@ -338,23 +344,22 @@ describe('EditorArea empty-state terminal host', () => {
 
     // The dock shell is host-agnostic now, but with nothing docked it stays inactive.
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
-    // Pins the `terminalVisible ? position : null` forwarding: without an open
-    // dock the empty state must receive null, or it would collapse to header-only
-    // on every new tab.
-    expect(screen.getByTestId('empty-editor-state').getAttribute('data-terminal-dock')).toBe(
-      'null',
-    );
+    // Pins the forwarding: with neither panel open the empty state must receive
+    // both flags false, or it would collapse to header-only on every new tab.
+    const emptyState = screen.getByTestId('empty-editor-state');
+    expect(emptyState.getAttribute('data-terminal-open')).toBe('false');
+    expect(emptyState.getAttribute('data-agents-open')).toBe('false');
   });
 });
 
-describe('EditorArea right-rail layout assert on terminal-column mount/unmount', () => {
+describe('EditorArea right-rail layout assert on agents-column mount/unmount', () => {
   // react-resizable-panels caches layouts per panel-ID set and restores the
   // cached layout whenever the set changes — so before the corrective assert,
-  // hiding the right-docked terminal resurrected a doc panel the user had
-  // closed while it was up (and revealing it restored equally stale state).
-  // These pin the assert: on every terminal-column presence flip, EditorArea
-  // writes one full corrected layout through the group handle, preserving the
-  // doc panel's pre-flip state and routing the difference to the editor.
+  // hiding the right column resurrected a doc panel the user had closed while it
+  // was up (and revealing it restored equally stale state). These pin the
+  // assert: on every agents-column presence flip, EditorArea writes one full
+  // corrected layout through the group handle, preserving the doc panel's
+  // pre-flip state and routing the difference to the editor.
   const setViewportWidth = (px: number) => {
     Object.defineProperty(window, 'innerWidth', {
       value: px,
@@ -369,8 +374,7 @@ describe('EditorArea right-rail layout assert on terminal-column mount/unmount',
     activeTab: 'timeline',
     onActiveTabChange: () => {},
     terminalBridge: {} as never,
-    terminalDock: 'right',
-    onTerminalVisibleChange: () => {},
+    onAgentsVisibleChange: () => {},
   } as const;
 
   // px→% conversion basis fixed by the panel mock: 340px at 25% → 1360px.
@@ -385,17 +389,17 @@ describe('EditorArea right-rail layout assert on terminal-column mount/unmount',
     panelIsCollapsed = false;
   });
 
-  test('hiding the terminal re-asserts the collapsed doc panel over the stale panel-set restore', async () => {
+  test('hiding the agents panel re-asserts the collapsed doc panel over the stale panel-set restore', async () => {
     // Below 1280px the doc panel starts collapsed (no pin), so the intended
     // post-hide state is "collapsed" even though the cached two-panel layout
     // (mimicked) says expanded.
     setViewportWidth(1024);
-    const view = render(<EditorArea {...baseProps} terminalVisible />);
+    const view = render(<EditorArea {...baseProps} agentsVisible />);
     expect(groupSetLayoutCalls).toHaveLength(0);
     // The stale two-panel layout the library restores on unmount: doc panel
     // expanded to 30% — the resurrection this assert corrects.
     groupLayout = { 'editor-main': 70, 'doc-panel': 30 };
-    view.rerender(<EditorArea {...baseProps} terminalVisible={false} />);
+    view.rerender(<EditorArea {...baseProps} agentsVisible={false} />);
     // Flush the microtask-deferred assert.
     await act(async () => {});
     const corrected = groupSetLayoutCalls.at(-1);
@@ -404,40 +408,40 @@ describe('EditorArea right-rail layout assert on terminal-column mount/unmount',
     expect(corrected?.['editor-main']).toBe(100);
   });
 
-  test('revealing the terminal keeps the open doc panel open despite a stale cached layout', async () => {
+  test('revealing the agents panel keeps the open doc panel open despite a stale cached layout', async () => {
     // At 1400px the doc panel starts open. A stale three-panel cached layout
     // could say anything; the assert must restore the pre-reveal state (open)
-    // at the persisted width, with the terminal at its own persisted width.
+    // at the persisted width, with the agents column at its own persisted width.
     setViewportWidth(1400);
-    const view = render(<EditorArea {...baseProps} terminalVisible={false} />);
-    groupLayout = { 'editor-main': 45, 'doc-panel': 25, 'terminal-column': 30 };
-    view.rerender(<EditorArea {...baseProps} terminalVisible />);
+    const view = render(<EditorArea {...baseProps} agentsVisible={false} />);
+    groupLayout = { 'editor-main': 45, 'doc-panel': 25, 'agents-column': 30 };
+    view.rerender(<EditorArea {...baseProps} agentsVisible />);
     await act(async () => {});
     const corrected = groupSetLayoutCalls.at(-1);
     expect(corrected).toBeDefined();
     // Exact pins against the mock's deterministic basis: doc panel at its
-    // persisted default (320px), terminal at its persisted default (480px),
+    // persisted default (320px), agents column at its persisted default (480px),
     // editor absorbing the remainder.
     expect(corrected?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
-    expect(corrected?.['terminal-column']).toBeCloseTo(pctOf(480), 3);
+    expect(corrected?.['agents-column']).toBeCloseTo(pctOf(480), 3);
     expect(corrected?.['editor-main']).toBeCloseTo(100 - pctOf(320) - pctOf(480), 3);
   });
 
-  test('releasing a terminal-handle drag with the column snapped shut hides the terminal', async () => {
-    // Drag-to-close: the pointerup handler checks the terminal panel's
+  test('releasing an agents-handle drag with the column snapped shut hides the panel', async () => {
+    // Drag-to-close: the pointerup handler checks the agents panel's
     // isCollapsed() and turns a snapped-shut column into a real hide.
     setViewportWidth(1400);
     const visibleChanges: boolean[] = [];
     render(
       <EditorArea
         {...baseProps}
-        terminalVisible
-        onTerminalVisibleChange={(visible: boolean) => {
+        agentsVisible
+        onAgentsVisibleChange={(visible: boolean) => {
           visibleChanges.push(visible);
         }}
       />,
     );
-    // The empty view renders no doc panel, so the only handle is the terminal's.
+    // The empty view renders no doc panel, so the only handle is the column's.
     const handle = screen.getByTestId('resizable-handle');
     act(() => {
       fireEvent.pointerDown(handle);
@@ -449,14 +453,14 @@ describe('EditorArea right-rail layout assert on terminal-column mount/unmount',
     expect(visibleChanges.at(-1)).toBe(false);
   });
 
-  test('releasing a terminal-handle drag with the column still open does NOT hide the terminal', async () => {
+  test('releasing an agents-handle drag with the column still open does NOT hide the panel', async () => {
     setViewportWidth(1400);
     const visibleChanges: boolean[] = [];
     render(
       <EditorArea
         {...baseProps}
-        terminalVisible
-        onTerminalVisibleChange={(visible: boolean) => {
+        agentsVisible
+        onAgentsVisibleChange={(visible: boolean) => {
           visibleChanges.push(visible);
         }}
       />,
@@ -469,6 +473,50 @@ describe('EditorArea right-rail layout assert on terminal-column mount/unmount',
       fireEvent.pointerUp(window);
     });
     expect(visibleChanges).toHaveLength(0);
+  });
+});
+
+// Exactly ONE panel advertises itself with a persistent edge tab, and EditorArea
+// owns that one: the agents panel (an agent conversation is worth a one-click
+// return, and a chord is not discoverable). The terminal deliberately has none —
+// ⌘J and the View menu are its entry points. Its absence is asserted in
+// TerminalDock.dom.test.tsx, which renders the real dock; TerminalDock is mocked
+// here, so a terminal-tab assertion in this file could never fail.
+describe('EditorArea session-panel edge reveal tabs', () => {
+  const revealProps = {
+    editorMode: 'wysiwyg',
+    onModeChange: () => {},
+    activeTab: 'timeline',
+    onActiveTabChange: () => {},
+    terminalBridge: { terminal: {} } as never,
+    onAgentsVisibleChange: () => {},
+    onTerminalVisibleChange: () => {},
+    onRevealAgents: () => {},
+  } as const;
+
+  beforeEach(() => {
+    cleanup();
+    docCtx = EMPTY_DOC_CTX;
+  });
+
+  // Ungated on having conversations: a never-opened panel still advertises
+  // itself, since its cold entry (the New button) is a fine place to land.
+  // The reveal tab carries a Radix tooltip, so it needs the provider in scope.
+  const renderArea = (props: Record<string, unknown>) =>
+    render(
+      <TooltipProvider>
+        <EditorArea {...revealProps} {...props} />
+      </TooltipProvider>,
+    );
+
+  test('the agents tab is up while the panel is hidden, even with no conversations', () => {
+    renderArea({ agentsVisible: false });
+    expect(screen.getByRole('button', { name: 'Open agents panel' })).toBeTruthy();
+  });
+
+  test('the agents tab goes away once the panel is open', () => {
+    renderArea({ agentsVisible: true });
+    expect(screen.queryByRole('button', { name: 'Open agents panel' })).toBeNull();
   });
 });
 

@@ -637,7 +637,7 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
               // (the code-block-fidelity extension's `fenceLength` outlasts
               // any inner backtick run). `composeSelectionPrompt` then
               // decides inline vs locus against the encoded-URL budget; the
-              // dispatch routes through `TerminalSessionsHost` which pastes
+              // dispatch routes through `SessionsHost` which pastes
               // to a live PTY or launches a fresh Claude tab.
               const docName = getEditorDocName(editor);
               const pos = typeof getPos === 'function' ? getPos() : undefined;

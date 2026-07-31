@@ -100,6 +100,8 @@ export const MENU_LABELS = {
   forward: 'Forward',
   terminalShow: 'Show Terminal',
   terminalHide: 'Hide Terminal',
+  agentPanelShow: 'Show Agents',
+  agentPanelHide: 'Hide Agents',
   // Palette form for the install command, whose native-menu leaf renders a
   // different literal via the placement's `menuLabelText` ("…(desktop app)"
   // lowercase), so only this palette string participates in the shared-label

@@ -27,18 +27,13 @@ import { useConfigContext } from '@/lib/config-provider';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
-import {
-  getInitialTerminalDock,
-  type TerminalDockPosition,
-  writeTerminalDock,
-} from '@/lib/terminal-dock-store';
 import { recordTerminalOpened } from '@/lib/terminal-telemetry';
 import { setViewMenuState } from '@/lib/view-menu-state-store';
 import { AuthModal } from './AuthModal';
 import { AutoSyncOnboardingDialog } from './AutoSyncOnboardingDialog';
 import { resolveAutoSyncOnboarding } from './auto-sync-onboarding-gate';
 import { type PanelTab, TABS } from './DocPanel';
-import { EditorArea, type TerminalPlacement } from './EditorArea';
+import { EditorArea, type SessionPlacements } from './EditorArea';
 import { EditorHeader } from './EditorHeader';
 import { composeTerminalSelectionPaste } from './handoff/compose-terminal-selection';
 import { requestPreferredSession } from './handoff/preferred-session-events';
@@ -60,8 +55,8 @@ const AgentThreadClientBinder = lazy(() =>
     default: mod.AgentThreadClientBinder,
   })),
 );
-const TerminalSessionsHost = lazy(() =>
-  import('./TerminalSessionsHost').then((mod) => ({ default: mod.TerminalSessionsHost })),
+const SessionsHost = lazy(() =>
+  import('./SessionsHost').then((mod) => ({ default: mod.SessionsHost })),
 );
 
 /**
@@ -152,14 +147,14 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     desktopBridge.terminal != null &&
     desktopBridge.config.ptyAvailable === true;
   const [terminalVisible, setTerminalVisible] = useState(false);
+  // The agents panel is independent of the terminal — different edge, different
+  // kind, its own toggle (⌘L). Universal: agent threads are server-hosted, so it
+  // works on the web host and where pty does not.
+  const [agentsVisible, setAgentsVisible] = useState(false);
   // Which launchable CLIs are on PATH (desktop probe, cached ~60s in main).
   // Handed to the sessions host, which folds it into its launcher resolution.
   // Shared with the Ask-X bubble.
   const installedClis = useInstalledClis();
-  // Whether the dock currently holds any session (reported up by the host).
-  // Keeps the edge reveal tab available on a host with no terminal once threads
-  // are open, so a hidden dock is still reachable there.
-  const [hasSessions, setHasSessions] = useState(false);
   // Gates the View-menu visibility push (below) until the mount-time dock-state
   // restore has read main's retained per-window visibility. Without the gate the
   // reconnecting renderer's initial `false` push overwrites that retained value
@@ -180,31 +175,14 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   // twin of `terminalLaunch`. Both buses target the one host now.
   const [threadLaunch, setThreadLaunch] = useState<ThreadLaunchIntent | null>(null);
   const threadLaunchNonceRef = useRef(0);
-  // Where the terminal docks (right default | bottom), persisted per machine.
-  // Moving the terminal is also a request to see it, so the setter reveals the
-  // dock — re-docking a hidden terminal that stays hidden would feel inert.
-  const [terminalDock, setTerminalDockState] =
-    useState<TerminalDockPosition>(getInitialTerminalDock);
-  function setTerminalDock(next: TerminalDockPosition) {
-    setTerminalDockState(next);
-    writeTerminalDock(next);
-    setTerminalVisible(true);
-  }
-  // The tab strip's dock-toggle button flips between the bottom dock and the right
-  // column. Reading `terminalDock` from the render closure is correct for the click
-  // path: React commits each click in its own render, so the closure is always the
-  // freshly-committed position — a double-click flips back and forth as expected.
-  function toggleTerminalDock() {
-    setTerminalDock(terminalDock === 'right' ? 'bottom' : 'right');
-  }
-  // The live terminal session host is mounted HERE (below), above EditorArea, so a
-  // dock toggle — which remounts EditorArea's subtree — can't re-spawn the terminal
-  // (the VS Code / Zed pattern: own the terminal above the movable layout, re-attach
-  // the view). EditorArea reports where to attach via onTerminalPlacement.
-  const [terminalPlacement, setTerminalPlacement] = useState<TerminalPlacement>({
-    container: null,
-    isShowing: false,
-    dockPosition: 'bottom',
+  // The live session hosts are mounted HERE (below), above EditorArea, so a
+  // view-kind change — which remounts EditorArea's subtree — can't re-spawn a
+  // terminal (the VS Code / Zed pattern: own the terminal above the layout that
+  // changes, re-attach the view). EditorArea reports where each panel attaches
+  // via onSessionPlacements.
+  const [placements, setPlacements] = useState<SessionPlacements>({
+    terminal: { container: null, isShowing: false },
+    agents: { container: null, isShowing: false },
     editorRegion: null,
   });
   // Monotonic source for the launch nonce. It must survive the hide-clear of
@@ -213,27 +191,25 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   // the dock would then dedup away as a repeat.
   const launchNonceRef = useRef(0);
 
-  // "New chat" with the preferred AI: reveal the dock and let the host resolve
-  // and open it. The host's `launchSelectedNewTab` spans all three families
-  // (in-app agent / CLI / bare shell) and honors the Configure-agents toggles;
-  // resolving a CLI here instead could only ever produce a CLI, never the in-app
-  // agent a user may prefer.
+  // "New chat" with the preferred AI: let the hosts resolve, open, and reveal.
+  // Their resolution spans all three families (in-app agent / CLI / bare shell)
+  // and honors the Configure-agents toggles; resolving a CLI here instead could
+  // only ever produce a CLI, never the in-app agent a user may prefer — and this
+  // pane cannot know which panel should end up on screen.
   function launchNewChat() {
-    setTerminalVisible(true);
     requestPreferredSession();
   }
 
-  // Reveal the sessions dock; the host seeds it when it opens empty. Drives the
-  // edge "Show sessions" reveal tab and the View → Show Terminal item; leaves the
-  // right doc-panel untouched (the two coexist).
+  // Reveal the agents panel; the host seeds it when it opens empty. Drives the
+  // right edge reveal tab and ⌘L; leaves the other panels untouched (all coexist).
   //
   // Seeding is deliberately NOT done here. The host's `seedOnReveal` resolves the
   // whole preferred-AI space (in-app agent / CLI / bare shell, enablement-aware);
   // this pane can only see the CLI slice. Launching from here would set a launch
   // intent that PREEMPTS that seed, forcing a CLI on a user whose preferred AI is
   // an in-app agent.
-  function revealTerminal() {
-    setTerminalVisible(true);
+  function revealAgents() {
+    setAgentsVisible(true);
   }
 
   const syncStatus = useGitSyncStatus();
@@ -278,23 +254,26 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   // instance needed, so it works even from the OS-captured ⌘J menu accelerator)
   // and composes the same grounded prompt the Ask-AI selection button sends.
   //
-  // Where it lands is the HOST's call, not this pane's: it owns both the live
-  // session state and the preferred-AI resolution, so ⌘J reuses a running CLI or
-  // an open agent thread, and otherwise launches whichever AI the user prefers.
-  // Resolving here instead would limit ⌘J to the CLI slice this pane can see,
-  // ignoring a preferred in-app agent.
+  // Which panel it lands in is the HOSTS' call, not this pane's: they own the
+  // live session state and both resolve the same preferred AI, so the passage
+  // reuses a running CLI in the bottom dock or an open thread in the agents
+  // panel, and the winner reveals itself. Resolving here instead would limit ⌘J
+  // to the CLI slice this pane can see, ignoring a preferred in-app agent — and
+  // this pane cannot know which panel is the right one anyway.
+  //
+  // Deliberately NOT gated on a terminal being available: the agents panel is
+  // universal, so a selection send works on the web host too.
   //
   // Returns true when a selection was staged (caller skips the toggle / new-tab
-  // fallback). No-ops on the web host (no terminal).
+  // fallback).
   function sendSelectionToTerminal(newTab: boolean): boolean {
-    if (!terminalAvailable || activeDocName == null) return false;
+    if (activeDocName == null) return false;
     const snapshot = getSelectionContext(activeDocName, editorMode);
     const selectionMarkdown = snapshot?.markdown ?? '';
     if (selectionMarkdown.trim() === '') return false;
     // Trailing soft newlines (\n, not \r — no submit) drop the CLI input caret
     // onto a blank line below the staged passage.
     const staged = `${composeTerminalSelectionPaste(activeDocName, selectionMarkdown)}\n\n`;
-    setTerminalVisible(true);
     // Raw selected material, not an instruction — written and left for the user
     // to extend and send, on a CLI and on an agent thread alike.
     requestActiveTerminalInput(staged, { newTab, submit: false });
@@ -320,6 +299,8 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         // the toggle). The dock adds the new tab itself off the same action; this
         // only owns visibility and covers the case where no dock is mounted yet.
         setTerminalVisible(true);
+      } else if (action === 'toggle-agent-panel') {
+        setAgentsVisible((visible) => !visible);
       }
     });
   }, []);
@@ -329,24 +310,48 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     function handleKeyDown(event: KeyboardEvent) {
       if (!matchesKeyboardShortcut(event, 'toggle-terminal-panel')) return;
       if (isOverlayLayerOpen()) return;
+      // Claim the chord only when we will actually act on it. A selection send is
+      // the whole of ⌘J on a shell-less host; with no selection AND no shell there
+      // is nothing to toggle, so let the browser keep its own ⌘J rather than
+      // swallowing it for a no-op.
+      if (sendSelectionToTerminalEvent(false)) {
+        event.preventDefault();
+        return;
+      }
+      if (!terminalAvailable) return;
       event.preventDefault();
-      if (sendSelectionToTerminalEvent(false)) return;
       setTerminalVisible((visible) => !visible);
     }
     // Capture phase so a focused xterm textarea can't swallow ⌘J first.
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
+  }, [terminalAvailable]);
+
+  // ⌘L / Ctrl+L toggles the agents panel. Same dual wiring as ⌘J — on desktop the
+  // View menu item's accelerator is OS-captured and dispatches `toggle-agent-panel`
+  // (handled above), so this window keydown is the web host's stand-in. Unlike ⌘J
+  // it has no selection-send behavior: a selection goes to whichever panel the
+  // user's preferred AI lives in, which the hosts arbitrate off ⌘J.
+  useEffect(() => {
+    if (window.okDesktop != null) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (!matchesKeyboardShortcut(event, 'toggle-agent-panel')) return;
+      if (isOverlayLayerOpen()) return;
+      event.preventDefault();
+      setAgentsVisible((visible) => !visible);
+    }
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, []);
 
   // ⇧⌘J / Ctrl+Shift+J: open a fresh session with the preferred AI. With a
   // selection, that selection is staged into the new session (always fresh, never
-  // reusing the active tab); otherwise the host opens a promptless one. Both paths
+  // reusing the active tab); otherwise the hosts open a promptless one. Both paths
   // resolve to whichever AI the user prefers (in-app agent / CLI / bare shell),
-  // not a hardcoded CLI. Renderer-owned on both hosts (no menu item claims ⇧⌘J),
-  // capture-phase so a focused xterm can't swallow it. No-ops on the web host (no
-  // terminal surface).
+  // not a hardcoded CLI, and the panel that owns the resolved kind reveals itself.
+  // Renderer-owned on both hosts (no menu item claims ⇧⌘J), capture-phase so a
+  // focused xterm can't swallow it. Universal — the agents panel can always answer.
   useEffect(() => {
-    if (!terminalAvailable) return;
     function handleKeyDown(event: KeyboardEvent) {
       if (!matchesKeyboardShortcut(event, 'new-terminal-tab')) return;
       if (isOverlayLayerOpen()) return;
@@ -355,7 +360,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     }
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, [terminalAvailable]);
+  }, []);
 
   // CLI launch — "Open in terminal" from a handoff menu, or the sessions host
   // resolving an Ask AI / selection send to a CLI. Open the dock (the terminal is
@@ -383,13 +388,13 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   }, []);
 
   // "Start an agent" launch — a handoff-menu click fires a window event naming a
-  // catalog agent + the composed prompt. Reveal the dock AND carry the intent to
-  // the host as a fresh one-shot (the host resolves the agent / opens the catalog
-  // and creates the thread). Universal — agent threads are server-hosted, so
-  // unlike the terminal bus this one has no desktop gate.
+  // catalog agent + the composed prompt. Reveal the AGENTS panel AND carry the
+  // intent to its host as a fresh one-shot (the host resolves the agent / opens
+  // the catalog and creates the thread). Universal — agent threads are
+  // server-hosted, so unlike the terminal bus this one has no desktop gate.
   useEffect(() => {
     return subscribeToAgentThreadLaunchRequests((detail: AgentThreadLaunchDetail) => {
-      setTerminalVisible(true);
+      setAgentsVisible(true);
       threadLaunchNonceRef.current += 1;
       setThreadLaunch({
         agentSource: detail.agentSource,
@@ -433,14 +438,24 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     window.okDesktop.editor.notifyViewMenuStateChanged({ terminalVisible });
   }, [terminalVisible, dockRestoreSettled]);
 
-  // Restore the dock's expanded state after a renderer reload: main retains the
-  // per-window visibility (written by the gated push above once this settles),
-  // so a reloaded window re-expands the dock when it was open before the reload.
-  // Reads false after a fresh launch (main has no retained state), so the dock
-  // stays hidden. Run-once; only ever expands (never force-hides), so a user
+  // The agents panel's twin of the push above, behind the same restore gate for
+  // the same reason: its retained per-window visibility is what a reloaded window
+  // re-expands from, and a mount-initial `false` would overwrite it first.
+  useEffect(() => {
+    if (window.okDesktop == null) return;
+    if (!dockRestoreSettled) return;
+    setViewMenuState({ agentPanelVisible: agentsVisible });
+    window.okDesktop.editor.notifyViewMenuStateChanged({ agentPanelVisible: agentsVisible });
+  }, [agentsVisible, dockRestoreSettled]);
+
+  // Restore both panels' expanded state after a renderer reload: main retains the
+  // per-window visibility of each (written by the gated pushes above once this
+  // settles), so a reloaded window re-expands whichever were open before the
+  // reload. Reads false after a fresh launch (main has no retained state), so
+  // both stay hidden. Run-once; only ever expands (never force-hides), so a user
   // toggle that races the restore is never overridden closed. Settling the gate
-  // (always, even on a read failure) releases the deferred push so the View menu
-  // converges. Desktop-only.
+  // (always, even on a read failure) releases the deferred pushes so the View
+  // menu converges. Desktop-only.
   useEffect(() => {
     const bridge = window.okDesktop;
     if (bridge == null) return;
@@ -458,7 +473,9 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     void bridge.terminal
       .getDockState()
       .then((state) => {
-        if (cancelled || !state.visible) return;
+        if (cancelled) return;
+        if (state.agentPanelVisible) setAgentsVisible(true);
+        if (!state.terminalVisible) return;
         // The restore — not the user — is driving this reveal; mark it so the
         // adoption telemetry below skips it.
         restoreRevealRef.current = true;
@@ -467,7 +484,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
       .catch((err) => {
         // Leave a breadcrumb instead of swallowing: a restore failure is
         // otherwise indistinguishable from "main had no retained state", and the
-        // dock silently stays hidden. Mirrors the list() catch in TerminalDock.
+        // panels silently stay hidden. Mirrors the list() catch in TerminalDock.
         console.error('[terminal] dock-state restore failed; staying hidden:', err);
       })
       .finally(() => {
@@ -619,13 +636,11 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         }}
         onOpenSearch={onOpenSearch}
       />
-      {/* The editor takes the row's full width. The unified sessions dock
-          (terminals + agent threads) docks WITHIN EditorArea — bottom, or its own
+      {/* The editor takes the row's full width. Both session panels live WITHIN
+          EditorArea — the terminal beneath the editor, the agents panel as its own
           right column past the doc panels; EditorArea owns that layout. The live
-          session host is mounted below (above EditorArea) so a dock move never
-          remounts it. `terminalAvailable` folds in `ptyAvailable`, so on
-          Windows/Linux (no bundled node-pty) the bridge passes as null and the
-          dock behaves web-like — thread tabs only, no terminal-kind affordances. */}
+          hosts are mounted below (above EditorArea) so a view-kind change never
+          remounts them. */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-w-0 flex-1 flex-col">
           <EditorArea
@@ -636,33 +651,48 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
             terminalBridge={terminalAvailable ? desktopBridge : null}
             terminalVisible={terminalVisible}
             onTerminalVisibleChange={setTerminalVisible}
-            terminalDock={terminalDock}
-            terminalHasSessions={hasSessions}
-            onTerminalPlacement={setTerminalPlacement}
-            onRevealTerminal={revealTerminal}
+            agentsVisible={agentsVisible}
+            onAgentsVisibleChange={setAgentsVisible}
+            onSessionPlacements={setPlacements}
+            onRevealAgents={revealAgents}
           />
         </div>
       </div>
-      {/* The sessions dock host mounts UNCONDITIONALLY — a shell and an agent are
-          just tabs of a different kind, and agents are server-hosted, so the dock
-          is host-agnostic (web = thread tabs only, as is win/linux where pty is
-          unavailable). Terminal-kind affordances gate on the bridge inside the host. */}
+      {/* The agents host mounts UNCONDITIONALLY — agent threads are server-hosted,
+          so the panel works on the web host and on Windows/Linux where pty is
+          unavailable. The terminal host mounts only where a shell can actually
+          spawn (`terminalAvailable` folds in `ptyAvailable`); an empty terminal
+          dock on those hosts would be a control that can never do anything. */}
       <Suspense fallback={null}>
-        <TerminalSessionsHost
-          bridge={terminalAvailable ? desktopBridge : null}
-          visible={terminalVisible}
-          onVisibleChange={setTerminalVisible}
-          launch={terminalLaunch}
+        <SessionsHost
+          surface="agents-panel"
+          bridge={desktopBridge}
+          terminalCapable={terminalAvailable}
+          visible={agentsVisible}
+          onVisibleChange={setAgentsVisible}
           threadLaunch={threadLaunch}
           installedClis={installedClis}
-          container={terminalPlacement.container}
-          isShowing={terminalPlacement.isShowing}
-          onRequestEditorFocus={() => terminalPlacement.editorRegion?.focus()}
-          dockPosition={terminalDock}
-          onToggleDock={toggleTerminalDock}
-          onHasSessionsChange={setHasSessions}
+          container={placements.agents.container}
+          isShowing={placements.agents.isShowing}
+          onRequestEditorFocus={() => placements.editorRegion?.focus()}
         />
       </Suspense>
+      {terminalAvailable ? (
+        <Suspense fallback={null}>
+          <SessionsHost
+            surface="terminal-dock"
+            bridge={desktopBridge}
+            terminalCapable
+            visible={terminalVisible}
+            onVisibleChange={setTerminalVisible}
+            launch={terminalLaunch}
+            installedClis={installedClis}
+            container={placements.terminal.container}
+            isShowing={placements.terminal.isShowing}
+            onRequestEditorFocus={() => placements.editorRegion?.focus()}
+          />
+        </Suspense>
+      ) : null}
       <AuthModal
         open={authModalOpen}
         onOpenChange={setAuthModalOpen}

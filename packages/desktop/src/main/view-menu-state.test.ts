@@ -113,6 +113,32 @@ describe('mergeViewMenuState — multi-publisher non-clobbering contract', () =>
     expect(afterToggleHide.terminalLive).toBe(true);
     expect(afterToggleHide.terminalVisible).toBe(false);
   });
+
+  test('agents-panel push composes with every terminal publisher without clobbering', () => {
+    // The agents panel is the fourth runtime publisher. It shares EditorPane's
+    // visibility edge but is a wholly independent panel, so its push must leave
+    // terminalVisible / terminalLive alone — and a later terminal push must
+    // leave agentPanelVisible alone. Both panels open at once is the normal case.
+    const afterEditorPane = mergeViewMenuState(initial, { terminalVisible: true });
+    const afterTerminalDock = mergeViewMenuState(afterEditorPane, { terminalLive: true });
+    const afterAgentsPanel = mergeViewMenuState(afterTerminalDock, { agentPanelVisible: true });
+
+    expect(afterAgentsPanel.agentPanelVisible).toBe(true);
+    expect(afterAgentsPanel.terminalVisible).toBe(true);
+    expect(afterAgentsPanel.terminalLive).toBe(true);
+    expect(afterAgentsPanel.sidebarVisible).toBe(true);
+
+    // Hiding the terminal leaves the agents panel open.
+    const afterHideTerminal = mergeViewMenuState(afterAgentsPanel, { terminalVisible: false });
+    expect(afterHideTerminal.agentPanelVisible).toBe(true);
+    expect(afterHideTerminal.terminalVisible).toBe(false);
+
+    // …and hiding the agents panel leaves the terminal's own state alone.
+    const afterHideAgents = mergeViewMenuState(afterAgentsPanel, { agentPanelVisible: false });
+    expect(afterHideAgents.agentPanelVisible).toBe(false);
+    expect(afterHideAgents.terminalVisible).toBe(true);
+    expect(afterHideAgents.terminalLive).toBe(true);
+  });
 });
 
 describe('createDefaultEditorViewMenuState — pre-first-push menu state', () => {
@@ -130,6 +156,7 @@ describe('createDefaultEditorViewMenuState — pre-first-push menu state', () =>
       docPanelVisible: true,
       terminalVisible: false,
       terminalLive: false,
+      agentPanelVisible: false,
       // Restrictive by design: this one gates a context-menu row, and a row
       // offered before the renderer says the jump is live would do nothing.
       canViewInSource: false,
@@ -151,6 +178,7 @@ describe('buildViewMenuStateDeps — snapshot → menu-deps wiring', () => {
     docPanelVisible: false,
     terminalVisible: true,
     terminalLive: true,
+    agentPanelVisible: true,
   } as const;
 
   test('maps every snapshot field onto its menu dep', () => {
@@ -165,6 +193,7 @@ describe('buildViewMenuStateDeps — snapshot → menu-deps wiring', () => {
     expect(deps.docPanelVisible).toBe(false);
     expect(deps.terminalVisible).toBe(true);
     expect(deps.terminalLive).toBe(true);
+    expect(deps.agentPanelVisible).toBe(true);
   });
 
   test('each toggle / tree / terminal handler dispatches its menu-action ID', () => {
@@ -180,6 +209,7 @@ describe('buildViewMenuStateDeps — snapshot → menu-deps wiring', () => {
     deps.onToggleSidebar?.();
     deps.onToggleDocPanel?.();
     deps.onToggleTerminal?.();
+    deps.onToggleAgentPanel?.();
     deps.onNewTerminal?.();
     deps.onKillTerminal?.();
     deps.onExpandAll?.();
@@ -193,6 +223,7 @@ describe('buildViewMenuStateDeps — snapshot → menu-deps wiring', () => {
       'toggle-sidebar',
       'toggle-doc-panel',
       'toggle-terminal',
+      'toggle-agent-panel',
       'new-terminal',
       'kill-terminal',
       'expand-all-tree',

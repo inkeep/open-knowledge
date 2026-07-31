@@ -4,10 +4,10 @@
  *   1. Create your first project — always pre-checked (endowed progress; the
  *      user is already inside their first project when the card shows).
  *   2. Create your first file — shows the ⌘N shortcut.
- *   3. Ask AI — shows the ⌘L shortcut.
+ *   3. Ask AI — shows the ⇧⌘L shortcut.
  *
  * The card is informational: steps check off as the user performs the actions
- * (⌘N, ⌘L) in the editor; the rows themselves are not interactive. The
+ * (⌘N, ⇧⌘L) in the editor; the rows themselves are not interactive. The
  * completion checkbox is a decorative, full-opacity status indicator
  * (aria-hidden); completion is conveyed to assistive tech via the strikethrough
  * label plus an sr-only marker.

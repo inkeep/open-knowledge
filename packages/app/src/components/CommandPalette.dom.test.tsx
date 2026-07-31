@@ -991,6 +991,11 @@ describe('Cmd+K menu-parity backfill', () => {
     { testid: 'command-palette-toggle-doc-panel', query: 'document panel', id: 'toggle-doc-panel' },
     { testid: 'command-palette-toggle-terminal', query: 'hide terminal', id: 'toggle-terminal' },
     {
+      testid: 'command-palette-toggle-agent-panel',
+      query: 'agents',
+      id: 'toggle-agent-panel',
+    },
+    {
       testid: 'command-palette-toggle-show-hidden-files',
       query: 'hidden files',
       id: 'toggle-show-hidden-files',

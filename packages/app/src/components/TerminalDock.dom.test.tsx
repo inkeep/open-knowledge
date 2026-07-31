@@ -26,9 +26,9 @@ import {
   __resetLocalMenuActionBusForTests,
   emitLocalMenuAction,
 } from '@/lib/local-menu-action-bus';
-import type { TerminalDockPosition } from '@/lib/terminal-dock-store';
 import { writePreferBareTerminal } from '@/lib/terminal-new-tab-store';
 import { saveStickyAgent, terminalCliId } from '@/lib/unified-agent-store';
+import { requestPreferredSession } from './handoff/preferred-session-events';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
 import { subscribeToTerminalLaunchRequests } from './handoff/terminal-launch-events';
 
@@ -170,7 +170,7 @@ vi.doMock('@/lib/terminal-height-store', () => ({
 }));
 
 const { TerminalDock, MAX_STRANDED_REPORTS } = await import('./TerminalDock');
-const { TerminalSessionsHost } = await import('./TerminalSessionsHost');
+const { SessionsHost } = await import('./SessionsHost');
 // After the vi.doMock block (a static import would load the real xterm).
 const { STAGE_PASTE_SETTLE_MS } = await import('./TerminalPanel');
 
@@ -202,7 +202,7 @@ function makeBridge() {
     kill,
     input,
     viewMenuPushes,
-    // TerminalSessionsHost now listens on the renderer-local menu-action bus
+    // SessionsHost now listens on the renderer-local menu-action bus
     // (a real menu click reaches it via main → the bus forwarder), so the test
     // drives it with emitLocalMenuAction.
     dispatchMenuAction(action: OkMenuAction) {
@@ -213,11 +213,10 @@ function makeBridge() {
 
 // Mini-harness mirroring how EditorArea wires the two pieces: the TerminalDock
 // shell exposes the bottom mount + editor-region elements, and the once-mounted
-// TerminalSessionsHost portals the live sessions into that container. `isShowing`
-// is gated on the container so focus never targets a detached host (the same
-// invariant EditorArea enforces). Session behavior is bottom-dock only —
-// right-dock placement is covered by EditorArea + the live-Electron smoke; the
-// `dock` knob here exercises only the shell's handle gating across positions.
+// SessionsHost portals the live sessions into that container. `isShowing` is
+// gated on the container so focus never targets a detached host (the same
+// invariant EditorArea enforces). This is the TERMINAL surface's suite; the
+// agents panel has its own (SessionsHost.agents.dom.test.tsx).
 // Structural mirror of TerminalLaunchIntent (EditorPane) so tests can express
 // promptless / staged launches without casts.
 type TestLaunch = {
@@ -232,8 +231,6 @@ function DockHarness({
   l,
   onVisibleChange,
   bridge,
-  onReveal,
-  dock = 'bottom',
   // biome-ignore lint/suspicious/noExplicitAny: test harness props
 }: any) {
   const [bottomContainer, setBottomContainer] = useState<HTMLDivElement | null>(null);
@@ -243,43 +240,31 @@ function DockHarness({
       <TerminalDock
         visible={v}
         onVisibleChange={onVisibleChange}
-        dockPosition={dock}
         onBottomContainer={setBottomContainer}
         onEditorRegion={setEditorRegionEl}
-        onReveal={onReveal}
-        // Mirrors EditorArea's predicate (a terminal surface shows the reveal tab
-        // whenever hidden). The dock's terminal bridge is always present here.
-        showRevealTab={!v && onReveal != null}
       >
         <div data-testid="editor-child" />
       </TerminalDock>
-      <TerminalSessionsHost
+      <SessionsHost
+        surface="terminal-dock"
         bridge={bridge}
+        terminalCapable
         visible={v}
         onVisibleChange={onVisibleChange}
         launch={l ?? null}
         container={bottomContainer}
         isShowing={v && bottomContainer != null}
         onRequestEditorFocus={() => editorRegionEl?.focus()}
-        dockPosition={dock}
-        onToggleDock={() => {}}
       />
     </TooltipProvider>
   );
 }
 
-function renderDock(visible: boolean, launch?: TestLaunch | null, onReveal?: () => void) {
+function renderDock(visible: boolean, launch?: TestLaunch | null) {
   const onVisibleChange = vi.fn((_v: boolean) => {});
   const { bridge, create, kill, input, viewMenuPushes, dispatchMenuAction } = makeBridge();
-  const ui = (v: boolean, l?: TestLaunch | null, dock?: TerminalDockPosition) => (
-    <DockHarness
-      v={v}
-      l={l ?? null}
-      onVisibleChange={onVisibleChange}
-      bridge={bridge}
-      onReveal={onReveal}
-      dock={dock ?? 'bottom'}
-    />
+  const ui = (v: boolean, l?: TestLaunch | null) => (
+    <DockHarness v={v} l={l ?? null} onVisibleChange={onVisibleChange} bridge={bridge} />
   );
   const utils = render(ui(visible, launch));
   return {
@@ -290,8 +275,7 @@ function renderDock(visible: boolean, launch?: TestLaunch | null, onReveal?: () 
     input,
     viewMenuPushes,
     dispatchMenuAction,
-    rerender: (v: boolean, l?: TestLaunch | null, dock?: TerminalDockPosition) =>
-      utils.rerender(ui(v, l, dock)),
+    rerender: (v: boolean, l?: TestLaunch | null) => utils.rerender(ui(v, l)),
   };
 }
 
@@ -324,12 +308,9 @@ function editorRegion(): HTMLElement {
   return region;
 }
 
-// Adds a plain-shell tab via the New-chat split button's "Terminal" option — the
-// path that replaced the standalone "New terminal tab" button. Opens a bare shell
-// (no CLI launch), the same session the old button created.
+// Adds a plain-shell tab via the terminal panel's New button.
 async function addTerminalTab(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: 'Choose what a new session starts' }));
-  await user.click(await screen.findByRole('menuitem', { name: 'Terminal' }));
+  await user.click(screen.getByRole('button', { name: 'New terminal' }));
 }
 
 describe('TerminalDock multi-session', () => {
@@ -348,13 +329,11 @@ describe('TerminalDock multi-session', () => {
     __resetLocalMenuActionBusForTests();
   });
 
-  test('tab strip exposes the dock-toggle + collapse buttons and no drag grip', () => {
+  test('tab strip exposes the collapse button, and no way to move the dock', () => {
     renderDock(true);
-    // The dock-toggle button is the dock-move affordance now (dragging removed).
-    // The harness is bottom-docked, so the toggle offers "move to the right".
-    expect(screen.getByRole('button', { name: 'Dock sessions on the right' })).not.toBeNull();
-    expect(screen.getByRole('button', { name: 'Collapse session dock' })).not.toBeNull();
-    // The old drag grip is gone.
+    expect(screen.getByRole('button', { name: 'Collapse panel' })).not.toBeNull();
+    // The terminal owns the bottom edge outright: no dock-toggle, no drag grip.
+    expect(screen.queryByRole('button', { name: /Dock sessions/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Drag to dock the terminal' })).toBeNull();
   });
 
@@ -388,6 +367,53 @@ describe('TerminalDock multi-session', () => {
     act(() => view.rerender(true));
 
     expect(screen.getByTestId('terminal-session').getAttribute('data-cli')).toBe('cursor');
+  });
+
+  test('opening an empty dock launches a bare shell when Terminal is the pick', () => {
+    writePreferBareTerminal(true);
+    const view = renderDock(false);
+
+    act(() => view.rerender(true));
+
+    expect(screen.getByTestId('terminal-session').getAttribute('data-cli')).toBe('none');
+  });
+
+  // A CLI is opt-in here. `resolveLauncherSelection` would hand back the first
+  // enabled CLI with nothing picked (the right default for a composer), so the
+  // dock gates on an explicit pick — otherwise a user who never chose a TUI gets
+  // dropped into one. No sticky is set: `localStorage` is cleared per test.
+  test('opening an empty dock with NO pick launches a bare shell, not the first enabled CLI', () => {
+    const view = renderDock(false);
+
+    act(() => view.rerender(true));
+
+    expect(screen.getByTestId('terminal-session').getAttribute('data-cli')).toBe('none');
+  });
+
+  test('a preferred-session shortcut launches the preferred CLI', () => {
+    writePreferBareTerminal(false);
+    saveStickyAgent(terminalCliId('cursor'));
+    renderDock(true);
+
+    act(() => requestPreferredSession());
+
+    const sessions = screen.getAllByTestId('terminal-session');
+    expect(sessions).toHaveLength(2);
+    expect(sessions[1].getAttribute('data-cli')).toBe('cursor');
+  });
+
+  // The bare-shell pick is the case that forces ⇧⌘J to resolve on its own inputs
+  // rather than reusing the Ask-AI resolution, which discards it: a passage needs
+  // an AI, but a promptless new session may legitimately be a plain shell.
+  test('a preferred-session shortcut honors a bare-shell pick', () => {
+    writePreferBareTerminal(true);
+    renderDock(true);
+
+    act(() => requestPreferredSession());
+
+    const sessions = screen.getAllByTestId('terminal-session');
+    expect(sessions).toHaveLength(2);
+    expect(sessions[1].getAttribute('data-cli')).toBe('none');
   });
 
   test('the new-terminal control adds a session, activates it, and spawns its PTY', async () => {
@@ -1147,7 +1173,7 @@ describe('TerminalDock multi-session', () => {
     renderDock(true);
     await addTerminalTab(user);
 
-    const tablist = screen.getByRole('tablist', { name: 'Sessions' });
+    const tablist = screen.getByRole('tablist', { name: 'Terminal sessions' });
     const tabs = within(tablist).getAllByRole('tab');
     expect(tabs).toHaveLength(2);
     // Each tab's aria-controls resolves to a rendered panel (no dangling ref).
@@ -1181,39 +1207,22 @@ describe('TerminalDock multi-session', () => {
     expect(document.activeElement).toBe(session);
   });
 
-  test('shows the bottom-edge "Open session dock" tab only while hidden, inside the editor column', () => {
-    const onReveal = vi.fn(() => {});
-    const view = renderDock(false, null, onReveal);
+  // The terminal deliberately has NO edge affordance: it is a ⌘J surface, and a
+  // permanent tab over the editor footer's bottom-right competed with the Ask AI
+  // composer for that corner. The agents panel is the one panel that keeps a tab
+  // (asserted in EditorArea's suite, which owns that placement).
+  test('renders no edge reveal tab, hidden or visible', () => {
+    const view = renderDock(false);
+    expect(screen.queryByRole('button', { name: 'Open terminal' })).toBeNull();
+    expect(editorRegion().querySelector('[data-terminal-reveal]')).toBeNull();
 
-    // Hidden → the reveal tab is present, and lives inside the editor region (not
-    // the doc panel), since a bottom-docked terminal slides up from there.
-    const reveal = screen.getByRole('button', { name: 'Open session dock' });
-    expect(editorRegion().contains(reveal)).toBe(true);
-
-    // Visible → the reveal tab is gone (the tab strip's collapse control is the
-    // hide affordance while open).
     act(() => view.rerender(true));
-    expect(screen.queryByRole('button', { name: 'Open session dock' })).toBeNull();
-  });
-
-  test('clicking the reveal tab requests a reveal', async () => {
-    const user = userEvent.setup();
-    const onReveal = vi.fn(() => {});
-    renderDock(false, null, onReveal);
-
-    await user.click(screen.getByRole('button', { name: 'Open session dock' }));
-
-    expect(onReveal).toHaveBeenCalledTimes(1);
-  });
-
-  test('renders no reveal tab when no reveal handler is wired (web host)', () => {
-    renderDock(false);
-    expect(screen.queryByRole('button', { name: 'Open session dock' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open terminal' })).toBeNull();
   });
 
   test('disables the resize handle while hidden so there is no drag-to-open', () => {
     const view = renderDock(false);
-    // Hidden: dragging up to open is gone (the reveal tab is the single way in).
+    // Hidden: dragging up to open is gone (⌘J is the way back in).
     expect(screen.getByTestId('terminal-resize-handle').getAttribute('data-disabled')).toBe('true');
 
     // Open: the handle is live again — resize + drag-all-the-way-down-to-collapse.
@@ -1222,98 +1231,10 @@ describe('TerminalDock multi-session', () => {
       'false',
     );
   });
-
-  test('hides the grabber while right-docked and restores it on return to bottom', () => {
-    // Right-docked, terminal visible: `visible` stays true but the bottom panel is
-    // collapsed and empty — the handle must not render its grabber nor accept a
-    // drag (which would pull up an empty panel).
-    const view = renderDock(true);
-    act(() => view.rerender(true, null, 'right'));
-    const handle = () => screen.getByTestId('terminal-resize-handle');
-    expect(handle().getAttribute('data-disabled')).toBe('true');
-    expect(handle().getAttribute('data-with-handle')).toBe('false');
-
-    // Dock back to bottom: the grabber returns and the handle drags again.
-    act(() => view.rerender(true, null, 'bottom'));
-    expect(handle().getAttribute('data-disabled')).toBe('false');
-    expect(handle().getAttribute('data-with-handle')).toBe('true');
-  });
-});
-
-// Regression: the focus-return effect must distinguish a genuine hide (⌘J /
-// collapse / close-last → `visible` false) from a dock move, where `visible` stays
-// true but `isShowing` transiently dips to false for one commit while the
-// destination container's callback ref attaches. The dock-toggle button lives
-// inside the portaled host, so a move starts with focus inside the host — without
-// the `visible` guard, the transient dip would yank focus to the editor mid-move.
-describe('TerminalSessionsHost focus-return gating across a dock move', () => {
-  afterEach(() => cleanup());
-
-  function FocusHarness({
-    bridge,
-    isShowing,
-    visible,
-    onEditorFocus,
-  }: {
-    // biome-ignore lint/suspicious/noExplicitAny: test harness bridge stub
-    bridge: any;
-    isShowing: boolean;
-    visible: boolean;
-    onEditorFocus: () => void;
-  }) {
-    const [container, setContainer] = useState<HTMLDivElement | null>(null);
-    return (
-      <TooltipProvider>
-        <div ref={setContainer} data-testid="term-host-container" />
-        <TerminalSessionsHost
-          bridge={bridge}
-          visible={visible}
-          onVisibleChange={() => {}}
-          launch={null}
-          container={container}
-          isShowing={isShowing}
-          onRequestEditorFocus={onEditorFocus}
-          dockPosition="right"
-          onToggleDock={() => {}}
-        />
-      </TooltipProvider>
-    );
-  }
-
-  test('a dock move keeps focus (visible stays true); a genuine hide returns focus to the editor', () => {
-    const onEditorFocus = vi.fn(() => {});
-    const { bridge } = makeBridge();
-    const ui = (isShowing: boolean, visible: boolean) => (
-      <FocusHarness
-        bridge={bridge}
-        isShowing={isShowing}
-        visible={visible}
-        onEditorFocus={onEditorFocus}
-      />
-    );
-    const { rerender } = render(ui(true, true));
-
-    // One session is seeded (visible at mount); put focus inside the portaled host.
-    const sink = document.querySelector<HTMLElement>(
-      '[data-terminal-session] .xterm-helper-textarea',
-    );
-    act(() => sink?.focus());
-    expect(onEditorFocus).not.toHaveBeenCalled();
-
-    // Dock-move transient: isShowing dips to false while visible stays true. Focus
-    // must NOT be yanked to the editor.
-    act(() => rerender(ui(false, true)));
-    expect(onEditorFocus).not.toHaveBeenCalled();
-
-    // Genuine hide: visible flips false → focus returns to the editor.
-    act(() => rerender(ui(false, false)));
-    expect(onEditorFocus).toHaveBeenCalled();
-  });
 });
 
 // The behavior-preservation contract for the terminal session model
-// (TerminalSessionsHost, shared by the dock and the standalone terminal
-// window): these five behaviors (close-last collapse, seed-on-reveal,
+// (SessionsHost, shared by the dock and the standalone terminal window): these five behaviors (close-last collapse, seed-on-reveal,
 // single-tab-per-launch-nonce, Cmd+number tab switch, close-active-neighbor
 // focus) are the ones most easily broken when the dock's container wiring and
 // the shared session core drift out of lockstep. Kept as a discrete, minimal
@@ -1484,7 +1405,6 @@ describe('TerminalDock hidden-dock invariant', () => {
         event: 'ok-terminal-dock-stranded-while-hidden',
         panelPx: 588,
         panelPct: 42.5,
-        dockPosition: 'bottom',
         visible: false,
       });
       // Viewport geometry is the half that distinguishes a height clamped for the

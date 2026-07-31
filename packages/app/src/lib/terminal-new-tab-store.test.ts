@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   readPreferBareTerminal,
+  subscribePreferBareTerminal,
   TERMINAL_NEW_TAB_BARE_KEY,
   writePreferBareTerminal,
 } from './terminal-new-tab-store';
@@ -42,5 +43,39 @@ describe('terminal-new-tab-store', () => {
     const s = fakeStorage();
     s.setItem(TERMINAL_NEW_TAB_BARE_KEY, 'yes');
     expect(readPreferBareTerminal(s)).toBe(false);
+  });
+});
+
+// The two session hosts partition Ask-AI / ⇧⌘J work by comparing the kind each
+// one resolves, which only holds while they read the same inputs. Before this
+// store published, each host held a mount-time snapshot: one New-dropdown pick
+// diverged them, both claimed, and ⇧⌘J opened two sessions. Subscribers standing
+// in for the two hosts here.
+describe('cross-surface publication', () => {
+  test('a write notifies every subscriber, and each re-reads the new value', () => {
+    // One shared backing store, two readers — exactly the two hosts' situation.
+    const shared = fakeStorage();
+    const seenA: boolean[] = [];
+    const seenB: boolean[] = [];
+    const stopA = subscribePreferBareTerminal(() => seenA.push(readPreferBareTerminal(shared)));
+    const stopB = subscribePreferBareTerminal(() => seenB.push(readPreferBareTerminal(shared)));
+
+    writePreferBareTerminal(true, shared);
+    writePreferBareTerminal(false, shared);
+
+    stopA();
+    stopB();
+    expect(seenA).toEqual([true, false]);
+    // Both surfaces observe the SAME sequence — the invariant the partition needs.
+    expect(seenB).toEqual(seenA);
+  });
+
+  test('an unsubscribed surface stops being notified', () => {
+    const shared = fakeStorage();
+    const seen: boolean[] = [];
+    const stop = subscribePreferBareTerminal(() => seen.push(readPreferBareTerminal(shared)));
+    stop();
+    writePreferBareTerminal(true, shared);
+    expect(seen).toEqual([]);
   });
 });

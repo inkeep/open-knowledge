@@ -667,6 +667,7 @@ export interface EditorViewMenuStateSnapshot {
   readonly docPanelVisible?: boolean;
   readonly terminalVisible?: boolean;
   readonly terminalLive?: boolean;
+  readonly agentPanelVisible?: boolean;
   readonly canViewInSource?: boolean;
 }
 
@@ -1719,26 +1720,31 @@ export interface RequestChannels {
     result: Record<TerminalCli, boolean>;
   };
   /**
-   * Per-window sessions-dock state, read once on reload to restore the dock.
-   * `visible` is recorded from the renderer's view-menu push; `order` (the unified
-   * cross-kind tab order — terminal ptyIds + thread threadIds) and `activeKey` are
-   * recorded from `ok:terminal:set-dock-state`. All windowId-keyed, gone after
-   * window-close / app-quit (so a fresh launch with no surviving sessions restores
-   * nothing). `order`/`activeKey` are optional so an older renderer that only reads
-   * `visible` keeps working.
+   * Per-window panel state, read once on reload to restore both panels. The two
+   * `*Visible` flags are recorded from the renderer's view-menu push; the per-surface
+   * `order` + `activeKey` records come from `ok:terminal:set-dock-state`. The terminal
+   * dock and agents panel are independent surfaces, so their orders are kept apart —
+   * one shared record would let each panel's write erase the other's keys. All
+   * windowId-keyed, gone after window-close / app-quit (so a fresh launch with no
+   * surviving sessions restores nothing).
    */
   'ok:terminal:dock-state': {
     args: [];
-    result: { visible: boolean; order?: string[]; activeKey?: string | null };
+    result: {
+      terminalVisible: boolean;
+      agentPanelVisible: boolean;
+      terminal?: { order: string[]; activeKey: string | null };
+      agents?: { order: string[]; activeKey: string | null };
+    };
   };
   /**
-   * Persist the unified sessions-dock order + active key in main (per window) so a
-   * renderer reload restores the interleaved cross-kind tab arrangement + active
-   * tab. `order` holds reload-stable keys (terminal ptyIds + thread threadIds) in
-   * tab order. Fire-and-forget, the sibling of `ok:pty:set-order` for the mixed dock.
+   * Persist one panel's tab order + active key in main (per window) so a renderer
+   * reload restores that panel's arrangement + active tab. `surface` names the writer;
+   * `order` holds its reload-stable keys (ptyIds for `terminal`, threadIds for
+   * `agents`) in tab order. Fire-and-forget, the sibling of `ok:pty:set-order`.
    */
   'ok:terminal:set-dock-state': {
-    args: [req: { order: string[]; activeKey: string | null }];
+    args: [req: { surface: 'terminal' | 'agents'; order: string[]; activeKey: string | null }];
     result: undefined;
   };
 }

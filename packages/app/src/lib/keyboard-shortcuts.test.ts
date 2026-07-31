@@ -245,23 +245,23 @@ describe('keyboard shortcut registry', () => {
     ).toBe(false);
   });
 
-  test('formats the open-ask-ai shortcut as Cmd/Ctrl + L', () => {
-    expect(formatShortcut('open-ask-ai', 'mac')).toBe('⌘ L');
-    expect(formatShortcut('open-ask-ai', 'windowsLinux')).toBe('Ctrl L');
+  test('formats the toggle-agent-panel shortcut as Cmd/Ctrl + L', () => {
+    expect(formatShortcut('toggle-agent-panel', 'mac')).toBe('⌘ L');
+    expect(formatShortcut('toggle-agent-panel', 'windowsLinux')).toBe('Ctrl L');
   });
 
-  test('matches the open-ask-ai shortcut on Cmd+L / Ctrl+L and excludes extra modifiers', () => {
+  test('matches toggle-agent-panel on Cmd+L / Ctrl+L and excludes extra modifiers', () => {
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: false, key: 'l' },
-        'open-ask-ai',
+        'toggle-agent-panel',
         'mac',
       ),
     ).toBe(true);
     expect(
       matchesKeyboardShortcut(
         { metaKey: false, ctrlKey: true, altKey: false, key: 'l' },
-        'open-ask-ai',
+        'toggle-agent-panel',
         'windowsLinux',
       ),
     ).toBe(true);
@@ -269,7 +269,7 @@ describe('keyboard shortcut registry', () => {
     expect(
       matchesKeyboardShortcut(
         { metaKey: false, ctrlKey: true, altKey: false, key: 'l' },
-        'open-ask-ai',
+        'toggle-agent-panel',
         'mac',
       ),
     ).toBe(false);
@@ -277,20 +277,69 @@ describe('keyboard shortcut registry', () => {
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, key: 'l' },
-        'open-ask-ai',
+        'toggle-agent-panel',
         'mac',
       ),
     ).toBe(false);
+    // ⌥⌘L belongs to open-ask-ai, so the bare-⌘L toggle must reject alt.
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: true, key: 'l' },
-        'open-ask-ai',
+        'toggle-agent-panel',
         'mac',
       ),
     ).toBe(false);
     expect(
       matchesKeyboardShortcut(
         { metaKey: false, ctrlKey: false, altKey: false, key: 'l' },
+        'toggle-agent-panel',
+        'mac',
+      ),
+    ).toBe(false);
+  });
+
+  test('formats the open-ask-ai shortcut as Shift+Cmd / Ctrl+Shift + L', () => {
+    expect(formatShortcut('open-ask-ai', 'mac')).toBe('⇧⌘ L');
+    expect(formatShortcut('open-ask-ai', 'windowsLinux')).toBe('Ctrl Shift L');
+  });
+
+  // Shift rather than Alt: Ctrl+Alt+L is KDE Plasma's Lock Session alternate,
+  // grabbed by kglobalaccel before any renderer listener sees it.
+  test('open-ask-ai requires Shift, keeping bare Cmd+L for the agents panel', () => {
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, shiftKey: true, key: 'L', code: 'KeyL' },
+        'open-ask-ai',
+        'mac',
+      ),
+    ).toBe(true);
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: true, shiftKey: true, key: 'L', code: 'KeyL' },
+        'open-ask-ai',
+        'windowsLinux',
+      ),
+    ).toBe(true);
+    // Bare ⌘L is the agents-panel toggle, never this.
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, shiftKey: false, key: 'l', code: 'KeyL' },
+        'open-ask-ai',
+        'mac',
+      ),
+    ).toBe(false);
+    // Shift alone (no Cmd/Ctrl) is not a chord.
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: false, ctrlKey: false, shiftKey: true, key: 'L', code: 'KeyL' },
+        'open-ask-ai',
+        'mac',
+      ),
+    ).toBe(false);
+    // The old ⌥⌘L must NOT still fire — it would lock the screen on KDE.
+    expect(
+      matchesKeyboardShortcut(
+        { metaKey: true, ctrlKey: false, altKey: true, shiftKey: false, key: '¬', code: 'KeyL' },
         'open-ask-ai',
         'mac',
       ),

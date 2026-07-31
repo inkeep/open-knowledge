@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 /**
  * ONE sticky-agent store shared by every "Ask AI" composer placement (the bottom
  * docked field and the create/empty-screen hero). It carries the docked-terminal
@@ -188,12 +189,51 @@ export function loadStickyAgent(storage?: StickyAgentStorage): string | null {
  *  errors — the in-memory selection still holds for the session. */
 export function saveStickyAgent(id: HandoffTarget | string, storage?: StickyAgentStorage): void {
   const resolved = getStorage(storage);
-  if (!resolved) return;
-  try {
-    resolved.setItem(UNIFIED_AGENT_KEY, id);
-  } catch (err) {
-    console.warn('[ask-ai] Failed to persist default agent:', err);
+  if (resolved) {
+    try {
+      resolved.setItem(UNIFIED_AGENT_KEY, id);
+    } catch (err) {
+      console.warn('[ask-ai] Failed to persist default agent:', err);
+    }
   }
+  // Publish so sibling surfaces re-read; without this they resolve a different
+  // AI than the one the user just chose.
+  for (const listener of stickyListeners) listener();
+}
+
+// Module-scope state + listeners so every mounted surface observes the SAME pick.
+// The two session hosts partition Ask-AI / preferred-session work by comparing
+// the kind each resolves; per-instance `useState` snapshots let one host's pick
+// diverge, so both claimed and a passage landed twice. Mirrors the shape
+// `lib/acp/enabled-agents.ts` already uses.
+const stickyListeners = new Set<() => void>();
+
+// Reads storage on every call rather than memoizing — see the note in
+// terminal-new-tab-store: the value is a primitive, so an unchanged read costs
+// nothing, and a cache would survive `localStorage.clear()` and leak.
+function currentStickyAgent(): string | null {
+  return loadStickyAgent();
+}
+
+/** Notify subscribers to re-read (cross-tab `storage` events). */
+function reloadStickyAgentFromStorage(): void {
+  for (const listener of stickyListeners) listener();
+}
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === UNIFIED_AGENT_KEY || event.key === null) reloadStickyAgentFromStorage();
+  });
+}
+
+function subscribeStickyAgent(listener: () => void): () => void {
+  stickyListeners.add(listener);
+  return () => stickyListeners.delete(listener);
+}
+
+/** Reactive read — every subscriber re-renders when any surface writes. */
+export function useStickyAgent(): string | null {
+  return useSyncExternalStore(subscribeStickyAgent, currentStickyAgent, currentStickyAgent);
 }
 
 /**

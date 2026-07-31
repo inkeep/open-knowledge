@@ -879,13 +879,24 @@ let terminalReaper: TerminalReaper | null = null;
  */
 const dockVisibleForWindow = new Map<number, boolean>();
 /**
- * Per-window unified sessions-dock order + active key, recorded from the
- * renderer's `ok:terminal:set-dock-state` push so a reloaded renderer restores the
- * interleaved cross-kind tab arrangement (terminal ptyIds + thread threadIds) and
- * the active tab. Same windowId-keyed lifetime as {@link dockVisibleForWindow} —
- * cleared on window-close and app-quit.
+ * Per-window agents-panel visibility, the ACP twin of {@link dockVisibleForWindow}.
+ * Separate map rather than a field on one record because the two panels are
+ * independent surfaces whose renderer pushes arrive on their own edges.
  */
-const dockOrderForWindow = new Map<number, { order: string[]; activeKey: string | null }>();
+const agentPanelVisibleForWindow = new Map<number, boolean>();
+/**
+ * Per-window tab order + active key for each panel, recorded from the renderer's
+ * `ok:terminal:set-dock-state` push so a reloaded renderer restores each panel's
+ * arrangement. Keyed by surface because the terminal dock and agents panel write
+ * independently — one shared record would let each write erase the other's keys
+ * and clobber the shared active tab. Same windowId-keyed lifetime as
+ * {@link dockVisibleForWindow} — cleared on window-close and app-quit.
+ */
+type DockOrderRecord = { order: string[]; activeKey: string | null };
+const dockOrderForWindow = new Map<
+  number,
+  Partial<Record<'terminal' | 'agents', DockOrderRecord>>
+>();
 /**
  * Singleton show-gate registry — coordinates window.show() against the
  * dual-signal contract (`ready-to-show` + `ok:theme:applied`). Module-level
@@ -1293,6 +1304,7 @@ function ensureWindowManager() {
       if (terminalReaper)
         wireWindowTerminalReap(win, terminalReaper, (windowId) => {
           dockVisibleForWindow.delete(windowId);
+          agentPanelVisibleForWindow.delete(windowId);
           dockOrderForWindow.delete(windowId);
         });
       return win as unknown as BrowserWindowLike;
@@ -2702,6 +2714,8 @@ async function runApplicationMenuRefresh(): Promise<void> {
     // is not bundled on win/linux, so strip every terminal handler there —
     // the menu items render disabled instead of surfacing a spawn failure.
     // Overrides the three handlers `buildViewMenuStateDeps` just spread in.
+    // `onToggleAgentPanel` is deliberately absent from the strip list: agent
+    // threads are server-hosted, so the agents panel works everywhere pty does not.
     ...(process.platform === 'darwin'
       ? { onNewTerminalWindow: () => openTerminalWindow() }
       : {
@@ -4229,18 +4243,33 @@ function registerIpcHandlers() {
 
   handle('ok:terminal:dock-state', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    if (!win) return { visible: false, order: [], activeKey: null };
-    const dockOrder = dockOrderForWindow.get(win.id);
+    if (!win) return { terminalVisible: false, agentPanelVisible: false };
+    const orders = dockOrderForWindow.get(win.id);
     return {
-      visible: dockVisibleForWindow.get(win.id) ?? false,
-      order: dockOrder?.order ?? [],
-      activeKey: dockOrder?.activeKey ?? null,
+      terminalVisible: dockVisibleForWindow.get(win.id) ?? false,
+      agentPanelVisible: agentPanelVisibleForWindow.get(win.id) ?? false,
+      terminal: orders?.terminal,
+      agents: orders?.agents,
     };
   });
 
   handle('ok:terminal:set-dock-state', async (event, req) => {
+    // Same untrusted-discriminant problem as cli-preflight above: `req.surface`
+    // is a compile-time union that `createHandler` casts without runtime
+    // enforcement, and here it indexes straight into the per-window order map.
+    // An out-of-registry value would store a phantom key that `getDockState`
+    // never reads back, so the panel silently cold-starts with the wrong order.
+    if (req.surface !== 'terminal' && req.surface !== 'agents') {
+      getLogger('terminal').warn({ surface: req.surface }, 'set-dock-state: unknown surface');
+      return undefined;
+    }
     const win = BrowserWindow.fromWebContents(event.sender);
-    if (win) dockOrderForWindow.set(win.id, { order: req.order, activeKey: req.activeKey });
+    if (win) {
+      dockOrderForWindow.set(win.id, {
+        ...dockOrderForWindow.get(win.id),
+        [req.surface]: { order: req.order, activeKey: req.activeKey },
+      });
+    }
     return undefined;
   });
 
@@ -4607,12 +4636,17 @@ function registerIpcHandlers() {
     // next `refreshApplicationMenu` rebuild reads the latest snapshot.
     // Last-write-wins across windows matches the singleton menu model.
     editorViewMenuState = mergeViewMenuState(editorViewMenuState, state);
-    // The menu snapshot is a singleton, but dock visibility must recover
-    // per-window after a reload — record it keyed by the sender window so the
-    // reloaded renderer reads back its own dock state, not another window's.
-    if (state.terminalVisible !== undefined) {
+    // The menu snapshot is a singleton, but panel visibility must recover
+    // per-window after a reload — record each panel keyed by the sender window
+    // so the reloaded renderer reads back its own state, not another window's.
+    if (state.terminalVisible !== undefined || state.agentPanelVisible !== undefined) {
       const win = BrowserWindow.fromWebContents(event.sender);
-      if (win) dockVisibleForWindow.set(win.id, state.terminalVisible);
+      if (win) {
+        if (state.terminalVisible !== undefined)
+          dockVisibleForWindow.set(win.id, state.terminalVisible);
+        if (state.agentPanelVisible !== undefined)
+          agentPanelVisibleForWindow.set(win.id, state.agentPanelVisible);
+      }
     }
     refreshApplicationMenu();
     return undefined;
@@ -7067,6 +7101,7 @@ function bootPrimaryInstance(): void {
     // outlives the app. Idempotent (clears the map; a second pass no-ops).
     terminalReaper?.killAll();
     dockVisibleForWindow.clear();
+    agentPanelVisibleForWindow.clear();
     dockOrderForWindow.clear();
     autoUpdaterHandle?.destroy();
     autoUpdaterHandle = null;

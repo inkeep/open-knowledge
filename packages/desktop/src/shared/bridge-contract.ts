@@ -235,6 +235,10 @@ export type OkMenuAction =
   | 'toggle-doc-panel'
   // Docked terminal-panel visibility (⌘J / Ctrl+J).
   | 'toggle-terminal'
+  // Right agents-panel visibility (⌘L / Ctrl+L). The ACP twin of
+  // `toggle-terminal`, and deliberately NOT desktop-gated: agent threads are
+  // server-hosted, so the panel works on the web host and where pty does not.
+  | 'toggle-agent-panel'
   // Terminal application menu. `new-terminal` opens a new terminal tab
   // (revealing the dock if hidden; never hides, unlike the toggle).
   // `kill-terminal` closes the active tab, killing that session's PTY.
@@ -851,6 +855,10 @@ export interface OkEditorViewMenuStateSnapshot {
   // terminal reads `terminalLive: true, terminalVisible: false`. Drives the
   // Terminal menu's "Kill Terminal" enablement.
   readonly terminalLive?: boolean;
+  // Right agents-panel visibility. Independent of `terminalVisible` — the two
+  // panels own different edges and are open or closed on their own. Optional +
+  // defaults hidden, like the terminal.
+  readonly agentPanelVisible?: boolean;
   // Whether the editor context menu's "View in Source" jump would do anything:
   // it reads the visual editor's caret for the active document, so it is inert
   // in source mode and with no document open. Optional + defaults false, so the
@@ -2101,19 +2109,31 @@ export interface OkDesktopBridge {
      */
     setOrder(orderedPtyIds: readonly string[]): void;
     /**
-     * Per-window sessions-dock state retained in main, read once on reload so the
-     * dock re-expands (`visible`) and restores its interleaved cross-kind tab order
-     * (`order` = terminal ptyIds + thread threadIds) + active tab (`activeKey`) when
-     * it was open before the reload. `order`/`activeKey` are optional for version
-     * skew (an older main returns just `visible`).
+     * Per-window panel state retained in main, read once on reload so each panel
+     * re-expands and restores its own tab order + active tab. The terminal dock and
+     * the agents panel are independent surfaces, so their orders are recorded
+     * separately: a single shared record would let each panel's write erase the
+     * other's keys and clobber the shared active tab. `terminal.order` holds ptyIds,
+     * `agents.order` holds threadIds. Both records are optional (absent until that
+     * panel first persists).
      */
-    getDockState(): Promise<{ visible: boolean; order?: string[]; activeKey?: string | null }>;
+    getDockState(): Promise<{
+      terminalVisible: boolean;
+      agentPanelVisible: boolean;
+      terminal?: { order: string[]; activeKey: string | null };
+      agents?: { order: string[]; activeKey: string | null };
+    }>;
     /**
-     * Persist the unified sessions-dock order + active key in main (per window) so a
-     * renderer reload restores the interleaved cross-kind arrangement. `order` holds
-     * reload-stable keys (ptyIds + threadIds) in tab order. Fire-and-forget.
+     * Persist one panel's tab order + active key in main (per window) so a renderer
+     * reload restores that panel's arrangement. `surface` names which panel is
+     * writing; `order` holds its reload-stable keys (ptyIds for `terminal`,
+     * threadIds for `agents`) in tab order. Fire-and-forget.
      */
-    setDockState(state: { order: string[]; activeKey: string | null }): void;
+    setDockState(state: {
+      surface: 'terminal' | 'agents';
+      order: string[];
+      activeKey: string | null;
+    }): void;
     onData(cb: (msg: OkPtyData) => void): OkUnsubscribe;
     onExit(cb: (msg: OkPtyExit) => void): OkUnsubscribe;
     /**
