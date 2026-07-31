@@ -803,7 +803,16 @@ describe('runMcpWiringOnFirstLaunch — mid-session immediate dispatch', () => {
       {
         channel: 'ok:mcp-wiring:show',
         payload: {
-          detectedEditors: [{ id: 'claude', label: 'claude', detected: true, willReplace: false }],
+          detectedEditors: [
+            {
+              id: 'claude',
+              label: 'claude',
+              detected: true,
+              willReplace: false,
+              configPath: '~/.config-for-claude.json',
+              entryLocator: 'mcpServers.open-knowledge',
+            },
+          ],
           pathInstall: {
             shellDetected: true,
             rcFilesToTouch: ['~/.zshrc'],

@@ -39,6 +39,8 @@ export {
   EDITOR_TARGETS,
   type EditorId,
   type EditorMcpTarget,
+  editorConfigPathDisplay,
+  editorEntryLocator,
   HOSTS_WITH_USER_SKILL_DIR,
   isEntryUpToDate,
   isOwnManagedEntry,

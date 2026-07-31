@@ -471,6 +471,12 @@ export interface OkMcpWiringShowPayload {
     readonly label: string;
     readonly detected: boolean;
     readonly willReplace: boolean;
+    /** Display-form user-global config path (home collapsed to `~`), or null
+     *  when the editor has no user-global surface on this platform. Feeds the
+     *  per-row location tooltip — mirrors `OkIntegrationsStatus`. */
+    readonly configPath: string | null;
+    /** Locator for this editor's `open-knowledge` entry within its config file. */
+    readonly entryLocator: string;
   }[];
   readonly pathInstall: {
     readonly shellDetected: boolean;

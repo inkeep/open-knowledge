@@ -10,6 +10,9 @@ import {
   CHAIN_WIN_VERSION_SENTINEL,
   EDITOR_TARGETS,
   type EditorId,
+  type EditorMcpTarget,
+  editorConfigPathDisplay,
+  editorEntryLocator,
   isEntryUpToDate,
   isOwnManagedEntry,
   resolveAntigravityConfigPath,
@@ -985,5 +988,65 @@ describe('JSON encoding round-trip (Windows entry)', () => {
     expect(roundTripped).toEqual(entry);
     expect((roundTripped.args as string[])[3]).toBe(CHAIN_WIN_V1);
     expect(isOwnManagedEntry(roundTripped)).toBe(true);
+  });
+});
+
+describe('editorEntryLocator', () => {
+  it('JSON editor → flat dotted key path', () => {
+    expect(editorEntryLocator(EDITOR_TARGETS.claude)).toBe('mcpServers.open-knowledge');
+  });
+
+  it('TOML editor → bracket table header', () => {
+    expect(editorEntryLocator(EDITOR_TARGETS.codex)).toBe('[mcp_servers.open-knowledge]');
+  });
+
+  it('nested serverMapSubKey (OpenClaw) → three-segment dotted path', () => {
+    expect(editorEntryLocator(EDITOR_TARGETS.openclaw)).toBe('mcp.servers.open-knowledge');
+  });
+});
+
+describe('editorConfigPathDisplay', () => {
+  // Minimal stand-in so the config-path projection is exercised independently of
+  // any real editor's platform-specific resolver — only `configPath` is read.
+  const fakeTarget = (configPath: EditorMcpTarget['configPath']): EditorMcpTarget => ({
+    id: 'claude',
+    label: 'Fake',
+    format: 'json',
+    topLevelKey: 'mcpServers',
+    serverName: () => 'open-knowledge',
+    configPath,
+    buildEntry: () => ({}),
+    scope: 'global',
+  });
+
+  it('collapses the home prefix to ~', () => {
+    expect(
+      editorConfigPathDisplay(
+        fakeTarget((_c, h) => `${h}/.foo/config.json`),
+        '/home/u',
+      ),
+    ).toBe('~/.foo/config.json');
+  });
+
+  it('leaves a path outside home untouched', () => {
+    expect(
+      editorConfigPathDisplay(
+        fakeTarget(() => '/etc/other.json'),
+        '/home/u',
+      ),
+    ).toBe('/etc/other.json');
+  });
+
+  it('returns null when the resolver throws (no user-global surface)', () => {
+    expect(
+      editorConfigPathDisplay(
+        fakeTarget(() => {
+          throw new Error('no user-global config');
+        }),
+        '/home/u',
+      ),
+    ).toBeNull();
+    // Real contract: Pi has no user-global surface, so its configPath throws.
+    expect(editorConfigPathDisplay(EDITOR_TARGETS.pi, '/home/u')).toBeNull();
   });
 });

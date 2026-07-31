@@ -68,8 +68,22 @@ function makeBridge(
 
 const sampleShowPayload: OkMcpWiringShowPayload = {
   detectedEditors: [
-    { id: 'claude', label: 'Claude', detected: true, willReplace: false },
-    { id: 'cursor', label: 'Cursor', detected: false, willReplace: false },
+    {
+      id: 'claude',
+      label: 'Claude',
+      detected: true,
+      willReplace: false,
+      configPath: '~/.claude.json',
+      entryLocator: 'mcpServers.open-knowledge',
+    },
+    {
+      id: 'cursor',
+      label: 'Cursor',
+      detected: false,
+      willReplace: false,
+      configPath: '~/.cursor/mcp.json',
+      entryLocator: 'mcpServers.open-knowledge',
+    },
   ],
   pathInstall: { shellDetected: true, rcFilesToTouch: ['~/.zshrc'], alreadyInstalled: false },
   globalSkills: [],

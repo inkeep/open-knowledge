@@ -42,7 +42,7 @@ msgid ".ok folders"
 msgstr ""
 
 #: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is back to local-only."
+msgid ".ok/skills is back to Only me."
 msgstr ""
 
 #: src/components/settings/SharingSection.tsx
@@ -219,6 +219,11 @@ msgstr ""
 #. placeholder {0}: result.fileCount
 #: src/components/ProblemsPanel.tsx
 msgid "{0, plural, one {No problems across # document.} other {No problems across # documents.}}"
+msgstr ""
+
+#. placeholder {0}: editorList.hiddenCount
+#: src/components/McpConsentDialogBody.tsx
+msgid "{0, plural, one {Show # more tool} other {Show # more tools}}"
 msgstr ""
 
 #. placeholder {0}: skillRows.length
@@ -2366,7 +2371,7 @@ msgid "Config sharing"
 msgstr ""
 
 #: src/components/settings/SharingSection.tsx
-msgid "Config sharing is now local-only."
+msgid "Config sharing is now Only me."
 msgstr ""
 
 #: src/components/settings/SharingSection.tsx
@@ -3198,6 +3203,10 @@ msgstr ""
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Couldn't start the sync. Check your connection, then retry."
+msgstr ""
+
+#: src/components/settings/SharingSection.tsx
+msgid "Couldn't switch to Only me"
 msgstr ""
 
 #. placeholder {0}: r.error
@@ -4250,6 +4259,7 @@ msgstr ""
 msgid "Enter a valid URL (for example https://api.openai.com/v1)."
 msgstr ""
 
+#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Entry"
@@ -4701,6 +4711,7 @@ msgstr ""
 
 #: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
+#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/share-metadata-rows.tsx
@@ -5094,7 +5105,7 @@ msgid "Give the AI tools you use access to read and update your projects. Checki
 msgstr ""
 
 #: src/components/McpConsentDialogBody.tsx
-msgid "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime."
+msgid "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime in Settings > AI tools & CLI."
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
@@ -6187,11 +6198,6 @@ msgstr ""
 msgid "Local commits are keeping this copy from updating"
 msgstr ""
 
-#: src/components/settings/SharingSection.tsx
-#: src/components/SharingModeField.tsx
-msgid "Local only"
-msgstr ""
-
 #: src/components/CloneDialog.tsx
 msgid "Local path"
 msgstr ""
@@ -7254,6 +7260,11 @@ msgstr ""
 #: src/components/FileSidebar.tsx
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Only markdown files"
+msgstr ""
+
+#: src/components/settings/SharingSection.tsx
+#: src/components/SharingModeField.tsx
+msgid "Only me"
 msgstr ""
 
 #: src/components/settings/markdownlint-rule-browser.tsx
@@ -9469,7 +9480,7 @@ msgid "Setup"
 msgstr ""
 
 #: src/components/ConfigSharingInfoTooltip.tsx
-msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Local only</5> keeps them out of git (via <6>.git/info/exclude</6>)."
+msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
 msgstr ""
 
 #: src/components/ConsentDialogBody.tsx
@@ -9581,7 +9592,9 @@ msgstr ""
 msgid "Show external URL nodes"
 msgstr ""
 
+#. Collapses the undetected AI tools back behind the toggle
 #: src/components/LinksPanel.tsx
+#: src/components/McpConsentDialogBody.tsx
 msgid "Show fewer"
 msgstr ""
 
@@ -9779,11 +9792,14 @@ msgstr ""
 msgid "skills.sh is unavailable; showing GitHub results (no install ranking)."
 msgstr ""
 
-#. Secondary button — dismisses the dialog without wiring any tools
 #: src/components/AuthModal.tsx
-#: src/components/McpConsentDialogBody.tsx
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Skip"
+msgstr ""
+
+#. Secondary button — dismisses the dialog without wiring any tools
+#: src/components/McpConsentDialogBody.tsx
+msgid "Skip for now"
 msgstr ""
 
 #. placeholder {0}: item.displayName
@@ -9991,7 +10007,7 @@ msgstr ""
 
 #: src/components/settings/SharingSection.tsx
 #: src/components/SharingModeField.tsx
-msgid "Stays on this computer."
+msgid "Stays on this computer. Not committed to git."
 msgstr ""
 
 #: src/components/MountStalledAffordance.tsx
@@ -10103,10 +10119,6 @@ msgstr ""
 
 #: src/components/settings/SyncSection.tsx
 msgid "Switch to Follow"
-msgstr ""
-
-#: src/components/settings/SharingSection.tsx
-msgid "Switch to local-only refused"
 msgstr ""
 
 #: src/components/command-palette-commands.ts
@@ -10741,6 +10753,10 @@ msgstr ""
 msgid "This branch is checked out in:"
 msgstr ""
 
+#: src/components/McpConsentDialogBody.tsx
+msgid "This can be configured in Settings > AI tools & CLI"
+msgstr ""
+
 #: src/comments/CommentsPanel.tsx
 msgid "This comment is on the whole property"
 msgstr ""
@@ -11185,6 +11201,7 @@ msgstr ""
 msgid "Type to find a doc"
 msgstr ""
 
+#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 msgid "unavailable on this platform"
 msgstr ""
@@ -11674,6 +11691,7 @@ msgstr ""
 msgid "What this changes"
 msgstr ""
 
+#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "What this checkbox changes"

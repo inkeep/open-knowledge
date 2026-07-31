@@ -4,6 +4,7 @@ import { McpConsentDialog } from './McpConsentDialog';
 import {
   computeInitialSelection,
   isPathRowActionable,
+  partitionEditorsForDisplay,
   selectedIdsOrdered,
   type ToastImpl,
   toggleSelectedId,
@@ -11,11 +12,18 @@ import {
 
 type EditorDetection = OkMcpWiringShowPayload['detectedEditors'][number];
 
+/** Detection-literal factory — fills the location-disclosure fields
+ *  (configPath/entryLocator) the pure selection/ordering helpers under test
+ *  don't read, so each case stays focused on id/detected/willReplace. */
+function ed(o: Omit<EditorDetection, 'configPath' | 'entryLocator'>): EditorDetection {
+  return { configPath: null, entryLocator: 'mcpServers.open-knowledge', ...o };
+}
+
 const sampleDetection: readonly EditorDetection[] = [
-  { id: 'claude', label: 'Claude', detected: true, willReplace: false },
-  { id: 'claude-desktop', label: 'Claude Desktop', detected: false, willReplace: false },
-  { id: 'cursor', label: 'Cursor', detected: true, willReplace: false },
-  { id: 'codex', label: 'Codex', detected: false, willReplace: false },
+  ed({ id: 'claude', label: 'Claude', detected: true, willReplace: false }),
+  ed({ id: 'claude-desktop', label: 'Claude Desktop', detected: false, willReplace: false }),
+  ed({ id: 'cursor', label: 'Cursor', detected: true, willReplace: false }),
+  ed({ id: 'codex', label: 'Codex', detected: false, willReplace: false }),
 ];
 
 describe('computeInitialSelection', () => {
@@ -35,16 +43,16 @@ describe('computeInitialSelection', () => {
 
   test('all-detected preselects all', () => {
     const sel = computeInitialSelection([
-      { id: 'claude', label: 'Claude', detected: true, willReplace: false },
-      { id: 'cursor', label: 'Cursor', detected: true, willReplace: false },
+      ed({ id: 'claude', label: 'Claude', detected: true, willReplace: false }),
+      ed({ id: 'cursor', label: 'Cursor', detected: true, willReplace: false }),
     ]);
     expect(sel.size).toBe(2);
   });
 
   test('none-detected preselects none', () => {
     const sel = computeInitialSelection([
-      { id: 'claude', label: 'Claude', detected: false, willReplace: false },
-      { id: 'cursor', label: 'Cursor', detected: false, willReplace: false },
+      ed({ id: 'claude', label: 'Claude', detected: false, willReplace: false }),
+      ed({ id: 'cursor', label: 'Cursor', detected: false, willReplace: false }),
     ]);
     expect(sel.size).toBe(0);
   });
@@ -90,7 +98,7 @@ describe('selectedIdsOrdered', () => {
   test('selected ids NOT in detection payload are dropped (defensive)', () => {
     const sel = new Set<OkMcpWiringEditorId>(['claude']);
     const truncated: readonly EditorDetection[] = [
-      { id: 'codex', label: 'Codex', detected: false, willReplace: false },
+      ed({ id: 'codex', label: 'Codex', detected: false, willReplace: false }),
     ];
     const out = selectedIdsOrdered(sel, truncated);
     expect(out).toEqual([]);
@@ -132,40 +140,108 @@ describe('isPathRowActionable', () => {
   });
 });
 
+describe('partitionEditorsForDisplay', () => {
+  const claude = ed({ id: 'claude', label: 'Claude', detected: true, willReplace: false });
+  const cursor = ed({ id: 'cursor', label: 'Cursor', detected: true, willReplace: false });
+  const codex = ed({ id: 'codex', label: 'Codex', detected: false, willReplace: false });
+  const opencode = ed({ id: 'opencode', label: 'OpenCode', detected: false, willReplace: false });
+
+  const none = new Set<OkMcpWiringEditorId>();
+
+  test('collapsed: shows only detected, hides unchecked undetected behind the toggle', () => {
+    const r = partitionEditorsForDisplay([claude, codex, cursor, opencode], none, false);
+    expect(r.collapsible).toBe(true);
+    expect(r.hiddenCount).toBe(2);
+    expect(r.visible.map((e) => e.id)).toEqual(['claude', 'cursor']);
+  });
+
+  test('expanded: always-shown first, then hideable; hiddenCount labels the toggle', () => {
+    const r = partitionEditorsForDisplay([claude, codex, cursor, opencode], none, true);
+    expect(r.collapsible).toBe(true);
+    expect(r.hiddenCount).toBe(2);
+    expect(r.visible.map((e) => e.id)).toEqual(['claude', 'cursor', 'codex', 'opencode']);
+  });
+
+  test('consent integrity: a checked undetected tool survives collapse (never hidden)', () => {
+    // User expanded, checked codex (undetected), then collapsed. codex must stay
+    // visible because it is still in the write set; only unchecked opencode hides.
+    const r = partitionEditorsForDisplay(
+      [claude, codex, cursor, opencode],
+      new Set<OkMcpWiringEditorId>(['codex']),
+      false,
+    );
+    expect(r.collapsible).toBe(true);
+    expect(r.hiddenCount).toBe(1);
+    expect(r.visible.map((e) => e.id)).toEqual(['claude', 'codex', 'cursor']);
+  });
+
+  test('all detected: not collapsible, shows everything', () => {
+    const r = partitionEditorsForDisplay([claude, cursor], none, false);
+    expect(r.collapsible).toBe(false);
+    expect(r.hiddenCount).toBe(0);
+    expect(r.visible.map((e) => e.id)).toEqual(['claude', 'cursor']);
+  });
+
+  test('every undetected tool checked: nothing hideable, not collapsible', () => {
+    const r = partitionEditorsForDisplay(
+      [codex, opencode],
+      new Set<OkMcpWiringEditorId>(['codex', 'opencode']),
+      false,
+    );
+    expect(r.collapsible).toBe(false);
+    expect(r.hiddenCount).toBe(0);
+    expect(r.visible.map((e) => e.id)).toEqual(['codex', 'opencode']);
+  });
+
+  test('none detected + none checked: empty-state fallback shows all (never a blank list)', () => {
+    const r = partitionEditorsForDisplay([codex, opencode], none, false);
+    expect(r.collapsible).toBe(false);
+    expect(r.hiddenCount).toBe(0);
+    expect(r.visible.map((e) => e.id)).toEqual(['codex', 'opencode']);
+  });
+});
+
 describe('McpConsentDialog module shape', () => {
-  test('exports the component + the three pure helpers + ToastImpl type', () => {
+  test('exports the component + the pure selection/display helpers + ToastImpl type', () => {
     expect(typeof McpConsentDialog).toBe('function');
     expect(typeof computeInitialSelection).toBe('function');
     expect(typeof toggleSelectedId).toBe('function');
     expect(typeof selectedIdsOrdered).toBe('function');
+    expect(typeof partitionEditorsForDisplay).toBe('function');
     // ToastImpl is a type; no runtime export — this assertion just ensures
     // the import resolves at type-check time. The shape is exercised by the
     // toast injection contract below.
-    const toastShape: ToastImpl = { error: () => {} };
+    const toastShape: ToastImpl = { error: () => {}, message: () => {} };
     expect(typeof toastShape.error).toBe('function');
+    expect(typeof toastShape.message).toBe('function');
   });
 
-  test('Pass 0 Critical #1: ToastImpl interface accepts a sonner-shaped error fn', () => {
-    // The dialog's `toast` prop is typed `ToastImpl` so the production
-    // `defaultToast` (which wraps `sonnerToast.error`) can be substituted in
-    // tests by any object with `error(msg: string): void`. This contract test
-    // pins the surface so a future refactor that adds methods (warning,
-    // success) signals the change explicitly.
-    const recorded: string[] = [];
+  test('ToastImpl exposes the full error + message surface the dialog injects', () => {
+    // Records the surface the dialog injects: any object with `error` +
+    // `message` substitutes for the production `defaultToast` (which wraps
+    // `sonnerToast.error` / `sonnerToast.message`). NOTE: this only DOCUMENTS
+    // the shape — it cannot fail on a shape change. `**/*.test.ts` is excluded
+    // from `packages/app/tsconfig.json` and vitest runs without `--typecheck`,
+    // so these literals are never type-checked; a real compile-time guard would
+    // need a test-inclusive tsconfig or `test.typecheck`, a packages/app-wide
+    // call out of scope here.
+    const errors: string[] = [];
+    const messages: string[] = [];
     const toast: ToastImpl = {
-      error: (msg) => {
-        recorded.push(msg);
-      },
+      error: (msg) => errors.push(msg),
+      message: (msg) => messages.push(msg),
     };
-    toast.error('test message');
-    expect(recorded).toEqual(['test message']);
+    toast.error('boom');
+    toast.message('fyi');
+    expect(errors).toEqual(['boom']);
+    expect(messages).toEqual(['fyi']);
   });
 
-  test('mock module-level usage check: toast.error is invocable from a Set-like context', () => {
+  test('mock module-level usage check: toast methods are invocable from a Set-like context', () => {
     // Smoke that the ToastImpl shape composes through `mock()` for callers
-    // that want to inject a spy.
+    // that want to inject spies.
     const spy = vi.fn((_msg: string) => {});
-    const toast: ToastImpl = { error: spy };
+    const toast: ToastImpl = { error: spy, message: vi.fn() };
     toast.error('hello');
     expect(spy.mock.calls.length).toBe(1);
     expect(spy.mock.calls[0]).toEqual(['hello']);

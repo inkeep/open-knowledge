@@ -2,7 +2,7 @@
  * Config-sharing section — the per-project shared / local-only toggle for the
  * OK config artifact set.
  *
- * Two-state segmented control: `Shared` vs `Local only`. Toggling routes
+ * Two-state segmented control: `Shared` vs `Only me`. Toggling routes
  * through `bridge.sharing.setMode` which calls the same
  * `addOkPathsToGitExclude` / `removeOkPathsFromGitExclude` primitives the CLI
  * uses, so desktop and CLI cannot drift.
@@ -130,7 +130,7 @@ function SharingSectionBody() {
     } else {
       toast.success(
         mode === 'local-only'
-          ? t`Config sharing is now local-only.`
+          ? t`Config sharing is now Only me.`
           : t`Config sharing is now shared. Commit the OK files to share with your team.`,
       );
     }
@@ -170,7 +170,7 @@ function SharingSectionBody() {
       toast.warning(t`Couldn't update skills sharing — ${detail}.`);
       return;
     }
-    toast.success(t`.ok/skills is back to local-only.`);
+    toast.success(t`.ok/skills is back to Only me.`);
     await refresh();
   }
 
@@ -249,10 +249,10 @@ function SharingSectionBody() {
             />
             <span>
               <span className="font-medium">
-                <Trans>Local only</Trans>
+                <Trans>Only me</Trans>
               </span>
               <span className="block text-1sm text-muted-foreground">
-                <Trans>Stays on this computer.</Trans>
+                <Trans>Stays on this computer. Not committed to git.</Trans>
               </span>
             </span>
           </label>
@@ -293,7 +293,7 @@ function SharingSectionBody() {
           data-testid="settings-sharing-refusal"
         >
           <p className="font-semibold">
-            <Trans>Switch to local-only refused</Trans>
+            <Trans>Couldn't switch to Only me</Trans>
           </p>
           <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
             {refusal.remediation}

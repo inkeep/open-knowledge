@@ -40,6 +40,8 @@ import {
   buildMcpConfigDeclineEvent,
   buildMcpConfigMigrateEvent,
   type EditorMcpTarget,
+  editorConfigPathDisplay,
+  editorEntryLocator,
   isEntryUpToDate,
   type McpDeclineReason,
   type McpEntryClassification,
@@ -752,7 +754,14 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
           error: err instanceof Error ? err.message : String(err),
         });
       }
-      return { id, label: target.label, detected: detectedIds.has(id), willReplace };
+      return {
+        id,
+        label: target.label,
+        detected: detectedIds.has(id),
+        willReplace,
+        configPath: editorConfigPathDisplay(target, home),
+        entryLocator: editorEntryLocator(target),
+      };
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

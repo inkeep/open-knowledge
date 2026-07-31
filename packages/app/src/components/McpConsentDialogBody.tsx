@@ -19,8 +19,8 @@
  */
 
 import { EDITOR_SETUP_DOC_SLUG } from '@inkeep/open-knowledge-core';
-import { Trans, useLingui } from '@lingui/react/macro';
-import { ArrowUpRight, Info } from 'lucide-react';
+import { Plural, Trans, useLingui } from '@lingui/react/macro';
+import { ArrowUpRight, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { useId, useState } from 'react';
 import { toast as sonnerToast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -35,11 +35,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { OkMcpWiringEditorId, OkMcpWiringShowPayload } from '@/lib/desktop-bridge-types';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { type McpConsentStore, mcpConsentStore } from '@/lib/mcp-consent-store';
-import { cn } from '@/lib/utils';
 
 type EditorDetection = OkMcpWiringShowPayload['detectedEditors'][number];
 type PathInstallDescriptor = OkMcpWiringShowPayload['pathInstall'];
@@ -97,6 +96,35 @@ export function selectedIdsOrdered(
 }
 
 /**
+ * Pure helper: progressive-disclosure split for the editor list. Rows that are
+ * detected OR currently checked always show; the rest hide behind a "Show N
+ * more" toggle until `showAll`. Keying visibility off `selection` (not just
+ * `detected`) is load-bearing for consent integrity: a checked undetected tool
+ * must never be collapsed out of view while it's still in the write set — this
+ * dialog discloses exactly what Connect will touch, and it fires once. So
+ * `hiddenCount` is the count of rows actually hidden (unchecked + undetected),
+ * which keeps the toggle label truthful. `collapsible` is false when the split
+ * is pointless — nothing hideable, or nothing always-shown (which would blank
+ * the list) — in which case every row shows.
+ */
+export function partitionEditorsForDisplay(
+  editors: readonly EditorDetection[],
+  selection: ReadonlySet<OkMcpWiringEditorId>,
+  showAll: boolean,
+): { visible: readonly EditorDetection[]; hiddenCount: number; collapsible: boolean } {
+  const alwaysShown = editors.filter((e) => e.detected || selection.has(e.id));
+  const hideable = editors.filter((e) => !e.detected && !selection.has(e.id));
+  if (alwaysShown.length === 0 || hideable.length === 0) {
+    return { visible: editors, hiddenCount: 0, collapsible: false };
+  }
+  return {
+    visible: showAll ? [...alwaysShown, ...hideable] : alwaysShown,
+    hiddenCount: hideable.length,
+    collapsible: true,
+  };
+}
+
+/**
  * Pure helper: initial skill checkbox state — every offered bundle starts
  * checked (opt-out default: preserves today's install-everywhere behavior
  * while making it one-click-off).
@@ -140,13 +168,15 @@ export interface McpConsentDialogBodyProps {
   payload?: OkMcpWiringShowPayload;
 }
 
-/** Minimal `sonner` surface the dialog uses — only `error`. */
+/** Minimal `sonner` surface the dialog uses. */
 export interface ToastImpl {
   error(message: string): void;
+  message(message: string): void;
 }
 
 const defaultToast: ToastImpl = {
   error: (message) => sonnerToast.error(message),
+  message: (message) => sonnerToast.message(message),
 };
 
 /**
@@ -167,6 +197,53 @@ export function McpConsentDialogBody({
   const snapshot = payload ?? store.getSnapshot();
   if (!snapshot) return null;
   return <McpConsentDialogForm payload={snapshot} store={store} toast={toast} />;
+}
+
+/**
+ * Per-editor location disclosure — the exact config file + entry an Add would
+ * touch, shown behind an info affordance. Mirrors Settings → AI tools'
+ * `RowInfoTooltip` (reuses the same "File" / "Entry" copy) so the first-launch
+ * dialog and the persistent settings surface disclose identically — including
+ * relying on the root `TooltipProvider` (main.tsx) rather than wrapping a
+ * per-row one, so sibling info buttons share Radix's skip-delay window.
+ */
+function EditorLocationTooltip({ editor }: { editor: EditorDetection }) {
+  const { t } = useLingui();
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="mt-1.5 mr-1.5 size-6 shrink-0 text-muted-foreground opacity-60 hover:opacity-100"
+          aria-label={t`What this checkbox changes`}
+          data-testid={`mcp-consent-editor-info-${editor.id}`}
+        >
+          <Info className="size-3.5" aria-hidden />
+        </Button>
+      </TooltipTrigger>
+      {/* Base TooltipContent is an inline-flex row — the column wrapper keeps
+            the File/Entry pairs stacked instead of side by side. */}
+      <TooltipContent side="left" className="max-w-sm text-left">
+        <div className="flex min-w-0 flex-col gap-1">
+          <p className="opacity-70">
+            <Trans>File</Trans>
+          </p>
+          <p>
+            <code className="break-all">
+              {editor.configPath ?? t`unavailable on this platform`}
+            </code>
+          </p>
+          <p className="pt-1 opacity-70">
+            <Trans>Entry</Trans>
+          </p>
+          <p>
+            <code className="break-all">{editor.entryLocator}</code>
+          </p>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 interface McpConsentDialogFormProps {
@@ -193,6 +270,11 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
     computeInitialSkillSelection(globalSkills),
   );
   const [busy, setBusy] = useState(false);
+  // Progressive disclosure: detected tools show by default; undetected ones hide
+  // behind a "Show N more" toggle (see partitionEditorsForDisplay for the
+  // empty-state fallback that shows all when nothing is detected).
+  const [showAllEditors, setShowAllEditors] = useState(false);
+  const editorList = partitionEditorsForDisplay(detectedEditors, selection, showAllEditors);
   const idPrefix = useId();
 
   function onToggle(id: OkMcpWiringEditorId) {
@@ -224,7 +306,12 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
   async function onSkip() {
     setBusy(true);
     const result = await store.skip();
-    if (!result.ok) {
+    if (result.ok) {
+      // Point the user at where these same choices live for later — the
+      // dialog is one-shot per boot, so without this the surface is easy
+      // to lose track of.
+      toast.message(t`This can be configured in Settings > AI tools & CLI`);
+    } else {
       toast.error(result.error);
       // Matching rationale to onAdd — reset `busy` so Skip stays
       // clickable after a transient marker-write failure.
@@ -249,7 +336,7 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
        * label content via that attr causes screen readers to either
        * announce the label twice or drop the association.
        */}
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
             <Trans>Connect your AI tools to OpenKnowledge</Trans>
@@ -257,7 +344,7 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
           <DialogDescription>
             <Trans>
               Give the AI tools you use access to read and update your projects. Pick what to set up
-              below, and change it anytime.
+              below, and change it anytime in Settings &gt; AI tools & CLI.
             </Trans>
           </DialogDescription>
         </DialogHeader>
@@ -306,33 +393,33 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                         Add the <code className="inline-code">ok</code> command to your terminal
                       </Trans>
                       {pathActionable && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            {/* Nested inside the row <Label>, so stop the click from
-                              bubbling to toggle the checkbox. Radix opens the
-                              tooltip on hover/focus, not click, so preventing the
-                              click default costs nothing. */}
-                            <TooltipTrigger
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                              }}
-                              className="text-muted-foreground hover:text-foreground"
-                              aria-label={t`What this changes`}
-                              data-testid="mcp-consent-path-info"
+                        <Tooltip>
+                          {/* Relies on the root TooltipProvider (main.tsx), same as
+                            EditorLocationTooltip — so every info button in this dialog
+                            shares one skip-delay window. Nested inside the row <Label>,
+                            so stop the click from bubbling to toggle the checkbox;
+                            Radix opens on hover/focus (not click), so preventing the
+                            click default costs nothing. */}
+                          <TooltipTrigger
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                            className="text-muted-foreground hover:text-foreground"
+                            aria-label={t`What this changes`}
+                            data-testid="mcp-consent-path-info"
+                          >
+                            <Info className="size-3.5" aria-hidden />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p
+                              className="leading-relaxed wrap-break-word"
+                              data-testid="mcp-consent-path-status"
                             >
-                              <Info className="size-3.5" aria-hidden />
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-xs">
-                              <p
-                                className="leading-relaxed wrap-break-word"
-                                data-testid="mcp-consent-path-status"
-                              >
-                                {t`Adds a managed block to ${pathInstall.rcFilesToTouch.join(', ')}`}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                              {t`Adds a managed block to ${pathInstall.rcFilesToTouch.join(', ')}`}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
                       )}
                     </span>
                   </span>
@@ -371,50 +458,49 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
               </div>
             )}
             <ul className="rounded-md border border-border bg-card/50 divide-y divide-border overflow-hidden">
-              {detectedEditors.map((editor) => {
+              {editorList.visible.map((editor) => {
                 const checked = selection.has(editor.id);
                 const checkboxId = `${idPrefix}-${editor.id}`;
                 const setupUrl = `https://openknowledge.ai/docs/integrations/${EDITOR_SETUP_DOC_SLUG[editor.id]}`;
                 return (
-                  // Padding lives on the interactive children, not the <li>, so the
-                  // <Label> owns the full row width (flex-1) and height (py-2.5) —
-                  // the whole name area toggles, and only the link is excluded. The
-                  // link/status are siblings OUTSIDE the label (an anchor must never
-                  // be a label descendant). flex-wrap: the link drops to its own line
-                  // on narrow widths; willReplace uses basis-full to always sit below.
-                  <li key={editor.id} className="flex flex-wrap items-stretch hover:bg-accent">
+                  // The <Label> owns the full row (flex-1) and height (py-2.5) so the
+                  // whole name area toggles the checkbox. The setup link and location
+                  // info button are siblings OUTSIDE the label (an anchor / a second
+                  // interactive control must not live in the checkbox's activation
+                  // path).
+                  <li key={editor.id} className="flex items-start hover:bg-accent">
                     <Label
                       htmlFor={checkboxId}
-                      className={cn(
-                        'flex flex-1 cursor-pointer items-center gap-2.5 px-3 py-2.5 font-normal',
-                        editor.willReplace ? 'pb-0.5' : '',
-                      )}
+                      className="flex flex-1 cursor-pointer items-start gap-2.5 px-3 py-2.5 font-normal"
                     >
                       <Checkbox
                         id={checkboxId}
                         checked={checked}
                         disabled={busy}
                         onCheckedChange={() => onToggle(editor.id)}
+                        className="mt-0.5"
                         data-testid={`mcp-consent-checkbox-${editor.id}`}
                       />
-                      <span className="text-sm font-medium text-foreground">{editor.label}</span>
-                    </Label>
-                    {/* Detected tools need no trailing line — the checked box says it.
-                      willReplace warns Add will overwrite an existing OK-managed entry
-                      (reclaimed by name); basis-full drops it to its own line below the
-                      name (ms-6.5 + px-3 = the row inset + checkbox 1rem + gap 0.625rem
-                      aligns it under the label). Undetected tools link to their setup
-                      guide, right-aligned, instead of a dead-end "Not detected". */}
-                    {editor.willReplace ? (
-                      <span
-                        className="ms-6.5 basis-full px-3 pb-2.5 text-xs text-amber-600 dark:text-amber-400"
-                        data-testid={`mcp-consent-status-${editor.id}`}
-                      >
-                        <Trans comment="Disclosure that Add will overwrite the tool's existing OpenKnowledge MCP entry">
-                          Will replace existing OpenKnowledge entry
-                        </Trans>
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span className="text-sm font-medium text-foreground">{editor.label}</span>
+                        {/* willReplace warns Add will overwrite an existing OK-managed
+                          entry (reclaimed by name). Sits under the name, inside the
+                          label column, so it aligns with the Settings status subtext. */}
+                        {editor.willReplace && (
+                          <span
+                            className="text-xs text-amber-600 dark:text-amber-400"
+                            data-testid={`mcp-consent-status-${editor.id}`}
+                          >
+                            <Trans comment="Disclosure that Add will overwrite the tool's existing OpenKnowledge MCP entry">
+                              Will replace existing OpenKnowledge entry
+                            </Trans>
+                          </span>
+                        )}
                       </span>
-                    ) : editor.detected ? null : (
+                    </Label>
+                    {/* Undetected tools link to their setup guide instead of a
+                      dead-end "Not detected"; detected tools need no trailing line. */}
+                    {!editor.willReplace && !editor.detected && (
                       <a
                         href={setupUrl}
                         target="_blank"
@@ -425,7 +511,7 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                         // (2.4.4); contains the visible text (2.5.3) and flags the
                         // new-tab behavior the arrow icon shows sighted users.
                         aria-label={t`How to set up ${editor.label} (opens in browser)`}
-                        className="flex items-center gap-0.5 px-3 py-2.5 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                        className="flex shrink-0 items-center gap-0.5 px-2 py-2.5 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                         data-testid={`mcp-consent-status-${editor.id}`}
                       >
                         <Trans comment="Link on an undetected tool row to its OpenKnowledge setup guide">
@@ -434,10 +520,42 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                         <ArrowUpRight className="size-3" aria-hidden />
                       </a>
                     )}
+                    <EditorLocationTooltip editor={editor} />
                   </li>
                 );
               })}
             </ul>
+            {/* Progressive disclosure toggle — only when the list has both
+              detected and undetected tools, so there is something to hide/reveal. */}
+            {editorList.collapsible && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-auto justify-start gap-1 self-start px-1 py-1 text-xs font-normal text-muted-foreground hover:text-foreground"
+                onClick={() => setShowAllEditors((v) => !v)}
+                data-testid="mcp-consent-editors-toggle"
+                aria-expanded={showAllEditors}
+              >
+                {showAllEditors ? (
+                  <>
+                    <ChevronUp className="size-3.5" aria-hidden />
+                    <Trans comment="Collapses the undetected AI tools back behind the toggle">
+                      Show fewer
+                    </Trans>
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="size-3.5" aria-hidden />
+                    <Plural
+                      value={editorList.hiddenCount}
+                      one="Show # more tool"
+                      other="Show # more tools"
+                    />
+                  </>
+                )}
+              </Button>
+            )}
           </div>
           {/*
            * User-global Agent Skills consent section — one pre-checked row per
@@ -513,14 +631,13 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
         </DialogBody>
         <DialogFooter>
           <Button
-            variant="outline"
-            className="font-mono uppercase"
+            variant="outline-mono"
             onClick={() => void onSkip()}
             disabled={busy}
             data-testid="mcp-consent-skip"
           >
             <Trans comment="Secondary button — dismisses the dialog without wiring any tools">
-              Skip
+              Skip for now
             </Trans>
           </Button>
           <Button

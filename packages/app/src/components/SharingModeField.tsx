@@ -93,10 +93,10 @@ export function SharingModeField({
           />
           <span>
             <span className="block font-medium">
-              <Trans>Local only</Trans>
+              <Trans>Only me</Trans>
             </span>
             <span className="block text-1sm text-muted-foreground">
-              <Trans>Stays on this computer.</Trans>
+              <Trans>Stays on this computer. Not committed to git.</Trans>
             </span>
           </span>
         </Label>

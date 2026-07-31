@@ -16,9 +16,30 @@ vi.doMock('@lingui/react/macro', () => ({
 
 const payload: OkMcpWiringShowPayload = {
   detectedEditors: [
-    { id: 'claude', label: 'Claude', detected: true, willReplace: true },
-    { id: 'cursor', label: 'Cursor', detected: true, willReplace: false },
-    { id: 'codex', label: 'Codex', detected: false, willReplace: false },
+    {
+      id: 'claude',
+      label: 'Claude',
+      detected: true,
+      willReplace: true,
+      configPath: '~/.claude.json',
+      entryLocator: 'mcpServers.open-knowledge',
+    },
+    {
+      id: 'cursor',
+      label: 'Cursor',
+      detected: true,
+      willReplace: false,
+      configPath: '~/.cursor/mcp.json',
+      entryLocator: 'mcpServers.open-knowledge',
+    },
+    {
+      id: 'codex',
+      label: 'Codex',
+      detected: false,
+      willReplace: false,
+      configPath: '~/.codex/config.toml',
+      entryLocator: '[mcp_servers.open-knowledge]',
+    },
   ],
   pathInstall: {
     shellDetected: true,
@@ -30,7 +51,16 @@ const payload: OkMcpWiringShowPayload = {
 
 /** Same editors, zero detected — exercises the Add-enable matrix. */
 const noneDetectedPayload: OkMcpWiringShowPayload = {
-  detectedEditors: [{ id: 'codex', label: 'Codex', detected: false, willReplace: false }],
+  detectedEditors: [
+    {
+      id: 'codex',
+      label: 'Codex',
+      detected: false,
+      willReplace: false,
+      configPath: '~/.codex/config.toml',
+      entryLocator: '[mcp_servers.open-knowledge]',
+    },
+  ],
   pathInstall: payload.pathInstall,
   globalSkills: [],
 };
@@ -51,7 +81,16 @@ interface RecordedConfirm {
 
 /** Payload variant that offers both skill rows — exercises the skills section. */
 const skillsPayload: OkMcpWiringShowPayload = {
-  detectedEditors: [{ id: 'claude', label: 'Claude', detected: true, willReplace: false }],
+  detectedEditors: [
+    {
+      id: 'claude',
+      label: 'Claude',
+      detected: true,
+      willReplace: false,
+      configPath: '~/.claude.json',
+      entryLocator: 'mcpServers.open-knowledge',
+    },
+  ],
   pathInstall: { shellDetected: false, rcFilesToTouch: [], alreadyInstalled: false },
   globalSkills: [
     {
@@ -79,6 +118,7 @@ function makeHarness({
   const confirmCalls: RecordedConfirm[] = [];
   const skipCalls: string[] = [];
   const toastErrors: string[] = [];
+  const toastMessages: string[] = [];
   const store: McpConsentStore = {
     confirm: async (request) => {
       confirmCalls.push({
@@ -99,14 +139,25 @@ function makeHarness({
   };
   const toast: ToastImpl = {
     error: (message) => toastErrors.push(message),
+    message: (message) => toastMessages.push(message),
   };
-  return { confirmCalls, skipCalls, store, toast, toastErrors, snapshot };
+  return { confirmCalls, skipCalls, store, toast, toastErrors, toastMessages, snapshot };
 }
 
 async function renderDialog(harness = makeHarness()) {
   const { McpConsentDialogBody } = await import('./McpConsentDialogBody');
+  const { TooltipProvider } = await import('@/components/ui/tooltip');
+  // Mirror production: the app mounts a single root TooltipProvider (main.tsx),
+  // and the dialog's per-row info tooltips rely on it rather than each wrapping
+  // their own — so the isolated render must supply it too.
   render(
-    <McpConsentDialogBody payload={harness.snapshot} store={harness.store} toast={harness.toast} />,
+    <TooltipProvider>
+      <McpConsentDialogBody
+        payload={harness.snapshot}
+        store={harness.store}
+        toast={harness.toast}
+      />
+    </TooltipProvider>,
   );
   return harness;
 }
@@ -125,22 +176,117 @@ describe('McpConsentDialog runtime behavior', () => {
     );
     // Detected tools carry no status line — the checked box conveys it.
     expect(screen.queryByTestId('mcp-consent-status-cursor')).toBeNull();
-    // Undetected tools link to their OpenKnowledge setup guide instead.
-    const codexStatus = screen.getByTestId('mcp-consent-status-codex');
-    expect(codexStatus.tagName).toBe('A');
-    expect(codexStatus.textContent).toContain('How to set up');
-    expect(codexStatus.getAttribute('href')).toBe(
-      'https://openknowledge.ai/docs/integrations/codex',
-    );
+    // Progressive disclosure: undetected codex starts hidden behind the toggle.
+    expect(screen.queryByTestId('mcp-consent-checkbox-codex')).toBeNull();
     expect(screen.getByTestId('mcp-consent-checkbox-claude').getAttribute('aria-checked')).toBe(
       'true',
     );
     expect(screen.getByTestId('mcp-consent-checkbox-cursor').getAttribute('aria-checked')).toBe(
       'true',
     );
+
+    // Reveal the undetected tools — codex links to its setup guide, unchecked.
+    await userEvent.click(screen.getByTestId('mcp-consent-editors-toggle'));
+    const codexStatus = screen.getByTestId('mcp-consent-status-codex');
+    expect(codexStatus.tagName).toBe('A');
+    expect(codexStatus.textContent).toContain('How to set up');
+    expect(codexStatus.getAttribute('href')).toBe(
+      'https://openknowledge.ai/docs/integrations/codex',
+    );
     expect(screen.getByTestId('mcp-consent-checkbox-codex').getAttribute('aria-checked')).toBe(
       'false',
     );
+  });
+
+  test('consent integrity: a checked undetected tool stays visible after collapse', async () => {
+    // Two undetected tools so a toggle still exists after one is checked.
+    await renderDialog(
+      makeHarness({
+        snapshot: {
+          detectedEditors: [
+            {
+              id: 'claude',
+              label: 'Claude',
+              detected: true,
+              willReplace: false,
+              configPath: '~/.claude.json',
+              entryLocator: 'mcpServers.open-knowledge',
+            },
+            {
+              id: 'codex',
+              label: 'Codex',
+              detected: false,
+              willReplace: false,
+              configPath: '~/.codex/config.toml',
+              entryLocator: '[mcp_servers.open-knowledge]',
+            },
+            {
+              id: 'opencode',
+              label: 'OpenCode',
+              detected: false,
+              willReplace: false,
+              configPath: '~/.config/opencode/opencode.json',
+              entryLocator: 'mcp.open-knowledge',
+            },
+          ],
+          pathInstall: { shellDetected: false, rcFilesToTouch: [], alreadyInstalled: false },
+          globalSkills: [],
+        },
+      }),
+    );
+    // Both undetected tools hidden until expanded.
+    expect(screen.queryByTestId('mcp-consent-checkbox-codex')).toBeNull();
+
+    await userEvent.click(screen.getByTestId('mcp-consent-editors-toggle'));
+    await userEvent.click(screen.getByTestId('mcp-consent-checkbox-codex'));
+    expect(screen.getByTestId('mcp-consent-checkbox-codex').getAttribute('aria-checked')).toBe(
+      'true',
+    );
+
+    // Collapse: checked codex stays visible (still in the write set); unchecked
+    // opencode hides again, so the toggle persists.
+    await userEvent.click(screen.getByTestId('mcp-consent-editors-toggle'));
+    expect(screen.getByTestId('mcp-consent-checkbox-codex').getAttribute('aria-checked')).toBe(
+      'true',
+    );
+    expect(screen.queryByTestId('mcp-consent-checkbox-opencode')).toBeNull();
+  });
+
+  test('location tooltip discloses the config file and entry locator on focus', async () => {
+    await renderDialog();
+    // Content is portaled — mounts only once the info trigger is focused. Radix
+    // renders it twice when open (visible + a11y mirror), so assert getAllByText.
+    screen.getByTestId('mcp-consent-editor-info-claude').focus();
+    await waitFor(() => {
+      expect(screen.getAllByText('~/.claude.json').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('mcpServers.open-knowledge').length).toBeGreaterThan(0);
+    });
+  });
+
+  test('location tooltip shows the null-configPath fallback', async () => {
+    // claude-desktop has no user-global config on this platform (configPath null).
+    await renderDialog(
+      makeHarness({
+        snapshot: {
+          detectedEditors: [
+            {
+              id: 'claude-desktop',
+              label: 'Claude Desktop',
+              detected: false,
+              willReplace: false,
+              configPath: null,
+              entryLocator: 'mcpServers.open-knowledge',
+            },
+          ],
+          pathInstall: { shellDetected: false, rcFilesToTouch: [], alreadyInstalled: false },
+          globalSkills: [],
+        },
+      }),
+    );
+    screen.getByTestId('mcp-consent-editor-info-claude-desktop').focus();
+    await waitFor(() => {
+      expect(screen.getAllByText('unavailable on this platform').length).toBeGreaterThan(0);
+    });
   });
 
   test('undetected claude-desktop links to the shared claude-code guide (aliased slug)', async () => {
@@ -150,7 +296,14 @@ describe('McpConsentDialog runtime behavior', () => {
       makeHarness({
         snapshot: {
           detectedEditors: [
-            { id: 'claude-desktop', label: 'Claude Desktop', detected: false, willReplace: false },
+            {
+              id: 'claude-desktop',
+              label: 'Claude Desktop',
+              detected: false,
+              willReplace: false,
+              configPath: null,
+              entryLocator: 'mcpServers.open-knowledge',
+            },
           ],
           pathInstall: { shellDetected: false, rcFilesToTouch: [], alreadyInstalled: false },
           globalSkills: [],
@@ -232,6 +385,20 @@ describe('McpConsentDialog runtime behavior', () => {
     await waitFor(() => {
       expect(harness.skipCalls).toEqual(['skip', 'skip']);
     });
+  });
+
+  test('successful Skip points the user at the Settings surface via a toast', async () => {
+    const harness = makeHarness();
+    await renderDialog(harness);
+
+    await userEvent.click(screen.getByTestId('mcp-consent-skip'));
+
+    await waitFor(() => {
+      expect(harness.toastMessages).toEqual([
+        'This can be configured in Settings > AI tools & CLI',
+      ]);
+    });
+    expect(harness.toastErrors).toEqual([]);
   });
 });
 

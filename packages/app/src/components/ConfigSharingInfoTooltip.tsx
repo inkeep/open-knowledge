@@ -32,7 +32,7 @@ export function ConfigSharingInfoTooltip() {
               <br />
               <strong className="font-semibold">Shared</strong> commits them to git, so anyone who
               clones the repo gets the same setup. <br />
-              <strong className="font-semibold">Local only</strong> keeps them out of git (via{' '}
+              <strong className="font-semibold">Only me</strong> keeps them out of git (via{' '}
               <code>.git/info/exclude</code>).
             </Trans>
           </p>

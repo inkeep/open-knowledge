@@ -42,8 +42,8 @@ msgid ".ok folders"
 msgstr ".ok folders"
 
 #: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is back to local-only."
-msgstr ".ok/skills is back to local-only."
+msgid ".ok/skills is back to Only me."
+msgstr ".ok/skills is back to Only me."
 
 #: src/components/settings/SharingSection.tsx
 msgid ".ok/skills is committable so your team gets your skills; the rest of .ok/ stays on this computer."
@@ -220,6 +220,11 @@ msgstr "{0, plural, one {Folder} other {Folders}}"
 #: src/components/ProblemsPanel.tsx
 msgid "{0, plural, one {No problems across # document.} other {No problems across # documents.}}"
 msgstr "{0, plural, one {No problems across # document.} other {No problems across # documents.}}"
+
+#. placeholder {0}: editorList.hiddenCount
+#: src/components/McpConsentDialogBody.tsx
+msgid "{0, plural, one {Show # more tool} other {Show # more tools}}"
+msgstr "{0, plural, one {Show # more tool} other {Show # more tools}}"
 
 #. placeholder {0}: skillRows.length
 #: src/components/CreatedItemsList.tsx
@@ -2370,8 +2375,8 @@ msgid "Config sharing"
 msgstr "Config sharing"
 
 #: src/components/settings/SharingSection.tsx
-msgid "Config sharing is now local-only."
-msgstr "Config sharing is now local-only."
+msgid "Config sharing is now Only me."
+msgstr "Config sharing is now Only me."
 
 #: src/components/settings/SharingSection.tsx
 msgid "Config sharing is now shared. Commit the OK files to share with your team."
@@ -3203,6 +3208,10 @@ msgstr "Couldn't start the agent thread — please try again."
 #: src/components/share-receive-miss-content.tsx
 msgid "Couldn't start the sync. Check your connection, then retry."
 msgstr "Couldn't start the sync. Check your connection, then retry."
+
+#: src/components/settings/SharingSection.tsx
+msgid "Couldn't switch to Only me"
+msgstr "Couldn't switch to Only me"
 
 #. placeholder {0}: r.error
 #: src/components/SkillInstallMenu.tsx
@@ -4254,6 +4263,7 @@ msgstr "Enter a valid branch name (no spaces, no leading dot, no \"..\")."
 msgid "Enter a valid URL (for example https://api.openai.com/v1)."
 msgstr "Enter a valid URL (for example https://api.openai.com/v1)."
 
+#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Entry"
@@ -4705,6 +4715,7 @@ msgstr "Fields"
 
 #: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
+#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/share-metadata-rows.tsx
@@ -5098,8 +5109,8 @@ msgid "Give the AI tools you use access to read and update your projects. Checki
 msgstr "Give the AI tools you use access to read and update your projects. Checking a box sets it up right away; unchecking removes it."
 
 #: src/components/McpConsentDialogBody.tsx
-msgid "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime."
-msgstr "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime."
+msgid "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime in Settings > AI tools & CLI."
+msgstr "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime in Settings > AI tools & CLI."
 
 #: src/components/settings/LintingSection.tsx
 msgid "Glob patterns this schema applies to"
@@ -6191,11 +6202,6 @@ msgstr "Local collaboration data for \"{docName}\" could not be cleared. Reload 
 msgid "Local commits are keeping this copy from updating"
 msgstr "Local commits are keeping this copy from updating"
 
-#: src/components/settings/SharingSection.tsx
-#: src/components/SharingModeField.tsx
-msgid "Local only"
-msgstr "Local only"
-
 #: src/components/CloneDialog.tsx
 msgid "Local path"
 msgstr "Local path"
@@ -7259,6 +7265,11 @@ msgstr "Only external links trigger a request. Links to other documents in this 
 #: src/components/NotInSidebarIndicator.tsx
 msgid "Only markdown files"
 msgstr "Only markdown files"
+
+#: src/components/settings/SharingSection.tsx
+#: src/components/SharingModeField.tsx
+msgid "Only me"
+msgstr "Only me"
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Only modified"
@@ -9473,8 +9484,8 @@ msgid "Setup"
 msgstr "Setup"
 
 #: src/components/ConfigSharingInfoTooltip.tsx
-msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Local only</5> keeps them out of git (via <6>.git/info/exclude</6>)."
-msgstr "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Local only</5> keeps them out of git (via <6>.git/info/exclude</6>)."
+msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
+msgstr "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Setup OpenKnowledge in this folder?"
@@ -9585,7 +9596,9 @@ msgstr "Show document panel"
 msgid "Show external URL nodes"
 msgstr "Show external URL nodes"
 
+#. Collapses the undetected AI tools back behind the toggle
 #: src/components/LinksPanel.tsx
+#: src/components/McpConsentDialogBody.tsx
 msgid "Show fewer"
 msgstr "Show fewer"
 
@@ -9783,12 +9796,15 @@ msgstr "skills.sh"
 msgid "skills.sh is unavailable; showing GitHub results (no install ranking)."
 msgstr "skills.sh is unavailable; showing GitHub results (no install ranking)."
 
-#. Secondary button — dismisses the dialog without wiring any tools
 #: src/components/AuthModal.tsx
-#: src/components/McpConsentDialogBody.tsx
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Skip"
 msgstr "Skip"
+
+#. Secondary button — dismisses the dialog without wiring any tools
+#: src/components/McpConsentDialogBody.tsx
+msgid "Skip for now"
+msgstr "Skip for now"
 
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -9995,8 +10011,8 @@ msgstr "Stay in the loop"
 
 #: src/components/settings/SharingSection.tsx
 #: src/components/SharingModeField.tsx
-msgid "Stays on this computer."
-msgstr "Stays on this computer."
+msgid "Stays on this computer. Not committed to git."
+msgstr "Stays on this computer. Not committed to git."
 
 #: src/components/MountStalledAffordance.tsx
 msgid "Still loading"
@@ -10108,10 +10124,6 @@ msgstr "Switch project…"
 #: src/components/settings/SyncSection.tsx
 msgid "Switch to Follow"
 msgstr "Switch to Follow"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Switch to local-only refused"
-msgstr "Switch to local-only refused"
 
 #: src/components/command-palette-commands.ts
 msgid "Switch worktree"
@@ -10745,6 +10757,10 @@ msgstr "This agent runs through {0}, which isn't installed. Open Knowledge can d
 msgid "This branch is checked out in:"
 msgstr "This branch is checked out in:"
 
+#: src/components/McpConsentDialogBody.tsx
+msgid "This can be configured in Settings > AI tools & CLI"
+msgstr "This can be configured in Settings > AI tools & CLI"
+
 #: src/comments/CommentsPanel.tsx
 msgid "This comment is on the whole property"
 msgstr "This comment is on the whole property"
@@ -11189,6 +11205,7 @@ msgstr "Type to edit; <0>⌘ Enter</0> saves, <1>Esc</1> cancels."
 msgid "Type to find a doc"
 msgstr "Type to find a doc"
 
+#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 msgid "unavailable on this platform"
 msgstr "unavailable on this platform"
@@ -11678,6 +11695,7 @@ msgstr "What the agent may read, write, and surface."
 msgid "What this changes"
 msgstr "What this changes"
 
+#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "What this checkbox changes"

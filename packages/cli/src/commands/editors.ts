@@ -872,6 +872,37 @@ export interface EditorMcpTarget {
   projectSkillPath?: (cwd: string) => string;
 }
 
+/**
+ * Human-readable locator for an editor's `open-knowledge` entry within its
+ * config file — `[mcp_servers.open-knowledge]` for TOML, the dotted key path
+ * (`mcpServers.open-knowledge`, or `mcp.servers.open-knowledge` when nested)
+ * for JSON/YAML. Pure projection of the target's format + key shape; used as a
+ * disclosure aid in Settings → AI tools and the first-launch consent dialog.
+ */
+export function editorEntryLocator(target: EditorMcpTarget): string {
+  const server = target.serverName('');
+  return target.format === 'toml'
+    ? `[${target.topLevelKey}.${server}]`
+    : [target.topLevelKey, target.serverMapSubKey, server].filter(Boolean).join('.');
+}
+
+/**
+ * Display-form user-global MCP config path for an editor: the absolute path
+ * with the home prefix collapsed to `~`, or `null` when the editor has no
+ * user-global surface on this platform (its `configPath()` throws — Claude
+ * Desktop off-macOS, Pi everywhere). Same disclosure aid as
+ * {@link editorEntryLocator}.
+ */
+export function editorConfigPathDisplay(target: EditorMcpTarget, home: string): string | null {
+  let abs: string;
+  try {
+    abs = target.configPath('', home);
+  } catch {
+    return null;
+  }
+  return abs.startsWith(`${home}/`) ? `~${abs.slice(home.length)}` : abs;
+}
+
 export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> = {
   claude: {
     id: 'claude',

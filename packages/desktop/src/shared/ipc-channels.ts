@@ -417,6 +417,13 @@ export interface McpWiringEditorDetection {
   readonly label: string;
   readonly detected: boolean;
   readonly willReplace: boolean;
+  /** Display-form user-global config path (home collapsed to `~`), or null when
+   *  the editor has no user-global surface on this platform. Disclosure aid for
+   *  the per-row location tooltip — mirrors `OkIntegrationsStatus`. */
+  readonly configPath: string | null;
+  /** Locator for this editor's `open-knowledge` entry within its config file
+   *  (`[mcp_servers.open-knowledge]` / dotted key path). Disclosure aid. */
+  readonly entryLocator: string;
 }
 
 /** PATH-install leg of the first-launch consent dialog. Computed read-only

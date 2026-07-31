@@ -413,6 +413,8 @@ interface OkMcpWiringShowPayload {
     readonly label: string;
     readonly detected: boolean;
     readonly willReplace: boolean;
+    readonly configPath: string | null;
+    readonly entryLocator: string;
   }[];
   readonly pathInstall: {
     readonly shellDetected: boolean;

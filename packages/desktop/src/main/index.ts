@@ -49,6 +49,8 @@ import {
   defaultBugReportZipPath,
   detectInstalledEditors,
   EDITOR_TARGETS,
+  editorConfigPathDisplay,
+  editorEntryLocator,
   getOkArtifactPaths,
   HOSTS_WITH_USER_SKILL_DIR,
   isEntryUpToDate,
@@ -5558,10 +5560,6 @@ function registerIntegrationsSettingsIpc(): void {
     !['appimage', 'unsupported'].includes(
       classifyInstallShape(process.platform, app.getPath('exe'), process.env).kind,
     );
-  const tildifyHomePath = (path: string): string => {
-    const home = osHomedir();
-    return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
-  };
   registerIntegrationsSettings({
     home: osHomedir(),
     available,
@@ -5581,21 +5579,9 @@ function registerIntegrationsSettingsIpc(): void {
       // the exact canonical match. Same predicate `removeOwnMcpEntry` applies
       // internally, so a row shown as 'installed' is always removable.
       isOwnEntry: (entry) => isEntryUpToDate(entry) || isOwnManagedEntry(entry),
-      editorConfigPath: (editorId) => {
-        try {
-          return tildifyHomePath(EDITOR_TARGETS[editorId].configPath('', osHomedir()));
-        } catch {
-          // Platform-mismatched resolver (e.g. Claude Desktop off-macOS).
-          return null;
-        }
-      },
-      editorEntryLocator: (editorId) => {
-        const target = EDITOR_TARGETS[editorId];
-        const server = target.serverName('');
-        return target.format === 'toml'
-          ? `[${target.topLevelKey}.${server}]`
-          : [target.topLevelKey, target.serverMapSubKey, server].filter(Boolean).join('.');
-      },
+      editorConfigPath: (editorId) =>
+        editorConfigPathDisplay(EDITOR_TARGETS[editorId], osHomedir()),
+      editorEntryLocator: (editorId) => editorEntryLocator(EDITOR_TARGETS[editorId]),
       writeUserMcpConfigs: (writeOpts) => writeUserMcpConfigs(writeOpts),
       removeUserMcpEntry: (editorId) =>
         removeOwnMcpEntry(EDITOR_TARGETS[editorId], '', osHomedir()),

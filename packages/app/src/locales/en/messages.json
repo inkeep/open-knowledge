@@ -251,6 +251,13 @@
     "3oEK1e": ["Resuming the conversation"],
     "3oh0nQ": ["Nested .okignore error in ", ["path"]],
     "3pU8e-": ["Pin tab"],
+    "3s-k7L": [
+      [
+        "0",
+        "plural",
+        { "one": ["Show ", "#", " more tool"], "other": ["Show ", "#", " more tools"] }
+      ]
+    ],
     "3v62tp": ["Popular on skills.sh"],
     "3wiBAs": ["Where should it live?"],
     "3y6XTb": ["Semantic search"],
@@ -496,6 +503,7 @@
     "7vQdBK": ["Loading the conversation"],
     "80c4-P": ["Code copied to clipboard"],
     "81H_23": ["Add properties"],
+    "851WA-": ["This can be configured in Settings > AI tools & CLI"],
     "881Uwh": ["Delete selected table"],
     "89TtiD": [
       "New file from template \"",
@@ -1012,9 +1020,6 @@
     "GA-UkN": [["keyName"], " type: ", ["typeLabel"], ". Click to change."],
     "GBQjiV": ["Add skill"],
     "GDvlUT": ["Role"],
-    "GF51cw": [
-      "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime."
-    ],
     "GGsM4y": ["Selected in graph"],
     "GHsJb8": ["Show .ok folders"],
     "GJH-AT": [
@@ -1229,7 +1234,6 @@
     "K_vT1F": ["Upstream sync"],
     "KaFCD3": ["Open this link in a new tab and collapse the graph."],
     "Kf7GG5": ["Restarting the server…"],
-    "Kgdbkt": ["Switch to local-only refused"],
     "Kh1n4a": [
       "<",
       ["componentName"],
@@ -1484,7 +1488,6 @@
     "OdmsFg": ["Failed to delete item"],
     "OeAl1e": ["e.g. assets/uploads"],
     "OfhWJH": ["Reset"],
-    "OgyJSr": ["Local only"],
     "Oi56Cu": ["Cleanup log"],
     "OiHJdA": [
       "Move through slash, wiki-link, tag, and path suggestions; accept or dismiss the active suggestion."
@@ -1505,6 +1508,7 @@
     "P-ye9o": ["Could not open folder picker"],
     "P0HC30": ["This ", ["targetNoun"], " moved to <0>", ["0"], "</0>. Open it there?"],
     "P3NS4G": ["Pattern syntax error (line ", ["lineNumber"], "): ", ["message"]],
+    "P3S14k": [".ok/skills is back to Only me."],
     "P3hnm0": ["File too large to open"],
     "P47EWZ": ["Could not update sidebar settings"],
     "P6gXB-": ["Replace ", ["keyName"]],
@@ -1590,6 +1594,7 @@
     "QcpeeE": ["Navigate to ", ["docName"]],
     "QfFBdJ": ["The template's filename (without `.md`)."],
     "Qj4RL5": ["Completed:"],
+    "QjzFZj": ["Only me"],
     "QlAG4m": ["Tell us more (optional)"],
     "QlkiD5": ["Re-place on selected text"],
     "QlxHAH": ["Showing results for \"", ["semanticResultsLabel"], "\""],
@@ -1879,7 +1884,6 @@
     "VmXASo": ["(symlink)"],
     "VsaI0G": [["folderCount", "plural", { "one": ["folder"], "other": ["folders"] }]],
     "VuxVSP": ["Start source completion"],
-    "VvS_k_": ["Config sharing is now local-only."],
     "VxLvKE": ["Revert to installed version"],
     "VxO6wR": ["Delete selected files or folders"],
     "VzGJRl": ["Add link"],
@@ -2111,6 +2115,7 @@
     "Zon_qG": ["Mirror source <0>", ["label"], "</0>"],
     "ZptNUh": ["Show ", ["hidden"], " more"],
     "ZsGpr_": ["Paste link"],
+    "ZscwQ0": ["Couldn't switch to Only me"],
     "Zue_jx": ["Your GitHub token is missing required scopes. Try signing in again."],
     "Zul8Ry": ["never"],
     "ZvzbDF": ["Add it directly to this project."],
@@ -2314,7 +2319,6 @@
     "cV7LOw": ["Team Wiki"],
     "cZGNlb": ["Add another pattern"],
     "cZI5AL": ["OK Desktop"],
-    "cZ_8zB": ["Stays on this computer."],
     "caw8gO": [
       [
         "strandedCommitCount",
@@ -2623,6 +2627,7 @@
     "hmYd9H": [
       "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
     ],
+    "hnlGzG": ["Skip for now"],
     "hnq8fP": ["Remove ", ["label"], " from context"],
     "hp8OtS": ["Added"],
     "hpDtUm": ["External wiki link"],
@@ -2710,9 +2715,6 @@
     "irFGwu": ["Template list"],
     "irrm_E": ["Remove selection"],
     "isRobC": ["New"],
-    "itxlnr": [
-      "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Local only</5> keeps them out of git (via <6>.git/info/exclude</6>)."
-    ],
     "iuTKci": ["No edits yet."],
     "iv452l": ["Documentation for ", ["0"], " (opens in browser)"],
     "ivwdwq": ["Create a skill."],
@@ -2853,6 +2855,9 @@
     "kq-Qj4": ["Couldn't work out where to send the comments — they stay queued."],
     "ktspdq": ["Tint and badge files that have lint or link problems, without opening them."],
     "ku0yLQ": ["Pages are embedded the first time a search needs them."],
+    "kwLcuN": [
+      "Give the AI tools you use access to read and update your projects. Pick what to set up below, and change it anytime in Settings > AI tools & CLI."
+    ],
     "ky9Tuc": ["Edit ", ["0"], " source"],
     "kzpkcn": ["Couldn't save that edit."],
     "l-4nnw": ["Search rules"],
@@ -2948,6 +2953,9 @@
     ],
     "mPy9lS": [
       "Organize my existing specs into a linked index grouped by area, and flag any that have drifted out of sync with the current code."
+    ],
+    "mR3Bly": [
+      "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
     ],
     "mShKiV": ["Upload a skill"],
     "mToVM9": ["Message ", ["agentName"]],
@@ -3150,7 +3158,6 @@
     "pFRz_E": ["Leave these comments out of this message"],
     "pFagOn": ["Source editing"],
     "pHYP6v": ["Open <0>Customize</0> in the sidebar <1/> <2>Skills</2>."],
-    "pQf2Ux": [".ok/skills is back to local-only."],
     "pSimwP": ["New name for the ", ["editor"], " version"],
     "pTPqMK": ["Toggle a fenced code block."],
     "pTyA_t": ["tags"],
@@ -3466,6 +3473,7 @@
     ],
     "uksqrP": ["Repository not found. It may have been renamed, deleted, or moved."],
     "ul1Atu": ["Converting..."],
+    "un-K1H": ["Stays on this computer. Not committed to git."],
     "un8kBM": ["Creating page: ", ["linkTitle"], "."],
     "uoJF_D": ["It was too hard to set up or get started"],
     "ur2XSb": ["Visual editor"],
@@ -3568,6 +3576,7 @@
     "wbv9xO": ["Create new project"],
     "wcfO9r": ["No bug reports yet."],
     "wdxz7K": ["Source"],
+    "wdzBgi": ["Config sharing is now Only me."],
     "weP6me": ["Couldn't load docs — type @ again to retry"],
     "wefL17": [["source"], " publishes ", ["count"], " skills. Install any of them together."],
     "wgNoIs": ["Select all"],
