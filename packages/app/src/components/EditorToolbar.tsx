@@ -1,4 +1,5 @@
 import {
+  isEditableTextDocFile,
   parseExternalSkillDocName,
   parseManagedArtifactName,
   type SkillScope,
@@ -127,11 +128,15 @@ export function EditorToolbar({
             )}
           </div>
           <div className="pointer-events-auto flex justify-center">
-            <EditorModeToggle
-              isSourceMode={isSourceMode}
-              onModeChange={onModeChange}
-              sourceDisabled={sourceDisabled}
-            />
+            {/* Editable text docs have exactly one surface (CodeMirror), so
+                the wysiwyg/source switch would be a no-op pair of buttons. */}
+            {activeDocName !== null && isEditableTextDocFile(activeDocName) ? null : (
+              <EditorModeToggle
+                isSourceMode={isSourceMode}
+                onModeChange={onModeChange}
+                sourceDisabled={sourceDisabled}
+              />
+            )}
           </div>
           {/*
             Third column kept empty so the mode toggle stays centered in the

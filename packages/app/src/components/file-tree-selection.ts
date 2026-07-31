@@ -1,5 +1,9 @@
 import type { InlineAssetMediaKind } from '@inkeep/open-knowledge-core';
-import { isDocumentOverOpenByteLimit, isEditableTextDocFile } from '@inkeep/open-knowledge-core';
+import {
+  isDocumentOverOpenByteLimit,
+  isEditableTextDocFile,
+  TEXT_DOC_OPEN_BYTE_LIMIT,
+} from '@inkeep/open-knowledge-core';
 import { hashFromAssetPath } from '@/lib/doc-hash';
 import {
   fileEntryToTreePath,
@@ -105,7 +109,8 @@ export function resolveFileTreeSelectionAction(
     // (extension retained), so route the selection as a document.
     if (
       entry.mediaKind === 'mermaid' ||
-      (isEditableTextDocFile(entry.path) && !isDocumentOverOpenByteLimit(entry.size))
+      (isEditableTextDocFile(entry.path) &&
+        !isDocumentOverOpenByteLimit(entry.size, TEXT_DOC_OPEN_BYTE_LIMIT))
     ) {
       // Oversized text files stay on the read-only asset viewer — the
       // verbatim load path has no large-doc defer, so seeding a multi-MB

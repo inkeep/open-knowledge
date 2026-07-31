@@ -287,7 +287,22 @@ describe('resolveFileTreeSelectionAction — editable text assets', () => {
     ).toEqual({ kind: 'document', path: 'src/util.ts' });
   });
 
-  test('an oversized text asset stays on the read-only asset viewer', () => {
+  test('an everyday-large lockfile still opens as an editable doc', () => {
+    expect(
+      resolveFileTreeSelectionAction('pnpm-lock.yaml', [
+        {
+          kind: 'asset',
+          path: 'pnpm-lock.yaml',
+          assetExt: '.yaml',
+          mediaKind: 'text',
+          size: 900 * 1024,
+          modified: '',
+        },
+      ]),
+    ).toEqual({ kind: 'document', path: 'pnpm-lock.yaml' });
+  });
+
+  test('a pathologically large text asset stays on the read-only asset viewer', () => {
     expect(
       resolveFileTreeSelectionAction('big/data.json', [
         {
@@ -295,7 +310,7 @@ describe('resolveFileTreeSelectionAction — editable text assets', () => {
           path: 'big/data.json',
           assetExt: '.json',
           mediaKind: 'text',
-          size: 5 * 1024 * 1024,
+          size: 20 * 1024 * 1024,
           modified: '',
         },
       ]),

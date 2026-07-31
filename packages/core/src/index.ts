@@ -290,6 +290,7 @@ export { LINEAGE_EPOCH_KEY } from './constants/doc-lifecycle.ts';
 export {
   DOCUMENT_OPEN_BYTE_LIMIT,
   isDocumentOverOpenByteLimit,
+  TEXT_DOC_OPEN_BYTE_LIMIT,
 } from './constants/document-open.ts';
 export {
   ALL_EDITOR_IDS,
