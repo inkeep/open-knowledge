@@ -26,7 +26,6 @@ import type {
   OkBugReportDeleteResult,
   OkBugReportListResult,
   OkBugReportScreenshot,
-  OkBugReportSendMetadata,
   OkBugReportSendResult,
   ReportBundleLevel,
   WorktreeCreateRequest,
@@ -526,11 +525,19 @@ const bridge: OkDesktopBridge = {
       invoke('ok:bug-report:dispatch', {
         kind: 'capture-screenshot',
       }) as Promise<OkBugReportScreenshot | null>,
-    send: (request: { zipPath: string; metadata: OkBugReportSendMetadata }) =>
+    // Param type derived from the contract, payload spread whole — a hand-copy
+    // of this shape drops fields with no type error on either half. A param
+    // type listing fewer fields is a SUPERTYPE of the contract's, so it is
+    // accepted and the missing field is simply invisible in the body; and an
+    // enumerated payload literal satisfies the request union while an optional
+    // field is absent. `includeScreenshot` is one such field, and main reads
+    // absent as "reporter declined", so a drop here is silent by construction.
+    // `kind` sits after the spread so a renderer-supplied `kind` cannot
+    // redirect the call to another operation on this channel.
+    send: (request: Parameters<OkDesktopBridge['bugReport']['send']>[0]) =>
       invoke('ok:bug-report:dispatch', {
+        ...request,
         kind: 'send',
-        zipPath: request.zipPath,
-        metadata: request.metadata,
       }) as Promise<OkBugReportSendResult>,
     crashAck: (request: { eventId: string }) =>
       invoke('ok:bug-report:dispatch', {

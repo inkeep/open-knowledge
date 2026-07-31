@@ -1691,6 +1691,14 @@ export interface OkDesktopBridge {
     send(request: {
       zipPath: string;
       metadata: OkBugReportSendMetadata;
+      /**
+       * Whether the bundle at `zipPath` contains the app screenshot, taken from
+       * the bundle's own file inventory rather than the dialog's checkbox state.
+       * The inventory is what the reporter reviewed, so it is the authoritative
+       * consent record: absent or false means main must not upload the capture it
+       * is still holding.
+       */
+      includeScreenshot?: boolean;
     }): Promise<OkBugReportSendResult>;
     crashAck(request: { eventId: string }): Promise<OkBugReportCrashAckResult>;
     /** The persisted report history (newest first) read from the sidecars. */
