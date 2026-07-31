@@ -50,6 +50,47 @@ describe('skillOriginUrl', () => {
       ),
     ).toBe('https://github.com/acme/ponytail-plugin');
   });
+
+  // The skills.sh path's middle segment is the REPO. Hardcoding a literal
+  // `skills` there resolved for publishers who happen to name their repo that
+  // and silently mis-linked everyone else — skills.sh answers 200 with a
+  // placeholder stub for an unknown owner/repo/slug, so nothing surfaced.
+  test('builds the skills.sh page URL from the source repo, not a literal "skills"', () => {
+    expect(
+      skillOriginUrl(
+        {
+          source: 'inkeep/open-knowledge-skills',
+          publisher: 'inkeep',
+          skill: 'open-knowledge-discovery',
+          importedAt: '2026-07-30T12:00:00.000Z',
+        },
+        'open-knowledge-discovery',
+      ),
+    ).toBe('https://www.skills.sh/inkeep/open-knowledge-skills/open-knowledge-discovery');
+  });
+
+  test('uses the /site/ shape for a website-catalog source', () => {
+    expect(
+      skillOriginUrl(
+        {
+          source: 'open.feishu.cn',
+          publisher: 'open.feishu.cn',
+          skill: 'lark-attendance',
+          importedAt: '2026-07-30T12:00:00.000Z',
+        },
+        'lark-attendance',
+      ),
+    ).toBe('https://www.skills.sh/site/open.feishu.cn/lark-attendance');
+  });
+
+  test('falls back to the GitHub repo when the import recorded no publisher', () => {
+    expect(
+      skillOriginUrl(
+        { source: 'acme/toolkit', importedAt: '2026-07-30T12:00:00.000Z' },
+        'widget-audit',
+      ),
+    ).toBe('https://github.com/acme/toolkit');
+  });
 });
 
 describe('skillAutoUpdateEnabled', () => {

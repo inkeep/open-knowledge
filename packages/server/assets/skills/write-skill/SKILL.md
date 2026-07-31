@@ -33,7 +33,8 @@ it only if reuse is the right call. Use the Vercel `find-skills` skill,
 `npx skills find <query>`, or manual skills.sh search only when the OK MCP
 `skills({ query })` path is unavailable. If the user already has a skills.sh page
 open, pass the full skill-page URL as `source`, e.g.
-`import({ source: "https://www.skills.sh/<publisher>/skills/<skill>", add: [...] })`. Do not
+`import({ source: "https://www.skills.sh/<owner>/<repo>/<skill>", add: [...] })` — the
+middle segment is the REPO, not a literal `skills`. Do not
 run `npx skills add` as the
 default install path in this flow: import through OpenKnowledge
 (`import({ source, skill, add })`) so the skill lands as a real folder with

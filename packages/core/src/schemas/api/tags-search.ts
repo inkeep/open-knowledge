@@ -1519,7 +1519,7 @@ export const SkillImportRequestSchema = z
     scope: SkillScopeSchema.default('project'),
     source: z.string().min(1).meta({
       description:
-        'External skill source: full skills.sh skill-page URL (https://www.skills.sh/<publisher>/skills/<skill>), GitHub owner/repo[/subpath], git URL, or local/file path.',
+        'External skill source: full skills.sh skill-page URL (https://www.skills.sh/<owner>/<repo>/<skill>, or https://www.skills.sh/site/<hostname>/<skill> for a website catalog), GitHub owner/repo[/subpath], git URL, or local/file path.',
     }),
     skill: z
       .string()

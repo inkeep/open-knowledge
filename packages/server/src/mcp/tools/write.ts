@@ -946,7 +946,7 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
           })
           .optional()
           .describe(
-            'Create or overwrite an agent SKILL bundle (a NEW skill lands at the project\'s default skill home, e.g. `.agents/skills/<name>/`). SKILL.md is authored via `description`+`body`; bundle files (any path — `references/**`, `scripts/**`, `assets/**`, …) via the `files` array. Example: { skill: { name: "trip-log", description: "Use when logging a fishing trip.", body: "# Steps\\n...", files: [{ path: "references/gear.md", content: "..." }] } }',
+            'Create or overwrite an agent SKILL bundle (a NEW skill lands at the project\'s default skill home, e.g. `.agents/skills/<name>/`). SKILL.md is authored via `description`+`body`; bundle files (under `references/**` or `scripts/**` — no other root is accepted) via the `files` array. Example: { skill: { name: "trip-log", description: "Use when logging a fishing trip.", body: "# Steps\\n...", files: [{ path: "references/gear.md", content: "..." }] } }',
           ),
         asset: z
           .object({

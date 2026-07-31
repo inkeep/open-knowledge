@@ -1,4 +1,4 @@
-import type { SkillOrigin, SkillScope } from '@inkeep/open-knowledge-core';
+import { type SkillOrigin, type SkillScope, skillsShSkillLinks } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -12,11 +12,16 @@ import { reimportSkill, revertSkill } from '@/lib/skills-api';
  * URLs return null (the source string is still shown, just not linked).
  */
 /** skills.sh page URL when the import recorded a publisher; the slug falls
- *  back to the local name (they match unless the source folder was renamed). */
+ *  back to the local name (they match unless the source folder was renamed).
+ *
+ *  The path's middle segment is the REPO, not a literal `skills` — building it
+ *  by hand produced a valid-looking page for every publisher whose repo is named
+ *  anything else, because skills.sh renders a placeholder stub (HTTP 200) rather
+ *  than 404ing an unknown owner/repo/slug. `skillsShSkillLinks` derives it from
+ *  the recorded source and handles the website-catalog (`/site/<host>/…`) shape. */
 function skillsShUrl(origin: SkillOrigin, localName: string): string | null {
   if (!origin.publisher) return null;
-  const slug = origin.skill ?? localName;
-  return `https://www.skills.sh/${encodeURIComponent(origin.publisher)}/skills/${encodeURIComponent(slug)}`;
+  return skillsShSkillLinks(origin.source, origin.skill ?? localName)?.skillsUrl ?? null;
 }
 
 export function githubUrl(source: string): string | null {

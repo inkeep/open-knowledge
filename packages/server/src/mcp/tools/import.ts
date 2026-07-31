@@ -36,7 +36,7 @@ const DESCRIPTION = [
   'Fetches an agentskills.io / skills.sh skill-dir from a `source` and writes it into the vendor-neutral `.agents/skills/<name>/` hub — where it gains history, search, attribution, and cross-harness projection (via `install`) for free. Provenance (source, commit, content hash, publisher) is recorded in `.ok/skills-lock.json`. Scripts are imported as content and are NEVER executed. `add` says where it goes — an import always places the skill somewhere, so `install` afterwards is only for changing WHERE it lives (add/remove/convert/source).',
   '',
   '**Parameters:**',
-  '- `source` — paste the full skills.sh skill-page URL (`https://www.skills.sh/<publisher>/skills/<skill>`), or pass `owner/repo[/subpath]` (GitHub), a git URL, or a local / `file://` path.',
+  '- `source` — paste the full skills.sh skill-page URL (`https://www.skills.sh/<owner>/<repo>/<skill>`, or `https://www.skills.sh/site/<hostname>/<skill>` for a website catalog), or pass `owner/repo[/subpath]` (GitHub), a git URL, or a local / `file://` path.',
   '- `skill` — Pick ONE skill when the source bundles several.',
   '- `scope` — `project` (default, versioned + shared) or `global` (user-global, unversioned).',
   '',
@@ -60,7 +60,7 @@ export function register(server: ServerInstance, deps: ImportDeps): void {
           .string()
           .min(1)
           .describe(
-            'Full skills.sh skill-page URL (`https://www.skills.sh/<publisher>/skills/<skill>`), `owner/repo[/subpath]`, a git URL, or a local / `file://` path.',
+            'Full skills.sh skill-page URL (`https://www.skills.sh/<owner>/<repo>/<skill>`, or `https://www.skills.sh/site/<hostname>/<skill>` for a website catalog), `owner/repo[/subpath]`, a git URL, or a local / `file://` path.',
           ),
         skill: z.string().min(1).optional().describe('Pick one skill from a multi-skill source.'),
         add: z
