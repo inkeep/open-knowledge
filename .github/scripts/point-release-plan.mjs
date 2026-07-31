@@ -27,6 +27,7 @@ import {
   realGit,
   runGit,
 } from '../../scripts/compute-stable-version.mjs';
+import { parseChangeset } from './write-back.mjs';
 
 function refuse(code, message) {
   return { ok: false, code, message };
@@ -400,6 +401,22 @@ export function runPointRelease(opts, io) {
 
   const mainReset = decideMainReset({ anchorDeltaIds, addedIds: version.addedIds, bridgeConfigured, guards, warnings });
 
+  // The Release body is what every announcement channel renders verbatim
+  // (Slack/Discord inline it), so it quotes each added changeset's prose the
+  // way a stable's aggregated notes do, rather than listing ids. Reads are
+  // best-effort per entry: notes are cosmetic and must never refuse a release,
+  // so a failed read degrades that entry to its id. Composed at plan time so a
+  // dry run previews the exact announcement.
+  const changesetEntries = version.addedIds.map((id) => {
+    let body = null;
+    try {
+      body = parseChangeset(io.git.changesetContent(syntheticSha, id))?.body ?? null;
+    } catch {
+      body = null;
+    }
+    return { id, body };
+  });
+
   const plan = {
     mode,
     dryRun,
@@ -419,10 +436,12 @@ export function runPointRelease(opts, io) {
     bump: version.bump,
     addedIds: version.addedIds,
     removedIds: version.removedIds,
+    changesetEntries,
     mainReset,
     guards,
     warnings,
   };
+  plan.releaseNotes = formatReleaseNotes(plan);
 
   if (dryRun) return plan;
 
@@ -449,7 +468,7 @@ export function runPointRelease(opts, io) {
       targetSha: syntheticSha,
       title: plan.tag,
       draft: true,
-      notes: formatReleaseNotes(plan),
+      notes: plan.releaseNotes,
     });
 
     // The ONLY cascade dispatch for the release itself, matching what
@@ -574,7 +593,7 @@ function decideMainReset({ anchorDeltaIds, addedIds, bridgeConfigured, guards, w
   return { dispatch: true, deltaIds, skipReason: null };
 }
 
-function formatReleaseNotes(plan) {
+export function formatReleaseNotes(plan) {
   const lines = [
     `Point release over ${plan.latestStableTag}: the current stable plus ${plan.fixRefs.length} applied ` +
       `commit(s), isolated from the changes still soaking on main.`,
@@ -582,7 +601,22 @@ function formatReleaseNotes(plan) {
     `Mode: ${plan.mode}`,
     `Applied: ${plan.fixRefs.map((r) => `${r.ref} (${r.sha})`).join(', ')}`,
   ];
-  if (plan.addedIds.length > 0) lines.push(`Changesets added: ${plan.addedIds.join(', ')}`);
+  // Quote each added changeset's prose under the same level heading a stable's
+  // aggregated notes use, so the announcement channels render both release
+  // kinds identically. The bump is guarded patch-only, so the heading is
+  // always `Patch Changes`. Entries whose content could not be read fall back
+  // to the old id list so the body never claims less than the ids conveyed.
+  const entries = plan.changesetEntries ?? [];
+  const quoted = entries.filter((e) => e.body);
+  const unquoted = entries.filter((e) => !e.body);
+  if (quoted.length > 0) {
+    lines.push('', '### Patch Changes', '');
+    for (const e of quoted) {
+      lines.push(`- ${e.body.split('\n').join('\n  ')}`);
+    }
+  }
+  const unquotedIds = entries.length > 0 ? unquoted.map((e) => e.id) : plan.addedIds;
+  if (unquotedIds.length > 0) lines.push('', `Changesets added: ${unquotedIds.join(', ')}`);
   if (plan.removedIds.length > 0) lines.push(`Changesets removed: ${plan.removedIds.join(', ')}`);
   return `${lines.join('\n')}\n`;
 }
@@ -613,6 +647,9 @@ function realIo() {
           `git rev-parse --verify refs/tags/${tag} failed (exit ${res.status}): ${res.error?.message ?? String(res.stderr || '').trim()}`,
         );
       },
+      // Raw changeset contents from the synthetic commit, for the release
+      // notes. runGit fails loud on a bad read; the caller degrades per entry.
+      changesetContent: (sha, id) => runGit(['show', `${sha}:.changeset/${id}.md`]),
       checkoutDetached: (sha) => void runGit(['checkout', '--detach', sha]),
       cherryPick: (ref) => void runGit(['cherry-pick', ref]),
       // --no-edit only suppresses the message editor; the pick is otherwise

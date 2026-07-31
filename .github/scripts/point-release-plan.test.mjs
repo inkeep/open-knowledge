@@ -256,6 +256,7 @@ function makeIo(overrides = {}) {
     existingTags = ['v0.32.0'],
     changesets = { 'stable-sha': ['keep-a'], 'synthetic-sha': ['keep-a'] },
     bumpTypes = {},
+    changesetContents = {},
     prebuildHeadSha = 'prebuild-sha',
     ancestries = [['prebuild-sha', 'synthetic-sha']],
     cherryPick,
@@ -283,6 +284,11 @@ function makeIo(overrides = {}) {
       isAncestor: (a, b) => ancestries.some(([x, y]) => x === a && y === b),
       changesetIds: (sha) => changesets[sha] ?? [],
       bumpTypeOf: (_sha, id) => bumpTypes[id] ?? 'patch',
+      changesetContent: (_sha, id) => {
+        const content = changesetContents[id];
+        if (content === undefined) throw new Error(`no changeset content for ${id}`);
+        return content;
+      },
       checkoutDetached: (sha) => checkedOut.push(sha),
       cherryPick: cherryPick ?? ((ref) => applied.push(['cherry-pick', ref])),
       revert: revert ?? ((ref) => applied.push(['revert', ref])),
@@ -425,6 +431,59 @@ describe('runPointRelease cascade', () => {
     runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], dryRun: false }, io);
     expect(io.calls).toMatchObject({ tag: 1, pushTag: 1, createRelease: 1 });
     expect(io.releases[0]).toMatchObject({ tag: 'v0.32.1', targetSha: 'synthetic-sha', draft: true });
+  });
+
+  test('the release notes quote each added changeset the way a stable body does', () => {
+    const io = makeIo({
+      changesets: {
+        'stable-sha': ['keep-a'],
+        'synthetic-sha': ['keep-a', 'shiny-fix'],
+        fix1: ['keep-a', 'shiny-fix'],
+        'fix1^': ['keep-a'],
+      },
+      changesetContents: {
+        'shiny-fix':
+          '---\n"@inkeep/open-knowledge": patch\n---\n\nChips no longer balloon into ovals.\nSecond line of the note.\n',
+      },
+    });
+    runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], dryRun: false }, io);
+    const notes = io.releases[0].notes;
+    expect(notes).toContain('### Patch Changes');
+    expect(notes).toContain('- Chips no longer balloon into ovals.\n  Second line of the note.');
+    expect(notes).not.toContain('Changesets added:');
+  });
+
+  test('an unreadable changeset degrades its notes entry to the id rather than refusing', () => {
+    const io = makeIo({
+      changesets: {
+        'stable-sha': ['keep-a'],
+        'synthetic-sha': ['keep-a', 'shiny-fix'],
+        fix1: ['keep-a', 'shiny-fix'],
+        'fix1^': ['keep-a'],
+      },
+    });
+    runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], dryRun: false }, io);
+    expect(io.calls.createRelease).toBe(1);
+    expect(io.releases[0].notes).toContain('Changesets added: shiny-fix');
+    expect(io.releases[0].notes).not.toContain('### Patch Changes');
+  });
+
+  test('a dry run previews the exact release notes without touching anything remote', () => {
+    const io = makeIo({
+      changesets: {
+        'stable-sha': ['keep-a'],
+        'synthetic-sha': ['keep-a', 'shiny-fix'],
+        fix1: ['keep-a', 'shiny-fix'],
+        'fix1^': ['keep-a'],
+      },
+      changesetContents: {
+        'shiny-fix': '---\n"@inkeep/open-knowledge": patch\n---\n\nChips no longer balloon into ovals.\n',
+      },
+    });
+    const plan = runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], dryRun: true }, io);
+    expect(plan.releaseNotes).toContain('### Patch Changes');
+    expect(plan.releaseNotes).toContain('- Chips no longer balloon into ovals.');
+    expect(io.calls).toEqual({ tag: 0, pushTag: 0, createRelease: 0, dispatch: 0 });
   });
 
   test('revert with no named delta skips main-reset and names both follow-ups', () => {
