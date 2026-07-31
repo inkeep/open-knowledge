@@ -3850,6 +3850,10 @@ msgstr ""
 msgid "Done."
 msgstr ""
 
+#: src/components/ui/tag-pill-input.tsx
+msgid "Double-click to edit"
+msgstr ""
+
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx
 msgid "Download {0}"
@@ -3971,6 +3975,10 @@ msgstr ""
 
 #: src/components/PropertyWidgets.tsx
 msgid "Edit {keyName}"
+msgstr ""
+
+#: src/components/ui/tag-pill-input.tsx
+msgid "Edit {tag}"
 msgstr ""
 
 #: src/components/SkillPreviewTab.tsx

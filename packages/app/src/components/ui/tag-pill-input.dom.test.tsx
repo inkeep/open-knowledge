@@ -378,3 +378,452 @@ describe('TagPillInput — a11y id wiring (regression: PR #1288 review findings)
     expect(wrapper?.getAttribute('aria-invalid')).toBe('true');
   });
 });
+
+describe('TagPillInput — pills read as authored', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  test('pills do not inherit the Badge uppercase transform', () => {
+    // Badge's base class uppercases; these entries are case-sensitive values
+    // (globs, tags, markdownlint option strings) and a pill that renders
+    // BLOG/** for `blog/**` reads as corruption of a pattern that is fine.
+    // twMerge resolves the conflict, so `uppercase` should be gone entirely.
+    const { container } = render(
+      <TooltipProvider>
+        <TagPillInput value={['blog/**']} onChange={() => {}} grammar="free-text" />
+      </TooltipProvider>,
+    );
+    const pill = container.querySelector('[data-slot="badge"]') ?? container.querySelector('span');
+    expect(pill?.className).toContain('normal-case');
+    expect(pill?.className).not.toContain('uppercase');
+  });
+});
+
+describe('TagPillInput — per-entry problems', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  function renderWithProblems(problems: [string, string][], value: string[]) {
+    return render(
+      <TooltipProvider>
+        <TagPillInput
+          value={value}
+          onChange={() => {}}
+          grammar="free-text"
+          entryProblems={new Map(problems)}
+        />
+      </TooltipProvider>,
+    );
+  }
+
+  test('flags only the entry named by a problem', () => {
+    const { container } = renderWithProblems(
+      [['specs/**', 'matches no docs in this project']],
+      ['docs/**', 'specs/**'],
+    );
+    const flagged = container.querySelectorAll('[data-tag-problem="true"]');
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0]?.textContent).toContain('specs/**');
+  });
+
+  test('a flagged entry is tooltip-wrapped so the message is reachable on hover', () => {
+    const { container } = renderWithProblems(
+      [['specs/**', 'matches no docs in this project']],
+      ['specs/**'],
+    );
+    const badge = container.querySelector('[data-tag-problem="true"]');
+    expect(badge?.getAttribute('data-state')).toBe('closed');
+  });
+
+  test('entries with no problem stay unflagged and untooltipped', () => {
+    const { container } = renderWithProblems([['specs/**', 'nope']], ['docs/**']);
+    expect(container.querySelectorAll('[data-tag-problem="true"]')).toHaveLength(0);
+    expect(container.querySelector('[data-slot="badge"]')?.getAttribute('data-state')).toBeNull();
+  });
+
+  test('free-text entries are not flagged by the tag grammar (problems are the only source)', () => {
+    const { container } = renderWithProblems([], ['## Summary']);
+    expect(container.querySelectorAll('[data-tag-invalid="true"]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-tag-problem="true"]')).toHaveLength(0);
+  });
+
+  test('double-clicking a flagged entry lifts it into the input for correction', () => {
+    // The flagged path is structurally different from an unflagged pill: a
+    // flagged pill is tooltip-wrapped, so `[data-slot="badge"] button` cannot
+    // reach it. Query through the wrapper so this exercises the real flagged
+    // structure, not the unflagged one the double-click block covers.
+    const { container } = renderWithProblems(
+      [['specs/**', 'matches no docs in this project']],
+      ['specs/**'],
+    );
+    const editButton = [...container.querySelectorAll('[data-slot="tag-pill-input"] button')].find(
+      (el) => el.textContent === 'specs/**',
+    ) as HTMLElement;
+    fireEvent.doubleClick(editButton);
+    const input = container.querySelector('input') as HTMLInputElement;
+    expect(input.value).toBe('specs/**');
+    expect(document.activeElement).toBe(input);
+  });
+
+  test('the tooltip on a flagged entry reports the problem detail', async () => {
+    // The tooltip is the only place the "why" of a problem now lives, so the
+    // detail text — not merely the presence of a tooltip — is the contract.
+    const { container, findByRole } = renderWithProblems(
+      [['specs/**', 'matches no docs in this project']],
+      ['specs/**'],
+    );
+    fireEvent.focus(container.querySelector('[data-tag-problem="true"]') as HTMLElement);
+    const tooltip = await findByRole('tooltip');
+    expect(tooltip.textContent).toContain('matches no docs in this project');
+  });
+
+  test('a flagged entry drops the native edit title so tooltips do not compete', () => {
+    // The flagged pill already shows a Radix tooltip with the problem detail;
+    // the native `title` on the edit button would stack a second, competing
+    // tooltip. Unflagged pills keep the affordance hint.
+    const { container } = renderWithProblems(
+      [['specs/**', 'matches no docs in this project']],
+      ['docs/**', 'specs/**'],
+    );
+    const buttons = [...container.querySelectorAll('[data-slot="tag-pill-input"] button')];
+    const flaggedEdit = buttons.find((el) => el.textContent === 'specs/**') as HTMLElement;
+    const okEdit = buttons.find((el) => el.textContent === 'docs/**') as HTMLElement;
+    expect(flaggedEdit.getAttribute('title')).toBeNull();
+    expect(okEdit.getAttribute('title')).toBe('Double-click to edit');
+  });
+});
+
+describe('TagPillInput — double-click to edit', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  function renderEditable(value: string[], onChange = vi.fn(() => {})) {
+    const result = render(
+      <TooltipProvider>
+        <TagPillInput value={value} onChange={onChange} grammar="free-text" />
+      </TooltipProvider>,
+    );
+    const input = result.container.querySelector('input') as HTMLInputElement;
+    // The pill label is a button (keyboard parity for the edit gesture); the
+    // sibling remove button has no text, so matching on textContent is exact.
+    const label = (text: string) =>
+      [...result.container.querySelectorAll('[data-slot="badge"] button')].find(
+        (el) => el.textContent === text,
+      ) as HTMLElement;
+    return { ...result, onChange, input, label };
+  }
+
+  test('lifts the entry into the input and takes it off the row', () => {
+    const { input, label, container } = renderEditable(['blog', 'docs/**']);
+    fireEvent.doubleClick(label('blog'));
+    expect(input.value).toBe('blog');
+    // The entry lives in the input now — showing both would read as a duplicate.
+    expect(container.textContent).not.toMatch(/blog(?!\/)/);
+    expect(document.activeElement).toBe(input);
+  });
+
+  test('commits in place so the entry keeps its position', () => {
+    // Order carries meaning for globs: an exclude only subtracts from the
+    // includes before it, so a corrected pattern must not jump to the end.
+    const { input, label, onChange } = renderEditable(['blog', '!blog/drafts/**', 'docs/**']);
+    fireEvent.doubleClick(label('blog'));
+    fireEvent.change(input, { target: { value: 'blog/**' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith(['blog/**', '!blog/drafts/**', 'docs/**']);
+  });
+
+  test('Escape abandons the edit and restores the entry untouched', () => {
+    const { input, label, onChange, container } = renderEditable(['blog']);
+    fireEvent.doubleClick(label('blog'));
+    fireEvent.change(input, { target: { value: 'blo' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(input.value).toBe('');
+    expect(container.textContent).toContain('blog');
+  });
+
+  test('clearing the text and committing deletes the entry', () => {
+    const { input, label, onChange } = renderEditable(['blog', 'docs/**']);
+    fireEvent.doubleClick(label('blog'));
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith(['docs/**']);
+  });
+
+  test('Backspace on an emptied edit box does not also eat the previous entry', () => {
+    const { input, label, onChange } = renderEditable(['blog', 'docs/**']);
+    fireEvent.doubleClick(label('docs/**'));
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.keyDown(input, { key: 'Backspace' });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test('blur commits the edit', () => {
+    const { input, label, onChange } = renderEditable(['blog']);
+    fireEvent.doubleClick(label('blog'));
+    fireEvent.change(input, { target: { value: 'blog/**' } });
+    fireEvent.blur(input);
+    expect(onChange).toHaveBeenCalledWith(['blog/**']);
+  });
+
+  test('blur on an emptied edit box deletes the entry', () => {
+    // Pins the `|| editingEntry !== null` guard in onBlur. Simplifying that
+    // condition to `if (draft.trim())` would silently break delete-by-clearing.
+    const { input, label, onChange } = renderEditable(['blog', 'docs/**']);
+    fireEvent.doubleClick(label('blog'));
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.blur(input);
+    expect(onChange).toHaveBeenCalledWith(['docs/**']);
+  });
+
+  test('editing an entry into another entry collapses the pair', () => {
+    const { input, label, onChange } = renderEditable(['blog', 'docs/**']);
+    fireEvent.doubleClick(label('blog'));
+    fireEvent.change(input, { target: { value: 'docs/**' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith(['docs/**']);
+  });
+
+  test('a draft in flight is committed rather than dropped when a pill is double-clicked', () => {
+    const { input, label, onChange } = renderEditable(['blog']);
+    fireEvent.change(input, { target: { value: 'specs/**' } });
+    fireEvent.doubleClick(label('blog'));
+    expect(onChange).toHaveBeenCalledWith(['blog', 'specs/**']);
+    expect(input.value).toBe('blog');
+  });
+
+  test('ArrowLeft then Enter reaches the same edit from the keyboard', () => {
+    const { input } = renderEditable(['blog', 'docs/**']);
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(input.value).toBe('blog');
+    expect(document.activeElement).toBe(input);
+  });
+
+  test('Space activates the edit on a highlighted entry (keyboard parity with Enter)', () => {
+    // The changeset promises "Enter or Space does the same thing from the
+    // keyboard". Space must lift the highlighted entry into the input without
+    // inserting a stray space character.
+    const { input } = renderEditable(['blog', 'docs/**']);
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    fireEvent.keyDown(input, { key: ' ' });
+    expect(input.value).toBe('blog');
+    expect(document.activeElement).toBe(input);
+  });
+
+  test('the pill label carries an accessible name naming the action', () => {
+    const { label } = renderEditable(['blog']);
+    expect(label('blog').getAttribute('aria-label')).toBe('Edit blog');
+  });
+
+  test('double-click is inert while disabled', () => {
+    const { container } = render(
+      <TooltipProvider>
+        <TagPillInput value={['blog']} onChange={() => {}} grammar="free-text" disabled />
+      </TooltipProvider>,
+    );
+    const label = container.querySelector('[data-slot="badge"] button') as HTMLElement;
+    fireEvent.doubleClick(label);
+    expect((container.querySelector('input') as HTMLInputElement).value).toBe('');
+  });
+});
+
+describe('TagPillInput — roving highlight', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  function renderRoving(value: string[], onChange = vi.fn(() => {})) {
+    const result = render(
+      <TooltipProvider>
+        <TagPillInput value={value} onChange={onChange} grammar="free-text" id="globs" />
+      </TooltipProvider>,
+    );
+    const input = result.container.querySelector('input') as HTMLInputElement;
+    const highlighted = () => result.container.querySelector('[data-highlighted="true"]');
+    return { ...result, onChange, input, highlighted };
+  }
+
+  test('entries are not tab stops — the pill label is removed from the tab order', () => {
+    // The whole point of the roving model: reaching the input should not mean
+    // tabbing past every entry already in the list.
+    const { container } = renderRoving(['a', 'b', 'c']);
+    const labels = [...container.querySelectorAll('[data-slot="badge"] button')].filter(
+      (el) => el.textContent !== '',
+    );
+    expect(labels).toHaveLength(3);
+    for (const label of labels) expect(label.getAttribute('tabindex')).toBe('-1');
+  });
+
+  test('ArrowLeft at the start of the input highlights the last entry', () => {
+    const { input, highlighted } = renderRoving(['a', 'b']);
+    expect(highlighted()).toBeNull();
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    expect(highlighted()?.textContent).toContain('b');
+  });
+
+  test('ArrowLeft does not leave the text while the caret is mid-draft', () => {
+    // Arrowing through what you are typing has to keep working.
+    const { input, highlighted } = renderRoving(['a']);
+    fireEvent.change(input, { target: { value: 'draft' } });
+    input.setSelectionRange(3, 3);
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    expect(highlighted()).toBeNull();
+  });
+
+  test('Left and Right walk the highlight, and Right past the end returns to the input', () => {
+    const { input, highlighted } = renderRoving(['a', 'b', 'c']);
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    expect(highlighted()?.textContent).toContain('c');
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    expect(highlighted()?.textContent).toContain('b');
+    fireEvent.keyDown(input, { key: 'ArrowRight' });
+    expect(highlighted()?.textContent).toContain('c');
+    fireEvent.keyDown(input, { key: 'ArrowRight' });
+    expect(highlighted()).toBeNull();
+  });
+
+  test('Home and End jump the highlight to the ends', () => {
+    const { input, highlighted } = renderRoving(['a', 'b', 'c']);
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    fireEvent.keyDown(input, { key: 'Home' });
+    expect(highlighted()?.textContent).toContain('a');
+    fireEvent.keyDown(input, { key: 'End' });
+    expect(highlighted()?.textContent).toContain('c');
+  });
+
+  test('the highlight is reported through aria-activedescendant', () => {
+    const { input, highlighted } = renderRoving(['a', 'b']);
+    expect(input.getAttribute('aria-activedescendant')).toBeNull();
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    expect(input.getAttribute('aria-activedescendant')).toBe(highlighted()?.id);
+  });
+
+  test('Backspace removes the highlighted entry and steps backward', () => {
+    const { input, onChange, highlighted } = renderRoving(['a', 'b', 'c']);
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    fireEvent.keyDown(input, { key: 'Backspace' });
+    expect(onChange).toHaveBeenCalledWith(['a', 'c']);
+    expect(highlighted()?.textContent).toContain('a');
+  });
+
+  test('Delete removes the highlighted entry and steps forward', () => {
+    const { input, onChange, highlighted } = renderRoving(['a', 'b', 'c']);
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    fireEvent.keyDown(input, { key: 'Delete' });
+    expect(onChange).toHaveBeenCalledWith(['a', 'c']);
+    expect(highlighted()?.textContent).toContain('c');
+  });
+
+  test('Backspace with nothing highlighted still removes the last entry', () => {
+    // The pre-existing shortcut has to survive the new branch above it.
+    const { input, onChange } = renderRoving(['a', 'b']);
+    fireEvent.keyDown(input, { key: 'Backspace' });
+    expect(onChange).toHaveBeenCalledWith(['a']);
+  });
+
+  test('Escape and typing both drop the highlight', () => {
+    const { input, highlighted } = renderRoving(['a', 'b']);
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(highlighted()).toBeNull();
+
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    expect(highlighted()).not.toBeNull();
+    fireEvent.change(input, { target: { value: 'x' } });
+    expect(highlighted()).toBeNull();
+  });
+
+  test('no highlight is reachable in an empty list', () => {
+    const { input, highlighted } = renderRoving([]);
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    expect(highlighted()).toBeNull();
+    expect(input.getAttribute('aria-activedescendant')).toBeNull();
+  });
+});
+
+describe('TagPillInput — abandoning an edit', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  test('a blur that fails the grammar gate returns the entry to the row', () => {
+    // The rejection path commits nothing. If `editingEntry` survived the blur,
+    // the render filter would keep hiding the entry while `value` still holds
+    // it — the pill would be invisible until the author clicked back in.
+    const onChange = vi.fn(() => {});
+    const { container } = render(
+      <TooltipProvider>
+        <TagPillInput value={['keeper']} onChange={onChange} />
+      </TooltipProvider>,
+    );
+    const input = container.querySelector('input') as HTMLInputElement;
+    const label = [...container.querySelectorAll('[data-slot="badge"] button')].find(
+      (el) => el.textContent === 'keeper',
+    ) as HTMLElement;
+
+    fireEvent.doubleClick(label);
+    expect(input.value).toBe('keeper');
+    fireEvent.change(input, { target: { value: 'has spaces' } });
+    fireEvent.blur(input);
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('keeper');
+  });
+
+  test('Escape with only a highlight active keeps the typed draft', () => {
+    // Navigating away from the draft and back must not destroy it; Escape
+    // clears the selection, not the text.
+    const { input, highlighted } = (() => {
+      const result = render(
+        <TooltipProvider>
+          <TagPillInput value={['a', 'b']} onChange={() => {}} grammar="free-text" />
+        </TooltipProvider>,
+      );
+      const el = result.container.querySelector('input') as HTMLInputElement;
+      return {
+        input: el,
+        highlighted: () => result.container.querySelector('[data-highlighted="true"]'),
+      };
+    })();
+
+    fireEvent.change(input, { target: { value: 'spec' } });
+    input.setSelectionRange(0, 0);
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    expect(highlighted()).not.toBeNull();
+
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(highlighted()).toBeNull();
+    expect(input.value).toBe('spec');
+  });
+
+  test('Escape during a real edit still abandons it', () => {
+    const { input, container } = (() => {
+      const result = render(
+        <TooltipProvider>
+          <TagPillInput value={['blog']} onChange={() => {}} grammar="free-text" />
+        </TooltipProvider>,
+      );
+      return {
+        input: result.container.querySelector('input') as HTMLInputElement,
+        container: result.container,
+      };
+    })();
+    const label = [...container.querySelectorAll('[data-slot="badge"] button')].find(
+      (el) => el.textContent === 'blog',
+    ) as HTMLElement;
+
+    fireEvent.doubleClick(label);
+    fireEvent.change(input, { target: { value: 'blo' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(input.value).toBe('');
+    expect(container.textContent).toContain('blog');
+  });
+});

@@ -41,6 +41,7 @@ import { useConfigContext } from '@/lib/config-provider';
 import { hashFromAssetPath } from '@/lib/doc-hash';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { requestSchemaFieldsView } from '@/lib/schema-fields-view-intent';
+import { indexGlobProblemsByFile, parseAppliesToGlobProblem } from './applies-to-glob-problems';
 import { LINT_PLUGIN_META } from './lint-plugin-meta';
 import { MarkdownlintRuleBrowser } from './markdownlint-rule-browser';
 import { PluginBetaBadge } from './PluginBetaBadge';
@@ -419,6 +420,7 @@ function SchemaFileRow({
   file,
   mapping,
   disabled,
+  globProblems,
   onToggle,
   onAppliesToChange,
   onDelete,
@@ -426,6 +428,7 @@ function SchemaFileRow({
   file: string;
   mapping: FrontmatterSchemaMapping | undefined;
   disabled: boolean;
+  globProblems: ReadonlyMap<string, string> | undefined;
   onToggle: (on: boolean) => void;
   onAppliesToChange: (globs: string[]) => void;
   onDelete: (() => void) | null;
@@ -493,6 +496,7 @@ function SchemaFileRow({
             value={appliesToList(mapping?.appliesTo)}
             grammar="free-text"
             disabled={disabled}
+            entryProblems={globProblems}
             onChange={onAppliesToChange}
             placeholder={t`Add file or folder pattern, e.g. guides/**/*`}
             aria-label={t`Glob patterns this schema applies to`}
@@ -534,7 +538,7 @@ export function FrontmatterPluginSection() {
   // persistence debounce). The prefix strings are the compose contract in the
   // server's frontmatter-schemas.ts — keep in sync on either-side change.
   const mappedFiles = new Set(mappings.map((m) => m.file));
-  const problems = (data?.configProblems ?? []).filter((p) => {
+  const scopedProblems = (data?.configProblems ?? []).filter((p) => {
     if (p.startsWith('frontmatter schema ')) {
       return [...mappedFiles].some((file) => p.startsWith(`frontmatter schema ${file}:`));
     }
@@ -561,6 +565,42 @@ export function FrontmatterPluginSection() {
   );
   const query = search.trim().toLowerCase();
   const visible = files.filter((f) => query === '' || f.toLowerCase().includes(query));
+
+  // Glob problems belong to the glob that caused them, so a pattern whose pill
+  // can carry its finding is dropped from this list — including when the search
+  // box happens to be hiding that row, since the pill is still where the
+  // finding lives.
+  //
+  // Two cases keep the list, and they are decided against the authored config
+  // rather than against what is currently rendered:
+  //
+  //   - A pattern absent from every mapping is stale. The config channel is
+  //     composed from the on-disk config.yml and lags a just-committed CRDT
+  //     edit by the persistence debounce, so a glob the author has already
+  //     deleted still has a live problem for a moment. Suppressed, or removing
+  //     a flagged glob would flash a warning about a pattern that no longer
+  //     exists on its way out.
+  //   - A pattern authored in a mapping that no pill can ever reach is listed.
+  //     A row binds to the FIRST mapping for its file (duplicates are a
+  //     supported hand-authored shape) and only mounts the glob input when that
+  //     mapping is enabled — so a second mapping's globs, or any mapping behind
+  //     a disabled first one, have nowhere to render. The server reports those
+  //     per mapping entry; dropping them would silently unvalidate docs that
+  //     are actively governed.
+  const globProblemsByFile = indexGlobProblemsByFile(scopedProblems);
+  const problems = scopedProblems.filter((p) => {
+    const parsed = parseAppliesToGlobProblem(p);
+    if (parsed === null) return true;
+    const bound = mappings.find((m) => m.file === parsed.file);
+    const carriedByPill =
+      bound !== undefined &&
+      mappingEnabled(bound) &&
+      appliesToList(bound.appliesTo).includes(parsed.pattern);
+    const authoredSomewhere = mappings.some(
+      (m) => m.file === parsed.file && appliesToList(m.appliesTo).includes(parsed.pattern),
+    );
+    return !carriedByPill && authoredSomewhere;
+  });
 
   function toggleFile(file: string, on: boolean): void {
     if (!mappings.some((m) => m.file === file)) {
@@ -716,6 +756,7 @@ export function FrontmatterPluginSection() {
               file={file}
               mapping={mappings.find((m) => m.file === file)}
               disabled={!bindingReady}
+              globProblems={globProblemsByFile.get(file)}
               onToggle={(on) => toggleFile(file, on)}
               onAppliesToChange={(globs) => setAppliesTo(file, globs)}
               onDelete={isFrontmatterSchemaAsset(file) ? () => setDeleteTarget(file) : null}
