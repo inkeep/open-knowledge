@@ -20,6 +20,12 @@
  *   | symlink → nothing (dangling)   | link (removable)  | occupied(foreign-link) |
  *   | dir that IS the reference      | canonical-dir     | same-copy              |
  *
+ * One row the two USED to disagree on and no longer do: when the reference dir
+ * itself is unreadable, projection always answered `different` while migration
+ * hash-compared and could answer `same-copy`. The shared walk adopts
+ * projection's answer for both, which is the safe direction because migration's
+ * `same-copy` branch deletes the store dir. Pinned in the equivalence suite.
+ *
  * Those rows are not oversights. Migration treats a dangling link as foreign on
  * purpose — an OK projection whose store source is about to move would not
  * dangle, so a dangling one belongs to something else and reconcile's orphan

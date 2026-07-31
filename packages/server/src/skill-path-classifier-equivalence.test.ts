@@ -14,7 +14,7 @@
  * the walk to `inspectSkillPathEntry` and keep only their own mapping on top —
  * if a change collapses those two mappings, the disagreement rows below fail.
  */
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
@@ -135,6 +135,30 @@ describe('the two classifiers DISAGREE, deliberately', () => {
       // migration has no such outcome; by construction store and host dirs are
       // distinct paths, and it reads this as a hash match
       migration: 'same-copy',
+    });
+  });
+});
+
+// The reference bundle can be unreadable at classification time (a concurrent
+// delete between the caller resolving its realpath and this call). The two
+// classifiers used to disagree here and now do not: projection always returned
+// `different`, migration hash-compared and could return `same-copy`. Unifying
+// on the shared walk adopted projection's answer for both. That is the SAFE
+// direction for migration, whose `same-copy` branch deletes the store dir, so
+// the row is pinned deliberately rather than left to drift back.
+describe('the reference bundle is gone', () => {
+  test('a byte-identical real dir reads as `different` for BOTH once the reference is unreadable', () => {
+    const dest = join(root, 'same-copy-orphaned');
+    writeSkill(dest, 'canonical body');
+    // Same bytes, so this is `same-copy` while the reference is readable.
+    expect(classifyBoth(dest)).toEqual({ projection: 'same-copy', migration: 'same-copy' });
+
+    const canonicalReal = realpathSync(canonical);
+    rmSync(canonical, { recursive: true, force: true });
+    expect(classifyInPlaceDest(dest, canonical, canonicalHash)).toBe('different');
+    expect(classifyHostEntry(dest, canonicalReal, canonicalHash)).toEqual({
+      kind: 'occupied',
+      by: 'different',
     });
   });
 });
