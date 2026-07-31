@@ -5,53 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  mdast-util-mdx-jsx: 3.2.0
-  '@types/node': ^24.7.0
-  prosemirror-model: 1.25.4
-  prosemirror-view: 1.41.8
   '@codemirror/state': 6.6.0
   '@codemirror/view': 6.43.3
-  react: 19.2.5
-  react-dom: 19.2.5
-  react-lite-youtube-embed: 3.5.1
-  '@tiptap/core': 3.22.3
-  '@tiptap/pm': 3.22.4
-  '@tiptap/react': 3.22.3
-  '@tiptap/starter-kit': 3.22.3
-  '@tiptap/suggestion': 3.22.3
-  '@tiptap/extensions': 3.22.3
-  '@tiptap/extension-blockquote': 3.22.3
-  '@tiptap/extension-bold': 3.22.3
-  '@tiptap/extension-bubble-menu': 3.22.3
-  '@tiptap/extension-bullet-list': 3.22.3
-  '@tiptap/extension-code': 3.22.3
-  '@tiptap/extension-code-block': 3.22.3
-  '@tiptap/extension-collaboration': 3.22.3
-  '@tiptap/extension-document': 3.22.3
-  '@tiptap/extension-drag-handle': 3.22.3
-  '@tiptap/extension-dropcursor': 3.22.3
-  '@tiptap/extension-file-handler': 3.22.3
-  '@tiptap/extension-floating-menu': 3.22.3
-  '@tiptap/extension-gapcursor': 3.22.3
-  '@tiptap/extension-hard-break': 3.22.3
-  '@tiptap/extension-heading': 3.22.3
-  '@tiptap/extension-highlight': 3.22.3
-  '@tiptap/extension-horizontal-rule': 3.22.3
-  '@tiptap/extension-image': 3.22.3
-  '@tiptap/extension-italic': 3.22.3
-  '@tiptap/extension-link': 3.22.3
-  '@tiptap/extension-list': 3.22.3
-  '@tiptap/extension-list-item': 3.22.3
-  '@tiptap/extension-list-keymap': 3.22.3
-  '@tiptap/extension-node-range': 3.22.3
-  '@tiptap/extension-ordered-list': 3.22.3
-  '@tiptap/extension-paragraph': 3.22.3
-  '@tiptap/extension-placeholder': 3.22.3
-  '@tiptap/extension-strike': 3.22.3
-  '@tiptap/extension-table': 3.22.3
-  '@tiptap/extension-text': 3.22.3
-  '@tiptap/extension-text-style': 3.22.3
-  '@tiptap/extension-underline': 3.22.3
   '@floating-ui/core': 1.7.5
   '@floating-ui/dom': 1.7.6
   '@floating-ui/react-dom': 2.1.8
@@ -116,12 +71,60 @@ overrides:
   '@radix-ui/react-use-size': 1.1.2
   '@radix-ui/react-visually-hidden': 1.2.3
   '@radix-ui/rect': 1.1.2
+  '@tiptap/core': 3.22.3
+  '@tiptap/extension-blockquote': 3.22.3
+  '@tiptap/extension-bold': 3.22.3
+  '@tiptap/extension-bubble-menu': 3.22.3
+  '@tiptap/extension-bullet-list': 3.22.3
+  '@tiptap/extension-code': 3.22.3
+  '@tiptap/extension-code-block': 3.22.3
+  '@tiptap/extension-collaboration': 3.22.3
+  '@tiptap/extension-document': 3.22.3
+  '@tiptap/extension-drag-handle': 3.22.3
+  '@tiptap/extension-dropcursor': 3.22.3
+  '@tiptap/extension-file-handler': 3.22.3
+  '@tiptap/extension-floating-menu': 3.22.3
+  '@tiptap/extension-gapcursor': 3.22.3
+  '@tiptap/extension-hard-break': 3.22.3
+  '@tiptap/extension-heading': 3.22.3
+  '@tiptap/extension-highlight': 3.22.3
+  '@tiptap/extension-horizontal-rule': 3.22.3
+  '@tiptap/extension-image': 3.22.3
+  '@tiptap/extension-italic': 3.22.3
+  '@tiptap/extension-link': 3.22.3
+  '@tiptap/extension-list': 3.22.3
+  '@tiptap/extension-list-item': 3.22.3
+  '@tiptap/extension-list-keymap': 3.22.3
+  '@tiptap/extension-node-range': 3.22.3
+  '@tiptap/extension-ordered-list': 3.22.3
+  '@tiptap/extension-paragraph': 3.22.3
+  '@tiptap/extension-placeholder': 3.22.3
+  '@tiptap/extension-strike': 3.22.3
+  '@tiptap/extension-table': 3.22.3
+  '@tiptap/extension-text': 3.22.3
+  '@tiptap/extension-text-style': 3.22.3
+  '@tiptap/extension-underline': 3.22.3
+  '@tiptap/extensions': 3.22.3
+  '@tiptap/pm': 3.22.4
+  '@tiptap/react': 3.22.3
+  '@tiptap/starter-kit': 3.22.3
+  '@tiptap/suggestion': 3.22.3
+  '@types/node': ^24.7.0
+  mdast-util-mdx-jsx: 3.2.0
+  prosemirror-model: 1.25.4
+  prosemirror-view: 1.41.8
   radix-ui: 1.4.3
+  react: 19.2.5
+  react-dom: 19.2.5
+  react-lite-youtube-embed: 3.5.1
 
 patchedDependencies:
   '@handlewithcare/remark-prosemirror@0.1.5':
     hash: a6b60cc8640e04973be2c8123e0dbd73156b54388a57cd2b76191c2fd8ac2865
     path: patches/@handlewithcare%2Fremark-prosemirror@0.1.5.patch
+  '@lingui/core@6.5.0':
+    hash: 126db40cb2224e90abf5f063d3aa005eb1bc84796d77216d5a9e52d5cd28a656
+    path: patches/@lingui%2Fcore@6.5.0.patch
   '@pierre/trees@1.0.0-beta.4':
     hash: 86ac804ac75d9f365ee9ef918460463a211ac5201ebc3cf04fc0534c5b3adf88
     path: patches/@pierre%2Ftrees@1.0.0-beta.4.patch
@@ -394,7 +397,7 @@ importers:
         version: 1.7.1
       '@lingui/core':
         specifier: ^6.0.1
-        version: 6.5.0
+        version: 6.5.0(patch_hash=126db40cb2224e90abf5f063d3aa005eb1bc84796d77216d5a9e52d5cd28a656)
       '@lingui/react':
         specifier: ^6.0.1
         version: 6.5.0(react@19.2.5)
@@ -13375,7 +13378,7 @@ snapshots:
       '@lingui/babel-plugin-extract-messages': 6.5.0
       '@lingui/babel-plugin-lingui-macro': 6.5.0
       '@lingui/conf': 6.5.0
-      '@lingui/core': 6.5.0
+      '@lingui/core': 6.5.0(patch_hash=126db40cb2224e90abf5f063d3aa005eb1bc84796d77216d5a9e52d5cd28a656)
       '@lingui/format-po': 6.5.0
       '@lingui/message-utils': 6.5.0
       chokidar: 5.0.0
@@ -13403,7 +13406,7 @@ snapshots:
       lilconfig: 3.1.3
       normalize-path: 3.0.0
 
-  '@lingui/core@6.5.0':
+  '@lingui/core@6.5.0(patch_hash=126db40cb2224e90abf5f063d3aa005eb1bc84796d77216d5a9e52d5cd28a656)':
     dependencies:
       '@lingui/babel-plugin-lingui-macro': 6.5.0
       '@lingui/message-utils': 6.5.0
@@ -13425,7 +13428,7 @@ snapshots:
   '@lingui/react@6.5.0(react@19.2.5)':
     dependencies:
       '@lingui/babel-plugin-lingui-macro': 6.5.0
-      '@lingui/core': 6.5.0
+      '@lingui/core': 6.5.0(patch_hash=126db40cb2224e90abf5f063d3aa005eb1bc84796d77216d5a9e52d5cd28a656)
       react: 19.2.5
     transitivePeerDependencies:
       - supports-color

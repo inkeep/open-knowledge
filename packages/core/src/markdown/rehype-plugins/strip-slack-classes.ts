@@ -1,4 +1,3 @@
-
 import type { Element, ElementContent, Root } from 'hast';
 import type { Plugin } from 'unified';
 

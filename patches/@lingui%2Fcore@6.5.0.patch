@@ -1,0 +1,23 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 6f35bbf88c86bd2a068206ad1bc524113bc0e85c..92e40b7a9739f2f06ef8ea25b203af14a4c9ef5d 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -167,7 +167,7 @@ function interpolate(translation, locale, locales) {
+           return message + OCTOTHORPE_PH;
+         }
+         if (isString(token)) {
+-          return message + token;
++          return message + (ESCAPE_SEQUENCE_REGEX.test(token) ? decodeEscapeSequences(token) : token);
+         }
+         const [name, type, format] = token;
+         let interpolatedFormat = {};
+@@ -197,9 +197,6 @@ function interpolate(translation, locale, locales) {
+       }, "");
+     };
+     const result = formatMessage(translation);
+-    if (isString(result) && ESCAPE_SEQUENCE_REGEX.test(result)) {
+-      return decodeEscapeSequences(result);
+-    }
+     if (isString(result)) return result;
+     return result ? String(result) : "";
+   };

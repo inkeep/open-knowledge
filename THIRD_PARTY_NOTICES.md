@@ -6281,6 +6281,7 @@ The following MIT-licensed packages are patched in this repository via pnpm's `p
 | Package | Patch file |
 | --- | --- |
 | `@handlewithcare/remark-prosemirror@0.1.5` | `patches/@handlewithcare%2Fremark-prosemirror@0.1.5.patch` |
+| `@lingui/core@6.5.0` | `patches/@lingui%2Fcore@6.5.0.patch` |
 | `@pierre/trees@1.0.0-beta.4` | `patches/@pierre%2Ftrees@1.0.0-beta.4.patch` |
 | `@tiptap/extension-drag-handle@3.22.3` | `patches/@tiptap%2Fextension-drag-handle@3.22.3.patch` |
 | `@tiptap/y-tiptap@3.0.3` | `patches/@tiptap%2Fy-tiptap@3.0.3.patch` |
