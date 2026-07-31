@@ -77,7 +77,9 @@ name: Select beta to promote
 # Concurrency + de-dupe: this evaluator carries its own group (distinct from the
 # ok-release-cadence lock that release.yml / promote-stable.yml share) so it
 # never blocks a real cut. Double-promotion is prevented three ways:
-# (1) cancel-in-progress supersedes an overlapping eval, (2) a fail-loud in-flight
+# (1) the concurrency group serializes ticks (one running, newest pending —
+# see the concurrency block for why in-flight runs are never cancelled),
+# (2) a fail-loud in-flight
 # check skips when a promote-stable run is already in_progress/queued, and
 # (3) the script stops at the first already-shipped beta (commit contained in the
 # latest stable) and never selects one whose changes are already released.
@@ -129,10 +131,19 @@ permissions:
 concurrency:
   # Deliberately NOT the shared ok-release-cadence group — a read-only evaluator
   # must never queue behind (or delay) a real beta cut / stable promotion.
-  # cancel-in-progress:true lets a newer eval (e.g. a push arriving mid-cron-tick)
-  # supersede an older one; the eval is idempotent so a cancelled run loses nothing.
+  #
+  # cancel-in-progress is FALSE, and the reason is the smoke leg. "A cancelled
+  # run loses nothing" was true of the evaluation but not of an in-flight DMG
+  # smoke: cancelling one un-nominates a QUALIFIED candidate, and the next tick
+  # does not retry it — by then a newer (usually minor) beta has crossed the
+  # fast soak and shadows the patch candidate for the rest of the cycle. On a
+  # busy push day that cancels the fast tier exactly when it is wanted; the
+  # first live qualification died this way, mid-smoke, and the aggregate alarm
+  # then paged about it for hours. Queueing gives at most one pending tick
+  # behind a bounded run (all jobs carry timeout-minutes), which GitHub
+  # collapses to the newest — freshness without killing gates mid-answer.
   group: ok-auto-promote-stable
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   # THE fast-tier arming switch, read by both the selector and the aggregate
@@ -298,12 +309,13 @@ jobs:
   # verdict simply means no fast-tier dispatch happens and the beta waits out
   # its normal 24h soak on a later tick.
   #
-  # Interrupt-safe by construction. The workflow's concurrency group is
-  # `cancel-in-progress: true`, so a tick can be superseded mid-run at any
-  # point. This job holds no state a killed run could corrupt: it downloads to
-  # the runner's scratch, mounts through the helper (which detaches on SIGTERM),
-  # and its only effect is the final dispatch. Re-running reaches the same
-  # decision from the same inputs.
+  # Runs to completion once started: the concurrency group no longer cancels
+  # in-flight ticks (see the concurrency block), because a smoke killed mid-run
+  # is not harmlessly idempotent — the next tick evaluates NEWER inputs, a
+  # fresher beta shadows the nominated candidate, and the qualified cut never
+  # gets its answer. The job still holds no state a crash could corrupt: it
+  # downloads to the runner's scratch, mounts through the helper (which
+  # detaches on SIGTERM), and its only effect is the final dispatch.
   smoke-fast-tier-candidate:
     name: Smoke the fast-tier candidate's DMG
     needs: evaluate

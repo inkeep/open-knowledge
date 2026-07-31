@@ -160,6 +160,20 @@ describe('buildHistory', () => {
     expect(buildHistory({ runs, jobsForRun: () => jobs })[0].qualified).toBe(false);
   });
 
+  test('a cancelled smoke job is a superseded tick, not an unanswered gate', () => {
+    // Workflow concurrency killed the run before the gate answered; no refusal
+    // fired and no dispatch could have happened. Counting it as qualified
+    // latched the armed-and-reaching-nothing alarm for the whole window.
+    const jobs = [
+      { name: "Smoke the fast-tier candidate's DMG", conclusion: 'cancelled', steps: [] },
+    ];
+    expect(buildHistory({ runs, jobsForRun: () => jobs })[0]).toMatchObject({
+      qualified: false,
+      verdict: null,
+      promoted: false,
+    });
+  });
+
   test('a smoke job whose dispatch step succeeded is a pass', () => {
     const jobs = [
       {

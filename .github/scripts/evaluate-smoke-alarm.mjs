@@ -101,7 +101,12 @@ export function buildHistory({ runs, jobsForRun }) {
   return runs.map((run) => {
     const jobs = jobsForRun(run.databaseId ?? run.id) ?? [];
     const smoke = jobs.find((j) => j.name === SMOKE_JOB_NAME);
-    if (!smoke || smoke.conclusion === 'skipped') {
+    // A cancelled smoke is a superseded tick, not an unanswered gate: the run
+    // was killed by workflow concurrency before the gate could give a verdict,
+    // and no refusal fired. Counting it as qualified made condition 2 latch
+    // for the whole window on a cut whose fixes had already shipped through
+    // the standard path, paging every tick for hours about nothing.
+    if (!smoke || smoke.conclusion === 'skipped' || smoke.conclusion === 'cancelled') {
       return { at: run.createdAt, qualified: false, verdict: null, promoted: false };
     }
     const dispatch = (smoke.steps ?? []).find((s) => s.name === DISPATCH_STEP_NAME);
