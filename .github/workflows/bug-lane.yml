@@ -1,0 +1,202 @@
+name: Bug lane
+
+# Automated cherry-pick point releases for bug-linked patch fixes.
+#
+# WHY. The fast soak tier qualifies whole cuts, and one minor changeset in the
+# pending pile disqualifies every cut until the cycle's stable ships — so in a
+# feature-heavy week a perfectly tagged bug fix waits ~24h behind unrelated
+# work. This lane qualifies fixes individually: a commit whose changesets are
+# all patch AND trace to a Bug-labeled Linear issue is cherry-picked onto the
+# current stable through the existing point-release cascade. Owner decision
+# 2026-07-31; posture and disarm switch in RELEASES.md.
+#
+# SAFETY TOPOLOGY, in order:
+#   1. Qualification is the soak tier's own bug-link chain (shared helpers) —
+#      a triaged Bug label, never a title string.
+#   2. VERIFY: the batch is cherry-picked onto the stable IN THIS RUNNER and
+#      the fast test tiers (typecheck + unit) run against that synthetic tree —
+#      the tree that actually ships, which no CI has otherwise seen. A conflict
+#      or a red tier refuses; the fix simply rides its cycle's stable.
+#   3. point-release.yml re-guards everything (clean pick, delta-matches-fix,
+#      patch-only bump, anchor, provenance) and its cascade smokes the signed
+#      DMG before the release publishes or npm moves.
+#   4. Re-release is structurally impossible: candidates come from the pending
+#      pile (main-reset consumes a released fix's changeset), commits already
+#      in the stable are pre-filtered, and an empty pick is refused. Every
+#      stable this lane cuts carries novel changesets.
+#
+# NOT ARMED. `BUG_LANE_ARMED` is a literal "false": every tick evaluates,
+# verifies, and logs the release it WOULD have dispatched, but dispatches
+# nothing. Arming is a one-line reviewed flip after the logged picks have been
+# observed to match human judgment — the same rollout the soak tier used.
+#
+# This lane can never block anything: nothing waits on it, a refusal only
+# means the fix ships with its cycle, and the shared ok-release-cadence group
+# on point-release itself serializes real releases against beta cuts and
+# promotions.
+
+on:
+  schedule:
+    # Every 20 minutes, offset to interleave with select-beta-to-promote's
+    # 7,17,27,... ticks. Wider than the selector's cadence because a tick that
+    # finds candidates spends ~15 minutes in the verify stage.
+    - cron: "2,22,42 * * * *"
+  # Fast path: evaluate when a mirrored commit lands rather than waiting for
+  # the next tick.
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Dispatching point-release.yml and reading in-flight runs.
+  actions: write
+
+concurrency:
+  # Its own group: an evaluator must never queue behind a real cut. A newer
+  # tick supersedes an older one mid-verify; the evaluation is idempotent.
+  group: ok-bug-lane
+  cancel-in-progress: true
+
+env:
+  # THE ARMING SWITCH. While "false" the lane is log-only: it evaluates,
+  # verifies, and prints the point release it would have dispatched. Flipping
+  # to "true" requires a reviewed PR — read the "Bug lane" section of
+  # RELEASES.md first.
+  BUG_LANE_ARMED: "false"
+
+jobs:
+  bug-lane:
+    name: Evaluate, verify, and (when armed) dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout with full history and tags
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+
+      - name: Evaluate qualifying fixes
+        id: evaluate
+        env:
+          # Optional, same posture as the soak tier: absent, every fix resolves
+          # "not bug-linked" and the lane is inert rather than wrong.
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+        # Writes fix_refs (comma-joined) and stable to GITHUB_OUTPUT; per-commit
+        # verdicts land as notices. Logic + tests:
+        # .github/scripts/bug-lane.{mjs,test.mjs}.
+        run: node .github/scripts/bug-lane.mjs
+
+      - name: Skip while a release is in flight
+        id: inflight
+        if: steps.evaluate.outputs.fix_refs != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          active=0
+          for wf in point-release.yml promote-stable.yml; do
+            n=$(gh run list --workflow="$wf" --json status \
+              --jq '[.[] | select(.status=="in_progress" or .status=="queued")] | length')
+            active=$((active + n))
+          done
+          if [[ "$active" -gt 0 ]]; then
+            echo "busy=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::bug-lane: a release run is already in flight (${active}); retrying next tick."
+          else
+            echo "busy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+        if: steps.evaluate.outputs.fix_refs != '' && steps.inflight.outputs.busy == 'false'
+
+      - name: Verify the synthetic tree (cherry-pick + fast test tiers)
+        id: verify
+        if: steps.evaluate.outputs.fix_refs != '' && steps.inflight.outputs.busy == 'false'
+        env:
+          FIX_REFS: ${{ steps.evaluate.outputs.fix_refs }}
+          STABLE: ${{ steps.evaluate.outputs.stable }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --detach "$STABLE"
+          IFS=',' read -ra REFS <<< "$FIX_REFS"
+          for ref in "${REFS[@]}"; do
+            if ! git cherry-pick "$ref"; then
+              git cherry-pick --abort || true
+              echo "verdict=conflict" >> "$GITHUB_OUTPUT"
+              echo "::notice::bug-lane: ${ref} does not apply cleanly onto ${STABLE}; it will ship with its cycle's stable instead."
+              exit 0
+            fi
+          done
+          # The tree that would ship. Fast tiers only: typecheck + unit catch a
+          # fix that assumed something the stable does not have; the DMG smoke
+          # later in the cascade covers boot-level integration.
+          pnpm install --frozen-lockfile
+          if pnpm exec turbo run typecheck test --output-logs=errors-only; then
+            echo "verdict=pass" >> "$GITHUB_OUTPUT"
+          else
+            echo "verdict=fail" >> "$GITHUB_OUTPUT"
+            echo "::warning::bug-lane: fast tiers FAILED on ${STABLE} + ${FIX_REFS} — the fix passes on main but not on the stable it would ship against. It stays on its cycle's path."
+          fi
+
+      - name: Dispatch the point release (or log what would ship)
+        if: steps.verify.outputs.verdict == 'pass'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FIX_REFS: ${{ steps.evaluate.outputs.fix_refs }}
+          STABLE: ${{ steps.evaluate.outputs.stable }}
+        run: |
+          set -euo pipefail
+          if [[ "${BUG_LANE_ARMED}" != "true" ]]; then
+            echo "::notice::bug-lane LOG-ONLY: would dispatch point-release (cherry-pick) of ${FIX_REFS} over ${STABLE}."
+            {
+              echo "### Bug lane — log-only"
+              echo "- Would point-release: \`${FIX_REFS}\` over \`${STABLE}\` (verify passed)"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Re-check just before dispatching: the earlier in-flight check is
+          # ~15 minutes stale after the verify stage, and a promotion may have
+          # started meanwhile. point-release's shared concurrency group would
+          # serialize anyway; this avoids queuing a release that the next tick
+          # would have re-derived against the newer stable.
+          active=0
+          for wf in point-release.yml promote-stable.yml; do
+            n=$(gh run list --workflow="$wf" --json status \
+              --jq '[.[] | select(.status=="in_progress" or .status=="queued")] | length')
+            active=$((active + n))
+          done
+          if [[ "$active" -gt 0 ]]; then
+            echo "::notice::bug-lane: a release run started during verify (${active}); retrying next tick."
+            exit 0
+          fi
+          SELF_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh workflow run point-release.yml \
+            -f mode=cherry-pick -f fix_refs="$FIX_REFS" -f dry_run=false -f dispatched_by="$SELF_URL"
+          echo "::notice::bug-lane: dispatched point-release (cherry-pick) of ${FIX_REFS} over ${STABLE}."
+
+      - name: Page on a refusal (armed only)
+        if: env.BUG_LANE_ARMED == 'true' && (steps.verify.outputs.verdict == 'conflict' || steps.verify.outputs.verdict == 'fail')
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          FIX_REFS: ${{ steps.evaluate.outputs.fix_refs }}
+          VERDICT: ${{ steps.verify.outputs.verdict }}
+        run: |
+          set -uo pipefail
+          if [[ -z "${SLACK_WEBHOOK_URL:-}" ]]; then
+            echo "::notice::SLACK_WEBHOOK_URL not set — refusal page skipped."
+            exit 0
+          fi
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          TEXT="⛔ Bug lane refused ${FIX_REFS} (${VERDICT}). The fix stays on its cycle's 24h path; investigate whether it needs a manual point release. ${RUN_URL}"
+          payload="$(jq -nc --arg t "$TEXT" '{text: $t}')"
+          curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK_URL" \
+            || echo "::warning::bug-lane refusal page failed to POST — the refusal itself still holds."
