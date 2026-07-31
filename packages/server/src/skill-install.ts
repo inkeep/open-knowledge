@@ -3,7 +3,11 @@ import { existsSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { homedir, platform as osPlatform } from 'node:os';
 import { dirname, isAbsolute, join, resolve as resolvePath } from 'node:path';
-import { type EditorId, HOSTS_WITH_USER_SKILL_DIR } from '@inkeep/open-knowledge-core';
+import {
+  type EditorId,
+  HOSTS_WITH_USER_SKILL_DIR,
+  OPENKNOWLEDGE_SKILLS_REPO,
+} from '@inkeep/open-knowledge-core';
 import {
   type BuildSkillZipResult,
   buildSkillZip,
@@ -14,7 +18,9 @@ import { tracedCpSync, tracedMkdir, tracedMkdirSync, tracedRmSync } from './fs-t
 import { getLogger } from './logger.ts';
 import { BUNDLE_SKILL_NAME, type BundleId } from './skill-bundles.ts';
 import { recordSkillInstallEvent, type SkillInstallEventOutcome } from './skill-install-events.ts';
+import { resolveSkillInstallReportSettings } from './skill-install-report-config.ts';
 import {
+  readBundleDecision,
   readServerPackageVersion,
   readTargetRecordedAt,
   readTargetVersion,
@@ -22,6 +28,7 @@ import {
   type SkillStateSurface,
   writeTargetVersion,
 } from './skill-state.ts';
+import { reportSkillInstall } from './skills-sh-install-report.ts';
 
 /**
  * Minimal logger duck-type accepted by `installUserSkill`. Compatible with
@@ -55,10 +62,10 @@ export interface InstallUserSkillOptions {
   logger?: SkillInstallLogger;
   /**
    * Install-source attribution recorded on the per-target YAML entry.
-   * Defaults to `'cli-npx-skills-add'` for the CLI / `ok init` path. The
-   * Electron desktop main-process direct-invoke site (`packages/desktop/
-   * src/main/index.ts` first-launch flow) passes `'desktop-direct'` to
-   * distinguish it from a user-typed `ok init`.
+   * Defaults to `'cli-npx-skills-add'` for the CLI / `ok init` path — today's
+   * only production caller. `'desktop-direct'` is the sibling value the
+   * desktop's own writer (`skill-reclaim.ts`) records; it no longer reaches
+   * this function.
    */
   surface?: SkillStateSurface;
   /**
@@ -307,6 +314,44 @@ export async function installUserSkill(
     );
   };
 
+  // Opt-out backstop, enforced HERE rather than trusted to every caller. The
+  // decline gate lived only in the callers, so a new one that forgot it would
+  // reinstall a bundle the user had explicitly turned off — and because a
+  // decline also REMOVES the bundle from disk, that reinstall reverses a
+  // deliberate choice rather than merely being redundant.
+  //
+  // Keys on an explicit `false`, NOT on `resolveBundleEnabled`. That helper's
+  // `decision ?? installedOnDisk` fallback belongs to the reclaim sweeps, which
+  // run unprompted on every launch and must not resurrect a bundle on a machine
+  // that never consented. This function is only ever reached deliberately, and
+  // `ok init` records the decision BEFORE calling — so an absent decision here
+  // means "first install", not "declined", and must still install.
+  let declined: boolean | null;
+  try {
+    declined = await readBundleDecision(home, bundleName, logger);
+  } catch (err) {
+    // Read FAILURE is not "no decision". Collapsing the two (EACCES after a
+    // `sudo ok init`, a truncated write, a corrupted YAML) would install a
+    // bundle whose recorded state might be an explicit decline — and a decline
+    // also removes the files, so reversing it is visible and unwanted. When the
+    // answer is unknowable, decline: an over-cautious skip is recoverable and
+    // reported in the init summary, whereas silently undoing an opt-out is not.
+    logger.warn(
+      { event: 'skill-install.gate.decision-read-failed', bundle: bundleId, err },
+      'Could not read the opt-out decision; skipping the install rather than risk reversing it.',
+    );
+    await report('skip-current', undefined, 'decision-read-failed');
+    return 'skip-current';
+  }
+  if (declined === false) {
+    logger.info?.(
+      { event: 'skill-install.declined', bundle: bundleId },
+      'Bundle is opted out; skipping user-global skill install.',
+    );
+    await report('skip-current', undefined, 'declined');
+    return 'skip-current';
+  }
+
   let currentVersion: string;
   try {
     currentVersion = await readServerPackageVersion();
@@ -424,6 +469,26 @@ export async function installUserSkill(
       .join(', ')}`,
   );
   await report('installed', currentVersion);
+  // Count this install on skills.sh. Built-ins ship inside the app bundle, so
+  // there is nothing to fetch from the marketplace and the event is the only
+  // way the listing can reflect them. Deduped per machine inside the reporter,
+  // so the launch reclaim and a re-run of `ok init` contribute nothing.
+  //
+  // NOT awaited. `ok init` loops this once per user-global bundle, so awaiting
+  // a third-party HTTP call with a 3s timeout would add seconds of dead wait to
+  // every init on a firewalled or offline machine. The reporter claims its
+  // ledger entry before sending, so dropping the request costs one uncounted
+  // install rather than a duplicate.
+  void reportSkillInstall(
+    {
+      source: OPENKNOWLEDGE_SKILLS_REPO,
+      skills: [bundleName],
+      agents: hosts.map((h) => h.editorId),
+      global: true,
+      version: currentVersion,
+    },
+    { home, enabled: resolveSkillInstallReportSettings(home).enabled },
+  );
   return 'installed';
 }
 

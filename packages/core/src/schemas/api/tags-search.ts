@@ -1530,6 +1530,10 @@ export const SkillImportRequestSchema = z
       description:
         'Pass false to import WITHOUT the default-editor auto-projection (the caller installs explicitly afterwards). Default true.',
     }),
+    marketplace: z.boolean().optional().meta({
+      description:
+        'The source came from a skills.sh listing the user chose (the Explore tab), so the install is reported to skills.sh and counts toward that listing. Off by default: a hand-typed repo must not be announced to skills.sh. Honors the `telemetry.skillInstallReports.enabled` setting and DO_NOT_TRACK.',
+    }),
     ...agentIdentityFields,
     summary: summaryField,
   })

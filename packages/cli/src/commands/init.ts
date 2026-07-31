@@ -2215,13 +2215,33 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
         );
         const target = hostLabels.length > 0 ? hostLabels.join(', ') : 'the shared ~/.agents store';
         lines.push(`  open-knowledge  ${success(`installed for ${target}`)}`);
+        // Disclosed at the point it happens, not only in the docs: this is the
+        // one automatic outbound call `ok init` makes, and a user who cares
+        // should not have to go looking for it.
+        lines.push(
+          `  ${dim('Counted on skills.sh (skill name + source repo, once per machine).')}`,
+        );
+        lines.push(`  ${dim('Opt out: DO_NOT_TRACK=1, or Settings → Preferences.')}`);
         break;
       }
       case 'skip-current':
         lines.push(`  open-knowledge  ${success('already installed at current version')}`);
         break;
       case 'declined':
-        lines.push(`  open-knowledge  ${dim('skipped (opted out via --no-skills)')}`);
+        // NOT "skipped": the decline is recorded against $HOME and the bundles
+        // are REMOVED from every user-global skill dir, so one `--no-skills` in
+        // a throwaway project turns them off for every project on the machine.
+        // Saying so is the whole mitigation — no confirmation prompt, because
+        // the flag is meant to be scriptable.
+        lines.push(`  open-knowledge  ${dim('opted out via --no-skills')}`);
+        lines.push(
+          `  ${dim('This is a machine-wide choice: the built-in skills are removed from your')}`,
+        );
+        lines.push(
+          `  ${dim('user-global skill directories and stay off for every project until you')}`,
+        );
+        lines.push(`  ${dim('re-enable them by running init again without the flag:')}`);
+        lines.push(`  ${dim('  ok init')}`);
         break;
       case 'no-hosts':
         lines.push(

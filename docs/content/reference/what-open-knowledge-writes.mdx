@@ -10,7 +10,7 @@ OpenKnowledge keeps your knowledge base as plain markdown in your own project di
 This page lists every one of them: **when** each write happens, **what** it is, and **where** it is written.
 
 <Callout type="info" title="The short version">
-  **Nothing leaves your machine by default — except the desktop app's automatic checks.** Diagnostic logs and telemetry stay on your machine. The things that *can* send data off it — semantic search, a diagnostic or bug-report bundle, and GitHub sync — are opt-in or on-demand. The desktop app is the exception: it checks for updates automatically (sending its app version and channel), and on its first launch opens your browser once to check for a pending share link. All of them are listed under [What leaves your machine](#what-leaves-your-machine).
+  **Nothing about your content leaves your machine by default.** Diagnostic logs and telemetry stay on your machine. The things that *can* send data off it — semantic search, a diagnostic or bug-report bundle, and GitHub sync — are opt-in or on-demand. Three automatic exceptions, none of which touch your documents: the desktop app checks for updates (sending its app version and channel), on its first launch it opens your browser once to check for a pending share link, and installing a **published skill** reports that install to skills.sh so the skill's public install count is accurate — the skill's name and source repository, once per skill per machine, and never for a private or local source. All of them are listed under [What leaves your machine](#what-leaves-your-machine), and the skill report can be turned off.
 </Callout>
 
 ## How to read this page
@@ -275,7 +275,7 @@ In the desktop app you don't need the CLI for finer control. **Settings → AI t
 
 ## What leaves your machine
 
-By default, **nothing.** Everything above is written to your own disk. The only ways data leaves your machine are these — all opt-in or on-demand, except two automatic desktop-app actions (the update check, and a one-time share-link check on first launch):
+None of your content, by default. Everything above is written to your own disk. The only ways data leaves your machine are these — all opt-in or on-demand, except three automatic actions that carry no document content (the desktop update check, a one-time share-link check on first launch, and the skill-install report):
 
 | What | When | Where it goes |
 | --- | --- | --- |
@@ -286,6 +286,7 @@ By default, **nothing.** Everything above is written to your own disk. The only 
 | GitHub sync / share | When you sync, clone, publish, or share | GitHub |
 | Update check | Automatically — on launch and periodically while the desktop app runs | OpenKnowledge update service (`openknowledge.ai/updates`), which redirects to GitHub; sends the app version and channel |
 | First-launch share check | Once, automatically, on the desktop app's first launch | `openknowledge.ai/continue` — redeems a share link if you installed from one |
+| Skill-install report | Automatically, the first time a published skill is installed on this machine — OpenKnowledge's own built-in and starter-pack skills, and skills you install from a skills.sh listing. Once per skill per machine; never re-sent on a re-run, a reinstall, or an app launch. A skill you install by typing a repository yourself is **not** reported, and neither is a private, local, or internal-hostname source | `add-skill.vercel.sh` — the skill's name, its source repository, and which agent tools it was installed for. No file contents. This is what gives a published skill an accurate install count. Turn it off in **Settings → Preferences**, by setting `telemetry.skillInstallReports.enabled: false`, or with `DO_NOT_TRACK=1` / `DISABLE_TELEMETRY=1` |
 | npm/`npx` fetch | During install (CLI) | The npm registry |
 
 Local diagnostic logs and telemetry are scrubbed of credential-bearing attributes and never sent anywhere on their own.

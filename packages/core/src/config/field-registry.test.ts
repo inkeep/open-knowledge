@@ -163,6 +163,10 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'appearance.preview.autoOpen',
       'appearance.theme',
       'editor.wordWrap',
+      // The one `telemetry` leaf that leaves the machine. USER scope so a
+      // repository cannot decide that its collaborators report to a third
+      // party — its `localSink.*` siblings are project-scope and local-only.
+      'telemetry.skillInstallReports.enabled',
     ]);
   });
 

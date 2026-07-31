@@ -69,11 +69,20 @@ describe('skills read tool — bundle-file gating short-circuits before the netw
     expect(text(r)).toContain('..');
   });
 
-  test('`file` outside references/ or scripts/ is rejected', async () => {
+  test('an absolute `file` is rejected before any request', async () => {
     const handler = captureSkills(UNREACHABLE);
-    const r = await handler({ name: 'trip-log', file: 'notes/x.md' });
+    const r = await handler({ name: 'trip-log', file: '/etc/passwd' });
     expect(r.isError).toBe(true);
-    expect(text(r)).toContain('references/');
+    expect(text(r)).toContain('skill-relative');
+  });
+
+  // A bundle root outside references//scripts/ is ORDINARY — acquisition writes
+  // whatever the published skill ships, so the reader must be able to reach it.
+  // Reaching the network (unreachable here) proves it passed validation.
+  test('`file` under another bundle root passes validation and attempts the read', async () => {
+    const handler = captureSkills(UNREACHABLE);
+    const r = await handler({ name: 'trip-log', file: 'agents/openai.yaml' });
+    expect(text(r)).toContain('Server unreachable');
   });
 });
 

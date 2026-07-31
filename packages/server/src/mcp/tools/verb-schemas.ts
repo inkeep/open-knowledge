@@ -206,33 +206,44 @@ export function resolveSkillName(
 }
 
 // ─────────────────────────── skill bundle files ───────────────────────────
-// A skill is a DIRECTORY: `SKILL.md` (authored via `body`) plus optional
-// one-level `references/**` + `scripts/**`. Bundle files are addressed by a
-// SKILL-RELATIVE path (`references/x.md`, `scripts/run.sh`) — agents never see
-// or pass `.ok/...` paths; the verb maps the relative path onto the on-disk
-// skill dir. The allowlist below is the single safety gate every bundle-file
-// verb (write / edit / delete / read) funnels through.
+// A skill is a DIRECTORY: `SKILL.md` (authored via `body`) plus any other file
+// beside it — conventionally `references/**` + `scripts/**`, but published
+// skills also ship `assets/`, `.claude-plugin/`, per-harness dirs, and root
+// files, and acquisition preserves all of it byte-for-byte. Bundle files are
+// addressed by a SKILL-RELATIVE path — agents never see or pass `.ok/...`
+// paths; the verb maps the relative path onto the on-disk skill dir. The gate
+// below is the single containment check every bundle-file verb
+// (write / edit / delete / read) funnels through.
 
 export const SKILL_FILES_DESCRIBE =
   'Bundle files to write beside `SKILL.md`, as an ARRAY of `{ path, content }` (consistent with `documents`/`asset`). ' +
-  '`path` is SKILL-RELATIVE and MUST live under `references/` or `scripts/` (e.g. "references/tiers.md", "scripts/run.sh") — ' +
-  'no `../`, no absolute paths, no other top-level dir. `content` is the full text. Text only (no binary). ' +
+  '`path` is SKILL-RELATIVE and must stay inside the skill dir (e.g. "references/tiers.md", "scripts/run.sh", "assets/logo.svg") — ' +
+  'no `../`, no absolute paths. `content` is the full text. Text only (no binary). ' +
   'Independent of `body`: write one reference without resending SKILL.md.';
 export const SKILL_FILE_DESCRIBE =
-  'A single SKILL-RELATIVE bundle file path under `references/` or `scripts/` (e.g. "references/tiers.md"). ' +
+  'A single SKILL-RELATIVE bundle file path (e.g. "references/tiers.md"). ' +
   'For `edit`, names the one bundle file to find/replace in; for `skills`, the one file to read.';
 
-/** A bundle file is a `reference` (under `references/`) or a `script` (under `scripts/`). */
+/** `script` for anything under `scripts/`; `reference` for every other bundle
+ *  file. Two values, because the only distinction that changes handling is
+ *  "is this executable-shaped" — not which folder it sits in. */
 export type SkillFileKind = 'reference' | 'script';
 
 /**
- * Validate + normalize a SKILL-RELATIVE bundle-file path against the allowlist:
- * it must sit under `references/` or `scripts/`, carry a non-empty leaf, and
- * never escape (no `..` segments, no absolute path, no NUL). Returns the
- * normalized POSIX-relative path + its `kind`, or a teaching error (not a
- * throw) so write / edit / delete / read share one rule (mirrors
- * `resolveTemplatePath`). `SKILL.md` is rejected here — it is authored via
- * `body`, never as a bundle file.
+ * Validate + normalize a SKILL-RELATIVE bundle-file path: it must stay inside
+ * the skill dir (no `..` segments, no absolute path, no NUL) and name a file
+ * rather than a bare directory. Returns the normalized POSIX-relative path +
+ * its `kind`, or a teaching error (not a throw) so write / edit / delete / read
+ * share one rule (mirrors `resolveTemplatePath`). `SKILL.md` is rejected — it
+ * is authored via `body`, never as a bundle file.
+ *
+ * ANY root is accepted, not just `references/` + `scripts/`. Acquisition
+ * captures a skill's whole directory byte-for-byte (`acquire/parse.ts`:
+ * root files, `assets/`, `.claude-plugin/`, any subdir), so a two-root
+ * allowlist here meant OK could WRITE a file on import that it then refused to
+ * let an agent read or edit — real published skills ship exactly that
+ * (`mattpocock/skills/grill-me` carries `agents/openai.yaml`). Containment is
+ * the invariant worth enforcing; a directory-name allowlist was never it.
  */
 export function resolveSkillFilePath(
   path: string,
@@ -257,26 +268,33 @@ export function resolveSkillFilePath(
   if (segments.some((s) => s === '..')) {
     return {
       ok: false,
-      error: `a skill file \`path\` may not contain ".." — "${path}" could escape the skill dir. Allowed roots: references/, scripts/.`,
+      error: `a skill file \`path\` may not contain ".." — "${path}" could escape the skill dir.`,
     };
   }
-  const top = segments[0];
-  if (top !== 'references' && top !== 'scripts') {
+  if (segments.length === 0) {
+    return { ok: false, error: 'a skill file `path` is required (e.g. "references/tiers.md").' };
+  }
+  // A bare `references` / `scripts` is a directory, not a file — the one
+  // ambiguity worth naming, since any other single segment (`LICENSE`,
+  // `AGENTS.md`) is a legitimate root file and can't be told apart lexically.
+  if (segments.length === 1 && (segments[0] === 'references' || segments[0] === 'scripts')) {
     return {
       ok: false,
-      error: `a skill file \`path\` must start with \`references/\` or \`scripts/\` — "${path}" is not allowed. SKILL.md is authored via \`body\`.`,
+      error: `a skill file \`path\` needs a file under \`${segments[0]}/\` (e.g. "${segments[0]}/notes.md") — "${path}" names only the directory.`,
     };
   }
-  if (segments.length < 2) {
+  // SKILL.md has exactly one authoring surface (`body`). Admitting it here too
+  // would give the same bytes two write paths with different validation.
+  if (segments.length === 1 && segments[0]?.toLowerCase() === 'skill.md') {
     return {
       ok: false,
-      error: `a skill file \`path\` needs a file under \`${top}/\` (e.g. "${top}/notes.md") — "${path}" names only the directory.`,
+      error: 'SKILL.md is authored via `body`, not as a bundle file.',
     };
   }
   return {
     ok: true,
     path: segments.join('/'),
-    kind: top === 'scripts' ? 'script' : 'reference',
+    kind: segments[0] === 'scripts' ? 'script' : 'reference',
   };
 }
 

@@ -17,7 +17,8 @@
  *   3. armMcpWiring (first-launch MCP consent flow)
  *   4. If lastOpenedProject set AND not Option-held → open editor for that project
  *      Else → open Navigator window
- *   5. installUserSkill (idempotent global skill install)
+ *   5. reclaimUserSkillsOnLaunch (seed-if-absent global skill install — never
+ *      overwrites an existing copy; updates flow through the manual re-pull)
  *   6. bootAutoUpdater (wired last so update toasts find a real window)
  *   7. macOS Dock icon click → re-open Navigator
  *

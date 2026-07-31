@@ -591,11 +591,11 @@ async function handleAsset(
 
 /**
  * Write a skill bundle: SKILL.md (when `description` present) and/or any
- * `references/**`+`scripts/**` files. `body` is optional → an agent can write
- * one reference into an existing skill without resending SKILL.md. Each
- * `files` path is validated against the allowlist (`references/`/`scripts/`
- * only, no escape) before any network call. SKILL.md is written first so a
- * file write into a brand-new skill finds its dir.
+ * bundle file beside it. `body` is optional → an agent can write one reference
+ * into an existing skill without resending SKILL.md. Each `files` path is
+ * validated for containment (inside the skill dir, no escape) before any
+ * network call. SKILL.md is written first so a file write into a brand-new
+ * skill finds its dir.
  */
 async function handleSkillWrite(
   skill: {
@@ -936,7 +936,9 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
                 z.object({
                   path: z
                     .string()
-                    .describe('Skill-relative path under `references/` or `scripts/`.'),
+                    .describe(
+                      'Skill-relative path, e.g. "references/tiers.md" or "assets/logo.svg". Must stay inside the skill dir.',
+                    ),
                   content: z.string().describe('Full text of the bundle file.'),
                 }),
               )
@@ -946,7 +948,7 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
           })
           .optional()
           .describe(
-            'Create or overwrite an agent SKILL bundle (a NEW skill lands at the project\'s default skill home, e.g. `.agents/skills/<name>/`). SKILL.md is authored via `description`+`body`; bundle files (under `references/**` or `scripts/**` — no other root is accepted) via the `files` array. Example: { skill: { name: "trip-log", description: "Use when logging a fishing trip.", body: "# Steps\\n...", files: [{ path: "references/gear.md", content: "..." }] } }',
+            'Create or overwrite an agent SKILL bundle (a NEW skill lands at the project\'s default skill home, e.g. `.agents/skills/<name>/`). SKILL.md is authored via `description`+`body`; bundle files via the `files` array — any skill-relative path that stays inside the skill dir (`references/**` and `scripts/**` are the conventional homes; `assets/` and per-harness dirs are accepted because published skills ship them). Example: { skill: { name: "trip-log", description: "Use when logging a fishing trip.", body: "# Steps\\n...", files: [{ path: "references/gear.md", content: "..." }] } }',
           ),
         asset: z
           .object({

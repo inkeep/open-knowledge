@@ -285,6 +285,10 @@ export async function importSkill(input: {
   /** false = import only, no default-editor auto-projection (the caller
    *  installs explicitly afterwards). */
   install?: boolean;
+  /** The source is a skills.sh listing the user chose (Explore), so the install
+   *  is reported to skills.sh and counts toward that listing. Never set for a
+   *  hand-entered source. */
+  marketplace?: boolean;
 }): Promise<
   | {
       ok: true;

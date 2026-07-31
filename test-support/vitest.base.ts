@@ -85,6 +85,12 @@ export const okVitestBase = {
     environment: 'node',
     testTimeout: 30_000,
     hookTimeout: 30_000,
+    // The skills.sh install report honors the standard opt-out vars. Setting one
+    // here means no test run — local or CI — can report an install it did not
+    // make, and no suite depends on reaching a third-party host to pass. A test
+    // that wants to exercise the reporter injects its own `fetchImpl` and
+    // `env`, so this never hides the behavior under test.
+    env: { DO_NOT_TRACK: '1' },
     setupFiles: [bunGlobalShimPath],
     include: ['**/*.test.ts?(x)'],
     exclude: [...configDefaults.exclude, '**/*.spec.*', '**/*.e2e.*', '**/*.dom.test.ts?(x)'],

@@ -20,10 +20,15 @@ export function useExplorePreviewInstall({
   source,
   name,
   initialScope,
+  marketplace,
 }: {
   source: string;
   name: string;
   initialScope: SkillScope;
+  /** The source is a skills.sh listing (Explore), so the install is reported to
+   *  skills.sh and counts toward that listing. False for the plugin-copy flow,
+   *  whose source is a local harness cache dir. */
+  marketplace?: boolean;
 }): {
   scope: SkillScope;
   setScope: (s: SkillScope) => void;
@@ -55,18 +60,22 @@ export function useExplorePreviewInstall({
     // set-exact; custom-path places): the default-editor auto-projection would
     // silently install into editors the user never picked.
     const importScope = scope;
-    const pending = importSkill({ source, skill: name, scope: importScope, install: false }).then(
-      (res) => {
-        if (!res.ok) {
-          toast.error(t`Install failed: ${res.error}`);
-          return null;
-        }
-        importedNameRef.current = res.name;
-        importedScopeRef.current = importScope;
-        setImportedName(res.name);
-        return res.name;
-      },
-    );
+    const pending = importSkill({
+      source,
+      skill: name,
+      scope: importScope,
+      install: false,
+      ...(marketplace ? { marketplace: true } : {}),
+    }).then((res) => {
+      if (!res.ok) {
+        toast.error(t`Install failed: ${res.error}`);
+        return null;
+      }
+      importedNameRef.current = res.name;
+      importedScopeRef.current = importScope;
+      setImportedName(res.name);
+      return res.name;
+    });
     importPromiseRef.current = pending;
     const result = await pending;
     importPromiseRef.current = null;

@@ -600,6 +600,25 @@ export const ConfigSchema = z.looseObject({
           logs: { maxBytes: DEFAULT_LOGS_MAX_BYTES },
           attributeDenylist: [...DEFAULT_TELEMETRY_ATTRIBUTE_DENYLIST],
         }),
+      // The ONLY key under `telemetry` that leaves the machine — every sibling
+      // above is a local sink. Named as its own leaf rather than folded into
+      // `localSink` precisely so the outbound posture can't be mistaken for the
+      // local-only one. USER scope: a project must not be able to decide that
+      // its collaborators' machines phone a third party.
+      skillInstallReports: z
+        .looseObject({
+          enabled: z
+            .boolean()
+            .register(fieldRegistry, {
+              scope: 'user',
+              agentSettable: false,
+              defaultScope: 'user',
+              description:
+                'Report skill installs to skills.sh so a published skill shows an accurate install count. Sends the skill name, its source repo, and which agent tools it was installed for — never file contents, and never for a private or local source. One report per skill per machine. Default on; the DO_NOT_TRACK and DISABLE_TELEMETRY environment variables also turn it off.',
+            })
+            .default(true),
+        })
+        .default({ enabled: true }),
     })
     .default({
       localSink: {
@@ -608,6 +627,7 @@ export const ConfigSchema = z.looseObject({
         logs: { maxBytes: DEFAULT_LOGS_MAX_BYTES },
         attributeDenylist: [...DEFAULT_TELEMETRY_ATTRIBUTE_DENYLIST],
       },
+      skillInstallReports: { enabled: true },
     }),
   // PROJECT-scope: the loss-capture ring records bridge loss-class events
   // (deferred re-derives, tripped detectors/backstops, written recovery

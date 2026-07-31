@@ -37,8 +37,10 @@ import { tracedCpSync, tracedMkdirSync, tracedRmSync, tracedWriteFileSync } from
 import { resolveDefaultSkillHomeRel, scanInPlaceSkills } from '../in-place-skills.ts';
 import { getLogger } from '../logger.ts';
 import { BUNDLE_SKILL_NAME } from '../skill-bundles.ts';
+import { resolveSkillInstallReportSettings } from '../skill-install-report-config.ts';
 import { listPackSkillSources, type PackSkillSource } from '../skill-pack-sources.ts';
 import { hostSkillsRootEscapes, projectInPlaceSkill } from '../skill-projection.ts';
+import { reportSkillInstall } from '../skills-sh-install-report.ts';
 
 /**
  * Display labels for the editors that keep project-local skills (returned in the
@@ -122,6 +124,8 @@ export async function installPackSkill(projectDir: string, packId: string): Prom
     return existsSync(join(projectDir, rel, PLATFORM_SKILL_NAME, 'SKILL.md'));
   });
 
+  // Resolved once per seed, not per skill — a pack can ship a dozen.
+  const reportSettings = resolveSkillInstallReportSettings();
   const installed = new Set<string>();
   // The scan (not any marker) is truth under the in-place model — one scan
   // covers the absent-check for every pack skill.
@@ -179,6 +183,14 @@ export async function installPackSkill(projectDir: string, packId: string): Prom
 
       // Provenance for the reimport-based update path (no bespoke pack-update handler).
       recordPackSkillProvenance(projectDir, name, skillDir);
+      // Count it on skills.sh. Pack skills ship inside the app bundle, so there
+      // is nothing to fetch from the marketplace and the event is the only way
+      // the listing reflects them. Inside the `!alreadyPresent` branch AND
+      // deduped per machine by the reporter, so re-running seed reports nothing.
+      void reportSkillInstall(
+        { source: OPENKNOWLEDGE_SKILLS_REPO, skills: [name] },
+        { home: reportSettings.home, enabled: reportSettings.enabled },
+      );
     }
 
     // (2) Fan the source into each set-up editor via the guarded in-place

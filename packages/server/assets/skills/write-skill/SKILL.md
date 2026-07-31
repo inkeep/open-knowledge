@@ -141,8 +141,11 @@ skills({ name: "<name>", file: "references/tiers.md" })   # → { path, kind, te
 delete({ skill: { name: "<name>", files: ["references/tiers.md"] } })
 ```
 
-Paths are skill-relative and must live under `references/` or `scripts/` (one
-level deep). A project `.md` reference becomes a live content doc that
+Paths are skill-relative and must stay inside the skill dir (no `../`, no
+absolute paths). `references/` and `scripts/` are the conventional homes and the
+ones to reach for; other roots (`assets/`, a per-harness dir) are accepted
+because published skills ship them and an import preserves them verbatim. Keep
+references one level deep. A project `.md` reference becomes a live content doc that
 auto-connects to its SKILL in the graph regardless of how the body mentions it —
 a backticked `` `references/<name>.md` `` path joins the graph just like a
 `[[references/<name>]]` wiki-link. Reach for a wiki-link (or

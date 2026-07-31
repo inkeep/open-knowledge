@@ -120,19 +120,32 @@ describe('resolveSkillFilePath — bundle-file path allowlist', () => {
     if (nested.ok) expect(nested.kind).toBe('reference');
   });
 
-  test('rejects `..` traversal, absolute paths, and other top-level dirs', () => {
+  test('rejects `..` traversal and absolute paths', () => {
     for (const bad of [
       'references/../../etc/passwd',
       '../escape.md',
       'references/../scripts/../../x',
       '/abs/path.md',
       'C:\\windows\\system32',
+      // Authored via `body`; a second write path would validate differently.
       'SKILL.md',
-      'notes/x.md',
-      'assets/img.png',
     ]) {
       expect(resolveSkillFilePath(bad).ok).toBe(false);
     }
+  });
+
+  // Acquisition captures a skill's whole directory byte-for-byte, so a
+  // two-root allowlist here meant OK could write a file on import that it then
+  // refused to let an agent read or edit. Real published skills ship exactly
+  // these shapes (`mattpocock/skills/grill-me` carries `agents/openai.yaml`).
+  test('accepts bundle roots beyond references/ and scripts/', () => {
+    for (const good of ['assets/img.png', 'agents/openai.yaml', '.claude-plugin/plugin.json']) {
+      const r = resolveSkillFilePath(good);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.kind).toBe('reference');
+    }
+    const rootFile = resolveSkillFilePath('LICENSE');
+    expect(rootFile.ok).toBe(true);
   });
 
   test('rejects a bare allowed root with no leaf, empty, and NUL', () => {

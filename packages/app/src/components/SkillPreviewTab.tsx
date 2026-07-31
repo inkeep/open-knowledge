@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useExplorePreviewInstall } from '@/hooks/use-explore-preview-install';
 import { useOpenSkill } from '@/hooks/use-open-skill';
+import { useSkillOrigin } from '@/hooks/use-skill-origin';
 import { hashFromSkillFile, hashFromSkillPreview, type SkillPreviewFlavor } from '@/lib/doc-hash';
 import { useSkillScopeLabels } from '@/lib/skill-scope';
 import { discoverSkillsInSource, fetchSkillDetail } from '@/lib/skills-api';
@@ -55,6 +56,44 @@ interface Props {
  * a real content doc, so we hand off to the live editor via `openManagedArtifactTab`.
  */
 const SKILL_MD = 'SKILL.md';
+
+/**
+ * Provenance link + Update action for one of OK's built-in skills.
+ *
+ * Its own component so `useSkillOrigin` — whose update check dry-run-fetches
+ * upstream — mounts ONLY for built-ins. Hoisting the hook into
+ * {@link SkillPreviewTab} would fire that fetch for every explore/detected
+ * preview too, which have no origin to re-pull.
+ *
+ * Built-ins carry no stored lockfile entry; the server synthesizes one from the
+ * installed content (source `inkeep/open-knowledge-skills`, `autoUpdate: false`),
+ * so the Update button is always a deliberate click and never an auto-apply.
+ * Content stays read-only in-app — a re-pull is the sanctioned way it changes.
+ */
+export function BuiltinHeaderActions({ scope, name }: { scope: SkillScope; name: string }) {
+  const { origin, github, updateAvailable, reimport, reimporting } = useSkillOrigin({
+    scope,
+    name,
+  });
+  if (!origin) return null;
+  return (
+    <div className="flex gap-1">
+      {github ? (
+        <Button variant="ghost" size="sm" className="px-2" asChild>
+          <a href={github} target="_blank" rel="noreferrer">
+            <Trans>Source</Trans>
+            <ArrowUpRightIcon className="h-3.5 w-3.5" />
+          </a>
+        </Button>
+      ) : null}
+      {updateAvailable ? (
+        <Button size="sm" onClick={() => void reimport()} disabled={reimporting}>
+          {reimporting ? <Trans>Updating</Trans> : <Trans>Update</Trans>}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
 
 export function SkillPreviewTab({
   flavor,
@@ -136,7 +175,15 @@ export function SkillPreviewTab({
   // Explore and plugin-copy previews install through the shared per-agent menu.
   // Import is implied on the first destination choice, so opening/cancelling the
   // menu never creates a draft or silently privileges one skills root.
-  const previewInstall = useExplorePreviewInstall({ source, name, initialScope: targetScope });
+  const previewInstall = useExplorePreviewInstall({
+    source,
+    name,
+    initialScope: targetScope,
+    // Explore rows come from a skills.sh listing the user picked, so the
+    // install counts toward it; the plugin-copy flow's source is a local
+    // harness cache dir and must not be announced to the marketplace.
+    marketplace: flavor === 'explore',
+  });
   // The moment the IMPORT completes (bundle on disk), replace this preview with
   // the real editable skill tab — the editor-install fan-out keeps running in
   // the background and the INSTALLED badge catches up via the list refetch.
@@ -194,7 +241,9 @@ export function SkillPreviewTab({
     <Trans>This is a preview of {boldName}. Install it into your agents.</Trans>
   );
 
-  const headerActions = builtin ? null : (
+  const headerActions = builtin ? (
+    <BuiltinHeaderActions scope={targetScope} name={name} />
+  ) : (
     <>
       <div className="flex gap-1">
         {detail?.skillsUrl ? (

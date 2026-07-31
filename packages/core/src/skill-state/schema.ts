@@ -146,6 +146,18 @@ export const SkillStateSchema = z.looseObject({
         'Per-bundle opt-in decisions keyed by install name. Absent key = no recorded decision.',
     })
     .optional(),
+  // Dedupe ledger for the skills.sh install report. Entries are
+  // `<owner/repo>#<skill>`; presence means "already reported from this
+  // machine". This is what makes the reported number mean installs rather than
+  // launches — the desktop reclaim sweep runs every launch and `ok init` is
+  // re-runnable, so without it both would re-report.
+  installsReported: z
+    .array(z.string())
+    .register(skillStateFieldRegistry, {
+      description:
+        'Skill installs already reported to skills.sh from this machine, as `<owner/repo>#<skill>`. Append-only; presence suppresses a re-report.',
+    })
+    .optional(),
 });
 
 export type SkillState = z.infer<typeof SkillStateSchema>;

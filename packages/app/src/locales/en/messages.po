@@ -3234,6 +3234,10 @@ msgstr "Couldn't update skills sharing — {detail}."
 msgid "Couldn't work out where to send the comments — they stay queued."
 msgstr "Couldn't work out where to send the comments — they stay queued."
 
+#: src/components/settings/settings-fields.ts
+msgid "Count skill installs publicly"
+msgstr "Count skill installs publicly"
+
 #: src/components/ConsentDialogBody.tsx
 msgid "Counting markdown files"
 msgstr "Counting markdown files"
@@ -11337,6 +11341,7 @@ msgid "Up to date"
 msgstr "Up to date"
 
 #: src/components/SkillOriginInline.tsx
+#: src/components/SkillPreviewTab.tsx
 msgid "Update"
 msgstr "Update"
 
@@ -11390,6 +11395,7 @@ msgid "Updates from the source apply automatically (unless edited locally)"
 msgstr "Updates from the source apply automatically (unless edited locally)"
 
 #: src/components/SkillOriginInline.tsx
+#: src/components/SkillPreviewTab.tsx
 #: src/components/SkillUpdateConflictDialog.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Updating"
@@ -11744,6 +11750,10 @@ msgstr "When the agent runs its scheduled work."
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "When you hover an external link, its URL is sent to the destination site to fetch the page's preview metadata — one request per previewed link."
 msgstr "When you hover an external link, its URL is sent to the destination site to fetch the page's preview metadata — one request per previewed link."
+
+#: src/components/settings/settings-fields.ts
+msgid "When you install a published skill, tell the skill directory (skills.sh) so its install count is accurate. Sends the skill name, its source repository, and which agent tools it went to — never file contents, and never for a skill from a private, local, or hand-typed source. Once per skill per machine."
+msgstr "When you install a published skill, tell the skill directory (skills.sh) so its install count is accurate. Sends the skill name, its source repository, and which agent tools it went to — never file contents, and never for a skill from a private, local, or hand-typed source. Once per skill per machine."
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Where newly added attachments are placed."

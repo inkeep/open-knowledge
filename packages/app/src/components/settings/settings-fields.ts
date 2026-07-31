@@ -41,6 +41,14 @@ export const FIELDS_USER_PREFERENCES: FieldDef[] = [
     label: msg`Open preview when agent edits`,
     description: msg`When enabled, the agent opens or refreshes the preview after each edit. Disable if you manage your own preview window (OK Desktop, a browser tab on another display, etc.).`,
   },
+  {
+    path: ['telemetry', 'skillInstallReports', 'enabled'],
+    // Behavior first: most people have never visited skills.sh, so leading with
+    // the destination names something they can't evaluate. What it DOES — count
+    // an install so a published skill shows a real number — is the decision.
+    label: msg`Count skill installs publicly`,
+    description: msg`When you install a published skill, tell the skill directory (skills.sh) so its install count is accurate. Sends the skill name, its source repository, and which agent tools it went to — never file contents, and never for a skill from a private, local, or hand-typed source. Once per skill per machine.`,
+  },
 ];
 
 // The color-theme picker is a theme "plugin": it lives in the Plugins menu

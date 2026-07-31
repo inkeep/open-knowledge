@@ -185,6 +185,7 @@
     "2hYmUH": ["my@email.com"],
     "2hpdRq": ["Hide panel (", ["panelShortcutLabel"], ")"],
     "2j1kfc": ["Enter a valid URL (for example https://api.openai.com/v1)."],
+    "2jUGEP": ["Count skill installs publicly"],
     "2m_bmh": [["label"], " (", ["0"], ")"],
     "2myNzt": ["We've filed it with the team and attached your logs."],
     "2n3oDU": [
@@ -1435,6 +1436,9 @@
     "NnQapF": ["Open with AI ", ["targetDisplayName"]],
     "NpC29w": ["Create a new list item from the current list item."],
     "NrFwux": ["Failed to save content rules — ", ["0"]],
+    "Ns0z5o": [
+      "When you install a published skill, tell the skill directory (skills.sh) so its install count is accurate. Sends the skill name, its source repository, and which agent tools it went to — never file contents, and never for a skill from a private, local, or hand-typed source. Once per skill per machine."
+    ],
     "Nu4DdT": ["Sync"],
     "Nu4oKW": ["Description"],
     "NuH1jp": ["Public repository"],

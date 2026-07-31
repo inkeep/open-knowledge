@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HOSTS_WITH_USER_SKILL_DIR } from '@inkeep/open-knowledge-core';
 import { beforeEach, describe, expect, test } from 'vitest';
-
+import { BUNDLE_SKILL_NAME } from './skill-bundles.ts';
 import {
   buildAndOpenSkill,
   detectUserSkillHosts,
@@ -29,6 +29,7 @@ import {
   type SkillInstallLogger,
   type SpawnLike,
 } from './skill-install.ts';
+import { writeBundleDecision } from './skill-state.ts';
 
 async function readServerVersion(): Promise<string> {
   const raw = await readFile(new URL('../package.json', import.meta.url), 'utf-8');
@@ -231,6 +232,67 @@ describe('installUserSkill — scope discipline', () => {
     const events = readInstallEvents(home);
     expect(events.at(-1)?.outcome).toBe('skip-current');
     expect(events.at(-1)?.reason).toBe('no-hosts');
+  });
+
+  // The decline gate used to live only in the callers, so a caller that forgot
+  // it would reinstall a bundle the user had turned off — and a decline also
+  // removes the bundle from disk, so the reinstall reverses an explicit choice.
+  test('an explicitly declined bundle is never installed, even with a host present', async () => {
+    const home = freshHome();
+    installHost(home, '.claude');
+    await writeBundleDecision(home, BUNDLE_SKILL_NAME.discovery, false);
+
+    const result = await installUserSkill({ home });
+
+    expect(result).toBe('skip-current');
+    expect(existsSync(centralSkillDirFor(home))).toBe(false);
+    expect(existsSync(hostSkillDirFor(home, '.claude'))).toBe(false);
+    expect(readInstallEvents(home).at(-1)?.reason).toBe('declined');
+  });
+
+  // `force` bypasses the VERSION fast-path, not consent — `ok init` passes it on
+  // every bundle, so letting it through the decline gate would make a re-init
+  // silently undo an opt-out.
+  test('force does not override an explicit decline', async () => {
+    const home = freshHome();
+    installHost(home, '.claude');
+    await writeBundleDecision(home, BUNDLE_SKILL_NAME.discovery, false);
+
+    expect(await installUserSkill({ home, force: true })).toBe('skip-current');
+    expect(existsSync(centralSkillDirFor(home))).toBe(false);
+  });
+
+  // An UNREADABLE decision is not "no decision". Collapsing the two would
+  // install a bundle whose recorded state may be an explicit decline — and a
+  // decline also deletes the files, so reversing it is visible to the user.
+  test('an unreadable decision file declines rather than installing', async () => {
+    const home = freshHome();
+    installHost(home, '.claude');
+    // A directory where the state file belongs: reads fail with EISDIR, which
+    // is neither ENOENT (absent) nor a parse error (both of which read as
+    // "fresh install" by design).
+    mkdirSync(join(home, '.ok', 'skill-state.yml'), { recursive: true });
+    const { logger, records } = makeRecordingLogger();
+
+    const result = await installUserSkill({ home, logger });
+
+    expect(result).toBe('skip-current');
+    expect(existsSync(centralSkillDirFor(home))).toBe(false);
+    expect(
+      records.some(
+        (r) => (r.data as { event?: string }).event === 'skill-install.gate.decision-read-failed',
+      ),
+    ).toBe(true);
+  });
+
+  // Absent decision means "first install", not "declined" — the reclaim sweeps
+  // own the `?? installedOnDisk` grandfathering, this path must not import it.
+  test('no recorded decision still installs', async () => {
+    const home = freshHome();
+    installHost(home, '.claude');
+
+    expect(await installUserSkill({ home })).toBe('installed');
+    expect(existsSync(join(centralSkillDirFor(home), 'SKILL.md'))).toBe(true);
   });
 
   test('detectUserSkillHosts reports only the hosts present on disk', () => {

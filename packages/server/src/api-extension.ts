@@ -764,6 +764,7 @@ import {
   scanSkillFolderStates,
   unlinkEditorSkillFolder,
 } from './skill-folder-links.ts';
+import { resolveSkillInstallReportSettings } from './skill-install-report-config.ts';
 import {
   readFolderExpectations,
   readSkillInstallModeRaw,
@@ -778,6 +779,7 @@ import {
 import { restoreSkillVersion } from './skill-restore.ts';
 import { getPopularSkills } from './skills-leaderboard.ts';
 import { mutateSkillsLock, readSkillsLockFile } from './skills-lock-store.ts';
+import { reportSkillInstall } from './skills-sh-install-report.ts';
 import { SuggestLinksTargetNotFoundError, suggestLinks } from './suggest-links.ts';
 import type { SyncEngine } from './sync-engine.ts';
 import { getMeter, getTracer, withSpan, withSpanSync } from './telemetry.ts';
@@ -18824,7 +18826,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     { handler: 'skill' },
   );
 
-  // ─── `/api/skill-file` — ONE bundle file (references/** + scripts/**) ──────
+  // ─── `/api/skill-file` — ONE bundle file (any path inside the skill) ──────
   //
   // The whole-bundle read/write/delete surface beneath SKILL.md. Routing splits
   // by scope × type: a PROJECT `.md` reference is a real CRDT content doc
@@ -19138,7 +19140,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             res,
             400,
             'urn:ok:error:invalid-request',
-            'Invalid skill file path (must be a file under references/ or scripts/, no `..`).',
+            'Invalid skill file path (must name a file inside the skill dir, no `..`).',
             { handler: 'skill-file-put' },
           );
           return;
@@ -19301,7 +19303,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             res,
             400,
             'urn:ok:error:invalid-request',
-            'Invalid skill file path (must be a file under references/ or scripts/).',
+            'Invalid skill file path (must name a file inside the skill dir).',
             { handler: 'skill-file-delete' },
           );
           return;
@@ -19416,7 +19418,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             res,
             400,
             'urn:ok:error:invalid-request',
-            'Both paths must live under references/ or scripts/ inside the skill.',
+            'Both paths must stay inside the skill dir.',
             { handler: 'skill-file-rename', detail: fromKind === null ? from : to },
           );
           return;
@@ -19983,12 +19985,17 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // The picked upstream skill dir basename — recorded in the lockfile so a
         // later reimport re-selects the same skill in a multi-skill source.
         let upstreamSkill: string | undefined;
+        // The marketplace-facing coordinates (`owner/repo`, or a website
+        // catalog's hostname) — what an install report names. Distinct from
+        // `sourceLabel`, which keeps the raw string the user typed.
+        let resolvedSourceForReport = body.source;
 
         {
           const rawSource = body.source;
           try {
             const skillsSh = await resolveSkillsShImportSource(rawSource, body.skill);
             const resolvedSource = skillsSh?.source ?? rawSource;
+            resolvedSourceForReport = resolvedSource;
             const selectedSkill = body.skill ?? skillsSh?.skill;
             const spec = skillsSh?.spec ?? parseSource(resolvedSource);
             if (!spec) {
@@ -20070,19 +20077,32 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         }
         // Steps 2-6 (dedupe → collision → write → attribute → lockfile → project)
         // are the shared import spine, also used by the upload endpoint.
-        respondSkillImport(
-          res,
-          await runSkillImport({
-            acquiredDir,
-            scope,
-            sourceLabel,
-            ref,
-            publisher,
-            upstreamSkill,
-            actor,
-            skipProjection: body.install === false,
-          }),
-        );
+        const outcome = await runSkillImport({
+          acquiredDir,
+          scope,
+          sourceLabel,
+          ref,
+          publisher,
+          upstreamSkill,
+          actor,
+          skipProjection: body.install === false,
+        });
+        // Count it on skills.sh, but ONLY when the user came from a skills.sh
+        // listing (`marketplace`, set by the Explore tab). A hand-typed
+        // `owner/repo` is not announced to a third party — the user never went
+        // to the marketplace, and telling it which repos they install would be
+        // a disclosure they did not ask for.
+        //
+        // This is the mechanism that actually moves the counter. Fetching the
+        // bundle through skills.sh's download API does NOT: verified against a
+        // skill sitting at 8 installs, which stayed at 8 after a download.
+        if (body.marketplace === true && outcome.ok) {
+          void reportSkillInstall(
+            { source: resolvedSourceForReport, skills: [outcome.body.name] },
+            resolveSkillInstallReportSettings(),
+          );
+        }
+        respondSkillImport(res, outcome);
       } catch (e) {
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to import skill.', {
           handler: 'skill-import',

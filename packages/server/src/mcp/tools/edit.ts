@@ -712,7 +712,7 @@ export function register(server: ServerInstance, deps: EditDeps): void {
           })
           .optional()
           .describe(
-            'Edit a SKILL: SKILL.md body (find+replace) OR its `description`; or pass `file` to find/replace inside ONE `references/**`+`scripts/**` bundle file.',
+            'Edit a SKILL: SKILL.md body (find+replace) OR its `description`; or pass `file` to find/replace inside ONE bundle file.',
           ),
         summary: summaryArgSchema,
         cwd: z.string().optional().describe(ROUTED_CWD_DESCRIPTION),

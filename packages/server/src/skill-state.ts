@@ -314,7 +314,14 @@ export async function readBundleDecision(
   bundleName: string,
   logger?: SkillStateLogger,
 ): Promise<boolean | null> {
-  const state = await readSkillStateFile(home, logger).catch(() => null);
+  // Deliberately NOT `.catch(() => null)`. `readSkillStateFile` already returns
+  // null for a MISSING file (ENOENT) and for an unparseable one, so the only
+  // errors that reach here are the ones a caller must be able to tell apart
+  // from "no decision recorded" — EACCES after a `sudo ok init`, EIO, a
+  // truncated read. Collapsing those into null let an install proceed against
+  // what might be an explicit decline. Callers that genuinely want the
+  // permissive reading (the launch reclaim sweeps) opt in with their own catch.
+  const state = await readSkillStateFile(home, logger);
   const entry = state?.bundles?.[bundleName];
   return typeof entry?.enabled === 'boolean' ? entry.enabled : null;
 }
@@ -339,6 +346,38 @@ export async function writeBundleDecision(
       },
     };
     await writeSkillStateFile(home, next);
+  });
+}
+
+/**
+ * Installs already reported to skills.sh from this machine, as
+ * `<owner/repo>#<skill>`. A missing / unreadable state file reads as empty:
+ * the cost of that is at most one duplicate report, whereas throwing would
+ * fail an install over telemetry bookkeeping.
+ */
+export async function readInstallReported(
+  home: string,
+  logger?: SkillStateLogger,
+): Promise<Set<string>> {
+  const state = await readSkillStateFile(home, logger).catch(() => null);
+  return new Set(state?.installsReported ?? []);
+}
+
+/**
+ * Append reported install keys. Atomic RMW under the same lock as every other
+ * skill-state write, and set-unioned so two concurrent installs can't clobber
+ * each other's entries.
+ */
+export async function writeInstallReported(
+  home: string,
+  keys: readonly string[],
+  logger?: SkillStateLogger,
+): Promise<void> {
+  if (keys.length === 0) return;
+  await withSkillStateWriteLock(home, async () => {
+    const existing = (await readSkillStateFile(home, logger)) ?? emptySkillState();
+    const merged = new Set([...(existing.installsReported ?? []), ...keys]);
+    await writeSkillStateFile(home, { ...existing, installsReported: [...merged].sort() });
   });
 }
 

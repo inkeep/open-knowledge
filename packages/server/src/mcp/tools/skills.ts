@@ -201,7 +201,7 @@ const SkillBundleFileEntrySchema = z.object({
   path: z.string().describe('Skill-relative path (e.g. "references/tiers.md").'),
   kind: z
     .enum(['reference', 'script'])
-    .describe('`reference` (under references/) or `script` (under scripts/).'),
+    .describe('`script` for anything under scripts/; `reference` for every other bundle file.'),
 });
 
 const SkillReadOutputSchema = z.object({
@@ -251,7 +251,7 @@ const DESCRIPTION = [
   '**Four modes:**',
   '- **Marketplace search** (pass `query`): search skills.sh and return import-ready rows (`name`, `source`, `description`, `publisher`, installs). Use when a user asks to find/browse/add an external skill. Then call `import({ source, skill: name })` on the chosen row.',
   '- **List** (omit `name`): every skill across BOTH levels — Project (this KB) and Global (user-level). Returns name, scope, description, installed/hosts.',
-  "- **Read skill** (pass `name`): that skill's description + body + a `files` list (`{ path, kind }`, no inline text) of its `references/**`+`scripts/**` bundle files. `scope` optional — omitted, it resolves by name (preferring Project when a name exists at both levels).",
+  "- **Read skill** (pass `name`): that skill's description + body + a `files` list (`{ path, kind }`, no inline text) of its bundle files (`references/**`, `scripts/**`, and any other file the skill ships). `scope` optional — omitted, it resolves by name (preferring Project when a name exists at both levels).",
   "- **Read file** (pass `name` + `file`): one bundle file's text — the universal read path for references + scripts (no native `cat`).",
 ].join('\n');
 
@@ -283,7 +283,7 @@ export function register(server: ServerInstance, deps: SkillsToolDeps): void {
           .string()
           .optional()
           .describe(
-            'With `name`: read ONE bundle file by its skill-relative path (`references/...`/`scripts/...`).',
+            'With `name`: read ONE bundle file by its skill-relative path (e.g. `references/x.md`, `agents/openai.yaml`).',
           ),
         scope: SkillScopeArg.optional(),
         cwd: z.string().optional().describe(ROUTED_CWD_DESCRIPTION),
