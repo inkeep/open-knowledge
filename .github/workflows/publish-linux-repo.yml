@@ -1,0 +1,185 @@
+# Publish the Linux apt + rpm repository for one channel.
+#
+# Runs ON THE MIRROR (inkeep/open-knowledge) like the other release
+# workflows — dispatch it there, not on agents-private. It downloads the
+# .deb/.rpm assets from the given GitHub Release, generates a signed
+# repository tree (scripts/linux-repo/publish-linux-repo.sh — stateless,
+# latest-only per channel), and syncs it over the channel's prefixes in the
+# packages bucket. Idempotent: re-running for the same tag converges to the
+# same bucket state.
+#
+# One-time infrastructure setup (bucket, domain, signing key, secrets) and
+# the client-side install instructions live in scripts/linux-repo/README.md.
+#
+# Secrets:
+#   LINUX_REPO_GPG_PRIVATE_KEY  ASCII-armored private key, NO passphrase
+#   LINUX_REPO_R2_ACCESS_KEY_ID / LINUX_REPO_R2_SECRET_ACCESS_KEY
+#   LINUX_REPO_R2_ENDPOINT      https://<account-id>.r2.cloudflarestorage.com
+# Variables:
+#   LINUX_REPO_BUCKET           bucket name (e.g. ok-packages)
+
+name: publish-linux-repo
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag whose .deb/.rpm assets to publish (e.g. v0.46.0)"
+        required: true
+      channel:
+        description: "Repository channel (apt suite / rpm subdir)"
+        required: true
+        type: choice
+        options: [stable, beta]
+      dry_run:
+        description: "Generate + sign only; skip the bucket sync"
+        type: boolean
+        default: false
+
+# Publishes serialize: two concurrent syncs over the same prefixes could
+# interleave into a half-old half-new repo.
+concurrency:
+  group: publish-linux-repo
+  cancel-in-progress: false
+
+# This job holds the package-signing key and bucket credentials; it needs
+# nothing from the token beyond reading release assets.
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    # Pinned (not -latest): the publish path depends on apt-utils,
+    # createrepo-c, and rpm from the runner image's Ubuntu release — a
+    # surprise image bump must not land mid-release-window.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      # inputs.tag is free-text: NEVER interpolate it into run: blocks
+      # (`${{ }}` splices before the shell parses — command injection in a
+      # job holding the signing key). Reference "$TAG" instead. channel is
+      # a closed choice list but rides the same convention.
+      TAG: ${{ inputs.tag }}
+      CHANNEL: ${{ inputs.channel }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download release packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/packages
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.deb' --pattern '*.rpm' -D /tmp/packages
+          ls -la /tmp/packages
+          count=$(find /tmp/packages -name '*.deb' -o -name '*.rpm' | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "::error::release $TAG carries no .deb/.rpm assets — attach the Linux packages first (see scripts/linux-repo/README.md)"
+            exit 1
+          fi
+
+      - name: Install repo tooling
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends apt-utils createrepo-c rpm
+
+      - name: Import the signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.LINUX_REPO_GPG_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GPG_PRIVATE_KEY" ]; then
+            echo "::error::LINUX_REPO_GPG_PRIVATE_KEY secret is not set — see scripts/linux-repo/README.md one-time setup"
+            exit 1
+          fi
+          printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
+          keyid=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/ {print $5; exit}')
+          if [ -z "$keyid" ]; then
+            echo "::error::gpg imported the secret but no secret key is listed — the LINUX_REPO_GPG_PRIVATE_KEY secret is likely a public key or a truncated/re-wrapped armor block; re-export with 'gpg --armor --export-secret-keys' and set it again"
+            exit 1
+          fi
+          echo "GPG_KEY_ID=$keyid" >> "$GITHUB_ENV"
+
+      - name: Generate + sign the repository tree
+        env:
+          PACKAGES_DIR: /tmp/packages
+          OUT_DIR: /tmp/repo
+        run: bash scripts/linux-repo/publish-linux-repo.sh
+
+      - name: Sync to the packages bucket
+        if: ${{ !inputs.dry_run }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.LINUX_REPO_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.LINUX_REPO_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          ENDPOINT: ${{ secrets.LINUX_REPO_R2_ENDPOINT }}
+          BUCKET: ${{ vars.LINUX_REPO_BUCKET }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BUCKET" ] || [ -z "$ENDPOINT" ]; then
+            echo "::error::LINUX_REPO_BUCKET var / LINUX_REPO_R2_ENDPOINT secret not set — see scripts/linux-repo/README.md"
+            exit 1
+          fi
+          # Upload-first, prune-last — the repo is LIVE during the sync. A
+          # client that fetched the OLD index must still find the OLD pool
+          # files until the NEW index is up, so:
+          #   1. pool/packages WITHOUT --delete (old + new coexist briefly);
+          #   2. metadata (dists/, repodata/) — points at the new files,
+          #      which step 1 guaranteed are present;
+          #   3. prune pass with --delete, now that no live index references
+          #      the old files.
+          # --delete stays scoped to this channel's prefixes, which is what
+          # keeps the bucket latest-only per channel without touching the
+          # sibling channel.
+          sync() { aws s3 sync --endpoint-url "$ENDPOINT" --no-progress "$@"; }
+          if [ -d "/tmp/repo/apt/pool/$CHANNEL" ]; then
+            sync "/tmp/repo/apt/pool/$CHANNEL"  "s3://$BUCKET/apt/pool/$CHANNEL"
+          fi
+          if [ -d "/tmp/repo/rpm/$CHANNEL" ]; then
+            sync "/tmp/repo/rpm/$CHANNEL" "s3://$BUCKET/rpm/$CHANNEL"
+          fi
+          if [ -d "/tmp/repo/apt/dists/$CHANNEL" ]; then
+            sync --delete "/tmp/repo/apt/dists/$CHANNEL" "s3://$BUCKET/apt/dists/$CHANNEL"
+          fi
+          if [ -d "/tmp/repo/apt/pool/$CHANNEL" ]; then
+            sync --delete "/tmp/repo/apt/pool/$CHANNEL"  "s3://$BUCKET/apt/pool/$CHANNEL"
+          fi
+          if [ -d "/tmp/repo/rpm/$CHANNEL" ]; then
+            sync --delete "/tmp/repo/rpm/$CHANNEL" "s3://$BUCKET/rpm/$CHANNEL"
+          fi
+          # Public keys: tiny, immutable in practice, never --delete.
+          [ -f /tmp/repo/apt/openknowledge.gpg ] && sync /tmp/repo/apt "s3://$BUCKET/apt" --exclude 'dists/*' --exclude 'pool/*'
+          [ -f /tmp/repo/rpm/key.asc ] && aws s3 cp --endpoint-url "$ENDPOINT" /tmp/repo/rpm/key.asc "s3://$BUCKET/rpm/key.asc"
+          echo "published channel=$CHANNEL from tag=$TAG"
+
+      # Effect-level control: read the LIVE repo back through the public
+      # domain and verify the signature chain, so a partial upload (network
+      # blip, R2 throttle) can't end the run green with an inconsistent
+      # repo. Uses the key imported earlier in this job — the same key the
+      # metadata was signed with moments ago.
+      - name: Verify the published repo
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          base="https://packages.openknowledge.ai"
+          if [ -d "/tmp/repo/apt/dists/$CHANNEL" ]; then
+            curl -fsSL --retry 5 --retry-delay 3 "$base/apt/dists/$CHANNEL/InRelease" -o /tmp/live-inrelease
+            gpg --batch --verify /tmp/live-inrelease
+            echo "apt InRelease verified for channel=$CHANNEL"
+          fi
+          if [ -d "/tmp/repo/rpm/$CHANNEL" ]; then
+            for arch_dir in /tmp/repo/rpm/"$CHANNEL"/*/; do
+              arch=$(basename "$arch_dir")
+              curl -fsSL --retry 5 --retry-delay 3 "$base/rpm/$CHANNEL/$arch/repodata/repomd.xml" -o /tmp/live-repomd.xml
+              curl -fsSL --retry 5 --retry-delay 3 "$base/rpm/$CHANNEL/$arch/repodata/repomd.xml.asc" -o /tmp/live-repomd.xml.asc
+              gpg --batch --verify /tmp/live-repomd.xml.asc /tmp/live-repomd.xml
+              echo "rpm repomd verified for channel=$CHANNEL arch=$arch"
+            done
+          fi
+
+      - name: Dry-run summary
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "dry run — tree that WOULD sync:"
+          find /tmp/repo -type f | sort
