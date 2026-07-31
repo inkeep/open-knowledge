@@ -132,9 +132,14 @@ const GIT_AUTH_ENV_KEYS = [
  * controlling terminal, so when the credential helper returns nothing, an
  * attempted prompt fails with the alarming "could not read Username … Device
  * not configured" (an ENXIO on `/dev/tty`). Disabling prompts makes git
- * fail-fast with "terminal prompts disabled" instead, which the error
- * classifier maps to the reconnect-required auth state. Both strings classify
- * as no-credential, but this avoids a misleading errno in logs and the UI.
+ * fail-fast instead, which the error classifier maps to the reconnect-required
+ * auth state. It is the SECOND line of defence, not the first: `createGitInstance`
+ * pins `credential.interactive=false`, which on git versions that honor it
+ * short-circuits in `credential_getpass` before the terminal path is reached — so
+ * the string the server emits there is "unable to get password from user", not
+ * "terminal prompts disabled". Both classify as no-credential; this var is what
+ * covers the paths and git versions the pin doesn't, keeping the misleading
+ * ENXIO errno out of logs and the UI.
  *
  * `GIT_MERGE_AUTOEDIT=no` is set unconditionally for the same non-interactive
  * reason: `sync-engine`'s `git merge origin/<branch>` is the one sync op that
@@ -203,6 +208,14 @@ export function applyGitEnv(
  * Create a SimpleGit instance rooted at `projectDir` with optional credential
  * args and index file isolation. Env construction (and the reasons each var is
  * preserved through simple-git's env replacement) lives in `buildGitEnv`.
+ *
+ * This factory is the sanctioned path for any server-side git that CAN REACH A
+ * REMOTE. It is the only place the non-interactivity guarantees are assembled
+ * (`GIT_TERMINAL_PROMPT=0` + `credential.interactive=false`), and a remote-capable
+ * spawn without them can put an OS credential dialog on the user's desktop from a
+ * process they can't see. Bare `simpleGit(...)` elsewhere in the server is fine
+ * for local-only work (log reads, shadow-ref plumbing) — but the moment such a
+ * call site grows a `fetch`/`push`/`ls-remote`, it must move to this factory.
  */
 export function createGitInstance(projectDir: string, options: GitHandleOptions = {}): GitHandle {
   const { credentialArgs = [], gitIndexFile, ghToken, timeoutMs } = options;
@@ -213,7 +226,7 @@ export function createGitInstance(projectDir: string, options: GitHandleOptions 
   }
 
   // Server-spawned git inherits the user's ~/.gitconfig (buildGitEnv keeps
-  // HOME so SSH keys and credential helpers resolve). Pin two of its directives
+  // HOME so SSH keys and credential helpers resolve). Pin three of its directives
   // OFF for OK's git only — `-c` outranks global config, and the user's own
   // terminal/IDE git is untouched:
   //   - commit.gpgsign: the merge-resolution `git commit` would GPG-sign with no
@@ -222,9 +235,24 @@ export function createGitInstance(projectDir: string, options: GitHandleOptions 
   //     bot-authored commit with the user's key.
   //   - core.autocrlf: would rewrite content EOLs on checkout/merge, fighting the
   //     byte-exact LF round-trip and churning the file-watcher <-> CRDT path.
+  //   - credential.interactive: the companion to buildGitEnv's
+  //     `GIT_TERMINAL_PROMPT=0`, which only governs git's OWN terminal prompt and
+  //     does nothing to a credential helper's GUI. Git for Windows ships
+  //     `credential.helper=manager` in its system config, and Git Credential
+  //     Manager is interactive by default, so any credential miss on a background
+  //     fetch opened a GitHub sign-in WINDOW on the user's desktop with no user
+  //     action — every ~30s pull tick, for a daemon the user can't see.
+  //     Honored at BOTH layers: git's own `credential_getpass` short-circuits on
+  //     it, and GCM reads it to decline its dialog. So the miss surfaces as OK's
+  //     `auth-error` + "Sign in" affordance instead of an OS prompt.
+  //     Cross-platform consequence: on git versions that honor it (measured:
+  //     2.54 does, 2.39 doesn't) this REPLACES the "terminal prompts disabled"
+  //     stderr with "unable to get password from user" everywhere, not just on
+  //     Windows — `GIT_AUTH_NO_CREDENTIAL_PATTERNS` must keep matching both.
   const gitConfig = [
     'commit.gpgsign=false',
     'core.autocrlf=false',
+    'credential.interactive=false',
     ...(credentialArgs.length >= 2 ? [credentialArgs[1]] : []),
   ];
 

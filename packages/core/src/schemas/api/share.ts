@@ -431,9 +431,21 @@ export type ClassifiedGitAuthError =
   | { kind: 'auth'; subclass: GitAuthFailureSubclass }
   | { kind: 'non-auth' };
 
+// The last two appear once `credential.interactive=false` is pinned (see
+// `createGitInstance`). Both layers that honor the key contribute a string:
+// Git Credential Manager declines its dialog with "Cannot prompt because user
+// interactivity has been disabled", and git's own `credential_getpass`
+// short-circuits with "unable to get password from user" instead of the
+// TTY-flavored "could not read Username … terminal prompts disabled".
+// The git-side substitution happens on EVERY platform, not just Windows, so
+// dropping these would silently reclassify an ordinary macOS/Linux credential
+// miss as a retryable unknown. Same condition as the first two — no usable
+// credential — so all four must reach the `auth-error` + "Sign in" surface.
 const GIT_AUTH_NO_CREDENTIAL_PATTERNS: RegExp[] = [
   /could not read (username|password)/i,
   /terminal prompts disabled/i,
+  /user interactivity has been disabled/i,
+  /unable to get password from user/i,
 ];
 
 const GIT_AUTH_SCOPE_MISMATCH_PATTERNS: RegExp[] = [

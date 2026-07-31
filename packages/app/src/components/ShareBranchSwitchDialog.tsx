@@ -38,6 +38,7 @@ import {
   Dialog as DialogRoot,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { authPromptStore } from '@/lib/auth-prompt-store';
 import {
   type OkDesktopBridge,
   type OkShareReceivedPayload,
@@ -437,7 +438,21 @@ export function ShareBranchSwitchDialog({
   function showWorktreeFailureToast(
     reason: WorktreeCheckoutSideEffectReason,
     helper?: string,
+    authFailed?: true,
   ): void {
+    // A credential miss reaches us as `fetch-failed`, but the connection copy
+    // below is a dead end for it: the fetch pins credential interactivity off,
+    // so nothing prompted the user, and retrying without a credential just
+    // fails the same way. Offer the sign-in they actually need.
+    if (reason === 'fetch-failed' && authFailed) {
+      toast.error(t`Could not fetch branch — sign in to GitHub and try again.`, {
+        action: {
+          label: t`Sign in`,
+          onClick: () => authPromptStore.request(),
+        },
+      });
+      return;
+    }
     switch (reason) {
       case 'helper-not-found': {
         // `helper` accompanies this reason from the classifier; the fallback
@@ -489,6 +504,7 @@ export function ShareBranchSwitchDialog({
   function applyWorktreeOutcome(result: WorktreeCreateResult | null): void {
     let failureReason: WorktreeCheckoutSideEffectReason | null = null;
     let failureHelper: string | undefined;
+    let failureAuth: true | undefined;
     let shouldDismiss = false;
     let openPath: string | null = null;
     setBranchSwitchState((prev) => {
@@ -496,6 +512,7 @@ export function ShareBranchSwitchDialog({
       if (sideEffect) {
         failureReason = sideEffect.reason;
         failureHelper = sideEffect.helper;
+        failureAuth = sideEffect.authFailed;
         shouldDismiss = next.phase === 'dismissed';
       }
       if (next.phase === 'opening-worktree') {
@@ -510,7 +527,7 @@ export function ShareBranchSwitchDialog({
           branch: shareBranch,
         }),
       );
-      showWorktreeFailureToast(failureReason, failureHelper);
+      showWorktreeFailureToast(failureReason, failureHelper, failureAuth);
     }
     if (openPath !== null) {
       // The anchor window's cached worktree model is stale now (a worktree was

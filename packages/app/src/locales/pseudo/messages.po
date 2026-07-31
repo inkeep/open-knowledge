@@ -2746,6 +2746,10 @@ msgid "Could not enable the terminal: {0}"
 msgstr ""
 
 #: src/components/ShareBranchSwitchDialog.tsx
+msgid "Could not fetch branch — sign in to GitHub and try again."
+msgstr ""
+
+#: src/components/ShareBranchSwitchDialog.tsx
 msgid "Could not fetch branch. Check your connection."
 msgstr ""
 
@@ -9688,6 +9692,7 @@ msgstr ""
 
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SyncSection.tsx
+#: src/components/ShareBranchSwitchDialog.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sign in"
 msgstr ""

@@ -17,6 +17,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { discoverProject } from './folder-admission.ts';
 import { clearRecentGitCache } from './worktree-recents.ts';
 import {
+  buildShareFetchArgs,
   checkoutShareBranchWorktree,
   createWorktree,
   listWorktreeSelector,
@@ -702,6 +703,26 @@ describe('worktree-service — share-branch checkout', () => {
     expect(await repoSnapshot(handle.mainRepo)).toEqual(before);
   });
 
+  // Regression: desktop main has no terminal AND must never put an OS credential
+  // dialog on screen. GIT_TERMINAL_PROMPT (set in the spawn env) only covers
+  // git's own TTY prompt; an interactive helper like Git Credential Manager —
+  // wired in by default on Git for Windows — would still open a sign-in window,
+  // which the timeout kill below would then strand on the desktop.
+  //
+  // SCOPE, stated so it isn't over-read: this pins the builder's output only. It
+  // does NOT prove `fetchShareBranch` calls the builder — reverting that call
+  // site to a bare ['fetch','origin',branch] would still pass. Proving usage
+  // needs either a child_process mock (which would fight the real-git spawns
+  // every other test here depends on) or a remote that reaches git's credential
+  // path, whose stderr differs by git version (2.54 honors the pin, 2.39 does
+  // not) and so can't be asserted portably across dev machines.
+  test('share fetch pins credential interactivity off so no helper can open a dialog', () => {
+    const args = buildShareFetchArgs('feat-x');
+    expect(args).toEqual(['-c', 'credential.interactive=false', 'fetch', 'origin', 'feat-x']);
+    // The pin must PRECEDE the subcommand — git only reads `-c` before it.
+    expect(args.indexOf('-c')).toBeLessThan(args.indexOf('fetch'));
+  });
+
   // fetch-leg failure, terminal class: the branch never existed on origin, so
   // git reports "couldn't find remote ref" and the checkout returns the
   // terminal branch-not-found — with nothing created locally.
@@ -743,6 +764,39 @@ describe('worktree-service — share-branch checkout', () => {
     expect(res.reason).toBe('fetch-failed');
     expect(typeof res.message).toBe('string');
     expect((res.message ?? '').length).toBeGreaterThan(0);
+    // A genuine network failure must NOT be flagged as auth — offering "Sign in"
+    // for an unreachable remote sends the user somewhere that can't help.
+    expect(res.authFailed).toBeUndefined();
+    expect(existsSync(join(handle.mainRepo, '.ok', 'worktrees', 'any-branch'))).toBe(false);
+    expect(await repoSnapshot(handle.mainRepo)).toEqual(before);
+  });
+
+  // The credential-miss arm. Since the fetch pins interactivity off, no helper
+  // prompts and git fails with a no-credential stderr — which must reach the
+  // dialog as `authFailed` so it offers Sign in instead of "check your
+  // connection". Driven through a real `git fetch` via an ext:: transport that
+  // emits git's own no-credential wording, so the classifier is exercised on a
+  // real spawn without needing the network or a live credential helper.
+  test('checkoutShareBranchWorktree flags a credential miss as authFailed', async () => {
+    handle = await makeRepo();
+    const faultyRemote = join(handle.root, 'no-cred-remote.sh');
+    writeFileSync(
+      faultyRemote,
+      '#!/bin/sh\necho "fatal: could not read Username for \'https://github.com\': terminal prompts disabled" >&2\nexit 1\n',
+      { mode: 0o755 },
+    );
+    await git(handle.mainRepo, 'config', 'protocol.ext.allow', 'always');
+    await git(handle.mainRepo, 'remote', 'add', 'origin', `ext::${faultyRemote}`);
+    const before = await repoSnapshot(handle.mainRepo);
+
+    const res = await checkoutShareBranchWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'any-branch',
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.reason).toBe('fetch-failed');
+    expect(res.authFailed).toBe(true);
     expect(existsSync(join(handle.mainRepo, '.ok', 'worktrees', 'any-branch'))).toBe(false);
     expect(await repoSnapshot(handle.mainRepo)).toEqual(before);
   });
@@ -756,9 +810,10 @@ describe('worktree-service — share-branch checkout', () => {
   test('checkoutShareBranchWorktree kills a hanging fetch at the injected timeout (fetch-failed)', async () => {
     handle = await makeRepo();
     // ext:: transports are disallowed by default on modern git; opt in via
-    // repo config so the service's plain `git fetch` spawn (no -c flags)
-    // honors it. git-remote-ext splits the address on spaces with no shell,
-    // so `ext::sleep 60` runs `sleep` with argument `60`.
+    // repo config, which the service's fetch spawn honors — its only `-c` flag
+    // is the credential-interactivity pin, which doesn't touch protocol.ext.
+    // git-remote-ext splits the address on spaces with no shell, so
+    // `ext::sleep 60` runs `sleep` with argument `60`.
     await git(handle.mainRepo, 'config', 'protocol.ext.allow', 'always');
     await git(handle.mainRepo, 'remote', 'add', 'origin', 'ext::sleep 60');
     writeFileSync(join(handle.mainRepo, 'wip.txt'), 'uncommitted work\n');

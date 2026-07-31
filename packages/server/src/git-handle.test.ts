@@ -37,8 +37,11 @@ describe('buildGitEnv', () => {
 
   test('disables terminal prompts (no-TTY server-spawned git)', () => {
     // Without this, a credential-less fetch/push opens /dev/tty and dies with
-    // "could not read Username … Device not configured". Disabled, git
-    // fail-fasts with "terminal prompts disabled".
+    // "could not read Username … Device not configured". Retained as the second
+    // line of defence: `createGitInstance` pins `credential.interactive=false`,
+    // which short-circuits earlier on git versions that honor it, so this var
+    // is what keeps the misleading ENXIO errno out of logs on the paths and git
+    // versions the pin doesn't cover.
     expect(buildGitEnv().GIT_TERMINAL_PROMPT).toBe('0');
   });
 
@@ -172,6 +175,31 @@ describe('createGitInstance (credential.helper config)', () => {
     const handle = createGitInstance(tmpDir);
     expect((await handle.git.raw(['config', '--get', 'commit.gpgsign'])).trim()).toBe('false');
     expect((await handle.git.raw(['config', '--get', 'core.autocrlf'])).trim()).toBe('false');
+  });
+
+  // Regression: a server-spawned git must never be able to open a credential
+  // helper's GUI. `GIT_TERMINAL_PROMPT=0` only silences git's own TTY prompt;
+  // Git Credential Manager (the default helper on Git for Windows, and
+  // interactive by default) would still pop a GitHub sign-in window on every
+  // background fetch that missed the credential store.
+  test('pins credential.interactive off, overriding repo config', async () => {
+    execSync('git config credential.interactive true', { cwd: tmpDir });
+
+    const handle = createGitInstance(tmpDir);
+    expect((await handle.git.raw(['config', '--get', 'credential.interactive'])).trim()).toBe(
+      'false',
+    );
+  });
+
+  test('keeps pinning credential.interactive off alongside a credential.helper arg', async () => {
+    // The helper arg is spliced into the same `-c` list; splicing must not
+    // displace the interactivity pin.
+    const handle = createGitInstance(tmpDir, {
+      credentialArgs: ['-c', 'credential.helper=!open-knowledge auth git-credential'],
+    });
+    expect((await handle.git.raw(['config', '--get', 'credential.interactive'])).trim()).toBe(
+      'false',
+    );
   });
 });
 

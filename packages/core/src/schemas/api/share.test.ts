@@ -57,6 +57,21 @@ describe('classifyGitAuthError', () => {
     });
   });
 
+  test('classifies GCM\'s "user interactivity has been disabled" as no-credential', () => {
+    expect(
+      classifyGitAuthError(
+        new Error('fatal: Cannot prompt because user interactivity has been disabled.'),
+      ),
+    ).toEqual({ kind: 'auth', subclass: 'no-credential' });
+  });
+
+  test('classifies "unable to get password from user" as no-credential', () => {
+    expect(classifyGitAuthError(new Error('fatal: unable to get password from user'))).toEqual({
+      kind: 'auth',
+      subclass: 'no-credential',
+    });
+  });
+
   test('classifies HTTP 401 as 401', () => {
     expect(classifyGitAuthError(new Error('remote: HTTP 401 Unauthorized'))).toEqual({
       kind: 'auth',

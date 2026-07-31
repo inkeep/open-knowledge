@@ -138,6 +138,25 @@ export type WorktreeCreateResult =
     }
   | {
       readonly ok: false;
+      readonly reason: 'fetch-failed';
+      readonly message?: string;
+      readonly helper?: never;
+      /**
+       * Set when the fetch failed for want of a usable credential rather than
+       * for a network/timeout reason, and re-authenticating could plausibly fix
+       * it (`isLoginFixableGitAuthError` — so not 403, scope-mismatch, or SSH
+       * key failures, which a sign-in doesn't repair).
+       *
+       * Its own arm rather than a field on the shared failure arm below: only
+       * `fetch-failed` reaches git's credential stage, so no other reason can
+       * structurally carry the flag. Optional and additive — a producer that
+       * omits it degrades to the generic connection-flavored copy, which is the
+       * pre-existing behavior.
+       */
+      readonly authFailed?: true;
+    }
+  | {
+      readonly ok: false;
       readonly reason:
         | 'invalid-branch'
         | 'branch-exists'
@@ -145,7 +164,6 @@ export type WorktreeCreateResult =
         | 'path-exists'
         | 'no-git'
         | 'branch-not-found'
-        | 'fetch-failed'
         | 'error';
       readonly message?: string;
       readonly helper?: never;

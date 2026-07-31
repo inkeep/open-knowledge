@@ -1,5 +1,13 @@
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
-import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { getEditorForDoc } from '@/editor/active-editor';
 import { EmojiInsertPopover } from '@/editor/components/EmojiInsertPopover';
 import { TagDialog } from '@/editor/components/TagDialog';
@@ -14,6 +22,7 @@ import { useGitSyncStatus } from '@/hooks/use-git-sync-status';
 import { useInstalledClis } from '@/hooks/use-installed-clis';
 import { useNoPushPermissionToast } from '@/hooks/use-no-push-permission-toast';
 import { useWorktreeAutoSyncNotice } from '@/hooks/use-worktree-autosync-notice';
+import { authPromptStore } from '@/lib/auth-prompt-store';
 import { useConfigContext } from '@/lib/config-provider';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
@@ -107,6 +116,24 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   const [editorMode, setEditorMode] = useState<EditorMode>(persistedMode);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authInitialStep, setAuthInitialStep] = useState<'auth' | 'identity'>('auth');
+  // Sign-in requested by a surface with no prop path to this modal — today the
+  // share branch-switch dialog's credential-miss toast, which mounts under App.
+  // Return the store's value directly: discarding a useSyncExternalStore result
+  // lets React Compiler memoize it to the first snapshot, freezing the flag.
+  const authPromptPending = useSyncExternalStore(
+    authPromptStore.subscribe,
+    authPromptStore.getSnapshot,
+    () => false,
+  );
+  useEffect(() => {
+    if (!authPromptPending) return;
+    // Clear first: the store is the request, not the modal's open state, so
+    // leaving it armed would re-fire on every subsequent render and fight a
+    // user who closes the modal.
+    authPromptStore.clear();
+    setAuthInitialStep('auth');
+    setAuthModalOpen(true);
+  }, [authPromptPending]);
   const [activeTab, setActiveTab] = useState<PanelTab>(TABS[0].id);
   const [autoSyncOnboardingDismissed, setAutoSyncOnboardingDismissed] = useState(false);
   // Bottom-docked terminal — desktop-only (the bridge is absent in the web

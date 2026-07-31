@@ -671,6 +671,31 @@ describe('applyWorktreeCheckoutOutcome (worktree leg)', () => {
     expect(result.sideEffect).toEqual({ kind: 'toast', reason: 'fetch-failed' });
   });
 
+  // A credential miss arrives as `fetch-failed` too, but the connection copy is
+  // a dead end for it — the fetch pins interactivity off so nothing prompted the
+  // user, and a retry without a credential fails identically. The flag is what
+  // lets the dialog swap in sign-in copy plus a Sign in action.
+  test('fetch-failed carrying authFailed propagates the flag so the toast can offer Sign in', () => {
+    const result = applyWorktreeCheckoutOutcome(creating, {
+      ok: false,
+      reason: 'fetch-failed',
+      authFailed: true,
+    });
+    expect(result.state).toEqual({ phase: 'ready', info: cleanInfo() });
+    expect(result.sideEffect?.authFailed).toBe(true);
+    expect(result.sideEffect?.reason).toBe('fetch-failed');
+  });
+
+  test('fetch-failed without the flag leaves authFailed unset (network case keeps the retry copy)', () => {
+    const result = applyWorktreeCheckoutOutcome(creating, { ok: false, reason: 'fetch-failed' });
+    expect(result.sideEffect?.authFailed).toBeUndefined();
+  });
+
+  test('a non-fetch reason can never carry authFailed through the reducer', () => {
+    const result = applyWorktreeCheckoutOutcome(creating, { ok: false, reason: 'no-git' });
+    expect(result.sideEffect?.authFailed).toBeUndefined();
+  });
+
   test('branch-not-found dismisses with the branch-gone toast signal (terminal, mirrors the switch leg)', () => {
     const result = applyWorktreeCheckoutOutcome(creating, {
       ok: false,

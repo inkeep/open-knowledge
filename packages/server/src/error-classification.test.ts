@@ -157,6 +157,34 @@ describe('classifyGitError', () => {
       expect(r.subclass).toBe('no-credential');
     });
 
+    // Verbatim stderr from a Windows 11 + Git 2.54 + Git Credential Manager
+    // fetch once `credential.interactive=false` is pinned. GCM declines the
+    // prompt rather than opening its sign-in window, so this is now the normal
+    // shape of "no credential" and must not degrade to a retryable unknown
+    // (which would silently retry forever with no "Sign in" affordance).
+    // The second line is git's own, not GCM's, so a credential miss takes this
+    // shape on macOS/Linux too — it is not a Windows-only case.
+    test('no credential — GCM declines to prompt (credential.interactive=false)', () => {
+      const r = classifyGitError(
+        mkErr(
+          'fatal: Cannot prompt because user interactivity has been disabled.',
+          'fatal: Cannot prompt because user interactivity has been disabled.\nfatal: unable to get password from user',
+        ),
+      );
+      expect(r.class).toBe('auth');
+      expect(r.subclass).toBe('no-credential');
+      expect(r.retryable).toBe(false);
+      expect(r.userFacingCode).toBe('auth-no-credential');
+    });
+
+    test('no credential — "unable to get password from user" alone', () => {
+      const r = classifyGitError(mkErr('fatal: unable to get password from user'));
+      expect(r.class).toBe('auth');
+      expect(r.subclass).toBe('no-credential');
+      expect(r.retryable).toBe(false);
+      expect(r.userFacingCode).toBe('auth-no-credential');
+    });
+
     test('deriveUserFacingCode maps auth/no-credential', () => {
       expect(deriveUserFacingCode('auth', 'no-credential')).toBe('auth-no-credential');
     });

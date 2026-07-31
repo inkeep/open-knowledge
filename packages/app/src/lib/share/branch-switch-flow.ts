@@ -579,6 +579,11 @@ export interface ApplyWorktreeCheckoutOutcomeResult {
     /** Set iff `reason === 'helper-not-found'` — the missing command git
      *  reported (e.g. `git-lfs`), interpolated into the toast copy. */
     readonly helper?: string;
+    /** Set iff `reason === 'fetch-failed'` AND the fetch failed for want of a
+     *  credential rather than for a network reason. Swaps the connection copy
+     *  for sign-in copy plus a Sign in action — retrying without a credential
+     *  just fails again. */
+    readonly authFailed?: true;
   };
 }
 
@@ -623,6 +628,13 @@ export function applyWorktreeCheckoutOutcome(
   }
   return {
     state: { phase: 'ready', info: state.info },
-    sideEffect: { kind: 'toast', reason: result.reason, helper: result.helper },
+    sideEffect: {
+      kind: 'toast',
+      reason: result.reason,
+      helper: result.helper,
+      // Only `fetch-failed` carries this (its own arm on WorktreeCreateResult);
+      // every other reason narrows to `undefined` here.
+      authFailed: result.reason === 'fetch-failed' ? result.authFailed : undefined,
+    },
   };
 }

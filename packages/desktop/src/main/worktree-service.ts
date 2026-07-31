@@ -27,8 +27,10 @@ import { isAbsolute, join, sep } from 'node:path';
 import { promisify } from 'node:util';
 import {
   buildWorktreeSelectorModel,
+  classifyGitAuthError,
   detectMissingGitHelper,
   isBranchNotFoundGitError,
+  isLoginFixableGitAuthError,
   isValidBranchName,
   parseBranchList,
   stripRemotePrefix,
@@ -51,9 +53,34 @@ const execFileAsync = promisify(execFile);
  *  credential prompt, so a credentialed remote must fail fast (into the
  *  `fetch-failed` arm) instead of stalling until the timeout kill. Built per
  *  call, never frozen at module level: `gitSpawnEnv()` must reflect the
- *  startup `SSH_AUTH_SOCK` harvest (see `git-spawn-env.ts`). */
+ *  startup `SSH_AUTH_SOCK` harvest (see `git-spawn-env.ts`).
+ *
+ *  THIS ENV IS HALF THE GUARANTEE. `GIT_TERMINAL_PROMPT=0` silences git's own
+ *  terminal prompt and nothing else — a credential helper's GUI is untouched by
+ *  it. Any remote-capable spawn using this env must ALSO carry
+ *  `-c credential.interactive=false` in argv (see `buildShareFetchArgs`), or an
+ *  interactive helper can still open a sign-in window. */
 function fetchGitEnv(): Record<string, string | undefined> {
   return { ...gitSpawnEnv(), GIT_TERMINAL_PROMPT: '0' };
+}
+
+/**
+ * argv for the share-branch fetch.
+ *
+ * The `-c credential.interactive=false` prefix is the other half of "fail fast,
+ * don't prompt": `GIT_TERMINAL_PROMPT` covers git's own TTY prompt but not a
+ * credential helper's GUI, and Git for Windows wires interactive Git Credential
+ * Manager in by default. Without it this bounded fetch could put a GitHub
+ * sign-in window on screen — and the timeout kill would strand that window
+ * there, outliving the operation that raised it. Honored by git itself as well
+ * as by GCM, so both layers decline. Mirrors the server's `createGitInstance`
+ * pin.
+ *
+ * Exported as a pure builder so the pin is asserted directly, without mocking
+ * the spawn that every other test in this file drives through real git.
+ */
+export function buildShareFetchArgs(branch: string): string[] {
+  return ['-c', 'credential.interactive=false', 'fetch', 'origin', branch];
 }
 
 /** Default bound for the share-checkout fetch — matches the server's
@@ -319,7 +346,7 @@ async function fetchShareBranch(
   timeoutMs: number,
 ): Promise<Extract<WorktreeCreateResult, { ok: false }> | null> {
   try {
-    await execFileAsync('git', ['fetch', 'origin', branch], {
+    await execFileAsync('git', buildShareFetchArgs(branch), {
       cwd: anchorPath,
       env: fetchGitEnv(),
       timeout: timeoutMs,
@@ -333,10 +360,19 @@ async function fetchShareBranch(
     const killed = (err as { killed?: boolean }).killed === true;
     const signal = (err as { signal?: string }).signal;
     const raw = gitErrorText(err).replace(/\s+/g, ' ').slice(0, 280);
+    // A credential miss is not a connection problem, and telling the user to
+    // check their network when they need to sign in is a dead end — doubly so
+    // since `buildShareFetchArgs` pins interactivity off, so no helper will
+    // prompt them here. Flag it so the dialog can offer Sign in instead. Gated
+    // on login-fixable: a 403 or a bad SSH key is an auth failure that signing
+    // in again does not repair, and offering it would be the same dead end.
+    const classified = classifyGitAuthError(err);
+    const authFailed = isLoginFixableGitAuthError(classified);
     return {
       ok: false,
       reason: 'fetch-failed',
       message: killed ? `[timeout signal=${signal ?? 'SIGTERM'}] ${raw}` : raw,
+      ...(authFailed ? { authFailed: true as const } : {}),
     };
   }
 }
