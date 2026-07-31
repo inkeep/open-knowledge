@@ -36,7 +36,9 @@ import {
  * How much the resolver trusts a landing, most to least precise. `exact` is the
  * only grade at which an inline (within-block) refinement is trustworthy;
  * `clamped` means the block ordinal fell outside the target and the landing was
- * pulled to the nearest block, so the caller suppresses the highlight there.
+ * pulled to the nearest block. The caller suppresses the highlight on both
+ * `clamped` and `ordinal` — neither is content- or kind-verified (see
+ * `clampFlashRange`).
  */
 export type ResolveConfidence = 'exact' | 'same-type-ordinal' | 'ordinal' | 'clamped';
 

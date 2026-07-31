@@ -481,7 +481,8 @@ export function startSourceLanding(params: {
         ? (outcome) => {
             // Flash the whole block once it is genuinely on screen (the controller
             // landed it), so the highlight's 2s clock measures visible time. A
-            // clamped grade self-suppresses inside `flashSourceLanding`.
+            // clamped or unverified ordinal grade self-suppresses inside
+            // `flashSourceLanding`.
             if (outcome.status === 'landed') {
               flashSourceLanding(view, target.blockStart, target.blockEnd, target.confidence);
             }

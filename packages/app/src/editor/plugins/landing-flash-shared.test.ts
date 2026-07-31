@@ -2,16 +2,18 @@ import { describe, expect, test } from 'vitest';
 import { clampFlashRange } from './landing-flash-shared';
 
 describe('clampFlashRange', () => {
-  test('admits a range at a precise grade', () => {
+  test('admits a range at a verified grade', () => {
     expect(clampFlashRange(100, 10, 20, 'exact')).toEqual({ from: 10, to: 20 });
     expect(clampFlashRange(100, 10, 20, 'same-type-ordinal')).toEqual({ from: 10, to: 20 });
-    expect(clampFlashRange(100, 10, 20, 'ordinal')).toEqual({ from: 10, to: 20 });
   });
 
-  test('refuses the flash at a clamped grade', () => {
-    // A clamped landing could not place the target, so a flash there would
+  test('refuses the flash at an unverified grade', () => {
+    // A clamped landing could not place the target; an ordinal landing is an
+    // unverified guess that can sit on the wrong block entirely (a count
+    // mismatch shifts every ordinal below the collapse). Flashing either would
     // assert a precision the landing does not have.
     expect(clampFlashRange(100, 10, 20, 'clamped')).toBeNull();
+    expect(clampFlashRange(100, 10, 20, 'ordinal')).toBeNull();
   });
 
   test('clamps a range that runs past the document end', () => {

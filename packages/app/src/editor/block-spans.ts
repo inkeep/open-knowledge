@@ -3,12 +3,23 @@
  * decorations and cross-mode position mapping.
  *
  * Both surfaces need the same primitive: the alignment between the body's mdast
- * top-level blocks and the PM doc's top-level nodes. The bridge invariant makes
- * them 1:1 (Y.Text is truth; the fragment derives via parse), so a block's
- * ordinal is a representation-independent handle — provided the count-equality
- * tripwire (`comparableChildCount`) holds. This module is intentionally
- * dependency-light (no React, no floating-ui) so the resolver can build on it
- * without dragging in a decoration plugin's module graph.
+ * top-level blocks and the PM doc's top-level nodes. That alignment is NOT
+ * guaranteed. The bridge invariant is a byte check on the serialize side only,
+ * and on the WYSIWYG write path the fragment is the mutated structure — it is
+ * never re-derived via parse. Because `serialize` is non-injective at the top
+ * level, a WYSIWYG-authored fragment can hold shapes markdown cannot spell —
+ * adjacent same-kind `list` siblings, interior empty paragraphs — which
+ * `parse` merges or drops, shifting every ordinal after the collapse. Such
+ * divergence is PERSISTENT (it survives Observer A and persistence), not a
+ * mid-drain transient.
+ *
+ * The count-equality tripwire (`comparableChildCount`) detects a shifted count
+ * but is necessary, not sufficient: equal counts do not prove identity
+ * alignment. A consumer must not index an ordinal across the representation
+ * boundary when the tripwire fails — refuse the pass or re-locate by content;
+ * never index through. This module is intentionally dependency-light (no
+ * React, no floating-ui) so the resolver can build on it without dragging in a
+ * decoration plugin's module graph.
  */
 
 import { type MarkdownManager, stripFrontmatter } from '@inkeep/open-knowledge-core';

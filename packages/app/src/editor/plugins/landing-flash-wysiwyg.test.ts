@@ -101,6 +101,12 @@ describe('landing flash — wysiwyg trigger', () => {
     expect(flashes(getState())).toHaveLength(0);
   });
 
+  test('suppresses the flash at an unverified ordinal grade', () => {
+    const { view, getState } = drivenView();
+    flashWysiwygLanding(view, 1, 6, 'ordinal');
+    expect(flashes(getState())).toHaveLength(0);
+  });
+
   test('flashes then clears after the shared duration', () => {
     vi.useFakeTimers();
     const { view, getState } = drivenView();

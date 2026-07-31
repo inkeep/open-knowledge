@@ -12,10 +12,14 @@
  * serialization normalizes away exactly the byte-level constructs many rules
  * flag (hard tabs, trailing spaces, list-marker style, blank-line runs), so a
  * serialize-then-lint pass can never see them and WYSIWYG would silently show
- * fewer problems than the panel. The mdast children of `parse(body)` line up
- * 1:1 with the doc's top-level nodes by the bridge invariant (Y.Text is truth;
- * the fragment derives via parse) — a transient mid-drain mismatch is detected
- * by block-count comparison and the pass is dropped, not misanchored.
+ * fewer problems than the panel. The mdast children of `parse(body)` usually
+ * line up 1:1 with the doc's top-level nodes; a mismatch is detected by
+ * block-count comparison and the pass is dropped, not misanchored. The
+ * mismatch is NOT always a mid-drain transient: a WYSIWYG-authored fragment
+ * can hold top-level shapes markdown cannot spell and diverge persistently
+ * (see the block-spans.ts module doc) — on such docs the dropped pass
+ * persists too, and block lint stays absent until the fragment is re-derived
+ * from bytes.
  *
  * Pool-safety: like `chunk-wrapper-decoration`, the plugin keys off `state.doc`
  * (PM structure), never `documentName`, and adds NO Y.js observer (the CLAUDE.md
@@ -457,11 +461,13 @@ export const MarkdownLintDecorations = Extension.create<MarkdownLintDecorationsO
             const diagnostics = await lintDocument(source, activeConfig, docName);
             if (!view.state.doc.eq(doc)) return { kind: 'stale' };
             const { spans } = computeSourceBlockSpans(source, md);
-            // Bridge-invariant guard: body mdast children ↔ PM top-level nodes
+            // Alignment guard: body mdast children ↔ PM top-level nodes
             // (minus the sourceless trailing empty paragraph) must be 1:1 for
-            // the index mapping to anchor correctly. A mismatch is a transient
-            // mid-drain snapshot — drop the pass (keep current decorations)
-            // rather than misanchor.
+            // the index mapping to anchor correctly. Drop the pass (keep
+            // current decorations) rather than misanchor. Not always a
+            // mid-drain transient: WYSIWYG-authored shapes markdown cannot
+            // spell diverge persistently (see block-spans.ts), and the drop
+            // then persists with them.
             if (spans.length !== comparableChildCount(doc)) return { kind: 'mismatch' };
             const byBlock = mapDiagnosticsToBlocks(source, diagnostics, md);
             return { kind: 'ok', ...buildDecorationSet(doc, byBlock) };

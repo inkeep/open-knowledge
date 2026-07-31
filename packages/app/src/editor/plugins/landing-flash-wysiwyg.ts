@@ -72,9 +72,9 @@ export function createLandingFlashPlugin(): Plugin<DecorationSet> {
 }
 
 /**
- * Flash the landed range and schedule its removal. A `clamped` grade suppresses
- * the flash (see `clampFlashRange`). Call this when the range is on screen; the
- * expiry timer starts here.
+ * Flash the landed range and schedule its removal. A `clamped` or unverified
+ * `ordinal` grade suppresses the flash (see `clampFlashRange`). Call this when
+ * the range is on screen; the expiry timer starts here.
  */
 export function flashWysiwygLanding(
   view: EditorView,

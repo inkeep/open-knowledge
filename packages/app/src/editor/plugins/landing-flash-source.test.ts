@@ -58,6 +58,12 @@ describe('landing flash — source', () => {
     expect(getState().field(landingFlashField).size).toBe(0);
   });
 
+  test('suppresses the flash at an unverified ordinal grade', () => {
+    const { view, getState } = drivenView('alpha\nbeta\ngamma');
+    flashSourceLanding(view, 0, 5, 'ordinal');
+    expect(getState().field(landingFlashField).size).toBe(0);
+  });
+
   test('clears the flash after the shared duration', () => {
     vi.useFakeTimers();
     const { view, getState } = drivenView('alpha\nbeta\ngamma');
