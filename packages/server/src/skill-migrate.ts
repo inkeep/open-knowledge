@@ -5,21 +5,21 @@
  * paths; the store dies by attrition).
  *
  * Target selection: the highest-`SKILL_CANONICAL_PRECEDENCE` host that already
- * carries the skill (an OK-owned symlink projection, or a same-hash real copy);
+ * carries the skill (a store symlink OK projected, or a same-hash real copy);
  * a skill projected nowhere lands in the `.agents/skills` hub (the precedence
  * pick, mirroring the default-canonical rule).
  *
  * Safety (the reason this is boot-time + never destructive):
  *  - A DIFFERENT real dir or a foreign symlink at the target → the skill is
  *    SKIPPED entirely, everything left untouched.
- *  - Other hosts' OK-owned projections are replaced with real COPIES of the new
+ *  - Other hosts' store symlinks are replaced with real COPIES of the new
  *    canonical (the go-forward copy model) so editors keep loading it.
  *  - The install marker entry is dropped — the in-place scan is truth.
  *  - Lockfile entries stay: they're name-keyed and Update/Modified/Revert
  *    resolve the bundle's real dir dynamically.
  */
 
-import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, realpathSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
   EDITOR_PROJECT_SKILL_ROOT,
@@ -36,6 +36,7 @@ import { tracedCpSync, tracedMkdirSync, tracedRenameSync, tracedRmSync } from '.
 import { removeSkillInstall } from './installed-skills-marker.ts';
 import { getLogger } from './logger.ts';
 import { INTERNAL_BUNDLE_SKILL_NAMES } from './skill-bundles.ts';
+import { inspectSkillPathEntry } from './skill-path-entry.ts';
 import { readSkillPlacements } from './skill-placements.ts';
 import { hostSkillsRootEscapes } from './skill-projection.ts';
 
@@ -77,36 +78,45 @@ function moveDir(from: string, to: string): void {
   }
 }
 
-type HostState =
+export type HostState =
   | { kind: 'absent' }
-  | { kind: 'ok-link' } // symlink resolving into the store dir (OK's projection)
-  | { kind: 'foreign-link' } // symlink OK did not create — never touched
+  | { kind: 'store-link' } // symlink resolving into the store dir — OK projected it
   | { kind: 'same-copy' }
-  | { kind: 'different' };
+  /** Someone else's. Migration never writes here; `by` only reaches the skip
+   *  reason, so an operator can tell a foreign symlink from a hand-edited dir. */
+  | { kind: 'occupied'; by: 'foreign-link' | 'different' };
 
-function classifyHostEntry(entryPath: string, storeDirReal: string, storeHash: string): HostState {
-  let st: ReturnType<typeof lstatSync>;
-  try {
-    st = lstatSync(entryPath);
-  } catch {
-    return { kind: 'absent' };
+/** Exported for the cross-classifier equivalence suite, which drives this and
+ *  `classifyInPlaceDest` over one matrix of on-disk shapes. Not a public API. */
+export function classifyHostEntry(
+  entryPath: string,
+  storeDirReal: string,
+  storeHash: string,
+): HostState {
+  const entry = inspectSkillPathEntry(entryPath, storeDirReal, storeHash);
+  switch (entry.kind) {
+    case 'absent':
+      return { kind: 'absent' };
+    case 'other':
+      return { kind: 'occupied', by: 'different' };
+    case 'symlink':
+      // A DANGLING link is foreign here, unlike the projection path. An OK
+      // projection whose store source we're about to move would not dangle
+      // (source still present), so a dangling one belongs to something else —
+      // reconcile's orphan pass owns it. Mapping it to a removable link would
+      // make migration delete links it was written to leave behind.
+      return entry.resolution === 'target'
+        ? { kind: 'store-link' }
+        : { kind: 'occupied', by: 'foreign-link' };
+    case 'dir':
+      // No `canonical-dir` equivalent: the store dir and the host dirs are
+      // distinct paths by construction, so a realpath match can only be a
+      // bundle byte-identical to the store's — which is what `same-copy`
+      // already means for migration's handling.
+      return entry.identity === 'different'
+        ? { kind: 'occupied', by: 'different' }
+        : { kind: 'same-copy' };
   }
-  if (st.isSymbolicLink()) {
-    try {
-      return realpathSync(entryPath) === storeDirReal
-        ? { kind: 'ok-link' }
-        : { kind: 'foreign-link' };
-    } catch {
-      // Dangling. An OK projection whose store source we're about to move would
-      // not dangle (source still present) — treat as foreign and leave it;
-      // reconcile's orphan pass owns dangling links.
-      return { kind: 'foreign-link' };
-    }
-  }
-  if (!st.isDirectory()) return { kind: 'different' };
-  return parseSkillDir(entryPath)?.contentHash === storeHash
-    ? { kind: 'same-copy' }
-    : { kind: 'different' };
 }
 
 export interface StoreMigrationResult {
@@ -231,25 +241,26 @@ export async function migrateStoreSkillsInPlace(opts: {
         })
         .filter((s) => !s.escapes);
 
-      // Target = highest-precedence host already carrying the skill (OK link or
-      // same-hash copy); an unprojected skill falls back to the first root that
+      // Target = highest-precedence host already carrying the skill (store link
+      // or same-hash copy); an unprojected skill falls back to the first root that
       // ALREADY EXISTS (never inventing `.agents` — hub adoption is the team's
       // call), else `.claude/skills`.
       const target =
-        states.find((s) => s.state.kind === 'ok-link' || s.state.kind === 'same-copy') ??
-        states.find(
-          (s) =>
-            s.state.kind !== 'different' &&
-            s.state.kind !== 'foreign-link' &&
-            existsSync(resolve(projectDir, s.root)),
-        ) ??
+        states.find((s) => s.state.kind === 'store-link' || s.state.kind === 'same-copy') ??
+        // Reaching here means no root carries the skill, so `absent` is the only
+        // writable kind left. Tested positively, not as "not occupied", so a
+        // state added later fails closed instead of inheriting a write.
+        states.find((s) => s.state.kind === 'absent' && existsSync(resolve(projectDir, s.root))) ??
         states.find((s) => s.host === 'claude');
       if (!target) {
         result.skipped.push({ name, reason: 'no-usable-target' });
         continue;
       }
-      if (target.state.kind === 'different' || target.state.kind === 'foreign-link') {
-        result.skipped.push({ name, reason: `target-occupied:${target.root}` });
+      if (target.state.kind === 'occupied') {
+        result.skipped.push({
+          name,
+          reason: `target-occupied:${target.root} (${target.state.by})`,
+        });
         continue;
       }
 
@@ -258,17 +269,17 @@ export async function migrateStoreSkillsInPlace(opts: {
         // The target real dir already IS the bundle — the store dir is redundant.
         tracedRmSync(storeDir, { recursive: true, force: true });
       } else {
-        if (target.state.kind === 'ok-link') {
+        if (target.state.kind === 'store-link') {
           tracedRmSync(target.path, { recursive: true, force: true });
         }
         moveDir(storeDir, target.path);
       }
 
-      // Other hosts: replace OK-owned projections (now pointing at the moved-away
+      // Other hosts: replace the store symlinks (now pointing at the moved-away
       // store path) with real copies of the new canonical. Same-hash copies stay
       // (the scan dedups them); foreign links + differing dirs are never touched.
       for (const s of states) {
-        if (s === target || s.state.kind !== 'ok-link') continue;
+        if (s === target || s.state.kind !== 'store-link') continue;
         tracedRmSync(s.path, { recursive: true, force: true });
         tracedCpSync(target.path, s.path, { recursive: true });
       }

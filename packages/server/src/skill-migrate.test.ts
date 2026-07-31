@@ -128,7 +128,10 @@ describe('migrateStoreSkillsInPlace', () => {
     // Foreign link isn't a usable target and no other root exists — the skill
     // is SKIPPED (never clobbered, never inventing .agents), link untouched.
     expect(r.migrated).toEqual([]);
-    expect(r.skipped).toContainEqual({ name: 'linked', reason: 'target-occupied:.claude/skills' });
+    expect(r.skipped).toContainEqual({
+      name: 'linked',
+      reason: 'target-occupied:.claude/skills (foreign-link)',
+    });
     expect(lstatSync(join(root, '.claude/skills/linked')).isSymbolicLink()).toBe(true);
     expect(readFileSync(join(elsewhere, 'SKILL.md'), 'utf-8')).toContain('# E');
     expect(existsSync(join(skillsRoot, 'linked', 'SKILL.md'))).toBe(true);

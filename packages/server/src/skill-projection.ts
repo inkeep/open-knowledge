@@ -36,7 +36,7 @@ import {
   PACK_SKILL_PREFIX,
   PROJECT_SKILL_EDITOR_IDS,
 } from '@inkeep/open-knowledge-core';
-import { parseSkillDir, type SkillHostId } from '@inkeep/open-knowledge-core/skills-catalog';
+import type { SkillHostId } from '@inkeep/open-knowledge-core/skills-catalog';
 import { parse as parseYaml } from 'yaml';
 import {
   tracedCpSync,
@@ -45,6 +45,7 @@ import {
   tracedRmSync,
   tracedSymlinkSync,
 } from './fs-traced.ts';
+import { inspectSkillPathEntry } from './skill-path-entry.ts';
 
 /**
  * Narrow a persisted `string[]` host list (from the marker, whose JSON is
@@ -369,27 +370,21 @@ export function classifyInPlaceDest(
   canonicalAbs: string,
   canonicalHash: string,
 ): 'absent' | 'canonical-dir' | 'link-to-canonical' | 'link' | 'same-copy' | 'different' {
-  let st: ReturnType<typeof lstatSync>;
-  try {
-    st = lstatSync(dest);
-  } catch {
-    return 'absent';
+  const entry = inspectSkillPathEntry(dest, canonicalAbs, canonicalHash);
+  switch (entry.kind) {
+    case 'absent':
+      return 'absent';
+    case 'other':
+      return 'different'; // stray file — never touch
+    case 'symlink':
+      // Every non-canonical link is a plain removable one here, dangling
+      // included: projection replaces a stale store projection with a copy.
+      // The migration path maps these two rows differently on purpose.
+      return entry.resolution === 'target' ? 'link-to-canonical' : 'link';
+    case 'dir':
+      if (entry.identity === 'is-target') return 'canonical-dir';
+      return entry.identity === 'same-content' ? 'same-copy' : 'different';
   }
-  if (st.isSymbolicLink()) {
-    try {
-      if (realpathSync(dest) === realpathSync(canonicalAbs)) return 'link-to-canonical';
-    } catch {
-      // dangling — plain removable link
-    }
-    return 'link';
-  }
-  if (!st.isDirectory()) return 'different'; // stray file — never touch
-  try {
-    if (realpathSync(dest) === realpathSync(canonicalAbs)) return 'canonical-dir';
-  } catch {
-    return 'different';
-  }
-  return parseSkillDir(dest)?.contentHash === canonicalHash ? 'same-copy' : 'different';
 }
 
 /**
