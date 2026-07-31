@@ -645,10 +645,6 @@ msgstr "{phase} — {pct}%"
 msgid "{propPanelDescriptorLabel} Properties"
 msgstr "{propPanelDescriptorLabel} Properties"
 
-#: src/components/ComposerAddContextMenu.tsx
-msgid "{queueCount, plural, one {# comment} other {# comments}}"
-msgstr "{queueCount, plural, one {# comment} other {# comments}}"
-
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
@@ -1080,10 +1076,6 @@ msgstr "Add at least one letter or number."
 #: src/comments/CommentSelectionAffordance.tsx
 msgid "Add Comment"
 msgstr "Add Comment"
-
-#: src/components/ComposerAddContextMenu.tsx
-msgid "Add context to this message"
-msgstr "Add context to this message"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Add cursors or select matching occurrences through CodeMirror."
@@ -3097,10 +3089,6 @@ msgstr "Couldn't read the queued comments — nothing was sent."
 #: src/comments/store.ts
 msgid "Couldn't read the queued comments: {0}"
 msgstr "Couldn't read the queued comments: {0}"
-
-#: src/comments/queue-attachment.ts
-msgid "Couldn't read the queued comments."
-msgstr "Couldn't read the queued comments."
 
 #: src/components/EditorActivityPool.tsx
 msgid "Couldn't reconnect after server restart"
@@ -7170,10 +7158,6 @@ msgstr "nothing ({0} cannot match a doc)"
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "nothing ({0} is not a valid pattern)"
 
-#: src/components/ComposerAddContextMenu.tsx
-msgid "Nothing queued"
-msgstr "Nothing queued"
-
 #: src/comments/CommentQueuePanel.tsx
 msgid "Nothing queued. Comment on a passage to add it here."
 msgstr "Nothing queued. Comment on a passage to add it here."
@@ -8252,7 +8236,6 @@ msgstr "Pushing"
 #: src/comments/CommentQueuePanel.tsx
 #: src/comments/CommentsPanel.tsx
 #: src/comments/CommentsTab.tsx
-#: src/components/ComposerAddContextMenu.tsx
 msgid "Queue"
 msgstr "Queue"
 

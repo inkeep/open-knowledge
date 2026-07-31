@@ -85,23 +85,6 @@ vi.doMock('@/components/acp/AgentMarkdown', () => ({
   AgentMarkdown: ({ text }: { text: string }) => <div>{text}</div>,
 }));
 
-// The comment-queue surface the composer's `+` drives. Stubbed to a single
-// always-available item so a test can attach a batch and assert how the action
-// slot reacts; the real store needs a loaded project.
-vi.doMock('@/comments/comment-chips', () => ({
-  useQueuedComments: () => [{ id: 'c1' }],
-  composeCommentBatchInstruction: (_items: unknown, typed: string) =>
-    typed === '' ? 'batch instruction' : typed,
-}));
-
-vi.doMock('@/comments/queue-attachment', () => ({
-  prepareQueuedComments: async () => [{ id: 'c1' }],
-}));
-
-vi.doMock('@/comments/store', () => ({
-  refresh: async () => undefined,
-}));
-
 const { ThreadView } = await import('./ThreadView');
 // Not mocked — the settings popover writes real remembered picks through it.
 const { agentSettingsKey, getRememberedAgentConfig, getRememberedAgentMode } = await import(
@@ -1138,29 +1121,14 @@ describe('ThreadView message queue', () => {
     expect(cancel).toHaveBeenCalledWith('thread-1');
   });
 
-  test('an attached comment batch counts as sendable, so the slot yields Stop', async () => {
-    const user = userEvent.setup();
+  test('the composer carries no add-context control', () => {
     model = makeModel({ turnActive: true });
     render(<ThreadView info={makeInfo({ status: 'running' })} />);
 
-    // Empty draft mid-turn: Stop owns the slot.
-    expect(screen.getByTestId('agent-thread-cancel')).toBeTruthy();
-
-    await user.click(screen.getByTestId('composer-add-context'));
-    await user.click(screen.getByTestId('composer-add-context-queue'));
-
-    // The batch is a message on its own, so the slot must offer to send it even
-    // though the draft is still empty. Keying the slot on the draft alone left
-    // Stop mounted with a sendable batch attached and no way to dispatch it.
-    expect(await screen.findByTestId('agent-thread-send')).toBeTruthy();
-    expect(screen.queryByTestId('agent-thread-cancel')).toBeNull();
-    expect((screen.getByTestId('agent-thread-send') as HTMLButtonElement).disabled).toBe(false);
-
-    // And the slot's Send actually dispatches the batch: `submit` folds the
-    // attached items through `composeCommentBatchInstruction` rather than
-    // sending the empty draft it can see.
-    fireEvent.click(screen.getByTestId('agent-thread-send'));
-    expect(prompt).toHaveBeenCalledWith('thread-1', 'batch instruction');
+    // The `+` opened a one-row menu whose only row was inert without a loaded
+    // comment queue, and the queue panel's own Send already dispatches to this
+    // thread. Pinned so it does not drift back in as decoration.
+    expect(screen.queryByTestId('composer-add-context')).toBeNull();
   });
 
   test('Escape cancels with an empty draft too, while Stop is also on screen', () => {

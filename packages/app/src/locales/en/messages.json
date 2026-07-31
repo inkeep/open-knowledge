@@ -433,7 +433,6 @@
     "6hfDJr": ["Server error: ", ["status"]],
     "6iDEWA": ["Show panel"],
     "6ibbCg": ["Create your first file"],
-    "6kVJ0m": ["Couldn't read the queued comments."],
     "6ki7F2": [["0", "plural", { "one": ["#", " item"], "other": ["#", " items"] }]],
     "6lGV3K": ["Show less"],
     "6m_7We": ["Open this settings dialog."],
@@ -495,7 +494,6 @@
     "7d1a0d": ["Public"],
     "7dZnmw": ["Relevance"],
     "7hctf2": ["Describe the project you want to create"],
-    "7iTyyh": [["queueCount", "plural", { "one": ["#", " comment"], "other": ["#", " comments"] }]],
     "7jIIFX": ["You're all set up!"],
     "7kb4LU": ["Approved"],
     "7l15X4": ["failed"],
@@ -1996,7 +1994,6 @@
     ],
     "XklovM": ["Working…"],
     "Xl-UUg": ["guides/install or https://example.com"],
-    "Xm5tCT": ["Add context to this message"],
     "XmJfZT": ["name"],
     "XnlF3W": ["Add the next matching source selection."],
     "XopE_I": ["Failed to parse backlinks error response (HTTP ", ["status"], ")"],
@@ -2396,7 +2393,6 @@
     "dXCi3J": ["Something broke"],
     "dXOolp": ["Syncing your changes"],
     "dXWMFn": ["Removes this skill from your editors."],
-    "dXooEp": ["Nothing queued"],
     "dYCvMf": ["Couldn't resume this conversation: ", ["0"]],
     "darW93": [
       [

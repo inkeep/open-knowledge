@@ -645,10 +645,6 @@ msgstr ""
 msgid "{propPanelDescriptorLabel} Properties"
 msgstr ""
 
-#: src/components/ComposerAddContextMenu.tsx
-msgid "{queueCount, plural, one {# comment} other {# comments}}"
-msgstr ""
-
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
@@ -1075,10 +1071,6 @@ msgstr ""
 
 #: src/comments/CommentSelectionAffordance.tsx
 msgid "Add Comment"
-msgstr ""
-
-#: src/components/ComposerAddContextMenu.tsx
-msgid "Add context to this message"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -3092,10 +3084,6 @@ msgstr ""
 #. placeholder {0}: err.message
 #: src/comments/store.ts
 msgid "Couldn't read the queued comments: {0}"
-msgstr ""
-
-#: src/comments/queue-attachment.ts
-msgid "Couldn't read the queued comments."
 msgstr ""
 
 #: src/components/EditorActivityPool.tsx
@@ -7166,10 +7154,6 @@ msgstr ""
 msgid "nothing ({0} is not a valid pattern)"
 msgstr ""
 
-#: src/components/ComposerAddContextMenu.tsx
-msgid "Nothing queued"
-msgstr ""
-
 #: src/comments/CommentQueuePanel.tsx
 msgid "Nothing queued. Comment on a passage to add it here."
 msgstr ""
@@ -8248,7 +8232,6 @@ msgstr ""
 #: src/comments/CommentQueuePanel.tsx
 #: src/comments/CommentsPanel.tsx
 #: src/comments/CommentsTab.tsx
-#: src/components/ComposerAddContextMenu.tsx
 msgid "Queue"
 msgstr ""
 
