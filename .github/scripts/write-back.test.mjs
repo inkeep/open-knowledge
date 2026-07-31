@@ -8,6 +8,7 @@ import {
   findChangesetPath,
   isFixRepoInRemit,
   isRetryableNetworkError,
+  isSelfRepoPr,
   isRetryableStatus,
   LINEAR_RETRY_ATTEMPTS,
   LINEAR_RETRY_CAP_MS,
@@ -159,6 +160,125 @@ describe('version derivation', () => {
     expect(derive({ fixReferences: [] })).toBeNull();
   });
 
+  test('a mirror pull request in this repo resolves through its merge commit trailer', () => {
+    // The Copybara mirror lands every export through a short-lived PR in this
+    // repo, and Linear's linkback attaches it to the ticket. Its merge commit
+    // IS the mirrored copy, so the resolvable identity is the origin SHA in
+    // its own trailer — which also finds the cherry-picked copy a point
+    // release carries when the main-line copy is in no stable yet.
+    const mirrorMain = 'd'.repeat(40);
+    const cherryPick = 'e'.repeat(40);
+    expect(
+      deriveVersionForFixRefs({
+        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/928' }],
+        stableTags: STABLE_TAGS,
+        selfRepo: 'inkeep/open-knowledge',
+        resolvePrMergeSha: () => mirrorMain,
+        readCommitMessage: (sha) => (sha === mirrorMain ? `subject\n\nGitOrigin-RevId: ${PRIVATE_SHA}\n` : null),
+        findMirroredCommits: (sha) =>
+          sha === PRIVATE_SHA
+            ? [
+                { sha: mirrorMain, message: `GitOrigin-RevId: ${PRIVATE_SHA}` },
+                { sha: cherryPick, message: `GitOrigin-RevId: ${PRIVATE_SHA}` },
+              ]
+            : [],
+        contains: containsFrom({ [cherryPick]: ['v0.35.6', 'v0.36.0'] }),
+      }),
+    ).toBe('0.35.6');
+  });
+
+  test('a private fix reference still derives with the mirror PR echo attached beside it', () => {
+    // Regression: the echo used to be trailer-searched as a private SHA, find
+    // nothing, and null the whole ticket — every ticket whose fix PR title
+    // carried an identifier became permanently underivable.
+    const mirrorEcho = 'f'.repeat(40);
+    expect(
+      deriveVersionForFixRefs({
+        fixReferences: [
+          { channel: 'pull-request', url: GH_PULL },
+          { channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/928' },
+        ],
+        stableTags: STABLE_TAGS,
+        selfRepo: 'inkeep/open-knowledge',
+        resolvePrMergeSha: ({ repo }) => (repo === 'agents-private' ? PRIVATE_SHA : mirrorEcho),
+        readCommitMessage: (sha) => (sha === mirrorEcho ? `subject\n\nGitOrigin-RevId: ${PRIVATE_SHA}\n` : null),
+        findMirroredCommits: (sha) =>
+          sha === PRIVATE_SHA ? [{ sha: MIRRORED_SHA, message: `GitOrigin-RevId: ${PRIVATE_SHA}` }] : [],
+        contains: containsFrom({ [MIRRORED_SHA]: ['v0.36.0'] }),
+      }),
+    ).toBe('0.36.0');
+  });
+
+  test('a mirror pull request with no trailer falls back to containment of its merge commit', () => {
+    const directSha = 'a1'.repeat(20);
+    expect(
+      deriveVersionForFixRefs({
+        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/500' }],
+        stableTags: STABLE_TAGS,
+        selfRepo: 'inkeep/open-knowledge',
+        resolvePrMergeSha: () => directSha,
+        readCommitMessage: () => 'subject with no trailer\n',
+        findMirroredCommits: () => {
+          throw new Error('a trailerless self-repo merge must not be trailer-searched');
+        },
+        contains: containsFrom({ [directSha]: ['v0.36.0'] }),
+      }),
+    ).toBe('0.36.0');
+  });
+
+  test('a mirror merge commit with more than one origin trailer is ambiguous and falls back to containment', () => {
+    // A message can embed someone else's footer; picking either trailer would
+    // be a guess, so the merge commit's own containment is the answer.
+    const otherSha = '9'.repeat(40);
+    const mergeSha = 'c3'.repeat(20);
+    const logs = [];
+    expect(
+      deriveVersionForFixRefs({
+        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/502' }],
+        stableTags: STABLE_TAGS,
+        selfRepo: 'inkeep/open-knowledge',
+        resolvePrMergeSha: () => mergeSha,
+        readCommitMessage: () => `GitOrigin-RevId: ${PRIVATE_SHA}\nGitOrigin-RevId: ${otherSha}\n`,
+        findMirroredCommits: () => {
+          throw new Error('an ambiguous trailer must not be trailer-searched');
+        },
+        contains: containsFrom({ [mergeSha]: ['v0.35.6'] }),
+        log: (m) => logs.push(m),
+      }),
+    ).toBe('0.35.6');
+    expect(logs.join(' ')).toContain('more than one origin trailer');
+  });
+
+  test('isSelfRepoPr is repo-identity plus a not-the-origin guard', () => {
+    const pr = (owner, repo) => ({ kind: 'pr', owner, repo, number: 1 });
+    expect(isSelfRepoPr(pr('inkeep', 'open-knowledge'), 'inkeep/open-knowledge')).toBe(true);
+    expect(isSelfRepoPr(pr('inkeep', 'Open-Knowledge'), 'inkeep/open-knowledge')).toBe(true);
+    expect(isSelfRepoPr(pr('inkeep', 'agents-private'), 'inkeep/open-knowledge')).toBe(false);
+    expect(isSelfRepoPr({ kind: 'sha', sha: 'a'.repeat(40) }, 'inkeep/open-knowledge')).toBe(false);
+    expect(isSelfRepoPr(pr('inkeep', 'open-knowledge'), undefined)).toBe(false);
+    // A run inside the private monorepo: its own PRs are private references,
+    // not mirror-side ones, even though repo identity matches selfRepo.
+    expect(isSelfRepoPr(pr('inkeep', 'agents-private'), 'inkeep/agents-private')).toBe(false);
+    expect(isSelfRepoPr(pr('inkeep', 'some-fork'), 'inkeep/some-fork', 'inkeep/some-fork')).toBe(false);
+  });
+
+  test('a mirror pull request contained in no stable yet yields no version', () => {
+    const logs = [];
+    expect(
+      deriveVersionForFixRefs({
+        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/501' }],
+        stableTags: STABLE_TAGS,
+        selfRepo: 'inkeep/open-knowledge',
+        resolvePrMergeSha: () => 'b2'.repeat(20),
+        readCommitMessage: () => 'subject with no trailer\n',
+        findMirroredCommits: () => [],
+        contains: () => false,
+        log: (m) => logs.push(m),
+      }),
+    ).toBeNull();
+    expect(logs.join(' ')).toContain('not-in-any-stable');
+  });
+
   test('a fix reference naming a pull request that was closed unmerged is an answer, not a fault', () => {
     // Real shape: PRD-7539 still carries agents-private#2844, which was closed
     // in favour of #2864. A stale attachment is for a human to fix in Linear,
@@ -209,7 +329,9 @@ describe('version derivation', () => {
 
   test('the two repos it CAN read are still attempted, so the 404 bug cannot come back', () => {
     // A blanket 404 suppression would have masked the missing-permission bug on
-    // agents-private. These two must always reach the API.
+    // agents-private. These two must always reach the API. The self-repo PR
+    // resolves through its merge commit's own trailer rather than a trailer
+    // search for its SHA, but it is attempted all the same.
     for (const url of [
       'https://github.com/inkeep/agents-private/pull/2864',
       'https://github.com/inkeep/open-knowledge/pull/12',
@@ -223,6 +345,8 @@ describe('version derivation', () => {
             attempted = true;
             return PRIVATE_SHA;
           },
+          readCommitMessage: (sha) =>
+            sha === PRIVATE_SHA ? `subject\n\nGitOrigin-RevId: ${PRIVATE_SHA}\n` : null,
         }),
       ).toBe('0.36.0');
       expect(attempted, `${url} must be attempted`).toBe(true);

@@ -40,9 +40,12 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import {
+  firstContainingStableTag,
   parseFixRef,
+  parseGitOriginRevIds,
   resolvePrivateSha,
   resolveShippedVersion,
+  sortStableTagsAscending,
 } from './resolve-shipped-version.mjs';
 import { composeReply, evaluateFanIn, partitionAttachments } from './write-back-gate.mjs';
 
@@ -157,12 +160,28 @@ export function isFixRepoInRemit({ kind, owner, repo }, { defaultRepo = DEFAULT_
   return reachable.includes(target);
 }
 
+/**
+ * Is this parsed fix reference a pull request on the MIRROR side — the repo
+ * this workflow runs on, when that repo is not also the private origin? The
+ * second half matters: in a test or rehearsal run executing inside the private
+ * monorepo itself, `GITHUB_REPOSITORY` equals the default private repo, and
+ * its pull requests are private references that must keep the trailer-search
+ * path.
+ */
+export function isSelfRepoPr({ kind, owner, repo }, selfRepo, defaultRepo = DEFAULT_PRIVATE_REPO) {
+  if (kind !== 'pr') return false;
+  const self = String(selfRepo ?? '').trim().toLowerCase();
+  if (!self || self === String(defaultRepo ?? '').trim().toLowerCase()) return false;
+  return self === `${owner}/${repo}`.toLowerCase();
+}
+
 export function deriveVersionForFixRefs({
   fixReferences = [],
   stableTags,
   findMirroredCommits,
   contains,
   resolvePrMergeSha,
+  readCommitMessage = () => null,
   defaultRepo = DEFAULT_PRIVATE_REPO,
   selfRepo = process.env.GITHUB_REPOSITORY,
   log = () => {},
@@ -180,12 +199,49 @@ export function deriveVersionForFixRefs({
       );
       return null;
     }
-    const privateSha = resolvePrivateSha(parsed, { resolvePrMergeSha });
-    if (!privateSha) {
+    const refSha = resolvePrivateSha(parsed, { resolvePrMergeSha });
+    if (!refSha) {
       log(`::notice::write-back: ${ref.url} was closed without merging, so it carries no fix commit.`);
       return null;
     }
-    const result = resolveShippedVersion({ privateSha, stableTags, findMirroredCommits, contains });
+    let result;
+    if (isSelfRepoPr(parsed, selfRepo, defaultRepo)) {
+      // A pull request in this repo (the Copybara mirror lands every export
+      // through one, and Linear's linkback attaches it to the ticket) merges a
+      // commit that is already on the mirror side, so its SHA must not be
+      // trailer-searched as if it were a private one: nothing carries
+      // `GitOrigin-RevId: <mirror-sha>`, and treating it that way made the
+      // whole ticket underivable. Recover the origin SHA from the merge
+      // commit's own trailer and resolve THAT, so cherry-picked copies on
+      // point-release tags are found too. A merge commit with no trailer — or
+      // an ambiguous one that embedded someone else's footer — falls back to
+      // containment of the merge SHA itself.
+      // A batched sync PR (several rebased commits landing through one PR,
+      // which only happens when the serialized mirror is catching up) makes
+      // this trailer belong to the LAST sibling in the batch rather than the
+      // reporter's fix. Highest-wins across refs keeps that error one-sided:
+      // the reporter can be told a slightly later version, never an earlier
+      // one that lacks their fix.
+      const revIds = parseGitOriginRevIds(readCommitMessage(refSha) ?? '');
+      if (revIds.length === 1) {
+        result = resolveShippedVersion({ privateSha: revIds[0], stableTags, findMirroredCommits, contains });
+      } else {
+        log(
+          `::notice::write-back: ${ref.url} merges a commit with ${revIds.length === 0 ? 'no' : 'more than one'} ` +
+            'origin trailer; falling back to direct tag containment of the merge commit itself.',
+        );
+        const tag = firstContainingStableTag({
+          sortedStableTags: sortStableTagsAscending(stableTags),
+          sha: refSha,
+          contains,
+        });
+        result = tag
+          ? { shipped: true, version: tag.replace(/^v/, ''), tag }
+          : { shipped: false, reason: 'not-in-any-stable' };
+      }
+    } else {
+      result = resolveShippedVersion({ privateSha: refSha, stableTags, findMirroredCommits, contains });
+    }
     if (!result.shipped) {
       log(`::notice::write-back: ${ref.url} has not reached a stable release yet (${result.reason}).`);
       return null;
@@ -742,6 +798,10 @@ function realStableTags() {
     .filter((t) => STABLE_TAG_RE.test(t));
 }
 
+function realReadCommitMessage(sha) {
+  return runGit(['show', '-s', '--format=%B', sha]);
+}
+
 const REC_SEP = '\x1e';
 const UNIT_SEP = '\x1f';
 
@@ -982,6 +1042,7 @@ async function main() {
       findMirroredCommits: realFindMirroredCommits,
       contains: realContains,
       resolvePrMergeSha: realResolvePrMergeSha,
+      readCommitMessage: realReadCommitMessage,
       log,
     });
 
