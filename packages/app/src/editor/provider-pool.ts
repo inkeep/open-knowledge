@@ -1,10 +1,10 @@
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   addsBlankLines,
+  composeWithDerivedBody,
   LINEAGE_EPOCH_KEY,
   MarkdownManager,
   normalizeBridge,
-  prependFrontmatter,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
 import type { HocuspocusAuthRejectionReason } from '@inkeep/open-knowledge-server';
@@ -2834,7 +2834,11 @@ export class ProviderPool {
       if (ytextClean) {
         // Un-drained WYSIWYG edit: the fragment moved while Y.Text stayed
         // at the acked base the server rebuilt from disk.
-        ours = prependFrontmatter(oursFm, oursFragBody);
+        // The only serialize-composed writer outside the server. Without the
+        // guard, an un-drained doc-start rule pair replayed through the recycle
+        // re-mints the collision server-side after every server writer is
+        // fixed.
+        ours = composeWithDerivedBody(oursFm, oursFragBody).md;
       } else if (fragClean) {
         // Unacked source-mode edit: Y.Text moved, fragment still at base.
         ours = oursYtext;

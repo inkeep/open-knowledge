@@ -66,6 +66,7 @@ import {
   CreatePageSuccessSchema,
   changedBlockRange,
   colorFromSeed,
+  composeWithDerivedFrontmatter,
   createCodeFenceTracker,
   createWorkspaceSearchCorpus,
   createWorkspaceSearchDocument,
@@ -6544,8 +6545,15 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                   // empty (FM-only doc) or already starts with a newline.
                   const needsFenceSeparator =
                     currentFenced === '' && currentBody !== '' && !currentBody.startsWith('\n');
-                  const newFull =
-                    result.nextFenced + (needsFenceSeparator ? '\n' : '') + currentBody;
+                  // Same boundary as the panel binding's commit funnel, same
+                  // primitive: emptying the region on a document whose body
+                  // opens with a rule pair would hand those bytes to the next
+                  // partition. Verified end-to-end at `/api/frontmatter-patch`
+                  // because this path reaches disk.
+                  const newFull = composeWithDerivedFrontmatter(
+                    result.nextFenced,
+                    (needsFenceSeparator ? '\n' : '') + currentBody,
+                  ).md;
                   composeAndWriteRawBody(
                     session.dc.document,
                     newFull,

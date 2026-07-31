@@ -212,3 +212,48 @@ describe('pre-drain paired-vector arms (H15)', () => {
     }
   });
 });
+
+describe('pre-drain frontmatter-ambiguity decline', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(1_000_000);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test('a pending doc-start rule pair declines the flush instead of writing un-adjusted bytes', async () => {
+    const rig = await createWiredPreDrainRig({ docName: 'fm-ambiguous-predrain.md' });
+    try {
+      // Y.Text holds an ordinary body; the fragment then advances to one whose
+      // serialization OPENS with a fence pair, un-propagated (freshness
+      // suppressed by the recent external write).
+      rig.rig.seedSource('seed body\n');
+      rig.rig.externalYtextEdit('poke', (yt) => {
+        yt.insert(yt.length, 'trailing\n');
+      });
+      rig.rig.editFragment('---\n\nx\n\n---\n\nseed body\n', { advanceFreshness: false });
+
+      const pending = rig.serializeFragment();
+      expect(pending.startsWith('---')).toBe(true);
+      expect(rig.ytextString().startsWith('---')).toBe(false);
+
+      // The flush splice is modelled in un-adjusted body space, so writing it
+      // would seed bytes the settlement witness (composed through the guard)
+      // disagrees with — an incoherent raw witness permanently disables
+      // freshness re-derives for the doc. Decline to the checkpoint floor.
+      const verdict = getPreDrainController(rig.doc)?.preDrain({
+        kind: 'agent-write',
+        composedBody: 'anything',
+        writeKind: 'append',
+      });
+      expect(verdict?.preDrain).toBe(false);
+      expect(verdict?.reason).toBe('checkpoint-fm-ambiguous');
+
+      // Nothing was written by the declined flush.
+      expect(rig.ytextString().startsWith('---')).toBe(false);
+    } finally {
+      await rig.cleanup();
+    }
+  });
+});

@@ -73,6 +73,11 @@ type PreDrainReason =
   | 'checkpoint-witness-mismatch'
   | 'checkpoint-null-splice'
   | 'checkpoint-no-target'
+  // The flush would compose frontmatter-ambiguous bytes: the splice model runs
+  // in un-adjusted body space, so writing it would disagree with the guarded
+  // settlement witness. Declined by the controller, not by `planPreDrain` —
+  // the plan stays a pure function of the two spans and the body bytes.
+  | 'checkpoint-fm-ambiguous'
   | 'checkpoint-substantive-overlap'
   | 'pre-drain-disjoint'
   | 'pre-drain-whitespace-graze';

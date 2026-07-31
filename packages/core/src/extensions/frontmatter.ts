@@ -35,9 +35,31 @@ export function stripFrontmatter(markdown: string): { frontmatter: string; body:
   return { frontmatter: '', body: markdown };
 }
 
+/**
+ * Compose a frontmatter region with a body.
+ *
+ * `FRONTMATTER_RE`'s closing `(\r?\n|$)` alternative captures a region that
+ * ends at end-of-string with no trailing newline, so a naive concatenation
+ * GLUES the closing fence onto the body's first line and destroys the block:
+ * `---\ntitle: x\n---` + `hello\n` would yield `---\ntitle: x\n---hello\n`,
+ * whose re-partition finds no frontmatter at all. Reachable in production from
+ * Observer A's drain after WYSIWYG typing on a frontmatter-only document and
+ * from an agent append, both landing corrupt bytes on disk. Terminate the
+ * fence instead, following the region's own EOL convention so a CRLF document
+ * doesn't gain a mixed line ending.
+ *
+ * This does NOT weaken the `stripFrontmatter` ∘ `prependFrontmatter` identity
+ * that every recompose site depends on: without the `m` flag JS `$` matches
+ * only at end of input, so a match ending there consumed the whole string and
+ * `stripFrontmatter` returned an empty body — the branch below short-circuits
+ * on exactly that case. Every strip-derived pair therefore recomposes
+ * byte-for-byte; this module's tests pin that as a property over the edge
+ * corpus, so a future relaxation of the short-circuit fails there.
+ */
 export function prependFrontmatter(frontmatter: string, body: string): string {
   if (!frontmatter) return body;
-  return frontmatter + body;
+  if (body === '' || /\r?\n$/.test(frontmatter)) return frontmatter + body;
+  return frontmatter + (frontmatter.includes('\r\n') ? '\r\n' : '\n') + body;
 }
 
 /**

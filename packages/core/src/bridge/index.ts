@@ -23,6 +23,12 @@ export {
   type InvariantViolation,
   toBridgeInvariantLog,
 } from './bridge-invariant.ts';
+export {
+  type BridgeComposition,
+  type ComposeAdjustment,
+  composeWithDerivedBody,
+  composeWithDerivedFrontmatter,
+} from './compose.ts';
 export { type DiffChange, diffLinesFast } from './diff-lines.ts';
 export {
   type DocBoundarySplit,

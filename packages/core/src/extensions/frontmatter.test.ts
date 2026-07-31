@@ -212,3 +212,67 @@ describe('round-trip', () => {
     expect(reassembled).toBe(original);
   });
 });
+
+describe('fence termination at the compose seam', () => {
+  // `FRONTMATTER_RE`'s closing `(\r?\n|$)` alternative captures a region that
+  // ends at end-of-string with no trailing newline. Concatenating a body onto
+  // it glues the closing fence to the body's first line and destroys the
+  // block — reachable in production from Observer A's drain after typing on a
+  // frontmatter-only document, and from an agent append.
+  test('terminates a newline-less region instead of gluing', () => {
+    const fm = '---\ntitle: x\n---';
+    const composed = prependFrontmatter(fm, 'hello\n');
+    expect(composed).toBe('---\ntitle: x\n---\nhello\n');
+    expect(stripFrontmatter(composed)).toEqual({
+      frontmatter: '---\ntitle: x\n---\n',
+      body: 'hello\n',
+    });
+  });
+
+  test('follows the region’s own EOL convention', () => {
+    const composed = prependFrontmatter('---\r\ntitle: x\r\n---', 'hello\r\n');
+    expect(composed).toBe('---\r\ntitle: x\r\n---\r\nhello\r\n');
+    expect(stripFrontmatter(composed).frontmatter).toBe('---\r\ntitle: x\r\n---\r\n');
+  });
+
+  test('leaves an already-terminated region byte-identical', () => {
+    expect(prependFrontmatter('---\ntitle: x\n---\n', 'hello\n')).toBe(
+      '---\ntitle: x\n---\nhello\n',
+    );
+  });
+
+  test('does not fabricate a newline for an empty body', () => {
+    expect(prependFrontmatter('---\ntitle: x\n---', '')).toBe('---\ntitle: x\n---');
+  });
+
+  // The identity every recompose site depends on. Without the `m` flag JS `$`
+  // matches only at end of input, so a region captured without a trailing
+  // newline consumed the whole string and left an empty body — which is why
+  // terminating the fence cannot change any strip-derived recomposition.
+  test('strip ∘ prepend stays byte-identity across the edge corpus', () => {
+    const corpus: string[] = ['', '---', '---\n', 'plain', '---\nfoo\n', ' ---\na: 1\n---\n'];
+    for (const fence of ['---', '--- ', '---\t']) {
+      for (const eol of ['\n', '\r\n']) {
+        for (const yaml of ['', 'title: x', 'a: 1\nb: 2', 'not: [valid', '\nx\n']) {
+          for (const tail of ['', 'body', 'body\n', '---\nmore\n', '\n\n---\n\ny\n']) {
+            const region = `${fence}${eol}${yaml ? yaml + eol : ''}${fence}`;
+            corpus.push(`${region}${eol}${tail}`, `${region}${tail}`);
+          }
+        }
+      }
+    }
+    let newlineLessRegions = 0;
+    for (const input of corpus) {
+      const { frontmatter, body } = stripFrontmatter(input);
+      if (frontmatter !== '' && !/\r?\n$/.test(frontmatter)) {
+        newlineLessRegions++;
+        expect(body, `newline-less region with a non-empty body: ${JSON.stringify(input)}`).toBe(
+          '',
+        );
+      }
+      expect(prependFrontmatter(frontmatter, body), JSON.stringify(input)).toBe(input);
+    }
+    // Non-vacuity: the corpus must actually contain the edge the guard covers.
+    expect(newlineLessRegions).toBeGreaterThan(0);
+  });
+});

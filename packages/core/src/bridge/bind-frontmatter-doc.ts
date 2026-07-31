@@ -9,6 +9,7 @@ import {
   frontmatterValuesEqual,
   RESERVED_FRONTMATTER_KEY,
 } from '../frontmatter/schema.ts';
+import { composeWithDerivedFrontmatter } from './compose.ts';
 import {
   applyPatchToFm,
   applyPathDeleteToFm,
@@ -294,9 +295,13 @@ export function bindFrontmatterDoc(provider: FrontmatterDocProvider): Frontmatte
       outcome = op(currentFenced);
       if (!outcome.ok) return;
       if (outcome.nextFenced === currentFenced) return;
+      const nextFenced = composeWithDerivedFrontmatter(
+        outcome.nextFenced,
+        currentFull.slice(currentFenced.length),
+      ).frontmatter;
       ytext.delete(0, currentFenced.length);
-      if (outcome.nextFenced !== '') {
-        ytext.insert(0, outcome.nextFenced);
+      if (nextFenced !== '') {
+        ytext.insert(0, nextFenced);
       }
     }, FORM_WRITE_ORIGIN);
     return (

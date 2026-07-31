@@ -35,6 +35,7 @@ import {
   BridgeInvariantViolationError,
   BridgeMergeContentLossError,
   comparePmStructural,
+  composeWithDerivedBody,
   DUPLICATION_GATE_MIN_LINE_LENGTH,
   fnv1aDigest,
   fragmentHoldsPendingContent,
@@ -1517,7 +1518,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     const initialJson = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
     const initialBody = mdManager.serialize(initialJson);
     const initialFrontmatter = readCurrentFm();
-    const canonicalInit = prependFrontmatter(initialFrontmatter, initialBody);
+    const canonicalInit = composeWithDerivedBody(initialFrontmatter, initialBody).md;
     // Observers normally attach after the persistence paired-write seed, so
     // fragment = parse(ytext) and attach is a true settlement point — the raw
     // witness then captures the seed bytes so the first fragment change on a
@@ -1743,7 +1744,14 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       // guard against the re-derived bytes.
       if (freshnessSafe) runProducerGuard(json as PmStructuralNode, body);
       const frontmatter = readCurrentFm();
-      const md = prependFrontmatter(frontmatter, body);
+      // The family-3 mint site. A fragment whose serialization opens with a
+      // rule pair composes bytes the next partition reads as frontmatter, so
+      // the span never reaches Observer B's re-derive; the guard re-spells the
+      // leading rule when — and only when — the composition is genuinely
+      // ambiguous. Every witness and predicate below composes the same way, or
+      // the surplus line reads as pending content and defer-loops the doc.
+      const composition = composeWithDerivedBody(frontmatter, body);
+      const md = composition.md;
       const currentText = ytext.toString();
 
       // Duplication gate (precedent #38, Y.Text-is-truth). A CRDT
@@ -1957,7 +1965,14 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         // (canonical-base fragment-delta splice into raw bytes) — the splice
         // owns Path A's domain only, replacing the wholesale canonical
         // rewrite, never the residual-preservation path.
-        ytextInSync && residualMergeEligible
+        // The splice is a pure body-space rewrite computed straight off the
+        // fragment, so it would write the un-adjusted rule while `md` (and
+        // every witness below) carries the guarded spelling. Decline on the
+        // transition drain and let the canonical rewrite below apply `md`;
+        // once Y.Text holds the guarded bytes the serializer preserves them
+        // via sourceRaw, the composition is unambiguous, and the splice —
+        // the more byte-preserving path — runs again.
+        (ytextInSync && residualMergeEligible) || composition.adjusted !== 'none'
           ? null
           : tryComputeMapDrivenSplice({
               currentText,
@@ -2209,7 +2224,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       try {
         const recoveryJson = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
         const recoveryBody = mdManager.serialize(recoveryJson);
-        const recoveryMd = prependFrontmatter(readCurrentFm(), recoveryBody);
+        const recoveryMd = composeWithDerivedBody(readCurrentFm(), recoveryBody).md;
         if (settlesSplitBrainChecked(ytext.toString(), recoveryMd)) {
           recordSplitBrainRecoveryBaselines(recoveryMd);
           textDirty = true;
@@ -2331,7 +2346,10 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       const json = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
       const body = mdManager.serialize(json);
       const frontmatter = readCurrentFm();
-      const md = prependFrontmatter(frontmatter, body);
+      // Same ambiguity as the drain, one seed earlier: a fragment carrying a
+      // doc-start rule pair would seed bytes an empty Y.Text can never
+      // re-derive from.
+      const md = composeWithDerivedBody(frontmatter, body).md;
       doc.transact(() => {
         ytext.insert(0, md);
       }, OBSERVER_SYNC_ORIGIN);
@@ -2441,7 +2459,12 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         const freshFragmentBody = mdManager.serialize(
           yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON(),
         );
-        const freshFragmentMd = prependFrontmatter(frontmatter, freshFragmentBody);
+        // Guard-consistent with the drain's `md` and the converged witness:
+        // the predicate is a raw line-count three-way, so an un-guarded
+        // comparand here reads the re-spelled rule as a surplus line, defers
+        // every drain, and force-resolves an innocent doc at the exhaustion
+        // bound.
+        const freshFragmentMd = composeWithDerivedBody(frontmatter, freshFragmentBody).md;
         if (fragmentHoldsPendingContent(freshFragmentMd, md, lastConvergedFragmentMd)) {
           if (consecutiveDeriveTimingDefers >= MAX_DERIVE_TIMING_DEFERS) {
             // Exhaustion. The keystroke has stayed un-propagated across the full
@@ -2534,6 +2557,16 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       // computation sees a coherent starting point.
       try {
         const canonicalBody = mdManager.serialize(parsedJson);
+        // Faithful compose, deliberately. This value is both the invariant's
+        // RHS (a comparator — guarding it recreates the withdrawn attempt's
+        // false positive) and the settlement witness (which must agree with
+        // what the writers produce). Those requirements coincide here: this
+        // body derives from `stripFrontmatter(ytext).body`, so an empty
+        // frontmatter means `FRONTMATTER_RE` did not match Y.Text, which means
+        // the body cannot open a region — the guard's precondition is
+        // unreachable on this leg and the two composes are byte-equal. The
+        // bridge compose module's tests pin that no-op rather than assuming
+        // it, so this stays a checked coincidence and not a lucky one.
         const canonicalYText = prependFrontmatter(frontmatter, canonicalBody);
         assertBridgeInvariant(ytext.toString(), canonicalYText, {
           site: 'observer-b',
@@ -2594,7 +2627,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         const postJson = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
         const postBody = mdManager.serialize(postJson);
         const fm = readCurrentFm();
-        refreshCanonicalWitnessOnly(prependFrontmatter(fm, postBody));
+        refreshCanonicalWitnessOnly(composeWithDerivedBody(fm, postBody).md);
       } catch (innerErr) {
         // Mirror the two `instanceof BridgeInvariantViolationError` catches
         // above — preserve `BridgeInvariantViolationError` throws past this
@@ -2838,6 +2871,20 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         // discriminated union makes the old `|| splice === null` arm dead.
         if (!preDrain) return verdict;
 
+        // The flush splice is modelled in UN-adjusted body space, so on the one
+        // transition drain where the fragment newly mints a doc-start rule pair
+        // it would write bytes the settlement witness below (composed through
+        // the guard) disagrees with — an incoherent raw witness disables
+        // freshness re-derives for the doc permanently. Decline instead: the
+        // pending content still survives via the checkpoint floor, and the next
+        // Observer A drain applies the guard properly. Steady state is
+        // unaffected — once Y.Text holds the re-spelled rule the serializer
+        // preserves it via sourceRaw and the composition is unambiguous again.
+        const flushComposition = composeWithDerivedBody(readCurrentFm(), mdManager.serialize(json));
+        if (flushComposition.adjusted !== 'none') {
+          return { preDrain: false, reason: 'checkpoint-fm-ambiguous' };
+        }
+
         // Flush: apply the drain's splice to Y.Text under the observer
         // self-origin, then record the settlement — post-flush Y.Text equals the
         // fragment's canonical serialization, a true fixed point, so the
@@ -2851,7 +2898,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
             newSlice: splice.newSlice,
           });
         }, OBSERVER_SYNC_ORIGIN);
-        const canonicalMd = prependFrontmatter(readCurrentFm(), mdManager.serialize(json));
+        const canonicalMd = flushComposition.md;
         recordSettledBaselines(canonicalMd);
         lastConvergedFragmentMd = canonicalMd;
         fragmentMutatedSinceConverge = false;

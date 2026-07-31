@@ -44,7 +44,11 @@
  * next non-paired ytext mutation would re-derive fragment from the STALE
  * ytext bytes, silently reverting the write.
  */
-import { applyFastDiff, prependFrontmatter, stripFrontmatter } from '@inkeep/open-knowledge-core';
+import {
+  applyFastDiff,
+  composeWithDerivedBody,
+  stripFrontmatter,
+} from '@inkeep/open-knowledge-core';
 import type { JSONContent } from '@tiptap/core';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import type * as Y from 'yjs';
@@ -174,7 +178,12 @@ function reportPairedDeriveLoss(
     baselineBody,
     ytextDerivedBody,
     rebuiltBody,
-    restorePayload: prependFrontmatter(restoreFrontmatter, pendingBody),
+    // The one checkpoint kind whose contents are compose-derived rather than
+    // Y.Text's own bytes. Un-guarded, a payload whose body opens with a rule
+    // pair cannot restore what it captured — the restore re-partitions and
+    // loses the span again, so the recovery channel inherits the bug it exists
+    // to recover from.
+    restorePayload: composeWithDerivedBody(restoreFrontmatter, pendingBody).md,
   });
 }
 
@@ -439,7 +448,7 @@ export function deriveFragmentFromYtext(
       baselineBody,
       ytextDerivedBody,
       rebuiltBody,
-      restorePayload: prependFrontmatter(frontmatter, pendingBody),
+      restorePayload: composeWithDerivedBody(frontmatter, pendingBody).md,
     });
   }
 }
