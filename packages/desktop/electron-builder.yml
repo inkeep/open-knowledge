@@ -509,6 +509,18 @@ deb:
   # via AppArmor. The postinst ships a profile permitting it for our
   # binary (the AppImage path relies on electron-builder's AppRun
   # userns-probe --no-sandbox fallback instead).
+  #
+  # First nine entries mirror electron-builder's stock deb list (setting
+  # `depends` REPLACES it, so they must be restated). The last three are
+  # direct DT_NEEDED entries of the Electron binary that the stock list
+  # omits — without them the deb installs cleanly on a minimal system and
+  # then dies at exec with "error while loading shared libraries", before
+  # any window or dialog exists. libasound2 is the one actually observed
+  # missing (stock Debian 13 VM); libcups2 is a hard Depends of
+  # libgtk-3-0 and libgbm1 normally arrives with Mesa, so both are
+  # belt-and-braces. On Debian 13, libasound2/libcups2 resolve through the
+  # t64 renames' compatibility Provides (libasound2t64, libcups2t64);
+  # libgbm1 was never renamed.
   depends:
     - libgtk-3-0
     - libnotify4
@@ -519,6 +531,9 @@ deb:
     - libatspi2.0-0
     - libuuid1
     - libsecret-1-0
+    - libasound2
+    - libcups2
+    - libgbm1
 
 # Flip fuses (D17 LOCKED, spec §8.9) on the packed app before code signing —
 # all platforms (D9): off-darwin builds without the fuse flip would ship
