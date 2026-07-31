@@ -35,15 +35,32 @@ const INTERACTIVE_TARGET_SELECTOR =
  * bounces to the card first, and no text-selection drag starts on the padding.
  */
 export function focusComposerInputOnCardPointer(
-  event: { target: EventTarget | null; preventDefault: () => void },
+  event: {
+    target: EventTarget | null;
+    currentTarget: EventTarget | null;
+    preventDefault: () => void;
+  },
   // Any focusable input handle — the ProseMirror `ComposerMentionInputHandle`
   // (Ask AI composers) or a native `HTMLTextAreaElement` (the agent-thread
   // composer). Both expose `focus()`.
   inputRef: RefObject<{ focus: () => void } | null>,
 ): void {
-  if (!(event.target instanceof HTMLElement) || event.target.closest(INTERACTIVE_TARGET_SELECTOR)) {
+  if (!(event.target instanceof HTMLElement)) return;
+  // React portals bubble synthetic events along the REACT tree, not the DOM
+  // tree, so a press inside a menu/popover opened from a control on this card
+  // arrives here even though the floater renders under `document.body`. Only a
+  // press that physically lands in the card is the card's to handle: claiming
+  // the others stole focus out of the open menu, dismissing it before the row's
+  // `click` landed. The role list below cannot stand in for this — menu rows
+  // carry `menuitemradio` / `menuitemcheckbox`, and each new floater brings
+  // roles of its own.
+  if (
+    !(event.currentTarget instanceof HTMLElement) ||
+    !event.currentTarget.contains(event.target)
+  ) {
     return;
   }
+  if (event.target.closest(INTERACTIVE_TARGET_SELECTOR)) return;
   event.preventDefault();
   inputRef.current?.focus();
 }

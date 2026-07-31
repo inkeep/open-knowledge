@@ -254,13 +254,47 @@ describe('ThreadView agent settings', () => {
     await userEvent.click(fastRow);
     expect(setConfigOption).toHaveBeenCalledWith('thread-1', 'fast', true);
 
-    // Open the Model submenu and pick Opus. Radix menu items select on the
-    // `click` event (handleSelect), which fireEvent dispatches directly;
-    // userEvent's pointer sequence instead trips Radix's submenu grace logic
-    // and never fires the RadioGroup's onValueChange.
+    // Open the Model submenu and pick Opus.
     await userEvent.click(modelRow);
-    fireEvent.click(await screen.findByTestId('agent-thread-config-option-opus'));
+    await userEvent.click(await screen.findByTestId('agent-thread-config-option-opus'));
     expect(setConfigOption).toHaveBeenCalledWith('thread-1', 'model', 'opus');
+  });
+
+  test('a pick lands on a real pointer press, not just a synthetic click', async () => {
+    // The settings trigger lives inside the composer card, and that card's
+    // `mousedown` handler focuses the textarea when a press lands on its
+    // whitespace. React portals bubble synthetic events along the REACT tree,
+    // so presses inside the portaled menu reach that handler too. It used to
+    // claim them: the submenu closed, focus jumped to the composer, and the
+    // pick never reached the agent. Only a full pointer sequence shows it — a
+    // bare `fireEvent.click` dispatches no `mousedown` at all.
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          configOptions: [
+            {
+              id: 'model',
+              name: 'Model',
+              category: 'model',
+              type: 'select',
+              currentValue: 'sonnet',
+              options: [
+                { value: 'sonnet', name: 'Sonnet' },
+                { value: 'opus', name: 'Opus' },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByTestId('agent-thread-config-model'));
+    await userEvent.click(await screen.findByTestId('agent-thread-config-option-opus'));
+
+    expect(setConfigOption).toHaveBeenCalledWith('thread-1', 'model', 'opus');
+    expect(document.activeElement).not.toBe(screen.getByTestId('agent-thread-composer'));
   });
 
   test('remembers every pick for this agent, modes included', async () => {
@@ -301,7 +335,7 @@ describe('ThreadView agent settings', () => {
 
     // A model pick is remembered, so the next thread with this agent opens on it.
     await userEvent.click(screen.getByTestId('agent-thread-config-model'));
-    fireEvent.click(await screen.findByTestId('agent-thread-config-option-opus'));
+    await userEvent.click(await screen.findByTestId('agent-thread-config-option-opus'));
     expect(setConfigOption).toHaveBeenCalledWith('thread-1', 'model', 'opus');
     expect(getRememberedAgentConfig(key)).toEqual({ model: 'opus' });
 
@@ -311,7 +345,7 @@ describe('ThreadView agent settings', () => {
     // reopen it.)
     await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
     await userEvent.click(screen.getByTestId('agent-thread-config-permission'));
-    fireEvent.click(await screen.findByTestId('agent-thread-config-option-bypass'));
+    await userEvent.click(await screen.findByTestId('agent-thread-config-option-bypass'));
     expect(setConfigOption).toHaveBeenCalledWith('thread-1', 'permission', 'bypass');
     expect(getRememberedAgentConfig(key)).toEqual({ model: 'opus', permission: 'bypass' });
   });
@@ -402,10 +436,9 @@ describe('ThreadView agent settings (modes)', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
     // Legacy modes render as an "Agent mode" submenu (synthetic id 'legacy-mode');
-    // open it and pick Ask. fireEvent for the radio select — see the Model
-    // submenu note above on why userEvent doesn't fire onValueChange.
+    // open it and pick Ask.
     await userEvent.click(screen.getByTestId('agent-thread-config-legacy-mode'));
-    fireEvent.click(await screen.findByTestId('agent-thread-config-option-ask'));
+    await userEvent.click(await screen.findByTestId('agent-thread-config-option-ask'));
     expect(setMode).toHaveBeenCalledWith('thread-1', 'ask');
     // The legacy surface has no config option to ride, so it persists under its
     // own key — but it persists just the same.
@@ -432,7 +465,7 @@ describe('ThreadView agent settings (modes)', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
     await userEvent.click(screen.getByTestId('agent-thread-config-legacy-mode'));
-    fireEvent.click(await screen.findByTestId('agent-thread-config-option-yolo'));
+    await userEvent.click(await screen.findByTestId('agent-thread-config-option-yolo'));
     expect(setMode).toHaveBeenCalledWith('thread-1', 'yolo');
     // Guards against a relapse into gating persistence on permissiveness: the
     // accent is what makes a permissive mode legible, not refusing to keep it.
