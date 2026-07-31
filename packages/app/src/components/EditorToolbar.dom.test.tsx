@@ -81,6 +81,21 @@ describe('EditorToolbar runtime layout', () => {
     expect(middleCell).toBeTruthy();
   });
 
+  test('mode toggle is hidden for editable text docs, kept for markdown and Mermaid', async () => {
+    await renderToolbar('src/util.ts');
+    expect(screen.queryByRole('radio', { name: 'Markdown source' })).toBeNull();
+    cleanup();
+
+    await renderToolbar('docs/Page.md');
+    expect(screen.getByRole('radio', { name: 'Markdown source' })).toBeTruthy();
+    cleanup();
+
+    // Mermaid docs keep the toggle — diagram (wysiwyg) vs source are two
+    // real surfaces, unlike a text doc's single CodeMirror.
+    await renderToolbar('assets/flow.mmd');
+    expect(screen.getByRole('radio', { name: 'Markdown source' })).toBeTruthy();
+  });
+
   test('renders the document-panel shortcut as a Kbd keycap', async () => {
     const user = userEvent.setup();
     await renderToolbar();
