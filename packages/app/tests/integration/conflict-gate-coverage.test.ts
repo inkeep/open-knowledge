@@ -184,6 +184,11 @@ const EXEMPT_HANDLERS = new Set([
   // `/api/config` — collab-bootstrap payload. GET reads server-lock. Does not
   // target a Y.Doc, so the per-doc conflict gate does not apply.
   'handleApiConfig',
+  // `/api/config/diagnostics` (GET) — read-only listing of active config
+  // diagnostics across the user, committed-project, and project-local layers.
+  // Reads config files fresh per request; targets no Y.Doc, so the per-doc
+  // conflict gate does not apply — same posture as `handleApiConfig`.
+  'handleConfigDiagnostics',
   'handleRescueList',
   'handleSyncStatus',
   'handleSyncConflicts',

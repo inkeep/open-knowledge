@@ -21,6 +21,7 @@ trustSystemCertificates();
 
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
+import { humanFormat } from '@inkeep/open-knowledge-core';
 import { type Config, ConfigSchema, trustSystemCertificates } from '@inkeep/open-knowledge-server';
 /**
  * CLI entry point for @inkeep/open-knowledge.
@@ -38,7 +39,7 @@ import { authCommand } from './commands/auth/index.ts';
 import { bugReportCommand } from './commands/bug-report.ts';
 import { cleanCommand } from './commands/clean.ts';
 import { cloneCommand } from './commands/clone.ts';
-import { configCommand } from './commands/config.ts';
+import { configCommand, shouldAnnounceRemovedKeys } from './commands/config.ts';
 import { coworkCommand } from './commands/cowork.ts';
 import { deinitCommand } from './commands/deinit.ts';
 import { createRealDetectDeps, detectDesktop, launchDesktop } from './commands/desktop-dispatch.ts';
@@ -149,7 +150,26 @@ program
     // loud fail-fast so the user notices a config they can fix in place.
     let config: Config;
     try {
-      config = loadConfig(anchorRoot ?? cwd).config;
+      const loaded = loadConfig(anchorRoot ?? cwd);
+      config = loaded.config;
+      // Report stale keys once per invocation. The reader strips them and
+      // returns them rather than logging, so for most commands this is the
+      // only place a user learns their config carries a key that no longer
+      // does anything. stderr keeps `ok mcp`'s stdout JSON-RPC stream clean.
+      //
+      // The `config` command family owns this reporting and is excluded — see
+      // `shouldAnnounceRemovedKeys`.
+      //
+      // Filtered to `REMOVED_KEY` for the same reason the server's
+      // `logConfigDiagnosticsOnce` filters: `readConfigSafely` already warned
+      // about every corruption code on its way out, so printing those again
+      // here shows the user one fault twice in two different formats.
+      if (shouldAnnounceRemovedKeys(subcommandName)) {
+        for (const diagnostic of loaded.diagnostics) {
+          if (diagnostic.code !== 'REMOVED_KEY') continue;
+          console.error(`[ok] ${humanFormat(diagnostic)}`);
+        }
+      }
     } catch (err) {
       if (subcommandName === 'uninstall' || subcommandName === 'deinit') {
         // Surface the original parse error before degrading — the user should

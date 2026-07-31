@@ -161,6 +161,10 @@ export {
   type OkignoreUnsubscribe,
 } from './config/bind-okignore-doc.ts';
 export {
+  type ConfigDiagnostic,
+  ConfigDiagnosticSchema,
+  type ConfigDiagnosticsReport,
+  ConfigDiagnosticsReportSchema,
   type ConfigIssue,
   ConfigIssueSchema,
   type ConfigIssueSource,
@@ -175,6 +179,9 @@ export {
   isKnownConfigError,
   type KnownConfigValidationError,
   KnownConfigValidationErrorSchema,
+  type RemovedKeyDiagnostic,
+  type ScopedConfigDiagnostic,
+  ScopedConfigDiagnosticSchema,
   type WriteScope,
   WriteScopeSchema,
 } from './config/errors.ts';
@@ -189,6 +196,7 @@ export {
   detectRemovedKeys,
   REMOVED_KEYS,
   type RemovedKey,
+  stripRemovedKeys,
 } from './config/removed-keys.ts';
 export type { Err, Ok, Result } from './config/result.ts';
 // Config schema, error envelope, and Result helper. Browser+node compatible.

@@ -2,7 +2,9 @@ import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { type ConfigDiagnostic, REMOVED_KEYS } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { stringify } from 'yaml';
 
 let testDir: string;
 // Seed a real default so the loader's transitive homedir() call at import time
@@ -51,6 +53,28 @@ function writeWorkspaceConfigAt(dir: string, yaml: string) {
   writeFileSync(resolve(configDir, 'config.yml'), yaml, 'utf-8');
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Set a (possibly nested) leaf on `root`, creating intermediate objects. */
+function setPath(root: Record<string, unknown>, path: readonly string[], leaf: unknown): void {
+  let cur = root;
+  for (let i = 0; i < path.length - 1; i++) {
+    const seg = path[i] as string;
+    if (!isPlainObject(cur[seg])) cur[seg] = {};
+    cur = cur[seg] as Record<string, unknown>;
+  }
+  cur[path[path.length - 1] as string] = leaf;
+}
+
+/** Only the REMOVED_KEY diagnostics, dotted-path indexed for lookup. */
+function removedKeys(diagnostics: ConfigDiagnostic[]): Array<{ dotted: string; redirect: string }> {
+  return diagnostics.flatMap((d) =>
+    d.code === 'REMOVED_KEY' ? [{ dotted: d.path.join('.'), redirect: d.redirect }] : [],
+  );
+}
+
 describe('loadConfig', () => {
   // ── Defaults ────────────────────────────────────────────────────────
 
@@ -93,23 +117,21 @@ describe('loadConfig', () => {
     expect(config.content.dir).toBe('.');
   });
 
-  test('removed config keys in project config hard-error in one pass with redirects', () => {
-    // Single-tier contract: every removed key throws (no warn tier). A project
-    // config carrying several gets them all in one throw — no two-trip cycle.
+  test('removed config keys in project config are stripped and reported; siblings survive', () => {
+    // Strip-and-continue: a dead key no longer blocks startup. A project config
+    // carrying several gets them all stripped in one pass — no two-trip cycle —
+    // and each is reported as a REMOVED_KEY diagnostic naming its replacement.
     // sync.* and server.port are NOT in the registry (genuinely silent
-    // loose-mode pass), so they contribute no error.
+    // loose-mode pass), so they contribute no diagnostic.
     writeWorkspaceConfig(
       'sync:\n  pushIntervalSeconds: 30\nserver:\n  port: 3000\n  host: example.dev\n  openOnAgentEdit: true\nmcp:\n  autoStart: false\n  tools:\n    grep:\n      maxResults: 100\n    search:\n      maxResults: 100\nupload:\n  maxBytes: 100000\ngithub:\n  oauthAppClientId: abc\ncontent:\n  dir: docs\n',
     );
-    let caught: Error | undefined;
-    try {
-      loadConfig(testDir);
-    } catch (e) {
-      caught = e as Error;
-    }
-    expect(caught).toBeDefined();
-    const msg = caught?.message ?? '';
-    // Every registry key present is named.
+    const { config, diagnostics } = loadConfig(testDir);
+    // The unrelated live key resolves to its on-disk value, not a default.
+    expect(config.content.dir).toBe('docs');
+    const removed = removedKeys(diagnostics);
+    const dotted = removed.map((r) => r.dotted);
+    // Every registry key present is reported.
     for (const key of [
       'server.host',
       'server.openOnAgentEdit',
@@ -119,17 +141,23 @@ describe('loadConfig', () => {
       'upload.maxBytes',
       'github.oauthAppClientId',
     ]) {
-      expect(msg).toContain(key);
+      expect(dotted).toContain(key);
     }
-    // Redirect hints name the replacement knob.
-    expect(msg).toContain('--host');
-    expect(msg).toContain('HOST');
-    expect(msg).toContain('OPEN_KNOWLEDGE_GITHUB_CLIENT_ID');
-    expect(msg).toContain('OK_MCP_AUTOSTART');
-    expect(msg).toContain('streaming uploads have no user-facing cap');
-    // Source-located: file:line:col points inside the fixture.
+    // Each redirect names the replacement knob.
+    const joined = removed.map((r) => r.redirect).join('\n');
+    expect(joined).toContain('--host');
+    expect(joined).toContain('HOST');
+    expect(joined).toContain('OPEN_KNOWLEDGE_GITHUB_CLIENT_ID');
+    expect(joined).toContain('OK_MCP_AUTOSTART');
+    expect(joined).toContain('streaming uploads have no user-facing cap');
+    // Source-located: each diagnostic points inside the committed file.
     const expectedPath = resolve(testDir, OK_DIR, 'config.yml');
-    expect(msg).toMatch(new RegExp(`${expectedPath.replace(/[/\\.]/g, '\\$&')}:\\d+:\\d+`));
+    for (const d of diagnostics) {
+      if (d.code === 'REMOVED_KEY') {
+        expect(d.source?.file).toBe(expectedPath);
+        expect(d.source?.line ?? 0).toBeGreaterThan(0);
+      }
+    }
   });
 
   // ── Workspace overrides ─────────────────────────────────────────────
@@ -159,115 +187,124 @@ appearance:
     expect(config.appearance.theme).toBe('dark');
   });
 
-  test('content.include in project config rejects with REMOVED_KEY error directing to .okignore', () => {
+  test('content.include in project config is stripped with .okignore redirect; content.dir survives', () => {
     writeWorkspaceConfig(`content:
+  dir: docs
   include:
     - "**/*.md"
 `);
-    let caught: Error | undefined;
-    try {
-      loadConfig(testDir);
-    } catch (e) {
-      caught = e as Error;
-    }
-    expect(caught).toBeDefined();
-    const expectedPath = resolve(testDir, OK_DIR, 'config.yml');
-    // Source-located header: file:line:col points inside the fixture.
-    expect(caught?.message).toMatch(
-      new RegExp(`${expectedPath.replace(/[/\\.]/g, '\\$&')}:\\d+:\\d+`),
-    );
-    expect(caught?.message).toContain('content.include');
+    const { config, diagnostics } = loadConfig(testDir);
+    // Sibling under the same parent keeps its on-disk value.
+    expect(config.content.dir).toBe('docs');
+    const include = removedKeys(diagnostics).find((r) => r.dotted === 'content.include');
+    expect(include).toBeDefined();
     // include-specific redirect: surfaces content.dir as the simpler
     // subdirectory-scoping alternative AND warns that .okignore is
     // exclude-only (don't copy include patterns directly).
-    expect(caught?.message).toContain('content.dir');
-    expect(caught?.message).toContain('.okignore');
-    expect(caught?.message).toContain('exclude-only');
+    expect(include?.redirect).toContain('content.dir');
+    expect(include?.redirect).toContain('.okignore');
+    expect(include?.redirect).toContain('exclude-only');
   });
 
-  test('content.exclude in project config rejects with REMOVED_KEY error', () => {
+  test('content.exclude in project config is stripped with a 1:1 .okignore redirect', () => {
     writeWorkspaceConfig(`content:
+  dir: docs
   exclude:
     - "**/drafts/**"
 `);
-    let caught: Error | undefined;
-    try {
-      loadConfig(testDir);
-    } catch (e) {
-      caught = e as Error;
-    }
-    expect(caught).toBeDefined();
-    const expectedPath = resolve(testDir, OK_DIR, 'config.yml');
-    expect(caught?.message).toMatch(
-      new RegExp(`${expectedPath.replace(/[/\\.]/g, '\\$&')}:\\d+:\\d+`),
-    );
-    expect(caught?.message).toContain('content.exclude');
+    const { config, diagnostics } = loadConfig(testDir);
+    expect(config.content.dir).toBe('docs');
+    const exclude = removedKeys(diagnostics).find((r) => r.dotted === 'content.exclude');
+    expect(exclude).toBeDefined();
     // exclude-specific redirect: 1:1 migration to .okignore.
-    expect(caught?.message).toContain('.okignore');
-    expect(caught?.message).toContain('1:1 migration');
+    expect(exclude?.redirect).toContain('.okignore');
+    expect(exclude?.redirect).toContain('1:1 migration');
   });
 
-  test('content.include AND content.exclude together emit BOTH REMOVED_KEY errors in one pass', () => {
+  test('content.include AND content.exclude together are both stripped in one pass', () => {
     writeWorkspaceConfig(`content:
   include:
     - "**/*.md"
   exclude:
     - "**/drafts/**"
 `);
-    let caught: Error | undefined;
-    try {
-      loadConfig(testDir);
-    } catch (e) {
-      caught = e as Error;
-    }
-    expect(caught).toBeDefined();
-    // Both keys should appear in the error message — no two-trip fix cycle
-    // where the user fixes include, restarts, then sees exclude as a fresh
-    // error.
-    expect(caught?.message).toContain('content.include');
-    expect(caught?.message).toContain('content.exclude');
+    const { diagnostics } = loadConfig(testDir);
+    const dotted = removedKeys(diagnostics).map((r) => r.dotted);
+    // Both keys are reported in one read — no two-trip fix cycle where the user
+    // fixes include, restarts, then sees exclude as a fresh finding.
+    expect(dotted).toContain('content.include');
+    expect(dotted).toContain('content.exclude');
     // Each key carries its own redirect (include → content.dir + exclude-only;
     // exclude → 1:1 migration).
-    expect(caught?.message).toContain('content.dir');
-    expect(caught?.message).toContain('1:1 migration');
+    const joined = removedKeys(diagnostics)
+      .map((r) => r.redirect)
+      .join('\n');
+    expect(joined).toContain('content.dir');
+    expect(joined).toContain('1:1 migration');
   });
 
-  test('folders in project config rejects with REMOVED_KEY directing to nested .ok/', () => {
+  test('folders in project config is stripped with a nested .ok/ redirect', () => {
     // The headline dead key: previously silent (no warn, no error) while the
-    // docs still taught it. Now a source-located hard error.
-    writeWorkspaceConfig(`folders:
+    // docs still taught it. Now stripped and reported, not a hard failure.
+    writeWorkspaceConfig(`content:
+  dir: docs
+folders:
   - path: "drafts/**"
     frontmatter:
       status: draft
 `);
-    let caught: Error | undefined;
-    try {
-      loadConfig(testDir);
-    } catch (e) {
-      caught = e as Error;
-    }
-    expect(caught).toBeDefined();
-    const msg = caught?.message ?? '';
-    expect(msg).toContain('folders');
-    expect(msg).toContain('.ok/');
-    expect(msg).toContain('edit({ folder');
-    const expectedPath = resolve(testDir, OK_DIR, 'config.yml');
-    expect(msg).toMatch(new RegExp(`${expectedPath.replace(/[/\\.]/g, '\\$&')}:\\d+:\\d+`));
+    const { config, diagnostics } = loadConfig(testDir);
+    // An unrelated top-level section is untouched by stripping folders.
+    expect(config.content.dir).toBe('docs');
+    const folders = removedKeys(diagnostics).find((r) => r.dotted === 'folders');
+    expect(folders).toBeDefined();
+    expect(folders?.redirect).toContain('.ok/');
+    expect(folders?.redirect).toContain('edit({ folder');
   });
 
-  test('appearance.editorModeDefault in project config rejects with REMOVED_KEY', () => {
+  test('appearance.editorModeDefault in project config is stripped; appearance.theme survives', () => {
     // Also previously silent — never read by the engine.
-    writeWorkspaceConfig('appearance:\n  editorModeDefault: source\n');
-    let caught: Error | undefined;
-    try {
-      loadConfig(testDir);
-    } catch (e) {
-      caught = e as Error;
-    }
-    expect(caught).toBeDefined();
-    expect(caught?.message).toContain('appearance.editorModeDefault');
-    expect(caught?.message).toContain('WYSIWYG');
+    writeWorkspaceConfig('appearance:\n  theme: dark\n  editorModeDefault: source\n');
+    const { config, diagnostics } = loadConfig(testDir);
+    // Sibling under the same parent keeps its on-disk value.
+    expect(config.appearance.theme).toBe('dark');
+    const mode = removedKeys(diagnostics).find((r) => r.dotted === 'appearance.editorModeDefault');
+    expect(mode).toBeDefined();
+    expect(mode?.redirect).toContain('WYSIWYG');
   });
+
+  test('a clean committed config yields no diagnostics', () => {
+    writeWorkspaceConfig('content:\n  dir: docs\n');
+    const { config, diagnostics } = loadConfig(testDir);
+    expect(config.content.dir).toBe('docs');
+    expect(diagnostics).toEqual([]);
+  });
+
+  // Parameterized over every registry entry: a committed config carrying that
+  // key plus a live sibling loads successfully, strips the key, preserves the
+  // sibling, and reports exactly one diagnostic. This is the invariant that
+  // keeps a dead key from bricking `ok start`, and it stays correct as the
+  // registry grows.
+  for (const entry of REMOVED_KEYS) {
+    const dotted = entry.path.join('.');
+    test(`committed config with ${dotted} loads; sibling preserved; one diagnostic`, () => {
+      const obj: Record<string, unknown> = { content: { dir: 'docs' } };
+      setPath(obj, entry.path, 'sentinel');
+      writeWorkspaceConfig(stringify(obj));
+
+      const { config, diagnostics } = loadConfig(testDir);
+
+      // Sibling resolves to its on-disk value, not a schema default.
+      expect(config.content.dir).toBe('docs');
+      const removed = diagnostics.filter((d) => d.code === 'REMOVED_KEY');
+      expect(removed).toHaveLength(1);
+      const [diag] = removed;
+      if (diag?.code === 'REMOVED_KEY') {
+        expect(diag.path).toEqual(entry.path);
+        expect(diag.redirect).toBe(entry.redirect);
+      }
+    });
+  }
 
   // ── Validation ──────────────────────────────────────────────────────
 
@@ -356,6 +393,44 @@ appearance:
     const { config, sources } = loadConfig(testDir);
     expect(config.appearance.theme).toBe('dark');
     expect(sources).toContain(resolve(okDir, 'global.yml'));
+  });
+
+  // The committed layer is parameterized over the whole registry above; this
+  // pins the same strip-and-continue contract through the OTHER layer, which
+  // reaches `diagnostics` by a different route (`readConfigSafely` upstream,
+  // then a deep merge). Deleting the user-layer diagnostics push, or a merge
+  // that dropped user siblings once a key was stripped, would only fail here.
+  test('user-global strip-and-continue: sibling survives the merge, key is reported', () => {
+    const okDir = resolve(fakeHome, OK_DIR);
+    mkdirSync(okDir, { recursive: true });
+    writeFileSync(
+      resolve(okDir, 'global.yml'),
+      'server:\n  host: 0.0.0.0\nappearance:\n  theme: dark\n',
+      'utf-8',
+    );
+
+    const { config, diagnostics } = loadConfig(testDir);
+
+    expect(config.appearance.theme).toBe('dark');
+    const removed = diagnostics.filter((d) => d.code === 'REMOVED_KEY');
+    expect(removed).toHaveLength(1);
+    const [diag] = removed;
+    if (diag?.code === 'REMOVED_KEY') {
+      expect(diag.path).toEqual(['server', 'host']);
+    }
+  });
+
+  // The gap that let `ok config validate` answer "✓ valid" for a file it could
+  // not parse: the merged config falls back to defaults, which always validate,
+  // so the only evidence a layer was skipped is the diagnostic.
+  test('an unparseable committed config degrades to defaults AND reports YAML_PARSE', () => {
+    writeWorkspaceConfig('content:\n  dir: [invalid yaml');
+
+    const { config, diagnostics } = loadConfig(testDir);
+
+    expect(config.content.dir).toBe('.');
+    const parseFailures = diagnostics.filter((d) => d.code === 'YAML_PARSE');
+    expect(parseFailures).toHaveLength(1);
   });
 });
 

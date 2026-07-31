@@ -339,6 +339,10 @@ const EXEMPT_HANDLERS = new Set([
   // mutation and no agent content, so identity threading is exempt — same
   // rationale as `handleServerInfo`.
   'handleApiConfig',
+  // `/api/config/diagnostics` — read-only GET reporting active config
+  // diagnostics across the three layers. Reads config files, performs no
+  // writes and no agent content, so there is nothing to attribute.
+  'handleConfigDiagnostics',
   // `ok seed` scaffolder endpoints. Operate on project-level
   // folder structure on behalf of the local user, not agent content — same
   // rationale as sync/local-op handlers. `handleSeedPacks` is a static-data

@@ -8,20 +8,22 @@
  * registry a removed key is a silent no-op — the worst failure mode for a
  * config contract, because the user believes it took effect.
  *
- * Every entry here is rejected loudly with a source-located `REMOVED_KEY`
- * error whose `redirect` names the replacement. The same table drives the
- * `ok config migrate` codemod, so the "run `ok config migrate`" hint in each
- * redirect is always truthful.
+ * Readers strip every entry here from the parsed value and surface a
+ * source-located `REMOVED_KEY` diagnostic whose `redirect` names the
+ * replacement. Stripping a removed key can never change runtime behavior — by
+ * contract the engine no longer reads it — so a dead key never invalidates its
+ * live siblings. The same table drives the `ok config migrate` codemod, and
+ * that command defaults to every config layer, so the bare "run `ok config
+ * migrate`" hint in each redirect reaches the key it names wherever it lives —
+ * including the project-local layer. Narrowing that default would make the
+ * hint false for any key outside the layers it still covers.
  *
- * Severity is uniform — there is no warn tier. Where the error surfaces
- * (throw vs. sideline) is the CALLER's decision: the project loader throws
- * (fail-fast, the key is user-fixable in place), while the cold-start
- * recovery path (`readConfigSafely`, used for `~/.ok/global.yml`) sidelines
- * the file and boots on defaults so a stale user-global config can never
- * brick every project.
+ * Severity is uniform — there is no warn tier. The registry records only the
+ * fact of the mismatch; whether a given caller warns, blocks, or degrades a
+ * dependent feature is caller policy, not a property of the entry.
  */
 import type { Document } from 'yaml';
-import type { ConfigIssueSource, ConfigValidationError } from './errors.ts';
+import type { ConfigIssueSource, RemovedKeyDiagnostic } from './errors.ts';
 import { locateIssue } from './source-locator.ts';
 
 export interface RemovedKey {
@@ -35,8 +37,12 @@ export interface RemovedKey {
  * Shared tail appended to every redirect except the bespoke `content.*` ones
  * (those predate the registry and carry their own, test-pinned wording).
  */
+// Names no file on purpose. A removed key can sit in any of three layers
+// (`~/.ok/global.yml`, `.ok/config.yml`, `.ok/local/config.yml`) and the command
+// defaults to all of them, so naming `config.yml` would read as a limit the
+// command does not have.
 const MIGRATE_HINT =
-  'Run `ok config migrate` to strip the obsolete key from config.yml automatically, or remove it by hand.';
+  'Run `ok config migrate` to strip the obsolete key automatically, or remove it by hand.';
 
 /**
  * The removed-key registry. Adding a removal is a one-line entry here — the
@@ -191,22 +197,66 @@ export interface DetectRemovedKeysInput {
  * one pass — no two-trip fix cycle. Each error is source-located when `file`,
  * `source`, and `doc` are supplied.
  */
-export function detectRemovedKeys(input: DetectRemovedKeysInput): ConfigValidationError[] {
+export function detectRemovedKeys(input: DetectRemovedKeysInput): RemovedKeyDiagnostic[] {
   const { value, file, source, doc } = input;
   if (!isPlainObject(value)) return [];
-  const errors: ConfigValidationError[] = [];
+  const diagnostics: RemovedKeyDiagnostic[] = [];
   for (const entry of REMOVED_KEYS) {
     if (!hasLeaf(value, entry.path)) continue;
     let located: ConfigIssueSource | undefined;
     if (doc != null && source != null && file != null) {
       located = locateIssue({ file, source, doc, path: entry.path });
     }
-    errors.push({
+    diagnostics.push({
       code: 'REMOVED_KEY',
       path: entry.path,
       redirect: entry.redirect,
       ...(located !== undefined ? { source: located } : {}),
     });
   }
-  return errors;
+  return diagnostics;
+}
+
+/**
+ * Remove `path`'s leaf from `obj`, cloning only the objects along the path so
+ * untouched subtrees are shared by reference. Returns a new object; `obj` is
+ * never mutated.
+ */
+function removePath(
+  obj: Record<string, unknown>,
+  path: readonly string[],
+): Record<string, unknown> {
+  const [head, ...rest] = path;
+  if (head === undefined) return obj;
+  const clone: Record<string, unknown> = { ...obj };
+  if (rest.length === 0) {
+    delete clone[head];
+    return clone;
+  }
+  const child = clone[head];
+  if (isPlainObject(child)) {
+    clone[head] = removePath(child, rest);
+  }
+  return clone;
+}
+
+/**
+ * Return `value` with every registry key removed. Non-object input is returned
+ * unchanged; the input is never mutated. Callers strip the dead keys from the
+ * parsed config, then re-validate so schema defaults re-apply cleanly to the
+ * cleaned object.
+ *
+ * Stripping keys from an object yields an object, so the object overload lets
+ * a caller that passes a typed record use the result without re-narrowing.
+ */
+export function stripRemovedKeys(value: Record<string, unknown>): Record<string, unknown>;
+export function stripRemovedKeys(value: unknown): unknown;
+export function stripRemovedKeys(value: unknown): unknown {
+  if (!isPlainObject(value)) return value;
+  let result: Record<string, unknown> = value;
+  for (const entry of REMOVED_KEYS) {
+    if (!hasLeaf(result, entry.path)) continue;
+    result = removePath(result, entry.path);
+  }
+  return result;
 }

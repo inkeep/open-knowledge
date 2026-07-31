@@ -124,7 +124,7 @@ Serve this project's web UI and `/mcp` endpoint to your other devices through an
 | `ok preview` | Show what content the watcher will track (read-only) — the quick check after a `content.dir` or `.okignore` change |
 | `ok migrate notion <dir>` | Clean up a Notion export in place, dry-run unless `--apply` (see [migrating from Notion](/docs/migrate/notion)) |
 | `ok config validate` | Validate the merged config (defaults → user → project) |
-| `ok config migrate` | Remove deprecated keys from `config.yml` (`--dry-run` to preview; `--scope` project, user, or both) |
+| `ok config migrate` | Remove keys the schema no longer reads from your config files (`--dry-run` to preview; `--scope` to narrow — defaults to every layer) |
 | `ok skills installed` | List every skill installed across your agents (read-only, cross-harness) |
 | `ok skills import <source>` | Import a skill as versioned content from skills.sh, a GitHub `owner/repo`, a git URL, or a local path |
 | `ok bug-report` | Package a support bundle — recent app logs, the project's server logs and lock diagnostics, and system info — as an auto-redacted zip under `~/.ok/bug-reports/`, revealed in Finder when it's done (`--no-reveal` to skip). Collects the same `standard` set as the desktop app's **Help → Report a bug…**; `ok diagnose bundle` produces the `full` superset (telemetry spans, live server state) into the project's `.ok/local/diagnostics/` |

@@ -62,6 +62,8 @@ import {
   ClientLogsSuccessSchema,
   CONFIG_DOC_NAME_OKIGNORE,
   CommentCountsSuccessSchema,
+  type ConfigDiagnosticsReport,
+  ConfigDiagnosticsReportSchema,
   CreateFolderRequestSchema,
   CreateFolderSuccessSchema,
   CreatePageRequestSchema,
@@ -3025,6 +3027,13 @@ export interface ApiExtensionOptions {
    */
   getLinkPreviewsEnabled?: () => boolean;
   /**
+   * Fresh-read collector for `GET /api/config/diagnostics` — reads the user,
+   * committed-project, and project-local config files on each call so an edit
+   * is reflected without a restart. Omitted in test harnesses that don't wire
+   * config; the handler then reports an empty diagnostics set.
+   */
+  getConfigDiagnostics?: () => ConfigDiagnosticsReport;
+  /**
    * Basename-index resolver for `![[photo.png]]` wiki-embed refs. Threaded
    * into every server-side `mdManager.parseWithFallback` call (managed-rename
    * body rewrite, rollback content apply) so the resulting PM image/link
@@ -3316,6 +3325,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     ephemeral = false,
     linkPreviewFetch,
     getLinkPreviewsEnabled,
+    getConfigDiagnostics,
   } = options;
 
   // Concurrency guard: at most 1 in-flight request per local-op endpoint
@@ -24515,6 +24525,45 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     });
   }
 
+  // `/api/config/diagnostics` — active config diagnostics across the user,
+  // committed-project, and project-local layers. Read-only and open like
+  // `/api/config`: the collector reads the files fresh per request (so a
+  // hand-edit or `ok config migrate` is reflected without a restart) and
+  // returns only structural findings — scope, file, key path, code, redirect —
+  // never a raw config value. `no-store` so a poll always sees current disk
+  // state.
+  async function handleConfigDiagnostics(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      try {
+        const payload = getConfigDiagnostics?.() ?? { diagnostics: [] };
+        // HEAD mirrors GET's headers with no body; `successResponse` always
+        // writes one, so the no-body verb stays a manual emit.
+        if (req.method === 'HEAD') {
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'no-store');
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+          res.statusCode = 200;
+          res.end();
+          return;
+        }
+        successResponse(res, 200, ConfigDiagnosticsReportSchema, payload, {
+          handler: 'api-config-diagnostics',
+          extraHeaders: { 'Cache-Control': 'no-store' },
+        });
+      } catch (e) {
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
+          handler: 'api-config-diagnostics',
+          cause: e,
+        });
+      }
+      return;
+    }
+    errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
+      handler: 'api-config-diagnostics',
+      extraHeaders: { Allow: 'GET, HEAD' },
+    });
+  }
+
   // ───────────────────── Embeddings API key — Account control ─────────────────
   // Loopback + Origin gated (checkLocalOpSecurity) set/clear for the
   // machine-global embeddings key. The key travels renderer → loopback POST body
@@ -25833,6 +25882,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
 
   const routes: Record<string, (req: IncomingMessage, res: ServerResponse) => Promise<void>> = {
     '/api/config': handleApiConfig,
+    '/api/config/diagnostics': handleConfigDiagnostics,
     '/api/comments': handleCommentsRoute,
     '/api/comment': handleCommentRoute,
     '/api/asset': handleAsset,

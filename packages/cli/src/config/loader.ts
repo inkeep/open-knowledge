@@ -16,20 +16,25 @@
  * `.ok/config.yml` so the ancestor-walk that detects an OK project can't
  * treat the user's home directory as a project root.
  *
- * The user-global file is read via `readConfigSafely` — invalid files are
- * sidelined to `<path>.invalid-<ISO-timestamp>` and replaced with schema
- * defaults so OK can still boot. The project file errors loud (throws) —
- * project errors are user-fixable in-place and failing fast helps the user
- * notice.
+ * Both layers strip removed keys and continue: a key the engine no longer
+ * reads is deleted from the parsed value and reported on
+ * `LoadConfigResult.diagnostics`, never blocking startup. Genuine corruption
+ * still fails the way it did before: the user-global file is sidelined to
+ * `<path>.invalid-<ISO-timestamp>` and replaced with schema defaults (via
+ * `readConfigSafely`) so OK can still boot, and a schema-invalid project file
+ * throws loud — a project error is user-fixable in place and failing fast
+ * helps the user notice.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  type ConfigDiagnostic,
   type ConfigIssue,
   type ConfigValidationError,
   detectRemovedKeys,
   humanFormat,
   locateIssue,
+  stripRemovedKeys,
 } from '@inkeep/open-knowledge-core';
 import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import { type Config, ConfigSchema } from '@inkeep/open-knowledge-server';
@@ -41,6 +46,19 @@ import { normalizeCwd } from '../utils/normalize-cwd.ts';
 export interface LoadConfigResult {
   config: Config;
   sources: string[];
+  /**
+   * Structured diagnostics for the config that was loaded, across both layers.
+   * Removed keys are stripped and reported here rather than blocking the load;
+   * a sidelined user-global file surfaces its degradation diagnostic too. Empty
+   * for a clean config.
+   */
+  diagnostics: ConfigDiagnostic[];
+  /**
+   * Files this load renamed out of the way to boot on defaults. Surfaced so a
+   * caller can tell the user their file moved — a load that quarantines a file
+   * without saying so reads as a silent data loss.
+   */
+  sidelined: Array<{ from: string; to: string }>;
 }
 
 /** Short TTL for per-cwd config resolution in long-lived MCP sessions. */
@@ -76,6 +94,13 @@ interface LoadedYamlFile {
   source: string | null;
   /** yaml@2 Document AST — needed for `getIn(path)` → byte range translation. */
   doc: Document | null;
+  /**
+   * Why the file yielded no value, when the cause was corruption rather than
+   * absence. Returned rather than only logged so `LoadConfigResult.diagnostics`
+   * can carry it: degrading to defaults silently is what let `ok config
+   * validate` answer "✓ valid" for a file it could not parse.
+   */
+  diagnostic?: ConfigDiagnostic;
 }
 
 /**
@@ -83,9 +108,10 @@ interface LoadedYamlFile {
  * the parsed JS value plus the Document AST + raw source so callers can
  * locate Zod issues back to file:line:col.
  *
- * On YAML syntax errors, logs a warning and returns `value: null` (existing
- * graceful-degradation semantic — broken project YAML doesn't block boot;
- * the user fixes the file and reloads).
+ * On a read or YAML syntax error, logs a warning and returns `value: null`
+ * (existing graceful-degradation semantic — broken project YAML doesn't block
+ * boot; the user fixes the file and reloads) plus a `diagnostic` describing
+ * the cause so the failure is reportable, not just survivable.
  */
 function loadYamlFile(filePath: string): LoadedYamlFile {
   if (!existsSync(filePath)) {
@@ -95,17 +121,30 @@ function loadYamlFile(filePath: string): LoadedYamlFile {
   try {
     raw = readFileSync(filePath, 'utf-8');
   } catch (err) {
-    console.warn(
-      `[config] Failed to read ${filePath}: ${err instanceof Error ? err.message : err}`,
-    );
-    return { value: null, path: filePath, source: null, doc: null };
+    const detail = err instanceof Error ? err.message : String(err);
+    console.warn(`[config] Failed to read ${filePath}: ${detail}`);
+    return {
+      value: null,
+      path: filePath,
+      source: null,
+      doc: null,
+      diagnostic: { code: 'UNREADABLE', detail: `${filePath}: ${detail}` },
+    };
   }
   const doc = parseDocument(raw);
   if (doc.errors.length > 0) {
-    console.warn(
-      `[config] Failed to parse ${filePath}: ${doc.errors.map((e) => e.message).join('; ')}`,
-    );
-    return { value: null, path: filePath, source: raw, doc: null };
+    const detail = doc.errors.map((e) => e.message).join('; ');
+    console.warn(`[config] Failed to parse ${filePath}: ${detail}`);
+    return {
+      value: null,
+      path: filePath,
+      source: raw,
+      doc: null,
+      // The diagnostic variants are value-free by construction, so the file has
+      // to be named in `detail` — otherwise a merged report cannot say which
+      // layer failed to parse.
+      diagnostic: { code: 'YAML_PARSE', detail: `${filePath}: ${detail}` },
+    };
   }
   const parsed = doc.toJSON();
   if (isObject(parsed)) {
@@ -153,11 +192,18 @@ function annotateIssuesWithSource(
 export function loadConfig(cwd?: string): LoadConfigResult {
   const workingDir = cwd ?? process.cwd();
   const sources: string[] = [];
+  const diagnostics: ConfigDiagnostic[] = [];
+  const sidelined: Array<{ from: string; to: string }> = [];
 
-  // Layer 1: user-global config — go through readConfigSafely so a broken
-  // file is sidelined and we boot on defaults instead of hanging the user.
+  // Layer 1: user-global config — go through readConfigSafely so removed keys
+  // are stripped-and-reported and a genuinely broken file is sidelined; either
+  // way we boot instead of hanging the user.
   const userConfigPath = resolveConfigPath('user', workingDir);
   const userResult = readConfigSafely({ absPath: userConfigPath });
+  diagnostics.push(...userResult.diagnostics);
+  if (!userResult.valid && userResult.sidelinedTo !== undefined) {
+    sidelined.push({ from: userConfigPath, to: userResult.sidelinedTo });
+  }
   let merged: Record<string, unknown> = {};
   if (userResult.valid && userResult.source !== undefined) {
     // Re-emit through the JSON projection so deepMerge stays uniform.
@@ -168,26 +214,34 @@ export function loadConfig(cwd?: string): LoadConfigResult {
     // contributed nothing" and proceed with defaults at this layer.
   }
 
-  // Layer 2: project config — fail loud on schema-fail so the user notices.
+  // Layer 2: project config. Strip removed keys and continue — a dead key must
+  // not brick startup — but a schema violation still throws loud, because a
+  // project schema error is user-fixable in place.
   const projectConfigPath = resolve(workingDir, OK_DIR, CONFIG_FILENAME);
   const projectFile = loadYamlFile(projectConfigPath);
+  // A project file that could not be read or parsed degrades to defaults, same
+  // as before — but it now says so. Without this the whole merged config falls
+  // back to defaults, which always validate, so every reporting surface built
+  // on `diagnostics` would call a broken file clean.
+  if (projectFile.diagnostic !== undefined) {
+    diagnostics.push(projectFile.diagnostic);
+  }
   if (projectFile.value !== null) {
-    // Removed keys are a single-tier hard error in the project config (the
-    // user-fixable, fail-fast path). All keys in one pass — no two-trip cycle.
-    const removedKeyErrors = detectRemovedKeys({
+    const removedKeyDiagnostics = detectRemovedKeys({
       value: projectFile.value,
       file: projectFile.path,
       source: projectFile.source,
       doc: projectFile.doc,
     });
-    if (removedKeyErrors.length > 0) {
-      throw new Error(removedKeyErrors.map(humanFormat).join('\n\n'));
-    }
-    merged = deepMerge(merged, projectFile.value);
+    diagnostics.push(...removedKeyDiagnostics);
+    const cleaned =
+      removedKeyDiagnostics.length > 0 ? stripRemovedKeys(projectFile.value) : projectFile.value;
+    merged = deepMerge(merged, cleaned);
     sources.push(projectConfigPath);
   }
 
-  // Validate the merged result with Zod.
+  // Validate the merged result with Zod. Removed keys were already stripped, so
+  // a failure here is a genuine schema violation — throw source-located.
   const result = ConfigSchema.safeParse(merged);
   if (!result.success) {
     const issues = annotateIssuesWithSource(result.error.issues, projectFile);
@@ -195,7 +249,7 @@ export function loadConfig(cwd?: string): LoadConfigResult {
     throw new Error(humanFormat(error));
   }
 
-  return { config: result.data, sources };
+  return { config: result.data, sources, diagnostics, sidelined };
 }
 
 interface CreateProjectConfigResolverOptions {

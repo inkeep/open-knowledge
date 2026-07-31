@@ -58,7 +58,13 @@ A key set in a file more specific than its scope (a user-scope key in `.ok/confi
 | `search.semantic.similarityFloor` | number | (unset) | project-local | Optional hard cutoff (0–1): drops semantic matches whose cosine similarity is below it. Retrieval is rank-based, so most setups leave it unset; set it only for a provider/model whose cosine scale you know. |
 | `linkPreviews.enabled` | boolean | `true` | project-local | Show a rich preview card (site name, page title, description, favicon) when you hover an external link in the editor. Default on (set to `false` to opt out). **When on, hovering an external link sends that link's URL to the destination site** to fetch its preview metadata — outbound egress, one request per previewed link. Previews of links to other documents in the project are read from the local index with no network request and are always on. See [Link previews](#link-previews) below. |
 
-If `.ok/config.yml` contains a key that has been removed from the schema, config load fails with an error naming the replacement — a stale key is never a silent no-op. `ok config migrate` (`--dry-run` to preview; `--scope project|user|both`) strips removed keys from your config files.
+## Removed keys
+
+As new versions of OpenKnowledge are released, some keys are retired from the schema. If any of your config files contains a key the schema no longer reads, that key alone is dropped from the loaded config and reported with the setting that replaced it.
+
+This applies to genuinely retired keys only. A file that cannot be trusted — invalid YAML, or a value that fails validation — is rejected and falls back to defaults.
+
+Run `ok config validate` to see which keys are stale and what replaced each one. `ok config migrate` removes them for you; it defaults to every layer, so a bare run reaches whichever file the key lives in. Narrow it with `--scope project`, `project-local`, `user`, or `all` (the default), and preview with `--dry-run`. Migration deletes retired keys, but it never rewrites anything else on your behalf. A key whose replacement is not a one-to-one translation is removed and reported for you to recreate by hand.
 
 ## Folder properties
 

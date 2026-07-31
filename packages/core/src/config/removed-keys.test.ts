@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { parseDocument } from 'yaml';
 import { isKnownConfigError } from './errors.ts';
-import { detectRemovedKeys, REMOVED_KEYS } from './removed-keys.ts';
+import { detectRemovedKeys, REMOVED_KEYS, stripRemovedKeys } from './removed-keys.ts';
 
 /** Build a nested object `{ a: { b: <leaf> } }` from a dotted path. */
 function nest(path: readonly string[], leaf: unknown): Record<string, unknown> {
@@ -108,5 +108,59 @@ describe('detectRemovedKeys', () => {
     expect(detectRemovedKeys({ value: null })).toEqual([]);
     expect(detectRemovedKeys({ value: 'string' })).toEqual([]);
     expect(detectRemovedKeys({ value: [] })).toEqual([]);
+  });
+});
+
+describe('stripRemovedKeys', () => {
+  // Table-driven: every registry entry, in isolation, must be stripped while a
+  // top-level sibling survives.
+  for (const entry of REMOVED_KEYS) {
+    const dotted = entry.path.join('.');
+    test(`strips ${dotted} and leaves siblings intact`, () => {
+      const input = nest(entry.path, 'x');
+      input.keep = 'me';
+      const out = stripRemovedKeys(input);
+      // The dead key is gone — the detector finds nothing.
+      expect(detectRemovedKeys({ value: out })).toEqual([]);
+      // The sibling survives.
+      expect((out as Record<string, unknown>).keep).toBe('me');
+    });
+  }
+
+  test('does not mutate the input', () => {
+    const input: Record<string, unknown> = {
+      folders: [{ path: 'x' }],
+      content: { dir: 'docs' },
+    };
+    const out = stripRemovedKeys(input) as Record<string, unknown>;
+    expect(input.folders).toBeDefined(); // original untouched
+    expect(out.folders).toBeUndefined();
+    expect(out.content).toEqual({ dir: 'docs' });
+  });
+
+  test('strips several keys in one pass, keeping live siblings under the same branch', () => {
+    const input = {
+      folders: [],
+      server: { host: '0.0.0.0', openOnAgentEdit: true, keepMe: 1 },
+      content: { dir: 'd' },
+    };
+    const out = stripRemovedKeys(input) as Record<string, unknown>;
+    expect(out.folders).toBeUndefined();
+    const server = out.server as Record<string, unknown>;
+    expect(server.host).toBeUndefined();
+    expect(server.openOnAgentEdit).toBeUndefined();
+    // A non-removed sibling under `server` survives.
+    expect(server.keepMe).toBe(1);
+    expect(out.content).toEqual({ dir: 'd' });
+  });
+
+  test('non-object input is returned unchanged', () => {
+    expect(stripRemovedKeys(null)).toBeNull();
+    expect(stripRemovedKeys('s')).toBe('s');
+    expect(stripRemovedKeys([1, 2])).toEqual([1, 2]);
+  });
+
+  test('a clean config is returned structurally unchanged', () => {
+    expect(stripRemovedKeys({ content: { dir: 'docs' } })).toEqual({ content: { dir: 'docs' } });
   });
 });

@@ -1,28 +1,38 @@
 /**
- * Cold-start recovery for invalid config files.
+ * Safe config reader shared by every non-throwing read path (CLI user-global
+ * layer, desktop utility process, server project + project-local layers).
  *
- * Reads a config file, validates it against `ConfigSchema`, and on failure
- * sidelines the broken file (rename to `<path>.invalid-<ISO-timestamp>`) so
- * the server can boot on schema defaults. If the rename itself fails (e.g.,
- * read-only filesystem), the original file is left in place and a warning
- * is logged.
+ * Always returns a usable `Config` plus structured `diagnostics`:
  *
- * Used at boot for `~/.ok/global.yml` (the user-global path).
- * The project path uses the regular loader because project errors are
- * user-fixable in-place — failing fast helps the user notice. User-global
- * errors block every OK boot until manually repaired, so the recovery path
- * is the right default there.
+ * - Removed keys (`REMOVED_KEY`) are stripped from the parsed value and
+ *   reported as diagnostics; the file stays `valid` and every other key
+ *   resolves to its on-disk value. A dead key can never change runtime
+ *   behavior — by contract the engine no longer reads it — so it must never
+ *   invalidate a sibling. The file is left in place (never sidelined);
+ *   `ok config migrate` is the fix path.
  *
- * Sync rather than async because the loader path it feeds (`loadConfig`)
- * is sync and called from Commander.js's preAction hook. The fs ops here
- * are a single file read + at most one rename — sub-millisecond on any
+ * - Genuine corruption (`YAML_PARSE`, `SCHEMA_INVALID`) means the file cannot
+ *   be trusted, so `valid` is false, `value` is schema defaults, and — when
+ *   `sideline` is set — the file is renamed to `<path>.invalid-<ISO-timestamp>`
+ *   so the server can still boot. If the rename fails (e.g. read-only
+ *   filesystem), the original is left in place and a warning is logged.
+ *
+ * Sync rather than async because the loader path it feeds (`loadConfig`) is
+ * sync and called from Commander.js's preAction hook. The fs ops here are a
+ * single file read + at most one rename — sub-millisecond on any
  * non-pathological filesystem.
  */
 
 import { existsSync, readFileSync, renameSync } from 'node:fs';
 import { type Document, parseDocument } from 'yaml';
-import { type ConfigIssue, type ConfigValidationError, humanFormat } from './errors.ts';
-import { detectRemovedKeys } from './removed-keys.ts';
+import {
+  type ConfigDiagnostic,
+  type ConfigIssue,
+  type ConfigValidationError,
+  isKnownConfigError,
+  type RemovedKeyDiagnostic,
+} from './errors.ts';
+import { detectRemovedKeys, stripRemovedKeys } from './removed-keys.ts';
 import { type Config, ConfigSchema } from './schema.ts';
 import { locateIssue } from './source-locator.ts';
 
@@ -53,6 +63,13 @@ export type ReadConfigSafelyResult =
       value: Config;
       /** Absolute path of the file that was read. `undefined` when missing. */
       source?: string;
+      /**
+       * Removed-key diagnostics; empty when the file carried no dead keys.
+       * Narrower than the degraded arm's type on purpose: a valid read can only
+       * ever report stripped keys, so a corruption code landing here is a type
+       * error rather than something a caller has to notice at runtime.
+       */
+      diagnostics: RemovedKeyDiagnostic[];
     }
   | {
       valid: false;
@@ -61,6 +78,8 @@ export type ReadConfigSafelyResult =
       error: ConfigValidationError;
       /** Where the original broken file was sidelined to, if rename succeeded. */
       sidelinedTo?: string;
+      /** Diagnostic mirroring the degradation (`YAML_PARSE` / `SCHEMA_INVALID`). */
+      diagnostics: ConfigDiagnostic[];
     };
 
 /**
@@ -125,7 +144,7 @@ export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSa
 
   // Missing file: no error, just defaults. The loader's existing semantic.
   if (!existsSync(absPath)) {
-    return { valid: true, value: defaults, source: undefined };
+    return { valid: true, value: defaults, source: undefined, diagnostics: [] };
   }
 
   // Read raw source.
@@ -135,14 +154,20 @@ export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSa
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     warn(`[config] Could not read ${absPath}: ${detail}. Using schema defaults.`);
+    // A layer that could not be read at all must stay distinguishable from one
+    // that read cleanly, or the reporting surfaces answer all-clear for it.
+    const diagnostic: ConfigDiagnostic = { code: 'UNREADABLE', detail };
     return {
       valid: false,
       value: defaults,
-      error: { code: 'UNKNOWN', message: `Read failed: ${detail}` },
+      error: diagnostic,
+      diagnostics: [{ ...diagnostic }],
     };
   }
 
-  // Parse via Document (preserves source positions for issue location).
+  // Parse via Document (preserves source positions for issue location). A YAML
+  // syntax error means the file cannot be trusted: sideline and boot on
+  // defaults, unchanged from before strip-and-continue.
   const doc = parseDocument(source);
   if (doc.errors.length > 0) {
     const detail = doc.errors.map((e) => e.message).join('; ');
@@ -151,17 +176,30 @@ export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSa
         (sideline ? '' : ' Pass-through mode: file left in place.'),
     );
     const sidelinedTo = sideline ? attemptSideline(absPath, timestamp, warn) : undefined;
+    const diagnostic: ConfigDiagnostic = { code: 'YAML_PARSE', detail };
     return {
       valid: false,
       value: defaults,
-      error: { code: 'YAML_PARSE', detail },
+      error: diagnostic,
+      // Copy rather than alias: `error` and `diagnostics` are independent
+      // public fields, so a caller normalizing one must not mutate the other.
+      diagnostics: [{ ...diagnostic }],
       ...(sidelinedTo !== undefined ? { sidelinedTo } : {}),
     };
   }
 
-  // Validate against ConfigSchema.
   const merged = doc.toJSON() ?? {};
-  const parsed = ConfigSchema.safeParse(merged);
+
+  // Removed keys pass loose-mode schema validation silently. Detect them
+  // against the original document (so diagnostics stay source-located), then
+  // strip them from a clean copy and validate that copy — re-applying schema
+  // defaults to the cleaned object. A removed key is never a reason to reject
+  // the file: the engine no longer reads it, so stripping it cannot change the
+  // resolved value of any live sibling.
+  const removedKeyDiagnostics = detectRemovedKeys({ value: merged, file: absPath, source, doc });
+  const cleaned = removedKeyDiagnostics.length > 0 ? stripRemovedKeys(merged) : merged;
+
+  const parsed = ConfigSchema.safeParse(cleaned);
   if (!parsed.success) {
     const error = buildSchemaInvalidError(parsed, doc, source, absPath);
     warn(
@@ -169,36 +207,29 @@ export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSa
         (sideline ? '' : ' Pass-through mode: file left in place.'),
     );
     const sidelinedTo = sideline ? attemptSideline(absPath, timestamp, warn) : undefined;
+    // Copied for the same reason as the YAML-parse arm above: `error` and
+    // `diagnostics` must not share a mutable object across two public fields.
+    // Removed keys detected before validation are still reported here — a
+    // schema error elsewhere in the file must not hide them and force the user
+    // into the two-trip fix cycle `detectRemovedKeys` exists to avoid.
+    const diagnostics: ConfigDiagnostic[] = [
+      ...removedKeyDiagnostics,
+      ...(isKnownConfigError(error) && error.code === 'SCHEMA_INVALID' ? [{ ...error }] : []),
+    ];
     return {
       valid: false,
       value: defaults,
       error,
+      diagnostics,
       ...(sidelinedTo !== undefined ? { sidelinedTo } : {}),
     };
   }
 
-  // Removed keys pass loose-mode schema validation silently. Reject them here
-  // so a stale file is sidelined and boots on defaults rather than applying a
-  // no-op key the user believes took effect. This is the recovery path
-  // (user-global `~/.ok/global.yml`); the project loader fails loud instead so
-  // a user-fixable file gets fixed.
-  const removedKeyErrors = detectRemovedKeys({ value: merged, file: absPath, source, doc });
-  const firstRemovedKeyError = removedKeyErrors[0];
-  if (firstRemovedKeyError !== undefined) {
-    warn(
-      `[config] ${absPath} carries removed config key(s):\n` +
-        `${removedKeyErrors.map(humanFormat).join('\n\n')}\n` +
-        `Using schema defaults.` +
-        (sideline ? '' : ' Pass-through mode: file left in place.'),
-    );
-    const sidelinedTo = sideline ? attemptSideline(absPath, timestamp, warn) : undefined;
-    return {
-      valid: false,
-      value: defaults,
-      error: firstRemovedKeyError,
-      ...(sidelinedTo !== undefined ? { sidelinedTo } : {}),
-    };
-  }
-
-  return { valid: true, value: parsed.data, source: absPath };
+  // Strip-and-continue: the file is valid, with any dead keys removed. The
+  // dead keys are returned, not warned about. Several callers re-read config
+  // fresh on every request, so warning here would emit the same multi-line
+  // notice on every link hover or lint pass — and it would arrive under a
+  // caller's "could not read" label for a read that succeeded. Reporting is
+  // the caller's job, once, where it can reach a user.
+  return { valid: true, value: parsed.data, source: absPath, diagnostics: removedKeyDiagnostics };
 }

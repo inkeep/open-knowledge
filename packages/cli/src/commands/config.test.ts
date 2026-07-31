@@ -1,10 +1,17 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { REMOVED_KEYS } from '@inkeep/open-knowledge-core';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { CONFIG_FILENAME, OK_DIR } from '../constants.ts';
-import { buildClearPatchForTest, DROPPED_FIELD_PATHS, runMigrate, runValidate } from './config.ts';
+import {
+  buildClearPatchForTest,
+  configCommand,
+  DROPPED_FIELD_PATHS,
+  runMigrate,
+  runValidate,
+  shouldAnnounceRemovedKeys,
+} from './config.ts';
 
 // Re-exported via the test module helper at the bottom of this file. The
 // `buildClearPatch` helper isn't exported by config.ts directly (kept private
@@ -33,6 +40,12 @@ function projectConfigPath(cwd: string): string {
   return join(cwd, OK_DIR, CONFIG_FILENAME);
 }
 
+function projectLocalConfigPath(cwd: string): string {
+  // Project-local config lives at `<cwd>/.ok/local/config.yml` (gitignored,
+  // per-machine); see `resolveConfigPath('project-local', …)` in core.
+  return join(cwd, OK_DIR, 'local', CONFIG_FILENAME);
+}
+
 function userConfigPath(home: string): string {
   // User-global config lives at `~/.ok/global.yml` (distinct from project
   // `.ok/config.yml`); see `resolveConfigPath('user', …)` in core.
@@ -49,10 +62,13 @@ describe('runValidate', () => {
     const stderr: string[] = [];
     const stdout: string[] = [];
     const outcome = runValidate({
+      readProjectLocalFn: () => [],
       loadConfigFn: () =>
         ({
           config: {} as never,
           sources: ['/home/test/project/.ok/config.yml'],
+          diagnostics: [],
+          sidelined: [],
         }) as never,
       log: (msg) => stderr.push(msg),
       error: (msg) => stderr.push(msg),
@@ -63,19 +79,107 @@ describe('runValidate', () => {
     expect(stdout).toEqual([]);
   });
 
+  test('degraded layer → headline does not claim valid, and names the file it moved aside', () => {
+    // A user whose global config is corrupt gets it renamed out of the way so
+    // OK can boot on defaults. Reporting an unqualified "valid" here sends a
+    // reader who skims for the checkmark away believing nothing happened, and
+    // saying nothing about the rename reads as the file having vanished.
+    //
+    // The headline stays code-agnostic: this fixture is a YAML_PARSE, where the
+    // file read fine and the syntax is what failed, so a "could not be read"
+    // summary would send the user after file permissions. `humanFormat` below
+    // it names the real cause.
+    const stderr: string[] = [];
+    const outcome = runValidate({
+      readProjectLocalFn: () => [],
+      loadConfigFn: () =>
+        ({
+          config: {} as never,
+          sources: ['/home/test/project/.ok/config.yml'],
+          diagnostics: [{ code: 'YAML_PARSE', detail: 'unexpected end of flow sequence' }],
+          sidelined: [
+            {
+              from: '/home/test/.ok/global.yml',
+              to: '/home/test/.ok/global.yml.invalid-2026-01-01T00-00-00-000Z',
+            },
+          ],
+        }) as never,
+      log: (msg) => stderr.push(msg),
+      error: (msg) => stderr.push(msg),
+    });
+    const joined = stderr.join('\n');
+    expect(outcome.ok).toBe(true);
+    expect(joined).not.toContain('✓ Configuration valid');
+    expect(joined).toContain('config layer(s) had issues');
+    expect(joined).not.toContain('could not be read');
+    expect(joined).toContain('unexpected end of flow sequence');
+    expect(joined).toContain('/home/test/.ok/global.yml.invalid-2026-01-01T00-00-00-000Z');
+  });
+
+  test('removed keys alone do not qualify the headline', () => {
+    // A stripped key leaves the file usable, so it must not downgrade the
+    // headline the way an unreadable layer does.
+    const stderr: string[] = [];
+    runValidate({
+      readProjectLocalFn: () => [],
+      loadConfigFn: () =>
+        ({
+          config: {} as never,
+          sources: ['/home/test/project/.ok/config.yml'],
+          diagnostics: [{ code: 'REMOVED_KEY', path: ['server', 'host'], redirect: 'Use --host.' }],
+          sidelined: [],
+        }) as never,
+      log: (msg) => stderr.push(msg),
+      error: (msg) => stderr.push(msg),
+    });
+    const joined = stderr.join('\n');
+    expect(joined).toContain('✓ Configuration valid');
+    expect(joined).toContain('server.host');
+  });
+
   test('no sources → "defaults only"', () => {
     const stderr: string[] = [];
     const outcome = runValidate({
-      loadConfigFn: () => ({ config: {} as never, sources: [] }) as never,
+      readProjectLocalFn: () => [],
+      loadConfigFn: () =>
+        ({ config: {} as never, sources: [], diagnostics: [], sidelined: [] }) as never,
       log: (msg) => stderr.push(msg),
     });
     expect(outcome.ok).toBe(true);
     expect(stderr.some((m) => m.includes('defaults only'))).toBe(true);
   });
 
+  test('removed key in project config → valid (exit 0) with the finding + redirect reported', () => {
+    // Full path: a committed config carrying a removed key still validates
+    // (removed keys never block), and the finding is reported with its
+    // replacement guidance. Mirrors the real-loadConfig test above.
+    const project = makeTempProject();
+    try {
+      writeConfigYaml(
+        projectConfigPath(project.cwd),
+        'content:\n  dir: docs\nserver:\n  host: 0.0.0.0\n',
+      );
+      const out: string[] = [];
+      const outcome = runValidate({
+        cwd: project.cwd,
+        log: (msg) => out.push(msg),
+        error: (msg) => out.push(msg),
+      });
+      expect(outcome.ok).toBe(true);
+      const joined = out.join('\n');
+      expect(joined).toContain('✓ Configuration valid');
+      // Names the dead key and surfaces its replacement guidance.
+      expect(joined).toContain('server.host');
+      expect(joined).toContain('--host');
+    } finally {
+      project.cleanup();
+    }
+  });
+
   test('schema-fail → ok:false and stderr contains the thrown error message', () => {
     const stderr: string[] = [];
     const outcome = runValidate({
+      readProjectLocalFn: () => [],
       loadConfigFn: () => {
         throw new Error('Invalid configuration at /tmp/.ok/config.yml:7:18\n  ...');
       },
@@ -84,6 +188,59 @@ describe('runValidate', () => {
     expect(outcome.ok).toBe(false);
     expect(stderr.some((m) => m.includes('Invalid configuration'))).toBe(true);
     expect(stderr.some((m) => m.includes(':7:18'))).toBe(true);
+  });
+
+  // `loadConfig` merges user + committed project only, so the per-machine layer
+  // — where a stale key silently discards a live `autoSync.mode` — was the one
+  // `validate` could not see: a user following the docs got a ✓ and no way to
+  // find the dead key without a running server.
+  test('a removed key in project-local config is reported, not answered with ✓', () => {
+    const project = makeTempProject();
+    try {
+      writeConfigYaml(
+        projectLocalConfigPath(project.cwd),
+        'autoSync:\n  mode: full\nappearance:\n  sidebar:\n    showAllFiles: false\n',
+      );
+      const out: string[] = [];
+      const outcome = runValidate({
+        cwd: project.cwd,
+        log: (msg) => out.push(msg),
+        error: (msg) => out.push(msg),
+      });
+
+      const joined = out.join('\n');
+      expect(outcome.ok).toBe(true);
+      expect(joined).toContain('appearance.sidebar.showAllFiles');
+      // A removed key leaves the layer usable, so the headline stays clean —
+      // the finding below it is what the user acts on.
+      expect(joined).toContain('✓ Configuration valid');
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  test('reporting the project-local layer never renames it', () => {
+    // The read is `sideline: false`: `validate` describes a corrupt layer, it
+    // does not quarantine one. A command that moved a file aside just for being
+    // inspected would be a destructive read.
+    const project = makeTempProject();
+    try {
+      const localPath = projectLocalConfigPath(project.cwd);
+      writeConfigYaml(localPath, 'autoSync:\n  mode: [invalid yaml');
+      const out: string[] = [];
+
+      const outcome = runValidate({
+        cwd: project.cwd,
+        log: (msg) => out.push(msg),
+        error: (msg) => out.push(msg),
+      });
+
+      expect(outcome.ok).toBe(true);
+      expect(out.join('\n')).toContain('config layer(s) had issues');
+      expect(existsSync(localPath)).toBe(true);
+    } finally {
+      project.cleanup();
+    }
   });
 
   test('source-located error rendering through real loadConfig', () => {
@@ -104,6 +261,20 @@ describe('runValidate', () => {
       expect(joined).toContain('^');
     } finally {
       project.cleanup();
+    }
+  });
+});
+
+describe('shouldAnnounceRemovedKeys', () => {
+  test('suppressed for the config command family, which reports them itself', () => {
+    // `config validate` renders the findings as its result and `config migrate`
+    // removes them; a startup announcement would print each finding twice.
+    expect(shouldAnnounceRemovedKeys('config')).toBe(false);
+  });
+
+  test('announced for every other command, which would otherwise never show them', () => {
+    for (const name of ['start', 'ui', 'mcp', 'status', 'embeddings', undefined]) {
+      expect(shouldAnnounceRemovedKeys(name)).toBe(true);
     }
   });
 });
@@ -327,6 +498,173 @@ describe('runMigrate', () => {
     expect(outcome.outcomes.length).toBe(2);
   });
 
+  test('--scope project-local strips removed keys, preserves other local settings', async () => {
+    const localPath = projectLocalConfigPath(project.cwd);
+    // The field-bug shape: an explicit per-machine autoSync.mode alongside the
+    // dead appearance.sidebar.showAllFiles key.
+    writeConfigYaml(
+      localPath,
+      'autoSync:\n  mode: full\nappearance:\n  sidebar:\n    showAllFiles: true\n',
+    );
+    const outcome = await runMigrate({
+      cwd: project.cwd,
+      scope: 'project-local',
+      homedirOverride: project.userHome,
+      log: () => {},
+    });
+    expect(outcome.ok).toBe(true);
+    const migrated = readFileSync(localPath, 'utf-8');
+    expect(migrated).not.toContain('showAllFiles');
+    // The unrelated per-machine setting survives on disk.
+    expect(migrated).toContain('mode: full');
+    const localOutcome = outcome.outcomes.find((o) => o.scope === 'project-local');
+    expect(localOutcome?.removed).toContain('appearance.sidebar.showAllFiles');
+    expect(outcome.outcomes.every((o) => o.scope === 'project-local')).toBe(true);
+  });
+
+  test('--scope project-local is idempotent — second run writes nothing', async () => {
+    const localPath = projectLocalConfigPath(project.cwd);
+    writeConfigYaml(
+      localPath,
+      'autoSync:\n  mode: full\nappearance:\n  sidebar:\n    showAllFiles: true\n',
+    );
+    await runMigrate({
+      cwd: project.cwd,
+      scope: 'project-local',
+      homedirOverride: project.userHome,
+      log: () => {},
+    });
+    const afterFirst = readFileSync(localPath, 'utf-8');
+    const stdout: string[] = [];
+    const outcome = await runMigrate({
+      cwd: project.cwd,
+      scope: 'project-local',
+      homedirOverride: project.userHome,
+      log: (msg) => stdout.push(msg),
+    });
+    expect(outcome.ok).toBe(true);
+    expect(stdout).toEqual(['No deprecated fields found.']);
+    expect(readFileSync(localPath, 'utf-8')).toBe(afterFirst);
+  });
+
+  test('--scope project-local --dry-run previews without writing', async () => {
+    const localPath = projectLocalConfigPath(project.cwd);
+    const original = 'autoSync:\n  mode: full\nappearance:\n  sidebar:\n    showAllFiles: true\n';
+    writeConfigYaml(localPath, original);
+    const stdout: string[] = [];
+    const outcome = await runMigrate({
+      cwd: project.cwd,
+      scope: 'project-local',
+      dryRun: true,
+      homedirOverride: project.userHome,
+      log: (msg) => stdout.push(msg),
+    });
+    expect(outcome.ok).toBe(true);
+    expect(readFileSync(localPath, 'utf-8')).toBe(original);
+    expect(stdout.some((m) => m.includes('[dry-run]') && m.includes('showAllFiles'))).toBe(true);
+    const localOutcome = outcome.outcomes.find((o) => o.scope === 'project-local');
+    expect(localOutcome?.removed).toEqual([]);
+  });
+
+  test('--scope all migrates project, project-local, and user files', async () => {
+    const wsPath = projectConfigPath(project.cwd);
+    const localPath = projectLocalConfigPath(project.cwd);
+    const userPath = userConfigPath(project.userHome);
+    writeConfigYaml(wsPath, 'folders:\n  - notes\ncontent:\n  dir: docs\n');
+    writeConfigYaml(
+      localPath,
+      'autoSync:\n  mode: full\nappearance:\n  sidebar:\n    showAllFiles: true\n',
+    );
+    writeConfigYaml(userPath, 'appearance:\n  editorModeDefault: source\n');
+    const outcome = await runMigrate({
+      cwd: project.cwd,
+      scope: 'all',
+      homedirOverride: project.userHome,
+      log: () => {},
+    });
+    expect(outcome.ok).toBe(true);
+    expect(readFileSync(wsPath, 'utf-8')).not.toContain('folders');
+    expect(readFileSync(wsPath, 'utf-8')).toContain('dir: docs');
+    expect(readFileSync(localPath, 'utf-8')).not.toContain('showAllFiles');
+    expect(readFileSync(localPath, 'utf-8')).toContain('mode: full');
+    expect(readFileSync(userPath, 'utf-8')).not.toContain('editorModeDefault');
+    expect(outcome.outcomes.map((o) => o.scope).sort()).toEqual([
+      'project',
+      'project-local',
+      'user',
+    ]);
+  });
+
+  test('--scope both leaves the project-local file untouched (alias = project + user)', async () => {
+    const wsPath = projectConfigPath(project.cwd);
+    const localPath = projectLocalConfigPath(project.cwd);
+    const userPath = userConfigPath(project.userHome);
+    writeConfigYaml(wsPath, 'folders:\n  - notes\n');
+    writeConfigYaml(localPath, 'appearance:\n  sidebar:\n    showAllFiles: true\n');
+    writeConfigYaml(userPath, 'appearance:\n  editorModeDefault: source\n');
+    const localOriginal = readFileSync(localPath, 'utf-8');
+    const outcome = await runMigrate({
+      cwd: project.cwd,
+      scope: 'both',
+      homedirOverride: project.userHome,
+      log: () => {},
+    });
+    expect(outcome.ok).toBe(true);
+    expect(readFileSync(wsPath, 'utf-8')).not.toContain('folders');
+    expect(readFileSync(userPath, 'utf-8')).not.toContain('editorModeDefault');
+    // project-local is deliberately outside `both` — byte-for-byte unchanged.
+    expect(readFileSync(localPath, 'utf-8')).toBe(localOriginal);
+    expect(outcome.outcomes.map((o) => o.scope).sort()).toEqual(['project', 'user']);
+  });
+
+  test('the default scope reaches project-local, so the redirect hint is truthful', async () => {
+    // Every removed-key redirect tells the user to run a bare `ok config
+    // migrate`. If the default reach excluded project-local, following that
+    // instruction verbatim would not fix a dead key living there.
+    const wsPath = projectConfigPath(project.cwd);
+    const localPath = projectLocalConfigPath(project.cwd);
+    const userPath = userConfigPath(project.userHome);
+    writeConfigYaml(wsPath, 'folders:\n  - notes\n');
+    writeConfigYaml(localPath, 'appearance:\n  sidebar:\n    showAllFiles: true\n');
+    writeConfigYaml(userPath, 'appearance:\n  editorModeDefault: source\n');
+    // No `scope` passed — exercises the command's default reach.
+    const outcome = await runMigrate({
+      cwd: project.cwd,
+      homedirOverride: project.userHome,
+      log: () => {},
+    });
+    expect(outcome.ok).toBe(true);
+    expect(readFileSync(localPath, 'utf-8')).not.toContain('showAllFiles');
+    expect(outcome.outcomes.map((o) => o.scope).sort()).toEqual([
+      'project',
+      'project-local',
+      'user',
+    ]);
+  });
+
+  test('content.include is stripped without writing .okignore', async () => {
+    const wsPath = projectConfigPath(project.cwd);
+    writeConfigYaml(wsPath, 'content:\n  dir: .\n  include:\n    - "docs/**/*.md"\n');
+    // content.dir defaults to '.', so any auto-created .okignore would land at
+    // the project root beside .ok/.
+    const okignorePath = join(project.cwd, '.okignore');
+    const outcome = await runMigrate({
+      cwd: project.cwd,
+      scope: 'project',
+      homedirOverride: project.userHome,
+      log: () => {},
+    });
+    expect(outcome.ok).toBe(true);
+    const migrated = readFileSync(wsPath, 'utf-8');
+    expect(migrated).not.toContain('include:');
+    expect(migrated).toContain('dir: .');
+    // include→.okignore inverts intent, so the codemod only deletes the dead
+    // key — it must never synthesize an .okignore on the user's behalf.
+    expect(existsSync(okignorePath)).toBe(false);
+    const wsOutcome = outcome.outcomes.find((o) => o.scope === 'project');
+    expect(wsOutcome?.removed).toContain('content.include');
+  });
+
   test('unparseable YAML in project → ok:false with parse error reported', async () => {
     const wsPath = projectConfigPath(project.cwd);
     writeConfigYaml(wsPath, '{{{ not yaml at all\n');
@@ -363,6 +701,40 @@ describe('runMigrate', () => {
     expect(readFileSync(wsPath, 'utf-8')).toBe(wsOriginal);
     const wsOutcome = outcome.outcomes.find((o) => o.scope === 'project');
     expect(wsOutcome?.error).toContain('simulated disk full');
+  });
+});
+
+describe('configCommand migrate --scope', () => {
+  function migrateSubcommand() {
+    const migrate = configCommand().commands.find((c) => c.name() === 'migrate');
+    if (migrate === undefined) throw new Error('migrate subcommand not registered');
+    return migrate;
+  }
+
+  test('help advertises project | project-local | user | all', () => {
+    const migrate = migrateSubcommand();
+    const scopeOption = migrate.options.find((o) => o.long === '--scope');
+    // The option description is the source of the rendered help line; asserting
+    // it directly avoids coupling to commander's terminal-width wrapping.
+    expect(scopeOption?.description).toBe(
+      'Which scope to migrate: project | project-local | user | all',
+    );
+    expect(migrate.helpInformation()).toContain('project-local');
+  });
+
+  test('unrecognized --scope prints the accepted values and exits 2', async () => {
+    const savedExitCode = process.exitCode;
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await configCommand().parseAsync(['migrate', '--scope', 'bogus'], { from: 'user' });
+      expect(process.exitCode).toBe(2);
+      const printed = errorSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+      expect(printed).toContain('project | project-local | user | all');
+    } finally {
+      // Restore before assertions can leak exit code 2 to the vitest process.
+      process.exitCode = savedExitCode;
+      errorSpy.mockRestore();
+    }
   });
 });
 

@@ -54,15 +54,40 @@ export type FieldScope = z.infer<typeof FieldScopeSchema>;
 export const WriteScopeSchema = z.enum(['user', 'project', 'project-local']);
 export type WriteScope = z.infer<typeof WriteScopeSchema>;
 
+/**
+ * Read-path diagnostic variants, reused as members of both the full
+ * validation-error union and the narrower `ConfigDiagnosticSchema` so each
+ * shape is defined once.
+ */
+const YamlParseErrorSchema = z.object({
+  code: z.literal('YAML_PARSE'),
+  detail: z.string(),
+});
+/**
+ * The file exists but could not be read at all — permissions, a directory
+ * where a file was expected, a symlink loop, a delete racing the read. Its own
+ * code rather than the catch-all `UNKNOWN` so the reporting surfaces can tell
+ * "this layer could not be read" apart from "this layer read cleanly".
+ */
+const UnreadableErrorSchema = z.object({
+  code: z.literal('UNREADABLE'),
+  detail: z.string(),
+});
+const SchemaInvalidErrorSchema = z.object({
+  code: z.literal('SCHEMA_INVALID'),
+  issues: z.array(ConfigIssueSchema),
+});
+const RemovedKeyErrorSchema = z.object({
+  code: z.literal('REMOVED_KEY'),
+  path: z.array(z.string()),
+  redirect: z.string(),
+  source: ConfigIssueSourceSchema.optional(),
+});
+
 export const KnownConfigValidationErrorSchema = z.discriminatedUnion('code', [
-  z.object({
-    code: z.literal('YAML_PARSE'),
-    detail: z.string(),
-  }),
-  z.object({
-    code: z.literal('SCHEMA_INVALID'),
-    issues: z.array(ConfigIssueSchema),
-  }),
+  YamlParseErrorSchema,
+  SchemaInvalidErrorSchema,
+  UnreadableErrorSchema,
   z.object({
     code: z.literal('SCOPE_VIOLATION'),
     path: z.array(z.string()),
@@ -82,12 +107,7 @@ export const KnownConfigValidationErrorSchema = z.discriminatedUnion('code', [
       }),
     ),
   }),
-  z.object({
-    code: z.literal('REMOVED_KEY'),
-    path: z.array(z.string()),
-    redirect: z.string(),
-    source: ConfigIssueSourceSchema.optional(),
-  }),
+  RemovedKeyErrorSchema,
   z.object({
     code: z.literal('WRITE_ERROR'),
     detail: z.string(),
@@ -110,6 +130,81 @@ export const KnownConfigValidationErrorSchema = z.discriminatedUnion('code', [
 ]);
 
 export type KnownConfigValidationError = z.infer<typeof KnownConfigValidationErrorSchema>;
+
+/**
+ * The subset of validation-error variants a config *read* can surface: a
+ * stripped removed key, or a whole-file YAML-parse / schema-invalid
+ * degradation. The write-path variants (SCOPE_VIOLATION, WRITE_ERROR, …) never
+ * arise from a read and are excluded. This is the return-value contract shared
+ * by `readConfigSafely` and the config-diagnostics endpoint.
+ */
+export const ConfigDiagnosticSchema = z.discriminatedUnion('code', [
+  RemovedKeyErrorSchema,
+  YamlParseErrorSchema,
+  SchemaInvalidErrorSchema,
+  UnreadableErrorSchema,
+]);
+
+export type ConfigDiagnostic = z.infer<typeof ConfigDiagnosticSchema>;
+
+/** The removed-key diagnostic — every entry `detectRemovedKeys` produces. */
+export type RemovedKeyDiagnostic = Extract<ConfigDiagnostic, { code: 'REMOVED_KEY' }>;
+
+/**
+ * A config diagnostic tagged with the scope and absolute file it was read from
+ * — the per-finding shape the config-diagnostics endpoint returns across the
+ * user, committed-project, and project-local layers.
+ *
+ * A removed-key finding carries the dead key's `path` and the registry's
+ * `redirect` guidance. The corruption variants carry only their layer identity:
+ * a YAML-parse or schema-invalid detail echoes the file's raw bytes, and this
+ * response never exposes config values — the readable detail for a corrupt
+ * layer stays in the server log and `ok config validate`.
+ *
+ * `file` is deliberately the absolute path, and it is the one host-derived
+ * string in this response: the user-scope path runs through the home directory,
+ * so it carries the OS username. That is accepted rather than incidental —
+ * naming the exact file is the whole fix affordance, and a relative path cannot
+ * disambiguate three layers. It is worth knowing that under `remotePublicHost`
+ * the origin gate admits the tunnel origin, so this path is readable by whoever
+ * that tunnel is shared with. No config value ever joins it.
+ */
+export const ScopedConfigDiagnosticSchema = z.discriminatedUnion('code', [
+  z.object({
+    code: z.literal('REMOVED_KEY'),
+    scope: WriteScopeSchema,
+    file: z.string(),
+    path: z.array(z.string()),
+    redirect: z.string(),
+  }),
+  z.object({
+    code: z.literal('YAML_PARSE'),
+    scope: WriteScopeSchema,
+    file: z.string(),
+  }),
+  z.object({
+    code: z.literal('SCHEMA_INVALID'),
+    scope: WriteScopeSchema,
+    file: z.string(),
+  }),
+  z.object({
+    code: z.literal('UNREADABLE'),
+    scope: WriteScopeSchema,
+    file: z.string(),
+  }),
+]);
+
+export type ScopedConfigDiagnostic = z.infer<typeof ScopedConfigDiagnosticSchema>;
+
+/**
+ * Response body for `GET /api/config/diagnostics`. An object envelope (not a
+ * bare array) keeps future top-level fields additive.
+ */
+export const ConfigDiagnosticsReportSchema = z.object({
+  diagnostics: z.array(ScopedConfigDiagnosticSchema),
+});
+
+export type ConfigDiagnosticsReport = z.infer<typeof ConfigDiagnosticsReportSchema>;
 
 // Derived from the discriminated-union options so a new variant in
 // `KnownConfigValidationErrorSchema` flows through to `isKnownConfigError`
@@ -197,6 +292,8 @@ export function humanFormat(error: ConfigValidationError): string {
   switch (error.code) {
     case 'YAML_PARSE':
       return `Failed to parse YAML: ${error.detail}`;
+    case 'UNREADABLE':
+      return `Could not read the file: ${error.detail}`;
     case 'SCHEMA_INVALID': {
       if (error.issues.length === 0) return 'Invalid configuration.';
       // Group issues by file so a single header line precedes each file's

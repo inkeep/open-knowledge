@@ -19,6 +19,7 @@ import {
   CONFIG_DOC_NAME_PROJECT_LOCAL,
   CONFIG_DOC_NAME_USER,
   CONFIG_DOC_NAMES,
+  type ConfigDiagnosticsReport,
   type ConfigIssue,
   createBasenameIndex,
   DEFAULT_ATTACHMENT_FOLDER_PATH,
@@ -40,6 +41,7 @@ import {
   toEffectiveBase,
 } from '@inkeep/open-knowledge-core';
 import {
+  collectConfigDiagnostics,
   readConfigSafely,
   resolveConfigPath,
   writeConfigPatch,
@@ -434,6 +436,18 @@ export interface ServerInstance {
   /** Active sync engine instance, or null if dormant / no remote detected. */
   readonly syncEngine: SyncEngine | null;
   /**
+   * Fresh-read accessor for the project-local `linkPreviews.enabled` egress
+   * setting, resolved through the same strip-and-continue reader the HTTP
+   * link-preview handler consumes. Reads disk on each call (a Settings edit
+   * applies without a restart) and fails closed when the config can't be
+   * trusted.
+   *
+   * @internal Exposed so tests can pin the fail-closed/fail-open direction
+   * directly, which is the highest-risk behavior in the config read path.
+   * Production consumers reach this through the api-extension option, not here.
+   */
+  readonly getLinkPreviewsEnabled: () => boolean;
+  /**
    * Wiki-embed resolver (basename → contentDir-relative path). Exposed so
    * consumers that apply agent markdown writes outside the HTTP handlers
    * (the ACP thread host) resolve `![[file.ext]]` refs identically.
@@ -680,7 +694,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     if (!local.valid) {
       log.warn(
         {},
-        '[config] project-local autoSync.enabled unavailable (config invalid) — falling back to the committed project default',
+        '[config] project-local autoSync.mode unavailable (config invalid) — falling back to the committed project default',
       );
     }
     // Unanswered on this machine: consult the committed project default
@@ -770,13 +784,45 @@ export function createServer(options: ServerOptions): ServerInstance {
       sideline: false,
       warn: (message) => log.warn({ message }, '[config] could not read project-local config'),
     });
-    // Fail closed on a degraded read (unreadable / invalid YAML / schema-invalid
-    // / removed-key): only a genuinely-absent config resolves to the on-by-default
-    // schema value. Without this, an explicit `enabled: false` opt-out would
-    // silently revert to egress-ON the moment the project-local file became
-    // unparseable (concurrent writer, crash mid-write, a stale key elsewhere).
+    // Fail closed on a genuinely degraded read — unreadable, invalid YAML, or
+    // schema-invalid — where only schema defaults are available: an explicit
+    // `enabled: false` opt-out must not silently revert to egress-ON when the
+    // file can't be trusted (concurrent writer, crash mid-write). A stripped
+    // removed key is NOT a degraded read — the read stays valid with the dead
+    // key dropped — so an unrelated stale key leaves this opt-out intact.
     if (!local.valid) return false;
     return local.value.linkPreviews?.enabled === true;
+  }
+
+  // Fresh-read collector for `GET /api/config/diagnostics`. Reads all three
+  // config layers on each request (not the boot snapshot), resolving the same
+  // files the readers above use, so a hand-edit or `ok config migrate` is
+  // reflected without a restart. Diagnostics are returned to the caller, so the
+  // per-read warning is demoted to debug — a polled endpoint must not re-log a
+  // stale key on every request.
+  function readConfigDiagnostics(): ConfigDiagnosticsReport {
+    return collectConfigDiagnostics({
+      cwd: projectDir,
+      homedirOverride: configHomedirOverride,
+      warn: (message) => log.debug({ message }, '[config] diagnostics read'),
+    });
+  }
+
+  /**
+   * Report stale config keys once, at boot. The reader strips them and returns
+   * them rather than logging, because several readers above re-read config on
+   * every request and would otherwise repeat this on every link hover or lint
+   * pass. One line per key, at boot, is the whole server-side log signal; the
+   * live view is the config-diagnostics endpoint.
+   */
+  function logConfigDiagnosticsOnce(): void {
+    for (const finding of readConfigDiagnostics().diagnostics) {
+      if (finding.code !== 'REMOVED_KEY') continue;
+      log.warn(
+        { scope: finding.scope, file: finding.file, path: finding.path.join('.') },
+        `[config] ${finding.path.join('.')} is no longer read and was ignored. ${finding.redirect}`,
+      );
+    }
   }
 
   // Provider identity for the cache key + the service's re-warm trigger. A change
@@ -1873,6 +1919,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       getLinterBaseConfig: () => readLinterBaseConfig(),
       getLinksValidationSetting: () => readLinksValidationSetting(),
       getLinkPreviewsEnabled: readLinkPreviewsEnabled,
+      getConfigDiagnostics: readConfigDiagnostics,
       embeddingsSecretsFile: secretsFilePath(configHomedirOverride),
       readSemanticProviderConfig: readSemanticSearchConfig,
       ephemeral,
@@ -4479,6 +4526,8 @@ export function createServer(options: ServerOptions): ServerInstance {
     // case the field stays absent and the envelope omits it.
     const readyElapsed = bootElapsedMs();
     if (readyElapsed !== undefined) recordBootPhase('readyMs', readyElapsed);
+
+    logConfigDiagnosticsOnce();
   }
 
   // `ready` itself is the deferred Promise declared at the top of this factory
@@ -4511,6 +4560,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     get syncEngine() {
       return syncEngine;
     },
+    getLinkPreviewsEnabled: readLinkPreviewsEnabled,
     resolveEmbed,
     acpRegistry,
     acpPermissions,

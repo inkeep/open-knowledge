@@ -15,6 +15,10 @@
  */
 
 export {
+  type CollectConfigDiagnosticsOptions,
+  collectConfigDiagnostics,
+} from './config/collect-config-diagnostics.ts';
+export {
   type ConfigPathPresence,
   type InspectConfigPathsOptions,
   inspectConfigPaths,

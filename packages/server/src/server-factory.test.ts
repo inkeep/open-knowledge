@@ -10,11 +10,12 @@ import {
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
+import { LOCAL_DIR, REMOVED_KEYS } from '@inkeep/open-knowledge-core';
 import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import shellQuote from 'shell-quote';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { stringify as stringifyYaml } from 'yaml';
 import * as Y from 'yjs';
 import { BacklinkIndex } from './backlink-index.ts';
 import { getBootTimings, resetBootTimingsForTest, startBootTimings } from './boot-timings.ts';
@@ -1326,6 +1327,136 @@ describe('createServer() — project-local file watcher → engine.setMode', () 
     expect(flipped).toBe(true);
 
     await srv.destroy();
+  });
+});
+
+// ─── removed key in project-local must not disable sync ─────────────────────
+//
+// A dead key sharing the project-local file with `autoSync.mode` used to
+// invalidate the whole file (schema defaults substituted), so the real mode was
+// discarded and sync resolved to `off`. Strip-and-continue keeps the mode live
+// and reports the dead key as a diagnostic instead of treating it as a degraded
+// read. `readLinkPreviewsEnabled`'s egress fail-closed direction is the mirror
+// case: it must still trip on genuine corruption but not on a stripped key.
+
+/**
+ * Render a single removed-key entry into a nested object `{ a: { b: { leaf } } }`
+ * so it can be serialized into a config fixture.
+ */
+function nestRemovedKey(path: readonly string[], leaf: unknown): Record<string, unknown> {
+  const [head, ...rest] = path;
+  if (head === undefined) return {};
+  return { [head]: rest.length === 0 ? leaf : nestRemovedKey(rest, leaf) };
+}
+
+describe('createServer() — a removed key in project-local config does not disable sync', () => {
+  let testProjectDir: string;
+  let testHomedir: string;
+  let servers: ServerInstance[];
+  let logCapture: ReturnType<typeof captureAllLoggers>;
+
+  beforeEach(() => {
+    testProjectDir = mkdtempSync(resolve(tmpdir(), 'ok-removed-key-sync-'));
+    testHomedir = mkdtempSync(resolve(tmpdir(), 'ok-removed-key-home-'));
+    servers = [];
+    logCapture = captureAllLoggers();
+  });
+
+  afterEach(async () => {
+    for (const srv of servers) {
+      await srv.destroy();
+    }
+    loggerFactory.reset();
+    rmSync(testProjectDir, { recursive: true, force: true });
+    rmSync(testHomedir, { recursive: true, force: true });
+  });
+
+  function writeProjectLocal(yaml: string): void {
+    const localDir = join(testProjectDir, '.ok', LOCAL_DIR);
+    mkdirSync(localDir, { recursive: true });
+    writeFileSync(join(localDir, 'config.yml'), yaml, 'utf-8');
+  }
+
+  async function boot(): Promise<ServerInstance> {
+    const contentDir = mkdtempSync(resolve(testProjectDir, 'content-'));
+    const srv = createServer({
+      contentDir,
+      projectDir: testProjectDir,
+      quiet: true,
+      configHomedirOverride: testHomedir,
+    });
+    servers.push(srv);
+    await srv.ready;
+    return srv;
+  }
+
+  // The exact field regression: a dead `appearance.sidebar.showAllFiles` beside
+  // `autoSync.mode: full` used to fall back to the committed default → `off`.
+  test('a stale showAllFiles key beside autoSync.mode: full still resolves full and reports the removed key', async () => {
+    writeProjectLocal(
+      stringifyYaml({
+        autoSync: { mode: 'full' },
+        appearance: { sidebar: { showAllFiles: false } },
+      }),
+    );
+    const srv = await boot();
+
+    expect(srv.syncEngine?.getStatus().syncMode).toBe('full');
+
+    // Assert the structured field, not the prose: `logConfigDiagnosticsOnce`
+    // logs `{ scope, file, path }` as the payload and the human sentence as the
+    // message, so `payload.path` is the stable contract and the message text is
+    // free to be reworded. The message check only pins that the sentence a user
+    // reads names the dead key too.
+    const reportedRemovedKey = logCapture
+      .getCalls('warn')
+      .some(
+        (entry) =>
+          entry.payload.path === 'appearance.sidebar.showAllFiles' &&
+          typeof entry.msg === 'string' &&
+          entry.msg.includes('appearance.sidebar.showAllFiles'),
+      );
+    expect(reportedRemovedKey).toBe(true);
+  });
+
+  // The same invariant across the whole registry: no dead key, whatever its
+  // path, may reach `autoSync` and change the resolved mode.
+  test.each(
+    REMOVED_KEYS.map((entry) => ({ entry, dotted: entry.path.join('.') })),
+  )('registry key $dotted beside autoSync.mode: full still resolves full', async ({ entry }) => {
+    writeProjectLocal(
+      stringifyYaml({ autoSync: { mode: 'full' }, ...nestRemovedKey(entry.path, false) }),
+    );
+    const srv = await boot();
+    expect(srv.syncEngine?.getStatus().syncMode).toBe('full');
+  });
+
+  // A stripped removed key is a clean read, so the fail-closed egress guard does
+  // not trip: an explicit opt-in resolves enabled. Read fresh after a live write
+  // to exercise the no-restart contract.
+  test('a removed key beside linkPreviews.enabled: true resolves link previews enabled', async () => {
+    const srv = await boot();
+    writeProjectLocal(
+      stringifyYaml({
+        linkPreviews: { enabled: true },
+        appearance: { sidebar: { showAllFiles: false } },
+      }),
+    );
+    expect(srv.getLinkPreviewsEnabled()).toBe(true);
+  });
+
+  // Genuine degradation still fails egress closed — the per-field direction that
+  // a stripped key must no longer trigger.
+  test('unparseable project-local YAML still fails link previews closed', async () => {
+    const srv = await boot();
+    writeProjectLocal('linkPreviews:\n  enabled: true\ntrailing: [1, 2\n');
+    expect(srv.getLinkPreviewsEnabled()).toBe(false);
+  });
+
+  test('a schema-invalid project-local config still fails link previews closed', async () => {
+    const srv = await boot();
+    writeProjectLocal(stringifyYaml({ linkPreviews: { enabled: 'not-a-boolean' } }));
+    expect(srv.getLinkPreviewsEnabled()).toBe(false);
   });
 });
 

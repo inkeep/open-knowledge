@@ -3,9 +3,10 @@
  *
  * Subcommands:
  *   - `validate` — load merged config (defaults → user → project) and report
- *     conformance. Exit 0 on success, exit 1 with source-located errors on
- *     failure. Success message goes to stderr (stdout is reserved for
- *     structured CI output, of which we emit none).
+ *     conformance, plus a reporting-only read of the project-local layer that
+ *     the merge deliberately excludes. Exit 0 on success, exit 1 with
+ *     source-located errors on failure. Success message goes to stderr (stdout
+ *     is reserved for structured CI output, of which we emit none).
  *   - `migrate` — codemod removing deprecated fields (`sync.*`,
  *     `persistence.{debounceMs,maxDebounceMs}`, `server.port`, plus every
  *     entry in the shared removed-key registry) idempotently. Funnels through
@@ -14,8 +15,18 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { type ConfigPatch, humanFormat, REMOVED_KEYS } from '@inkeep/open-knowledge-core';
-import { resolveConfigPath, writeConfigPatch } from '@inkeep/open-knowledge-core/server';
+import {
+  type ConfigDiagnostic,
+  type ConfigPatch,
+  humanFormat,
+  REMOVED_KEYS,
+  type WriteScope,
+} from '@inkeep/open-knowledge-core';
+import {
+  readConfigSafely,
+  resolveConfigPath,
+  writeConfigPatch,
+} from '@inkeep/open-knowledge-core/server';
 import { Command } from 'commander';
 import { parseDocument } from 'yaml';
 import { loadConfig } from '../config/loader.ts';
@@ -45,6 +56,12 @@ export const DROPPED_FIELD_PATHS: ReadonlyArray<readonly string[]> = [
 interface ValidateRunOpts {
   cwd?: string;
   loadConfigFn?: typeof loadConfig;
+  /**
+   * Reporting-only read of the project-local layer. Its own seam beside
+   * `loadConfigFn` because `loadConfig` does not merge that layer, so a test
+   * stubbing the loader would otherwise fall through to the real filesystem.
+   */
+  readProjectLocalFn?: (cwd: string) => readonly ConfigDiagnostic[];
   log?: (msg: string) => void;
   error?: (msg: string) => void;
 }
@@ -53,14 +70,66 @@ interface ValidateOutcome {
   ok: boolean;
 }
 
+/**
+ * Read `.ok/local/config.yml` for reporting only. `sideline: false` so
+ * describing a corrupt layer never renames a user's file, and the parsed value
+ * is discarded — this layer is deliberately outside `loadConfig`'s merge.
+ */
+function defaultReadProjectLocalDiagnostics(cwd: string): readonly ConfigDiagnostic[] {
+  return readConfigSafely({
+    absPath: resolveConfigPath('project-local', cwd),
+    sideline: false,
+  }).diagnostics;
+}
+
 export function runValidate(opts: ValidateRunOpts = {}): ValidateOutcome {
   const log = opts.log ?? ((msg) => console.error(msg));
   const error = opts.error ?? ((msg) => console.error(msg));
   const load = opts.loadConfigFn ?? loadConfig;
   try {
-    const { sources } = load(opts.cwd);
+    const { sources, diagnostics, sidelined } = load(opts.cwd);
+    // `loadConfig` merges two layers (user + committed project) and so can only
+    // ever report on those two. `.ok/local/config.yml` is what
+    // `readLinkPreviewsEnabled`, `readProjectLocalSemanticConfig`, and the
+    // project-local `autoSync.mode` all read, so a `validate` blind to it hands
+    // a user with a dead key there a ✓ and no way to find it without a running
+    // server. Read it here purely for reporting: `sideline: false` so a corrupt
+    // layer is described and never renamed, and the value is deliberately
+    // discarded so `loadConfig`'s two-layer merge contract is untouched.
+    const readProjectLocal = opts.readProjectLocalFn ?? defaultReadProjectLocalDiagnostics;
+    const projectLocalDiagnostics = readProjectLocal(opts.cwd ?? process.cwd());
+    const allDiagnostics = [...diagnostics, ...projectLocalDiagnostics];
     const renderedSources = sources.length === 0 ? 'defaults only' : sources.join(', ');
-    log(`✓ Configuration valid (sources: ${renderedSources})`);
+    // A removed key leaves the file usable, so it does not qualify the headline.
+    // Every other code does: the layer's content was not honored, and claiming
+    // "valid" sends a user who skims for the checkmark away believing nothing
+    // is wrong. The label stays code-agnostic because this bucket mixes causes
+    // — YAML_PARSE read fine but has a syntax error, SCHEMA_INVALID parsed but
+    // failed validation, only UNREADABLE could not be read at all. `humanFormat`
+    // below names the actual cause per layer.
+    const degraded = allDiagnostics.filter((d) => d.code !== 'REMOVED_KEY');
+    if (degraded.length === 0) {
+      log(`✓ Configuration valid (sources: ${renderedSources})`);
+    } else {
+      log(
+        `! Configuration loaded, but ${degraded.length} config layer(s) had issues ` +
+          `(sources: ${renderedSources})`,
+      );
+    }
+    // Removed keys no longer block loading, but the user should still see each
+    // one and its migration path. Rendered with source location + replacement
+    // guidance by humanFormat.
+    for (const diagnostic of allDiagnostics) {
+      log('');
+      log(humanFormat(diagnostic));
+    }
+    // Loading an unreadable file renames it aside so OK can boot on defaults.
+    // Say so — a command named `validate` that quarantines a file without a
+    // word about it reads as the file having vanished.
+    for (const { from, to } of sidelined) {
+      log('');
+      log(`Moved ${from} aside to ${to} so defaults could be used. Restore it once fixed.`);
+    }
     return { ok: true };
   } catch (e) {
     error(e instanceof Error ? e.message : String(e));
@@ -68,9 +137,17 @@ export function runValidate(opts: ValidateRunOpts = {}): ValidateOutcome {
   }
 }
 
+/**
+ * Requested migration scope. The three `WriteScope` values each name one
+ * config file; `all` fans out to every layer; `both` is a supported legacy
+ * alias covering project + user only (project-local excluded), so existing
+ * invocations keep their exact reach.
+ */
+type MigrateScope = WriteScope | 'both' | 'all';
+
 interface MigrateRunOpts {
   cwd?: string;
-  scope?: 'project' | 'user' | 'both';
+  scope?: MigrateScope;
   dryRun?: boolean;
   homedirOverride?: string;
   log?: (msg: string) => void;
@@ -80,7 +157,7 @@ interface MigrateRunOpts {
 
 interface MigrateFileOutcome {
   path: string;
-  scope: 'project' | 'user';
+  scope: WriteScope;
   /** Dotted paths that exist in the file. */
   found: string[];
   /** Dotted paths actually removed (== found unless dry-run or write failed). */
@@ -148,27 +225,42 @@ function buildClearPatch(paths: ReadonlyArray<readonly string[]>): ConfigPatch {
   return root as unknown as ConfigPatch;
 }
 
+/**
+ * Expand a requested scope into the concrete config files to process, in
+ * layer order. `all` covers every layer; `both` covers project + user only —
+ * project-local is deliberately excluded so existing `both` invocations keep
+ * their exact reach.
+ */
+function fileScopesForScope(scope: MigrateScope): WriteScope[] {
+  switch (scope) {
+    case 'project':
+      return ['project'];
+    case 'project-local':
+      return ['project-local'];
+    case 'user':
+      return ['user'];
+    case 'both':
+      return ['project', 'user'];
+    case 'all':
+      return ['project', 'project-local', 'user'];
+  }
+}
+
 export async function runMigrate(opts: MigrateRunOpts = {}): Promise<MigrateOutcome> {
   const log = opts.log ?? ((msg) => console.log(msg));
   const error = opts.error ?? ((msg) => console.error(msg));
-  const scope = opts.scope ?? 'both';
+  // Matches the command's `--scope` default. Two defaults that disagree would
+  // make a programmatic call reach different files than the CLI invocation the
+  // removed-key redirects tell users to run.
+  const scope = opts.scope ?? 'all';
   const dryRun = opts.dryRun ?? false;
   const cwd = opts.cwd ?? process.cwd();
   const writePatch = opts.writeConfigPatchFn ?? writeConfigPatch;
 
-  const targets: Array<{ scope: 'project' | 'user'; absPath: string }> = [];
-  if (scope === 'project' || scope === 'both') {
-    targets.push({
-      scope: 'project',
-      absPath: resolveConfigPath('project', cwd, opts.homedirOverride),
-    });
-  }
-  if (scope === 'user' || scope === 'both') {
-    targets.push({
-      scope: 'user',
-      absPath: resolveConfigPath('user', cwd, opts.homedirOverride),
-    });
-  }
+  const targets = fileScopesForScope(scope).map((fileScope) => ({
+    scope: fileScope,
+    absPath: resolveConfigPath(fileScope, cwd, opts.homedirOverride),
+  }));
 
   const outcomes: MigrateFileOutcome[] = [];
   let allOk = true;
@@ -246,6 +338,46 @@ export async function runMigrate(opts: MigrateRunOpts = {}): Promise<MigrateOutc
   return { outcomes, ok: allOk };
 }
 
+/**
+ * Scopes surfaced in `--scope` help and the invalid-scope error. `both` is a
+ * supported alias, intentionally omitted here so it is accepted but not
+ * advertised.
+ */
+const ADVERTISED_MIGRATE_SCOPES = 'project | project-local | user | all';
+
+/**
+ * Every accepted `--scope` value, including the unadvertised `both` alias.
+ * Keyed by `MigrateScope` so widening that union without accepting the new
+ * value here is a compile error rather than a confusing "Invalid --scope"
+ * rejection of a type-valid input.
+ */
+const ACCEPTED_MIGRATE_SCOPES: Record<MigrateScope, true> = {
+  project: true,
+  'project-local': true,
+  user: true,
+  both: true,
+  all: true,
+};
+
+/**
+ * Membership view over the same source. Deliberately keyed by `string`: the
+ * value being tested is untrusted CLI input, and a set narrowed to
+ * `MigrateScope` could not accept it as an argument in the first place.
+ */
+const VALID_MIGRATE_SCOPES: ReadonlySet<string> = new Set(Object.keys(ACCEPTED_MIGRATE_SCOPES));
+
+/**
+ * Whether the CLI-wide startup notice should announce removed-key findings for
+ * this invocation.
+ *
+ * False for the `config` command family, which owns that reporting: `validate`
+ * renders the findings as its result and `migrate` is the act of removing them.
+ * Announcing them first would print every finding twice.
+ */
+export function shouldAnnounceRemovedKeys(subcommandName: string | undefined): boolean {
+  return subcommandName !== 'config';
+}
+
 export function configCommand(): Command {
   const cmd = new Command('config').description(
     'Inspect and maintain OpenKnowledge configuration files',
@@ -266,17 +398,22 @@ export function configCommand(): Command {
     .description(
       'Remove deprecated config fields from config.yml idempotently (every removed key in the registry — content.*, folders, appearance.editorModeDefault, server.host, etc. — plus the silently-dropped sync.*, persistence.*, server.port)',
     )
-    .option('--scope <scope>', 'Which scope to migrate: project | user | both', 'both')
+    // Defaults to `all` so the bare `ok config migrate` that every removed-key
+    // redirect tells the user to run actually reaches the layer their dead key
+    // sits in, project-local included. `both` stays accepted as the legacy
+    // project+user reach. Widening the default is safe because the codemod only
+    // ever deletes registry keys, is idempotent, and honors --dry-run.
+    .option('--scope <scope>', `Which scope to migrate: ${ADVERTISED_MIGRATE_SCOPES}`, 'all')
     .option('--dry-run', 'Preview without writing', false)
     .action(async (subOpts) => {
-      const scope = subOpts.scope as 'project' | 'user' | 'both';
-      if (scope !== 'project' && scope !== 'user' && scope !== 'both') {
-        console.error(`Invalid --scope: ${scope}. Expected: project | user | both`);
+      const rawScope = String(subOpts.scope);
+      if (!VALID_MIGRATE_SCOPES.has(rawScope)) {
+        console.error(`Invalid --scope: ${rawScope}. Expected: ${ADVERTISED_MIGRATE_SCOPES}`);
         process.exitCode = 2;
         return;
       }
       const outcome = await runMigrate({
-        scope,
+        scope: rawScope as MigrateScope,
         dryRun: subOpts.dryRun as boolean,
       });
       if (!outcome.ok) {
