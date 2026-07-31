@@ -1251,6 +1251,10 @@ msgstr "Agent settings"
 msgid "Agent Skills"
 msgstr "Agent Skills"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Agent transcript"
+msgstr "Agent transcript"
+
 #: src/components/ExploreSkills.tsx
 msgid "Agents"
 msgstr "Agents"
@@ -9084,6 +9088,14 @@ msgstr "Scope: "
 #: src/components/ReportBugDialogBody.tsx
 msgid "Screenshot"
 msgstr "Screenshot"
+
+#: src/components/ui/message-scroller.tsx
+msgid "Scroll to end"
+msgstr "Scroll to end"
+
+#: src/components/ui/message-scroller.tsx
+msgid "Scroll to start"
+msgstr "Scroll to start"
 
 #: src/components/CommandPalette.tsx
 #: src/components/EditorHeader.tsx

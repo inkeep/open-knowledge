@@ -38,7 +38,6 @@ import {
   type RefObject,
   useEffect,
   useId,
-  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -69,6 +68,15 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+  useMessageScroller,
+} from '@/components/ui/message-scroller';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
@@ -104,6 +112,7 @@ import { AgentMarkdown } from './AgentMarkdown';
 import { latestFollowTarget, loadFollowFilePref, saveFollowFilePref } from './follow-file';
 import { appendPresenceWrite, latestAgentWrite, type PresenceWrite } from './presence-follow';
 import { RegisteredAgentIcon } from './RegisteredAgentIcon';
+import { transcriptItemId } from './transcript-item-id';
 
 /**
  * Stop sends ACP `session/cancel` — a courtesy the agent may ignore while it
@@ -147,8 +156,9 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
   // the draft, so the batch never silently rides a second message.
   const [attachedComments, setAttachedComments] = useState<CommentBatchItem[] | null>(null);
   const [followFile, setFollowFile] = useState(loadFollowFilePref);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const atBottomRef = useRef(true);
+  // Captured by ScrollToEndBridge (a child of the scroller Provider) so send/
+  // resume can imperatively jump to the live edge; null until the bridge mounts.
+  const scrollApiRef = useRef<ReturnType<typeof useMessageScroller> | null>(null);
   // Follow-the-file bookkeeping: `initialSeqRef` marks the event log position
   // at mount so a replayed history (reload, tab switch) never yanks the
   // editor around — only events that arrive live do. `lastFollowedRef`
@@ -282,23 +292,6 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
     }
   };
 
-  // Keep the transcript pinned to the bottom while the user hasn't scrolled up.
-  // `lastSeq` is the trigger (a new event landed), not a value read in the body,
-  // so it reads as an "unnecessary" dep to the analyzer — but dropping it makes
-  // auto-scroll stop firing on new output.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: lastSeq is the render trigger for the scroll, not a body dependency
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (el === null || !atBottomRef.current) return;
-    el.scrollTop = el.scrollHeight;
-  }, [state?.lastSeq]);
-
-  const onScroll = (): void => {
-    const el = scrollRef.current;
-    if (el === null) return;
-    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-  };
-
   // The last resume-carried message that failed — the "new thread" fallback
   // re-sends it there. Kept out of the draft: the server's optimistic echo
   // already shows it in the transcript, so putting it back in the composer
@@ -336,13 +329,14 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
         .finally(() => setResumePending(false));
       setDraft('');
       setAttachedComments(null);
-      atBottomRef.current = true;
+      // Sending re-engages the live edge even if the reader had scrolled up.
+      scrollApiRef.current?.scrollToEnd();
       return;
     }
     client.prompt(info.threadId, text);
     setDraft('');
     setAttachedComments(null);
-    atBottomRef.current = true;
+    scrollApiRef.current?.scrollToEnd();
   };
 
   const startFreshThread = (): void => {
@@ -374,63 +368,95 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
     >
       <ThreadHeader info={info} followFile={followFile} onToggleFollow={toggleFollow} />
       {model !== null && model.plan.length > 0 ? <PlanChecklist plan={model.plan} /> : null}
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        className="min-h-0 flex-1 overflow-y-auto px-3 py-2 subtle-scrollbar scroll-fade-mask"
-        data-testid="agent-thread-transcript"
-      >
-        {model === null || model.items.length === 0 ? (
+      {model === null || model.items.length === 0 ? (
+        // No messages yet: the empty state centers itself via `h-full`, which needs
+        // a plain definite-height block host. The scroller's managed flex layout
+        // won't provide one, so only real transcripts go through the scroller.
+        <div
+          className="min-h-0 flex-1 overflow-y-auto px-3 py-2 subtle-scrollbar scroll-fade-mask"
+          data-testid="agent-thread-transcript"
+        >
           <ThreadEmptyState status={status} archived={archived} agent={info.agent} />
-        ) : (
-          <div className="flex flex-col gap-2 [&>[data-tool-call]+[data-tool-call]]:-mt-1">
-            {model.items.map((item, index) => (
-              <ThreadItem
-                // biome-ignore lint/suspicious/noArrayIndexKey: transcript is append-only; index is stable
-                key={index}
-                item={item}
-                threadId={info.threadId}
-                // Thread liveness, not turn liveness: the server keeps an
-                // unanswered request answerable until its timeout even after
-                // the prompt settles (and some agents ask outside a turn) —
-                // only a dead thread makes answering impossible.
-                actionable={!archived && status !== 'exited' && status !== 'error'}
-                terminals={model.terminals}
-                permissionsByToolCall={model.permissionsByToolCall}
-              />
-            ))}
-            {turnActive ? (
-              status === 'awaiting_permission' ? (
-                <div
-                  className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
-                  data-testid="agent-thread-awaiting-permission"
-                >
-                  <span>{t`Waiting for your approval`}</span>
-                </div>
-              ) : (
-                <div
-                  className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
-                  data-testid="agent-thread-working"
-                >
-                  <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-                  <span>{t`Working…`}</span>
-                </div>
-              )
-            ) : status === 'installing' || status === 'spawning' ? (
-              // A resume respawning its agent: the optimistic message echo is
-              // already in the transcript above — show that the agent is on
-              // its way rather than a silent gap until the turn opens.
-              <div
-                className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
-                data-testid="agent-thread-starting"
-              >
-                <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-                <span>{t`Starting the agent…`}</span>
-              </div>
-            ) : null}
-          </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        // autoScroll = stick-to-bottom that yields to reader intent; last-anchor
+        // reopens archived/resumed threads at the final turn. The bridge lifts the
+        // scroller's imperative API up so send/resume can jump to the live edge.
+        <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
+          <ScrollToEndBridge apiRef={scrollApiRef} />
+          <MessageScroller className="min-h-0 flex-1">
+            <MessageScrollerViewport
+              // Overrides the primitive's hardcoded "Messages" — this focusable
+              // region is one agent's transcript, and its name must translate.
+              aria-label={t`Agent transcript`}
+              className="px-3 py-2 subtle-scrollbar scroll-fade-mask"
+              data-testid="agent-thread-transcript"
+            >
+              <MessageScrollerContent className="gap-2 [&>[data-tool-call]+[data-tool-call]]:-mt-1">
+                {model.items.map((item, index) => {
+                  const id = transcriptItemId(item, index);
+                  return (
+                    <MessageScrollerItem
+                      key={id}
+                      messageId={id}
+                      // Each item hosts its own flex column so per-message alignment
+                      // (the user bubble's ml-auto hug-and-right) survives the wrapper
+                      // the scroller requires for anchoring/measurement.
+                      className="flex flex-col"
+                      // A new user turn is the anchor the scroller peeks above.
+                      scrollAnchor={item.kind === 'message' && item.role === 'user'}
+                      // Re-hosts the adjacent-tool-call spacing selector on the wrapper.
+                      data-tool-call={item.kind === 'tool_call' ? '' : undefined}
+                    >
+                      <ThreadItem
+                        item={item}
+                        threadId={info.threadId}
+                        // Thread liveness, not turn liveness: the server keeps an
+                        // unanswered request answerable until its timeout even after
+                        // the prompt settles (and some agents ask outside a turn) —
+                        // only a dead thread makes answering impossible.
+                        actionable={!archived && status !== 'exited' && status !== 'error'}
+                        terminals={model.terminals}
+                        permissionsByToolCall={model.permissionsByToolCall}
+                      />
+                    </MessageScrollerItem>
+                  );
+                })}
+                {turnActive ? (
+                  status === 'awaiting_permission' ? (
+                    <div
+                      className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
+                      data-testid="agent-thread-awaiting-permission"
+                    >
+                      <span>{t`Waiting for your approval`}</span>
+                    </div>
+                  ) : (
+                    <div
+                      className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
+                      data-testid="agent-thread-working"
+                    >
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                      <span>{t`Working…`}</span>
+                    </div>
+                  )
+                ) : status === 'installing' || status === 'spawning' ? (
+                  // A resume respawning its agent: the optimistic message echo is
+                  // already in the transcript above — show that the agent is on
+                  // its way rather than a silent gap until the turn opens.
+                  <div
+                    className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
+                    data-testid="agent-thread-starting"
+                  >
+                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                    <span>{t`Starting the agent…`}</span>
+                  </div>
+                ) : null}
+              </MessageScrollerContent>
+            </MessageScrollerViewport>
+            <MessageScrollerButton direction="end" />
+          </MessageScroller>
+        </MessageScrollerProvider>
+      )}
       {cancelStalled && turnActive ? (
         <div
           className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
@@ -987,6 +1013,24 @@ function PlanChecklist({ plan }: { plan: { content: string; status?: string }[] 
       ) : null}
     </div>
   );
+}
+
+// The scroller's imperative API only exists inside its Provider; this bridge
+// publishes it to a parent-owned ref so send/resume handlers (which live above
+// the Provider) can call scrollToEnd.
+function ScrollToEndBridge({
+  apiRef,
+}: {
+  apiRef: RefObject<ReturnType<typeof useMessageScroller> | null>;
+}): null {
+  const api = useMessageScroller();
+  useEffect(() => {
+    apiRef.current = api;
+    return () => {
+      apiRef.current = null;
+    };
+  }, [api, apiRef]);
+  return null;
 }
 
 function ThreadItem({

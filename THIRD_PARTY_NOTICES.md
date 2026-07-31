@@ -1966,6 +1966,11 @@ Homepage: https://github.com/Sec-ant/readable-stream
 
 Copyright (c) 2022 Ze-Zheng Wu
 
+### `@shadcn/react@0.2.1`
+Homepage: https://ui.shadcn.com
+
+Copyright (c) 2023 shadcn
+
 ### `@simple-git/args-pathspec@1.0.3`
 Homepage: https://github.com/steveukx/git-js
 

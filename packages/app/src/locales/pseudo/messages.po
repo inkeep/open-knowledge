@@ -1247,6 +1247,10 @@ msgstr ""
 msgid "Agent Skills"
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Agent transcript"
+msgstr ""
+
 #: src/components/ExploreSkills.tsx
 msgid "Agents"
 msgstr ""
@@ -9079,6 +9083,14 @@ msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Screenshot"
+msgstr ""
+
+#: src/components/ui/message-scroller.tsx
+msgid "Scroll to end"
+msgstr ""
+
+#: src/components/ui/message-scroller.tsx
+msgid "Scroll to start"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
