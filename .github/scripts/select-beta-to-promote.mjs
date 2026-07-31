@@ -32,16 +32,19 @@
 // reduction rather than a bug lane; the bug-linked conjunct is what makes it a
 // lane.
 //
-// This is a DIFFERENT axis from the `tier` field selectPromotion returns. That
-// one asks "may this UNDER-SOAKED beta promote early because its DMG smoked
-// clean"; this one asks "how long should a cut have to soak at all". They never
-// share a variable and are reported as separate outputs: `tier` and `soak_tier`.
+// This is a DIFFERENT axis from the `tier` field selectPromotion returns (how
+// the 24h selection itself was made), and the two are still reported as
+// separate outputs: `tier` and `soak_tier`. The soak-tier verdict IS what feeds
+// the DMG-smoke leg: when armed and qualifying, the candidate goes out as
+// `fast_tier_candidate` and the smoke leg alone may promote it early.
 //
-// The soak tier is NOT armed. `FAST_TIER_ARMED` is a literal "false" in the
-// workflow, so `resolveTier` can only ever return "standard" and the dispatched
-// target is always the 24h selection. Everything here computes and logs the tier
-// it WOULD choose. Arming is an owner decision and is documented, with its
-// prerequisites, in RELEASES.md.
+// The soak tier is ARMED via `FAST_TIER_ARMED` in the workflow. A qualifying
+// verdict never dispatches directly: it nominates the beta as the
+// `fast_tier_candidate` output, and the macOS smoke leg — the only dispatcher
+// for fast promotions — smokes the actual DMG before promote-stable is
+// dispatched. The hours-gated direct dispatch always uses the 24h selection.
+// Disarming (one workflow edit back to "false") restores the previous behavior
+// byte-for-byte. Prerequisites + posture: RELEASES.md.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
@@ -282,15 +285,24 @@ export async function evaluateFastTier({
 }
 
 // Fold the predicate verdict and the arming flag into the soak tier that governs
-// this tick, and pick the target that tier implies.
+// this tick, pick the target the direct dispatch may promote, and nominate the
+// beta the smoke leg should candidate.
 //
 // `armed` is the entire difference between "we computed a fast tier" and "a fast
-// tier can shorten a real promotion". While it is false the fast branch is
-// unreachable, so `target` is the 24h selection on every path — which is why the
-// predicate can ship live without changing which betas promote, or when.
+// tier can shorten a real promotion". While it is false both returns are inert:
+// `candidate` is empty so the smoke leg never runs, and `target` is the 24h
+// selection on every path — which is why the predicate can ship live without
+// changing which betas promote, or when.
+//
+// A qualifying verdict never moves `target`. The direct dispatch trusts a soak;
+// a fast promotion trusts a SMOKE of the actual artifact, so the qualified beta
+// is handed to the macOS smoke leg via `candidate` and that leg is the only
+// dispatcher for it. Routing the fast target through `target` instead would
+// promote a 1h-soaked cut with no DMG check, which is exactly what the arming
+// prerequisites in RELEASES.md forbid.
 export function resolveTier({ armed, verdict, standardTarget, fastTarget }) {
   const tier = armed && verdict?.qualifies === true ? 'fast' : 'standard';
-  return { tier, target: tier === 'fast' ? fastTarget : standardTarget };
+  return { tier, target: standardTarget, candidate: tier === 'fast' ? fastTarget : '' };
 }
 
 // --- workflow-runtime wiring (real git / gh boundary) ---
@@ -516,7 +528,18 @@ async function main() {
     };
   }
 
-  const { tier: soakTier, target } = resolveTier({ armed, verdict, standardTarget, fastTarget });
+  const { tier: soakTier, target, candidate: fastTierCandidate } = resolveTier({
+    armed,
+    verdict,
+    standardTarget,
+    fastTarget,
+  });
+  if (fastTierCandidate) {
+    console.log(
+      `::notice::Fast tier: nominating ${fastTierCandidate} for the DMG-smoke leg (patch-only + bug-linked, >=1h soak). ` +
+        'Promotion happens only if the smoke passes; the 24h selection above is unaffected.',
+    );
+  }
 
   for (const warning of verdict.warnings) {
     console.log(`::warning::Soak-tier predicate degraded: ${warning}`);
@@ -531,11 +554,11 @@ async function main() {
   }
 
   if (process.env.GITHUB_OUTPUT) {
-    // `fast_tier_candidate` is the seam the macOS smoke leg keys off. Nothing
-    // populates it: it is written empty here and the soak-tier predicate never
-    // feeds it, because the two answer different questions (may an under-soaked
-    // beta promote early on a clean DMG smoke, versus how long should a cut soak
-    // at all). Wiring them together is a separate, deliberate step.
+    // `fast_tier_candidate` is the seam the macOS smoke leg keys off. It is fed
+    // from the armed soak-tier verdict: a fully-cut beta whose delta is
+    // patch-only AND bug-linked, soaked past the fast threshold. Empty while
+    // the tier is unarmed or nothing qualifies, which skips the smoke leg
+    // entirely — the pre-arming behavior, byte-for-byte.
     //
     // Every other value is a validated tag, a fixed reason keyword, a boolean,
     // or a number, so none of them can break the key=value framing. Warnings are
@@ -545,7 +568,7 @@ async function main() {
       [
         `target=${target}`,
         `tier=${selectionTier}`,
-        'fast_tier_candidate=',
+        `fast_tier_candidate=${fastTierCandidate}`,
         `soak_tier=${soakTier}`,
         `fast_armed=${armed}`,
         `fast_candidate=${verdict.candidate || ''}`,

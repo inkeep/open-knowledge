@@ -513,7 +513,7 @@ describe('resolveTier (soak tier)', () => {
         standardTarget: STANDARD_TARGET,
         fastTarget: FAST_CANDIDATE,
       }),
-    ).toEqual({ tier: 'standard', target: STANDARD_TARGET });
+    ).toEqual({ tier: 'standard', target: STANDARD_TARGET, candidate: '' });
   });
 
   test('no verdict shape can reach the fast tier while unarmed', () => {
@@ -533,11 +533,11 @@ describe('resolveTier (soak tier)', () => {
           standardTarget: STANDARD_TARGET,
           fastTarget: FAST_CANDIDATE,
         }),
-      ).toEqual({ tier: 'standard', target: STANDARD_TARGET });
+      ).toEqual({ tier: 'standard', target: STANDARD_TARGET, candidate: '' });
     }
   });
 
-  test('an armed workflow takes the fast candidate only on a strict qualifying verdict', () => {
+  test('an armed workflow nominates the fast candidate only on a strict qualifying verdict', () => {
     expect(
       resolveTier({
         armed: true,
@@ -545,7 +545,7 @@ describe('resolveTier (soak tier)', () => {
         standardTarget: STANDARD_TARGET,
         fastTarget: FAST_CANDIDATE,
       }),
-    ).toEqual({ tier: 'fast', target: FAST_CANDIDATE });
+    ).toEqual({ tier: 'fast', target: STANDARD_TARGET, candidate: FAST_CANDIDATE });
     // A truthy-but-not-true verdict must not be read as qualifying.
     expect(
       resolveTier({
@@ -554,7 +554,22 @@ describe('resolveTier (soak tier)', () => {
         standardTarget: STANDARD_TARGET,
         fastTarget: FAST_CANDIDATE,
       }),
-    ).toEqual({ tier: 'standard', target: STANDARD_TARGET });
+    ).toEqual({ tier: 'standard', target: STANDARD_TARGET, candidate: '' });
+  });
+
+  test('a qualifying verdict never moves the direct-dispatch target off the 24h selection', () => {
+    // The fast candidate promotes only through the DMG-smoke leg. Even armed
+    // and fully qualified, the hours-gated direct dispatch must keep promoting
+    // the soaked selection — an unsmoked 1h cut reaching `target` is the
+    // failure the arming prerequisites exist to prevent.
+    const { target, candidate } = resolveTier({
+      armed: true,
+      verdict: { qualifies: true },
+      standardTarget: '',
+      fastTarget: FAST_CANDIDATE,
+    });
+    expect(target).toBe('');
+    expect(candidate).toBe(FAST_CANDIDATE);
   });
 });
 
