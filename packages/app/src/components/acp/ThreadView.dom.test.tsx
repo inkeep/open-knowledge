@@ -40,12 +40,13 @@ const setMode = vi.fn((_threadId: string, _modeId: string) => {});
 const prompt = vi.fn((_threadId: string, _content: string) => {});
 const editQueued = vi.fn((_threadId: string, _id: string, _content: string) => {});
 const removeQueued = vi.fn((_threadId: string, _id: string) => {});
+const cancel = vi.fn((_threadId: string) => {});
 
 vi.doMock('@/lib/acp/thread-client', () => ({
   getAgentThreadClient: () => ({
     respondPermission,
     respondRuntimeConsent: () => {},
-    cancel: () => {},
+    cancel,
     prompt,
     editQueued,
     removeQueued,
@@ -82,6 +83,23 @@ vi.doMock('@/lib/use-workspace', () => ({
 // suite off the streamdown pipeline.
 vi.doMock('@/components/acp/AgentMarkdown', () => ({
   AgentMarkdown: ({ text }: { text: string }) => <div>{text}</div>,
+}));
+
+// The comment-queue surface the composer's `+` drives. Stubbed to a single
+// always-available item so a test can attach a batch and assert how the action
+// slot reacts; the real store needs a loaded project.
+vi.doMock('@/comments/comment-chips', () => ({
+  useQueuedComments: () => [{ id: 'c1' }],
+  composeCommentBatchInstruction: (_items: unknown, typed: string) =>
+    typed === '' ? 'batch instruction' : typed,
+}));
+
+vi.doMock('@/comments/queue-attachment', () => ({
+  prepareQueuedComments: async () => [{ id: 'c1' }],
+}));
+
+vi.doMock('@/comments/store', () => ({
+  refresh: async () => undefined,
 }));
 
 const { ThreadView } = await import('./ThreadView');
@@ -166,6 +184,7 @@ afterEach(() => {
   prompt.mockClear();
   editQueued.mockClear();
   removeQueued.mockClear();
+  cancel.mockClear();
   model = null;
 });
 
@@ -1001,20 +1020,174 @@ describe('ThreadView raw input', () => {
 });
 
 describe('ThreadView message queue', () => {
-  test('mid-turn the composer offers Stop AND a live Send that queues the draft', () => {
+  test('mid-turn the action slot holds Stop until a draft exists, then yields to Send', () => {
     model = makeModel({ turnActive: true });
     render(<ThreadView info={makeInfo({ status: 'running' })} />);
 
+    // Empty draft: Stop owns the slot outright — no competing Send button.
     expect(screen.getByTestId('agent-thread-cancel')).toBeTruthy();
-    const send = screen.getByTestId('agent-thread-send');
-    expect(send.getAttribute('aria-label')).toBe('Queue message');
-    expect((send as HTMLButtonElement).disabled).toBe(true); // empty draft
+    expect(screen.queryByTestId('agent-thread-send')).toBeNull();
 
     fireEvent.change(screen.getByTestId('agent-thread-composer'), {
       target: { value: 'queued while running' },
     });
-    fireEvent.click(screen.getByTestId('agent-thread-send'));
+
+    expect(screen.queryByTestId('agent-thread-cancel')).toBeNull();
+    const send = screen.getByTestId('agent-thread-send');
+    expect(send.getAttribute('aria-label')).toBe('Queue message');
+    expect((send as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(send);
     expect(prompt).toHaveBeenCalledWith('thread-1', 'queued while running');
+  });
+
+  test('Escape cancels the turn while a draft holds the action slot', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    const composer = screen.getByTestId('agent-thread-composer');
+    fireEvent.change(composer, { target: { value: 'typed mid-turn' } });
+    // Stop is gone, so this is the only remaining way to cancel.
+    expect(screen.queryByTestId('agent-thread-cancel')).toBeNull();
+
+    fireEvent.keyDown(composer, { key: 'Escape' });
+    expect(cancel).toHaveBeenCalledWith('thread-1');
+    // The draft survives the cancel — it's still queueable against the next turn.
+    expect((composer as HTMLTextAreaElement).value).toBe('typed mid-turn');
+  });
+
+  test('a pending cancel keeps the Stopping spinner even as the user types', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    fireEvent.click(screen.getByTestId('agent-thread-cancel'));
+    fireEvent.change(screen.getByTestId('agent-thread-composer'), {
+      target: { value: 'typed while stopping' },
+    });
+
+    const stopping = screen.getByTestId('agent-thread-cancel');
+    expect(stopping.getAttribute('aria-label')).toBe('Stopping');
+    expect((stopping as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByTestId('agent-thread-send')).toBeNull();
+  });
+
+  test('outside a turn the slot is Send, disabled only by an empty draft', () => {
+    model = makeModel({ turnActive: false });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    expect(screen.queryByTestId('agent-thread-cancel')).toBeNull();
+    const send = screen.getByTestId('agent-thread-send');
+    expect(send.getAttribute('aria-label')).toBe('Send');
+    expect((send as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(screen.getByTestId('agent-thread-composer'), {
+      target: { value: 'idle send' },
+    });
+    expect((screen.getByTestId('agent-thread-send') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test('Escape stays scoped to the composer and does not cancel from the transcript', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    fireEvent.change(screen.getByTestId('agent-thread-composer'), {
+      target: { value: 'typed, then clicked away' },
+    });
+
+    fireEvent.keyDown(screen.getByTestId('agent-thread-transcript'), { key: 'Escape' });
+    expect(cancel).not.toHaveBeenCalled();
+
+    // Escape is dismiss-shaped, so a panel-wide binding would let a stray press
+    // kill a running turn. The accepted cost is this state: a draft hides Stop,
+    // and cancelling means clicking back into the composer or clearing the draft.
+    // Pinned so widening the scope is a deliberate change, not an accident.
+    fireEvent.keyDown(screen.getByTestId('agent-thread-composer'), { key: 'Escape' });
+    expect(cancel).toHaveBeenCalledWith('thread-1');
+  });
+
+  test('an attached comment batch counts as sendable, so the slot yields Stop', async () => {
+    const user = userEvent.setup();
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    // Empty draft mid-turn: Stop owns the slot.
+    expect(screen.getByTestId('agent-thread-cancel')).toBeTruthy();
+
+    await user.click(screen.getByTestId('composer-add-context'));
+    await user.click(screen.getByTestId('composer-add-context-queue'));
+
+    // The batch is a message on its own, so the slot must offer to send it even
+    // though the draft is still empty. Keying the slot on the draft alone left
+    // Stop mounted with a sendable batch attached and no way to dispatch it.
+    expect(await screen.findByTestId('agent-thread-send')).toBeTruthy();
+    expect(screen.queryByTestId('agent-thread-cancel')).toBeNull();
+    expect((screen.getByTestId('agent-thread-send') as HTMLButtonElement).disabled).toBe(false);
+
+    // And the slot's Send actually dispatches the batch: `submit` folds the
+    // attached items through `composeCommentBatchInstruction` rather than
+    // sending the empty draft it can see.
+    fireEvent.click(screen.getByTestId('agent-thread-send'));
+    expect(prompt).toHaveBeenCalledWith('thread-1', 'batch instruction');
+  });
+
+  test('Escape cancels with an empty draft too, while Stop is also on screen', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    expect(screen.getByTestId('agent-thread-cancel')).toBeTruthy();
+    fireEvent.keyDown(screen.getByTestId('agent-thread-composer'), { key: 'Escape' });
+    expect(cancel).toHaveBeenCalledWith('thread-1');
+  });
+
+  test('Escape is a no-op while a cancel is already pending', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    fireEvent.click(screen.getByTestId('agent-thread-cancel'));
+    expect(cancel).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(screen.getByTestId('agent-thread-composer'), { key: 'Escape' });
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  test('Escape outside a turn does not fire a cancel', () => {
+    model = makeModel({ turnActive: false });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    const composer = screen.getByTestId('agent-thread-composer');
+    fireEvent.change(composer, { target: { value: 'idle draft' } });
+    fireEvent.keyDown(composer, { key: 'Escape' });
+
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  test('Stop advertises the Escape shortcut, so it is learned before it is needed', async () => {
+    const user = userEvent.setup();
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    await user.hover(screen.getByTestId('agent-thread-cancel'));
+
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toContain('Esc');
+  });
+
+  test('Escape in the queued-message editor exits editing without cancelling the turn', () => {
+    model = makeModel({ turnActive: true });
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'running',
+          queue: [{ id: 'q1', content: 'original text', ts: 1 }],
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('agent-thread-queued-edit'));
+    fireEvent.keyDown(screen.getByTestId('agent-thread-queued-input'), { key: 'Escape' });
+
+    expect(screen.queryByTestId('agent-thread-queued-input')).toBeNull();
+    expect(cancel).not.toHaveBeenCalled();
   });
 
   test('queued messages render between transcript and composer with a remove control', () => {

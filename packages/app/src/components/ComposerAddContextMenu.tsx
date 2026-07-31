@@ -63,9 +63,10 @@ export function ComposerAddContextMenu({
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
-          // No `size` in compact mode: the height and padding come from the
-          // classes below, matching the settings trigger exactly.
-          {...(compact ? {} : { size: 'icon' as const })}
+          // Compact rides `icon-xs` so the trigger is square, matching the
+          // settings trigger beside it; the class below only restates the height
+          // and swaps the radius.
+          size={compact ? 'icon-xs' : undefined}
           variant="ghost"
           aria-label={t`Add context to this message`}
           data-testid="composer-add-context"
@@ -73,7 +74,7 @@ export function ComposerAddContextMenu({
           // not anything is attached — the input keeps every remaining pixel.
           className={cn(
             'shrink-0 text-muted-foreground hover:text-foreground',
-            compact ? 'h-6 rounded-md px-2' : 'size-8',
+            compact ? 'h-6 rounded-md' : 'size-8',
           )}
         >
           <Plus className={compact ? 'size-3.5' : 'size-4'} />

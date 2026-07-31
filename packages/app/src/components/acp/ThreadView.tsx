@@ -664,7 +664,7 @@ function AgentSettingsPopover({ info }: { info: ThreadInfo }): ReactNode {
             <Button
               type="button"
               variant="ghost"
-              className="h-6 max-w-48 gap-1 rounded-md px-2 text-xs"
+              className="h-6 max-w-48 gap-1 rounded-md pl-1.5 pr-1! text-xs"
               aria-label={accentTooltip}
               data-testid="agent-thread-settings"
             >
@@ -2029,6 +2029,13 @@ function ThreadComposer({
 
   const queue = info.queue ?? [];
 
+  // What the action slot keys off. An attached comment batch is a message on its
+  // own — the comments carry their own requests — so an empty draft beside one
+  // still has something to send. Both the Stop/Send choice and Send's disabled
+  // state read this, or the two disagree and the slot offers Stop while a
+  // sendable batch sits attached.
+  const hasSendableContent = draft.trim() !== '' || commentsAttached;
+
   return (
     <div className="p-2">
       {queue.length > 0 && !archived ? (
@@ -2053,6 +2060,16 @@ function ThreadComposer({
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
               onSubmit();
+            } else if (event.key === 'Escape' && turnActive && !cancelPending) {
+              // Deliberately field-scoped, not panel-wide. Sendable content hides
+              // Stop, so Escape is the cancel path while composing — but Escape
+              // is a dismiss-shaped key, and binding it panel-wide would let a
+              // stray press kill a running turn with no undo. The accepted cost:
+              // leave content in the composer, click away, and neither Stop nor
+              // Escape is reachable until you click back or clear it. Judged rare
+              // enough to accept over a broader binding or a second Stop.
+              event.preventDefault();
+              onCancel();
             }
           }}
           rows={1}
@@ -2092,7 +2109,6 @@ function ThreadComposer({
               other. The right cluster keeps its own spacing via `ml-auto`, so
               this doesn't move it. */}
           <div className="flex items-center gap-0.5">
-            <AgentSettingsPopover info={info} />
             {/* The same `+` the Ask AI composer carries, so "add context" is one
                 gesture wherever you are talking to an agent — and the same
                 toggle, so it is also one gesture to take it back off. The batch
@@ -2101,7 +2117,7 @@ function ThreadComposer({
                 nothing resolves. */}
             <ComposerAddContextMenu
               // This bar is `h-6` / `text-xs` controls (the settings trigger to
-              // its left); a composer-sized button would tower over them.
+              // its right); a composer-sized button would tower over them.
               compact
               queueCount={queuedComments.length}
               queueAttached={commentsAttached}
@@ -2114,43 +2130,54 @@ function ThreadComposer({
               }}
               onRemoveQueue={() => onAttachComments(null)}
             />
+            <AgentSettingsPopover info={info} />
           </div>
           <div className="ml-auto flex items-center gap-1.5">
             {usagePercent !== null && usage?.used !== undefined && usage?.size !== undefined ? (
               <ContextUsageRing used={usage.used} size={usage.size} percent={usagePercent} />
             ) : null}
-            {turnActive ? (
+            {/* One action slot, never two competing buttons. Mid-turn it holds
+                Stop until there is something to send, then yields so it can
+                queue — the convention every agent chat with a queue follows.
+                `cancelPending` outranks the content check: a cancel can hang for
+                CANCEL_STALL_MS, and typing during that window must not replace
+                the only signal that the stop was heard. */}
+            {turnActive && (cancelPending || !hasSendableContent) ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    className="rounded-lg"
+                    disabled={cancelPending}
+                    onClick={onCancel}
+                    aria-label={cancelPending ? t`Stopping` : t`Stop`}
+                    data-testid="agent-thread-cancel"
+                  >
+                    {cancelPending ? (
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Square className="size-3 fill-current" aria-hidden="true" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                {/* Teaches the Escape binding while Stop is visible, so it's
+                    already known in the draft-present state where it's hidden. */}
+                <TooltipContent side="top">{t`Stop (Esc)`}</TooltipContent>
+              </Tooltip>
+            ) : (
               <Button
                 type="button"
                 size="icon-sm"
                 className="rounded-lg"
-                disabled={cancelPending}
-                onClick={onCancel}
-                aria-label={cancelPending ? t`Stopping` : t`Stop`}
-                data-testid="agent-thread-cancel"
+                disabled={!(canPrompt || canQueue) || !hasSendableContent}
+                onClick={onSubmit}
+                aria-label={canQueue ? t`Queue message` : t`Send`}
+                data-testid="agent-thread-send"
               >
-                {cancelPending ? (
-                  <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-                ) : (
-                  <Square className="size-3 fill-current" aria-hidden="true" />
-                )}
+                <ArrowUp className="size-4" aria-hidden="true" />
               </Button>
-            ) : null}
-            <Button
-              type="button"
-              size="icon-sm"
-              className="rounded-lg"
-              // An attached batch IS a message — the comments carry their own
-              // requests, so an empty draft alongside them is a send, not a
-              // no-op. Gating on the draft alone left the button dead with a
-              // full queue attached.
-              disabled={!(canPrompt || canQueue) || (draft.trim() === '' && !commentsAttached)}
-              onClick={onSubmit}
-              aria-label={canQueue ? t`Queue message` : t`Send`}
-              data-testid="agent-thread-send"
-            >
-              <ArrowUp className="size-4" aria-hidden="true" />
-            </Button>
+            )}
           </div>
         </div>
       </div>

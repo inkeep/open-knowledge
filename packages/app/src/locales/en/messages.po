@@ -9266,6 +9266,10 @@ msgid "Stop"
 msgstr "Stop"
 
 #: src/components/acp/ThreadView.tsx
+msgid "Stop (Esc)"
+msgstr "Stop (Esc)"
+
+#: src/components/acp/ThreadView.tsx
 msgid "Stopping"
 msgstr "Stopping"
 

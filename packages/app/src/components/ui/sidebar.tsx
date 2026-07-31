@@ -194,6 +194,20 @@ function SidebarProvider({
     const onEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       if (isOverlayLayerOpen()) return;
+      // Escape inside a form control belongs to that control — it is where
+      // Escape carries a field-local meaning (revert, clear, cancel the edit),
+      // and the agent composer's cancel-the-turn binding lives on one. Capture
+      // phase means this runs before the field's own handler, so
+      // `defaultPrevented` is always false here and the target is the only
+      // available signal.
+      //
+      // contentEditable is deliberately NOT included. The document editor is
+      // this app's main work surface, it binds no Escape of its own, and
+      // dismissing chrome from it is the intended behavior.
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+        return;
+      }
       setOpen(false);
     };
     window.addEventListener('keydown', onEscape, { capture: true });
