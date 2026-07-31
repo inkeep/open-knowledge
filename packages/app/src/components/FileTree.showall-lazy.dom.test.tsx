@@ -229,7 +229,11 @@ vi.doMock('@/editor/DocumentContext', () => ({
   }),
 }));
 vi.doMock('@/components/PageListContext', () => ({
-  usePageList: () => ({ addPage: vi.fn(() => {}), pages: new Set<string>() }),
+  usePageList: () => ({
+    addPage: vi.fn(() => {}),
+    pages: new Set<string>(),
+    pageMeta: new Map<string, { size: number }>(),
+  }),
 }));
 vi.doMock('./ui/sidebar', () => ({
   useSidebar: () => ({ notifySidebarFileSelected: vi.fn(() => {}) }),
@@ -443,7 +447,35 @@ describe('FileTree showAll lazy root seed', () => {
     expect(model.getItem('README.md')?.isDirectory()).toBe(false);
   });
 
-  test('first click on non-document file rows opens the asset tab', async () => {
+  test('first click on a bare-name file row opens the asset tab', async () => {
+    showAllResponseFactory = () =>
+      jsonResponse({
+        documents: [assetEntry('LICENSE'), assetEntry('package.json')],
+        truncated: false,
+      });
+    const view = render(<FileTree />);
+
+    await waitFor(() => expect(model.items.has('LICENSE')).toBe(true));
+    view.rerender(<FileTree />);
+    // Bare names have no extension-full docName, so they stay on the
+    // read-only asset viewer.
+    fireEvent.click(screen.getByRole('treeitem', { name: 'LICENSE' }));
+    await waitFor(() =>
+      expect(openTargetMock).toHaveBeenCalledWith(
+        {
+          kind: 'asset',
+          target: 'LICENSE',
+          assetPath: 'LICENSE',
+          mediaKind: null,
+        },
+        { tabBehavior: 'replace-active' },
+      ),
+    );
+    expect(window.location.hash).toBe('#/__asset__/LICENSE');
+    window.location.hash = '';
+  });
+
+  test('first click on an editable text file row opens the collaborative editor', async () => {
     showAllResponseFactory = () =>
       jsonResponse({
         documents: [assetEntry('LICENSE'), assetEntry('package.json')],
@@ -453,25 +485,16 @@ describe('FileTree showAll lazy root seed', () => {
 
     await waitFor(() => expect(model.items.has('package.json')).toBe(true));
     view.rerender(<FileTree />);
-    for (const path of ['LICENSE', 'package.json']) {
-      const row = screen.getByRole('treeitem', { name: path });
-      fireEvent.click(row);
-
-      await waitFor(() =>
-        expect(openTargetMock).toHaveBeenCalledWith(
-          {
-            kind: 'asset',
-            target: path,
-            assetPath: path,
-            mediaKind: null,
-          },
-          { tabBehavior: 'replace-active' },
-        ),
-      );
-      expect(window.location.hash).toBe(`#/__asset__/${path}`);
-      openTargetMock.mockClear();
-      window.location.hash = '';
-    }
+    // Editable text files (extension-full docName) open the collaborative
+    // editor, not the asset viewer.
+    fireEvent.click(screen.getByRole('treeitem', { name: 'package.json' }));
+    await waitFor(() =>
+      expect(openTargetMock).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'doc', docName: 'package.json' }),
+        expect.anything(),
+      ),
+    );
+    window.location.hash = '';
   });
 
   test('first click from one document row to README opens README', async () => {

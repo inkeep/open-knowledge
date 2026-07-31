@@ -22,7 +22,7 @@ import {
   type DeriveLossDetectOptions,
 } from './bridge-loss-detector.ts';
 import { shouldRunPairedIntakeDetection } from './bridge-loss-suppression.ts';
-import { isConfigDoc, isMermaidDoc, isSystemDoc } from './cc1-broadcast.ts';
+import { isConfigDoc, isEditableTextDoc, isMermaidDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { isDocInConflict } from './conflict-errors.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import { recordContributor } from './contributor-tracker.ts';
@@ -78,7 +78,13 @@ export function applyExternalChange(
   resolveSize?: (basename: string, sourcePath: string) => number | null,
   bridgeLossReporter?: BridgeDeriveLossReporter,
 ): void {
-  if (isSystemDoc(docName) || isConfigDoc(docName) || isMermaidDoc(docName)) return;
+  if (
+    isSystemDoc(docName) ||
+    isConfigDoc(docName) ||
+    isMermaidDoc(docName) ||
+    isEditableTextDoc(docName)
+  )
+    return;
   const document = hocuspocus.documents.get(docName);
   if (!document) return;
 
@@ -348,7 +354,13 @@ export function reconcileDiskBeforeAgentWrite(
    */
   bridgeLossReporter?: BridgeDeriveLossReporter,
 ): ReconcileBeforeWriteResult {
-  if (isSystemDoc(docName) || isConfigDoc(docName) || isMermaidDoc(docName)) return NOT_RECONCILED;
+  if (
+    isSystemDoc(docName) ||
+    isConfigDoc(docName) ||
+    isMermaidDoc(docName) ||
+    isEditableTextDoc(docName)
+  )
+    return NOT_RECONCILED;
 
   // Never reconcile a doc that's mid-conflict: disk carries merge markers, and
   // the mutating write is about to be refused with DocInConflictError. Ingesting

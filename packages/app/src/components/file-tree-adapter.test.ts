@@ -587,3 +587,10 @@ describe('file-tree-adapter', () => {
     expect(target.path).toBe('docs/photo');
   });
 });
+
+describe('docNameToTreePath — editable text docs', () => {
+  test('maps a text docName to the tree path verbatim (no .md appended)', () => {
+    expect(docNameToTreePath('src/util.ts')).toBe('src/util.ts');
+    expect(docNameToTreePath('config.json')).toBe('config.json');
+  });
+});

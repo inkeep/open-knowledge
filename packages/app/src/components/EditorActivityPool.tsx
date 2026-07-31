@@ -34,7 +34,11 @@
  *   (invalidate + nav), or (c) Activity eviction from the MRU mount list.
  */
 
-import { isManagedArtifactDocName, isMermaidDocFile } from '@inkeep/open-knowledge-core';
+import {
+  isEditableTextDocFile,
+  isManagedArtifactDocName,
+  isMermaidDocFile,
+} from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { Loader2, RefreshCw } from 'lucide-react';
 import {
@@ -96,6 +100,9 @@ const ManagedArtifactProperties = lazy(async () => ({
 // for projects without any `.mmd`/`.mermaid` files.
 const MermaidDocEditor = lazy(async () => ({
   default: (await import('./MermaidDocEditor')).MermaidDocEditor,
+}));
+const TextDocEditor = lazy(async () => ({
+  default: (await import('./TextDocEditor')).TextDocEditor,
 }));
 
 /**
@@ -476,7 +483,8 @@ function EditorActivityPoolInner({
             !loading &&
             !pages.has(entry.docName) &&
             !isManagedArtifactDocName(entry.docName) &&
-            !isMermaidDocFile(entry.docName)
+            !isMermaidDocFile(entry.docName) &&
+            !isEditableTextDocFile(entry.docName)
           }
           previousDocName={previousDocName}
           onNavigateBack={onNavigateBack}
@@ -1038,6 +1046,9 @@ function ActivityEntry({
   // Standalone Mermaid docs (`.mmd`/`.mermaid`) render a dedicated diagram+source
   // editor instead of the markdown dual-editor (they are Y.Text-only, no bridge).
   const isMermaid = isMermaidDocFile(entry.docName);
+  // Editable text docs (`.ts` / `.json` / `.txt` / …) — verbatim Y.Text docs
+  // rendered by a dedicated CodeMirror editor (no markdown dual-editor).
+  const isTextDoc = !isMermaid && isEditableTextDocFile(entry.docName);
 
   // Per-Activity portal target for <EditorContent>. Stable DOM element
   // exclusively owned by THIS ActivityEntry — `useState` with a lazy
@@ -1320,6 +1331,11 @@ function ActivityEntry({
                       provider={entry.provider}
                       isSourceMode={effectiveIsSourceMode}
                     />
+                  ) : isTextDoc ? (
+                    /* Editable text doc: single CodeMirror surface bound to this
+                       doc's Y.Text('source') — same doc-class plumbing as the
+                       Mermaid branch above, minus the diagram pane. */
+                    <TextDocEditor docName={entry.docName} provider={entry.provider} />
                   ) : (
                     /* Dual-editor mount with size-gated defer for large docs. Small
                   docs render both (pre-mount-both default — mode swap stays

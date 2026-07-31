@@ -1,4 +1,5 @@
 import type { InlineAssetMediaKind } from '@inkeep/open-knowledge-core';
+import { isDocumentOverOpenByteLimit, isEditableTextDocFile } from '@inkeep/open-knowledge-core';
 import { hashFromAssetPath } from '@/lib/doc-hash';
 import {
   fileEntryToTreePath,
@@ -98,10 +99,17 @@ export function resolveFileTreeSelectionAction(
     return { kind: 'document', path: documentDocName };
   }
   if (entry && isAssetEntry(entry)) {
-    // Mermaid files (`.mmd`/`.mermaid`) are served as assets but open as editable
-    // CRDT docs, not the read-only asset viewer. Their docName IS the asset path
+    // Mermaid files (`.mmd`/`.mermaid`) and editable text files (`.ts` /
+    // `.json` / `.html` / …) are served as assets but open as editable CRDT
+    // docs, not the read-only asset viewer. Their docName IS the asset path
     // (extension retained), so route the selection as a document.
-    if (entry.mediaKind === 'mermaid') {
+    if (
+      entry.mediaKind === 'mermaid' ||
+      (isEditableTextDocFile(entry.path) && !isDocumentOverOpenByteLimit(entry.size))
+    ) {
+      // Oversized text files stay on the read-only asset viewer — the
+      // verbatim load path has no large-doc defer, so seeding a multi-MB
+      // file into Y.Text from a tree click would stall the doc open.
       return { kind: 'document', path: entry.path };
     }
     return {

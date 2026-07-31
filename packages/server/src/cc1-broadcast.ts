@@ -15,10 +15,12 @@ import {
   CONFIG_DOC_NAMES,
   type ConfigValidationError,
   type DerivedViewChannel,
+  isEditableTextDocFile,
   isManagedArtifactDocName,
   isMermaidDocFile,
   SYSTEM_DOC_NAME,
 } from '@inkeep/open-knowledge-core';
+import { isRegisteredMarkdownDocName } from './doc-extensions.ts';
 import { getLogger } from './logger.ts';
 import {
   incrementCC1Broadcast,
@@ -100,6 +102,20 @@ export function isMermaidDoc(documentName: string): boolean {
 }
 
 /**
+ * Editable text docs (`.ts` / `.json` / `.css` / `.txt` / …) — the Mermaid
+ * doc class generalized to code/config/plain-text files. Same posture on
+ * every axis: extension-retaining docName, Y.Text-only (markdown bridge and
+ * XmlFragment store path short-circuit), real user content that stays in the
+ * tree, dedicated verbatim persistence.
+ */
+export function isEditableTextDoc(documentName: string): boolean {
+  // The extension index wins over the string shape: a markdown file named
+  // `notes.ts.md` strips to docName `notes.ts`, which must stay on the
+  // markdown paths (see `isRegisteredMarkdownDocName`).
+  return isEditableTextDocFile(documentName) && !isRegisteredMarkdownDocName(documentName);
+}
+
+/**
  * True when a doc name must be hidden from the user document tree / search /
  * create-page surfaces — system, config, AND managed-artifact docs. This is the
  * "tree-excluded" axis ONLY; it does NOT imply the observer bridge is skipped
@@ -128,7 +144,8 @@ export function isLinkIndexExcludedDoc(documentName: string): boolean {
  * (`storeDocumentNow`) because its persistence flows through a dedicated
  * store/load path: system docs (never persisted), config docs (config
  * persistence + validation hook), managed artifacts (skill/template
- * persistence), and Mermaid docs (Y.Text-only persistence). Shared by
+ * persistence), Mermaid docs, and editable text docs (both Y.Text-only
+ * persistence). Shared by
  * `PersistenceHandle.forceStore` and the staleness watchdog so the two
  * gates cannot drift. The debounced `onStoreDocument` hook dispatches each
  * class to its dedicated path individually, so it cannot collapse onto
@@ -139,7 +156,8 @@ export function isPersistenceExcludedDoc(documentName: string): boolean {
     isSystemDoc(documentName) ||
     isConfigDoc(documentName) ||
     isManagedArtifactDoc(documentName) ||
-    isMermaidDoc(documentName)
+    isMermaidDoc(documentName) ||
+    isEditableTextDoc(documentName)
   );
 }
 

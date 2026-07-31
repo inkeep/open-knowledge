@@ -5,6 +5,7 @@ import {
   CODE_FILE_EXTENSIONS_TO_LANGUAGE,
   codeLanguageForBareFilename,
   codeLanguageForExtension,
+  isEditableTextDocFile,
 } from './code-languages';
 
 describe('codeLanguageForExtension', () => {
@@ -161,5 +162,44 @@ describe('CODE_FILE_EXTENSIONS — internal consistency', () => {
     for (const lang of Object.values(CODE_FILE_BARE_NAMES_TO_LANGUAGE)) {
       expect(knownCanonical.has(lang)).toBe(true);
     }
+  });
+});
+
+describe('isEditableTextDocFile', () => {
+  test('admits code and plain-text extensions', () => {
+    for (const path of [
+      'src/util.ts',
+      'a/b/config.json',
+      'styles.css',
+      'notes.txt',
+      'settings.toml',
+      'script.PY',
+      'data.yaml',
+    ]) {
+      expect(isEditableTextDocFile(path), path).toBe(true);
+    }
+  });
+
+  test('excludes the markdown and mermaid doc classes', () => {
+    for (const path of ['readme.md', 'page.mdx', 'flow.mmd', 'flow.mermaid']) {
+      expect(isEditableTextDocFile(path), path).toBe(false);
+    }
+  });
+
+  test('admits markup and lockfile extensions like an IDE', () => {
+    for (const path of ['index.html', 'icon.svg', 'App.vue', 'bun.lock']) {
+      expect(isEditableTextDocFile(path), path).toBe(true);
+    }
+  });
+
+  test('excludes bare names and dotfiles (extension-less docNames mean markdown)', () => {
+    for (const path of ['Makefile', '.gitignore', 'dir/.env', 'noext']) {
+      expect(isEditableTextDocFile(path), path).toBe(false);
+    }
+  });
+
+  test('only the basename extension counts', () => {
+    expect(isEditableTextDocFile('a.ts/readme.md')).toBe(false);
+    expect(isEditableTextDocFile('a.md/util.ts')).toBe(true);
   });
 });

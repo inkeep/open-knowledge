@@ -12,7 +12,7 @@ import type { Extension } from '@hocuspocus/server';
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
 import type { Schema } from '@tiptap/pm/model';
 import type * as Y from 'yjs';
-import { isConfigDoc, isMermaidDoc, isSystemDoc } from './cc1-broadcast.ts';
+import { isConfigDoc, isEditableTextDoc, isMermaidDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { getLogger } from './logger.ts';
 import type { LossCaptureRing } from './loss-capture.ts';
 import { incrementServerObserverError } from './metrics.ts';
@@ -102,7 +102,12 @@ export function createServerObserverExtension(opts: ServerObserverExtensionOptio
     async afterLoadDocument({ documentName, document }) {
       // Mermaid docs are Y.Text-only like config docs — the markdown bridge must
       // NOT run (it would re-canonicalize the diagram source through remark).
-      if (isSystemDoc(documentName) || isConfigDoc(documentName) || isMermaidDoc(documentName))
+      if (
+        isSystemDoc(documentName) ||
+        isConfigDoc(documentName) ||
+        isMermaidDoc(documentName) ||
+        isEditableTextDoc(documentName)
+      )
         return;
       if (cleanups.has(documentName)) return;
 

@@ -247,6 +247,9 @@ describe('exclusions', () => {
       '__template__/notes/weekly',
       'diagram.mmd',
       'assets/flow.mermaid',
+      'src/util.ts',
+      'config.json',
+      'styles.css',
     ]) {
       expect(isPersistenceExcludedDoc(name)).toBe(true);
     }

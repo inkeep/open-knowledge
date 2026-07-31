@@ -22,9 +22,11 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   CC1Broadcaster,
   isConfigDoc,
+  isEditableTextDoc,
   isLinkIndexExcludedDoc,
   isSystemDoc,
 } from './cc1-broadcast.ts';
+import { registerDocExtension } from './doc-extensions.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
 
 describe('isSystemDoc', () => {
@@ -602,5 +604,17 @@ describe('isLinkIndexExcludedDoc', () => {
   test('admits ordinary documents', () => {
     expect(isLinkIndexExcludedDoc('docs/getting-started')).toBe(false);
     expect(isLinkIndexExcludedDoc('readme')).toBe(false);
+  });
+});
+
+describe('isEditableTextDoc', () => {
+  test('admits text-extension docNames and defers to a registered markdown twin', () => {
+    expect(isEditableTextDoc('src/util.ts')).toBe(true);
+    expect(isEditableTextDoc('readme.md')).toBe(false);
+    // A markdown file named `twin.ts.md` strips to docName `twin.ts` — the
+    // recorded extension must keep it OFF the verbatim text path, or four
+    // server dispatch sites would silently route it away from the bridge.
+    registerDocExtension('twin.ts', '.md');
+    expect(isEditableTextDoc('twin.ts')).toBe(false);
   });
 });

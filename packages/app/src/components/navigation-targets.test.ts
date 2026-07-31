@@ -722,3 +722,15 @@ describe('resolveNavigationTarget — Mermaid docs', () => {
     expect(resolveNavigationTarget('assets/flow.mmd/', { pages: new Set() }).kind).not.toBe('doc');
   });
 });
+
+describe('editable text docs resolve as doc targets', () => {
+  test('a .ts target opens the editable doc, not the asset viewer', () => {
+    const target = resolveNavigationTarget('src/util.ts', {
+      pages: new Set<string>(),
+      pageMeta: new Map(),
+      folderPaths: new Set<string>(),
+      assetPaths: new Set<string>(['src/util.ts']),
+    } as never);
+    expect(target).toMatchObject({ kind: 'doc', docName: 'src/util.ts' });
+  });
+});

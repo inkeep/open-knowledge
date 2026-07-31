@@ -178,3 +178,72 @@ export function codeLanguageForExtension(ext: string): string | null {
 export function codeLanguageForBareFilename(name: string): string | null {
   return CODE_FILE_BARE_NAMES_TO_LANGUAGE[name.toLowerCase()] ?? null;
 }
+
+/**
+ * Extensions whose files open as EDITABLE verbatim text docs (the
+ * `.mmd`-style Y.Text-only doc class generalized to code/config/plain
+ * text) rather than the read-only `TextViewer` asset path.
+ *
+ * Derived from the code-language table plus plain-text and markup formats,
+ * minus:
+ *   - `md` / `mdx` — the markdown doc class (bridged, extension-less docNames)
+ *   - `mmd` / `mermaid` — the standalone Mermaid doc class (own editor)
+ *
+ * Extension-full docNames only: a docName WITHOUT an extension is always
+ * interpreted as markdown (`foo` → `foo.md`), so bare filenames
+ * (`Makefile`, `Dockerfile`) and dotfiles (`.gitignore`) are not
+ * admissible as text docs and keep the read-only viewer.
+ */
+const EDITABLE_TEXT_EXCLUDED: ReadonlySet<string> = new Set(['md', 'mdx', 'mmd', 'mermaid']);
+
+export const EDITABLE_TEXT_FILE_EXTENSIONS: ReadonlySet<string> = new Set(
+  [
+    ...CODE_FILE_EXTENSIONS,
+    'txt',
+    'text',
+    'csv',
+    'tsv',
+    'log',
+    'toml',
+    // Markup/template files edit as code like any IDE — the sandboxed HTML
+    // render remains the posture for EMBEDDED previews, but opening the file
+    // itself means editing it. (These stay out of the codeblock-language
+    // table above, which drives the embed/sidebar dispatch.)
+    'html',
+    'htm',
+    'svg',
+    'vue',
+    'svelte',
+    'astro',
+    'lock',
+  ].filter((ext) => !EDITABLE_TEXT_EXCLUDED.has(ext)),
+);
+
+/**
+ * Editor-highlighting canonicals for editable extensions that are outside
+ * the codeblock-language table (kept out of it deliberately — see the
+ * table's html/svg note). The doc editor consults this before
+ * `codeLanguageForExtension`.
+ */
+export const EDITABLE_TEXT_EXTRA_LANGUAGE: Readonly<Record<string, string>> = {
+  html: 'html',
+  htm: 'html',
+  svg: 'xml',
+  vue: 'html',
+  svelte: 'html',
+  astro: 'html',
+  lock: 'yaml',
+};
+
+/**
+ * `isEditableTextDoc(documentName)` doc-class discriminator (docNames
+ * retain their extension, like Mermaid docs). Same edge-case posture as
+ * `isMermaidDocFile`: a markdown file literally named `X.ts.md` strips to
+ * docName `X.ts` and would collide — pathological and unsupported.
+ */
+export function isEditableTextDocFile(path: string): boolean {
+  const base = path.slice(path.lastIndexOf('/') + 1);
+  const lastDot = base.lastIndexOf('.');
+  if (lastDot <= 0) return false;
+  return EDITABLE_TEXT_FILE_EXTENSIONS.has(base.slice(lastDot + 1).toLowerCase());
+}

@@ -270,3 +270,35 @@ describe('resolveFileTreeSelectionAction — Mermaid assets', () => {
     ).toEqual({ kind: 'document', path: 'assets/flow.mmd' });
   });
 });
+
+describe('resolveFileTreeSelectionAction — editable text assets', () => {
+  test('routes a code-file asset row to document navigation (not the asset hash)', () => {
+    expect(
+      resolveFileTreeSelectionAction('src/util.ts', [
+        {
+          kind: 'asset',
+          path: 'src/util.ts',
+          assetExt: '.ts',
+          mediaKind: 'text',
+          size: 0,
+          modified: '',
+        },
+      ]),
+    ).toEqual({ kind: 'document', path: 'src/util.ts' });
+  });
+
+  test('an oversized text asset stays on the read-only asset viewer', () => {
+    expect(
+      resolveFileTreeSelectionAction('big/data.json', [
+        {
+          kind: 'asset',
+          path: 'big/data.json',
+          assetExt: '.json',
+          mediaKind: 'text',
+          size: 5 * 1024 * 1024,
+          modified: '',
+        },
+      ]),
+    ).toMatchObject({ kind: 'asset', path: 'big/data.json' });
+  });
+});

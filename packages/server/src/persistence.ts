@@ -50,6 +50,7 @@ import { getMsSinceLastUserTx, isDocQuiescent } from './bridge-quiescence.ts';
 import { assertBridgeInvariant, createDocCanonicalizer } from './bridge-watchdog.ts';
 import {
   isConfigDoc,
+  isEditableTextDoc,
   isManagedArtifactDoc,
   isMermaidDoc,
   isPersistenceExcludedDoc,
@@ -2627,7 +2628,9 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         loadManagedArtifactDoc(document, documentName, managedArtifactCtx);
         return;
       }
-      if (isMermaidDoc(documentName)) {
+      if (isMermaidDoc(documentName) || isEditableTextDoc(documentName)) {
+        // Editable text docs share the Mermaid verbatim Y.Text load/store —
+        // the path resolver is extension-agnostic (docName retains its ext).
         loadMermaidDoc(document, documentName, mermaidPersistenceCtx);
         return;
       }
@@ -2853,7 +2856,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         }
         return;
       }
-      if (isMermaidDoc(documentName)) {
+      if (isMermaidDoc(documentName) || isEditableTextDoc(documentName)) {
         await storeMermaidDoc(document, documentName, lastTransactionOrigin, mermaidPersistenceCtx);
         return;
       }

@@ -360,6 +360,10 @@ msgstr "{ahead} ahead"
 msgid "{ahead} ahead, {behind} behind"
 msgstr "{ahead} ahead, {behind} behind"
 
+#: src/components/TextDocEditor.tsx
+msgid "{basename} — text editor"
+msgstr "{basename} — text editor"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{behind, plural, one {# commit behind} other {# commits behind}}"
 msgstr "{behind, plural, one {# commit behind} other {# commits behind}}"

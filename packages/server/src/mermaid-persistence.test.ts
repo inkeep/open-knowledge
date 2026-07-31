@@ -137,3 +137,31 @@ describe('loadMermaidDoc', () => {
     expect(readDoc.getText('source').toString()).toBe(SRC);
   });
 });
+
+describe('editable text docs on the verbatim path', () => {
+  // Text docs (`src/util.ts` / `config.json` / …) dispatch onto the same
+  // load/store pair — the resolver is extension-agnostic. Pin the verbatim
+  // round-trip for code content that the markdown pipeline would otherwise
+  // canonicalize (backticks, braces, blank lines).
+  const TS_DOC = 'src/util.ts';
+  // Concatenated so the literal `${name}` bytes don't read as a template
+  // placeholder to the linter.
+  const TS_SRC = `export function greet(name: string): string {\n\n  return \`hello $\{name}\`;\n}\n`;
+
+  test('loads a .ts file verbatim into Y.Text("source")', () => {
+    mkdirSync(dirname(resolve(contentDir, TS_DOC)), { recursive: true });
+    writeFileSync(resolve(contentDir, TS_DOC), TS_SRC, 'utf-8');
+    const ctx = makeCtx();
+    const doc = new Y.Doc();
+    loadMermaidDoc(doc, TS_DOC, ctx);
+    expect(doc.getText('source').toString()).toBe(TS_SRC);
+  });
+
+  test('stores edited .ts bytes back verbatim (no markdown canonicalization)', async () => {
+    const ctx = makeCtx();
+    const doc = new Y.Doc();
+    doc.transact(() => doc.getText('source').insert(0, TS_SRC), 'agent');
+    expect(await storeMermaidDoc(doc, TS_DOC, 'agent', ctx)).toBe('persisted');
+    expect(readFileSync(resolve(contentDir, TS_DOC), 'utf-8')).toBe(TS_SRC);
+  });
+});

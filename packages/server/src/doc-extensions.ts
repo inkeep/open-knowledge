@@ -29,6 +29,7 @@ import { extname } from 'node:path';
 import {
   DEFAULT_DOC_EXTENSION,
   type DocExtension,
+  isEditableTextDocFile,
   isMermaidDocFile,
   SUPPORTED_DOC_EXTENSIONS,
 } from '@inkeep/open-knowledge-core';
@@ -164,6 +165,20 @@ export function getDocExtension(docName: string): string {
 }
 
 /**
+ * True when the extension index has RECORDED this docName as a markdown
+ * document — i.e. a file like `notes.ts.md` exists, whose docName strips to
+ * `notes.ts`. The editable-text doc class must yield to that recording:
+ * without the check, the string-shaped predicate would classify `notes.ts`
+ * as a text doc and read/write the phantom `notes.ts` path instead of the
+ * markdown file the docName actually names. No-default lookup on purpose —
+ * an unregistered docName is NOT a markdown twin.
+ */
+export function isRegisteredMarkdownDocName(docName: string): boolean {
+  const recorded = docExtensionByName.get(docName);
+  return recorded === '.md' || recorded === '.mdx';
+}
+
+/**
  * Materialize the content-tree relative path for a docName. Callers still own
  * traversal validation against their target root after resolving the result.
  */
@@ -171,7 +186,9 @@ export function docNameToRelativePath(docName: string): string {
   // Mermaid docs (`assets/flow.mmd`) retain their extension in the docName, so
   // — like `.md`/`.mdx` supported docs — the docName IS already the full
   // filename; only extension-less markdown docNames get an extension appended.
-  return isSupportedDocFile(docName) || isMermaidDocFile(docName)
+  return isSupportedDocFile(docName) ||
+    isMermaidDocFile(docName) ||
+    (isEditableTextDocFile(docName) && !isRegisteredMarkdownDocName(docName))
     ? docName
     : `${docName}${getDocExtension(docName)}`;
 }

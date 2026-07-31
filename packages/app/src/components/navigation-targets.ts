@@ -2,6 +2,7 @@ import {
   DOCUMENT_OPEN_BYTE_LIMIT,
   type InlineAssetMediaKind,
   isDocumentOverOpenByteLimit,
+  isEditableTextDocFile,
   isManagedArtifactDocName,
   isMermaidDocFile,
   managedArtifactDocNameFromContentTarget,
@@ -319,7 +320,10 @@ export function resolveNavigationTarget(
   // below would mark them 'missing'. Resolve directly as a doc target (mirrors
   // the managed-artifact early return above) so tree-open / hash nav opens the
   // editable Mermaid doc editor rather than the read-only asset viewer.
-  if (!expectsFolder && isMermaidDocFile(normalizedTarget)) {
+  if (
+    !expectsFolder &&
+    (isMermaidDocFile(normalizedTarget) || isEditableTextDocFile(normalizedTarget))
+  ) {
     return { kind: 'doc', target: normalizedTarget, docName: normalizedTarget };
   }
   const extensionlessTarget = extensionlessTargetPath(target);

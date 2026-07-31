@@ -272,6 +272,9 @@ export {
   CODE_FILE_EXTENSIONS_TO_LANGUAGE,
   codeLanguageForBareFilename,
   codeLanguageForExtension,
+  EDITABLE_TEXT_EXTRA_LANGUAGE,
+  EDITABLE_TEXT_FILE_EXTENSIONS,
+  isEditableTextDocFile,
 } from './constants/code-languages.ts';
 export type { CreateNewBannerKind } from './constants/create-new-banner.ts';
 export {

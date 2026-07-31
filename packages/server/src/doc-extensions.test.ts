@@ -80,6 +80,19 @@ describe('docNameToRelativePath', () => {
     expect(docNameToRelativePath('docs/new')).toBe('docs/new.md');
   });
 
+  test('returns editable text docNames verbatim (extension retained, no .md appended)', () => {
+    expect(docNameToRelativePath('src/util.ts')).toBe('src/util.ts');
+    expect(docNameToRelativePath('config.json')).toBe('config.json');
+  });
+
+  test('a docName recorded as markdown wins over the text-doc string shape', () => {
+    // `notes.ts.md` on disk strips to docName `notes.ts` — the registered
+    // extension must route it back to the markdown file, not the phantom
+    // `notes.ts` path.
+    registerDocExtension('notes.ts', '.md');
+    expect(docNameToRelativePath('notes.ts')).toBe('notes.ts.md');
+  });
+
   test('returns Mermaid docNames verbatim (extension retained, no .md appended)', () => {
     // A Mermaid docName IS the filename (`assets/flow.mmd`) — it must map 1:1 to
     // the on-disk path, never `assets/flow.mmd.md`.

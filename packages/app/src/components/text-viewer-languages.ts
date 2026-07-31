@@ -130,6 +130,7 @@ async function resolveLanguage(canonical: string): Promise<Language | null> {
         typescript: true,
         jsx: true,
       }).language;
+    case 'html':
     case 'xml':
       return (await import('@codemirror/lang-html')).html().language;
     case 'yaml':
