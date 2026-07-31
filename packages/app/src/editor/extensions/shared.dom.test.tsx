@@ -2,6 +2,7 @@ import { cleanup } from '@testing-library/react';
 import { Editor } from '@tiptap/core';
 import { NodeSelection } from '@tiptap/pm/state';
 import { afterEach, describe, expect, test } from 'vitest';
+import { pressEditorKey } from '../editor-rig.test-helper';
 import { sharedExtensions } from './shared';
 
 describe('sharedExtensions module graph', () => {
@@ -178,7 +179,7 @@ describe('sharedExtensions module graph', () => {
       editor.commands.setTextSelection({ from: 1, to: 6 });
 
       expect(editor.isActive('strike')).toBe(false);
-      editor.commands.keyboardShortcut('Mod-Shift-x');
+      pressEditorKey(editor, 'Mod-Shift-x');
       expect(editor.isActive('strike')).toBe(true);
       expect(editor.getHTML()).toContain('<s>alpha</s>');
     } finally {

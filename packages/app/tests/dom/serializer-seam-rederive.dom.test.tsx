@@ -22,6 +22,7 @@ import { MarkdownManager, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { cleanup } from '@testing-library/react';
 import { Editor, type JSONContent } from '@tiptap/core';
 import { afterEach, describe, expect, test } from 'vitest';
+import { pressEditorKey } from '../../src/editor/editor-rig.test-helper';
 import { sharedExtensions } from '../../src/editor/extensions/shared';
 
 /** Configured as the server's shared manager is. */
@@ -43,13 +44,6 @@ function mountEditor(): Editor {
   const editor = new Editor({ element: container, extensions: sharedExtensions, editable: true });
   mounted.push(editor);
   return editor;
-}
-
-/** Press a key through the keymap; report whether the document actually moved. */
-function pressKey(editor: Editor, shortcut: string): boolean {
-  const before = editor.state.doc;
-  editor.commands.keyboardShortcut(shortcut);
-  return editor.state.doc !== before;
 }
 
 /** Type text the way the view feeds it, so input rules get their chance. */
@@ -93,7 +87,7 @@ describe('Shift+Enter at the end of a block', () => {
   test('the break the user typed is still there after re-derivation', () => {
     const editor = mountEditor();
     type(editor, 'foo');
-    expect(pressKey(editor, 'Shift-Enter')).toBe(true);
+    expect(pressEditorKey(editor, 'Shift-Enter').docMoved).toBe(true);
 
     const typed = editor.getJSON();
     expect(countNodes(typed, 'hardBreak')).toBe(1);
@@ -104,10 +98,10 @@ describe('Shift+Enter at the end of a block', () => {
   test('a break typed before an existing paragraph survives too', () => {
     const editor = mountEditor();
     type(editor, 'foo');
-    expect(pressKey(editor, 'Enter')).toBe(true);
+    expect(pressEditorKey(editor, 'Enter').docMoved).toBe(true);
     type(editor, 'bar');
     editor.commands.setTextSelection(4);
-    expect(pressKey(editor, 'Shift-Enter')).toBe(true);
+    expect(pressEditorKey(editor, 'Shift-Enter').docMoved).toBe(true);
 
     const typed = editor.getJSON();
     expect(countNodes(rederive(typed), 'hardBreak')).toBe(countNodes(typed, 'hardBreak'));
@@ -116,7 +110,7 @@ describe('Shift+Enter at the end of a block', () => {
   test('CONTROL: a mid-paragraph break keeps the backslash spelling', () => {
     const editor = mountEditor();
     type(editor, 'foo');
-    expect(pressKey(editor, 'Shift-Enter')).toBe(true);
+    expect(pressEditorKey(editor, 'Shift-Enter').docMoved).toBe(true);
     type(editor, 'bar');
 
     const typed = editor.getJSON();
@@ -144,10 +138,10 @@ describe('an empty task item', () => {
     const editor = mountEditor();
     expect(editor.commands.toggleTaskList()).toBe(true);
     type(editor, 'a');
-    expect(pressKey(editor, 'Enter')).toBe(true);
+    expect(pressEditorKey(editor, 'Enter').docMoved).toBe(true);
     type(editor, 'c');
     editor.commands.setTextSelection(3);
-    expect(pressKey(editor, 'Enter')).toBe(true);
+    expect(pressEditorKey(editor, 'Enter').docMoved).toBe(true);
 
     const typed = editor.getJSON();
     const typedChecked = checkedAttrs(typed);

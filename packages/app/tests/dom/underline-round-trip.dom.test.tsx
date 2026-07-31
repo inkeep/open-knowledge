@@ -31,6 +31,7 @@ import { AllSelection, EditorState } from '@tiptap/pm/state';
 import { EditorView } from '@tiptap/pm/view';
 import { afterEach, describe, expect, test } from 'vitest';
 import { createHandlePaste } from '../../src/editor/clipboard/handle-paste';
+import { pressEditorKey } from '../../src/editor/editor-rig.test-helper';
 
 const mdManager = new MarkdownManager({
   extensions: sharedExtensions,
@@ -109,9 +110,8 @@ function textUnderMark(doc: JSONContent, markName: string): string {
 
 /**
  * Apply `Mod-U` over a typed run the way the keymap does: insert the prose,
- * select the range, dispatch the chord. `keyboardShortcut` reports that it
- * dispatched rather than that a handler consumed, so the mark itself is
- * asserted before anything downstream is measured.
+ * select the range, press the chord. The mark itself is asserted before
+ * anything downstream is measured.
  */
 function typeUnderlined(editor: Editor, before: string, underlined: string): void {
   editor.commands.insertContent(before);
@@ -119,7 +119,7 @@ function typeUnderlined(editor: Editor, before: string, underlined: string): voi
   editor.commands.insertContent(underlined);
   const end = editor.state.selection.from;
   editor.commands.setTextSelection({ from: start, to: end });
-  editor.commands.keyboardShortcut('Mod-u');
+  pressEditorKey(editor, 'Mod-u');
   editor.commands.setTextSelection(end);
 }
 
@@ -190,7 +190,7 @@ describe('route 1 — Mod-U typed underline', () => {
     editor.commands.insertContent('x');
     editor.commands.setTextSelection({ from: 1, to: 2 });
     for (const chord of ['Mod-u', 'Mod-b', 'Mod-i', 'Mod-e']) {
-      editor.commands.keyboardShortcut(chord);
+      pressEditorKey(editor, chord);
     }
     const applied = marksOn(editor.getJSON(), 'x');
     expect(applied).toEqual(expect.arrayContaining(['underline', 'strong', 'emphasis', 'code']));
