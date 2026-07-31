@@ -107,7 +107,7 @@ describe('closeAppBounded — real subprocess contract', () => {
     };
 
     const start = Date.now();
-    await closeAppBounded(proc, { gracefulMs: 5_000, kill: spyKill });
+    await closeAppBounded(proc, { gracefulMs: 5_000, kill: spyKill, platform: 'linux' });
     const elapsed = Date.now() - start;
 
     // Subprocess takes ~100 ms to exit; closeAppBounded should return
@@ -144,7 +144,7 @@ describe('closeAppBounded — real subprocess contract', () => {
     };
 
     const start = Date.now();
-    await closeAppBounded(proc, { gracefulMs: 300, kill: spyKill });
+    await closeAppBounded(proc, { gracefulMs: 300, kill: spyKill, platform: 'linux' });
     const elapsed = Date.now() - start;
 
     // Upper bound only: gracefulMs + generous slack for the kill call.
@@ -195,7 +195,7 @@ describe('closeAppBounded — real subprocess contract', () => {
     };
 
     const start = Date.now();
-    await closeAppBounded(proc, { gracefulMs: 5_000, kill: spyKill });
+    await closeAppBounded(proc, { gracefulMs: 5_000, kill: spyKill, platform: 'linux' });
     const elapsed = Date.now() - start;
 
     // Early-return: no wait, no kill. Generous 100 ms ceiling for setup +

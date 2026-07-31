@@ -5230,7 +5230,24 @@ function registerIpcHandlers() {
   // as defense-in-depth (renderer is untrusted at the IPC boundary).
 
   handle('ok:fs:default-projects-root', async () => {
-    return resolveDefaultProjectsRoot(appState.lastUsedProjectParent, app.getPath('documents'));
+    // `app.getPath('documents')` throws when the OS can't resolve the
+    // Documents known folder (seen on headless Windows Server sessions,
+    // where SHGetKnownFolderPath fails for never-provisioned per-user
+    // folders). Evaluated eagerly it would reject the whole probe — even
+    // when a perfectly good persisted parent exists — and the dialog
+    // falls to its empty "No location selected" state. `home` resolves
+    // from the environment and does not have this failure mode.
+    let documentsDir: string;
+    try {
+      documentsDir = app.getPath('documents');
+    } catch (err) {
+      getLogger('fs').warn(
+        { err },
+        "app.getPath('documents') failed; falling back to home/Documents",
+      );
+      documentsDir = join(app.getPath('home'), 'Documents');
+    }
+    return resolveDefaultProjectsRoot(appState.lastUsedProjectParent, documentsDir);
   });
 
   handle('ok:fs:folder-state', async (_event, path) => {

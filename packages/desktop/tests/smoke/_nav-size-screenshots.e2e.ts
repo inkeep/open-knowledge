@@ -9,6 +9,10 @@
  * between captures. One Electron instance — no single-instance-lock fight.
  *
  * Output: packages/desktop/tmp/nav-shot-<w>x<h>.png (gitignored).
+ *
+ * Gated on a supported host platform, not on darwin: the capture is of the
+ * renderer's own layout, which is the same React tree everywhere, so the shots
+ * are worth having per-OS (window chrome differs and that is the point).
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -21,13 +25,16 @@ import {
   desktopLaunchOptions,
   resolveDesktopTarget,
 } from './_helpers/launch-desktop';
+import {
+  homeEnv,
+  PLATFORM_SKIP_REASON,
+  PLATFORM_SUPPORTED,
+  SMOKE_ENABLED,
+} from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
 const SHOT_DIR = resolve(DESKTOP_ROOT, 'tmp');
-
-const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DARWIN = process.platform === 'darwin';
 
 const SIZES = [
   { w: 800, h: 750, label: 'current-800x750' },
@@ -90,7 +97,7 @@ async function launchApp(tmpHome: string): Promise<ElectronApplication> {
       target: TARGET,
       args: [`--user-data-dir=${userDataDirFor(tmpHome)}`],
       timeout: 30_000,
-      env: { ...process.env, HOME: tmpHome, OK_DESKTOP_E2E_SMOKE: '1' },
+      env: { ...process.env, ...homeEnv(tmpHome), OK_DESKTOP_E2E_SMOKE: '1' },
     }),
   );
 }
@@ -131,7 +138,7 @@ function rmSafe(p: string): void {
 
 test.describe('Navigator size screenshots (dev-only)', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run.');
-  test.skip(!DARWIN, 'Smoke harness is darwin-only in v0.');
+  test.skip(!PLATFORM_SUPPORTED, PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('capture Navigator at 3 candidate sizes', async ({ captureStderrFor }) => {

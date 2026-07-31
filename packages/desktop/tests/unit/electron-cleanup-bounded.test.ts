@@ -141,6 +141,7 @@ describe('closeAppBounded — bounded-time process-group reap', () => {
     await closeAppBounded(proc as unknown as ChildProcess, {
       gracefulMs: 5_000,
       kill,
+      platform: 'linux',
     });
     const elapsed = Date.now() - start;
 
@@ -158,6 +159,7 @@ describe('closeAppBounded — bounded-time process-group reap', () => {
     await closeAppBounded(proc as unknown as ChildProcess, {
       gracefulMs: 200,
       kill,
+      platform: 'linux',
     });
     const elapsed = Date.now() - start;
 
@@ -178,6 +180,71 @@ describe('closeAppBounded — bounded-time process-group reap', () => {
     expect(firstKill?.signal).toBe('SIGKILL');
   });
 
+  test('hung process on win32 → tree-kills via taskkill, never the negated PID', async () => {
+    // Windows has no process groups, and Node throws on a negative pid
+    // there. Routing the win32 force-kill through `process.kill(-pid)`
+    // is a silent no-op: the app survives, keeps the Chromium userData
+    // singleton, and the next launch in the same spec never gets a
+    // window. The positive, unsignalled pid is the whole contract.
+    const proc = makeProc(23456);
+    // Don't schedule any exit — process hangs forever.
+    const kill = mockKill(proc);
+    const taskkillPids: number[] = [];
+
+    await closeAppBounded(proc as unknown as ChildProcess, {
+      gracefulMs: 200,
+      kill,
+      taskkill: (pid) => taskkillPids.push(pid),
+      platform: 'win32',
+    });
+
+    expect(taskkillPids).toEqual([23456]);
+    expect(proc.killCalls).toEqual([]);
+  });
+
+  test('win32 → does not resolve until the tree is actually reaped', async () => {
+    // taskkill returns before Windows has reaped the tree. Resolving on that
+    // return leaves Chromium's `SingletonLock` open, and a relaunch against
+    // the same userData inside the window loses the singleton rendezvous —
+    // observed as an ECONNRESET mid-CDP-attach in the multi-launch spec.
+    const proc = makeProc(23458);
+    let resolved = false;
+
+    const pending = closeAppBounded(proc as unknown as ChildProcess, {
+      gracefulMs: 1_000,
+      taskkill: () => {
+        // Reap 150ms after the kill request, as the OS would.
+        setTimeout(() => proc.fireExit(0), 150);
+      },
+      platform: 'win32',
+    }).then(() => {
+      resolved = true;
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(resolved).toBe(false); // still waiting on the reap
+
+    await pending;
+    expect(resolved).toBe(true);
+    expect(proc.exitCode).toBe(0);
+  });
+
+  test('graceful exit on win32 → no taskkill (idempotency holds on both branches)', async () => {
+    const proc = makeProc(23457);
+    scheduleExitIn(proc, 50);
+    const taskkillPids: number[] = [];
+
+    await closeAppBounded(proc as unknown as ChildProcess, {
+      gracefulMs: 5_000,
+      kill: mockKill(proc),
+      taskkill: (pid) => taskkillPids.push(pid),
+      platform: 'win32',
+    });
+
+    expect(taskkillPids).toEqual([]);
+    expect(proc.exitCode).toBe(0);
+  });
+
   test('already-exited process → no kill (idempotent on dead)', async () => {
     const proc = makeProc(11111);
     proc.exitCode = 0;
@@ -186,6 +253,7 @@ describe('closeAppBounded — bounded-time process-group reap', () => {
     await closeAppBounded(proc as unknown as ChildProcess, {
       gracefulMs: 5_000,
       kill,
+      platform: 'linux',
     });
 
     expect(proc.killCalls).toEqual([]);
@@ -199,6 +267,7 @@ describe('closeAppBounded — bounded-time process-group reap', () => {
     await closeAppBounded(proc as unknown as ChildProcess, {
       gracefulMs: 5_000,
       kill,
+      platform: 'linux',
     });
 
     expect(proc.killCalls).toEqual([]);
@@ -216,6 +285,7 @@ describe('closeAppBounded — bounded-time process-group reap', () => {
     await closeAppBounded(proc as unknown as ChildProcess, {
       gracefulMs: 5_000,
       kill,
+      platform: 'linux',
     });
 
     expect(proc.killCalls).toEqual([]);
@@ -233,6 +303,7 @@ describe('closeAppBounded — bounded-time process-group reap', () => {
     await closeAppBounded(proc as unknown as ChildProcess, {
       gracefulMs: 100,
       kill,
+      platform: 'linux',
     });
     const elapsed = Date.now() - start;
 
@@ -268,6 +339,7 @@ describe('closeAppBounded — bounded-time process-group reap', () => {
     await closeAppBounded(proc as unknown as ChildProcess, {
       gracefulMs: 100,
       kill: throwingKill,
+      platform: 'linux',
     });
 
     // Proves the catch path was actually exercised. Without this, a future
@@ -285,6 +357,7 @@ describe('closeAppBounded — bounded-time process-group reap', () => {
     await closeAppBounded(proc as unknown as ChildProcess, {
       gracefulMs: 100,
       kill,
+      platform: 'linux',
     });
     const killCountAfterFirst = proc.killCalls.length;
     expect(killCountAfterFirst).toBe(1); // first call killed
@@ -293,6 +366,7 @@ describe('closeAppBounded — bounded-time process-group reap', () => {
     await closeAppBounded(proc as unknown as ChildProcess, {
       gracefulMs: 100,
       kill,
+      platform: 'linux',
     });
 
     expect(proc.killCalls.length).toBe(killCountAfterFirst);
@@ -343,6 +417,7 @@ describe('closeAppBounded — bounded-time process-group reap', () => {
     await closeAppBounded(proc as unknown as ChildProcess, {
       gracefulMs: 5_000,
       kill,
+      platform: 'linux',
     });
 
     expect(proc.exitCode).toBe(0);

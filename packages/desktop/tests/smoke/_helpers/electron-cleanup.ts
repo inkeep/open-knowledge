@@ -58,23 +58,38 @@
  *      `process.kill(-pid, 'SIGKILL')` — same kill mechanism Playwright's
  *      own processLauncher uses. The negated
  *      PID kills the entire group atomically: Electron main + helper
- *      subprocesses + utility process tree.
+ *      subprocesses + utility process tree. On win32 this step is
+ *      `taskkill /T /F` plus a bounded wait for the OS to finish reaping
+ *      (see below).
  *
- * The `kill` opts parameter exists for unit testability — the bun test
- * passes a spy to assert which arguments were sent without monkey-patching
- * the global `process.kill`. Production callers (the smoke fixture) omit
- * it; the helper defaults to `process.kill`.
+ * The `kill` / `taskkill` / `platform` opts exist for unit testability —
+ * the unit test passes spies to assert which arguments were sent, and pins
+ * the platform so both force-kill branches are exercised from any host,
+ * without monkey-patching the global `process.kill`. Production callers
+ * (the smoke fixture) omit all three.
  *
- * Process-group kill is POSIX-specific. The smoke harness is darwin-only
- * (per `.e2e.ts` skip gates referencing `process.platform === 'darwin'`),
- * so this is a sound assumption. If the harness is ever extended to
- * Windows, the kill code path here would need a parallel branch using
- * `taskkill`.
+ * Process-group kill is POSIX-specific — Windows has no process groups
+ * and Node throws on a negative pid there, which the catch below would
+ * swallow, making the force-kill a silent no-op. That exact shape broke
+ * the first cross-platform run of the multi-launch specs: app1 survived
+ * its "kill", held the Chromium userData singleton, and app2's browser
+ * process did the singleton rendezvous and exited 0 mid-CDP-attach
+ * (`electron.launch: WebSocket error: read ECONNRESET`). POSIX was never
+ * affected because `kill(-pid)` nukes the whole group. On win32 the
+ * force-kill therefore shells out to `taskkill /pid <pid> /T /F` — the
+ * `/T` tree flag is the load-bearing part.
+ *
+ * `taskkill` only REQUESTS termination, so returning on its exit reproduces
+ * the same ECONNRESET intermittently: the lock survives until Windows has
+ * actually reaped the browser process. The win32 branch therefore also waits
+ * (bounded) for the real `'exit'`, which is what makes "dead on resolution"
+ * true rather than merely requested.
  *
  * No production code dependency. Test infrastructure only.
  */
 
 import type { ChildProcess } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { type Dirent, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ElectronApplication } from '@playwright/test';
@@ -93,10 +108,46 @@ export interface CloseAppBoundedOpts {
    */
   gracefulMs?: number;
   /**
-   * Kill function. Defaults to `process.kill`. Exposed as opts for unit
-   * testability — the bun unit test passes a spy.
+   * POSIX kill function. Defaults to `process.kill`. Exposed as opts for
+   * unit testability — the unit test passes a spy.
    */
   kill?: (pid: number, signal: NodeJS.Signals | string) => void;
+  /**
+   * Windows tree-kill. Defaults to `taskkill /pid <pid> /T /F`. A seam
+   * separate from `kill` because the Windows call carries no signal
+   * argument, so pinning platform dispatch needs a spy per branch.
+   */
+  taskkill?: (pid: number) => void;
+  /**
+   * Platform the force-kill branches on. Defaults to `process.platform`.
+   * Tests pin it so both branches are exercised from any host — otherwise
+   * the win32 branch would only ever run on a Windows runner.
+   */
+  platform?: NodeJS.Platform;
+}
+
+/**
+ * Default Windows force-kill: `taskkill /pid <pid> /T /F`. The `/T` tree
+ * flag is the load-bearing part — Windows has no process groups, so
+ * without it Electron's helper and utility subprocesses survive.
+ *
+ * `timeout` keeps this synchronous call inside the primitive's bounded-
+ * time contract. taskkill returns in well under a second in practice; the
+ * bound exists so a wedged call can't block the event loop indefinitely
+ * and defeat the very invariant `closeAppBounded` enforces.
+ */
+/**
+ * Cap on the post-taskkill wait for Windows to actually reap the tree. Short
+ * because the reap is normally sub-second; the bound exists so a wedged
+ * process can't stretch teardown past the fixture's budget.
+ */
+const POST_KILL_REAP_MS = 2_000;
+
+function taskkillTree(pid: number): void {
+  spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], {
+    stdio: 'ignore',
+    timeout: 5_000,
+  });
 }
 
 /**
@@ -222,12 +273,31 @@ export async function closeAppBounded(
   if (isProcessGone(proc)) return;
 
   // Process is still alive after the graceful budget. Force-kill the
-  // process group. Negated PID = process-group kill on POSIX.
+  // process group. Negated PID = process-group kill on POSIX; Windows has
+  // no groups, so taskkill's /T walks the tree instead (see file header —
+  // without it the kill is a silent no-op and the app survives).
   // Defensive: only attempt if pid is a positive integer (Playwright's
   // launchedProcess.pid is set on successful launch, but defending against
   // unexpected shapes is cheap).
   const killFn = opts.kill ?? process.kill.bind(process);
   if (typeof proc.pid === 'number' && Number.isInteger(proc.pid) && proc.pid > 0) {
+    if ((opts.platform ?? process.platform) === 'win32') {
+      (opts.taskkill ?? taskkillTree)(proc.pid);
+      // taskkill REQUESTS termination; it returns before Windows has reaped
+      // the tree. That gap is observable: Chromium holds `SingletonLock` in
+      // userData open until the browser process is actually gone, so a
+      // relaunch against the same userData inside the window fails the
+      // singleton rendezvous ("Lock file can not be created! Error code: 32"
+      // == ERROR_SHARING_VIOLATION) and the new app exits mid-CDP-attach with
+      // `electron.launch: WebSocket error: read ECONNRESET`. Waiting for the
+      // real exit makes the post-condition — dead on resolution — hold.
+      //
+      // POSIX needs no equivalent: `kill(-pid, SIGKILL)` is delivered by the
+      // kernel before it returns, and the singleton there is a symlink with a
+      // liveness check rather than an exclusively-held handle.
+      await waitForExit(proc, Math.min(gracefulMs, POST_KILL_REAP_MS));
+      return;
+    }
     try {
       killFn(-proc.pid, 'SIGKILL');
     } catch {

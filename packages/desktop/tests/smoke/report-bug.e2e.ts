@@ -1,6 +1,6 @@
 /**
  * Report-a-bug entry-point smoke — drives the real Electron build through
- * both entry points (Help menu, ⌘K command palette) into the shared
+ * both entry points (Help menu, ⌘K / Ctrl+K command palette) into the shared
  * ReportBugDialog, then through compose → create → review against the real
  * main-process bundling pipeline.
  *
@@ -12,17 +12,19 @@
  * zip on disk under the test-isolated `~/.ok/bug-reports/`.
  *
  * The Help-menu drive calls `MenuItem.click()` programmatically via
- * `app.evaluate` — Playwright cannot click native macOS menu chrome. The
- * programmatic click fires the exact handler wired in `menu.ts`, so
- * everything from the click handler down is the production path; only the
- * OS-level mouse event on the native menu bar is simulated.
+ * `app.evaluate` — the menu bar is native chrome on every OS, outside any
+ * page Playwright can drive. The programmatic click fires the exact handler
+ * wired in `menu.ts`, so everything from the click handler down is the
+ * production path; only the OS-level mouse event on the menu bar is
+ * simulated. The lookup walks every submenu rather than assuming a
+ * placement, so the per-platform template shape does not matter.
  *
  * Send and Reveal stay unexercised here by design: Send needs the intake
  * endpoint (ships separately; absent here), and Reveal opens a real Finder
  * window on the host running the suite.
  *
  * Skip gates mirror consent-dialog.e2e.ts — opt-in via OK_DESKTOP_E2E_SMOKE=1,
- * darwin-only, and build-must-exist.
+ * a supported host platform, and build-must-exist.
  */
 
 import {
@@ -38,16 +40,19 @@ import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import {
+  homeEnv,
+  PLATFORM_SKIP_REASON,
+  PLATFORM_SUPPORTED,
+  SMOKE_ENABLED,
+} from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
 
-const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DARWIN = process.platform === 'darwin';
-
 test.describe('Report-a-bug entry points', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
-  test.skip(!DARWIN, 'Smoke harness is darwin-only.');
+  test.skip(!PLATFORM_SUPPORTED, PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('Help menu and palette open the dialog; create lands a zip shown in review', async ({
@@ -88,7 +93,7 @@ test.describe('Report-a-bug entry points', () => {
         timeout: 30_000,
         env: {
           ...process.env,
-          HOME: tmpHome,
+          ...homeEnv(tmpHome),
           OK_DESKTOP_E2E_SMOKE: '1',
         },
       }),
@@ -134,8 +139,10 @@ test.describe('Report-a-bug entry points', () => {
     await page.keyboard.press('Escape');
     await expect(composeDialog).not.toBeVisible();
 
-    // Entry point 2 — ⌘K palette → "Report a bug" command.
-    await page.keyboard.press('Meta+k');
+    // Entry point 2 — palette → "Report a bug" command. The app registers the
+    // opener as a `mod` chord (⌘K on mac, Ctrl+K elsewhere), so the chord this
+    // presses has to resolve per-platform the same way.
+    await page.keyboard.press('ControlOrMeta+k');
     const paletteRow = page.getByTestId('command-palette-report-bug');
     await expect(paletteRow).toBeVisible({ timeout: 10_000 });
     await paletteRow.click();

@@ -23,8 +23,11 @@
  * sign needed — any Electron wrapper of the production build exercises
  * the same reconnect path).
  *
- * Skip conditions mirror the existing smoke tests (smoke-gated,
- * darwin-only, build-must-exist).
+ * Skip conditions mirror the existing smoke tests (smoke-gated, supported
+ * host platform, build-must-exist). The deep link is delivered through
+ * `electron.launch`'s argv, which `src/main/url-scheme.ts` scans
+ * synchronously on every OS — no `open(1)` and no Apple Event involved, so
+ * this driver is not macOS-bound.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -34,11 +37,10 @@ import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { type ElectronApplication, _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { PLATFORM_SKIP_REASON, PLATFORM_SUPPORTED, SMOKE_ENABLED } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
-const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DARWIN = process.platform === 'darwin';
 
 const MARKER_PREFIX = 'rename-divergence-PROBE';
 // Bounded budget to poll the destination server Y.Doc for body rehydration.
@@ -67,7 +69,7 @@ async function runProbe(
   captureStderrFor: (app: ElectronApplication) => void,
 ): Promise<ProbeOutcome> {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
-  test.skip(!DARWIN, 'Driver uses macOS open(1).');
+  test.skip(!PLATFORM_SUPPORTED, PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   // Fresh isolated everything
@@ -87,9 +89,8 @@ async function runProbe(
   )}&doc=${encodeURIComponent(sourceDocName)}`;
 
   // Deliver deep-link via argv at cold launch (Playwright _electron.launch
-  // doesn't fire open-url Apple Event, but main process parses argv URLs
-  // for first-instance — confirmed by the packaged .app working earlier
-  // with the same args shape).
+  // doesn't fire the macOS open-url Apple Event, but the main process parses
+  // argv URLs for first-instance on every platform).
   const app = await electron.launch(
     desktopLaunchOptions({
       target: TARGET,

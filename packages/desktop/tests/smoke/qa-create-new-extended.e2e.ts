@@ -16,6 +16,10 @@
  * basename is supplied by typing into the Name <Input>. Tests set
  * `OK_DESKTOP_TEST_PICKED_PATH = parent` and use the `typeProjectName`
  * helper to fill the name.
+ *
+ * Skip gates match its 3-test sibling — opt-in via `OK_DESKTOP_E2E_SMOKE=1`,
+ * a supported host platform, and build-must-exist. The picker is replaced by
+ * the env-var seam on every OS, so nothing here is macOS-specific.
  */
 
 import { execSync } from 'node:child_process';
@@ -36,12 +40,16 @@ import { typeProjectName } from './_helpers/create-new-dialog';
 import { captureAppProcess, closeAppBounded } from './_helpers/electron-cleanup';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { clickNavCreateNew } from './_helpers/navigator-actions';
+import {
+  homeEnv,
+  PLATFORM_SKIP_REASON,
+  PLATFORM_SUPPORTED,
+  SMOKE_ENABLED,
+} from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
 
-const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DARWIN = process.platform === 'darwin';
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
 /**
@@ -91,7 +99,7 @@ async function launchApp(tmpHome: string, opts: LaunchOpts = {}): Promise<Electr
       timeout: 30_000,
       env: {
         ...process.env,
-        HOME: tmpHome,
+        ...homeEnv(tmpHome),
         OK_DESKTOP_E2E_SMOKE: '1',
         ...(opts.pickedParent !== undefined
           ? { OK_DESKTOP_TEST_PICKED_PATH: opts.pickedParent }
@@ -146,7 +154,7 @@ function trackForCleanup(...paths: string[]): void {
 
 test.describe('QA extended create-new-project', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run.');
-  test.skip(!DARWIN, 'Darwin-only.');
+  test.skip(!PLATFORM_SUPPORTED, PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test.afterEach(async () => {

@@ -18,7 +18,10 @@
  * so the seam can never fire in production.
  *
  * Skip gates mirror `navigator-return.e2e.ts` — opt-in via
- * `OK_DESKTOP_E2E_SMOKE=1`, darwin-only, and build-must-exist.
+ * `OK_DESKTOP_E2E_SMOKE=1`, a supported host platform, and build-must-exist.
+ * Nothing here is macOS-specific: the flow is renderer clicks plus
+ * main-process filesystem state, and the folder picker is replaced by the
+ * env-var seam on every OS.
  */
 
 import { execSync } from 'node:child_process';
@@ -39,12 +42,15 @@ import { reapDetachedServers } from './_helpers/electron-cleanup';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { seedMcpConsentComplete } from './_helpers/mcp-consent';
 import { clickNavOpen } from './_helpers/navigator-actions';
+import {
+  homeEnv,
+  PLATFORM_SKIP_REASON,
+  PLATFORM_SUPPORTED,
+  SMOKE_ENABLED,
+} from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
-
-const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DARWIN = process.platform === 'darwin';
 
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
@@ -115,7 +121,7 @@ async function launchApp(tmpHome: string, opts: LaunchOpts = {}): Promise<Electr
       args: [`--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
-        HOME: tmpHome,
+        ...homeEnv(tmpHome),
         OK_DESKTOP_E2E_SMOKE: '1',
         ...(opts.pickedPath !== undefined ? { OK_DESKTOP_TEST_PICKED_PATH: opts.pickedPath } : {}),
       },
@@ -180,7 +186,7 @@ function trackForCleanup(...paths: string[]): void {
 
 test.describe('Consent-dialog smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
-  test.skip(!DARWIN, 'Smoke harness is darwin-only.');
+  test.skip(!PLATFORM_SUPPORTED, PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test.afterEach(async () => {

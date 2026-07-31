@@ -31,8 +31,11 @@
  * never false-GREEN. If the agent's `replace` never reaches the Y.Doc,
  * the marker never appears and the assertion fails after the budget.
  *
- * Skip conditions mirror the existing smoke tests (smoke-gated, darwin-
- * only, build-must-exist).
+ * Skip conditions mirror the existing smoke tests (smoke-gated, supported
+ * host platform, build-must-exist). The deep link is delivered through
+ * `electron.launch`'s argv, which `src/main/url-scheme.ts` scans
+ * synchronously on every OS — no `open(1)` and no Apple Event involved, so
+ * this driver is not macOS-bound.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -42,11 +45,10 @@ import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { type ElectronApplication, _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { PLATFORM_SKIP_REASON, PLATFORM_SUPPORTED, SMOKE_ENABLED } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
-const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DARWIN = process.platform === 'darwin';
 
 // Bounded budget to poll the server Y.Doc for the converged post-race state.
 // A fixed sleep risks a false-RED on a slow runner but never a false-GREEN:
@@ -185,9 +187,13 @@ async function executeRace(opts: {
   await targetPara.click();
   await page.keyboard.press('End');
 
-  // For mark-overlap: select a span overlapping BANANA and apply bold via
-  // the keyboard shortcut Cmd+B. This creates a Y.XmlText with a strong
-  // mark whose simpleDiff window MAY shift when the agent's replace lands.
+  // For mark-overlap: select a span overlapping BANANA and apply bold via the
+  // keyboard shortcut. TipTap binds bold to `Mod-b`, which ProseMirror
+  // resolves to Cmd on mac and Ctrl elsewhere, so the chord pressed here has
+  // to resolve the same way or the mark never lands and the variant degrades
+  // into a duplicate of the same-paragraph case. This creates a Y.XmlText with
+  // a strong mark whose simpleDiff window MAY shift when the agent's replace
+  // lands.
   if (variant === 'mark-overlap') {
     // Select from end-of-line backward by 16 chars (covers "is here in the f"
     // — overlaps the BANANA paragraph's content but NOT the BANANA word
@@ -195,7 +201,7 @@ async function executeRace(opts: {
     for (let i = 0; i < 16; i++) {
       await page.keyboard.press('Shift+ArrowLeft');
     }
-    await page.keyboard.press('Meta+B');
+    await page.keyboard.press('ControlOrMeta+B');
     // Deselect, return to end of paragraph.
     await page.keyboard.press('End');
     // Let the bold-mark update propagate.
@@ -291,7 +297,7 @@ async function setupElectron(
   userDataDir: string;
 }> {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
-  test.skip(!DARWIN, 'Driver uses macOS open(1).');
+  test.skip(!PLATFORM_SUPPORTED, PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   const contentDir = mkdtempSync(join(tmpdir(), `ok-agent-patch-probe-${variantTag}-`));
