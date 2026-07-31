@@ -428,6 +428,28 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+      # rpm artifacts carry the Fedora/RHEL arch words, not the Debian ones —
+      # electron-builder rewrites `${arch}` per extension, so the same
+      # `${productName}-${arch}.${ext}` pattern yields OpenKnowledge-x86_64.rpm
+      # here where it yields OpenKnowledge-amd64.deb above.
+      - name: Upload Linux rpm (x86_64)
+        if: matrix.arch == 'x64'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: OpenKnowledge-x86_64-rpm
+          path: packages/desktop/dist-desktop/*x86_64.rpm
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload Linux rpm (aarch64)
+        if: matrix.arch == 'arm64'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: OpenKnowledge-aarch64-rpm
+          path: packages/desktop/dist-desktop/*aarch64.rpm
+          retention-days: 14
+          if-no-files-found: error
+
       # No Linux update-metadata upload: electron-updater is platform-gated
       # off on Linux (the bootAutoUpdater wiring site in src/main/index.ts) —
       # updates arrive via the system package manager, so no
