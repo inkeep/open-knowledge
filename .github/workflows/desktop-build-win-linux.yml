@@ -18,9 +18,10 @@ name: Desktop build (manual, Windows/Linux)
 # the arch it targets.
 #
 # Artifacts are one-per-installer, each named for the file it holds
-# (OpenKnowledge-Setup-x64 / -arm64, OpenKnowledge-amd64-deb / -arm64-deb)
-# so an operator can grab just the one they're about to QA. GitHub zips
-# artifacts on download either way.
+# (OpenKnowledge-Setup-x64 / -arm64, OpenKnowledge-amd64-deb / -arm64-deb,
+# OpenKnowledge-x86_64-rpm / -aarch64-rpm) so an operator can grab just
+# the one they're about to QA. GitHub zips artifacts on download either
+# way.
 #
 # Windows signing (D3, Azure Artifact Signing): OPTIONAL here. When the
 # three AZURE_* secrets + three AZURE_SIGNING_* repo variables are
@@ -313,10 +314,10 @@ jobs:
         include:
           - runner: ubuntu-latest
             arch: x64
-            targets: deb:x64
+            targets: deb:x64 rpm:x64
           - runner: ubuntu-24.04-arm
             arch: arm64
-            targets: deb:arm64
+            targets: deb:arm64 rpm:arm64
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -371,10 +372,22 @@ jobs:
         working-directory: packages/desktop
         run: pnpm run build:desktop
 
+      # electron-builder downloads its own `fpm`, but fpm shells out to the
+      # host's `rpmbuild` to assemble an `.rpm` — and an Ubuntu runner has no
+      # rpm tooling preinstalled, so the rpm target dies with "Can't find
+      # rpmbuild". Ubuntu's `rpm` package carries /usr/bin/rpmbuild. The deb
+      # and AppImage targets need nothing extra, so this is the only apt step
+      # in the job.
+      - name: Install rpmbuild (fpm's rpm backend)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
       # Each cell packages only its own arch, on a runner of that arch — so the
-      # `.deb` ships the matching `@parcel/watcher` / `@napi-rs/keyring`
-      # prebuilds rather than degrading file-watching to chokidar. The deb
-      # target needs `fpm`; electron-builder 26 downloads a native
+      # `.deb` / `.rpm` ship the matching `@parcel/watcher` / `@napi-rs/keyring`
+      # prebuilds rather than degrading file-watching to chokidar. The deb and
+      # rpm targets need `fpm`; electron-builder 26 downloads a native
       # `linux-arm64v8` build of it (see app-builder-lib's `getFpmPath`), so no
       # emulation or system fpm is involved.
       - name: Package ${{ matrix.targets }}

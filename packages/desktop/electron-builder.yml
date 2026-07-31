@@ -483,6 +483,17 @@ linux:
   target:
     - target: deb
       arch: [x64, arm64]
+    # rpm for the Fedora/RHEL family, same integration grade as the deb (both
+    # go through electron-builder's FpmTarget and share the maintainer
+    # scripts). Built on the same native runners as the debs, for the same
+    # prebuilt-natives reason.
+    - target: rpm
+      arch: [x64, arm64]
+  # Per-target arch naming is electron-builder's, not ours: this one pattern
+  # yields OpenKnowledge-amd64.deb / OpenKnowledge-arm64.deb and
+  # OpenKnowledge-x86_64.rpm / OpenKnowledge-aarch64.rpm (`getArtifactArchName`
+  # in builder-util rewrites `${arch}` per extension). deb and rpm therefore
+  # never collide on a filename even where the arch word differs.
   artifactName: ${productName}-${arch}.${ext}
   # Terminal dock dark off-mac — keep node-pty out, and keep native-config's
   # darwin cargo `target/` tree out (see win.files for the rationale).
@@ -534,6 +545,57 @@ deb:
     - libasound2
     - libcups2
     - libgbm1
+
+rpm:
+  # Same maintainer scripts as the deb, deliberately. Every distro-specific
+  # step in them is already existence-guarded, so they no-op rather than fail
+  # on a Fedora/RHEL host: `update-alternatives` is present (chkconfig),
+  # `update-mime-database` / `update-desktop-database` sit behind `hash`, and
+  # the AppArmor block behind `apparmor_status --enabled`, which is simply
+  # absent outside the Ubuntu family. There are no dpkg-isms. The one thing
+  # they did NOT handle is rpm's upgrade ordering — the removal script grew a
+  # guard for it; see the header of build/deb-postrm.sh.
+  afterInstall: build/deb-postinst.sh
+  afterRemove: build/deb-postrm.sh
+  # Our own list, not electron-builder's rpm default. The first eight entries
+  # are the Fedora/RHEL names for the `deb.depends` list above, in the same
+  # order. The default drops libsecret (the keyring backend), so an rpm built
+  # on it would install cleanly and then silently downgrade auth to the
+  # plaintext file store.
+  #
+  # `libxss1` has NO rpm counterpart here, deliberately. Its Fedora name is
+  # libXScrnSaver, which is EPEL-only on RHEL 10 — requiring it would make the
+  # package uninstallable on a stock RHEL 10 box. It buys nothing in exchange:
+  # `objdump -p` on the packaged `openknowledge` binary lists 34 DT_NEEDED
+  # entries and none of them is libXss (Electron moved idle detection to
+  # DBus). The deb keeps its `libxss1` because that is electron-builder's
+  # stock set and it is a harmless no-op on Debian/Ubuntu, where the package
+  # is in the default repos.
+  #
+  # The last three ARE direct DT_NEEDED entries of that same binary; without
+  # them the app dies at exec with a bare dynamic-linker error and no
+  # user-visible signal. They are absent from the deb list above only because
+  # that gap is being closed separately — the two lists are meant to stay a
+  # mirror of each other, which
+  # tests/unit/electron-builder-linux-depends-parity.test.ts enforces.
+  #
+  # Upstream spells two of its defaults as rpm boolean deps —
+  # `(libXtst or libXtst6)`, `(libuuid or libuuid1)` — to also satisfy
+  # openSUSE's soname-style naming. We use the plain Fedora/RHEL names:
+  # openSUSE is not a target, and a half-boolean list would imply coverage we
+  # do not test.
+  depends:
+    - gtk3
+    - libnotify
+    - nss
+    - libXtst
+    - xdg-utils
+    - at-spi2-core
+    - libuuid
+    - libsecret
+    - alsa-lib
+    - cups-libs
+    - mesa-libgbm
 
 # Flip fuses (D17 LOCKED, spec §8.9) on the packed app before code signing —
 # all platforms (D9): off-darwin builds without the fuse flip would ship

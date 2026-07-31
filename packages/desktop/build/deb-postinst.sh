@@ -1,10 +1,14 @@
 #!/bin/bash
 
-# deb after-install script. electron-builder's FpmTarget passes custom
-# scripts through the SAME macro templating as its defaults — every
-# dollar-brace sequence is treated as a macro (unknown names throw at
-# build time, comments included), so bash variables here MUST use the
-# brace-less $NAME form.
+# after-install script, shared by the deb AND rpm targets (see the `rpm:` block
+# in electron-builder.yml for why one script serves both — every distro-
+# specific step below is already existence-guarded, so the Ubuntu-only halves
+# no-op on Fedora/RHEL rather than failing).
+#
+# electron-builder's FpmTarget passes custom scripts through the SAME macro
+# templating as its defaults — every dollar-brace sequence is treated as a
+# macro (unknown names throw at build time, comments included), so bash
+# variables here MUST use the brace-less $NAME form.
 #
 # The first half is a verbatim copy of app-builder-lib's
 # templates/linux/after-install.tpl (a custom afterInstall REPLACES the
