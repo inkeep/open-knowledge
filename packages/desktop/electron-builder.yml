@@ -459,18 +459,21 @@ linux:
   # conventional slot for knowledge/editor tools.
   category: Office
   synopsis: Collaborative markdown knowledge base
-  # AppImage (primary, auto-updating) + deb (integration-grade: .desktop
-  # protocol registration + /usr/bin/ok symlink via postinst), per D2.
-  # electron-builder appends MimeType=x-scheme-handler/openknowledge to the
-  # generated .desktop from the top-level `protocols` key — effective for
-  # deb installs; AppImages self-register a .desktop at runtime instead.
+  # deb only (integration-grade: .desktop protocol registration +
+  # /usr/bin/ok symlink via postinst). electron-builder appends
+  # MimeType=x-scheme-handler/openknowledge to the generated .desktop from
+  # the top-level `protocols` key.
   #
-  # AppImage is x64-only for now: the aarch64 AppImage runtime won't launch
-  # on a stock Debian 13 arm64 install — it needs libfuse.so.2 (FUSE 2) and
-  # libz.so.1, neither present by default (verified in Linux VM QA). arm64
-  # Linux users get the deb, which pulls its deps via apt. Restore arm64 to
-  # the AppImage arch list once we ship a runtime that bundles FUSE/zlib or
-  # falls back to --appimage-extract-and-run.
+  # AppImage was CUT (2026-07-31) rather than fixed: its runtime needs
+  # FUSE 2 (`libfuse.so.2` + fuse2 `fusermount`), which no current
+  # mainstream distro ships — stock Debian 13 fails on BOTH arches
+  # (arm64 additionally on libz.so.1), verified in real-VM QA. Fixing it
+  # means maintaining custom launcher-swapping build machinery for a
+  # secondary artifact whose auto-update role the apt repo covers better.
+  # Updates on Linux are the system package manager's job — see the
+  # platform gate at the bootAutoUpdater wiring site in
+  # `src/main/index.ts`. The no-sudo niche AppImage served is covered by
+  # the npm CLI / web app.
   #
   # The arm64 deb is built on a NATIVE arm64 runner (the `build-linux` matrix
   # in .github/workflows/desktop-build-win-linux.yml), never cross-compiled:
@@ -478,8 +481,6 @@ linux:
   # build skips @electron/rebuild by design (see the overlay config), so an
   # x64-host arm64 deb would package but ship the wrong native binaries.
   target:
-    - target: AppImage
-      arch: [x64]
     - target: deb
       arch: [x64, arm64]
   artifactName: ${productName}-${arch}.${ext}
@@ -507,8 +508,7 @@ deb:
   afterRemove: build/deb-postrm.sh
   # Chromium sandbox needs unprivileged userns; Ubuntu 24.04 restricts it
   # via AppArmor. The postinst ships a profile permitting it for our
-  # binary (the AppImage path relies on electron-builder's AppRun
-  # userns-probe --no-sandbox fallback instead).
+  # binary.
   #
   # First nine entries mirror electron-builder's stock deb list (setting
   # `depends` REPLACES it, so they must be restated). The last three are

@@ -18,9 +18,9 @@ name: Desktop build (manual, Windows/Linux)
 # the arch it targets.
 #
 # Artifacts are one-per-installer, each named for the file it holds
-# (OpenKnowledge-Setup-x64 / -arm64, OpenKnowledge-x86_64-AppImage,
-# OpenKnowledge-amd64-deb / -arm64-deb) so an operator can grab just the
-# one they're about to QA. GitHub zips artifacts on download either way.
+# (OpenKnowledge-Setup-x64 / -arm64, OpenKnowledge-amd64-deb / -arm64-deb)
+# so an operator can grab just the one they're about to QA. GitHub zips
+# artifacts on download either way.
 #
 # Windows signing (D3, Azure Artifact Signing): OPTIONAL here. When the
 # three AZURE_* secrets + three AZURE_SIGNING_* repo variables are
@@ -296,10 +296,10 @@ jobs:
   # the arm64 prebuilds directly and `scripts/stage-parcel-watcher.mjs` stages
   # the right binary.
   #
-  # AppImage stays x64-only: the aarch64 AppImage runtime won't launch on a
-  # stock Debian 13 arm64 install (needs libfuse.so.2 + libz.so.1, neither
-  # present by default — Linux VM QA). arm64 users get the deb, which pulls its
-  # deps via apt. electron-builder.yml holds the same split.
+  # deb-only: the AppImage was cut 2026-07-31 — its runtime needs FUSE 2,
+  # which no current mainstream distro ships (both arches failed stock
+  # Debian 13 in real-VM QA). Linux updates are the package manager's job;
+  # electron-builder.yml carries the full rationale.
   build-linux:
     if: inputs.platforms == 'both' || inputs.platforms == 'linux'
     needs: prepare
@@ -313,7 +313,7 @@ jobs:
         include:
           - runner: ubuntu-latest
             arch: x64
-            targets: AppImage:x64 deb:x64
+            targets: deb:x64
           - runner: ubuntu-24.04-arm
             arch: arm64
             targets: deb:arm64
@@ -397,15 +397,6 @@ jobs:
       # One artifact per installer, named for its file (see the Windows upload
       # steps for the rationale). Guarded per-arch because artifact names must
       # be unique within a run and each cell produces a different set.
-      - name: Upload Linux AppImage (x86_64)
-        if: matrix.arch == 'x64'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: OpenKnowledge-x86_64-AppImage
-          path: packages/desktop/dist-desktop/*.AppImage
-          retention-days: 14
-          if-no-files-found: error
-
       - name: Upload Linux deb (amd64)
         if: matrix.arch == 'x64'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -424,14 +415,7 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-      # electron-updater on Linux supports AppImage only, so `latest-linux.yml`
-      # is written by the x64 cell alone — the arm64 deb cell produces no
-      # update manifest and needs none.
-      - name: Upload Linux update metadata
-        if: matrix.arch == 'x64'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: OpenKnowledge-linux-update-metadata
-          path: packages/desktop/dist-desktop/latest-linux.yml
-          retention-days: 14
-          if-no-files-found: error
+      # No Linux update-metadata upload: electron-updater is platform-gated
+      # off on Linux (the bootAutoUpdater wiring site in src/main/index.ts) —
+      # updates arrive via the system package manager, so no
+      # `latest-linux.yml` feed exists to publish.

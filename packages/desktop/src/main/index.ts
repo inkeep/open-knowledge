@@ -6778,209 +6778,223 @@ function bootPrimaryInstance(): void {
       // logs the failure at `error` level so operators see it in the
       // packaged-app console output and returns null so `autoUpdaterHandle`
       // stays null (destroy on will-quit no-ops).
-      autoUpdaterHandle = await bootAutoUpdater(() => import('electron-updater'), {
-        // Route the auto-updater's diagnostics into the pino file logger. Its
-        // Logger interface is `(msg, ctx?)`; `getLogger` is `(data, msg)`, so
-        // adapt the shape. Without this the updater falls back to its
-        // console-only DEFAULT_LOGGER, which a packaged build never persists —
-        // leaving the relaunch trigger, channel vetoes, and update events
-        // invisible in `~/.ok/logs/`.
-        logger: {
-          info: (msg: string, ctx?: object) =>
-            getLogger('updater').info((ctx ?? {}) as Record<string, unknown>, msg),
-          warn: (msg: string, ctx?: object) =>
-            getLogger('updater').warn((ctx ?? {}) as Record<string, unknown>, msg),
-          error: (msg: string, ctx?: object) =>
-            getLogger('updater').error((ctx ?? {}) as Record<string, unknown>, msg),
-          debug: (msg: string, ctx?: object) =>
-            getLogger('updater').debug((ctx ?? {}) as Record<string, unknown>, msg),
-        },
-        ipcMain,
-        readState: () => appState,
-        writeState: (next) => {
-          // Rollback in-memory on disk-save failure so persistSafely-false in
-          // auto-updater.ts truly means "no gate armed". `saveAppStateToDir`
-          // returns a success boolean — on failure it has already logged +
-          // cleaned up; we just revert the in-memory commit and throw so
-          // persistSafely's catch registers the failure, skips the broadcast,
-          // and leaves memory + disk agreeing on "nothing armed."
-          // `saveAppStateToDir` itself never throws, so the rollback path is
-          // reached purely via the return value.
-          const prev = appState;
-          appState = next;
-          const ok = saveAppState(appState);
-          if (!ok) {
-            appState = prev;
-            throw new Error('saveAppState failed — rolled back in-memory state');
-          }
-        },
-        // Single-window target for the one-shot prompts that shouldn't multiply
-        // (Toast C stuck-hint). Prefer the focused window so the prompt lands
-        // where the user is looking; fall back to the first open window; null
-        // when none is open so the broadcast helper no-ops.
-        getPrimaryWindow: () => {
-          const focused = BrowserWindow.getFocusedWindow();
-          if (focused) return focused;
-          const all = BrowserWindow.getAllWindows();
-          return all[0] ?? null;
-        },
-        // Fan-out target for the relaunch banner (Toast A), the release-notes
-        // notice (Toast B), and its cross-window dismiss — a staged update and
-        // "what's new" should be actionable/visible from whichever window the
-        // user is looking at, and a dismiss must reach every window.
-        getAllWindows: () => BrowserWindow.getAllWindows(),
-        getAppVersion: () => app.getVersion(),
-        isPackaged: app.isPackaged,
-        forceDevBypass: process.env.OK_UPDATER_FORCE_DEV === '1',
-        // smoke override: point the updater at a local mock HTTP server
-        // that serves a hand-crafted `latest-mac.yml` + fake .zip with valid
-        // sha512. Production leaves this unset and reads `publish: github`
-        // from `app-update.yml`. Paired with `OK_UPDATER_FORCE_DEV=1` (above)
-        // so the `checkForUpdates()` gate actually hits the network in a dev
-        // build. See `packages/desktop/scripts/smoke-mock-update.mjs --keep-alive`
-        // for the server side.
-        feedUrl: process.env.OK_UPDATER_FEED_URL || undefined,
-        // Point the updater feed at the openknowledge.ai proxy so updates are
-        // counted per version. The proxy 302s to the byte-identical GitHub
-        // asset, preserving the manifest sha512 and the macOS signature; a feed
-        // failure reverts to the GitHub provider for the session. Both channels
-        // are enabled now that an end-to-end beta auto-update
-        // has been confirmed through the proxy; the `latest` (stable) path
-        // resolves via GitHub's authoritative `releases/latest` alias.
-        proxyFeed: {
-          base: 'https://openknowledge.ai/updates',
-          channels: new Set<UpdateChannel>(['beta', 'latest']),
-        },
-        // Toast B renderer-mount race —
-        // defer the dispatch until the primary window's renderer has
-        // finished loading so its `<UpdateToast/>` subscribers are
-        // attached. Without this, `webContents.send` sent from this very
-        // `app.whenReady()` handler is dropped on the floor (Electron does
-        // NOT buffer renderer-bound events before `did-finish-load`). If
-        // the primary window has already loaded by the time Toast B fires
-        // (rare — updater wires before loadURL resolves), fire immediately.
-        whenRendererReady: (fn) => {
-          // Three cases, all must deliver Toast B eventually because
-          // `lastSeenVersion` has already advanced at the call site and the
-          // contract ("user sees a toast on first launch post-update")
-          // does not allow silent-drop — close the
-          // `lastSeenVersion`-advanced-but-broadcast-lost gap that the
-          // no-window race would otherwise open.
-          //
-          //   1. Window exists + already loaded → fire immediately.
-          //   2. Window exists + still loading  → wait for did-finish-load.
-          //   3. No window yet                  → wait for the next
-          //      `browser-window-created` event, then recurse into cases
-          //      1/2 against the fresh window.
-          //
-          // Electron emits `browser-window-created` synchronously inside
-          // `new BrowserWindow(opts)`; `once` self-detaches after the first
-          // firing so this listener can't leak across future spawns. If
-          // the user quits the app before any window ever opens (pathological
-          // — macOS doesn't dispatch Cmd+Q without a window), the listener is
-          // garbage-collected alongside the `app` object at process exit.
-          //
-          // `getURL() === ''` distinguishes a freshly-constructed window
-          // (loadURL not yet called) from an already-loaded one. Without it,
-          // a fresh window emerging via `browser-window-created` registers
-          // `isLoading() === false` and falls through to `fn()` synchronously
-          // — sending the IPC before the renderer's main.tsx has run + before
-          // `installUpdateNoticesBridge()` has attached the subscriber.
-          // Electron drops main→renderer IPC sent against an unloaded page.
-          const tryFire = (win: BrowserWindow): void => {
-            if (win.webContents.isLoading() || win.webContents.getURL() === '') {
-              win.webContents.once('did-finish-load', fn);
-            } else {
-              fn();
+      //
+      // Linux ships as a deb — updates arrive through the system package
+      // manager, never electron-updater (whose Linux provider is
+      // AppImage-shaped: it would find no APPIMAGE env and error-log a
+      // doomed feed check on every boot). OK_UPDATER_FORCE_DEV keeps the
+      // mock-update smoke able to drive the updater machinery on a Linux
+      // dev host.
+      if (process.platform === 'linux' && process.env.OK_UPDATER_FORCE_DEV !== '1') {
+        getLogger('updater').info(
+          {},
+          'auto-updater disabled on linux — updates are delivered by the system package manager',
+        );
+      } else {
+        autoUpdaterHandle = await bootAutoUpdater(() => import('electron-updater'), {
+          // Route the auto-updater's diagnostics into the pino file logger. Its
+          // Logger interface is `(msg, ctx?)`; `getLogger` is `(data, msg)`, so
+          // adapt the shape. Without this the updater falls back to its
+          // console-only DEFAULT_LOGGER, which a packaged build never persists —
+          // leaving the relaunch trigger, channel vetoes, and update events
+          // invisible in `~/.ok/logs/`.
+          logger: {
+            info: (msg: string, ctx?: object) =>
+              getLogger('updater').info((ctx ?? {}) as Record<string, unknown>, msg),
+            warn: (msg: string, ctx?: object) =>
+              getLogger('updater').warn((ctx ?? {}) as Record<string, unknown>, msg),
+            error: (msg: string, ctx?: object) =>
+              getLogger('updater').error((ctx ?? {}) as Record<string, unknown>, msg),
+            debug: (msg: string, ctx?: object) =>
+              getLogger('updater').debug((ctx ?? {}) as Record<string, unknown>, msg),
+          },
+          ipcMain,
+          readState: () => appState,
+          writeState: (next) => {
+            // Rollback in-memory on disk-save failure so persistSafely-false in
+            // auto-updater.ts truly means "no gate armed". `saveAppStateToDir`
+            // returns a success boolean — on failure it has already logged +
+            // cleaned up; we just revert the in-memory commit and throw so
+            // persistSafely's catch registers the failure, skips the broadcast,
+            // and leaves memory + disk agreeing on "nothing armed."
+            // `saveAppStateToDir` itself never throws, so the rollback path is
+            // reached purely via the return value.
+            const prev = appState;
+            appState = next;
+            const ok = saveAppState(appState);
+            if (!ok) {
+              appState = prev;
+              throw new Error('saveAppState failed — rolled back in-memory state');
             }
-          };
-          const focused = BrowserWindow.getFocusedWindow();
-          const existing = focused ?? BrowserWindow.getAllWindows()[0] ?? null;
-          if (existing) {
-            tryFire(existing);
-            return;
-          }
-          app.once('browser-window-created', (_event, createdWin) => {
-            tryFire(createdWin as BrowserWindow);
-          });
-        },
-        // Pre-relaunch teardown — synchronously hard-kill every project-window
-        // utility (Hocuspocus host) right before
-        // `autoUpdater.quitAndInstall()` so Squirrel.Mac's `pgrep` against
-        // the bundle path doesn't see a stale process and abort with code -9
-        // ("App Still Running Error"). The graceful `{type:'shutdown'}`
-        // window-close IPC isn't fast enough — Hocuspocus drain + file-watcher
-        // teardown can outlast ShipIt's poll budget.
-        prepareForRelaunch: async () => {
-          // Freeze focus tracking BEFORE any teardown: the window-close
-          // cascade below re-focuses each surviving window, and tracking
-          // those events would rewrite `lastOpenedProject` / the focus
-          // sequence with close-order noise after the snapshot is taken.
-          freezeFocusTracking('prepare-for-relaunch');
-          // Snapshot every open window (projects + loose files) so the
-          // post-update boot restores all of them — not just
-          // `lastOpenedProject` — ordered least → most recently focused so the
-          // boot can raise the last entry. Write-once + persisted BEFORE the
-          // server shutdown: `saveAppState` is a synchronous tmp-write + rename
-          // that completes well before `stopAllOwnedServers` returns or
-          // `quitAndInstall()` fires.
-          captureWindowRestoreSnapshot('prepare-for-relaunch');
-          // Two-phase shutdown: SIGTERM detached server pids (and SIGKILL any
-          // dev-path utilityProcess.fork helpers), then poll the lock files
-          // until they release or 10 s elapses, then escalate to SIGKILL on
-          // detached pids whose drain ran long. Awaiting here means the
-          // updater's `quitAndInstall` waits for the process tree to be
-          // genuinely clean before ShipIt's pre-swap `pgrep` runs.
-          await wm?.stopAllOwnedServers();
-          // Drain the async log buffer before `quitAndInstall()` hands off to
-          // Squirrel, which SIGKILLs this process for the bundle swap. Without
-          // this, the relaunch-trigger + update lines emitted moments earlier
-          // never reach disk (the destination is `sync: false`).
-          flushDesktopLogger();
-        },
-        // User feedback for menu-driven `Check for Updates…` clicks. The
-        // periodic hourly check stays silent on a no-update outcome (the
-        // existing `update-not-available` log-only handler), but a manual
-        // gesture deserves explicit confirmation. macOS HIG / Sparkle
-        // convention is a modal dialog parented to the active window.
-        showCheckNowResult: (result) => {
-          const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
-          // No-window case is rare on macOS (the app keeps the dock icon
-          // alive past last-window-close, and the menu is unreachable
-          // without at least one window) but cleanly degrade if it
-          // happens — a missing parent makes showMessageBox throw on some
-          // Electron versions.
-          if (!target) return;
-          if (result.kind === 'not-available') {
-            void dialog.showMessageBox(target, {
-              type: 'info',
-              buttons: ['OK'],
-              defaultId: 0,
-              title: 'Up to Date',
-              message: "You're on the latest version of OpenKnowledge.",
-              detail: `OpenKnowledge ${result.currentVersion} is the most current version available.`,
+          },
+          // Single-window target for the one-shot prompts that shouldn't multiply
+          // (Toast C stuck-hint). Prefer the focused window so the prompt lands
+          // where the user is looking; fall back to the first open window; null
+          // when none is open so the broadcast helper no-ops.
+          getPrimaryWindow: () => {
+            const focused = BrowserWindow.getFocusedWindow();
+            if (focused) return focused;
+            const all = BrowserWindow.getAllWindows();
+            return all[0] ?? null;
+          },
+          // Fan-out target for the relaunch banner (Toast A), the release-notes
+          // notice (Toast B), and its cross-window dismiss — a staged update and
+          // "what's new" should be actionable/visible from whichever window the
+          // user is looking at, and a dismiss must reach every window.
+          getAllWindows: () => BrowserWindow.getAllWindows(),
+          getAppVersion: () => app.getVersion(),
+          isPackaged: app.isPackaged,
+          forceDevBypass: process.env.OK_UPDATER_FORCE_DEV === '1',
+          // smoke override: point the updater at a local mock HTTP server
+          // that serves a hand-crafted `latest-mac.yml` + fake .zip with valid
+          // sha512. Production leaves this unset and reads `publish: github`
+          // from `app-update.yml`. Paired with `OK_UPDATER_FORCE_DEV=1` (above)
+          // so the `checkForUpdates()` gate actually hits the network in a dev
+          // build. See `packages/desktop/scripts/smoke-mock-update.mjs --keep-alive`
+          // for the server side.
+          feedUrl: process.env.OK_UPDATER_FEED_URL || undefined,
+          // Point the updater feed at the openknowledge.ai proxy so updates are
+          // counted per version. The proxy 302s to the byte-identical GitHub
+          // asset, preserving the manifest sha512 and the macOS signature; a feed
+          // failure reverts to the GitHub provider for the session. Both channels
+          // are enabled now that an end-to-end beta auto-update
+          // has been confirmed through the proxy; the `latest` (stable) path
+          // resolves via GitHub's authoritative `releases/latest` alias.
+          proxyFeed: {
+            base: 'https://openknowledge.ai/updates',
+            channels: new Set<UpdateChannel>(['beta', 'latest']),
+          },
+          // Toast B renderer-mount race —
+          // defer the dispatch until the primary window's renderer has
+          // finished loading so its `<UpdateToast/>` subscribers are
+          // attached. Without this, `webContents.send` sent from this very
+          // `app.whenReady()` handler is dropped on the floor (Electron does
+          // NOT buffer renderer-bound events before `did-finish-load`). If
+          // the primary window has already loaded by the time Toast B fires
+          // (rare — updater wires before loadURL resolves), fire immediately.
+          whenRendererReady: (fn) => {
+            // Three cases, all must deliver Toast B eventually because
+            // `lastSeenVersion` has already advanced at the call site and the
+            // contract ("user sees a toast on first launch post-update")
+            // does not allow silent-drop — close the
+            // `lastSeenVersion`-advanced-but-broadcast-lost gap that the
+            // no-window race would otherwise open.
+            //
+            //   1. Window exists + already loaded → fire immediately.
+            //   2. Window exists + still loading  → wait for did-finish-load.
+            //   3. No window yet                  → wait for the next
+            //      `browser-window-created` event, then recurse into cases
+            //      1/2 against the fresh window.
+            //
+            // Electron emits `browser-window-created` synchronously inside
+            // `new BrowserWindow(opts)`; `once` self-detaches after the first
+            // firing so this listener can't leak across future spawns. If
+            // the user quits the app before any window ever opens (pathological
+            // — macOS doesn't dispatch Cmd+Q without a window), the listener is
+            // garbage-collected alongside the `app` object at process exit.
+            //
+            // `getURL() === ''` distinguishes a freshly-constructed window
+            // (loadURL not yet called) from an already-loaded one. Without it,
+            // a fresh window emerging via `browser-window-created` registers
+            // `isLoading() === false` and falls through to `fn()` synchronously
+            // — sending the IPC before the renderer's main.tsx has run + before
+            // `installUpdateNoticesBridge()` has attached the subscriber.
+            // Electron drops main→renderer IPC sent against an unloaded page.
+            const tryFire = (win: BrowserWindow): void => {
+              if (win.webContents.isLoading() || win.webContents.getURL() === '') {
+                win.webContents.once('did-finish-load', fn);
+              } else {
+                fn();
+              }
+            };
+            const focused = BrowserWindow.getFocusedWindow();
+            const existing = focused ?? BrowserWindow.getAllWindows()[0] ?? null;
+            if (existing) {
+              tryFire(existing);
+              return;
+            }
+            app.once('browser-window-created', (_event, createdWin) => {
+              tryFire(createdWin as BrowserWindow);
             });
-          } else if (result.kind === 'available') {
-            void dialog.showMessageBox(target, {
-              type: 'info',
-              buttons: ['OK'],
-              defaultId: 0,
-              title: 'Update Available',
-              message: `OpenKnowledge ${result.latestVersion} is available.`,
-              detail: `It's downloading in the background. You'll be prompted to relaunch when the install is ready.`,
-            });
-          } else {
-            void dialog.showMessageBox(target, {
-              type: 'warning',
-              buttons: ['OK'],
-              defaultId: 0,
-              title: "Couldn't Check for Updates",
-              message: "OpenKnowledge couldn't check for updates right now.",
-              detail: result.message,
-            });
-          }
-        },
-      });
+          },
+          // Pre-relaunch teardown — synchronously hard-kill every project-window
+          // utility (Hocuspocus host) right before
+          // `autoUpdater.quitAndInstall()` so Squirrel.Mac's `pgrep` against
+          // the bundle path doesn't see a stale process and abort with code -9
+          // ("App Still Running Error"). The graceful `{type:'shutdown'}`
+          // window-close IPC isn't fast enough — Hocuspocus drain + file-watcher
+          // teardown can outlast ShipIt's poll budget.
+          prepareForRelaunch: async () => {
+            // Freeze focus tracking BEFORE any teardown: the window-close
+            // cascade below re-focuses each surviving window, and tracking
+            // those events would rewrite `lastOpenedProject` / the focus
+            // sequence with close-order noise after the snapshot is taken.
+            freezeFocusTracking('prepare-for-relaunch');
+            // Snapshot every open window (projects + loose files) so the
+            // post-update boot restores all of them — not just
+            // `lastOpenedProject` — ordered least → most recently focused so the
+            // boot can raise the last entry. Write-once + persisted BEFORE the
+            // server shutdown: `saveAppState` is a synchronous tmp-write + rename
+            // that completes well before `stopAllOwnedServers` returns or
+            // `quitAndInstall()` fires.
+            captureWindowRestoreSnapshot('prepare-for-relaunch');
+            // Two-phase shutdown: SIGTERM detached server pids (and SIGKILL any
+            // dev-path utilityProcess.fork helpers), then poll the lock files
+            // until they release or 10 s elapses, then escalate to SIGKILL on
+            // detached pids whose drain ran long. Awaiting here means the
+            // updater's `quitAndInstall` waits for the process tree to be
+            // genuinely clean before ShipIt's pre-swap `pgrep` runs.
+            await wm?.stopAllOwnedServers();
+            // Drain the async log buffer before `quitAndInstall()` hands off to
+            // Squirrel, which SIGKILLs this process for the bundle swap. Without
+            // this, the relaunch-trigger + update lines emitted moments earlier
+            // never reach disk (the destination is `sync: false`).
+            flushDesktopLogger();
+          },
+          // User feedback for menu-driven `Check for Updates…` clicks. The
+          // periodic hourly check stays silent on a no-update outcome (the
+          // existing `update-not-available` log-only handler), but a manual
+          // gesture deserves explicit confirmation. macOS HIG / Sparkle
+          // convention is a modal dialog parented to the active window.
+          showCheckNowResult: (result) => {
+            const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+            // No-window case is rare on macOS (the app keeps the dock icon
+            // alive past last-window-close, and the menu is unreachable
+            // without at least one window) but cleanly degrade if it
+            // happens — a missing parent makes showMessageBox throw on some
+            // Electron versions.
+            if (!target) return;
+            if (result.kind === 'not-available') {
+              void dialog.showMessageBox(target, {
+                type: 'info',
+                buttons: ['OK'],
+                defaultId: 0,
+                title: 'Up to Date',
+                message: "You're on the latest version of OpenKnowledge.",
+                detail: `OpenKnowledge ${result.currentVersion} is the most current version available.`,
+              });
+            } else if (result.kind === 'available') {
+              void dialog.showMessageBox(target, {
+                type: 'info',
+                buttons: ['OK'],
+                defaultId: 0,
+                title: 'Update Available',
+                message: `OpenKnowledge ${result.latestVersion} is available.`,
+                detail: `It's downloading in the background. You'll be prompted to relaunch when the install is ready.`,
+              });
+            } else {
+              void dialog.showMessageBox(target, {
+                type: 'warning',
+                buttons: ['OK'],
+                defaultId: 0,
+                title: "Couldn't Check for Updates",
+                message: "OpenKnowledge couldn't check for updates right now.",
+                detail: result.message,
+              });
+            }
+          },
+        });
+      }
       // Re-install the menu now that the auto-updater handle exists, so the
       // "Check for Updates…" entries actually have something to invoke.
       refreshApplicationMenu();
