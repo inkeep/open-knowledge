@@ -6,7 +6,7 @@ import { applySlashCommandItem } from '../slash-command/apply-item';
 import { filterItems, getSlashCommandItems, type SlashCommandItem } from '../slash-command/items';
 import { SlashCommandMenu } from '../slash-command/SlashCommandMenu';
 import { isSelectionInTableCell } from '../table-cell-context';
-import { getEditorSourceMode } from './editor-mode-context';
+import { suggestionAllow } from './suggestion-allow';
 import {
   createSuggestionPopup,
   destroySuggestionPopup,
@@ -139,12 +139,9 @@ export const SlashCommand = Extension.create<SlashCommandOptions>({
         pluginKey: slashCommandKey,
         char: '/',
         startOfLine: false,
-        // Gate set inside @tiptap/suggestion's apply() reducer — when source
-        // mode is active, the bridge still propagates the `/` keystroke into
-        // the (CSS-hidden) WYSIWYG editor, but the plugin's `state.active`
-        // stays false so onStart never fires and no popup is appended to
-        // document.body. See `editor-mode-context.ts` for the signal.
-        allow: ({ editor }) => !getEditorSourceMode(editor),
+        // Source-mode and literal-text refusals, shared with the wiki-link and
+        // tag pickers. See `suggestion-allow.ts`.
+        allow: suggestionAllow,
         // allowedPrefixes: [' '] is the default — accept it. Verified against
         // @tiptap/suggestion source (findSuggestionMatch): the prefix check uses
         // regex `^[<allowedPrefixes>\0]?$` against the char immediately before

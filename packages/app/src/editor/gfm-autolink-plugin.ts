@@ -49,6 +49,7 @@ import { type EditorState, Plugin, PluginKey, type Transaction } from '@tiptap/p
 import type { EditorView } from '@tiptap/pm/view';
 import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { detectGfmLinkToken } from './gfm-link-detector';
+import { isCodeTextblock, rangeHasCodeMark } from './literal-text-context';
 import { dispatchAsOwnUndoStep } from './undo-isolation';
 
 // TipTap's UNICODE_WHITESPACE_PATTERN (@tiptap/extension-link), the class
@@ -89,12 +90,6 @@ interface GfmAutolinkPluginOptions {
    * exercise the local-write path without driving real focus.
    */
   isActiveEditor?: (view: EditorView) => boolean;
-}
-
-function rangeHasCodeMark(view: EditorView, from: number, to: number): boolean {
-  const codeMark = view.state.schema.marks.code;
-  if (!codeMark) return false;
-  return view.state.doc.rangeHasMark(from, to, codeMark);
 }
 
 /**
@@ -142,7 +137,7 @@ function detectCandidates(
 
     if (!textBlock || !textBeforeWhitespace) continue;
     // Code blocks are plain-text-only; never linkify inside one.
-    if (textBlock.node.type.spec.code) continue;
+    if (isCodeTextblock(textBlock.node)) continue;
 
     const words = textBeforeWhitespace.split(WHITESPACE_SPLIT).filter(Boolean);
     const lastWord = words[words.length - 1];
@@ -199,7 +194,7 @@ function gfmAutolinkPlugin(options: GfmAutolinkPluginOptions = {}): Plugin {
       if (view.state.doc.textBetween(from, to) !== text) continue;
       // Skip if the span is already linked or lives inside inline code.
       if (getMarksBetween(from, to, view.state.doc).some((m) => m.mark.type === markType)) continue;
-      if (rangeHasCodeMark(view, from, to)) continue;
+      if (rangeHasCodeMark(view.state, from, to)) continue;
 
       tr = tr.addMark(from, to, markType.create({ href, linkStyle: GFM_AUTOLINK_STYLE }));
       changed = true;

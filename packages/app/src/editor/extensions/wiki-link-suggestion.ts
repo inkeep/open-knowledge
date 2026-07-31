@@ -22,7 +22,7 @@ import { fetchDocumentListShared } from '@/lib/documents-fetch';
 import { HttpResponseParseError } from '../http-client';
 import { WikiLinkSuggestionMenu } from '../wiki-link-suggestion/WikiLinkSuggestionMenu';
 import { getEditorDocName } from './doc-context';
-import { getEditorSourceMode } from './editor-mode-context';
+import { suggestionAllow } from './suggestion-allow';
 import {
   createSuggestionPopup,
   destroySuggestionPopup,
@@ -552,10 +552,9 @@ export function configureWikiLinkSuggestion(editor: Editor) {
     // null allows mid-word triggers — safe because [[ is an unambiguous delimiter (unlike single-char /)
     allowedPrefixes: null,
     findSuggestionMatch: wikiLinkMatcher,
-    // Gate inside @tiptap/suggestion's apply() reducer keeps `state.active`
-    // false in source mode — bridge-propagated `[[` from CodeMirror cannot
-    // mount the page picker popup. Signal lives in `editor-mode-context.ts`.
-    allow: ({ editor }) => !getEditorSourceMode(editor),
+    // Source-mode and literal-text refusals, shared with the tag and slash
+    // pickers. See `suggestion-allow.ts`.
+    allow: suggestionAllow,
 
     items: async ({ query }) => {
       const { mode, pageTarget, anchorQuery } = parseQuery(query);

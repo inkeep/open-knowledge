@@ -34,7 +34,7 @@ import { PluginKey } from '@tiptap/pm/state';
 import { ReactRenderer } from '@tiptap/react';
 import Suggestion, { type SuggestionKeyDownProps, type SuggestionProps } from '@tiptap/suggestion';
 import { TagSuggestionMenu } from '../tag-suggestion/TagSuggestionMenu';
-import { getEditorSourceMode } from './editor-mode-context';
+import { suggestionAllow } from './suggestion-allow';
 import {
   createSuggestionPopup,
   destroySuggestionPopup,
@@ -210,10 +210,9 @@ export function configureTagSuggestion(editor: Editor) {
     // matcher handles that case explicitly.
     allowedPrefixes: null,
     findSuggestionMatch: tagMatcher,
-    // Gate inside @tiptap/suggestion's apply() reducer keeps `state.active`
-    // false in source mode — bridge-propagated `#` from CodeMirror cannot
-    // mount the tag picker popup. Signal lives in `editor-mode-context.ts`.
-    allow: ({ editor }) => !getEditorSourceMode(editor),
+    // Source-mode and literal-text refusals, shared with the wiki-link and
+    // slash pickers. See `suggestion-allow.ts`.
+    allow: suggestionAllow,
 
     items: async ({ query }) => {
       if (!tagsLoaded) {

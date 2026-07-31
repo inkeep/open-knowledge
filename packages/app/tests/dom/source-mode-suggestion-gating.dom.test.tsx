@@ -32,29 +32,7 @@ import { Editor } from '@tiptap/core';
 import { afterEach, describe, expect, test } from 'vitest';
 import { setEditorSourceMode } from '../../src/editor/extensions/editor-mode-context';
 import { sharedExtensions } from '../../src/editor/extensions/shared';
-
-interface SuggestionPluginState {
-  active: boolean;
-}
-
-/**
- * Find a Suggestion-plugin instance on the editor by its plugin-key name
- * prefix. The three keys (`slashCommand`, `wikiLinkSuggestion`,
- * `tagSuggestion`) are constructed via `new PluginKey('<name>')` which
- * synthesizes a unique suffix (`<name>$` or `<name>$<n>`). We match the
- * prefix because `slashCommandKey` is not exported from
- * `slash-command.ts` and we don't want to widen the production surface
- * just for tests.
- */
-function getSuggestionState(editor: Editor, keyPrefix: string): SuggestionPluginState | null {
-  const plugin = editor.state.plugins.find((p) => {
-    const keyName = (p as { spec?: { key?: { key?: string } } }).spec?.key?.key;
-    return typeof keyName === 'string' && keyName.startsWith(keyPrefix);
-  });
-  if (!plugin) return null;
-  const state = plugin.getState(editor.state) as SuggestionPluginState | undefined;
-  return state ?? null;
-}
+import { getSuggestionState } from './suggestion-plugin-state.test-helper';
 
 function mountEditor(): { editor: Editor; container: HTMLDivElement } {
   const container = document.createElement('div');
