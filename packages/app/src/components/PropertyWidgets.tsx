@@ -568,7 +568,12 @@ export function ListWidget({ keyName, value, onCommit }: CommonWidgetProps<strin
               // long single-word tag (`#xxxxxxx…`) to the value cell width
               // and lets the text break mid-string instead of overflowing
               // the column into adjacent layout.
-              'inline-flex max-w-full min-w-0 items-center break-all text-1sm gap-0.5 rounded-full py-0.5 pl-2 pr-1.5 transition-colors',
+              // `rounded-xl`, not `rounded-full`: on a wrapped multi-line
+              // chip a 9999px radius clamps to half the (now tall) box and
+              // renders an oval the rectangular text block escapes. A fixed
+              // radius keeps tall chips contained, while CSS corner-overlap
+              // scaling still renders single-line chips as full pills.
+              'inline-flex max-w-full min-w-0 items-center break-all text-1sm gap-0.5 rounded-xl py-0.5 pl-2 pr-1.5 transition-colors',
               renderAsTag &&
                 'bg-primary/10 font-medium text-primary has-[button[data-tag]:hover]:bg-primary/20 has-[button[data-tag]:active]:bg-primary/25',
               renderAsInvalidTag &&
