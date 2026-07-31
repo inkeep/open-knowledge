@@ -38,6 +38,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
+import { useColorThemeEpoch } from '@/lib/color-theme-epoch';
 import { cn } from '@/lib/utils';
 import { docNameToRelativePath } from '@/lib/workspace-paths';
 import { OPT_OUT_ATTR } from '../clipboard/index.ts';
@@ -148,6 +149,8 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
   const { resolvedTheme } = useTheme();
   const appTheme: PreviewTheme =
     resolvedTheme === 'dark' || resolvedTheme === 'light' ? resolvedTheme : readAppTheme();
+  // The color-theme axis has no React signal of its own — see `useColorThemeEpoch`.
+  const colorThemeEpoch = useColorThemeEpoch();
   // Theme baked into the preview `srcDoc` for a flash-free first paint.
   // Frozen at mount: a theme toggle must NOT rebuild `srcDoc` (rebuilding
   // reloads the iframe — state loss, chart re-animation), so toggles re-skin
@@ -233,10 +236,13 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
   // Re-skin the live preview when the reader toggles the app theme —
   // `postMessage` only, no `srcDoc` rebuild, so the iframe never reloads.
   // The iframe `onLoad` handler covers the reverse: re-pushing the current
-  // theme after a reload.
+  // theme after a reload. `colorThemeEpoch` is in the deps because switching
+  // between two palettes of the same kind (Dracula -> Monokai) never changes
+  // `appTheme`, and the forwarded tokens must still follow.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: colorThemeEpoch is a signal-only dependency — its bump re-runs this effect so the live iframe re-reads the palette's tokens; it is intentionally not referenced in the body.
   useEffect(() => {
     previewFrameRef.current?.contentWindow?.postMessage(buildPreviewThemeMessage(appTheme), '*');
-  }, [appTheme]);
+  }, [appTheme, colorThemeEpoch]);
 
   // Auto-height: the preview iframe reports its rendered content height; fit
   // the wrapper to it. An explicit `h=` always wins downstream in

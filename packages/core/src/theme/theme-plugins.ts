@@ -11,44 +11,20 @@
  * `LintPlugin`. Adding a built-in theme = append one descriptor here; the config
  * enum, the picker list, and the generated CSS all follow with no edit elsewhere.
  *
- * Each non-`default` built-in is a self-contained palette — `dark` or `light`:
- * selecting one layers its tokens via a `data-color-theme` attribute on `<html>`
- * and forces its own mode (dark or light) so Tailwind `dark:` variants stay
- * correct. `default` carries no palette (defers to the light/dark
- * `appearance.theme` mode); `custom` is built at runtime from the user's seed
- * (app-side; see `buildCustomThemeCss`).
+ * Every palette is a `Base16Scheme` (see `base16.ts`) reproduced verbatim from
+ * the upstream Tinted Theming scheme of the same name, so a built-in and a
+ * user-imported scheme travel the exact same code path. Selecting one layers its
+ * tokens via a `data-color-theme` attribute on `<html>` and forces the scheme's
+ * own `variant` so Tailwind `dark:` variants stay correct. `default` carries no
+ * palette (defers to the light/dark `appearance.theme` mode); `custom` is built
+ * at runtime from the user's imported or hand-edited scheme.
  *
  * The CSS that applies the built-in palettes is GENERATED from this registry into
  * `packages/app/src/color-themes.generated.css`; the app's `color-themes.test.ts`
  * regenerates and fails on drift.
  */
 
-/** A theme's authored base colors. `expandPalette` derives every shadcn token from these. */
-export interface ColorThemeBase {
-  /** Editor canvas background. */
-  bg: string;
-  /** Elevated surfaces (cards, popovers, hover states). Lighter than `bg`. */
-  bgElevated: string;
-  /** Chrome / sidebar background. Darker than `bg` for the "island" depth cue. */
-  bgSubtle: string;
-  /** Primary body text. */
-  fg: string;
-  /** Secondary / descriptive text. Must stay legible on `bg`. */
-  fgMuted: string;
-  /** Hairline borders + inputs. */
-  border: string;
-  /** Accent for buttons, links, focus ring. */
-  primary: string;
-  /** Text painted on top of `primary` — pick for contrast. */
-  primaryFg: string;
-  red: string;
-  green: string;
-  yellow: string;
-  blue: string;
-  cyan: string;
-  orange: string;
-  purple: string;
-}
+import { type Base16Scheme, base16ToTokens } from './base16.ts';
 
 /**
  * A theme plugin descriptor — the theming analog of the content-rules
@@ -62,193 +38,170 @@ export interface ThemePlugin<Id extends string = string> {
   label: string;
   /** `dark`/`light` palettes force that mode; `system` follows `appearance.theme`. */
   kind: 'dark' | 'light' | 'system';
-  /** Authored colors. Absent on `default` (no palette) and `custom` (runtime seed). */
-  base?: ColorThemeBase;
+  /** The authored scheme. Absent on `default` (no palette) and `custom` (runtime import). */
+  scheme?: Base16Scheme;
   /**
    * The plugin's behavior: derive the CSS token map this theme applies. Present
-   * only on built-ins with a static `base` (the analog of `LintPlugin.lint`);
+   * only on built-ins with a static `scheme` (the analog of `LintPlugin.lint`);
    * `default`/`custom` have none. The generated CSS calls this per descriptor.
    */
   toTokens?(): Record<string, string>;
 }
 
-const DRACULA: ColorThemeBase = {
-  bg: '#282a36',
-  bgElevated: '#343746',
-  bgSubtle: '#21222c',
-  fg: '#f8f8f2',
-  fgMuted: '#9aa0c5',
-  border: '#44475a',
-  primary: '#bd93f9',
-  primaryFg: '#282a36',
-  red: '#ff5555',
-  green: '#50fa7b',
-  yellow: '#f1fa8c',
-  blue: '#8be9fd',
-  cyan: '#8be9fd',
-  orange: '#ffb86c',
-  purple: '#ff79c6',
+const DRACULA: Base16Scheme = {
+  name: 'Dracula',
+  author: 'clach04 (https://github.com/clach04)',
+  variant: 'dark',
+  palette: {
+    base00: '#282a36',
+    base01: '#21222c',
+    base02: '#44475a',
+    base03: '#6272a4',
+    base04: '#9ea8c7',
+    base05: '#f8f8f2',
+    base06: '#f8f8f2',
+    base07: '#ffffff',
+    base08: '#ff5555',
+    base09: '#ffb86c',
+    base0A: '#f1fa8c',
+    base0B: '#50fa7b',
+    base0C: '#8be9fd',
+    base0D: '#bd93f9',
+    base0E: '#ff79c6',
+    base0F: '#993333',
+  },
 };
 
-// Catppuccin Frappé — the warm, mid-tone dark flavor. Mauve is the signature accent.
-const CATPPUCCIN_FRAPPE: ColorThemeBase = {
-  bg: '#303446', // base
-  bgElevated: '#414559', // surface0
-  bgSubtle: '#292c3c', // mantle
-  fg: '#c6d0f5', // text
-  fgMuted: '#a5adce', // subtext0
-  border: '#51576d', // surface1
-  primary: '#ca9ee6', // mauve
-  primaryFg: '#303446', // base (reads on mauve)
-  red: '#e78284',
-  green: '#a6d189',
-  yellow: '#e5c890',
-  blue: '#8caaee',
-  cyan: '#81c8be', // teal
-  orange: '#ef9f76', // peach
-  purple: '#ca9ee6', // mauve
+const CATPPUCCIN_FRAPPE: Base16Scheme = {
+  name: 'Catppuccin Frappé',
+  author: 'https://github.com/catppuccin/catppuccin',
+  variant: 'dark',
+  palette: {
+    base00: '#303446',
+    base01: '#292c3c',
+    base02: '#414559',
+    base03: '#51576d',
+    base04: '#626880',
+    base05: '#c6d0f5',
+    base06: '#f2d5cf',
+    base07: '#babbf1',
+    base08: '#e78284',
+    base09: '#ef9f76',
+    base0A: '#e5c890',
+    base0B: '#a6d189',
+    base0C: '#81c8be',
+    base0D: '#8caaee',
+    base0E: '#ca9ee6',
+    base0F: '#eebebe',
+  },
 };
 
-// Catppuccin Latte — the light flavor. bgElevated is white so cards lift off the
-// soft-gray canvas; bgSubtle is a touch darker for the sidebar "island" depth.
-const CATPPUCCIN_LATTE: ColorThemeBase = {
-  bg: '#eff1f5', // base
-  bgElevated: '#ffffff', // white cards/popovers lift off the canvas
-  bgSubtle: '#e6e9ef', // mantle (sidebar, slightly darker than base)
-  fg: '#4c4f69', // text
-  fgMuted: '#6c6f85', // subtext0
-  border: '#ccd0da', // surface0
-  primary: '#8839ef', // mauve
-  primaryFg: '#ffffff', // white reads on mauve
-  red: '#d20f39',
-  green: '#40a02b',
-  yellow: '#df8e1d',
-  blue: '#1e66f5',
-  cyan: '#179299', // teal
-  orange: '#fe640b', // peach
-  purple: '#8839ef', // mauve
+const CATPPUCCIN_LATTE: Base16Scheme = {
+  name: 'Catppuccin Latte',
+  author: 'https://github.com/catppuccin/catppuccin',
+  variant: 'light',
+  palette: {
+    base00: '#eff1f5',
+    base01: '#e6e9ef',
+    base02: '#ccd0da',
+    base03: '#bcc0cc',
+    base04: '#acb0be',
+    base05: '#4c4f69',
+    base06: '#dc8a78',
+    base07: '#7287fd',
+    base08: '#d20f39',
+    base09: '#fe640b',
+    base0A: '#df8e1d',
+    base0B: '#40a02b',
+    base0C: '#179299',
+    base0D: '#1e66f5',
+    base0E: '#8839ef',
+    base0F: '#dd7878',
+  },
 };
 
-const MONOKAI: ColorThemeBase = {
-  bg: '#272822',
-  bgElevated: '#31322b',
-  bgSubtle: '#1e1f1a',
-  fg: '#f8f8f2',
-  fgMuted: '#a6a28c',
-  border: '#49483e',
-  primary: '#66d9ef',
-  primaryFg: '#272822',
-  red: '#f92672',
-  green: '#a6e22e',
-  yellow: '#e6db74',
-  blue: '#66d9ef',
-  cyan: '#66d9ef',
-  orange: '#fd971f',
-  purple: '#ae81ff',
+const MONOKAI: Base16Scheme = {
+  name: 'Monokai',
+  author: 'Wimer Hazenberg (http://www.monokai.nl)',
+  variant: 'dark',
+  palette: {
+    base00: '#272822',
+    base01: '#383830',
+    base02: '#49483e',
+    base03: '#75715e',
+    base04: '#a59f85',
+    base05: '#f8f8f2',
+    base06: '#f5f4f1',
+    base07: '#f9f8f5',
+    base08: '#f92672',
+    base09: '#fd971f',
+    base0A: '#f4bf75',
+    base0B: '#a6e22e',
+    base0C: '#a1efe4',
+    base0D: '#66d9ef',
+    base0E: '#ae81ff',
+    base0F: '#cc6633',
+  },
 };
 
-const GRUVBOX: ColorThemeBase = {
-  bg: '#282828',
-  bgElevated: '#32302f',
-  bgSubtle: '#1d2021',
-  fg: '#ebdbb2',
-  fgMuted: '#a89984',
-  border: '#3c3836',
-  primary: '#83a598',
-  primaryFg: '#1d2021',
-  red: '#fb4934',
-  green: '#b8bb26',
-  yellow: '#fabd2f',
-  blue: '#83a598',
-  cyan: '#8ec07c',
-  orange: '#fe8019',
-  purple: '#d3869b',
+const GRUVBOX: Base16Scheme = {
+  name: 'Gruvbox dark, medium',
+  author: 'Dawid Kurek, morhetz (https://github.com/morhetz/gruvbox)',
+  variant: 'dark',
+  palette: {
+    base00: '#282828',
+    base01: '#3c3836',
+    base02: '#504945',
+    base03: '#665c54',
+    base04: '#bdae93',
+    base05: '#d5c4a1',
+    base06: '#ebdbb2',
+    base07: '#fbf1c7',
+    base08: '#fb4934',
+    base09: '#fe8019',
+    base0A: '#fabd2f',
+    base0B: '#b8bb26',
+    base0C: '#8ec07c',
+    base0D: '#83a598',
+    base0E: '#d3869b',
+    base0F: '#d65d0e',
+  },
 };
 
-const SOLARIZED: ColorThemeBase = {
-  bg: '#002b36',
-  bgElevated: '#073642',
-  bgSubtle: '#00252e',
-  fg: '#93a1a1',
-  fgMuted: '#6a7f86',
-  border: '#0e4a56',
-  primary: '#268bd2',
-  primaryFg: '#fdf6e3',
-  red: '#dc322f',
-  green: '#859900',
-  yellow: '#b58900',
-  blue: '#268bd2',
-  cyan: '#2aa198',
-  orange: '#cb4b16',
-  purple: '#6c71c4',
+const SOLARIZED: Base16Scheme = {
+  name: 'Solarized Dark',
+  author: 'Ethan Schoonover (modified by aramisgithub)',
+  variant: 'dark',
+  palette: {
+    base00: '#002b36',
+    base01: '#073642',
+    base02: '#586e75',
+    base03: '#657b83',
+    base04: '#839496',
+    base05: '#93a1a1',
+    base06: '#eee8d5',
+    base07: '#fdf6e3',
+    base08: '#dc322f',
+    base09: '#cb4b16',
+    base0A: '#b58900',
+    base0B: '#859900',
+    base0C: '#2aa198',
+    base0D: '#268bd2',
+    base0E: '#6c71c4',
+    base0F: '#d33682',
+  },
 };
 
 /**
- * Map a base palette to the full shadcn token set (token name → CSS value),
- * keyed without the leading `--`. Order is stable for deterministic CSS
- * generation. Alpha-derived tokens reference `var(--primary)` via relative
- * color syntax so they track the primary with no duplicated literal.
+ * Build a built-in descriptor from a scheme. `kind` comes from the scheme's own
+ * `variant` — a light scheme forces light mode, not merely "not dark".
  */
-export function expandPalette(b: ColorThemeBase): Record<string, string> {
-  return {
-    background: b.bg,
-    foreground: b.fg,
-    card: b.bgElevated,
-    'card-foreground': b.fg,
-    popover: b.bgElevated,
-    'popover-foreground': b.fg,
-    primary: b.primary,
-    'primary-foreground': b.primaryFg,
-    secondary: b.bgElevated,
-    'secondary-foreground': b.fg,
-    muted: b.bgElevated,
-    'muted-foreground': b.fgMuted,
-    accent: b.bgElevated,
-    'accent-foreground': b.fg,
-    destructive: b.red,
-    border: b.border,
-    input: b.border,
-    ring: b.primary,
-    'selection-soft': 'oklch(from var(--primary) l c h / 0.3)',
-    'chart-1': b.primary,
-    'chart-2': b.green,
-    'chart-3': b.yellow,
-    'chart-4': b.purple,
-    'chart-5': b.red,
-    sidebar: b.bgSubtle,
-    'sidebar-foreground': b.fg,
-    'sidebar-primary': b.primary,
-    'sidebar-primary-foreground': b.primaryFg,
-    'sidebar-accent': 'oklch(from var(--primary) l c h / 0.14)',
-    'sidebar-accent-foreground': b.primary,
-    'sidebar-hover': b.bgElevated,
-    'sidebar-border': b.border,
-    'sidebar-ring': b.primary,
-    'syntax-keyword': b.purple,
-    'syntax-tag': b.red,
-    'syntax-attr': b.blue,
-    'syntax-string': b.green,
-    'syntax-number': b.orange,
-    'syntax-atom': b.cyan,
-  };
-}
-
-/** Build a `dark` built-in descriptor whose `toTokens` derives from its palette. */
-function darkTheme<const Id extends string>(
+function builtIn<const Id extends string>(
   id: Id,
   label: string,
-  base: ColorThemeBase,
+  scheme: Base16Scheme,
 ): ThemePlugin<Id> {
-  return { id, label, kind: 'dark', base, toTokens: () => expandPalette(base) };
-}
-
-/** Build a `light` built-in descriptor whose `toTokens` derives from its palette. */
-function lightTheme<const Id extends string>(
-  id: Id,
-  label: string,
-  base: ColorThemeBase,
-): ThemePlugin<Id> {
-  return { id, label, kind: 'light', base, toTokens: () => expandPalette(base) };
+  return { id, label, kind: scheme.variant, scheme, toTokens: () => base16ToTokens(scheme) };
 }
 
 /** Build a `system`-kind descriptor (no static palette): `default` and `custom`. */
@@ -263,16 +216,16 @@ function systemTheme<const Id extends string>(id: Id, label: string): ThemePlugi
  */
 export const THEME_PLUGINS = [
   systemTheme('default', 'Default'),
-  darkTheme('dracula', 'Dracula', DRACULA),
-  darkTheme('catppuccin-frappe', 'Catppuccin Frappé', CATPPUCCIN_FRAPPE),
-  lightTheme('catppuccin-latte', 'Catppuccin Latte', CATPPUCCIN_LATTE),
-  darkTheme('monokai', 'Monokai', MONOKAI),
-  darkTheme('gruvbox', 'Gruvbox', GRUVBOX),
-  darkTheme('solarized', 'Solarized', SOLARIZED),
-  // `custom` carries no static `base`: its palette is built at runtime from the
-  // user's `appearance.customTheme` seed (app-side `buildCustomThemeCss`). `kind`
-  // is a placeholder — the real light/dark mode is derived per-seed. Excluded
-  // from the generated CSS (no `toTokens`).
+  builtIn('dracula', 'Dracula', DRACULA),
+  builtIn('catppuccin-frappe', 'Catppuccin Frappé', CATPPUCCIN_FRAPPE),
+  builtIn('catppuccin-latte', 'Catppuccin Latte', CATPPUCCIN_LATTE),
+  builtIn('monokai', 'Monokai', MONOKAI),
+  builtIn('gruvbox', 'Gruvbox', GRUVBOX),
+  builtIn('solarized', 'Solarized', SOLARIZED),
+  // `custom` carries no static scheme: its palette is built at runtime from the
+  // user's `appearance.customTheme` (an imported or hand-edited base16 scheme).
+  // `kind` is a placeholder — the real mode comes from the scheme's `variant`.
+  // Excluded from the generated CSS (no `toTokens`).
   systemTheme('custom', 'Custom'),
 ] as const;
 
@@ -314,22 +267,34 @@ export function colorThemeMode(id: string | undefined): 'light' | 'dark' | undef
 }
 
 /**
- * Render the generated stylesheet that applies every built-in palette. One rule
- * per dark theme, selected by `html[data-color-theme="<id>"]`. The attribute
- * selector out-specifies the base `:root` / `.dark` blocks, so a single block
- * per theme overrides both regardless of source order. `color-scheme` (the
- * theme's own kind) keeps native scrollbars / form controls correct even before
- * the `.dark` class settles on first paint. The descriptor's own `toTokens`
- * produces the tokens.
+ * Render one `html[data-color-theme="<id>"]` block. The attribute selector
+ * out-specifies the base `:root` / `.dark` blocks, so a single block per theme
+ * overrides both regardless of source order. `color-scheme` keeps native
+ * scrollbars / form controls correct even before the `.dark` class settles on
+ * first paint.
+ */
+export function renderThemeBlock(
+  selector: string,
+  variant: 'dark' | 'light',
+  tokens: Record<string, string>,
+): string {
+  const lines = Object.entries(tokens).map(([name, value]) => `  --${name}: ${value};`);
+  return `${selector} {\n  color-scheme: ${variant};\n${lines.join('\n')}\n}`;
+}
+
+/**
+ * Render the generated stylesheet that applies every built-in palette. The
+ * descriptor's own `toTokens` produces the tokens.
  */
 export function generateColorThemesCss(): string {
   const header =
-    '/* GENERATED by `bun run gen:color-themes` from src/lib/color-themes.ts — do not edit by hand. */\n';
-  const blocks = THEME_PLUGINS.filter((t) => t.toTokens).map((theme) => {
-    const tokens = (theme.toTokens as () => Record<string, string>)();
-    const lines = Object.entries(tokens).map(([name, value]) => `  --${name}: ${value};`);
-    const colorScheme = theme.kind === 'light' ? 'light' : 'dark';
-    return `html[data-color-theme="${theme.id}"] {\n  color-scheme: ${colorScheme};\n${lines.join('\n')}\n}`;
-  });
+    '/* GENERATED by `pnpm run gen:color-themes` from packages/core/src/theme/theme-plugins.ts — do not edit by hand. */\n';
+  const blocks = THEME_PLUGINS.filter((t) => t.toTokens).map((theme) =>
+    renderThemeBlock(
+      `html[data-color-theme="${theme.id}"]`,
+      theme.kind === 'light' ? 'light' : 'dark',
+      (theme.toTokens as () => Record<string, string>)(),
+    ),
+  );
   return `${header}\n${blocks.join('\n\n')}\n`;
 }

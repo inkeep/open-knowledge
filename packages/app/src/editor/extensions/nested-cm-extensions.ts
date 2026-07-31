@@ -18,14 +18,13 @@
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import type { Compartment, Extension } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
-import { tags as t } from '@lezer/highlight';
 import { GFM } from '@lezer/markdown';
-import { basicDarkInit, basicLightInit } from '@uiw/codemirror-theme-basic';
 import type * as Y from 'yjs';
 import { codeLanguages } from '../markdown-code-languages';
 import { createAgentFlashSourceExtension } from '../plugins/agent-flash-source';
 import { createMdLinkSourceExtension } from '../plugins/md-link-source';
 import { createWikiLinkSourceExtension } from '../plugins/wiki-link-source';
+import { okCmTheme } from './cm-theme';
 
 // Theme factories — each caller gets a fresh theme object.
 // Background is transparent so the CM inherits its host's surface:
@@ -36,85 +35,12 @@ import { createWikiLinkSourceExtension } from '../plugins/wiki-link-source';
 //     paints a pure-white panel inside the tinted wrapper, creating a
 //     raised-panel / inner-shadow illusion. Transparent keeps the CM flush
 //     with its host.
-export const darkTheme = basicDarkInit({
-  settings: {
-    background: 'transparent',
-    gutterBackground: 'transparent',
-  },
-});
-
-// Overrides for basicLightStyle tokens that fail WCAG AA contrast on white.
-// Same Nord hue, darker lightness. NOTE: tagHighlighter overwrites per-tag-id —
-// later specs fully replace earlier ones, no CSS cascade — so any override on a
-// tag with formatting (bold/italic/underline) must repeat those attrs.
-export const lightTheme = basicLightInit({
-  settings: {
-    background: 'transparent',
-    gutterBackground: 'transparent',
-  },
-  styles: [
-    { tag: [t.brace, t.processingInstruction, t.inserted], color: '#3d6968' },
-    {
-      tag: t.link,
-      color: '#3d6968',
-      textDecoration: 'underline',
-      textUnderlinePosition: 'under',
-    },
-    {
-      tag: [
-        t.keyword,
-        t.function(t.variableName),
-        t.regexp,
-        t.color,
-        t.constant(t.name),
-        t.standard(t.name),
-      ],
-      color: '#345575',
-    },
-    {
-      tag: [t.heading, t.special(t.heading1), t.heading1, t.heading2, t.heading3, t.heading4],
-      color: '#345575',
-      fontWeight: 'bold',
-    },
-    { tag: [t.heading5, t.heading6], color: '#345575' },
-    { tag: t.strong, color: '#345575', fontWeight: 'bold' },
-    { tag: t.emphasis, color: '#345575', fontStyle: 'italic' },
-    {
-      tag: [
-        t.name,
-        t.deleted,
-        t.character,
-        t.propertyName,
-        t.macroName,
-        t.variableName,
-        t.angleBracket,
-        t.string,
-        t.url,
-        t.escape,
-        t.special(t.string),
-        t.atom,
-        t.bool,
-        t.special(t.variableName),
-      ],
-      color: '#9a5739',
-    },
-    {
-      tag: [t.number, t.changed, t.annotation, t.modifier, t.self, t.namespace, t.meta],
-      color: '#3d6968',
-    },
-    {
-      tag: [t.definition(t.name), t.separator, t.operator, t.operatorKeyword],
-      color: '#4a6938',
-    },
-    {
-      tag: [t.typeName, t.className, t.attributeName, t.contentSeparator],
-      color: '#8b6500',
-    },
-    { tag: t.tagName, color: '#774d70' },
-    { tag: t.squareBracket, color: '#964148' },
-    { tag: t.labelName, color: '#3a5e85' },
-  ],
-});
+//
+// Both resolve their colors from the app's CSS tokens, so the active IDE color
+// theme drives syntax highlighting here the same way it drives the chrome. The
+// dark/light split remains only for CodeMirror's own `&dark` selector hook.
+export const darkTheme: Extension = okCmTheme({ dark: true });
+export const lightTheme: Extension = okCmTheme({ dark: false });
 
 interface NestedCMOptions {
   /** Per-instance theme compartment — caller MUST create their own */

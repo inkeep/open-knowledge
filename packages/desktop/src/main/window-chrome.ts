@@ -25,6 +25,7 @@
  */
 
 import type { BrowserWindowConstructorOptions } from 'electron';
+import type { OkChromeColors } from '../shared/bridge-contract.ts';
 
 export const TITLEBAR_OVERLAY_HEIGHT = 48;
 
@@ -38,10 +39,30 @@ export interface TitleBarOverlayOptions {
   height: number;
 }
 
-export function computeTitleBarOverlay(isDark: boolean): TitleBarOverlayOptions {
+/**
+ * Chrome colors for a mode, with the renderer's live report taking precedence.
+ *
+ * `CHROME_BG` / `CHROME_SYMBOL` are the DEFAULT theme's `--sidebar` snapshot,
+ * so on their own they leave the OS-drawn chrome on `#fafafa`/`#171717` no
+ * matter which color theme is active. `live` carries the active theme's
+ * resolved values (see `ok:theme:applied`); it's absent before the renderer
+ * has mounted, which is exactly when the snapshot is the right answer.
+ */
+function chromeColors(isDark: boolean, live?: OkChromeColors): OkChromeColors {
   return {
-    color: isDark ? CHROME_BG.dark : CHROME_BG.light,
-    symbolColor: isDark ? CHROME_SYMBOL.dark : CHROME_SYMBOL.light,
+    bg: live?.bg ?? (isDark ? CHROME_BG.dark : CHROME_BG.light),
+    symbol: live?.symbol ?? (isDark ? CHROME_SYMBOL.dark : CHROME_SYMBOL.light),
+  };
+}
+
+export function computeTitleBarOverlay(
+  isDark: boolean,
+  live?: OkChromeColors,
+): TitleBarOverlayOptions {
+  const { bg, symbol } = chromeColors(isDark, live);
+  return {
+    color: bg,
+    symbolColor: symbol,
     height: TITLEBAR_OVERLAY_HEIGHT,
   };
 }
@@ -80,16 +101,18 @@ export function applyThemeToWindow(
   win: ThemeableWindow,
   platform: NodeJS.Platform,
   isDark: boolean,
+  live?: OkChromeColors,
 ): void {
   if (platform === 'darwin' || win.isDestroyed()) return;
+  const { bg } = chromeColors(isDark, live);
   try {
-    win.setBackgroundColor(isDark ? CHROME_BG.dark : CHROME_BG.light);
+    win.setBackgroundColor(bg);
   } catch {
     // destroyed mid-iteration — nothing to recolor
   }
   if (platform === 'win32' && typeof win.setTitleBarOverlay === 'function') {
     try {
-      win.setTitleBarOverlay(computeTitleBarOverlay(isDark));
+      win.setTitleBarOverlay(computeTitleBarOverlay(isDark, live));
     } catch {
       // overlay-less window (or platform refusal) — cosmetic, skip
     }

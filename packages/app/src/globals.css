@@ -281,13 +281,13 @@
 
   @keyframes sidebar-push-pulse {
     0% {
-      box-shadow: inset 4px 0 0 0 hsl(var(--primary) / 0);
+      box-shadow: inset 4px 0 0 0 color-mix(in oklab, var(--primary) 0%, transparent);
     }
     25% {
-      box-shadow: inset 4px 0 0 0 hsl(var(--primary) / 0.4);
+      box-shadow: inset 4px 0 0 0 color-mix(in oklab, var(--primary) 40%, transparent);
     }
     100% {
-      box-shadow: inset 4px 0 0 0 hsl(var(--primary) / 0);
+      box-shadow: inset 4px 0 0 0 color-mix(in oklab, var(--primary) 0%, transparent);
     }
   }
 
@@ -298,15 +298,15 @@
      Outline-only so the field input itself is untouched. */
   @keyframes settings-flash {
     0% {
-      outline: 2px solid hsl(var(--destructive) / 0);
+      outline: 2px solid color-mix(in oklab, var(--destructive) 0%, transparent);
       outline-offset: 2px;
     }
     20% {
-      outline: 2px solid hsl(var(--destructive) / 0.7);
+      outline: 2px solid color-mix(in oklab, var(--destructive) 70%, transparent);
       outline-offset: 2px;
     }
     100% {
-      outline: 2px solid hsl(var(--destructive) / 0);
+      outline: 2px solid color-mix(in oklab, var(--destructive) 0%, transparent);
       outline-offset: 2px;
     }
   }
@@ -320,15 +320,15 @@
      className. */
   @keyframes settings-nav-flash {
     0% {
-      outline: 2px solid hsl(var(--primary) / 0);
+      outline: 2px solid color-mix(in oklab, var(--primary) 0%, transparent);
       outline-offset: 2px;
     }
     25% {
-      outline: 2px solid hsl(var(--primary) / 0.7);
+      outline: 2px solid color-mix(in oklab, var(--primary) 70%, transparent);
       outline-offset: 2px;
     }
     100% {
-      outline: 2px solid hsl(var(--primary) / 0);
+      outline: 2px solid color-mix(in oklab, var(--primary) 0%, transparent);
       outline-offset: 2px;
     }
   }
@@ -1239,7 +1239,8 @@
 
 .ProseMirror mark {
   color: inherit;
-  @apply py-0.5 px-1 rounded-sm bg-amber-100 dark:bg-amber-900/50;
+  background: color-mix(in oklab, var(--syntax-type) 28%, var(--background));
+  @apply py-0.5 px-1 rounded-sm;
 }
 
 /* Authoring annotations (`%%…%%`, `<!-- … -->`). The editing surface shows
@@ -1414,7 +1415,7 @@
   appearance: none;
   width: 1rem;
   height: 1rem;
-  border: 1.5px solid var(--color-gray-400);
+  border: 1.5px solid var(--border);
   border-radius: calc(var(--radius) * 0.4);
   background: transparent;
   cursor: pointer;
@@ -1456,21 +1457,21 @@
 
 .ProseMirror li[data-type="taskItem"][data-checked="true"] > div {
   text-decoration: line-through;
-  color: var(--color-gray-400);
+  color: var(--muted-foreground);
 }
 
 /* Blockquote */
 .ProseMirror blockquote {
-  border-left: 3px solid var(--color-gray-300);
+  border-left: 3px solid var(--callout-quote-color);
   padding-left: 1em;
   margin-left: 0;
   margin-bottom: 0.5em;
-  color: var(--color-gray-600);
+  color: var(--muted-foreground);
 }
 
 /* Code blocks — fallback for any <pre> not wrapped by the .ok-codeblock NodeView */
 .ProseMirror pre {
-  background: var(--color-gray-100);
+  background: var(--syntax-bg);
   padding: 0.75em 1em;
   margin-bottom: 0.5em;
   overflow-x: auto;
@@ -1489,15 +1490,10 @@
 }
 
 .ProseMirror .ok-codeblock-pre {
-  background: oklch(0.97 0 0);
+  background: var(--syntax-bg);
   color: var(--foreground);
   border: 0;
   @apply scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/30 dark:scrollbar-thumb-muted-foreground/50;
-}
-
-.dark .ProseMirror .ok-codeblock-pre {
-  background: oklch(0.18 0.005 285);
-  color: oklch(0.92 0 0);
 }
 
 /* Strip the outer-pre fallback chrome — the NodeView's own .ok-codeblock-pre
@@ -1707,7 +1703,7 @@
 
 /* Inline code */
 .ProseMirror code {
-  background: var(--color-gray-100);
+  background: var(--syntax-bg);
   border-radius: 0.25em;
   padding: 0.15em 0.35em;
   font-family: var(--font-mono);
@@ -1729,7 +1725,7 @@
  * ---------------------------------------------------------------------- */
 .ProseMirror .ok-codeblock code .hljs-comment,
 .ProseMirror .ok-codeblock code .hljs-quote {
-  color: #6a737d;
+  color: var(--syntax-comment);
   font-style: italic;
 }
 
@@ -1737,16 +1733,19 @@
 .ProseMirror .ok-codeblock code .hljs-selector-tag,
 .ProseMirror .ok-codeblock code .hljs-doctag,
 .ProseMirror .ok-codeblock code .hljs-formula {
-  color: #d73a49;
+  color: var(--syntax-keyword);
 }
 
 .ProseMirror .ok-codeblock code .hljs-name,
 .ProseMirror .ok-codeblock code .hljs-section,
 .ProseMirror .ok-codeblock code .hljs-tag,
-.ProseMirror .ok-codeblock code .hljs-attr,
 .ProseMirror .ok-codeblock code .hljs-template-variable,
 .ProseMirror .ok-codeblock code .hljs-variable {
-  color: #22863a;
+  color: var(--syntax-var);
+}
+
+.ProseMirror .ok-codeblock code .hljs-attr {
+  color: var(--syntax-attr);
 }
 
 .ProseMirror .ok-codeblock code .hljs-string,
@@ -1756,37 +1755,40 @@
 .ProseMirror .ok-codeblock code .hljs-symbol,
 .ProseMirror .ok-codeblock code .hljs-bullet,
 .ProseMirror .ok-codeblock code .hljs-addition {
-  color: #032f62;
+  color: var(--syntax-string);
 }
 
 .ProseMirror .ok-codeblock code .hljs-number,
 .ProseMirror .ok-codeblock code .hljs-built_in,
-.ProseMirror .ok-codeblock code .hljs-type,
 .ProseMirror .ok-codeblock code .hljs-link {
-  color: #005cc5;
+  color: var(--syntax-number);
+}
+
+.ProseMirror .ok-codeblock code .hljs-type {
+  color: var(--syntax-type);
 }
 
 .ProseMirror .ok-codeblock code .hljs-title,
 .ProseMirror .ok-codeblock code .hljs-attribute,
 .ProseMirror .ok-codeblock code .hljs-meta {
-  color: #6f42c1;
+  color: var(--syntax-func);
 }
 
 /* Descendant-combinator selectors come AFTER the simple-class rules so
    document order matches specificity order (biome's noDescendingSpecificity).
-   `.hljs-class .hljs-title` paints class names in number-blue;
-   `.hljs-function .hljs-title` keeps function names in title-purple. */
+   `.hljs-class .hljs-title` paints class names as types; `.hljs-function
+   .hljs-title` keeps function names in the function slot. */
 .ProseMirror .ok-codeblock code .hljs-class .hljs-title {
-  color: #005cc5;
+  color: var(--syntax-type);
 }
 
 .ProseMirror .ok-codeblock code .hljs-function .hljs-title {
-  color: #6f42c1;
+  color: var(--syntax-func);
 }
 
 .ProseMirror .ok-codeblock code .hljs-deletion {
-  color: #b31d28;
-  background: #ffeef0;
+  color: var(--diff-removed);
+  background: color-mix(in oklab, var(--diff-removed) 15%, transparent);
 }
 
 .ProseMirror .ok-codeblock code .hljs-emphasis {
@@ -1797,71 +1799,11 @@
   font-weight: 600;
 }
 
-/* Dark mode */
-.dark .ProseMirror .ok-codeblock code .hljs-comment,
-.dark .ProseMirror .ok-codeblock code .hljs-quote {
-  color: #8b949e;
-}
-
-.dark .ProseMirror .ok-codeblock code .hljs-keyword,
-.dark .ProseMirror .ok-codeblock code .hljs-selector-tag,
-.dark .ProseMirror .ok-codeblock code .hljs-doctag,
-.dark .ProseMirror .ok-codeblock code .hljs-formula {
-  color: #ff7b72;
-}
-
-.dark .ProseMirror .ok-codeblock code .hljs-name,
-.dark .ProseMirror .ok-codeblock code .hljs-section,
-.dark .ProseMirror .ok-codeblock code .hljs-tag,
-.dark .ProseMirror .ok-codeblock code .hljs-attr,
-.dark .ProseMirror .ok-codeblock code .hljs-template-variable,
-.dark .ProseMirror .ok-codeblock code .hljs-variable {
-  color: #7ee787;
-}
-
-.dark .ProseMirror .ok-codeblock code .hljs-string,
-.dark .ProseMirror .ok-codeblock code .hljs-regexp,
-.dark .ProseMirror .ok-codeblock code .hljs-literal,
-.dark .ProseMirror .ok-codeblock code .hljs-meta-string,
-.dark .ProseMirror .ok-codeblock code .hljs-symbol,
-.dark .ProseMirror .ok-codeblock code .hljs-bullet,
-.dark .ProseMirror .ok-codeblock code .hljs-addition {
-  color: #a5d6ff;
-}
-
-.dark .ProseMirror .ok-codeblock code .hljs-number,
-.dark .ProseMirror .ok-codeblock code .hljs-built_in,
-.dark .ProseMirror .ok-codeblock code .hljs-type,
-.dark .ProseMirror .ok-codeblock code .hljs-link {
-  color: #79c0ff;
-}
-
-.dark .ProseMirror .ok-codeblock code .hljs-title,
-.dark .ProseMirror .ok-codeblock code .hljs-attribute,
-.dark .ProseMirror .ok-codeblock code .hljs-meta {
-  color: #d2a8ff;
-}
-
-/* Descendant-combinator selectors come AFTER the simple-class rules so
-   document order matches specificity order (biome's noDescendingSpecificity). */
-.dark .ProseMirror .ok-codeblock code .hljs-class .hljs-title {
-  color: #79c0ff;
-}
-
-.dark .ProseMirror .ok-codeblock code .hljs-function .hljs-title {
-  color: #d2a8ff;
-}
-
-.dark .ProseMirror .ok-codeblock code .hljs-deletion {
-  color: #ffa198;
-  background: rgba(248, 81, 73, 0.15);
-}
-
 /* Links */
 .ProseMirror a {
-  color: var(--color-azure-blue);
+  color: var(--link-color);
   cursor: pointer;
-  @apply font-medium dark:text-sky-blue dark:hover:text-azure-300 hover:underline hover:underline-offset-2;
+  @apply font-medium hover:underline hover:underline-offset-2;
 }
 /* Chrome-bar anchor items (Embed, Mirror) must NOT inherit the prose-link
  * blue color or hover underline — they're icon buttons in the
@@ -1890,18 +1832,17 @@
 .ProseMirror [data-wiki-link] {
   display: inline;
   cursor: pointer;
-  color: var(--color-azure-blue);
+  color: var(--link-color);
   text-decoration: underline;
   text-decoration-style: solid;
   text-underline-offset: 2px;
   border-radius: 2px;
-  @apply font-medium dark:text-sky-blue;
+  @apply font-medium;
 }
 
 .ProseMirror [data-link]:hover,
 .ProseMirror [data-wiki-link]:hover {
   text-decoration-thickness: 2px;
-  @apply dark:text-azure-300;
 }
 
 .ProseMirror [data-link]:focus-visible,
@@ -1990,8 +1931,7 @@
    chip color when present. */
 
 .ProseMirror [data-resolution-state="resolved"] {
-  color: var(--color-azure-blue);
-  @apply dark:text-sky-blue;
+  color: var(--link-color);
 }
 
 /* Folder chip — doc-reference to a directory rather than a page. Italicize
@@ -2043,7 +1983,7 @@
 /* Horizontal rule */
 .ProseMirror hr {
   border: none;
-  border-top: 1px solid var(--color-gray-200);
+  border-top: 1px solid var(--border);
   margin: 1em 0;
 }
 
@@ -2056,7 +1996,7 @@
 }
 
 .ProseMirror img.ProseMirror-selectednode {
-  outline: 2px solid var(--color-azure-blue);
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 
@@ -2107,7 +2047,7 @@
 
 .ProseMirror th,
 .ProseMirror td {
-  border: 1px solid var(--color-gray-200);
+  border: 1px solid var(--border);
   padding: 0.4em 0.6em;
   vertical-align: top;
   position: relative;
@@ -2116,7 +2056,7 @@
 }
 
 .ProseMirror th {
-  background: var(--color-gray-50);
+  background: var(--muted);
   font-weight: 600;
   text-align: left;
 }
@@ -2167,7 +2107,7 @@
 /* Corner cell (first column + header row) must clear both frozen row layer and
    sticky column layer when both are active simultaneously. */
 .ProseMirror .tableWrapper > table > tbody > tr > th:first-child {
-  background-color: var(--color-gray-50);
+  background-color: var(--muted);
   z-index: 3;
 }
 
@@ -2987,6 +2927,50 @@ button:active:not(:disabled) {
   --syntax-string: var(--color-green-800, #22863a);
   --syntax-number: var(--color-blue-800, #005cc5);
   --syntax-atom: var(--color-orange-700, #d2691e);
+  /*
+    The remaining syntax roles. A selected color theme overrides all of these
+    from its base16 slots; the values here are the `default` theme's own, so
+    the same rules paint correctly with no palette applied.
+  */
+  --syntax-comment: var(--color-gray-500, #6a737d);
+  --syntax-func: var(--color-purple-700, #6f42c1);
+  --syntax-var: var(--color-red-700, #b31d28);
+  --syntax-type: var(--color-yellow-700, #8b6500);
+  --syntax-operator: var(--foreground);
+  --syntax-meta: var(--color-gray-600, #6a737d);
+  /* Code-block canvas — a hair off `--background` so a fence reads as a slab. */
+  --syntax-bg: oklch(0.97 0 0);
+
+  /* Editor affordances a theme repaints. */
+  --link-color: var(--color-azure-blue);
+  --broken-link-color: oklch(55% 0.15 25);
+  --lint-warning-color: oklch(70% 0.15 75);
+  --lint-error-color: oklch(55% 0.15 25);
+  --diff-added: var(--color-green-800, #22863a);
+  --diff-removed: var(--color-red-700, #b31d28);
+
+  /*
+    Terminal ANSI slots. The docked terminal reads these live, so a base16
+    theme repaints program output, not just the terminal's chrome. The
+    `default` theme has no palette to derive from, so it keeps the curated
+    VS Code values these were before — tuned for legibility.
+  */
+  --ansi-black: #000000;
+  --ansi-red: #cd3131;
+  --ansi-green: #00bc00;
+  --ansi-yellow: #949800;
+  --ansi-blue: #0451a5;
+  --ansi-magenta: #bc05bc;
+  --ansi-cyan: #0598bc;
+  --ansi-white: #555555;
+  --ansi-bright-black: #666666;
+  --ansi-bright-red: #cd3131;
+  --ansi-bright-green: #14ce14;
+  --ansi-bright-yellow: #b5ba00;
+  --ansi-bright-blue: #0451a5;
+  --ansi-bright-magenta: #bc05bc;
+  --ansi-bright-cyan: #0598bc;
+  --ansi-bright-white: #a5a5a5;
 }
 
 .dark {
@@ -3041,6 +3025,37 @@ button:active:not(:disabled) {
   --syntax-string: var(--color-green-300, #7ee787);
   --syntax-number: var(--color-blue-300, #79c0ff);
   --syntax-atom: var(--color-orange-300, #ffa657);
+  --syntax-comment: var(--color-gray-400, #8b949e);
+  --syntax-func: var(--color-purple-300, #d2a8ff);
+  --syntax-var: var(--color-red-300, #ffa198);
+  --syntax-type: var(--color-yellow-300, #e3b341);
+  --syntax-operator: var(--foreground);
+  --syntax-meta: var(--color-gray-400, #8b949e);
+  --syntax-bg: oklch(0.18 0.005 285);
+
+  --link-color: var(--color-sky-blue);
+  --broken-link-color: oklch(72% 0.18 25);
+  --lint-warning-color: oklch(80% 0.13 80);
+  --lint-error-color: oklch(72% 0.18 25);
+  --diff-added: var(--color-green-300, #7ee787);
+  --diff-removed: var(--color-red-300, #ffa198);
+
+  --ansi-black: #000000;
+  --ansi-red: #cd3131;
+  --ansi-green: #0dbc79;
+  --ansi-yellow: #e5e510;
+  --ansi-blue: #2472c8;
+  --ansi-magenta: #bc3fbc;
+  --ansi-cyan: #11a8cd;
+  --ansi-white: #e5e5e5;
+  --ansi-bright-black: #666666;
+  --ansi-bright-red: #f14c4c;
+  --ansi-bright-green: #23d18b;
+  --ansi-bright-yellow: #f5f543;
+  --ansi-bright-blue: #3b8eea;
+  --ansi-bright-magenta: #d670d6;
+  --ansi-bright-cyan: #29b8db;
+  --ansi-bright-white: #ffffff;
 }
 
 /*
@@ -5162,38 +5177,8 @@ html.electron-mode [data-slot="sidebar-inner"] {
 /* Sidebar: separate hover (neutral gray) from active (blue accent) */
 
 /* Dark overrides — ProseMirror content surfaces */
-.dark .ProseMirror blockquote {
-  border-color: var(--color-gray-600);
-  color: var(--color-gray-300);
-}
-
-.dark .ProseMirror pre {
-  background: var(--color-gray-900);
-}
-
-.dark .ProseMirror code {
-  background: var(--color-gray-800);
-}
-
 .dark .ProseMirror pre code {
   background: none;
-}
-
-.dark .ProseMirror hr {
-  border-color: var(--color-gray-700);
-}
-
-.dark .ProseMirror th,
-.dark .ProseMirror td {
-  border-color: var(--color-gray-700);
-}
-
-.dark .ProseMirror th {
-  background: var(--color-gray-900);
-}
-
-.dark .ProseMirror .tableWrapper > table > tbody > tr > th:first-child {
-  background: var(--color-gray-900);
 }
 
 /* Dark overrides — agent flash keyframes with boosted alpha for dark canvas */
@@ -5272,14 +5257,6 @@ html.electron-mode [data-slot="sidebar-inner"] {
 }
 
 /* Dark overrides — MEDIUM-severity items */
-.dark .ProseMirror li[data-type="taskItem"] > label input[type="checkbox"] {
-  border-color: var(--color-gray-600);
-}
-
-.dark .ProseMirror li[data-type="taskItem"][data-checked="true"] > div {
-  color: var(--color-gray-500);
-}
-
 .dark .ProseMirror .selectedCell::after {
   background: var(--color-azure-900);
   opacity: 0.4;
@@ -5330,15 +5307,9 @@ html.electron-mode [data-slot="sidebar-inner"] {
 .cm-link-ref-broken,
 .cm-editor .cm-md-internal-link.cm-md-link-broken,
 .cm-editor .cm-wiki-link.cm-wiki-link-broken {
-  color: var(--broken-link-color, oklch(55% 0.15 25));
+  color: var(--broken-link-color);
   text-decoration: underline wavy;
-  text-decoration-color: var(--broken-link-color, oklch(55% 0.15 25));
-}
-
-.dark .cm-link-ref-broken,
-.dark .cm-editor .cm-md-internal-link.cm-md-link-broken,
-.dark .cm-editor .cm-wiki-link.cm-wiki-link-broken {
-  --broken-link-color: oklch(72% 0.18 25);
+  text-decoration-color: var(--broken-link-color);
 }
 
 /* Markdown linter (@codemirror/lint) — re-theme the default diagnostic surfaces
@@ -5348,30 +5319,24 @@ html.electron-mode [data-slot="sidebar-inner"] {
    our oklch palette. Severity colors: amber for warning, red for error. */
 .cm-editor .cm-lintRange-warning {
   background: none;
-  text-decoration: underline wavy var(--lint-warning-color, oklch(70% 0.15 75));
+  text-decoration: underline wavy var(--lint-warning-color);
   text-underline-offset: 0.2em;
 }
 .cm-editor .cm-lintRange-error {
   background: none;
-  text-decoration: underline wavy var(--lint-error-color, oklch(55% 0.15 25));
+  text-decoration: underline wavy var(--lint-error-color);
   text-underline-offset: 0.2em;
 }
-.dark .cm-editor .cm-lintRange-warning {
-  --lint-warning-color: oklch(80% 0.13 80);
-}
-.dark .cm-editor .cm-lintRange-error {
-  --lint-error-color: oklch(72% 0.18 25);
-}
 /* File-tree problem-indicator tokens (file-tree-problem-indicators.ts). The
-   editor's --lint-*-color tokens are scoped under .dark .cm-editor / .dark
-   .ProseMirror and never reach the tree's shadow root, so the tree gets its
-   own inheritable pair: light mode rides the var() fallback literals inside
-   the shadow CSS (same values as the editor's light fallbacks); this .dark
-   block carries the dark overrides across the shadow boundary via custom-
-   property inheritance. Values mirror the editor's dark lint palette. */
-.dark {
-  --ok-tree-problem-warning: oklch(80% 0.13 80);
-  --ok-tree-problem-error: oklch(72% 0.18 25);
+   tree renders inside a shadow root, and its CSS names this tree-owned pair
+   rather than the editor's --lint-*-color directly. Aliasing them here at
+   :root is what carries the active theme's lint colors across the shadow
+   boundary — custom properties inherit through it, so both light and dark
+   follow whichever theme resolved --lint-*-color. The var() fallback literals
+   in the shadow CSS only apply if this block is missing. */
+:root {
+  --ok-tree-problem-warning: var(--lint-warning-color);
+  --ok-tree-problem-error: var(--lint-error-color);
 }
 /* Diagnostic tooltip + lint panel onto OK popover tokens. */
 .cm-tooltip.cm-tooltip-lint,
@@ -5385,10 +5350,10 @@ html.electron-mode [data-slot="sidebar-inner"] {
   border-left-width: 3px;
 }
 .cm-diagnostic-warning {
-  border-left-color: var(--lint-warning-color, oklch(70% 0.15 75));
+  border-left-color: var(--lint-warning-color);
 }
 .cm-diagnostic-error {
-  border-left-color: var(--lint-error-color, oklch(55% 0.15 25));
+  border-left-color: var(--lint-error-color);
 }
 .cm-diagnosticAction {
   background-color: var(--primary);
@@ -5407,18 +5372,12 @@ html.electron-mode [data-slot="sidebar-inner"] {
 .ProseMirror .ok-lint-block {
   text-decoration-line: underline;
   text-decoration-style: wavy;
-  text-decoration-color: var(--lint-warning-color, oklch(70% 0.15 75));
+  text-decoration-color: var(--lint-warning-color);
   text-decoration-skip-ink: none;
   text-underline-offset: 0.2em;
 }
 .ProseMirror .ok-lint-block.ok-lint-block-error {
-  text-decoration-color: var(--lint-error-color, oklch(55% 0.15 25));
-}
-.dark .ProseMirror .ok-lint-block {
-  --lint-warning-color: oklch(80% 0.13 80);
-}
-.dark .ProseMirror .ok-lint-block.ok-lint-block-error {
-  --lint-error-color: oklch(72% 0.18 25);
+  text-decoration-color: var(--lint-error-color);
 }
 /* Textless blocks (thematic break, block image) carry no inline text, so the
    wavy text-decoration above paints nothing. Swap it for an outline that reads
@@ -5426,12 +5385,12 @@ html.electron-mode [data-slot="sidebar-inner"] {
    the hover-tooltip lookup; here we cancel its (invisible) underline. */
 .ProseMirror .ok-lint-block-atom {
   text-decoration: none;
-  outline: 2px dashed var(--lint-warning-color, oklch(70% 0.15 75));
+  outline: 2px dashed var(--lint-warning-color);
   outline-offset: 3px;
   border-radius: 3px;
 }
 .ProseMirror .ok-lint-block-atom.ok-lint-block-error {
-  outline-color: var(--lint-error-color, oklch(55% 0.15 25));
+  outline-color: var(--lint-error-color);
 }
 /* Hover tooltip for a decorated lint block (markdown-lint-decorations.ts). A
    styled, instant alternative to the native `title` — OK popover tokens,

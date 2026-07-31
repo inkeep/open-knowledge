@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import type { OkChromeColors } from '../shared/bridge-contract.ts';
 import {
   applyThemeToWindow,
   buildNonDarwinChromeOpts,
@@ -7,6 +8,9 @@ import {
   computeTitleBarOverlay,
   TITLEBAR_OVERLAY_HEIGHT,
 } from './window-chrome.ts';
+
+/** An active palette's resolved chrome, as the renderer reports it. */
+const LIVE: OkChromeColors = { bg: '#282a36', symbol: '#f8f8f2' };
 
 describe('computeTitleBarOverlay', () => {
   test('light theme uses light bg + dark symbols', () => {
@@ -35,6 +39,25 @@ describe('computeTitleBarOverlay', () => {
     // paint the same solid base or first-frame chrome mismatches the page.
     expect(CHROME_BG.light).toBe('#fafafa');
     expect(CHROME_BG.dark).toBe('#171717');
+  });
+
+  test("the renderer's live colors take precedence over the default-theme snapshot", () => {
+    // Without this the OS-drawn chrome stays on #fafafa/#171717 no matter
+    // which palette is active — the gap the live report exists to close.
+    expect(computeTitleBarOverlay(true, LIVE)).toEqual({
+      color: LIVE.bg,
+      symbolColor: LIVE.symbol,
+      height: TITLEBAR_OVERLAY_HEIGHT,
+    });
+  });
+
+  test('live colors win in either mode — the palette, not isDark, picks them', () => {
+    // A light-mode scheme reporting dark chrome must not be re-lightened.
+    expect(computeTitleBarOverlay(false, LIVE)).toEqual(computeTitleBarOverlay(true, LIVE));
+  });
+
+  test('falls back to the snapshot when live is absent (pre-renderer-mount)', () => {
+    expect(computeTitleBarOverlay(true, undefined)).toEqual(computeTitleBarOverlay(true));
   });
 });
 
@@ -101,5 +124,18 @@ describe('applyThemeToWindow', () => {
     const { win, calls } = makeWin({ overlayThrows: true });
     expect(() => applyThemeToWindow(win, 'win32', false)).not.toThrow();
     expect(calls.bg).toEqual([CHROME_BG.light]);
+  });
+
+  test('win32 repaints background AND overlay from the live palette', () => {
+    const { win, calls } = makeWin();
+    applyThemeToWindow(win, 'win32', true, LIVE);
+    expect(calls.bg).toEqual([LIVE.bg]);
+    expect(calls.overlay).toEqual([computeTitleBarOverlay(true, LIVE)]);
+  });
+
+  test('linux repaints the background from the live palette', () => {
+    const { win, calls } = makeWin();
+    applyThemeToWindow(win, 'linux', false, LIVE);
+    expect(calls.bg).toEqual([LIVE.bg]);
   });
 });

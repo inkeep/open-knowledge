@@ -1,15 +1,14 @@
+import type { AnsiSlotName } from '@inkeep/open-knowledge-core';
 import type { ITheme } from '@xterm/xterm';
 
 /**
- * Curated xterm palettes for the docked terminal, one per resolved app mode.
+ * Fallback xterm palettes for the docked terminal, one per resolved app mode.
  *
- * Hand-tuned rather than derived from the app's CSS tokens: xterm's 16 ANSI
- * slots have no clean mapping onto the app's semantic tokens, and a curated
- * pair gives correct contrast in both modes. The surface colors track the
- * neutral `--background`/`--foreground` tokens closely enough to blend with the
- * `bg-background` wrapper; the ANSI slots follow the VS Code terminal palettes,
- * which are tuned for legibility. `minimumContrastRatio` on the Terminal lifts
- * any remaining low-contrast program output toward AA at render time.
+ * `computeLiveXtermTheme` normally derives every slot from the live theme
+ * tokens; these are what it falls back to per-slot when a token can't be
+ * resolved (off-DOM, tests) and what the `default` theme's own `--ansi-*`
+ * values were seeded from. The ANSI slots follow the VS Code terminal
+ * palettes, which are tuned for legibility.
  */
 export const XTERM_DARK_THEME = {
   background: '#171717',
@@ -103,14 +102,39 @@ function readTokenColor(token: string): string | null {
   }
 }
 
+/** xterm ANSI slot → the `--ansi-*` custom property carrying its color. */
+const ANSI_TOKEN_BY_SLOT: Record<AnsiSlotName, string> = {
+  black: '--ansi-black',
+  red: '--ansi-red',
+  green: '--ansi-green',
+  yellow: '--ansi-yellow',
+  blue: '--ansi-blue',
+  magenta: '--ansi-magenta',
+  cyan: '--ansi-cyan',
+  white: '--ansi-white',
+  brightBlack: '--ansi-bright-black',
+  brightRed: '--ansi-bright-red',
+  brightGreen: '--ansi-bright-green',
+  brightYellow: '--ansi-bright-yellow',
+  brightBlue: '--ansi-bright-blue',
+  brightMagenta: '--ansi-bright-magenta',
+  brightCyan: '--ansi-bright-cyan',
+  brightWhite: '--ansi-bright-white',
+};
+
 /**
- * The curated mode palette with its surface slots re-derived from the live
- * theme tokens, so the terminal follows plugin/custom color themes instead of
- * only light/dark. ANSI slots stay curated by mode: the 16 ANSI colors have no
- * mapping onto the semantic token set that preserves terminal legibility, and
- * `minimumContrastRatio` lifts residual clashes. Any token that fails to
- * resolve falls back to the curated value, so this degrades to
- * `xtermThemeForMode` when no color theme is active or off-DOM.
+ * The live theme as an xterm palette — surfaces and all sixteen ANSI slots read
+ * from the app's tokens, so a color theme repaints program output and not just
+ * the terminal's chrome.
+ *
+ * The ANSI slots are readable because every theme is authored in base16, whose
+ * accent slots are defined against ANSI in the first place; a palette keyed by
+ * app-semantic names carries no such mapping and leaves these unreachable.
+ * `minimumContrastRatio` on the Terminal still lifts low-contrast program
+ * output at render time.
+ *
+ * Any token that fails to resolve falls back to the curated value, so this
+ * degrades to `xtermThemeForMode` off-DOM (tests, SSR).
  */
 export function computeLiveXtermTheme(
   resolvedTheme: string | undefined,
@@ -119,8 +143,16 @@ export function computeLiveXtermTheme(
   const base = xtermThemeForMode(resolvedTheme);
   const background = readToken('--background') ?? base.background;
   const foreground = readToken('--foreground') ?? base.foreground;
+
+  const ansi: Partial<Record<AnsiSlotName, string>> = {};
+  for (const slot of Object.keys(ANSI_TOKEN_BY_SLOT) as AnsiSlotName[]) {
+    const resolved = readToken(ANSI_TOKEN_BY_SLOT[slot]);
+    if (resolved) ansi[slot] = resolved;
+  }
+
   return {
     ...base,
+    ...ansi,
     background,
     foreground,
     cursor: foreground,

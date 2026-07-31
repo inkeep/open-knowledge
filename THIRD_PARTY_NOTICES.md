@@ -2505,16 +2505,6 @@ Homepage: https://github.com/u-wave/react-vimeo#readme
 
 Copyright (c) 2016 Renée Kooi
 
-### `@uiw/codemirror-theme-basic@4.25.11`
-Homepage: https://uiwjs.github.io/react-codemirror/#/theme/data/basic/light
-
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
-
-### `@uiw/codemirror-themes@4.25.11`
-Homepage: https://uiwjs.github.io/react-codemirror/#/theme/doc
-
-_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
-
 ### `@upsetjs/venn.js@2.0.0`
 Homepage: https://github.com/upsetjs/venn.js
 

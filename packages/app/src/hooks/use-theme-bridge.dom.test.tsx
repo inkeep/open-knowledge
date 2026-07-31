@@ -63,11 +63,13 @@ function makeRejectingBridge(rejectionError: Error): StubBridge {
 function HookProbe({
   bridge,
   themeValue,
+  colorThemeKey,
 }: {
   bridge: OkDesktopBridge | undefined;
   themeValue: string | undefined;
+  colorThemeKey?: string;
 }) {
-  useThemeBridge(bridge, themeValue);
+  useThemeBridge(bridge, themeValue, colorThemeKey);
   return <div data-testid="theme-bridge-probe" />;
 }
 
@@ -277,6 +279,78 @@ describe('useThemeBridge (Tier-3 mount)', () => {
     );
     expect(stubBridge.setThemeSourceCalls[1]).toBe('dark');
     expect(stubBridge.signalThemeAppliedCalls.length).toBe(2);
+  });
+
+  test('reports chrome as hex even when the token is authored in a syntax Electron cannot parse', async () => {
+    // The default theme authors `--sidebar` as `oklch(...)`. Electron's
+    // setBackgroundColor / titleBarOverlay accept hex, rgb, hsl or a name —
+    // forwarding the authored text loses the default theme's chrome entirely.
+    document.documentElement.style.setProperty('--sidebar', 'oklch(0.985 0 0)');
+    document.documentElement.style.setProperty('--sidebar-foreground', 'oklch(0.145 0 0)');
+    const stubBridge = makeStubBridge();
+    try {
+      render(
+        <HookProbe
+          bridge={stubBridge as unknown as OkDesktopBridge}
+          themeValue="light"
+          colorThemeKey="default:"
+        />,
+      );
+      await waitFor(
+        () => {
+          expect(stubBridge.signalThemeAppliedCalls.length).toBe(1);
+        },
+        { timeout: ASYNC_EFFECT_TIMEOUT_MS },
+      );
+      const chrome = stubBridge.signalThemeAppliedCalls[0]?.chrome;
+      // Either the environment resolved the color (then it must be hex) or it
+      // could not (then chrome is omitted) — never raw `oklch(...)`.
+      if (chrome) {
+        expect(chrome.bg).toMatch(/^#[0-9a-f]{6}$/);
+        expect(chrome.symbol).toMatch(/^#[0-9a-f]{6}$/);
+      }
+    } finally {
+      document.documentElement.style.removeProperty('--sidebar');
+      document.documentElement.style.removeProperty('--sidebar-foreground');
+    }
+  });
+
+  test('a same-mode palette switch re-reports chrome even though themeValue is unchanged', async () => {
+    // Switching between two dark palettes (Dracula -> Monokai) leaves
+    // `themeValue` at 'dark', so only the `colorThemeKey` signal changes. The
+    // hook must still re-fire `signalThemeApplied` so main repaints the
+    // OS-drawn titlebar for the new palette. Without `colorThemeKey` in the
+    // effect deps, the effect never re-runs and the chrome stays stale.
+    const stubBridge = makeStubBridge();
+    const { rerender } = render(
+      <HookProbe
+        bridge={stubBridge as unknown as OkDesktopBridge}
+        themeValue="dark"
+        colorThemeKey="dracula:"
+      />,
+    );
+
+    await waitFor(
+      () => {
+        expect(stubBridge.signalThemeAppliedCalls.length).toBe(1);
+      },
+      { timeout: ASYNC_EFFECT_TIMEOUT_MS },
+    );
+
+    rerender(
+      <HookProbe
+        bridge={stubBridge as unknown as OkDesktopBridge}
+        themeValue="dark"
+        colorThemeKey="monokai:"
+      />,
+    );
+
+    await waitFor(
+      () => {
+        expect(stubBridge.signalThemeAppliedCalls.length).toBe(2);
+      },
+      { timeout: ASYNC_EFFECT_TIMEOUT_MS },
+    );
   });
 
   test('rejection path: signalThemeApplied still fires via .finally so the show-gate releases', async () => {

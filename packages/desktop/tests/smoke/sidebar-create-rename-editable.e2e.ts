@@ -98,7 +98,9 @@ async function createSidebarFileAndType(
   docName: string,
   bodyText: string,
 ): Promise<void> {
-  await page.getByRole('button', { name: 'New file' }).click();
+  // `exact` because `name` matches a substring by default, and the empty-state
+  // "or create a new file" button also carries "new file" in its name.
+  await page.getByRole('button', { name: 'New file', exact: true }).click();
   const renameInput = page.getByRole('textbox', { name: /rename Untitled\.md/i });
   await renameInput.fill(docName);
   await renameInput.press('Enter');

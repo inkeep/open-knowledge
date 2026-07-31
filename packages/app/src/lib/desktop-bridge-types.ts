@@ -998,7 +998,10 @@ export interface OkDesktopBridge {
    * value — main toggles vibrancy material accordingly. See canonical
    * JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
    */
-  signalThemeApplied(opts?: { reducedTransparency?: boolean }): void;
+  signalThemeApplied(opts?: {
+    reducedTransparency?: boolean;
+    chrome?: { bg: string; symbol: string };
+  }): void;
   dialog: {
     openFolder(opts?: { defaultPath?: string }): Promise<string | null>;
   };

@@ -118,8 +118,12 @@ test.describe('Report-a-bug entry points', () => {
 
     // App-mounted gate: menu actions delivered before the renderer attaches
     // its onMenuAction subscription are dropped, so wait for stable App UI
-    // (the sidebar toolbar) before driving the menu.
-    await expect(page.getByRole('button', { name: 'New file' })).toBeVisible({ timeout: 30_000 });
+    // (the sidebar toolbar) before driving the menu. Scoped to the toolbar
+    // because `name` matches a substring: the empty-state "or create a new
+    // file" button also carries "new file" in its accessible name.
+    await expect(
+      page.getByTestId('sidebar-toolbar').getByRole('button', { name: 'New file' }),
+    ).toBeVisible({ timeout: 30_000 });
 
     // Entry point 1 — Help menu. Label lookup walks every top-level submenu
     // rather than assuming the Help menu's resolved label/role shape.

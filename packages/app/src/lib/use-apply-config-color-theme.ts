@@ -1,10 +1,9 @@
 import { useEffect } from 'react';
 import {
   buildCustomThemeCss,
-  type CustomThemeSeed,
   customThemeKind,
   resolveColorTheme,
-  resolveCustomSeed,
+  resolveCustomScheme,
 } from './color-themes';
 
 /** localStorage key the FOUC script in `index.html` reads pre-paint. Keep both in sync. */
@@ -19,7 +18,7 @@ export const COLOR_THEME_ATTRIBUTE = 'data-color-theme';
 /** id of the runtime `<style>` element holding the active custom palette. */
 export const CUSTOM_THEME_STYLE_ID = 'ok-custom-theme';
 
-type SeedInput = Partial<Record<keyof CustomThemeSeed, unknown>> | undefined;
+type SeedInput = Record<string, unknown> | undefined;
 
 function upsertCustomStyle(css: string): void {
   let style = document.getElementById(CUSTOM_THEME_STYLE_ID) as HTMLStyleElement | null;
@@ -69,10 +68,10 @@ export function applyColorThemeToDom(
 
   let customCacheEntry: string | null = null;
   if (theme.id === 'custom') {
-    const seed = resolveCustomSeed(customSeed);
-    const css = buildCustomThemeCss(seed);
+    const scheme = resolveCustomScheme(customSeed);
+    const css = buildCustomThemeCss(scheme);
     upsertCustomStyle(css);
-    customCacheEntry = JSON.stringify({ css, dark: customThemeKind(seed) === 'dark' });
+    customCacheEntry = JSON.stringify({ css, dark: customThemeKind(scheme) === 'dark' });
   } else {
     removeCustomStyle();
   }

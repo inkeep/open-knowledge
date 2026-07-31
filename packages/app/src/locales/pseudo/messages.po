@@ -250,11 +250,6 @@ msgstr ""
 msgid "{0} can't continue this conversation — the transcript is kept, but the agent session is gone."
 msgstr ""
 
-#. placeholder {0}: labels[key]
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "{0} hex value"
-msgstr ""
-
 #. placeholder {0}: resolvedTarget.displayName
 #. placeholder {0}: target.displayName
 #: src/comments/use-comment-delivery.ts
@@ -688,6 +683,10 @@ msgstr ""
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr ""
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "{slot} hex value"
+msgstr ""
+
 #: src/components/SkillPluginBundleBanner.tsx
 msgid "{source} publishes {count} skills. Install any of them together."
 msgstr ""
@@ -735,6 +734,10 @@ msgstr ""
 
 #: src/components/EditorFooter.tsx
 msgid "{words, plural, one {word} other {words}}"
+msgstr ""
+
+#: src/components/settings/ThemePreviewCanvas.tsx
+msgid "// note"
 msgstr ""
 
 #: src/components/ConnectingBanner.tsx
@@ -978,7 +981,7 @@ msgid "absent"
 msgstr ""
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Accent"
+msgid "Accents"
 msgstr ""
 
 #: src/components/DiffView.tsx
@@ -1628,7 +1631,7 @@ msgid "Back to document view"
 msgstr ""
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Background"
+msgid "Background to foreground"
 msgstr ""
 
 #: src/components/LinksPanel.tsx
@@ -1700,10 +1703,6 @@ msgstr ""
 msgid "Bold"
 msgstr ""
 
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Border"
-msgstr ""
-
 #: src/components/GraphPanel.tsx
 msgid "Both"
 msgstr ""
@@ -1772,6 +1771,10 @@ msgstr ""
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
+msgstr ""
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Browse hundreds of schemes"
 msgstr ""
 
 #: src/components/ImportSkillDialog.tsx
@@ -2664,6 +2667,10 @@ msgstr ""
 msgid "Copy a prompt for your agent, start a blank file, or scaffold from a template."
 msgstr ""
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Copy as YAML"
+msgstr ""
+
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Copy code"
 msgstr ""
@@ -3064,6 +3071,10 @@ msgstr ""
 
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "Couldn't reach the agent registry."
+msgstr ""
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Couldn’t reach the clipboard — the scheme is in the box below."
 msgstr ""
 
 #: src/components/CommandPalette.tsx
@@ -4083,7 +4094,7 @@ msgid "Editor status bar"
 msgstr ""
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Edits apply live. Light or dark is chosen from the background."
+msgid "Edits apply live. Light or dark comes from the scheme."
 msgstr ""
 
 #: src/editor/slash-command/component-items.tsx
@@ -5473,6 +5484,10 @@ msgstr ""
 #. placeholder {0}: result.error
 #: src/components/ImportSkillForm.tsx
 msgid "Import failed: {0}"
+msgstr ""
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Import scheme"
 msgstr ""
 
 #. placeholder {0}: result.name
@@ -7804,6 +7819,10 @@ msgstr ""
 msgid "Paste"
 msgstr ""
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Paste a base16 scheme"
+msgstr ""
+
 #: src/components/AuthModal.tsx
 msgid "Paste a personal access token for <0>{host}</0>."
 msgstr ""
@@ -7910,7 +7929,7 @@ msgid "Personal to this device — stored in your user config, not shared."
 msgstr ""
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Pick “Custom” above to use this palette."
+msgid "Pick “Custom” above to use this scheme."
 msgstr ""
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -8043,10 +8062,6 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Previous tab"
-msgstr ""
-
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Primary"
 msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
@@ -8397,6 +8412,10 @@ msgstr ""
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SubscribeCard.tsx
 msgid "Release notes"
+msgstr ""
+
+#: src/components/settings/ThemePreviewCanvas.tsx
+msgid "Release plan"
 msgstr ""
 
 #: src/components/ExploreSkills.tsx
@@ -9016,6 +9035,7 @@ msgstr ""
 
 #: src/components/AuthModal.tsx
 #: src/components/settings/SearchSection.tsx
+#: src/components/settings/ThemePreviewCanvas.tsx
 #: src/editor/components/CodePreviewEditModal.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
@@ -9074,6 +9094,10 @@ msgstr ""
 
 #: src/components/settings/LintingSection.tsx
 msgid "schema {deleteTarget}"
+msgstr ""
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Scheme copied as base16 YAML"
 msgstr ""
 
 #: src/components/ImportSkillForm.tsx
@@ -9557,6 +9581,10 @@ msgstr ""
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Sharing a doc needs a GitHub repository. Create one for this project."
+msgstr ""
+
+#: src/components/settings/ThemePreviewCanvas.tsx
+msgid "Ship the editor with a"
 msgstr ""
 
 #: src/components/FileSidebar.tsx
@@ -10103,10 +10131,6 @@ msgstr ""
 msgid "Summarize everything I changed this week"
 msgstr ""
 
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Surface"
-msgstr ""
-
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Switch and update branch"
 msgstr ""
@@ -10460,7 +10484,6 @@ msgid "Testing"
 msgstr ""
 
 #: src/components/PropertyWidgets.tsx
-#: src/components/settings/CustomThemeEditor.tsx
 msgid "Text"
 msgstr ""
 
@@ -10689,6 +10712,14 @@ msgstr ""
 
 #: src/components/settings/settings-fields.ts
 msgid "Theme"
+msgstr ""
+
+#: src/components/settings/ThemePreviewCanvas.tsx
+msgid "Theme preview"
+msgstr ""
+
+#: src/components/settings/ThemePreviewCanvas.tsx
+msgid "themed preview"
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
@@ -11642,6 +11673,7 @@ msgid "Waiting for your approval"
 msgstr ""
 
 #: src/components/settings/ContentRulesSection.tsx
+#: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"
 msgstr ""
 
@@ -11856,6 +11888,10 @@ msgstr ""
 
 #: src/components/ActivityPanelFileRow.tsx
 msgid "writing"
+msgstr ""
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "YAML or JSON, in either base16 layout."
 msgstr ""
 
 #: src/components/TimelinePanel.tsx

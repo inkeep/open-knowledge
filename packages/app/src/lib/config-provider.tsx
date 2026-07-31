@@ -42,7 +42,7 @@ import { type ReactNode, useEffect, useState } from 'react';
 import * as Y from 'yjs';
 import { useThemeBridge } from '@/hooks/use-theme-bridge';
 import { buildAuthToken } from './auth-token';
-import { colorThemeMode, customThemeKind, resolveCustomSeed } from './color-themes';
+import { colorThemeMode, customThemeKind, resolveCustomScheme } from './color-themes';
 import { ConfigContext, type ConfigContextValue } from './config-context';
 import { useServerInstanceId } from './server-instance-store';
 import { useApplyConfigColorTheme } from './use-apply-config-color-theme';
@@ -295,7 +295,7 @@ export function ConfigProvider({
   const effectiveMode = !colorThemeEnabled
     ? themeValue
     : colorThemeValue === 'custom'
-      ? customThemeKind(resolveCustomSeed(customSeed))
+      ? customThemeKind(resolveCustomScheme(customSeed))
       : (colorThemeMode(colorThemeValue) ?? themeValue);
   // Bridge the effective mode from the merged config into next-themes app-wide.
   // The hook owns the dependency discipline that prevents a cross-window
@@ -324,9 +324,17 @@ export function ConfigProvider({
   // (`runBootstrap` sets `nativeTheme.themeSource = 'system'`) and
   // `next-themes`' `defaultTheme="system"`, so chrome reflects the OS
   // appearance from frame 1 and the gate releases promptly.
+  //
+  // The third argument re-fires the signal on a palette switch (not just a
+  // light/dark flip) so the OS-drawn chrome tracks the active color theme. It
+  // serializes the custom seed too — editing a custom scheme's `--sidebar`
+  // should repaint the titlebar live.
   useThemeBridge(
     typeof window !== 'undefined' ? window.okDesktop : undefined,
     effectiveMode ?? 'system',
+    `${colorThemeEnabled ? colorThemeValue : 'default'}:${
+      colorThemeValue === 'custom' ? JSON.stringify(customSeed ?? null) : ''
+    }`,
   );
 
   const value: ConfigContextValue = {

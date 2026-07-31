@@ -24,26 +24,23 @@
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { codeLanguageForExtension } from '@inkeep/open-knowledge-core';
-import { basicDarkInit, basicLightInit } from '@uiw/codemirror-theme-basic';
 import { basicSetup } from 'codemirror';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef } from 'react';
+import { okCmTheme } from '@/editor/extensions/cm-theme';
 import { loadCodeMirrorLanguageForExtension } from './text-viewer-languages';
 import { useViewerText, type ViewerTextSource } from './use-viewer-text';
 import { ViewerErrorPane, ViewerLoadingPane } from './ViewerStatusPane';
 
-const darkTheme = basicDarkInit({
-  settings: {
-    background: 'var(--background)',
-    gutterBackground: 'var(--muted)',
-  },
+const darkTheme = okCmTheme({
+  dark: true,
+  background: 'var(--background)',
+  gutterBackground: 'var(--muted)',
 });
-
-const lightTheme = basicLightInit({
-  settings: {
-    background: 'var(--background)',
-    gutterBackground: 'var(--muted)',
-  },
+const lightTheme = okCmTheme({
+  dark: false,
+  background: 'var(--background)',
+  gutterBackground: 'var(--muted)',
 });
 
 /**

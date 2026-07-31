@@ -5,26 +5,23 @@ import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { plural } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { basicDarkInit, basicLightInit } from '@uiw/codemirror-theme-basic';
 import { basicSetup } from 'codemirror';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { okCmTheme } from '@/editor/extensions/cm-theme';
 import { useConflictFooterHeightVar } from '@/hooks/use-conflict-footer-height';
 import { Button } from './ui/button';
 
-const darkTheme = basicDarkInit({
-  settings: {
-    background: 'var(--background)',
-    gutterBackground: 'var(--muted)',
-  },
+const darkTheme = okCmTheme({
+  dark: true,
+  background: 'var(--background)',
+  gutterBackground: 'var(--muted)',
 });
-
-const lightTheme = basicLightInit({
-  settings: {
-    background: 'var(--background)',
-    gutterBackground: 'var(--muted)',
-  },
+const lightTheme = okCmTheme({
+  dark: false,
+  background: 'var(--background)',
+  gutterBackground: 'var(--muted)',
 });
 
 const conflictMergeControlTheme = EditorView.theme({

@@ -133,7 +133,12 @@ import {
   shell,
   utilityProcess,
 } from 'electron';
-import type { ClaudeReadiness, CliReadiness, OkMenuAction } from '../shared/bridge-contract.ts';
+import type {
+  ClaudeReadiness,
+  CliReadiness,
+  OkChromeColors,
+  OkMenuAction,
+} from '../shared/bridge-contract.ts';
 import { type EntryPoint, isEntryPoint } from '../shared/entry-point.ts';
 import type {
   EditorActiveTargetSnapshot,
@@ -473,6 +478,19 @@ const VIBRANCY_DEFAULT: VibrancyMaterial = 'sidebar';
 // module load for the initial chrome; a `nativeTheme.on('updated')`
 // listener (registered in bootstrap below) re-applies via
 // `applyThemeToWindow`, and covers windows created after a theme flip.
+// The active color theme's chrome colors, as last reported by a renderer over
+// `ok:theme:applied`. Undefined until the first renderer mounts, which is when
+// the default-theme snapshot in `window-chrome.ts` is the correct answer.
+let lastChromeColors: OkChromeColors | undefined;
+
+/** Repaint every live window's OS-drawn chrome from the active palette. */
+function fanOutChromeColors(): void {
+  if (process.platform === 'darwin') return;
+  for (const win of BrowserWindow.getAllWindows()) {
+    applyThemeToWindow(win, process.platform, nativeTheme.shouldUseDarkColors, lastChromeColors);
+  }
+}
+
 const DEFAULT_WIN_OPTS: BrowserWindowConstructorOptions = {
   width: 1280,
   height: 800,
@@ -4700,6 +4718,10 @@ function registerIpcHandlers() {
         fireThemeApplied: (w) => showGate.fireThemeApplied(w as BrowserWindowLike),
         applyReducedTransparency: (reduced) =>
           applyReducedTransparency(reducedTransparencyDeps, reduced),
+        applyChromeColors: (chrome) => {
+          lastChromeColors = chrome;
+          fanOutChromeColors();
+        },
         warn: (line) => console.warn(line),
       },
       win as unknown as object | null,
@@ -6425,11 +6447,7 @@ function bootPrimaryInstance(): void {
       // the solid background (+ overlay colors on win32) to every live
       // window. macOS is untouched — vibrancy tracks nativeTheme natively.
       if (process.platform !== 'darwin') {
-        nativeTheme.on('updated', () => {
-          for (const win of BrowserWindow.getAllWindows()) {
-            applyThemeToWindow(win, process.platform, nativeTheme.shouldUseDarkColors);
-          }
-        });
+        nativeTheme.on('updated', fanOutChromeColors);
       }
 
       // AppImage deep-link self-registration (windows-linux-port deep-link posture): fire-and-forget — a

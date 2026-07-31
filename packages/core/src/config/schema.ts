@@ -1,9 +1,44 @@
 import { z } from 'zod';
 import { DEFAULT_ATTACHMENT_FOLDER_PATH } from '../constants/upload.ts';
 import { DEFAULT_LINKS_VALIDATION, LINKS_VALIDATION_SETTINGS } from '../markdown/lint/types.ts';
+import { BASE16_SLOT_ROLES, BASE16_SLOTS } from '../theme/base16.ts';
 import { THEME_PLUGIN_IDS } from '../theme/theme-plugins.ts';
 import { STORED_SYNC_ACTIVE_MODES, STORED_SYNC_MODES } from './auto-sync-mode.ts';
 import { fieldRegistry } from './field-registry.ts';
+
+/**
+ * The sixteen `appearance.customTheme` slot fields. Built from the slot list so
+ * the config surface can't drift from the format, and so each field's
+ * description carries the slot's role rather than repeating "a hex string".
+ */
+function base16SlotFields() {
+  return Object.fromEntries(
+    BASE16_SLOTS.map((slot) => [
+      slot,
+      z
+        .string()
+        .register(fieldRegistry, {
+          scope: 'user',
+          agentSettable: false,
+          defaultScope: 'user',
+          description: `Custom theme: base16 ${slot} — ${BASE16_SLOT_ROLES[slot]}, as a #rrggbb hex string.`,
+        })
+        .optional(),
+    ]),
+  );
+}
+
+/**
+ * The self-contained palettes, quoted for prose — every theme id except the two
+ * that defer to something else (`default` → the light/dark mode, `custom` → the
+ * user's own scheme). Derived so the `colorTheme` description can't fall out of
+ * step with the registry the enum itself comes from.
+ */
+function namedThemeIds() {
+  return THEME_PLUGIN_IDS.filter((id) => id !== 'default' && id !== 'custom')
+    .map((id) => `'${id}'`)
+    .join(', ');
+}
 
 // Credential attribute key denylist for the local telemetry file sink. The
 // `ScrubbingSpanProcessor` reads the resolved `telemetry.localSink.attributeDenylist`
@@ -226,8 +261,7 @@ export const ConfigSchema = z.looseObject({
           scope: 'user',
           agentSettable: false,
           defaultScope: 'user',
-          description:
-            "IDE color palette: 'default' (follows the light/dark theme), one of 'dracula', 'catppuccin-frappe', 'catppuccin-latte', 'monokai', 'gruvbox', 'solarized', or 'custom' (your own colors from appearance.customTheme). A personal preference (user scope) — not shared with the project.",
+          description: `IDE color palette: 'default' (follows the light/dark theme), 'custom' (your own colors from appearance.customTheme), or one of ${namedThemeIds()}. A personal preference (user scope) — not shared with the project.`,
         })
         .optional(),
       // Whether the Themes plugin appears under Settings → Plugins. The theme is
@@ -243,70 +277,46 @@ export const ConfigSchema = z.looseObject({
             'Whether the Themes plugin appears in Settings → Plugins. A personal preference (user scope). Default on.',
         })
         .optional(),
-      // Six seed colors for the `custom` color theme. The app derives the full
-      // token set from these (text contrast, muted text, accents) — see
-      // `expandCustomSeed` in `packages/app/src/lib/color-themes.ts`. Each value
-      // is a `#rrggbb` hex string; light-vs-dark mode is auto-detected from the
-      // background's luminance. A personal preference (user scope).
+      // The `custom` color theme's base16 scheme — the same sixteen-slot format
+      // the built-ins are authored in, so a scheme copied from the base16
+      // ecosystem can be pasted in and used as-is. Each slot is a `#rrggbb` hex
+      // string; `variant` is auto-detected from the tonal ramp when absent.
+      // Config written before base16 carried six semantic seed colors instead
+      // (`background`/`surface`/`foreground`/`primary`/`accent`/`border`); the
+      // object stays loose so that shape still parses, and the app upgrades it
+      // on read (`resolveCustomScheme`). A personal preference (user scope).
       customTheme: z
         .looseObject({
-          background: z
+          name: z
             .string()
             .register(fieldRegistry, {
               scope: 'user',
               agentSettable: false,
               defaultScope: 'user',
-              description: 'Custom theme: editor canvas background, as a #rrggbb hex string.',
+              description: "Custom theme: the scheme's display name.",
             })
             .optional(),
-          surface: z
-            .string()
-            .register(fieldRegistry, {
-              scope: 'user',
-              agentSettable: false,
-              defaultScope: 'user',
-              description:
-                'Custom theme: elevated surfaces (cards, sidebar, popovers), as a #rrggbb hex string.',
-            })
-            .optional(),
-          foreground: z
-            .string()
-            .register(fieldRegistry, {
-              scope: 'user',
-              agentSettable: false,
-              defaultScope: 'user',
-              description: 'Custom theme: primary text color, as a #rrggbb hex string.',
-            })
-            .optional(),
-          primary: z
+          author: z
             .string()
             .register(fieldRegistry, {
               scope: 'user',
               agentSettable: false,
               defaultScope: 'user',
               description:
-                'Custom theme: accent color for buttons, links, and focus, as a #rrggbb hex string.',
+                "Custom theme: the scheme's author credit, carried through from an imported base16 scheme.",
             })
             .optional(),
-          accent: z
-            .string()
+          variant: z
+            .enum(['dark', 'light'])
             .register(fieldRegistry, {
               scope: 'user',
               agentSettable: false,
               defaultScope: 'user',
               description:
-                'Custom theme: secondary accent (syntax highlights, charts), as a #rrggbb hex string.',
+                "Custom theme: whether the scheme is 'dark' or 'light'. Auto-detected from the palette when omitted.",
             })
             .optional(),
-          border: z
-            .string()
-            .register(fieldRegistry, {
-              scope: 'user',
-              agentSettable: false,
-              defaultScope: 'user',
-              description: 'Custom theme: hairline border + input color, as a #rrggbb hex string.',
-            })
-            .optional(),
+          ...base16SlotFields(),
         })
         .optional(),
       preview: z

@@ -38,7 +38,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { colorThemeMode, customThemeKind, resolveCustomSeed } from '@/lib/color-themes';
+import { colorThemeMode, customThemeKind, resolveCustomScheme } from '@/lib/color-themes';
 import { useConfigContextOptional } from '@/lib/config-context';
 import { applyColorThemeToDom } from '@/lib/use-apply-config-color-theme';
 import { cn } from '@/lib/utils';
@@ -316,7 +316,9 @@ function FieldControlBody({
           // effect restores the user's saved light/dark mode on the round-trip.
           applyColorThemeToDom(next, customSeed);
           if (next === 'custom') {
-            setTheme(customThemeKind(resolveCustomSeed(customSeed)) === 'dark' ? 'dark' : 'light');
+            setTheme(
+              customThemeKind(resolveCustomScheme(customSeed)) === 'dark' ? 'dark' : 'light',
+            );
           } else {
             const mode = colorThemeMode(next);
             if (mode) setTheme(mode);

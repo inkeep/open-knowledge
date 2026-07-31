@@ -250,11 +250,6 @@ msgstr "{0} at line {displayLine}"
 msgid "{0} can't continue this conversation — the transcript is kept, but the agent session is gone."
 msgstr "{0} can't continue this conversation — the transcript is kept, but the agent session is gone."
 
-#. placeholder {0}: labels[key]
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "{0} hex value"
-msgstr "{0} hex value"
-
 #. placeholder {0}: resolvedTarget.displayName
 #. placeholder {0}: target.displayName
 #: src/comments/use-comment-delivery.ts
@@ -688,6 +683,10 @@ msgstr "{sizeText} · secrets redacted · crash dump not redacted"
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, one {skill} other {skills}}"
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "{slot} hex value"
+msgstr "{slot} hex value"
+
 #: src/components/SkillPluginBundleBanner.tsx
 msgid "{source} publishes {count} skills. Install any of them together."
 msgstr "{source} publishes {count} skills. Install any of them together."
@@ -736,6 +735,10 @@ msgstr "{userName}, {tabCount, plural, one {# concurrent tab} other {# concurren
 #: src/components/EditorFooter.tsx
 msgid "{words, plural, one {word} other {words}}"
 msgstr "{words, plural, one {word} other {words}}"
+
+#: src/components/settings/ThemePreviewCanvas.tsx
+msgid "// note"
+msgstr "// note"
 
 #: src/components/ConnectingBanner.tsx
 msgid "/api/config returned a malformed body"
@@ -982,8 +985,8 @@ msgid "absent"
 msgstr "absent"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Accent"
-msgstr "Accent"
+msgid "Accents"
+msgstr "Accents"
 
 #: src/components/DiffView.tsx
 msgid "Accept"
@@ -1632,8 +1635,8 @@ msgid "Back to document view"
 msgstr "Back to document view"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Background"
-msgstr "Background"
+msgid "Background to foreground"
+msgstr "Background to foreground"
 
 #: src/components/LinksPanel.tsx
 msgid "Backlinks"
@@ -1704,10 +1707,6 @@ msgstr "blog-post"
 msgid "Bold"
 msgstr "Bold"
 
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Border"
-msgstr "Border"
-
 #: src/components/GraphPanel.tsx
 msgid "Both"
 msgstr "Both"
@@ -1777,6 +1776,10 @@ msgstr "Browse all"
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
 msgstr "Browse folder"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Browse hundreds of schemes"
+msgstr "Browse hundreds of schemes"
 
 #: src/components/ImportSkillDialog.tsx
 msgid "Browse or upload a skill for this project."
@@ -2668,6 +2671,10 @@ msgstr "Copy a prompt and paste it into your agent to set up your project."
 msgid "Copy a prompt for your agent, start a blank file, or scaffold from a template."
 msgstr "Copy a prompt for your agent, start a blank file, or scaffold from a template."
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Copy as YAML"
+msgstr "Copy as YAML"
+
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Copy code"
 msgstr "Copy code"
@@ -3069,6 +3076,10 @@ msgstr "Couldn't reach GitHub. Try again?"
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "Couldn't reach the agent registry."
 msgstr "Couldn't reach the agent registry."
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Couldn’t reach the clipboard — the scheme is in the box below."
+msgstr "Couldn’t reach the clipboard — the scheme is in the box below."
 
 #: src/components/CommandPalette.tsx
 msgid "Couldn't reach the embeddings provider — retry"
@@ -4087,8 +4098,8 @@ msgid "Editor status bar"
 msgstr "Editor status bar"
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Edits apply live. Light or dark is chosen from the background."
-msgstr "Edits apply live. Light or dark is chosen from the background."
+msgid "Edits apply live. Light or dark comes from the scheme."
+msgstr "Edits apply live. Light or dark comes from the scheme."
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Edits at the source land here — no copy-paste drift."
@@ -5478,6 +5489,10 @@ msgstr "Import as template"
 #: src/components/ImportSkillForm.tsx
 msgid "Import failed: {0}"
 msgstr "Import failed: {0}"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Import scheme"
+msgstr "Import scheme"
 
 #. placeholder {0}: result.name
 #: src/lib/skill-import-toast.ts
@@ -7808,6 +7823,10 @@ msgstr "Part of the {plugin} plugin"
 msgid "Paste"
 msgstr "Paste"
 
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Paste a base16 scheme"
+msgstr "Paste a base16 scheme"
+
 #: src/components/AuthModal.tsx
 msgid "Paste a personal access token for <0>{host}</0>."
 msgstr "Paste a personal access token for <0>{host}</0>."
@@ -7914,8 +7933,8 @@ msgid "Personal to this device — stored in your user config, not shared."
 msgstr "Personal to this device — stored in your user config, not shared."
 
 #: src/components/settings/CustomThemeEditor.tsx
-msgid "Pick “Custom” above to use this palette."
-msgstr "Pick “Custom” above to use this palette."
+msgid "Pick “Custom” above to use this scheme."
+msgstr "Pick “Custom” above to use this scheme."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
@@ -8048,10 +8067,6 @@ msgstr "Previous reports"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Previous tab"
 msgstr "Previous tab"
-
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Primary"
-msgstr "Primary"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Private"
@@ -8402,6 +8417,10 @@ msgstr "Relaunching to install the update…"
 #: src/components/SubscribeCard.tsx
 msgid "Release notes"
 msgstr "Release notes"
+
+#: src/components/settings/ThemePreviewCanvas.tsx
+msgid "Release plan"
+msgstr "Release plan"
 
 #: src/components/ExploreSkills.tsx
 msgid "Relevance"
@@ -9020,6 +9039,7 @@ msgstr "Sandboxed HTML embed — write HTML, see the rendered preview live."
 
 #: src/components/AuthModal.tsx
 #: src/components/settings/SearchSection.tsx
+#: src/components/settings/ThemePreviewCanvas.tsx
 #: src/editor/components/CodePreviewEditModal.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
@@ -9079,6 +9099,10 @@ msgstr "Saving"
 #: src/components/settings/LintingSection.tsx
 msgid "schema {deleteTarget}"
 msgstr "schema {deleteTarget}"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Scheme copied as base16 YAML"
+msgstr "Scheme copied as base16 YAML"
 
 #: src/components/ImportSkillForm.tsx
 #: src/components/PanelScopeHeader.tsx
@@ -9562,6 +9586,10 @@ msgstr "Shared with everyone on this project — committed to config.yml via git
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Sharing a doc needs a GitHub repository. Create one for this project."
 msgstr "Sharing a doc needs a GitHub repository. Create one for this project."
+
+#: src/components/settings/ThemePreviewCanvas.tsx
+msgid "Ship the editor with a"
+msgstr "Ship the editor with a"
 
 #: src/components/FileSidebar.tsx
 msgid "Show"
@@ -10107,10 +10135,6 @@ msgstr "Suggestion menu open"
 msgid "Summarize everything I changed this week"
 msgstr "Summarize everything I changed this week"
 
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Surface"
-msgstr "Surface"
-
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Switch and update branch"
 msgstr "Switch and update branch"
@@ -10464,7 +10488,6 @@ msgid "Testing"
 msgstr "Testing"
 
 #: src/components/PropertyWidgets.tsx
-#: src/components/settings/CustomThemeEditor.tsx
 msgid "Text"
 msgstr "Text"
 
@@ -10694,6 +10717,14 @@ msgstr "The token needs the repo and read:user scopes."
 #: src/components/settings/settings-fields.ts
 msgid "Theme"
 msgstr "Theme"
+
+#: src/components/settings/ThemePreviewCanvas.tsx
+msgid "Theme preview"
+msgstr "Theme preview"
+
+#: src/components/settings/ThemePreviewCanvas.tsx
+msgid "themed preview"
+msgstr "themed preview"
 
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -11646,6 +11677,7 @@ msgid "Waiting for your approval"
 msgstr "Waiting for your approval"
 
 #: src/components/settings/ContentRulesSection.tsx
+#: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"
 msgstr "Warning"
 
@@ -11861,6 +11893,10 @@ msgstr "Writes a project-MCP config for each selected tool."
 #: src/components/ActivityPanelFileRow.tsx
 msgid "writing"
 msgstr "writing"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "YAML or JSON, in either base16 layout."
+msgstr "YAML or JSON, in either base16 layout."
 
 #: src/components/TimelinePanel.tsx
 msgid "yesterday"

@@ -1,4 +1,10 @@
 import { PREVIEW_THEME_TOKENS } from '@inkeep/open-knowledge-core';
+import {
+  domPreviewTokenEnv,
+  type PreviewTokenEnv,
+  readLivePreviewTokens,
+  renderTokenDecls,
+} from './preview-live-tokens';
 
 /** The reader's resolved app theme, baked into a preview iframe's `srcDoc`. */
 export type PreviewTheme = 'light' | 'dark';
@@ -10,18 +16,29 @@ export type PreviewTheme = 'light' | 'dark';
  */
 const PREVIEW_THEME_MESSAGE_KEY = 'okPreviewTheme';
 
+/** `postMessage` payload key carrying the host's resolved design tokens. */
+const PREVIEW_TOKENS_MESSAGE_KEY = 'okPreviewTokens';
+
 /** The `postMessage` payload shape sent parent → preview iframe on toggle. */
 export interface PreviewThemeMessage {
   [PREVIEW_THEME_MESSAGE_KEY]: PreviewTheme;
+  [PREVIEW_TOKENS_MESSAGE_KEY]?: Record<string, string>;
 }
 
 /**
  * Build the message the NodeView posts into a preview iframe when the reader
- * toggles the app theme. The iframe's bootstrap script flips its root class
- * in response — no `srcDoc` rebuild, no reload.
+ * toggles the app theme or switches color theme. The iframe's bootstrap script
+ * flips its root class and applies the forwarded tokens in response — no
+ * `srcDoc` rebuild, no reload.
  */
-export function buildPreviewThemeMessage(theme: PreviewTheme): PreviewThemeMessage {
-  return { [PREVIEW_THEME_MESSAGE_KEY]: theme };
+export function buildPreviewThemeMessage(
+  theme: PreviewTheme,
+  env: PreviewTokenEnv | null = domPreviewTokenEnv(),
+): PreviewThemeMessage {
+  const tokens = readLivePreviewTokens(env);
+  return tokens
+    ? { [PREVIEW_THEME_MESSAGE_KEY]: theme, [PREVIEW_TOKENS_MESSAGE_KEY]: tokens }
+    : { [PREVIEW_THEME_MESSAGE_KEY]: theme };
 }
 
 /**
@@ -137,10 +154,18 @@ function themeDecls(theme: PreviewTheme): string {
  * hand-styling. An embed that sets its own `body` background still wins —
  * the user `<style>` comes later in source order.
  */
-function themeTokenStyle(): string {
+function themeTokenStyle(env: PreviewTokenEnv | null): string {
+  const live = readLivePreviewTokens(env);
+  // Matches both roots so it out-orders `:root.dark` (equal specificity, later
+  // in source) as well as `:root`. Without the `.dark` half a live override
+  // would silently lose to the baked dark block. Empty when no palette is
+  // selected, leaving the baked blocks — and the iframe's own light/dark flip —
+  // in charge.
+  const liveBlock =
+    live && Object.keys(live).length > 0 ? `\n:root,:root.dark{${renderTokenDecls(live)}}` : '';
   return `<style>
 :root{${themeDecls('light')};color-scheme:light}
-:root.dark{${themeDecls('dark')};color-scheme:dark}
+:root.dark{${themeDecls('dark')};color-scheme:dark}${liveBlock}
 body{background:var(--background);color:var(--foreground)}
 </style>`;
 }
@@ -169,11 +194,18 @@ function previewBootstrapScript(theme: PreviewTheme): string {
   return (
     `<script>(function(){` +
     `var d=document.documentElement;${initialClass}` +
+    `var applied=[];` +
     `addEventListener('message',function(e){` +
     `if(e.source!==parent)return;` +
     `var t=e&&e.data&&e.data.${PREVIEW_THEME_MESSAGE_KEY};` +
     `if(t==='dark'){d.classList.add('dark');}` +
     `else if(t==='light'){d.classList.remove('dark');}` +
+    `var k=e&&e.data&&e.data.${PREVIEW_TOKENS_MESSAGE_KEY};` +
+    `if(k){` +
+    `for(var i=0;i<applied.length;i++){if(!(applied[i] in k)){try{d.style.removeProperty(applied[i]);}catch(_e){}}}` +
+    `applied=[];` +
+    `for(var n in k){applied.push(n);try{d.style.setProperty(n,k[n]);}catch(_e){}}` +
+    `}` +
     `});` +
     `var raf;` +
     `function report(){` +
@@ -258,9 +290,12 @@ const PREVIEW_CSP =
  * CSP and both `<style>` blocks are theme-independent, so the header differs
  * between themes by exactly that one class statement.
  */
-export function buildPreviewIframeHeader(theme: PreviewTheme): string {
+export function buildPreviewIframeHeader(
+  theme: PreviewTheme,
+  env: PreviewTokenEnv | null = domPreviewTokenEnv(),
+): string {
   return `<meta http-equiv="Content-Security-Policy" content="${PREVIEW_CSP}">
-${themeTokenStyle()}
+${themeTokenStyle(env)}
 ${PREVIEW_SCROLLBAR_STYLE}
 ${previewBootstrapScript(theme)}`;
 }

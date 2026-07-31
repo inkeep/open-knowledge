@@ -31,11 +31,19 @@
  * function only sees the structural collaborators it actually invokes.
  */
 
+import type { OkChromeColors } from '../shared/bridge-contract.ts';
+
 interface ApplyThemeAppliedDeps {
   /** Forward to `showGate.fireThemeApplied(window)`. */
   fireThemeApplied: (window: object) => void;
   /** Forward to `applyReducedTransparency(reducedTransparencyDeps, reduced)`. */
   applyReducedTransparency: (reduced: boolean) => void;
+  /**
+   * Fan the active color theme's chrome colors out to every window (and
+   * remember them for windows opened later). No-op on darwin, where vibrancy
+   * owns the chrome surface.
+   */
+  applyChromeColors: (chrome: OkChromeColors) => void;
   /** Diagnostic sink for structured warn lines. Production wires console.warn. */
   warn: (line: string) => void;
 }
@@ -66,10 +74,16 @@ interface ApplyThemeAppliedDeps {
 export function applyThemeApplied(
   deps: ApplyThemeAppliedDeps,
   senderWindow: object | null,
-  opts: { reducedTransparency?: boolean } | undefined,
+  opts: { reducedTransparency?: boolean; chrome?: OkChromeColors } | undefined,
 ): void {
   if (opts?.reducedTransparency !== undefined) {
     deps.applyReducedTransparency(opts.reducedTransparency);
+  }
+  // Before the show-gate release, for the same reason vibrancy goes first: the
+  // first composited frame should already carry the active palette's chrome
+  // rather than the default theme's snapshot.
+  if (opts?.chrome) {
+    deps.applyChromeColors(opts.chrome);
   }
   if (senderWindow !== null) {
     deps.fireThemeApplied(senderWindow);

@@ -1,18 +1,16 @@
 import { useLingui } from '@lingui/react/macro';
 import { RadioGroup as RadioGroupPrimitive } from 'radix-ui';
 import {
+  base16ToTokens,
   COLOR_THEMES,
   type ColorTheme,
-  type CustomThemeSeed,
   customThemeKind,
   defaultThemeTokens,
-  expandCustomSeed,
-  expandPalette,
-  resolveCustomSeed,
+  resolveCustomScheme,
 } from '@/lib/color-themes';
 import { cn } from '@/lib/utils';
 
-type SeedInput = Partial<Record<keyof CustomThemeSeed, unknown>> | undefined;
+type SeedInput = Record<string, unknown> | undefined;
 
 interface ColorThemePickerProps {
   /** Currently-selected theme id (the `appearance.colorTheme` value; `''`/unknown → default). */
@@ -59,15 +57,15 @@ function swatchColors(
   defaultMode: 'light' | 'dark',
 ): SwatchColors {
   if (theme.id === 'custom') {
-    return swatchFromTokens(expandPalette(expandCustomSeed(resolveCustomSeed(customSeed))));
+    return swatchFromTokens(base16ToTokens(resolveCustomScheme(customSeed)));
   }
-  if (!theme.base) {
+  if (!theme.scheme) {
     // `default` has no authored palette — it IS the base stylesheet. Reading the
     // cascaded `var(--…)` here would inherit whichever palette is currently
     // applied to `<html>`, so paint the base tokens as literals instead.
     return swatchFromTokens(defaultThemeTokens(defaultMode));
   }
-  return swatchFromTokens(expandPalette(theme.base));
+  return swatchFromTokens(base16ToTokens(theme.scheme));
 }
 
 /** A miniature editor-window preview, à la the Vivaldi theme tiles. */
@@ -168,7 +166,7 @@ export function ColorThemePicker({
             <span className="text-1sm font-medium text-foreground">{theme.label}</span>
             <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
               {theme.id === 'custom'
-                ? customThemeKind(resolveCustomSeed(customSeed)) === 'dark'
+                ? customThemeKind(resolveCustomScheme(customSeed)) === 'dark'
                   ? t`Dark`
                   : t`Light`
                 : theme.kind === 'system'

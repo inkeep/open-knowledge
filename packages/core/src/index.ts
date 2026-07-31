@@ -1270,12 +1270,30 @@ export {
   type DerivedViewChannel,
   DerivedViewChannelSchema,
 } from './schemas/cc1.ts';
-export type { ColorThemeBase, ThemePlugin, ThemePluginId } from './theme/theme-plugins.ts';
+export type {
+  AnsiSlotName,
+  Base16Palette,
+  Base16ParseError,
+  Base16ParseResult,
+  Base16Scheme,
+  Base16Slot,
+} from './theme/base16.ts';
+export {
+  BASE16_SLOT_ROLES,
+  BASE16_SLOTS,
+  base16ToTokens,
+  base16ToYaml,
+  isBase16Hex,
+  mixHex,
+  parseBase16Scheme,
+  relativeLuminance,
+} from './theme/base16.ts';
+export type { ThemePlugin, ThemePluginId } from './theme/theme-plugins.ts';
 export {
   colorThemeMode,
-  expandPalette,
   generateColorThemesCss,
   isDarkTheme,
+  renderThemeBlock,
   resolveThemePlugin,
   THEME_PLUGIN_IDS,
   THEME_PLUGINS,

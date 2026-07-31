@@ -1,48 +1,58 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { ConfigSchema, resolveLeafSchema } from '@inkeep/open-knowledge-core';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { BASE16_SLOTS, ConfigSchema, resolveLeafSchema } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { getEnumOptions } from '../components/settings/schema-walker';
 import {
+  base16ToTokens,
   buildCustomThemeCss,
   COLOR_THEMES,
-  type ColorThemeBase,
-  type CustomThemeSeed,
   customThemeKind,
-  DEFAULT_CUSTOM_SEED,
+  customThemeWritePatch,
+  DEFAULT_CUSTOM_SCHEME,
   defaultThemeTokens,
-  expandCustomSeed,
-  expandPalette,
   generateColorThemesCss,
+  hasLegacyCustomSeed,
   isDarkColorTheme,
   isHexColor,
   relativeLuminance,
   resolveColorTheme,
-  resolveCustomSeed,
+  resolveCustomScheme,
 } from './color-themes';
 
+const here = dirname(fileURLToPath(import.meta.url));
 const HEX = /^#[0-9a-f]{6}$/;
-// Themes whose palette isn't a static, fully-authored `base`: `default` (no
-// overlay) and `custom` (built at runtime from the user seed).
+// Themes whose palette isn't a static, fully-authored scheme: `default` (no
+// overlay) and `custom` (built at runtime from the user's scheme).
 const NON_STATIC = new Set(['default', 'custom']);
 
 describe('color-themes registry', () => {
   test('default is first; default + custom are the system-kind (non-static) themes', () => {
     expect(COLOR_THEMES[0]?.id).toBe('default');
-    expect(COLOR_THEMES[0]?.base).toBeUndefined();
+    expect(COLOR_THEMES[0]?.scheme).toBeUndefined();
     const systemThemes = COLOR_THEMES.filter((t) => t.kind === 'system');
     expect(systemThemes.map((t) => t.id).sort()).toEqual(['custom', 'default']);
   });
 
-  test('every static theme carries a full base palette of 6-digit hex colors', () => {
+  test('every static theme carries all sixteen base16 slots as 6-digit hex', () => {
     for (const theme of COLOR_THEMES) {
       if (NON_STATIC.has(theme.id)) continue;
       // Static built-ins force their own mode — dark or light.
       expect(['dark', 'light']).toContain(theme.kind);
-      expect(theme.base).toBeDefined();
-      for (const [key, value] of Object.entries(theme.base as ColorThemeBase)) {
-        expect(value, `${theme.id}.${key}`).toMatch(HEX);
+      expect(theme.scheme).toBeDefined();
+      const palette = theme.scheme?.palette;
+      expect(Object.keys(palette ?? {}).sort()).toEqual([...BASE16_SLOTS].sort());
+      for (const slot of BASE16_SLOTS) {
+        expect(palette?.[slot], `${theme.id}.${slot}`).toMatch(HEX);
       }
+    }
+  });
+
+  test("a built-in's kind matches its scheme variant", () => {
+    for (const theme of COLOR_THEMES) {
+      if (NON_STATIC.has(theme.id)) continue;
+      expect(theme.kind, theme.id).toBe(theme.scheme?.variant);
     }
   });
 
@@ -65,10 +75,14 @@ describe('color-themes registry', () => {
   });
 });
 
-describe('expandPalette', () => {
-  test('emits every shadcn surface token the base .dark block defines', () => {
-    const tokens = expandPalette(COLOR_THEMES[1]?.base as ColorThemeBase);
-    // A representative slice across surface, accent, sidebar, and syntax families.
+describe('base16ToTokens', () => {
+  test('emits every token family a theme is expected to repaint', () => {
+    const scheme = COLOR_THEMES[1]?.scheme;
+    expect(scheme).toBeDefined();
+    const tokens = base16ToTokens(scheme as NonNullable<(typeof COLOR_THEMES)[number]['scheme']>);
+    // A representative slice across every family the mapping owns. The
+    // callout / lint / ansi entries are the ones a theme previously could not
+    // reach at all.
     for (const required of [
       'background',
       'foreground',
@@ -79,22 +93,40 @@ describe('expandPalette', () => {
       'destructive',
       'border',
       'ring',
+      'selection-soft',
       'sidebar',
       'sidebar-accent-foreground',
       'chart-1',
       'syntax-keyword',
       'syntax-string',
+      'syntax-comment',
+      'syntax-bg',
+      'link-color',
+      'lint-error-color',
+      'callout-warning-color',
+      'callout-quote-color',
+      'ansi-red',
+      'ansi-bright-white',
     ]) {
       expect(tokens[required], required).toBeTruthy();
+    }
+  });
+
+  test('every emitted value is a literal — a theme block can carry no var() indirection', () => {
+    for (const theme of COLOR_THEMES) {
+      if (!theme.scheme) continue;
+      for (const [name, value] of Object.entries(base16ToTokens(theme.scheme))) {
+        expect(value, `${theme.id} --${name}`).not.toContain('var(');
+      }
     }
   });
 });
 
 describe('defaultThemeTokens', () => {
-  // The tokens a theme preview reads off `expandPalette` output. `default` has
-  // no palette to expand, so these come from the base stylesheet instead — and
-  // must be literals, since a preview can't read `var(--…)` out from under an
-  // active palette override.
+  // The tokens a theme preview reads off the token map. `default` has no scheme
+  // to map, so these come from the base stylesheet instead — and must be
+  // literals, since a preview can't read `var(--…)` out from under an active
+  // palette override.
   const SWATCH_TOKENS = [
     'sidebar',
     'background',
@@ -126,15 +158,15 @@ describe('defaultThemeTokens', () => {
 });
 
 describe('generated stylesheet', () => {
-  test('color-themes.generated.css is in sync with the registry (run `bun run gen:color-themes`)', () => {
-    const onDisk = readFileSync(resolve(import.meta.dir, '../color-themes.generated.css'), 'utf8');
+  test('color-themes.generated.css is in sync with the registry (run `pnpm run gen:color-themes`)', () => {
+    const onDisk = readFileSync(resolve(here, '../color-themes.generated.css'), 'utf8');
     expect(onDisk).toBe(generateColorThemesCss());
   });
 
   test('emits one attribute-scoped rule per static IDE theme and none for default/custom', () => {
     const css = generateColorThemesCss();
     expect(css).not.toContain('data-color-theme="default"');
-    // `custom` has no static base — its rule is built at runtime, not generated.
+    // `custom` has no static scheme — its rule is built at runtime, not generated.
     expect(css).not.toContain('data-color-theme="custom"');
     for (const theme of COLOR_THEMES) {
       if (NON_STATIC.has(theme.id)) continue;
@@ -154,7 +186,7 @@ describe('registry stays in sync with its consumers', () => {
     // The pre-paint script in index.html can't import this module, so it
     // hardcodes the id allowlist. `default` (no overlay) and `custom` (replayed
     // from a cached <style>, not the static allowlist) are handled separately.
-    const html = readFileSync(resolve(import.meta.dir, '../../index.html'), 'utf8');
+    const html = readFileSync(resolve(here, '../../index.html'), 'utf8');
     for (const theme of COLOR_THEMES) {
       if (theme.id === 'default' || theme.id === 'custom') continue;
       expect(html, theme.id).toContain(`'${theme.id}'`);
@@ -167,7 +199,7 @@ describe('registry stays in sync with its consumers', () => {
     // (`[...].includes(ct)`). Adding a light theme must update that array too, or
     // the new theme would flash dark on first paint. This asserts the two stay in
     // lockstep (the light-kind analog of the allowlist-presence check above).
-    const html = readFileSync(resolve(import.meta.dir, '../../index.html'), 'utf8');
+    const html = readFileSync(resolve(here, '../../index.html'), 'utf8');
     const match = html.match(/\[([^\]]*)\]\.includes\(ct\)/);
     expect(match, 'FOUC light-theme array (`[...].includes(ct)`) not found in index.html').not.toBe(
       null,
@@ -184,9 +216,18 @@ describe('registry stays in sync with its consumers', () => {
     const leaf = resolveLeafSchema(ConfigSchema, ['appearance', 'colorTheme']);
     expect([...(leaf ? (getEnumOptions(leaf) ?? []) : [])]).toContain('custom');
   });
+
+  test('every base16 slot is settable under appearance.customTheme', () => {
+    for (const slot of BASE16_SLOTS) {
+      expect(
+        resolveLeafSchema(ConfigSchema, ['appearance', 'customTheme', slot]),
+        slot,
+      ).toBeDefined();
+    }
+  });
 });
 
-describe('custom theme seed', () => {
+describe('custom theme scheme', () => {
   test('isHexColor accepts #rrggbb only', () => {
     expect(isHexColor('#0f172a')).toBe(true);
     expect(isHexColor('#FFF')).toBe(false);
@@ -203,28 +244,77 @@ describe('custom theme seed', () => {
     expect(relativeLuminance('#f1f5f9')).toBeGreaterThan(0.5);
   });
 
-  test('customThemeKind derives mode from the background luminance', () => {
-    expect(customThemeKind({ ...DEFAULT_CUSTOM_SEED, background: '#0f172a' })).toBe('dark');
-    expect(customThemeKind({ ...DEFAULT_CUSTOM_SEED, background: '#fefefe' })).toBe('light');
+  test('customThemeKind reports the scheme variant', () => {
+    expect(customThemeKind(DEFAULT_CUSTOM_SCHEME)).toBe('dark');
+    expect(customThemeKind({ ...DEFAULT_CUSTOM_SCHEME, variant: 'light' })).toBe('light');
   });
 
-  test('resolveCustomSeed merges valid fields over the default and drops bad hex', () => {
-    const seed = resolveCustomSeed({
-      background: '#123456',
-      primary: 'not-a-hex',
-      accent: undefined,
+  test('resolveCustomScheme returns the full default for an absent value', () => {
+    expect(resolveCustomScheme(undefined)).toEqual(DEFAULT_CUSTOM_SCHEME);
+  });
+
+  test('resolveCustomScheme merges valid slots over the default and drops bad hex', () => {
+    const scheme = resolveCustomScheme({
+      base00: '#123456',
+      base0D: 'not-a-hex',
+      base0B: undefined,
     });
-    expect(seed.background).toBe('#123456');
-    expect(seed.primary).toBe(DEFAULT_CUSTOM_SEED.primary);
-    expect(seed.accent).toBe(DEFAULT_CUSTOM_SEED.accent);
+    expect(scheme.palette.base00).toBe('#123456');
+    expect(scheme.palette.base0D).toBe(DEFAULT_CUSTOM_SCHEME.palette.base0D);
+    expect(scheme.palette.base0B).toBe(DEFAULT_CUSTOM_SCHEME.palette.base0B);
   });
 
-  test('resolveCustomSeed returns the full default for an absent seed', () => {
-    expect(resolveCustomSeed(undefined)).toEqual(DEFAULT_CUSTOM_SEED);
+  test('resolveCustomScheme infers variant from the ramp when absent', () => {
+    expect(resolveCustomScheme({ base00: '#0a0a0a', base05: '#fafafa' }).variant).toBe('dark');
+    expect(resolveCustomScheme({ base00: '#fafafa', base05: '#0a0a0a' }).variant).toBe('light');
   });
 
-  test('expandCustomSeed maps the six seeds onto the base palette', () => {
-    const seed: CustomThemeSeed = {
+  test('resolveCustomScheme honors an explicit variant over the inferred one', () => {
+    expect(resolveCustomScheme({ base00: '#0a0a0a', variant: 'light' }).variant).toBe('light');
+  });
+
+  test('upgrades a pre-base16 six-color seed instead of discarding it', () => {
+    // Config written by an older build carries semantic seed names and no
+    // slots; the palette must be reconstructed rather than silently reset.
+    const scheme = resolveCustomScheme({
+      background: '#101010',
+      surface: '#202020',
+      foreground: '#fafafa',
+      primary: '#3366ff',
+      accent: '#33ddcc',
+      border: '#303030',
+    });
+    expect(scheme.palette.base00).toBe('#101010');
+    expect(scheme.palette.base01).toBe('#202020');
+    expect(scheme.palette.base02).toBe('#303030');
+    expect(scheme.palette.base05).toBe('#fafafa');
+    // `primary` drove the accent, which is base0D's role.
+    expect(scheme.palette.base0D).toBe('#3366ff');
+    expect(scheme.variant).toBe('dark');
+    for (const slot of BASE16_SLOTS) {
+      expect(scheme.palette[slot], slot).toMatch(HEX);
+    }
+  });
+
+  test('a partial legacy seed merges over the default instead of resetting it', () => {
+    // The old editor only wrote the fields a user changed, and configs get
+    // hand-edited a field at a time — dropping a partial seed would silently
+    // discard a customization.
+    const scheme = resolveCustomScheme({ background: '#101010' });
+    expect(scheme.palette.base00).toBe('#101010');
+    expect(scheme.palette.base0D).toBe(DEFAULT_CUSTOM_SCHEME.palette.base0D);
+  });
+
+  test('an object carrying neither slots nor legacy fields yields the default', () => {
+    expect(resolveCustomScheme({ unrelated: 'value' })).toEqual(DEFAULT_CUSTOM_SCHEME);
+  });
+
+  test('a half-migrated config keeps the legacy palette under the edited slot', () => {
+    // The upgrade path a real user walks: they had a custom theme, then nudge
+    // one slot in the new editor. If explicit slots layered over the DEFAULT
+    // scheme rather than over their upgraded seed, the other fifteen would
+    // snap back to slate and their theme would be gone.
+    const legacy = {
       background: '#101010',
       surface: '#202020',
       foreground: '#fafafa',
@@ -232,24 +322,82 @@ describe('custom theme seed', () => {
       accent: '#33ddcc',
       border: '#303030',
     };
-    const base = expandCustomSeed(seed);
-    expect(base.bg).toBe('#101010');
-    expect(base.bgElevated).toBe('#202020');
-    expect(base.fg).toBe('#fafafa');
-    expect(base.primary).toBe('#3366ff');
-    expect(base.blue).toBe('#33ddcc');
-    // Text on a dark primary is white; muted text is a derived color-mix.
-    expect(base.primaryFg).toBe('#ffffff');
-    expect(base.fgMuted).toContain('color-mix');
+    const scheme = resolveCustomScheme({ ...legacy, base0D: '#ff0000' });
+    expect(scheme.palette.base0D).toBe('#ff0000');
+    expect(scheme.palette.base00).toBe('#101010');
+    expect(scheme.palette.base01).toBe('#202020');
+    expect(scheme.palette.base02).toBe('#303030');
+    expect(scheme.palette.base05).toBe('#fafafa');
+  });
+});
+
+describe('customThemeWritePatch', () => {
+  test('writes every slot plus the metadata', () => {
+    const patch = customThemeWritePatch(DEFAULT_CUSTOM_SCHEME);
+    expect(patch.name).toBe(DEFAULT_CUSTOM_SCHEME.name);
+    expect(patch.variant).toBe(DEFAULT_CUSTOM_SCHEME.variant);
+    for (const slot of BASE16_SLOTS) {
+      expect(patch[slot], slot).toBe(DEFAULT_CUSTOM_SCHEME.palette[slot]);
+    }
   });
 
-  test('buildCustomThemeCss emits a custom-scoped rule with the seed + matching color-scheme', () => {
-    const css = buildCustomThemeCss({ ...DEFAULT_CUSTOM_SEED, background: '#0a0a0a' });
+  test('nulls the pre-base16 seed keys so a patch deletes them', () => {
+    // `null` in a config patch is a key deletion. Without this the old six
+    // colors linger in config.yml forever as dead, half-format data.
+    const patch = customThemeWritePatch(DEFAULT_CUSTOM_SCHEME);
+    for (const key of ['background', 'surface', 'foreground', 'primary', 'accent', 'border']) {
+      expect(patch[key], key).toBeNull();
+    }
+  });
+
+  test('the written patch resolves back to the same scheme', () => {
+    // Round-trip through the reader: what we persist must reconstruct exactly,
+    // including after the legacy keys are gone.
+    const patch = customThemeWritePatch(DEFAULT_CUSTOM_SCHEME);
+    const persisted = Object.fromEntries(
+      Object.entries(patch).filter(([, v]) => v !== null),
+    ) as Record<string, unknown>;
+    expect(resolveCustomScheme(persisted)).toEqual(DEFAULT_CUSTOM_SCHEME);
+  });
+
+  test("carries an imported scheme's author credit through the round-trip", () => {
+    // The reader accepts `author`, so a patch that omits it silently drops the
+    // credit line of any upstream scheme the user imported.
+    const credited = { ...DEFAULT_CUSTOM_SCHEME, author: 'Zeno Rocha' };
+    const patch = customThemeWritePatch(credited);
+    expect(patch.author).toBe('Zeno Rocha');
+
+    const persisted = Object.fromEntries(
+      Object.entries(patch).filter(([, v]) => v !== null),
+    ) as Record<string, unknown>;
+    expect(resolveCustomScheme(persisted)).toEqual(credited);
+  });
+
+  test('nulls author when the scheme has none, so a previous credit is cleared', () => {
+    const patch = customThemeWritePatch(DEFAULT_CUSTOM_SCHEME);
+    expect(patch.author).toBeNull();
+  });
+});
+
+describe('hasLegacyCustomSeed', () => {
+  test('detects a pre-base16 config and ignores a pure base16 one', () => {
+    expect(hasLegacyCustomSeed({ background: '#101010' })).toBe(true);
+    expect(hasLegacyCustomSeed({ base00: '#101010' })).toBe(false);
+    expect(hasLegacyCustomSeed(undefined)).toBe(false);
+    // A non-color value is not a seed to migrate.
+    expect(hasLegacyCustomSeed({ background: 'nope' })).toBe(false);
+  });
+
+  test('buildCustomThemeCss emits a custom-scoped rule with a matching color-scheme', () => {
+    const css = buildCustomThemeCss({
+      ...DEFAULT_CUSTOM_SCHEME,
+      palette: { ...DEFAULT_CUSTOM_SCHEME.palette, base00: '#0a0a0a' },
+    });
     expect(css).toContain('html[data-color-theme="custom"] {');
     expect(css).toContain('color-scheme: dark;');
     expect(css).toContain('--background: #0a0a0a;');
 
-    const lightCss = buildCustomThemeCss({ ...DEFAULT_CUSTOM_SEED, background: '#fafafa' });
+    const lightCss = buildCustomThemeCss({ ...DEFAULT_CUSTOM_SCHEME, variant: 'light' });
     expect(lightCss).toContain('color-scheme: light;');
   });
 });

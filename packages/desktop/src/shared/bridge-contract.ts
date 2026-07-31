@@ -324,6 +324,18 @@ export interface HeadBranchInfo {
 export type CheckTargetExistsResult = 'exists' | 'missing' | 'unreadable';
 
 /** Payload passed to `onUpdateDownloaded` subscribers. Mirrors ok:update:downloaded. */
+/**
+ * Window-chrome colors resolved from the ACTIVE color theme, reported by the
+ * renderer so the OS-drawn chrome matches the palette rather than the
+ * default theme's build-time snapshot. `bg` is the theme's `--sidebar`
+ * (the chrome row's own surface); `symbol` is the glyph color for the
+ * Windows/Linux overlay's min/max/close controls.
+ */
+export interface OkChromeColors {
+  bg: string;
+  symbol: string;
+}
+
 export interface OkUpdateDownloadedInfo {
   readonly version: string;
 }
@@ -1233,7 +1245,7 @@ export interface OkDesktopBridge {
    * fires before any further hand-rolled channel additions, so payload-
    * widening on an existing channel is the right fit.
    */
-  signalThemeApplied(opts?: { reducedTransparency?: boolean }): void;
+  signalThemeApplied(opts?: { reducedTransparency?: boolean; chrome?: OkChromeColors }): void;
 
   dialog: {
     openFolder(opts?: { defaultPath?: string }): Promise<string | null>;

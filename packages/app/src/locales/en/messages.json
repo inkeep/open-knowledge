@@ -291,7 +291,6 @@
     "4g19V6": ["Failed to update property"],
     "4h3e0H": ["Couldn't update skills sharing — ", ["detail"], "."],
     "4hJhzz": ["Table"],
-    "4ieVh2": ["Pick “Custom” above to use this palette."],
     "4ivBhl": ["Toggle the right agents panel, where agent conversations live."],
     "4jDd0j": ["Anyone can see"],
     "4m-xuX": ["Auto-fix — nothing to fix"],
@@ -302,6 +301,7 @@
     "4pDZ2N": ["Removed \"", ["0"], "\" from every other location — its source folder still loads"],
     "4rjwLG": ["Create with ", ["0"], " CLI"],
     "4sKwf6": ["File already exists"],
+    "4sUdTJ": ["themed preview"],
     "4uNLmk": ["Pulling"],
     "4v2Yyz": ["Select every visible file-tree row when focus is in the Files sidebar."],
     "4wo5UV": ["Install selected"],
@@ -456,6 +456,7 @@
       "Validate document frontmatter against JSON Schema files, scoped to doc sets by glob."
     ],
     "7Bj3x9": ["Failed"],
+    "7EmDc7": ["Import scheme"],
     "7FamGZ": ["Go to line"],
     "7Fkcej": ["+ Add ", ["addChildName"]],
     "7H4UHD": ["Documents tagged <0>#", ["tagName"], "</0>"],
@@ -623,6 +624,7 @@
     "9fvog2": ["Preview unavailable: ", ["errorDetail"]],
     "9i21pa": ["Commits happen automatically"],
     "9ieZhu": ["Installed at ", ["path"], " — click to remove"],
+    "9j1tqo": ["Couldn’t reach the clipboard — the scheme is in the box below."],
     "9jnjV0": ["Embed an audio file with native player controls."],
     "9lso1Y": ["Creates the <0>", ["folderPart"], "/</0> folder"],
     "9m4D_h": ["GitHub, a git URL, or a local path."],
@@ -764,6 +766,7 @@
     "CFnavk": ["This project isn't a git repository, so worktrees aren't available."],
     "CHfFN_": ["Remove OpenKnowledge from ", ["0"]],
     "CKyk7Q": ["Go back"],
+    "CMyafZ": [["slot"], " hex value"],
     "COr1Y7": [
       "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
     ],
@@ -901,7 +904,6 @@
     ],
     "E_tNGD": ["Connected as @", ["login"]],
     "EarrCe": ["Search emoji"],
-    "Eax_et": ["Accent"],
     "EbMUlU": ["Agent mode"],
     "EbZT7P": ["Toggle the left file sidebar."],
     "EbjWsS": ["Current commit"],
@@ -1055,7 +1057,6 @@
     "Gp_twO": ["Local path"],
     "GsBUCk": ["Loading settings"],
     "Gt4gOO": ["This folder has unpushed changes. Recipients will see the last pushed version."],
-    "GtJbUa": ["Background"],
     "GuLeuE": [
       "Search matches file names, paths, and folders. Open a file to search its body <0>",
       ["0"],
@@ -1119,7 +1120,6 @@
       "Move or rename this file inside the skill — the path stays under references/ or scripts/."
     ],
     "HzVv6g": ["Paste"],
-    "I-xnra": [["0"], " hex value"],
     "I1gRhX": ["Failed to rename"],
     "I5685_": ["Try a prompt"],
     "I5AfhE": ["Sync status unavailable — server unreachable."],
@@ -1143,6 +1143,7 @@
     "IYciRC": ["Thanks for the report!"],
     "IZXuGP": ["Couldn't open the terminal — the comments stay queued."],
     "IajAbS": ["Add a starter pack"],
+    "IbTC7z": ["Paste a base16 scheme"],
     "If0crP": ["Open with AI ", ["targetDisplayName"], ", ", ["hint"]],
     "IgN3LY": ["On selected text in <0>", ["address"], "</0>"],
     "IgTwLt": ["Open this document in the editor and collapse the graph."],
@@ -1604,6 +1605,7 @@
     "QlkiD5": ["Re-place on selected text"],
     "QlxHAH": ["Showing results for \"", ["semanticResultsLabel"], "\""],
     "QqBQu1": ["Label <0>(visible link text)</0>"],
+    "Quz_Qu": ["Edits apply live. Light or dark comes from the scheme."],
     "Qvls7J": ["Eng specs"],
     "Qw-7Ie": [
       "A simple place to write, with one file per topic and a daily journal. Pick this if you just want to start writing and let the links between notes build up over time."
@@ -1739,7 +1741,6 @@
     "TQJCR6": [["0", "plural", { "one": ["#", " result"], "other": ["#", " results"] }]],
     "TTDXD8": ["New worktree…"],
     "TUzThQ": ["Share skills"],
-    "T_R-Qz": ["Primary"],
     "T_wG4n": ["We couldn't check your GitHub connection."],
     "Ta25TG": ["No history yet"],
     "TbjyhA": ["Docs"],
@@ -1828,6 +1829,7 @@
       ["src"],
       "</1> is no longer available."
     ],
+    "UeQEbk": ["Browse hundreds of schemes"],
     "UfW9Kr": [
       "Your search queries and the full text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
     ],
@@ -1855,6 +1857,7 @@
     ],
     "V48OUT": ["You deleted <0>", ["filePath"], "</0> locally, but it was modified upstream."],
     "V6AIOn": ["Workspace navigation"],
+    "V6e25h": ["Theme preview"],
     "V7QxyT": ["Connection dropped"],
     "VAHWL_": ["Connected as <0>@", ["signedInLogin"], "</0>"],
     "VBE2dw": [
@@ -2029,7 +2032,6 @@
       "Lint plugins — which rule families run and their per-rule settings — are configured on their own tab under This project → Plugins."
     ],
     "YDX9lo": ["Remove this comment from the queue"],
-    "YEIS9T": ["Edits apply live. Light or dark is chosen from the background."],
     "YEP3X2": ["Delete a table when the active table cell selection covers the full table."],
     "YGIi_c": ["Reinstall"],
     "YGNRB5": ["— except"],
@@ -2200,6 +2202,7 @@
       "Semantic search adds meaning-based ranking to the search tool so conceptually-related pages surface even without shared keywords."
     ],
     "aM23Wr": ["page-name"],
+    "aNb3JH": ["Copy as YAML"],
     "aOp3hw": ["Couldn't move to Trash"],
     "aQD_86": ["Failed to update the embeddings provider — ", ["detail"]],
     "aQyGJc": ["Something else"],
@@ -2253,6 +2256,7 @@
     "b6Fgpe": ["Each pack scaffolds your project with ready-made folders and templates."],
     "bBE5tC": ["Detected on this machine"],
     "bBcFK_": ["Open emoji picker for ", ["keyName"]],
+    "bD2SLZ": ["Scheme copied as base16 YAML"],
     "bD8I7O": ["Complete"],
     "bF22t6": ["Remove field ", ["field"]],
     "bGOTXx": [
@@ -2364,7 +2368,6 @@
     ],
     "d2uTPx": ["Server error (HTTP ", ["status"], ")"],
     "d5rK4X": [["chars", "plural", { "one": ["char"], "other": ["chars"] }]],
-    "dCIGNG": ["Border"],
     "dD7NPy": ["Outline"],
     "dDpCOp": ["Rename succeeded but the sidebar may be out of date — refresh to resync"],
     "dEgA5A": ["Cancel"],
@@ -2542,6 +2545,7 @@
       ". That folder becomes a symlink to this one, so its agent reads everything placed here. This folder stays real. Conflicting skills abort the merge."
     ],
     "g85bAo": ["Synced ", ["lastSyncedRelative"]],
+    "g9Nj4l": ["// note"],
     "gAhHu7": ["Auto-fix applies only to problems with a known mechanical fix."],
     "gBbxn_": ["Checking sign-in status"],
     "gGVP4q": ["Click <0>+</0> <1/> <2>Create skill</2> <3/> <4>Upload skill</4>."],
@@ -2563,6 +2567,7 @@
     "gYz2ep": ["Expires in ", ["timeLabel"]],
     "gZElfU": ["Fixing ", ["0"], " of ", ["1"], " files"],
     "gZiT5e": ["Replace these symlinks with independent copies?"],
+    "gayL_Q": ["Release plan"],
     "gbHcbI": ["Failed to delete property"],
     "gfb-CM": ["Could not fetch branch — sign in to GitHub and try again."],
     "gfdqcY": ["Couldn't apply the change: ", ["0"]],
@@ -2589,7 +2594,9 @@
     "gwEcOD": ["Your local copy is behind."],
     "gwykHF": ["This doc hasn't synced to GitHub yet. The link will work after the next sync."],
     "gyHDWC": ["Fix all with AI (", ["count"], ")"],
+    "gyWc8_": ["Accents"],
     "h-AdvS": ["The folders and templates are already here, so there's nothing to add."],
+    "h-Y9pw": ["Pick “Custom” above to use this scheme."],
     "h06R3C": ["No pages are missing outgoing graph links."],
     "h16FyT": ["Lists"],
     "h2N-1n": ["Installed in ", ["0"]],
@@ -3177,6 +3184,7 @@
     "pbwTg6": [["seconds"], "s ago"],
     "pckX1A": [["0", "plural", { "one": ["#", " use"], "other": ["#", " uses"] }]],
     "pcqlQu": [["0", "plural", { "one": ["Folder"], "other": ["Folders"] }]],
+    "pfkaJ2": ["YAML or JSON, in either base16 layout."],
     "pgDlbM": ["Toggle Developer Tools"],
     "pgq_xf": [["0"], "/", ["1"], " ", ["2"]],
     "phM8Kh": ["Found the repo but could not open the project. Please try again."],
@@ -3228,7 +3236,6 @@
     "qbfj1f": ["Receiving objects"],
     "qdBUHP": ["Couldn't load ", ["fileName"]],
     "qi1F96": ["Reveal in File Explorer"],
-    "qiN9NB": ["Surface"],
     "qiRoLb": ["Summarize everything I changed this week"],
     "qioCwA": ["Jump to page ", ["pageNumber"]],
     "qjHMHf": ["Failed to disable sync — ", ["detail"]],
@@ -3330,6 +3337,7 @@
     "sJK6pq": ["Permission denied"],
     "sJWhgo": ["Unknown component: ", ["unregisteredComponentName"]],
     "sKEgGd": ["Send to chat"],
+    "sKMhJz": ["Background to foreground"],
     "sLcbHt": [
       "Symlink another folder into one of these so both agents read the same skills; unlink to manage a folder's skills one by one again."
     ],
@@ -3479,6 +3487,7 @@
     ],
     "uksqrP": ["Repository not found. It may have been renamed, deleted, or moved."],
     "ul1Atu": ["Converting..."],
+    "um-es7": ["Ship the editor with a"],
     "un-K1H": ["Stays on this computer. Not committed to git."],
     "un8kBM": ["Creating page: ", ["linkTitle"], "."],
     "uoJF_D": ["It was too hard to set up or get started"],

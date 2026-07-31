@@ -31,20 +31,24 @@ import {
   extensionOf,
 } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
-import { basicDarkInit, basicLightInit } from '@uiw/codemirror-theme-basic';
 import { basicSetup } from 'codemirror';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef, useState } from 'react';
 import { yCollab } from 'y-codemirror.next';
 import * as Y from 'yjs';
 import { propEditorHighlight } from '@/editor/components/CodeMirrorPropInput';
+import { okCmTheme } from '@/editor/extensions/cm-theme';
 import { loadCodeMirrorLanguageForExtension } from './text-viewer-languages';
 
-const darkTheme = basicDarkInit({
-  settings: { background: 'var(--background)', gutterBackground: 'var(--muted)' },
+const darkTheme = okCmTheme({
+  dark: true,
+  background: 'var(--background)',
+  gutterBackground: 'var(--muted)',
 });
-const lightTheme = basicLightInit({
-  settings: { background: 'var(--background)', gutterBackground: 'var(--muted)' },
+const lightTheme = okCmTheme({
+  dark: false,
+  background: 'var(--background)',
+  gutterBackground: 'var(--muted)',
 });
 
 export function TextDocEditor({

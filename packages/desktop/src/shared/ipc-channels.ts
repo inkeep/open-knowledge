@@ -108,6 +108,7 @@ import type {
   ClaudeReadiness,
   CliReadiness,
   HeadBranchInfo,
+  OkChromeColors,
   OkDesktopConfig,
   OkLocalOpAuthReposResponse,
   OkLocalOpAuthStatusResponse,
@@ -1323,7 +1324,7 @@ export interface RequestChannels {
    * from the single handler.
    */
   'ok:theme:applied': {
-    args: [opts?: { reducedTransparency?: boolean }];
+    args: [opts?: { reducedTransparency?: boolean; chrome?: OkChromeColors }];
     result: undefined;
   };
   /**

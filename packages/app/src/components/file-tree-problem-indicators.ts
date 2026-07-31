@@ -9,13 +9,12 @@
  * `.mdx` row) because the tree's single decoration lane is already taken by
  * the symlink / agent icons.
  *
- * Color plumbing: the editor's `--lint-error-color` / `--lint-warning-color`
- * tokens are NOT `:root`-defined (they live under `.dark .cm-editor` etc.), so
- * they never reach this shadow root. The tree uses its own inheritable
- * `--ok-tree-problem-*` tokens: light mode rides the `var()` fallback
- * literals below (the editor's own light-mode fallbacks), dark mode overrides
- * at `.dark` scope in `globals.css` — custom properties inherit through
- * shadow boundaries, so the override reaches these rules.
+ * Color plumbing: these rules name the tree-owned `--ok-tree-problem-*` pair,
+ * which `globals.css` aliases at `:root` to the editor's theme-derived
+ * `--lint-error-color` / `--lint-warning-color`. Custom properties inherit
+ * through shadow boundaries, so that alias is what reaches this shadow root,
+ * and both light and dark follow whichever theme resolved the lint tokens.
+ * The `var()` fallback literals below only apply if the alias is missing.
  */
 
 import { filePathToDocName } from '@/lib/doc-hash';

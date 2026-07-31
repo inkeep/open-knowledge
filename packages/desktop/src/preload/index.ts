@@ -35,6 +35,7 @@ import type {
 } from '@inkeep/open-knowledge-core';
 import { contextBridge, type IpcRendererEvent, ipcRenderer, webUtils } from 'electron';
 import type {
+  OkChromeColors,
   OkDesktopBridge,
   OkDesktopConfig,
   OkEditorActiveTargetSnapshot,
@@ -389,7 +390,7 @@ const bridge: OkDesktopBridge = {
 
   setThemeSource: (source: OkThemeSource) => invoke('ok:theme:set-source', { source }),
 
-  signalThemeApplied: (opts?: { reducedTransparency?: boolean }) => {
+  signalThemeApplied: (opts?: { reducedTransparency?: boolean; chrome?: OkChromeColors }) => {
     // Fire-and-forget renderer→main signal. Mirror of mcpWiring.signalReady's
     // shape: invoke (not raw send) so it composes through the typed
     // createInvoker wrapper and clears the IPC-discipline ratchet. The

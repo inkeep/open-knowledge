@@ -1,37 +1,40 @@
 import { describe, expect, test } from 'vitest';
+import { BASE16_SLOTS, base16ToTokens } from './base16.ts';
 import {
-  type ColorThemeBase,
   colorThemeMode,
-  expandPalette,
   generateColorThemesCss,
   isDarkTheme,
+  renderThemeBlock,
   resolveThemePlugin,
   THEME_PLUGIN_IDS,
   THEME_PLUGINS,
 } from './theme-plugins.ts';
 
-// Themes without a static, fully-authored `base`: `default` (no overlay) and
-// `custom` (built at runtime from the user seed).
+// Themes without a static, fully-authored scheme: `default` (no overlay) and
+// `custom` (built at runtime from the user's scheme).
 const NON_STATIC = new Set(['default', 'custom']);
 
 describe('THEME_PLUGINS registry', () => {
   test('default is first; default + custom are the system-kind (non-static) themes', () => {
     expect(THEME_PLUGINS[0]?.id).toBe('default');
-    expect(THEME_PLUGINS[0]?.base).toBeUndefined();
+    expect(THEME_PLUGINS[0]?.scheme).toBeUndefined();
     const systemThemes = THEME_PLUGINS.filter((t) => t.kind === 'system');
     expect(systemThemes.map((t) => t.id).sort()).toEqual(['custom', 'default']);
   });
 
-  test('every static theme carries a full base palette + a toTokens behavior', () => {
+  test('every static theme carries a full base16 scheme + a toTokens behavior', () => {
     for (const theme of THEME_PLUGINS) {
       if (NON_STATIC.has(theme.id)) continue;
-      // Every static built-in forces its own mode — dark or light.
+      // Every static built-in forces the mode its scheme declares.
       expect(['dark', 'light']).toContain(theme.kind);
-      expect(theme.base).toBeDefined();
+      expect(theme.kind, theme.id).toBe(theme.scheme?.variant);
+      expect(theme.scheme).toBeDefined();
       // The descriptor owns its behavior (the analog of LintPlugin.lint).
       expect(typeof theme.toTokens).toBe('function');
-      for (const [key, value] of Object.entries(theme.base as ColorThemeBase)) {
-        expect(value, `${theme.id}.${key}`).toMatch(/^#[0-9a-f]{6}$/);
+      const palette = theme.scheme?.palette;
+      expect(Object.keys(palette ?? {}).sort()).toEqual([...BASE16_SLOTS].sort());
+      for (const slot of BASE16_SLOTS) {
+        expect(palette?.[slot], `${theme.id}.${slot}`).toMatch(/^#[0-9a-f]{6}$/);
       }
     }
   });
@@ -77,22 +80,23 @@ describe('resolveThemePlugin / isDarkTheme', () => {
   });
 });
 
-describe('expandPalette + generateColorThemesCss', () => {
-  test('expandPalette emits a representative slice of shadcn tokens', () => {
-    const tokens = expandPalette(THEME_PLUGINS[1]?.base as ColorThemeBase);
-    for (const required of [
-      'background',
-      'foreground',
-      'primary',
-      'muted-foreground',
-      'border',
-      'ring',
-      'sidebar',
-      'chart-1',
-      'syntax-keyword',
-    ]) {
-      expect(tokens[required], required).toBeTruthy();
+describe('token mapping + generateColorThemesCss', () => {
+  test("a descriptor's toTokens matches mapping its scheme directly", () => {
+    for (const theme of THEME_PLUGINS) {
+      if (!theme.scheme || !theme.toTokens) continue;
+      expect(theme.toTokens(), theme.id).toEqual(base16ToTokens(theme.scheme));
     }
+  });
+
+  test('renderThemeBlock emits the selector, color-scheme, and every token', () => {
+    const block = renderThemeBlock('html[data-color-theme="x"]', 'light', {
+      background: '#ffffff',
+      'syntax-keyword': '#112233',
+    });
+    expect(block).toContain('html[data-color-theme="x"] {');
+    expect(block).toContain('color-scheme: light;');
+    expect(block).toContain('--background: #ffffff;');
+    expect(block).toContain('--syntax-keyword: #112233;');
   });
 
   test('generated CSS emits one attribute rule per dark theme; none for default/custom', () => {

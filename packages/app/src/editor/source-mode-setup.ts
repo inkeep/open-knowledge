@@ -22,14 +22,7 @@ import {
   completionKeymap,
 } from '@codemirror/autocomplete';
 import { defaultKeymap } from '@codemirror/commands';
-import {
-  bracketMatching,
-  defaultHighlightStyle,
-  foldGutter,
-  foldKeymap,
-  indentOnInput,
-  syntaxHighlighting,
-} from '@codemirror/language';
+import { bracketMatching, foldGutter, foldKeymap, indentOnInput } from '@codemirror/language';
 import { lintKeymap } from '@codemirror/lint';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { EditorState, type Extension } from '@codemirror/state';
@@ -54,7 +47,6 @@ export const sourceModeSetup: Extension = [
   dropCursor(),
   EditorState.allowMultipleSelections.of(true),
   indentOnInput(),
-  syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
   bracketMatching(),
   closeBrackets(),
   autocompletion(),

@@ -1146,10 +1146,17 @@ export interface OkDesktopBridge {
    *
    * Optional `opts.reducedTransparency` carries the renderer's live
    * `matchMedia('(prefers-reduced-transparency: reduce)').matches` value;
-   * main toggles vibrancy material accordingly. See canonical JSDoc in
+   * main toggles vibrancy material accordingly. Optional `opts.chrome`
+   * carries the active color theme's window-chrome colors (`bg` from
+   * `--sidebar`, `symbol` from `--sidebar-foreground`) so main can paint the
+   * OS-drawn titlebar to match the palette rather than its build-time
+   * snapshot. See canonical JSDoc in
    * `packages/desktop/src/shared/bridge-contract.ts`.
    */
-  signalThemeApplied(opts?: { reducedTransparency?: boolean }): void;
+  signalThemeApplied(opts?: {
+    reducedTransparency?: boolean;
+    chrome?: { bg: string; symbol: string };
+  }): void;
 
   /** Native folder-picker dialog surfaces. */
   dialog: {

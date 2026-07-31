@@ -124,6 +124,27 @@ describe('computeLiveXtermTheme', () => {
     for (const slot of ANSI_16) expect(theme[slot]).toBe(XTERM_DARK_THEME[slot]);
   });
 
+  test('overrides ANSI slots from resolved --ansi-* tokens, per slot', () => {
+    // This is the mechanism that makes program output track the active theme:
+    // each resolved --ansi-* token replaces its curated slot. A typo in an
+    // --ansi-* token name would silently fall back to the curated palette under
+    // every theme, which the fallback tests above cannot catch.
+    const theme = computeLiveXtermTheme(
+      'dark',
+      reader({
+        '--ansi-red': 'rgb(200, 0, 0)',
+        '--ansi-yellow': 'rgb(220, 200, 0)',
+        '--ansi-bright-green': 'rgb(0, 220, 100)',
+      }),
+    );
+    expect(theme.red).toBe('rgb(200, 0, 0)');
+    expect(theme.yellow).toBe('rgb(220, 200, 0)');
+    expect(theme.brightGreen).toBe('rgb(0, 220, 100)');
+    // A slot whose token did not resolve keeps its curated fallback.
+    expect(theme.blue).toBe(XTERM_DARK_THEME.blue);
+    expect(theme.brightRed).toBe(XTERM_DARK_THEME.brightRed);
+  });
+
   test('falls back to the curated palette when tokens do not resolve', () => {
     expect(computeLiveXtermTheme('dark', () => null)).toEqual(XTERM_DARK_THEME);
     expect(computeLiveXtermTheme('light', () => null)).toEqual(XTERM_LIGHT_THEME);

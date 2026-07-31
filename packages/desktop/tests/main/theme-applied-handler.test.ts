@@ -14,7 +14,12 @@
  *      `undefined` to falsy and re-set every window's vibrancy on every
  *      fire — observable as a flicker on cold-launch.
  *
- *   3. The win-null × reducedTransparency-defined edge case — vibrancy
+ *   3. The cross-window chrome fan-out — applyChromeColors runs only when
+ *      `opts.chrome` is present, and lands before the show-gate release so
+ *      the first composited frame already carries the active palette's
+ *      chrome rather than the default theme's snapshot.
+ *
+ *   4. The win-null × fan-out-defined edge cases — vibrancy and chrome
  *      fan-out must still run for OTHER windows even when the signal's
  *      sender window is gone, because the fan-out targets all open
  *      windows, not the sender alone.
@@ -29,11 +34,14 @@
 
 import { describe, expect, test } from 'vitest';
 import { applyThemeApplied } from '../../src/main/theme-applied-handler.ts';
+import type { OkChromeColors } from '../../src/shared/bridge-contract.ts';
 
 interface TraceEvent {
-  step: 'fireThemeApplied' | 'applyReducedTransparency' | 'warn';
+  step: 'fireThemeApplied' | 'applyReducedTransparency' | 'applyChromeColors' | 'warn';
   args?: unknown;
 }
+
+const CHROME: OkChromeColors = { bg: '#282a36', symbol: '#f8f8f2' };
 
 function makeDeps() {
   const trace: TraceEvent[] = [];
@@ -45,6 +53,9 @@ function makeDeps() {
       },
       applyReducedTransparency: (reduced: boolean) => {
         trace.push({ step: 'applyReducedTransparency', args: { reduced } });
+      },
+      applyChromeColors: (chrome: OkChromeColors) => {
+        trace.push({ step: 'applyChromeColors', args: { chrome } });
       },
       warn: (line: string) => {
         trace.push({ step: 'warn', args: { line } });
@@ -117,7 +128,50 @@ describe('applyThemeApplied — reduced-transparency gate', () => {
   });
 });
 
+describe('applyThemeApplied — chrome-colors gate', () => {
+  test('does NOT call applyChromeColors when opts is undefined (cold-launch path)', () => {
+    const { deps, trace } = makeDeps();
+    applyThemeApplied(deps, { id: 'win-1' }, undefined);
+    expect(trace.filter((t) => t.step === 'applyChromeColors')).toHaveLength(0);
+  });
+
+  test('does NOT call applyChromeColors when opts.chrome is absent', () => {
+    const { deps, trace } = makeDeps();
+    applyThemeApplied(deps, { id: 'win-1' }, { reducedTransparency: true });
+    expect(trace.filter((t) => t.step === 'applyChromeColors')).toHaveLength(0);
+  });
+
+  test('forwards the palette chrome colors when opts.chrome is present', () => {
+    const { deps, trace } = makeDeps();
+    applyThemeApplied(deps, { id: 'win-1' }, { chrome: CHROME });
+    expect(trace.filter((t) => t.step === 'applyChromeColors')).toEqual([
+      { step: 'applyChromeColors', args: { chrome: CHROME } },
+    ]);
+  });
+});
+
 describe('applyThemeApplied — composition edge cases', () => {
+  test('chrome fan-out still runs when window is null (fan-out targets ALL windows, not sender alone)', () => {
+    const { deps, trace } = makeDeps();
+    applyThemeApplied(deps, null, { chrome: CHROME });
+    expect(trace.filter((t) => t.step === 'fireThemeApplied')).toHaveLength(0);
+    expect(trace.filter((t) => t.step === 'applyChromeColors')).toEqual([
+      { step: 'applyChromeColors', args: { chrome: CHROME } },
+    ]);
+  });
+
+  test('chrome fan-out fires before show-gate when both apply', () => {
+    // Same cold-launch reason as vibrancy: the window becomes visible at the
+    // show-gate release, so chrome must already be the active palette's or
+    // the first composited frame carries the default theme's snapshot.
+    const { deps, trace } = makeDeps();
+    applyThemeApplied(deps, { id: 'win-1' }, { chrome: CHROME });
+    const sequence = trace
+      .filter((t) => t.step === 'fireThemeApplied' || t.step === 'applyChromeColors')
+      .map((t) => t.step);
+    expect(sequence).toEqual(['applyChromeColors', 'fireThemeApplied']);
+  });
+
   test('vibrancy fan-out still runs when window is null (fan-out targets ALL windows, not sender alone)', () => {
     const { deps, trace } = makeDeps();
     applyThemeApplied(deps, null, { reducedTransparency: true });
@@ -143,13 +197,12 @@ describe('applyThemeApplied — composition edge cases', () => {
     expect(sequence).toEqual(['applyReducedTransparency', 'fireThemeApplied']);
   });
 
-  test('narrow dep surface — the handler does not require any dep beyond fireThemeApplied / applyReducedTransparency / warn', () => {
+  test('narrow dep surface — the handler does not require any dep beyond fireThemeApplied / applyReducedTransparency / applyChromeColors / warn', () => {
     // Lock: future drift that grows the dep surface (e.g., adds a
-    // setBackgroundColor fan-out, or a state.json write) trips this
-    // assertion at the type level.
+    // state.json write) trips this assertion at the type level.
     const { deps } = makeDeps();
     expect(new Set(Object.keys(deps))).toEqual(
-      new Set(['fireThemeApplied', 'applyReducedTransparency', 'warn']),
+      new Set(['fireThemeApplied', 'applyReducedTransparency', 'applyChromeColors', 'warn']),
     );
   });
 });
