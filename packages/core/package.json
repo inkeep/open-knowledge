@@ -1,6 +1,6 @@
 {
   "name": "@inkeep/open-knowledge-core",
-  "version": "0.45.2",
+  "version": "0.45.3",
   "license": "GPL-3.0-or-later",
   "private": true,
   "type": "module",
