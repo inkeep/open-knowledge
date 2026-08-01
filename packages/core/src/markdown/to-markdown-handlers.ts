@@ -3,6 +3,7 @@ import type { MdxJsxAttribute, MdxJsxExpressionAttribute, MdxJsxFlowElement } fr
 import type { Handle, Info, State } from 'mdast-util-to-markdown';
 import { classifyCharacter } from 'micromark-util-classify-character';
 import { isValidSourceLiteralRaw } from '../extensions/source-literal-mark.ts';
+import { scanBraceSpans } from './autolink-void-html-guard.ts';
 import { widenFenceLength } from './code-fence.ts';
 import { TO_MARKDOWN_EXT } from './remark-mdx-agnostic.ts';
 import { isInlineWhitespaceNumericCharRef } from './whitespace-char-ref.ts';
@@ -860,7 +861,39 @@ function markTypedInlineWhitespaceRefs(value: string): string {
   );
 }
 
+function emitsAtLineStart(emittedPrefix: string): boolean {
+  return /[\r\n][\t ]*$/.test(emittedPrefix);
+}
+
 function safeText(state: State, value: string, info: Info): string {
+  const { matched } = scanBraceSpans(value, { escapeAware: false });
+  if (matched.length === 0) return safeTextSegment(state, value, info);
+
+  let result = '';
+  let pending = 0;
+
+  const flushNormal = (end: number): void => {
+    if (end > pending) {
+      result += safeTextSegment(state, value.slice(pending, end), {
+        ...info,
+        before: info.before + result,
+        after: value.slice(end, end + 1) || info.after,
+      });
+    }
+    pending = end;
+  };
+
+  for (const span of matched) {
+    flushNormal(span.start);
+    if (emitsAtLineStart(info.before + result)) continue;
+    result += value.slice(span.start, span.end);
+    pending = span.end;
+  }
+  flushNormal(value.length);
+  return result;
+}
+
+function safeTextSegment(state: State, value: string, info: Info): string {
   const originalUnsafe = state.unsafe;
   state.unsafe = originalUnsafe.filter((u) => {
     if (u.character === '&' && u.after === '[#A-Za-z]') return false;

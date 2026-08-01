@@ -276,6 +276,80 @@ function isUppercaseJsxSelfClosingAt(
   return false;
 }
 
+export interface BraceSpan {
+  readonly start: number;
+  readonly end: number;
+}
+
+export function scanBraceSpans(
+  source: string,
+  options: { readonly escapeAware: boolean },
+): { readonly matched: readonly BraceSpan[]; readonly unmatched: readonly number[] } {
+  const unmatched = unmatchedBraceOpeners(source, options.escapeAware);
+  const skip = new Set<number>(unmatched);
+  const matched: BraceSpan[] = [];
+  const stack: number[] = [];
+  forEachBrace(source, options.escapeAware, {
+    onFlush: () => {
+      stack.length = 0;
+    },
+    onBrace: (i, char) => {
+      if (skip.has(i)) return;
+      if (char === '{') {
+        stack.push(i);
+      } else if (stack.length > 0) {
+        const open = stack.pop() as number;
+        if (stack.length === 0) matched.push({ start: open, end: i + 1 });
+      }
+    },
+  });
+  return { matched, unmatched };
+}
+
+function unmatchedBraceOpeners(source: string, escapeAware: boolean): number[] {
+  const unmatched: number[] = [];
+  const stack: number[] = [];
+  forEachBrace(source, escapeAware, {
+    onFlush: () => {
+      unmatched.push(...stack);
+      stack.length = 0;
+    },
+    onBrace: (i, char) => {
+      if (char === '{') stack.push(i);
+      else if (stack.length > 0) stack.pop();
+    },
+  });
+  unmatched.push(...stack);
+  return unmatched;
+}
+
+function forEachBrace(
+  source: string,
+  escapeAware: boolean,
+  visitor: { onFlush: () => void; onBrace: (index: number, char: '{' | '}') => void },
+): void {
+  for (let i = 0; i < source.length; i++) {
+    if (source[i] === '\n') {
+      const next = source[i + 1];
+      if (next === '\n' || next === '>') {
+        visitor.onFlush();
+        if (next === '\n') {
+          while (source[i + 1] === '\n') i++;
+        }
+        continue;
+      }
+    }
+    const char = source[i];
+    if (char !== '{' && char !== '}') continue;
+    if (escapeAware) {
+      let bs = 0;
+      for (let j = i - 1; j >= 0 && source[j] === '\\'; j--) bs++;
+      if (bs % 2 === 1) continue; // escaped — not a brace remark-mdx acts on
+    }
+    visitor.onBrace(i, char);
+  }
+}
+
 export function protectFromMdx(source: string): string {
   let result = source;
 
@@ -387,33 +461,11 @@ export function protectFromMdx(source: string): string {
   });
 
   {
-    const unmatchedPositions: number[] = [];
-    const stack: number[] = [];
-    for (let i = 0; i < result.length; i++) {
-      if (result[i] === '\n') {
-        const next = result[i + 1];
-        if (next === '\n' || next === '>') {
-          unmatchedPositions.push(...stack);
-          stack.length = 0;
-          if (next === '\n') {
-            while (result[i + 1] === '\n') i++;
-          }
-          continue;
-        }
-      }
-      if (result[i] === '{' || result[i] === '}') {
-        let bs = 0;
-        for (let j = i - 1; j >= 0 && result[j] === '\\'; j--) bs++;
-        if (bs % 2 === 1) continue; // escaped — skip stack operations
-        if (result[i] === '{') stack.push(i);
-        else if (stack.length > 0) stack.pop(); // matched pair within same block
-      }
-    }
-    unmatchedPositions.push(...stack);
+    const { unmatched } = scanBraceSpans(result, { escapeAware: true });
 
-    if (unmatchedPositions.length > 0) {
+    if (unmatched.length > 0) {
       const chars = result.split('');
-      for (const pos of unmatchedPositions) {
+      for (const pos of unmatched) {
         chars[pos] = GUARD_OPEN_BRACE;
       }
       result = chars.join('');
