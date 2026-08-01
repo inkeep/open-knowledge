@@ -874,6 +874,126 @@
   }
 }
 
+/* Working avatar (agent-thread "working" row) — the personality layer on top of
+   the JS-driven shape morph in WorkingAvatar.tsx. The morph itself sets `d`
+   every frame; everything here is squash, blink and squint applied on top.
+   `transform-box: fill-box` is required — SVG children default to the
+   viewport's coordinate box, so a percentage transform-origin would otherwise
+   resolve against the wrong rect. */
+/* The row arrives when a turn opens. Short enough to stay under the
+   interactive-UI ceiling — this is a state change you see on every turn, not a
+   scroll reveal you see once. Compositor-only (opacity + transform). */
+.ok-working-enter {
+  animation: ok-working-enter 180ms var(--ease-out-strong) both;
+}
+
+@keyframes ok-working-enter {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+
+/* The status line rewrites itself several times a turn as the agent moves
+   between tools, and a hard text swap reads as a glitch rather than a change.
+   A short fade with a touch of blur bridges the two states — the blur is what
+   makes an un-crossfadeable swap (the outgoing text is already gone) still
+   read as one transformation. Kept well under the 20px where blur gets
+   expensive. */
+.ok-working-status {
+  animation: ok-working-status-in 200ms var(--ease-out-strong) both;
+}
+
+@keyframes ok-working-status-in {
+  from {
+    opacity: 0;
+    filter: blur(2px);
+  }
+}
+
+.ok-working-group {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+
+/* Needed by the squint below — SVG children resolve a percentage
+   transform-origin against the viewport box, not their own. */
+.ok-working-eye {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+
+/* Four squash beats per cycle — the "still going" tell on long tasks. The
+   strong in-out curve is what makes each beat land as a squash; the built-in
+   `ease-in-out` is too weak and reads as a slow pulse instead. */
+.ok-working-pop .ok-working-group {
+  animation: ok-working-pop 4.8s var(--ease-in-out-strong) infinite;
+}
+
+@keyframes ok-working-pop {
+  0%,
+  25%,
+  50%,
+  75%,
+  100% {
+    transform: scale(1);
+  }
+  12%,
+  37%,
+  62%,
+  87% {
+    transform: scale(1.1, 0.9);
+  }
+}
+
+/* Effort tell. Replaces the ambient blink by specificity — the mascot is
+   squinting at the work, not idly blinking at you. */
+.ok-working-squint .ok-working-eye {
+  animation: ok-working-squint 1.8s ease-in-out infinite;
+}
+
+@keyframes ok-working-squint {
+  0%,
+  44%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(0.35);
+  }
+  56% {
+    transform: scaleY(1);
+  }
+}
+
+/* Reduced motion pins the avatar to its resting pose. The shape morph is
+   suppressed in JS (the rAF loop never subscribes), so only the CSS layer
+   needs stopping here. The entrance keeps its opacity fade and loses only the
+   spatial travel — the fade is what tells you a new row appeared, and dropping
+   it would make the working state blink into existence with no warning. */
+@media (prefers-reduced-motion: reduce) {
+  .ok-working-group,
+  .ok-working-eye,
+  .ok-working-pop .ok-working-group,
+  .ok-working-squint .ok-working-eye {
+    animation: none;
+  }
+  .ok-working-enter {
+    animation-name: ok-working-enter-fade;
+  }
+  /* The status swap keeps its fade but drops the blur — blur is a spatial
+     effect, and the fade alone still marks the line as having changed. */
+  .ok-working-status {
+    animation-name: ok-working-enter-fade;
+  }
+}
+
+@keyframes ok-working-enter-fade {
+  from {
+    opacity: 0;
+  }
+}
+
 /* Collaboration cursor styles (WYSIWYG — TipTap) */
 .collaboration-cursor__caret {
   position: relative;

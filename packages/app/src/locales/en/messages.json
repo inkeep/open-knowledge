@@ -17,6 +17,7 @@
     "-LHLx7": ["edited template"],
     "-QCLWk": ["Templates available"],
     "-Qw-1t": ["GitHub authentication failed. Try signing in again."],
+    "-VqsyR": ["Thinking…"],
     "-WFFG2": ["Default properties"],
     "-WeuHF": ["Remove queued message"],
     "-YV1Uo": ["Pattern ", ["patternNumber"]],
@@ -262,6 +263,7 @@
     "3v62tp": ["Popular on skills.sh"],
     "3wiBAs": ["Where should it live?"],
     "3y6XTb": ["Semantic search"],
+    "3zDeFb": ["Ruminating…"],
     "3zyg_A": ["Ignore patterns"],
     "4-Phgi": ["Show or hide agents"],
     "438Fca": ["Cloned successfully, but could not open the project."],
@@ -720,6 +722,7 @@
       ]
     ],
     "BGHHtQ": ["Single page"],
+    "BGoW3h": ["Turning it over…"],
     "BGtzlf": [["uploadFolderName"], " — 1 file"],
     "BH56dn": ["Custom display text"],
     "BKI4hX": ["Find in file"],
@@ -761,6 +764,7 @@
     "CB7c0Z": ["Save queued message"],
     "CBsdhe": ["The agent isn't stopping. Force stop closes this thread and quits the agent."],
     "CCTop_": ["Recent"],
+    "CD8lBW": ["Tidying up…"],
     "CFnavk": ["This project isn't a git repository, so worktrees aren't available."],
     "CHfFN_": ["Remove OpenKnowledge from ", ["0"]],
     "CKyk7Q": ["Go back"],
@@ -807,8 +811,10 @@
     ],
     "D2emTw": ["Something went wrong sending your feedback. Please try again."],
     "D4H2N6": ["Remove ", ["tag"]],
+    "D7hnvB": ["Pondering…"],
     "D8JJwQ": ["Feedback isn't available right now. Please try again later."],
     "D8OV7J": ["Only collaborators"],
+    "DCSSZt": ["The agent is working"],
     "DDTdLl": ["Code block settings"],
     "DELNQk": ["Collaborators see your in-progress edits as soon as they sync."],
     "DEWDbv": ["Show diagram"],
@@ -1009,6 +1015,7 @@
       "Source mode requires a live connection — your edits are saved and will appear when you reconnect."
     ],
     "G-h6qN": [["0", "plural", { "one": ["#", " option set"], "other": ["#", " options set"] }]],
+    "G0I7bo": ["Puzzling…"],
     "G0YZ-I": ["Indent or outdent list item"],
     "G1Gw0v": ["New template"],
     "G1XxbZ": ["Checkbox"],
@@ -1063,6 +1070,7 @@
     "GuaJb-": ["Open email draft"],
     "GubkSu": ["Use a starter pack"],
     "GuqOb1": ["Failed to load headings"],
+    "GwpcXB": ["Drafting…"],
     "Gx0VS1": ["e.g. drafts/ or *.draft.md"],
     "GzPQ2f": ["Stay in the loop"],
     "H-hzll": ["Please choose Good or Not great."],
@@ -1168,6 +1176,7 @@
     "J6mxC1": ["A network problem or GitHub outage interrupted the clone."],
     "J7nMqi": ["Uninstall OpenKnowledge"],
     "J86siq": ["Install from ", ["plugin"]],
+    "JAQ09e": ["Reflecting…"],
     "JCxGEX": [
       "No disconnected pages. Pages appear here only when they have no incoming and no outgoing graph edges."
     ],
@@ -1195,6 +1204,7 @@
     "JsY1p5": ["Denied"],
     "JtD-Br": ["Page link"],
     "Jw6EC4": ["Branch switch failed — try opening the ", ["targetNoun"], " manually."],
+    "JyW5aS": ["Sifting…"],
     "K-a33w": ["Start writing to create this page"],
     "K-h9cT": ["Couldn't save the resolution for ", ["filePath"], "."],
     "K0FgsP": [
@@ -1772,6 +1782,7 @@
     "U9tm58": ["Hide problem indicators"],
     "UBv8UK": ["Delete Permanently"],
     "UDFrWm": ["Checking GitHub connection..."],
+    "UD_onR": ["Mulling…"],
     "UDb2YD": ["React"],
     "UEdTEN": ["Orphaned"],
     "UGeJuP": ["Allowed values (empty = any)"],
@@ -1992,7 +2003,6 @@
     "Xk0-VC": [
       "Previews of links to other documents in this project are always on and read from the local index — nothing leaves your computer for those."
     ],
-    "XklovM": ["Working…"],
     "Xl-UUg": ["guides/install or https://example.com"],
     "XmJfZT": ["name"],
     "XnlF3W": ["Add the next matching source selection."],
@@ -2032,6 +2042,7 @@
     "YEP3X2": ["Delete a table when the active table cell selection covers the full table."],
     "YGIi_c": ["Reinstall"],
     "YGNRB5": ["— except"],
+    "YGt-0e": ["Reading…"],
     "YJ1BTp": ["A skill with that name already exists."],
     "YJPN3F": ["Too slow"],
     "YKLP_-": ["Template renamed"],
@@ -2275,6 +2286,7 @@
     "bkQRMh": ["Paragraph"],
     "blFttG": ["Search projects"],
     "bmC18N": ["Clearing local collaboration data for \"", ["docName"], "\" before reconnecting."],
+    "bnOTEz": ["Retrieving…"],
     "bpytj4": ["Move to ", ["0"]],
     "brCtGB": ["History unavailable"],
     "buNXgr": ["Switch between the visual and source editors, keeping your place."],
@@ -2455,6 +2467,7 @@
     "eTsJYJ": ["description"],
     "eUFXS1": ["Sort skills"],
     "eVPynQ": ["Open <0><1>", ["verificationUri"], "</1><2/></0> and enter this code:"],
+    "eXPP7Z": ["Contemplating…"],
     "eaHUxx": ["Files toolbar"],
     "eazHgv": [
       "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
@@ -2578,6 +2591,7 @@
     "glG1TR": ["Pulling the latest changes"],
     "gljvbT": [["words", "plural", { "one": ["word"], "other": ["words"] }]],
     "glzsS_": ["Pan right"],
+    "gmAH_b": ["Sorting…"],
     "gmJ0An": ["Failed to open folder."],
     "goO4Ll": ["Editor status bar"],
     "gp3I7-": ["Before syncing, set your identity for git commits:"],
@@ -2742,6 +2756,7 @@
     "j9tqwO": ["Not in sidebar"],
     "jAMpHn": ["What is a starter pack?"],
     "jBVUXo": ["Couldn't open the terminal — please try again."],
+    "jC8Bv4": ["Having a look around…"],
     "jC8LSZ": ["Reset view filters"],
     "jENU1Q": [
       "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
@@ -2782,6 +2797,7 @@
     "ju38ms": [
       "This project has no git repository — sharing mode does not apply. Initialize a repo to enable the toggle."
     ],
+    "juD53g": ["Digging…"],
     "jwnpdM": [
       "A template named <0>",
       ["trimmedSlug"],
@@ -3364,6 +3380,7 @@
       " · crash dump not redacted"
     ],
     "snrVQ7": ["probe failed"],
+    "sqUrlK": ["Musing…"],
     "ssk6rl": [
       "The skill's own folder (",
       ["path"],
@@ -3442,6 +3459,7 @@
     "uDlyqd": [
       "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
     ],
+    "uF82hk": ["Percolating…"],
     "uF9ruK": ["Saving"],
     "uFQbYd": ["Home page and entry point."],
     "uGaIIS": ["Check out worktree"],
@@ -3586,6 +3604,7 @@
     ],
     "w_Sphq": ["Attachments"],
     "wbv9xO": ["Create new project"],
+    "wc54KE": ["Trying it out…"],
     "wcfO9r": ["No bug reports yet."],
     "wdxz7K": ["Source"],
     "wdzBgi": ["Config sharing is now Only me."],

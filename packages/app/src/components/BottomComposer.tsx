@@ -71,6 +71,7 @@ import {
   selectionSnapshotToCompose,
 } from '@/editor/selection-context';
 import type { EditorSurface } from '@/editor/selection-stats';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useSelectionContext } from '@/hooks/use-selection-context';
 import { isDesktopTargetEnabled, isInAppAgentEnabled } from '@/lib/acp/agent-visibility';
 import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
@@ -132,26 +133,6 @@ function isNativeTextControl(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tagName = target.tagName.toUpperCase();
   return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
-}
-
-function useReducedMotion(): boolean {
-  // Lazy-init from the live media query so a `prefers-reduced-motion` user gets
-  // the static state on the first render — no one animated frame before an
-  // effect corrects it. Mirrors the `embeddedHost` lazy-init in EditorArea. The
-  // effect still subscribes to runtime changes.
-  const [reduced, setReduced] = useState(
-    () =>
-      typeof window !== 'undefined' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-  );
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setReduced(mq.matches);
-    const onChange = (event: MediaQueryListEvent) => setReduced(event.matches);
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, []);
-  return reduced;
 }
 
 /**

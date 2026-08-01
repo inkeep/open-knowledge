@@ -73,6 +73,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { WorkingAvatar } from '@/components/WorkingAvatar';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import {
   agentSettingsKey,
@@ -105,6 +106,7 @@ import { latestFollowTarget, loadFollowFilePref, saveFollowFilePref } from './fo
 import { appendPresenceWrite, latestAgentWrite, type PresenceWrite } from './presence-follow';
 import { RegisteredAgentIcon } from './RegisteredAgentIcon';
 import { transcriptItemId } from './transcript-item-id';
+import { activeToolKind, useThinkingLine, workingStatusText } from './working-status';
 
 /**
  * Stop sends ACP `session/cancel` — a courtesy the agent may ignore while it
@@ -172,6 +174,8 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
   // An archived transcript can end mid-turn (server crash while streaming) —
   // never let the fold's stale turn state drive the running UI.
   const turnActive = model?.turnActive === true && !archived;
+  // Only consulted when no tool call is in flight — see `working-status.ts`.
+  const thinkingLine = useThinkingLine(turnActive);
   const [resumePending, setResumePending] = useState(false);
   const [resumeError, setResumeError] = useState<ThreadResumeError | null>(null);
   const canPrompt = archived ? !resumePending : status === 'ready' && !turnActive;
@@ -410,13 +414,11 @@ export function ThreadView({ info }: { info: ThreadInfo }): ReactNode {
                       <span>{t`Waiting for your approval`}</span>
                     </div>
                   ) : (
-                    <div
-                      className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
-                      data-testid="agent-thread-working"
-                    >
-                      <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-                      <span>{t`Working…`}</span>
-                    </div>
+                    <WorkingAvatar
+                      status={workingStatusText(activeToolKind(model.items), thinkingLine)}
+                      className="px-1 py-1"
+                      testId="agent-thread-working"
+                    />
                   )
                 ) : status === 'installing' || status === 'spawning' ? (
                   // A resume respawning its agent: the optimistic message echo is

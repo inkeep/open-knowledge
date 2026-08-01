@@ -2536,6 +2536,10 @@ msgstr ""
 msgid "Connects automatically the next time you open this project in a trusted Codex session."
 msgstr ""
 
+#: src/components/acp/working-status.ts
+msgid "Contemplating…"
+msgstr ""
+
 #: src/components/ConsentDialogBody.tsx
 msgid "Content directory"
 msgstr ""
@@ -3711,6 +3715,10 @@ msgstr ""
 msgid "Different version here — click to compare and resolve"
 msgstr ""
 
+#: src/components/acp/working-status.ts
+msgid "Digging…"
+msgstr ""
+
 #. placeholder {0}: plugin.label
 #. placeholder {0}: rule.name
 #: src/components/settings/LintingSection.tsx
@@ -3899,6 +3907,10 @@ msgstr ""
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Draft a technical spec for my project. Start with an overview, then add cross-linked pages for the architecture, the key modules, and the open questions, all linked from a specs index."
+msgstr ""
+
+#: src/components/acp/working-status.ts
+msgid "Drafting…"
 msgstr ""
 
 #: src/components/FrontmatterRow.tsx
@@ -5189,6 +5201,10 @@ msgstr ""
 
 #: src/components/FeedbackForm.tsx
 msgid "Hard to use"
+msgstr ""
+
+#: src/components/acp/working-status.ts
+msgid "Having a look around…"
 msgstr ""
 
 #: src/editor/slash-command/items.tsx
@@ -6512,8 +6528,16 @@ msgstr ""
 msgid "moved template"
 msgstr ""
 
+#: src/components/acp/working-status.ts
+msgid "Mulling…"
+msgstr ""
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Multi-page PDF viewer with toolbar controls (thumbnails, page nav, zoom)."
+msgstr ""
+
+#: src/components/acp/working-status.ts
+msgid "Musing…"
 msgstr ""
 
 #: src/components/NewWorktreeDialog.tsx
@@ -7896,6 +7920,10 @@ msgstr ""
 msgid "pending"
 msgstr ""
 
+#: src/components/acp/working-status.ts
+msgid "Percolating…"
+msgstr ""
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Permanently deletes <0>{targetGitPath}</0> and all its git history. Working files stay in place. If the parent git repo is intentional (e.g. you cloned it), cancel and pick a location outside it."
 msgstr ""
@@ -7988,6 +8016,10 @@ msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted server or another provider. The API key above is for whichever endpoint you set here."
+msgstr ""
+
+#: src/components/acp/working-status.ts
+msgid "Pondering…"
 msgstr ""
 
 #: src/components/ExploreSkills.tsx
@@ -8228,6 +8260,10 @@ msgstr ""
 msgid "Pushing"
 msgstr ""
 
+#: src/components/acp/working-status.ts
+msgid "Puzzling…"
+msgstr ""
+
 #: src/comments/comment-chips.tsx
 #: src/comments/CommentQueuePanel.tsx
 #: src/comments/CommentsPanel.tsx
@@ -8286,6 +8322,10 @@ msgstr ""
 
 #: src/components/SkillFileViewer.tsx
 msgid "Read-only file in the {name} skill"
+msgstr ""
+
+#: src/components/acp/working-status.ts
+msgid "Reading…"
 msgstr ""
 
 #: src/components/SeedDialog.tsx
@@ -8359,6 +8399,10 @@ msgstr ""
 #. placeholder {0}: row.reference
 #: src/components/BugReportHistory.tsx
 msgid "Reference <0>{0}</0>"
+msgstr ""
+
+#: src/components/acp/working-status.ts
+msgid "Reflecting…"
 msgstr ""
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -8897,6 +8941,10 @@ msgstr ""
 msgid "Resuming the conversation"
 msgstr ""
 
+#: src/components/acp/working-status.ts
+msgid "Retrieving…"
+msgstr ""
+
 #: src/components/ActivityModeContent.tsx
 #: src/components/BugReportHistory.tsx
 #: src/components/ConnectingBanner.tsx
@@ -8986,6 +9034,10 @@ msgstr ""
 
 #: src/components/LintConfigEditor.tsx
 msgid "Rules"
+msgstr ""
+
+#: src/components/acp/working-status.ts
+msgid "Ruminating…"
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
@@ -9750,6 +9802,10 @@ msgstr ""
 msgid "Shows above the code body. Round-trips as `title=\"...\"` in markdown."
 msgstr ""
 
+#: src/components/acp/working-status.ts
+msgid "Sifting…"
+msgstr ""
+
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SyncSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -9888,6 +9944,10 @@ msgstr ""
 
 #: src/components/ExploreSkills.tsx
 msgid "Sort skills"
+msgstr ""
+
+#: src/components/acp/working-status.ts
+msgid "Sorting…"
 msgstr ""
 
 #: src/components/SkillInstallMenu.tsx
@@ -10524,6 +10584,10 @@ msgstr ""
 msgid "The <0>type</0> every document created from this template gets (e.g. <1>research-note</1>). Keeps new docs Open Knowledge Format–conformant."
 msgstr ""
 
+#: src/components/WorkingAvatar.tsx
+msgid "The agent is working"
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "The agent isn't stopping. Force stop closes this thread and quits the agent."
 msgstr ""
@@ -10717,6 +10781,10 @@ msgstr ""
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."
+msgstr ""
+
+#: src/components/acp/working-status.ts
+msgid "Thinking…"
 msgstr ""
 
 #: src/components/share-receive-miss-content.tsx
@@ -11016,6 +11084,10 @@ msgstr ""
 msgid "This window can't store a token — open Settings from the main app window."
 msgstr ""
 
+#: src/components/acp/working-status.ts
+msgid "Tidying up…"
+msgstr ""
+
 #: src/components/DocPanel.tsx
 #: src/components/TimelinePanel.tsx
 msgid "Timeline"
@@ -11167,6 +11239,10 @@ msgstr ""
 msgid "Try again"
 msgstr ""
 
+#: src/components/acp/working-status.ts
+msgid "Trying it out…"
+msgstr ""
+
 #. placeholder {0}: scope === 'global' ? `~/${o.root}` : o.root
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Turn {0} back into a real directory holding a per-skill symlink for each skill it currently sees — nothing stops working, and each skill's menu manages it from there."
@@ -11199,6 +11275,10 @@ msgstr ""
 
 #: src/components/SeedDialog.tsx
 msgid "Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later."
+msgstr ""
+
+#: src/components/acp/working-status.ts
+msgid "Turning it over…"
 msgstr ""
 
 #. placeholder {0}: skill.name
@@ -11831,10 +11911,6 @@ msgstr ""
 #: src/components/NewWorktreeDialog.tsx
 #: src/components/SkillEditorActions.tsx
 msgid "Working"
-msgstr ""
-
-#: src/components/acp/ThreadView.tsx
-msgid "Working…"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
