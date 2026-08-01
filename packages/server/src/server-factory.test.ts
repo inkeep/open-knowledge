@@ -17,6 +17,7 @@ import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stringify as stringifyYaml } from 'yaml';
 import * as Y from 'yjs';
+import { MAX_AGENT_SESSIONS } from './agent-sessions.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { getBootTimings, resetBootTimingsForTest, startBootTimings } from './boot-timings.ts';
 import { DerivedDocumentIndex } from './derived-document-index.ts';
@@ -228,6 +229,49 @@ describe('createServer() — document durability state isolation', () => {
       ]);
       beginStartup.mockRestore();
     }
+  });
+});
+
+describe('createServer() — agent-session cap passthrough', () => {
+  let projectDir: string;
+  let server: ServerInstance | null;
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(resolve(tmpdir(), 'ok-agent-session-cap-'));
+    server = null;
+  });
+
+  afterEach(async () => {
+    await server?.destroy();
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  test('installs the overridden session cap on the manager', async () => {
+    const contentDir = mkdtempSync(resolve(projectDir, 'content-'));
+    server = createServer({
+      contentDir,
+      projectDir,
+      quiet: true,
+      agentSessionOptions: { maxSessions: 4, minEvictableIdleMs: 0 },
+    });
+    await server.ready;
+
+    // The manager's `sessionLimit` getter reads back the cap it was constructed
+    // with. A missing passthrough would leave it at the default, so this pins
+    // the ServerOptions → constructor wiring the low-cap capacity tests rely on.
+    expect(server.sessionManager.sessionLimit).toBe(4);
+  });
+
+  test('defaults to MAX_AGENT_SESSIONS when no override is supplied', async () => {
+    const contentDir = mkdtempSync(resolve(projectDir, 'content-'));
+    server = createServer({
+      contentDir,
+      projectDir,
+      quiet: true,
+    });
+    await server.ready;
+
+    expect(server.sessionManager.sessionLimit).toBe(MAX_AGENT_SESSIONS);
   });
 });
 

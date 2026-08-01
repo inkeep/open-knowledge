@@ -260,11 +260,27 @@ test.describe('markdown lint — Problems panel project scope', () => {
     const group2 = scopeBody.getByTestId('problems-audit-group').filter({ hasText: doc2 });
     await expect(group1).toBeVisible({ timeout: 10_000 });
     await expect(group2).toBeVisible();
+    // Headers show the file path and per-file count while collapsed.
     await expect(group1.getByTestId('problems-audit-file-count')).toHaveText('2');
     await expect(group2.getByTestId('problems-audit-file-count')).toHaveText('1');
-    // Groups render their diagnostics expanded by default.
+    // Groups mount collapsed, so their diagnostic rows are not in the DOM — the
+    // structural guard for the panel-open cost (element count bounded by group
+    // count, not by finding count).
+    await expect(group1).toHaveAttribute('data-state', 'closed');
+    await expect(group2).toHaveAttribute('data-state', 'closed');
+    await expect(scopeBody.getByText(MD001)).toHaveCount(0);
+    await expect(scopeBody.getByText(MD010)).toHaveCount(0);
+
+    // Expand-all restores the fully-expanded view in one action…
+    await scopeBody.getByTestId('problems-audit-expand-toggle').click();
+    await expect(group1).toHaveAttribute('data-state', 'open');
     await expect(group1.getByText(MD001)).toBeVisible();
     await expect(group2.getByText(MD010)).toBeVisible();
+    // …and collapse-all returns them to headers only.
+    await scopeBody.getByTestId('problems-audit-expand-toggle').click();
+    await expect(group1).toHaveAttribute('data-state', 'closed');
+    await expect(scopeBody.getByText(MD001)).toHaveCount(0);
+
     // The audit-wide error/warning counts render above the groups (substring
     // tolerant of the singular/plural form — leftover docs from earlier tests
     // in this worker legitimately contribute to the totals).
@@ -308,6 +324,8 @@ test.describe('markdown lint — Problems panel project scope', () => {
 
     const group = page.getByTestId('problems-audit-group').filter({ hasText: doc2 });
     await expect(group).toBeVisible({ timeout: 10_000 });
+    // Groups mount collapsed, so open them before the diagnostic row exists.
+    await page.getByTestId('problems-audit-expand-toggle').click();
     await group.getByRole('button', { name: /Hard tabs/ }).click();
 
     // Hash navigation to the closed doc…
@@ -634,6 +652,14 @@ test.describe('markdown lint — WYSIWYG block decorations + navigation', () => 
     await page.getByTestId('panel-scope-project').click();
     const group = page.getByTestId('problems-audit-group').filter({ hasText: doc2 });
     await expect(group).toBeVisible({ timeout: 10_000 });
+    // Groups mount collapsed, and Radix unmounts closed content, so the row is
+    // not in the DOM yet. Expand as a SEPARATE prior action — folding it into
+    // the click below would destroy what this test pins, which is that ONE
+    // click both navigates and scrolls.
+    await page.getByTestId('problems-audit-expand-toggle').click();
+    await expect(group.getByRole('button', { name: /Trailing spaces/ }).first()).toBeVisible({
+      timeout: 10_000,
+    });
 
     // A single click: navigate to the closed doc …
     await group

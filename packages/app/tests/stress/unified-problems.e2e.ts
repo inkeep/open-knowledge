@@ -109,6 +109,9 @@ test.describe('unified Problems — project scope', () => {
     await expect(page.getByText(`${lintDocName}.md`)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(`${linkDocName}.md`)).toBeVisible();
 
+    // Groups mount collapsed; open them to assert the row-level chips.
+    await page.getByTestId('problems-audit-expand-toggle').click();
+
     // Rows name their producing validator, not a generic category.
     const tags = page.getByTestId('problems-source-tag');
     await expect(tags.filter({ hasText: 'markdownlint' }).first()).toBeVisible();

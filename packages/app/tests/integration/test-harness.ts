@@ -206,6 +206,14 @@ export interface CreateTestServerOptions {
    */
   pullIntervalSeconds?: number;
   pushIntervalSeconds?: number;
+  /**
+   * Agent-session cap + idle-eviction floor for the shared AgentSessionManager.
+   * Production leaves this undefined (256 / 5 s). Capacity tests pass a small
+   * `maxSessions` so a sweep reaches the cap without opening hundreds of real
+   * sessions, and a short `minEvictableIdleMs` so a refused session frees on a
+   * retry within the test budget.
+   */
+  agentSessionOptions?: ServerOptions['agentSessionOptions'];
 }
 
 export async function createTestServer(options: CreateTestServerOptions = {}): Promise<TestServer> {
@@ -297,6 +305,7 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
     mdManager: options.mdManager,
     pullIntervalSeconds: options.pullIntervalSeconds,
     pushIntervalSeconds: options.pushIntervalSeconds,
+    agentSessionOptions: options.agentSessionOptions,
     ...(ephemeral ? { ephemeral: true, singleDocRelPath: options.singleDocRelPath } : {}),
     // Skip the durable state-manifest pre-flight gate. Each test allocates a fresh tmpdir, so the gate has nothing
     // meaningful to assert; the writes would just generate noise across thousands

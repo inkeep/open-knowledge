@@ -2279,6 +2279,10 @@ msgstr "Collapse {keyName}"
 msgid "Collapse all"
 msgstr "Collapse all"
 
+#: src/components/ProblemsPanel.tsx
+msgid "Collapse all file groups"
+msgstr "Collapse all file groups"
+
 #: src/components/BottomComposer.tsx
 msgid "Collapse Ask AI"
 msgstr "Collapse Ask AI"
@@ -4352,6 +4356,10 @@ msgstr "Expand {keyName}"
 #: src/components/FileTree.tsx
 msgid "Expand all"
 msgstr "Expand all"
+
+#: src/components/ProblemsPanel.tsx
+msgid "Expand all file groups"
+msgstr "Expand all file groups"
 
 #: src/components/GraphPanel.tsx
 msgid "Expand graph"
@@ -10106,6 +10114,7 @@ msgid "Still loading"
 msgstr "Still loading"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/ProblemsPanel.tsx
 msgid "Stop"
 msgstr "Stop"
 
@@ -10124,6 +10133,18 @@ msgstr "Stop {0} reading \"{1}\"? {subRoot} will keep its other skills (as symli
 #: src/components/SkillInstallMenu.tsx
 msgid "Stop {0} reading this skill"
 msgstr "Stop {0} reading this skill"
+
+#: src/components/ProblemsPanel.tsx
+msgid "Stop fixing files"
+msgstr "Stop fixing files"
+
+#: src/components/ProblemsPanel.tsx
+msgid "Stop fixing. Files already fixed stay fixed."
+msgstr "Stop fixing. Files already fixed stay fixed."
+
+#: src/components/ProblemsPanel.tsx
+msgid "Stopped fixing. Files already fixed stay fixed."
+msgstr "Stopped fixing. Files already fixed stay fixed."
 
 #: src/components/acp/ThreadView.tsx
 msgid "Stopping"

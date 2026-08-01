@@ -236,6 +236,18 @@ export interface ServerOptions {
    */
   stalenessGraceMs?: number;
   stalenessSweepIntervalMs?: number;
+  /**
+   * Agent-session manager tuning, forwarded verbatim to the
+   * `AgentSessionManager` constructor. Production leaves this undefined so the
+   * manager keeps its own `MAX_AGENT_SESSIONS` / `MIN_EVICTABLE_IDLE_MS`
+   * defaults (256 / 5 s); tests pass a small `maxSessions` to exercise the
+   * capacity-refusal path (`AgentSessionCapacityError` → 503) without opening
+   * hundreds of real sessions.
+   */
+  agentSessionOptions?: {
+    maxSessions?: number;
+    minEvictableIdleMs?: number;
+  };
   gitEnabled?: boolean;
   commitDebounceMs?: number;
   wipRef?: string;
@@ -1557,7 +1569,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     agentFocusBroadcaster = new AgentFocusBroadcaster(hocuspocus);
     agentPresenceBroadcaster = new AgentPresenceBroadcaster(hocuspocus);
 
-    sessionManager = new AgentSessionManager(hocuspocus);
+    sessionManager = new AgentSessionManager(hocuspocus, options.agentSessionOptions);
     // Registered here (not with the connection provider above) because the
     // session manager doesn't exist yet at that point; gauges only sample at
     // metric-export time, so late registration is safe.

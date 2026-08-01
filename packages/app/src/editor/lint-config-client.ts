@@ -62,25 +62,57 @@ export async function fetchEffectiveLintConfig(docName: string): Promise<LinterC
 }
 
 /**
+ * Per-request ceiling for one file's auto-fix, in milliseconds. A fix does real
+ * server work (CRDT load, markdownlint apply, disk + git flush) but is a
+ * localhost round trip, so it takes seconds at most. The project-scope sweep
+ * runs these serially and can only cancel between files, so an in-flight request
+ * that never returns would freeze the whole sweep with no recovery but a page
+ * reload; this bounds a stalled request into a terminal failure the sweep moves
+ * past. Generous enough that a legitimately slow fix still completes.
+ */
+export const LINT_FIX_TIMEOUT_MS = 30_000;
+
+/**
  * POST a whole-doc auto-fix. The body carries no agent identity on purpose:
  * a UI-initiated deterministic fix is the principal's write (the human
  * clicked the button), and the server resolves a bare body to the loaded
  * principal. Used per-file by the project-scope Fix all sweep.
+ *
+ * The failure branch surfaces the HTTP `status` and the RFC 9457 problem-type
+ * URN alongside the human-readable `errorDetail`, so a caller can tell a
+ * retryable capacity refusal (503 / `urn:ok:error:too-many-agent-sessions`)
+ * from a terminal failure. `status` is `null` when the request never reached
+ * the server (network throw); `problemType` is `null` when the body carried no
+ * URN (schema drift on a 2xx, or an unparseable error body).
  */
 export async function fixLintDoc(
   docName: string,
-): Promise<{ ok: true; result: LintFixResult } | { ok: false; errorDetail: string | null }> {
+): Promise<
+  | { ok: true; result: LintFixResult }
+  | { ok: false; errorDetail: string | null; status: number | null; problemType: string | null }
+> {
+  // Bound the request so a stalled fix resolves to a terminal failure the sweep
+  // can move past, rather than hanging it. The abort surfaces through the catch
+  // below as `{ status: null }` — a non-capacity failure, so it is not retried.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LINT_FIX_TIMEOUT_MS);
   try {
     const res = await fetch('/api/lint/fix', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ docName }),
+      signal: controller.signal,
     });
     if (!res.ok) {
-      const errBody = (await res.json().catch(() => null)) as { title?: unknown } | null;
+      const errBody = (await res.json().catch(() => null)) as {
+        title?: unknown;
+        type?: unknown;
+      } | null;
       return {
         ok: false,
         errorDetail: typeof errBody?.title === 'string' ? errBody.title : null,
+        status: res.status,
+        problemType: typeof errBody?.type === 'string' ? errBody.type : null,
       };
     }
     const body = await res.json().catch(() => null);
@@ -90,11 +122,19 @@ export async function fixLintDoc(
       // client/server schema drift leaves a diagnostic trail instead of a
       // silent failure.
       console.warn('[lint] fix response failed schema validation', parsed.error.issues);
-      return { ok: false, errorDetail: null };
+      return { ok: false, errorDetail: null, status: res.status, problemType: null };
     }
     return { ok: true, result: parsed.data };
-  } catch {
-    return { ok: false, errorDetail: null };
+  } catch (err) {
+    // Network throw, or the AbortSignal firing on the per-request ceiling. The
+    // sweep turns this into one line of a bulk failure toast, so without a log
+    // there is nothing to distinguish a timeout from DNS from a server crash
+    // across hundreds of files. Named per file so these lines correlate with the
+    // sweep's bulk-failure summary rather than being N indistinguishable copies.
+    console.warn('[lint] fix request failed', docName, err instanceof Error ? err.message : err);
+    return { ok: false, errorDetail: null, status: null, problemType: null };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

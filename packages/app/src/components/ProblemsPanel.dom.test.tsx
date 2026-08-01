@@ -11,6 +11,7 @@ import type { LintDiagnostic, ValidationAuditResponse } from '@inkeep/open-knowl
 import { cleanup, fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
 import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { SWEEP_PROGRESS_CHUNK, sweepProgressInterval } from '@/components/problems-sweep';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
@@ -38,13 +39,20 @@ const AUDIT_SUPERSEDED = 'audit-superseded' as const;
 let runLintAuditImpl: () => Promise<ValidationAuditResponse | null | typeof AUDIT_SUPERSEDED> =
   async () => null;
 let fixLintDocCalls: string[] = [];
-let fixLintDocImpl: (docName: string) => Promise<{ ok: boolean; errorDetail?: string | null }> =
-  async () => ({ ok: true });
+let fixLintDocImpl: (docName: string) => Promise<{
+  ok: boolean;
+  errorDetail?: string | null;
+  status?: number | null;
+  problemType?: string | null;
+}> = async () => ({ ok: true });
 let projectLintConfigData: unknown = null;
 const toastError = vi.fn((_message: string) => {});
 
 const toastSuccess = vi.fn((_message: string) => {});
-vi.doMock('sonner', () => ({ toast: { error: toastError, success: toastSuccess } }));
+const toastInfo = vi.fn((_message: string) => {});
+vi.doMock('sonner', () => ({
+  toast: { error: toastError, success: toastSuccess, info: toastInfo },
+}));
 // Captured so a test can fire a config change the way a rule toggle does.
 const lintConfigListeners = new Set<() => void>();
 function emitLintConfigChangedForTest(): void {
@@ -167,6 +175,7 @@ beforeEach(() => {
   addPageCalls.length = 0;
   toastError.mockClear();
   toastSuccess.mockClear();
+  toastInfo.mockClear();
   lintConfigListeners.clear();
 });
 
@@ -183,6 +192,30 @@ afterEach(() => {
  */
 function render(ui: ReactElement) {
   return rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
+}
+
+/**
+ * Open a collapsed project-scope file group. Groups mount collapsed, so a test
+ * that reaches into a group's diagnostic rows must first click its header — the
+ * file-path label lives inside the CollapsibleTrigger button.
+ */
+function expandGroup(filePath: string) {
+  const header = screen.getByText(filePath);
+  fireEvent.click(header.closest('button') ?? header);
+}
+
+/**
+ * The sweep's screen-reader progress region: a role=status live region whose
+ * text is the running "Fixing N of M files" count. Matched by that text so it is
+ * never confused with the audit-loading skeleton, which is also role=status but
+ * announces the audit rather than the sweep (the two are mutually exclusive by
+ * construction, but querying on the text keeps the helper honest regardless).
+ * Returns undefined when no sweep is running.
+ */
+function sweepLiveRegion(): HTMLElement | undefined {
+  return screen
+    .queryAllByRole('status')
+    .find((el) => /Fixing \d+ of \d+ files/.test(el.textContent ?? ''));
 }
 
 describe('ProblemsPanel', () => {
@@ -750,14 +783,19 @@ describe('ProblemsPanel — project scope', () => {
     await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
     expect(auditCalls).toBe(1);
 
-    // Per-file groups list their diagnostics (expanded by default) with counts.
+    // Per-file groups render collapsed: headers with counts, contents unmounted.
     expect(screen.getByText('notes.md')).toBeTruthy();
-    expect(screen.getByText('Heading increment')).toBeTruthy();
     const groups = screen.getAllByTestId('problems-audit-group');
     expect(groups).toHaveLength(2);
+    expect(groups[0]?.getAttribute('data-state')).toBe('closed');
     expect(groups[0]?.querySelector('[data-testid="problems-audit-file-count"]')?.textContent).toBe(
       '2',
     );
+    // A diagnostic message lives inside a collapsed group, so it is not mounted.
+    expect(screen.queryByText('Heading increment')).toBeNull();
+    // Expanding the group mounts its rows.
+    expandGroup('guides/setup.md');
+    expect(screen.getByText('Heading increment')).toBeTruthy();
     // The summary carries the audit-wide error/warning counts.
     expect(screen.getByTestId('problems-audit-summary').textContent).toContain('0 errors');
     expect(screen.getByTestId('problems-audit-summary').textContent).toContain('3 warnings');
@@ -779,6 +817,7 @@ describe('ProblemsPanel — project scope', () => {
     render(<ProblemsPanel docName="notes" diagnostics={[]} />);
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
+    expandGroup('guides/setup.md');
 
     const tags = screen.getAllByTestId('problems-source-tag');
     expect(tags.map((tag) => tag.textContent)).toEqual(['markdownlint', 'links']);
@@ -804,10 +843,12 @@ describe('ProblemsPanel — project scope', () => {
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
 
+    // The per-file badge counts problems (not collapsed rows) on the header,
+    // before the group is opened.
+    expect(screen.getByTestId('problems-audit-file-count').textContent).toBe('3');
+    expandGroup('guides/setup.md');
     expect(screen.getAllByTestId('problems-duplicate-group')).toHaveLength(1);
     expect(screen.getAllByText('Missing title')).toHaveLength(1);
-    // The per-file badge still counts problems, not collapsed rows.
-    expect(screen.getByTestId('problems-audit-file-count').textContent).toBe('3');
   });
 
   test('the refresh icon explains itself in a tooltip', async () => {
@@ -838,6 +879,7 @@ describe('ProblemsPanel — project scope', () => {
     await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
     expect(auditCalls).toBe(1);
 
+    expandGroup('guides/setup.md');
     fireEvent.click(screen.getByTestId('problems-create-page'));
     await waitFor(() =>
       expect(createPageCalls).toEqual([{ initialDir: '', suggestedName: 'ghost' }]),
@@ -934,6 +976,7 @@ describe('ProblemsPanel — project scope', () => {
       render(<ProblemsPanel docName="notes" diagnostics={[]} />);
       fireEvent.click(screen.getByTestId('panel-scope-project'));
       await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
+      expandGroup('guides/setup.md');
 
       fireEvent.click(screen.getByRole('button', { name: /Hard tabs/ }));
 
@@ -977,7 +1020,9 @@ describe('ProblemsPanel — project scope', () => {
       fireEvent.click(screen.getByTestId('panel-scope-project'));
       await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
 
-      // Expand the collapsed duplicate group, then click the SECOND occurrence.
+      // Open the file group, then the collapsed duplicate group inside it, then
+      // click the SECOND occurrence.
+      expandGroup('guides/setup.md');
       fireEvent.click(
         screen.getByTestId('problems-duplicate-group').querySelector('button') as HTMLElement,
       );
@@ -1014,6 +1059,7 @@ describe('ProblemsPanel — project scope', () => {
       render(<ProblemsPanel docName="notes" diagnostics={[]} />);
       fireEvent.click(screen.getByTestId('panel-scope-project'));
       await waitFor(() => expect(screen.getByText('notes.md')).toBeTruthy());
+      expandGroup('notes.md');
       const hashBefore = window.location.hash;
 
       fireEvent.click(screen.getByRole('button', { name: /Hard tabs/ }));
@@ -1057,6 +1103,99 @@ describe('ProblemsPanel — project scope', () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 
+  test('Stop ends a running project sweep and leaves earlier fixes in place', async () => {
+    const fixableEdit = {
+      range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
+      newText: '  ',
+    };
+    runLintAuditImpl = async () =>
+      auditResult({
+        files: [
+          { file: 'a.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
+          { file: 'b.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
+          { file: 'c.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
+        ],
+      });
+    // Hold the first fix open so the sweep is genuinely mid-flight when Stop is
+    // pressed — otherwise it could finish before the click and pass vacuously.
+    let releaseFirst: (() => void) | undefined;
+    const firstInFlight = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    fixLintDocImpl = async (docName: string) => {
+      if (docName === 'a') await firstInFlight;
+      return { ok: true as const, status: 200, problemType: null, errorDetail: null };
+    };
+
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('a.md')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('problems-auto-fix'));
+    // The Stop control exists only while a sweep is running.
+    const stop = await screen.findByTestId('problems-cancel-fix');
+    fireEvent.click(stop);
+    releaseFirst?.();
+
+    // The sweep bails at the next file boundary: 'a' was already in flight, so
+    // it completes, but 'b' and 'c' are never posted.
+    await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1));
+    expect(fixLintDocCalls).toEqual(['a']);
+    expect(String(toastInfo.mock.calls[0]?.[0])).toContain('already fixed stay fixed');
+    // A stop is not a failure — no error toast, and the spinner clears so the
+    // panel is usable again rather than stuck mid-sweep.
+    expect(toastError).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByTestId('problems-cancel-fix')).toBeNull());
+    // Re-audits after stopping so the remaining count is the honest one.
+    await waitFor(() => expect(auditCalls).toBe(2));
+  });
+
+  test('a stopped sweep does not poison the next one', async () => {
+    const fixableEdit = {
+      range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
+      newText: '  ',
+    };
+    runLintAuditImpl = async () =>
+      auditResult({
+        files: [
+          { file: 'a.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
+          { file: 'b.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
+        ],
+      });
+    let releaseFirst: (() => void) | undefined;
+    const firstInFlight = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    fixLintDocImpl = async (docName: string) => {
+      if (docName === 'a') await firstInFlight;
+      return { ok: true as const, status: 200, problemType: null, errorDetail: null };
+    };
+
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('a.md')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('problems-auto-fix'));
+    fireEvent.click(await screen.findByTestId('problems-cancel-fix'));
+    releaseFirst?.();
+    await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1));
+    expect(fixLintDocCalls).toEqual(['a']);
+
+    // The stop flag must reset, or the next sweep ends on its first boundary.
+    fixLintDocCalls.length = 0;
+    fixLintDocImpl = async () => ({
+      ok: true as const,
+      status: 200,
+      problemType: null,
+      errorDetail: null,
+    });
+    await waitFor(() =>
+      expect((screen.getByTestId('problems-auto-fix') as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(screen.getByTestId('problems-auto-fix'));
+    await waitFor(() => expect(fixLintDocCalls).toEqual(['a', 'b']));
+  });
+
   test('project Auto-fix continues past per-file failures and surfaces one error toast', async () => {
     const fixableEdit = {
       range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
@@ -1083,6 +1222,37 @@ describe('ProblemsPanel — project scope', () => {
     // The toast names the first casualty and the server's reason.
     const options = toastError.mock.calls[0]?.[1] as { description?: string } | undefined;
     expect(options?.description).toBe('bad.md — conflict');
+  });
+
+  test('project Auto-fix retries a capacity refusal and reports no failure', async () => {
+    const fixableEdit = {
+      range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
+      newText: '  ',
+    };
+    runLintAuditImpl = async () =>
+      auditResult({ files: [{ file: 'busy.md', diagnostics: [diag({ fixes: [fixableEdit] })] }] });
+    // The server refuses once for agent-session capacity (503 + the capacity
+    // URN), then accepts — the sweep must wait it out, not surface it as failed.
+    const outcomes = [
+      {
+        ok: false,
+        errorDetail: 'Too many agent sessions',
+        status: 503,
+        problemType: 'urn:ok:error:too-many-agent-sessions',
+      },
+      { ok: true },
+    ];
+    fixLintDocImpl = async () => outcomes.shift() ?? { ok: true };
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('busy.md')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('problems-auto-fix'));
+    // The same file is posted twice — the initial refusal and the retry that
+    // succeeds — proving the component forwards the 503/URN into the retry path.
+    await waitFor(() => expect(fixLintDocCalls).toEqual(['busy', 'busy']));
+    // A retried-then-succeeded file is not a failure: no error toast.
+    expect(toastError).not.toHaveBeenCalled();
   });
 
   test('failure toast omits the dash-suffix when the server gives no error detail', async () => {
@@ -1372,5 +1542,226 @@ describe('ProblemsPanel — project scope', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.getByText('second.md')).toBeTruthy();
     expect(screen.queryByText('first.md')).toBeNull();
+  });
+});
+
+describe('ProblemsPanel — project scope: collapse and expand-all', () => {
+  const twoFileAudit = () =>
+    auditResult({
+      files: [
+        {
+          file: 'guides/setup.md',
+          diagnostics: [diag({ code: 'MD001', message: 'Heading increment', line: 8 })],
+        },
+        { file: 'notes.md', diagnostics: [diag({ line: 2, message: 'Hard tabs' })] },
+      ],
+      fileCount: 5,
+      warningCount: 2,
+    });
+
+  test('file groups mount collapsed: headers with counts, contents unmounted', async () => {
+    runLintAuditImpl = async () => twoFileAudit();
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
+
+    const groups = screen.getAllByTestId('problems-audit-group');
+    expect(groups).toHaveLength(2);
+    // Every group is closed, so no diagnostic rows are in the tree.
+    for (const group of groups) expect(group.getAttribute('data-state')).toBe('closed');
+    expect(screen.queryByText('Heading increment')).toBeNull();
+    expect(screen.queryByTestId('problems-source-tag')).toBeNull();
+    // Yet each header still shows the file path and its problem count.
+    expect(screen.getByText('notes.md')).toBeTruthy();
+    expect(groups[0]?.querySelector('[data-testid="problems-audit-file-count"]')?.textContent).toBe(
+      '1',
+    );
+    // The reversal affordance is present and points at expanding.
+    expect(screen.getByTestId('problems-audit-expand-toggle').getAttribute('aria-label')).toBe(
+      'Expand all file groups',
+    );
+  });
+
+  test('expand-all opens every group and mounts its rows; collapse-all closes them', async () => {
+    runLintAuditImpl = async () => twoFileAudit();
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('problems-audit-expand-toggle'));
+    for (const group of screen.getAllByTestId('problems-audit-group'))
+      expect(group.getAttribute('data-state')).toBe('open');
+    expect(screen.getByText('Heading increment')).toBeTruthy();
+    expect(screen.getByText('Hard tabs')).toBeTruthy();
+    // The one control now offers the reverse action.
+    expect(screen.getByTestId('problems-audit-expand-toggle').getAttribute('aria-label')).toBe(
+      'Collapse all file groups',
+    );
+
+    fireEvent.click(screen.getByTestId('problems-audit-expand-toggle'));
+    for (const group of screen.getAllByTestId('problems-audit-group'))
+      expect(group.getAttribute('data-state')).toBe('closed');
+    expect(screen.queryByText('Heading increment')).toBeNull();
+    expect(screen.getByTestId('problems-audit-expand-toggle').getAttribute('aria-label')).toBe(
+      'Expand all file groups',
+    );
+  });
+
+  test('a single group expands on its own without opening the others', async () => {
+    runLintAuditImpl = async () => twoFileAudit();
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
+
+    expandGroup('guides/setup.md');
+    const groups = screen.getAllByTestId('problems-audit-group');
+    const setup = groups.find((g) => g.textContent?.includes('guides/setup.md'));
+    const notes = groups.find((g) => g.textContent?.includes('notes.md'));
+    expect(setup?.getAttribute('data-state')).toBe('open');
+    expect(notes?.getAttribute('data-state')).toBe('closed');
+    expect(screen.getByText('Heading increment')).toBeTruthy();
+    // The other group's rows stay unmounted.
+    expect(screen.queryByText('Hard tabs')).toBeNull();
+    // One of two open still reads as "not all expanded".
+    expect(screen.getByTestId('problems-audit-expand-toggle').getAttribute('aria-label')).toBe(
+      'Expand all file groups',
+    );
+  });
+
+  test('the expand/collapse-all control is absent when the audit is clean', async () => {
+    runLintAuditImpl = async () => auditResult({ files: [], fileCount: 3 });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('No problems across 3 documents.')).toBeTruthy());
+    // Nothing to expand, so the control does not render.
+    expect(screen.queryByTestId('problems-audit-expand-toggle')).toBeNull();
+  });
+});
+
+describe('ProblemsPanel — project scope: sweep-progress live region', () => {
+  // A diagnostic carrying an auto-fix, so every file in these fixtures is swept.
+  const fixableEdit = {
+    range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
+    newText: '  ',
+  };
+
+  test('a role=status region announces the running count while sweeping and retires when it ends', async () => {
+    runLintAuditImpl = async () =>
+      auditResult({ files: [{ file: 'solo.md', diagnostics: [diag({ fixes: [fixableEdit] })] }] });
+    // Hold the one fix open so the sweep stays mid-flight to observe.
+    let releaseFix: (() => void) | undefined;
+    fixLintDocImpl = () =>
+      new Promise<{ ok: true }>((resolve) => {
+        releaseFix = () => resolve({ ok: true });
+      });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('solo.md')).toBeTruthy());
+
+    // No sweep running: no sweep-progress region.
+    expect(sweepLiveRegion()).toBeUndefined();
+
+    fireEvent.click(screen.getByTestId('problems-auto-fix'));
+    // While the sweep runs, a role=status live region announces the count.
+    await waitFor(() => expect(sweepLiveRegion()?.textContent).toBe('Fixing 0 of 1 files'));
+    expect(sweepLiveRegion()?.getAttribute('role')).toBe('status');
+
+    releaseFix?.();
+    // The region is gone once the sweep ends; the re-audit's own status skeleton
+    // carries no "Fixing" text, so it is not mistaken for the sweep region.
+    await waitFor(() => expect(sweepLiveRegion()).toBeUndefined());
+  });
+
+  test('the announced count advances as the sweep progresses', async () => {
+    // A chunk-plus-one sweep publishes several interior flushes (one every
+    // sweepProgressInterval files) climbing toward the total; hold the last file
+    // so the final interior flush is a stable state to assert on rather than a
+    // single frame before the region retires.
+    const total = SWEEP_PROGRESS_CHUNK + 1;
+    const interval = sweepProgressInterval(total);
+    // The last flush before the parked final file lands on the highest interval
+    // multiple among the files that actually complete (all but the parked last).
+    const lastInteriorFlush = Math.floor((total - 1) / interval) * interval;
+    runLintAuditImpl = async () =>
+      auditResult({
+        files: Array.from({ length: total }, (_, i) => ({
+          file: `f${i}.md`,
+          diagnostics: [diag({ fixes: [fixableEdit] })],
+        })),
+      });
+    let releaseLast: (() => void) | undefined;
+    fixLintDocImpl = () =>
+      new Promise<{ ok: true }>((resolve) => {
+        if (fixLintDocCalls.length === total) releaseLast = () => resolve({ ok: true });
+        else resolve({ ok: true });
+      });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('f0.md')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('problems-auto-fix'));
+    // Opens at zero, then climbs to the last interior flush once that many complete.
+    await waitFor(() => expect(sweepLiveRegion()?.textContent).toBe(`Fixing 0 of ${total} files`));
+    await waitFor(
+      () =>
+        expect(sweepLiveRegion()?.textContent).toBe(
+          `Fixing ${lastInteriorFlush} of ${total} files`,
+        ),
+      { timeout: 10_000 },
+    );
+
+    // The last file is requested (and parked) just after that flush; wait for it
+    // so releasing it actually completes the sweep rather than no-ops.
+    await waitFor(() => expect(fixLintDocCalls.length).toBe(total));
+    releaseLast?.();
+    await waitFor(() => expect(sweepLiveRegion()).toBeUndefined());
+  });
+
+  test('the region announces at chunk granularity, not once per file', async () => {
+    // With the sub-chunk floor the interval here is two files, so completing an
+    // odd (non-boundary) file must NOT move the count — a per-file announcer
+    // would — while crossing the next interval boundary must.
+    const total = 11;
+    expect(sweepProgressInterval(total)).toBe(2);
+    runLintAuditImpl = async () =>
+      auditResult({
+        files: Array.from({ length: total }, (_, i) => ({
+          file: `f${i}.md`,
+          diagnostics: [diag({ fixes: [fixableEdit] })],
+        })),
+      });
+    // Park the first three fixes so the sweep steps under the test's control
+    // across a non-boundary file (held) then an interval boundary (advances);
+    // the rest resolve at once so the sweep can finish.
+    const parked: Array<() => void> = [];
+    fixLintDocImpl = () =>
+      new Promise<{ ok: true }>((resolve) => {
+        if (fixLintDocCalls.length <= 3) parked.push(() => resolve({ ok: true }));
+        else resolve({ ok: true });
+      });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('f0.md')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('problems-auto-fix'));
+    await waitFor(() => expect(sweepLiveRegion()?.textContent).toBe(`Fixing 0 of ${total} files`));
+    await waitFor(() => expect(fixLintDocCalls.length).toBe(1));
+
+    // Complete file 1, a non-boundary file. A per-file announcer would read
+    // "1 of 11" here — chunked, the count holds at zero until the flush.
+    parked[0]?.();
+    await waitFor(() => expect(fixLintDocCalls.length).toBe(2));
+    expect(sweepLiveRegion()?.textContent).toBe(`Fixing 0 of ${total} files`);
+
+    // Complete file 2, crossing the interval boundary; now the count advances.
+    parked[1]?.();
+    await waitFor(() => expect(sweepLiveRegion()?.textContent).toBe(`Fixing 2 of ${total} files`));
+
+    // Release the rest: wait for file 3 to be requested (and parked) so its
+    // resolver exists, then release it — the remaining files resolve at once and
+    // the region retires when the sweep finishes.
+    await waitFor(() => expect(fixLintDocCalls.length).toBe(3));
+    parked[2]?.();
+    await waitFor(() => expect(sweepLiveRegion()).toBeUndefined());
   });
 });

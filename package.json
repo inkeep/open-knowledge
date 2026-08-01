@@ -33,6 +33,7 @@
     "tier3": "STRESS_FIDELITY=1 pnpm run tier2",
     "measure:fuzz": "cd packages/app && pnpm run measure:fuzz",
     "measure:stress": "cd packages/app && pnpm run measure:stress",
+    "measure:sweep": "cd packages/app && pnpm run measure:sweep",
 
     "prepare": "bash scripts/husky-prepare.sh",
     "changeset": "changeset",

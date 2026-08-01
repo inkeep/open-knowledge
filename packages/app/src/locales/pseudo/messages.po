@@ -2275,6 +2275,10 @@ msgstr ""
 msgid "Collapse all"
 msgstr ""
 
+#: src/components/ProblemsPanel.tsx
+msgid "Collapse all file groups"
+msgstr ""
+
 #: src/components/BottomComposer.tsx
 msgid "Collapse Ask AI"
 msgstr ""
@@ -4347,6 +4351,10 @@ msgstr ""
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
 msgid "Expand all"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "Expand all file groups"
 msgstr ""
 
 #: src/components/GraphPanel.tsx
@@ -10102,6 +10110,7 @@ msgid "Still loading"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/ProblemsPanel.tsx
 msgid "Stop"
 msgstr ""
 
@@ -10119,6 +10128,18 @@ msgstr ""
 #. placeholder {0}: hostLabel(h)
 #: src/components/SkillInstallMenu.tsx
 msgid "Stop {0} reading this skill"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "Stop fixing files"
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "Stop fixing. Files already fixed stay fixed."
+msgstr ""
+
+#: src/components/ProblemsPanel.tsx
+msgid "Stopped fixing. Files already fixed stay fixed."
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx

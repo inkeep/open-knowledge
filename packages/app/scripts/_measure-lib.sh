@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# _measure-lib.sh — shared helpers for measure-fuzz.sh + measure-stress.sh
+# _measure-lib.sh — shared helpers for the measure-*.sh / perf-*.sh producer scripts
 #
-# Source this from both producer scripts after `set -euo pipefail` to pick
+# Source this from any producer script after `set -euo pipefail` to pick
 # up the functions below. Keeps host detection, epoch-ms resolution, JSONL
 # append serialization, and numeric-flag validation in one place so a
-# future schema change or portability fix touches one file, not two.
+# future schema change or portability fix touches one file, not each consumer.
 #
 # **This file is not directly invokable.** Source it. `bash _measure-lib.sh`
 # exits 1 with a diagnostic.

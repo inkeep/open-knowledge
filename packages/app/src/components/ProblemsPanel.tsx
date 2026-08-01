@@ -5,6 +5,8 @@ import {
   AlertCircle,
   AlertTriangle,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   FilePlus2,
   Link2,
   RefreshCw,
@@ -15,6 +17,7 @@ import { type ReactElement, type ReactNode, useEffect, useRef, useState } from '
 import { toast } from 'sonner';
 import { useOptionalPageList } from '@/components/PageListContext';
 import { type PanelScope, PanelScopeHeader } from '@/components/PanelScopeHeader';
+import { runProjectFixSweep, sweepSleep } from '@/components/problems-sweep';
 import { LINT_PLUGIN_META, type LintPluginMeta } from '@/components/settings/lint-plugin-meta';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -535,6 +538,10 @@ export function ProblemsPanel({
   // Tracks whether the panel is still mounted so the async project sweep can
   // stop early instead of posting fixes and setState-ing into an unmounted tree.
   const mountedRef = useRef(true);
+  // Set by the Stop control to end a running sweep at the next file boundary. A
+  // ref, not state: the sweep loop reads it between files and a re-render would
+  // neither reach the in-flight loop nor be wanted mid-sweep.
+  const cancelSweepRef = useRef(false);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -632,35 +639,68 @@ export function ProblemsPanel({
         )
       : [];
 
+  function cancelProjectFix() {
+    cancelSweepRef.current = true;
+  }
+
   async function fixAllProjectFiles() {
     if (projectFixing !== null || projectFixableFiles.length === 0) return;
-    setProjectFixing({ done: 0, total: projectFixableFiles.length });
-    const failures: { file: string; detail: string | null }[] = [];
-    // Sequential on purpose: each fix lands through the agent-write spine and
-    // flushes disk + git — parallel posts contend on the git flush and multiply
-    // CRDT sessions. Failures (conflict, symlink refusal, capacity) don't stop
+    const total = projectFixableFiles.length;
+    // Clear any stop left over from a previous sweep, or this one ends instantly.
+    cancelSweepRef.current = false;
+    setProjectFixing({ done: 0, total });
+    // Sequential with a small inter-file pace and capacity-aware retry: each fix
+    // lands through the agent-write spine (disk + git flush) and holds a server
+    // session, so an unpaced sweep saturates the shared session pool and starves
+    // concurrent agent writes. Pacing leaves headroom; a capacity refusal is
+    // retried rather than counted as a failure. Non-capacity failures don't stop
     // the sweep; the re-audit below shows what remains.
-    for (const file of projectFixableFiles) {
-      const outcome = await fixLintDoc(filePathToDocName(file.file));
-      // Bail if the panel unmounted mid-sweep (tab switch, agent-mode flip): the
-      // user walked away, so stop posting fixes and skip the state updates React
-      // would no-op anyway (mirrors the `cancelled` guard in useDocLintConfig).
-      if (!mountedRef.current) return;
-      if (!outcome.ok) failures.push({ file: file.file, detail: outcome.errorDetail });
-      setProjectFixing((prev) => (prev === null ? prev : { ...prev, done: prev.done + 1 }));
-    }
+    const { failures, cancelled } = await runProjectFixSweep({
+      items: projectFixableFiles,
+      fixItem: (file) => fixLintDoc(filePathToDocName(file.file)),
+      sleep: sweepSleep,
+      // Commit progress in chunks, not per file, so a large sweep doesn't
+      // re-render (and re-announce to a screen reader) the panel thousands of
+      // times; the final file always commits, so the count lands on the total.
+      onProgress: (done) => setProjectFixing((prev) => (prev === null ? prev : { ...prev, done })),
+      // Two ways a sweep ends early. The panel unmounted mid-sweep (tab switch,
+      // agent-mode flip) — the user walked away, so stop posting fixes and skip
+      // the state updates React would no-op anyway (mirrors the `cancelled`
+      // guard in useDocLintConfig). Or the user pressed Stop, which is the same
+      // between-files bail but leaves the panel mounted and owing them an answer.
+      shouldContinue: () => mountedRef.current && !cancelSweepRef.current,
+    });
+    // Unmounted: nobody is left to tell, and every setState below would no-op.
+    if (cancelled && !mountedRef.current) return;
     setProjectFixing(null);
     if (failures.length > 0) {
+      // The toast names only the first casualty; log the whole set once so a
+      // bulk failure (one root cause across many files, or a mid-sweep server
+      // restart) leaves a diagnostic trail for every file, not just the first.
+      console.warn(
+        `[lint] fix-all: ${failures.length} of ${projectFixableFiles.length} files failed`,
+        failures.map((failure) => ({ file: failure.item.file, detail: failure.detail })),
+      );
       // Name the first casualty so the toast is actionable — "1 of 10 failed"
       // alone gives the user nothing to act on. The detail is the server's
       // problem+json title (untranslated, like the rule-write error toasts).
-      const first = failures[0];
-      toast.error(t`Could not fix ${failures.length} of ${projectFixableFiles.length} files.`, {
-        description:
-          first === undefined
-            ? undefined
-            : `${first.file}${first.detail === null ? '' : ` — ${first.detail}`}`,
-      });
+      // Suppressed on a user stop: they know why it ended, and a failure toast
+      // there reads as "your stop broke something".
+      if (!cancelled) {
+        const first = failures[0];
+        toast.error(t`Could not fix ${failures.length} of ${projectFixableFiles.length} files.`, {
+          description:
+            first === undefined
+              ? undefined
+              : `${first.item.file}${first.detail === null ? '' : ` — ${first.detail}`}`,
+        });
+      }
+    }
+    if (cancelled) {
+      // A stop leaves the project genuinely half-fixed, which is fine — every
+      // file already swept stays fixed. Say so, and let the re-audit below
+      // replace the count with what actually remains.
+      toast.info(t`Stopped fixing. Files already fixed stay fixed.`);
     }
     // Guard the re-audit so a failure surfaces the "Try again" state instead of
     // an unhandled rejection off the fire-and-forget `void fixAllProjectFiles()`.
@@ -882,6 +922,7 @@ export function ProblemsPanel({
           }
           fixing={projectFixing}
           onAutoFix={() => void fixAllProjectFiles()}
+          onCancelFix={cancelProjectFix}
           onFixWithAi={
             onFixWithAi === undefined || audit.status !== 'loaded'
               ? undefined
@@ -903,6 +944,7 @@ function ProjectAuditBody({
   problemCount,
   fixing,
   onAutoFix,
+  onCancelFix,
   onFixWithAi,
   onCreateTarget,
   creatingTarget,
@@ -918,6 +960,9 @@ function ProjectAuditBody({
   /** Sweep progress while a project auto-fix is running, else null. */
   fixing: { done: number; total: number } | null;
   onAutoFix: () => void;
+  /** Stop a running sweep at the next file boundary. Files already fixed stay
+   *  fixed; the panel re-audits so the count reflects what actually remains. */
+  onCancelFix: () => void;
   /** Hand the whole audit to the agent; absent on web and until the audit
    *  loads (there is nothing to describe before then). */
   onFixWithAi?: () => void;
@@ -927,6 +972,23 @@ function ProjectAuditBody({
 }) {
   const { t } = useLingui();
   const loading = audit.status === 'loading' || audit.status === 'idle';
+  const loadedFiles = audit.status === 'loaded' ? audit.result.files : [];
+  const [expandedFiles, setExpandedFiles] = useState<ReadonlySet<string>>(() => new Set());
+  // Every group is open only when the set covers all of them; that is exactly
+  // when the one control flips from "expand all" to "collapse all".
+  const allExpanded =
+    loadedFiles.length > 0 && loadedFiles.every((file) => expandedFiles.has(file.file));
+  function toggleFile(file: string, open: boolean) {
+    setExpandedFiles((prev) => {
+      const next = new Set(prev);
+      if (open) next.add(file);
+      else next.delete(file);
+      return next;
+    });
+  }
+  function toggleAll() {
+    setExpandedFiles(allExpanded ? new Set() : new Set(loadedFiles.map((file) => file.file)));
+  }
   return (
     <PanelBody className="px-2 py-2" data-testid="problems-project-scope">
       {/* Two rows, not one: the count summary plus two labelled actions plus
@@ -949,26 +1011,59 @@ function ProjectAuditBody({
               </>
             )}
           </p>
-          {/* Icon-only, so the label lives in a tooltip as well as the
-              accessible name — nothing on the button says what it does. */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-6 shrink-0 text-muted-foreground"
-                aria-label={t`Re-run the project audit`}
-                data-testid="problems-audit-refresh"
-                disabled={loading || fixing !== null}
-                onClick={onRefresh}
-              >
-                <RefreshCw aria-hidden="true" className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent data-testid="problems-audit-refresh-tooltip">
-              <Trans>Re-run the project audit</Trans>
-            </TooltipContent>
-          </Tooltip>
+          <div className="flex shrink-0 items-center gap-1">
+            {/* Groups now mount collapsed, so this restores the fully-expanded
+                view in one action; present only once there are groups to act on. */}
+            {loadedFiles.length > 0 ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-6 shrink-0 text-muted-foreground"
+                    aria-label={
+                      allExpanded ? t`Collapse all file groups` : t`Expand all file groups`
+                    }
+                    data-testid="problems-audit-expand-toggle"
+                    onClick={toggleAll}
+                  >
+                    {allExpanded ? (
+                      <ChevronsDownUp aria-hidden="true" className="size-3.5" />
+                    ) : (
+                      <ChevronsUpDown aria-hidden="true" className="size-3.5" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent data-testid="problems-audit-expand-toggle-tooltip">
+                  {allExpanded ? (
+                    <Trans>Collapse all file groups</Trans>
+                  ) : (
+                    <Trans>Expand all file groups</Trans>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
+            {/* Icon-only, so the label lives in a tooltip as well as the
+                accessible name — nothing on the button says what it does. */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6 shrink-0 text-muted-foreground"
+                  aria-label={t`Re-run the project audit`}
+                  data-testid="problems-audit-refresh"
+                  disabled={loading || fixing !== null}
+                  onClick={onRefresh}
+                >
+                  <RefreshCw aria-hidden="true" className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent data-testid="problems-audit-refresh-tooltip">
+                <Trans>Re-run the project audit</Trans>
+              </TooltipContent>
+            </Tooltip>
+          </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1">
           {/* The Auto-fix button is disabled during a sweep, so AT can't focus it
@@ -979,6 +1074,28 @@ function ProjectAuditBody({
             <span className="sr-only" role="status">
               {t`Fixing ${fixing.done} of ${fixing.total} files`}
             </span>
+          ) : null}
+          {/* Auto-fix disables itself while sweeping, so without this the only
+              way out of a started sweep is a page reload. Rendered only during a
+              sweep, beside the disabled Auto-fix it replaces the use of. */}
+          {fixing !== null ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 shrink-0 px-2 text-muted-foreground"
+                  aria-label={t`Stop fixing files`}
+                  data-testid="problems-cancel-fix"
+                  onClick={onCancelFix}
+                >
+                  <Trans>Stop</Trans>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent data-testid="problems-cancel-fix-tooltip">
+                <Trans>Stop fixing. Files already fixed stay fixed.</Trans>
+              </TooltipContent>
+            </Tooltip>
           ) : null}
           <AutoFixButton
             count={fixableCount}
@@ -1036,6 +1153,8 @@ function ProjectAuditBody({
           onNavigate={onNavigate}
           onCreateTarget={onCreateTarget}
           creatingTarget={creatingTarget}
+          expandedFiles={expandedFiles}
+          onToggleFile={toggleFile}
         />
       )}
     </PanelBody>
@@ -1047,11 +1166,17 @@ function ProjectAuditResults({
   onNavigate,
   onCreateTarget,
   creatingTarget,
+  expandedFiles,
+  onToggleFile,
 }: {
   result: ValidationAuditResponse;
   onNavigate: (filePath: string, diagnostic: DiagnosticLike) => void;
   onCreateTarget?: (diagnostic: DiagnosticLike) => void;
   creatingTarget: string | null;
+  /** File paths whose group is open. Groups mount collapsed, so a fresh
+   *  project plane renders headers only until the reader drills in. */
+  expandedFiles: ReadonlySet<string>;
+  onToggleFile: (file: string, open: boolean) => void;
 }) {
   const { t } = useLingui();
   return (
@@ -1086,6 +1211,8 @@ function ProjectAuditResults({
             onNavigate={onNavigate}
             onCreateTarget={onCreateTarget}
             creatingTarget={creatingTarget}
+            open={expandedFiles.has(file.file)}
+            onOpenChange={(open) => onToggleFile(file.file, open)}
           />
         ))
       )}
@@ -1098,16 +1225,22 @@ function ProjectFileGroup({
   onNavigate,
   onCreateTarget,
   creatingTarget,
+  open,
+  onOpenChange,
 }: {
   file: ValidationDocResult;
   onNavigate: (filePath: string, diagnostic: DiagnosticLike) => void;
   onCreateTarget?: (diagnostic: DiagnosticLike) => void;
   creatingTarget: string | null;
+  /** Controlled by the parent so the one expand/collapse-all control can drive
+   *  every group at once; a closed group leaves its diagnostic rows unmounted. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useLingui();
   const sorted = [...file.diagnostics].sort(compareDiagnostics);
   return (
-    <Collapsible defaultOpen data-testid="problems-audit-group">
+    <Collapsible open={open} onOpenChange={onOpenChange} data-testid="problems-audit-group">
       <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-1.5 rounded px-2 py-1.5 text-left transition-colors hover:bg-muted">
         <ChevronRight
           aria-hidden="true"
