@@ -51,10 +51,22 @@ export function treeFilePathToDocumentDocName(
   documents: readonly FileEntry[],
 ): string {
   const normalized = stripTrailingSlash(treePath);
-  const exact = documents.find(
-    (entry): entry is DocumentEntry =>
-      isDocumentEntry(entry) && fileEntryToTreePath(entry) === normalized,
-  );
+  // Resolve against the same collection-aware mapping the rows were built
+  // from, or a visible row can act on the wrong file: a doubled extension and
+  // the real base file both map RAW to `name.md`, so a flip in listing order
+  // would silently point the `name.md` row's open / rename / delete at
+  // `name.md.md`. The raw pass stays as a fallback for tree paths this feed
+  // never produced — Pierre can move a node out from under the document list.
+  const stemExtensions = markdownStemExtensions(documents);
+  const exact =
+    documents.find(
+      (entry): entry is DocumentEntry =>
+        isDocumentEntry(entry) && collectionTreePath(entry, stemExtensions) === normalized,
+    ) ??
+    documents.find(
+      (entry): entry is DocumentEntry =>
+        isDocumentEntry(entry) && fileEntryToTreePath(entry) === normalized,
+    );
   if (exact) return exact.docName;
   const extensionless = treeFilePathToDocName(normalized);
   const collidingEntry = documents.find((entry) => {
@@ -66,6 +78,25 @@ export function treeFilePathToDocumentDocName(
     );
   });
   return collidingEntry && TREE_EXTENSION_PATTERN.test(normalized) ? normalized : extensionless;
+}
+
+/**
+ * The entry a tree path belongs to, resolved through the same collection-aware
+ * mapping the rows are built from. Two documents can share a RAW tree path — a
+ * doubled extension and its base file both map to `name.md` — so a raw match
+ * hands back whichever the server happened to list first and points that row's
+ * action at the other file. Raw matching stays as a fallback for tree paths
+ * this feed never produced.
+ */
+export function findEntryByTreePath(
+  treePath: string,
+  documents: readonly FileEntry[],
+): FileEntry | undefined {
+  const stemExtensions = markdownStemExtensions(documents);
+  return (
+    documents.find((entry) => collectionTreePath(entry, stemExtensions) === treePath) ??
+    documents.find((entry) => fileEntryToTreePath(entry) === treePath)
+  );
 }
 
 export function fileEntryToTreePath(entry: FileEntry): string {
@@ -98,19 +129,85 @@ export function treePathToAppPath(treePath: string): string {
     : treeFilePathToDocName(treePath);
 }
 
+/**
+ * Map every extension-suffixed document docName to the set of extensions seen
+ * for its stem — the collection evidence for whether the server
+ * extension-QUALIFIED a docName. When `note.md` and `note.mdx` share a
+ * directory, the Show All walk emits BOTH docNames with their extension so
+ * each file stays independently addressable, and those docNames already ARE
+ * their filenames. A doubled extension on disk produces a docName of the same
+ * shape (`name.md.md` strips to `name.md`) but means the opposite, and one
+ * entry alone can't tell them apart.
+ *
+ * Counting extensions per stem approximates that decision; it is exact only
+ * while at most one file per stem carries a doubled extension. Two doubled
+ * files sharing a stem (`a.md.md` plus `a.mdx.mdx`) present as a qualified
+ * pair and stay collapsed onto their stripped names. Extensions keep their
+ * on-disk casing here because the server qualifies case-variant siblings too
+ * (`name.md` beside `name.MD` on a case-sensitive filesystem) — folding case
+ * would count that pair once and read both as doubled.
+ */
+function markdownStemExtensions(documents: readonly FileEntry[]): Map<string, ReadonlySet<string>> {
+  const byStem = new Map<string, Set<string>>();
+  for (const entry of documents) {
+    if (!isDocumentEntry(entry)) continue;
+    const match = entry.docName.match(TREE_EXTENSION_PATTERN);
+    if (!match) continue;
+    const stem = entry.docName.slice(0, -match[0].length);
+    const extensions = byStem.get(stem);
+    if (extensions) extensions.add(match[0]);
+    else byStem.set(stem, new Set([match[0]]));
+  }
+  return byStem;
+}
+
+/**
+ * The tree path for an entry, resolved with collection context.
+ *
+ * `docNameToTreePath` returns any docName already ending in `.md`/`.mdx`
+ * verbatim. That is right for a server-qualified docName and wrong for a
+ * doubled extension: `name.md.md` arrives as docName `name.md`, maps to
+ * `name.md`, and lands on the exact path the real `name.md` occupies. Sending
+ * both to the model would throw `Duplicate path`; dropping one hides a real
+ * file. Resolving the doubled entry to its true filename does neither.
+ *
+ * Only markdown docNames take this branch — mermaid and editable-text
+ * docNames carry extensions that `TREE_EXTENSION_PATTERN` never matches, so
+ * they keep `docNameToTreePath`'s verbatim handling.
+ */
+function collectionTreePath(
+  entry: FileEntry,
+  stemExtensions: ReadonlyMap<string, ReadonlySet<string>>,
+): string {
+  const treePath = fileEntryToTreePath(entry);
+  if (!isDocumentEntry(entry)) return treePath;
+  const match = entry.docName.match(TREE_EXTENSION_PATTERN);
+  if (!match) return treePath;
+  const stem = entry.docName.slice(0, -match[0].length);
+  // Two extensions on one stem — the server qualified these docNames, so the
+  // docName is already the filename.
+  if ((stemExtensions.get(stem)?.size ?? 0) > 1) return treePath;
+  return `${entry.docName}${entry.docExt ?? DEFAULT_TREE_EXTENSION}`;
+}
+
 export function documentsToTreePaths(documents: readonly FileEntry[]): string[] {
-  // De-dupe by tree path. Two entries with the same tree path are the same tree
-  // node — the model can only hold one, and `@pierre/trees` `resetPaths` hard-
-  // throws `Duplicate path` (crashing the whole editor) on a collision. A brief
-  // double-entry for one doc is reachable when two refreshes race (e.g. a stale
-  // size=0 fetch and the fresh size=40 fetch landing in `documents` together),
-  // so unique-ify here at the single feed every `resetPaths` call routes through
-  // rather than trusting every async `setDocuments` producer to dedupe. First
-  // occurrence wins (stable order); the next refresh reconciles the metadata.
+  // Every `resetPaths` call routes through here, and `@pierre/trees`
+  // `PathStoreBuilder` hard-throws `Duplicate path` on a repeat — which takes
+  // the whole editor down through the top-level error boundary. So the list
+  // this returns must be unique no matter what the server sent.
+  //
+  // Uniqueness alone is not enough: skipping a repeat silently deletes a row.
+  // That is correct only when the repeat is the SAME file twice (two refreshes
+  // racing a stale size=0 and a fresh size=40 into `documents` together), and
+  // wrong when two real files merely resolve to one path — then a file that
+  // exists on disk gets no row, no badge, and no warning. `collectionTreePath`
+  // separates the two by giving a doubled-extension file back its real
+  // filename, leaving only genuine repeats for the skip below.
+  const stemExtensions = markdownStemExtensions(documents);
   const seen = new Set<string>();
   const paths: string[] = [];
   for (const entry of documents) {
-    const path = fileEntryToTreePath(entry);
+    const path = collectionTreePath(entry, stemExtensions);
     if (seen.has(path)) continue;
     seen.add(path);
     paths.push(path);

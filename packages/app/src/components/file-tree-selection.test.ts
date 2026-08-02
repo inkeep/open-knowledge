@@ -164,6 +164,45 @@ describe('resolveFileTreeSelectionAction', () => {
     });
   });
 
+  test('opens the base file from its own row when a doubled extension is listed first', () => {
+    // The `name.md` row and the `name.md.md` row are both visible now, and both
+    // entries map RAW to `name.md`. Picking whichever entry the server happened
+    // to list first would open `name.md.md` from the `name.md` row, which is
+    // the wrong file and invisible to the user. Directory order is not
+    // guaranteed, so assert the order that used to resolve incorrectly.
+    const doubled: FileEntry = {
+      kind: 'document',
+      docName: 'name.md',
+      docExt: '.md',
+      size: 20,
+      modified: '',
+    };
+    const base: FileEntry = {
+      kind: 'document',
+      docName: 'name',
+      docExt: '.md',
+      size: 10,
+      modified: '',
+    };
+    expect(resolveFileTreeSelectionAction('name.md', [doubled, base])).toEqual({
+      kind: 'document',
+      path: 'name',
+    });
+    expect(resolveFileTreeSelectionAction('name.md.md', [doubled, base])).toEqual({
+      kind: 'document',
+      path: 'name.md',
+    });
+    // Same answers with the entries the other way round.
+    expect(resolveFileTreeSelectionAction('name.md', [base, doubled])).toEqual({
+      kind: 'document',
+      path: 'name',
+    });
+    expect(resolveFileTreeSelectionAction('name.md.md', [base, doubled])).toEqual({
+      kind: 'document',
+      path: 'name.md',
+    });
+  });
+
   test('routes extension-qualified document rows to their exact document identity', () => {
     expect(
       resolveFileTreeSelectionAction('docs/guide.mdx', [

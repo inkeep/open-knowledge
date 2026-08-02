@@ -6,7 +6,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { hashFromAssetPath } from '@/lib/doc-hash';
 import {
-  fileEntryToTreePath,
+  findEntryByTreePath,
   treeFilePathToDocumentDocName,
   treePathToAppPath,
 } from './file-tree-adapter';
@@ -94,7 +94,7 @@ export function resolveFileTreeSelectionAction(
 ): FileTreeSelectionAction {
   if (!selectedPath) return { kind: 'none' };
 
-  const entry = entries.find((item) => fileEntryToTreePath(item) === selectedPath);
+  const entry = findEntryByTreePath(selectedPath, entries);
   const appPath = treePathToAppPath(selectedPath);
   const documentDocName = selectedPath.endsWith('/')
     ? appPath

@@ -80,6 +80,172 @@ describe('file-tree-adapter', () => {
     expect(documentsToTreePaths([stale, fresh])).toEqual(['note.mdx']);
   });
 
+  test('a doubled markdown extension keeps its own row next to the base file', () => {
+    // `name.md.md` strips to docName `name.md`, which already ends in `.md` and
+    // so maps to tree path `name.md` verbatim — the same path the real `name.md`
+    // claims. Both files exist on disk and both must be reachable; collapsing
+    // them to one row hides a real file with no badge, warning, or error.
+    const base: FileEntry = {
+      kind: 'document',
+      docName: 'name',
+      docExt: '.md',
+      size: 10,
+      modified: '2026-01-01T00:00:00Z',
+    };
+    const doubled: FileEntry = {
+      kind: 'document',
+      docName: 'name.md',
+      docExt: '.md',
+      size: 20,
+      modified: '2026-01-01T00:00:01Z',
+    };
+    expect(documentsToTreePaths([base, doubled])).toEqual(['name.md', 'name.md.md']);
+    // Order-independent: directory listing order is not guaranteed, so the
+    // collision must resolve the same way when the doubled file arrives first.
+    expect(documentsToTreePaths([doubled, base])).toEqual(['name.md.md', 'name.md']);
+  });
+
+  test('the relocated doubled-extension row still resolves to its real docName', () => {
+    // A visible row that opens the wrong doc is not actionable. `name.md.md`
+    // must round-trip to docName `name.md` (what the CRDT layer addresses it
+    // by), and the base row must stay on `name`.
+    const base: FileEntry = {
+      kind: 'document',
+      docName: 'name',
+      docExt: '.md',
+      size: 10,
+      modified: '2026-01-01T00:00:00Z',
+    };
+    const doubled: FileEntry = {
+      kind: 'document',
+      docName: 'name.md',
+      docExt: '.md',
+      size: 20,
+      modified: '2026-01-01T00:00:01Z',
+    };
+    expect(treeFilePathToDocumentDocName('name.md.md', [base, doubled])).toBe('name.md');
+    expect(treeFilePathToDocumentDocName('name.md', [base, doubled])).toBe('name');
+    // Order-independent for the same reason the forward direction is: both
+    // entries produce the raw tree path `name.md`, so a listing that returns
+    // the doubled file first would otherwise make the `name.md` row open,
+    // rename, and DELETE `name.md.md` while the real `name.md` goes unreachable.
+    expect(treeFilePathToDocumentDocName('name.md.md', [doubled, base])).toBe('name.md');
+    expect(treeFilePathToDocumentDocName('name.md', [doubled, base])).toBe('name');
+  });
+
+  test('server-qualified same-stem siblings keep their own paths and fabricate nothing', () => {
+    // When `note.md` and `note.mdx` share a stem, the Show All walk qualifies
+    // BOTH docNames with their extension. Those are already distinct tree
+    // paths. A third, extension-less entry for the same file (an index-backed
+    // listing merged into the same array) is the SAME file under a second
+    // spelling — it must dedupe, not grow a phantom `note.mdx.mdx` row.
+    const qualifiedMd: FileEntry = {
+      kind: 'document',
+      docName: 'note.md',
+      docExt: '.md',
+      size: 10,
+      modified: '2026-01-01T00:00:00Z',
+    };
+    const qualifiedMdx: FileEntry = {
+      kind: 'document',
+      docName: 'note.mdx',
+      docExt: '.mdx',
+      size: 20,
+      modified: '2026-01-01T00:00:00Z',
+    };
+    const unqualified: FileEntry = {
+      kind: 'document',
+      docName: 'note',
+      docExt: '.mdx',
+      size: 20,
+      modified: '2026-01-01T00:00:00Z',
+    };
+    expect(documentsToTreePaths([qualifiedMd, qualifiedMdx, unqualified])).toEqual([
+      'note.md',
+      'note.mdx',
+    ]);
+  });
+
+  test('server-qualified case-variant siblings keep their verbatim filenames', () => {
+    // `name.md` and `name.MD` are two files on a case-sensitive filesystem, and
+    // the server strips extensions case-insensitively — so the Show All walk
+    // qualifies BOTH docNames and each already IS its filename. Counting the
+    // stem's extensions case-insensitively would see one extension, read both
+    // as doubled, and point each row at a file that does not exist.
+    const lower: FileEntry = {
+      kind: 'document',
+      docName: 'name.md',
+      docExt: '.md',
+      size: 1,
+      modified: '',
+    };
+    const upper: FileEntry = {
+      kind: 'document',
+      docName: 'name.MD',
+      docExt: '.MD',
+      size: 2,
+      modified: '',
+    };
+    expect(documentsToTreePaths([lower, upper])).toEqual(['name.md', 'name.MD']);
+  });
+
+  test('a lone doubled extension with no sibling still gets its real filename', () => {
+    // The common shape of the bug: a stray `notes.md.md` in a directory that
+    // has no `notes.md` at all. Nothing collides, so nothing forces the issue —
+    // but the row must still point at the file that exists on disk.
+    expect(
+      documentsToTreePaths([
+        { kind: 'document', docName: 'notes.md', docExt: '.md', size: 1, modified: '' },
+      ]),
+    ).toEqual(['notes.md.md']);
+    // Same in a subdirectory — the stem is taken from the full slashed docName.
+    expect(
+      documentsToTreePaths([
+        { kind: 'document', docName: 'docs/guide.md', docExt: '.md', size: 1, modified: '' },
+      ]),
+    ).toEqual(['docs/guide.md.md']);
+  });
+
+  test('every returned tree path is unique for adversarial collision input', () => {
+    // `@pierre/trees` `PathStoreBuilder` hard-throws `Duplicate path`, which
+    // takes the whole editor down through the top-level error boundary. The
+    // uniqueness of this list is the only thing standing between a doubled
+    // extension on disk and that crash, so pin it directly.
+    const entries: FileEntry[] = [
+      { kind: 'document', docName: 'a', docExt: '.md', size: 1, modified: '' },
+      { kind: 'document', docName: 'a.md', docExt: '.md', size: 1, modified: '' },
+      { kind: 'document', docName: 'a.md.md', docExt: '.md', size: 1, modified: '' },
+      { kind: 'document', docName: 'a.md', docExt: '.md', size: 2, modified: '' },
+      { kind: 'document', docName: 'a', docExt: '.md', size: 3, modified: '' },
+      { kind: 'document', docName: 'b.mdx', docExt: '.mdx', size: 1, modified: '' },
+      { kind: 'document', docName: 'b', docExt: '.mdx', size: 1, modified: '' },
+    ];
+    const paths = documentsToTreePaths(entries);
+    expect(new Set(paths).size).toBe(paths.length);
+    // Five genuinely distinct files on disk — the `a` family (`a.md`,
+    // `a.md.md`, `a.md.md.md`) and the `b` pair (`b.mdx.mdx`, `b.mdx`) — each
+    // keep a row; the repeated entries dedupe.
+    expect(paths).toEqual(['a.md', 'a.md.md', 'a.md.md.md', 'b.mdx.mdx', 'b.mdx']);
+  });
+
+  test('a doubled extension sharing a stem with an .md/.mdx pair stays collapsed but never duplicates', () => {
+    // Known residual, pinned for the crash invariant rather than the row.
+    // With `a.md`, `a.mdx` AND `a.md.md` in one directory, the Show All walk
+    // qualifies the same-stem pair — so the real `a.md` arrives as docName
+    // `a.md`, which is byte-identical to what `a.md.md` strips to. The two
+    // files are indistinguishable on the wire, so `a.md.md` keeps collapsing.
+    // What must hold is that the feed stays unique: a repeat here would throw
+    // `Duplicate path` and take the window down.
+    const entries: FileEntry[] = [
+      { kind: 'document', docName: 'a.md', docExt: '.md', size: 1, modified: '' },
+      { kind: 'document', docName: 'a.mdx', docExt: '.mdx', size: 2, modified: '' },
+      { kind: 'document', docName: 'a.md', docExt: '.md', size: 3, modified: '' },
+    ];
+    const paths = documentsToTreePaths(entries);
+    expect(new Set(paths).size).toBe(paths.length);
+    expect(paths).toEqual(['a.md', 'a.mdx']);
+  });
+
   test('converts Trees file and directory paths back to app paths', () => {
     expect(treeFilePathToDocName('docs/guide.md')).toBe('docs/guide');
     expect(treeFilePathToDocName('docs/guide')).toBe('docs/guide');
