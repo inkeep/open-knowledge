@@ -269,3 +269,120 @@ describe('validateAndCoerceRenameDestination — asset paths', () => {
     });
   });
 });
+
+describe('validateAndCoerceRenameDestination — doubled document extension', () => {
+  // Pierre pre-selects only the stem and leaves the extension in place, so a
+  // user who types a whole filename ending in `.md` commits `name.md` plus the
+  // retained `.md`. `name.md.md` on disk carries docName `name.md`, which maps
+  // back to the tree path of a DIFFERENT file — two files, one tree path.
+  test('typed name already ending in .md collapses the retained extension', () => {
+    expect(
+      validateAndCoerceRenameDestination(
+        'brain/research/Untitled.md',
+        'brain/research/codebase-audit-backlog-v2.md.md',
+        false,
+      ),
+    ).toEqual({
+      kind: 'allow',
+      destinationPath: 'brain/research/codebase-audit-backlog-v2.md',
+    });
+  });
+
+  test('typed name already ending in .mdx collapses the retained extension', () => {
+    expect(validateAndCoerceRenameDestination('foo.mdx', 'bar.mdx.mdx', false)).toEqual({
+      kind: 'allow',
+      destinationPath: 'bar.mdx',
+    });
+  });
+
+  test('typed .md over an .mdx source keeps the typed extension', () => {
+    expect(validateAndCoerceRenameDestination('foo.mdx', 'bar.md.mdx', false)).toEqual({
+      kind: 'allow',
+      destinationPath: 'bar.md',
+    });
+  });
+
+  test('typed .mdx over a .md source keeps the typed extension', () => {
+    expect(validateAndCoerceRenameDestination('foo.md', 'bar.mdx.md', false)).toEqual({
+      kind: 'allow',
+      destinationPath: 'bar.mdx',
+    });
+  });
+
+  test('collapse preserves the casing the user typed', () => {
+    expect(validateAndCoerceRenameDestination('foo.md', 'bar.MD.md', false)).toEqual({
+      kind: 'allow',
+      destinationPath: 'bar.MD',
+    });
+  });
+
+  test('collapse preserves the directory portion', () => {
+    expect(
+      validateAndCoerceRenameDestination(
+        'meetings/2026/foo.md',
+        'meetings/2026/notes.md.md',
+        false,
+      ),
+    ).toEqual({
+      kind: 'allow',
+      destinationPath: 'meetings/2026/notes.md',
+    });
+  });
+
+  test('a multi-dot basename whose stem is not a document extension is left alone', () => {
+    expect(validateAndCoerceRenameDestination('foo.md', 'v1.2.md', false)).toEqual({
+      kind: 'allow',
+      destinationPath: 'v1.2.md',
+    });
+  });
+
+  test('a dotted name that merely looks like a version suffix is left alone', () => {
+    expect(validateAndCoerceRenameDestination('foo.md', 'report.2026.md', false)).toEqual({
+      kind: 'allow',
+      destinationPath: 'report.2026.md',
+    });
+  });
+
+  test('an asset source is left alone even when the typed name carries a document extension', () => {
+    // Collapsing here would retitle an image to `notes.md`.
+    expect(
+      validateAndCoerceRenameDestination('media/image.png', 'media/notes.md.png', false),
+    ).toEqual({
+      kind: 'allow',
+      destinationPath: 'media/notes.md.png',
+    });
+  });
+
+  test('a doubled asset extension is left alone (no docName round-trip to break)', () => {
+    expect(
+      validateAndCoerceRenameDestination('media/photo.png', 'media/photo.png.png', false),
+    ).toEqual({
+      kind: 'allow',
+      destinationPath: 'media/photo.png.png',
+    });
+  });
+
+  test('an uppercase source extension still collapses its retained suffix', () => {
+    // Guard 1 case-folds; guard 2 matches the retained suffix verbatim, which
+    // is exactly the string sliced off the source. Lowercasing the retained
+    // suffix anywhere in that chain would silently stop collapse from firing.
+    expect(validateAndCoerceRenameDestination('foo.MD', 'bar.MD.MD', false)).toEqual({
+      kind: 'allow',
+      destinationPath: 'bar.MD',
+    });
+  });
+
+  test('only the one retained layer comes off a deliberately doubled typed name', () => {
+    expect(validateAndCoerceRenameDestination('foo.md', 'v1.md.md.md', false)).toEqual({
+      kind: 'allow',
+      destinationPath: 'v1.md.md',
+    });
+  });
+
+  test('a stem-less destination is left alone (docName `.md` still resolves to its own file)', () => {
+    expect(validateAndCoerceRenameDestination('foo.md', '.md.md', false)).toEqual({
+      kind: 'allow',
+      destinationPath: '.md.md',
+    });
+  });
+});
