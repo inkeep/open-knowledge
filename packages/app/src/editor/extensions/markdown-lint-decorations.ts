@@ -69,10 +69,23 @@ const RECOMPUTE_DEBOUNCE_MS = 400;
 
 /**
  * Group diagnostics by the index of the top-level block they fall in.
- * `source` is the full document text (frontmatter included); diagnostics in
- * the FM region are skipped — they have no WYSIWYG anchor (the property panel
- * owns frontmatter) and stay visible in the Problems panel.
+ * `source` is the full document text (frontmatter included); diagnostics with
+ * no body anchor are skipped — they stay visible in the Problems panel.
+ *
+ * Two kinds have no anchor. Anything reported INSIDE the frontmatter region
+ * belongs to the property panel, not the body. And every `frontmatter`-source
+ * diagnostic is anchorless regardless of where its line lands: the validator
+ * anchors a missing-`required` violation to the region's opening fence, which
+ * on a doc with NO frontmatter at all is line 1 — the first line of body text.
+ * Line-based skipping alone therefore paints a squiggle on the one construct
+ * that is definitionally not the problem (there is nothing there to be wrong),
+ * on the docs where the error matters most. `isFrontmatterAnchorless` keys off
+ * the producing plugin instead, which holds for both cases.
  */
+function isFrontmatterAnchorless(diagnostic: LintDiagnostic): boolean {
+  return diagnostic.source === 'frontmatter';
+}
+
 export function mapDiagnosticsToBlocks(
   source: string,
   diagnostics: LintDiagnostic[],
@@ -82,6 +95,7 @@ export function mapDiagnosticsToBlocks(
   if (diagnostics.length === 0) return byBlock;
   const { spans, fmLineCount } = computeSourceBlockSpans(source, md);
   for (const diagnostic of diagnostics) {
+    if (isFrontmatterAnchorless(diagnostic)) continue;
     // mdast positions are 1-based; the diagnostic range is 0-based LSP.
     const line = diagnostic.range.start.line + 1;
     if (fmLineCount > 0 && line <= fmLineCount) continue;
@@ -525,11 +539,15 @@ export const MarkdownLintDecorations = Extension.create<MarkdownLintDecorationsO
            */
           function scrollToLintBlock(detail: LintNavDetail): boolean {
             if (!view.dom.isConnected || view.dom.offsetParent === null) return false;
+            // Frontmatter diagnostics have no WYSIWYG anchor (property panel
+            // owns that region) — leave the banked source-mode intent alive.
+            // Checked by producing plugin, not by line, for the same reason the
+            // decoration mapping does: on a doc with no frontmatter the
+            // violation's line points into the body.
+            if (detail.source === 'frontmatter') return false;
             const source = getSource?.() ?? md.serialize(view.state.doc.toJSON());
             const { spans, fmLineCount } = computeSourceBlockSpans(source, md);
             if (spans.length !== comparableChildCount(view.state.doc)) return false;
-            // Frontmatter diagnostics have no WYSIWYG anchor (property panel
-            // owns that region) — leave the banked source-mode intent alive.
             if (fmLineCount > 0 && detail.line <= fmLineCount) return false;
             const index = blockIndexForLine(spans, detail.line);
             if (index === null) return false;

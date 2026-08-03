@@ -526,7 +526,7 @@ describe('ProblemsPanel', () => {
     try {
       render(<ProblemsPanel docName="notes" diagnostics={[diag({ line: 7, column: 2 })]} />);
       fireEvent.click(screen.getByRole('button'));
-      expect(received).toEqual({ line: 7, column: 2 });
+      expect(received).toEqual({ line: 7, column: 2, source: 'markdownlint' });
     } finally {
       window.removeEventListener(LINT_NAV_EVENT, listener);
     }
@@ -602,7 +602,7 @@ describe('ProblemsPanel', () => {
       // reads as a whole finding out of list context.
       expect(occurrences[1]?.getAttribute('aria-label')).toBe('Hard tabs at line 9');
       fireEvent.click(occurrences[1] as HTMLElement);
-      expect(received).toEqual({ line: 9, column: 1 });
+      expect(received).toEqual({ line: 9, column: 1, source: 'markdownlint' });
     } finally {
       window.removeEventListener(LINT_NAV_EVENT, listener);
     }
@@ -739,7 +739,7 @@ describe('ProblemsPanel', () => {
     try {
       render(<ProblemsPanel docName="notes" diagnostics={[linkDiag({ line: 5 })]} />);
       fireEvent.click(screen.getByRole('button', { name: /does not resolve/ }));
-      expect(received).toEqual({ line: 5, column: 1 });
+      expect(received).toEqual({ line: 5, column: 1, source: 'links' });
     } finally {
       window.removeEventListener(LINT_NAV_EVENT, listener);
     }
@@ -752,7 +752,7 @@ describe('ProblemsPanel', () => {
     // the next source-mode activation within the TTL replays it.
     expect(consumePendingSourceNavigation('notes')).toEqual({
       kind: 'lint',
-      detail: { line: 7, column: 2 },
+      detail: { line: 7, column: 2, source: 'markdownlint' },
     });
   });
 });
@@ -983,7 +983,7 @@ describe('ProblemsPanel — project scope', () => {
       expect(window.location.hash).toBe('#/guides/setup');
       expect(consumePendingSourceNavigation('guides/setup')).toEqual({
         kind: 'lint',
-        detail: { line: 4, column: 2 },
+        detail: { line: 4, column: 2, source: 'markdownlint' },
       });
       // The in-doc nav event stays quiet on cross-doc clicks — it carries no
       // docName and would move the cursor in the doc that is still open.
@@ -1038,7 +1038,7 @@ describe('ProblemsPanel — project scope', () => {
       expect(window.location.hash).toBe('#/guides/setup');
       expect(consumePendingSourceNavigation('guides/setup')).toEqual({
         kind: 'lint',
-        detail: { line: 9, column: 1 },
+        detail: { line: 9, column: 1, source: 'frontmatter' },
       });
       // Cross-doc clicks stay off the in-doc event (it carries no docName).
       expect(navEvents).toBe(0);
@@ -1064,11 +1064,11 @@ describe('ProblemsPanel — project scope', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /Hard tabs/ }));
 
-      expect(received).toEqual({ line: 7, column: 2 });
+      expect(received).toEqual({ line: 7, column: 2, source: 'markdownlint' });
       expect(window.location.hash).toBe(hashBefore);
       expect(consumePendingSourceNavigation('notes')).toEqual({
         kind: 'lint',
-        detail: { line: 7, column: 2 },
+        detail: { line: 7, column: 2, source: 'markdownlint' },
       });
     } finally {
       window.removeEventListener(LINT_NAV_EVENT, listener);

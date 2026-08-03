@@ -39,6 +39,11 @@ interface EditorToolbarProps {
   onModeChange: (mode: EditorModeValue) => void;
   showAddPropertyButton: boolean;
   onAddProperty: () => void;
+  /** Frontmatter-schema violations on the active doc — badged on the
+   *  Add-properties button, which is where those errors report (they have no
+   *  body anchor to squiggle). */
+  frontmatterProblemCount?: number;
+  frontmatterProblemMessages?: readonly string[];
   isPanelCollapsed: boolean;
   onTogglePanel: () => void;
   /** Reserve right-side room in the action cluster so it sits left of the
@@ -55,6 +60,8 @@ export function EditorToolbar({
   onModeChange,
   showAddPropertyButton,
   onAddProperty,
+  frontmatterProblemCount = 0,
+  frontmatterProblemMessages,
   isPanelCollapsed,
   onTogglePanel,
   reserveRightGutter = false,
@@ -168,6 +175,8 @@ export function EditorToolbar({
               name={activeSkill.name}
               showAddPropertyButton={showAddPropertyButton}
               onAddProperty={onAddProperty}
+              problemCount={frontmatterProblemCount}
+              problemMessages={frontmatterProblemMessages}
             />
           </Suspense>
         ) : externalSkill ? // Detected-skill edit buffer: reduced mode. Messaging lives in the
@@ -175,7 +184,13 @@ export function EditorToolbar({
         null : (
           // Non-skill docs only carry add-properties here (no level/install), so
           // there's nothing to overflow — the breadcrumb truncates on its own.
-          showAddPropertyButton && <AddPropertiesButton onAddProperty={onAddProperty} />
+          showAddPropertyButton && (
+            <AddPropertiesButton
+              onAddProperty={onAddProperty}
+              problemCount={frontmatterProblemCount}
+              problemMessages={frontmatterProblemMessages}
+            />
+          )
         )}
         <Tooltip>
           <Button

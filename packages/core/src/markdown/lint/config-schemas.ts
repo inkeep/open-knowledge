@@ -38,6 +38,7 @@ const fullPluginShape = Object.fromEntries(
   LINT_PLUGINS.map((plugin) => [plugin.id, plugin.sliceSchema]),
 ) as z.ZodRawShape;
 
+
 export const LinterConfigSchema = z.object({
   enabled: z.boolean(),
   plugins: z.object(fullPluginShape),
@@ -145,6 +146,7 @@ const LintDiagnosticSchema = z.object({
   code: z.string(),
   message: z.string(),
   fixes: z.array(z.object({ range: LintRangeSchema, newText: z.string() })).optional(),
+  frontmatterScope: z.enum(['missing', 'invalid']).optional(),
 });
 
 export const LintDocResultSchema = z.object({

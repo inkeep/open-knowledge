@@ -124,6 +124,51 @@ describe('mapDiagnosticsToBlocks', () => {
     const byBlock = mapDiagnosticsToBlocks(fmSource, [diag(2)], md);
     expect(byBlock.size).toBe(0);
   });
+
+  const fmDiag = (line: number, over: Partial<LintDiagnostic> = {}): LintDiagnostic =>
+    diag(line, {
+      source: 'frontmatter',
+      code: 'required',
+      message: 'Frontmatter property "status" is required',
+      ...over,
+    });
+
+  test('skips a frontmatter violation on a doc with NO frontmatter region', () => {
+    // The validator anchors a missing-`required` violation to the region's
+    // opening fence. With no region there is no fence, so the line lands on
+    // the first line of body text — which is not what is wrong. Marking it
+    // would squiggle a correct heading on exactly the docs where the schema
+    // error matters most.
+    const byBlock = mapDiagnosticsToBlocks(body, [fmDiag(1)], md);
+    expect(byBlock.size).toBe(0);
+  });
+
+  test('skips a frontmatter violation anchored to a key line inside the region', () => {
+    const byBlock = mapDiagnosticsToBlocks(fmSource, [fmDiag(2, { code: 'enum' })], md);
+    expect(byBlock.size).toBe(0);
+  });
+
+  test('skips a frontmatter violation anchored PAST the frontmatter region', () => {
+    // The one case that separates the two guards: `fmSource` has a 3-line
+    // region, so line 4 is body. The line-range guard would let this through;
+    // only the producing-plugin check catches it. Without this, narrowing
+    // `isFrontmatterAnchorless` back to a line check passes the whole suite.
+    const byBlock = mapDiagnosticsToBlocks(fmSource, [fmDiag(4)], md);
+    expect(byBlock.size).toBe(0);
+  });
+
+  test('still marks a markdownlint violation on body line 1 of a doc with no frontmatter', () => {
+    // The frontmatter skip is by producing plugin, not by position — a
+    // body-anchored rule on the same line must keep its decoration.
+    const byBlock = mapDiagnosticsToBlocks(body, [diag(1)], md);
+    expect(byBlock.has(0)).toBe(true);
+  });
+
+  test('drops only the frontmatter diagnostics from a mixed set', () => {
+    const byBlock = mapDiagnosticsToBlocks(body, [fmDiag(1), diag(3)], md);
+    expect([...byBlock.keys()]).toEqual([1]);
+    expect(byBlock.get(1)).toHaveLength(1);
+  });
 });
 
 describe('computeSourceBlockSpans', () => {
@@ -264,8 +309,8 @@ describe('Problems-row navigation — scroll suppression', () => {
     return mounted;
   }
 
-  function clickProblemsRow(line: number): void {
-    const detail: LintNavDetail = { line, column: 1 };
+  function clickProblemsRow(line: number, source?: string): void {
+    const detail: LintNavDetail = { line, column: 1, source };
     window.dispatchEvent(new CustomEvent<LintNavDetail>(LINT_NAV_EVENT, { detail }));
   }
 
@@ -308,6 +353,18 @@ describe('Problems-row navigation — scroll suppression', () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     const { $from } = editor?.state.selection ?? {};
     expect($from?.parent.textContent).toBe('First paragraph.');
+  });
+
+  test('declines a frontmatter row rather than selecting the first body block', () => {
+    // A missing-frontmatter violation reports on line 1, which on a doc with
+    // no frontmatter is body text. Following it would scroll to and select a
+    // block that has nothing wrong with it; the property panel owns that error.
+    const before = editor?.state.selection.from;
+
+    clickProblemsRow(1, 'frontmatter');
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(editor?.state.selection.from).toBe(before);
   });
 
   test('supersedes a position-preserving landing rather than standing down under it', () => {

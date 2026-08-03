@@ -45,6 +45,10 @@ import { coerceValue, DEFAULT_VALUE_FOR_TYPE } from '@/components/PropertyWidget
 import { usePropertiesCollapsed } from '@/components/properties-collapsed-store';
 import { Button } from '@/components/ui/button';
 import { useDocLintConfig } from '@/editor/lint-config-client';
+import {
+  partitionFrontmatterProblems,
+  useFrontmatterDiagnostics,
+} from '@/editor/useFrontmatterDiagnostics';
 import { usePublishFrontmatterSelection } from '@/hooks/use-selection-context';
 import { enumConstraintsForDoc } from '@/lib/frontmatter-enum-constraints';
 
@@ -124,6 +128,12 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
   // or a disabled plugin degrades to today's free-text panel.
   const { data: lintConfigData } = useDocLintConfig(docName === '' ? null : docName);
   const enumConstraints = enumConstraintsForDoc(lintConfigData?.effective ?? null, docName);
+  // Properties that exist but violate the schema badge this panel's own count.
+  // The missing ones travel to the toolbar's Add-properties button instead —
+  // they have no row here to point at, and adding is their fix, not correcting.
+  const { invalid: invalidProperties } = partitionFrontmatterProblems(
+    useFrontmatterDiagnostics(provider, lintConfigData?.effective ?? null),
+  );
 
   // Publish a highlight inside the property panel into the selection-context
   // store (keyed `(docName, 'frontmatter')`) so a property-value selection feeds
@@ -408,7 +418,20 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
   const dupCount = new Map<string, number>();
   for (const k of renderKeys) dupCount.set(k, (dupCount.get(k) ?? 0) + 1);
 
-  if (renderKeys.length === 0 && !adding && !parseError && !identitySlot) return null;
+  // A schema constraint on the frontmatter block as a whole (`minProperties`,
+  // a root `anyOf`, `not`) fires against an empty object, so it has no property
+  // row to attach to — and unmounting here would leave it with no editor
+  // surface at all, since the body no longer marks frontmatter violations.
+  // Keep the disclosure alive for its badge whenever one is outstanding.
+  if (
+    renderKeys.length === 0 &&
+    !adding &&
+    !parseError &&
+    !identitySlot &&
+    invalidProperties.length === 0
+  ) {
+    return null;
+  }
 
   // Flush-left alignment. Sortable rows carry a drag-handle gutter (FrontmatterRow:
   // a `w-4` handle + `gap-1` = 1.25rem) that pushes the type-icon column right of
@@ -435,6 +458,8 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
           ref={panelRef}
           title={<Trans>Properties</Trans>}
           count={renderKeys.length}
+          problemCount={invalidProperties.length}
+          problemMessages={invalidProperties.map((d) => d.message)}
           testId="property-panel"
           className="pt-4"
           contentClassName={PROP_CONTENT_SHIFT}

@@ -41,8 +41,13 @@ import {
   useDocumentTransition,
 } from '@/editor/DocumentContext';
 import { FindReplaceController } from '@/editor/find-replace/FindReplaceController';
+import { useDocLintConfig } from '@/editor/lint-config-client';
 import { mountPromiseHasResolved } from '@/editor/mount-promise';
 import { syncPromiseHasResolved } from '@/editor/sync-promise';
+import {
+  partitionFrontmatterProblems,
+  useFrontmatterDiagnostics,
+} from '@/editor/useFrontmatterDiagnostics';
 import { useDocumentStats } from '@/hooks/use-document-stats';
 import { useLifecycleStatus } from '@/hooks/use-lifecycle-status';
 import { useSelectionStats } from '@/hooks/use-selection-stats';
@@ -279,6 +284,21 @@ function EditorAreaInner({
   );
   const syncStatus = useSyncStatus(activeProvider);
   const isConnected = syncStatus === 'connected' || syncStatus === 'synced';
+  // Schema-required properties the doc does not have badge the toolbar's
+  // Add-properties button: they have no body construct to mark and no property
+  // row either (being absent is the problem), and on a doc with no properties
+  // at all `PropertyPanel` renders nothing — so the toolbar is the only surface
+  // always there to carry them. Present-but-invalid properties are the panel's.
+  const { data: frontmatterLintConfig } = useDocLintConfig(activeDocName);
+  // Source mode hides the Add-properties button entirely, so the pass has no
+  // consumer there — short-circuit rather than lint on every keystroke for a
+  // badge that cannot render.
+  const { missing: missingProperties } = partitionFrontmatterProblems(
+    useFrontmatterDiagnostics(
+      editorMode === 'source' ? null : activeProvider,
+      frontmatterLintConfig?.effective ?? null,
+    ),
+  );
   const lifecycleStatus = useLifecycleStatus(activeDocName);
   const isConflict = lifecycleStatus === 'conflict';
   // Latches true once any provider has been active this session. It separates a
@@ -1207,6 +1227,8 @@ function EditorAreaInner({
               onModeChange={onModeChange}
               showAddPropertyButton={!isSourceMode}
               onAddProperty={openAddPropertyForm}
+              frontmatterProblemCount={missingProperties.length}
+              frontmatterProblemMessages={missingProperties.map((d) => d.message)}
               isPanelCollapsed={isPanelCollapsed}
               onTogglePanel={togglePanel}
               // When the doc panel is collapsed, the action cluster reaches the

@@ -220,7 +220,7 @@ export function DocPanel({
                       <Icon />
                       {showBadge && (
                         <Badge
-                          variant="destructive"
+                          variant="notification"
                           aria-hidden="true"
                           className="absolute -right-1.5 -top-1.5 h-4 min-w-4 rounded-full px-1 text-[10px] leading-none"
                         >

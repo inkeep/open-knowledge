@@ -225,6 +225,18 @@
     "3Ib6FN": ["Move down"],
     "3J7d2N": ["Big section heading."],
     "3JYy1p": ["Branch ", ["0"], " no longer exists. Cloned to default branch."],
+    "3KOHFt": [
+      "Add properties (",
+      [
+        "problemCount",
+        "plural",
+        {
+          "one": ["#", " required property missing"],
+          "other": ["#", " required properties missing"]
+        }
+      ],
+      ")"
+    ],
     "3LbBJn": ["Attach images"],
     "3MnvrL": ["Showing top ", ["0"], " matches — keep typing to narrow"],
     "3Mwaly": ["Could not initialize ", ["0"], "."],
@@ -696,6 +708,7 @@
     "AwLCZA": [
       "The endpoint answered, but not with an OpenAI-compatible embeddings response. Check the base URL."
     ],
+    "AwrGuz": ["This document is missing required properties"],
     "B11p-O": ["Edit markdown link"],
     "B2DrPb": ["Auto-save"],
     "B2Srgd": [["packName"], " skill installed."],
@@ -1342,6 +1355,16 @@
     "M5_9s2": ["Sending report"],
     "M5mfAe": ["Add tag"],
     "M6mvVi": ["Copy relative path"],
+    "M6vuZU": [
+      [
+        "problemCount",
+        "plural",
+        {
+          "one": ["#", " property does not match the schema"],
+          "other": ["#", " properties do not match the schema"]
+        }
+      ]
+    ],
     "M7SqjM": ["Reopen"],
     "M92_0q": ["Close comment"],
     "M9597s": ["Preparing share URL..."],

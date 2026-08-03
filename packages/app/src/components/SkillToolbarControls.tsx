@@ -35,11 +35,17 @@ export function SkillToolbarControls({
   name,
   showAddPropertyButton,
   onAddProperty,
+  problemCount,
+  problemMessages,
 }: {
   scope: SkillScope;
   name: string;
   showAddPropertyButton: boolean;
   onAddProperty: () => void;
+  /** Schema-required properties the skill doc is missing — badged on the
+   *  Add-properties button, the same surface non-skill docs use. */
+  problemCount?: number;
+  problemMessages?: readonly string[];
 }) {
   const { t } = useLingui();
   const scopeLabels = useSkillScopeLabels();
@@ -60,6 +66,8 @@ export function SkillToolbarControls({
       {showAddPropertyButton ? (
         <AddPropertiesButton
           onAddProperty={onAddProperty}
+          problemCount={problemCount}
+          problemMessages={problemMessages}
           className="hidden @xl/toolbar:inline-flex"
         />
       ) : null}

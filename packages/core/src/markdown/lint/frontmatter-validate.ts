@@ -1,3 +1,4 @@
+
 import Ajv, { type ValidateFunction } from 'ajv';
 import Ajv2019 from 'ajv/dist/2019.js';
 import Ajv2020 from 'ajv/dist/2020.js';
@@ -235,11 +236,13 @@ export function validateFrontmatterSource(
       const keyword = error.keyword;
       let line = 0;
       let message: string;
+      let frontmatterScope: 'missing' | 'invalid' = 'invalid';
       if (keyword === 'required' && error.instancePath === '') {
         const missing = String(
           (error.params as { missingProperty?: unknown }).missingProperty ?? '',
         );
         message = `Frontmatter property "${missing}" is required`;
+        frontmatterScope = 'missing';
       } else if (error.instancePath === '') {
         message = `Frontmatter ${error.message ?? `violates "${keyword}"`}`;
       } else {
@@ -262,6 +265,7 @@ export function validateFrontmatterSource(
         source: 'frontmatter',
         code: keyword,
         message,
+        frontmatterScope,
       });
     }
   }

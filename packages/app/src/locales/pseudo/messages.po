@@ -641,6 +641,10 @@ msgstr ""
 msgid "{phase} — {pct}%"
 msgstr ""
 
+#: src/components/PropertyDisclosure.tsx
+msgid "{problemCount, plural, one {# property does not match the schema} other {# properties do not match the schema}}"
+msgstr ""
+
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
 msgstr ""
@@ -1121,6 +1125,10 @@ msgstr ""
 #: src/components/AddPropertiesButton.tsx
 #: src/components/SkillToolbarControls.tsx
 msgid "Add properties"
+msgstr ""
+
+#: src/components/AddPropertiesButton.tsx
+msgid "Add properties ({problemCount, plural, one {# required property missing} other {# required properties missing}})"
 msgstr ""
 
 #: src/components/PropertyPanel.tsx
@@ -10898,6 +10906,10 @@ msgstr ""
 
 #: src/components/GraphPanel.tsx
 msgid "This document is already active in the editor. Use Open to collapse the graph."
+msgstr ""
+
+#: src/components/AddPropertiesButton.tsx
+msgid "This document is missing required properties"
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx

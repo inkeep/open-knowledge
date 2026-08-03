@@ -1,3 +1,4 @@
+
 export const LINT_PLUGIN_IDS = ['markdownlint', 'frontmatter'] as const;
 export type LintPluginId = (typeof LINT_PLUGIN_IDS)[number];
 
@@ -25,6 +26,7 @@ export interface LintDiagnostic {
   code: string;
   message: string;
   fixes?: LintTextEdit[];
+  frontmatterScope?: 'missing' | 'invalid';
 }
 
 const VALIDATION_SOURCES = [...LINT_PLUGIN_IDS, 'links'] as const;
@@ -68,6 +70,7 @@ export interface FrontmatterSlice {
   enabled: boolean;
   schemas: ResolvedFrontmatterSchemaEntry[];
 }
+
 
 interface RuleOptionSpecBase {
   key: string;

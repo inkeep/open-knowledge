@@ -641,6 +641,10 @@ msgstr "{percent}% used ({left}% left)"
 msgid "{phase} — {pct}%"
 msgstr "{phase} — {pct}%"
 
+#: src/components/PropertyDisclosure.tsx
+msgid "{problemCount, plural, one {# property does not match the schema} other {# properties do not match the schema}}"
+msgstr "{problemCount, plural, one {# property does not match the schema} other {# properties do not match the schema}}"
+
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
 msgstr "{propPanelDescriptorLabel} Properties"
@@ -1126,6 +1130,10 @@ msgstr "Add pattern"
 #: src/components/SkillToolbarControls.tsx
 msgid "Add properties"
 msgstr "Add properties"
+
+#: src/components/AddPropertiesButton.tsx
+msgid "Add properties ({problemCount, plural, one {# required property missing} other {# required properties missing}})"
+msgstr "Add properties ({problemCount, plural, one {# required property missing} other {# required properties missing}})"
 
 #: src/components/PropertyPanel.tsx
 #: src/components/TemplateForm.tsx
@@ -10903,6 +10911,10 @@ msgstr "This doc isn't on GitHub yet. The link won't work until it's pushed."
 #: src/components/GraphPanel.tsx
 msgid "This document is already active in the editor. Use Open to collapse the graph."
 msgstr "This document is already active in the editor. Use Open to collapse the graph."
+
+#: src/components/AddPropertiesButton.tsx
+msgid "This document is missing required properties"
+msgstr "This document is missing required properties"
 
 #: src/components/settings/SearchSection.tsx
 msgid "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."

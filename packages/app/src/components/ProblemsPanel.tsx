@@ -52,6 +52,14 @@ export interface LintNavDetail {
   line: number;
   /** 1-based column. */
   column: number;
+  /**
+   * Producing plugin id. WYSIWYG needs it to decline navigation for
+   * diagnostics that have no body anchor: a `frontmatter` violation reports on
+   * the region's opening fence, which on a doc with no frontmatter is line 1 —
+   * following it would select the first body block, which is not the problem.
+   * Source mode anchors by line and consumes every source alike.
+   */
+  source?: string;
 }
 
 export const LINT_NAV_EVENT = 'open-knowledge:lint-nav';
@@ -76,6 +84,7 @@ function lintNavDetailOf(diagnostic: DiagnosticLike): LintNavDetail {
   return {
     line: diagnostic.range.start.line + 1,
     column: diagnostic.range.start.character + 1,
+    source: diagnostic.source,
   };
 }
 

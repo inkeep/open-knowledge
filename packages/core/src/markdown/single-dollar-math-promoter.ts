@@ -1,3 +1,4 @@
+
 import type { PhrasingContent, Root, Text } from 'mdast';
 import type { InlineMath } from 'mdast-util-math';
 import { SKIP, visit } from 'unist-util-visit';
