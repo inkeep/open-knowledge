@@ -481,12 +481,103 @@ describe('okContentNavigationTarget (read-only .ok routing)', () => {
       expect(okContentNavigationTarget(target, { pages })?.kind).toBe('asset');
     }
   });
+
+  test('the docName contract is file-shaped: a leaf still gains its .md extension', () => {
+    // The mapping has no concept of a directory, so callers that can distinguish
+    // a folder path from a docName must not route folder paths here — the shape
+    // gate lives in resolveNavigationTarget, exercised below.
+    expect(okContentNavigationTarget('articles/.ok', { pages })).toMatchObject({
+      kind: 'asset',
+      assetPath: 'articles/.ok.md',
+    });
+  });
+});
+
+describe('resolveNavigationTarget — folder-shaped .ok targets', () => {
+  // A revealed `.ok` directory holds no indexed markdown, so it never enters the
+  // page-derived folder index — the shape that used to reach the `.ok` file
+  // fallback and come back as a phantom `<dir>.md` asset.
+  const options = {
+    pages: new Set(['articles/intro']),
+    folderPaths: new Set(['articles']),
+  };
+
+  test('a revealed .ok directory does not resolve to a phantom .md asset', () => {
+    for (const target of ['articles/.ok/', 'articles/.ok/templates/', '.ok/']) {
+      expect(resolveNavigationTarget(target, options).kind).not.toBe('asset');
+    }
+  });
+
+  test('folder-shaped misses resolve the same inside and outside .ok', () => {
+    expect(resolveNavigationTarget('articles/nope/', options)).toEqual({
+      kind: 'missing',
+      target: 'articles/nope',
+    });
+    expect(resolveNavigationTarget('articles/.ok/', options)).toEqual({
+      kind: 'missing',
+      target: 'articles/.ok',
+    });
+    expect(resolveNavigationTarget('articles/.ok/templates/', options)).toEqual({
+      kind: 'missing',
+      target: 'articles/.ok/templates',
+    });
+    expect(resolveNavigationTarget('.ok/', options)).toEqual({
+      kind: 'missing',
+      target: '.ok',
+    });
+  });
+
+  test('.ok folders backed by indexed skill docs still resolve as folders', () => {
+    // Project skill docs ARE page-list members, so `.ok` and `.ok/skills`
+    // register as real folder paths and resolve before the fallback.
+    const skillOptions = { pages: new Set(['.ok/skills/writer/SKILL']) };
+    for (const folderPath of ['.ok', '.ok/skills', '.ok/skills/writer']) {
+      expect(resolveNavigationTarget(`${folderPath}/`, skillOptions)).toEqual({
+        kind: 'folder',
+        target: folderPath,
+        folderPath,
+      });
+    }
+  });
+
+  test('doc-shaped .ok targets keep their read-only routing', () => {
+    expect(resolveNavigationTarget('articles/.ok/templates/meeting', options)).toEqual({
+      kind: 'doc',
+      target: '__template__/articles/meeting',
+      docName: '__template__/articles/meeting',
+    });
+    expect(
+      resolveNavigationTarget('.ok/skills/writer/SKILL', {
+        pages: new Set(['.ok/skills/writer/SKILL']),
+      }),
+    ).toEqual({
+      kind: 'doc',
+      target: '.ok/skills/writer/SKILL',
+      docName: '.ok/skills/writer/SKILL',
+    });
+    expect(resolveNavigationTarget('articles/.ok', options)).toMatchObject({
+      kind: 'asset',
+      assetPath: 'articles/.ok.md',
+    });
+  });
+
+  test('a trailing-slash template path returns missing, bypassing the rewrite', () => {
+    // `managedArtifactDocNameFromContentTarget` rejects the slashed form, so
+    // before the shape gate this reached the fallback, which re-tested the
+    // slash-stripped path and rewrote it to the template editor. The folder
+    // shape now wins instead. Pinned so a caller that later emits
+    // trailing-slash template hashes cannot flip this silently.
+    expect(resolveNavigationTarget('articles/.ok/templates/meeting/', options)).toEqual({
+      kind: 'missing',
+      target: 'articles/.ok/templates/meeting',
+    });
+  });
 });
 
 describe('resolveNavigationTarget .ok guard', () => {
   const options = { pages: new Set(['notes/real', '.ok/skills/writer/SKILL']) };
 
-  test('.ok targets never resolve to missing — the viewer replaces create-mode', () => {
+  test('doc-shaped .ok targets never resolve to missing — the viewer replaces create-mode', () => {
     // Existing file and nonexistent name are unknowable at resolve time; both
     // shapes must land on the read-only viewer (its error pane is the
     // non-create missing surface), never on the create-mode editor.

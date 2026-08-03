@@ -413,6 +413,37 @@ describe('App runtime wiring', () => {
     expect(openTargetTransitionMock).not.toHaveBeenCalledWith(resolved);
   });
 
+  test('hash navigation defers an unresolvable folder hash instead of opening a tab', async () => {
+    // Re-resolution fires on every page-list change, so a folder hash the
+    // resolver cannot place must leave the folder view the click already opened
+    // untouched — opening or clearing here would stomp it.
+    resolveNavigationTargetMock = vi.fn((docName: string) => ({
+      kind: 'missing' as const,
+      target: docName.replace(/\/+$/, ''),
+    }));
+    setHash('#/articles/.ok/');
+
+    renderApp();
+
+    await waitFor(() => {
+      expect(resolveNavigationTargetMock).toHaveBeenCalledWith('articles/.ok/', expect.anything());
+    });
+    expect(openTargetTransitionMock).not.toHaveBeenCalled();
+    expect(clearTargetMock).not.toHaveBeenCalled();
+  });
+
+  test('hash navigation still opens an unresolvable document hash in create mode', async () => {
+    const missing: NavigationTarget = { kind: 'missing', target: 'articles/brand-new' };
+    resolveNavigationTargetMock = vi.fn(() => missing);
+    setHash('#/articles/brand-new');
+
+    renderApp();
+
+    await waitFor(() => {
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(missing);
+    });
+  });
+
   test('hash navigation keeps an open extension-qualified markdown tab exact', async () => {
     openTabs = ['docs/guide.mdx'];
     resolveNavigationTargetMock = vi.fn(() => ({

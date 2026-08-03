@@ -402,14 +402,25 @@ export function resolveNavigationTarget(
     };
   }
 
-  // A missing `.ok` target must not fall through to the create-mode editor —
-  // route it to the read-only viewer instead (see okContentNavigationTarget).
-  return (
-    okContentNavigationTarget(normalizedTarget, options) ?? {
-      kind: 'missing',
-      target: extensionlessTarget || normalizedTarget,
-    }
-  );
+  // A missing DOC-shaped `.ok` target must not fall through to the create-mode
+  // editor — route it to the read-only viewer instead (see
+  // okContentNavigationTarget). A folder-shaped one deliberately does fall
+  // through, because that fallback maps an extension-less leaf to its `.md`
+  // file and has no concept of a directory, so it would come back as a phantom
+  // `<dir>.md` asset. Folder shape alone is not enough to reach here for
+  // ordinary content — every ancestor of an indexed doc registers above — but a
+  // revealed `.ok` directory holds no indexed markdown, so it never enters the
+  // folder index and lands here. Falling through to `missing` keeps it
+  // shape-consistent with any other unindexed folder path, and lets hash
+  // navigation defer rather than open anything.
+  if (!expectsFolder) {
+    const okTarget = okContentNavigationTarget(normalizedTarget, options);
+    if (okTarget) return okTarget;
+  }
+  return {
+    kind: 'missing',
+    target: extensionlessTarget || normalizedTarget,
+  };
 }
 
 /**
