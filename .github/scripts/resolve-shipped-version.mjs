@@ -218,7 +218,7 @@ function runGit(args) {
   return String(res.stdout || '');
 }
 
-function realStableTags() {
+export function realStableTags() {
   return runGit(['tag', '--list', 'v*', '--sort=version:refname']).split('\n');
 }
 
@@ -228,7 +228,7 @@ function realStableTags() {
 const REC_SEP = '\x1e';
 const UNIT_SEP = '\x1f';
 
-function realFindMirroredCommits(privateSha) {
+export function realFindMirroredCommits(privateSha) {
   // `--all` rather than HEAD: a point release lives on a synthetic off-`main`
   // tag, so the cherry-picked copy of a fix is unreachable from the checked-out
   // branch. `--fixed-strings` keeps the SHA from being read as a pattern.
@@ -250,7 +250,7 @@ function realFindMirroredCommits(privateSha) {
   return commits;
 }
 
-function realContains(tag, sha) {
+export function realContains(tag, sha) {
   // Distinguish a clean "not an ancestor" (exit 1) from an infra failure (any
   // other non-zero), which must fail loud rather than read as "not contained".
   const res = spawnSync('git', ['merge-base', '--is-ancestor', sha, `${tag}^{commit}`], {
