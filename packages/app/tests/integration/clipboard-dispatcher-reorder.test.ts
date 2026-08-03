@@ -121,10 +121,12 @@ describe('WYSIWYG dispatcher reorder — OK→OK <img/> JSX preserves descriptor
 describe('WYSIWYG dispatcher reorder — OK→OK <Callout> JSX preserves source bytes', () => {
   test('single-line text/plain `<Callout type="note">body</Callout>` + data-pm-slice html → jsxInline preserves source', () => {
     // Single-line MDX JSX with body + closing tag on one line cannot
-    // promote to block-level jsxComponent (MDX parsing rule). It parses
-    // as `jsxInline` whose text node is the verbatim source — bytes are
-    // preserved. The dispatcher reorder ensures the markdown path runs
-    // (yielding canonical jsxInline) instead of falling to Branch C
+    // promote to block-level jsxComponent (MDX parsing rule). Registered
+    // inline descriptors (`Callout` here) route through jsxInline with
+    // structured attrs — the raw bytes live on `sourceRaw` (pristine
+    // round-trip anchor); the body text renders through the descriptor's
+    // React component. The dispatcher reorder ensures the markdown path
+    // runs (yielding canonical jsxInline) instead of falling to Branch C
     // where CodeBlockFidelity's `<pre>` parseDOM would steal the slice.
     const paste = createHandlePaste({ mdManager });
     const { view, captured } = fakeView();
@@ -137,11 +139,11 @@ describe('WYSIWYG dispatcher reorder — OK→OK <Callout> JSX preserves source 
       }),
     );
     expect(captured.branch).toBe('replaceSelection');
-    // jsxInline shape: paragraph > jsxInline > text(source)
+    // jsxInline shape: paragraph > jsxInline (componentName='Callout', sourceRaw = raw source)
     const jsxInline = findFirstNode(captured.json, 'jsxInline');
     expect(jsxInline).toBeDefined();
-    const textNode = jsxInline?.content?.[0];
-    expect(textNode?.text).toBe('<Callout type="note">body</Callout>');
+    expect(jsxInline?.attrs?.componentName).toBe('Callout');
+    expect(jsxInline?.attrs?.sourceRaw).toBe('<Callout type="note">body</Callout>');
     // No codeBlock should appear — that's the regression Branch C would cause.
     expect(findFirstNode(captured.json, 'codeBlock')).toBeUndefined();
   });

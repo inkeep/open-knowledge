@@ -36,6 +36,7 @@ import { HeadingAnchors } from './heading-anchors';
 import { ImageInlineZoom } from './image-inline-zoom';
 import { InternalLink } from './internal-link';
 import { JsxComponent } from './jsx-component';
+import { JsxInline } from './jsx-inline';
 import { MathInline } from './math-inline';
 import { RawMdxFallback } from './raw-mdx-fallback';
 import { SelectionStatePlugin } from './selection-state-plugin';
@@ -73,6 +74,7 @@ export const SLASH_ITEM_SOURCES = [
 export const sharedExtensions = [
   ...coreExtensions.map((ext) => {
     if (ext.name === 'jsxComponent') return JsxComponent;
+    if (ext.name === 'jsxInline') return JsxInline;
     // Spread core's options so any future `ImageSrcFidelity.configure({
     // ... })` addition in `core/src/extensions/shared.ts` flows through
     // the `.extend()` boundary unchanged. The explicit `inline: true`

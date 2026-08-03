@@ -17,7 +17,9 @@
  * Only user-intent transactions (keyboard, PropPanel, paste, drag-drop)
  * produce PM transactions without ySyncPluginKey meta — these mark dirty.
  *
- * jsxInline is excluded (no sourceDirty attr).
+ * jsxInline dirty-marking is owned by JsxInlineView's PropPanel commit
+ * (position-targeted `setNodeMarkup` with `sourceDirty: true`), not this
+ * observer — inline widgets are atomic, so typing never lands inside them.
  */
 
 import { Extension } from '@tiptap/core';

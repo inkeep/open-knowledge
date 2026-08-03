@@ -227,8 +227,12 @@ type TranslateProps = (compatProps: Record<string, unknown>) => Record<string, u
 /**
  * Fields shared by both surfaces of `JsxComponentMeta`.
  *
- * Registry tracks block components only. No isInline field — inline JSX
- * is the thin jsxInline node and doesn't use descriptors.
+ * The registry drives BOTH the block `jsxComponent` node view and the
+ * `jsxInline` widget dispatch — the same descriptor is consulted from
+ * `mdxJsxFlowElement` (block) and `mdxJsxTextElement` (inline) parse
+ * handlers. Inline forms render atomically (contentEditable={false}); paired
+ * bodies land as `props.children` while `sourceRaw` stays the round-trip
+ * authority.
  */
 interface JsxComponentMetaBase {
   /** Component tag name, or '*' for the wildcard fallback. */

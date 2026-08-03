@@ -99,7 +99,26 @@
       "atom": false
     },
     "jsxInline": {
-      "attrs": {},
+      "attrs": {
+        "componentName": {
+          "hasDefault": true
+        },
+        "kind": {
+          "hasDefault": true
+        },
+        "attributes": {
+          "hasDefault": true
+        },
+        "sourceRaw": {
+          "hasDefault": true
+        },
+        "sourceDirty": {
+          "hasDefault": true
+        },
+        "props": {
+          "hasDefault": true
+        }
+      },
       "content": "text*",
       "group": "inline",
       "inline": true,

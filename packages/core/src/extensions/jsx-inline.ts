@@ -1,22 +1,26 @@
 import { Node } from '@tiptap/core';
 
 /**
- * jsxInline — thin inline PM node for MDX inline JSX.
+ * jsxInline — inline PM node for MDX inline JSX (`mdxJsxTextElement`).
  *
- * Inline JSX renders as visible source text in WYSIWYG — no live
- * React render, no PropPanel, no descriptor dispatch, no chrome. The node
- * exists only to preserve `<` and `>` characters through the markdown
- * serializer without escape (mdast-util-to-markdown would otherwise escape
- * `<word` patterns per CommonMark safety).
+ * Two rendering paths sit behind one node type:
+ *   1. Attrs-populated (registered inline descriptor) — `componentName` set,
+ *      `props` destructured. NodeView dispatches to the descriptor's React
+ *      component atomically (contentEditable={false}); source characters are
+ *      hidden. Paired bodies land as `props.children`. Analogous to
+ *      jsxComponent but at inline flow.
+ *   2. Zero-attrs (legacy thin shape) — `componentName === ''` and the text
+ *      children carry raw source. WYSIWYG renders as visible source text
+ *      (source-text default for unregistered tags).
  *
- * Shape: atom:false, content:'text*', isolating:false, selectable:true.
- * Zero attrs — the text content IS the source. No NodeView, no
- * contentEditable:false, no sourceDirty, no sourceRaw attr.
+ * `content: 'text*'` per Precedent #10 preserves Y.Item identity on
+ * per-keystroke text mutation (thin-shape path uses children for the raw
+ * JSX source).
  *
- * content:'text*' per
- * Precedent #10 preserves Y.Item identity on per-keystroke text mutation.
- *
- * See Precedent #10.
+ * Attrs mirror jsxComponent's (componentName / kind / attributes / sourceRaw
+ * / sourceDirty / props) so NodeViews and serialization handlers can share
+ * utilities. `kind` is always `'element'` today; the field is present for
+ * shape parity with jsxComponent (which carries `'element' | 'expression'`).
  */
 export const JsxInline = Node.create({
   name: 'jsxInline',
@@ -29,14 +33,47 @@ export const JsxInline = Node.create({
   priority: 60,
 
   addAttributes() {
-    return {};
+    return {
+      // JSX tag name (e.g., 'Callout'). Empty string = legacy thin-shape path
+      // (children carry raw source, WYSIWYG renders as text).
+      componentName: { default: '' },
+      // Shape parity with jsxComponent — currently always 'element' for inline.
+      kind: { default: 'element' },
+      // Preserved mdast MdxJsxAttribute[] for serialize reconstruct.
+      attributes: { default: [] },
+      // Byte-exact source from parse for the pristine serialization path.
+      sourceRaw: { default: '' },
+      // false = pristine (serialize via sourceRaw); true = edited (reconstruct).
+      sourceDirty: { default: false },
+      // Structured props destructured via descriptor.props.
+      props: { default: {} },
+    };
   },
 
   parseHTML() {
-    return [{ tag: 'span[data-jsx-inline]' }];
+    return [
+      {
+        tag: 'span[data-jsx-inline]',
+        getAttrs: (node) => {
+          if (typeof node === 'string') return false;
+          return {
+            componentName: node.getAttribute('data-component-name') || '',
+            sourceRaw: node.getAttribute('data-source-raw') || '',
+          };
+        },
+      },
+    ];
   },
 
-  renderHTML() {
-    return ['span', { 'data-jsx-inline': '' }, 0];
+  renderHTML({ HTMLAttributes }) {
+    return [
+      'span',
+      {
+        'data-jsx-inline': '',
+        'data-component-name': HTMLAttributes.componentName,
+        'data-source-raw': HTMLAttributes.sourceRaw,
+      },
+      0,
+    ];
   },
 });

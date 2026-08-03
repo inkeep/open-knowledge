@@ -1,6 +1,10 @@
-
 import type { Node as PmNode } from '@tiptap/pm/model';
-import type { MdxJsxAttribute, MdxJsxExpressionAttribute, MdxJsxFlowElement } from 'mdast-util-mdx';
+import type {
+  MdxJsxAttribute,
+  MdxJsxExpressionAttribute,
+  MdxJsxFlowElement,
+  MdxJsxTextElement,
+} from 'mdast-util-mdx';
 import type { PropDef, SerializeContext } from '../registry/types.ts';
 
 function reconstructAttrs(
@@ -132,6 +136,21 @@ export function emitMdxJsx(
     name: componentName,
     attributes: reconstructAttrs(pmNode, props),
     children: ctx.all(pmNode) as MdxJsxFlowElement['children'],
+    data: {},
+  };
+}
+
+export function emitMdxJsxTextFromNode(
+  componentName: string,
+  pmNode: PmNode,
+  props?: readonly PropDef[],
+): MdxJsxTextElement {
+  const body = (pmNode.attrs.props as Record<string, unknown> | undefined)?.children;
+  return {
+    type: 'mdxJsxTextElement',
+    name: componentName,
+    attributes: reconstructAttrs(pmNode, props),
+    children: typeof body === 'string' && body !== '' ? [{ type: 'text', value: body }] : [],
     data: {},
   };
 }

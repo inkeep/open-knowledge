@@ -134,27 +134,15 @@ interface AllowedNarrowing {
 }
 
 const ALLOWED_NARROWINGS: AllowedNarrowing[] = [
-  // jsxInline greenfield narrowing: atom-widening (allowed via content
-  // expression exception) plus attr removals listed explicitly.
+  // jsxInline greenfield narrowing: content: 'text*' is a narrowing from the
+  // pre-materialized shape, admitted under the atom-widening exception (R13
+  // schema-throw substitution absorbs any peer that still ships the wider
+  // form). The `attributes` and `sourceRaw` attrs are LIVE on this node now
+  // (registered inline descriptors carry structured attrs) — a future PR that
+  // strips them must earn its own entry with fresh evidence.
   {
     nodeType: 'jsxInline',
     kind: 'content',
-    specRef: 'specs/2026-04-14-component-blocks-v2/SPEC.md §FR-4 / NG14',
-    regressionTestRef:
-      'packages/app/tests/integration/jsx-schema-narrowing-safety.test.ts (SH05: pre-narrowing jsxInline materialization) + packages/app/tests/integration/y-tiptap-schema-throw-substitution.test.ts (R13 substitution on schema throw)',
-  },
-  {
-    nodeType: 'jsxInline',
-    kind: 'attr-removed',
-    attrName: 'attributes',
-    specRef: 'specs/2026-04-14-component-blocks-v2/SPEC.md §FR-4 / NG14',
-    regressionTestRef:
-      'packages/app/tests/integration/jsx-schema-narrowing-safety.test.ts (SH05: pre-narrowing jsxInline materialization) + packages/app/tests/integration/y-tiptap-schema-throw-substitution.test.ts (R13 substitution on schema throw)',
-  },
-  {
-    nodeType: 'jsxInline',
-    kind: 'attr-removed',
-    attrName: 'sourceRaw',
     specRef: 'specs/2026-04-14-component-blocks-v2/SPEC.md §FR-4 / NG14',
     regressionTestRef:
       'packages/app/tests/integration/jsx-schema-narrowing-safety.test.ts (SH05: pre-narrowing jsxInline materialization) + packages/app/tests/integration/y-tiptap-schema-throw-substitution.test.ts (R13 substitution on schema throw)',

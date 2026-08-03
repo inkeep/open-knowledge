@@ -281,6 +281,11 @@ msgstr ""
 msgid "{0} of {1} selected"
 msgstr ""
 
+#. placeholder {0}: descriptor.displayName ?? name
+#: src/editor/extensions/JsxInlineView.tsx
+msgid "{0} Properties"
+msgstr ""
+
 #. placeholder {0}: hostLabel(h)
 #. placeholder {1}: hostLabel(h)
 #. placeholder {2}: skill?.name ?? ''
@@ -3893,6 +3898,7 @@ msgstr ""
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/editor/extensions/JsxComponentView.tsx
+#: src/editor/extensions/JsxInlineView.tsx
 #: src/editor/extensions/MathInlineView.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Done"

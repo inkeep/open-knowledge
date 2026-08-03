@@ -1,4 +1,3 @@
-
 import type { Nodes, Parents } from 'mdast';
 import type { MdxJsxAttribute, MdxJsxExpressionAttribute, MdxJsxFlowElement } from 'mdast-util-mdx';
 import type { Handle, Info, State } from 'mdast-util-to-markdown';
@@ -714,6 +713,12 @@ export const toMarkdownHandlers = {
     if (typeof raw === 'string') return raw;
     const name = node.name ?? '';
     const attrs = serializeMdxJsxAttrs(node.attributes ?? []);
+    const body = (node.children ?? [])
+      .map((c) => (c && typeof c === 'object' && 'value' in c ? String(c.value ?? '') : ''))
+      .join('');
+    if (body) {
+      return attrs ? `<${name} ${attrs}>${body}</${name}>` : `<${name}>${body}</${name}>`;
+    }
     return attrs ? `<${name} ${attrs} />` : `<${name}/>`;
   },
 

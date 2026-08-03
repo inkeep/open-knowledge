@@ -311,7 +311,32 @@
       "isolating": true
     },
     "jsxInline": {
-      "attrs": {},
+      "attrs": {
+        "attributes": {
+          "hasDefault": true,
+          "default": []
+        },
+        "componentName": {
+          "hasDefault": true,
+          "default": ""
+        },
+        "kind": {
+          "hasDefault": true,
+          "default": "element"
+        },
+        "props": {
+          "hasDefault": true,
+          "default": {}
+        },
+        "sourceDirty": {
+          "hasDefault": true,
+          "default": false
+        },
+        "sourceRaw": {
+          "hasDefault": true,
+          "default": ""
+        }
+      },
       "content": "text*",
       "marks": "",
       "group": "inline",
