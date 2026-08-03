@@ -1,7 +1,8 @@
 /**
  * IDE color-theme plugin registry — the single source of truth for the built-in
  * palettes the Settings → Preferences picker offers, and the source the
- * `appearance.colorTheme` config enum is DERIVED from (`THEME_PLUGIN_IDS`, see
+ * `appearance.colorThemeLight` / `colorThemeDark` config enums (and the retired
+ * single `colorTheme`) are DERIVED from (`THEME_PLUGIN_IDS`, see
  * `config/schema.ts`). Lives in `core` (not `app`) precisely so the config
  * schema can derive its enum from the registry — `core` can't import `app`.
  *
@@ -264,6 +265,59 @@ export function isDarkTheme(id: string | undefined): boolean {
 export function colorThemeMode(id: string | undefined): 'light' | 'dark' | undefined {
   const kind = resolveThemePlugin(id).kind;
   return kind === 'system' ? undefined : kind;
+}
+
+/** The palette to apply in each light/dark mode — one theme id per mode. */
+export interface ColorThemeSelection {
+  light: ThemePluginId;
+  dark: ThemePluginId;
+}
+
+/** Narrow an arbitrary config value to a known theme id. */
+function isThemePluginId(value: unknown): value is ThemePluginId {
+  return typeof value === 'string' && THEME_PLUGIN_BY_ID.has(value);
+}
+
+/** The `appearance` fields the selection is resolved from. */
+export interface ColorThemeSelectionInput {
+  colorTheme?: string | undefined;
+  colorThemeLight?: string | undefined;
+  colorThemeDark?: string | undefined;
+}
+
+/**
+ * Resolve the light/dark palette pair from config.
+ *
+ * `colorThemeLight`/`colorThemeDark` are the live fields. A config that predates
+ * them carries the single `colorTheme` instead, and seeding BOTH slots from it
+ * is what makes the upgrade invisible: the one palette applies in either mode,
+ * and — because a palette still forces its own variant — the app renders exactly
+ * what it rendered before the pair existed. A half-written pair (one slot only)
+ * falls back per-slot rather than discarding the other.
+ */
+export function resolveColorThemeSelection(
+  appearance: ColorThemeSelectionInput | undefined,
+): ColorThemeSelection {
+  const legacy = appearance?.colorTheme;
+  const fallback: ThemePluginId = isThemePluginId(legacy) ? legacy : THEME_PLUGINS[0].id;
+  const pick = (value: string | undefined): ThemePluginId =>
+    isThemePluginId(value) ? value : fallback;
+  return {
+    light: pick(appearance?.colorThemeLight),
+    dark: pick(appearance?.colorThemeDark),
+  };
+}
+
+/**
+ * The light/dark mode a mode PREFERENCE resolves to. `system` defers to the OS,
+ * which the caller supplies — core has no DOM.
+ */
+export function resolveModePreference(
+  preference: string | undefined,
+  prefersDark: boolean,
+): 'light' | 'dark' {
+  if (preference === 'light' || preference === 'dark') return preference;
+  return prefersDark ? 'dark' : 'light';
 }
 
 /**

@@ -31,8 +31,8 @@ function base16SlotFields() {
 /**
  * The self-contained palettes, quoted for prose — every theme id except the two
  * that defer to something else (`default` → the light/dark mode, `custom` → the
- * user's own scheme). Derived so the `colorTheme` description can't fall out of
- * step with the registry the enum itself comes from.
+ * user's own scheme). Derived so the palette-field descriptions can't fall
+ * out of step with the registry the enums themselves come from.
  */
 function namedThemeIds() {
   return THEME_PLUGIN_IDS.filter((id) => id !== 'default' && id !== 'custom')
@@ -248,20 +248,46 @@ export const ConfigSchema = z.looseObject({
         })
         .optional(),
       // The IDE color palette layered on top of the light/dark `theme` mode
-      // above. `default` defers entirely to `theme`; the named palettes
-      // (Dracula, Catppuccin Frappé, Catppuccin Latte, …) are self-contained
-      // themes that force their own light/dark mode; `custom` applies the
-      // user's own `appearance.customTheme` seed below. A personal preference
-      // (user scope). The id list is DERIVED from the `THEME_PLUGINS` registry
+      // above. There is one palette per mode: `colorThemeLight` applies while
+      // the resolved mode is light, `colorThemeDark` while it is dark, so the
+      // palette follows the OS as `theme: 'system'` flips. `default` carries no
+      // palette (the base stylesheet shows through); `custom` applies the user's
+      // own `appearance.customTheme` scheme below. Any palette may sit in either
+      // slot — a dark scheme chosen as the light-mode palette still forces its
+      // own variant, so the app renders it dark. Personal preferences (user
+      // scope). The id list is DERIVED from the `THEME_PLUGINS` registry
       // (`packages/core/src/theme/theme-plugins.ts`) via `THEME_PLUGIN_IDS` — add
-      // a theme there and this enum follows, with no edit here.
+      // a theme there and these enums follow, with no edit here.
+      colorThemeLight: z
+        .enum(THEME_PLUGIN_IDS)
+        .register(fieldRegistry, {
+          scope: 'user',
+          agentSettable: false,
+          defaultScope: 'user',
+          description: `IDE color palette applied in light mode: 'default' (no palette), 'custom' (your own colors from appearance.customTheme), or one of ${namedThemeIds()}. A personal preference (user scope) — not shared with the project.`,
+        })
+        .optional(),
+      colorThemeDark: z
+        .enum(THEME_PLUGIN_IDS)
+        .register(fieldRegistry, {
+          scope: 'user',
+          agentSettable: false,
+          defaultScope: 'user',
+          description: `IDE color palette applied in dark mode: 'default' (no palette), 'custom' (your own colors from appearance.customTheme), or one of ${namedThemeIds()}. A personal preference (user scope) — not shared with the project.`,
+        })
+        .optional(),
+      // The single palette written before the light/dark pair existed. Read only
+      // as the seed for BOTH slots when neither is set, so an older config keeps
+      // rendering what it always did; the first pick in the Themes pane writes
+      // the pair and retires this key.
       colorTheme: z
         .enum(THEME_PLUGIN_IDS)
         .register(fieldRegistry, {
           scope: 'user',
           agentSettable: false,
           defaultScope: 'user',
-          description: `IDE color palette: 'default' (follows the light/dark theme), 'custom' (your own colors from appearance.customTheme), or one of ${namedThemeIds()}. A personal preference (user scope) — not shared with the project.`,
+          description:
+            'Superseded by appearance.colorThemeLight / appearance.colorThemeDark. Read as the palette for both modes while neither of those is set. A personal preference (user scope) — not shared with the project.',
         })
         .optional(),
       // Whether the Themes plugin appears under Settings → Plugins. The theme is

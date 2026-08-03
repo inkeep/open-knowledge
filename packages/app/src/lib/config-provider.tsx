@@ -38,11 +38,18 @@ import {
   type OkignoreBinding,
   type WriteScope,
 } from '@inkeep/open-knowledge-core';
+import { useTheme } from 'next-themes';
 import { type ReactNode, useEffect, useState } from 'react';
 import * as Y from 'yjs';
 import { useThemeBridge } from '@/hooks/use-theme-bridge';
 import { buildAuthToken } from './auth-token';
-import { colorThemeMode, customThemeKind, resolveCustomScheme } from './color-themes';
+import {
+  colorThemeMode,
+  customThemeKind,
+  resolveColorThemeSelection,
+  resolveCustomScheme,
+  resolveModePreference,
+} from './color-themes';
 import { ConfigContext, type ConfigContextValue } from './config-context';
 import { useServerInstanceId } from './server-instance-store';
 import { useApplyConfigColorTheme } from './use-apply-config-color-theme';
@@ -155,6 +162,13 @@ export function ConfigProvider({
   // (which owns `__system__`) co-mounts with this provider at the App level, so
   // the epoch-delivery channel stays alive as long as these providers do.
   const serverInstanceId = useServerInstanceId();
+  // The OS appearance, tracked live and independently of the active theme —
+  // next-themes keeps `systemTheme` current from its own media-query listener
+  // even while `theme` is forced to a palette's variant, which is exactly the
+  // signal `appearance.theme: 'system'` needs to choose a palette slot.
+  // Provider-less harnesses get `undefined`, i.e. light.
+  const { systemTheme } = useTheme();
+  const systemPrefersDark = systemTheme === 'dark';
   const [userState, setUserState] = useState<{
     binding: ConfigBinding;
     config: Config;
@@ -278,34 +292,45 @@ export function ConfigProvider({
       : null;
 
   const themeValue = merged?.appearance?.theme;
-  const colorThemeValue = merged?.appearance?.colorTheme;
   const customSeed = merged?.appearance?.customTheme;
   // The Themes plugin toggle. Disabled means the effect stops: the default
-  // palette applies and the saved `colorTheme` is ignored (not cleared — it
-  // comes back when the plugin is re-enabled). Default on (absent → enabled).
+  // palette applies and the saved pair is ignored (not cleared — it comes back
+  // when the plugin is re-enabled). Default on (absent → enabled).
   const colorThemeEnabled = merged?.appearance?.colorThemeEnabled !== false;
-  // A non-`default` palette takes over the appearance: it forces next-themes
-  // into its own light/dark mode so Tailwind `dark:` variants resolve against
-  // the themed tokens. Most IDE palettes are dark (Dracula, Catppuccin Frappé,
-  // …); a light palette (Catppuccin Latte) forces light. `custom` derives its
-  // mode from the seed background's luminance. `default` (and a disabled Themes
-  // plugin) defers to the user's light/dark/system `appearance.theme`. We never
-  // patch `appearance.theme` here — switching back to `default` restores the
-  // saved mode from config.
-  const effectiveMode = !colorThemeEnabled
-    ? themeValue
-    : colorThemeValue === 'custom'
+  // One palette per mode. `slotMode` picks between them and is derived from the
+  // user's OWN preference — `appearance.theme`, with the OS deciding for
+  // 'system' — never from next-themes' resolved value. That distinction is
+  // load-bearing: a palette still forces its own variant below, so feeding the
+  // resolved value back in would let a cross-variant pick (a dark scheme chosen
+  // as the light palette) flip the app into the other slot, then back.
+  const selection = resolveColorThemeSelection(merged?.appearance);
+  const slotMode = resolveModePreference(themeValue, systemPrefersDark);
+  const activePalette = colorThemeEnabled ? selection[slotMode] : 'default';
+  // The applied palette takes over the appearance: it forces next-themes into
+  // its own light/dark mode so Tailwind `dark:` variants resolve against the
+  // themed tokens. `custom` derives its mode from its scheme's variant.
+  // `default` (and a disabled Themes plugin) carries no palette, so the mode
+  // preference passes through untouched — including 'system', which is what
+  // keeps the palette following the OS. We never patch `appearance.theme` here.
+  const effectiveMode =
+    activePalette === 'custom'
       ? customThemeKind(resolveCustomScheme(customSeed))
-      : (colorThemeMode(colorThemeValue) ?? themeValue);
+      : (colorThemeMode(activePalette) ?? themeValue);
   // Bridge the effective mode from the merged config into next-themes app-wide.
   // The hook owns the dependency discipline that prevents a cross-window
   // light/dark flicker storm across open project windows — see
   // `useApplyConfigTheme`.
   useApplyConfigTheme(effectiveMode);
-  // Apply the palette overlay (`data-color-theme` attribute + FOUC cache; for
-  // `custom`, the runtime `<style>` built from the seed). Honors the plugin
+  // Apply the palette overlay (`data-color-theme` attribute + FOUC caches; for
+  // `custom`, the runtime `<style>` built from the scheme). Honors the plugin
   // toggle: disabled clears the overlay and its FOUC caches.
-  useApplyConfigColorTheme(colorThemeValue, customSeed, colorThemeEnabled);
+  useApplyConfigColorTheme({
+    selection,
+    modePreference: themeValue,
+    slotMode,
+    customSeed,
+    enabled: colorThemeEnabled,
+  });
 
   // Push `appearance.theme` to Electron main's `nativeTheme.themeSource`
   // and signal the cold-launch show-gate via the shared `useThemeBridge`
@@ -332,9 +357,7 @@ export function ConfigProvider({
   useThemeBridge(
     typeof window !== 'undefined' ? window.okDesktop : undefined,
     effectiveMode ?? 'system',
-    `${colorThemeEnabled ? colorThemeValue : 'default'}:${
-      colorThemeValue === 'custom' ? JSON.stringify(customSeed ?? null) : ''
-    }`,
+    `${activePalette}:${activePalette === 'custom' ? JSON.stringify(customSeed ?? null) : ''}`,
   );
 
   const value: ConfigContextValue = {

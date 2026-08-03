@@ -1528,10 +1528,6 @@ msgstr "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgid "Authorize in browser"
 msgstr "Authorize in browser"
 
-#: src/components/settings/ColorThemePicker.tsx
-msgid "Auto"
-msgstr "Auto"
-
 #: src/components/settings/TerminalSection.tsx
 msgid "Auto-approve settings not yet loaded — try again in a moment"
 msgstr "Auto-approve settings not yet loaded — try again in a moment"
@@ -3487,10 +3483,6 @@ msgstr "Customize how the editor looks and behaves."
 #: src/components/AppMenubar.tsx
 msgid "Cut"
 msgstr "Cut"
-
-#: src/components/settings/ColorThemePicker.tsx
-msgid "Dark"
-msgstr "Dark"
 
 #: src/components/ExploreSkills.tsx
 msgid "Data"
@@ -6035,10 +6027,6 @@ msgstr "Let us follow up by email"
 msgid "Level"
 msgstr "Level"
 
-#: src/components/settings/ColorThemePicker.tsx
-msgid "Light"
-msgstr "Light"
-
 #: src/components/settings/settings-fields.ts
 msgid "Light, dark, or follow the OS."
 msgstr "Light, dark, or follow the OS."
@@ -7978,10 +7966,6 @@ msgstr "Personal access token"
 msgid "Personal to this device — stored in your user config, not shared."
 msgstr "Personal to this device — stored in your user config, not shared."
 
-#: src/components/settings/CustomThemeEditor.tsx
-msgid "Pick “Custom” above to use this scheme."
-msgstr "Pick “Custom” above to use this scheme."
-
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
 msgstr "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
@@ -7990,10 +7974,6 @@ msgstr "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It en
 msgid "Pick a built-in IDE color palette, or define your own."
 msgstr "Pick a built-in IDE color palette, or define your own."
 
-#: src/components/settings/settings-fields.ts
-msgid "Pick a built-in IDE palette. The dark IDE themes override the light/dark setting in Preferences."
-msgstr "Pick a built-in IDE palette. The dark IDE themes override the light/dark setting in Preferences."
-
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Pick a folder to merge INTO {display}. That folder becomes a symlink to this one, so its agent reads everything placed here. This folder stays real. Conflicting skills abort the merge."
 msgstr "Pick a folder to merge INTO {display}. That folder becomes a symlink to this one, so its agent reads everything placed here. This folder stays real. Conflicting skills abort the merge."
@@ -8001,6 +7981,10 @@ msgstr "Pick a folder to merge INTO {display}. That folder becomes a symlink to 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Pick a name"
 msgstr "Pick a name"
+
+#: src/components/settings/settings-fields.ts
+msgid "Pick a palette for light mode and one for dark mode. The theme setting in Preferences chooses between them — on “System”, so does your OS."
+msgstr "Pick a palette for light mode and one for dark mode. The theme setting in Preferences chooses between them — on “System”, so does your OS."
 
 #: src/editor/slash-command/items.tsx
 msgid "Pick an emoji to insert at the cursor."
@@ -8084,6 +8068,10 @@ msgstr "Preparing share URL..."
 #: src/uninstall/UninstallApp.tsx
 msgid "Preparing to uninstall OpenKnowledge"
 msgstr "Preparing to uninstall OpenKnowledge"
+
+#: src/components/settings/CustomThemeEditor.tsx
+msgid "Press the sun or moon on “Custom” above to use this scheme."
+msgstr "Press the sun or moon on “Custom” above to use this scheme."
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or open OK in the desktop app."
@@ -11623,6 +11611,16 @@ msgstr "Uploading securely"
 #: src/components/TimelinePanel.tsx
 msgid "Upstream sync"
 msgstr "Upstream sync"
+
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Use {0} as the dark theme"
+msgstr "Use {0} as the dark theme"
+
+#. placeholder {0}: theme.label
+#: src/components/settings/ColorThemePicker.tsx
+msgid "Use {0} as the light theme"
+msgstr "Use {0} as the light theme"
 
 #: src/components/SkillForkDialog.tsx
 msgid "Use {editor} version"

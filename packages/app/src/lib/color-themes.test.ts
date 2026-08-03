@@ -8,6 +8,7 @@ import {
   base16ToTokens,
   buildCustomThemeCss,
   COLOR_THEMES,
+  colorThemeWritePatch,
   customThemeKind,
   customThemeWritePatch,
   DEFAULT_CUSTOM_SCHEME,
@@ -18,8 +19,15 @@ import {
   isHexColor,
   relativeLuminance,
   resolveColorTheme,
+  resolveColorThemeSelection,
   resolveCustomScheme,
 } from './color-themes';
+import {
+  COLOR_THEME_PAIR_STORAGE_KEY,
+  COLOR_THEME_STORAGE_KEY,
+  CUSTOM_THEME_STORAGE_KEY,
+  CUSTOM_THEME_STYLE_ID,
+} from './use-apply-config-color-theme';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const HEX = /^#[0-9a-f]{6}$/;
@@ -176,39 +184,38 @@ describe('generated stylesheet', () => {
 });
 
 describe('registry stays in sync with its consumers', () => {
-  test('ids match the appearance.colorTheme enum in ConfigSchema', () => {
-    const leaf = resolveLeafSchema(ConfigSchema, ['appearance', 'colorTheme']);
-    const enumOptions = leaf ? getEnumOptions(leaf) : undefined;
-    expect([...(enumOptions ?? [])].sort()).toEqual(COLOR_THEMES.map((t) => t.id).sort());
-  });
-
-  test('every static IDE id appears in the index.html FOUC allowlist', () => {
-    // The pre-paint script in index.html can't import this module, so it
-    // hardcodes the id allowlist. `default` (no overlay) and `custom` (replayed
-    // from a cached <style>, not the static allowlist) are handled separately.
-    const html = readFileSync(resolve(here, '../../index.html'), 'utf8');
-    for (const theme of COLOR_THEMES) {
-      if (theme.id === 'default' || theme.id === 'custom') continue;
-      expect(html, theme.id).toContain(`'${theme.id}'`);
+  test('ids match every appearance palette enum in ConfigSchema', () => {
+    for (const field of ['colorTheme', 'colorThemeLight', 'colorThemeDark']) {
+      const leaf = resolveLeafSchema(ConfigSchema, ['appearance', field]);
+      const enumOptions = leaf ? getEnumOptions(leaf) : undefined;
+      expect([...(enumOptions ?? [])].sort(), field).toEqual(COLOR_THEMES.map((t) => t.id).sort());
     }
   });
 
-  test('the index.html FOUC light-theme set matches the registry light themes', () => {
-    // The pre-paint script decides the `dark` class before any bundle loads, so
-    // it can't import the registry — it carries its own light-id array
-    // (`[...].includes(ct)`). Adding a light theme must update that array too, or
-    // the new theme would flash dark on first paint. This asserts the two stay in
-    // lockstep (the light-kind analog of the allowlist-presence check above).
+  test('the pre-paint FOUC script reads exactly the caches the apply path writes', () => {
+    // index.html can't import a module, so its script hardcodes the key names.
+    // A rename on either side would silently cost the flash-free first paint.
     const html = readFileSync(resolve(here, '../../index.html'), 'utf8');
-    const match = html.match(/\[([^\]]*)\]\.includes\(ct\)/);
-    expect(match, 'FOUC light-theme array (`[...].includes(ct)`) not found in index.html').not.toBe(
-      null,
-    );
-    const scriptLightIds = [...(match?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
-    const registryLightIds = COLOR_THEMES.filter((t) => t.kind === 'light')
-      .map((t) => t.id)
-      .sort();
-    expect(scriptLightIds).toEqual(registryLightIds);
+    for (const key of [
+      COLOR_THEME_PAIR_STORAGE_KEY,
+      COLOR_THEME_STORAGE_KEY,
+      CUSTOM_THEME_STORAGE_KEY,
+      CUSTOM_THEME_STYLE_ID,
+    ]) {
+      expect(html, key).toContain(`'${key}'`);
+    }
+  });
+
+  test('the pre-paint FOUC script carries no palette-id knowledge', () => {
+    // Each cached slot ships its own resolved `dark` flag, so the script never
+    // has to know which palettes are light — the enumeration that used to live
+    // here (and had to be edited alongside every new theme) is gone. `default`
+    // and `custom` are structural cases, not palettes, so they stay.
+    const html = readFileSync(resolve(here, '../../index.html'), 'utf8');
+    for (const theme of COLOR_THEMES) {
+      if (NON_STATIC.has(theme.id)) continue;
+      expect(html, theme.id).not.toContain(theme.id);
+    }
   });
 
   test('custom is registered as a tile and accepted by the schema enum', () => {
@@ -399,5 +406,26 @@ describe('hasLegacyCustomSeed', () => {
 
     const lightCss = buildCustomThemeCss({ ...DEFAULT_CUSTOM_SCHEME, variant: 'light' });
     expect(lightCss).toContain('color-scheme: light;');
+  });
+});
+
+describe('colorThemeWritePatch', () => {
+  test('writes both slots and retires the pre-pair key', () => {
+    const selection = resolveColorThemeSelection({ colorTheme: 'dracula' });
+    expect(colorThemeWritePatch({ ...selection, light: 'catppuccin-latte' })).toEqual({
+      colorThemeLight: 'catppuccin-latte',
+      colorThemeDark: 'dracula',
+      colorTheme: null,
+    });
+  });
+
+  test('assigning the same palette to both modes is a supported end state', () => {
+    const selection = resolveColorThemeSelection({
+      colorThemeLight: 'catppuccin-latte',
+      colorThemeDark: 'dracula',
+    });
+    const patch = colorThemeWritePatch({ ...selection, dark: 'catppuccin-latte' });
+    expect(patch.colorThemeLight).toBe('catppuccin-latte');
+    expect(patch.colorThemeDark).toBe('catppuccin-latte');
   });
 });

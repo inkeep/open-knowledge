@@ -38,7 +38,15 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { colorThemeMode, customThemeKind, resolveCustomScheme } from '@/lib/color-themes';
+import {
+  colorThemeMode,
+  colorThemeResetPatch,
+  colorThemeWritePatch,
+  customThemeKind,
+  resolveColorThemeSelection,
+  resolveCustomScheme,
+  resolveModePreference,
+} from '@/lib/color-themes';
 import { useConfigContextOptional } from '@/lib/config-context';
 import { applyColorThemeToDom } from '@/lib/use-apply-config-color-theme';
 import { cn } from '@/lib/utils';
@@ -51,6 +59,7 @@ import {
 } from './schema-walker';
 import type { FieldDef } from './settings-fields';
 import type { SlotForwardedProps } from './slot-forwarded-props';
+import { pickFirstIssueForPath } from './use-config-form';
 
 /**
  * Internal scope tag for routing each section to its config binding.
@@ -95,6 +104,7 @@ export function SettingsField({ field, scope, commitField, isFlashed }: Settings
   'use no memo';
   const { t } = useLingui();
   const form = useFormContext<Config>();
+  const configContext = useConfigContextOptional();
   const leafSchema = resolveLeafSchema(ConfigSchema, field.path);
   const typeTag = leafSchema ? getLeafTypeTag(leafSchema) : undefined;
   const defaultValue = leafSchema ? getFieldDefault(leafSchema) : undefined;
@@ -170,6 +180,23 @@ export function SettingsField({ field, scope, commitField, isFlashed }: Settings
    * field doesn't end up flagged as dirty after reset.
    */
   const reset = () => {
+    // The theme row is anchored to a single path but represents both slots, so
+    // the generic per-path reset would clear the light palette and silently
+    // leave the dark one assigned, under a label that says "reset to default".
+    if (field.control === 'theme-tiles') {
+      const binding = configContext?.userBinding;
+      if (!binding) return;
+      const result = binding.patch({ appearance: colorThemeResetPatch() });
+      if (result.ok) {
+        flashSavedTick();
+      } else {
+        form.setError(dottedName, {
+          type: 'manual',
+          message: pickFirstIssueForPath(result.error, dottedName),
+        });
+      }
+      return;
+    }
     const target = defaultValue === undefined ? null : defaultValue;
     form.setValue(dottedName, target as never, { shouldDirty: false });
     runCommit();
@@ -224,6 +251,13 @@ export function SettingsField({ field, scope, commitField, isFlashed }: Settings
                   typeTag={typeTag}
                   enumOptions={enumOptions}
                   onCommit={runCommitIfDirty}
+                  onSavedOutsideForm={flashSavedTick}
+                  onWriteRejected={(error) => {
+                    form.setError(dottedName, {
+                      type: 'manual',
+                      message: pickFirstIssueForPath(error, dottedName),
+                    });
+                  }}
                 />
               </FormControl>
               <SavedIndicator visible={savedTick} srOnly={field.control === 'theme-tiles'} />
@@ -247,6 +281,18 @@ interface FieldControlBodyProps {
    * `ctl.onChange` BEFORE invoking — the commit reads from form state.
    */
   onCommit: () => boolean;
+  /**
+   * Flash the saved indicator for a control that writes through the binding
+   * directly instead of the form's per-field commit. `onCommit` is not usable
+   * there: it re-reads the form value for this field's single path, which for a
+   * multi-path atomic write is both stale and narrower than what was written.
+   */
+  onSavedOutsideForm: () => void;
+  /**
+   * Surface a rejected binding write on this row, the same way `runCommit`
+   * surfaces one for a form-committed field.
+   */
+  onWriteRejected: (error: ConfigValidationError) => void;
 }
 
 /**
@@ -270,6 +316,8 @@ function FieldControlBody({
   typeTag,
   enumOptions,
   onCommit,
+  onSavedOutsideForm,
+  onWriteRejected,
   ...slotForwarded
 }: FieldControlBodyProps & SlotForwardedProps) {
   'use no memo';
@@ -284,47 +332,73 @@ function FieldControlBody({
   const { setTheme, systemTheme } = useTheme();
   // Optional: the theme-tiles control reads the custom-theme seed from config,
   // but FieldControlBody also renders in provider-less unit harnesses.
-  const merged = useConfigContextOptional()?.merged ?? null;
+  const config = useConfigContextOptional();
+  const merged = config?.merged ?? null;
   if (field.control === 'theme-tiles') {
     const { id: forwardedId, ...wrapperSlotProps } = slotForwarded;
     const customSeed = merged?.appearance?.customTheme;
-    // The Default tile previews the base palette in the user's own light/dark
-    // mode. Source it from `appearance.theme` (falling back to the OS for
-    // 'system'/unset), never from next-themes' resolved mode — that one carries
-    // whatever the selected palette forced.
-    const configuredMode = merged?.appearance?.theme;
-    const defaultMode =
-      configuredMode === 'light' || configuredMode === 'dark'
-        ? configuredMode
-        : systemTheme === 'dark'
-          ? 'dark'
-          : 'light';
+    // The mode on screen — read from `appearance.theme` (falling back to the OS
+    // for 'system'/unset), never from next-themes' resolved mode, which carries
+    // whatever the applied palette forced.
+    const modePreference = merged?.appearance?.theme;
+    const slotMode = resolveModePreference(modePreference, systemTheme === 'dark');
+    const selection = resolveColorThemeSelection(merged?.appearance);
     return (
       <ColorThemePicker
         {...wrapperSlotProps}
-        id={forwardedId}
-        value={typeof ctl.value === 'string' ? ctl.value : 'default'}
+        firstItemId={forwardedId}
+        selection={selection}
         customSeed={customSeed}
-        defaultMode={defaultMode}
+        slotMode={slotMode}
         aria-label={t(field.label)}
-        onSelect={(next) => {
+        onAssign={(slot, id) => {
+          // Paint first, persist second — but only when there is somewhere to
+          // persist to. Without the binding the optimistic apply would leave
+          // the screen showing a palette no config carries, which the next
+          // ConfigProvider pass silently reverts.
+          const binding = config?.userBinding;
+          if (!binding) return;
+          const next = { ...selection, [slot]: id };
           // Optimistic apply: paint the palette overlay synchronously and flip
           // next-themes to the palette's forced mode so `dark:` variants land
-          // immediately. A built-in palette forces light (Catppuccin Latte) or
-          // dark; `custom` follows its seed. `default` is system-kind, so
-          // `colorThemeMode` returns undefined — no flip, and the ConfigProvider
-          // effect restores the user's saved light/dark mode on the round-trip.
-          applyColorThemeToDom(next, customSeed);
-          if (next === 'custom') {
-            setTheme(
-              customThemeKind(resolveCustomScheme(customSeed)) === 'dark' ? 'dark' : 'light',
-            );
-          } else {
-            const mode = colorThemeMode(next);
-            if (mode) setTheme(mode);
+          // immediately. Assigning the slot the user is NOT currently in changes
+          // nothing on screen — `applyColorThemeToDom` still runs, to refresh
+          // the pre-paint cache for the next time that mode comes around.
+          // The mode a selection forces, or undefined for a palette-less
+          // `default`, which leaves the user's own light/dark preference alone.
+          const forcedMode = (candidate: typeof selection): 'light' | 'dark' | undefined => {
+            const palette = candidate[slotMode];
+            return palette === 'custom'
+              ? customThemeKind(resolveCustomScheme(customSeed))
+              : colorThemeMode(palette);
+          };
+          applyColorThemeToDom({ selection: next, modePreference, slotMode, customSeed });
+          const nextMode = forcedMode(next);
+          if (nextMode) setTheme(nextMode);
+          // Both slots are written in ONE patch (and the pre-pair `colorTheme`
+          // retired) rather than through the form's per-field commit, which
+          // carries a single path. RHF re-syncs from the binding subscription;
+          // neither field is dirty here, so nothing of the user's is stomped.
+          const result = binding.patch({ appearance: colorThemeWritePatch(next) });
+          if (result.ok) {
+            onSavedOutsideForm();
+            return;
           }
-          ctl.onChange(next);
-          onCommit();
+          // Every other field routes a rejected write into its own
+          // <FormMessage> through `runCommit`. Writing through the binding
+          // directly skipped that, so a rejection (a hand-edited config that
+          // no longer parses, say) left the palette painted with nothing
+          // persisted and nothing said. Repaint the committed selection and
+          // surface the error on this row.
+          applyColorThemeToDom({ selection, modePreference, slotMode, customSeed });
+          // The optimistic apply flipped two things, so the revert has to undo
+          // both. Restoring only the palette attribute leaves a cross-variant
+          // pick's forced `.dark` class on the previous palette.
+          // Falls back to 'system' the way ConfigProvider does: an unset
+          // `appearance.theme` still has a mode to go back to, and without it a
+          // failed pick would strand the flip it made on the way in.
+          setTheme(forcedMode(selection) ?? modePreference ?? 'system');
+          onWriteRejected(result.error);
         }}
       />
     );

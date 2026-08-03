@@ -156,4 +156,16 @@ describe('computeLiveXtermTheme', () => {
     expect(theme.foreground).toBe(XTERM_LIGHT_THEME.foreground);
     expect(theme.selectionBackground).toBe(XTERM_LIGHT_THEME.selectionBackground);
   });
+
+  // This file runs off-DOM, so omitting the reader exercises the real default
+  // one against a genuinely absent `document` — the SSR path, not a simulation
+  // of it. Nothing catches on that path, so the structural guard is the only
+  // thing standing between an absent DOM and a ReferenceError reaching the
+  // caller's render.
+  test('the default reader yields the curated palette when there is no DOM', () => {
+    expect(typeof document).toBe('undefined');
+    expect(() => computeLiveXtermTheme('dark')).not.toThrow();
+    expect(computeLiveXtermTheme('dark')).toEqual(XTERM_DARK_THEME);
+    expect(computeLiveXtermTheme('light')).toEqual(XTERM_LIGHT_THEME);
+  });
 });

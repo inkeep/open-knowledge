@@ -146,7 +146,6 @@
     "1di5fu": ["Document not found"],
     "1hvhf0": ["The folder on disk and the id agents use to invoke this skill."],
     "1jym2J": ["Don't send this comment"],
-    "1njn7W": ["Light"],
     "1nke1r": ["Open ", ["0"], " on GitHub (opens in a new tab)"],
     "1oSHI0": ["Couldn't install ", ["skillName"], ": ", ["0"]],
     "1oawp3": [["failed"], " of ", ["0"], " comments could not be cleared."],
@@ -261,6 +260,7 @@
     "3jod3l": ["Connect GitHub"],
     "3l32hp": ["Part of the ", ["plugin"], " plugin"],
     "3l_cXP": ["Take a look if you'd like. This exact file is what we receive."],
+    "3l_knd": ["Press the sun or moon on “Custom” above to use this scheme."],
     "3m2GBo": ["Searching docs"],
     "3mFsc3": ["Restore with remote changes"],
     "3o3tur": ["Starter content"],
@@ -1576,9 +1576,6 @@
     "PZn2LP": ["Keep source"],
     "PZtgO0": ["Opening worktree"],
     "P_bX4O": ["How to set up"],
-    "Pck6eI": [
-      "Pick a built-in IDE palette. The dark IDE themes override the light/dark setting in Preferences."
-    ],
     "PdA9NZ": [["ahead"], " ahead"],
     "Pg83C9": ["Uploaded \"", ["0"], "\"."],
     "Pgu10b": ["Saved as <0>", ["slug"], ".md</0>"],
@@ -1665,7 +1662,6 @@
       "A real shell is off for this project. Turning it on runs commands with the full access of your macOS user account."
     ],
     "R9IDFz": ["Renames the folder on disk and the id agents use to invoke it."],
-    "R9Khdg": ["Auto"],
     "RDjuBN": ["Setup"],
     "RDrXh4": ["Configure user, project, and integration settings."],
     "RG4XHV": ["Copy ", ["0"], " prompt"],
@@ -2643,7 +2639,6 @@
     "gyHDWC": ["Fix all with AI (", ["count"], ")"],
     "gyWc8_": ["Accents"],
     "h-AdvS": ["The folders and templates are already here, so there's nothing to add."],
-    "h-Y9pw": ["Pick “Custom” above to use this scheme."],
     "h06R3C": ["No pages are missing outgoing graph links."],
     "h16FyT": ["Lists"],
     "h2N-1n": ["Installed in ", ["0"]],
@@ -2975,6 +2970,7 @@
     "lXKZGw": ["Heading 1"],
     "lY27jj": [["0"], "y ago"],
     "lZAiSP": ["Backlinks response did not match expected shape."],
+    "lZvQrY": ["Use ", ["0"], " as the dark theme"],
     "l_FAT6": ["Use letters, digits, <0>-</0> or <1>_</1> only."],
     "l_UFPv": ["Properties"],
     "lb_UU4": ["Sync now"],
@@ -3056,6 +3052,9 @@
     "mk2poV": ["e.g. server.ts"],
     "mlvM8g": ["Couldn't re-place that comment."],
     "mmpzAq": ["Wrap long lines in the markdown source editor."],
+    "mnpsVn": [
+      "Pick a palette for light mode and one for dark mode. The theme setting in Preferences chooses between them — on “System”, so does your OS."
+    ],
     "mo22UP": ["Toggle inline code formatting."],
     "mqSwZH": [
       "<0>Mirror anchor not found.</0> No <1>",
@@ -3246,7 +3245,6 @@
     "psfGPX": ["MCP connections"],
     "psl2Sj": ["Your change is still being saved — run the test again in a moment."],
     "ptQ3_N": ["unlink"],
-    "pvnfJD": ["Dark"],
     "pzutoc": ["Italic"],
     "q2cLM6": ["Stop fixing files"],
     "q2kXMG": ["Inline Math"],
@@ -3416,6 +3414,7 @@
       " · crash dump not redacted"
     ],
     "snrVQ7": ["probe failed"],
+    "sq4WQH": ["Use ", ["0"], " as the light theme"],
     "sqUrlK": ["Musing…"],
     "ssk6rl": [
       "The skill's own folder (",

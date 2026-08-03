@@ -30,7 +30,26 @@ export function useLiveXtermTheme(resolvedTheme: string | undefined): ITheme {
     // The mount/prop-change recompute also covers the first client render
     // (initial state may have computed before the FOUC script's tokens won).
     recompute();
-    const observer = new MutationObserver(recompute);
+    // One theme switch lands as several watched mutations (the palette
+    // attribute, the forced light/dark class, the custom-palette <style>), and
+    // they arrive across separate tasks, so MutationObserver's own
+    // same-microtask batching does not merge them. Each recompute probes the
+    // whole palette against styles the switch just invalidated, so coalescing
+    // to one recompute per frame is worth the deferral; reading after the
+    // frame's style flush is what consumers want anyway. A hidden window parks
+    // the frame until it is shown, which is the right place to skip the work.
+    let scheduled = 0;
+    const schedule =
+      typeof requestAnimationFrame === 'function'
+        ? () => {
+            if (scheduled) return;
+            scheduled = requestAnimationFrame(() => {
+              scheduled = 0;
+              recompute();
+            });
+          }
+        : recompute;
+    const observer = new MutationObserver(schedule);
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: [COLOR_THEME_ATTRIBUTE, 'class'],
@@ -38,7 +57,10 @@ export function useLiveXtermTheme(resolvedTheme: string | undefined): ITheme {
     // The custom theme's palette lives in a <style> tag upserted into <head>;
     // watch its insertion/removal and text swaps.
     observer.observe(document.head, { childList: true, subtree: true, characterData: true });
-    return () => observer.disconnect();
+    return () => {
+      if (scheduled) cancelAnimationFrame(scheduled);
+      observer.disconnect();
+    };
   }, [resolvedTheme]);
 
   return theme;

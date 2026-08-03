@@ -17,6 +17,7 @@ import {
   base16ToTokens,
   CHROME_BG_DARK,
   CHROME_BG_LIGHT,
+  type ColorThemeSelection,
   colorThemeMode,
   generateColorThemesCss,
   isBase16Hex,
@@ -25,12 +26,15 @@ import {
   PREVIEW_THEME_TOKENS,
   relativeLuminance,
   renderThemeBlock,
+  resolveColorThemeSelection,
+  resolveModePreference,
   resolveThemePlugin,
   THEME_PLUGINS,
   type ThemePlugin,
+  type ThemePluginId,
 } from '@inkeep/open-knowledge-core';
 
-export type { Base16Scheme };
+export type { Base16Scheme, ColorThemeSelection, ThemePluginId };
 // Re-export the core registry + pure token logic under the app's existing names.
 export {
   base16ToTokens,
@@ -38,10 +42,42 @@ export {
   generateColorThemesCss,
   isDarkTheme as isDarkColorTheme,
   relativeLuminance,
+  resolveColorThemeSelection,
+  resolveModePreference,
   resolveThemePlugin as resolveColorTheme,
   THEME_PLUGINS as COLOR_THEMES,
 };
 export type ColorTheme = ThemePlugin;
+
+/**
+ * The `appearance` patch that writes the light/dark palette pair.
+ *
+ * Both slots are always written, and the pre-pair `colorTheme` retired (`null`
+ * deletes a key in a config patch), so the first pick in the Themes pane
+ * normalizes a legacy config in one transaction instead of leaving a
+ * half-format behind that later reads as a seed for whichever slot is missing.
+ */
+export function colorThemeWritePatch(next: ColorThemeSelection): {
+  colorThemeLight: ThemePluginId;
+  colorThemeDark: ThemePluginId;
+  colorTheme: null;
+} {
+  return { colorThemeLight: next.light, colorThemeDark: next.dark, colorTheme: null };
+}
+
+/**
+ * The `appearance` patch that returns both modes to the base stylesheet.
+ *
+ * The mirror of `colorThemeWritePatch`: clearing one slot would leave the other
+ * palette assigned while the control that offers it speaks for both.
+ */
+export function colorThemeResetPatch(): {
+  colorThemeLight: null;
+  colorThemeDark: null;
+  colorTheme: null;
+} {
+  return { colorThemeLight: null, colorThemeDark: null, colorTheme: null };
+}
 
 // ---------------------------------------------------------------------------
 // Default theme — the base `:root` / `.dark` palette (`colorTheme: 'default'`).

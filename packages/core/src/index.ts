@@ -1289,12 +1289,19 @@ export {
   parseBase16Scheme,
   relativeLuminance,
 } from './theme/base16.ts';
-export type { ThemePlugin, ThemePluginId } from './theme/theme-plugins.ts';
+export type {
+  ColorThemeSelection,
+  ColorThemeSelectionInput,
+  ThemePlugin,
+  ThemePluginId,
+} from './theme/theme-plugins.ts';
 export {
   colorThemeMode,
   generateColorThemesCss,
   isDarkTheme,
   renderThemeBlock,
+  resolveColorThemeSelection,
+  resolveModePreference,
   resolveThemePlugin,
   THEME_PLUGIN_IDS,
   THEME_PLUGINS,

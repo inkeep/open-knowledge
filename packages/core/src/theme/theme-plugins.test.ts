@@ -5,6 +5,8 @@ import {
   generateColorThemesCss,
   isDarkTheme,
   renderThemeBlock,
+  resolveColorThemeSelection,
+  resolveModePreference,
   resolveThemePlugin,
   THEME_PLUGIN_IDS,
   THEME_PLUGINS,
@@ -107,5 +109,62 @@ describe('token mapping + generateColorThemesCss', () => {
       if (NON_STATIC.has(theme.id)) continue;
       expect(css).toContain(`html[data-color-theme="${theme.id}"] {`);
     }
+  });
+});
+
+describe('resolveColorThemeSelection', () => {
+  test('reads the light/dark pair when set', () => {
+    expect(
+      resolveColorThemeSelection({
+        colorThemeLight: 'catppuccin-latte',
+        colorThemeDark: 'dracula',
+      }),
+    ).toEqual({ light: 'catppuccin-latte', dark: 'dracula' });
+  });
+
+  test('a legacy single palette seeds both slots, so the pre-pair config renders unchanged', () => {
+    expect(resolveColorThemeSelection({ colorTheme: 'dracula' })).toEqual({
+      light: 'dracula',
+      dark: 'dracula',
+    });
+  });
+
+  test('a half-written pair falls back to the legacy palette per slot, not to default', () => {
+    expect(
+      resolveColorThemeSelection({ colorTheme: 'monokai', colorThemeDark: 'gruvbox' }),
+    ).toEqual({ light: 'monokai', dark: 'gruvbox' });
+  });
+
+  test('an empty or unknown selection resolves to default in both slots', () => {
+    expect(resolveColorThemeSelection(undefined)).toEqual({ light: 'default', dark: 'default' });
+    expect(resolveColorThemeSelection({})).toEqual({ light: 'default', dark: 'default' });
+    expect(
+      resolveColorThemeSelection({ colorTheme: 'nope', colorThemeLight: 'also-nope' }),
+    ).toEqual({ light: 'default', dark: 'default' });
+  });
+
+  test('any palette is admissible in either slot', () => {
+    // A dark scheme as the light-mode palette is a supported choice — the
+    // picker offers both icons on every tile.
+    expect(
+      resolveColorThemeSelection({
+        colorThemeLight: 'dracula',
+        colorThemeDark: 'catppuccin-latte',
+      }),
+    ).toEqual({ light: 'dracula', dark: 'catppuccin-latte' });
+  });
+});
+
+describe('resolveModePreference', () => {
+  test('an explicit preference ignores the OS', () => {
+    expect(resolveModePreference('light', true)).toBe('light');
+    expect(resolveModePreference('dark', false)).toBe('dark');
+  });
+
+  test("'system', an absent value, and junk all follow the OS", () => {
+    expect(resolveModePreference('system', true)).toBe('dark');
+    expect(resolveModePreference('system', false)).toBe('light');
+    expect(resolveModePreference(undefined, true)).toBe('dark');
+    expect(resolveModePreference('nope', false)).toBe('light');
   });
 });

@@ -24,7 +24,9 @@ import {
   DEFAULT_CUSTOM_SCHEME,
   hasLegacyCustomSeed,
   isHexColor,
+  resolveColorThemeSelection,
   resolveCustomScheme,
+  resolveModePreference,
 } from '@/lib/color-themes';
 import { useConfigContextOptional } from '@/lib/config-context';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
@@ -52,10 +54,15 @@ const SCHEMES_URL = 'https://github.com/tinted-theming/schemes';
  */
 export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding }) {
   const { t } = useLingui();
-  const { setTheme } = useTheme();
+  const { setTheme, systemTheme } = useTheme();
   const merged = useConfigContextOptional()?.merged ?? null;
   const committed = resolveCustomScheme(merged?.appearance?.customTheme);
-  const isActive = merged?.appearance?.colorTheme === 'custom';
+  const modePreference = merged?.appearance?.theme;
+  const selection = resolveColorThemeSelection(merged?.appearance);
+  const slotMode = resolveModePreference(modePreference, systemTheme === 'dark');
+  // Live preview only when the custom scheme is the palette actually on screen —
+  // it may be assigned to the other mode's slot, where an edit shouldn't repaint.
+  const isActive = selection[slotMode] === 'custom';
 
   // Local working copy for smooth live editing; re-sync when committed config
   // changes underneath us (another window, a reset, a hand-edit).
@@ -76,7 +83,12 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
 
   function preview(next: Base16Scheme) {
     if (!isActive) return;
-    applyColorThemeToDom('custom', customThemeWritePatch(next));
+    applyColorThemeToDom({
+      selection,
+      modePreference,
+      slotMode,
+      customSeed: customThemeWritePatch(next),
+    });
     setTheme(customThemeKind(next) === 'dark' ? 'dark' : 'light');
   }
 
@@ -159,7 +171,7 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
           <p className="text-1sm text-muted-foreground">
             {isActive
               ? t`Edits apply live. Light or dark comes from the scheme.`
-              : t`Pick “Custom” above to use this scheme.`}
+              : t`Press the sun or moon on “Custom” above to use this scheme.`}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">

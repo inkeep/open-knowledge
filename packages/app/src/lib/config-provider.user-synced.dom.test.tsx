@@ -191,6 +191,12 @@ vi.doMock('@inkeep/open-knowledge-core', () => ({
   // re-exports fail to resolve (a hard named-import error for `colorThemeMode`,
   // which SettingsDialogBody imports statically).
   colorThemeMode: (id?: string) => (id && id !== 'default' && id !== 'custom' ? 'dark' : undefined),
+  resolveColorThemeSelection: (appearance?: { colorTheme?: string }) => ({
+    light: appearance?.colorTheme ?? 'default',
+    dark: appearance?.colorTheme ?? 'default',
+  }),
+  resolveModePreference: (preference?: string, prefersDark?: boolean) =>
+    preference === 'light' || preference === 'dark' ? preference : prefersDark ? 'dark' : 'light',
   expandPalette: () => ({}),
   generateColorThemesCss: () => '',
   isDarkTheme: (id?: string) => Boolean(id) && id !== 'default' && id !== 'custom',

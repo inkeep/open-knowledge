@@ -17,6 +17,16 @@ import { emitConfigValidationRejected } from '@/lib/config-validation-events';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 import { SettingsDialogBody } from './SettingsDialogBody';
 
+/** Drop every `null` leaf — the patch spelling for "delete this key". */
+function stripNulls(value: unknown): unknown {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== null)
+      .map(([k, v]) => [k, stripNulls(v)]),
+  );
+}
+
 function makeBinding(config: Config = ConfigSchema.parse({})): {
   binding: ConfigBinding;
   patches: ConfigPatch[];
@@ -28,7 +38,9 @@ function makeBinding(config: Config = ConfigSchema.parse({})): {
       patches.push(patch);
       return {
         ok: true,
-        effective: ConfigSchema.parse({ ...config, ...patch }),
+        // `null` means "clear this key" in a real patch (the binding deletes it
+        // before validating), so drop nulls rather than handing them to Zod.
+        effective: ConfigSchema.parse({ ...config, ...stripNulls(patch) }),
         appliedPaths: ['editor.wordWrap'],
       };
     },
@@ -43,10 +55,35 @@ function makeBinding(config: Config = ConfigSchema.parse({})): {
   return { binding, patches };
 }
 
-function makeConfigContextValue(projectBinding: ConfigBinding = makeBinding().binding) {
+/** A binding that rejects every write, for the error-routing path. */
+function makeRejectingBinding(config: Config = ConfigSchema.parse({})): ConfigBinding {
+  return {
+    current: () => config,
+    patch: () => ({
+      ok: false,
+      error: {
+        code: 'SCHEMA_INVALID',
+        message: 'config rejected',
+        issues: [{ path: ['appearance', 'colorThemeLight'], message: 'palette write rejected' }],
+      },
+    }),
+    subscribe: () => () => {},
+    hasSynced: () => true,
+    subscribeSynced: (listener) => {
+      queueMicrotask(listener);
+      return () => {};
+    },
+    dispose: () => {},
+  } as unknown as ConfigBinding;
+}
+
+function makeConfigContextValue(
+  projectBinding: ConfigBinding = makeBinding().binding,
+  userBinding: ConfigBinding | null = null,
+) {
   const config = ConfigSchema.parse({});
   return {
-    userBinding: null,
+    userBinding,
     userSynced: true,
     projectBinding,
     projectLocalBinding: null,
@@ -61,8 +98,16 @@ function makeConfigContextValue(projectBinding: ConfigBinding = makeBinding().bi
   } satisfies ConfigContextValue;
 }
 
-function SettingsContextProvider({ children }: { children: ReactNode }) {
-  return <ConfigContext value={makeConfigContextValue()}>{children}</ConfigContext>;
+function SettingsContextProvider({
+  children,
+  userBinding = null,
+}: {
+  children: ReactNode;
+  userBinding?: ConfigBinding | null;
+}) {
+  return (
+    <ConfigContext value={makeConfigContextValue(undefined, userBinding)}>{children}</ConfigContext>
+  );
 }
 
 function renderPreferences(binding: ConfigBinding) {
@@ -346,7 +391,7 @@ function renderThemePluginWithTheme(binding: ConfigBinding) {
       enableSystem
       storageKey={`ok-theme-v1-test-${themeStorageKeySeq}`}
     >
-      <SettingsContextProvider>
+      <SettingsContextProvider userBinding={binding}>
         <TooltipProvider>
           <SettingsDialogBody
             activeId="plugin:theme"
@@ -373,29 +418,139 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
     expect(screen.queryByTestId('settings-scope-badge-project')).toBeNull();
   });
 
-  test('selecting a light palette (Catppuccin Latte) flips next-themes to light', async () => {
+  test('assigning a palette to the mode on screen applies it immediately', async () => {
+    // jsdom reports no dark preference, so the mode on screen is light and the
+    // sun is the icon that changes what the user sees right now.
     const user = userEvent.setup();
     const { binding } = makeBinding();
     renderThemePluginWithTheme(binding);
 
     expect(screen.getByTestId('theme-probe').textContent).toBe('system');
 
-    await user.click(screen.getByRole('radio', { name: /Catppuccin Latte/ }));
+    await user.click(screen.getByLabelText('Use Catppuccin Latte as the light theme'));
 
     await waitFor(() => {
       expect(screen.getByTestId('theme-probe').textContent).toBe('light');
     });
   });
 
-  test('selecting a dark palette (Catppuccin Frappé) flips next-themes to dark', async () => {
+  test('a cross-variant palette in the on-screen slot forces its own mode', async () => {
+    // Dracula is a dark-kind palette. Assigned to the LIGHT slot while the mode
+    // on screen is light, it still forces its own dark variant, so the flip has
+    // to drive next-themes to `dark` immediately (Tailwind `dark:` variants would
+    // otherwise render dark-on-light until the config round-trip). The
+    // Latte-into-light case above only exercises a same-variant assignment.
     const user = userEvent.setup();
     const { binding } = makeBinding();
     renderThemePluginWithTheme(binding);
 
-    await user.click(screen.getByRole('radio', { name: /Catppuccin Frappé/ }));
+    expect(screen.getByTestId('theme-probe').textContent).toBe('system');
+
+    await user.click(screen.getByLabelText('Use Dracula as the light theme'));
 
     await waitFor(() => {
       expect(screen.getByTestId('theme-probe').textContent).toBe('dark');
+    });
+  });
+
+  test('assigning a palette to the OTHER mode leaves the current appearance alone', async () => {
+    // The whole point of the pair: staging a dark palette while working in
+    // light must not drag the app into dark mode.
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    renderThemePluginWithTheme(binding);
+
+    await user.click(screen.getByLabelText('Use Catppuccin Frappé as the dark theme'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('theme-probe').textContent).toBe('system');
+    });
+  });
+
+  test('reset clears BOTH slots, not just the path the row is keyed by', async () => {
+    // The row is anchored to colorThemeLight but speaks for both modes, so a
+    // per-path reset would strand the dark palette under a "reset to default"
+    // label.
+    const user = userEvent.setup();
+    const { binding, patches } = makeBinding(
+      ConfigSchema.parse({ appearance: { colorThemeLight: 'dracula' } }),
+    );
+    renderThemePluginWithTheme(binding);
+
+    const resetButton = await screen.findByRole('button', {
+      name: /Reset Color theme to default/i,
+    });
+    await user.click(resetButton);
+
+    await waitFor(() => {
+      expect(patches).toEqual([
+        { appearance: { colorThemeLight: null, colorThemeDark: null, colorTheme: null } },
+      ]);
+    });
+  });
+
+  test('a rejected write surfaces an inline error instead of failing silently', async () => {
+    // Writing through the binding directly skips the form commit that every
+    // other field uses to route rejections into its own FormMessage.
+    const user = userEvent.setup();
+    renderThemePluginWithTheme(makeRejectingBinding());
+
+    // Assign the slot that is actually on screen (jsdom reports no dark
+    // preference, so the sun is the live one). Assigning the other slot paints
+    // nothing, which would make the revert a no-op and the assertion vacuous.
+    expect(document.documentElement.hasAttribute('data-color-theme')).toBe(false);
+
+    await user.click(screen.getByLabelText('Use Catppuccin Latte as the light theme'));
+
+    await waitFor(() => {
+      expect(screen.getByText('palette write rejected')).toBeDefined();
+    });
+    // The optimistic paint set the attribute before the write; the rejection
+    // has to undo it, or the user is left looking at a palette that was never
+    // persisted next to an error saying so.
+    expect(document.documentElement.hasAttribute('data-color-theme')).toBe(false);
+  });
+
+  test('a rejected cross-variant pick also reverts the forced light/dark mode', async () => {
+    // Assigning a dark palette to the light slot forces dark mode optimistically.
+    // Reverting only the palette attribute would strand that mode on the
+    // previous palette, so the revert has to undo both effects.
+    const user = userEvent.setup();
+    renderThemePluginWithTheme(makeRejectingBinding());
+
+    expect(screen.getByTestId('theme-probe').textContent).toBe('system');
+
+    await user.click(screen.getByLabelText('Use Dracula as the light theme'));
+
+    await waitFor(() => {
+      expect(screen.getByText('palette write rejected')).toBeDefined();
+    });
+    // Back to the user's own preference, not Dracula's forced dark.
+    await waitFor(() => {
+      expect(screen.getByTestId('theme-probe').textContent).toBe('system');
+    });
+    // Both halves of the optimistic apply have to come back, so check the
+    // attribute here too rather than leaving it to the same-variant sibling.
+    expect(document.documentElement.hasAttribute('data-color-theme')).toBe(false);
+  });
+
+  test('one patch writes both slots and retires the pre-pair key', async () => {
+    const user = userEvent.setup();
+    const { binding, patches } = makeBinding();
+    renderThemePluginWithTheme(binding);
+
+    await user.click(screen.getByLabelText('Use Catppuccin Frappé as the dark theme'));
+
+    await waitFor(() => {
+      expect(patches).toEqual([
+        {
+          appearance: {
+            colorThemeLight: 'default',
+            colorThemeDark: 'catppuccin-frappe',
+            colorTheme: null,
+          },
+        },
+      ]);
     });
   });
 });

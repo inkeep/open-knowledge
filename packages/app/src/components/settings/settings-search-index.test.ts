@@ -67,13 +67,13 @@ describe('buildSettingsSearchIndex', () => {
       groups: groupsFixture({ themeVisible: true }),
       translate,
     });
-    expect(withTheme.some((e) => e.targetField === 'appearance.colorTheme')).toBe(true);
+    expect(withTheme.some((e) => e.targetField === 'appearance.colorThemeLight')).toBe(true);
 
     const withoutTheme = buildSettingsSearchIndex({
       groups: groupsFixture({ themeVisible: false }),
       translate,
     });
-    expect(withoutTheme.some((e) => e.targetField === 'appearance.colorTheme')).toBe(false);
+    expect(withoutTheme.some((e) => e.targetField === 'appearance.colorThemeLight')).toBe(false);
   });
 
   test('markdownlint rules indexed only when the panel is visible (disabled plugin excluded)', () => {

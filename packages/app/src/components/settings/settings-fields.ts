@@ -59,11 +59,14 @@ export const FIELDS_USER_PREFERENCES: FieldDef[] = [
 // The color-theme picker is a theme "plugin": it lives in the Plugins menu
 // (Settings → Plugins → Themes) as a peer of the lint plugins, not in
 // Preferences. `appearance.theme` (light/dark/system) stays in Preferences.
+// One control writes both palette slots, so it is declared against the light
+// one — the path is what the search index navigates to and what the field row
+// is keyed by, not a per-slot rendering hint.
 export const FIELDS_THEME_PLUGIN: FieldDef[] = [
   {
-    path: ['appearance', 'colorTheme'],
+    path: ['appearance', 'colorThemeLight'],
     label: msg`Color theme`,
-    description: msg`Pick a built-in IDE palette. The dark IDE themes override the light/dark setting in Preferences.`,
+    description: msg`Pick a palette for light mode and one for dark mode. The theme setting in Preferences chooses between them — on “System”, so does your OS.`,
     control: 'theme-tiles',
   },
 ];

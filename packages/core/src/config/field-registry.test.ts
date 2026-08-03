@@ -143,7 +143,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     expect(allowlisted).toEqual([]);
   });
 
-  test('user-strict fields cover agents.autoApproveOkTools + appearance.{colorTheme,colorThemeEnabled,customTheme.*,preview.autoOpen,theme} + editor.{previewTabs,wordWrap}', () => {
+  test('user-strict fields cover agents.autoApproveOkTools + appearance.{colorTheme*,customTheme.*,preview.autoOpen,theme} + editor.{previewTabs,wordWrap}', () => {
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
     const userStrict = leaves
@@ -152,8 +152,12 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       .sort();
     expect(userStrict).toEqual([
       'agents.autoApproveOkTools',
+      // One palette per light/dark mode, plus the single pre-pair palette they
+      // superseded — still read as the seed for both slots on an older config.
       'appearance.colorTheme',
+      'appearance.colorThemeDark',
       'appearance.colorThemeEnabled',
+      'appearance.colorThemeLight',
       // The custom theme is a base16 scheme: sixteen palette slots plus the
       // three metadata fields an imported scheme carries.
       'appearance.customTheme.author',

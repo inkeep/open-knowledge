@@ -71,35 +71,61 @@ export function xtermThemeForMode(resolvedTheme: string | undefined): ITheme {
 /** Resolve one design token (`--background`, …) to a concrete color, or null. */
 export type TokenColorReader = (token: string) => string | null;
 
+/** Classify one probe's `backgroundColor` readback as a color, or absent. */
+function normalizeProbedColor(resolved: string | undefined): string | null {
+  // An unset token computes to the transparent initial value — treat as
+  // absent rather than skinning the terminal invisible. A value still
+  // containing `var(` means the environment didn't resolve custom
+  // properties (happy-dom in tests) — also absent.
+  if (!resolved || resolved === 'rgba(0, 0, 0, 0)' || resolved === 'transparent') return null;
+  if (resolved.includes('var(')) return null;
+  return resolved;
+}
+
 /**
- * Default token reader: a detached-then-attached probe span whose
- * `backgroundColor` is `var(<token>)`, read back through `getComputedStyle`.
- * The round-trip makes the browser resolve `var()` chains and relative color
- * syntax (`oklch(from var(--primary) …)`) to a concrete color string, which
- * xterm's browser build can parse via its canvas litmus. Returns null when the
- * token is unset or the environment can't resolve it (tests, SSR).
+ * Default token reader: probe spans whose `backgroundColor` is `var(<token>)`,
+ * read back through `getComputedStyle`. The round-trip makes the browser
+ * resolve `var()` chains and relative color syntax (`oklch(from var(--primary)
+ * …)`) to a concrete color string, which xterm's browser build can parse via
+ * its canvas litmus. Absent tokens map to null so each slot falls back on its
+ * own; an environment with no DOM at all (SSR) yields an empty map.
+ *
+ * Every probe is attached in ONE insertion and read only once all of them are
+ * in the tree. Appending re-dirties style, so a probe-per-token loop pays a
+ * forced style recalculation per token, and a recompute is triggered by a theme
+ * switch that has just invalidated every computed style in the document, which
+ * is exactly when that recalculation is most expensive. Batching holds the
+ * whole palette to a single one.
  */
-function readTokenColor(token: string): string | null {
-  try {
+function readTokenColors(tokens: readonly string[]): Map<string, string | null> {
+  const resolved = new Map<string, string | null>();
+  // Off-DOM (SSR, node-environment tests) is an expected caller, not an
+  // exceptional one, so it reads as a condition rather than as a thrown
+  // ReferenceError caught after the fact. The empty map reads downstream as
+  // "every token absent", which falls each slot back to the curated palette.
+  if (typeof document === 'undefined' || !document.body) return resolved;
+
+  const fragment = document.createDocumentFragment();
+  const probes = tokens.map((token) => {
     const probe = document.createElement('span');
     probe.style.display = 'none';
     probe.style.backgroundColor = `var(${token})`;
-    document.body.appendChild(probe);
-    try {
-      const resolved = getComputedStyle(probe).backgroundColor;
-      // An unset token computes to the transparent initial value — treat as
-      // absent rather than skinning the terminal invisible. A value still
-      // containing `var(` means the environment didn't resolve custom
-      // properties (happy-dom in tests) — also absent.
-      if (!resolved || resolved === 'rgba(0, 0, 0, 0)' || resolved === 'transparent') return null;
-      if (resolved.includes('var(')) return null;
-      return resolved;
-    } finally {
-      probe.remove();
+    fragment.appendChild(probe);
+    return { token, probe };
+  });
+  document.body.appendChild(fragment);
+  // finally, not catch: the probes must never outlive the read, but a throw
+  // here would mean the style engine failed on this document's own same-origin
+  // nodes. Nothing in this palette is worth swallowing that, and a silent
+  // fallback to curated colors would hide it.
+  try {
+    for (const { token, probe } of probes) {
+      resolved.set(token, normalizeProbedColor(getComputedStyle(probe).backgroundColor));
     }
-  } catch {
-    return null;
+  } finally {
+    for (const { probe } of probes) probe.remove();
   }
+  return resolved;
 }
 
 /** xterm ANSI slot → the `--ansi-*` custom property carrying its color. */
@@ -122,6 +148,20 @@ const ANSI_TOKEN_BY_SLOT: Record<AnsiSlotName, string> = {
   brightWhite: '--ansi-bright-white',
 };
 
+/** Every token one recompute needs, so they can be probed in a single batch. */
+const LIVE_THEME_TOKENS: readonly string[] = [
+  '--background',
+  '--foreground',
+  '--selection-soft',
+  ...Object.values(ANSI_TOKEN_BY_SLOT),
+];
+
+/** Probe the whole palette once, then serve each slot from the result. */
+function createBatchedTokenReader(): TokenColorReader {
+  const batch = readTokenColors(LIVE_THEME_TOKENS);
+  return (token) => batch.get(token) ?? null;
+}
+
 /**
  * The live theme as an xterm palette — surfaces and all sixteen ANSI slots read
  * from the app's tokens, so a color theme repaints program output and not just
@@ -138,7 +178,7 @@ const ANSI_TOKEN_BY_SLOT: Record<AnsiSlotName, string> = {
  */
 export function computeLiveXtermTheme(
   resolvedTheme: string | undefined,
-  readToken: TokenColorReader = readTokenColor,
+  readToken: TokenColorReader = createBatchedTokenReader(),
 ): ITheme {
   const base = xtermThemeForMode(resolvedTheme);
   const background = readToken('--background') ?? base.background;

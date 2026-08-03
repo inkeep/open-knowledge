@@ -11,7 +11,7 @@
  * guard the structural half (no `var(--` in the tile).
  *
  * The palette is applied by setting the attribute directly rather than by
- * clicking a tile: `appearance.colorTheme` is USER-scoped config, and the dev
+ * clicking a tile: the palette pair is USER-scoped config, and the dev
  * server resolves user scope against the real `~/.ok/global.yml`, so a click
  * here would rewrite the developer's own theme. Poking the attribute drives the
  * identical cascade with no write and no dependence on incoming config.
@@ -31,12 +31,12 @@ test('the Default tile does not inherit the applied palette', async ({ page }) =
 
   const surfaceOf = (label: RegExp) =>
     page
-      .getByRole('radio', { name: label })
-      .locator('[aria-hidden]')
+      .getByRole('group', { name: label })
+      .locator('[data-theme-swatch]')
       .first()
       .evaluate((el) => getComputedStyle(el).backgroundColor);
 
-  await expect(page.getByRole('radio', { name: /Default/ })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('group', { name: /Default/ })).toBeVisible({ timeout: 10_000 });
   await page.evaluate(() => document.documentElement.setAttribute('data-color-theme', 'dracula'));
 
   // The palette really is cascading — the Dracula tile paints Dracula's canvas.
