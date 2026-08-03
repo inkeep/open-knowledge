@@ -9,9 +9,11 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { getLogger } from '../logger.ts';
+import { MCP_HOSTED_AGENT_HEADER } from '../mcp/agent-identity.ts';
 import { AcpPermissionStore } from './permissions.ts';
 import { AcpRegistry } from './registry.ts';
 import {
@@ -51,7 +53,14 @@ type BuildMcpServersSeam = {
       info: { threadId: string };
     },
     init: { agentCapabilities?: { mcpCapabilities?: { http?: boolean } } },
-  ) => Promise<Array<{ name: string; type?: string }>>;
+  ) => Promise<
+    Array<{
+      name: string;
+      type?: string;
+      env?: Array<{ name: string; value: string }>;
+      headers?: Array<{ name: string; value: string }>;
+    }>
+  >;
 };
 
 function makeManager(
@@ -108,6 +117,31 @@ describe('buildMcpServers × probeHarnessManagedMcpEntry', () => {
     const servers = await m.buildMcpServers(record('registry', 'codex-acp'), HTTP_INIT);
     expect(servers).toHaveLength(1);
     expect(servers[0]).toMatchObject({ name: 'open-knowledge', type: 'http' });
+  });
+
+  // The env marker cannot travel over HTTP, so the hosted-agent fact rides a
+  // header. Without it an HTTP-capable panel agent reaches `preview_url` on
+  // the shared server, where the steer can't be computed, and gets the bare
+  // URL this whole change exists to suppress.
+  test('the injected HTTP server carries the hosted-agent header', async () => {
+    const m = makeManager(() => null);
+    const servers = await m.buildMcpServers(record('registry', 'codex-acp'), HTTP_INIT);
+    expect(servers[0]).toMatchObject({
+      type: 'http',
+      headers: [{ name: MCP_HOSTED_AGENT_HEADER, value: '1' }],
+    });
+  });
+
+  // On this branch we name the command, so the marker can be guaranteed
+  // rather than left to inheritance through the agent process.
+  test('the injected stdio server carries the hosted-agent marker', async () => {
+    const m = makeManager(() => null);
+    const servers = await m.buildMcpServers(record('registry', 'claude-acp'), {});
+    expect(servers).toHaveLength(1);
+    expect(servers[0]).toMatchObject({
+      name: 'open-knowledge',
+      env: [{ name: OK_HOSTED_AGENT_ENV, value: '1' }],
+    });
   });
 
   test('never probes for custom agents or registry agents without an OK config surface', async () => {

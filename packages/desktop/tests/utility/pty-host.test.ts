@@ -1,3 +1,4 @@
+import { OK_DESKTOP_TERMINAL_ENV } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
   buildShellArgs,
@@ -187,10 +188,10 @@ describe('setupPtyHost — create', () => {
   test('marks the shell as the OK Desktop terminal (OK_DESKTOP_TERMINAL=1)', () => {
     // Positive identity the project skill keys off to pick `ok open` over a
     // preview URL. Set even when the parent tries to clear it.
-    const h = makeHarness({ env: { SHELL: '/bin/zsh', OK_DESKTOP_TERMINAL: '' } });
+    const h = makeHarness({ env: { SHELL: '/bin/zsh', [OK_DESKTOP_TERMINAL_ENV]: '' } });
     h.fire(CREATE());
     const env = h.spawnCalls[0]?.options.env ?? {};
-    expect(env.OK_DESKTOP_TERMINAL).toBe('1');
+    expect(env[OK_DESKTOP_TERMINAL_ENV]).toBe('1');
   });
 
   test('prepends ~/.ok/bin to the child PATH so `ok` resolves regardless of rc consent', () => {
@@ -636,7 +637,7 @@ describe('buildShellEnv', () => {
     expect(env).toEqual({
       PATH: '/Users/x/.ok/bin:/usr/bin',
       HOME: '/Users/x',
-      OK_DESKTOP_TERMINAL: '1',
+      [OK_DESKTOP_TERMINAL_ENV]: '1',
     });
   });
 });

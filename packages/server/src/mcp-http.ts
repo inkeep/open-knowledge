@@ -9,6 +9,7 @@ import { MCP_SERVER_NAME } from './constants.ts';
 import {
   type AgentIdentity,
   MCP_CONNECTION_ID_HEADER,
+  MCP_HOSTED_AGENT_HEADER,
   sanitizeClientName,
 } from './mcp/agent-identity.ts';
 import { installPrettyZodErrors } from './mcp/pretty-zod-errors.ts';
@@ -63,6 +64,7 @@ function createSessionServer(
   opts: McpHttpHandlerOptions,
   transport: StreamableHTTPServerTransport,
   forwardedConnectionId: string | undefined,
+  isHostedAgent: boolean,
 ): McpHttpSession {
   const config = opts.config;
   // No `instructions` handshake — see startGlobalMcpServer. The
@@ -129,6 +131,7 @@ function createSessionServer(
     },
     config,
     identityRef,
+    isHostedAgent,
   });
 
   return { server, transport };
@@ -218,12 +221,23 @@ export function createMcpHttpHandler(opts: McpHttpHandlerOptions): McpHttpHandle
         );
       }
 
+      // Only the HTTP MCP entry OK injects for an agent it hosts sets this;
+      // an external client (Cursor/Codex outside the app, an `ok start`
+      // consumer) never does and keeps the plain-URL behavior. Read per
+      // session rather than per process because one server answers both.
+      const isHostedAgent = firstHeader(req.headers[MCP_HOSTED_AGENT_HEADER]) === '1';
+
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         enableJsonResponse: true,
         onsessioninitialized: async (newSessionId) => {
           try {
-            const session = createSessionServer(opts, transport, forwardedConnectionId);
+            const session = createSessionServer(
+              opts,
+              transport,
+              forwardedConnectionId,
+              isHostedAgent,
+            );
             await session.server.connect(transport);
             sessions.set(newSessionId, session);
             touchSession(newSessionId, session);

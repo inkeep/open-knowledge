@@ -46,7 +46,7 @@ interface EnsureDeps {
   offCwdResolverDeps?: OffCwdResolverDeps;
   ensureSingleFileSession?: (absFile: string) => Promise<boolean>;
   resolveUserAutoOpen?: () => boolean;
-  isDesktopTerminal?: boolean;
+  isHostedAgent?: boolean;
 }
 
 function captureRegistration(
@@ -102,11 +102,11 @@ describe('preview_url tool — UI running', () => {
     expect(result.structuredContent?.url).toBe(`${uiBase}/#/My%20Notes/sub/`);
   });
 
-  describe('isDesktopTerminal steer (OK Desktop built-in terminal)', () => {
+  describe('isHostedAgent steer (desktop terminal or in-app agent panel)', () => {
     test('document: response leads with `ok open <doc>` and tells the agent not to navigate the URL', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
       bindTestUiLock(cwd);
-      const handler = captureRegistration(cwd, BASE_CONFIG, { isDesktopTerminal: true });
+      const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ document: 'specs/foo/SPEC' });
       const text = result.content[0]?.text ?? '';
       expect(text).toContain('ok open specs/foo/SPEC');
@@ -116,10 +116,22 @@ describe('preview_url tool — UI running', () => {
       expect(result.structuredContent?.okOpenCommand).toBe('ok open specs/foo/SPEC');
     });
 
+    // The reported failure was not a bad URL — it was a correct URL pasted
+    // into the reply of an agent sitting inside the app the URL points at.
+    // "don't navigate" alone left that reading open, so the steer has to
+    // close it explicitly.
+    test('document: steer tells the agent not to paste the URL into its reply', async () => {
+      const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+      bindTestUiLock(cwd);
+      const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
+      const result = await handler({ document: 'specs/foo/SPEC' });
+      expect(result.content[0]?.text ?? '').toContain('paste the URL into your reply');
+    });
+
     test('folder: steers to `ok open <folder>`', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
       bindTestUiLock(cwd);
-      const handler = captureRegistration(cwd, BASE_CONFIG, { isDesktopTerminal: true });
+      const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ folder: 'specs/foo' });
       expect(result.content[0]?.text ?? '').toContain('ok open specs/foo');
       expect(result.structuredContent?.okOpenCommand).toBe('ok open specs/foo');
@@ -128,7 +140,7 @@ describe('preview_url tool — UI running', () => {
     test('skill default scope (project): steers to `ok open <name> --skill` (no --scope)', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
       bindTestUiLock(cwd);
-      const handler = captureRegistration(cwd, BASE_CONFIG, { isDesktopTerminal: true });
+      const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ skill: { name: 'trip-log' } });
       expect(result.content[0]?.text ?? '').toContain('ok open trip-log --skill');
       expect(result.content[0]?.text ?? '').not.toContain('--scope');
@@ -138,7 +150,7 @@ describe('preview_url tool — UI running', () => {
     test('skill --scope global: steers to `ok open <name> --skill --scope global`', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
       bindTestUiLock(cwd);
-      const handler = captureRegistration(cwd, BASE_CONFIG, { isDesktopTerminal: true });
+      const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ skill: { name: 'trip-log', scope: 'global' } });
       expect(result.content[0]?.text ?? '').toContain('ok open trip-log --skill --scope global');
       expect(result.structuredContent?.okOpenCommand).toBe(
@@ -149,12 +161,12 @@ describe('preview_url tool — UI running', () => {
     test('no target (root): no steer — nothing to `ok open`', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
       bindTestUiLock(cwd);
-      const handler = captureRegistration(cwd, BASE_CONFIG, { isDesktopTerminal: true });
+      const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({});
       expect(result.content[0]?.text ?? '').not.toContain('ok open');
     });
 
-    test('NOT a desktop terminal (default): no steer — plain Preview URL', async () => {
+    test('NOT a hosted agent (default): no steer — plain Preview URL', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
       bindTestUiLock(cwd);
       const handler = captureRegistration(cwd);
@@ -164,20 +176,23 @@ describe('preview_url tool — UI running', () => {
       expect(result.structuredContent?.okOpenCommand ?? null).toBeNull();
     });
 
-    test('desktop terminal + no UI running: steer + okOpenCommand still fire (ok open does not need the UI)', async () => {
+    test('hosted agent + no UI running: steer + okOpenCommand still fire (ok open does not need the UI)', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
       // No bindTestUiLock / bindTestServerLock — nothing is running.
-      const handler = captureRegistration(cwd, BASE_CONFIG, { isDesktopTerminal: true });
+      const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ document: 'specs/foo/SPEC' });
       expect(result.structuredContent?.running).toBe(false);
       expect(result.structuredContent?.okOpenCommand).toBe('ok open specs/foo/SPEC');
       expect(result.content[0]?.text ?? '').toContain('ok open specs/foo/SPEC');
+      // The steer rides the no-UI payload too — without this assertion,
+      // dropping it from that branch would pass every other test here.
+      expect(result.content[0]?.text ?? '').toContain('paste the URL into your reply');
     });
 
     test('document with a space: okOpenCommand shell-quotes the path', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
       bindTestUiLock(cwd);
-      const handler = captureRegistration(cwd, BASE_CONFIG, { isDesktopTerminal: true });
+      const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ document: 'notes/My Doc' });
       expect(result.structuredContent?.okOpenCommand).toBe("ok open 'notes/My Doc'");
     });
@@ -185,16 +200,16 @@ describe('preview_url tool — UI running', () => {
     test('document with an embedded single quote: okOpenCommand POSIX-escapes it', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
       bindTestUiLock(cwd);
-      const handler = captureRegistration(cwd, BASE_CONFIG, { isDesktopTerminal: true });
+      const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ document: "Q&A/what's new" });
       // POSIX single-quote escape: close-quote, escaped-quote, reopen → '\''
       expect(result.structuredContent?.okOpenCommand).toBe("ok open 'Q&A/what'\\''s new'");
     });
 
-    test('desktop terminal + no UI + folder: okOpenCommand still fires', async () => {
+    test('hosted agent + no UI + folder: okOpenCommand still fires', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
       // No bindTestUiLock — nothing running.
-      const handler = captureRegistration(cwd, BASE_CONFIG, { isDesktopTerminal: true });
+      const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ folder: 'specs/foo' });
       expect(result.structuredContent?.running).toBe(false);
       expect(result.structuredContent?.okOpenCommand).toBe('ok open specs/foo');

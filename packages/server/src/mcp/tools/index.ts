@@ -80,14 +80,16 @@ interface RegisterAllToolsOptions {
   identityRef?: { current: AgentIdentity };
   logger?: McpLogger;
   /**
-   * True when this MCP server process is running inside OK Desktop's own
-   * built-in terminal (`OK_DESKTOP_TERMINAL=1` inherited from the pty). The
-   * global `ok mcp` server sets it from its env; the shared collab server
-   * (`ok start`) never has the marker, so it stays false there. `preview_url`
-   * uses it to steer the agent to `ok open` (which focuses the OK Desktop
-   * window) instead of returning a URL the agent shouldn't navigate.
+   * True when the agent driving this MCP server process is running inside an
+   * OpenKnowledge surface — the desktop app's built-in terminal
+   * (`OK_DESKTOP_TERMINAL=1` from the pty) or its in-app agent panel
+   * (`OK_HOSTED_AGENT=1` from the agent spawn). The global `ok mcp` server
+   * sets it from its env; the shared collab server (`ok start`) never has
+   * either marker, so it stays false there. `preview_url` uses it to steer
+   * the agent to `ok open` (which focuses the doc where the user is already
+   * looking) instead of returning a URL the agent shouldn't navigate.
    */
-  isDesktopTerminal?: boolean;
+  isHostedAgent?: boolean;
 }
 
 export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsOptions): void {
@@ -258,7 +260,7 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     config: opts.config,
     resolveCwd: named('preview_url'),
     serverUrl: opts.serverUrl,
-    isDesktopTerminal: opts.isDesktopTerminal,
+    isHostedAgent: opts.isHostedAgent,
     // Boot-on-demand for the `file` branch is wired only when this registration
     // has backend/spawn authority (the same gate as `serverUrl`): it spawns a
     // detached `ok <file>` via this process's own CLI entry.

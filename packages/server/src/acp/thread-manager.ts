@@ -48,6 +48,7 @@ import {
   colorFromSeed,
   type EditorId,
   iconFromClientName,
+  OK_HOSTED_AGENT_ENV,
 } from '@inkeep/open-knowledge-core';
 import type {
   QueuedMessage,
@@ -67,6 +68,7 @@ import {
 } from '../agent-sessions.ts';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
 import type { PinoLogger } from '../logger.ts';
+import { MCP_HOSTED_AGENT_HEADER } from '../mcp/agent-identity.ts';
 import { boundSessionUpdateForLog, coalesceChunkInto } from './event-log-bounds.ts';
 import {
   AgentLaunchError,
@@ -944,11 +946,15 @@ export class AcpThreadManager {
     const serverUrl = this.opts.getServerUrl?.();
     if (serverUrl !== undefined && init.agentCapabilities?.mcpCapabilities?.http === true) {
       // Preferred: a direct HTTP MCP connection to this running server.
+      // The env marker the stdio branch uses cannot travel over HTTP, so the
+      // hosted-agent fact rides a header instead. It has to be per-connection:
+      // this same server also answers external clients that legitimately want
+      // a navigable URL, so the signal cannot live on the server process.
       mcpServers.push({
         type: 'http',
         name: 'open-knowledge',
         url: `${serverUrl}/mcp`,
-        headers: [],
+        headers: [{ name: MCP_HOSTED_AGENT_HEADER, value: '1' }],
       });
     } else {
       // Fallback for agents that don't advertise HTTP-MCP support (e.g. Claude
@@ -963,7 +969,13 @@ export class AcpThreadManager {
           name: 'open-knowledge',
           command: stdio.command,
           args: [...stdio.args],
-          env: [],
+          // Carry the hosted-agent marker explicitly rather than relying on
+          // the agent to pass its own env through to the MCP servers it
+          // spawns. On this branch we name the command, so we can make it
+          // deterministic; on the skip branch above the harness spawns its
+          // own entry and the marker has to arrive by inheritance from
+          // `withHostedAgentMarker` at the agent spawn.
+          env: [{ name: OK_HOSTED_AGENT_ENV, value: '1' }],
         });
       }
     }

@@ -48,6 +48,19 @@ export interface AgentIdentity {
 export const MCP_CONNECTION_ID_HEADER = 'x-ok-connection-id';
 
 /**
+ * Per-connection carrier for the hosted-agent fact on the HTTP MCP transport.
+ *
+ * The env marker that carries this on stdio (`OK_HOSTED_AGENT`) cannot travel
+ * over HTTP, and the signal has to stay per-connection rather than
+ * per-process: one shared server answers both the in-app agent panel and
+ * external clients (an outside Cursor/Codex, an `ok start` consumer), and
+ * those external clients legitimately want a navigable URL. Only the entry OK
+ * injects for an agent it hosts sets this header, so absent means "not
+ * hosted" and the plain-URL behavior is preserved by default.
+ */
+export const MCP_HOSTED_AGENT_HEADER = 'x-ok-hosted-agent';
+
+/**
  * Coerce an MCP client's self-reported `clientInfo.name` into a safe display
  * string: strip ASCII control characters, collapse internal whitespace,
  * truncate at 128 chars, and fall back when the result is empty.

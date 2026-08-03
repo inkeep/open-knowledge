@@ -326,7 +326,14 @@ export {
   KNOWN_NON_GITHUB_GIT_HOSTS,
 } from './constants/github.ts';
 export { isOrphanMode, ORPHAN_MODES, type OrphanMode } from './constants/graph.ts';
-export { GREP_MAX_RESULTS, MCP_SERVER_NAME, READ_DOCUMENT_HISTORY_DEPTH } from './constants/mcp.ts';
+export {
+  GREP_MAX_RESULTS,
+  MCP_SERVER_NAME,
+  OK_DESKTOP_TERMINAL_ENV,
+  OK_HOSTED_AGENT_ENV,
+  READ_DOCUMENT_HISTORY_DEPTH,
+  resolveIsHostedAgent,
+} from './constants/mcp.ts';
 export {
   MENU_LABELS,
   type MenuLabelKey,

@@ -12,6 +12,7 @@
  */
 
 import { delimiter, join } from 'node:path';
+import { OK_DESKTOP_TERMINAL_ENV } from '@inkeep/open-knowledge-core';
 
 const DARWIN_FALLBACK_SHELL = '/bin/zsh';
 
@@ -245,7 +246,7 @@ export function buildShellEnv(
   // keys off this to pick `ok open <doc>` (focuses a tab in THIS window) over
   // resolving a preview URL — otherwise the agent can't tell where it's running
   // and guesses the browser path. Set last so it can't be shadowed by parentEnv.
-  out.OK_DESKTOP_TERMINAL = '1';
+  out[OK_DESKTOP_TERMINAL_ENV] = '1';
   return out;
 }
 

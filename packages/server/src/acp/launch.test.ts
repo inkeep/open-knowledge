@@ -11,6 +11,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
+import { OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   AgentLaunchError,
@@ -21,6 +22,7 @@ import {
   spawnAcpAgent,
   terminateAgentTree,
   windowsCmdWrap,
+  withHostedAgentMarker,
 } from './launch.ts';
 
 describe('mergedEnv PATH augmentation', () => {
@@ -94,6 +96,41 @@ afterEach(() => {
   strayPids = [];
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
   dirs = [];
+});
+
+describe('hosted-agent marker', () => {
+  test('sets the marker and leaves the rest of the env alone', () => {
+    const out = withHostedAgentMarker({ FOO: 'bar' });
+    expect(out[OK_HOSTED_AGENT_ENV]).toBe('1');
+    expect(out.FOO).toBe('bar');
+  });
+
+  test('wins over a launch env that already set the key — hosting is our fact, not the agent config’s', () => {
+    expect(withHostedAgentMarker({ [OK_HOSTED_AGENT_ENV]: '0' })[OK_HOSTED_AGENT_ENV]).toBe('1');
+  });
+
+  // The marker only earns its keep if it survives into the spawned process —
+  // that is the hop `ok mcp` reads it across. Assert on a real spawn rather
+  // than on the helper's return value.
+  test('a really-spawned agent receives it in its environment', async () => {
+    const dir = tmp();
+    const script = join(dir, 'echo-marker.js');
+    // Write-then-rename: a plain writeFileSync makes the path observable the
+    // instant it is created, so a waiter polling on existence can read it back
+    // empty before the bytes land. The rename publishes it already complete.
+    writeFileSync(
+      script,
+      [
+        "const fs = require('node:fs');",
+        `fs.writeFileSync(process.argv[1] + '.tmp', String(process.env.${OK_HOSTED_AGENT_ENV} ?? 'ABSENT'));`,
+        "fs.renameSync(process.argv[1] + '.tmp', process.argv[1] + '.out');",
+      ].join('\n'),
+    );
+    const child = spawnAcpAgent(launchFor(script), dir);
+    if (child.pid !== undefined) strayPids.push(child.pid);
+    await waitFor(() => existsSync(`${script}.out`), 10_000, 'spawned agent to report its env');
+    expect(readFileSync(`${script}.out`, 'utf8')).toBe('1');
+  });
 });
 
 describe('preflightLaunch', () => {

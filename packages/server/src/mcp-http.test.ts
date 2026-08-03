@@ -21,7 +21,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { type Config, ConfigSchema } from './config/schema.ts';
 import { getFreeLoopbackPort } from './loopback-rig-test-helpers.ts';
-import { MCP_CONNECTION_ID_HEADER } from './mcp/agent-identity.ts';
+import { MCP_CONNECTION_ID_HEADER, MCP_HOSTED_AGENT_HEADER } from './mcp/agent-identity.ts';
 import {
   createMcpHttpHandler,
   type McpHttpHandler,
@@ -97,12 +97,16 @@ interface InitializedSession {
   protocolVersion: string;
 }
 
-async function openMcpSession(port: number): Promise<InitializedSession> {
+async function openMcpSession(
+  port: number,
+  extraHeaders: Record<string, string> = {},
+): Promise<InitializedSession> {
   const init = await fetch(`http://127.0.0.1:${port}/mcp`, {
     method: 'POST',
     headers: {
       accept: 'application/json, text/event-stream',
       'content-type': 'application/json',
+      ...extraHeaders,
     },
     body: JSON.stringify({
       jsonrpc: '2.0',
@@ -609,4 +613,59 @@ test('inactive MCP sessions expire and return 404 on later use', async () => {
 
   expect(expired.status).toBe(404);
   expect(await expired.text()).toContain('MCP session not found');
+});
+
+/**
+ * The hosted-agent header is the HTTP transport's stand-in for the env marker
+ * stdio agents inherit. Each hop either side of it is unit-tested (the ACP
+ * injection sends the header; `preview_url` steers given `isHostedAgent`), but
+ * the hop between them is this handler reading the header into
+ * `registerAllTools` — a rename or a changed comparison there would silently
+ * un-steer every HTTP-transport panel agent with nothing failing.
+ *
+ * Asserted through `okOpenCommand`, which is null in every non-hosted context
+ * and carries the `ok open` steer when hosted. No UI needs to be running: the
+ * steer fires on the no-UI payload too.
+ */
+async function previewUrlOkOpenCommand(
+  port: number,
+  extraHeaders: Record<string, string> = {},
+): Promise<unknown> {
+  const { sessionId, protocolVersion } = await openMcpSession(port, extraHeaders);
+  const call = await fetch(`http://127.0.0.1:${port}/mcp`, {
+    method: 'POST',
+    headers: {
+      accept: 'application/json, text/event-stream',
+      'content-type': 'application/json',
+      'mcp-session-id': sessionId,
+      'mcp-protocol-version': protocolVersion,
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: { name: 'preview_url', arguments: { document: 'specs/foo/SPEC' } },
+    }),
+  });
+  expect(call.status).toBe(200);
+  const body = (await call.json()) as {
+    result?: { structuredContent?: { okOpenCommand?: unknown } };
+  };
+  return body.result?.structuredContent?.okOpenCommand ?? null;
+}
+
+test('hosted-agent header reaches preview_url as the ok open steer', async () => {
+  const harness = await bootHandler(ConfigSchema.parse({}));
+  openHarnesses.push(harness);
+  expect(await previewUrlOkOpenCommand(harness.port, { [MCP_HOSTED_AGENT_HEADER]: '1' })).toBe(
+    'ok open specs/foo/SPEC',
+  );
+});
+
+test('without the header the same server keeps the plain-URL behavior', async () => {
+  // The load-bearing half: one server answers both the in-app panel and
+  // external clients, and an external client must still get a navigable URL.
+  const harness = await bootHandler(ConfigSchema.parse({}));
+  openHarnesses.push(harness);
+  expect(await previewUrlOkOpenCommand(harness.port)).toBeNull();
 });

@@ -1,3 +1,4 @@
+import { OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
 import type { ThreadEvent } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { afterEach, describe, expect, test } from 'vitest';
 import { getLogger } from '../logger.ts';
@@ -45,6 +46,32 @@ describe('AcpTerminalSet', () => {
     if (created.kind !== 'terminal_created') throw new Error('unreachable');
     expect(created.terminalId).toBe(terminalId);
     expect(created.command).toBe(process.execPath);
+  });
+
+  // A terminal is a peer of the agent's own child processes: an agent that
+  // routes its shell through `terminal/create` rather than spawning in-process
+  // must still look hosted, or an `ok mcp` started there hands the user a URL.
+  test('a created terminal carries the hosted-agent marker', async () => {
+    const events: ThreadEvent[] = [];
+    const set = makeSet(events);
+    const { terminalId } = set.create(
+      node(`process.stdout.write(String(process.env.${OK_HOSTED_AGENT_ENV} ?? 'ABSENT'))`),
+    );
+    await set.waitForExit(terminalId);
+    expect(set.output(terminalId).output).toBe('1');
+  });
+
+  test('an explicit env overlay does not displace the hosted-agent marker', async () => {
+    const events: ThreadEvent[] = [];
+    const set = makeSet(events);
+    const { terminalId } = set.create({
+      ...node(
+        `process.stdout.write(String(process.env.${OK_HOSTED_AGENT_ENV} ?? 'ABSENT') + ':' + String(process.env.MY_VAR))`,
+      ),
+      env: [{ name: 'MY_VAR', value: 'kept' }],
+    });
+    await set.waitForExit(terminalId);
+    expect(set.output(terminalId).output).toBe('1:kept');
   });
 
   test('captures stderr interleaved and a non-zero exit code', async () => {

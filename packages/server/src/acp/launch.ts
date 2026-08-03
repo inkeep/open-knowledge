@@ -19,7 +19,7 @@ import { constants, statSync } from 'node:fs';
 import { access, chmod, stat } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { delimiter, isAbsolute, join, resolve } from 'node:path';
-import { augmentAgentSpawnPath, OK_DIR } from '@inkeep/open-knowledge-core';
+import { augmentAgentSpawnPath, OK_DIR, OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
 import { tracedMkdir, tracedRename, tracedRm } from '../fs-traced.ts';
 import type { PinoLogger } from '../logger.ts';
 import { downloadToFileWithSha, extractArchive, isWithin, sanitizeSegment } from './archive.ts';
@@ -85,6 +85,24 @@ export function mergedEnv(overlay?: Record<string, string>): Record<string, stri
     delimiter,
   });
   return { ...base, ...overlay };
+}
+
+/**
+ * Stamp the hosted-agent marker onto an agent's spawn env.
+ *
+ * Applied at the spawn site rather than inside `mergedEnv` so it lands on
+ * real agent launches only — the harness-availability probe builds its env
+ * from `mergedEnv` too, and a throwaway `--version` check is not a hosted
+ * agent. Applied AFTER the caller's overlay: whether OK is hosting this agent
+ * is our fact about the launch, not a per-agent registry setting to override.
+ *
+ * The marker's reason for existing is the hop it survives: the agent we spawn
+ * goes on to spawn its own `ok mcp` (from the harness's MCP config, which OK
+ * does not control), and that process reads the marker to decide whether to
+ * hand the agent a preview URL or steer it to `ok open`.
+ */
+export function withHostedAgentMarker(env: Record<string, string>): Record<string, string> {
+  return { ...env, [OK_HOSTED_AGENT_ENV]: '1' };
 }
 
 /**
@@ -415,7 +433,7 @@ export function spawnAcpAgent(launch: ResolvedLaunch, cwd: string): ChildProcess
     : { cmd: resolved, args: launch.args };
   return spawn(cmd, args, {
     cwd,
-    env: launch.env,
+    env: withHostedAgentMarker(launch.env),
     stdio: ['pipe', 'pipe', 'pipe'],
     shell: false,
     detached: !win,

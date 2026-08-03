@@ -69,6 +69,8 @@ const DESCRIPTION = [
   '',
   'This is THE way to open a doc OR a loose file in a browser, and the only way to force a browser when the OK Desktop app is installed (the `ok open` CLI prefers Desktop). Use it when YOUR host opens the URL itself: navigate your in-app / embedded browser to the returned `url`, or — only on a stdio host with no browser tool — `open` it in the system browser. Do not hunt for the URL via `ok ps`/`ok status` or by guessing a port — this tool returns it. Claude Code Desktop opens its in-app Browser pane with `preview_start({url})` then `navigate({url})` to move; a pure stdio CLI with no browser uses `ok open <doc>` to open in the OK Desktop app.',
   '',
+  'If you are running INSIDE an OpenKnowledge surface — the desktop app’s built-in terminal or its in-app agent panel — the response leads with an `ok open …` steer and returns it as `okOpenCommand`. Run that instead: the user is already looking at the app, so a localhost URL in your reply is noise at best and a dead link at worst. Never paste `url` into your answer in that case.',
+  '',
   'Returns `{ url: null, baseUrl: null, running: false, autoOpen }` + a recovery hint only when no UI could be reached (auto-start disabled via `OK_MCP_AUTOSTART=0`, no spawn authority in this registration, or the UI did not bind in time) — the hint names the right command for the actual state.',
   '',
   'To open a single markdown file that may live OUTSIDE any Open Knowledge project (a loose file, or a doc in a different git worktree), pass `file` with an absolute path: the tool finds the running session whose content directory contains it and returns that session’s URL, then navigate your in-app browser there. `document`/`folder` are for a doc in the current project; `file` is the out-of-project form.',
@@ -85,14 +87,17 @@ interface GetPreviewUrlDeps {
   config: ConfigOrResolver;
   resolveCwd: (explicit?: string) => Promise<string>;
   /**
-   * True when this MCP server runs inside OK Desktop's own built-in terminal
-   * (`OK_DESKTOP_TERMINAL=1`). When set, the doc/folder/skill responses lead
-   * with a steer to run `ok open <target>` (which focuses the OK Desktop
-   * window) rather than navigating the returned URL — the terminal agent has
-   * no business opening a browser. Absent/false everywhere else (the shared
-   * collab server, Cursor/Codex, plain CLI), so those paths are unchanged.
+   * True when the calling agent is hosted by an OpenKnowledge surface — the
+   * desktop app's built-in terminal (`OK_DESKTOP_TERMINAL=1`) or its in-app
+   * agent panel (`OK_HOSTED_AGENT=1`). When set, the doc/folder/skill
+   * responses lead with a steer to run `ok open <target>` (which focuses the
+   * target up for the user) rather than navigating the
+   * returned URL — an agent living inside the app has no business handing its
+   * user a localhost link to the app they are looking at. Absent/false
+   * everywhere else (the shared collab server, an external Cursor/Codex with
+   * its own browser pane, plain CLI), so those paths are unchanged.
    */
-  isDesktopTerminal?: boolean;
+  isHostedAgent?: boolean;
   /**
    * Hocuspocus URL (or per-call resolver). When present, a preview request
    * is treated as demand for a backend: the resolver's auto-spawn path
@@ -193,7 +198,7 @@ const OutputSchema = outputSchemaWithText({
     .nullable()
     .optional()
     .describe(
-      'Machine-readable form of the desktop-terminal steer: when this MCP server runs inside OK Desktop’s built-in terminal AND a doc/folder/skill target was given, the exact `ok open …` command to run to focus it in the OK Desktop window. Prefer running it over navigating `url`. `null`/absent in every other context (navigate `url` per your host instead).',
+      'Machine-readable form of the hosted-agent steer: when the calling agent runs inside an OpenKnowledge surface (the desktop app’s built-in terminal, or its in-app agent panel) AND a doc/folder/skill target was given, the exact `ok open …` command to run to bring it up for the user. Run it INSTEAD of navigating `url`, and do not paste `url` into your reply — the user is already in the app it points at. `null`/absent in every other context (navigate `url` per your host instead).',
     ),
 });
 
@@ -379,12 +384,13 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
             ? `#/${encodeSkillRoute(args.skill.scope ?? 'project', args.skill.name)}`
             : null;
 
-      // Desktop-terminal steer: this MCP process inherited `OK_DESKTOP_TERMINAL`
-      // from OK Desktop's built-in terminal, so the agent is sitting in the app —
-      // it should focus the page with `ok open` (which navigates the OK Desktop
-      // window), NOT navigate this URL or open a browser. Lead the response with
-      // the exact command. Only for an in-project doc/folder/skill target (the
-      // `file` branch returns earlier; the root has nothing to `ok open`).
+      // Hosted-agent steer: this MCP process inherited a marker from an
+      // OpenKnowledge surface (the desktop terminal's pty, or the agent spawn
+      // for the in-app panel), so the agent is sitting in the app — it should
+      // focus the page with `ok open`, NOT navigate this URL or open a
+      // browser. Lead the response with the exact command. Only for an
+      // in-project doc/folder/skill target (the `file` branch returns earlier;
+      // the root has nothing to `ok open`).
       const okOpenCommand = args.document
         ? `ok open ${shellQuoteArg(args.document)}`
         : args.folder
@@ -392,9 +398,9 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
           : args.skill
             ? `ok open ${args.skill.name} --skill${args.skill.scope === 'global' ? ' --scope global' : ''}`
             : null;
-      const desktopTerminalSteer =
-        deps.isDesktopTerminal && okOpenCommand
-          ? `You're in the OK Desktop terminal — run \`${okOpenCommand}\` to focus this in the OK Desktop window. Don't navigate the URL below or open a browser; it's for reference only.\n\n`
+      const hostedAgentSteer =
+        deps.isHostedAgent && okOpenCommand
+          ? `You're running inside OpenKnowledge — run \`${okOpenCommand}\` to bring this up for the user. Don't navigate the URL below, open a browser, or paste the URL into your reply; it's for reference only.\n\n`
           : '';
 
       // Demand-ensure: when this registration has server authority, run the
@@ -448,24 +454,24 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
         const hint = isServerLive(lockDir)
           ? NO_UI_SERVER_RUNNING_MESSAGE
           : `${NO_SERVER_MESSAGE}${autoStartDisabled ? AUTOSTART_DISABLED_NOTE : ''}`;
-        return textPlusStructured(`${desktopTerminalSteer}${hint}`, {
+        return textPlusStructured(`${hostedAgentSteer}${hint}`, {
           url: null,
           baseUrl: null,
           running: false,
           autoOpen,
-          okOpenCommand: deps.isDesktopTerminal ? okOpenCommand : null,
+          okOpenCommand: deps.isHostedAgent ? okOpenCommand : null,
         });
       }
 
       // baseUrl is non-null here (the lock is bound) — compose base + route.
       const url = routeFragment ? `${baseUrl}/${routeFragment}` : baseUrl;
 
-      return textPlusStructured(`${desktopTerminalSteer}Preview URL: ${url}`, {
+      return textPlusStructured(`${hostedAgentSteer}Preview URL: ${url}`, {
         url,
         baseUrl,
         running: true,
         autoOpen,
-        okOpenCommand: deps.isDesktopTerminal ? okOpenCommand : null,
+        okOpenCommand: deps.isHostedAgent ? okOpenCommand : null,
       });
     },
   );

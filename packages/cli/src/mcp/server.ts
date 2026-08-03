@@ -31,7 +31,7 @@ import { realpathSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { OK_PROJECT_MARKER } from '@inkeep/open-knowledge-core';
+import { OK_PROJECT_MARKER, resolveIsHostedAgent } from '@inkeep/open-knowledge-core';
 import { type KeepaliveHandle, startKeepalive } from '@inkeep/open-knowledge-core/keepalive';
 import {
   type AgentIdentity,
@@ -433,11 +433,13 @@ export async function startGlobalMcpServer(
     resolveCwd,
     config: resolveConfigForCwd,
     identityRef,
-    // This `ok mcp` process inherits `OK_DESKTOP_TERMINAL=1` from OK Desktop's
-    // built-in terminal pty when the agent runs there (and only there — nothing
-    // else sets it). `preview_url` uses it to steer the agent to `ok open`
-    // instead of returning a URL it shouldn't navigate.
-    isDesktopTerminal: process.env.OK_DESKTOP_TERMINAL === '1',
+    // Two disjoint markers, one meaning: the agent driving this `ok mcp` is
+    // running inside an OpenKnowledge surface, so the user is already looking
+    // at the app. `OK_DESKTOP_TERMINAL` comes from the desktop terminal's pty;
+    // `OK_HOSTED_AGENT` from the agents OK launches itself. Either way
+    // `preview_url` steers to `ok open` instead of handing back a URL the
+    // agent shouldn't navigate.
+    isHostedAgent: resolveIsHostedAgent(process.env),
   });
 
   const transport = new StdioServerTransport();

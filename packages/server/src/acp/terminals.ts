@@ -30,6 +30,7 @@ import {
   resolveWindowsCommand,
   terminateAgentTree,
   windowsCmdWrap,
+  withHostedAgentMarker,
 } from './launch.ts';
 
 /** Retained-output default when the agent sends no `outputByteLimit`. */
@@ -156,7 +157,14 @@ export class AcpTerminalSet {
     const terminalId = crypto.randomUUID();
     const overlay: Record<string, string> = {};
     for (const entry of params.env ?? []) overlay[entry.name] = entry.value;
-    const env = mergedEnv(overlay);
+    // A terminal only ever exists because an agent OK is hosting asked for
+    // one, so the hosted-agent fact is true by construction here. Stamping it
+    // matters because this spawn is a peer of the agent's own child processes:
+    // an agent that routes its shell through `terminal/create` (OK advertises
+    // `terminal: true`) would otherwise run `ok mcp`, or an env check, in a
+    // process that never saw the marker — and fall back to handing the user a
+    // URL, which is the failure this marker exists to prevent.
+    const env = withHostedAgentMarker(mergedEnv(overlay));
     const cwd =
       params.cwd != null
         ? isAbsolute(params.cwd)
