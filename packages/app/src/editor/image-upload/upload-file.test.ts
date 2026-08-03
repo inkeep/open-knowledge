@@ -7,6 +7,7 @@
  * proved flaky on Linux Bun. DI tests are platform-stable.
  */
 import { describe, expect, test } from 'vitest';
+import { UploadFailedError } from './upload-failure.ts';
 import { uploadFile } from './upload-file.ts';
 
 interface FetchCall {
@@ -178,9 +179,37 @@ describe('uploadFile', () => {
     });
     const file = new File(['x'], 'x.png', { type: 'image/png' });
 
+    // The file is readable, so the failure is genuinely the transport.
     await expect(
       uploadFile(file, ['image/png'], { fetch, docName: TEST_DOC_NAME }),
-    ).rejects.toThrow(/Upload failed.*connection refused/);
+    ).rejects.toMatchObject({ name: 'UploadFailedError', kind: 'network' });
+  });
+
+  test('a network failure on an unreadable file is reported as the file, not the server', async () => {
+    // Drives the classification through the public entry point: with the
+    // classification removed this test fails, where a readable-file test would
+    // still pass.
+    const { fetch } = captureFetch(() => {
+      throw new TypeError('Failed to fetch');
+    });
+    const file = new File(['xxxxx'], 'shot.png', { type: 'image/png' });
+    // Model an OS read denial on bytes that were present when the file was
+    // picked: the upload fails, and re-reading the head then fails too.
+    Object.defineProperty(file, 'slice', {
+      value: () => ({
+        arrayBuffer: () => Promise.reject(new DOMException('denied', 'NotReadableError')),
+      }),
+    });
+
+    const err = await uploadFile(file, ['image/png'], {
+      fetch,
+      docName: TEST_DOC_NAME,
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(UploadFailedError);
+    expect((err as UploadFailedError).kind).toBe('file-unreadable');
+    expect((err as Error).message).toContain('shot.png');
+    expect((err as Error).message).not.toMatch(/upload failed/i);
   });
 
   test('throws when no document is open', async () => {

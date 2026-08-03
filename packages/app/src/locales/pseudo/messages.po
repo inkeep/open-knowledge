@@ -3085,6 +3085,14 @@ msgstr ""
 msgid "Couldn't reach the endpoint. Check the URL and that the server is up."
 msgstr ""
 
+#: src/editor/image-upload/upload-failure.ts
+msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
+msgstr ""
+
+#: src/editor/image-upload/upload-failure.ts
+msgid "Couldn't read {fileName}. It may have been moved, deleted, or not finished downloading. Try adding it again."
+msgstr ""
+
 #: src/comments/store.ts
 msgid "Couldn't read the queued comments — nothing was sent."
 msgstr ""
@@ -6615,10 +6623,6 @@ msgstr ""
 
 #: src/components/FileTree.tsx
 msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
-msgstr ""
-
-#: src/components/PageHeaderWidgets.tsx
-msgid "Network error — check your connection and try again"
 msgstr ""
 
 #: src/components/EditorTabs.tsx

@@ -36,6 +36,7 @@ import { Switch } from '@/components/ui/switch';
 import { ColorPickerInput } from '@/editor/components/ColorPickerInput.tsx';
 import { IconPickerInput } from '@/editor/components/IconPickerInput.tsx';
 import { SrcAutocomplete } from '@/editor/components/SrcAutocomplete.tsx';
+import { UploadFailedError } from '@/editor/image-upload/upload-failure.ts';
 import { uploadFile } from '@/editor/image-upload/upload-file.ts';
 import type { JsxComponentDescriptor } from '@/editor/registry/types.ts';
 import { getAutoFocusedPropName, humanizePropName } from '@/editor/utils/editor-strings.ts';
@@ -123,6 +124,14 @@ async function runUpload(
     const { url } = await uploadFile(file, accept);
     onUploaded(url);
   } catch (err) {
+    // A classified failure already carries a complete, translated sentence.
+    // Prefixing it with "Upload failed:" would put the server-implying framing
+    // back in front of a message whose whole point is that the file, not the
+    // server, is the problem.
+    if (err instanceof UploadFailedError) {
+      toast.error(err.message);
+      return;
+    }
     const message = err instanceof Error ? err.message : String(err);
     toast.error(t`Upload failed: ${message}`);
   }

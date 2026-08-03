@@ -11,6 +11,11 @@
 import { ProblemDetailsSchema, UploadAssetSuccessSchema } from '@inkeep/open-knowledge-core';
 import { HttpResponseParseError } from '../http-client.ts';
 import { getCurrentDocName } from './current-doc-name.ts';
+import {
+  reportUploadFailure,
+  UploadFailedError,
+  type UploadFailureReport,
+} from './upload-failure.ts';
 
 interface UploadFileResult {
   url: string;
@@ -41,6 +46,9 @@ export async function uploadFile(
   deps: UploadFileDeps = {},
 ): Promise<UploadFileResult> {
   const fetchImpl = deps.fetch ?? globalThis.fetch;
+  // Sampled before any await: `File.size` re-stats the backing store, so once
+  // that store is gone it reads 0 and the original size is unrecoverable.
+  const sizeAtPick = file.size;
 
   const docName = deps.docName !== undefined ? deps.docName : getCurrentDocName();
   if (!docName) {
@@ -61,8 +69,40 @@ export async function uploadFile(
   try {
     res = await fetchImpl(UPLOAD_ENDPOINT, { method: 'POST', body: formData });
   } catch (networkError) {
-    const message = networkError instanceof Error ? networkError.message : String(networkError);
-    throw new Error(`Upload failed: ${message}`);
+    // The request never left the renderer, so nothing about this failure is
+    // recorded server-side. Probe the file before reporting, so the thrown
+    // error names a cause the user can act on rather than the opaque
+    // `Failed to fetch` that covers every pre-network failure alike.
+    //
+    // The classification rides on the error rather than the message: callers
+    // render their own translated copy, so wrapping this message in another
+    // caller's "Upload failed:" prefix would reintroduce exactly the
+    // server-implying framing this reporting exists to remove.
+    //
+    // Diagnosis must never become the reason the caller is told nothing: if the
+    // report itself fails, degrade to the raw error rather than replacing a
+    // failed upload with an uncharacterized rejection.
+    let report: UploadFailureReport | undefined;
+    try {
+      report = await reportUploadFailure({ file, sizeAtDrop: sizeAtPick, error: networkError });
+    } catch (reportError) {
+      console.error('[uploadFile] upload failed, and diagnosing it failed too', {
+        docName,
+        networkError,
+        reportError,
+      });
+    }
+    if (!report) {
+      // Bare message, like the sibling throws in this file: callers supply
+      // their own framing, and prefixing here renders as "Upload failed:
+      // Upload failed: ..." once the property panel wraps it.
+      throw new Error(networkError instanceof Error ? networkError.message : String(networkError));
+    }
+    console.error('[uploadFile] upload failed before reaching the server', {
+      ...report.log,
+      docName,
+    });
+    throw new UploadFailedError(report.message, report.kind);
   }
 
   let rawBody: unknown;

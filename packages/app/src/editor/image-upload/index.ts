@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { getEditorDocName } from '../extensions/doc-context.ts';
 import { buildUnresolvedWikiLinkAttrs } from '../extensions/wiki-link-helpers.ts';
 import { HttpResponseParseError } from '../http-client.ts';
+import { reportUploadFailure, type UploadFailureReport } from './upload-failure.ts';
 
 const uploadPluginKey = new PluginKey<UploadPluginState>('imageUpload');
 
@@ -290,6 +291,9 @@ export async function uploadAndInsert(
     return;
   }
   const uploadId = crypto.randomUUID();
+  // Sampled before any await: `File.size` re-stats the backing store, so once
+  // that store is gone it reads 0 and the original size is unrecoverable.
+  const sizeAtDrop = file.size;
 
   const skeletonWidget = createSkeletonWidget(file);
   editor.view.dispatch(
@@ -309,8 +313,33 @@ export async function uploadAndInsert(
   try {
     res = await fetch('/api/upload', { method: 'POST', body: formData });
   } catch (networkError) {
-    console.error('[uploadAndInsert] Network error:', networkError);
-    showError(editor, uploadId);
+    // `TypeError: Failed to fetch` on its own says nothing: the request never
+    // left the renderer, so neither this log nor the server's access log can
+    // say which file failed or why. Probe the file and record the shape of the
+    // failure while the evidence is still in hand.
+    //
+    // Diagnosis must never become the reason the user is told nothing. If the
+    // report itself fails, the skeleton still has to come down: it is the only
+    // thing standing between a failed upload and a placeholder that never
+    // resolves.
+    let report: UploadFailureReport | undefined;
+    try {
+      report = await reportUploadFailure({ file, sizeAtDrop, error: networkError });
+    } catch (reportError) {
+      console.error('[uploadAndInsert] upload failed, and diagnosing it failed too', {
+        docName: parentDocName,
+        networkError,
+        reportError,
+      });
+    }
+    if (report) {
+      console.error('[uploadAndInsert] upload failed before reaching the server', {
+        ...report.log,
+        docName: parentDocName,
+      });
+    }
+    // Undefined falls back to the generic toast rather than showing nothing.
+    showError(editor, uploadId, report?.message);
     return;
   }
 

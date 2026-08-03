@@ -34,6 +34,7 @@ import type { CommonWidgetProps } from '@/components/PropertyWidgets';
 import { resolvePageCover, resolvePageIcon } from '@/components/page-header-utils';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { UploadFailedError } from '@/editor/image-upload/upload-failure';
 import { uploadFile } from '@/editor/image-upload/upload-file';
 import { cn } from '@/lib/utils';
 
@@ -194,13 +195,11 @@ export function PageCoverWidget({ keyName, value, onCommit }: CommonWidgetProps<
       if (!mountedRef.current) return;
       // Map known error shapes to user-facing strings; raw `err.message`
       // can leak parser diagnostics ("Upload response is not JSON.") or
-      // stack-trace fragments that confuse end users. `TypeError` from a
-      // failed `fetch()` indicates a connectivity problem; everything
-      // else collapses into a generic retry hint.
+      // stack-trace fragments that confuse end users. A classified failure
+      // already carries a complete, translated sentence naming the file and
+      // the cause; everything else collapses into a generic retry hint.
       const message =
-        err instanceof TypeError
-          ? t`Network error — check your connection and try again`
-          : t`Upload failed — please try again`;
+        err instanceof UploadFailedError ? err.message : t`Upload failed — please try again`;
       setUploadError(message);
       setUploading(false);
     }

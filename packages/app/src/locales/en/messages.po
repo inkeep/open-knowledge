@@ -3089,6 +3089,14 @@ msgstr "Couldn't reach the embeddings provider — retry"
 msgid "Couldn't reach the endpoint. Check the URL and that the server is up."
 msgstr "Couldn't reach the endpoint. Check the URL and that the server is up."
 
+#: src/editor/image-upload/upload-failure.ts
+msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
+msgstr "Couldn't reach the Open Knowledge server to upload {fileName}."
+
+#: src/editor/image-upload/upload-failure.ts
+msgid "Couldn't read {fileName}. It may have been moved, deleted, or not finished downloading. Try adding it again."
+msgstr "Couldn't read {fileName}. It may have been moved, deleted, or not finished downloading. Try adding it again."
+
 #: src/comments/store.ts
 msgid "Couldn't read the queued comments — nothing was sent."
 msgstr "Couldn't read the queued comments — nothing was sent."
@@ -6620,10 +6628,6 @@ msgstr "Nested fields"
 #: src/components/FileTree.tsx
 msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "Network error - {kind} \"{createdPath}\" still exists on disk"
-
-#: src/components/PageHeaderWidgets.tsx
-msgid "Network error — check your connection and try again"
-msgstr "Network error — check your connection and try again"
 
 #: src/components/EditorTabs.tsx
 #: src/components/FileTree.tsx

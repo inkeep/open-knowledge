@@ -177,7 +177,6 @@
     "2IYGkU": ["This doc has unpushed changes. Recipients will see the last pushed version."],
     "2M0JF6": ["Auto-update"],
     "2QM24L": ["All tags"],
-    "2RBzMG": ["Network error — check your connection and try again"],
     "2Snes1": ["This sends the link's address off your machine"],
     "2UgoBZ": ["gone"],
     "2XQ8Ww": ["Open preview when agent edits"],
@@ -1076,6 +1075,7 @@
     "H-hzll": ["Please choose Good or Not great."],
     "H-vDm3": ["Relaunching to install the update…"],
     "H08D2X": ["Open a single markdown file in a temporary session, without project setup."],
+    "H0VUMo": ["Couldn't reach the Open Knowledge server to upload ", ["fileName"], "."],
     "H0WlWQ": ["Grid of rows and columns with a header row."],
     "H1TmTu": ["Stopped fixing. Files already fixed stay fixed."],
     "H3oH0g": ["Redo"],
@@ -2074,6 +2074,11 @@
       ["behind", "plural", { "one": ["#", " commit behind"], "other": ["#", " commits behind"] }]
     ],
     "YwPUUP": ["This pack is already set up here."],
+    "YxZDGh": [
+      "Couldn't read ",
+      ["fileName"],
+      ". It may have been moved, deleted, or not finished downloading. Try adding it again."
+    ],
     "Yy90sM": ["Skill \"", ["name"], "\" created"],
     "YyXtnN": ["Underline"],
     "Yzs3QX": ["More skill actions"],
