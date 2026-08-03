@@ -7,6 +7,7 @@ const fidelityOnlyAppDeps = existsSync('packages/app/tests/fidelity')
 
 export default {
   tags: ['-lintignore'],
+  ignore: ['plugins/*/skills/*/scripts/**'],
   ignoreDependencies: [
     'lint-staged', // not sure if it's false positive
     'husky',
