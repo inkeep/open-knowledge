@@ -18,8 +18,22 @@ const DIRECTORY_ENTRY_BYTES = 12;
 const MODULE_RECORD_BYTES = 108;
 const MODULE_NAME_RVA_OFFSET = 20;
 const MODULE_LIST_STREAM_TYPE = 4;
+const CRASHPAD_INFO_STREAM_TYPE = 0x4350_0001;
+/** Real dumps size this stream at 64 bytes; the parse reads only the first 44. */
+const CRASHPAD_INFO_BYTES = 64;
+const CRASHPAD_ANNOTATIONS_SIZE_OFFSET = 36;
+const CRASHPAD_ANNOTATIONS_RVA_OFFSET = 40;
+const ANNOTATION_ENTRY_BYTES = 8;
 
-/** Per-field overrides; each one corrupts a single value the parser reads. */
+/**
+ * Per-field overrides. Most corrupt a single value the parser reads;
+ * `annotations` instead adds a stream that is absent by default, so every
+ * fixture written before it existed stays byte-identical and keeps covering
+ * the dump-carries-no-annotations path for free.
+ *
+ * The annotation lies below all target the FIRST dictionary entry, so a case
+ * that exercises one should pass a single-entry `annotations` map.
+ */
 export interface MinidumpPatch {
   /** Header magic. Anything but `MDMP` must be refused outright. */
   signature?: string;
@@ -46,11 +60,33 @@ export interface MinidumpPatch {
    * single-entry directory it would only ever be exercised at index 0.
    */
   streamsBefore?: number;
+  /**
+   * Crashpad simple annotations to carry. Omitted entirely when absent — no
+   * Crashpad stream is emitted at all, which is what a dump from a build
+   * predating them looks like.
+   */
+  annotations?: Record<string, string>;
+  /** Crashpad stream's directory type; anything else hides the annotations. */
+  crashpadStreamType?: number;
+  /** Crashpad info's pointer to the annotation dictionary; 0 means "none registered". */
+  annotationsRva?: number;
+  /** Crashpad info's claimed byte size for the dictionary block. */
+  annotationsSize?: number;
+  /** The dictionary's claimed entry count, independent of what it holds. */
+  annotationCount?: number;
+  /** First entry's pointer to its key string. */
+  annotationKeyRva?: number;
+  /** First entry's pointer to its value string. */
+  annotationValueRva?: number;
+  /** First entry's value block's claimed BYTE length. */
+  annotationValueByteLength?: number;
 }
 
 export function buildMinidump(modulePaths: string[], patch: MinidumpPatch = {}): Buffer {
   const decoyStreams = patch.streamsBefore ?? 0;
-  const directoryEntries = decoyStreams + 1;
+  const annotationEntries =
+    patch.annotations === undefined ? null : Object.entries(patch.annotations);
+  const directoryEntries = decoyStreams + 1 + (annotationEntries === null ? 0 : 1);
   const directoryRva = HEADER_BYTES;
   const moduleListRva = directoryRva + directoryEntries * DIRECTORY_ENTRY_BYTES;
   const moduleListBytes = 4 + modulePaths.length * MODULE_RECORD_BYTES;
@@ -74,6 +110,53 @@ export function buildMinidump(modulePaths: string[], patch: MinidumpPatch = {}):
     firstName.writeUInt32LE(patch.nameByteLength, 0);
   }
 
+  // Crashpad's own stream, laid out after the module names: the fixed-size
+  // info record, then the dictionary of (key rva, value rva) pairs, then the
+  // strings those point at. Each string is a byte length that EXCLUDES the
+  // trailing NUL, the UTF-8 bytes, then that NUL — as real dumps write them.
+  const crashpadBlocks: Buffer[] = [];
+  const crashpadInfoRva = cursor;
+  if (annotationEntries !== null) {
+    const dictRva = crashpadInfoRva + CRASHPAD_INFO_BYTES;
+    const dictBytes = 4 + annotationEntries.length * ANNOTATION_ENTRY_BYTES;
+    const stringBlocks: Buffer[] = [];
+    let stringCursor = dictRva + dictBytes;
+    const appendString = (value: string): { rva: number; block: Buffer } => {
+      const encoded = Buffer.from(value, 'utf8');
+      const block = Buffer.alloc(4 + encoded.length + 1);
+      block.writeUInt32LE(encoded.length, 0);
+      encoded.copy(block, 4);
+      const rva = stringCursor;
+      stringBlocks.push(block);
+      stringCursor += block.length;
+      return { rva, block };
+    };
+
+    const dict = Buffer.alloc(dictBytes);
+    dict.writeUInt32LE(patch.annotationCount ?? annotationEntries.length, 0);
+    annotationEntries.forEach(([key, value], index) => {
+      const keyString = appendString(key);
+      const valueString = appendString(value);
+      const at = 4 + index * ANNOTATION_ENTRY_BYTES;
+      const first = index === 0;
+      dict.writeUInt32LE(first ? (patch.annotationKeyRva ?? keyString.rva) : keyString.rva, at);
+      dict.writeUInt32LE(
+        first ? (patch.annotationValueRva ?? valueString.rva) : valueString.rva,
+        at + 4,
+      );
+      if (first && patch.annotationValueByteLength !== undefined) {
+        valueString.block.writeUInt32LE(patch.annotationValueByteLength, 0);
+      }
+    });
+
+    const info = Buffer.alloc(CRASHPAD_INFO_BYTES);
+    info.writeUInt32LE(1, 0); // struct version — unread by this parse
+    info.writeUInt32LE(patch.annotationsSize ?? dictBytes, CRASHPAD_ANNOTATIONS_SIZE_OFFSET);
+    info.writeUInt32LE(patch.annotationsRva ?? dictRva, CRASHPAD_ANNOTATIONS_RVA_OFFSET);
+    crashpadBlocks.push(info, dict, ...stringBlocks);
+    cursor = stringCursor;
+  }
+
   const header = Buffer.alloc(HEADER_BYTES);
   header.write(patch.signature ?? 'MDMP', 0, 'ascii');
   header.writeUInt32LE(0xa793, 4); // version — unread by the ownership parse
@@ -91,6 +174,12 @@ export function buildMinidump(modulePaths: string[], patch: MinidumpPatch = {}):
   directory.writeUInt32LE(patch.streamType ?? MODULE_LIST_STREAM_TYPE, moduleListEntry);
   directory.writeUInt32LE(moduleListBytes, moduleListEntry + 4);
   directory.writeUInt32LE(patch.moduleListRva ?? moduleListRva, moduleListEntry + 8);
+  if (annotationEntries !== null) {
+    const crashpadEntry = moduleListEntry + DIRECTORY_ENTRY_BYTES;
+    directory.writeUInt32LE(patch.crashpadStreamType ?? CRASHPAD_INFO_STREAM_TYPE, crashpadEntry);
+    directory.writeUInt32LE(CRASHPAD_INFO_BYTES, crashpadEntry + 4);
+    directory.writeUInt32LE(crashpadInfoRva, crashpadEntry + 8);
+  }
 
   const moduleList = Buffer.alloc(moduleListBytes);
   moduleList.writeUInt32LE(patch.moduleCount ?? modulePaths.length, 0);
@@ -99,6 +188,6 @@ export function buildMinidump(modulePaths: string[], patch: MinidumpPatch = {}):
     moduleList.writeUInt32LE(index === 0 ? (patch.nameRva ?? rva) : rva, at);
   });
 
-  const dump = Buffer.concat([header, directory, moduleList, ...nameBlocks]);
+  const dump = Buffer.concat([header, directory, moduleList, ...nameBlocks, ...crashpadBlocks]);
   return patch.truncateTo === undefined ? dump : dump.subarray(0, patch.truncateTo);
 }

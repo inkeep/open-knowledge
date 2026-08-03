@@ -55,7 +55,12 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
-import { classifyMinidumpOwnership, type MinidumpOwnership } from './minidump-ownership.ts';
+import { asReportableAppVersion } from './crashed-app-version.ts';
+import {
+  classifyMinidumpOwnership,
+  type MinidumpOwnership,
+  readMinidumpAppVersion,
+} from './minidump-ownership.ts';
 
 /**
  * Process-gone reasons that read as genuine crashes. `clean-exit` and
@@ -102,12 +107,14 @@ interface CrashAckStore {
 }
 
 /**
- * On-disk sentinel contents for the running session. No version field —
+ * On-disk sentinel contents for the running session. No FORMAT version field —
  * forward/backward compatibility instead relies on every field staying
  * add-only (never renamed or repurposed) and `field()` in `detectBootCrash`
  * returning null for any key a reader doesn't recognize, since this file is
  * read across app-version boundaries (auto-update can start a new binary
- * against a sentinel an older one wrote).
+ * against a sentinel an older one wrote). `appVersion` below names the app,
+ * not this file's shape — it is content, covered by that contract like any
+ * other field rather than being an exception to it.
  */
 interface SentinelState {
   bootId: string;
@@ -120,6 +127,13 @@ interface SentinelState {
   pendingOsShutdownAt?: string;
   /** Set on suspend, cleared on resume — a never-resumed sentinel died asleep. */
   suspendedAt?: string;
+  /**
+   * App version of the session that wrote this sentinel. Read back by the NEXT
+   * session to name the build that actually crashed: an auto-update between
+   * the two is precisely when it differs from the running one. Absent on a
+   * sentinel written before this field existed, which reads as unknown.
+   */
+  appVersion?: string;
 }
 
 export interface CrashDetectionDeps {
@@ -137,6 +151,12 @@ export interface CrashDetectionDeps {
    * database also collects dumps for programs we merely spawned.
    */
   appBundleRoot: string;
+  /**
+   * Version of the RUNNING session, recorded into this boot's sentinel so the
+   * next boot can name it if this one dies. Never used to describe a crash
+   * detected during this boot — that crash belongs to an earlier session.
+   */
+  appVersion: string;
   /**
    * Push one crash-detected event to a live renderer. Returns false when no
    * renderer could take it — the event stays armed and is re-offered on the
@@ -453,6 +473,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       let prevLastAliveAt: string | null = null;
       let prevPendingOsShutdownAt: string | null = null;
       let prevSuspendedAt: string | null = null;
+      let prevAppVersion: string | null = null;
       if (sentinelRaw !== null) {
         try {
           const parsed = JSON.parse(sentinelRaw) as Record<string, unknown> | null;
@@ -465,6 +486,13 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           prevLastAliveAt = field('lastAliveAt');
           prevPendingOsShutdownAt = field('pendingOsShutdownAt');
           prevSuspendedAt = field('suspendedAt');
+          // Must be read here, before this boot overwrites the file below:
+          // afterwards the value on disk is the RUNNING version, which is the
+          // wrong answer in exactly the update-between-sessions case that
+          // makes the question worth asking. Gated like the minidump's
+          // annotation because it reaches the same line of the same report,
+          // and this file is no more trustworthy than that one.
+          prevAppVersion = asReportableAppVersion(field('appVersion'));
         } catch {
           // Torn write from the crashed session — presence alone is the signal.
         }
@@ -580,6 +608,33 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           ? `boot:dump:${Math.max(...newDumps)}`
           : `boot:${prevBootId ?? `unreadable:${detectedAt.getTime()}`}`;
         if (!store.ackedEventIds.includes(eventId)) {
+          // The version of the session that DIED, which an auto-update between
+          // the crash and this launch makes different from the running one.
+          //
+          // Both witnesses can be present at once — a reboot that killed a
+          // session with a fresh dump leaves a sentinel AND a dump — so this
+          // is a priority rule, not a partition of disjoint cases. The dump
+          // wins wherever it decides the event: it was stamped at the instant
+          // the process died, while the sentinel only names whichever session
+          // happened to be running.
+          //
+          // Skipping foreign dumps is load-bearing rather than tidiness.
+          // Crashpad stamps OUR annotations onto dumps it writes for
+          // descendant processes, so a foreign one carries the CURRENT version
+          // while describing an unrelated program's death — and, being newer,
+          // would sort ahead of ours. Skipping it is what makes the first
+          // entry of this newest-first list the same dump `newDumps` took the
+          // event id's maximum from.
+          //
+          // Unknown stays unknown. Falling back to the running version here
+          // would reproduce the misattribution this exists to remove, in a
+          // form no reader could detect.
+          const eventDump = dumpDriven
+            ? freshDumps.find((d) => d.ownership !== 'foreign')
+            : undefined;
+          const dumpVersion =
+            eventDump === undefined ? null : readMinidumpAppVersion(eventDump.entry.path);
+          const crashedAppVersion = dumpDriven ? (dumpVersion?.version ?? null) : prevAppVersion;
           const event: OkBugReportCrashDetectedEvent = {
             eventId,
             kind: 'boot',
@@ -589,6 +644,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
             // counts only dumps we proved are ours, never the fail-open set
             // that decided whether to prompt at all.
             minidumpAvailable: ownedDumpCount > 0,
+            ...(crashedAppVersion !== null ? { crashedAppVersion } : {}),
           };
           if (armInvite(event)) {
             armed = event;
@@ -599,6 +655,16 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
                 detectedAt: detectedAt.toISOString(),
                 dirtyShutdown: !dumpDriven,
                 newMinidumps: newDumps.length,
+                // Logged even when null: this line is what an incident gets
+                // reconstructed from, and "we could not tell" is itself the
+                // finding when the two sources both come up empty.
+                crashedAppVersion,
+                // Which kind of silence that was. A dump predating the
+                // annotation and a parser that broke on a Crashpad layout
+                // change both reach the report as no version at all, and they
+                // send whoever debugs it in opposite directions.
+                crashedAppVersionParseFailed: dumpVersion?.parseFailed ?? false,
+                detectingAppVersion: deps.appVersion,
               },
               'previous session ended uncleanly — arming report invitation',
             );
@@ -615,6 +681,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         bootId: String(detectedAt.getTime()),
         startedAt: detectedAt.toISOString(),
         lastAliveAt: detectedAt.toISOString(),
+        appVersion: deps.appVersion,
         ...(bootSessionUuid !== null ? { bootSessionUuid } : {}),
       };
       writeSentinel('arm');

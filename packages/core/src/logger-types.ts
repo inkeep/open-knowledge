@@ -198,6 +198,18 @@ export type OkBugReportCrashDetectedEvent =
       kind: 'boot';
       context: { dirtyShutdown: boolean; newMinidumps: number };
       minidumpAvailable: boolean;
+      /**
+       * App version of the session that CRASHED, which is not the version now
+       * running whenever an auto-update landed between the crash and this
+       * launch. Absent when neither the crashed session's sentinel nor the
+       * minidump's own annotations name one — an unknown version is reported
+       * as unknown rather than approximated by the running one.
+       *
+       * Only the boot variant carries it. The two runtime variants are raised
+       * by the very session that crashed, so their crashed version is the
+       * running version by construction and a field would be pure restatement.
+       */
+      crashedAppVersion?: string;
     };
 
 /**

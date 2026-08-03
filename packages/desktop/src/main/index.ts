@@ -6114,6 +6114,9 @@ function bootPrimaryInstance(): void {
     // checks each dump's own main module against this root before treating it
     // as ours.
     appBundleRoot: appBundleRootFromExecutable(app.getPath('exe')),
+    // Recorded into this boot's sentinel, so a later boot can name the build
+    // that died even after an auto-update has replaced it.
+    appVersion: app.getVersion(),
     // Deliver to one live window — focused first — and report undeliverable
     // so the invitation waits for the next renderer-ready signal instead of
     // dropping (at boot, or when the only window is the one that crashed).

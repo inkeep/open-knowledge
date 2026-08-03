@@ -170,7 +170,19 @@ function crashInviteLines(invite: OkBugReportCrashDetectedEvent): string[] {
           : 'new crash dump found from the previous session';
   // The event id keys the crash to main's local acknowledgment/minidump state
   // during triage (it encodes the crashed session or dump timestamp).
-  return [`Crash source: ${source}`, `Crash event: ${invite.eventId}`];
+  const lines = [`Crash source: ${source}`, `Crash event: ${invite.eventId}`];
+  // Appended, never prepended: with an empty note the context lines ARE the
+  // note, and the intake takes its ticket title from the note's first line.
+  //
+  // Stated even when it matches the version the report itself is stamped with.
+  // The pair is the diagnostic: two versions side by side say an update landed
+  // between the crash and the report, and one repeated says it did not — a
+  // line that appeared only on disagreement would leave a reader unable to
+  // tell agreement from a build too old to answer.
+  if (invite.kind === 'boot' && invite.crashedAppVersion !== undefined) {
+    lines.push(`Crashed app version: ${invite.crashedAppVersion}`);
+  }
+  return lines;
 }
 
 type Phase =

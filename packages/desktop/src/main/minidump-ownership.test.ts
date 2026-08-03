@@ -16,9 +16,9 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { buildMinidump, type MinidumpPatch } from './minidump.test-helper.ts';
-import { classifyMinidumpOwnership } from './minidump-ownership.ts';
+import { classifyMinidumpOwnership, readMinidumpAppVersion } from './minidump-ownership.ts';
 
 const tmpDirs: string[] = [];
 
@@ -175,28 +175,72 @@ describe('symlinked launch paths', () => {
 /**
  * Every case names a single lie the dump tells about its own layout, with the
  * rest of the structure left well-formed, so a failure points at one offset.
+ *
+ * `versionSurvives` records what the SAME lie does to the app-version read,
+ * which lives in a different stream. A lie about the header or the stream
+ * directory takes down both reads; one about a module record leaves the
+ * annotations perfectly readable. That split is the observable form of the two
+ * reads being independent, so it is pinned per case rather than asserted as a
+ * blanket property neither read could violate.
  */
-const MALFORMED_CASES: Array<{ name: string; patch: MinidumpPatch }> = [
-  { name: 'a wrong header magic', patch: { signature: 'XXXX' } },
-  { name: 'a header truncated mid-field', patch: { truncateTo: 20 } },
+const MALFORMED_CASES: Array<{
+  name: string;
+  patch: MinidumpPatch;
+  versionSurvives: boolean;
+}> = [
+  { name: 'a wrong header magic', patch: { signature: 'XXXX' }, versionSurvives: false },
+  { name: 'a header truncated mid-field', patch: { truncateTo: 20 }, versionSurvives: false },
   {
     name: 'a stream-directory RVA past the end of the file',
     patch: { streamDirectoryRva: 0xffff },
+    versionSurvives: false,
   },
-  { name: 'a stream count beyond the parser cap', patch: { streamCount: 100_000 } },
-  { name: 'a stream count of zero', patch: { streamCount: 0 } },
-  { name: 'a directory holding no ModuleList stream', patch: { streamType: 7 } },
-  { name: 'a ModuleList RVA past the end of the file', patch: { moduleListRva: 0xffff } },
-  { name: 'a module count of zero', patch: { moduleCount: 0 } },
+  {
+    name: 'a stream count beyond the parser cap',
+    patch: { streamCount: 100_000 },
+    versionSurvives: false,
+  },
+  { name: 'a stream count of zero', patch: { streamCount: 0 }, versionSurvives: false },
+  {
+    name: 'a directory holding no ModuleList stream',
+    patch: { streamType: 7 },
+    versionSurvives: true,
+  },
+  {
+    name: 'a ModuleList RVA past the end of the file',
+    patch: { moduleListRva: 0xffff },
+    versionSurvives: true,
+  },
+  { name: 'a module count of zero', patch: { moduleCount: 0 }, versionSurvives: true },
   // The ModuleList count sits at 44..48 and the first 108-byte record follows,
   // so cutting at 60 leaves the record short.
-  { name: 'a first module record cut short by the file end', patch: { truncateTo: 60 } },
-  { name: 'a module-name RVA past the end of the file', patch: { nameRva: 0xffff } },
-  { name: 'a name byte length of zero', patch: { nameByteLength: 0 } },
-  { name: 'an odd name byte length (never valid UTF-16)', patch: { nameByteLength: 9 } },
-  { name: 'a name byte length beyond the parser cap', patch: { nameByteLength: 1_000_000 } },
+  {
+    name: 'a first module record cut short by the file end',
+    patch: { truncateTo: 60 },
+    versionSurvives: false,
+  },
+  {
+    name: 'a module-name RVA past the end of the file',
+    patch: { nameRva: 0xffff },
+    versionSurvives: true,
+  },
+  { name: 'a name byte length of zero', patch: { nameByteLength: 0 }, versionSurvives: true },
+  {
+    name: 'an odd name byte length (never valid UTF-16)',
+    patch: { nameByteLength: 9 },
+    versionSurvives: true,
+  },
+  {
+    name: 'a name byte length beyond the parser cap',
+    patch: { nameByteLength: 1_000_000 },
+    versionSurvives: true,
+  },
   // Even and under the cap, but longer than the bytes actually present.
-  { name: 'a name that overruns the end of the file', patch: { nameByteLength: 4096 } },
+  {
+    name: 'a name that overruns the end of the file',
+    patch: { nameByteLength: 4096 },
+    versionSurvives: true,
+  },
 ];
 
 describe('malformed dumps are unreadable, never ours', () => {
@@ -229,5 +273,229 @@ describe('malformed dumps are unreadable, never ours', () => {
     // Opening succeeds on a directory; the first read is what fails.
     const dir = makeDir();
     expect(classifyMinidumpOwnership(dir, join(dir, 'OpenKnowledge.app'))).toBe('unknown');
+  });
+});
+
+/**
+ * The crashed session's own app version, which the boot-time detector needs
+ * because an auto-update can replace the binary between the crash and the
+ * launch that notices it.
+ *
+ * The security-relevant property mirrors the ownership one: no malformed
+ * annotation block may ever produce a version, none may throw on the boot
+ * path, and none may disturb the ownership answer read from the same file.
+ */
+describe('crashpad app-version annotations', () => {
+  /** Write a dump under a temp dir and read its version back. */
+  function versionOf(patch: MinidumpPatch): string | null {
+    const dir = makeDir();
+    const dumpPath = join(dir, 'crash.dmp');
+    writeFileSync(dumpPath, buildMinidump([ownModule(join(dir, 'OpenKnowledge.app'))], patch));
+    const read = readMinidumpAppVersion(dumpPath);
+    // Every case here is a dump the parse declines to trust, never one it
+    // failed to parse — the distinction the flag exists to carry, asserted
+    // once here so each case below can stay a plain version comparison.
+    expect(read.parseFailed).toBe(false);
+    return read.version;
+  }
+
+  test('a dump carrying annotations names the version that crashed', () => {
+    // The five keys a real Electron dump carries, in the order Crashpad
+    // writes them, so the lookup is exercised past the first entry.
+    expect(
+      versionOf({
+        annotations: {
+          _productName: 'OpenKnowledge',
+          _version: '0.41.0',
+          plat: 'OS X',
+          prod: 'Electron',
+          ver: '41.2.1',
+        },
+      }),
+    ).toBe('0.41.0');
+  });
+
+  test('the app version wins over the Electron version beside it', () => {
+    expect(versionOf({ annotations: { ver: '41.2.1', _version: '0.41.0' } })).toBe('0.41.0');
+  });
+
+  test('a dump with no crashpad stream at all has no version', () => {
+    expect(versionOf({})).toBeNull();
+  });
+
+  test('annotations that name no version have no version', () => {
+    expect(versionOf({ annotations: { _productName: 'OpenKnowledge', prod: 'Electron' } })).toBe(
+      null,
+    );
+  });
+
+  test('a dump truncated before its annotations has no version', () => {
+    expect(versionOf({ annotations: { _version: '0.41.0' }, truncateTo: 80 })).toBeNull();
+  });
+
+  /**
+   * One lie per case with the rest of the dump well-formed, so a failure names
+   * a single offset. Each uses a single-entry dictionary because the patches
+   * target the first entry.
+   */
+  const MALFORMED_ANNOTATION_CASES: Array<{ name: string; patch: MinidumpPatch }> = [
+    {
+      name: 'a crashpad stream hidden behind another stream type',
+      patch: { crashpadStreamType: 9 },
+    },
+    { name: 'a dictionary RVA of zero (no annotations registered)', patch: { annotationsRva: 0 } },
+    { name: 'a dictionary RVA past the end of the file', patch: { annotationsRva: 0xffff } },
+    { name: 'an entry count beyond the parser cap', patch: { annotationCount: 100_000 } },
+    { name: 'an entry count of zero', patch: { annotationCount: 0 } },
+    { name: 'an entry count larger than the block has room for', patch: { annotationCount: 4 } },
+    { name: 'a declared dictionary size too small for its entries', patch: { annotationsSize: 4 } },
+    { name: 'a key RVA past the end of the file', patch: { annotationKeyRva: 0xffff } },
+    { name: 'a key RVA of zero', patch: { annotationKeyRva: 0 } },
+    { name: 'a value RVA past the end of the file', patch: { annotationValueRva: 0xffff } },
+    { name: 'a value RVA of zero', patch: { annotationValueRva: 0 } },
+    { name: 'a value byte length of zero', patch: { annotationValueByteLength: 0 } },
+    {
+      name: 'a value byte length beyond the parser cap',
+      patch: { annotationValueByteLength: 1_000_000 },
+    },
+    // Under the cap, but longer than the bytes actually present.
+    {
+      name: 'a value that overruns the end of the file',
+      patch: { annotationValueByteLength: 200 },
+    },
+  ];
+
+  for (const { name, patch } of MALFORMED_ANNOTATION_CASES) {
+    test(`${name} yields no version`, () => {
+      expect(versionOf({ annotations: { _version: '0.41.0' }, ...patch })).toBeNull();
+    });
+  }
+
+  test('a value carrying control characters is refused', () => {
+    // The value lands in a line-oriented log and report body, so a newline
+    // would let it forge the context lines printed around it.
+    const forged = `0.41.0${String.fromCharCode(10)}Crash source: something untrue`;
+    expect(versionOf({ annotations: { _version: forged } })).toBeNull();
+  });
+
+  test('a malformed annotation block leaves ownership intact', () => {
+    // The load-bearing independence check. Ownership decides whether a report
+    // may carry process memory at all, so a drift in Crashpad's annotation
+    // layout must never quietly turn our own crashes into unattachable ones.
+    const dir = makeDir();
+    const bundleRoot = join(dir, 'Applications', 'OpenKnowledge.app');
+    const dumpPath = join(dir, 'crash.dmp');
+    writeFileSync(
+      dumpPath,
+      buildMinidump([ownModule(bundleRoot), '/usr/lib/dyld'], {
+        annotations: { _version: '0.41.0' },
+        annotationsRva: 0xffff,
+      }),
+    );
+
+    expect(readMinidumpAppVersion(dumpPath).version).toBeNull();
+    expect(classifyMinidumpOwnership(dumpPath, bundleRoot)).toBe('ours');
+  });
+
+  test('a version never launders a foreign dump into ours', () => {
+    // Crashpad stamps OUR annotations onto dumps written for descendant
+    // processes, so a version alone never implies the crash was ours. This is
+    // why the detector reads the version only for a dump ownership kept.
+    const dir = makeDir();
+    const bundleRoot = join(dir, 'Applications', 'OpenKnowledge.app');
+    const dumpPath = join(dir, 'crash.dmp');
+    writeFileSync(
+      dumpPath,
+      buildMinidump(['/Applications/LibreOffice.app/Contents/MacOS/soffice'], {
+        annotations: { _version: '0.41.0' },
+      }),
+    );
+
+    expect(readMinidumpAppVersion(dumpPath).version).toBe('0.41.0');
+    expect(classifyMinidumpOwnership(dumpPath, bundleRoot)).toBe('foreign');
+  });
+
+  test('an ownership lie decides the version read on its own merits', () => {
+    // Each case tells one structural lie and the version read answers for
+    // itself: the header and stream directory are shared, so a lie there takes
+    // both down, while a lie about a module record leaves the annotations in
+    // another stream untouched. Pinned as an exact table rather than "none of
+    // these throws", which the two catch-alls guarantee no matter what the
+    // parse does — though a throw still fails here, since it would take out
+    // boot-time crash detection.
+    const observed = MALFORMED_CASES.map(({ name, patch }) => {
+      const dir = makeDir();
+      const dumpPath = join(dir, 'crash.dmp');
+      writeFileSync(
+        dumpPath,
+        buildMinidump([ownModule(join(dir, 'OpenKnowledge.app'))], {
+          annotations: { _version: '0.41.0' },
+          ...patch,
+        }),
+      );
+      return { name, version: readMinidumpAppVersion(dumpPath).version };
+    });
+
+    // Compared as whole rows so a failure names the case that moved.
+    expect(observed).toEqual(
+      MALFORMED_CASES.map(({ name, versionSurvives }) => ({
+        name,
+        version: versionSurvives ? '0.41.0' : null,
+      })),
+    );
+  });
+
+  test('a parse that throws is reported as broken, not as an absent version', async () => {
+    // Nothing a dump can CONTAIN reaches the annotation parse's catch — every
+    // bound is checked and every distrusted layout declines by returning null,
+    // which is what the table above pins. What could reach it is a Crashpad
+    // revision whose records this parser no longer recognizes at all, and then
+    // the report shows an unknown version with nothing to say whether the dump
+    // predates the annotation or the parser regressed. Those are opposite
+    // investigations. Driving the throw from outside the file is the only way
+    // to hold the two apart, since no input can.
+    //
+    // The read is intercepted by its width: the Crashpad info record's 44-byte
+    // prefix opens the annotation walk, and no other read in either pass asks
+    // for that many bytes (the module-name block of a tmpdir path is far
+    // wider), so ownership stays on the real implementation throughout.
+    const CRASHPAD_INFO_PREFIX_BYTES = 44;
+    const dir = makeDir();
+    const bundleRoot = join(dir, 'OpenKnowledge.app');
+    const dumpPath = join(dir, 'crash.dmp');
+    writeFileSync(
+      dumpPath,
+      buildMinidump([ownModule(bundleRoot)], { annotations: { _version: '0.41.0' } }),
+    );
+
+    const realFs = await vi.importActual<typeof import('node:fs')>('node:fs');
+    vi.resetModules();
+    vi.doMock('node:fs', () => ({
+      ...realFs,
+      readSync: (
+        fd: number,
+        buffer: NodeJS.ArrayBufferView,
+        offset: number,
+        length: number,
+        position: number,
+      ) => {
+        if (length === CRASHPAD_INFO_PREFIX_BYTES) throw new Error('crashpad layout moved');
+        return realFs.readSync(fd, buffer, offset, length, position);
+      },
+    }));
+    try {
+      // Dynamic so it binds the mocked fs; the statically imported copy at the
+      // top of this file stays real for every other test here.
+      const mocked = await import('./minidump-ownership.ts');
+
+      expect(mocked.readMinidumpAppVersion(dumpPath)).toEqual({ version: null, parseFailed: true });
+      // And the containment holds: a broken annotation parse still costs the
+      // ownership answer nothing, which is what decides whether process memory
+      // may leave the machine.
+      expect(mocked.classifyMinidumpOwnership(dumpPath, bundleRoot)).toBe('ours');
+    } finally {
+      vi.doUnmock('node:fs');
+      vi.resetModules();
+    }
   });
 });

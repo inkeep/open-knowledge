@@ -38,6 +38,20 @@
  * reported separately rather than folded in: on a crash that was plainly ours,
  * it is the only thing that moves.
  *
+ * A pass also lifts the app version Crashpad stamped into the dump, which is
+ * the version of the session that DIED — not the one asking. An auto-update
+ * between a crash and the next launch is exactly the case where those differ,
+ * and it is the reason the version cannot be taken from the running process.
+ *
+ * The two records are read together, but the two questions are exported
+ * separately, so a caller that wants both answers opens the file twice. That
+ * is the trade rather than an oversight: ownership decides whether a report
+ * may carry process memory at all, and a call whose only return value is the
+ * module path keeps the annotation side out of that answer structurally,
+ * instead of leaving it a rule somebody has to keep honoring. The annotation
+ * walk still runs on that pass — what is constrained is what it can reach, not
+ * whether it executes. The price is one extra open of one dump per boot.
+ *
  * Reads only the handful of records it needs at explicit file offsets: a
  * minidump is raw process memory and can be hundreds of megabytes, so it must
  * never be slurped whole to answer a path question. No symbolizer, no Crashpad
@@ -45,6 +59,7 @@
  */
 
 import { closeSync, openSync, readSync, realpathSync } from 'node:fs';
+import { asReportableAppVersion } from './crashed-app-version.ts';
 import { isPathWithinProject } from './path-containment.ts';
 
 /**
@@ -62,6 +77,7 @@ const NUMBER_OF_STREAMS_OFFSET = 8;
 const STREAM_DIRECTORY_RVA_OFFSET = 12;
 /** Directory entry: `(streamType u32, dataSize u32, rva u32)`. */
 const DIRECTORY_ENTRY_BYTES = 12;
+const DIRECTORY_ENTRY_SIZE_OFFSET = 4;
 const DIRECTORY_ENTRY_RVA_OFFSET = 8;
 /** `ModuleListStream` in the minidump stream-type enum. */
 const MODULE_LIST_STREAM_TYPE = 4;
@@ -69,7 +85,27 @@ const MODULE_RECORD_BYTES = 108;
 const MODULE_NAME_RVA_OFFSET = 20;
 
 /**
- * Ceilings on the two counts read out of the file before any allocation. A
+ * `MinidumpCrashpadInfo` — Crashpad's own stream, outside the minidump format's
+ * stream-type enum, carrying the annotations the crashing process registered.
+ * Its prefix is `version u32`, two 16-byte UUIDs (report id, client id), then
+ * the simple-annotation dictionary's `MINIDUMP_LOCATION_DESCRIPTOR`
+ * (`dataSize u32, rva u32`) — the last field this parse needs.
+ */
+const CRASHPAD_INFO_STREAM_TYPE = 0x4350_0001;
+const CRASHPAD_ANNOTATIONS_SIZE_OFFSET = 36;
+const CRASHPAD_ANNOTATIONS_RVA_OFFSET = 40;
+const CRASHPAD_INFO_PREFIX_BYTES = 44;
+/**
+ * `MinidumpSimpleStringDictionary`: an entry count followed by that many
+ * `(keyRva u32, valueRva u32)` pairs, each RVA naming a length-prefixed UTF-8
+ * string. Electron registers the app's own version under `_version`; the
+ * separate `ver` key holds Electron's, which is not what a triager wants.
+ */
+const ANNOTATION_ENTRY_BYTES = 8;
+const APP_VERSION_ANNOTATION_KEY = '_version';
+
+/**
+ * Ceilings on every count read out of the file before any allocation. A
  * corrupt or hostile dump can name any u32 here, and a dump is untrusted input
  * for exactly the reason this module exists: it may have been written for a
  * process that is not ours.
@@ -77,6 +113,10 @@ const MODULE_NAME_RVA_OFFSET = 20;
 const MAX_STREAMS = 4096;
 /** Byte length of the UTF-16 module name; real executable paths are far shorter. */
 const MAX_MODULE_NAME_BYTES = 8192;
+/** Real dumps carry a handful of annotations; this is room to spare, not a target. */
+const MAX_ANNOTATIONS = 256;
+/** Both keys and values: a version string is tens of bytes. */
+const MAX_ANNOTATION_STRING_BYTES = 256;
 
 /** Exact positional read, or null when the file is shorter than the request. */
 function readExactly(fd: number, length: number, position: number): Buffer | null {
@@ -85,52 +125,141 @@ function readExactly(fd: number, length: number, position: number): Buffer | nul
 }
 
 /**
- * Path of `ModuleList[0]` — the crashed process's main executable — or null
- * when the file is not a minidump we can read that far into.
+ * What one pass over a dump can establish about the process that died. Each
+ * record answers for itself: the two live in different streams, so an
+ * unreadable one never costs the other.
  */
-function readMainModulePath(dumpPath: string): string | null {
+interface MinidumpFacts {
+  /** Path of `ModuleList[0]`, the crashed process's main executable. */
+  mainModulePath: string | null;
+  /** The crashed process's own app version, from Crashpad's annotations. */
+  appVersion: string | null;
+  /**
+   * The annotation parse threw rather than declining. Nothing a dump can
+   * contain reaches that: every bound is checked and every layout the parse
+   * distrusts returns null instead. What could is a Crashpad revision this
+   * parser no longer recognizes at all — and a regressed parser reads exactly
+   * like a dump too old to carry the annotation unless it says otherwise.
+   */
+  appVersionParseFailed: boolean;
+}
+
+const NO_FACTS: MinidumpFacts = Object.freeze({
+  mainModulePath: null,
+  appVersion: null,
+  appVersionParseFailed: false,
+});
+
+/** A length-prefixed UTF-8 annotation string, bounded before it is allocated. */
+function readAnnotationString(fd: number, rva: number): string | null {
+  if (rva === 0) return null;
+  const length = readExactly(fd, 4, rva);
+  if (length === null) return null;
+  const byteLength = length.readUInt32LE(0);
+  if (byteLength === 0 || byteLength > MAX_ANNOTATION_STRING_BYTES) return null;
+  const bytes = readExactly(fd, byteLength, rva + 4);
+  return bytes === null ? null : bytes.toString('utf8');
+}
+
+/**
+ * The `_version` annotation paired with whether the walk below threw on the way
+ * to it. Never throws itself: the caller's other answer must survive anything
+ * found here, so a failure stays contained rather than unwinding the whole
+ * parse — and the flag is what keeps that containment from also being silent.
+ */
+function readAppVersionAnnotation(
+  fd: number,
+  infoRva: number,
+  infoSize: number,
+): { version: string | null; parseFailed: boolean } {
+  try {
+    return { version: parseAppVersionAnnotation(fd, infoRva, infoSize), parseFailed: false };
+  } catch {
+    return { version: null, parseFailed: true };
+  }
+}
+
+/**
+ * The annotation walk itself. Declines by returning null for every layout it
+ * distrusts; the caller above owns what happens if it throws anyway.
+ */
+function parseAppVersionAnnotation(fd: number, infoRva: number, infoSize: number): string | null {
+  if (infoSize < CRASHPAD_INFO_PREFIX_BYTES) return null;
+  const info = readExactly(fd, CRASHPAD_INFO_PREFIX_BYTES, infoRva);
+  if (info === null) return null;
+  // Crashpad spells "this dump registered no annotations" as a zero location,
+  // which is an ordinary state rather than a damaged one.
+  const dictRva = info.readUInt32LE(CRASHPAD_ANNOTATIONS_RVA_OFFSET);
+  if (dictRva === 0) return null;
+  const count = readExactly(fd, 4, dictRva);
+  if (count === null) return null;
+  const entryCount = count.readUInt32LE(0);
+  if (entryCount === 0 || entryCount > MAX_ANNOTATIONS) return null;
+  // The declared block must be large enough to hold the entries it claims.
+  // Checked as a floor rather than an equality so a future revision may pad
+  // the dictionary without the version silently going dark.
+  const declaredBytes = info.readUInt32LE(CRASHPAD_ANNOTATIONS_SIZE_OFFSET);
+  if (declaredBytes < 4 + entryCount * ANNOTATION_ENTRY_BYTES) return null;
+
+  const entries = readExactly(fd, entryCount * ANNOTATION_ENTRY_BYTES, dictRva + 4);
+  if (entries === null) return null;
+  for (let i = 0; i < entryCount; i += 1) {
+    const at = i * ANNOTATION_ENTRY_BYTES;
+    if (readAnnotationString(fd, entries.readUInt32LE(at)) !== APP_VERSION_ANNOTATION_KEY) {
+      continue;
+    }
+    return asReportableAppVersion(readAnnotationString(fd, entries.readUInt32LE(at + 4)));
+  }
+  return null;
+}
+
+/**
+ * Everything this module reads out of `dumpPath`, in one open and one walk of
+ * the stream directory.
+ */
+function readMinidumpFacts(dumpPath: string): MinidumpFacts {
   let fd: number | null = null;
   try {
     fd = openSync(dumpPath, 'r');
     const header = readExactly(fd, HEADER_BYTES, 0);
-    if (header === null || header.readUInt32LE(0) !== MINIDUMP_SIGNATURE) return null;
+    if (header === null || header.readUInt32LE(0) !== MINIDUMP_SIGNATURE) return NO_FACTS;
     const streamCount = header.readUInt32LE(NUMBER_OF_STREAMS_OFFSET);
-    if (streamCount === 0 || streamCount > MAX_STREAMS) return null;
+    if (streamCount === 0 || streamCount > MAX_STREAMS) return NO_FACTS;
 
     const directory = readExactly(
       fd,
       streamCount * DIRECTORY_ENTRY_BYTES,
       header.readUInt32LE(STREAM_DIRECTORY_RVA_OFFSET),
     );
-    if (directory === null) return null;
+    if (directory === null) return NO_FACTS;
     let moduleListRva: number | null = null;
+    let crashpadInfoRva: number | null = null;
+    let crashpadInfoSize = 0;
     for (let i = 0; i < streamCount; i += 1) {
       const at = i * DIRECTORY_ENTRY_BYTES;
-      if (directory.readUInt32LE(at) === MODULE_LIST_STREAM_TYPE) {
+      const streamType = directory.readUInt32LE(at);
+      if (streamType === MODULE_LIST_STREAM_TYPE && moduleListRva === null) {
         moduleListRva = directory.readUInt32LE(at + DIRECTORY_ENTRY_RVA_OFFSET);
-        break;
+      } else if (streamType === CRASHPAD_INFO_STREAM_TYPE && crashpadInfoRva === null) {
+        crashpadInfoRva = directory.readUInt32LE(at + DIRECTORY_ENTRY_RVA_OFFSET);
+        crashpadInfoSize = directory.readUInt32LE(at + DIRECTORY_ENTRY_SIZE_OFFSET);
       }
+      if (moduleListRva !== null && crashpadInfoRva !== null) break;
     }
-    if (moduleListRva === null) return null;
 
-    const moduleCount = readExactly(fd, 4, moduleListRva);
-    if (moduleCount === null || moduleCount.readUInt32LE(0) === 0) return null;
-    const firstModule = readExactly(fd, MODULE_RECORD_BYTES, moduleListRva + 4);
-    if (firstModule === null) return null;
-
-    // A minidump string is a byte length followed by UTF-16LE units — the
-    // length counts BYTES, not code units, so an odd value is malformed.
-    const nameRva = firstModule.readUInt32LE(MODULE_NAME_RVA_OFFSET);
-    const nameLength = readExactly(fd, 4, nameRva);
-    if (nameLength === null) return null;
-    const nameBytes = nameLength.readUInt32LE(0);
-    if (nameBytes === 0 || nameBytes % 2 !== 0 || nameBytes > MAX_MODULE_NAME_BYTES) return null;
-    const name = readExactly(fd, nameBytes, nameRva + 4);
-    return name === null ? null : name.toString('utf16le');
+    const annotation =
+      crashpadInfoRva === null
+        ? null
+        : readAppVersionAnnotation(fd, crashpadInfoRva, crashpadInfoSize);
+    return {
+      mainModulePath: readMainModule(fd, moduleListRva),
+      appVersion: annotation?.version ?? null,
+      appVersionParseFailed: annotation?.parseFailed ?? false,
+    };
   } catch {
     // Unopenable file, torn read, permissions change mid-scan, or a corrupt
     // dump — all mean the same thing to the caller.
-    return null;
+    return NO_FACTS;
   } finally {
     if (fd !== null) {
       try {
@@ -140,6 +269,24 @@ function readMainModulePath(dumpPath: string): string | null {
       }
     }
   }
+}
+
+function readMainModule(fd: number, moduleListRva: number | null): string | null {
+  if (moduleListRva === null) return null;
+  const moduleCount = readExactly(fd, 4, moduleListRva);
+  if (moduleCount === null || moduleCount.readUInt32LE(0) === 0) return null;
+  const firstModule = readExactly(fd, MODULE_RECORD_BYTES, moduleListRva + 4);
+  if (firstModule === null) return null;
+
+  // A minidump string is a byte length followed by UTF-16LE units — the
+  // length counts BYTES, not code units, so an odd value is malformed.
+  const nameRva = firstModule.readUInt32LE(MODULE_NAME_RVA_OFFSET);
+  const nameLength = readExactly(fd, 4, nameRva);
+  if (nameLength === null) return null;
+  const nameBytes = nameLength.readUInt32LE(0);
+  if (nameBytes === 0 || nameBytes % 2 !== 0 || nameBytes > MAX_MODULE_NAME_BYTES) return null;
+  const name = readExactly(fd, nameBytes, nameRva + 4);
+  return name === null ? null : name.toString('utf16le');
 }
 
 /**
@@ -180,10 +327,40 @@ export function classifyMinidumpOwnership(
   dumpPath: string,
   appBundleRoot: string,
 ): MinidumpOwnership {
-  const mainModule = readMainModulePath(dumpPath);
+  const mainModule = readMinidumpFacts(dumpPath).mainModulePath;
   if (mainModule === null) return 'unknown';
   const ours =
     isPathWithinProject(canonicalize(mainModule), canonicalize(appBundleRoot), process.platform) ||
     isPathWithinProject(mainModule, appBundleRoot, process.platform);
   return ours ? 'ours' : 'foreign';
+}
+
+export interface MinidumpAppVersionRead {
+  /**
+   * The app version of the session that wrote the dump, or null when the dump
+   * does not name one — an older build that predates the annotation, a dump
+   * truncated before its Crashpad stream, or a layout this parser no longer
+   * recognizes. Anything non-null already passed `asReportableAppVersion`, and
+   * null must be allowed to stay unknown.
+   */
+  version: string | null;
+  /**
+   * The parse threw. Separates "this dump has no version to give" from "the
+   * parser broke", which are otherwise the same null everywhere downstream and
+   * point an investigator in opposite directions.
+   */
+  parseFailed: boolean;
+}
+
+/**
+ * Read the app version of the session that wrote `dumpPath`.
+ *
+ * Only meaningful for a dump this app has not already disowned: Crashpad
+ * stamps OUR annotations onto dumps it writes for descendant processes, so a
+ * foreign dump carries our version while describing an unrelated program's
+ * death. Classify first.
+ */
+export function readMinidumpAppVersion(dumpPath: string): MinidumpAppVersionRead {
+  const facts = readMinidumpFacts(dumpPath);
+  return { version: facts.appVersion, parseFailed: facts.appVersionParseFailed };
 }

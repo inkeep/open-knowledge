@@ -655,6 +655,36 @@ describe('ReportBugDialog', () => {
     expect(log.createCalls[0]).not.toHaveProperty('includeCrashDump');
   });
 
+  test('a crash invite that names the crashed version folds it in last', async () => {
+    // Last, not first: with an empty note these context lines ARE the note,
+    // and the intake takes the ticket title from the note's first line.
+    const log = installBridge();
+    await renderDialog({ crashInvite: { ...BOOT_INVITE, crashedAppVersion: '0.41.0' } });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+
+    expect(log.createCalls).toEqual([
+      {
+        level: 'full',
+        note: 'Crash source: previous session ended without a clean quit\nCrash event: boot:1751871600000\nCrashed app version: 0.41.0',
+        includeCrashDump: true,
+      },
+    ]);
+  });
+
+  test('a crash invite with no crashed version composes the note without that line', async () => {
+    // An older build's dump, or a sentinel that predates the field, must not
+    // leave a dangling label a triager would read as a real value.
+    const log = installBridge();
+    await renderDialog({ crashInvite: BOOT_INVITE });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+
+    expect(log.createCalls[0]?.note).not.toContain('Crashed app version');
+  });
+
   test('the plain compose never renders the crash-dump opt-in and never sends the flag', async () => {
     const log = installBridge();
     await renderDialog();

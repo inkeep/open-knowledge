@@ -48,15 +48,27 @@ const FOREIGN_DUMP = buildMinidump([
 /** Truncated past the header — the shape a crash-during-dump-write leaves. */
 const UNPARSEABLE_DUMP = Buffer.from('minidump-bytes-that-are-not-a-minidump');
 
+/**
+ * The version a rig runs as by default, and the one it is updated to when a
+ * test needs the crashed session and the detecting session to disagree — which
+ * is the whole point of recording the crashed one separately.
+ */
+const CRASHED_VERSION = '0.41.0';
+const DETECTING_VERSION = '0.46.1';
+
 interface Rig {
   deps: CrashDetectionDeps;
   emitted: OkBugReportCrashDetectedEvent[];
   /** A dump naming one of this rig's own executables as its main module. */
   ownDump: Buffer;
+  /** The same dump, plus the Crashpad annotations a real one carries. */
+  ownDumpStamped(version: string): Buffer;
   /** Flip to false to simulate "no live renderer window can take the event". */
   setRendererAvailable(available: boolean): void;
   /** Swap the kernel boot-session identity, simulating a reboot between sessions. */
   setBootSessionUuid(uuid: string | null): void;
+  /** Swap the running app version, simulating an auto-update between sessions. */
+  setAppVersion(version: string): void;
   /** Advance and return the fake clock (10s per tick). */
   tick(): Date;
   dir: string;
@@ -70,28 +82,36 @@ function makeRig(): Rig {
   let bootSessionUuid: string | null = 'boot-epoch-a';
   let clockMs = Date.parse('2026-07-10T00:00:00.000Z');
   const appBundleRoot = join(dir, 'Applications', 'OpenKnowledge.app');
-  return {
+  // A helper process rather than the main binary: renderer/GPU/utility crashes
+  // are the common case, and they must resolve inside the bundle root too.
+  const ownModules = [
+    join(
+      appBundleRoot,
+      'Contents',
+      'Frameworks',
+      'OpenKnowledge Helper (Renderer).app',
+      'Contents',
+      'MacOS',
+      'OpenKnowledge Helper (Renderer)',
+    ),
+    '/usr/lib/dyld',
+  ];
+  const rig: Rig = {
     dir,
     emitted,
-    // A helper process rather than the main binary: renderer/GPU/utility crashes
-    // are the common case, and they must resolve inside the bundle root too.
-    ownDump: buildMinidump([
-      join(
-        appBundleRoot,
-        'Contents',
-        'Frameworks',
-        'OpenKnowledge Helper (Renderer).app',
-        'Contents',
-        'MacOS',
-        'OpenKnowledge Helper (Renderer)',
-      ),
-      '/usr/lib/dyld',
-    ]),
+    ownDump: buildMinidump(ownModules),
+    ownDumpStamped: (version: string) =>
+      buildMinidump(ownModules, {
+        annotations: { _productName: 'OpenKnowledge', _version: version, prod: 'Electron' },
+      }),
     setRendererAvailable(available: boolean) {
       rendererAvailable = available;
     },
     setBootSessionUuid(uuid: string | null) {
       bootSessionUuid = uuid;
+    },
+    setAppVersion(version: string) {
+      rig.deps.appVersion = version;
     },
     tick() {
       clockMs += 10_000;
@@ -102,6 +122,7 @@ function makeRig(): Rig {
       ackStorePath: join(dir, 'user-data', 'bug-report-crash-acks.json'),
       crashDumpsDir: join(dir, 'crash-dumps'),
       appBundleRoot,
+      appVersion: CRASHED_VERSION,
       emit(event) {
         if (!rendererAvailable) return false;
         emitted.push(event);
@@ -115,6 +136,19 @@ function makeRig(): Rig {
       logger: silentLogger,
     },
   };
+  return rig;
+}
+
+/**
+ * Narrow an armed invitation to the boot variant, failing if there isn't one.
+ * Throwing rather than returning null keeps a regression in arming from
+ * quietly reducing a caller to zero assertions, which an `if (kind === 'boot')`
+ * guard around the interesting expectations would do.
+ */
+function bootInvite(armed: OkBugReportCrashDetectedEvent | null) {
+  expect(armed?.kind).toBe('boot');
+  if (armed?.kind !== 'boot') throw new Error('expected a boot invitation, got none');
+  return armed;
 }
 
 function readSentinel(rig: Rig): Record<string, string | undefined> {
@@ -864,5 +898,300 @@ describe('process-level invariants', () => {
     });
 
     expect(calls).toEqual([{ uploadToServer: false }]);
+  });
+});
+
+/**
+ * Which version a boot-time invitation names. The report is composed by the
+ * session that DETECTS the crash, which an auto-update in between makes a
+ * different build from the one that died — and the detecting session's own
+ * version is the one thing that must never be substituted, since it is exactly
+ * the wrong answer in the case worth reporting.
+ */
+describe('the version a boot invitation attributes the crash to', () => {
+  test('a dirty shutdown names the crashed version, not the detecting one', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    // The app is replaced by an auto-update before the next launch notices.
+    rig.setAppVersion(DETECTING_VERSION);
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+
+    expect(armed.context.dirtyShutdown).toBe(true);
+    expect(armed.crashedAppVersion).toBe(CRASHED_VERSION);
+  });
+
+  test('a dirty shutdown keeps its sentinel as witness even with a dump of its own', () => {
+    // The ordinary same-boot-session crash, and the pivot the whole attribution
+    // turns on: both witnesses are present and they disagree, and the sentinel
+    // is the one that decided the event id, so it is the one that names the
+    // version. A refactor that made a sentinel-present shutdown dump-driven
+    // would read the dump here instead — silently, with every neighbouring
+    // test still green, since each of those has only one witness to choose from.
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    const bootId = readSentinel(rig).bootId;
+    seedMinidump(rig, 'pending/native.dmp', rig.tick(), rig.ownDumpStamped('0.41.0-beta.4'));
+
+    rig.setAppVersion(DETECTING_VERSION);
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+
+    expect(armed.context.dirtyShutdown).toBe(true);
+    // Asserted as the exact id rather than "not a dump id": the form names
+    // which witness decided, which is the thing the version has to follow.
+    expect(armed.eventId).toBe(`boot:${bootId}`);
+    expect(armed.crashedAppVersion).toBe(CRASHED_VERSION);
+  });
+
+  test('a dump-driven event reads the version stamped inside the dump', () => {
+    // No sentinel survives a clean quit, so the dump is the only witness left.
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.markCleanQuit();
+    seedMinidump(rig, 'pending/native.dmp', rig.tick(), rig.ownDumpStamped(CRASHED_VERSION));
+
+    rig.setAppVersion(DETECTING_VERSION);
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+
+    expect(armed.eventId).toStartWith('boot:dump:');
+    expect(armed.context.dirtyShutdown).toBe(false);
+    expect(armed.crashedAppVersion).toBe(CRASHED_VERSION);
+  });
+
+  test('the dump wins over the sentinel when a reboot makes the event dump-driven', () => {
+    // Both witnesses exist here and they disagree. The dump is the more
+    // precise one: it was written at the moment of the crash, while the
+    // sentinel only records the session that happened to be running.
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    seedMinidump(rig, 'pending/native.dmp', rig.tick(), rig.ownDumpStamped('0.41.0-beta.3'));
+
+    rig.setBootSessionUuid('boot-epoch-b');
+    rig.setAppVersion(DETECTING_VERSION);
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+
+    expect(armed.eventId).toStartWith('boot:dump:');
+    expect(armed.crashedAppVersion).toBe('0.41.0-beta.3');
+  });
+
+  test('the version comes from the dump the event names, not the newest one', () => {
+    // A descendant process that inherited our exception handler crashes AFTER
+    // we do, and Crashpad stamps OUR annotations onto its dump — so the newest
+    // dump in the database names the post-update build while describing an
+    // unrelated program's death. Taking it would reinstate exactly the
+    // misattribution this attributes around, and it sorts first.
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.markCleanQuit();
+    const ourCrashAt = rig.tick();
+    seedMinidump(rig, 'pending/ours.dmp', ourCrashAt, rig.ownDumpStamped(CRASHED_VERSION));
+    seedMinidump(
+      rig,
+      'pending/descendant.dmp',
+      rig.tick(),
+      buildMinidump(['/Applications/LibreOffice.app/Contents/MacOS/soffice'], {
+        annotations: { _version: DETECTING_VERSION },
+      }),
+    );
+
+    rig.setAppVersion(DETECTING_VERSION);
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+
+    // The id is keyed to our dump, and the version has to describe that same one.
+    expect(armed.eventId).toBe(`boot:dump:${ourCrashAt.getTime()}`);
+    expect(armed.crashedAppVersion).toBe(CRASHED_VERSION);
+  });
+
+  test('an unreadable dump ahead of an owned one leaves the version unknown', () => {
+    // Arming fails open on a dump it cannot parse, so that dump still counts
+    // toward the event and, being newest, still names it — and then the version
+    // has to describe that same dump, which has nothing to say. Reading the
+    // owned dump behind it would pin a version to an event id that names a
+    // different crash. The silence is the intended outcome, not a gap: unknown
+    // stays unknown, and the version never describes a dump other than the one
+    // the reader is looking at.
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.markCleanQuit();
+    seedMinidump(rig, 'pending/ours.dmp', rig.tick(), rig.ownDumpStamped(CRASHED_VERSION));
+    const tornAt = rig.tick();
+    seedMinidump(rig, 'pending/torn.dmp', tornAt, UNPARSEABLE_DUMP);
+
+    rig.setAppVersion(DETECTING_VERSION);
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+
+    expect(armed.eventId).toBe(`boot:dump:${tornAt.getTime()}`);
+    expect(armed.crashedAppVersion).toBeUndefined();
+    // Only the version was declined. The owned dump behind it is still there
+    // to attach, so the silence costs the report nothing else.
+    expect(armed.minidumpAvailable).toBe(true);
+  });
+
+  test('an unchanged version is still reported, so agreement is legible', () => {
+    // Silence would be ambiguous: a reader could not tell "the same build" from
+    // "too old to say".
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+
+    expect(armed.crashedAppVersion).toBe(CRASHED_VERSION);
+    expect(rig.deps.appVersion).toBe(CRASHED_VERSION);
+  });
+
+  test('a sentinel written before the field existed still prompts, with no version', () => {
+    // The sentinel is read across app-version boundaries, so an older binary's
+    // file must degrade to unknown rather than break detection.
+    const rig = makeRig();
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    writeFileSync(
+      rig.deps.sentinelPath,
+      `${JSON.stringify({ bootId: '1784494925550', startedAt: '2026-07-09T21:02:05.550Z' })}\n`,
+    );
+
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+
+    expect(armed.eventId).toBe('boot:1784494925550');
+    expect(armed.crashedAppVersion).toBeUndefined();
+  });
+
+  test('a sentinel version that could forge a report line is refused', () => {
+    // The sentinel is a file on disk like any other, and its value lands on
+    // the same line-oriented report body the dump annotation does, so it gets
+    // the same gate rather than being trusted for having been ours once.
+    const rig = makeRig();
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    writeFileSync(
+      rig.deps.sentinelPath,
+      `${JSON.stringify({
+        bootId: '1784494925550',
+        startedAt: '2026-07-09T21:02:05.550Z',
+        appVersion: `0.41.0${String.fromCharCode(10)}Crash source: something untrue`,
+      })}\n`,
+    );
+
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+
+    expect(armed.crashedAppVersion).toBeUndefined();
+  });
+
+  test('a dump carrying no annotations still arms and attaches, with no version', () => {
+    // Absence of a version must never cost the report anything else.
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.markCleanQuit();
+    seedMinidump(rig, 'pending/native.dmp', rig.tick());
+
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+
+    expect(armed.minidumpAvailable).toBe(true);
+    expect(armed.crashedAppVersion).toBeUndefined();
+  });
+
+  test('a dump whose annotations are unreadable still arms, with no version', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.markCleanQuit();
+    const corrupt = buildMinidump(
+      [
+        join(
+          rig.deps.appBundleRoot,
+          'Contents',
+          'Frameworks',
+          'OpenKnowledge Helper (Renderer).app',
+          'Contents',
+          'MacOS',
+          'OpenKnowledge Helper (Renderer)',
+        ),
+      ],
+      { annotations: { _version: CRASHED_VERSION }, annotationsRva: 0xffff },
+    );
+    seedMinidump(rig, 'pending/native.dmp', rig.tick(), corrupt);
+
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+
+    expect(armed.minidumpAvailable).toBe(true);
+    expect(armed.crashedAppVersion).toBeUndefined();
+  });
+
+  test("this session's sentinel records the version now running", () => {
+    const rig = makeRig();
+    rig.setAppVersion(DETECTING_VERSION);
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    expect(readSentinel(rig).appVersion).toBe(DETECTING_VERSION);
+  });
+
+  test('the boot breadcrumb carries both versions', () => {
+    // This log line is what an incident gets reconstructed from when no report
+    // was ever filed, so the pair has to be legible there too.
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const infoLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: (payload: Record<string, unknown>) => {
+        infoLines.push(payload);
+      },
+      warn: () => {},
+    };
+    rig.setAppVersion(DETECTING_VERSION);
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = infoLines.find((line) => line.event === 'crash-detection.boot');
+    expect(breadcrumb?.crashedAppVersion).toBe(CRASHED_VERSION);
+    expect(breadcrumb?.detectingAppVersion).toBe(DETECTING_VERSION);
+  });
+
+  test('the boot breadcrumb tells an absent version apart from a broken parse', () => {
+    // A dump too old to carry the annotation and a parser that broke on a
+    // Crashpad layout change both reach the report as no version at all, and
+    // they send whoever debugs it in opposite directions. The flag beside the
+    // version is the only thing that separates them, so a dump that simply
+    // registered no annotations is the case that must NOT read as a failure.
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.markCleanQuit();
+    seedMinidump(rig, 'pending/native.dmp', rig.tick());
+
+    const infoLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: (payload: Record<string, unknown>) => {
+        infoLines.push(payload);
+      },
+      warn: () => {},
+    };
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = infoLines.find((line) => line.event === 'crash-detection.boot');
+    expect(breadcrumb?.crashedAppVersion).toBeNull();
+    expect(breadcrumb?.crashedAppVersionParseFailed).toBe(false);
+  });
+
+  test('a foreign dump does not make the event dump-driven', () => {
+    // A descendant process crashing is not this app crashing, so its dump must
+    // not flip the event off the sentinel path — and the sentinel, not the
+    // version the foreign dump happens to carry, stays the witness.
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    seedMinidump(
+      rig,
+      'pending/foreign.dmp',
+      rig.tick(),
+      buildMinidump(['/Applications/LibreOffice.app/Contents/MacOS/soffice'], {
+        annotations: { _version: '9.9.9' },
+      }),
+    );
+
+    rig.setAppVersion(DETECTING_VERSION);
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+
+    expect(armed.context.dirtyShutdown).toBe(true);
+    expect(armed.crashedAppVersion).toBe(CRASHED_VERSION);
   });
 });
