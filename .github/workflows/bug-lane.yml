@@ -15,8 +15,10 @@ name: Bug lane
 #      a triaged Bug label, never a title string.
 #   2. VERIFY: the batch is cherry-picked onto the stable IN THIS RUNNER and
 #      the fast test tiers (typecheck + unit) run against that synthetic tree —
-#      the tree that actually ships, which no CI has otherwise seen. A conflict
-#      or a red tier refuses; the fix simply rides its cycle's stable.
+#      the tree that actually ships, which no CI has otherwise seen. A ref
+#      that conflicts is dropped (Slack-notified) and rides its cycle's
+#      stable; the self-contained remainder continues. Only an empty survivor
+#      set or a red tier refuses the tick.
 #   3. point-release.yml re-guards everything (clean pick, delta-matches-fix,
 #      patch-only bump, anchor, provenance) and its cascade smokes the signed
 #      DMG before the release publishes or npm moves.
@@ -25,10 +27,10 @@ name: Bug lane
 #      in the stable are pre-filtered, and an empty pick is refused. Every
 #      stable this lane cuts carries novel changesets.
 #
-# NOT ARMED. `BUG_LANE_ARMED` is a literal "false": every tick evaluates,
-# verifies, and logs the release it WOULD have dispatched, but dispatches
-# nothing. Arming is a one-line reviewed flip after the logged picks have been
-# observed to match human judgment — the same rollout the soak tier used.
+# ARMED. `BUG_LANE_ARMED` is a literal "true": a verified batch dispatches
+# point-release.yml for real. Disarming back to log-only (evaluate + verify +
+# log, dispatch nothing) is a one-line reviewed flip to "false" on the env
+# block below — read the "Bug lane" section of RELEASES.md first.
 #
 # This lane can never block anything: nothing waits on it, a refusal only
 # means the fix ships with its cycle, and the shared ok-release-cadence group
@@ -59,11 +61,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # THE ARMING SWITCH. While "false" the lane is log-only: it evaluates,
-  # verifies, and prints the point release it would have dispatched. Flipping
-  # to "true" requires a reviewed PR — read the "Bug lane" section of
+  # THE ARMING SWITCH. Armed 2026-08-03 after the log-only window demonstrated
+  # every behavior class: correct qualification, correct conflict refusal, and
+  # self-draining once a stable shipped the fixes. While "true" a verified
+  # batch dispatches point-release.yml for real. Disarming back to log-only is
+  # a one-line reviewed flip to "false" — read the "Bug lane" section of
   # RELEASES.md first.
-  BUG_LANE_ARMED: "false"
+  BUG_LANE_ARMED: "true"
 
 jobs:
   bug-lane:
@@ -127,31 +131,63 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout --detach "$STABLE"
+          # Drop conflicting refs iteratively instead of aborting the batch: a
+          # ref that does not apply onto the current stack (stable + earlier
+          # clean picks) is dropped and the remainder continues — conflicts are
+          # the common case late in a cycle, and abort-on-first holds every
+          # clean fix hostage to the oldest drifted one. Each iteration is its
+          # own single-commit cherry-pick sequence, so --abort unwinds only the
+          # in-progress pick and keeps earlier survivors on the stack.
           IFS=',' read -ra REFS <<< "$FIX_REFS"
+          SURVIVORS=()
+          DROPPED=()
           for ref in "${REFS[@]}"; do
-            if ! git cherry-pick "$ref"; then
+            if git cherry-pick "$ref"; then
+              SURVIVORS+=("$ref")
+            else
               git cherry-pick --abort || true
-              echo "verdict=conflict" >> "$GITHUB_OUTPUT"
-              echo "::notice::bug-lane: ${ref} does not apply cleanly onto ${STABLE}; it will ship with its cycle's stable instead."
-              exit 0
+              DROPPED+=("$ref")
+              echo "::notice::bug-lane: ${ref} does not apply cleanly onto ${STABLE}; dropped from this batch — it will ship with its cycle's stable instead."
             fi
           done
+          if [[ ${#DROPPED[@]} -gt 0 ]]; then
+            echo "dropped_refs=$(IFS=','; echo "${DROPPED[*]}")" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ ${#SURVIVORS[@]} -eq 0 ]]; then
+            echo "verdict=conflict" >> "$GITHUB_OUTPUT"
+            echo "::notice::bug-lane: no qualifying fix is self-contained over ${STABLE}; nothing ships this tick."
+            exit 0
+          fi
+          SURVIVING_REFS=$(IFS=','; echo "${SURVIVORS[*]}")
+          echo "surviving_refs=${SURVIVING_REFS}" >> "$GITHUB_OUTPUT"
+          if [[ "$SURVIVING_REFS" != "$FIX_REFS" ]]; then
+            echo "::notice::bug-lane: continuing with the self-contained subset ${SURVIVING_REFS} (of ${FIX_REFS})."
+          fi
           # The tree that would ship. Fast tiers only: typecheck + unit catch a
           # fix that assumed something the stable does not have; the DMG smoke
-          # later in the cascade covers boot-level integration.
-          pnpm install --frozen-lockfile
+          # later in the cascade covers boot-level integration. An install
+          # failure must still mint a verdict — an unguarded exit here skips
+          # the paging step and the refusal disappears into a red-X no one
+          # watches.
+          if ! pnpm install --frozen-lockfile; then
+            echo "verdict=fail" >> "$GITHUB_OUTPUT"
+            echo "::warning::bug-lane: pnpm install --frozen-lockfile failed on the synthetic tree (${STABLE} + ${SURVIVING_REFS}); treated as a red verification."
+            exit 0
+          fi
           if pnpm exec turbo run typecheck test --output-logs=errors-only; then
             echo "verdict=pass" >> "$GITHUB_OUTPUT"
           else
             echo "verdict=fail" >> "$GITHUB_OUTPUT"
-            echo "::warning::bug-lane: fast tiers FAILED on ${STABLE} + ${FIX_REFS} — the fix passes on main but not on the stable it would ship against. It stays on its cycle's path."
+            echo "::warning::bug-lane: fast tiers FAILED on ${STABLE} + ${SURVIVING_REFS} — the fix passes on main but not on the stable it would ship against. It stays on its cycle's path."
           fi
 
       - name: Dispatch the point release (or log what would ship)
         if: steps.verify.outputs.verdict == 'pass'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FIX_REFS: ${{ steps.evaluate.outputs.fix_refs }}
+          # The verified survivors, not the full qualifying set — dropped refs
+          # ride their cycle's stable.
+          FIX_REFS: ${{ steps.verify.outputs.surviving_refs }}
           STABLE: ${{ steps.evaluate.outputs.stable }}
         run: |
           set -euo pipefail
@@ -183,11 +219,35 @@ jobs:
             -f mode=cherry-pick -f fix_refs="$FIX_REFS" -f dry_run=false -f dispatched_by="$SELF_URL"
           echo "::notice::bug-lane: dispatched point-release (cherry-pick) of ${FIX_REFS} over ${STABLE}."
 
+      - name: Notify on a partial drop (armed only)
+        # A drop with a surviving batch is verdict=pass, so the refusal page
+        # never fires — yet a bug fix silently deferred to the 24h path is the
+        # lane's most common non-trivial outcome and must not be log-only.
+        if: env.BUG_LANE_ARMED == 'true' && steps.verify.outputs.verdict == 'pass' && steps.verify.outputs.dropped_refs != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DROPPED_REFS: ${{ steps.verify.outputs.dropped_refs }}
+          SURVIVING_REFS: ${{ steps.verify.outputs.surviving_refs }}
+          STABLE: ${{ steps.evaluate.outputs.stable }}
+        run: |
+          set -uo pipefail
+          if [[ -z "${SLACK_WEBHOOK_URL:-}" ]]; then
+            echo "::notice::SLACK_WEBHOOK_URL not set — drop notification skipped."
+            exit 0
+          fi
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          TEXT="⚠️ Bug lane dropped ${DROPPED_REFS} (cherry-pick conflict with ${STABLE}); they ride their cycle's 24h path — investigate whether any needs a manual point release. Dispatched the self-contained subset ${SURVIVING_REFS}. ${RUN_URL}"
+          payload="$(jq -nc --arg t "$TEXT" '{text: $t}')"
+          curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK_URL" \
+            || echo "::warning::bug-lane drop notification failed to POST — the dispatch itself is unaffected."
+
       - name: Page on a refusal (armed only)
         if: env.BUG_LANE_ARMED == 'true' && (steps.verify.outputs.verdict == 'conflict' || steps.verify.outputs.verdict == 'fail')
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           FIX_REFS: ${{ steps.evaluate.outputs.fix_refs }}
+          SURVIVING_REFS: ${{ steps.verify.outputs.surviving_refs }}
+          DROPPED_REFS: ${{ steps.verify.outputs.dropped_refs }}
           VERDICT: ${{ steps.verify.outputs.verdict }}
         run: |
           set -uo pipefail
@@ -196,7 +256,18 @@ jobs:
             exit 0
           fi
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          TEXT="⛔ Bug lane refused ${FIX_REFS} (${VERDICT}). The fix stays on its cycle's 24h path; investigate whether it needs a manual point release. ${RUN_URL}"
+          # Name only the refs each verdict is actually about: on conflict the
+          # whole qualifying set conflicted; on fail only the survivors reached
+          # the verification stage.
+          if [[ "$VERDICT" == "conflict" ]]; then
+            TEXT="⛔ Bug lane: no qualifying fix is self-contained over the stable — all of ${FIX_REFS} conflict. They ride their cycle's 24h path; investigate whether any needs a manual point release. ${RUN_URL}"
+          else
+            TEXT="⛔ Bug lane: verification failed on the synthetic tree for ${SURVIVING_REFS} (red tiers or install failure)."
+            if [[ -n "${DROPPED_REFS}" ]]; then
+              TEXT="${TEXT} Also dropped for conflict: ${DROPPED_REFS}."
+            fi
+            TEXT="${TEXT} The fixes ride their cycle's 24h path. ${RUN_URL}"
+          fi
           payload="$(jq -nc --arg t "$TEXT" '{text: $t}')"
           curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK_URL" \
             || echo "::warning::bug-lane refusal page failed to POST — the refusal itself still holds."
