@@ -143,7 +143,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     expect(allowlisted).toEqual([]);
   });
 
-  test('user-strict fields cover agents.autoApproveOkTools + appearance.{colorTheme,colorThemeEnabled,customTheme.*,preview.autoOpen,theme} + editor.wordWrap', () => {
+  test('user-strict fields cover agents.autoApproveOkTools + appearance.{colorTheme,colorThemeEnabled,customTheme.*,preview.autoOpen,theme} + editor.{previewTabs,wordWrap}', () => {
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
     const userStrict = leaves
@@ -177,6 +177,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'appearance.customTheme.variant',
       'appearance.preview.autoOpen',
       'appearance.theme',
+      'editor.previewTabs',
       'editor.wordWrap',
       // The one `telemetry` leaf that leaves the machine. USER scope so a
       // repository cannot decide that its collaborators report to a third

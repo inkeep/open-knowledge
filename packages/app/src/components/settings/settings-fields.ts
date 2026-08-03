@@ -37,6 +37,11 @@ export const FIELDS_USER_PREFERENCES: FieldDef[] = [
     description: msg`Wrap long lines in the markdown source editor.`,
   },
   {
+    path: ['editor', 'previewTabs'],
+    label: msg`Preview tabs`,
+    description: msg`Reuse one tab when clicking through the sidebars. Off opens every click in its own tab.`,
+  },
+  {
     path: ['appearance', 'preview', 'autoOpen'],
     label: msg`Open preview when agent edits`,
     description: msg`When enabled, the agent opens or refreshes the preview after each edit. Disable if you manage your own preview window (OK Desktop, a browser tab on another display, etc.).`,

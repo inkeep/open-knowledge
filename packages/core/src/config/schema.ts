@@ -379,9 +379,12 @@ export const ConfigSchema = z.looseObject({
         .optional(),
     })
     .default({ preview: { autoOpen: true } }),
-  // USER-scope: source-editor word wrap is a personal reading/editing
-  // preference, not project content. Default true preserves the historical
-  // CodeMirror behavior until a user explicitly disables it.
+  // USER-scope throughout: how someone reads and navigates their own editor is a
+  // personal preference, not project content, so nothing in this group is
+  // committed or agent-settable. Both leaves default true to preserve the
+  // behavior each one replaced — CodeMirror's historical soft wrap, and the
+  // single reused preview tab — so an existing install notices no change until
+  // it opts out.
   editor: z
     .looseObject({
       wordWrap: z
@@ -394,8 +397,18 @@ export const ConfigSchema = z.looseObject({
             'Soft-wrap long lines in the source (CodeMirror) editor. A personal preference (user scope).',
         })
         .default(true),
+      previewTabs: z
+        .boolean()
+        .register(fieldRegistry, {
+          scope: 'user',
+          agentSettable: false,
+          defaultScope: 'user',
+          description:
+            'Reuse one tab when clicking through the Files and Skills sidebars, the way an editor preview tab works. Turn off to open every click in its own tab. Pinned tabs keep their own tab either way. A personal preference (user scope).',
+        })
+        .default(true),
     })
-    .default({ wordWrap: true }),
+    .default({ wordWrap: true, previewTabs: true }),
   // USER-scope: auto-approve OpenKnowledge's OWN MCP tools (and, on Claude, the
   // `ok open` verb) for agents launched from the docked terminal, so the KB
   // read/write loop runs without a per-call approval wall. Destructive/exfil OK

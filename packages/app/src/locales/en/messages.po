@@ -8093,6 +8093,10 @@ msgstr "Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or op
 msgid "Preview of the screenshot"
 msgstr "Preview of the screenshot"
 
+#: src/components/settings/settings-fields.ts
+msgid "Preview tabs"
+msgstr "Preview tabs"
+
 #: src/components/ConsentDialogBody.tsx
 msgid "Preview unavailable: {errorDetail}"
 msgstr "Preview unavailable: {errorDetail}"
@@ -8983,6 +8987,10 @@ msgstr "Retry push"
 #: src/components/TrashFailureModal.tsx
 msgid "Retrying"
 msgstr "Retrying"
+
+#: src/components/settings/settings-fields.ts
+msgid "Reuse one tab when clicking through the sidebars. Off opens every click in its own tab."
+msgstr "Reuse one tab when clicking through the sidebars. Off opens every click in its own tab."
 
 #: src/components/SeedDialog.tsx
 msgid "Reused if it already exists, created if not."

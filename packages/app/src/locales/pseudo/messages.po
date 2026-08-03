@@ -8089,6 +8089,10 @@ msgstr ""
 msgid "Preview of the screenshot"
 msgstr ""
 
+#: src/components/settings/settings-fields.ts
+msgid "Preview tabs"
+msgstr ""
+
 #: src/components/ConsentDialogBody.tsx
 msgid "Preview unavailable: {errorDetail}"
 msgstr ""
@@ -8978,6 +8982,10 @@ msgstr ""
 
 #: src/components/TrashFailureModal.tsx
 msgid "Retrying"
+msgstr ""
+
+#: src/components/settings/settings-fields.ts
+msgid "Reuse one tab when clicking through the sidebars. Off opens every click in its own tab."
 msgstr ""
 
 #: src/components/SeedDialog.tsx

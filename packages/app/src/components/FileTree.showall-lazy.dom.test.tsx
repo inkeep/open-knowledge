@@ -524,6 +524,35 @@ describe('FileTree showAll lazy root seed', () => {
     expect(window.location.hash).toBe('#/README');
   });
 
+  // `editor.previewTabs: false` turns off the reuse-one-tab behavior, so a tree
+  // click appends its own tab instead of replacing the active one.
+  test('with preview tabs disabled, a document click appends a tab', async () => {
+    mergedConfig = { appearance: { sidebar: {} }, editor: { previewTabs: false } };
+    showAllResponseFactory = () =>
+      jsonResponse({
+        documents: [docEntry('foo'), docEntry('README')],
+        truncated: false,
+      });
+    const view = render(<FileTree />);
+
+    await waitFor(() => expect(model.items.has('README.md')).toBe(true));
+    model.selectedPaths = ['foo.md'];
+    view.rerender(<FileTree />);
+    fireEvent.click(screen.getByRole('treeitem', { name: 'README.md' }));
+
+    await waitFor(() =>
+      expect(openTargetMock).toHaveBeenCalledWith(
+        {
+          kind: 'doc',
+          target: 'README',
+          docName: 'README',
+        },
+        { tabBehavior: 'append' },
+      ),
+    );
+    window.location.hash = '';
+  });
+
   test('first click from a document row to a folder opens the folder', async () => {
     showAllResponseFactory = () =>
       jsonResponse({

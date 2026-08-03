@@ -60,6 +60,7 @@ import { useCreateBlankSkill } from '@/hooks/use-create-blank-skill';
 import { useOpenSkill } from '@/hooks/use-open-skill';
 import { useOpenSkillForEdit } from '@/hooks/use-open-skill-for-edit';
 import { useSkills } from '@/hooks/use-skills';
+import { useConfigContext } from '@/lib/config-provider';
 import {
   hashFromDocName,
   hashFromSkillFile,
@@ -222,6 +223,11 @@ export function SkillsSidebarSection({ skillsMode = false }: { skillsMode?: bool
    * overrides it.
    */
   const stayInSkills = () => setSkillsSidebar(true);
+  const { merged } = useConfigContext();
+  // Preview tabs off means every sidebar click opens its own tab — same
+  // preference the Files tree honors.
+  const tabBehavior: 'append' | 'replace-active' =
+    (merged?.editor?.previewTabs ?? true) ? 'replace-active' : 'append';
   const openSkill = useOpenSkill();
   const openSkillForEdit = useOpenSkillForEdit();
   const actions = useSkillActions();
@@ -357,9 +363,10 @@ export function SkillsSidebarSection({ skillsMode = false }: { skillsMode?: bool
   // tab, the same preview-tab behavior the Files tree uses on click: clicking
   // through skills reuses one tab instead of stacking a new one each time (§8.7).
   // A pinned active tab is preserved (replace-active falls back to append when
-  // pinned, handled in openTargetWithOptions).
+  // pinned, handled in openTargetWithOptions). Users who want a tab per click
+  // turn `editor.previewTabs` off, which pins `tabBehavior` to append.
   const openSkillDoc = (docName: string) => {
-    openTarget({ kind: 'doc', target: docName, docName }, { tabBehavior: 'replace-active' });
+    openTarget({ kind: 'doc', target: docName, docName }, { tabBehavior });
     pushHashWithoutNavigation(hashFromDocName(docName));
     stayInSkills();
   };
@@ -407,7 +414,7 @@ export function SkillsSidebarSection({ skillsMode = false }: { skillsMode?: bool
         level: target.level,
         path: target.path,
       },
-      { tabBehavior: 'replace-active' },
+      { tabBehavior },
     );
     pushHashWithoutNavigation(hashFromSkillPreview(target));
     stayInSkills();
@@ -447,7 +454,7 @@ export function SkillsSidebarSection({ skillsMode = false }: { skillsMode?: bool
         path: filePath,
         ...(host ? { host } : {}),
       },
-      { tabBehavior: 'replace-active' },
+      { tabBehavior },
     );
     pushHashWithoutNavigation(
       hashFromSkillFile({
@@ -518,7 +525,15 @@ export function SkillsSidebarSection({ skillsMode = false }: { skillsMode?: bool
     // that autosaves back to the real harness file — "edit without managing":
     // full WYSIWYG. A bundle file
     // passes its ext-less `rel`; one registration covers the whole skill dir.
-    void openSkillForEdit(s.name, source, { replaceActive: true, rel }).then((r) => {
+    // Same `tabBehavior` decision as every other open in this sidebar. Hard-
+    // coding reuse here left the two halves of this function disagreeing: the
+    // plugin branch above already routes through `openPreviewReplacing`, so
+    // with `previewTabs` off a detected skill was the one row that still stole
+    // the active tab. `replaceActive` maps 1:1 onto the two values — the hook
+    // passes `tabBehavior: 'replace-active'` when true, and `openTarget`
+    // defaults to `'append'` otherwise.
+    const replaceActive = tabBehavior === 'replace-active';
+    void openSkillForEdit(s.name, source, { replaceActive, rel }).then((r) => {
       if (!r.ok) toast.error(t`Couldn't open ${s.name} for editing: ${r.error}`);
       // Pins after the async open lands, for the same reason as the sync paths.
       else stayInSkills();

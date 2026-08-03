@@ -1269,13 +1269,13 @@ export function FileTree({
     if (target.kind === 'doc') {
       if (target.registerPage) addPage(target.docName);
       openTarget(navigationTargetForDocument(target.docName, target.size), {
-        tabBehavior: 'replace-active',
+        tabBehavior: openTabBehavior(),
       });
       pushHashWithoutNavigation(hashFromDocName(target.docName));
     } else if (target.kind === 'folder') {
       openTarget(
         { kind: 'folder', target: target.folderPath, folderPath: target.folderPath },
-        { tabBehavior: 'replace-active' },
+        { tabBehavior: openTabBehavior() },
       );
       pushHashWithoutNavigation(hashFromFolderPath(target.folderPath));
     } else {
@@ -1291,7 +1291,7 @@ export function FileTree({
           assetPath: target.assetPath,
           mediaKind: entry?.mediaKind ?? null,
         },
-        { tabBehavior: 'replace-active' },
+        { tabBehavior: openTabBehavior() },
       );
       pushHashWithoutNavigation(hashFromAssetPath(target.assetPath));
     }
@@ -1321,7 +1321,7 @@ export function FileTree({
           assetPath: action.path,
           mediaKind: action.mediaKind,
         },
-        { tabBehavior: 'replace-active' },
+        { tabBehavior: openTabBehavior() },
       );
       pushHashWithoutNavigation(action.hash);
       notifySidebarFileSelected();
@@ -1344,7 +1344,7 @@ export function FileTree({
       docExt: docEntry?.docExt,
     });
     if (okTarget?.kind === 'asset') {
-      openTarget(okTarget, { tabBehavior: 'replace-active' });
+      openTarget(okTarget, { tabBehavior: openTabBehavior() });
       pushHashWithoutNavigation(hashFromAssetPath(okTarget.assetPath));
       notifySidebarFileSelected();
       return;
@@ -1421,6 +1421,13 @@ export function FileTree({
   const showHiddenFilesRef = useRef<boolean>(false);
   const showOnlyMarkdownFilesRef = useRef<boolean>(false);
   const showOkFoldersRef = useRef<boolean>(false);
+  // Preview-tab behavior: on (the default), a tree click reuses the active tab
+  // the way an editor preview tab does; off, every click opens its own tab.
+  // Same ref treatment as the visibility toggles above — the open closures are
+  // created at mount and must read the latest value at click time.
+  const previewTabsRef = useRef<boolean>(true);
+  const openTabBehavior = (): 'append' | 'replace-active' =>
+    previewTabsRef.current ? 'replace-active' : 'append';
   const treeVisibilityFromRefs = () => ({
     showHiddenFiles: showHiddenFilesRef.current,
     showOnlyMarkdownFiles: showOnlyMarkdownFilesRef.current,
@@ -1636,6 +1643,7 @@ export function FileTree({
   const showHiddenFiles = merged?.appearance?.sidebar?.showHiddenFiles ?? false;
   const showOnlyMarkdownFiles = merged?.appearance?.sidebar?.showOnlyMarkdownFiles ?? false;
   const showOkFolders = merged?.appearance?.sidebar?.showOkFolders ?? false;
+  const previewTabs = merged?.editor?.previewTabs ?? true;
 
   const isAvailable = () => busyPathRef.current === null;
 
@@ -3233,6 +3241,7 @@ export function FileTree({
     showHiddenFilesRef.current = showHiddenFiles;
     showOnlyMarkdownFilesRef.current = showOnlyMarkdownFiles;
     showOkFoldersRef.current = showOkFolders;
+    previewTabsRef.current = previewTabs;
     treePathsRef.current = treePaths;
     folderTreePathsRef.current = folderTreePaths;
     activeAncestorTreePathsRef.current = activeAncestorTreePaths;
