@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, utimesSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -68,6 +68,26 @@ describe('enrichPath — slim (multi-path) shape', () => {
     expect(meta.title).toBeUndefined();
     expect(meta.description).toBeUndefined();
     expect(meta.tags).toEqual([]);
+  });
+
+  test('falls back to the first H1 when frontmatter carries no title', async () => {
+    const project = await bootstrapProject();
+    const contentDir = resolve(project, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    // No frontmatter at all — the common vault / imported-note shape.
+    writeFileSync(resolve(contentDir, 'someday.md'), '# Someday / Open Loops\n\nBody\n');
+    // Frontmatter present but titleless: the heading still wins over the path.
+    writeFileSync(resolve(contentDir, 'loops.md'), '---\ntags:\n  - inbox\n---\n\n# Open Loops\n');
+    // An explicit title always outranks the heading.
+    writeFileSync(resolve(contentDir, 'auth.md'), '---\ntitle: Auth\n---\n\n# Ignore me\n');
+
+    const someday = await enrichPath('content/someday.md', { projectDir: project });
+    const loops = await enrichPath('content/loops.md', { projectDir: project });
+    const auth = await enrichPath('content/auth.md', { projectDir: project });
+
+    expect(someday.title).toBe('Someday / Open Loops');
+    expect(loops.title).toBe('Open Loops');
+    expect(auth.title).toBe('Auth');
   });
 
   test('frontmatter under trailing-whitespace fences still enriches title/description/tags', async () => {
@@ -155,7 +175,8 @@ describe('enrichPath — folder frontmatter does NOT cascade into docs (self-onl
     );
 
     const meta = await enrichPath('specs/foo.md', { projectDir: project });
-    expect(meta.title).toBeUndefined();
+    // The doc's own `# foo` heading, never the folder's `title: Specs`.
+    expect(meta.title).toBe('foo');
     expect(meta.description).toBeUndefined();
     expect(meta.tags).toEqual([]);
     expect(meta.frontmatter).toEqual({});
@@ -188,7 +209,8 @@ describe('enrichPath — folder frontmatter does NOT cascade into docs (self-onl
     writeFileSync(resolve(project, '.ok/frontmatter.yml'), 'title: Root Default\ntags:\n  - kb\n');
 
     const meta = await enrichPath('top.md', { projectDir: project });
-    expect(meta.title).toBeUndefined();
+    // The doc's own `# top` heading, never the root folder's `title: Root Default`.
+    expect(meta.title).toBe('top');
     expect(meta.tags).toEqual([]);
     expect(meta.frontmatter).toEqual({});
   });
@@ -443,5 +465,80 @@ describe('parseCommentThreads', () => {
   test('a non-array payload is no comments, not a crash', () => {
     expect(parseCommentThreads(undefined)).toEqual([]);
     expect(parseCommentThreads({ threads: [] })).toEqual([]);
+  });
+});
+
+describe('the title ladder reads the same on every surface', () => {
+  // `extractPageTitle` (used by /api/pages + search) trims the scalar and treats
+  // a blank one as absent. Enrichment has to agree, or the heading fallback
+  // closes the cross-surface split for missing titles and leaves it open for
+  // blank ones.
+
+  test('a blank or whitespace-only `title:` falls through to the H1, not over it', async () => {
+    const project = await bootstrapProject();
+    const contentDir = resolve(project, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    writeFileSync(resolve(contentDir, 'empty.md'), '---\ntitle: ""\n---\n\n# Real Title\n');
+    writeFileSync(resolve(contentDir, 'spaces.md'), '---\ntitle: "   "\n---\n\n# Also Real\n');
+    // Nothing to fall through TO: blank title, no heading -> path, never ''.
+    writeFileSync(resolve(contentDir, 'bare.md'), '---\ntitle: ""\n---\n\nBody only\n');
+
+    expect((await enrichPath('content/empty.md', { projectDir: project })).title).toBe(
+      'Real Title',
+    );
+    expect((await enrichPath('content/spaces.md', { projectDir: project })).title).toBe(
+      'Also Real',
+    );
+    expect((await enrichPath('content/bare.md', { projectDir: project })).title).toBeUndefined();
+  });
+
+  test('a padded `title:` is trimmed, matching extractPageTitle', async () => {
+    const project = await bootstrapProject();
+    const contentDir = resolve(project, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    writeFileSync(resolve(contentDir, 'padded.md'), '---\ntitle: "  Foo  "\n---\n\n# Heading\n');
+
+    expect((await enrichPath('content/padded.md', { projectDir: project })).title).toBe('Foo');
+  });
+
+  test('enrichDirectory mostRecentMd walks the SAME ladder', async () => {
+    // This branch had no title coverage at all, so the heading fallback could be
+    // deleted here without a red test.
+    const project = await bootstrapProject();
+    const dir = resolve(project, 'notes');
+    mkdirSync(dir, { recursive: true });
+
+    // `mostRecent` is chosen by mtime, and consecutive writes can land on the
+    // same timestamp where the filesystem's granularity is coarser than the gap
+    // between them — which is why relying on write order passed on macOS and
+    // failed on CI. Stamp each file explicitly so "most recent" is decided by
+    // the test rather than by clock resolution.
+    let tick = 1_700_000_000;
+    const writeNewest = (name: string, body: string): void => {
+      const p = resolve(dir, name);
+      writeFileSync(p, body);
+      tick += 60;
+      const t = new Date(tick * 1000);
+      utimesSync(p, t, t);
+    };
+
+    writeNewest('a.md', '# From The Heading\n');
+    const headingOnly = await enrichDirectory('notes', { projectDir: project });
+    expect(headingOnly.mostRecentMd?.title).toBe('From The Heading');
+
+    // An explicit title outranks the heading.
+    writeNewest('b.md', '---\ntitle: Explicit\n---\n\n# Ignored\n');
+    const titled = await enrichDirectory('notes', { projectDir: project });
+    expect(titled.mostRecentMd?.title).toBe('Explicit');
+
+    // Blank title falls through to the heading here too.
+    writeNewest('c.md', '---\ntitle: "  "\n---\n\n# Blank Falls Through\n');
+    const blank = await enrichDirectory('notes', { projectDir: project });
+    expect(blank.mostRecentMd?.title).toBe('Blank Falls Through');
+
+    // Neither title nor heading: the basename is the last rung.
+    writeNewest('d.md', 'just a body\n');
+    const bare = await enrichDirectory('notes', { projectDir: project });
+    expect(bare.mostRecentMd?.title).toBe('d.md');
   });
 });

@@ -20,10 +20,12 @@ import {
   type FrontmatterSchemaMapping,
   OK_DIR,
   parseFrontmatterRecord,
+  stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
 import { getLogger } from '../logger.ts';
 import { resolveWithinRoot } from '../mcp/tools/path-safety.ts';
 import { httpGet } from '../mcp/tools/shared.ts';
+import { extractFirstHeading } from '../page-identity.ts';
 import { readFolderFrontmatter } from './nested-folder-rules.ts';
 import { type GitCommit, type ProjectHistorySource, readProjectGitLog } from './project-log.ts';
 import { type HistorySource, readShadowLog, type ShadowCommit } from './shadow-log.ts';
@@ -197,10 +199,15 @@ export interface EnrichedMeta {
   /** Project-root-relative path. */
   path: string;
   /**
-   * Well-known typed fields lifted from the merged frontmatter for
-   * backward compat with consumers that pre-date arbitrary-key support
-   * (search highlighting, sidebar, exec). Mirrors the same scalars that
-   * also appear in `frontmatter` below.
+   * Well-known typed fields for backward compat with consumers that pre-date
+   * arbitrary-key support (search highlighting, sidebar, exec).
+   *
+   * `description` and `tags` mirror the same scalars that appear in
+   * `frontmatter` below. `title` does NOT: it is the resolved title, so a doc
+   * with no usable `title:` reports its first `# heading` instead, and a
+   * `title:` that is present reports trimmed. It stays `undefined` when there
+   * is neither, so a caller can apply its own last rung (`exec` uses the path).
+   * Read `frontmatter.title` for what the file literally declared.
    */
   title?: string;
   description?: string;
@@ -405,13 +412,27 @@ export function pathToDocName(relPath: string): string {
  */
 const fmReadWarnedPaths = new Set<string>();
 
-async function readFrontmatter(absPath: string): Promise<Record<string, unknown> | null> {
+/**
+ * Frontmatter plus the body's first `# heading`, read in one pass. The heading
+ * is the title fallback for the many files that carry no `title:` — vaults,
+ * imported notes, plain logs. Same ladder `extractPageTitle` gives `/api/pages`
+ * and workspace search, so one document reads the same everywhere.
+ */
+interface FileHead {
+  frontmatter: Record<string, unknown>;
+  firstHeading: string | undefined;
+}
+
+async function readFrontmatter(absPath: string): Promise<FileHead | null> {
   try {
     const content = await readFile(absPath, 'utf-8');
     // Raw record on purpose (not `parseFrontmatterYaml`): the open-shape
     // merge must see every key/value the file declared, verbatim.
     const fm = parseFrontmatterRecord(content);
-    return fm ?? {};
+    return {
+      frontmatter: fm ?? {},
+      firstHeading: extractFirstHeading(stripFrontmatter(content).body),
+    };
   } catch (err) {
     // ENOENT is expected (caller is enriching paths from a stale listing or a
     // dir that contains non-md children). All other read errors — EMFILE
@@ -664,6 +685,33 @@ async function fetchForwardLinks(
 }
 
 /**
+ * The frontmatter-title-then-first-heading rungs of the title ladder, matching
+ * `extractPageTitle`'s scalar semantics so one document reads the same on every
+ * surface. A `title:` is trimmed, and a blank or whitespace-only one is not a
+ * title at all: it falls through to the heading, exactly as
+ * `extractFrontmatterScalar`'s `value || null` does for `/api/pages` and search.
+ * Without the trim these two ladders disagree on `title: "  Foo  "`, and without
+ * the blank check they disagree on `title: ""` — the same cross-surface split
+ * the heading fallback exists to close, just for a narrower input class.
+ *
+ * Quotes need no unwrapping here (unlike the raw-line reader): this `fm` came
+ * from `parseFrontmatterRecord`, so YAML already resolved the scalar.
+ *
+ * Callers append their own last rung — the path for a document, the basename
+ * for a directory's most-recent entry — so the precedence above it is decided
+ * once.
+ */
+function ownTitle(
+  fm: Record<string, unknown> | null | undefined,
+  firstHeading: string | undefined,
+): string | undefined {
+  const raw = fm?.title;
+  if (typeof raw !== 'string') return firstHeading;
+  const trimmed = raw.trim();
+  return trimmed === '' ? firstHeading : trimmed;
+}
+
+/**
  * Lift the typed well-known fields from a doc's OWN frontmatter. A doc's
  * effective frontmatter equals its on-disk YAML — there is no folder-cascade
  * overlay. Open shape: every key the file authored flows through unchanged.
@@ -673,14 +721,17 @@ async function fetchForwardLinks(
  *   - `title` / `description` / `tags` — typed lifts of the well-known three
  *     for backward-compat consumers (search, sidebar, exec)
  */
-function liftOwnFrontmatter(fileFm: Record<string, unknown> | null): {
+function liftOwnFrontmatter(
+  fileFm: Record<string, unknown> | null,
+  firstHeading?: string,
+): {
   title?: string;
   description?: string;
   tags: string[];
   frontmatter: Record<string, unknown>;
 } {
   const fm = fileFm ?? {};
-  const title = typeof fm.title === 'string' ? fm.title : undefined;
+  const title = ownTitle(fm, firstHeading);
   const description = typeof fm.description === 'string' ? fm.description : undefined;
   const tags = Array.isArray(fm.tags)
     ? (fm.tags as unknown[]).filter((t): t is string => typeof t === 'string')
@@ -717,8 +768,8 @@ export async function enrichPath(
     applicableSchemas.length > 0 ? { schemas_applicable: applicableSchemas } : {};
 
   if (!rich) {
-    const fm = await fmPromise;
-    const lifted = liftOwnFrontmatter(fm);
+    const head = await fmPromise;
+    const lifted = liftOwnFrontmatter(head?.frontmatter ?? null, head?.firstHeading);
     return {
       path: relPath,
       title: lifted.title,
@@ -744,7 +795,7 @@ export async function enrichPath(
   }
 
   // Rich mode — fan out all six data sources in parallel.
-  const [fm, backlinks, forwardLinks, shadow, project, comments] = await Promise.all([
+  const [head, backlinks, forwardLinks, shadow, project, comments] = await Promise.all([
     fmPromise,
     fetchBacklinks(deps.serverUrl, pathToDocName(relPath)).catch(() => null),
     fetchForwardLinks(deps.serverUrl, pathToDocName(relPath)).catch(() => null),
@@ -759,7 +810,7 @@ export async function enrichPath(
     fetchComments(deps.serverUrl, pathToDocName(relPath)).catch(() => null),
   ]);
 
-  const lifted = liftOwnFrontmatter(fm);
+  const lifted = liftOwnFrontmatter(head?.frontmatter ?? null, head?.firstHeading);
   return {
     path: relPath,
     title: lifted.title,
@@ -873,11 +924,11 @@ export async function enrichDirectory(
 
   let mostRecentMd: DirectoryMeta['mostRecentMd'];
   if (scan.mostRecent) {
-    const fm = await readFrontmatter(scan.mostRecent.absPath);
-    const fmTitle = typeof fm?.title === 'string' ? fm.title : undefined;
+    const head = await readFrontmatter(scan.mostRecent.absPath);
     mostRecentMd = {
       path: scan.mostRecent.relPath,
-      title: fmTitle ?? basename(scan.mostRecent.relPath),
+      // Same ladder as a document's own title; only the last rung differs.
+      title: ownTitle(head?.frontmatter, head?.firstHeading) ?? basename(scan.mostRecent.relPath),
       updatedAt: new Date(scan.mostRecent.mtimeMs).toISOString(),
     };
   }

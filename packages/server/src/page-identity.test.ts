@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  extractFirstHeading,
   extractPageAliases,
   extractPageIcon,
   extractPageIdentity,
@@ -272,5 +273,38 @@ describe('extractPageIcon', () => {
     // load-bearing posture: never crash on a shape it can't read.
     const content = '---\nicon:\n  url: https://example.com/img.png\n  alt: example\n---\n';
     expect(extractPageIcon(content)).toBeUndefined();
+  });
+});
+
+describe('extractFirstHeading', () => {
+  // Split out of `extractPageTitle` so enrichment can answer `undefined` for
+  // "no heading" instead of the filename. It is now a second public entry
+  // point, so its contract is pinned here rather than only through the ladder.
+  // Takes a body with frontmatter ALREADY stripped.
+
+  test('returns the H1 text', () => {
+    expect(extractFirstHeading('# Someday / Open Loops\n\nBody\n')).toBe('Someday / Open Loops');
+  });
+
+  test('returns undefined with no heading, so callers can pick their own last rung', () => {
+    expect(extractFirstHeading('just a body\n')).toBeUndefined();
+  });
+
+  test('an H2 is not a title', () => {
+    expect(extractFirstHeading('## Section\n\nBody\n')).toBeUndefined();
+  });
+
+  test('trims, matching the frontmatter scalar reader', () => {
+    expect(extractFirstHeading('#   Padded Title   \n')).toBe('Padded Title');
+  });
+
+  test('finds an H1 that is not the first line', () => {
+    // The `m` flag is what makes this work; dropping it would silently narrow
+    // the fallback to documents whose very first line is the heading.
+    expect(extractFirstHeading('intro paragraph\n\n# Real Title\n')).toBe('Real Title');
+  });
+
+  test('takes the FIRST H1 when several exist', () => {
+    expect(extractFirstHeading('# One\n\n# Two\n')).toBe('One');
   });
 });

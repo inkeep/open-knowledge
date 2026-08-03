@@ -133,12 +133,18 @@ export function extractPageTitle(content: string, filename: string): string {
   const title = extractFrontmatterScalar(frontmatter, 'title');
   if (title) return title;
 
-  const headingMatch = body.match(/^# (.+)$/m);
-  if (headingMatch) {
-    return headingMatch[1].trim();
-  }
+  return extractFirstHeading(body) ?? filename;
+}
 
-  return filename;
+/**
+ * The `# heading` half of `extractPageTitle`'s ladder, on its own, for callers
+ * whose "no title" answer is `undefined` rather than the filename — enrichment
+ * leaves `title` unset so `exec` can fall back to the path itself. Takes a body
+ * with frontmatter already stripped.
+ */
+export function extractFirstHeading(body: string): string | undefined {
+  const headingMatch = body.match(/^# (.+)$/m);
+  return headingMatch ? headingMatch[1].trim() : undefined;
 }
 
 /**
