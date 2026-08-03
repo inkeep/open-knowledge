@@ -6,12 +6,13 @@ import {
   mkdtempSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
@@ -19,6 +20,7 @@ import {
   projectInPlaceSkill,
   projectSkill,
   readSkillBundledFiles,
+  relocateInPlaceCanonical,
   removeInPlaceSkillCopies,
   reverseProjectSkill,
   skillHostDir,
@@ -395,5 +397,85 @@ describe('projectInPlaceSkill / removeInPlaceSkillCopies (in-place fan-out guard
     expect(existsSync(fork)).toBe(true); // NEVER a differing dir
     expect(existsSync(copy)).toBe(false);
     expect(existsSync(join(root, '.opencode/skills/foo'))).toBe(false);
+  });
+
+  // The re-point sweep after a removal walks EVERY host, not just `targets`,
+  // so it decides the fate of links it was never asked about. Dangling ones are
+  // adopted back onto the canonical; ones still aimed at something real were
+  // aimed there on purpose. Relocation claims a wider set, and this pins the
+  // narrower one so sharing the loop between them cannot quietly widen it.
+  test('remove re-points a DANGLING sibling but leaves one aimed elsewhere alone', () => {
+    const canonical = makeAt('.claude/skills/foo', '# Canonical');
+    // The occurrence actually being removed (a link, so removal is lossless).
+    mkdirSync(join(root, '.cursor/skills'), { recursive: true });
+    symlinkSync(canonical, join(root, '.cursor/skills/foo'), 'dir');
+    // A sibling deliberately aimed at an unrelated bundle, NOT in `targets`.
+    const unrelated = makeAt('vendor/other', '# Someone else');
+    mkdirSync(join(root, '.codex/skills'), { recursive: true });
+    symlinkSync(unrelated, join(root, '.codex/skills/foo'), 'dir');
+    // A sibling pointing at nothing, NOT in `targets`.
+    mkdirSync(join(root, '.opencode/skills'), { recursive: true });
+    symlinkSync(join(root, 'gone'), join(root, '.opencode/skills/foo'), 'dir');
+
+    const removed = removeInPlaceSkillCopies({
+      canonicalAbs: canonical,
+      canonicalHash: hashOf(canonical),
+      name: 'foo',
+      cwd: root,
+      targets: ['cursor'],
+    });
+
+    expect(removed).toEqual(['cursor']);
+    expect(realpathSync(join(root, '.opencode/skills/foo'))).toBe(realpathSync(canonical));
+    expect(realpathSync(join(root, '.codex/skills/foo'))).toBe(realpathSync(unrelated));
+  });
+
+  // The symmetric half of the test above, and it has to use `leaveLinkBehind`
+  // to bite at all. Without it relocation RENAMES the old source away, so a
+  // sibling aimed there simply dangles and the unconditional dangling rule
+  // already claims it — `alsoClaim` changes nothing and a test written that way
+  // passes with `alsoClaim: []`. The claim only does work when the old source
+  // still RESOLVES: the leave-behind link makes the sibling chain through it to
+  // `dest`, which is live, so only `alsoClaim` collapses that chain.
+  //
+  // Asserted on the link's DIRECT target, since `realpathSync` follows the chain
+  // and reports the same answer either way.
+  test('relocate collapses a sibling chained through the leave-behind link', () => {
+    const canonical = makeAt('.agents/skills/foo', '# Canonical');
+    // Aimed at the old source, which survives as a link to `dest`.
+    mkdirSync(join(root, '.cursor/skills'), { recursive: true });
+    symlinkSync(canonical, join(root, '.cursor/skills/foo'), 'dir');
+    // Aimed at an unrelated bundle: nobody asked about it, leave it be.
+    const unrelated = makeAt('vendor/other', '# Someone else');
+    mkdirSync(join(root, '.codex/skills'), { recursive: true });
+    symlinkSync(unrelated, join(root, '.codex/skills/foo'), 'dir');
+
+    // `cwd` must be the REAL root. `mkdtemp` hands back `/var/...` on macOS while
+    // the primitive realpaths its canonical to `/private/var/...`, and the claim
+    // set compares those two spellings of one path — so under a raw tmpdir root
+    // the chain claim silently never matches and this test cannot see it.
+    const realRoot = realpathSync(root);
+    const moved = relocateInPlaceCanonical({
+      canonicalAbs: canonical,
+      canonicalHash: hashOf(canonical),
+      name: 'foo',
+      cwd: realRoot,
+      newTarget: 'claude',
+      leaveLinkBehind: true,
+    });
+
+    expect(moved.ok).toBe(true);
+    const dest = join(realRoot, '.claude/skills/foo');
+    expect(lstatSync(dest).isSymbolicLink()).toBe(false);
+    // The swap: the old source is now a link standing in for the moved folder.
+    expect(lstatSync(canonical).isSymbolicLink()).toBe(true);
+
+    // The claim under test: re-pointed DIRECTLY at dest, not left chained
+    // through the old source. Zero `alsoClaim` and this reads as `canonical`.
+    const cursorLink = join(realRoot, '.cursor/skills/foo');
+    expect(resolve(dirname(cursorLink), readlinkSync(cursorLink))).toBe(dest);
+
+    // Aimed elsewhere on purpose: untouched, so the claim did not widen.
+    expect(realpathSync(join(root, '.codex/skills/foo'))).toBe(realpathSync(unrelated));
   });
 });

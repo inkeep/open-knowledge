@@ -592,10 +592,75 @@ export function relocateInPlaceCanonical(opts: {
   if (opts.leaveLinkBehind === true && !existsSync(canonicalAbs)) {
     tracedSymlinkSync(skillLinkTarget(cwd, dirname(canonicalAbs), dest), canonicalAbs, 'dir');
   }
-  // Re-point sibling links that referenced the old source (now gone/dangling).
+  // Claim links that referenced the old source (now gone), plus any resolving
+  // to the new dest THROUGH another link (chain) — links always point DIRECTLY
+  // at the real dir, so removing any one link can never strand another.
+  repointSiblingLinks({
+    name,
+    cwd,
+    roots,
+    target: dest,
+    skip: [dest, canonicalAbs],
+    alsoClaim: [canonicalAbs, dest],
+  });
+  return { ok: true, newAbs: dest };
+}
+
+/** Every install-target host (editors with a project dir + the .agents hub). */
+const ALL_TARGET_HOSTS: readonly SkillHostId[] = [
+  'agents',
+  ...(PROJECT_SKILL_EDITOR_IDS as readonly EditorId[]),
+];
+
+/**
+ * Re-point sibling symlinks at `target`: walk every install-target host, skip
+ * anything that is not a symlink, and replace each CLAIMED link with one aimed
+ * directly at `target`. Shared by relocation and removal, which walk the same
+ * slots for the same reason.
+ *
+ * A THIRD sweep of this shape lives in `api-extension.ts`, in the promote path.
+ * It is not shared because it walks the placement LEDGER rather than host slots,
+ * so folding it in needs a slot-source parameter this helper does not have. It
+ * also claims a narrower set: dangling or the old source, but not a link chained
+ * through the new dest, which this one claims via `alsoClaim`. Both sweeps fire
+ * on the same relocation, and the divergence is inert because a link resolving
+ * to `dest` already resolves to a real dir. Widen either and they must agree.
+ *
+ * They differ in which links they claim, and that difference is data, not an
+ * inverted condition. A dangling link is ALWAYS claimed: it resolves to
+ * nothing, so re-pointing it cannot lose anything. `alsoClaim` adds link
+ * realpaths that are stale for a caller-specific reason — relocation names the
+ * old source and the new dest, removal names none. Expressing that as a set of
+ * paths, rather than a boolean either caller could invert, is what keeps
+ * removal from re-pointing links that were aimed elsewhere on purpose.
+ *
+ * `skip` is the second difference, and it is not cosmetic. Relocation has
+ * already put two slots in their final form before the sweep runs: the new
+ * `dest`, and the leave-behind link at the old source. Both are in `skip` so the
+ * sweep never removes and rebuilds a link relocation just wrote. Without it the
+ * leave-behind link realpaths to `dest`, which `alsoClaim` covers, so it would
+ * be deleted and recreated with identical bytes. The resulting tree is the same
+ * either way, which is why a tree-comparing test cannot see the difference; the
+ * sequence of filesystem operations is not, and in this file an unnecessary
+ * unlink of a link standing in for a real directory is the scar being avoided.
+ */
+function repointSiblingLinks(opts: {
+  name: string;
+  cwd: string;
+  roots: SkillProjectionRoots;
+  /** Real bundle dir every claimed link is re-pointed at. */
+  target: string;
+  /** Sibling SLOTS never touched, matched on the slot path itself. */
+  skip?: readonly string[];
+  /** Link REALPATHS claimed on top of dangling ones. */
+  alsoClaim?: readonly string[];
+}): void {
+  const { name, cwd, roots, target } = opts;
+  const skip = new Set((opts.skip ?? []).map((p) => resolve(p)));
+  const claim = new Set((opts.alsoClaim ?? []).map((p) => resolve(p)));
   for (const host of ALL_TARGET_HOSTS) {
     const sib = skillTargetDir(cwd, host, name, roots);
-    if (sib === null || resolve(sib) === resolve(dest) || resolve(sib) === canonicalAbs) continue;
+    if (sib === null || skip.has(resolve(sib))) continue;
     try {
       if (!lstatSync(sib).isSymbolicLink()) continue;
     } catch {
@@ -605,24 +670,13 @@ export function relocateInPlaceCanonical(opts: {
     try {
       resolved = realpathSync(sib);
     } catch {
-      resolved = null; // dangling — re-point it
+      resolved = null; // dangling
     }
-    // Re-point when: dangling, pointed at the old source, or resolves to the
-    // new dest THROUGH another link (chain) — links always point DIRECTLY at
-    // the real dir, so removing any one link can never strand another.
-    if (resolved === null || resolved === canonicalAbs || resolved === resolve(dest)) {
-      tracedRmSync(sib, { recursive: true, force: true });
-      tracedSymlinkSync(skillLinkTarget(cwd, dirname(sib), dest), sib, 'dir');
-    }
+    if (resolved !== null && !claim.has(resolved)) continue;
+    tracedRmSync(sib, { recursive: true, force: true });
+    tracedSymlinkSync(skillLinkTarget(cwd, dirname(sib), target), sib, 'dir');
   }
-  return { ok: true, newAbs: dest };
 }
-
-/** Every install-target host (editors with a project dir + the .agents hub). */
-const ALL_TARGET_HOSTS: readonly SkillHostId[] = [
-  'agents',
-  ...(PROJECT_SKILL_EDITOR_IDS as readonly EditorId[]),
-];
 
 /**
  * Uninstall counterpart of {@link projectInPlaceSkill}: remove a target editor's
@@ -667,22 +721,11 @@ export function removeInPlaceSkillCopies(opts: {
   }
   // Removing an occurrence (real copy OR a link other links chained through)
   // can orphan sibling links — re-point survivors at the canonical.
+  // Dangling only: no `alsoClaim`, so a link still aimed at something real
+  // keeps pointing there. Widening this is the regression the shared spine has
+  // to make hard.
   if (removed.length > 0) {
-    for (const host of ALL_TARGET_HOSTS) {
-      const sib = skillTargetDir(cwd, host, name, roots);
-      if (sib === null) continue;
-      try {
-        if (!lstatSync(sib).isSymbolicLink()) continue;
-      } catch {
-        continue;
-      }
-      try {
-        realpathSync(sib);
-      } catch {
-        tracedRmSync(sib, { recursive: true, force: true });
-        tracedSymlinkSync(skillLinkTarget(cwd, dirname(sib), canonicalAbs), sib, 'dir');
-      }
-    }
+    repointSiblingLinks({ name, cwd, roots, target: canonicalAbs });
   }
   return removed;
 }
