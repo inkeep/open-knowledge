@@ -1,0 +1,5 @@
+---
+"@inkeep/open-knowledge": patch
+---
+
+Moving a skill between project and global scope no longer leaves a broken copy behind at the old scope. The move itself was correct, but the skill's editor document stays open in the app, and its autosave could fire a couple of seconds after the move and write `SKILL.md` back to the path the skill had just left. Autosave carries one document and none of the bundle's other files, so it recreated the folder holding only `SKILL.md`, with `references/` and `scripts/` missing. That half-bundle then showed up as a real skill everywhere skills are listed, which was most visible for skills that have those extra folders. Persistence now writes only into a folder that still exists, so a document whose skill was moved or deleted drops the write instead of recreating it. The same rule covers skills you edit in place from another tool's folder, which could be rebuilt the same way after being deleted outside the app. If you already hit this, the leftover folder at the old scope is not cleaned up for you: delete it by hand. It is the one holding only `SKILL.md`.

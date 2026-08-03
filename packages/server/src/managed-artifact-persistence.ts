@@ -25,12 +25,13 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { resolve, sep } from 'node:path';
+import { dirname, resolve, sep } from 'node:path';
 import {
   LEGACY_SKILL_STORE_ROOT,
   LINEAGE_EPOCH_KEY,
   MANAGED_ARTIFACT_PREFIX_SKILL,
   MANAGED_ARTIFACT_PREFIX_TEMPLATE,
+  type ManagedArtifactScope,
   parseExternalSkillDocName,
   parseManagedArtifactName,
   SKILL_NAME_REGEX,
@@ -208,6 +209,91 @@ function resolveBundleFileOnDisk(baseNoExt: string): string {
       : `${baseNoExt}.md`;
 }
 
+/**
+ * The bundle DIR a managed skill doc addresses — `<...>/<name>/`, the folder
+ * holding SKILL.md and its `references/` + `scripts/` siblings. Split out of
+ * {@link managedArtifactAbsPath} so the store path can ask "does this bundle
+ * still exist?" without re-deriving the resolution order, which is subtle
+ * enough that a second copy would drift.
+ */
+function managedSkillBundleDir(
+  scope: ManagedArtifactScope,
+  name: string,
+  ctx: ManagedArtifactLocation,
+): string {
+  // Guard 1: slug grammar (rejects `..`, slashes, dots, uppercase, empty).
+  if (!SKILL_NAME_REGEX.test(name) || name.length > 64) {
+    throw new Error(`managedSkillBundleDir: invalid skill name: ${JSON.stringify(name)}`);
+  }
+  const base = scope === 'global' ? homeFor(ctx) : ctx.projectDir;
+  if (scope !== 'global') {
+    // Project managed-artifact docs are the legacy `.ok/skills` content path;
+    // project skills open as content docs, so this branch is effectively dead
+    // and the project store drains via the boot migration.
+    return resolve(base, '.ok', 'skills', name);
+  }
+  // Store retirement: in-place ALWAYS wins. Resolve the native editor-dir
+  // canonical (`~/.agents/skills/<name>`, `~/.claude/skills/<name>`, …) first;
+  // fall back to a legacy `~/.ok/skills` resident ONLY to keep reading one not
+  // yet drained; NEVER DEFAULT a fresh write to the store. Defaulting to the
+  // store re-created the `.ok/skills` remnant on every stray global write (a
+  // global doc autosaving after the skill was moved away, etc.) — a skill with
+  // neither native nor store lands at the in-place default home instead.
+  //
+  // That redirect chose a better PATH for a stray write; it did not stop one.
+  // Preventing the write is the store guard's job, not this resolver's — see
+  // the bundle-existence check in `storeManagedArtifactDoc`.
+  const native = resolveGlobalNativeSkillDir(base, name);
+  const storeDir = resolve(base, '.ok', 'skills', name);
+  return (
+    native ??
+    (existsSync(resolve(storeDir, 'SKILL.md'))
+      ? storeDir
+      : resolve(base, resolveDefaultSkillHomeRel(base, 'global'), name))
+  );
+}
+
+/**
+ * The dir that must ALREADY exist for a managed-artifact write to be legal: a
+ * managed skill's bundle dir, or an external skill's registered dir.
+ * Persistence may create dirs INSIDE one of these (a `references/` for a
+ * not-yet-written bundle file) and must never create the container itself,
+ * because that resurrects an artifact its owner deleted.
+ *
+ * The two skill classes lose their container through different doors — a
+ * managed skill through `move-scope` / delete, an external skill through a
+ * harness-side delete OK never sees. The external case does not even need the
+ * re-open race the managed case does: the registry is in-memory,
+ * `unregisterExternalSkill` is never called outside tests, and
+ * `externalSkillAbsPath` resolves from the map without touching disk, so a
+ * registered entry outlives its directory for the whole process. It is also the
+ * worst place to get this wrong: the resurrected dir lands under a harness root
+ * (`~/.claude/skills/…`) that OK does not own.
+ *
+ * Templates are deliberately NOT bounded. `PUT /api/template` composes the
+ * bytes, routes them through the template's CRDT doc, and leaves the file write
+ * to persistence — so creating `.ok/templates` here is how a template gets
+ * created, not evidence of a stale doc, and the container alone cannot tell the
+ * two apart.
+ *
+ * Null means "nothing to bound" (a template, or an unparsable / unregistered
+ * doc name); the latter are already short-circuited upstream.
+ */
+function managedArtifactContainerDir(
+  documentName: string,
+  ctx: ManagedArtifactLocation,
+): string | null {
+  const ext = parseExternalSkillDocName(documentName);
+  if (ext !== null) {
+    // `rel: null` addresses SKILL.md, so its parent IS the registered dir.
+    const abs = externalSkillAbsPath(ext.name, null);
+    return abs === null ? null : dirname(abs);
+  }
+  const parsed = parseManagedArtifactName(documentName);
+  if (parsed === null || parsed.kind !== 'skill') return null;
+  return managedSkillBundleDir(parsed.scope, parsed.name, ctx);
+}
+
 export function managedArtifactAbsPath(documentName: string, ctx: ManagedArtifactLocation): string {
   // Editable-unmanaged skill: the real on-disk path lives in the external-skill
   // registry (keyed by name), NOT under any `.ok/` root — so it resolves through
@@ -231,33 +317,7 @@ export function managedArtifactAbsPath(documentName: string, ctx: ManagedArtifac
   if (parsed.kind === 'template') {
     return templateAbsPath(parsed.folder, parsed.name, ctx, documentName);
   }
-  // Guard 1: slug grammar (rejects `..`, slashes, dots, uppercase, empty).
-  if (!SKILL_NAME_REGEX.test(parsed.name) || parsed.name.length > 64) {
-    throw new Error(`managedArtifactAbsPath: invalid skill name: ${JSON.stringify(parsed.name)}`);
-  }
-  const base = parsed.scope === 'global' ? homeFor(ctx) : ctx.projectDir;
-  let skillDir: string;
-  if (parsed.scope === 'global') {
-    // Store retirement: in-place ALWAYS wins. Resolve the native editor-dir
-    // canonical (`~/.agents/skills/<name>`, `~/.claude/skills/<name>`, …) first;
-    // fall back to a legacy `~/.ok/skills` resident ONLY to keep reading one not
-    // yet drained; NEVER DEFAULT a fresh write to the store. Defaulting to the
-    // store re-created the `.ok/skills` remnant on every stray global write (a
-    // global doc autosaving after the skill was moved away, etc.) — a skill with
-    // neither native nor store lands at the in-place default home instead.
-    const native = resolveGlobalNativeSkillDir(base, parsed.name);
-    const storeDir = resolve(base, '.ok', 'skills', parsed.name);
-    skillDir =
-      native ??
-      (existsSync(resolve(storeDir, 'SKILL.md'))
-        ? storeDir
-        : resolve(base, resolveDefaultSkillHomeRel(base, 'global'), parsed.name));
-  } else {
-    // Project managed-artifact docs are the legacy `.ok/skills` content path;
-    // project skills open as content docs, so this branch is effectively dead
-    // and the project store drains via the boot migration.
-    skillDir = resolve(base, '.ok', 'skills', parsed.name);
-  }
+  const skillDir = managedSkillBundleDir(parsed.scope, parsed.name, ctx);
   let abs: string;
   if (parsed.rel === null) {
     abs = resolve(skillDir, 'SKILL.md');
@@ -271,9 +331,10 @@ export function managedArtifactAbsPath(documentName: string, ctx: ManagedArtifac
     }
     abs = resolveBundleFileOnDisk(resolve(skillDir, ...relSegs));
   }
-  // Guard 2: containment on the resolved path. Cheap defense-in-depth — guard 1's
-  // slug grammar + the `..` reject above already forbid escape, so this only
-  // fires if that grammar is ever weakened. (Mirrors templateAbsPath.)
+  // Guard 2: containment on the resolved path. Cheap defense-in-depth — the slug
+  // grammar in `managedSkillBundleDir` (guard 1, which now runs a call earlier)
+  // plus the `..` reject above already forbid escape, so this only fires if that
+  // grammar is ever weakened. (Mirrors templateAbsPath.)
   if (!abs.startsWith(skillDir + sep)) {
     throw new Error(`managedArtifactAbsPath: path escape for ${documentName}`);
   }
@@ -542,13 +603,38 @@ export async function storeManagedArtifactDoc(
   const lkg = ctx.lkgCache.get(documentName);
   if (content === lkg) return 'no-op';
 
+  // A doc may only write INTO a container that still exists; it may never bring
+  // one back. The mkdir below is recursive, so without this a live doc whose
+  // artifact was deleted (or moved to the other scope) re-creates the container
+  // and lands a lone file in it — for a skill that means no `references/` and
+  // no `scripts/`, because persistence carries one doc and never the sibling
+  // files. The half-bundle then reads as a real skill to every scanner.
+  //
+  // Closing the live docs is not sufficient on its own, which is why this sits
+  // here rather than in the delete/move handlers: the client re-opens the doc
+  // it still has on screen, re-syncs its copy (itself a mutation), and the
+  // debounce fires against the old path afterwards. This stat is the last thing
+  // between a stale doc and a resurrected artifact.
+  const containerDir = managedArtifactContainerDir(documentName, ctx);
+  if (containerDir !== null && !existsSync(containerDir)) {
+    log.warn(
+      { documentName, containerDir },
+      'store: artifact container is gone (deleted or moved); dropping the write rather than resurrecting it',
+    );
+    return 'no-op';
+  }
+
   const filePath = managedArtifactAbsPath(documentName, ctx);
 
   try {
-    // Ensure the skill dir exists BEFORE acquiring the lock — `withFileLock`
-    // creates `<filePath>.lock`, which would ENOENT for a brand-new skill whose
-    // `.ok/skills/<name>/` dir doesn't exist yet (config docs dodge this because
-    // `.ok/` is pre-created at init).
+    // Ensure the parent dir exists BEFORE acquiring the lock — `withFileLock`
+    // creates the SIBLING `<filePath>.lock`, so a missing parent is an ENOENT on
+    // acquire, not a busy lock (config docs dodge this because `.ok/` is
+    // pre-created at init). This mkdir is recursive and therefore able to
+    // create a whole skill bundle, which is not its job: the guard above proves
+    // the bundle already exists, leaving this to create only the dirs INSIDE
+    // one (`references/` for a not-yet-written reference file). Keep the guard
+    // and this call together — alone, this one resurrects deleted skills.
     await tracedMkdir(resolve(filePath, '..'), { recursive: true });
     // Data-safety floor for editable-unmanaged skills (no version history): the
     // FIRST time we're about to overwrite a live harness skill file, snapshot its

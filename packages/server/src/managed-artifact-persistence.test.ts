@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { LINEAGE_EPOCH_KEY } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
@@ -174,6 +174,15 @@ describe('store/load round-trip', () => {
   // skills are content docs now (guarded to a no-op in load/store).
   const docName = '__skill__/global/demo';
 
+  // Production materializes a skill bundle fs-direct (`applySkillWrite`) before
+  // its live doc ever persists — create and import both write the dir, then open
+  // the doc. The store therefore REFUSES to create a bundle (resurrection
+  // guard), so seed the dir here and let these tests exercise what they are
+  // about: round-trip fidelity and reconcile, not bundle creation.
+  beforeEach(() => {
+    mkdirSync(dirname(managedArtifactAbsPath(docName, makeCtx())), { recursive: true });
+  });
+
   test('store serializes Y.Text("source") verbatim to .ok/skills/<n>/SKILL.md', async () => {
     const ctx = makeCtx();
     const doc = new Y.Doc();
@@ -298,6 +307,15 @@ describe('concurrent-writer reconcile', () => {
   // Global scope — the surviving managed-artifact load/store flow. Project
   // skills are content docs now (guarded to a no-op in load/store).
   const docName = '__skill__/global/demo';
+
+  // Production materializes a skill bundle fs-direct (`applySkillWrite`) before
+  // its live doc ever persists — create and import both write the dir, then open
+  // the doc. The store therefore REFUSES to create a bundle (resurrection
+  // guard), so seed the dir here and let these tests exercise what they are
+  // about: round-trip fidelity and reconcile, not bundle creation.
+  beforeEach(() => {
+    mkdirSync(dirname(managedArtifactAbsPath(docName, makeCtx())), { recursive: true });
+  });
 
   test('store reconciles instead of clobbering when disk diverged from LKG', async () => {
     const ctx = makeCtx();
@@ -676,5 +694,135 @@ describe('__extskill__ editable-unmanaged skill — guarded external write-back'
     expect(existsSync(backup)).toBe(true);
     // The snapshot is the PRE-edit content, so a bad edit stays recoverable.
     expect(readFileSync(backup, 'utf-8')).toBe('---\nname: borrowed\n---\n\n# Original\n');
+  });
+});
+
+describe('a skill doc never RESURRECTS a bundle that is gone', () => {
+  // The scope move (`/api/skill/move-scope`) copies the bundle to the other
+  // scope and deletes it here. It closes both live docs first, but the client
+  // re-opens the one still on screen, so a debounced autosave can land after
+  // the delete. Persistence carries ONE doc and no sibling files, so writing
+  // it back re-creates the bundle dir holding a lone SKILL.md — a half-skill
+  // that every scanner then reads as real.
+  const docName = '__skill__/global/code-mode';
+
+  function seedGlobalBundle(ctx: ManagedArtifactCtx): string {
+    // Ask the resolver where this skill lives rather than hardcoding the
+    // default home, so the test follows the same resolution order as the code.
+    const bundleDir = dirname(managedArtifactAbsPath(docName, ctx));
+    mkdirSync(join(bundleDir, 'references'), { recursive: true });
+    writeFileSync(join(bundleDir, 'SKILL.md'), '---\nname: code-mode\n---\n\n# Code mode\n');
+    writeFileSync(join(bundleDir, 'references', 'patterns.md'), '# Patterns\n');
+    return bundleDir;
+  }
+
+  function editLive(doc: Y.Doc, text: string): void {
+    doc.transact(() => {
+      const src = doc.getText('source');
+      src.delete(0, src.length);
+      src.insert(0, text);
+    }, 'agent');
+  }
+
+  test('a stale autosave after the bundle moved away writes NOTHING back', async () => {
+    const ctx = makeCtx();
+    const bundleDir = seedGlobalBundle(ctx);
+    const doc = new Y.Doc();
+    loadManagedArtifactDoc(doc, docName, ctx);
+
+    // The move: bundle copied to the other scope, removed from this one.
+    rmSync(bundleDir, { recursive: true, force: true });
+
+    editLive(doc, '---\nname: code-mode\n---\n\n# Code mode edited\n');
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('no-op');
+    // The regression: the dir came back holding only SKILL.md.
+    expect(existsSync(bundleDir)).toBe(false);
+  });
+
+  test('the same is true for a bundle FILE doc, which would rebuild the dir chain', async () => {
+    const ctx = makeCtx();
+    const bundleDir = seedGlobalBundle(ctx);
+    const fileDoc = '__skill__/global/code-mode/references/patterns';
+    const doc = new Y.Doc();
+    loadManagedArtifactDoc(doc, fileDoc, ctx);
+
+    rmSync(bundleDir, { recursive: true, force: true });
+
+    editLive(doc, '# Patterns edited\n');
+    expect(await storeManagedArtifactDoc(doc, fileDoc, 'agent', ctx)).toBe('no-op');
+    expect(existsSync(bundleDir)).toBe(false);
+  });
+
+  test('a LIVE bundle still persists, and may still create dirs INSIDE itself', async () => {
+    // The guard proves the bundle exists; the recursive mkdir keeps its real
+    // job. Over-blocking here would break authoring a new reference file.
+    const ctx = makeCtx();
+    const bundleDir = seedGlobalBundle(ctx);
+    const doc = new Y.Doc();
+    loadManagedArtifactDoc(doc, docName, ctx);
+    editLive(doc, '---\nname: code-mode\n---\n\n# Still here\n');
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('persisted');
+    expect(readFileSync(join(bundleDir, 'SKILL.md'), 'utf-8')).toContain('# Still here');
+
+    const fresh = '__skill__/global/code-mode/references/new-notes';
+    const freshDoc = new Y.Doc();
+    loadManagedArtifactDoc(freshDoc, fresh, ctx);
+    editLive(freshDoc, '# New notes\n');
+    expect(await storeManagedArtifactDoc(freshDoc, fresh, 'agent', ctx)).toBe('persisted');
+    expect(readFileSync(join(bundleDir, 'references', 'new-notes.md'), 'utf-8')).toBe(
+      '# New notes\n',
+    );
+  });
+});
+
+describe('the liveness rule covers external skills too, but never templates', () => {
+  // The container is lost through a different door per skill class, but the
+  // failure is identical: a stale autosave rebuilds it around a single file.
+  function editLive(doc: Y.Doc, text: string): void {
+    doc.transact(() => {
+      const src = doc.getText('source');
+      src.delete(0, src.length);
+      src.insert(0, text);
+    }, 'agent');
+  }
+
+  test('a template still CREATES `.ok/templates`, because that is how templates are written', async () => {
+    // Deliberately not bounded: `PUT /api/template` routes the composed bytes
+    // through the template's CRDT doc and leaves the file write to persistence,
+    // so requiring the dir up front would break every template create.
+    const ctx = makeCtx();
+    const docName = '__template__//weekly-note';
+    const filePath = managedArtifactAbsPath(docName, ctx);
+    const doc = new Y.Doc();
+    loadManagedArtifactDoc(doc, docName, ctx);
+
+    editLive(doc, '# Weekly note\n');
+    expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('persisted');
+    expect(readFileSync(filePath, 'utf-8')).toBe('# Weekly note\n');
+  });
+
+  test('an external skill deleted by its harness is not rebuilt under the harness root', async () => {
+    // Registration is in-memory and `unregisterExternalSkill` never runs outside
+    // tests, so the registry outlives a harness-side delete. Without the
+    // container check the write lands in a dir OK does not own.
+    const dir = join(home, '.claude', 'skills', 'borrowed');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'SKILL.md'), '---\nname: borrowed\n---\n\n# Original\n');
+    registerExternalSkill('borrowed', dir);
+    try {
+      const ctx = makeCtx();
+      const docName = '__extskill__/borrowed';
+      const doc = new Y.Doc();
+      loadManagedArtifactDoc(doc, docName, ctx);
+
+      // The harness (or the user) removes the bundle; OK is never told.
+      rmSync(dir, { recursive: true, force: true });
+
+      editLive(doc, '---\nname: borrowed\n---\n\n# Resurrected\n');
+      expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('no-op');
+      expect(existsSync(dir)).toBe(false);
+    } finally {
+      unregisterExternalSkill('borrowed');
+    }
   });
 });
