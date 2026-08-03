@@ -23,6 +23,17 @@ name: Point release
 # no tag, no Release, no dispatch. Arming a real run means unchecking dry_run
 # deliberately, having read the plan a dry run printed.
 #
+# A conflict is a hard fail, with one narrow exception that must be asked for.
+# A fix delivered as a pnpm dependency patch has to register itself in
+# pnpm-workspace.yaml, whose registration blocks are dense enough that any other
+# patch landing since the last stable puts the fix's own line inside a rewritten
+# hunk — so the fix is disqualified by config churn rather than by any
+# dependency of its own. `resolve_paths` lets an operator name that one file,
+# after a dry run showed them the conflict; the file is then rebuilt as the last
+# stable plus the entries the fix itself changed, checked against the lockfile
+# git merged beside it, and printed. The allowlist is code, not input: nothing
+# that carries behavior can be named, and everything else still refuses.
+#
 # All decision logic lives in .github/scripts/point-release-plan.mjs, which is
 # unit-tested; this file only supplies credentials, a full-history checkout and
 # a committer identity. Keeping the guards in tested JavaScript rather than
@@ -66,6 +77,10 @@ on:
         type: string
       anchor_delta_ids:
         description: "Changeset id(s) for main-reset to consolidate. Revert mode has none of its own — name one here or the main-reset dispatch is skipped and the anchor stays behind."
+        required: false
+        type: string
+      resolve_paths:
+        description: "Config path(s) whose conflict may be re-derived instead of refused. Allowlisted config registries only (pnpm-workspace.yaml); a conflict anywhere else always hard-fails. Blank by default."
         required: false
         type: string
       dry_run:
@@ -193,6 +208,10 @@ jobs:
           MODE: ${{ inputs.mode }}
           FIX_REFS: ${{ inputs.fix_refs }}
           ANCHOR_DELTA_IDS: ${{ inputs.anchor_delta_ids }}
+          # Blank unless an operator deliberately named a path, so automated
+          # dispatches (the bug lane) never resolve anything and keep the
+          # unconditional hard-fail on conflict.
+          RESOLVE_PATHS: ${{ inputs.resolve_paths }}
           # The script arms a real run only on the literal string "false", so any
           # other value — including an unset variable — stays a dry run.
           DRY_RUN: ${{ inputs.dry_run }}
@@ -213,6 +232,7 @@ jobs:
           SYNTHETIC_SHA: ${{ steps.plan.outputs.synthetic_sha }}
           DELTA_IDS: ${{ steps.plan.outputs.delta_ids }}
           MAIN_RESET_DISPATCHED: ${{ steps.plan.outputs.main_reset_dispatched }}
+          RESOLVED_PATHS: ${{ steps.plan.outputs.resolved_paths }}
           MODE: ${{ inputs.mode }}
           FIX_REFS: ${{ inputs.fix_refs }}
         run: |
@@ -227,6 +247,11 @@ jobs:
             echo "- Over stable: \`${LATEST_STABLE_TAG}\`"
             echo "- Mode: \`${MODE}\` of \`${FIX_REFS}\`"
             echo "- Changeset delta for main-reset: \`${DELTA_IDS}\` (dispatched: ${MAIN_RESET_DISPATCHED})"
+            if [[ -n "${RESOLVED_PATHS:-}" && "$RESOLVED_PATHS" != "[]" ]]; then
+              echo "- **Re-derived config paths: \`${RESOLVED_PATHS}\`** — the pick conflicted there and the file"
+              echo "  was rebuilt as the last stable plus the entries the fix itself changed. The exact entries"
+              echo "  are in the run log and in the plan JSON; read them before arming."
+            fi
             if [[ "$DRY_RUN" == "true" ]]; then
               echo ""
               echo "Re-run with **dry_run unchecked** to ship this plan."

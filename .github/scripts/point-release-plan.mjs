@@ -18,7 +18,7 @@
  * rather than that "the point release failed".
  */
 import { spawnSync } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import {
   computePointReleaseVersion,
@@ -106,6 +106,371 @@ function splitList(raw) {
     if (item !== '' && !items.includes(item)) items.push(item);
   }
   return items;
+}
+
+/**
+ * Split the operator's `resolve_paths` input into paths.
+ *
+ * Empty by default and empty for every automated dispatch, so the lane's
+ * behavior on an unexpected conflict is unchanged: hard fail. Authorizing a
+ * path is a deliberate, per-run operator act.
+ */
+export function parseResolvePaths(raw) {
+  return splitList(raw);
+}
+
+/**
+ * Config paths whose merge conflict MAY be resolved instead of refused, each
+ * paired with the coherence check its resolution must survive.
+ *
+ * The allowlist is deliberately one entry. A fix delivered as a pnpm dependency
+ * patch has to register itself in `pnpm-workspace.yaml`, and the registration
+ * blocks there are dense: every entry sits within three lines of every other,
+ * so any unrelated registration landing between the last stable and the fix
+ * puts the fix's own line inside a rewritten hunk. That is an artifact of
+ * diffing an unordered mapping by line, not evidence that the fix depends on
+ * anything in between. `pnpm-lock.yaml` has the same churn but is not on this
+ * list and does not need to be: it is enormous and sorted, so unrelated entries
+ * are thousands of lines away and merge cleanly on their own. A conflict there
+ * is a real signal and keeps refusing.
+ *
+ * Nothing that carries behavior is eligible. Source, workflows, and patch
+ * contents are never resolvable, at any input.
+ */
+const RESOLVABLE_PATH_VERIFIERS = Object.freeze({
+  'pnpm-workspace.yaml': verifyWorkspaceMatchesLockfile,
+});
+
+export const RESOLVABLE_PATHS = Object.freeze(Object.keys(RESOLVABLE_PATH_VERIFIERS));
+
+/**
+ * Does the operator's `resolve_paths` input name only allowlisted paths?
+ *
+ * Checked before the tree is touched, so a typo or an over-broad input refuses
+ * in a second rather than after a pick. The allowlist is the security boundary
+ * here: without it the input is a general "resolve my conflicts" switch aimed
+ * at whatever the operator types, which is exactly the escape hatch this lane
+ * must not grow.
+ */
+export function guardResolvePathsAllowlisted({ resolvePaths }) {
+  const offenders = resolvePaths.filter((p) => !RESOLVABLE_PATHS.includes(p));
+  if (offenders.length > 0) {
+    return refuse(
+      'resolve-path-not-allowlisted',
+      `Not resolvable: ${offenders.join(', ')}. Only ${RESOLVABLE_PATHS.join(', ')} may be resolved, because ` +
+        'only their conflicts can be re-derived as entry-level changes and checked afterwards. A conflict ' +
+        'anywhere else means the fix depends on something between the last stable and now, and still refuses.',
+    );
+  }
+  return pass(
+    resolvePaths.length === 0
+      ? 'No conflict resolution authorized; any conflict hard-fails.'
+      : `Conflict resolution authorized for: ${resolvePaths.join(', ')}.`,
+  );
+}
+
+const indentOf = (line) => line.length - line.trimStart().length;
+const isBlank = (line) => line.trim() === '';
+
+/**
+ * The key an entry line declares, or null when the line is not a mapping entry.
+ *
+ * Quoted keys are read to their closing quote rather than to the first colon,
+ * since the keys in these files are package specs that may contain one.
+ */
+function entryKey(line) {
+  const body = line.trim();
+  if (body === '' || body.startsWith('#') || body.startsWith('-')) return null;
+  const quote = body[0];
+  if (quote === "'" || quote === '"') {
+    const close = body.indexOf(quote, 1);
+    if (close < 0) return null;
+    if (body[close + 1] !== ':') return null;
+    return body.slice(1, close);
+  }
+  const colon = body.indexOf(':');
+  if (colon <= 0) return null;
+  return body.slice(0, colon);
+}
+
+/**
+ * The mapping block a header line opens: where it ends, at what indentation its
+ * entries sit, and the entries themselves — as `keys` for membership, and as an
+ * `entries` key-to-value map for the comparisons that care what each assigns.
+ *
+ * A block runs from just after its header to the first non-blank line indented
+ * no deeper than the header. `end` excludes the trailing blank lines so an
+ * insertion lands against the last entry rather than after a paragraph break.
+ *
+ * This is a line scanner, not a YAML parser, and deliberately so: the workflow
+ * runs `node` against a bare checkout with no dependency install, so there is
+ * no parser to reach for. It therefore understands only the shape these two
+ * files actually use — one key per line, a single-line value, one level of
+ * nesting beneath an entry — and everything outside it reads as an entry with
+ * no value, which fails the comparisons closed rather than passing something
+ * unread. A new pnpm output shape is a refusal, not a silent misread.
+ */
+export function readBlock(lines, headerIndex) {
+  const headerIndent = indentOf(lines[headerIndex]);
+  let end = headerIndex + 1;
+  while (end < lines.length && (isBlank(lines[end]) || indentOf(lines[end]) > headerIndent)) end++;
+  while (end > headerIndex + 1 && isBlank(lines[end - 1])) end--;
+
+  let entryIndent = null;
+  for (let i = headerIndex + 1; i < end; i++) {
+    if (isBlank(lines[i]) || entryKey(lines[i]) === null) continue;
+    if (entryIndent === null || indentOf(lines[i]) < entryIndent) entryIndent = indentOf(lines[i]);
+  }
+
+  const entries = new Map();
+  for (let i = headerIndex + 1; i < end; i++) {
+    if (isBlank(lines[i]) || indentOf(lines[i]) !== entryIndent) continue;
+    const key = entryKey(lines[i]);
+    if (key !== null) entries.set(key, entryValue(lines[i]));
+  }
+  return { headerIndex, headerIndent, entryIndent, end, keys: new Set(entries.keys()), entries };
+}
+
+/**
+ * What an entry line assigns, normalized.
+ *
+ * Quoting is not meaningful here and is not consistent across the two files
+ * that get compared — the same override reads `"@types/node": ^24.7.0` in one
+ * and `'@types/node': ^24.7.0` in the other — so surrounding quotes come off
+ * both sides rather than reading as a difference. An entry that opens a nested
+ * mapping assigns nothing and reads as empty.
+ */
+function entryValue(line) {
+  const body = line.trim();
+  const key = entryKey(line);
+  if (key === null) return '';
+  const after = body.slice(body.indexOf(':', body.indexOf(key) + key.length) + 1).trim();
+  const quote = after[0];
+  if ((quote === "'" || quote === '"') && after.endsWith(quote) && after.length > 1) {
+    return after.slice(1, -1);
+  }
+  return after;
+}
+
+/** Every entry declared directly under a top-level mapping, or null when absent. */
+export function readTopLevelBlockEntries(text, header) {
+  const lines = String(text).split('\n');
+  const headerIndex = lines.findIndex((line) => line === `${header}:`);
+  if (headerIndex < 0) return null;
+  return readBlock(lines, headerIndex).entries;
+}
+
+function refuseResolution(message) {
+  throw new PointReleaseRefusal('resolve-not-derivable', message);
+}
+
+/**
+ * Re-derive the fix's own change to a config file as an entry-level edit of the
+ * last stable's copy of it, rather than as the textual hunk git could not place.
+ *
+ * The result is the stable file with exactly the entries the fix added added,
+ * and exactly the entries it removed removed. That is the only resolution that
+ * is correct, and the reason is concrete rather than aesthetic: taking the
+ * fix's copy of the file wholesale adopts entries the synthetic tree cannot
+ * honor (a patch registration whose `.patch` file is not in the tree, an
+ * override the lockfile never resolved), and keeping the stable's copy
+ * wholesale drops the fix's own entry while the lockfile keeps it. Both
+ * produce a tree that cannot install; only the entry-level union matches the
+ * lockfile git already merged cleanly beside it.
+ *
+ * Every step that cannot be re-derived unambiguously refuses. A modified entry,
+ * an added line that is not a mapping entry, a block whose header is not in the
+ * stable file, a line that does not appear exactly where it is expected to:
+ * each of those is a real disagreement between the fix and the stable, and this
+ * function is only allowed to handle the case where there is none.
+ */
+export function deriveEntryLevelResolution({ base, fixBefore, fixAfter }) {
+  const baseLines = String(base).split('\n');
+  const beforeLines = String(fixBefore).split('\n');
+  const afterLines = String(fixAfter).split('\n');
+
+  const beforeSet = new Set(beforeLines);
+  const afterSet = new Set(afterLines);
+  const added = afterLines.filter((line) => !isBlank(line) && !beforeSet.has(line));
+  const removed = beforeLines.filter((line) => !isBlank(line) && !afterSet.has(line));
+
+  if (added.length === 0 && removed.length === 0) {
+    refuseResolution(
+      'The fix makes no line-level change to this file, so the conflict does not come from the fix. ' +
+        'Nothing can be re-derived.',
+    );
+  }
+
+  const count = (lines, needle) => lines.reduce((n, line) => n + (line === needle ? 1 : 0), 0);
+  const resolved = [...baseLines];
+
+  // Removals first: they are matched against the stable file as it stands, and
+  // doing them after an insertion would let a just-added line satisfy one.
+  for (const line of removed) {
+    if (count(resolved, line) !== 1) {
+      refuseResolution(
+        `The fix removes a line that does not appear exactly once in the last stable: ${line.trim()}. ` +
+          'The stable has already diverged on that entry.',
+      );
+    }
+    resolved.splice(resolved.indexOf(line), 1);
+  }
+
+  // Group the additions by the block they belong to, in the order the fix wrote
+  // them. Only mapping entries qualify: a comment or a sequence item has no key
+  // to place it by, so a fix that adds one refuses here rather than having this
+  // code guess what it was attached to.
+  const pending = new Map();
+  for (const line of added) {
+    const key = entryKey(line);
+    if (key === null || indentOf(line) === 0) {
+      refuseResolution(
+        `The fix adds a line that is not an indented mapping entry: ${line.trim()}. Only entries inside an ` +
+          'existing block can be re-derived; anything else changes the file structure.',
+      );
+    }
+    if (count(afterLines, line) !== 1 || count(resolved, line) !== 0) {
+      refuseResolution(
+        `The fix's added line is ambiguous against the last stable: ${line.trim()}. It must be unique in the ` +
+          'fix and absent from the stable.',
+      );
+    }
+
+    const at = afterLines.indexOf(line);
+    let headerIndex = -1;
+    for (let i = at - 1; i >= 0; i--) {
+      if (isBlank(afterLines[i]) || indentOf(afterLines[i]) >= indentOf(line)) continue;
+      headerIndex = i;
+      break;
+    }
+    if (headerIndex < 0) {
+      refuseResolution(`The fix's added line sits in no enclosing block: ${line.trim()}.`);
+    }
+    const header = afterLines[headerIndex];
+    if (count(resolved, header) !== 1) {
+      refuseResolution(
+        `The block this entry belongs to is not in the last stable, or is not unique there: ${header.trim()}. ` +
+          'There is nowhere unambiguous to place the entry.',
+      );
+    }
+    if (readBlock(resolved, resolved.indexOf(header)).keys.has(key)) {
+      refuseResolution(
+        `The last stable already declares '${key}' in ${header.trim()} with a different value, so the fix ` +
+          'CHANGES that entry rather than adding one. Re-deriving would silently pick a side.',
+      );
+    }
+    if (!pending.has(header)) pending.set(header, []);
+    pending.get(header).push(line);
+  }
+
+  // Append rather than sort into place: appending is inside the right block by
+  // construction, and where an entry sits in an unordered mapping carries no
+  // meaning. Guessing a sorted position would, since the stable's block need
+  // not be sorted at all.
+  for (const [header, entries] of pending) {
+    // Located afresh per block, so an insertion into an earlier one does not
+    // leave a later block's index stale.
+    const block = readBlock(resolved, resolved.indexOf(header));
+    resolved.splice(block.end, 0, ...entries);
+  }
+
+  // The transform claimed above, asserted rather than trusted. Anything that
+  // reordered, duplicated or dropped a line the fix did not name shows up here.
+  const ok =
+    resolved.length === baseLines.length + added.length - removed.length &&
+    sameSet(diffLines(resolved, baseLines), added) &&
+    sameSet(diffLines(baseLines, resolved), removed) &&
+    isSubsequence(
+      baseLines.filter((line) => !removed.includes(line)),
+      resolved,
+    );
+  if (!ok) {
+    throw new PointReleaseRefusal(
+      'resolve-incoherent',
+      'The re-derived file is not the last stable plus exactly the entries the fix added, minus exactly the ' +
+        'entries it removed. Refusing rather than shipping a tree nobody wrote.',
+    );
+  }
+
+  return { resolved: resolved.join('\n'), added, removed };
+}
+
+const diffLines = (from, to) => {
+  const other = new Set(to);
+  return from.filter((line) => !isBlank(line) && !other.has(line));
+};
+const sameSet = (a, b) => a.length === b.length && a.every((line) => b.includes(line));
+
+function isSubsequence(needles, haystack) {
+  let at = 0;
+  for (const needle of needles) {
+    at = haystack.indexOf(needle, at);
+    if (at < 0) return false;
+    at++;
+  }
+  return true;
+}
+
+/**
+ * The workspace-file blocks the lockfile mirrors, and how far each is
+ * comparable.
+ *
+ * pnpm hard-fails a frozen install when EITHER of these disagrees between the
+ * two files, and the failure text names the block. Checking only one of them
+ * would leave a re-derivation of the other verified by a comparison that
+ * passes vacuously, since an untouched block trivially matches.
+ */
+const LOCKFILE_MIRRORED_BLOCKS = Object.freeze([
+  // The workspace file assigns a patch PATH; the lockfile opens a nested
+  // hash + path mapping. Only the key sets are comparable.
+  { block: 'patchedDependencies', compareValues: false },
+  // Both assign the same version spec, and a spec that disagrees fails a frozen
+  // install exactly as hard as a missing key.
+  { block: 'overrides', compareValues: true },
+]);
+
+/**
+ * Does the re-derived workspace file still agree with the lockfile beside it?
+ *
+ * The lockfile is an independent arbiter: git merged it on its own, from the
+ * same two sides, so it says what the resolution should have been without this
+ * code having any say. Both of the resolutions this lane refuses to perform are
+ * caught by exactly this comparison, and so is a derivation bug.
+ *
+ * Without it the failure surfaces as ERR_PNPM_LOCKFILE_CONFIG_MISMATCH in the
+ * publish job, after the tag and the Release already exist.
+ *
+ * Fails closed. An unreadable lockfile is not agreement.
+ */
+export function verifyWorkspaceMatchesLockfile({ resolved, readWorktreeFile }) {
+  const lockfile = readWorktreeFile('pnpm-lock.yaml');
+  const notes = [];
+  for (const { block, compareValues } of LOCKFILE_MIRRORED_BLOCKS) {
+    const inWorkspace = readTopLevelBlockEntries(resolved, block) ?? new Map();
+    const inLockfile = readTopLevelBlockEntries(lockfile, block) ?? new Map();
+    const render = (entries) =>
+      [...entries]
+        .map(([key, value]) => (compareValues ? `${key}: ${value}` : key))
+        .sort()
+        .join('\n');
+    const left = render(inWorkspace);
+    const right = render(inLockfile);
+    if (left !== right) {
+      const only = (a, b) =>
+        [...a]
+          .filter(([key, value]) => !b.has(key) || (compareValues && b.get(key) !== value))
+          .map(([key, value]) => (compareValues ? `${key}: ${value}` : key));
+      throw new PointReleaseRefusal(
+        'resolve-incoherent',
+        `The re-derived pnpm-workspace.yaml disagrees with the merged pnpm-lock.yaml on '${block}'. Only in the ` +
+          `workspace file: [${only(inWorkspace, inLockfile).join(', ') || 'none'}]. Only in the lockfile: ` +
+          `[${only(inLockfile, inWorkspace).join(', ') || 'none'}]. A frozen install refuses on that mismatch, ` +
+          'which would fail the publish after the tag already exists.',
+      );
+    }
+    notes.push(`${block} (${inWorkspace.size})`);
+  }
+  return `agrees with the lockfile on ${notes.join(' and ')}.`;
 }
 
 /**
@@ -325,8 +690,10 @@ function checkGuard(trail, verdict) {
  *
  *   io.readAnchorVersion()  -> 'X.Y.Z'   changeset anchor in the checked-out tree
  *   io.git.newestStableTag / revParse / isOnMain / tagExists / isAncestor /
- *          changesetIds / bumpTypeOf                            (read-only)
- *   io.git.checkoutDetached / cherryPick / revert / headSha      (local only)
+ *          changesetIds / bumpTypeOf / conflictedPaths / fileAt  (read-only)
+ *   io.git.checkoutDetached / cherryPick / revert / stage /
+ *          continueApply / headSha                               (local only)
+ *   io.fs.readWorktreeFile / writeWorktreeFile                    (local only)
  *   io.git.tag / pushTag                                         (REMOTE)
  *   io.gh.newestNativeConfigPrebuildHeadSha                      (read-only)
  *   io.gh.createRelease / dispatch                               (REMOTE)
@@ -345,8 +712,16 @@ function checkGuard(trail, verdict) {
  * when a precondition says no, a plain Error when the boundary itself failed.
  */
 export function runPointRelease(opts, io) {
-  const { mode, fixRefs, anchorDeltaIds, dryRun = true, dispatchedBy = '', selfRepo = '', bridgeConfigured = true } =
-    opts;
+  const {
+    mode,
+    fixRefs,
+    anchorDeltaIds,
+    resolvePaths = [],
+    dryRun = true,
+    dispatchedBy = '',
+    selfRepo = '',
+    bridgeConfigured = true,
+  } = opts;
 
   if (mode !== 'cherry-pick' && mode !== 'revert') {
     throw new Error(`Point-release mode '${mode}' is not one of: cherry-pick, revert.`);
@@ -366,17 +741,34 @@ export function runPointRelease(opts, io) {
 
   checkGuard(guards, guardAnchor({ anchorVersion: io.readAnchorVersion(), latestStableTag }));
   checkGuard(guards, guardRefsOnMain({ fixRefs, isOnMain: io.git.isOnMain }));
+  checkGuard(guards, guardResolvePathsAllowlisted({ resolvePaths }));
 
   const resolvedRefs = fixRefs.map((ref) => ({ ref, sha: io.git.revParse(ref), onMain: true }));
 
   // Build the synthetic commit. Detaching first is what keeps the pile out of
   // the release: the tree starts as the last stable, so the only thing the
   // release can contain beyond it is what the picks add.
+  const resolutions = [];
   io.git.checkoutDetached(latestStableSha);
   for (const { ref } of resolvedRefs) {
-    applyFix(mode, ref, io);
+    applyFix(mode, ref, io, resolvePaths, resolutions);
   }
   const syntheticSha = io.git.headSha();
+
+  // Loud, and in the guard trail rather than only in the plan JSON: a release
+  // built on a re-derived config file is not a plain pick, and the operator
+  // reading the run log has to see which entries were transplanted before they
+  // decide to arm it.
+  for (const r of resolutions) {
+    const entries = [...r.removed.map((line) => `-${line.trim()}`), ...r.added.map((line) => `+${line.trim()}`)];
+    guards.push(
+      pass(`Re-derived ${r.path} for ${r.ref} rather than refusing the conflict: ${entries.join(' ')} — ${r.verified}`),
+    );
+    warnings.push(
+      `${r.ref} did not apply cleanly: ${r.path} conflicted and was re-derived as the last stable plus the ` +
+        `entries the fix itself changed (${entries.join(' ')}). Read that diff before arming a real run.`,
+    );
+  }
 
   const version = computePointReleaseVersion({ syntheticSha, latestStableTag, latestStableSha, mode }, io.git);
 
@@ -424,6 +816,7 @@ export function runPointRelease(opts, io) {
     latestStableVersion: version.latestStableVersion,
     latestStableSha,
     fixRefs: resolvedRefs,
+    resolvedPaths: resolutions,
     syntheticSha,
     syntheticTree: {
       sha: syntheticSha,
@@ -505,28 +898,114 @@ export function runPointRelease(opts, io) {
 /**
  * Apply one fix onto the detached last-stable head.
  *
- * git already fails on a conflict, so the catch adds only context; it re-throws
- * and never swallows. The context is worth the wrapper: git's own message says
- * which paths collided, which reads as a mechanical problem an operator might
- * try to hand-resolve, when the actual finding is that the fix depends on
- * something between last stable and now and therefore cannot ship alone.
+ * A conflict is a hard fail, and stays one for anything the operator did not
+ * explicitly authorize. git's own message names the paths that collided, which
+ * reads as a mechanical problem someone might try to hand-resolve, when the
+ * finding is usually that the fix depends on something between the last stable
+ * and now and therefore cannot ship alone.
  *
- * There is deliberately no strategy or conflict-resolution option to reach for.
- * Any resolution would produce a tree that is neither last stable nor the fix
- * as reviewed, shipped straight to the default install channel with no soak.
+ * The exception is narrow and has to be asked for by path. A fix delivered as a
+ * dependency patch is disqualified by drift in a config registry rather than by
+ * any dependency of its own, and the `authorized` set is how an operator says
+ * so for one named file after a dry run showed them the conflict. Even then the
+ * conflict is not resolved so much as sidestepped: the file is re-derived from
+ * the stable plus the fix's own entries, and every step that cannot be derived
+ * unambiguously refuses. There is still no strategy option to reach for, and no
+ * way to authorize a path that carries behavior.
  */
-function applyFix(mode, ref, io) {
+function applyFix(mode, ref, io, authorized, resolutions) {
+  let conflict;
   try {
     if (mode === 'revert') io.git.revert(ref);
     else io.git.cherryPick(ref);
+    return;
   } catch (err) {
+    conflict = err;
+  }
+
+  const conflicted = io.git.conflictedPaths();
+
+  // The apply failed but git left nothing unmerged, so it did not fail on a
+  // conflict: an empty pick, a dirty tree, a spawn failure. Calling any of
+  // those "not self-contained" would send the operator to pick a different
+  // commit over a problem that is not about the commit at all, so the original
+  // error propagates with git's own text and the run exits as undecided rather
+  // than as a refusal.
+  if (conflicted.length === 0) throw conflict;
+
+  const unauthorized = conflicted.filter((path) => !authorized.includes(path));
+  if (unauthorized.length > 0) {
+    // Named rather than left in git's own text, because which paths collided is
+    // the whole finding: it is what tells the operator whether the fix depends
+    // on something in between or merely landed beside a config registry that
+    // drifted. Everything unauthorized is listed, not just the first.
+    const eligible = unauthorized.filter((path) => RESOLVABLE_PATHS.includes(path));
+    // Spelled as the flag the operator just typed, so it splices straight into
+    // the `gh workflow run` line they are re-running under time pressure.
+    const hint =
+      eligible.length > 0
+        ? ` ${eligible.join(', ')} is a config registry whose conflict can be re-derived from the entries the fix ` +
+          `itself changes. Re-run with \`-f resolve_paths=${eligible.join(',')}\` to authorize that, and read the ` +
+          'resolved entries the plan prints before arming a real run.'
+        : '';
     throw new PointReleaseRefusal(
       'apply-conflict',
-      `Applying ${ref} onto the last stable hit a conflict (${mode}): ${err.message}. The fix is not ` +
-        'self-contained over the current stable, so it cannot ship as a point release. Promote through ' +
-        'the normal stable path, or pick the smaller commit that is self-contained.',
+      `Applying ${ref} onto the last stable hit a conflict (${mode}): ${messageOf(conflict)}. Unresolved ` +
+        `conflicts in: ${unauthorized.join(', ')}. The fix is not self-contained over the current stable, so it ` +
+        'cannot ship as a point release. Promote through the normal stable path, or pick the smaller commit that ' +
+        'is self-contained.' +
+        hint,
     );
   }
+
+  for (const path of conflicted) {
+    resolutions.push(resolveConflictedPath({ mode, ref, path }, io));
+    io.git.stage(path);
+  }
+  io.git.continueApply(mode);
+}
+
+const messageOf = (err) => (err instanceof Error ? err.message : String(err));
+
+/**
+ * Re-derive one authorized path and write it into the working tree.
+ *
+ * The base is HEAD rather than the stable tag, so a second ref in the same run
+ * derives against what the first one produced instead of silently reverting it.
+ * Revert mode reads the fix's two sides swapped, since a revert applies that
+ * commit's change backwards.
+ */
+function resolveConflictedPath({ mode, ref, path }, io) {
+  const read = (rev) => {
+    try {
+      return io.git.fileAt(rev, path);
+    } catch (err) {
+      // Only git's own "that tree has no such path" is a structural finding —
+      // the fix creates or deletes the file, which is not an entry-level edit.
+      // Anything else (a spawn failure, a broken object store) is the run being
+      // unable to decide, and reclassifying it as a refusal would hand the
+      // operator a factually wrong diagnosis plus the exit code that tells them
+      // to change their approach rather than to re-run.
+      if (!/does not exist in|exists on disk, but not in/.test(messageOf(err))) throw err;
+      throw new PointReleaseRefusal(
+        'resolve-not-derivable',
+        `${path} does not exist at ${rev}, so the fix creates or deletes it rather than editing entries in it.`,
+      );
+    }
+  };
+
+  const { resolved, added, removed } = deriveEntryLevelResolution({
+    base: read('HEAD'),
+    fixBefore: read(mode === 'revert' ? ref : `${ref}^`),
+    fixAfter: read(mode === 'revert' ? `${ref}^` : ref),
+  });
+
+  const verified = RESOLVABLE_PATH_VERIFIERS[path]({
+    resolved,
+    readWorktreeFile: io.fs.readWorktreeFile,
+  });
+  io.fs.writeWorktreeFile(path, resolved);
+  return { ref, path, added, removed, verified };
 }
 
 // The changesets each fix ref introduced on its own, which is what the delta
@@ -629,6 +1108,13 @@ export function formatReleaseNotes(plan) {
 function realIo() {
   return {
     readAnchorVersion,
+    // Working-tree reads and writes, kept off the git boundary because they are
+    // not git operations: the only writer is the config re-derivation, and the
+    // only reader is the coherence check that follows it.
+    fs: {
+      readWorktreeFile: (path) => readFileSync(path, 'utf8'),
+      writeWorktreeFile: (path, content) => writeFileSync(path, content),
+    },
     git: {
       ...realGit,
       // Containment in the public repo's main, which the run's own checkout
@@ -655,6 +1141,21 @@ function realIo() {
       // --no-edit only suppresses the message editor; the pick is otherwise
       // whatever git produces, and a conflict still fails.
       revert: (ref) => void runGit(['revert', '--no-edit', ref]),
+      // The unmerged entries git left in the index, which is the authoritative
+      // list of what actually collided. Reading it from the exception text
+      // instead would depend on git's advice formatting.
+      conflictedPaths: () =>
+        runGit(['diff', '--name-only', '--diff-filter=U'])
+          .split('\n')
+          .map((line) => line.trim())
+          .filter((line) => line !== ''),
+      fileAt: (rev, path) => runGit(['show', `${rev}:${path}`]),
+      stage: (path) => void runGit(['add', '--', path]),
+      // Finishes the in-progress apply with the message git already staged, so
+      // the synthetic commit still carries the fix's own subject. core.editor
+      // is neutralized for this one invocation because a runner has no editor.
+      continueApply: (mode) =>
+        void runGit(['-c', 'core.editor=true', mode === 'revert' ? 'revert' : 'cherry-pick', '--continue']),
       headSha: () => runGit(['rev-parse', 'HEAD']).trim(),
       tag: (tag, sha) => void runGit(['tag', tag, sha]),
       pushTag: (tag) => void runGit(['push', 'origin', tag]),
@@ -739,6 +1240,7 @@ function main() {
         mode: process.env.MODE,
         fixRefs: parseFixRefs(process.env.FIX_REFS),
         anchorDeltaIds: process.env.ANCHOR_DELTA_IDS,
+        resolvePaths: parseResolvePaths(process.env.RESOLVE_PATHS),
         dryRun,
         dispatchedBy: process.env.DISPATCHED_BY || '',
         selfRepo: process.env.GITHUB_REPOSITORY || '',
@@ -789,6 +1291,7 @@ function main() {
         `point_release_version=${plan.version}`,
         `latest_stable_tag=${plan.latestStableTag}`,
         `synthetic_sha=${plan.syntheticSha}`,
+        `resolved_paths=${JSON.stringify(plan.resolvedPaths.map((r) => r.path))}`,
         `delta_ids=${JSON.stringify(plan.mainReset.deltaIds ?? [])}`,
         `main_reset_dispatched=${plan.mainReset.dispatch ? 'true' : 'false'}`,
         '',

@@ -1,15 +1,20 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import {
+  deriveEntryLevelResolution,
   guardAnchor,
   guardDeltaMatchesFix,
   guardMainResetDeltaIds,
   guardNativeConfigProvenance,
   guardPatchOnly,
   guardRefsOnMain,
+  guardResolvePathsAllowlisted,
   guardTagFree,
   parseFixRefs,
+  parseResolvePaths,
+  RESOLVABLE_PATHS,
   runPointRelease,
+  verifyWorkspaceMatchesLockfile,
 } from './point-release-plan.mjs';
 
 // Build an isOnMain / tagExists boundary from a plain list. The sentinel
@@ -226,11 +231,290 @@ describe('guardMainResetDeltaIds', () => {
   });
 });
 
+// The three-ref fixture the resolution path is built around, reduced from the
+// real refusal that motivated it: between the last stable and the fix, the
+// patchedDependencies block was re-sorted and gained an unrelated entry, so the
+// fix's own single added line no longer has its diff context. Its patch file is
+// not in the synthetic tree, which is why taking the fix's whole file is not
+// merely disallowed but broken.
+//
+// The `overrides:` block is load-bearing, not scenery: it is the second block
+// the lockfile mirrors, so without it here the overrides half of the coherence
+// check would compare two empty maps and pass vacuously on every test.
+const WS_STABLE = `packages:
+  - 'packages/*'
+
+overrides:
+  'radix-ui': 1.4.3
+  "@types/node": ^24.7.0
+
+patchedDependencies:
+  '@handlewithcare/remark-prosemirror@0.1.5': patches/@handlewithcare%2Fremark-prosemirror@0.1.5.patch
+  'y-prosemirror@1.3.7': patches/y-prosemirror@1.3.7.patch
+  '@pierre/trees@1.0.0-beta.4': patches/@pierre%2Ftrees@1.0.0-beta.4.patch
+`;
+
+const WS_FIX_PARENT = `packages:
+  - 'packages/*'
+
+overrides:
+  'radix-ui': 1.4.3
+  "@types/node": ^24.7.0
+
+patchedDependencies:
+  '@handlewithcare/remark-prosemirror@0.1.5': patches/@handlewithcare%2Fremark-prosemirror@0.1.5.patch
+  '@lingui/core@6.5.0': patches/@lingui%2Fcore@6.5.0.patch
+  '@pierre/trees@1.0.0-beta.4': patches/@pierre%2Ftrees@1.0.0-beta.4.patch
+  'y-prosemirror@1.3.7': patches/y-prosemirror@1.3.7.patch
+`;
+
+const WS_FIX = WS_FIX_PARENT.replace(
+  "  'y-prosemirror@1.3.7'",
+  "  'react-resizable-panels@4.12.1': patches/react-resizable-panels@4.12.1.patch\n  'y-prosemirror@1.3.7'",
+);
+
+// pnpm writes some keys quoted and some bare in the same block, so the key
+// reader has to survive both to compare the two files at all.
+// Quoting deliberately differs from the workspace file on every key: pnpm
+// writes each file's keys its own way, so a comparison that treated quoting as
+// a difference would refuse every legitimate resolution.
+const LOCK_AFTER_MERGE = `lockfileVersion: '9.0'
+
+overrides:
+  radix-ui: 1.4.3
+  '@types/node': ^24.7.0
+
+patchedDependencies:
+  '@handlewithcare/remark-prosemirror@0.1.5':
+    hash: aaa
+    path: patches/@handlewithcare%2Fremark-prosemirror@0.1.5.patch
+  '@pierre/trees@1.0.0-beta.4':
+    hash: bbb
+    path: patches/@pierre%2Ftrees@1.0.0-beta.4.patch
+  react-resizable-panels@4.12.1:
+    hash: ccc
+    path: patches/react-resizable-panels@4.12.1.patch
+  y-prosemirror@1.3.7:
+    hash: ddd
+    path: patches/y-prosemirror@1.3.7.patch
+
+importers:
+`;
+
+describe('parseResolvePaths', () => {
+  test('is empty for a blank input, so nothing is authorized by default', () => {
+    expect(parseResolvePaths(undefined)).toEqual([]);
+    expect(parseResolvePaths('   ')).toEqual([]);
+  });
+
+  test('splits and dedupes like the sibling list inputs', () => {
+    expect(parseResolvePaths('pnpm-workspace.yaml, pnpm-workspace.yaml')).toEqual(['pnpm-workspace.yaml']);
+  });
+});
+
+describe('guardResolvePathsAllowlisted', () => {
+  test('passes on an empty input and says nothing is authorized', () => {
+    const r = guardResolvePathsAllowlisted({ resolvePaths: [] });
+    expect(r).toMatchObject({ ok: true, code: null });
+    expect(r.message).toMatch(/hard-fail/i);
+  });
+
+  test('passes on an allowlisted config path', () => {
+    expect(guardResolvePathsAllowlisted({ resolvePaths: ['pnpm-workspace.yaml'] })).toMatchObject({
+      ok: true,
+    });
+  });
+
+  test('refuses a source path, naming every offender', () => {
+    const r = guardResolvePathsAllowlisted({
+      resolvePaths: ['pnpm-workspace.yaml', 'packages/app/src/main.tsx', '.github/workflows/release.yml'],
+    });
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe('resolve-path-not-allowlisted');
+    expect(r.message).toContain('packages/app/src/main.tsx');
+    expect(r.message).toContain('.github/workflows/release.yml');
+  });
+
+  test('refuses a glob or a parent directory rather than expanding it', () => {
+    expect(guardResolvePathsAllowlisted({ resolvePaths: ['*'] }).code).toBe('resolve-path-not-allowlisted');
+    expect(guardResolvePathsAllowlisted({ resolvePaths: ['.'] }).code).toBe('resolve-path-not-allowlisted');
+  });
+});
+
+describe('deriveEntryLevelResolution', () => {
+  test('rebuilds the stable file with the entry the fix added and nothing else', () => {
+    const { resolved, added, removed } = deriveEntryLevelResolution({
+      base: WS_STABLE,
+      fixBefore: WS_FIX_PARENT,
+      fixAfter: WS_FIX,
+    });
+    expect(added).toEqual(["  'react-resizable-panels@4.12.1': patches/react-resizable-panels@4.12.1.patch"]);
+    expect(removed).toEqual([]);
+    // The entry the fix brought is registered; the unrelated entry that drifted
+    // in alongside it is NOT, because its patch file is not in this tree.
+    expect(resolved).toContain("'react-resizable-panels@4.12.1': patches/react-resizable-panels@4.12.1.patch");
+    expect(resolved).not.toContain('@lingui/core');
+    // The stable's own order is preserved rather than replaced by the fix's.
+    expect(resolved).toBe(
+      `${WS_STABLE}  'react-resizable-panels@4.12.1': patches/react-resizable-panels@4.12.1.patch\n`,
+    );
+  });
+
+  test('lands the entry inside its block, not at the end of the file', () => {
+    // The block happens to be last in the reduced fixture, so pin the general
+    // case too: with a section after it, the entry still goes in the block.
+    const withTail = `${WS_STABLE}\nonlyBuiltDependencies:\n  - electron\n`;
+    const { resolved } = deriveEntryLevelResolution({
+      base: withTail,
+      fixBefore: WS_FIX_PARENT,
+      fixAfter: WS_FIX,
+    });
+    const lines = resolved.split('\n');
+    const at = lines.findIndex((l) => l.includes('react-resizable-panels'));
+    expect(at).toBeGreaterThan(lines.indexOf('patchedDependencies:'));
+    expect(at).toBeLessThan(lines.indexOf('onlyBuiltDependencies:'));
+  });
+
+  test('carries a removal through as a deletion of that exact entry', () => {
+    const fixAfter = WS_FIX_PARENT.replace("  'y-prosemirror@1.3.7': patches/y-prosemirror@1.3.7.patch\n", '');
+    const { resolved, added, removed } = deriveEntryLevelResolution({
+      base: WS_STABLE,
+      fixBefore: WS_FIX_PARENT,
+      fixAfter,
+    });
+    expect(added).toEqual([]);
+    expect(removed).toEqual(["  'y-prosemirror@1.3.7': patches/y-prosemirror@1.3.7.patch"]);
+    expect(resolved).not.toContain('y-prosemirror');
+    expect(resolved).toContain('@pierre/trees');
+  });
+
+  test('refuses when the stable already declares the added key with a different value', () => {
+    // Not an addition at all: the fix and the stable disagree about one entry,
+    // and re-deriving would silently pick a side.
+    const base = WS_STABLE.replace(
+      "  '@pierre/trees@1.0.0-beta.4': patches/@pierre%2Ftrees@1.0.0-beta.4.patch",
+      "  'react-resizable-panels@4.12.1': patches/react-resizable-panels@4.11.0.patch",
+    );
+    expect(() => deriveEntryLevelResolution({ base, fixBefore: WS_FIX_PARENT, fixAfter: WS_FIX })).toThrow(
+      /CHANGES that entry/,
+    );
+  });
+
+  test('refuses when the block the entry belongs to is not in the stable file', () => {
+    const base = "packages:\n  - 'packages/*'\n";
+    expect(() => deriveEntryLevelResolution({ base, fixBefore: WS_FIX_PARENT, fixAfter: WS_FIX })).toThrow(
+      /not in the last stable/,
+    );
+  });
+
+  test.each([
+    ['a new top-level key', `${WS_FIX_PARENT}ignorePatchFailures: false\n`],
+    // A comment and a sequence item both have no key to place them by, so
+    // deriving one would mean guessing what it was attached to.
+    ['a comment inside the block', WS_FIX_PARENT.replace('patchedDependencies:\n', 'patchedDependencies:\n  # note\n')],
+    ['a sequence item', WS_FIX_PARENT.replace("  - 'packages/*'\n", "  - 'packages/*'\n  - 'apps/*'\n")],
+  ])('refuses %s, which is not an indented mapping entry', (_label, fixAfter) => {
+    expect(() => deriveEntryLevelResolution({ base: WS_STABLE, fixBefore: WS_FIX_PARENT, fixAfter })).toThrow(
+      /not an indented mapping entry/,
+    );
+  });
+
+  test('refuses to remove a line the stable no longer has', () => {
+    const fixAfter = WS_FIX_PARENT.replace("  '@lingui/core@6.5.0': patches/@lingui%2Fcore@6.5.0.patch\n", '');
+    expect(() => deriveEntryLevelResolution({ base: WS_STABLE, fixBefore: WS_FIX_PARENT, fixAfter })).toThrow(
+      /does not appear exactly once in the last stable/,
+    );
+  });
+
+  test('refuses when the fix does not touch the file at all', () => {
+    expect(() =>
+      deriveEntryLevelResolution({
+        base: WS_STABLE,
+        fixBefore: WS_FIX_PARENT,
+        fixAfter: WS_FIX_PARENT,
+      }),
+    ).toThrow(/makes no line-level change/);
+  });
+});
+
+describe('verifyWorkspaceMatchesLockfile', () => {
+  const resolved = deriveEntryLevelResolution({
+    base: WS_STABLE,
+    fixBefore: WS_FIX_PARENT,
+    fixAfter: WS_FIX,
+  }).resolved;
+
+  test('passes when the re-derived registrations match the merged lockfile', () => {
+    const note = verifyWorkspaceMatchesLockfile({
+      resolved,
+      readWorktreeFile: () => LOCK_AFTER_MERGE,
+    });
+    expect(note).toMatch(/agrees with the lockfile/);
+    expect(note).toContain('patchedDependencies');
+  });
+
+  test('catches taking the fix file wholesale, which registers a patch that is not in the tree', () => {
+    expect(() =>
+      verifyWorkspaceMatchesLockfile({
+        resolved: WS_FIX,
+        readWorktreeFile: () => LOCK_AFTER_MERGE,
+      }),
+    ).toThrow(/@lingui\/core/);
+  });
+
+  test('catches keeping the stable file wholesale, which drops the fix own registration', () => {
+    expect(() =>
+      verifyWorkspaceMatchesLockfile({
+        resolved: WS_STABLE,
+        readWorktreeFile: () => LOCK_AFTER_MERGE,
+      }),
+    ).toThrow(/react-resizable-panels/);
+  });
+
+  test('reads through the two files differing quote styles rather than calling them a mismatch', () => {
+    // The same override is `"@types/node"` in the workspace file and
+    // `'@types/node'` in the lockfile. Treating that as a difference would
+    // refuse every legitimate resolution.
+    expect(verifyWorkspaceMatchesLockfile({ resolved, readWorktreeFile: () => LOCK_AFTER_MERGE })).toContain(
+      'overrides',
+    );
+  });
+
+  test('checks overrides too, not just patch registrations', () => {
+    // pnpm hard-fails a frozen install on an overrides mismatch exactly as it
+    // does on patchedDependencies. Checking only the latter would verify an
+    // overrides re-derivation with a comparison that passes vacuously.
+    const withExtraOverride = resolved.replace("  'radix-ui': 1.4.3", "  'radix-ui': 1.4.3\n  'left-pad': 1.3.0");
+    expect(() =>
+      verifyWorkspaceMatchesLockfile({ resolved: withExtraOverride, readWorktreeFile: () => LOCK_AFTER_MERGE }),
+    ).toThrow(/overrides.*left-pad/s);
+  });
+
+  test('catches an overrides VALUE that drifted, not just a missing key', () => {
+    const bumped = resolved.replace("  'radix-ui': 1.4.3", "  'radix-ui': 1.9.9");
+    expect(() =>
+      verifyWorkspaceMatchesLockfile({ resolved: bumped, readWorktreeFile: () => LOCK_AFTER_MERGE }),
+    ).toThrow(/radix-ui: 1\.9\.9/);
+  });
+
+  test('fails closed when the lockfile cannot be read', () => {
+    expect(() =>
+      verifyWorkspaceMatchesLockfile({
+        resolved,
+        readWorktreeFile: () => {
+          throw new Error('ENOENT');
+        },
+      }),
+    ).toThrow();
+  });
+});
+
 describe('guard codes', () => {
   test('every guard refuses with its own distinct code', () => {
     const refusals = [
       guardAnchor({ anchorVersion: '0.32.0', latestStableTag: 'v0.32.1' }),
       guardRefsOnMain({ fixRefs: ['stray'], isOnMain: membership() }),
+      guardResolvePathsAllowlisted({ resolvePaths: ['packages/app/src/main.tsx'] }),
       guardTagFree({ tag: 'v0.32.1', tagExists: membership('v0.32.1') }),
       guardDeltaMatchesFix({ mode: 'revert', addedIds: ['x'], fixChangesetIds: [] }),
       guardPatchOnly({ bump: 'major' }),
@@ -261,6 +545,12 @@ function makeIo(overrides = {}) {
     ancestries = [['prebuild-sha', 'synthetic-sha']],
     cherryPick,
     revert,
+    // Conflict simulation. `conflicts` is the unmerged path list git would
+    // report; `files` is a `${rev}:${path}` -> contents map the derivation and
+    // its coherence check read from.
+    conflicts = [],
+    files = {},
+    worktree = {},
   } = overrides;
 
   const calls = { tag: 0, pushTag: 0, createRelease: 0, dispatch: 0 };
@@ -268,6 +558,10 @@ function makeIo(overrides = {}) {
   const releases = [];
   const applied = [];
   const checkedOut = [];
+  const staged = [];
+  const continued = [];
+  const written = {};
+  const reads = [];
 
   return {
     calls,
@@ -275,6 +569,27 @@ function makeIo(overrides = {}) {
     releases,
     applied,
     checkedOut,
+    staged,
+    continued,
+    written,
+    reads,
+    // Exposed so a multi-pick test can advance it the way git does: each pick
+    // merges the lockfile again, so the arbiter a derivation is checked against
+    // is the one for the pick being applied, not the end state.
+    worktree,
+    fs: {
+      readWorktreeFile: (path) => {
+        if (!(path in worktree)) throw new Error(`no worktree file ${path}`);
+        return worktree[path];
+      },
+      // Recorded where `fileAt('HEAD', …)` will find it, so a second ref in the
+      // same run derives against what the first one produced. A fake that kept
+      // returning the tag's copy would let a regression that silently reverts
+      // the first derivation pass.
+      writeWorktreeFile: (path, content) => {
+        written[path] = content;
+      },
+    },
     readAnchorVersion: () => anchorVersion,
     git: {
       newestStableTag: () => stableTag,
@@ -292,6 +607,21 @@ function makeIo(overrides = {}) {
       checkoutDetached: (sha) => checkedOut.push(sha),
       cherryPick: cherryPick ?? ((ref) => applied.push(['cherry-pick', ref])),
       revert: revert ?? ((ref) => applied.push(['revert', ref])),
+      conflictedPaths: () => [...conflicts],
+      fileAt: (rev, path) => {
+        const key = `${rev}:${path}`;
+        reads.push(key);
+        // HEAD tracks the working tree once something has been written to it,
+        // which is what makes a second ref derive against the first's output.
+        if (rev === 'HEAD' && path in written) return written[path];
+        if (!(key in files)) throw new Error(`fatal: path '${path}' does not exist in '${rev}'`);
+        return files[key];
+      },
+      stage: (path) => staged.push(path),
+      continueApply: (mode) => {
+        continued.push(mode);
+        applied.push([mode, 'continued']);
+      },
       headSha: () => 'synthetic-sha',
       tag: () => calls.tag++,
       pushTag: () => calls.pushTag++,
@@ -309,6 +639,29 @@ function makeIo(overrides = {}) {
     },
   };
 }
+
+// A cherry-pick that collides in the workspace config and nowhere else, which
+// is the shape the resolution path exists for.
+const conflictIo = (overrides = {}) =>
+  makeIo({
+    cherryPick: () => {
+      throw new Error('CONFLICT (content): Merge conflict in pnpm-workspace.yaml');
+    },
+    conflicts: ['pnpm-workspace.yaml'],
+    files: {
+      'HEAD:pnpm-workspace.yaml': WS_STABLE,
+      'fix1^:pnpm-workspace.yaml': WS_FIX_PARENT,
+      'fix1:pnpm-workspace.yaml': WS_FIX,
+    },
+    worktree: { 'pnpm-lock.yaml': LOCK_AFTER_MERGE },
+    changesets: {
+      'stable-sha': ['keep-a'],
+      'synthetic-sha': ['keep-a', 'shiny-fix'],
+      fix1: ['keep-a', 'shiny-fix'],
+      'fix1^': ['keep-a'],
+    },
+    ...overrides,
+  });
 
 describe('runPointRelease dry run', () => {
   test('revert mode over v0.32.0 plans v0.32.1 and touches nothing remote', () => {
@@ -604,6 +957,7 @@ describe('runPointRelease refusals', () => {
       [member]: () => {
         throw new Error('CONFLICT (content): Merge conflict in packages/cli/src/index.ts');
       },
+      conflicts: ['packages/cli/src/index.ts'],
       changesets: {
         'stable-sha': ['keep-a'],
         'synthetic-sha': ['keep-a', 'shiny-fix'],
@@ -619,33 +973,377 @@ describe('runPointRelease refusals', () => {
     }
     expect(refusal?.code).toBe('apply-conflict');
     expect(refusal?.message).toMatch(/conflict/i);
+    expect(refusal?.message).toContain('packages/cli/src/index.ts');
     expect(io.calls).toEqual({ tag: 0, pushTag: 0, createRelease: 0, dispatch: 0 });
   });
 
-  test('offers no conflict-resolution escape hatch to reach for', () => {
+  test('an apply that fails without leaving a conflict propagates as undecided, not as a refusal', () => {
+    // An empty pick, a dirty tree, a git spawn failure. None of them says the
+    // fix depends on something between the last stable and now, so calling them
+    // `apply-conflict` would send the operator to pick a different commit over
+    // a problem that is not about the commit — and would exit 2 ("you have
+    // something to do") where the honest answer is exit 1 ("re-run it").
+    const io = makeIo({
+      cherryPick: () => {
+        throw new Error('error: git failed to execute (exit null)');
+      },
+      conflicts: [],
+    });
+    let caught;
+    try {
+      runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], dryRun: false }, io);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect(caught?.code).toBeUndefined();
+    expect(caught?.message).toContain('git failed to execute');
+    expect(io.calls).toEqual({ tag: 0, pushTag: 0, createRelease: 0, dispatch: 0 });
+  });
+
+  test('a conflict in an allowlisted path still hard-fails when it was not authorized', () => {
+    // The default is unchanged, and the refusal is where the operator learns
+    // the option exists at all — naming a path is a decision made after seeing
+    // a dry run refuse, not something to reach for pre-emptively.
+    const io = conflictIo();
+    let refusal;
+    try {
+      runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], dryRun: false }, io);
+    } catch (err) {
+      refusal = err;
+    }
+    expect(refusal?.code).toBe('apply-conflict');
+    expect(refusal.message).toContain('resolve_paths=pnpm-workspace.yaml');
+    expect(io.written).toEqual({});
+    expect(io.staged).toEqual([]);
+    expect(io.continued).toEqual([]);
+    expect(io.calls).toEqual({ tag: 0, pushTag: 0, createRelease: 0, dispatch: 0 });
+  });
+
+  test('still names the eligible config path in the hint when source conflicted too', () => {
+    // The shape an operator actually meets: a pick that collides in source AND
+    // in the config registry, with nothing authorized. The refusal has to list
+    // both paths (so they can see the source conflict is the real blocker) and
+    // still name the one that would be resolvable on its own. An `eligible`
+    // filter written against the wrong list would drop the hint here while the
+    // single-path test above kept passing.
+    const io = conflictIo({ conflicts: ['pnpm-workspace.yaml', 'packages/cli/src/index.ts'] });
+    let refusal;
+    try {
+      runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], dryRun: false }, io);
+    } catch (err) {
+      refusal = err;
+    }
+    expect(refusal?.code).toBe('apply-conflict');
+    expect(refusal.message).toContain('packages/cli/src/index.ts');
+    expect(refusal.message).toContain('-f resolve_paths=pnpm-workspace.yaml');
+    // The hint names only the allowlisted path, never the source one.
+    expect(refusal.message).not.toContain('resolve_paths=pnpm-workspace.yaml,packages');
+    expect(io.written).toEqual({});
+  });
+
+  test('offers no side-picking escape hatch to reach for', () => {
     const source = readFileSync(new URL('./point-release-plan.mjs', import.meta.url), 'utf8');
-    // Git's merge-strategy and pick-continuation affordances, in the forms they
+    // Git's merge-strategy and pick-skipping affordances, in the forms they
     // would actually appear in an argv array. Bare 'ours'/'theirs' are matched
     // quoted so ordinary prose like "now yours" does not trip the check.
-    const escapes = [
-      '--strategy',
-      '-Xours',
-      '-Xtheirs',
-      "'ours'",
-      "'theirs'",
-      '--continue',
-      '--skip',
-      '--abort',
-      '--no-commit',
-    ];
+    // Both of those sides are not merely disallowed by policy: taking either
+    // one wholesale for pnpm-workspace.yaml produces a tree whose patch
+    // registrations or overrides disagree with the lockfile, which cannot
+    // install at all.
+    const escapes = ['--strategy', '-Xours', '-Xtheirs', "'ours'", "'theirs'", '--skip', '--abort', '--no-commit'];
     for (const escape of escapes) {
       expect(source).not.toContain(escape);
+    }
+  });
+
+  test('the resolvable-path allowlist admits config registries only, never behavior', () => {
+    // The allowlist is the whole security boundary of the resolution path: it
+    // is what keeps `resolve_paths` from becoming a general "resolve my
+    // conflicts" switch aimed at whatever an operator types. Growing it is a
+    // deliberate act that should fail this test first.
+    expect(RESOLVABLE_PATHS).toEqual(['pnpm-workspace.yaml']);
+    for (const path of RESOLVABLE_PATHS) {
+      expect(path.endsWith('.yaml') || path.endsWith('.json')).toBe(true);
+      expect(path).not.toMatch(/^(packages|src|scripts|patches|\.github)\//);
     }
   });
 
   test('rejects a mode it does not recognize rather than defaulting to cherry-pick', () => {
     const io = makeIo();
     expect(() => runPointRelease({ mode: 'rebase', fixRefs: ['bad1'], dryRun: true }, io)).toThrow(/not one of/);
+    expect(io.applied).toEqual([]);
+  });
+});
+
+describe('runPointRelease with an authorized config path', () => {
+  const authorized = ['pnpm-workspace.yaml'];
+
+  test('re-derives the file, finishes the pick, and ships', () => {
+    const io = conflictIo();
+    const plan = runPointRelease(
+      { mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: false },
+      io,
+    );
+
+    expect(io.written['pnpm-workspace.yaml']).toContain("'react-resizable-panels@4.12.1'");
+    expect(io.written['pnpm-workspace.yaml']).not.toContain('@lingui/core');
+    expect(io.staged).toEqual(['pnpm-workspace.yaml']);
+    expect(io.continued).toEqual(['cherry-pick']);
+    expect(io.calls).toMatchObject({ tag: 1, pushTag: 1, createRelease: 1 });
+
+    expect(plan.resolvedPaths).toHaveLength(1);
+    expect(plan.resolvedPaths[0]).toMatchObject({
+      ref: 'fix1',
+      path: 'pnpm-workspace.yaml',
+      removed: [],
+    });
+  });
+
+  test('the derivation reads the stable from HEAD, not from the tag', () => {
+    const io = conflictIo();
+    runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: true }, io);
+    expect(io.reads).toContain('HEAD:pnpm-workspace.yaml');
+    expect(io.reads).not.toContain('stable-sha:pnpm-workspace.yaml');
+  });
+
+  test('a second conflicting ref derives against the first one output, not back onto the tag', () => {
+    // The invariant reading from HEAD exists for. Both refs register a patch
+    // and both conflict; if the second derived from the tag again it would
+    // silently drop the first ref's entry, and the release would ship claiming
+    // a fix whose registration is not in the tree.
+    const withBoth = LOCK_AFTER_MERGE.replace(
+      '  y-prosemirror@1.3.7:',
+      `  second-fix@2.0.0:
+    hash: eee
+    path: patches/second-fix@2.0.0.patch
+  y-prosemirror@1.3.7:`,
+    );
+    const io = conflictIo({
+      onMain: ['fix1', 'fix2'],
+      files: {
+        'HEAD:pnpm-workspace.yaml': WS_STABLE,
+        'fix1^:pnpm-workspace.yaml': WS_FIX_PARENT,
+        'fix1:pnpm-workspace.yaml': WS_FIX,
+        'fix2^:pnpm-workspace.yaml': WS_FIX,
+        'fix2:pnpm-workspace.yaml': WS_FIX.replace(
+          "  'y-prosemirror@1.3.7'",
+          "  'second-fix@2.0.0': patches/second-fix@2.0.0.patch\n  'y-prosemirror@1.3.7'",
+        ),
+      },
+      changesets: {
+        'stable-sha': ['keep-a'],
+        'synthetic-sha': ['keep-a', 'fix1-cs', 'fix2-cs'],
+        fix1: ['keep-a', 'fix1-cs'],
+        'fix1^': ['keep-a'],
+        fix2: ['keep-a', 'fix1-cs', 'fix2-cs'],
+        'fix2^': ['keep-a', 'fix1-cs'],
+      },
+    });
+
+    // git re-merges the lockfile on each pick, so the second derivation is
+    // checked against a lockfile that now carries both entries.
+    const finishPick = io.git.continueApply;
+    io.git.continueApply = (mode) => {
+      io.worktree['pnpm-lock.yaml'] = withBoth;
+      finishPick(mode);
+    };
+
+    const plan = runPointRelease(
+      { mode: 'cherry-pick', fixRefs: ['fix1', 'fix2'], resolvePaths: authorized, dryRun: true },
+      io,
+    );
+
+    expect(plan.resolvedPaths).toHaveLength(2);
+    expect(io.continued).toEqual(['cherry-pick', 'cherry-pick']);
+    // Both entries survive, and the second derivation did not revert the first.
+    const final = io.written['pnpm-workspace.yaml'];
+    expect(final).toContain("'react-resizable-panels@4.12.1'");
+    expect(final).toContain("'second-fix@2.0.0'");
+    expect(final).not.toContain('@lingui/core');
+  });
+
+  test('a missing path at a fix revision refuses as not-derivable', () => {
+    const io = conflictIo({
+      files: { 'HEAD:pnpm-workspace.yaml': WS_STABLE, 'fix1^:pnpm-workspace.yaml': WS_FIX_PARENT },
+    });
+    let refusal;
+    try {
+      runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: false }, io);
+    } catch (err) {
+      refusal = err;
+    }
+    expect(refusal?.code).toBe('resolve-not-derivable');
+    expect(io.written).toEqual({});
+    expect(io.staged).toEqual([]);
+    expect(io.continued).toEqual([]);
+    expect(io.calls).toEqual({ tag: 0, pushTag: 0, createRelease: 0, dispatch: 0 });
+  });
+
+  test('git other not-in-this-tree wording also refuses as not-derivable', () => {
+    // git says "does not exist in" for a path absent from the tree and "exists
+    // on disk, but not in" when the working tree has it and the tree-ish does
+    // not. Both mean the same thing here; only the first arrives through the
+    // fake's own message, so without this the second alternative could be
+    // dropped in a refactor with the suite still green.
+    const io = conflictIo();
+    const real = io.git.fileAt;
+    io.git.fileAt = (rev, path) => {
+      if (rev === 'fix1') throw new Error(`fatal: path '${path}' exists on disk, but not in 'fix1'`);
+      return real(rev, path);
+    };
+    let refusal;
+    try {
+      runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: false }, io);
+    } catch (err) {
+      refusal = err;
+    }
+    expect(refusal?.code).toBe('resolve-not-derivable');
+    expect(io.written).toEqual({});
+    expect(io.continued).toEqual([]);
+  });
+
+  test('an unreadable revision propagates as undecided rather than posing as a structural finding', () => {
+    // A spawn failure is not the fix creating or deleting the file. Dressing it
+    // as `resolve-not-derivable` would tell the operator to go find a
+    // disagreement between the fix and the stable that does not exist.
+    const io = conflictIo();
+    io.git.fileAt = () => {
+      throw new Error('git show HEAD:pnpm-workspace.yaml failed (exit null): spawn ENOMEM');
+    };
+    let caught;
+    try {
+      runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: false }, io);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught?.code).toBeUndefined();
+    expect(caught?.message).toContain('ENOMEM');
+    expect(io.written).toEqual({});
+    expect(io.continued).toEqual([]);
+  });
+
+  test('revert mode reads the fix two sides swapped, so it removes the entry', () => {
+    const io = conflictIo({
+      revert: () => {
+        throw new Error('CONFLICT (content): Merge conflict in pnpm-workspace.yaml');
+      },
+      changesets: { 'stable-sha': ['keep-a'], 'synthetic-sha': ['keep-a'] },
+      files: {
+        'HEAD:pnpm-workspace.yaml': WS_STABLE,
+        'bad1:pnpm-workspace.yaml': WS_FIX_PARENT,
+        'bad1^:pnpm-workspace.yaml': WS_FIX_PARENT.replace(
+          "  '@pierre/trees@1.0.0-beta.4': patches/@pierre%2Ftrees@1.0.0-beta.4.patch\n",
+          '',
+        ),
+      },
+      worktree: {
+        'pnpm-lock.yaml': `lockfileVersion: '9.0'
+
+overrides:
+  radix-ui: 1.4.3
+  '@types/node': ^24.7.0
+
+patchedDependencies:
+  '@handlewithcare/remark-prosemirror@0.1.5':
+    hash: aaa
+    path: patches/@handlewithcare%2Fremark-prosemirror@0.1.5.patch
+  y-prosemirror@1.3.7:
+    hash: ddd
+    path: patches/y-prosemirror@1.3.7.patch
+
+importers:
+`,
+      },
+    });
+    runPointRelease({ mode: 'revert', fixRefs: ['bad1'], resolvePaths: authorized, dryRun: false }, io);
+    expect(io.written['pnpm-workspace.yaml']).not.toContain('@pierre/trees');
+    expect(io.written['pnpm-workspace.yaml']).toContain('y-prosemirror');
+    expect(io.continued).toEqual(['revert']);
+  });
+
+  test('a dry run performs the resolution and still touches nothing remote', () => {
+    // The whole point of authorizing a path is to see what it produces before
+    // arming, so the derivation has to run on the dry pass too.
+    const io = conflictIo();
+    const plan = runPointRelease(
+      { mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: true },
+      io,
+    );
+    expect(io.written['pnpm-workspace.yaml']).toContain("'react-resizable-panels@4.12.1'");
+    expect(plan.resolvedPaths[0].added).toEqual([
+      "  'react-resizable-panels@4.12.1': patches/react-resizable-panels@4.12.1.patch",
+    ]);
+    expect(io.calls).toEqual({ tag: 0, pushTag: 0, createRelease: 0, dispatch: 0 });
+  });
+
+  test('says so loudly, in the guard trail and as a warning', () => {
+    const io = conflictIo();
+    const plan = runPointRelease(
+      { mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: true },
+      io,
+    );
+    expect(plan.guards.some((g) => g.message.includes('Re-derived pnpm-workspace.yaml'))).toBe(true);
+    const warning = plan.warnings.join(' ');
+    expect(warning).toContain('did not apply cleanly');
+    expect(warning).toContain('react-resizable-panels@4.12.1');
+  });
+
+  test('authorizing one path does not license a second, unauthorized one', () => {
+    const io = conflictIo({ conflicts: ['pnpm-workspace.yaml', 'packages/app/src/main.tsx'] });
+    let refusal;
+    try {
+      runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: false }, io);
+    } catch (err) {
+      refusal = err;
+    }
+    expect(refusal?.code).toBe('apply-conflict');
+    expect(refusal.message).toContain('packages/app/src/main.tsx');
+    expect(io.written).toEqual({});
+    expect(io.continued).toEqual([]);
+  });
+
+  test('refuses when the re-derived file disagrees with the merged lockfile', () => {
+    // The lockfile is the independent arbiter: git merged it from the same two
+    // sides with no help from this code, so a mismatch means the derivation is
+    // wrong, and a frozen install would fail after the tag already existed.
+    const io = conflictIo({
+      worktree: {
+        'pnpm-lock.yaml': LOCK_AFTER_MERGE.replace(/ {2}react-resizable-panels@4\.12\.1:\n.*\n.*\n/, ''),
+      },
+    });
+    let refusal;
+    try {
+      runPointRelease({ mode: 'cherry-pick', fixRefs: ['fix1'], resolvePaths: authorized, dryRun: false }, io);
+    } catch (err) {
+      refusal = err;
+    }
+    expect(refusal?.code).toBe('resolve-incoherent');
+    expect(io.written).toEqual({});
+    expect(io.continued).toEqual([]);
+    expect(io.calls).toEqual({ tag: 0, pushTag: 0, createRelease: 0, dispatch: 0 });
+  });
+
+  test('refuses before the pick when the named path is not allowlisted', () => {
+    const io = conflictIo();
+    let refusal;
+    try {
+      runPointRelease(
+        {
+          mode: 'cherry-pick',
+          fixRefs: ['fix1'],
+          resolvePaths: ['packages/app/src/main.tsx'],
+          dryRun: false,
+        },
+        io,
+      );
+    } catch (err) {
+      refusal = err;
+    }
+    expect(refusal?.code).toBe('resolve-path-not-allowlisted');
+    // Ahead of the detach, so an over-broad input costs a second and leaves no
+    // working state behind.
+    expect(io.checkedOut).toEqual([]);
     expect(io.applied).toEqual([]);
   });
 });
