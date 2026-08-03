@@ -24,6 +24,7 @@ import {
   createCrashDetection,
   startLocalCrashReporter,
 } from './crash-detection.ts';
+import { buildMinidump } from './minidump.test-helper.ts';
 
 const tmpDirs: string[] = [];
 
@@ -38,9 +39,20 @@ const silentLogger = {
   warn: () => {},
 };
 
+/** A third-party GUI app that inherited our exception handler and aborted. */
+const FOREIGN_DUMP = buildMinidump([
+  '/Applications/LibreOffice.app/Contents/MacOS/soffice',
+  '/usr/lib/dyld',
+]);
+
+/** Truncated past the header — the shape a crash-during-dump-write leaves. */
+const UNPARSEABLE_DUMP = Buffer.from('minidump-bytes-that-are-not-a-minidump');
+
 interface Rig {
   deps: CrashDetectionDeps;
   emitted: OkBugReportCrashDetectedEvent[];
+  /** A dump naming one of this rig's own executables as its main module. */
+  ownDump: Buffer;
   /** Flip to false to simulate "no live renderer window can take the event". */
   setRendererAvailable(available: boolean): void;
   /** Swap the kernel boot-session identity, simulating a reboot between sessions. */
@@ -57,9 +69,24 @@ function makeRig(): Rig {
   let rendererAvailable = true;
   let bootSessionUuid: string | null = 'boot-epoch-a';
   let clockMs = Date.parse('2026-07-10T00:00:00.000Z');
+  const appBundleRoot = join(dir, 'Applications', 'OpenKnowledge.app');
   return {
     dir,
     emitted,
+    // A helper process rather than the main binary: renderer/GPU/utility crashes
+    // are the common case, and they must resolve inside the bundle root too.
+    ownDump: buildMinidump([
+      join(
+        appBundleRoot,
+        'Contents',
+        'Frameworks',
+        'OpenKnowledge Helper (Renderer).app',
+        'Contents',
+        'MacOS',
+        'OpenKnowledge Helper (Renderer)',
+      ),
+      '/usr/lib/dyld',
+    ]),
     setRendererAvailable(available: boolean) {
       rendererAvailable = available;
     },
@@ -74,6 +101,7 @@ function makeRig(): Rig {
       sentinelPath: join(dir, 'user-data', 'bug-report-dirty-shutdown.json'),
       ackStorePath: join(dir, 'user-data', 'bug-report-crash-acks.json'),
       crashDumpsDir: join(dir, 'crash-dumps'),
+      appBundleRoot,
       emit(event) {
         if (!rendererAvailable) return false;
         emitted.push(event);
@@ -96,12 +124,17 @@ function readSentinel(rig: Rig): Record<string, string | undefined> {
   >;
 }
 
-/** Seed a minidump whose mtime is pinned to the fake clock's timeline. */
-function seedMinidump(rig: Rig, relPath: string, at: Date): void {
+/**
+ * Seed a minidump whose mtime is pinned to the fake clock's timeline. Defaults
+ * to a dump owned by this rig's app bundle, so every pre-existing test keeps
+ * meaning "a dump for one of our own processes is on disk".
+ */
+function seedMinidump(rig: Rig, relPath: string, at: Date, contents: Buffer = rig.ownDump): string {
   const dumpPath = join(rig.deps.crashDumpsDir, relPath);
   mkdirSync(dirname(dumpPath), { recursive: true });
-  writeFileSync(dumpPath, 'minidump-bytes');
+  writeFileSync(dumpPath, contents);
   utimesSync(dumpPath, at, at);
+  return dumpPath;
 }
 
 describe('runtime process-gone invitations', () => {
@@ -375,6 +408,10 @@ describe('machine-level death suppression', () => {
     if (armed?.kind === 'boot') {
       expect(armed.context.dirtyShutdown).toBe(false);
       expect(armed.context.newMinidumps).toBe(1);
+      // Ownership decides availability, and this is the one path that reaches
+      // it across a boot-session boundary — a root that went stale between
+      // sessions would show up here and nowhere else.
+      expect(armed.minidumpAvailable).toBe(true);
     }
   });
 
@@ -573,6 +610,232 @@ describe('newest un-acked minidump lookup', () => {
     const detection = createCrashDetection(rig.deps);
 
     expect(detection.newestMinidumpPath()).toBeNull();
+  });
+});
+
+/**
+ * macOS inherits Mach exception ports across fork/exec, so anything descended
+ * from the app — the in-app terminal's shell, an MCP server, an unrelated GUI
+ * app launched from that shell — writes its crash into OUR crash database under
+ * OUR annotations. Two separate consequences are pinned here: a foreign dump
+ * must not arm a report invitation, and (the serious one) it must never be
+ * attachable to a bundle that leaves the machine carrying another program's
+ * process memory.
+ */
+describe('crash-dump ownership filtering', () => {
+  /** Boot with a clean previous session, so dumps are the only arming signal. */
+  function bootAfterCleanQuit(rig: Rig) {
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.markCleanQuit();
+  }
+
+  test('a dump from one of our own processes still arms and is still attachable', () => {
+    const rig = makeRig();
+    bootAfterCleanQuit(rig);
+    const ownPath = seedMinidump(rig, 'pending/ours.dmp', rig.tick());
+
+    const session = createCrashDetection(rig.deps);
+    const armed = session.detectBootCrash();
+
+    expect(armed?.kind).toBe('boot');
+    if (armed?.kind === 'boot') {
+      expect(armed.context.dirtyShutdown).toBe(false);
+      expect(armed.context.newMinidumps).toBe(1);
+      expect(armed.minidumpAvailable).toBe(true);
+    }
+    expect(session.newestMinidumpPath()).toBe(ownPath);
+  });
+
+  test('a dump from a foreign process neither arms nor is attachable', () => {
+    const rig = makeRig();
+    bootAfterCleanQuit(rig);
+    seedMinidump(rig, 'pending/soffice.dmp', rig.tick(), FOREIGN_DUMP);
+
+    const session = createCrashDetection(rig.deps);
+
+    // The shape that misfires without the ownership gate: the app quit
+    // cleanly, a third-party app the user launched from the in-app terminal
+    // aborted, and the next boot claimed "the previous session crashed".
+    expect(session.detectBootCrash()).toBeNull();
+    session.notifyRendererReady();
+    expect(rig.emitted).toHaveLength(0);
+    expect(session.newestMinidumpPath()).toBeNull();
+  });
+
+  test('a bundle-root prefix collision does not read as ownership', () => {
+    const rig = makeRig();
+    bootAfterCleanQuit(rig);
+    seedMinidump(
+      rig,
+      'pending/lookalike.dmp',
+      rig.tick(),
+      buildMinidump([`${rig.deps.appBundleRoot}.malicious/Contents/MacOS/OpenKnowledge`]),
+    );
+
+    const session = createCrashDetection(rig.deps);
+
+    expect(session.detectBootCrash()).toBeNull();
+    expect(session.newestMinidumpPath()).toBeNull();
+  });
+
+  test('an unparseable dump still arms, but is never attachable', () => {
+    const rig = makeRig();
+    bootAfterCleanQuit(rig);
+    seedMinidump(rig, 'pending/torn.dmp', rig.tick(), UNPARSEABLE_DUMP);
+
+    const session = createCrashDetection(rig.deps);
+    const armed = session.detectBootCrash();
+
+    // Fail open on the prompt: a dump truncated by the very crash that wrote it
+    // is probably ours, and a wrong guess costs one dismissible question.
+    expect(armed?.kind).toBe('boot');
+    if (armed?.kind === 'boot') {
+      expect(armed.context.newMinidumps).toBe(1);
+      // Fail closed on egress: memory whose owner we cannot establish is memory
+      // the consent dialog cannot honestly describe.
+      expect(armed.minidumpAvailable).toBe(false);
+    }
+    expect(session.newestMinidumpPath()).toBeNull();
+  });
+
+  test('a foreign dump does not override machine-level-death suppression', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    seedMinidump(rig, 'pending/soffice.dmp', rig.tick(), FOREIGN_DUMP);
+    // The machine rebooted out from under the session. A dump written for some
+    // other program is no evidence that this app native-crashed first, so the
+    // fresh-dump override must not engage.
+
+    rig.setBootSessionUuid('boot-epoch-b');
+    const session = createCrashDetection(rig.deps);
+
+    expect(session.detectBootCrash()).toBeNull();
+  });
+
+  test('a dirty shutdown still prompts when the only fresh dump is foreign', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    // Session A really did die (its sentinel survives) while an unrelated
+    // descendant also crashed — same kernel session, so no reboot suppression.
+    seedMinidump(rig, 'pending/soffice.dmp', rig.tick(), FOREIGN_DUMP);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+
+    expect(armed?.kind).toBe('boot');
+    if (armed?.kind === 'boot') {
+      expect(armed.context.dirtyShutdown).toBe(true);
+      expect(armed.context.newMinidumps).toBe(0);
+      expect(armed.minidumpAvailable).toBe(false);
+    }
+  });
+
+  test('the newest OWN dump is attachable even when a newer foreign dump exists', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+    const ownPath = seedMinidump(rig, 'completed/ours.dmp', rig.tick());
+    seedMinidump(rig, 'pending/soffice.dmp', rig.tick(), FOREIGN_DUMP);
+
+    expect(detection.newestMinidumpPath()).toBe(ownPath);
+  });
+
+  test('a runtime crash offers no dump when only a foreign dump is on disk', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+    seedMinidump(rig, 'completed/soffice.dmp', rig.tick(), FOREIGN_DUMP);
+
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+
+    expect(rig.emitted[0]?.minidumpAvailable).toBe(false);
+    expect(detection.newestMinidumpPath()).toBeNull();
+  });
+
+  test('a runtime crash says how many foreign dumps it walked past', () => {
+    // "No checkbox" has two very different causes at runtime — Crashpad still
+    // flushing our dump, or a descendant's dump being skipped — and only this
+    // count tells an operator which one they are looking at.
+    const rig = makeRig();
+    const warnLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: () => {},
+      warn: (payload: Record<string, unknown>) => {
+        warnLines.push(payload);
+      },
+    };
+    const detection = createCrashDetection(rig.deps);
+    seedMinidump(rig, 'completed/soffice.dmp', rig.tick(), FOREIGN_DUMP);
+
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+
+    expect(
+      warnLines.find((line) => line.event === 'crash-detection.render-process-gone')
+        ?.foreignDumpsIgnored,
+    ).toBe(1);
+  });
+
+  test('a runtime crash counts unreadable dumps apart from foreign ones', () => {
+    // The two mean different things to whoever reads the line: a foreign dump
+    // is a descendant crashing, an unreadable one is a half-flushed dump or
+    // the first sign the format drifted. Folded together they say neither.
+    const rig = makeRig();
+    const warnLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: () => {},
+      warn: (payload: Record<string, unknown>) => {
+        warnLines.push(payload);
+      },
+    };
+    const detection = createCrashDetection(rig.deps);
+    seedMinidump(rig, 'completed/torn.dmp', rig.tick(), UNPARSEABLE_DUMP);
+
+    detection.handleRenderProcessGone({ reason: 'crashed' });
+
+    const line = warnLines.find((l) => l.event === 'crash-detection.render-process-gone');
+    expect(line?.unreadableDumpsSkipped).toBe(1);
+    expect(line?.foreignDumpsIgnored).toBe(0);
+    expect(rig.emitted[0]?.minidumpAvailable).toBe(false);
+  });
+
+  test('an own dump found first is not reported as foreign dumps ignored', () => {
+    // The walk stops at the first owned dump, so the count only ever describes
+    // what it actually rejected getting there.
+    const rig = makeRig();
+    const warnLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: () => {},
+      warn: (payload: Record<string, unknown>) => {
+        warnLines.push(payload);
+      },
+    };
+    const detection = createCrashDetection(rig.deps);
+    seedMinidump(rig, 'completed/ours.dmp', rig.tick());
+
+    detection.handleChildProcessGone({ type: 'Utility', reason: 'crashed' });
+
+    const line = warnLines.find((l) => l.event === 'crash-detection.child-process-gone');
+    expect(line?.foreignDumpsIgnored).toBe(0);
+    expect(rig.emitted[0]?.minidumpAvailable).toBe(true);
+  });
+
+  test('ignored foreign dumps leave a breadcrumb', () => {
+    const rig = makeRig();
+    const infoLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: (payload: Record<string, unknown>) => {
+        infoLines.push(payload);
+      },
+      warn: () => {},
+    };
+    bootAfterCleanQuit(rig);
+    seedMinidump(rig, 'pending/soffice.dmp', rig.tick(), FOREIGN_DUMP);
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    // A silent suppression is indistinguishable from detection never running.
+    const breadcrumb = infoLines.find(
+      (line) => line.event === 'crash-detection.foreign-dumps-ignored',
+    );
+    expect(breadcrumb?.count).toBe(1);
   });
 });
 

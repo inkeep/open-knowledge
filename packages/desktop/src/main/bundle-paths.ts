@@ -25,3 +25,29 @@ export function wrapperPathInBundle(
   const bundleRoot = executablePath.replace(/\/Contents\/MacOS\/.*$/, '');
   return join(bundleRoot, 'Contents', 'Resources', 'cli', 'bin', 'ok.sh');
 }
+
+/**
+ * Root that every process of this app launches from, given the main
+ * executable's path — the containment boundary for deciding whether a file on
+ * disk belongs to us. Helper processes resolve inside it too: on darwin the
+ * renderer/GPU/utility helpers live in `Contents/Frameworks/<Helper>.app`, and
+ * elsewhere they sit beside the main binary.
+ *
+ * - darwin: `<Bundle>.app/Contents/MacOS/<bin>` → `<Bundle>.app`
+ * - win32 / linux: the directory holding the executable
+ *
+ * Same layout arithmetic as `wrapperPathInBundle`, with no existence checks;
+ * a darwin path that isn't bundle-shaped (an unpackaged binary run directly)
+ * degrades to the executable's directory rather than to the filesystem root.
+ */
+export function appBundleRootFromExecutable(
+  executablePath: string,
+  platform: 'darwin' | 'win32' | 'linux' | string = process.platform,
+): string {
+  if (platform === 'win32') return win32.dirname(executablePath);
+  if (platform === 'darwin') {
+    const bundleRoot = executablePath.replace(/\/Contents\/MacOS\/[^/]+$/, '');
+    if (bundleRoot !== executablePath) return bundleRoot;
+  }
+  return dirname(executablePath);
+}

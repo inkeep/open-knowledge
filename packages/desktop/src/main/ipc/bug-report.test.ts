@@ -1512,6 +1512,7 @@ describe('handleBugReportCrashAck', () => {
       sentinelPath: join(dir, 'sentinel.json'),
       ackStorePath: join(dir, 'crash-acks.json'),
       crashDumpsDir: join(dir, 'dumps'),
+      appBundleRoot: join(dir, 'OpenKnowledge.app'),
       emit: () => true,
       now: () => {
         clockMs += 10_000;
@@ -1522,6 +1523,9 @@ describe('handleBugReportCrashAck', () => {
       currentBootSessionUuid: () => 'boot-epoch-test',
       logger: { info: () => {}, warn: () => {} },
     };
+    // Not a real minidump, so ownership reads as indeterminate — which the
+    // boot scan deliberately treats as arm-worthy. That is what makes the ack
+    // round-trip below observable; the dump itself is never attached.
     const seedMinidump = (relPath: string): void => {
       const dumpPath = join(deps.crashDumpsDir, relPath);
       mkdirSync(dirname(dumpPath), { recursive: true });

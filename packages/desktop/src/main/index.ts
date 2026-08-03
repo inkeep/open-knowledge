@@ -176,7 +176,7 @@ import {
   proxyShareTargetStatus,
 } from './branch-info-proxy.ts';
 import { createBugReportSidecarStore } from './bug-report-sidecar.ts';
-import { wrapperPathInBundle } from './bundle-paths.ts';
+import { appBundleRootFromExecutable, wrapperPathInBundle } from './bundle-paths.ts';
 import {
   type BundleReplaceWatcherHandle,
   startBundleReplaceWatcher,
@@ -6099,6 +6099,12 @@ function bootPrimaryInstance(): void {
     sentinelPath: join(app.getPath('userData'), 'bug-report-dirty-shutdown.json'),
     ackStorePath: join(app.getPath('userData'), 'bug-report-crash-acks.json'),
     crashDumpsDir: app.getPath('crashDumps'),
+    // macOS inherits Mach exception ports across fork/exec, so the crash
+    // database above also collects dumps for anything a descendant process
+    // launched (the in-app terminal's shell and whatever it starts). Detection
+    // checks each dump's own main module against this root before treating it
+    // as ours.
+    appBundleRoot: appBundleRootFromExecutable(app.getPath('exe')),
     // Deliver to one live window — focused first — and report undeliverable
     // so the invitation waits for the next renderer-ready signal instead of
     // dropping (at boot, or when the only window is the one that crashed).

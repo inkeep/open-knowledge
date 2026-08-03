@@ -27,6 +27,14 @@
  * overrides suppression: kernel panics never write app minidumps, so a dump
  * proves the app native-crashed before the machine went down.
  *
+ * Not every dump in the crash database is ours. Crashpad's exception handler
+ * is inherited by every descendant process, so the directory also collects
+ * dumps for programs the app merely spawned. Both consumers of the dump scan
+ * therefore classify by the dump's own main module (`minidump-ownership.ts`),
+ * with deliberately opposite defaults for an unreadable dump: arming fails
+ * open (a dismissible question), attachment fails closed (process memory
+ * leaving the machine under a consent that describes THIS app).
+ *
  * Deliberately absent: a userland `uncaughtException` handler. Electron
  * defers its main-process crash dialog to such a handler whenever one exists
  * (see `process-safety-net.ts`) — the boot-time sentinel/minidump scan is how
@@ -47,6 +55,7 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
+import { classifyMinidumpOwnership, type MinidumpOwnership } from './minidump-ownership.ts';
 
 /**
  * Process-gone reasons that read as genuine crashes. `clean-exit` and
@@ -121,6 +130,14 @@ export interface CrashDetectionDeps {
   /** Electron's `app.getPath('crashDumps')`; scanned for fresh `.dmp` files. */
   crashDumpsDir: string;
   /**
+   * Root that every process of this app launches from (`app.getPath('exe')`
+   * reduced by `appBundleRootFromExecutable`). A dump in `crashDumpsDir` is
+   * only ours when its main module resolves inside this root — Crashpad's
+   * exception handler is inherited by every descendant process, so the crash
+   * database also collects dumps for programs we merely spawned.
+   */
+  appBundleRoot: string;
+  /**
    * Push one crash-detected event to a live renderer. Returns false when no
    * renderer could take it — the event stays armed and is re-offered on the
    * next `notifyRendererReady`.
@@ -176,13 +193,21 @@ export interface CrashDetection {
   ack(eventId: string): void;
   /**
    * Absolute path of the newest minidump not yet covered by an acknowledgment
-   * (strictly newer than the ack baseline) — the dump belonging to whatever
-   * crash the user is currently invited to report. Null when the un-acked
-   * crash left no dump (e.g. dirty shutdown without a native crash) or every
-   * dump is already acked. Minidumps carry raw process memory that text
-   * redaction cannot scrub, so bundle inclusion stays behind the report
-   * dialog's crash-dump checkbox (pre-checked for a crash invite, opt-out)
-   * plus the review-before-send step that calls this — never a silent attach.
+   * (strictly newer than the ack baseline) AND provably written for one of our
+   * own processes — the dump belonging to whatever crash the user is currently
+   * invited to report. Null when the un-acked crash left no dump (e.g. dirty
+   * shutdown without a native crash), when every dump is already acked, or
+   * when the only fresh dumps belong to descendant processes that inherited
+   * our crash handler.
+   *
+   * Minidumps carry raw process memory that text redaction cannot scrub, so
+   * bundle inclusion stays behind the report dialog's crash-dump checkbox
+   * (pre-checked for a crash invite, opt-out) plus the review-before-send step
+   * that calls this — never a silent attach. Ownership is the same consent
+   * question one level down: the dialog's copy describes THIS app's memory, so
+   * a dump we cannot prove is ours must not be offered. This path therefore
+   * fails CLOSED on an unreadable dump, unlike `detectBootCrash`, which only
+   * asks a dismissible question and fails open.
    */
   newestMinidumpPath(): string | null;
 }
@@ -351,21 +376,48 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     return true;
   }
 
-  /**
-   * Newest minidump strictly newer than the ack baseline, or null. Shared by
-   * the report-time path lookup and the per-event availability signal so both
-   * answer from the same baseline-filtered scan of the crash-dumps dir.
-   */
-  function newestMinidumpEntry(): MinidumpEntry | null {
+  function classifyDump(path: string): MinidumpOwnership {
+    return classifyMinidumpOwnership(path, deps.appBundleRoot);
+  }
+
+  /** Baseline-filtered dumps from one scan of the crash-dumps dir, newest first. */
+  function freshMinidumpEntries(): MinidumpEntry[] {
     const entries: MinidumpEntry[] = [];
     collectMinidumpEntries(deps.crashDumpsDir, MINIDUMP_SCAN_DEPTH, entries);
     const baselineMs = Date.parse(store.minidumpBaselineAt);
-    let newest: MinidumpEntry | null = null;
-    for (const entry of entries) {
-      if (entry.mtimeMs <= baselineMs) continue;
-      if (newest === null || entry.mtimeMs > newest.mtimeMs) newest = entry;
+    return entries.filter((e) => e.mtimeMs > baselineMs).sort((a, b) => b.mtimeMs - a.mtimeMs);
+  }
+
+  /**
+   * Newest un-acked minidump this app can prove it owns, or null. Shared by
+   * the report-time path lookup and the per-event availability signal so the
+   * checkbox is only offered when there is a dump the bundle may actually
+   * carry. Walks newest-first and stops at the first owned dump, so a quiet
+   * crash database costs one parse rather than one per file.
+   *
+   * The two skip counts report what the walk rejected on its way there, which
+   * is what the runtime callers log. They are kept apart because they mean
+   * different things to whoever reads that line: `foreignSkipped` is a
+   * descendant process crashing, an ordinary event, while `unknownSkipped` is a
+   * dump we could not read at all — a half-flushed one, or the first sign that
+   * the format drifted out from under the parser. Counting as the walk goes
+   * keeps the short-circuit intact; asking for totals afterwards would mean
+   * classifying every fresh dump on every renderer crash.
+   */
+  function newestOwnedMinidump(): {
+    entry: MinidumpEntry | null;
+    foreignSkipped: number;
+    unknownSkipped: number;
+  } {
+    let foreignSkipped = 0;
+    let unknownSkipped = 0;
+    for (const entry of freshMinidumpEntries()) {
+      const ownership = classifyDump(entry.path);
+      if (ownership === 'ours') return { entry, foreignSkipped, unknownSkipped };
+      if (ownership === 'foreign') foreignSkipped += 1;
+      else unknownSkipped += 1;
     }
-    return newest;
+    return { entry: null, foreignSkipped, unknownSkipped };
   }
 
   return {
@@ -418,10 +470,40 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         }
       }
 
-      const dumpEntries: MinidumpEntry[] = [];
-      collectMinidumpEntries(deps.crashDumpsDir, MINIDUMP_SCAN_DEPTH, dumpEntries);
-      const baselineMs = Date.parse(store.minidumpBaselineAt);
-      const newDumps = dumpEntries.filter((e) => e.mtimeMs > baselineMs).map((e) => e.mtimeMs);
+      // Every fresh dump is classified before it can influence anything: the
+      // crash database also collects dumps for descendant processes that
+      // inherited our exception handler, and an unrelated program aborting is
+      // not this app crashing. Without this the app prompts "the previous
+      // session crashed" after a perfectly clean quit.
+      const freshDumps = freshMinidumpEntries().map((entry) => ({
+        entry,
+        ownership: classifyDump(entry.path),
+      }));
+      const foreignDumpCount = freshDumps.filter((d) => d.ownership === 'foreign').length;
+      const unreadableDumpCount = freshDumps.filter((d) => d.ownership === 'unknown').length;
+      if (foreignDumpCount > 0 || unreadableDumpCount > 0) {
+        // Otherwise a suppressed prompt and a detection pipeline that never
+        // ran are indistinguishable in the logs. The unreadable count is the
+        // one to watch: a dump we cannot parse at all is either half-flushed
+        // or the first sign the format moved out from under the parser, and
+        // unlike a foreign dump it leaves no other trace.
+        deps.logger.info(
+          {
+            event: 'crash-detection.foreign-dumps-ignored',
+            count: foreignDumpCount,
+            unreadable: unreadableDumpCount,
+          },
+          'ignored minidumps that this app could not claim',
+        );
+      }
+      // Arming fails OPEN on an unparseable dump: a dump truncated by the very
+      // crash that wrote it is more likely ours than not, and the cost of being
+      // wrong is one prompt the user dismisses once. The attachment side takes
+      // the opposite default, so an un-ownable dump can still never be sent.
+      const newDumps = freshDumps
+        .filter((d) => d.ownership !== 'foreign')
+        .map((d) => d.entry.mtimeMs);
+      const ownedDumpCount = freshDumps.filter((d) => d.ownership === 'ours').length;
 
       // A boot-session mismatch means the kernel rebooted after the previous
       // session was last alive; an os-shutdown marker means the OS killed the
@@ -502,9 +584,11 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
             eventId,
             kind: 'boot',
             context: { dirtyShutdown: !dumpDriven, newMinidumps: newDumps.length },
-            // A prior-session dump is already on disk, so the freshness scan
-            // that produced newDumps is the authoritative availability answer.
-            minidumpAvailable: newDumps.length > 0,
+            // Availability is the stricter question — it decides whether the
+            // dialog offers a checkbox that attaches process memory — so it
+            // counts only dumps we proved are ours, never the fail-open set
+            // that decided whether to prompt at all.
+            minidumpAvailable: ownedDumpCount > 0,
           };
           if (armInvite(event)) {
             armed = event;
@@ -590,11 +674,19 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
 
     handleRenderProcessGone(details): void {
       if (!CRASH_REASONS.has(details.reason)) return;
+      const owned = newestOwnedMinidump();
       deps.logger.warn(
         {
           event: 'crash-detection.render-process-gone',
           reason: details.reason,
           exitCode: details.exitCode,
+          // Otherwise an absent crash-dump checkbox is unreadable after the
+          // fact: a dump Crashpad had not finished flushing and a dump written
+          // for a descendant process both reach the operator as "no dump".
+          // Carried on this line rather than the boot path's separate
+          // breadcrumb so the counts sit with the crash they explain.
+          foreignDumpsIgnored: owned.foreignSkipped,
+          unreadableDumpsSkipped: owned.unknownSkipped,
         },
         'renderer process died abnormally',
       );
@@ -609,7 +701,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           // Best-effort: Crashpad may still be flushing the dump when this
           // signal fires. A dump that lands just after reads as unavailable
           // here (no checkbox); the boot-time path is the reliable one.
-          minidumpAvailable: newestMinidumpEntry() !== null,
+          minidumpAvailable: owned.entry !== null,
         })
       ) {
         tryDeliver();
@@ -618,12 +710,15 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
 
     handleChildProcessGone(details): void {
       if (!CRASH_REASONS.has(details.reason)) return;
+      const owned = newestOwnedMinidump();
       deps.logger.warn(
         {
           event: 'crash-detection.child-process-gone',
           processType: details.type,
           reason: details.reason,
           exitCode: details.exitCode,
+          foreignDumpsIgnored: owned.foreignSkipped,
+          unreadableDumpsSkipped: owned.unknownSkipped,
         },
         'child process died abnormally',
       );
@@ -637,7 +732,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
             ...(details.name !== undefined ? { name: details.name } : {}),
             ...(details.exitCode !== undefined ? { exitCode: details.exitCode } : {}),
           },
-          minidumpAvailable: newestMinidumpEntry() !== null,
+          minidumpAvailable: owned.entry !== null,
         })
       ) {
         tryDeliver();
@@ -665,7 +760,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     },
 
     newestMinidumpPath(): string | null {
-      return newestMinidumpEntry()?.path ?? null;
+      return newestOwnedMinidump().entry?.path ?? null;
     },
   };
 }
