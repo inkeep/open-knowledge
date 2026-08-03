@@ -3,12 +3,14 @@ name: Linear Release
 # Stamp Linear issues with the Open Knowledge release they ship in.
 #
 # WHAT THIS DOES
-#   On every OK release cut (beta cadence + stable promotion) this attaches
-#   the Linear issues referenced in the release's commits to a release in the
-#   Linear "OpenKnowledge" scheduled pipeline, and advances that release's
-#   stage to `Beta` on a beta cut, then completes it on a stable promotion.
-#   Each attached issue then shows which release it shipped in, in its Linear
-#   sidebar. Uses Linear's first-party CLI via linear/linear-release-action.
+#   On every OK release cut (beta cadence + stable promotion) this attaches the
+#   Linear issues referenced in the release's commits to a release in the Linear
+#   "OpenKnowledge" scheduled pipeline. A beta cut advances ITS OWN release to
+#   the `Beta` stage; a stable promotion completes ITS OWN release into
+#   `Released`. They are two different release objects, not one advanced then
+#   completed — see RELEASE IDENTITY below. Each attached issue then shows both
+#   the beta and the stable it shipped in, in its Linear sidebar. Uses Linear's
+#   first-party CLI via linear/linear-release-action.
 #
 # HOW IT'S TRIGGERED (no edits to the delicate publish path)
 #   release.yml (beta) and promote-stable.yml (stable) BOTH already fire a
@@ -30,19 +32,31 @@ name: Linear Release
 #   started stage: `complete` moves the release straight past it, so nothing
 #   would ever rest there.
 #
-# RELEASE IDENTITY (why betas accumulate into one release)
-#   The Linear release is keyed by the STABLE base version (vX.Y.Z with any
-#   `-beta.N` stripped), so every beta of a cycle syncs its issues into the
-#   SAME release object, and the stable promotion completes that same release.
-#   Caveat: if a higher bump level lands mid-cycle the base
-#   version shifts; that is rare, and Linear releases can be renamed/merged.
+# RELEASE IDENTITY (the tag is used verbatim)
+#   A cut stamps the release named by its OWN tag: `v0.46.0-beta.3` keys the
+#   release `0.46.0-beta.3`, and the stable promotion keys `0.46.1`. A ticket
+#   therefore ends up on two releases — the beta it first shipped in, and the
+#   stable that shipped it.
+#
+#   This used to strip `-beta.N` and key every beta of a cycle onto the
+#   remaining X.Y.Z. That number is a PREDICTION made at cut time; the real
+#   stable version is computed later at promote time against a delta that has
+#   moved. Keying on it attributed tickets to versions that never carried them,
+#   always in the same direction (too early). A tag's own name cannot be wrong.
 #
 # COMMIT SCAN RANGE
-#   The scan lower bound (base_ref) is the previous tag in history, so each cut
-#   only scans its own new commits (`<prev-tag>..<this-tag>`) — bounded even on
-#   the first run. sync is idempotent: re-attaching an already-attached issue
-#   is a no-op, so a near-empty stable range simply re-affirms the accumulated
-#   set before the stage flip.
+#   The lower bound depends on the channel, because the two releases answer
+#   different questions:
+#     beta   -> previous tag of any kind, so the beta holds what is NEW in it
+#               and a ticket lands on the beta it FIRST shipped in.
+#     stable -> previous STABLE tag, skipping betas. A promotion batches every
+#               changeset since the last stable, so stopping at the most recent
+#               beta would miss every ticket from earlier betas in the cycle.
+#   sync is idempotent, so a re-run simply re-affirms an already-attached set.
+#
+#   Both derivations live in .github/scripts/derive-release-stamp.mjs with a
+#   colocated test suite. They are NOT inline shell: this workflow shipped a
+#   wrong-version defect that untested `${VAR%%...}` expansion made invisible.
 #
 # ONE-TIME SETUP
 #   1. A Linear SCHEDULED pipeline "OpenKnowledge" (team Product) with exactly
@@ -84,8 +98,10 @@ permissions:
   contents: read
 
 concurrency:
-  # Serialize per release line so a beta and its stable promotion don't race
-  # on the same Linear release object.
+  # Serialize re-runs of the SAME tag, so a manual workflow_dispatch cannot
+  # overlap a still-running dispatch-triggered stamp of that tag. A beta and its
+  # stable no longer need serializing against each other: they key different
+  # tags, and therefore different Linear release objects.
   group: linear-release-${{ github.event.client_payload.release_tag || inputs.release_tag }}
   cancel-in-progress: false
 
@@ -113,42 +129,22 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Set up Node
+        if: env.HAS_KEY == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+
+      # The script has no dependencies beyond node: builtins, so there is
+      # nothing to install between setup and this call.
       - name: Derive channel, version, and scan range
         if: env.HAS_KEY == 'true'
         id: derive
-        run: |
-          set -euo pipefail
-          TAG="${RELEASE_TAG}"
-          if [[ -z "$TAG" ]]; then
-            echo "::error::No release tag (neither client_payload.release_tag nor inputs.release_tag)."
-            exit 1
-          fi
-          # Stable base version: strip leading `v` and any `-beta.N` suffix.
-          V="${TAG#v}"; V="${V%%-beta.*}"
-          if [[ ! "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Could not derive X.Y.Z from tag '${TAG}'."
-            exit 1
-          fi
-          if [[ "$TAG" == *-beta.* ]]; then
-            CHANNEL=beta
-          else
-            CHANNEL=stable
-          fi
-          # Exclusive lower bound for sync's commit scan = the previous tag in
-          # history. Empty on the very first tag ever; the action then falls
-          # back to its own default lower bound.
-          BASE_REF="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
-          {
-            echo "channel=${CHANNEL}"
-            echo "version=${V}"
-            echo "name=v${V}"
-            echo "base_ref=${BASE_REF}"
-          } >> "$GITHUB_OUTPUT"
-          echo "tag=${TAG} channel=${CHANNEL} version=${V} base_ref=${BASE_REF:-<none>}"
+        run: node .github/scripts/derive-release-stamp.mjs "${RELEASE_TAG}"
 
-      # Create/find the release keyed by the stable version, name it vX.Y.Z,
-      # and attach the Linear issues referenced in <base_ref>..HEAD. Runs on
-      # both channels; idempotent.
+      # Create/find the release keyed by this cut's own tag and attach the
+      # Linear issues referenced in <base_ref>..HEAD. Runs on both channels;
+      # idempotent.
       - name: Sync issues into the Linear release
         if: env.HAS_KEY == 'true'
         uses: linear/linear-release-action@c0cb8354a362c24c6d3e0948f37fd66d07588e3f # v0
@@ -163,6 +159,12 @@ jobs:
       # promotion has no started-stage step — reaching stable IS completion, so
       # the `complete` step below moves the release straight to the completed
       # `Released` stage (two-channel model: stable = production = done).
+      #
+      # A beta release RESTS in `Beta` and is never completed: it is a historical
+      # record of a beta cut, and the stable that supersedes it is a separate
+      # release object with its own identity. So the two stages partition the
+      # pipeline cleanly — `Beta` holds every beta ever cut, `Released` holds
+      # every stable. Nothing is left half-finished.
       - name: Advance to Beta stage (beta cut)
         if: env.HAS_KEY == 'true' && steps.derive.outputs.channel == 'beta'
         uses: linear/linear-release-action@c0cb8354a362c24c6d3e0948f37fd66d07588e3f # v0
