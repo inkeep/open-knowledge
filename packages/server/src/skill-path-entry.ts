@@ -20,11 +20,18 @@
  *   | symlink → nothing (dangling)   | link (removable)  | occupied(foreign-link) |
  *   | dir that IS the reference      | canonical-dir     | same-copy              |
  *
- * One row the two USED to disagree on and no longer do: when the reference dir
- * itself is unreadable, projection always answered `different` while migration
- * hash-compared and could answer `same-copy`. The shared walk adopts
- * projection's answer for both, which is the safe direction because migration's
- * `same-copy` branch deletes the store dir. Pinned in the equivalence suite.
+ * An unreadable `referenceDir` yields `different` for a real dir at `path`
+ * under both callers, rather than falling through to a hash compare that could
+ * call the entry a same-content copy. A symlink at `path` reads `dangling` in
+ * that same race instead: the reference realpath sits inside that branch's own
+ * `try`, so the throw never reaches the dir arm. Migration is the only caller
+ * for which the `different` answer costs anything, and only when the store dir
+ * is already gone: no user content is at risk either way, since its `same-copy`
+ * branch would be rm-ing a path that no longer exists. What it costs is the
+ * install-marker entry, which the `same-copy` path would have dropped and the
+ * skip does not. The walk cannot tell which `realpathSync` threw, so
+ * distinguishing the two is a change to this function rather than a mapping
+ * choice. Pinned in the equivalence suite.
  *
  * Those rows are not oversights. Migration treats a dangling link as foreign on
  * purpose — an OK projection whose store source is about to move would not

@@ -18,7 +18,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
-import { beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { classifyHostEntry } from './skill-migrate.ts';
 import { classifyInPlaceDest } from './skill-projection.ts';
 
@@ -45,6 +45,9 @@ beforeEach(() => {
   writeSkill(canonical, 'canonical body');
   canonicalHash = parseSkillDir(canonical)?.contentHash ?? '';
   expect(canonicalHash).not.toBe('');
+});
+afterEach(() => {
+  rmSync(root, { recursive: true, force: true });
 });
 
 /** Both classifiers, over the same path, in one call. `occupied` reports its
@@ -139,13 +142,11 @@ describe('the two classifiers DISAGREE, deliberately', () => {
   });
 });
 
-// The reference bundle can be unreadable at classification time (a concurrent
-// delete between the caller resolving its realpath and this call). The two
-// classifiers used to disagree here and now do not: projection always returned
-// `different`, migration hash-compared and could return `same-copy`. Unifying
-// on the shared walk adopted projection's answer for both. That is the SAFE
-// direction for migration, whose `same-copy` branch deletes the store dir, so
-// the row is pinned deliberately rather than left to drift back.
+// The reference bundle can be unreadable at classification time: a concurrent
+// delete between the caller resolving its realpath and this call. Both
+// classifiers answer `different` there, and this row exists so that stays true.
+// What the answer costs, and why the walk cannot do better without changing
+// shape, is in `skill-path-entry.ts`'s header.
 describe('the reference bundle is gone', () => {
   test('a byte-identical real dir reads as `different` for BOTH once the reference is unreadable', () => {
     const dest = join(root, 'same-copy-orphaned');
