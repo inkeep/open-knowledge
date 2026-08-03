@@ -45,6 +45,10 @@ vi.doMock('@/components/ui/sidebar', () => ({
   ),
 }));
 
+vi.doMock('@/components/AppMenubar', () => ({
+  AppMenubar: () => <div data-testid="app-menubar" />,
+}));
+
 vi.doMock('./EditorTabs', () => ({
   EditorTabs: () => <div data-testid="editor-tabs" />,
 }));
@@ -90,6 +94,13 @@ function setElectronHost(enabled: boolean) {
   Object.defineProperty(window, 'okDesktop', {
     configurable: true,
     value: enabled ? {} : undefined,
+  });
+}
+
+function setWindowsHost() {
+  Object.defineProperty(window, 'okDesktop', {
+    configurable: true,
+    value: { menu: {}, platform: 'win32' },
   });
 }
 
@@ -230,6 +241,30 @@ describe('EditorHeader runtime behavior', () => {
     expectVisualClassTokens(header.className, ['[-webkit-app-region:drag]']);
     expectVisualClassTokensAbsent(header.className, ['pl-[var(--ok-titlebar-reserve-left,1rem)]']);
     expect(screen.queryByTestId('navigation-history-controls')).toBeNull();
+  });
+
+  test('Windows places Hide Files before the File menu', async () => {
+    setWindowsHost();
+    const header = await renderHeader();
+
+    const files = screen.getByTestId('sidebar-trigger');
+    const menubar = await screen.findByTestId('app-menubar');
+    const leftZone = header.children.item(0) as HTMLElement;
+    const separator = leftZone.querySelector('[data-slot="separator"]') as HTMLElement;
+
+    expect(files.compareDocumentPosition(menubar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      menubar.compareDocumentPosition(separator) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  test('Windows single-file mode keeps the menubar without project chrome', async () => {
+    setWindowsHost();
+    singleFile = true;
+    await renderHeader();
+
+    expect(await screen.findByTestId('app-menubar')).toBeTruthy();
+    expect(screen.queryByTestId('sidebar-trigger')).toBeNull();
   });
 
   test('rail drag keeps the reserve but drops the padding transition so it snaps with the sidebar', async () => {

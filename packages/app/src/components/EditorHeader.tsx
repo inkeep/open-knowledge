@@ -95,6 +95,11 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
   // place; the `,1rem` fallback is the precedent-#49 safe form. The padding
   // transition (and its drag-snap exception) is documented at the className.
   const isCollapsed = sidebarState === 'collapsed';
+  const appMenubar = shouldShowAppMenubar() ? (
+    <Suspense fallback={null}>
+      <AppMenubar />
+    </Suspense>
+  ) : null;
 
   return (
     <header
@@ -129,14 +134,10 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
           empty in single-file mode. The flex-1 container stays so the right
           zone keeps its position and the window-drag spacer is preserved. */}
       <div className="flex min-w-0 flex-1 items-center gap-1 px-3">
-        {/* Windows/Linux custom menubar (windows-linux-port renderer menubar) — heads the chrome row, VS Code
-            style. Renders on every window kind (incl. single-file: Window /
-            Help / Exit stay reachable); null on darwin + web. */}
-        {shouldShowAppMenubar() && (
-          <Suspense fallback={null}>
-            <AppMenubar />
-          </Suspense>
-        )}
+        {/* The menubar renders in single-file windows too: the project-chrome
+            group below is absent there, so without this slot Window / Help /
+            Exit would have no reachable surface at all. */}
+        {singleFile && appMenubar}
         {!singleFile && (
           <>
             <ButtonGroup
@@ -185,6 +186,9 @@ export function EditorHeader({ onSignIn, onSetIdentity, onOpenSearch }: EditorHe
               )}
               {isElectronHost && isCollapsed && <NavigationHistoryControls />}
             </ButtonGroup>
+            {/* Windows/Linux custom menubar follows the Files control in the
+                chrome row; null on darwin + web. */}
+            {appMenubar}
             <Separator
               orientation="vertical"
               className="mr-1 h-4 shrink-0 data-vertical:self-center"
