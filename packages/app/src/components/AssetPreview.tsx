@@ -101,6 +101,7 @@ function AssetPreviewBody({ assetPath, mediaKind }: AssetPreviewProps) {
       <TextViewer
         key={assetPath}
         src={assetTextUrl(assetPath)}
+        assetPath={assetPath}
         fileName={fileName}
         extension={rawExtension.toLowerCase()}
       />
@@ -119,6 +120,7 @@ function AssetPreviewBody({ assetPath, mediaKind }: AssetPreviewProps) {
       <MermaidFileViewer
         key={assetPath}
         src={assetTextUrl(assetPath)}
+        assetPath={assetPath}
         fileName={fileName}
         extension={rawExtension.toLowerCase()}
       />

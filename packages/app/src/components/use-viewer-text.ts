@@ -32,10 +32,19 @@ export type ViewerTextSource =
        * (`/api/asset-text?path=…`). Used for content-dir assets.
        */
       src: string;
+      /**
+       * Project-relative path of the file `src` reads. Carried alongside the
+       * URL because the failure path has to hand the FILE to the OS: the
+       * endpoint that just refused the read is not a usable "open this
+       * elsewhere" target, and the desktop bridge addresses assets by path,
+       * not by URL.
+       */
+      assetPath: string;
       loadText?: never;
     }
   | {
       src?: never;
+      assetPath?: never;
       /**
        * Scope-aware loader override. The hook calls this instead of fetching
        * `src` — used for skill bundle files (global refs + scripts) that live
@@ -47,8 +56,32 @@ export type ViewerTextSource =
 
 export type FetchState =
   | { status: 'loading' }
-  | { status: 'error'; message: string }
+  | {
+      status: 'error';
+      message: string;
+      /**
+       * HTTP status behind the failure, when the load got far enough to have
+       * one. Render branches key the "open this elsewhere" affordance off it —
+       * a 404 means there is no file to hand anywhere. Absent for transport
+       * failures, where the file may well exist.
+       */
+      httpStatus?: number;
+    }
   | { status: 'loaded'; content: string };
+
+/**
+ * Carries the HTTP status across the promise-chain `throw` in the `src` branch
+ * so the catch can distinguish "server said the file is gone" from "the request
+ * never completed", which the message string alone can't express.
+ */
+class ViewerTextLoadError extends Error {
+  readonly httpStatus: number;
+  constructor(message: string, httpStatus: number) {
+    super(message);
+    this.name = 'ViewerTextLoadError';
+    this.httpStatus = httpStatus;
+  }
+}
 
 /**
  * Network state for the file load. Kept as a single discriminated union so the
@@ -116,6 +149,7 @@ export function useViewerText(props: ViewerTextSource): FetchState {
           setState({
             status: 'error',
             message: result.message ?? messageForStatusRef.current(result.status),
+            httpStatus: result.status,
           });
         })
         .catch((err: unknown) => {
@@ -139,7 +173,7 @@ export function useViewerText(props: ViewerTextSource): FetchState {
           // wording aligned with that constant if it ever changes. Unmapped
           // statuses keep the code appended so unexpected failures stay
           // diagnosable.
-          throw new Error(messageForStatusRef.current(resp.status));
+          throw new ViewerTextLoadError(messageForStatusRef.current(resp.status), resp.status);
         }
         return resp.text();
       })
@@ -155,7 +189,11 @@ export function useViewerText(props: ViewerTextSource): FetchState {
         // unrelated "Couldn't load …" message during sidebar nav.
         if (err instanceof Error && err.name === 'AbortError') return;
         const message = err instanceof Error ? err.message : t`Failed to load file`;
-        setState({ status: 'error', message });
+        setState({
+          status: 'error',
+          message,
+          httpStatus: err instanceof ViewerTextLoadError ? err.httpStatus : undefined,
+        });
       });
     return () => {
       cancelled = true;

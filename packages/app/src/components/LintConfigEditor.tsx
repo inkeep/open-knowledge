@@ -80,6 +80,7 @@ export function LintConfigEditor({ assetPath }: LintConfigEditorProps) {
           <TextViewer
             key={assetPath}
             src={assetTextUrl(assetPath)}
+            assetPath={assetPath}
             fileName={fileName}
             extension={extension}
           />

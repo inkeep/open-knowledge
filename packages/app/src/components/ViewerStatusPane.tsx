@@ -11,6 +11,9 @@
  * `data-text-viewer-extension`).
  */
 import { Trans } from '@lingui/react/macro';
+import { Button } from '@/components/ui/button';
+import { dispatchAssetClick } from '@/editor/asset-dispatch';
+import type { ViewerOpenFileTarget } from './viewer-open-file';
 
 interface ViewerStatusPaneBaseProps {
   fileName: string;
@@ -40,11 +43,15 @@ export function ViewerErrorPane({
   dataAttr,
   extraAttrs,
   message,
-  openHref,
+  openFile,
 }: ViewerStatusPaneBaseProps & {
   message: string;
-  /** "Open file" handoff target. Only the content-dir asset path has one. */
-  openHref?: string;
+  /**
+   * OS-handoff target for the "Open file" affordance, or `undefined` to render
+   * no affordance at all. Resolved by `resolveViewerOpenFile` — see there for
+   * why this is a dispatch context and not an href.
+   */
+  openFile?: ViewerOpenFileTarget;
 }) {
   return (
     <main
@@ -57,13 +64,30 @@ export function ViewerErrorPane({
         <Trans>Couldn't load {fileName}</Trans>
       </div>
       <div className="text-muted-foreground text-xs">{message}</div>
-      {openHref ? (
-        <a
-          href={openHref}
-          className="mt-2 rounded-md border px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+      {openFile ? (
+        // Deliberately not an `<a href>`: a same-frame navigation here unloads
+        // the whole single-page app and strands the user on a raw API response
+        // with no way back. The dispatcher hands the file to the OS on desktop
+        // and opens a new tab on web, either way leaving the app mounted.
+        // `forceOsDelegation` skips the in-app viewer registry — an in-app
+        // viewer is precisely what just failed on this file.
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-2"
+          data-testid="viewer-open-file"
+          onClick={() => {
+            void dispatchAssetClick({
+              url: openFile.url,
+              projectRelPath: openFile.projectRelPath,
+              ext: openFile.ext,
+              title: openFile.title,
+              forceOsDelegation: true,
+            });
+          }}
         >
           <Trans>Open file</Trans>
-        </a>
+        </Button>
       ) : null}
     </main>
   );

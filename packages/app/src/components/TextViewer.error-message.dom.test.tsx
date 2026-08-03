@@ -41,6 +41,7 @@ describe('TextViewer — human-readable load errors', () => {
     const { container } = render(
       <TextViewer
         src="/api/asset-text?path=fishing-log/Morning_Activity.gpx"
+        assetPath="fishing-log/Morning_Activity.gpx"
         fileName="Morning_Activity.gpx"
         extension="gpx"
       />,
@@ -58,7 +59,12 @@ describe('TextViewer — human-readable load errors', () => {
   test('404 renders a not-found explanation', async () => {
     globalThis.fetch = mockFetchStatus(404);
     const { container } = render(
-      <TextViewer src="/api/asset-text?path=gone.csv" fileName="gone.csv" extension="csv" />,
+      <TextViewer
+        src="/api/asset-text?path=gone.csv"
+        assetPath="gone.csv"
+        fileName="gone.csv"
+        extension="csv"
+      />,
     );
     await waitFor(() => {
       expect(container.querySelector('[data-text-viewer-state="error"]')).not.toBeNull();
@@ -69,7 +75,12 @@ describe('TextViewer — human-readable load errors', () => {
   test('an unmapped status keeps the diagnostic code for debuggability', async () => {
     globalThis.fetch = mockFetchStatus(503);
     const { container } = render(
-      <TextViewer src="/api/asset-text?path=weird.bin" fileName="weird.bin" extension="bin" />,
+      <TextViewer
+        src="/api/asset-text?path=weird.bin"
+        assetPath="weird.bin"
+        fileName="weird.bin"
+        extension="bin"
+      />,
     );
     await waitFor(() => {
       expect(container.querySelector('[data-text-viewer-state="error"]')).not.toBeNull();

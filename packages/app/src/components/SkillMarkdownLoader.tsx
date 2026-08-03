@@ -41,7 +41,8 @@ export function SkillMarkdownLoader({
     return <ViewerLoadingPane fileName={fileName} dataAttr={DATA_ATTR} />;
   }
   if (fetchState.status === 'error') {
-    // No "Open file" handoff — a skill bundle file has no asset-server URL.
+    // No "Open file" handoff — a skill bundle file lives outside the content
+    // dir, so there is no project-relative path to hand to the OS.
     return (
       <ViewerErrorPane fileName={fileName} dataAttr={DATA_ATTR} message={fetchState.message} />
     );

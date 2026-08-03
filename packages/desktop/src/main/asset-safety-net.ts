@@ -22,6 +22,11 @@
  * canonical defense; Standard Notes + AFFiNE + VSCode all implement
  * both.
  *
+ * `will-navigate` additionally REFUSES same-origin top-level navigations into
+ * `/api/*` (see `matchInAppApiNavigation`). Those are never legitimate SPA
+ * navigation and unloading the renderer for a raw API response leaves a window
+ * with no UI and no way back.
+ *
  * Pure-ish: takes a narrow `WebContentsLike` so tests can exercise the
  * dispatch logic without standing up Electron. `openAssetSafely` is
  * injected — the real wiring in `index.ts` passes the main-process gate
@@ -164,6 +169,35 @@ export function matchAssetUrl(url: string, editorOrigin: string): string | null 
 }
 
 /**
+ * True when `url` is a same-origin (renderer or editor/API) navigation into the
+ * HTTP API surface. Such a URL is never a legitimate top-level navigation: the
+ * app shell is the bundle entry, in-app routes live in the hash, and asset URLs
+ * are claimed earlier by `matchAssetUrl`. What DOES produce one is a stray
+ * `<a href="/api/…">` in renderer markup — and letting it through replaces the
+ * whole single-page app with a raw API response, leaving a chrome-only window
+ * the user cannot navigate back from.
+ *
+ * Deliberately narrow: only the `/api` path prefix, only on origins we already
+ * treat as in-app. The bundle entry, `/@vite/*` HMR endpoints, hash routes, and
+ * every cross-origin URL fall through untouched.
+ *
+ * Exported for test coverage of the matching logic without mounting the net.
+ */
+export function matchInAppApiNavigation(
+  url: string,
+  inAppOrigins: readonly (string | null | undefined)[],
+): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (!inAppOrigins.includes(parsed.origin)) return false;
+  return parsed.pathname === '/api' || parsed.pathname.startsWith('/api/');
+}
+
+/**
  * Origin of `url`, or null if absent/unparseable. Used to read the renderer's
  * own origin from `webContents.getURL()`.
  */
@@ -296,6 +330,19 @@ export function attachAssetSafetyNet(
       });
       return;
     }
+    // A top-level navigate into the HTTP API would unload the app shell for a
+    // raw API response — refuse before the same-origin allowance below, which
+    // exists for the app bundle and hash routes, not for API endpoints.
+    const rendererOrigin = safeOrigin(webContents.getURL?.());
+    if (matchInAppApiNavigation(url, [deps.editorOrigin, rendererOrigin])) {
+      event.preventDefault();
+      log({
+        level: 'warn',
+        message: 'refused top-level navigation into the HTTP API',
+        data: { url },
+      });
+      return;
+    }
     // Same-origin navigation (Vite HMR full-reload, an in-app link that
     // somehow turned into a top-level navigate, the editor itself
     // reloading) — leave Electron's default handling alone.
@@ -310,10 +357,7 @@ export function attachAssetSafetyNet(
     // `matchInAppRoute`). Leaving Electron's default handling keeps a same-page
     // navigation in-app rather than leaking a `localhost:5173/#/doc` URL to the
     // OS browser via the `openExternal` fall-through below.
-    if (
-      parsed.origin === deps.editorOrigin ||
-      parsed.origin === safeOrigin(webContents.getURL?.())
-    ) {
+    if (parsed.origin === deps.editorOrigin || parsed.origin === rendererOrigin) {
       return;
     }
     // Cross-origin navigation that would otherwise replace the editor's

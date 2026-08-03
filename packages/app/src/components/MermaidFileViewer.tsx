@@ -29,6 +29,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { MermaidView } from '@/editor/components/Mermaid';
 import { useViewerText, type ViewerTextSource } from './use-viewer-text';
 import { ViewerErrorPane, ViewerLoadingPane } from './ViewerStatusPane';
+import { resolveViewerOpenFile } from './viewer-open-file';
 
 type MermaidFileViewerProps = ViewerTextSource & {
   fileName: string;
@@ -62,7 +63,12 @@ export function MermaidFileViewer({ fileName, extension, ...source }: MermaidFil
         dataAttr="data-mermaid-file-viewer"
         extraAttrs={extraAttrs}
         message={fetchState.message}
-        openHref={source.src}
+        openFile={resolveViewerOpenFile({
+          assetPath: source.assetPath,
+          fileName,
+          extension,
+          httpStatus: fetchState.httpStatus,
+        })}
       />
     );
   }

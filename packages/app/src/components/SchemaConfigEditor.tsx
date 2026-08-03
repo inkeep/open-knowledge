@@ -111,6 +111,7 @@ export function SchemaConfigEditor({ assetPath }: SchemaConfigEditorProps) {
           <TextViewer
             key={assetPath}
             src={assetTextUrl(assetPath)}
+            assetPath={assetPath}
             fileName={fileName}
             extension={extension}
           />

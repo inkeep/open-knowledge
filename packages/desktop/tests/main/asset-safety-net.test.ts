@@ -9,6 +9,7 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   attachAssetSafetyNet,
   matchAssetUrl,
+  matchInAppApiNavigation,
   matchInAppRoute,
 } from '../../src/main/asset-safety-net.ts';
 
@@ -100,6 +101,70 @@ describe('matchAssetUrl', () => {
     // is the second layer that catches any traversal that does slip
     // through, e.g. via symlink at the destination.)
     expect(matchAssetUrl('http://localhost:5173/%2E%2E/secret.pdf', ORIGIN)).toBe('secret.pdf');
+  });
+});
+
+describe('matchInAppApiNavigation', () => {
+  const IN_APP = [ORIGIN, 'http://localhost:8765'];
+
+  test('same-origin /api/* path → true', () => {
+    expect(
+      matchInAppApiNavigation('http://localhost:5173/api/asset-text?path=logs/huge.csv', IN_APP),
+    ).toBe(true);
+    expect(matchInAppApiNavigation('http://localhost:8765/api/asset?path=a.pdf', IN_APP)).toBe(
+      true,
+    );
+  });
+
+  test('bare /api → true (no trailing segment needed)', () => {
+    expect(matchInAppApiNavigation('http://localhost:5173/api', IN_APP)).toBe(true);
+  });
+
+  test('app bundle entry and root → false (reload path must stay open)', () => {
+    expect(matchInAppApiNavigation('http://localhost:5173/index.html', IN_APP)).toBe(false);
+    expect(matchInAppApiNavigation('http://localhost:5173/', IN_APP)).toBe(false);
+  });
+
+  test('Vite dev endpoints → false', () => {
+    expect(matchInAppApiNavigation('http://localhost:5173/@vite/client', IN_APP)).toBe(false);
+    expect(matchInAppApiNavigation('http://localhost:5173/@react-refresh', IN_APP)).toBe(false);
+  });
+
+  test('in-app hash route → false', () => {
+    expect(matchInAppApiNavigation('http://localhost:5173/#/people/ray', IN_APP)).toBe(false);
+  });
+
+  test('a path that merely starts with the letters "api" → false', () => {
+    expect(matchInAppApiNavigation('http://localhost:5173/apiary/notes.md', IN_APP)).toBe(false);
+  });
+
+  test('cross-origin /api/* → false (openExternal owns that branch)', () => {
+    expect(matchInAppApiNavigation('https://example.com/api/thing', IN_APP)).toBe(false);
+  });
+
+  test('null / undefined in-app origins are ignored, not matched', () => {
+    expect(matchInAppApiNavigation('http://localhost:5173/api/asset', [null, undefined])).toBe(
+      false,
+    );
+  });
+
+  test('packaged renderer: a root-relative /api href resolves to file:///api/... and matches', () => {
+    // In a packaged build the renderer is a `file://` page, so `<a href="/api/…">`
+    // resolves to `file:///api/…` and both origins are the opaque string 'null'.
+    // That is the production shape of the blank-window navigation.
+    const packagedRendererOrigin = new URL(
+      'file:///Applications/OK.app/Contents/Resources/app/dist/index.html',
+    ).origin;
+    expect(
+      matchInAppApiNavigation('file:///api/asset-text?path=logs/huge.csv', [
+        'http://127.0.0.1:8765',
+        packagedRendererOrigin,
+      ]),
+    ).toBe(true);
+  });
+
+  test('bogus URL → false (no throw)', () => {
+    expect(matchInAppApiNavigation('not a url', IN_APP)).toBe(false);
   });
 });
 
@@ -406,6 +471,178 @@ describe('attachAssetSafetyNet — will-navigate', () => {
     expect(preventDefault).not.toHaveBeenCalled();
     await Promise.resolve();
     expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  test('same-origin /api/* navigation → refused, app shell stays mounted', async () => {
+    // A stray `<a href="/api/asset-text?…">` would otherwise replace the whole
+    // renderer with the raw API response, leaving a window with no UI.
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
+    const logEvents: unknown[] = [];
+
+    let installedHandler: ((event: { preventDefault: () => void }, url: string) => void) | null =
+      null;
+    const webContents = {
+      setWindowOpenHandler: () => {},
+      on(
+        event: 'will-navigate',
+        handler: (event: { preventDefault: () => void }, url: string) => void,
+      ) {
+        if (event === 'will-navigate') installedHandler = handler;
+      },
+      getURL: () => 'http://localhost:5173/#/home',
+    };
+
+    attachAssetSafetyNet(webContents, {
+      openAsset,
+      openExternal,
+      editorOrigin: 'http://localhost:8765',
+      log: (evt) => logEvents.push(evt),
+    });
+
+    const preventDefault = vi.fn(() => {});
+    installedHandler?.(
+      { preventDefault },
+      'http://localhost:5173/api/asset-text?path=logs/huge.csv',
+    );
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
+    // Refused outright: not delegated to the OS browser, not opened as an asset.
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(openAsset).not.toHaveBeenCalled();
+    expect(logEvents).toHaveLength(1);
+    expect(logEvents[0]).toMatchObject({
+      level: 'warn',
+      message: 'refused top-level navigation into the HTTP API',
+    });
+  });
+
+  test('editor-origin /api/* navigation → also refused', async () => {
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
+
+    let installedHandler: ((event: { preventDefault: () => void }, url: string) => void) | null =
+      null;
+    const webContents = {
+      setWindowOpenHandler: () => {},
+      on(
+        event: 'will-navigate',
+        handler: (event: { preventDefault: () => void }, url: string) => void,
+      ) {
+        if (event === 'will-navigate') installedHandler = handler;
+      },
+    };
+
+    attachAssetSafetyNet(webContents, { openAsset, openExternal, editorOrigin: ORIGIN });
+
+    const preventDefault = vi.fn(() => {});
+    installedHandler?.({ preventDefault }, 'http://localhost:5173/api/asset?path=notes/a.zip');
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(openAsset).not.toHaveBeenCalled();
+  });
+
+  test('packaged file:// renderer: /api/* navigation → refused', async () => {
+    // The production shape of the reported blank window: a root-relative
+    // `/api/…` href on a `file://` page resolves to `file:///api/…`, which does
+    // not exist, so the window ends up showing nothing at all.
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
+
+    let installedHandler: ((event: { preventDefault: () => void }, url: string) => void) | null =
+      null;
+    const webContents = {
+      setWindowOpenHandler: () => {},
+      on(
+        event: 'will-navigate',
+        handler: (event: { preventDefault: () => void }, url: string) => void,
+      ) {
+        if (event === 'will-navigate') installedHandler = handler;
+      },
+      getURL: () => 'file:///Applications/OK.app/Contents/Resources/app/dist/index.html',
+    };
+
+    attachAssetSafetyNet(webContents, {
+      openAsset,
+      openExternal,
+      editorOrigin: 'http://127.0.0.1:8765',
+    });
+
+    const preventDefault = vi.fn(() => {});
+    installedHandler?.({ preventDefault }, 'file:///api/asset-text?path=logs/huge.csv');
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(openAsset).not.toHaveBeenCalled();
+  });
+
+  test('the API refusal does not claim the bundle entry or an in-app hash route', async () => {
+    // Regression fence for the dev reload flow: `/index.html` (Vite HMR full
+    // reload) and `#/…` routes must still fall through to Electron's default
+    // handling after the API branch was added.
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
+
+    let installedHandler: ((event: { preventDefault: () => void }, url: string) => void) | null =
+      null;
+    const webContents = {
+      setWindowOpenHandler: () => {},
+      on(
+        event: 'will-navigate',
+        handler: (event: { preventDefault: () => void }, url: string) => void,
+      ) {
+        if (event === 'will-navigate') installedHandler = handler;
+      },
+      getURL: () => 'http://localhost:5173/#/home',
+    };
+
+    attachAssetSafetyNet(webContents, {
+      openAsset,
+      openExternal,
+      editorOrigin: 'http://localhost:8765',
+    });
+
+    for (const url of [
+      'http://localhost:5173/index.html',
+      'http://localhost:5173/',
+      'http://localhost:5173/@vite/client',
+      'http://localhost:5173/#/people/ray-zaragoza',
+    ]) {
+      const preventDefault = vi.fn(() => {});
+      installedHandler?.({ preventDefault }, url);
+      expect(preventDefault, `should not refuse ${url}`).not.toHaveBeenCalled();
+    }
+    await Promise.resolve();
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(openAsset).not.toHaveBeenCalled();
+  });
+
+  test('asset URL still wins over the API refusal', async () => {
+    // The asset branch runs first; a served asset path must keep delegating to
+    // openAsset rather than being swallowed by the new refusal.
+    const openAsset = vi.fn(async (_: string) => ({ ok: true }) as const);
+    const openExternal = vi.fn(noopOpenExternal);
+
+    let installedHandler: ((event: { preventDefault: () => void }, url: string) => void) | null =
+      null;
+    const webContents = {
+      setWindowOpenHandler: () => {},
+      on(
+        event: 'will-navigate',
+        handler: (event: { preventDefault: () => void }, url: string) => void,
+      ) {
+        if (event === 'will-navigate') installedHandler = handler;
+      },
+    };
+
+    attachAssetSafetyNet(webContents, { openAsset, openExternal, editorOrigin: ORIGIN });
+
+    const preventDefault = vi.fn(() => {});
+    installedHandler?.({ preventDefault }, 'http://localhost:5173/notes/meeting.pdf');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(openAsset).toHaveBeenCalledWith('notes/meeting.pdf');
   });
 
   test('malformed URL → silent drop (no preventDefault, no delegation, no crash)', async () => {

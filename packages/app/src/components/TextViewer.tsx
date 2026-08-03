@@ -31,6 +31,7 @@ import { okCmTheme } from '@/editor/extensions/cm-theme';
 import { loadCodeMirrorLanguageForExtension } from './text-viewer-languages';
 import { useViewerText, type ViewerTextSource } from './use-viewer-text';
 import { ViewerErrorPane, ViewerLoadingPane } from './ViewerStatusPane';
+import { resolveViewerOpenFile } from './viewer-open-file';
 
 const darkTheme = okCmTheme({
   dark: true,
@@ -47,7 +48,8 @@ const lightTheme = okCmTheme({
  * Exactly one text source (`src` for a content-dir asset, or `loadText` for a
  * scope-aware skill-bundle read) plus the display coordinates. The source half
  * is the `ViewerTextSource` discriminated union, so "both" / "neither" can't be
- * passed. `src` (when present) also targets the "Open file" fallback link.
+ * passed. The `src` variant also carries the project-relative `assetPath`, which
+ * is what the error pane's "Open file" handoff targets.
  */
 type TextViewerProps = ViewerTextSource & {
   fileName: string;
@@ -143,9 +145,12 @@ export function TextViewer({ fileName, extension, ...source }: TextViewerProps) 
         dataAttr="data-text-viewer"
         extraAttrs={extraAttrs}
         message={fetchState.message}
-        // Skill bundle files (`loadText` mode) have no asset-server URL, so the
-        // "Open file" handoff only applies to the content-dir `src` path.
-        openHref={source.src}
+        openFile={resolveViewerOpenFile({
+          assetPath: source.assetPath,
+          fileName,
+          extension,
+          httpStatus: fetchState.httpStatus,
+        })}
       />
     );
   }
