@@ -18,7 +18,7 @@
 # -----
 #   bash scripts/measure-stress.sh --seed 42 --context "pre-PR-218 baseline"
 #   bash scripts/measure-stress.sh --context "investigate 2026-04 rate shift"
-#   bun run measure:stress --seed 1776381158793 --context "reproduce CI flake"
+#   pnpm run measure:stress --seed 1776381158793 --context "reproduce CI flake"
 #
 # Flags
 # -----
@@ -115,7 +115,7 @@ fi
 TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 COMMIT="$(git rev-parse --short HEAD)"
 INVOKED_BY="${USER:-unknown}"
-BUN_VERSION="$(bun --version 2>/dev/null || echo unknown)"
+NODE_VERSION="$(node --version 2>/dev/null || echo unknown)"
 
 HOST="$(detect_host)"
 
@@ -130,12 +130,12 @@ START_MS="$(epoch_ms)"
 TEST_EXIT=0
 (
   # Explicit exit: errexit is suppressed inside a piped compound, so a bare
-  # failed cd would let bun test run from the wrong cwd.
+  # failed cd would let the test run from the wrong cwd.
   cd "$APP_DIR" || exit 1
   # --conditions development resolves workspace deps from source exports
   # instead of an unbuilt dist/ (the fresh-worktree state) — without it the
   # run dies on missing build artifacts.
-  bun test --conditions development "$TEST_FILE" 2>&1
+  pnpm exec vitest run "$TEST_FILE" 2>&1
 ) | tee "$OUT_FILE" || TEST_EXIT=$?
 
 END_MS="$(epoch_ms)"
@@ -153,15 +153,22 @@ DURATION_MS=$(( END_MS - START_MS ))
 #   (2) Machine-parseable result line — printed AFTER all assertions pass:
 #         [stress] RESULT outcome=pass seed=<n> edits=<n> convergenceMs=<n>
 #       Written via `process.stdout.write`, stdout-only (never stderr), so
-#       the grep below is unambiguous and insensitive to bun output drift.
+#       the grep below is unambiguous and insensitive to runner output drift.
 #
-# Parsing the test's own structured lines — not bun test's human summary —
-# decouples the script from bun's output format (Minor #3 fix).
+# Parsing the test's own structured lines — not the runner's human summary —
+# decouples the script from the runner's output format.
 
 ACTUAL_SEED_BANNER="$(grep -oE '\[server-authoritative stress\] seed=[0-9]+' "$OUT_FILE" \
   | awk -F= '{print $2}' | head -1 || true)"
+# Secondary source: the RESULT line carries the same seed. It is emitted only on
+# a pass, so it cannot replace the banner for crash runs, but it keeps a passing
+# run attributable if the banner is ever lost again.
+ACTUAL_SEED_RESULT="$(grep -oE '^\[stress\] RESULT .*seed=[0-9]+' "$OUT_FILE" \
+  | grep -oE 'seed=[0-9]+' | awk -F= '{print $2}' | head -1 || true)"
 if [[ -n "$ACTUAL_SEED_BANNER" ]]; then
   ACTUAL_SEED="$ACTUAL_SEED_BANNER"
+elif [[ -n "$ACTUAL_SEED_RESULT" ]]; then
+  ACTUAL_SEED="$ACTUAL_SEED_RESULT"
 elif [[ -n "$SEED" ]]; then
   ACTUAL_SEED="$SEED"
 else
@@ -186,7 +193,7 @@ HAS_RESULT_PASS="${HAS_RESULT_PASS:-0}"
 #             (post-test teardown failure). Abort without appending so
 #             the trend log stays a record of true measurements.
 #
-# Note: on a successful run, exit code alone is not sufficient — a bun
+# Note: on a successful run, exit code alone is not sufficient — a runner
 # test that ran but reported an assertion failure still has exit != 0.
 # A pass requires both the RESULT line AND exit 0; they corroborate.
 SEED_COUNT=1
@@ -195,7 +202,7 @@ if [[ "$TEST_EXIT" -eq 0 && "$HAS_RESULT_PASS" -ge 1 ]]; then
   SEEDS_FAILED=0
   RATE="0.0000"
   FAILING_SEEDS_JSON="[]"
-elif [[ "$TEST_EXIT" -ne 0 && -n "$ACTUAL_SEED_BANNER" && "$HAS_RESULT_PASS" -eq 0 ]]; then
+elif [[ "$TEST_EXIT" -ne 0 && -n "$ACTUAL_SEED" && "$HAS_RESULT_PASS" -eq 0 ]]; then
   OUTCOME="fail"
   SEEDS_FAILED=1
   RATE="1.0000"
@@ -247,7 +254,7 @@ RECORD="$(jq -c -n \
   --argjson failingSeeds "$FAILING_SEEDS_JSON" \
   --argjson durationMs   "$DURATION_MS" \
   --arg host        "$HOST" \
-  --arg bunVersion  "$BUN_VERSION" \
+  --arg nodeVersion "$NODE_VERSION" \
   --argjson extra   "$EXTRA_JSON" \
   '{
      timestamp: $timestamp,
@@ -261,7 +268,7 @@ RECORD="$(jq -c -n \
      failingSeeds: $failingSeeds,
      durationMs: $durationMs,
      host: $host,
-     bunVersion: $bunVersion,
+     nodeVersion: $nodeVersion,
      extra: $extra
    }')"
 
@@ -281,7 +288,7 @@ echo ""
 
 if [[ "$OUTCOME" == "fail" ]]; then
   echo "──────── failure replay command ────────"
-  echo "  STRESS_SEED=$ACTUAL_SEED bun test --conditions development $TEST_FILE  # in $APP_DIR"
+  echo "  STRESS_SEED=$ACTUAL_SEED pnpm exec vitest run $TEST_FILE  # in $APP_DIR"
   echo ""
 fi
 

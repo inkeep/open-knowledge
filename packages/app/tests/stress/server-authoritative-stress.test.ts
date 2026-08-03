@@ -195,8 +195,12 @@ describe('server-authoritative stress (US-013)', () => {
     } else {
       seed = Date.now();
     }
-    console.log(
-      `[server-authoritative stress] seed=${seed}${process.env.STRESS_SEED ? ' (replay)' : ''}`,
+    // Raw stdout, not console.log: measure-stress.sh greps this banner out of
+    // the captured run to recover the replay seed, and it is the ONLY seed
+    // source when the run crashes before the RESULT line. Test runners
+    // intercept and reformat console output, which drops it from the capture.
+    process.stdout.write(
+      `[server-authoritative stress] seed=${seed}${process.env.STRESS_SEED ? ' (replay)' : ''}\n`,
     );
     const rng = createPRNG(seed);
     const clientCount = 5;

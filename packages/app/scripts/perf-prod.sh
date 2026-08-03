@@ -4,7 +4,7 @@
 #
 # Orchestrates build → start CLI → run perf:profile N times → tear down.
 # Gives developers a one-command path to measure against the built artifact
-# (equivalent to what ships to users) instead of `bun run dev` (Vite HMR
+# (equivalent to what ships to users) instead of `pnpm run dev` (Vite HMR
 # + transform overhead, uncomparable).
 #
 # Usage:
@@ -19,7 +19,7 @@
 #   packages/app/scripts/perf-prod.sh --scenario=mode-toggle --runs=10
 #
 # What it does (precedent #22 shell-script conventions):
-#   1. Runs `bun run build` from repo root (turbo-cached; no-op when clean).
+#   1. Runs `pnpm run build` from repo root (turbo-cached; no-op when clean).
 #   2. Starts TWO CLI processes on kernel-assigned ports:
 #        a. `open-knowledge start --port 0` — collab server (Hocuspocus +
 #           /api/*). Polls `.ok/server.lock` for bound port.
@@ -29,7 +29,7 @@
 #      Post-2026-04-16 CLI split: `ok start` is collab-only (no static
 #      assets), `ok ui` is the sole server of the React bundle. Playwright
 #      must navigate against the UI port, NOT the collab port.
-#   3. Runs `bun run perf:profile --scenario=<name> --target=http://localhost:<ui-port> --headless`
+#   3. Runs `pnpm run perf:profile --scenario=<name> --target=http://localhost:<ui-port> --headless`
 #      N times. Results land at `packages/app/tests/perf/results/<scenario>.<ts>.json`.
 #   4. Sends SIGTERM to both processes; CLI's CC8 shutdown ordering releases
 #      both locks cleanly. Waits up to 5s for both locks to disappear.
@@ -98,9 +98,9 @@ RESULTS_DIR="$REPO_ROOT/packages/app/tests/perf/results"
 
 echo "[perf-prod] Building app + cli (turbo cache-friendly; no-op when clean)…"
 cd "$REPO_ROOT"
-if ! bun run build >/dev/null 2>&1; then
-  echo "error: bun run build failed — re-run manually to see output:" >&2
-  echo "       cd $REPO_ROOT && bun run build" >&2
+if ! pnpm run build >/dev/null 2>&1; then
+  echo "error: pnpm run build failed — re-run manually to see output:" >&2
+  echo "       cd $REPO_ROOT && pnpm run build" >&2
   exit 2
 fi
 
@@ -155,7 +155,7 @@ UI_LOG="$(mktemp -t perf-prod-ui.XXXXXX.log)"
 #
 # TODO: replace with upstream totalist fix — see tmp/ship/
 # totalist-sirv-crash-brief.md for the full repro + fix options. The
-# brief proposes a `bun patch totalist@3.0.1` that wraps readdirSync +
+# brief proposes a `pnpm patch totalist@3.0.1` that wraps readdirSync +
 # statSync in try/catch (ENOENT/EACCES/ENOTDIR → skip). Once that patch
 # lands, this pre-flight becomes dead code and can be deleted.
 if [[ -d "$REPO_ROOT/tmp" ]]; then
@@ -277,12 +277,12 @@ for i in $(seq 1 "$RUNS"); do
   # KEY=value tokens space-separated. An empty string is a no-op.
   if [[ -n "$EXTRA_ENV" ]]; then
     # shellcheck disable=SC2086
-    if ! env $EXTRA_ENV bun run perf:profile --scenario="$SCENARIO" --target="http://localhost:$PORT" --headless; then
+    if ! env $EXTRA_ENV pnpm run perf:profile --scenario="$SCENARIO" --target="http://localhost:$PORT" --headless; then
       run_failures=$((run_failures + 1))
       echo "[perf-prod] WARN: run $i exited non-zero — continuing" >&2
     fi
   else
-    if ! bun run perf:profile --scenario="$SCENARIO" --target="http://localhost:$PORT" --headless; then
+    if ! pnpm run perf:profile --scenario="$SCENARIO" --target="http://localhost:$PORT" --headless; then
       run_failures=$((run_failures + 1))
       echo "[perf-prod] WARN: run $i exited non-zero — continuing" >&2
     fi

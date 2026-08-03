@@ -15,7 +15,7 @@
 # -----
 #   bash scripts/measure-fuzz.sh --seeds 1000 --context "pre-PR-218 baseline"
 #   bash scripts/measure-fuzz.sh --seed-replay 1776559905522 --context "reproduce PR #206 failing seed"
-#   bun run measure:fuzz --seeds 100 --context "investigate fuzz rate shift"
+#   pnpm run measure:fuzz --seeds 100 --context "investigate fuzz rate shift"
 #
 # Flags
 # -----
@@ -59,7 +59,7 @@
 #     "failingSeeds":[1776559905522],
 #     "durationMs":  8912000,
 #     "host":        "local-macos",
-#     "bunVersion":  "1.3.11",
+#     "nodeVersion": "v24.18.0",
 #     "extra":       { "outcome": "pass",      // "pass" | "fail"
 #                      "failClasses": [] }     // per-failing-seed oracle class
 #   }                                          //   [{seed, class}, ...]
@@ -129,7 +129,7 @@ if [[ -z "$CONTEXT" ]]; then
 fi
 
 # Validate numeric inputs via shared helper. Non-numeric inputs would
-# export a non-numeric env to the child `bun test` and silently coerce
+# export a non-numeric env to the child test run and silently coerce
 # to NaN→1 at the PRNG layer.
 assert_numeric_flag "--seeds" "$SEEDS"
 if [[ -n "$SEED_REPLAY" ]]; then
@@ -162,7 +162,7 @@ fi
 TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 COMMIT="$(git rev-parse --short HEAD)"
 INVOKED_BY="${USER:-unknown}"
-BUN_VERSION="$(bun --version 2>/dev/null || echo unknown)"
+NODE_VERSION="$(node --version 2>/dev/null || echo unknown)"
 
 HOST="$(detect_host)"
 
@@ -180,12 +180,12 @@ START_MS="$(epoch_ms)"
 TEST_EXIT=0
 (
   # Explicit exit: errexit is suppressed inside a piped compound, so a bare
-  # failed cd would let bun test run from the wrong cwd.
+  # failed cd would let the test run from the wrong cwd.
   cd "$APP_DIR" || exit 1
   # --conditions development resolves workspace deps from source exports
   # instead of an unbuilt dist/ (the fresh-worktree state) — without it the
   # run dies on missing build artifacts.
-  bun test --conditions development "$TEST_FILE" 2>&1
+  pnpm exec vitest run "$TEST_FILE" 2>&1
 ) | tee "$OUT_FILE" || TEST_EXIT=$?
 
 END_MS="$(epoch_ms)"
@@ -196,8 +196,8 @@ DURATION_MS=$(( END_MS - START_MS ))
 # `bridge-convergence.fuzz.test.ts`'s after-all hook:
 #   [fuzz] RESULT seeds=<n> passed=<n> failed=<n> failingSeeds=[<s1>,<s2>,...]
 # Written via `process.stdout.write`, stdout-only. Parsing this decouples
-# the script from bun's human-readable `N pass / N fail` format (which is
-# fragile to bun output drift and stderr conflation via 2>&1). Mirrors
+# the script from the runner's human-readable summary format (which is
+# fragile to output drift and stderr conflation via 2>&1). Mirrors
 # `measure-stress.sh`'s RESULT-line strategy for sibling-script symmetry.
 #
 # When RESULT is missing the test crashed before the after-all hook could
@@ -311,7 +311,7 @@ RECORD="$(jq -c -n \
   --argjson failingSeeds "$FAILING_SEEDS_JSON" \
   --argjson durationMs   "$DURATION_MS" \
   --arg host        "$HOST" \
-  --arg bunVersion  "$BUN_VERSION" \
+  --arg nodeVersion "$NODE_VERSION" \
   --argjson extra   "$EXTRA_JSON" \
   '{
      timestamp: $timestamp,
@@ -326,7 +326,7 @@ RECORD="$(jq -c -n \
      failingSeeds: $failingSeeds,
      durationMs: $durationMs,
      host: $host,
-     bunVersion: $bunVersion,
+     nodeVersion: $nodeVersion,
      extra: $extra
    }')"
 
@@ -354,7 +354,7 @@ if [[ "$SEEDS_FAILED" != "0" ]]; then
     echo "──────── failing seed replay commands ────────"
     while IFS= read -r seed; do
       [[ -z "$seed" ]] && continue
-      echo "  STRESS_FUZZ_SEED=$seed bun test --conditions development $TEST_FILE  # in $APP_DIR"
+      echo "  STRESS_FUZZ_SEED=$seed pnpm exec vitest run $TEST_FILE  # in $APP_DIR"
     done <<< "$FAILING_SEEDS_LIST"
     echo ""
   fi

@@ -38,10 +38,14 @@ function findFreshestResults(): string {
 
 async function main(): Promise<void> {
   // 1) run the bench
-  const bench = spawnSync('bun', ['test', resolve(HERE, 'markdown-bench.test.ts')], {
-    env: { ...process.env, RUN_BENCH: '1' },
-    stdio: 'inherit',
-  });
+  const bench = spawnSync(
+    'pnpm',
+    ['exec', 'vitest', 'run', resolve(HERE, 'markdown-bench.test.ts')],
+    {
+      env: { ...process.env, RUN_BENCH: '1' },
+      stdio: 'inherit',
+    },
+  );
   if (bench.status !== 0) {
     console.error(`bench run failed with exit code ${bench.status ?? 'null'}`);
     process.exit(bench.status ?? 1);
