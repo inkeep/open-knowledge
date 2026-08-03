@@ -64,18 +64,7 @@ export interface HandoffPayload {
   readonly prompt: string;
 }
 
-/**
- * **DRIFT WARNING — this union is mirrored inline in four places** for
- * IPC-channel / bridge-contract isolation (the bridge surfaces cannot import
- * from `core/handoff/` without pulling the whole handoff package into the
- * Electron preload bundle). TypeScript catches drift at call-site boundaries
- * but not at the definitions. Keep these in lockstep:
- *
- *   1. `packages/desktop/src/shared/ipc-channels.ts` — `HandoffStatsLine.reason`
- *   2. `packages/desktop/src/shared/bridge-contract.ts` — `OkDesktopBridge.shell.recordHandoff` param
- *   3. `packages/core/src/desktop-bridge.ts` — canonical `OkDesktopBridge.shell.recordHandoff` param
- *   4. `packages/app/src/lib/desktop-bridge-types.ts` — renderer-side augmentation
- */
+/** Failure classes reported by handoff telemetry and the desktop host bridge. */
 export type HandoffFailureReason =
   | 'not-installed'
   | 'scheme-blocked'
@@ -89,10 +78,8 @@ export type HandoffFailureReason =
  * selection-scoped dispatch; the file / folder / project scopes omit the
  * field, so an absent `scope` reads as a non-selection handoff.
  *
- * **DRIFT WARNING** — like `HandoffFailureReason` above, this is mirrored
- * inline as an optional `scope?` field in the same four IPC-channel /
- * bridge-contract sites enumerated above (they cannot import from
- * `core/handoff/`). Keep in lockstep.
+ * Reused by the desktop telemetry channel and bridge rather than redeclared
+ * at each boundary.
  */
 export type HandoffScope = 'selection';
 

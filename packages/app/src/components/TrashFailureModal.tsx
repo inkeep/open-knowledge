@@ -35,20 +35,13 @@ import {
  */
 
 /**
- * **DRIFT WARNING — this union mirrors `TrashItemReason` declared inline in
- * the bridge contract.** The bridge surfaces can't import from `app/components/`
- * (renderer-only) so the IPC boundary's outcome reason and the renderer's
- * display reason are declared separately. Keep these in lockstep with the
- * `reason: 'not-found' | 'permission-denied' | 'system-error' | 'path-escape'`
- * field declared on the trashItem outcome at:
- *
- *   1. `packages/desktop/src/shared/bridge-contract.ts` — `OkDesktopBridge.shell.trashItem` outcome
- *   2. `packages/core/src/desktop-bridge.ts` — canonical `OkDesktopBridge.shell.trashItem` outcome
- *   3. `packages/app/src/lib/desktop-bridge-types.ts` — renderer-side augmentation
+ * **DRIFT WARNING — this display-only union mirrors the reason declared on
+ * `OkDesktopBridge.shell.trashItem` in the canonical core desktop-bridge
+ * contract.** Keep the two unions in lockstep.
  *
  * TypeScript catches structural drift at the bridge-contract level (the cast
  * site in FileTree.tsx narrows via `coerceTrashFailureReason` below); the
- * unions themselves must stay byte-identical.
+ * unions themselves must stay structurally identical.
  */
 type TrashFailureReason = 'not-found' | 'permission-denied' | 'system-error' | 'path-escape';
 

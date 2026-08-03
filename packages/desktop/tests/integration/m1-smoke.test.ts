@@ -4,13 +4,13 @@
  *   Test 1 (dev loop) — Playwright `_electron.launch` against the bundled
  *     out/main/index.js. Skipped here with a structured reason because the
  *     full Playwright + Electron + display-server harness is not part of
- *     `bun test` (it runs under `bun run test:e2e:packaged` once the
- *     electron-builder smoke pipeline lands). The bridge / utility /
+ *     the Vitest suite (it will run in the electron-builder smoke pipeline
+ *     once that pipeline lands). The bridge / utility /
  *     window-manager / IPC layers ARE end-to-end tested via the unit-test
  *     suite at the boundary they expose to the renderer.
  *
  *   Test 2 (keyring smoke) — exercises @napi-rs/keyring directly from a
- *     plain Node process to prove the binding loads under the Bun runtime
+ *     plain Node process to prove the binding loads under the current runtime
  *     (ABI risk). If the binding fails to load (e.g., CI runner without
  *     a Keychain backend), test SKIPs gracefully.
  *
@@ -24,7 +24,7 @@
  *     test suite at `packages/server/src/server-lock.test.ts`, which
  *     this file CONSUMES rather than re-tests.
  *
- * Net: this file's sole NEW gate is Test 2 (keyring smoke under Bun). The
+ * Net: this file's sole NEW gate is Test 2 (keyring smoke under Node). The
  * other three are coverage pointers — explicit references so a future
  * developer can find the existing tests via this index.
  */
@@ -48,12 +48,10 @@ describe('M1 smoke', () => {
   });
 
   test('Test 2 — keyring smoke: @napi-rs/keyring loads + round-trips a secret', async () => {
-    // Confirms the native ABI loads under Bun. @napi-rs/keyring is a CLI
+    // Confirms the native binding loads under Node. @napi-rs/keyring is a CLI
     // dep that must rebuild against Electron's Node ABI in packaged builds.
-    // This test catches the load-time failure shape (ABI mismatch, prebuilt
-    // missing) before packaging — if it can't load under Bun's
-    // Node24-compatible runtime, it definitely can't load under Electron's
-    // Node24-derived ABI.
+    // This test catches the load-time failure shape (ABI mismatch or missing
+    // prebuilt) before the packaged-build pipeline exercises Electron's ABI.
     let keyring: typeof import('@napi-rs/keyring') | null = null;
     try {
       keyring = await import('@napi-rs/keyring');
@@ -75,7 +73,7 @@ describe('M1 smoke', () => {
     // backend. `entry.setPassword` blocks indefinitely on the missing
     // backend rather than throwing — and crucially, the native binding
     // holds a worker thread or D-Bus connection alive even after the test
-    // returns, preventing `bun test` from exiting cleanly. That manifests
+    // returns, preventing `vitest run` from exiting cleanly. That manifests
     // as a CI-only post-test hang (15-minute job timeout cancellation).
     // The binding load already provides the
     // ABI-mismatch signal we care about for this test's purpose; the
@@ -137,183 +135,6 @@ describe('M1 smoke', () => {
     expect(existsSync(serverLockTestPath)).toBe(true);
   });
 
-  test('M1 invariant: bridge contract drift catcher (US-010 promise)', async () => {
-    // Verify all three OkDesktopBridge contract copies (core canonical,
-    // desktop preload-side, app renderer-side) declare the same surface
-    // shape. Drift is a real risk — a future contributor adds a method to
-    // one copy and forgets the other two; this test fires on the first
-    // copy diverging.
-    //
-    // We check existence AND a lightweight member-name-set equality on the
-    // `OkDesktopBridge` interface text. This catches a category of drift
-    // (core missing the `project` surface
-    // while desktop + app both had it). Full signature-level equivalence is
-    // beyond this test's scope; pick up the delta at `bun run typecheck`
-    // if the TS compiler notices it across the three import paths.
-    const corePath = join(__dirname, '..', '..', '..', 'core', 'src', 'desktop-bridge.ts');
-    const desktopPath = join(__dirname, '..', '..', 'src', 'shared', 'bridge-contract.ts');
-    const appPath = join(
-      __dirname,
-      '..',
-      '..',
-      '..',
-      'app',
-      'src',
-      'lib',
-      'desktop-bridge-types.ts',
-    );
-    expect(existsSync(corePath)).toBe(true);
-    expect(existsSync(desktopPath)).toBe(true);
-    expect(existsSync(appPath)).toBe(true);
-
-    const { readFileSync } = await import('node:fs');
-    /**
-     * Extract member names from an `OkDesktopBridge` interface declaration,
-     * INCLUDING one level of nesting. Top-level members (`dialog`, `shell`,
-     * `project`, …) are captured by their name; members inside those nested
-     * blocks are captured as `<parent>.<name>` (e.g. `shell.detectProtocol`).
-     *
-     * Two-level capture (not arbitrary depth) is deliberate — the contract
-     * is flat-by-convention apart from the grouped surfaces, and a bounded
-     * walker is easier to reason about than a generic recursive one. If a
-     * future surface ever grows a third level, add another nesting tier
-     * here rather than reworking the depth bookkeeping.
-     */
-    const extractBridgeMembers = (src: string): Set<string> => {
-      const names = new Set<string>();
-      const lines = src.split('\n');
-      let inInterface = false;
-      let braceDepth = 0;
-      // Paren depth guards against false positives from multi-line method
-      // signatures like `spawnCursor(\n  path: string,\n): Promise<…>` —
-      // without this, the continuation line `path: string,` would match the
-      // member regex and leak "path" as a phantom sub-member.
-      let parenDepth = 0;
-      let currentParent: string | null = null;
-      for (const line of lines) {
-        if (!inInterface) {
-          if (/interface\s+OkDesktopBridge\s*\{/.test(line)) {
-            inInterface = true;
-            braceDepth = (line.match(/\{/g) ?? []).length - (line.match(/\}/g) ?? []).length;
-            parenDepth = (line.match(/\(/g) ?? []).length - (line.match(/\)/g) ?? []).length;
-          }
-          continue;
-        }
-        const opens = (line.match(/\{/g) ?? []).length;
-        const closes = (line.match(/\}/g) ?? []).length;
-        const parenOpens = (line.match(/\(/g) ?? []).length;
-        const parenCloses = (line.match(/\)/g) ?? []).length;
-        const trimmed = line.trim();
-        const memberMatch = trimmed.match(/^(?:readonly\s+)?(\w+)\s*[:(?]/);
-        const canCapture = parenDepth === 0;
-        if (braceDepth === 1) {
-          if (canCapture && memberMatch?.[1]) {
-            names.add(memberMatch[1]);
-            if (opens > closes) currentParent = memberMatch[1];
-          }
-        } else if (braceDepth === 2 && currentParent) {
-          if (canCapture && memberMatch?.[1]) names.add(`${currentParent}.${memberMatch[1]}`);
-        }
-        braceDepth += opens - closes;
-        parenDepth += parenOpens - parenCloses;
-        if (braceDepth === 1 && currentParent) currentParent = null;
-        if (braceDepth === 0) break;
-      }
-      return names;
-    };
-
-    const coreMembers = extractBridgeMembers(readFileSync(corePath, 'utf-8'));
-    const desktopMembers = extractBridgeMembers(readFileSync(desktopPath, 'utf-8'));
-    const appMembers = extractBridgeMembers(readFileSync(appPath, 'utf-8'));
-
-    // All three extractions must actually find members — otherwise the regex
-    // is broken and subsequent equality checks are meaningless.
-    expect(coreMembers.size).toBeGreaterThan(0);
-    expect(desktopMembers.size).toBeGreaterThan(0);
-    expect(appMembers.size).toBeGreaterThan(0);
-
-    // Positive regression: the nested walker must actually find sub-members
-    // of the `shell` block. If it silently fell back to top-level-only, this
-    // test would quietly succeed while missing an entire class of drift.
-    //
-    // Assert every shell.* sub-member shipped by the Open in Agent
-    // Desktop surface. A walker regression that drops
-    // one of these — say, the paren-depth guard degrading on a signature with
-    // a generic type parameter — would silently lose the drift signal for that
-    // method. Explicit membership makes the signal load-bearing.
-    const REQUIRED_SHELL_MEMBERS = [
-      'shell.openExternal', // baseline
-      'shell.detectProtocol', // Open in Agent
-      'shell.spawnCursor', // Open in Agent
-      'shell.recordHandoff', // Open in Agent telemetry
-      'shell.openAsset', // asset-click dispatcher
-      'shell.revealAsset', // asset-click dispatcher
-      'shell.revealExternal', // terminal out-of-project reveal
-      'shell.showAssetMenu', // right-click context menu
-      'shell.showItemInFolder', // file-tree reveal-in-finder
-      'shell.trashItem', // sidebar Trash flow
-    ] as const;
-    // The fs.* namespace was added for the Create-new-project dialog cascade.
-    // Mirror the shell.* coverage so a walker regression that drops one of
-    // these probes — say, the paren-depth guard degrading on the Promise<T |
-    // null> return type — would surface here instead of silently desyncing
-    // the three bridge-contract copies.
-    const REQUIRED_FS_MEMBERS = [
-      'fs.defaultProjectsRoot',
-      'fs.folderState',
-      'fs.findEnclosingProjectRoot',
-      'fs.findEnclosingGitRoot',
-    ] as const;
-    for (const [label, members] of [
-      ['core', coreMembers],
-      ['desktop', desktopMembers],
-      ['app', appMembers],
-    ] as const) {
-      expect(members.has('shell')).toBe(true);
-      for (const required of REQUIRED_SHELL_MEMBERS) {
-        expect(members.has(required)).toBe(true);
-        if (!members.has(required)) {
-          throw new Error(`${label} extractor missed ${required} — walker broken`);
-        }
-      }
-      expect(members.has('fs')).toBe(true);
-      for (const required of REQUIRED_FS_MEMBERS) {
-        expect(members.has(required)).toBe(true);
-        if (!members.has(required)) {
-          throw new Error(`${label} extractor missed ${required} — walker broken`);
-        }
-      }
-    }
-
-    // Set equality pairwise. If any pair diverges, surface WHICH members
-    // are missing from which copy so the fix is clear.
-    const diff = (a: Set<string>, b: Set<string>) => Array.from(a).filter((x) => !b.has(x));
-    const coreMinusDesktop = diff(coreMembers, desktopMembers);
-    const desktopMinusCore = diff(desktopMembers, coreMembers);
-    const appMinusCore = diff(appMembers, coreMembers);
-    const coreMinusApp = diff(coreMembers, appMembers);
-
-    if (
-      coreMinusDesktop.length +
-        desktopMinusCore.length +
-        appMinusCore.length +
-        coreMinusApp.length >
-      0
-    ) {
-      throw new Error(
-        [
-          'OkDesktopBridge contract drift across the three copies:',
-          `  core has but desktop missing:  [${coreMinusDesktop.join(', ')}]`,
-          `  desktop has but core missing:  [${desktopMinusCore.join(', ')}]`,
-          `  app has but core missing:      [${appMinusCore.join(', ')}]`,
-          `  core has but app missing:      [${coreMinusApp.join(', ')}]`,
-          '',
-          'Fix: add the missing members so the three copies agree.',
-        ].join('\n'),
-      );
-    }
-  });
-
   test('M1 invariant: literal unions consolidated in core; mirrors re-export or alias without the inline shape', async () => {
     // Three literal-union types are consolidated into `@inkeep/open-knowledge-
     // core`'s `constants/` directory. Each mirror file MUST reach the type
@@ -354,9 +175,7 @@ describe('M1 smoke', () => {
     // Paths that mirror sites are pinned against.
     const cliEditorsPath = join(packagesRoot, 'cli', 'src', 'commands', 'editors.ts');
     const ipcChannelsPath = join(__dirname, '..', '..', 'src', 'shared', 'ipc-channels.ts');
-    const bridgeContractPath = join(__dirname, '..', '..', 'src', 'shared', 'bridge-contract.ts');
     const coreBridgePath = join(packagesRoot, 'core', 'src', 'desktop-bridge.ts');
-    const appBridgePath = join(packagesRoot, 'app', 'src', 'lib', 'desktop-bridge-types.ts');
     const createNewProjectPath = join(
       __dirname,
       '..',
@@ -407,9 +226,7 @@ describe('M1 smoke', () => {
         mirrors: [
           ['cli/commands/editors.ts', cliEditorsPath],
           ['desktop/shared/ipc-channels.ts', ipcChannelsPath],
-          ['desktop/shared/bridge-contract.ts', bridgeContractPath],
           ['core/desktop-bridge.ts', coreBridgePath],
-          ['app/lib/desktop-bridge-types.ts', appBridgePath],
         ],
       },
       {
@@ -420,8 +237,6 @@ describe('M1 smoke', () => {
         inlineRe: /'free'\s*\|\s*'exists-empty'\s*\|\s*'exists-nonempty'/,
         mirrors: [
           ['core/desktop-bridge.ts', coreBridgePath],
-          ['app/lib/desktop-bridge-types.ts', appBridgePath],
-          ['desktop/shared/bridge-contract.ts', bridgeContractPath],
           ['desktop/shared/ipc-channels.ts', ipcChannelsPath],
           ['desktop/main/create-new-project.ts', createNewProjectPath],
         ],
@@ -434,8 +249,6 @@ describe('M1 smoke', () => {
         inlineRe: /'nested'\s*\|\s*'nonempty'\s*\|\s*'git-confirm'/,
         mirrors: [
           ['core/desktop-bridge.ts', coreBridgePath],
-          ['app/lib/desktop-bridge-types.ts', appBridgePath],
-          ['desktop/shared/bridge-contract.ts', bridgeContractPath],
           ['desktop/shared/ipc-channels.ts', ipcChannelsPath],
           ['app/components/CreateProjectDialog.tsx', createProjectDialogPath],
           ['desktop/main/onboarding-telemetry.ts', onboardingTelemetryPath],
@@ -477,7 +290,7 @@ describe('M1 smoke', () => {
         // knowledge-core` (or the sibling `./constants/*.ts` module for the
         // in-core mirror).
         const importsFromCore =
-          /from\s+['"]@inkeep\/open-knowledge-core['"]/.test(src) ||
+          /from\s+['"]@inkeep\/open-knowledge-core(?:\/desktop-bridge)?['"]/.test(src) ||
           /from\s+['"]\.\/constants\/[\w-]+\.ts['"]/.test(src);
         if (!importsFromCore) {
           offenders.push(
@@ -508,29 +321,9 @@ describe('M1 smoke', () => {
   });
 
   test('M1 invariant: OkThemeSource literal-union drift catcher', async () => {
-    // The `OkThemeSource` literal union — `'system' | 'light' | 'dark'` —
-    // appears verbatim in THREE files (the desktop bridge contract +
-    // 2 mirrors). Adding a 4th value (e.g. `'auto'`) to one mirror but
-    // not the others would silently desynchronise the type at the IPC
-    // boundary AND the runtime guard `VALID_THEME_SOURCES` in
-    // `theme-handler.ts` would silently drop the new value.
-    //
-    // The three files (canonical + two mirrors):
-    //   - packages/desktop/src/shared/bridge-contract.ts   (`OkThemeSource`)
-    //   - packages/core/src/desktop-bridge.ts              (`OkThemeSource`)
-    //   - packages/app/src/lib/desktop-bridge-types.ts     (`OkThemeSource`)
-    const desktopPath = join(__dirname, '..', '..', 'src', 'shared', 'bridge-contract.ts');
+    // The core leaf owns `OkThemeSource`; `VALID_THEME_SOURCES` remains an
+    // independent IPC runtime guard.
     const corePath = join(__dirname, '..', '..', '..', 'core', 'src', 'desktop-bridge.ts');
-    const appPath = join(
-      __dirname,
-      '..',
-      '..',
-      '..',
-      'app',
-      'src',
-      'lib',
-      'desktop-bridge-types.ts',
-    );
     const { readFileSync } = await import('node:fs');
 
     const extractLiteralUnion = (src: string, typeName: string): Set<string> => {
@@ -543,42 +336,19 @@ describe('M1 smoke', () => {
       return new Set(literals.map((l) => l.slice(1, -1)));
     };
 
-    const desktopMembers = extractLiteralUnion(readFileSync(desktopPath, 'utf-8'), 'OkThemeSource');
     const coreMembers = extractLiteralUnion(readFileSync(corePath, 'utf-8'), 'OkThemeSource');
-    const appMembers = extractLiteralUnion(readFileSync(appPath, 'utf-8'), 'OkThemeSource');
-
     // Guardrail — every extraction must find members; otherwise the regex
     // is broken and the equality checks are meaningless.
-    expect(desktopMembers.size).toBeGreaterThan(0);
     expect(coreMembers.size).toBeGreaterThan(0);
-    expect(appMembers.size).toBeGreaterThan(0);
 
-    // Pin the canonical member count — when the spec adds a 4th source
-    // (e.g. `'auto'`), the maintainer updates this number AND all 3
-    // unions in lockstep. Also forces re-review of the runtime guard
-    // `VALID_THEME_SOURCES` in `theme-handler.ts`.
-    expect(desktopMembers.size).toBe(3);
-
-    expect(desktopMembers).toEqual(coreMembers);
-    expect(desktopMembers).toEqual(appMembers);
+    // Pinning the count forces new members to revisit that runtime guard.
+    expect(coreMembers.size).toBe(3);
   });
 
   test('M1 invariant: OkMenuAction literal-union drift catcher', async () => {
-    // Menu actions cross the desktop preload boundary and are manually mirrored
-    // in the desktop, core, and app bridge contracts. Keep the three unions in
-    // lockstep so adding a menu action cannot silently miss a renderer mirror.
-    const desktopPath = join(__dirname, '..', '..', 'src', 'shared', 'bridge-contract.ts');
+    // Menu actions cross the desktop preload boundary. The core leaf owns the
+    // union, and the consumer shims must continue re-exporting that declaration.
     const corePath = join(__dirname, '..', '..', '..', 'core', 'src', 'desktop-bridge.ts');
-    const appPath = join(
-      __dirname,
-      '..',
-      '..',
-      '..',
-      'app',
-      'src',
-      'lib',
-      'desktop-bridge-types.ts',
-    );
     const { readFileSync } = await import('node:fs');
 
     const extractLiteralUnion = (src: string, typeName: string): Set<string> => {
@@ -591,54 +361,32 @@ describe('M1 smoke', () => {
       return new Set(literals.map((l) => l.slice(1, -1)));
     };
 
-    const desktopMembers = extractLiteralUnion(readFileSync(desktopPath, 'utf-8'), 'OkMenuAction');
     const coreMembers = extractLiteralUnion(readFileSync(corePath, 'utf-8'), 'OkMenuAction');
-    const appMembers = extractLiteralUnion(readFileSync(appPath, 'utf-8'), 'OkMenuAction');
-
-    expect(desktopMembers.size).toBeGreaterThan(0);
     expect(coreMembers.size).toBeGreaterThan(0);
-    expect(appMembers.size).toBeGreaterThan(0);
     // 26 baseline + 2 worktree + 2 Help + 3 sidebar + 2 navigation + 1 agents panel.
-    expect(desktopMembers.size).toBe(36);
-    expect(desktopMembers).toEqual(coreMembers);
-    expect(desktopMembers).toEqual(appMembers);
+    expect(coreMembers.size).toBe(36);
     // Pin the visibility toggles explicitly: a bare count check wouldn't
     // notice a simultaneous add+remove that nets to the same size.
-    expect(desktopMembers.has('toggle-show-hidden-files')).toBe(true);
-    expect(desktopMembers.has('toggle-show-ok-folders')).toBe(true);
-    expect(desktopMembers.has('toggle-show-only-markdown-files')).toBe(true);
-    expect(desktopMembers.has('toggle-show-skills-section')).toBe(true);
-    expect(desktopMembers.has('new-worktree')).toBe(true);
-    expect(desktopMembers.has('switch-worktree')).toBe(true);
-    expect(desktopMembers.has('report-bug')).toBe(true);
-    expect(desktopMembers.has('navigate-back')).toBe(true);
-    expect(desktopMembers.has('navigate-forward')).toBe(true);
+    expect(coreMembers.has('toggle-show-hidden-files')).toBe(true);
+    expect(coreMembers.has('toggle-show-ok-folders')).toBe(true);
+    expect(coreMembers.has('toggle-show-only-markdown-files')).toBe(true);
+    expect(coreMembers.has('toggle-show-skills-section')).toBe(true);
+    expect(coreMembers.has('new-worktree')).toBe(true);
+    expect(coreMembers.has('switch-worktree')).toBe(true);
+    expect(coreMembers.has('report-bug')).toBe(true);
+    expect(coreMembers.has('navigate-back')).toBe(true);
+    expect(coreMembers.has('navigate-forward')).toBe(true);
+    expect(coreMembers.has('toggle-agent-panel')).toBe(true);
   });
 
   test('M1 invariant: EntryPoint / OkProjectEntryPoint literal-union drift catcher', async () => {
-    // The Navigator-side entry-point discriminator appears verbatim in THREE
-    // files (the canonical desktop type + 2 bridge-contract mirrors). The
-    // create-new-project work proved the drift scenario was real (it renamed
-    // 'start-fresh' → 'create-new' and added 'create-new-nested-redirect'),
-    // and the two mirror files' doc comments already claim drift is caught
-    // here — make that claim load-bearing.
-    //
-    // The three files (canonical + two mirrors):
+    // The Navigator-side desktop entry point remains an independent runtime
+    // discriminator, while the bridge declaration lives in the core leaf.
+    // Relevant sources:
     //   - packages/desktop/src/shared/entry-point.ts       (`EntryPoint`)
     //   - packages/core/src/desktop-bridge.ts              (`OkProjectEntryPoint`)
-    //   - packages/app/src/lib/desktop-bridge-types.ts     (`OkProjectEntryPoint`)
     const desktopPath = join(__dirname, '..', '..', 'src', 'shared', 'entry-point.ts');
     const corePath = join(__dirname, '..', '..', '..', 'core', 'src', 'desktop-bridge.ts');
-    const appPath = join(
-      __dirname,
-      '..',
-      '..',
-      '..',
-      'app',
-      'src',
-      'lib',
-      'desktop-bridge-types.ts',
-    );
     const { readFileSync } = await import('node:fs');
 
     const extractLiteralUnion = (src: string, typeName: string): Set<string> => {
@@ -652,45 +400,25 @@ describe('M1 smoke', () => {
 
     const desktopMembers = extractLiteralUnion(readFileSync(desktopPath, 'utf-8'), 'EntryPoint');
     const coreMembers = extractLiteralUnion(readFileSync(corePath, 'utf-8'), 'OkProjectEntryPoint');
-    const appMembers = extractLiteralUnion(readFileSync(appPath, 'utf-8'), 'OkProjectEntryPoint');
-
-    // Guardrail — every extraction must find members.
+    // Guardrail — the independent desktop and canonical core declarations
+    // must remain non-empty.
     expect(desktopMembers.size).toBeGreaterThan(0);
     expect(coreMembers.size).toBeGreaterThan(0);
-    expect(appMembers.size).toBeGreaterThan(0);
 
-    // Pin the canonical member count — when the spec adds a new entry point,
-    // the maintainer updates this number AND all 3 unions in lockstep. Also
-    // forces re-review of the runtime guard `isEntryPoint` + the
-    // `ENTRY_POINT_VALUES` Set in `entry-point.ts`.
+    // Pinning the count forces new members to revisit the independent
+    // `isEntryPoint` / `ENTRY_POINT_VALUES` runtime guard.
     // 7 + `'worktree'` (worktree = window — opening a worktree of the
     // current project; classified `managed`, so it opens without consent).
     expect(desktopMembers.size).toBe(8);
 
     expect(desktopMembers).toEqual(coreMembers);
-    expect(desktopMembers).toEqual(appMembers);
   });
 
   test('M1 invariant: KeyringSmokeResult shape drift catcher (M5)', async () => {
-    // Walks the `KeyringSmokeResult` (desktop utility source), and
-    // `OkKeyringSmokeResult` (core + app mirror) interfaces and asserts the
-    // three copies declare the SAME field-name set. Field names carry the
-    // contract — drift (e.g., a future contributor adds `attempts?: number`
-    // to one copy only) fails this test and surfaces which file is missing
-    // what. Complements the `OkDesktopBridge` drift catcher; both
-    // shapes cross the preload boundary and renaming either triplicates risk.
+    // Compare the independent desktop utility result against the canonical
+    // core bridge type.
     const desktopSmokeSrcPath = join(__dirname, '..', '..', 'src', 'utility', 'keyring-smoke.ts');
     const corePath = join(__dirname, '..', '..', '..', 'core', 'src', 'desktop-bridge.ts');
-    const appPath = join(
-      __dirname,
-      '..',
-      '..',
-      '..',
-      'app',
-      'src',
-      'lib',
-      'desktop-bridge-types.ts',
-    );
     const { readFileSync } = await import('node:fs');
 
     /**
@@ -734,47 +462,31 @@ describe('M1 smoke', () => {
       readFileSync(corePath, 'utf-8'),
       'OkKeyringSmokeResult',
     );
-    const appFields = extractInterfaceFields(
-      readFileSync(appPath, 'utf-8'),
-      'OkKeyringSmokeResult',
-    );
-
-    // Guardrail — all three extractions must find fields.
+    // Guardrail — both independent declarations must expose fields.
     expect(desktopFields.size).toBeGreaterThan(0);
     expect(coreFields.size).toBeGreaterThan(0);
-    expect(appFields.size).toBeGreaterThan(0);
 
     const diff = (a: Set<string>, b: Set<string>) => Array.from(a).filter((x) => !b.has(x));
     const desktopMinusCore = diff(desktopFields, coreFields);
     const coreMinusDesktop = diff(coreFields, desktopFields);
-    const desktopMinusApp = diff(desktopFields, appFields);
-    const appMinusDesktop = diff(appFields, desktopFields);
 
-    if (
-      desktopMinusCore.length +
-        coreMinusDesktop.length +
-        desktopMinusApp.length +
-        appMinusDesktop.length >
-      0
-    ) {
+    if (desktopMinusCore.length + coreMinusDesktop.length > 0) {
       throw new Error(
         [
-          'KeyringSmokeResult / OkKeyringSmokeResult shape drift across the three copies:',
+          'KeyringSmokeResult / OkKeyringSmokeResult shape drift across the desktop utility and core bridge:',
           `  desktop has but core missing:  [${desktopMinusCore.join(', ')}]`,
           `  core has but desktop missing:  [${coreMinusDesktop.join(', ')}]`,
-          `  desktop has but app missing:   [${desktopMinusApp.join(', ')}]`,
-          `  app has but desktop missing:   [${appMinusDesktop.join(', ')}]`,
           '',
-          'Fix: update the missing files so all three copies agree on the field set.',
+          'Fix: update the independent desktop utility or canonical core bridge field set.',
         ].join('\n'),
       );
     }
   });
 
   test('M1 invariant: project session state shape drift catcher', async () => {
-    // Project tab-session state is hand-mirrored across app, desktop bridge,
-    // IPC, and main persistence. If one copy gains a field without the
-    // others, desktop session restore silently truncates data at the boundary.
+    // Project tab-session state remains independently shaped in the app,
+    // desktop IPC, and main persistence. The host bridge declaration itself
+    // is canonical in core and both consumer paths re-export it.
     const appEditorTabsPath = join(
       __dirname,
       '..',
@@ -785,22 +497,10 @@ describe('M1 smoke', () => {
       'editor',
       'editor-tabs.ts',
     );
-    const appBridgePath = join(
-      __dirname,
-      '..',
-      '..',
-      '..',
-      'app',
-      'src',
-      'lib',
-      'desktop-bridge-types.ts',
-    );
-    const desktopBridgePath = join(__dirname, '..', '..', 'src', 'shared', 'bridge-contract.ts');
+    const coreBridgePath = join(__dirname, '..', '..', '..', 'core', 'src', 'desktop-bridge.ts');
     const ipcChannelsPath = join(__dirname, '..', '..', 'src', 'shared', 'ipc-channels.ts');
     const stateStorePath = join(__dirname, '..', '..', 'src', 'main', 'state-store.ts');
-    const coreBridgePath = join(__dirname, '..', '..', '..', 'core', 'src', 'desktop-bridge.ts');
     const { readFileSync } = await import('node:fs');
-
     const extractInterfaceFields = (src: string, interfaceName: string): Set<string> => {
       const names = new Set<string>();
       const lines = src.split('\n');
@@ -837,13 +537,9 @@ describe('M1 smoke', () => {
         ),
       },
       {
-        label: 'app/desktop-bridge-types.ts (ProjectSessionState)',
-        fields: extractInterfaceFields(readFileSync(appBridgePath, 'utf-8'), 'ProjectSessionState'),
-      },
-      {
-        label: 'desktop/bridge-contract.ts (ProjectSessionState)',
+        label: 'core/desktop-bridge.ts (ProjectSessionState)',
         fields: extractInterfaceFields(
-          readFileSync(desktopBridgePath, 'utf-8'),
+          readFileSync(coreBridgePath, 'utf-8'),
           'ProjectSessionState',
         ),
       },
@@ -858,13 +554,6 @@ describe('M1 smoke', () => {
         label: 'desktop/state-store.ts (ProjectSessionState)',
         fields: extractInterfaceFields(
           readFileSync(stateStorePath, 'utf-8'),
-          'ProjectSessionState',
-        ),
-      },
-      {
-        label: 'core/desktop-bridge.ts (ProjectSessionState)',
-        fields: extractInterfaceFields(
-          readFileSync(coreBridgePath, 'utf-8'),
           'ProjectSessionState',
         ),
       },

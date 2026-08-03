@@ -68,8 +68,8 @@ export interface WorktreeSelectorModel {
 
 /**
  * IPC-facing result of enumerating the worktree selector. Canonical here (not
- * in desktop) so the three `OkDesktopBridge` contract copies + `ipc-channels`
- * all import one definition. `no-git` = the project isn't inside a git repo.
+ * in desktop) so the desktop host contract and `ipc-channels` import one
+ * definition. `no-git` = the project isn't inside a git repo.
  */
 export type WorktreeListResult =
   | { readonly ok: true; readonly model: WorktreeSelectorModel }

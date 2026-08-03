@@ -77,6 +77,8 @@ import type {
   CheckoutResponse,
   CreateNewBannerKind,
   EditorId,
+  HandoffFailureReason,
+  HandoffScope,
   LocalOpOkInitResponse,
   OkBugReportCrashAckResult,
   OkBugReportCreateResult,
@@ -94,6 +96,33 @@ import type {
   WorktreeListResult,
 } from '@inkeep/open-knowledge-core';
 import type {
+  OkCheckTargetExistsResult as CheckTargetExistsResult,
+  ClaudeReadiness,
+  CliReadiness,
+  OkHeadBranchInfo as HeadBranchInfo,
+  OkChromeColors,
+  OkDesktopConfig,
+  OkEditorActiveTargetSnapshot,
+  OkEditorViewMenuStateSnapshot,
+  OkLocalOpAuthReposResponse,
+  OkLocalOpAuthStatusResponse,
+  OkMenuDispatchCommand,
+  OkMenuDispatchRequest,
+  OkMenuDispatchRole,
+  OkMenuRendererSnapshot,
+  OkPtyAdoptResult,
+  OkPtyCreateResult,
+  OkPtyListEntry,
+  OkServerRestartOutcome,
+  OkSharePayloadFields,
+  OkSharingSetModeResult,
+  OkSharingStatusResult,
+  OkThemeSource,
+  OkUpdateChannel,
+  OkSeedApplyOptions as SeedApplyOptions,
+  OkSeedPlanOptions as SeedPlanOptions,
+} from '@inkeep/open-knowledge-core/desktop-bridge';
+import type {
   FindEnclosingGitRootResult,
   FindEnclosingProjectRootResult,
   PackId,
@@ -103,49 +132,17 @@ import type { OkBugReportRequest } from '../main/ipc/bug-report.ts';
 import type { BuildAndOpenResult } from '../main/ipc/install-skill.ts';
 import type { SeedApplyResult, SeedListPacksResult, SeedPlanResult } from '../main/ipc/seed.ts';
 import type { KeyringSmokeResult } from '../utility/keyring-smoke.ts';
-import type {
-  CheckTargetExistsResult,
-  ClaudeReadiness,
-  CliReadiness,
-  HeadBranchInfo,
-  OkChromeColors,
-  OkDesktopConfig,
-  OkLocalOpAuthReposResponse,
-  OkLocalOpAuthStatusResponse,
-  OkMenuAction,
-  OkPtyAdoptResult,
-  OkPtyCreateResult,
-  OkPtyListEntry,
-  OkServerRestartOutcome,
-  OkSharePayloadFields,
-  OkThemeSource,
-  OkUpdateChannel,
-  SeedApplyOptions,
-  SeedPlanOptions,
-} from './bridge-contract.ts';
 import type { EntryPoint } from './entry-point.ts';
 
-/** Sharing-mode — IPC payload types. */
-export interface OkSharingStatusResult {
-  readonly kind: 'status';
-  readonly mode: 'shared' | 'local-only' | 'no-git';
-  readonly excluded: readonly string[];
-  readonly trackedUpstream: readonly string[];
-  /** True when local-only but `.ok/skills/` is carved back out as shareable. */
-  readonly skillsShared: boolean;
-}
+export type EditorActiveTargetSnapshot = OkEditorActiveTargetSnapshot;
+export type EditorViewMenuStateSnapshot = OkEditorViewMenuStateSnapshot;
+export type MenuDispatchRole = OkMenuDispatchRole;
+export type MenuDispatchCommand = OkMenuDispatchCommand;
+export type MenuDispatchRequest = OkMenuDispatchRequest;
+export type MenuRendererSnapshot = OkMenuRendererSnapshot;
 
-export type OkSharingSetModeResult =
-  | { readonly kind: 'applied'; readonly mode: 'shared' | 'local-only' | 'no-git' }
-  | {
-      readonly kind: 'refused-tracked';
-      readonly tracked: readonly string[];
-      readonly remediation: string;
-    }
-  | {
-      readonly kind: 'no-exclude';
-      readonly reason: 'no-git' | 'no-info-dir' | 'malformed-pointer' | 'inaccessible';
-    };
+/** Sharing-mode — IPC payload types. */
+export type { OkSharingSetModeResult, OkSharingStatusResult };
 
 /** Discriminated union of every result the single `ok:sharing:dispatch` channel can
  *  return. Distinguishing the `status` kind from the three `set-mode` kinds
@@ -218,8 +215,7 @@ interface ProjectOpenRequest {
   pendingBranch?: string | null;
   /**
    * Optional branch-switch payload for the share-receive "I already have it
-   * locally" (Q2) path. See canonical JSDoc in `./bridge-contract.ts`. When
-   * the located clone is on a different branch than the share, the
+   * locally" (Q2) path. When the located clone is on a different branch than the share, the
    * `ok:project:open` handler forwards this to `openProject` so main delivers
    * the `project-branch-switch` surface instead of a plain deep-link open.
    * Structurally matches `ShareDeepLinkBranchSwitchPayload` (url-scheme.ts).
@@ -282,11 +278,7 @@ export type SpawnOutcome =
  * diagnostic counter — when a dogfood user reports "it didn't work," the
  * file gives target / outcome / reason history without any network egress.
  *
- * Literal-union fields mirror `HandoffTarget`, `HandoffFailureReason`, and
- * `HandoffScope` from `@inkeep/open-knowledge-core/handoff/types.ts`. Duplication is deliberate
- * — shared/ipc-channels.ts deliberately has no app-package dependencies
- * (same pattern as `SpawnOutcome` above and the `bridge-contract.ts`
- * mirroring).
+ * The handoff reason and scope fields reuse the core handoff discriminators.
  */
 export interface HandoffStatsLine {
   readonly target: 'claude-cowork' | 'claude-code' | 'codex' | 'cursor';
@@ -295,16 +287,10 @@ export interface HandoffStatsLine {
   /** ISO 8601 timestamp from the caller — not generated server-side so tests
    *  can supply a deterministic value. */
   readonly ts: string;
-  /** Mirrors `HandoffFailureReason` literal union — present only on `outcome:'error'`. */
-  readonly reason?:
-    | 'not-installed'
-    | 'scheme-blocked'
-    | 'web-endpoint-error'
-    | 'invalid-payload'
-    | 'dispatch-error'
-    | 'web-host-cursor-unsupported';
-  /** Mirrors `HandoffScope` — set only on a selection-scoped dispatch. */
-  readonly scope?: 'selection';
+  /** Present only on `outcome:'error'`. */
+  readonly reason?: HandoffFailureReason;
+  /** Set only on a selection-scoped dispatch. */
+  readonly scope?: HandoffScope;
 }
 
 /** Editor IDs known to the first-launch MCP consent flow. Aliased to
@@ -418,12 +404,9 @@ export interface McpWiringEditorDetection {
   readonly label: string;
   readonly detected: boolean;
   readonly willReplace: boolean;
-  /** Display-form user-global config path (home collapsed to `~`), or null when
-   *  the editor has no user-global surface on this platform. Disclosure aid for
-   *  the per-row location tooltip — mirrors `OkIntegrationsStatus`. */
+  /** Display-form user-global config path, or null when unavailable. */
   readonly configPath: string | null;
-  /** Locator for this editor's `open-knowledge` entry within its config file
-   *  (`[mcp_servers.open-knowledge]` / dotted key path). Disclosure aid. */
+  /** Locator for OpenKnowledge's entry within the editor config. */
   readonly entryLocator: string;
 }
 
@@ -620,132 +603,6 @@ interface DialogOpenFolderOpts {
   readonly defaultPath?: string;
 }
 
-/**
- * Renderer → main snapshot of what's currently active in the editor area.
- * Drives the macOS File menu's state-aware enable/disable: `'doc'` enables
- * doc-targeted items (Rename, Duplicate, Move to Trash, Open with AI on the active file);
- * `'folder'` enables folder-targeted items; `'asset'` enables file-targeted
- * rename/trash/reveal without Duplicate or Open with AI; `null` (no active
- * target — project scope) leaves Rename / Duplicate / Move to Trash disabled
- * and enables only project-level items (New File, Reveal in Finder for
- * `contentDir`, etc.).
- *
- * Intentionally narrower than the renderer's full `ResolvedNavigationTarget`
- * union — main only needs the enable/disable signal plus the
- * `identifier` payload it routes through bridge.shell.* / HTTP calls when the
- * user picks a menu item. Discriminated-union shape so TypeScript narrows
- * `identifier` per `kind` at consumer sites.
- */
-export type EditorActiveTargetSnapshot =
-  | { readonly kind: 'doc'; readonly identifier: string }
-  | { readonly kind: 'folder'; readonly identifier: string }
-  | { readonly kind: 'asset'; readonly identifier: string }
-  | { readonly kind: null };
-
-/**
- * Renderer → main snapshot of the View menu's checkbox + smart-hide state.
- * Drives the View menu's live `checked` reflection for the visibility
- * toggles and the `visible: false` smart-hide on Expand All / Collapse All.
- * `sidebarVisible` flips the Show/Hide Sidebar label on the View-menu
- * sidebar-toggle item.
- *
- * **DRIFT WARNING — this shape is mirrored in four places** for IPC-channel /
- * bridge-contract isolation (the bridge surfaces cannot import the wider bridge
- * module without coupling the layers). TypeScript catches drift at call-site
- * boundaries but not at the definitions — and this `ipc-channels` copy is the
- * one the call-site check misses: it is reached only through the channel-args
- * layer, never through `OkDesktopBridge`, and the preload→`invoke` hop passes
- * the wider `OkEditorViewMenuStateSnapshot` value in, so a field added to the
- * bridge copy but dropped here assigns silently (superset → subset) and main
- * never sees it. Keep these in lockstep:
- *
- *   1. `packages/desktop/src/shared/ipc-channels.ts` — `EditorViewMenuStateSnapshot` (this copy)
- *   2. `packages/desktop/src/shared/bridge-contract.ts` — `OkEditorViewMenuStateSnapshot`
- *   3. `packages/core/src/desktop-bridge.ts` — canonical `OkEditorViewMenuStateSnapshot`
- *   4. `packages/app/src/lib/desktop-bridge-types.ts` — renderer-side augmentation
- */
-export interface EditorViewMenuStateSnapshot {
-  readonly showHiddenFiles: boolean;
-  readonly showOkFolders: boolean;
-  readonly showOnlyMarkdownFiles: boolean;
-  readonly showSkillsSection: boolean;
-  readonly canExpandAll: boolean;
-  readonly canCollapseAll: boolean;
-  readonly sidebarVisible: boolean;
-  readonly docPanelVisible?: boolean;
-  readonly terminalVisible?: boolean;
-  readonly terminalLive?: boolean;
-  readonly agentPanelVisible?: boolean;
-  readonly canViewInSource?: boolean;
-}
-
-/**
- * Renderer-menubar → main dispatch payloads (the windows-linux-port renderer-menubar decision).
- * On Windows/Linux the menu bar is custom-drawn in the renderer (macOS
- * keeps the native one); every click routes through the single
- * `ok:menu:dispatch` channel so main stays the authority on menu
- * semantics — `menu-action` relays through the exact `sendMenuActionToFocused`
- * path the native menu items use, `role` maps to the Electron menu roles
- * the native template gets for free, `command` covers the main-side click
- * handlers (navigator, folder picker, settings, updater…), and `query`
- * returns the same aggregated state that drives the native menu's
- * enable/check rendering.
- *
- * **DRIFT WARNING — mirrored in four places** (same lockstep contract as
- * `EditorViewMenuStateSnapshot` above; the ipc-channels copy is the one the
- * call-site check misses):
- *
- *   1. `packages/desktop/src/shared/ipc-channels.ts` — this copy
- *   2. `packages/desktop/src/shared/bridge-contract.ts` — `OkMenuDispatch*`
- *   3. `packages/core/src/desktop-bridge.ts` — canonical `OkMenuDispatch*`
- *   4. `packages/app/src/lib/desktop-bridge-types.ts` — renderer-side copy
- */
-export type MenuDispatchRole =
-  | 'undo'
-  | 'redo'
-  | 'cut'
-  | 'copy'
-  | 'paste'
-  | 'selectAll'
-  | 'reload'
-  | 'forceReload'
-  | 'toggleDevTools'
-  | 'resetZoom'
-  | 'zoomIn'
-  | 'zoomOut'
-  | 'toggleFullScreen'
-  | 'minimize'
-  | 'close'
-  | 'quit';
-
-export type MenuDispatchCommand =
-  | 'open-navigator'
-  | 'open-folder-dialog'
-  | 'clear-recent-projects'
-  | 'open-settings'
-  | 'check-for-updates'
-  | 'reconfigure-mcp-wiring'
-  | 'open-github'
-  | 'toggle-spell-check';
-
-export type MenuDispatchRequest =
-  | { readonly kind: 'query' }
-  | { readonly kind: 'menu-action'; readonly action: OkMenuAction }
-  | { readonly kind: 'command'; readonly command: MenuDispatchCommand }
-  | { readonly kind: 'open-recent-project'; readonly path: string }
-  | { readonly kind: 'role'; readonly role: MenuDispatchRole };
-
-/** `query` result — the same aggregated state the native menu renders from. */
-export interface MenuRendererSnapshot {
-  readonly recentProjects: ReadonlyArray<{ readonly path: string; readonly name: string }>;
-  readonly spellCheckEnabled: boolean;
-  readonly showDevToolsMenu: boolean;
-  readonly canCheckForUpdates: boolean;
-  readonly canReconfigureMcpWiring: boolean;
-  readonly activeTarget: EditorActiveTargetSnapshot;
-  readonly viewMenuState: EditorViewMenuStateSnapshot;
-}
-
 export interface RequestChannels {
   /** Open native folder-picker. Canonical properties live in `dialog-helpers.ts`. */
   'ok:dialog:open-folder': {
@@ -808,7 +665,7 @@ export interface RequestChannels {
    * project-relative path; main-process `openAssetSafely` handler resolves
    * against `ProjectContext.projectPath + realpath + isPathWithinProject`,
    * enforces the `EXECUTABLE_BLOCKLIST_EXTENSIONS` gate, and dispatches to
-   * `shell.openPath(canonical)`. Reason union matches the bridge-contract
+   * `shell.openPath(canonical)`. Reason union matches the core desktop bridge
    * `openAsset` return type.
    */
   'ok:shell:open-asset': {
@@ -921,13 +778,14 @@ export interface RequestChannels {
    * `ok:sharing:dispatch` precedent) so the whole report surface costs a
    * single hand-rolled slot; report operations widen this payload instead of
    * adding channels.
-   *   - `{kind: 'create', level, note?, includeCrashDump?}` → build the
-   *     redacted diagnostic zip for the sender window's project (system-wide
-   *     when the sender has no project context) under `~/.ok/bug-reports/`;
-   *     the crash-dump flag is the crash invite's explicit opt-in.
-   *   - `{kind: 'send', zipPath, metadata}` → upload the reviewed zip to the
-   *     private intake endpoint; any failure (endpoint unconfigured included)
-   *     degrades to a prefilled email fallback.
+   *   - `{kind: 'create', level, note?, includeCrashDump?, includeScreenshot?}`
+   *     → build the redacted diagnostic zip for the sender window's project
+   *     (system-wide when the sender has no project context) under
+   *     `~/.ok/bug-reports/`; both attachment flags are explicit opt-ins.
+   *   - `{kind: 'send', zipPath, metadata, includeScreenshot?}` → upload the
+   *     reviewed zip to the private intake endpoint and, when explicitly
+   *     included, the captured screenshot; any failure (endpoint unconfigured
+   *     included) degrades to a prefilled email fallback.
    *   - `{kind: 'crash-ack', eventId}` → persist that the user answered a
    *     `ok:bug-report:crash-detected` invitation so that crash event never
    *     re-prompts, across restarts included.
@@ -1727,15 +1585,7 @@ export interface RequestChannels {
     args: [];
     result: Record<TerminalCli, boolean>;
   };
-  /**
-   * Per-window panel state, read once on reload to restore both panels. The two
-   * `*Visible` flags are recorded from the renderer's view-menu push; the per-surface
-   * `order` + `activeKey` records come from `ok:terminal:set-dock-state`. The terminal
-   * dock and agents panel are independent surfaces, so their orders are kept apart —
-   * one shared record would let each panel's write erase the other's keys. All
-   * windowId-keyed, gone after window-close / app-quit (so a fresh launch with no
-   * surviving sessions restores nothing).
-   */
+  /** Per-window state for the independent terminal and agents panels. */
   'ok:terminal:dock-state': {
     args: [];
     result: {
@@ -1745,12 +1595,7 @@ export interface RequestChannels {
       agents?: { order: string[]; activeKey: string | null };
     };
   };
-  /**
-   * Persist one panel's tab order + active key in main (per window) so a renderer
-   * reload restores that panel's arrangement + active tab. `surface` names the writer;
-   * `order` holds its reload-stable keys (ptyIds for `terminal`, threadIds for
-   * `agents`) in tab order. Fire-and-forget, the sibling of `ok:pty:set-order`.
-   */
+  /** Persist one panel's tab order and active key per window. */
   'ok:terminal:set-dock-state': {
     args: [req: { surface: 'terminal' | 'agents'; order: string[]; activeKey: string | null }];
     result: undefined;

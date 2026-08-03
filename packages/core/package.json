@@ -44,6 +44,11 @@
       "development": "./src/acp/thread-protocol.ts",
       "types": "./src/acp/thread-protocol.ts",
       "default": "./dist/acp-thread-protocol.mjs"
+    },
+    "./desktop-bridge": {
+      "development": "./src/desktop-bridge.ts",
+      "types": "./src/desktop-bridge.ts",
+      "default": "./dist/desktop-bridge.mjs"
     }
   },
   "files": [

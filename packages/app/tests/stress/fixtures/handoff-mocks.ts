@@ -330,7 +330,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
 
       // Typed with `satisfies OkDesktopBridge` so any drift between the
       // canonical contract (`packages/core/src/desktop-bridge.ts`) and this
-      // fixture fails `bun run typecheck` instead of going silent.
+      // fixture fails `pnpm run typecheck` instead of going silent.
       // `tests/stress/fixtures` is in `packages/app/tsconfig.json` `include`
       // for this reason. Imported types erase at runtime, so the
       // `addInitScript` callback's stringification is unaffected.
@@ -338,13 +338,8 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
       // Coverage limit: TypeScript function subtyping accepts shape-
       // compatible parameters silently, so signature-shape drift on
       // existing methods (e.g. a new required field on a request param)
-      // passes here. That drift class is caught instead by the three
-      // OkDesktopBridge contract copies (core / desktop / app) being
-      // consumed across enough call sites that divergence surfaces at
-      // `bun run typecheck`. `packages/desktop/tests/integration/
-      // m1-smoke.test.ts` is the member-name drift catcher (set-equality
-      // on extracted member names across the three copies); its own
-      // signature-coverage disclaimer documents the gap explicitly.
+      // passes here. The canonical core contract and the dedicated preload
+      // forwarding tests cover the declaration and transport boundaries.
       const bridge = {
         config: {
           // Hocuspocus is mounted at /collab by the Vite plugin (the upgrade

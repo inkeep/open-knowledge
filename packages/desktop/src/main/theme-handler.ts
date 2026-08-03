@@ -46,8 +46,8 @@ interface ApplyThemeSourceDeps {
  * was acknowledged. The diagnostic surface is the structured warn log.
  *
  * The defensive branch handles:
- *   - A future bridge-contract divergence (setThemeSource accepts a 4th value
- *     at one of the three mirrors but not another).
+ *   - Future drift between the canonical bridge union and this runtime
+ *     allowlist.
  *   - A non-typed IPC bypass (e.g. raw `ipcRenderer.invoke` from a debugger).
  *
  * The trust-boundary classification is unambiguous: data crosses the

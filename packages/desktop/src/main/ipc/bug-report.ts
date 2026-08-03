@@ -36,6 +36,7 @@ import {
   type OkBugReportSendResult,
   type ReportBundleLevel,
 } from '@inkeep/open-knowledge-core';
+import type { OkBugReportSendInput } from '@inkeep/open-knowledge-core/desktop-bridge';
 import { logIpcError } from '../ipc-log.ts';
 import { isPathWithinProject } from '../path-containment.ts';
 import type { UpdateChannel } from '../state-store.ts';
@@ -78,24 +79,9 @@ interface OkBugReportDeleteRequest {
   id: string;
 }
 
-export interface OkBugReportSendRequest {
+export type OkBugReportSendRequest = OkBugReportSendInput & {
   kind: 'send';
-  /** Zip produced by a prior `create` — the exact file the user reviewed is what uploads. */
-  zipPath: string;
-  metadata: OkBugReportSendMetadata;
-  /**
-   * Whether the bundle contains the app screenshot, derived by the renderer from
-   * the bundle's own file inventory. Gates the separate screenshot upload that
-   * embeds the picture inline in the ticket.
-   *
-   * This has to be carried explicitly because `create` owns the consent decision
-   * and `send` is a separate operation that cannot see it: main still holds the
-   * capture for the window, so without this gate a reporter who unchecked the
-   * screenshot would have it uploaded anyway. Fail-closed — absent means no
-   * upload, which is also what a list retry in a later session gets.
-   */
-  includeScreenshot?: boolean;
-}
+};
 
 export interface OkBugReportCrashAckRequest {
   kind: 'crash-ack';

@@ -17,6 +17,7 @@ import type {
   WorktreeListResult,
 } from './git/worktree-selector-model.ts';
 import type { TerminalCli } from './handoff/terminal-launch.ts';
+import type { HandoffFailureReason, HandoffScope } from './handoff/types.ts';
 import type {
   OkBugReportCrashAckResult,
   OkBugReportCrashDetectedEvent,
@@ -36,8 +37,12 @@ import type {
 } from './schemas/api/share.ts';
 import type { RecentProjectEntry } from './sharing/index.ts';
 
+export type { OkFolderState } from './constants/folder-state.ts';
+export type { BridgeWorktreeEntry } from './git/worktree-list-parser.ts';
+export type { RecentProjectEntry } from './sharing/index.ts';
+
 /** Render mode picked by the main process when creating a BrowserWindow. */
-type OkDesktopMode = 'editor' | 'navigator' | 'terminal';
+export type OkDesktopMode = 'editor' | 'navigator' | 'terminal';
 
 /**
  * Config values injected at preload-exposure time. A frozen snapshot, not a
@@ -46,7 +51,7 @@ type OkDesktopMode = 'editor' | 'navigator' | 'terminal';
  * because the main process awaits the utility's `ready` message before
  * creating the BrowserWindow.
  */
-interface OkDesktopConfig {
+export interface OkDesktopConfig {
   /** WebSocket URL for the HocuspocusProvider (ws://localhost:<port>/collab). */
   readonly collabUrl: string;
   /** Origin for HTTP /api/* fetches (http://localhost:<port>). */
@@ -57,6 +62,12 @@ interface OkDesktopConfig {
   readonly projectName: string;
   /** Render mode — `navigator` renders the Project Navigator, `editor` renders the doc editor, `terminal` renders the standalone terminal window. */
   readonly mode: OkDesktopMode;
+  readonly e2eSmoke: boolean;
+  readonly singleFile: boolean;
+  readonly initialDoc: string | null;
+  readonly freshlyCreated: boolean;
+  readonly startupTraceparent?: string;
+  readonly ptyAvailable: boolean;
 }
 
 /**
@@ -65,7 +76,7 @@ interface OkDesktopConfig {
  * store. Keep this union flat and strongly typed — a single `kind` field
  * discriminates without payload.
  */
-type OkMenuAction =
+export type OkMenuAction =
   | 'new-doc'
   | 'new-folder'
   // Opens the create-new-project dialog in the focused window (a whole new
@@ -84,8 +95,7 @@ type OkMenuAction =
   // Navigation history.
   | 'navigate-back'
   | 'navigate-forward'
-  // File menu state-aware items. See bridge-contract.ts for
-  // rationale; mirrored here per the OkDesktopBridge 3-way-mirror invariant.
+  // File menu state-aware items share this canonical bridge declaration.
   | 'new-from-template'
   | 'duplicate'
   | 'move-to-trash'
@@ -102,9 +112,8 @@ type OkMenuAction =
   | 'collapse-all-tree'
   | 'toggle-doc-panel'
   | 'toggle-terminal'
-  // Right agents-panel visibility (⌘L / Ctrl+L). The ACP twin of
-  // `toggle-terminal`, and deliberately NOT desktop-gated: agent threads are
-  // server-hosted, so the panel works on the web host and where pty does not.
+  // Right agents-panel visibility. Unlike the terminal, agent threads are
+  // server-hosted and the panel is available outside the desktop PTY host.
   | 'toggle-agent-panel'
   // Terminal application menu. `new-terminal` opens a new terminal tab
   // (revealing the dock if hidden; never hides, unlike the toggle).
@@ -131,9 +140,9 @@ type OkMenuAction =
  * callers must use this returned closure rather than trying to remove by
  * reference from their own code.
  */
-type OkUnsubscribe = () => void;
+export type OkUnsubscribe = () => void;
 
-interface ProjectSessionState {
+export interface ProjectSessionState {
   openTabs: string[];
   pinnedTabIds: string[];
   activeDocName: string | null;
@@ -144,10 +153,9 @@ interface ProjectSessionState {
 
 /**
  * Discriminator for the Navigator-side surface that initiated a project-open.
- * Mirrors `EntryPoint` in `packages/desktop/src/shared/entry-point.ts`. Drift
- * across the three bridge-contract copies is caught by the drift test.
+ * Matches the desktop runtime `EntryPoint` discriminator.
  */
-type OkProjectEntryPoint =
+export type OkProjectEntryPoint =
   | 'create-new'
   | 'create-new-nested-redirect'
   | 'pick-existing'
@@ -163,7 +171,7 @@ type OkProjectEntryPoint =
  * today (no switch-in-place). `entryPoint` tags the originating surface so
  * the consent-dialog gate can branch on user intent.
  */
-interface OkProjectOpenRequest {
+export interface OkProjectOpenRequest {
   path: string;
   target: 'new-window';
   entryPoint: OkProjectEntryPoint;
@@ -179,13 +187,12 @@ interface OkProjectOpenRequest {
   pendingDeepLinkTarget?: { kind: 'doc' | 'folder'; path: string };
   /**
    * Optional share branch riding alongside `pendingDeepLinkTarget`. See
-   * canonical JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
+   * canonical bridge contract below.
    */
   pendingBranch?: string | null;
   /**
    * Optional branch-switch payload for the share-receive "I already have it
-   * locally" path. See canonical JSDoc in
-   * `packages/desktop/src/shared/bridge-contract.ts`. When the located clone
+   * locally" path. When the located clone
    * is on a different branch than the share, main delivers the
    * `project-branch-switch` surface instead of a plain deep-link open.
    */
@@ -198,8 +205,7 @@ interface OkProjectOpenRequest {
 
 /**
  * Outcome of `bridge.project.checkTargetExists({projectPath, kind, path})`.
- * See canonical JSDoc in `packages/desktop/src/shared/bridge-contract.ts`
- * (`CheckTargetExistsResult`).
+ * Alias used by existing desktop consumers as `CheckTargetExistsResult`.
  *
  * Used by the main-side target-existence gate AFTER the branch comparison
  * passes — answers "does the share's target actually exist on the receiver's
@@ -210,8 +216,7 @@ interface OkProjectOpenRequest {
 export type OkCheckTargetExistsResult = 'exists' | 'missing' | 'unreadable';
 
 /**
- * Outcome of `bridge.project.readHeadBranch(projectPath)`. See canonical
- * JSDoc in `packages/desktop/src/shared/bridge-contract.ts` (`HeadBranchInfo`).
+ * Outcome of `bridge.project.readHeadBranch(projectPath)`.
  *
  * All-null + `detached: false` is the "couldn't determine" sentinel returned
  * on every failure mode (missing `.git`, malformed HEAD, I/O error, traversal
@@ -229,7 +234,7 @@ export interface OkHeadBranchInfo {
  * install-on-quit (or an imperative `autoUpdater.quitAndInstall()` via
  * Toast A's "Relaunch now" action).
  */
-interface OkUpdateDownloadedInfo {
+export interface OkUpdateDownloadedInfo {
   readonly version: string;
 }
 
@@ -239,7 +244,7 @@ interface OkUpdateDownloadedInfo {
  * passed its `versionPendingInstall` gate). Every window swaps its
  * `update-downloaded` card to the in-progress "Relaunching…" state.
  */
-interface OkUpdateRelaunchingInfo {
+export interface OkUpdateRelaunchingInfo {
   readonly version: string;
 }
 
@@ -250,9 +255,10 @@ interface OkUpdateRelaunchingInfo {
  * `quitAndInstall()` threw. Main re-arms the banner separately via a
  * re-broadcast `ok:update:downloaded`; this carries the failure detail.
  */
-interface OkUpdateRelaunchFailedInfo {
+export interface OkUpdateRelaunchFailedInfo {
   readonly version: string;
   readonly message?: string;
+  readonly downloadUrl?: string;
 }
 
 /**
@@ -261,7 +267,7 @@ interface OkUpdateRelaunchFailedInfo {
  * to `AppState.lastSeenVersion`). `releaseUrl` is the GitHub Releases page
  * for the new version — renderer opens it via `bridge.shell.openExternal`.
  */
-interface OkWhatsNewInfo {
+export interface OkWhatsNewInfo {
   readonly version: string;
   readonly releaseUrl: string;
 }
@@ -273,7 +279,7 @@ interface OkWhatsNewInfo {
  * OpenKnowledge download CTA); renderer opens it via
  * `bridge.shell.openExternal`.
  */
-interface OkUpdateStuckHintInfo {
+export interface OkUpdateStuckHintInfo {
   readonly downloadUrl: string;
 }
 
@@ -287,20 +293,16 @@ interface OkUpdateStuckHintInfo {
  *   - `kind: 'unsupported-version'` — sonner toast "Update OpenKnowledge"
  *   - `kind: 'invalid'` — sonner toast "Invalid share URL"
  *
- * Mirrored across the three bridge-contract copies (desktop, core, app). Source
- * (universal-link vs custom-scheme) is NOT propagated — main-process diagnostic
- * logging only.
+ * Source (universal-link vs custom-scheme) is NOT propagated — main-process
+ * diagnostic logging only.
  */
-/** Kind-discriminated receiver target carried by `OkSharePayloadFields`.
- *  Local copy — see canonical `ShareTarget` in
- *  `packages/desktop/src/shared/bridge-contract.ts`. */
-type ShareTarget =
+/** Kind-discriminated receiver target carried by `OkSharePayloadFields`. */
+export type ShareTarget =
   | { readonly kind: 'doc'; readonly docPath: string }
   | { readonly kind: 'folder'; readonly folderPath: string };
 
-/** Local copy — see canonical `OkSharePayloadFields` in
- *  `packages/desktop/src/shared/bridge-contract.ts`. */
-interface OkSharePayloadFields {
+/** Parsed project-share fields carried across the desktop host bridge. */
+export interface OkSharePayloadFields {
   /** GitHub host of the shared repo: `github.com` or a GHES hostname. */
   readonly host: string;
   readonly owner: string;
@@ -310,9 +312,8 @@ interface OkSharePayloadFields {
   readonly target: ShareTarget;
 }
 
-/** Local copy — see canonical `OkShareReceivedPayload` in
- *  `packages/desktop/src/shared/bridge-contract.ts`. */
-type OkShareReceivedPayload =
+/** Renderer-facing payload for a received project share. */
+export type OkShareReceivedPayload =
   | { readonly kind: 'unsupported-version' }
   | { readonly kind: 'invalid' }
   | {
@@ -340,12 +341,11 @@ type OkShareReceivedPayload =
     };
 
 /**
- * Renderer-facing mirror of `ShareFolderValidationResult` from
+ * Renderer-facing representation of `ShareFolderValidationResult` from
  * `@inkeep/open-knowledge`'s `validateLocalFolderForShare`. Carried
- * by the `share.validateLocalFolder` IPC. Mirrored across the three bridge-
- * contract copies (desktop, core, app) so the drift tests catch divergent copies.
+ * by the `share.validateLocalFolder` IPC.
  */
-type ShareFolderValidationResult =
+export type ShareFolderValidationResult =
   | { readonly kind: 'ok'; readonly gitRemoteUrl: string }
   | { readonly kind: 'not-git' }
   | { readonly kind: 'no-origin' }
@@ -360,17 +360,24 @@ type ShareFolderValidationResult =
  * one. Not a runtime preference. Mirrors `UpdateChannel` in desktop's
  * `state-store.ts`.
  */
-type OkUpdateChannel = 'latest' | 'beta';
+export type OkUpdateChannel = 'latest' | 'beta';
 
 /**
  * User-intent theme value. Mirrors Electron's `nativeTheme.themeSource`
  * union. Carried verbatim through the `ok:theme:set-source` IPC channel —
  * never resolved to a concrete light/dark value at the renderer call site
  * (the `'system'` value IS the lever that delegates appearance tracking to
- * macOS). Drift across the three bridge-contract copies (desktop, core,
- * app) is caught by an invariant test.
+ * macOS). The desktop and app compatibility paths re-export this declaration.
  */
-type OkThemeSource = 'system' | 'light' | 'dark';
+export type OkThemeSource = 'system' | 'light' | 'dark';
+
+/** Colors handed to Electron for OS-drawn window chrome. */
+export interface OkChromeColors {
+  /** Active theme's sidebar surface color. */
+  bg: string;
+  /** Active theme's sidebar foreground color. */
+  symbol: string;
+}
 
 /**
  * Snapshot returned by `state.query()` — newly-opened windows query on
@@ -378,7 +385,7 @@ type OkThemeSource = 'system' | 'light' | 'dark';
  * build-derived) and to route the refuse-downgrade UX when a future-build
  * state was rolled back.
  */
-interface OkStateSnapshot {
+export interface OkStateSnapshot {
   readonly channel: OkUpdateChannel;
   readonly schemaIncompatibility: {
     readonly currentBuild: string;
@@ -390,11 +397,9 @@ interface OkStateSnapshot {
 /**
  * Editor IDs surfaced through the first-launch MCP consent bridge.
  * Aliased to the canonical `EditorId` from `constants/editors.ts` — single
- * source of truth for the literal union. Bridge mirrors in desktop + app
- * also alias to the same `EditorId` so the type is structurally identical
- * across all three copies.
+ * source of truth for the literal union.
  */
-type OkMcpWiringEditorId = EditorId;
+export type OkMcpWiringEditorId = EditorId;
 
 /**
  * Payload delivered to `mcpWiring.onShow` subscribers on first-launch MCP
@@ -407,13 +412,15 @@ type OkMcpWiringEditorId = EditorId;
  * `alreadyInstalled: true` renders it informational; `rcFilesToTouch`
  * names the tildified shell files a grant would edit.
  */
-interface OkMcpWiringShowPayload {
+export interface OkMcpWiringShowPayload {
   readonly detectedEditors: readonly {
     readonly id: OkMcpWiringEditorId;
     readonly label: string;
     readonly detected: boolean;
     readonly willReplace: boolean;
+    /** Display-form user-global config path, or null when unavailable. */
     readonly configPath: string | null;
+    /** Locator for OpenKnowledge's entry within the editor config. */
     readonly entryLocator: string;
   }[];
   readonly pathInstall: {
@@ -441,7 +448,7 @@ interface OkMcpWiringShowPayload {
  * solicited; every offered bundle not in the list is recorded declined (and
  * removed if already installed).
  */
-interface OkMcpWiringConfirmRequest {
+export interface OkMcpWiringConfirmRequest {
   readonly editorIds: readonly OkMcpWiringEditorId[];
   readonly pathInstall?: boolean;
   readonly skills?: readonly string[];
@@ -453,7 +460,7 @@ interface OkMcpWiringConfirmRequest {
  * `ok:true` and are surfaced to operator logs via structured
  * `mcp-wiring-write-failed` events (deferred-marker semantics).
  */
-type OkMcpWiringResult = { ok: true } | { ok: false; error: string };
+export type OkMcpWiringResult = { ok: true } | { ok: false; error: string };
 
 /**
  * Per-editor MCP state for Settings → AI tools. `installed` rows uncheck to
@@ -461,12 +468,12 @@ type OkMcpWiringResult = { ok: true } | { ok: false; error: string };
  * OK's server name that isn't recognizably OK's own (uninstall refuses,
  * install overwrites); `unmanageable` is a config OK can't safely edit.
  */
-type OkIntegrationsEditorState = 'installed' | 'not-installed' | 'foreign' | 'unmanageable';
+export type OkIntegrationsEditorState = 'installed' | 'not-installed' | 'foreign' | 'unmanageable';
 
 /** Component inventory for Settings → AI tools. `available: false` renders
  *  the section read-only (install actors gated off for this process). `path.
  *  installed` reflects the managed rc block actually being on disk. */
-interface OkIntegrationsStatus {
+export interface OkIntegrationsStatus {
   readonly available: boolean;
   readonly editors: readonly {
     readonly id: OkMcpWiringEditorId;
@@ -490,7 +497,7 @@ interface OkIntegrationsStatus {
 }
 
 /** One toggle for `integrations.setComponent`. */
-interface OkIntegrationsSetRequest {
+export interface OkIntegrationsSetRequest {
   readonly component:
     | { readonly kind: 'editor'; readonly id: OkMcpWiringEditorId }
     | { readonly kind: 'path' }
@@ -500,7 +507,7 @@ interface OkIntegrationsSetRequest {
 
 /** Set-component result — both arms carry a fresh status snapshot so the
  *  renderer re-renders truthfully after failed/refused toggles too. */
-type OkIntegrationsSetResult =
+export type OkIntegrationsSetResult =
   | { readonly ok: true; readonly status: OkIntegrationsStatus }
   | { readonly ok: false; readonly error: string; readonly status: OkIntegrationsStatus };
 
@@ -508,13 +515,17 @@ type OkIntegrationsSetResult =
  *  connect: `approve-once` (Claude Code), `enable-manually` (Cursor, silently
  *  disabled until toggled), `auto-connect` (Codex on a trusted project),
  *  `none`. */
-type OkProjectIntegrationsFollowUp = 'approve-once' | 'enable-manually' | 'auto-connect' | 'none';
+export type OkProjectIntegrationsFollowUp =
+  | 'approve-once'
+  | 'enable-manually'
+  | 'auto-connect'
+  | 'none';
 
 /** Component inventory for Settings → This project → AI tools (per-editor
  *  PROJECT MCP config files + the single project runtime skill), scoped to the
  *  project the requesting window has open. `hasProject: false` → empty state;
  *  `available: false` → read-only. */
-interface OkProjectIntegrationsStatus {
+export interface OkProjectIntegrationsStatus {
   readonly available: boolean;
   readonly hasProject: boolean;
   readonly projectDir: string | null;
@@ -534,23 +545,21 @@ interface OkProjectIntegrationsStatus {
 
 /** One toggle for `projectIntegrations.setComponent`. The skill is a single
  *  row (no id) — it fans out across every capable editor. */
-interface OkProjectIntegrationsSetRequest {
+export interface OkProjectIntegrationsSetRequest {
   readonly component:
     | { readonly kind: 'editor'; readonly id: OkMcpWiringEditorId }
     | { readonly kind: 'skill' };
   readonly enabled: boolean;
 }
 
-type OkProjectIntegrationsSetResult =
+export type OkProjectIntegrationsSetResult =
   | { readonly ok: true; readonly status: OkProjectIntegrationsStatus }
   | { readonly ok: false; readonly error: string; readonly status: OkProjectIntegrationsStatus };
 
 /**
  * Per-project consent dialog — renderer-facing payload + result shapes.
- * Mirrors the desktop and app copies; drift caught by the
- * bridge-contract drift-catcher test.
  */
-type OkOnboardingWarningKind =
+export type OkOnboardingWarningKind =
   | 'root'
   | 'home'
   | 'home-documents'
@@ -559,9 +568,9 @@ type OkOnboardingWarningKind =
   | 'volumes-mount'
   | 'drive-root';
 
-type OkOnboardingGitState = 'present' | 'absent' | 'shell-only';
+export type OkOnboardingGitState = 'present' | 'absent' | 'shell-only';
 
-interface OkOnboardingShowPayload {
+export interface OkOnboardingShowPayload {
   readonly pickedPath: string;
   readonly projectDir: string;
   readonly defaultContentDir: string;
@@ -578,20 +587,21 @@ interface OkOnboardingShowPayload {
   }[];
 }
 
-interface OkOnboardingConfirmRequest {
+export interface OkOnboardingConfirmRequest {
   readonly initGit: boolean;
   readonly contentDir: string;
   readonly additionalIgnores: string;
   readonly editorIds: readonly OkMcpWiringEditorId[];
+  readonly sharing: 'shared' | 'local-only';
 }
 
-type OkOnboardingResult = { ok: true } | { ok: false; error: string };
+export type OkOnboardingResult = { ok: true } | { ok: false; error: string };
 
-interface OkOnboardingProbeContentRequest {
+export interface OkOnboardingProbeContentRequest {
   readonly contentDir: string;
 }
 
-type OkOnboardingProbeContentResult =
+export type OkOnboardingProbeContentResult =
   | {
       readonly ok: true;
       readonly count: number;
@@ -604,11 +614,10 @@ type OkOnboardingProbeContentResult =
  * Result shape for `bridge.debug?.keyringSmoke()` — mirrors
  * `KeyringSmokeResult` in `packages/desktop/src/utility/keyring-smoke.ts`
  * (identical field set). Duplicated here (not imported) because core has no
- * dep on desktop. Drift across the three copies (desktop, core, app) is
- * caught by the bridge-contract drift-catcher test, which walks the
- * interface body of each file and asserts field-name set equality.
+ * dep on desktop. The desktop utility remains checked against this canonical
+ * field set by the desktop architecture test.
  */
-interface OkKeyringSmokeResult {
+export interface OkKeyringSmokeResult {
   ok: boolean;
   backend?: 'keyring' | 'file';
   error?: string;
@@ -628,28 +637,28 @@ interface OkKeyringSmokeResult {
  * path. The previous `OkFolderRule` / `OkScaffoldConfigEdit` mirror types
  * + the `configEdits` field on `OkScaffoldPlan` were removed alongside.
  */
-interface OkScaffoldFileEntry {
+export interface OkScaffoldFileEntry {
   path: string;
   kind: 'folder' | 'file';
   contentPreview?: string;
 }
-interface OkScaffoldSkipEntry {
+export interface OkScaffoldSkipEntry {
   path: string;
   reason: 'already-exists' | 'user-content' | 'glob-collision';
 }
-interface OkScaffoldPlan {
+export interface OkScaffoldPlan {
   created: OkScaffoldFileEntry[];
   skipped: OkScaffoldSkipEntry[];
   warnings: string[];
-  /** The pack's project-local skill, when it ships one. `pending` = the skill
-   *  source is absent from `.ok/skills/` and apply would (re)author it. */
+  /** Project-local skills shipped by the pack. `pending` means apply would
+   *  author or refresh the skill source. */
   packSkills?: { name: string; pending: boolean }[];
 }
-interface OkScaffoldApplyError {
+export interface OkScaffoldApplyError {
   path: string;
   error: string;
 }
-interface OkScaffoldApplyResult {
+export interface OkScaffoldApplyResult {
   applied: number;
   errors: OkScaffoldApplyError[];
   durationMs: number;
@@ -657,7 +666,7 @@ interface OkScaffoldApplyResult {
   packSkillsInstalled: string[];
 }
 
-interface OkSeedError {
+export interface OkSeedError {
   kind: 'no-project' | 'prerequisite-missing' | 'invalid-root' | 'internal';
   message: string;
 }
@@ -665,14 +674,9 @@ interface OkSeedError {
 /**
  * Pack-id wire shape — accepted strings; coerced server-side via `coercePackId`.
  *
- * DRIFT WARNING: three-way structural mirror with
- *   - `packages/desktop/src/shared/bridge-contract.ts` (imports `PackId` from server)
- *   - `packages/app/src/lib/desktop-bridge-types.ts` (local copy)
- *
- * Adding a pack: update all three sites. Drift is caught at typecheck time by
- * the `Eq<>` type-check assertions.
+ * This bridge leaf is the renderer contract's single declaration point.
  */
-type OkPackId =
+export type OkPackId =
   | 'knowledge-base'
   | 'software-lifecycle'
   | 'codebase-wiki'
@@ -682,31 +686,30 @@ type OkPackId =
   | 'entity-vault'
   | 'okf';
 
-interface OkSeedPlanOptions {
+export interface OkSeedPlanOptions {
   rootDir?: string;
   packId?: OkPackId;
 }
 
-interface OkSeedApplyOptions {
+export interface OkSeedApplyOptions {
   packId?: OkPackId;
 }
 
-interface OkSeedPackFolderInfo {
+export interface OkSeedPackFolderInfo {
   path: string;
   summary: string;
 }
 
 /**
  * User-visible entry counts surfaced on each pack picker card as
- * "N files · N folders". Three-way mirror with the desktop + app copies;
- * the Eq<> drift catcher fails if this diverges.
+ * "N files · N folders".
  */
-interface OkSeedPackEntryCounts {
+export interface OkSeedPackEntryCounts {
   files: number;
   folders: number;
 }
 
-interface OkSeedPackInfo {
+export interface OkSeedPackInfo {
   id: OkPackId;
   name: string;
   description: string;
@@ -718,28 +721,31 @@ interface OkSeedPackInfo {
 /** Pure-fs upward-walk result types mirrored from `@inkeep/open-knowledge-server`'s
  *  `fs/` module. Structurally duplicated for the same reason as the seed shapes
  *  above (core has no dep on server). */
-interface OkFindEnclosingProjectRootResult {
+export interface OkFindEnclosingProjectRootResult {
   readonly rootPath: string;
   readonly distance: number;
 }
-interface OkFindEnclosingGitRootResult {
+export interface OkFindEnclosingGitRootResult {
   readonly gitRoot: string;
   readonly distance: number;
 }
-type OkSeedPlanResult = { ok: true; plan: OkScaffoldPlan } | { ok: false; error: OkSeedError };
-type OkSeedApplyResult =
+export type OkSeedPlanResult =
+  | { ok: true; plan: OkScaffoldPlan }
+  | { ok: false; error: OkSeedError };
+export type OkSeedApplyResult =
   | { ok: true; result: OkScaffoldApplyResult }
   | { ok: false; error: OkSeedError };
-type OkSeedListPacksResult =
+export type OkSeedListPacksResult =
   | { ok: true; packs: OkSeedPackInfo[] }
   | { ok: false; error: { kind: 'internal'; message: string } };
 
+export type OkLocalOpAuthSignoutResponse = { ok: true } | { ok: false; error?: string };
+
 /**
  * Pre-project local-op event shapes — auth + clone flows surfaced to the
- * Navigator window via IPC because it has no backing API server. See the
- * desktop bridge-contract for the canonical wire shape.
+ * Navigator window via IPC because it has no backing API server.
  */
-type OkLocalOpAuthEvent =
+export type OkLocalOpAuthEvent =
   | {
       type: 'verification';
       user_code: string;
@@ -756,18 +762,18 @@ type OkLocalOpAuthEvent =
     }
   | { type: 'error'; message: string };
 
-type OkLocalOpCloneEvent =
+export type OkLocalOpCloneEvent =
   | { type: 'progress'; phase: string; pct: number }
   | { type: 'complete'; dir: string }
   | { type: 'branch-fallback'; branch: string }
   | { type: 'error'; message: string };
 
-interface OkLocalOpStream<E> {
+export interface OkLocalOpStream<E> {
   readonly events: AsyncIterable<E>;
   cancel(): void;
 }
 
-type OkLocalOpAuthStatusResponse =
+export type OkLocalOpAuthStatusResponse =
   | {
       authenticated: true;
       host: string;
@@ -775,16 +781,17 @@ type OkLocalOpAuthStatusResponse =
       tier?: 'A' | 'B' | 'C';
       name?: string;
       email?: string;
+      ghAvailable?: boolean;
     }
-  | { authenticated: false; host: string; error?: string };
+  | { authenticated: false; host: string; error?: string; ghAvailable?: boolean };
 
-interface OkLocalOpRepoEntry {
+export interface OkLocalOpRepoEntry {
   full_name: string;
   clone_url: string;
   private: boolean;
 }
 
-type OkLocalOpAuthReposResponse =
+export type OkLocalOpAuthReposResponse =
   | { ok: true; host: string; repos: OkLocalOpRepoEntry[] }
   | { ok: false; error: string };
 
@@ -792,10 +799,9 @@ type OkLocalOpAuthReposResponse =
  * Renderer → main snapshot of the editor area's active target.
  * Discriminated-union shape so TypeScript narrows `identifier` per `kind`.
  * Drives the macOS File menu's state-aware enable/disable for items like
- * Rename / Move to Trash / Open with AI. See canonical JSDoc in
- * `packages/desktop/src/shared/bridge-contract.ts`.
+ * Rename / Move to Trash / Open with AI.
  */
-type OkEditorActiveTargetSnapshot =
+export type OkEditorActiveTargetSnapshot =
   | { readonly kind: 'doc'; readonly identifier: string }
   | { readonly kind: 'folder'; readonly identifier: string }
   | { readonly kind: 'asset'; readonly identifier: string }
@@ -803,10 +809,9 @@ type OkEditorActiveTargetSnapshot =
 
 /**
  * Renderer → main snapshot of the View menu's checkbox + smart-hide state.
- * Sibling of `OkEditorActiveTargetSnapshot`. See canonical JSDoc in
- * `packages/desktop/src/shared/bridge-contract.ts`.
+ * Sibling of `OkEditorActiveTargetSnapshot`.
  */
-interface OkEditorViewMenuStateSnapshot {
+export interface OkEditorViewMenuStateSnapshot {
   readonly showHiddenFiles: boolean;
   readonly showOkFolders: boolean;
   readonly showOnlyMarkdownFiles: boolean;
@@ -829,9 +834,8 @@ interface OkEditorViewMenuStateSnapshot {
  * dispatch path the native menu items use, `role` maps onto Electron's
  * built-in menu roles, `command` covers the main-side click handlers
  * (navigator, folder picker, settings, updater…), and `query` returns the
- * aggregated state the native menu renders from. Same shapes as
- * `MenuDispatch*` in `ipc-channels.ts` — duplicated for the
- * module-resolution reason the wider `OkDesktopBridge` is duplicated.
+ * aggregated state the native menu renders from. The IPC channel module
+ * re-exports these canonical types under its transport-facing names.
  */
 export type OkMenuDispatchRole =
   | 'undo'
@@ -879,6 +883,18 @@ export interface OkMenuRendererSnapshot {
   readonly viewMenuState: OkEditorViewMenuStateSnapshot;
 }
 
+/** Consent-bearing payload for the renderer-to-main bug-report send hop. */
+export interface OkBugReportSendInput {
+  zipPath: string;
+  metadata: OkBugReportSendMetadata;
+  /**
+   * Whether the reviewed bundle contains an app screenshot. The bundle's
+   * inventory is the consent record; absent or false means main must not
+   * upload the capture it may still hold.
+   */
+  includeScreenshot?: boolean;
+}
+
 /**
  * Renderer-facing Electron bridge. Populated on `window.okDesktop` by the
  * desktop preload script. Web distribution omits the
@@ -890,7 +906,7 @@ export interface OkMenuRendererSnapshot {
  * omitted — new capabilities cross the preload boundary deliberately, one at
  * a time, via new typed methods.
  */
-/** OK config sharing mode — mirrored from bridge-contract.ts. */
+/** OK config sharing mode. */
 export interface OkSharingStatusResult {
   readonly kind: 'status';
   readonly mode: 'shared' | 'local-only' | 'no-git';
@@ -951,12 +967,12 @@ export type OkServerRestartOutcome =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: 'eperm' | 'other' };
 
-/** Result of `terminal.create`. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
+/** Result of `terminal.create`. */
 export type OkPtyCreateResult =
   | { readonly ok: true; readonly ptyId: string }
   | { readonly ok: false; readonly reason: 'no-project' | 'not-consented' };
 
-/** Entry of `terminal.list`. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
+/** Entry of `terminal.list`. */
 export interface OkPtyListEntry {
   readonly ptyId: string;
   /** User-set custom tab name that survives a renderer reload; null when unset. */
@@ -966,18 +982,18 @@ export interface OkPtyListEntry {
   readonly ordinal: number | null;
 }
 
-/** Result of `terminal.adopt`. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
+/** Result of `terminal.adopt`. */
 export type OkPtyAdoptResult =
   | { readonly ok: true; readonly replay: string }
   | { readonly ok: false; readonly reason: 'unknown-session' };
 
-/** Push payload for `ok:pty:data`. Canonical JSDoc in `bridge-contract.ts`. */
+/** Push payload for `ok:pty:data`. */
 export interface OkPtyData {
   readonly ptyId: string;
   readonly data: string;
 }
 
-/** Push payload for `ok:pty:exit`. Canonical JSDoc in `bridge-contract.ts`. */
+/** Push payload for `ok:pty:exit`. */
 export interface OkPtyExit {
   readonly ptyId: string;
   readonly exitCode: number;
@@ -986,8 +1002,7 @@ export interface OkPtyExit {
 }
 
 /**
- * Claude Code readiness for the docked terminal. Canonical definition in
- * `desktop/src/shared/bridge-contract.ts`; mirrored verbatim here (drift-tested).
+ * Claude Code readiness for the docked terminal.
  */
 export interface ClaudeReadiness {
   readonly claude: 'present' | 'not-found' | 'unknown';
@@ -1006,8 +1021,7 @@ export interface ClaudeReadiness {
 }
 
 /** On-PATH readiness for a non-Claude agent CLI (codex / cursor-agent) launched
- *  in the docked terminal. Mirror of the same interface in the desktop bridge
- *  contract + the app renderer copy (drift-tested). */
+ *  in the docked terminal. */
 export interface CliReadiness {
   readonly onPath: 'present' | 'not-found' | 'unknown';
   /** Codex-only: whether OK's `open-knowledge` MCP server is already configured
@@ -1146,17 +1160,10 @@ export interface OkDesktopBridge {
    *
    * Optional `opts.reducedTransparency` carries the renderer's live
    * `matchMedia('(prefers-reduced-transparency: reduce)').matches` value;
-   * main toggles vibrancy material accordingly. Optional `opts.chrome`
-   * carries the active color theme's window-chrome colors (`bg` from
-   * `--sidebar`, `symbol` from `--sidebar-foreground`) so main can paint the
-   * OS-drawn titlebar to match the palette rather than its build-time
-   * snapshot. See canonical JSDoc in
-   * `packages/desktop/src/shared/bridge-contract.ts`.
+   * main toggles vibrancy material accordingly. `opts.chrome` carries the
+   * active palette's OS-drawn chrome colors.
    */
-  signalThemeApplied(opts?: {
-    reducedTransparency?: boolean;
-    chrome?: { bg: string; symbol: string };
-  }): void;
+  signalThemeApplied(opts?: { reducedTransparency?: boolean; chrome?: OkChromeColors }): void;
 
   /** Native folder-picker dialog surfaces. */
   dialog: {
@@ -1202,23 +1209,16 @@ export interface OkDesktopBridge {
     /**
      * Append a local-only telemetry line to `~/.ok/stats.jsonl`. Zero
      * phone-home. Resolves even if HOME is unwritable — telemetry failure
-     * must never bubble up and affect the dispatch path. Literal-union
-     * shape mirrors `HandoffTarget`, `HandoffFailureReason`, and
-     * `HandoffScope` from `core/handoff/types.ts`.
+     * must never bubble up and affect the dispatch path. The reason and scope
+     * fields use the handoff subsystem's canonical literal-union discriminators.
      */
     recordHandoff(line: {
       readonly target: 'claude-cowork' | 'claude-code' | 'codex' | 'cursor';
       readonly host: 'electron' | 'web';
       readonly outcome: 'ok' | 'error';
       readonly ts: string;
-      readonly reason?:
-        | 'not-installed'
-        | 'scheme-blocked'
-        | 'web-endpoint-error'
-        | 'invalid-payload'
-        | 'dispatch-error'
-        | 'web-host-cursor-unsupported';
-      readonly scope?: 'selection';
+      readonly reason?: HandoffFailureReason;
+      readonly scope?: HandoffScope;
     }): Promise<void>;
 
     /**
@@ -1282,8 +1282,7 @@ export interface OkDesktopBridge {
     showItemInFolder(path: string): Promise<void>;
     /**
      * Move a file or folder to the OS Trash via `shell.trashItem`. Step 1
-     * of the sidebar Delete flow's two-step Option B orchestration. See
-     * canonical JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
+     * of the sidebar Delete flow's two-step Option B orchestration.
      */
     trashItem(absPath: string): Promise<
       | { ok: true }
@@ -1308,10 +1307,7 @@ export interface OkDesktopBridge {
    */
   project: {
     listRecent(): Promise<RecentProjectEntry[]>;
-    /**
-     * Forget one entry from the recent-projects list. See canonical JSDoc in
-     * `packages/desktop/src/shared/bridge-contract.ts`.
-     */
+    /** Forget one entry from the recent-projects list. */
     removeRecent(path: string): Promise<void>;
     getSessionState(): Promise<ProjectSessionState>;
     setSessionState(state: ProjectSessionState): Promise<void>;
@@ -1320,16 +1316,14 @@ export interface OkDesktopBridge {
      * File → Open file… — show the native md/mdx picker and open the pick in a
      * temporary single-file session (the desktop side of `ok <file>`). Picker +
      * open both run main-side; the picked path never crosses back to the
-     * renderer. See canonical JSDoc in
-     * `packages/desktop/src/shared/bridge-contract.ts`.
+     * renderer.
      */
     openFile(): Promise<void>;
     /**
      * Atomically scaffold a new project under `parent/name` with the
      * user-chosen `editors` set. `editors` is the renderer's exact selection
      * (default-all unless the user unchecked entries); main never widens or
-     * narrows it. See canonical JSDoc in
-     * `packages/desktop/src/shared/bridge-contract.ts`.
+     * narrows it.
      */
     createNew(args: {
       parent: string;
@@ -1337,32 +1331,25 @@ export interface OkDesktopBridge {
       editors: OkMcpWiringEditorId[];
       /** OK config sharing mode — defaults to 'shared' when omitted. */
       sharing?: 'shared' | 'local-only';
+      packId?: OkPackId;
     }): Promise<void>;
     /**
      * Fire-and-forget renderer→main telemetry counter for the Create-new-project
-     * dialog cascade banners. See canonical JSDoc in
-     * `packages/desktop/src/shared/bridge-contract.ts`.
+     * dialog cascade banners.
      */
     recordCreateNewBannerShown(banner: CreateNewBannerKind): Promise<void>;
     /**
      * Probe `<projectPath>/<path>` for the share-receive target-existence
-     * gate, dispatching the on-disk predicate on `kind`. See canonical JSDoc
-     * in `packages/desktop/src/shared/bridge-contract.ts`.
+     * gate, dispatching the on-disk predicate on `kind`.
      */
     checkTargetExists(request: {
       projectPath: string;
       kind: 'doc' | 'folder';
       path: string;
     }): Promise<OkCheckTargetExistsResult>;
-    /**
-     * Read `<projectPath>/.git/HEAD` and classify the result. See canonical
-     * JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
-     */
+    /** Read `<projectPath>/.git/HEAD` and classify the result. */
     readHeadBranch(projectPath: string): Promise<OkHeadBranchInfo>;
-    /**
-     * Proxy `GET /api/git/branch-info` against the project's running server.
-     * See canonical JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
-     */
+    /** Proxy `GET /api/git/branch-info` against the project's running server. */
     fetchBranchInfo(request: {
       projectPath: string;
       branch: string;
@@ -1373,8 +1360,7 @@ export interface OkDesktopBridge {
      * Proxy `POST /api/git/checkout` against the project's running server.
      * `fastForward` (on-origin "Switch and update branch") fast-forwards the
      * target branch to origin's tip before checkout; divergence → `ff-diverged`
-     * (nothing mutated). See canonical JSDoc in
-     * `packages/desktop/src/shared/bridge-contract.ts`.
+     * (nothing mutated).
      */
     runCheckout(request: {
       projectPath: string;
@@ -1383,8 +1369,7 @@ export interface OkDesktopBridge {
     }): Promise<CheckoutResponse | null>;
     /**
      * Proxy `POST /api/share/target-status` for the branch-switch dialog's
-     * verdict pivot. See canonical JSDoc in
-     * `packages/desktop/src/shared/bridge-contract.ts`.
+     * verdict pivot.
      */
     fetchTargetStatus(request: {
       projectPath: string;
@@ -1394,18 +1379,14 @@ export interface OkDesktopBridge {
     }): Promise<ShareTargetStatusResponse | null>;
     /**
      * Gate dialog dismissal on the `branch-switched` broadcast landing
-     * in the project window. See canonical JSDoc in
-     * `packages/desktop/src/shared/bridge-contract.ts`.
+     * in the project window.
      */
     awaitBranchSwitched(request: {
       projectPath: string;
       branch: string;
       timeoutMs: number;
     }): Promise<{ ok: true } | { ok: false; reason: 'timeout' | 'project-not-open' }>;
-    /**
-     * Run the share-receive J2 scaffold inside a CLI-managed worktree.
-     * See canonical JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
-     */
+    /** Run the share-receive scaffold inside a CLI-managed worktree. */
     okInit(request: { projectPath: string }): Promise<LocalOpOkInitResponse>;
     close(): Promise<void>;
   };
@@ -1417,8 +1398,7 @@ export interface OkDesktopBridge {
    * `<mainRoot>/.ok/worktrees/`; `checkout` is the share-receive arm
    * (resolves where the branch lives — fetching from `origin` when
    * needed — then create-or-locates). Opening a worktree window reuses
-   * `project.open({ entryPoint: 'worktree' })`. Canonical JSDoc in
-   * `packages/desktop/src/shared/bridge-contract.ts`.
+   * `project.open({ entryPoint: 'worktree' })`.
    */
   worktree: {
     list(): Promise<WorktreeListResult>;
@@ -1428,8 +1408,6 @@ export interface OkDesktopBridge {
 
   /**
    * OK config sharing mode — per-project sharing-mode posture.
-   * Canonical JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
-   * Mirrored here per the OkDesktopBridge 3-way-mirror invariant.
    */
   sharing: {
     status(): Promise<OkSharingStatusResult>;
@@ -1444,8 +1422,6 @@ export interface OkDesktopBridge {
    * screenshot via `includeScreenshot`); `captureScreenshot` grabs the app
    * before the dialog paints; `send` uploads it with an email fallback;
    * `onCrashDetected` / `crashAck` carry the crash-invite round-trip.
-   * Canonical JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
-   * Mirrored here per the OkDesktopBridge 3-way-mirror invariant.
    */
   bugReport: {
     create(request: {
@@ -1455,28 +1431,14 @@ export interface OkDesktopBridge {
       includeScreenshot?: boolean;
     }): Promise<OkBugReportCreateResult>;
     captureScreenshot(): Promise<OkBugReportScreenshot | null>;
-    send(request: {
-      zipPath: string;
-      metadata: OkBugReportSendMetadata;
-      /**
-       * Whether the bundle at `zipPath` contains the app screenshot, taken from
-       * the bundle's own file inventory rather than the dialog's checkbox state.
-       * The inventory is what the reporter reviewed, so it is the authoritative
-       * consent record: absent or false means main must not upload the capture it
-       * is still holding.
-       */
-      includeScreenshot?: boolean;
-    }): Promise<OkBugReportSendResult>;
+    send(request: OkBugReportSendInput): Promise<OkBugReportSendResult>;
     crashAck(request: { eventId: string }): Promise<OkBugReportCrashAckResult>;
     list(): Promise<OkBugReportListResult>;
     delete(id: string): Promise<OkBugReportDeleteResult>;
     onCrashDetected(cb: (event: OkBugReportCrashDetectedEvent) => void): OkUnsubscribe;
   };
 
-  /**
-   * Filesystem probes that back the Create-new-project dialog cascade. See
-   * canonical JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
-   */
+  /** Filesystem probes that back the Create-new-project dialog cascade. */
   fs: {
     defaultProjectsRoot(): Promise<string>;
     folderState(path: string): Promise<OkFolderState>;
@@ -1527,8 +1489,6 @@ export interface OkDesktopBridge {
      * version matches the current bundled skill version, resolves with
      * `{ ok: true, skipped: true, version, recordedAt? }` without
      * rebuilding. Pass `force: true` to bypass.
-     *
-     * See canonical JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
      */
     buildAndOpen(opts?: { force?: boolean }): Promise<
       | { ok: true; path: string; skipped?: false; version?: string }
@@ -1666,7 +1626,13 @@ export interface OkDesktopBridge {
                 | { readonly status: 'none' }
                 | { readonly status: 'installed'; readonly summary: string }
                 | { readonly status: 'failed'; readonly summary: string };
-            },
+            }
+          | {
+              readonly kind: 'sharing-refused-tracked';
+              readonly tracked: readonly string[];
+              readonly remediation: string;
+            }
+          | { readonly kind: 'sharing-no-git'; readonly requestedMode: 'local-only' },
       ) => void,
     ): OkUnsubscribe;
   };
@@ -1699,6 +1665,7 @@ export interface OkDesktopBridge {
   share: {
     validateLocalFolder(args: {
       folderPath: string;
+      host: string;
       owner: string;
       repo: string;
     }): Promise<ShareFolderValidationResult>;
@@ -1707,20 +1674,15 @@ export interface OkDesktopBridge {
   /**
    * Editor area state push surface. Renderer fires
    * `notifyActiveTargetChanged` once per `activeTarget` transition in
-   * `useDocumentContext()`. See canonical JSDoc in
-   * `packages/desktop/src/shared/bridge-contract.ts`.
+   * `useDocumentContext()`.
    */
   editor: {
     notifyActiveTargetChanged(target: OkEditorActiveTargetSnapshot): void;
-    /**
-     * Fire-and-forget push of the sidebar's view-menu state. See canonical
-     * JSDoc in `packages/desktop/src/shared/bridge-contract.ts`.
-     */
+    /** Fire-and-forget push of the sidebar's view-menu state. */
     notifyViewMenuStateChanged(state: Partial<OkEditorViewMenuStateSnapshot>): void;
     /**
      * Fire-and-forget push keying the window's Chromium background-throttling
-     * to its unsynced work. See canonical JSDoc in
-     * `packages/desktop/src/shared/bridge-contract.ts`.
+     * to its unsynced work.
      */
     notifyBackgroundThrottle(signal: { hasPendingWork: boolean; enabled: boolean }): void;
   };
@@ -1741,8 +1703,7 @@ export interface OkDesktopBridge {
    * Startup-instrumentation push surface (desktop launch waterfall). The
    * renderer reports its two launch checkpoints — page-list ready and first
    * content — as epoch-ms once both land; main folds them into the
-   * `desktop.startup-timeline` log line. See canonical JSDoc in
-   * `packages/desktop/src/shared/bridge-contract.ts`.
+   * `desktop.startup-timeline` log line.
    */
   startup: {
     reportMarks(marks: { pageListReadyMs: number; firstContentMs: number }): void;
@@ -1751,18 +1712,14 @@ export interface OkDesktopBridge {
   /**
    * Sidebar tree-state push subscriptions. Main pushes
    * `ok:sidebar:expand-all` / `ok:sidebar:collapse-all` when the user picks
-   * View → Expand All / Collapse All. See canonical JSDoc in
-   * `packages/desktop/src/shared/bridge-contract.ts`.
+   * View → Expand All / Collapse All.
    */
   sidebar: {
     expandAll(cb: () => void): OkUnsubscribe;
     collapseAll(cb: () => void): OkUnsubscribe;
   };
 
-  /**
-   * Bottom-docked terminal panel surface. Canonical JSDoc in
-   * `bridge-contract.ts`; mirrored verbatim here (drift-tested).
-   */
+  /** Bottom-docked terminal panel surface. */
   terminal: {
     create(opts: {
       cols: number;
@@ -1773,9 +1730,9 @@ export interface OkDesktopBridge {
     resize(ptyId: string, cols: number, rows: number): void;
     kill(ptyId: string): Promise<void>;
     drain(ptyId: string, bytes: number): void;
-    /** Reload-rehydration inventory. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
+    /** Reload-rehydration inventory. */
     list(): Promise<OkPtyListEntry[]>;
-    /** Reload-rehydration adopt. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
+    /** Reload-rehydration adopt. */
     adopt(ptyId: string): Promise<OkPtyAdoptResult>;
     /**
      * Persist per-session tab metadata (custom name + sticky ordinal) in main so
@@ -1788,14 +1745,14 @@ export interface OkDesktopBridge {
      * survives a renderer reload. Fire-and-forget.
      */
     setOrder(orderedPtyIds: readonly string[]): void;
-    /** Per-window panel state (per-surface visibility + tab order + active key). Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
+    /** Per-window state for the independent terminal and agents panels. */
     getDockState(): Promise<{
       terminalVisible: boolean;
       agentPanelVisible: boolean;
       terminal?: { order: string[]; activeKey: string | null };
       agents?: { order: string[]; activeKey: string | null };
     }>;
-    /** Persist one panel's tab order + active key per window. Canonical JSDoc in `bridge-contract.ts`; mirrored verbatim (drift-tested). */
+    /** Persist one panel's tab order and active key per window. */
     setDockState(state: {
       surface: 'terminal' | 'agents';
       order: string[];
@@ -1810,8 +1767,8 @@ export interface OkDesktopBridge {
   };
 
   /**
-   * OS assistive-tech signal gating xterm's `screenReaderMode`. Canonical
-   * JSDoc in `bridge-contract.ts`. Optional in this mirror: session-only
+   * OS assistive-tech signal gating xterm's `screenReaderMode`. Optional in
+   * the renderer contract: session-only
    * bridges omit it, and consumers treat an absent surface as
    * screen-reader-active (fail-accessible).
    */

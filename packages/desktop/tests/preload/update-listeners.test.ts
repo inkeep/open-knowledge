@@ -3,22 +3,9 @@ import { describe, expect, test, vi } from 'vitest';
 /**
  * update-listener preload-pattern test.
  *
- * The preload file (`src/preload/index.ts`) imports `electron`'s
- * `contextBridge` / `ipcRenderer` which cannot be loaded under `bun test`.
- * We cannot test the preload module directly — same constraint that
- * `bridge.test.ts` works around by testing the `createInvoker` factory
- * instead of the preload export.
- *
- * This file exercises the same listener-subscribe / unsubscribe pattern the
- * preload uses for its three new event subscriptions (`onUpdateDownloaded`,
- * `onWhatsNew`, `onUpdateStuckHint`) against a fake ipcRenderer. Failing this
- * test means the pattern itself is broken — which would break all 5 listeners
- * in the bridge, not just the three. Passing this, plus the existing
- * drift-catcher in `tests/integration/m1-smoke.test.ts` (structural shape
- * across 3 copies) and the channel-name gate in `tests/preload/bridge.test.ts`
- * (channel names match declared EventChannels), constitutes the "unsubscribe
- * closure detaches the listener" without booting a real
- * Electron context.
+ * Exercises the listener subscribe/unsubscribe pattern used by the preload's
+ * update events against a fake ipcRenderer. This isolates the reference-
+ * identity behavior without booting an Electron process.
  */
 
 type FakeListener = (_event: unknown, payload: unknown) => void;

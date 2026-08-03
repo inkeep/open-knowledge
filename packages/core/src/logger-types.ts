@@ -60,8 +60,8 @@ export interface BundleManifest {
  * availability-gated by what exists at capture time.
  *
  * Lives in core (not the CLI package that implements the capture) so the
- * desktop bridge contract's three per-package copies can all name the same
- * type — the app renderer and core cannot depend on the CLI package.
+ * dedicated desktop-bridge leaf and the CLI implementation can share the type
+ * without making the renderer depend on the CLI package.
  */
 export type ReportBundleLevel = 'standard' | 'full';
 
@@ -169,7 +169,7 @@ export type OkBugReportSendResult =
  * prompts twice, across restarts included.
  *
  * Lives in core for the same reason as the sibling bug-report types: the
- * desktop bridge contract's per-package copies must all name one type.
+ * desktop-bridge leaf and the capture implementation must share one type.
  *
  * `minidumpAvailable` is main's authoritative answer (only main can stat the
  * crash-dumps dir) to "is there a crash minidump to include for this event?".

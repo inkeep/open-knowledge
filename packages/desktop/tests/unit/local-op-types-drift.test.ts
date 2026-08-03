@@ -1,13 +1,12 @@
 /**
  * Local-op type-drift catcher across the server ↔ desktop bridge boundary.
  *
- * Server-side runner output types and desktop-side bridge-contract types
+ * Server-side runner output types and the desktop host contract types
  * are duplicated by design:
  *   - Server is published as a standalone library and can't depend on
  *     desktop.
- *   - Desktop's bridge contracts avoid importing server to keep server's
- *     compilation tree (markdown / CRDT) out of the renderer build —
- *     rationale lives in `bridge-contract.ts`'s top JSDoc.
+ *   - The desktop host contract avoids importing server to keep server's
+ *     compilation tree (markdown / CRDT) out of the renderer build.
  *
  * Without this test, a field added on one side (e.g. `scopes: string[]`
  * on `AuthStatusResponse`) silently propagates to the IPC handler return
@@ -16,10 +15,8 @@
  * (`handle()` registration + preload `invoke()` assignment) only catches
  * removals + breaking changes, not additive drift.
  *
- * Pattern: `Eq<X, Y>` mutual-assignability invariant — same trick as
- * `bridge-contract-types.test.ts` (the 3-mirror drift catcher).
- * Failures surface during `turbo run typecheck` at the literal `true`
- * assignment, not just at `bun test` execution time.
+ * Pattern: `Eq<X, Y>` mutual-assignability invariant, complementing the
+ * source-only core bridge contract guard.
  */
 
 import type {

@@ -125,7 +125,7 @@ test.describe('chrome-modernization theme-sync smoke', () => {
 
     // Bridge wired in the editor renderer — confirms preload exposed
     // `window.okDesktop` AND the bridge carries the theme methods. If the
-    // contextBridge import or one of the three bridge-file mirrors
+    // contextBridge import, compatibility shim, or canonical contract
     // regressed, this fails fast.
     const bridgeShape = await editorPage.evaluate(() => ({
       hasBridge: typeof window.okDesktop !== 'undefined',

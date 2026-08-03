@@ -12,10 +12,10 @@ import type {
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
   OkBugReportScreenshot,
-  OkBugReportSendMetadata,
   OkBugReportSendResult,
   ReportBundleSummary,
 } from '@inkeep/open-knowledge-core';
+import type { OkBugReportSendInput } from '@inkeep/open-knowledge-core/desktop-bridge';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
@@ -82,7 +82,7 @@ type CreateRequest = {
   includeCrashDump?: boolean;
   includeScreenshot?: boolean;
 };
-type SendRequest = { zipPath: string; metadata: OkBugReportSendMetadata };
+type SendRequest = OkBugReportSendInput;
 
 interface BridgeLog {
   createCalls: CreateRequest[];

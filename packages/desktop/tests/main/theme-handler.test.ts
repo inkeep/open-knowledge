@@ -9,7 +9,7 @@
  *     via the show-gate, not cached.
  *   - Defensively rejects non-OkThemeSource values at the IPC sender +
  *     imperative shell boundary. Typed IPC should prevent this in production
- *     but a future bridge-contract divergence at any of the three mirrors
+ *     but a future divergence from the canonical core bridge declaration
  *     (or a non-typed IPC fallback) would land here.
  */
 
