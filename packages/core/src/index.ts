@@ -534,6 +534,7 @@ export {
   withSkillPointer,
 } from './handoff/index.ts';
 export { selectFenceChar, widenFenceLength } from './markdown/code-fence.ts';
+export { MIN_CARRIED_EDGE_EMPTIES } from './markdown/doc-edge-blank-runs.ts';
 export {
   HTML_MAX_BYTES,
   HtmlPayloadTooLargeError,
@@ -1392,9 +1393,9 @@ export {
   compareRoundTripStructural,
   composeWithDerivedBody,
   composeWithDerivedFrontmatter,
+  createMergeBoundarySpace,
   createStructuralFreshnessChecker,
   type DiffChange,
-  type DocBoundarySplit,
   DUPLICATION_GATE_MIN_LINE_LENGTH,
   defaultScheduler,
   detectAppliedToleranceClasses,
@@ -1423,6 +1424,7 @@ export {
   type InvariantViolation,
   isParseEquivalentBridge,
   MAX_FM_REGION_BYTES,
+  type MergeBoundarySpace,
   mergeThreeWay,
   normalizeBridge,
   overMultipliedBodyLines,
@@ -1432,11 +1434,9 @@ export {
   parseFencedFmRegion,
   parseFmRegion,
   pendingContentLines,
-  projectMergeBoundarySpace,
   readFmKeys,
   readFmMap,
   readFmRegionWithError,
-  reattachLeadingDocBoundary,
   type Scheduler,
   type StructuralDegradeLabel,
   type StructuralDivergenceReason,
@@ -1444,7 +1444,6 @@ export {
   type StructuralFreshnessChecker,
   type StructuralFreshnessCheckerOptions,
   setToleranceTelemetryHook,
-  splitLeadingDocBoundary,
   structuralDivergence,
   type ToleranceClassSeverity,
   type ToleranceFireRecord,

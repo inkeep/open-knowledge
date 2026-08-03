@@ -23,6 +23,7 @@ import { commentPromoterPlugin } from './comment-promoter.ts';
 import { dedentBlockJsxClose } from './dedent-block-jsx-close.ts';
 import { detailsAccordionPromoterPlugin } from './details-accordion-promoter.ts';
 import { divAlignPromoterPlugin } from './div-align-promoter.ts';
+import { materializeDocEdgeBlankRuns } from './doc-edge-blank-runs.ts';
 import { emptyTaskItemUnmintPlugin, mintEmptyTaskItemContent } from './empty-task-item.ts';
 import { encodeEntityRefs, restoreEntityRefsPlugin } from './entity-ref-guard.ts';
 import { highlightPromoterPlugin } from './highlight-promoter.ts';
@@ -218,7 +219,8 @@ export function parseMd(rawSource: string, processor: Processor): PmNode {
   file.value = source;
   const transformed = processor.runSync(tree, file) as MdastRoot;
   insertInteriorBlankRunParagraphs(transformed, source);
-  const boundary = captureDocBoundary(transformed, source, hadBom);
+  const captured = captureDocBoundary(transformed, source, hadBom);
+  const boundary = captured ? materializeDocEdgeBlankRuns(transformed, captured) : undefined;
   const doc = (processor as unknown as { stringify(tree: unknown): PmNode }).stringify(transformed);
   if (!boundary) return doc;
   return doc.type.create({ ...doc.attrs, sourceDocBoundary: boundary }, doc.content, doc.marks);
@@ -245,7 +247,8 @@ function parseToMdast(
   file.value = source;
   const transformed = processor.runSync(tree, file) as MdastRoot;
   if (materializeBlankRuns) insertInteriorBlankRunParagraphs(transformed, source);
-  captureDocBoundary(transformed, source, hadBom);
+  const captured = captureDocBoundary(transformed, source, hadBom);
+  if (materializeBlankRuns && captured) materializeDocEdgeBlankRuns(transformed, captured);
   return transformed;
 }
 

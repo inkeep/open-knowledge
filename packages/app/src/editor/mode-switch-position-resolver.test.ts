@@ -197,6 +197,44 @@ describe('count tripwire', () => {
     );
     expect(affordanceDoc.childCount === mdastCount).toBe(false);
   });
+
+  test('a source-carried trailing blank run stays in the comparable count', () => {
+    // The affordance allowance and a doc-edge blank run put the same shape at
+    // the end of the doc, so subtracting unconditionally would under-count
+    // every document the user ended with two or more blank lines — and the
+    // tripwire failure is silent, so nothing would report it.
+    const carried = '# A\n\nbody\n\n\n';
+    const doc = snap(carried).doc;
+    const blocks = computeSourceBlocks(carried, md).blocks;
+
+    expect(blocks.length).toBe(4);
+    expect(comparableChildCount(doc)).toBe(blocks.length);
+
+    // The affordance twin, for contrast: same trailing shape, one paragraph
+    // shorter, no source counterpart, so it does come off the count.
+    const affordanceOnly = '## H\n';
+    const headingJson = md.parse(affordanceOnly) as { type: string; content: unknown[] };
+    const affordanceDoc = schema.nodeFromJSON({
+      ...headingJson,
+      content: [...headingJson.content, { type: 'paragraph' }],
+    });
+    expect(affordanceDoc.childCount).toBe(2);
+    expect(comparableChildCount(affordanceDoc)).toBe(
+      computeSourceBlocks(affordanceOnly, md).blocks.length,
+    );
+  });
+
+  test('a leading blank run is never subtracted, at or below the floor', () => {
+    // Only the TAIL carries an artifact the source does not spell. Every
+    // leading empty paragraph came from source bytes, so reasoning by symmetry
+    // and subtracting a sub-floor head run would under-count and disable
+    // decorations permanently on documents that open with blank lines.
+    for (const source of ['\n\n# A\n\nbody\n', '\n\n\n# A\n\nbody\n']) {
+      const doc = snap(source).doc;
+      expect(comparableChildCount(doc)).toBe(computeSourceBlocks(source, md).blocks.length);
+      expect(comparableChildCount(doc)).toBe(doc.childCount);
+    }
+  });
 });
 
 describe('content-equality gating', () => {

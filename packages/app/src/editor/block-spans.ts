@@ -22,7 +22,11 @@
  * decoration plugin's module graph.
  */
 
-import { type MarkdownManager, stripFrontmatter } from '@inkeep/open-knowledge-core';
+import {
+  type MarkdownManager,
+  MIN_CARRIED_EDGE_EMPTIES,
+  stripFrontmatter,
+} from '@inkeep/open-knowledge-core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 
 /** 1-based inclusive line spans of top-level body blocks, in full-source coordinates. */
@@ -176,18 +180,31 @@ export function blockIndexForLine(spans: SourceBlockSpans['spans'], line: number
 }
 
 /**
- * Top-level child count comparable against body block spans. A doc whose last
- * block isn't a paragraph renders with a trailing empty paragraph (the
- * type-here affordance below a final heading/list) that has NO source
- * counterpart — parse of the source never yields an empty paragraph. Without
- * this allowance the span↔doc count comparison fails PERMANENTLY on
- * heading-final docs, silently disabling decorations and navigation.
+ * Top-level child count comparable against body block spans.
+ *
+ * Two different things can put an empty paragraph at the end of the PM doc,
+ * and only one of them has a source counterpart. A doc whose last block isn't
+ * a paragraph renders with the type-here affordance below that final
+ * heading/list, which the source does not spell. A doc-edge blank run the user
+ * authored does reach the source, and parse gives it back as the same empty
+ * paragraphs — but only from `MIN_CARRIED_EDGE_EMPTIES` up; below the floor a
+ * run stays on the boundary snapshot and yields no block, precisely because at
+ * one paragraph it is indistinguishable from the affordance.
+ *
+ * So the floor is also the discriminator: a trailing empty run shorter than it
+ * has no source blocks behind it and must come off the count, while a run at or
+ * above it is matched paragraph-for-paragraph and must not. Getting this wrong
+ * fails silently — the span↔doc comparison would fail PERMANENTLY on every
+ * affected doc, disabling decorations and navigation with no error.
  */
 export function comparableChildCount(doc: PmNode): number {
-  const last = doc.childCount > 0 ? doc.child(doc.childCount - 1) : null;
-  const trailingEmptyParagraph =
-    last !== null && last.type.name === 'paragraph' && last.content.size === 0;
-  return trailingEmptyParagraph ? doc.childCount - 1 : doc.childCount;
+  let trailingEmpty = 0;
+  for (let i = doc.childCount - 1; i >= 0; i--) {
+    const child = doc.child(i);
+    if (child.type.name !== 'paragraph' || child.content.size !== 0) break;
+    trailingEmpty++;
+  }
+  return trailingEmpty < MIN_CARRIED_EDGE_EMPTIES ? doc.childCount - trailingEmpty : doc.childCount;
 }
 
 /**

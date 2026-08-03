@@ -153,10 +153,12 @@ describe('interior blank runs on the CRDT path', () => {
   });
 
   test('a trailing blank run in the file does not hide a new interior one', async () => {
-    // The fragment cannot carry doc-edge runs, so the source and the fragment
-    // disagree about them permanently. A comparison that counted them would
-    // read the two sides as incomparable on this document and never see the
-    // interior addition at all.
+    // A doc-edge run and an interior one are separate dimensions: folding them
+    // into a single positional comparison would read the two sides as
+    // incomparable on this document and never see the interior addition at
+    // all. The trailing run in the fixture is not scenery — it has to still be
+    // there afterwards, which is why every assertion below is raw-byte and the
+    // node count covers both ends.
     const docName = `blank-run-edge-${crypto.randomUUID()}`;
     const raw = 'Above.\n\nBelow.\n\n\n';
     const clients = await createTestClients(server.port, {
@@ -174,19 +176,22 @@ describe('interior blank runs on the CRDT path', () => {
         a.fragment.insert(1, [new Y.XmlElement('paragraph'), new Y.XmlElement('paragraph')]);
       });
 
-      await pollUntil(
-        () => clients.every((c) => c.ytext.toString().startsWith('Above.\n\n\n\nBelow.')),
-        5000,
+      // Two empty paragraphs for the interior gap, plus the two the trailing
+      // run of three newlines is carried by.
+      const expected = 'Above.\n\n\n\nBelow.\n\n\n';
+      await pollUntil(() => clients.every((c) => c.ytext.toString() === expected), 5000).catch(
+        () => {},
       );
       await wait(500);
       for (const c of clients) {
-        expect(c.ytext.toString()).toContain('Above.\n\n\n\nBelow.');
-        expect(countBlankLineNodes(c.fragment)).toBe(2);
+        expect(c.ytext.toString()).toBe(expected);
+        expect(serializeFragment(c.fragment)).toBe(expected);
+        expect(countBlankLineNodes(c.fragment)).toBe(4);
       }
-      await pollUntil(
-        () => readTestDoc(server.contentDir, docName).startsWith('Above.\n\n\n\nBelow.'),
-        10_000,
+      await pollUntil(() => readTestDoc(server.contentDir, docName) === expected, 10_000).catch(
+        () => {},
       );
+      expect(readTestDoc(server.contentDir, docName)).toBe(expected);
     } finally {
       for (const c of clients) await c.cleanup();
     }

@@ -31,10 +31,8 @@ export {
 } from './compose.ts';
 export { type DiffChange, diffLinesFast } from './diff-lines.ts';
 export {
-  type DocBoundarySplit,
-  projectMergeBoundarySpace,
-  reattachLeadingDocBoundary,
-  splitLeadingDocBoundary,
+  createMergeBoundarySpace,
+  type MergeBoundarySpace,
 } from './doc-boundary-space.ts';
 export {
   applyPatchToFm,

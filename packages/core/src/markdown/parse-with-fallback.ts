@@ -121,9 +121,9 @@ export function parseRecursive(
 
     try {
       const region = findFallbackRegion(source, offset);
-      const beforeSrc = source.slice(0, region.start);
       const brokenSrc = source.slice(region.start, region.end);
-      const afterSrc = source.slice(region.end);
+      const beforeSrc = source.slice(0, region.start).replace(/\n+$/, '');
+      const afterSrc = source.slice(region.end).replace(/^\n+/, '');
 
       const beforeDoc = beforeSrc.trim()
         ? parseRecursive(beforeSrc, parse, depth + 1, budget)

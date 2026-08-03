@@ -33,11 +33,10 @@
 
 import {
   BridgeMergeContentLossError,
+  createMergeBoundarySpace,
   MarkdownManager,
   prependFrontmatter,
-  reattachLeadingDocBoundary,
   sharedExtensions,
-  splitLeadingDocBoundary,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
@@ -282,9 +281,12 @@ describe('in-sync residual merge (sibling router branch) — byte-preservation g
  * counterpart of the divergent-fallback harness's `mdManager` proxy), with a
  * crafted `info.result` in MERGE byte-space (boundary normalized to one `\n`),
  * exactly what `mergeThreeWayImpl` returns before the call site re-attaches the
- * boundary. The fixture's doc boundary is an NG-class multi-blank run, so the
- * merge-space single-`\n` form and the re-attached form differ observably — a
- * regression that applied raw `info.result` would collapse the run.
+ * boundary. The fixture's doc boundary is an NG-class EMPTY slot — no blank
+ * line at all between the close fence and the body — so the merge-space
+ * single-`\n` form and the re-attached form differ observably; a regression
+ * that applied raw `info.result` would leave a blank line the user never
+ * authored. The sibling case pins the other branch, where the run is
+ * node-carried and the two byte-spaces coincide.
  */
 describe('Path B doc-boundary alignment: content-loss recovery arm re-projects the boundary', () => {
   const ENV_KEYS = ['NODE_ENV', 'OK_RETHROW_BRIDGE_LOSS'] as const;
@@ -307,11 +309,17 @@ describe('Path B doc-boundary alignment: content-loss recovery arm re-projects t
   });
 
   const FM2 = '---\ntitle: Boundary recovery\n---\n';
-  // NG-class doc boundary: a multi-blank run ('\n\n') between the FM close
-  // fence and the body. The merge space normalizes the run to one '\n', so the
-  // boundary re-attached from the current Y.Text differs observably from the
-  // merge-space as-computed bytes.
-  const RAW_NG = `${FM2}\n\nFirst paragraph body.\n\nSecond paragraph stays.\n`;
+  // NG-class doc boundary: the body starts on the line after the close fence
+  // with no blank separator at all. The merge space always spells that slot as
+  // one '\n', so the boundary re-attached from the current Y.Text (nothing)
+  // differs observably from the merge-space as-computed bytes. A multi-blank
+  // run cannot serve as the vehicle: from MIN_CARRIED_EDGE_EMPTIES up the run
+  // is node-carried, both byte-spaces spell it identically, and the
+  // re-projection is the identity — the sibling case below pins that branch.
+  const RAW_NG = `${FM2}First paragraph body.\n\nSecond paragraph stays.\n`;
+  // What the fragment serializes to for these arms: no doc-start run, so the
+  // boundary slot is an asymmetry the projection owns.
+  const FRAGMENT_WITHOUT_RUN = 'First paragraph body.\n\nSecond paragraph stays.\n';
 
   test('applies the boundary-reattached as-computed bytes, not raw info.result', () => {
     __resetBridgeWatchdogForTests();
@@ -367,19 +375,76 @@ describe('Path B doc-boundary alignment: content-loss recovery arm re-projects t
     expect(getMetrics().bridgeMergeContentLoss).toBe(1);
 
     const finalText = ytext.toString();
-    // The current Y.Text's multi-blank boundary is re-attached verbatim — the
+    // The current Y.Text's empty boundary slot is restored verbatim — the
     // recovery applied projectMerged(info.result), not the merge-space bytes.
-    expect(finalText).toContain(`${FM2}\n\n`);
+    expect(finalText).toContain(`${FM2}Z`);
     // Exactly the as-computed bytes with the boundary re-projected from the
     // current Y.Text. A regression applying raw `info.result` would land the
     // merge-space single-'\n' boundary here instead.
-    const boundary = splitLeadingDocBoundary(RAW_NG).boundary;
-    const expected = reattachLeadingDocBoundary(
-      splitLeadingDocBoundary(asComputedMergeSpace).text,
-      boundary,
+    // Expected through the production entry point, so this asserts the
+    // recovery matches what the seam itself computes rather than re-deriving
+    // the projection with a hand-supplied carrying answer.
+    const expected = createMergeBoundarySpace(FRAGMENT_WITHOUT_RUN).unproject(
+      asComputedMergeSpace,
+      RAW_NG,
     );
     expect(finalText).toBe(expected);
-    expect(finalText).toBe(`${FM2}\n\nZFirst paragraph body. \n\nSecond paragraph stays.\n`);
+    expect(finalText).toBe(`${FM2}ZFirst paragraph body. \n\nSecond paragraph stays.\n`);
+
+    cleanup();
+  });
+
+  // The other branch of the same re-projection. At MIN_CARRIED_EDGE_EMPTIES the
+  // doc-start run is node-carried, so both merge inputs already spell it and
+  // merge space IS raw space at the boundary — the crafted `info.result` below
+  // therefore carries the run, as a real merge over these inputs would. The
+  // re-projection must leave it alone: stripping it would delete bytes the
+  // merge kept, and re-attaching over it would invent a blank line.
+  test('a node-carried doc-start run survives the recovery arm verbatim', () => {
+    __resetBridgeWatchdogForTests();
+    resetMetrics();
+
+    const rawCarried = `${FM2}\n\nFirst paragraph body.\n\nSecond paragraph stays.\n`;
+    const asComputedMergeSpace = `${FM2}\n\nZFirst paragraph body. \n\nSecond paragraph stays.\n`;
+    const throwingMerge = (): never => {
+      throw new BridgeMergeContentLossError({
+        baseline: rawCarried,
+        userText: asComputedMergeSpace,
+        agentText: rawCarried,
+        result: asComputedMergeSpace,
+        lostSubstrings: ['a-dropped-line'],
+        which: 'substring',
+        side: 'user',
+      });
+    };
+
+    const doc = new Y.Doc();
+    const xmlFragment = doc.getXmlFragment('default');
+    const ytext = doc.getText('source');
+    doc.transact(() => {
+      composeAndWriteRawBody(doc, rawCarried, 'file-watcher');
+    }, FILE_WATCHER_ORIGIN);
+    const cleanup = setupServerObservers({
+      doc,
+      xmlFragment,
+      ytext,
+      mdManager,
+      schema,
+      docName: 'pathb-boundary-recovery-carried',
+      mergeThreeWay: throwingMerge,
+    });
+    expect(ytext.toString()).toBe(rawCarried);
+
+    typeIntoSource(
+      doc,
+      ytext,
+      rawCarried.indexOf('First paragraph body.') + 'First paragraph body.'.length,
+      ' ',
+    );
+    typeIntoParagraph(doc, xmlFragment, 'First paragraph');
+
+    expect(getMetrics().bridgeMergeContentLoss).toBe(1);
+    expect(ytext.toString()).toBe(asComputedMergeSpace);
 
     cleanup();
   });

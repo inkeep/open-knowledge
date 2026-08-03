@@ -1,13 +1,35 @@
 import { FRONTMATTER_RE, stripFrontmatter } from '../extensions/frontmatter.ts';
+import { carriedEdgeEmpties } from '../markdown/doc-edge-blank-runs.ts';
 
 const LEADING_BOUNDARY_RE = /^(?:\r?\n)+/;
+
+function fragmentCarriesDocStartRun(fragmentBody: string): boolean {
+  return carriedEdgeEmpties(fragmentBody).leading > 0;
+}
+
+export interface MergeBoundarySpace {
+  project(text: string): string;
+  unproject(merged: string, raw: string): string;
+}
+
+export function createMergeBoundarySpace(fragmentBody: string): MergeBoundarySpace {
+  const carriesDocStartRun = fragmentCarriesDocStartRun(fragmentBody);
+  return {
+    project: (text) => projectMergeBoundarySpace(text, carriesDocStartRun),
+    unproject: (merged, raw) => unprojectMergeBoundarySpace(merged, raw, carriesDocStartRun),
+  };
+}
 
 export interface DocBoundarySplit {
   boundary: string;
   text: string;
 }
 
-export function splitLeadingDocBoundary(text: string): DocBoundarySplit {
+export function splitLeadingDocBoundary(
+  text: string,
+  carriesDocStartRun: boolean,
+): DocBoundarySplit {
+  if (carriesDocStartRun) return { boundary: '', text };
   const { frontmatter, body } = stripFrontmatter(text);
   const match = body.match(LEADING_BOUNDARY_RE);
   if (!match) return { boundary: '', text };
@@ -24,8 +46,21 @@ export function reattachLeadingDocBoundary(text: string, boundary: string): stri
   return frontmatter + boundary + body;
 }
 
-export function projectMergeBoundarySpace(text: string): string {
-  const stripped = splitLeadingDocBoundary(text).text;
+export function projectMergeBoundarySpace(text: string, carriesDocStartRun: boolean): string {
+  if (carriesDocStartRun) return text;
+  const stripped = splitLeadingDocBoundary(text, carriesDocStartRun).text;
   if (stripFrontmatter(stripped).frontmatter === '') return stripped;
   return reattachLeadingDocBoundary(stripped, '\n');
+}
+
+export function unprojectMergeBoundarySpace(
+  merged: string,
+  raw: string,
+  carriesDocStartRun: boolean,
+): string {
+  if (carriesDocStartRun) return merged;
+  return reattachLeadingDocBoundary(
+    splitLeadingDocBoundary(merged, carriesDocStartRun).text,
+    splitLeadingDocBoundary(raw, carriesDocStartRun).boundary,
+  );
 }

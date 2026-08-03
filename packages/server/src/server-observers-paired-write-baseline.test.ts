@@ -2,8 +2,11 @@
  * Regression: Observer A's paired-write callback must refresh the raw Y.Text
  * witness from `ytext.toString()` (raw bytes), NOT `serialize(fragment)`
  * (canonical bytes). Under the Y.Text-is-truth contract the two diverge on any
- * input where parse→serialize normalizes (e.g., a leading "\n\n" delimiter that
- * mdast drops). If the witness is set from `serialize(fragment)`, the next
+ * input where parse→serialize normalizes — here a trailing blank line, which
+ * is worth one empty paragraph and so stays below `MIN_CARRIED_EDGE_EMPTIES`:
+ * it rides the doc-node boundary attribute, which a Y.XmlFragment has no
+ * surface to hold, so the fragment serialization drops it. If the witness is
+ * set from `serialize(fragment)`, the next
  * non-paired XmlFragment mutation (a real WYSIWYG keystroke) fails Observer A's
  * strict-equality Path A gate (`currentText === lastSyncedYTextBytes`) and forces
  * Path B's mergeThreeWay to run on every keystroke. Under stress (large content
@@ -54,20 +57,23 @@ describe('Observer A paired-write baseline — raw ytext, not canonical fragment
     // composeBody for 'append' on empty ytext: '' + '\n\n' + payload, so ytext
     // ends up with leading \n\n ('\n\n' delimiter is
     // unconditional). This mirrors the exact path agent-write-md takes for
-    // the first turn.
-    const fixturePayload = '## Section 1\n\nLorem ipsum dolor sit amet.\n';
+    // the first turn. The payload closes with a blank line, which is what puts
+    // raw and canonical bytes apart: the leading run is two empty paragraphs
+    // the fragment carries, the trailing one is a single empty paragraph it
+    // cannot, so the fragment serialization comes back a blank line shorter.
+    const fixturePayload = '## Section 1\n\nLorem ipsum dolor sit amet.\n\n';
     const composedAppend = `\n\n${fixturePayload}`;
     doc.transact(() => {
       composeAndWriteRawBody(doc, composedAppend, 'agent');
     }, AGENT_WRITE_ORIGIN);
 
     // Confirm the divergence shape that motivates this regression test:
-    // ytext keeps the leading \n\n; serialize(fragment) does not.
+    // ytext keeps the trailing blank line; serialize(fragment) does not.
     const ytextAfterAgent = ytext.toString();
     const fragmentJson = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
     const fragmentSerialized = mdManager.serialize(fragmentJson);
-    expect(ytextAfterAgent.startsWith('\n\n')).toBe(true);
-    expect(fragmentSerialized.startsWith('\n\n')).toBe(false);
+    expect(ytextAfterAgent.endsWith('amet.\n\n')).toBe(true);
+    expect(fragmentSerialized.endsWith('amet.\n\n')).toBe(false);
     expect(ytextAfterAgent === fragmentSerialized).toBe(false);
 
     const pathBFiresBefore = getMetrics().observerAPathBFires;

@@ -36,6 +36,7 @@ import {
   BridgeMergeContentLossError,
   comparePmStructural,
   composeWithDerivedBody,
+  createMergeBoundarySpace,
   DUPLICATION_GATE_MIN_LINE_LENGTH,
   fnv1aDigest,
   fragmentHoldsPendingContent,
@@ -45,9 +46,6 @@ import {
   overMultipliedBodyLines,
   pendingContentLines,
   prependFrontmatter,
-  projectMergeBoundarySpace,
-  reattachLeadingDocBoundary,
-  splitLeadingDocBoundary,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
 import type { Schema } from '@tiptap/pm/model';
@@ -1903,7 +1901,17 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       // tolerated, since that is the container-interior case the fragment
       // cannot represent.
       if (normCurrent === normMd && !addsBlankLines(currentText, md)) {
-        setActiveSpanAttributes({ 'observer.a.path': 'gated-in-sync' });
+        // Why the gate certified, as a two-value enum. Both outcomes stamp the
+        // same path, so a settlement over bytes the tolerance set swallowed is
+        // indistinguishable in traces from one where the sides genuinely
+        // agreed — and the doc-edge class was exactly the second kind reported
+        // as the first. The tolerance is comparison-only and cannot narrow, so
+        // there is no watchdog for a divergence resting inside it; this
+        // attribute is the only runtime signal such a class can have.
+        setActiveSpanAttributes({
+          'observer.a.path': 'gated-in-sync',
+          'observer.a.gate_reason': currentText === md ? 'bytes-identical' : 'tolerance-equivalent',
+        });
         recordSettledBaselines(md);
         return;
       }
@@ -2033,18 +2041,21 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
           // and fabricate content. Project all three inputs into one merge
           // byte-space, merge, and re-attach the current Y.Text's boundary
           // bytes verbatim — Y.Text is the only surface that can author them
-          // (precedent #38). Both apply paths project through the same closure
-          // so they cannot drift.
-          const { boundary } = splitLeadingDocBoundary(currentText);
+          // (precedent #38). The space is built from `body` — the fragment's
+          // own serialization, before the frontmatter region is composed onto
+          // it, so the separator newline is not read as part of a carried run
+          // — and every input and the way back out go through that one
+          // answer, so they cannot drift.
+          const boundarySpace = createMergeBoundarySpace(body);
           const projectMerged = (merged: string): string =>
-            reattachLeadingDocBoundary(splitLeadingDocBoundary(merged).text, boundary);
+            boundarySpace.unproject(merged, currentText);
           const mergeThreeWayFn = opts.mergeThreeWay ?? mergeThreeWay;
           try {
             const mergedText = projectMerged(
               mergeThreeWayFn(
-                projectMergeBoundarySpace(mergeBase),
-                projectMergeBoundarySpace(md),
-                projectMergeBoundarySpace(currentText),
+                boundarySpace.project(mergeBase),
+                boundarySpace.project(md),
+                boundarySpace.project(currentText),
               ),
             );
             applyFastDiff(ytext, currentText, mergedText);

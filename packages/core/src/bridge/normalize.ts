@@ -1,3 +1,5 @@
+import { carriedEdgeEmpties } from '../markdown/doc-edge-blank-runs.ts';
+
 const COMMONMARK_ESCAPE_RE = /\\([!"#$%&'()*+,\-./:;<=>?@[\]^_`{|}~])/g;
 
 const TABLE_ALIGN_ROW_RE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/;
@@ -228,6 +230,10 @@ function interiorBlankRunLengths(s: string): number[] {
 }
 
 export function addsBlankLines(baseline: string, candidate: string): boolean {
+  const beforeEdges = carriedEdgeEmpties(baseline);
+  const afterEdges = carriedEdgeEmpties(candidate);
+  if (afterEdges.leading > beforeEdges.leading) return true;
+  if (afterEdges.trailing > beforeEdges.trailing) return true;
   const before = interiorBlankRunLengths(baseline);
   const after = interiorBlankRunLengths(candidate);
   if (before.length !== after.length) return false;
