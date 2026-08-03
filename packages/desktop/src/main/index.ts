@@ -115,7 +115,7 @@ import {
   writeBundleDecision,
   writeTargetVersion,
 } from '@inkeep/open-knowledge-server';
-import type { BrowserWindowConstructorOptions, MessageBoxOptions } from 'electron';
+import type { BrowserWindowConstructorOptions, MessageBoxOptions, WebContents } from 'electron';
 import {
   app,
   BrowserWindow,
@@ -323,6 +323,7 @@ import {
 } from './reduced-transparency-handler.ts';
 import { removeGitFolder } from './remove-git-folder.ts';
 import { attachRendererConsoleCapture } from './renderer-console-capture.ts';
+import { createRendererRecovery, type RendererRecovery } from './renderer-recovery.ts';
 import { resolveDetachedSpawnArgs } from './resolve-detached-spawn-args.ts';
 import { resolveShareTarget as resolveShareTargetMain } from './resolve-share-target.ts';
 import {
@@ -1083,6 +1084,14 @@ let mcpWiringHandle: RunMcpWiringHandle | null = null;
  * boot paths, which never prompt.
  */
 let crashDetection: CrashDetection | null = null;
+/**
+ * Renderer crash recovery — the window-facing half of `render-process-gone`
+ * (crashDetection owns the report-invitation half and stays window-blind).
+ * Created alongside crashDetection at the top of `bootPrimaryInstance`; null
+ * only in the duplicate-instance and driver-smoke boot paths, which never
+ * own a window long enough to recover one.
+ */
+let rendererRecovery: RendererRecovery | null = null;
 /** Sentinel liveness heartbeat; cleared on `will-quit` with the other teardowns. */
 let crashSentinelHeartbeat: NodeJS.Timeout | null = null;
 
@@ -6126,6 +6135,60 @@ function bootPrimaryInstance(): void {
     logger: getLogger('crash-detection'),
   });
   crashDetection.detectBootCrash();
+  rendererRecovery = createRendererRecovery({
+    now: () => Date.now(),
+    logger: getLogger('renderer-recovery'),
+    defer: (fn) => {
+      setImmediate(fn);
+    },
+    // Async `showMessageBox`, never `showErrorBox` — the latter blocks the main
+    // process on macOS, which would wedge the very window being recovered (the
+    // same reason the boot unhandled-rejection path avoids it). The returned
+    // promise is load-bearing: recovery uses it to keep one dialog open per
+    // window rather than stacking a sheet per crash.
+    promptManualRecovery: (contents, info) => {
+      const log = getLogger('renderer-recovery');
+      // Safe despite the structural-subset type: every value reaching here came
+      // from `web-contents-created` and IS an Electron WebContents; the narrower
+      // type is the module's Electron-free boundary, not a different runtime shape.
+      const target = BrowserWindow.fromWebContents(contents as unknown as WebContents);
+      const options: MessageBoxOptions = {
+        type: 'warning',
+        title: 'This window stopped responding',
+        message: 'This window stopped responding',
+        detail:
+          'OpenKnowledge reloaded it once and it stopped again. Your documents and any running agents live in the OpenKnowledge server rather than in this window, so reloading restores the view without interrupting them.',
+        buttons: ['Reload', 'Not Now'],
+        defaultId: 0,
+        cancelId: 1,
+      };
+      // Every reload here is guarded: the window can be closed between the
+      // check and the native call, and this runs inside a promise chain whose
+      // rejection would otherwise be indistinguishable from a dialog failure.
+      const reloadGuarded = (event: string) => {
+        if (contents.isDestroyed()) return;
+        try {
+          contents.reload();
+        } catch (err: unknown) {
+          log.warn({ event, reason: info.reason, err }, 'renderer reload threw past the guard');
+        }
+      };
+      return (target ? dialog.showMessageBox(target, options) : dialog.showMessageBox(options))
+        .then(({ response }) => {
+          if (response !== 0) return;
+          reloadGuarded('renderer-recovery.reload-after-confirm-failed');
+        })
+        .catch((err: unknown) => {
+          log.warn(
+            { event: 'renderer-recovery.prompt-failed', reason: info.reason, err },
+            'renderer recovery prompt failed — falling back to a direct reload',
+          );
+          // The dialog was the last remaining affordance. If it could not be
+          // shown, reload rather than leaving the user staring at a blank window.
+          reloadGuarded('renderer-recovery.fallback-reload-failed');
+        });
+    },
+  });
   // Keep the sentinel's liveness fresh and mirror power transitions into it,
   // so the next boot can tell "the machine went down under a running app"
   // (suppress the report prompt) from "the app died on its own" (prompt).
@@ -6171,6 +6234,13 @@ function bootPrimaryInstance(): void {
     attachRendererConsoleCapture(contents);
     contents.on('render-process-gone', (_e, details) => {
       crashDetection?.handleRenderProcessGone(details);
+      // Detection arms a report invitation but is deliberately window-blind, so
+      // without this the window stays blank until the user discovers Cmd-R.
+      // Runs second so the invitation is armed against the pre-reload state.
+      rendererRecovery?.handleRenderProcessGone(contents, details);
+    });
+    contents.once('destroyed', () => {
+      rendererRecovery?.dispose(contents);
     });
     // A freshly-loaded renderer can take a waiting crash invitation (boot
     // events detect before any window exists; delivery must not race load).
@@ -7139,6 +7209,11 @@ function bootPrimaryInstance(): void {
       clearInterval(crashSentinelHeartbeat);
       crashSentinelHeartbeat = null;
     }
+    // Stop recovering windows once quit is under way. A renderer that dies
+    // abnormally mid-teardown (an OOM during cleanup, say) still reports a
+    // recoverable reason, and reloading it would spawn a fresh renderer for a
+    // window Electron is actively closing.
+    rendererRecovery = null;
     // Reap every window's PTY host first so no user shell / spawn-helper
     // outlives the app. Idempotent (clears the map; a second pass no-ops).
     terminalReaper?.killAll();
