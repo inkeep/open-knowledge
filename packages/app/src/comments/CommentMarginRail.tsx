@@ -18,6 +18,10 @@
  * scrolled out of view clamps to the nearest edge and dims — it stops claiming
  * to point at a line, while still saying "there is more this way".
  *
+ * The rail's top edge is the scrollport's top PLUS the inset that scrollport
+ * declares, because the editor toolbar overlays that strip and its buttons are
+ * flush right, in the rail's own column.
+ *
  * Recomputes on scroll, thread changes, doc edits, and container resize.
  */
 
@@ -35,7 +39,7 @@ import {
   revealPropertyValueRange,
   scrollPropertyRowIntoView,
 } from './property-row-rect';
-import { findScrollContainer, scrollAnchorIntoView } from './scroll-to-anchor';
+import { findScrollContainer, scrollAnchorIntoView, scrollportInsetTop } from './scroll-to-anchor';
 import {
   clearActiveThread,
   emitOpenThreadPopover,
@@ -59,6 +63,22 @@ interface MarkerPosition {
   top: number;
   /** The anchored line is scrolled out of view; the icon is clamped to an edge. */
   offscreen: boolean;
+}
+
+/**
+ * The band of the scrollport a marker may occupy, in viewport coordinates.
+ *
+ * The scrollport reaches up UNDER the editor toolbar, and the toolbar's action
+ * buttons sit flush against the same right edge the rail runs down — so a
+ * marker clamped to the raw top of that box lands on top of them. Taking the
+ * inset off the top uses the one number the scrollport already declares as
+ * covered, instead of restating the toolbar's height here.
+ */
+export function railBand(
+  rect: { top: number; height: number },
+  insetTop: number,
+): { top: number; height: number } {
+  return { top: rect.top + insetTop, height: Math.max(0, rect.height - insetTop) };
 }
 
 /**
@@ -145,8 +165,9 @@ export function CommentMarginRail({ editor, docName }: { editor: Editor; docName
           targets.push({ id: thread.id, y });
         }
       }
-      setRail({ top: rect.top, height: rect.height, left: rect.right - RAIL_WIDTH });
-      setPositions(layoutMarkers(targets, rect.top, rect.height));
+      const band = railBand(rect, scrollportInsetTop(container));
+      setRail({ top: band.top, height: band.height, left: rect.right - RAIL_WIDTH });
+      setPositions(layoutMarkers(targets, band.top, band.height));
     };
 
     compute();

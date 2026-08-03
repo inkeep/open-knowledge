@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, test } from 'vitest';
-import { layoutMarkers } from './CommentMarginRail';
+import { layoutMarkers, railBand } from './CommentMarginRail';
 
 const RAIL_TOP = 100;
 const RAIL_HEIGHT = 600; // visible band: 100 → 700
@@ -76,5 +76,43 @@ describe('layoutMarkers', () => {
 
   test('no markers, no positions', () => {
     expect(layoutMarkers([], RAIL_TOP, RAIL_HEIGHT)).toEqual([]);
+  });
+});
+
+/**
+ * The second bug: the rail ran the full height of the scrollport, but the
+ * scrollport reaches up under the editor toolbar, whose buttons are flush
+ * against the same right edge. Anything clamped to the top — every comment
+ * scrolled above the viewport — piled onto those buttons.
+ */
+describe('railBand', () => {
+  const scrollport = { top: 100, height: 600 };
+  const TOOLBAR = 56;
+
+  test('starts below the strip the scrollport declares as covered', () => {
+    expect(railBand(scrollport, TOOLBAR)).toEqual({ top: 156, height: 544 });
+  });
+
+  test('keeps a top-clamped marker clear of the toolbar', () => {
+    const band = railBand(scrollport, TOOLBAR);
+    const [marker] = layoutMarkers([{ id: 'a', y: -250 }], band.top, band.height);
+    expect(marker.top).toBeGreaterThanOrEqual(scrollport.top + TOOLBAR);
+    expect(marker.offscreen).toBe(true);
+  });
+
+  test('a line hidden behind the toolbar counts as offscreen, not as placed there', () => {
+    const band = railBand(scrollport, TOOLBAR);
+    // 130 is inside the scrollport's box but under the toolbar.
+    const [marker] = layoutMarkers([{ id: 'a', y: 130 }], band.top, band.height);
+    expect(marker.top).toBe(band.top);
+    expect(marker.offscreen).toBe(true);
+  });
+
+  test('leaves the band alone when the scrollport declares no inset', () => {
+    expect(railBand(scrollport, 0)).toEqual(scrollport);
+  });
+
+  test('never reports a negative height for a scrollport shorter than its inset', () => {
+    expect(railBand({ top: 100, height: 20 }, TOOLBAR).height).toBe(0);
   });
 });

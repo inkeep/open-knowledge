@@ -67,8 +67,11 @@ export function findScrollContainer(el: HTMLElement | null): HTMLElement | null 
 /**
  * Read the inset from the scrollport itself rather than restating the toolbar
  * height here — one fewer constant to keep in sync with `scroll-pt-14`.
+ *
+ * Shared with the margin rail, which has to keep its markers out of the same
+ * strip the toolbar occupies.
  */
-function insetTopOf(container: HTMLElement): number {
+export function scrollportInsetTop(container: HTMLElement): number {
   const value = Number.parseFloat(getComputedStyle(container).scrollPaddingTop);
   return Number.isFinite(value) ? value : 0;
 }
@@ -99,7 +102,7 @@ export function scrollAnchorIntoView(editor: Editor, range: { from: number; to: 
     anchorBottom: Math.max(start.bottom, end.bottom),
     viewTop: box.top,
     viewBottom: box.bottom,
-    insetTop: insetTopOf(container),
+    insetTop: scrollportInsetTop(container),
   });
   if (delta === 0) return;
   const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
