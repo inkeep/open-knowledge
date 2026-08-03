@@ -1,7 +1,7 @@
 /**
- * The queued button's hover-swap affordance.
+ * The ready-to-send button's hover-swap affordance.
  *
- * Queued is a settled state that doubles as its own undo: ✓ at rest, ✕ on
+ * "Ready to send" is a settled state that doubles as its own undo: ✓ at rest, ✕ on
  * hover. The properties worth pinning are the ones easy to lose in a restyle —
  * both glyphs must be present (a swap done by conditional render can't
  * cross-fade), the reveal must be keyboard-reachable and not pointer-only, and
@@ -33,34 +33,37 @@ function renderCard(t: CommentThread) {
 
 afterEach(() => cleanup());
 
-describe('the queued toggle', () => {
+describe('the ready-to-send toggle', () => {
   test('names the action, not the state', () => {
     renderCard(thread());
-    // "Queued" is the visible label; the accessible name has to tell a screen
+    // "Ready to send" is the visible label; the accessible name has to tell a screen
     // reader user that activating it REMOVES the comment from the batch.
-    expect(screen.getByRole('button', { name: /remove from the queue/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /don't send this comment/i })).toBeTruthy();
   });
 
   test('carries both glyphs so the swap can cross-fade', () => {
     const { container } = renderCard(thread());
-    const button = screen.getByRole('button', { name: /remove from the queue/i });
+    const button = screen.getByRole('button', { name: /don't send this comment/i });
     // Two absolutely-positioned icons, one visible at rest and one on hover —
     // rendering only the current glyph would make the transition impossible.
     expect(button.querySelectorAll('svg').length).toBe(2);
     expect(container.querySelector('.group\\/queued')).toBeTruthy();
   });
 
-  test('reveals on focus as well as hover', () => {
+  test('reveals on keyboard focus as well as hover, but not after a click', () => {
     renderCard(thread());
-    const markup = screen.getByRole('button', { name: /remove from the queue/i }).innerHTML;
+    const markup = screen.getByRole('button', { name: /don't send this comment/i }).innerHTML;
     // Keyboard parity: hover alone would make this a pointer-only affordance.
-    expect(markup).toContain('group-focus-within/queued:opacity-100');
+    expect(markup).toContain('group-focus-visible/queued:opacity-100');
     expect(markup).toContain('group-hover/queued:opacity-100');
+    // `focus-within` would match the focus a mouse click leaves behind, pinning
+    // one card's ✕ open while every other card rests at ✓.
+    expect(markup).not.toContain('group-focus-within/queued:');
   });
 
-  test('an unqueued comment offers Queue instead', () => {
+  test('a comment that is not in the batch offers Send later instead', () => {
     renderCard(thread({ id: 't2', queued: false }));
-    expect(screen.getByRole('button', { name: /^queue$/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^send later$/i })).toBeTruthy();
   });
 });
 

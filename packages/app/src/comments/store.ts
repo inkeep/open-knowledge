@@ -469,12 +469,16 @@ export function addToQueue(threadId: string): void {
     deselected = next;
     bumpSelection();
   }
-  settle(api.queueThread(threadId), docName, t`Couldn't queue that comment.`);
+  settle(api.queueThread(threadId), docName, t`Couldn't mark that comment to send.`);
 }
 
 export function removeFromQueue(threadId: string): void {
   const docName = getThreadById(threadId)?.docName;
-  settle(api.unqueueThread(threadId), docName, t`Couldn't remove that comment from the queue.`);
+  settle(
+    api.unqueueThread(threadId),
+    docName,
+    t`Couldn't unmark that comment — it's still waiting to send.`,
+  );
 }
 
 export function toggleQueue(threadId: string): void {
@@ -520,7 +524,7 @@ export function clearQueue(): void {
   ).then((results) => {
     const failed = results.filter((ok) => !ok).length;
     if (failed > 0) {
-      toast.error(t`${failed} of ${ids.length} comments could not be removed from the queue.`);
+      toast.error(t`${failed} of ${ids.length} comments could not be cleared.`);
     }
     void refresh().catch(() => undefined);
   });
@@ -616,8 +620,8 @@ async function runDispatch(
     // silence here read as "the click did nothing".
     toast.error(
       err instanceof Error && err.message
-        ? t`Couldn't read the queued comments: ${err.message}`
-        : t`Couldn't read the queued comments — nothing was sent.`,
+        ? t`Couldn't read the comments waiting to send: ${err.message}`
+        : t`Couldn't read the comments waiting to send — nothing was sent.`,
     );
     return [];
   }
@@ -644,10 +648,12 @@ async function runDispatch(
   const shipped = delivered ? items.map((item) => item.threadId) : [];
   if (shipped.length > 0 && resolve) {
     // The batch DID reach the agent; only the bookkeeping failed. Say which, or
-    // the reviewer sees comments still sitting in the queue and sends them a
+    // the reviewer sees comments still sitting there to send and sends them a
     // second time.
     await api.completeDispatchBatch(shipped).catch(() => {
-      toast.error(t`Sent, but the comments could not be marked done — they are still queued.`);
+      toast.error(
+        t`Sent, but the comments could not be marked done — they're still waiting to send.`,
+      );
     });
   }
   // Background re-sync. Deliberately quiet: the send already reported itself,

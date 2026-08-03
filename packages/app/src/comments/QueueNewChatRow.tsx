@@ -19,7 +19,7 @@ import { DropdownMenuGroup, DropdownMenuItem } from '@/components/ui/dropdown-me
 export function QueueNewChatRow({ onStartNewChat }: { onStartNewChat: () => void }) {
   const { t } = useLingui();
   return (
-    <DropdownMenuGroup aria-label={t`Send queue to`}>
+    <DropdownMenuGroup aria-label={t`Send comments to`}>
       <DropdownMenuItem
         onSelect={onStartNewChat}
         className="gap-2"

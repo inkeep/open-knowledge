@@ -86,7 +86,7 @@ export function QueuedCommentsChip({
    * The sibling controls in this row (a file chip's ✕, the selection pill's ✕)
    * all mean "stop carrying this", so an ✕ here that emptied the batch would be
    * the one destructive button wearing a dismiss affordance. Destroying the
-   * queue is the Queue panel's labelled Clear.
+   * batch is the All-comments panel's labelled Clear.
    */
   onDismiss: () => void;
 }) {
@@ -101,10 +101,10 @@ export function QueuedCommentsChip({
       // click goes. Dashed border reinforces it for anyone who reads the shape
       // before the icon.
       //
-      // Detached it names the SOURCE ("Queue"), attached the CONTENT ("2
+      // Detached it names the SOURCE ("Comments"), attached the CONTENT ("2
       // comments"): one is what you are about to pick up, the other what this
       // message carries, and the sibling chips already name content that way.
-      // No count while detached — the chip's presence is the signal that a queue
+      // No count while detached — the chip's presence is the signal that a batch
       // is waiting, and the number only becomes a fact about this message once
       // the batch is on it.
       <Button
@@ -112,7 +112,7 @@ export function QueuedCommentsChip({
         size="sm"
         variant="ghost"
         aria-pressed={false}
-        aria-label={t`Add the queued comments to this message`}
+        aria-label={t`Add your comments to this message`}
         onClick={onAttach}
         data-testid="composer-context-chip-comments"
         className={cn(
@@ -121,7 +121,7 @@ export function QueuedCommentsChip({
         )}
       >
         <Plus className="size-3" />
-        <Trans>Queue</Trans>
+        <Trans>Comments</Trans>
       </Button>
     );
   }
@@ -138,7 +138,7 @@ export function QueuedCommentsChip({
         size="sm"
         variant="ghost"
         aria-expanded={expanded}
-        aria-label={expanded ? t`Hide queued comments` : t`Show queued comments`}
+        aria-label={expanded ? t`Hide these comments` : t`Show these comments`}
         onClick={onToggleExpanded}
         data-testid="composer-comments-peek"
         className="h-auto min-h-0 gap-1 px-0.5 py-0 text-xs font-normal text-muted-foreground hover:text-foreground"
@@ -341,7 +341,7 @@ export function QueuedCommentsList({ threads }: { threads: readonly CommentThrea
               type="button"
               size="sm"
               variant="ghost"
-              aria-label={t`Remove this comment from the queue`}
+              aria-label={t`Don't send this comment`}
               onClick={() => removeFromQueue(thread.id)}
               className="size-5 shrink-0 p-0 text-muted-foreground hover:text-foreground"
             >

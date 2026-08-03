@@ -10,7 +10,8 @@
  * Two steps, because the tab and the scope are owned by different components:
  * `requestDocPanelTab` opens the doc panel and selects the Comments tab
  * (`EditorArea` subscribes), and the scope event flips that tab from "This doc"
- * to "Queue" (`CommentsTab` subscribes, since it owns the toggle's state).
+ * to "All comments" (`CommentsTab` subscribes, since it owns the toggle's
+ * state).
  */
 
 import { requestDocPanelTab } from '@/components/doc-panel-events';

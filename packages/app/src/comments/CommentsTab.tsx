@@ -1,8 +1,8 @@
 /**
- * Comments tab shell — one tab with a "This doc / Queue" scope toggle, reusing
- * the header Problems uses for per-doc vs. project scope (PanelScopeHeader).
- * "This doc" shows the current document's threads; "Queue" shows the batch
- * waiting to be sent, which spans every file.
+ * Comments tab shell — one tab with a "This doc / All comments" scope toggle,
+ * reusing the header Problems uses for per-doc vs. project scope
+ * (PanelScopeHeader). "This doc" shows the current document's threads; "All
+ * comments" shows the batch waiting to be sent, which spans every file.
  */
 
 import { useLingui } from '@lingui/react/macro';
@@ -25,9 +25,9 @@ export function CommentsTab({ docName }: { docName: string }) {
   }, []);
   return (
     <div className="flex h-full min-h-0 flex-col pt-2">
-      {/* "Queue", not "Project": this side isn't every comment in the project,
-          it's the batch waiting to be sent. */}
-      <PanelScopeHeader scope={scope} onScopeChange={setScope} projectLabel={t`Queue`} />
+      {/* "All comments", not "Project": this side is the batch waiting to be
+          sent, gathered from every file rather than just this one. */}
+      <PanelScopeHeader scope={scope} onScopeChange={setScope} projectLabel={t`To send`} />
       <div className="min-h-0 flex-1">
         {scope === 'doc' ? <CommentsPanel docName={docName} /> : <CommentQueuePanel />}
       </div>

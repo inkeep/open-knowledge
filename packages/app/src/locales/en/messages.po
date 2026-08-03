@@ -505,8 +505,8 @@ msgstr "{enabledCount}/{0} on"
 
 #. placeholder {0}: ids.length
 #: src/comments/store.ts
-msgid "{failed} of {0} comments could not be removed from the queue."
-msgstr "{failed} of {0} comments could not be removed from the queue."
+msgid "{failed} of {0} comments could not be cleared."
+msgstr "{failed} of {0} comments could not be cleared."
 
 #: src/components/FileTree.tsx
 msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} files failed to upload}}"
@@ -1074,6 +1074,7 @@ msgid "Add at least one letter or number."
 msgstr "Add at least one letter or number."
 
 #: src/comments/CommentSelectionAffordance.tsx
+#: src/comments/PropertyCommentButton.tsx
 msgid "Add Comment"
 msgstr "Add Comment"
 
@@ -1158,17 +1159,13 @@ msgstr "Add the <0>ok</0> command to your terminal"
 msgid "Add the next matching source selection."
 msgstr "Add the next matching source selection."
 
-#: src/comments/comment-chips.tsx
-msgid "Add the queued comments to this message"
-msgstr "Add the queued comments to this message"
-
-#: src/comments/PropertyCommentButton.tsx
-msgid "Add to queue"
-msgstr "Add to queue"
-
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "Add value"
+
+#: src/comments/comment-chips.tsx
+msgid "Add your comments to this message"
+msgstr "Add your comments to this message"
 
 #: src/components/SkillDirectoryResult.tsx
 msgid "Added"
@@ -2028,8 +2025,8 @@ msgid "Choose what a new session starts"
 msgstr "Choose what a new session starts"
 
 #: src/comments/CommentQueuePanel.tsx
-msgid "Choose where to send the queue"
-msgstr "Choose where to send the queue"
+msgid "Choose where to send these comments"
+msgstr "Choose where to send these comments"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
@@ -2331,10 +2328,15 @@ msgstr "Comment on {address}"
 msgid "Comment on selection"
 msgstr "Comment on selection"
 
+#: src/comments/comment-chips.tsx
 #: src/comments/CommentsPanel.tsx
 #: src/components/DocPanel.tsx
 msgid "Comments"
 msgstr "Comments"
+
+#: src/comments/CommentQueuePanel.tsx
+msgid "Comments to send"
+msgstr "Comments to send"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Commit or stash changes to switch:"
@@ -3008,6 +3010,10 @@ msgstr "Couldn't load the version preview. You can still choose how to resolve i
 msgid "Couldn't load your bug reports."
 msgstr "Couldn't load your bug reports."
 
+#: src/comments/store.ts
+msgid "Couldn't mark that comment to send."
+msgstr "Couldn't mark that comment to send."
+
 #. placeholder {0}: result.error
 #: src/hooks/use-move-skill-scope.ts
 msgid "Couldn't move skill: {0}"
@@ -3046,8 +3052,8 @@ msgid "Couldn't open the terminal — please try again."
 msgstr "Couldn't open the terminal — please try again."
 
 #: src/comments/use-comment-delivery.ts
-msgid "Couldn't open the terminal — the comments stay queued."
-msgstr "Couldn't open the terminal — the comments stay queued."
+msgid "Couldn't open the terminal — the comments are still waiting to send."
+msgstr "Couldn't open the terminal — the comments are still waiting to send."
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "Couldn't open the worktree. Try again."
@@ -3056,10 +3062,6 @@ msgstr "Couldn't open the worktree. Try again."
 #: src/components/share-receive-miss-content.tsx
 msgid "Couldn't pull from GitHub. Check your connection and sign-in, then retry."
 msgstr "Couldn't pull from GitHub. Check your connection and sign-in, then retry."
-
-#: src/comments/store.ts
-msgid "Couldn't queue that comment."
-msgstr "Couldn't queue that comment."
 
 #: src/comments/store.ts
 msgid "Couldn't re-place that comment."
@@ -3098,13 +3100,13 @@ msgid "Couldn't read {fileName}. It may have been moved, deleted, or not finishe
 msgstr "Couldn't read {fileName}. It may have been moved, deleted, or not finished downloading. Try adding it again."
 
 #: src/comments/store.ts
-msgid "Couldn't read the queued comments — nothing was sent."
-msgstr "Couldn't read the queued comments — nothing was sent."
+msgid "Couldn't read the comments waiting to send — nothing was sent."
+msgstr "Couldn't read the comments waiting to send — nothing was sent."
 
 #. placeholder {0}: err.message
 #: src/comments/store.ts
-msgid "Couldn't read the queued comments: {0}"
-msgstr "Couldn't read the queued comments: {0}"
+msgid "Couldn't read the comments waiting to send: {0}"
+msgstr "Couldn't read the comments waiting to send: {0}"
 
 #: src/components/EditorActivityPool.tsx
 msgid "Couldn't reconnect after server restart"
@@ -3113,10 +3115,6 @@ msgstr "Couldn't reconnect after server restart"
 #: src/components/CreateProjectDialog.tsx
 msgid "Couldn't remove <0>{targetGitPath}</0>: {removeGitError}"
 msgstr "Couldn't remove <0>{targetGitPath}</0>: {removeGitError}"
-
-#: src/comments/store.ts
-msgid "Couldn't remove that comment from the queue."
-msgstr "Couldn't remove that comment from the queue."
 
 #. placeholder {0}: skill.name
 #. placeholder {1}: result.error
@@ -3232,6 +3230,10 @@ msgstr "Couldn't start the sync. Check your connection, then retry."
 msgid "Couldn't switch to Only me"
 msgstr "Couldn't switch to Only me"
 
+#: src/comments/store.ts
+msgid "Couldn't unmark that comment — it's still waiting to send."
+msgstr "Couldn't unmark that comment — it's still waiting to send."
+
 #. placeholder {0}: r.error
 #: src/components/SkillInstallMenu.tsx
 msgid "Couldn't update {subRoot}: {0}"
@@ -3246,8 +3248,8 @@ msgid "Couldn't update skills sharing — {detail}."
 msgstr "Couldn't update skills sharing — {detail}."
 
 #: src/comments/use-comment-delivery.ts
-msgid "Couldn't work out where to send the comments — they stay queued."
-msgstr "Couldn't work out where to send the comments — they stay queued."
+msgid "Couldn't work out where to send the comments — they're still waiting."
+msgstr "Couldn't work out where to send the comments — they're still waiting."
 
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
@@ -3868,6 +3870,12 @@ msgstr "Documents tagged <0>#{tagName}</0>"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
 msgstr "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
+
+#: src/comments/comment-chips.tsx
+#: src/comments/CommentQueuePanel.tsx
+#: src/comments/CommentsPanel.tsx
+msgid "Don't send this comment"
+msgstr "Don't send this comment"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Don't show"
@@ -5352,10 +5360,6 @@ msgstr "Hide panel ({panelShortcutLabel})"
 msgid "Hide problem indicators"
 msgstr "Hide problem indicators"
 
-#: src/comments/comment-chips.tsx
-msgid "Hide queued comments"
-msgstr "Hide queued comments"
-
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Hide replace"
 msgstr "Hide replace"
@@ -5376,6 +5380,10 @@ msgstr "Hide sidebar"
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "Hide Terminal"
+
+#: src/comments/comment-chips.tsx
+msgid "Hide these comments"
+msgstr "Hide these comments"
 
 #: src/components/FileTree.tsx
 msgid "Hide this file"
@@ -7194,13 +7202,13 @@ msgstr "nothing ({0} cannot match a doc)"
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "nothing ({0} is not a valid pattern)"
 
-#: src/comments/CommentQueuePanel.tsx
-msgid "Nothing queued. Comment on a passage to add it here."
-msgstr "Nothing queued. Comment on a passage to add it here."
-
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
 msgstr "Nothing set yet."
+
+#: src/comments/CommentQueuePanel.tsx
+msgid "Nothing to send yet. Comment on a passage to add it here."
+msgstr "Nothing to send yet. Comment on a passage to add it here."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Nothing was uploaded. The report stays on this Mac until you email it to us."
@@ -8280,18 +8288,10 @@ msgstr "Pushing"
 msgid "Puzzling…"
 msgstr "Puzzling…"
 
-#: src/comments/comment-chips.tsx
-#: src/comments/CommentQueuePanel.tsx
-#: src/comments/CommentsPanel.tsx
-#: src/comments/CommentsTab.tsx
-msgid "Queue"
-msgstr "Queue"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Queue message"
 msgstr "Queue message"
 
-#: src/comments/CommentsPanel.tsx
 #: src/components/acp/ThreadView.tsx
 msgid "Queued"
 msgstr "Queued"
@@ -8343,6 +8343,10 @@ msgstr "Read-only file in the {name} skill"
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "Reading…"
+
+#: src/comments/CommentsPanel.tsx
+msgid "Ready to send"
+msgstr "Ready to send"
 
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
@@ -8542,18 +8546,10 @@ msgstr "Remove failed: {error}"
 msgid "Remove field {field}"
 msgstr "Remove field {field}"
 
-#: src/comments/CommentQueuePanel.tsx
-msgid "Remove from queue"
-msgstr "Remove from queue"
-
 #: src/components/NavigatorApp.tsx
 #: src/components/recent-remove-controls.tsx
 msgid "Remove from recent projects"
 msgstr "Remove from recent projects"
-
-#: src/comments/CommentsPanel.tsx
-msgid "Remove from the queue"
-msgstr "Remove from the queue"
 
 #. placeholder {0}: index + 1
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -8584,10 +8580,6 @@ msgstr "Remove selection"
 #: src/components/CreateProjectDialog.tsx
 msgid "Remove the parent <0>.git</0> folder"
 msgstr "Remove the parent <0>.git</0> folder"
-
-#: src/comments/comment-chips.tsx
-msgid "Remove this comment from the queue"
-msgstr "Remove this comment from the queue"
 
 #. placeholder {0}: skill.name
 #: src/components/skill-actions.tsx
@@ -9418,6 +9410,10 @@ msgstr "Send"
 msgid "Send & continue"
 msgstr "Send & continue"
 
+#: src/comments/QueueNewChatRow.tsx
+msgid "Send comments to"
+msgstr "Send comments to"
+
 #: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
 msgid "Send feedback"
@@ -9427,9 +9423,9 @@ msgstr "Send feedback"
 msgid "Send feedback…"
 msgstr "Send feedback…"
 
-#: src/comments/QueueNewChatRow.tsx
-msgid "Send queue to"
-msgstr "Send queue to"
+#: src/comments/CommentsPanel.tsx
+msgid "Send later"
+msgstr "Send later"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
@@ -9469,8 +9465,8 @@ msgid "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machi
 msgstr "Sent to <0>{endpointHost}</0> to embed your content. Stored on this machine only (in <1>~/.ok/secrets.yml</1>), never in the project."
 
 #: src/comments/store.ts
-msgid "Sent, but the comments could not be marked done — they are still queued."
-msgstr "Sent, but the comments could not be marked done — they are still queued."
+msgid "Sent, but the comments could not be marked done — they're still waiting to send."
+msgstr "Sent, but the comments could not be marked done — they're still waiting to send."
 
 #: src/editor/slash-command/items.tsx
 msgid "Separator"
@@ -9762,10 +9758,6 @@ msgstr "Show panel ({panelShortcutLabel})"
 msgid "Show problem indicators"
 msgstr "Show problem indicators"
 
-#: src/comments/comment-chips.tsx
-msgid "Show queued comments"
-msgstr "Show queued comments"
-
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Show replace"
 msgstr "Show replace"
@@ -9791,6 +9783,10 @@ msgstr "Show source"
 #: src/components/command-palette-commands.ts
 msgid "Show Terminal"
 msgstr "Show Terminal"
+
+#: src/comments/comment-chips.tsx
+msgid "Show these comments"
+msgstr "Show these comments"
 
 #: src/editor/components/Pdf.tsx
 msgid "Show thumbnails"
@@ -10576,8 +10572,8 @@ msgid "Thanks for the report!"
 msgstr "Thanks for the report!"
 
 #: src/comments/use-comment-delivery.ts
-msgid "That app isn't available — the comments stay queued."
-msgstr "That app isn't available — the comments stay queued."
+msgid "That app isn't available — the comments are still waiting to send."
+msgstr "That app isn't available — the comments are still waiting to send."
 
 #: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -10761,8 +10757,8 @@ msgid "The terminal is turned off for this project. Turn it back on to run comma
 msgstr "The terminal is turned off for this project. Turn it back on to run commands here."
 
 #: src/comments/use-comment-delivery.ts
-msgid "The terminal isn't available here — the comments stay queued."
-msgstr "The terminal isn't available here — the comments stay queued."
+msgid "The terminal isn't available here — the comments are still waiting to send."
+msgstr "The terminal isn't available here — the comments are still waiting to send."
 
 #. placeholder {0}: info.exitCode
 #: src/components/TerminalExitNotice.tsx
@@ -11142,6 +11138,10 @@ msgstr "To do"
 #: src/uninstall/UninstallNoticeScreen.tsx
 msgid "To do."
 msgstr "To do."
+
+#: src/comments/CommentsTab.tsx
+msgid "To send"
+msgstr "To send"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle a bullet list."

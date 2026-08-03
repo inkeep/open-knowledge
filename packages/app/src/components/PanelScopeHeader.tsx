@@ -17,9 +17,9 @@ export function PanelScopeHeader({
   onScopeChange: (scope: PanelScope) => void;
   /**
    * Label for the project-scope side. Defaults to "Project". Comments override
-   * it with "Queue" — the project view there isn't "every comment in the
-   * project", it's specifically the batch waiting to be sent, and calling it
-   * Project sent people looking for a list they weren't going to find.
+   * it with "All comments" — the project view there is the batch waiting to be
+   * sent, gathered across files, and calling it Project sent people looking for
+   * a list they weren't going to find.
    */
   projectLabel?: string;
 }) {

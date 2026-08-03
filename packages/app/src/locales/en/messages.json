@@ -114,6 +114,7 @@
     "11ukmX": ["Rename failed: ", ["0"]],
     "12F9WL": ["(no id)"],
     "151wvk": ["Show sidebar"],
+    "15MMFT": ["Show these comments"],
     "161NCV": ["Stopping"],
     "16D5Zj": ["Are you sure you want to delete ", ["itemName"], "? This action cannot be undone."],
     "16eIWu": ["Force stop"],
@@ -144,9 +145,11 @@
     "1d1F11": ["Select all files and folders"],
     "1di5fu": ["Document not found"],
     "1hvhf0": ["The folder on disk and the id agents use to invoke this skill."],
+    "1jym2J": ["Don't send this comment"],
     "1njn7W": ["Light"],
     "1nke1r": ["Open ", ["0"], " on GitHub (opens in a new tab)"],
     "1oSHI0": ["Couldn't install ", ["skillName"], ": ", ["0"]],
+    "1oawp3": [["failed"], " of ", ["0"], " comments could not be cleared."],
     "1t_NnN": ["Reject"],
     "1u-mAI": ["Couldn't start the sync. Check your connection, then retry."],
     "2-CeZn": [
@@ -279,13 +282,13 @@
     "4DcimZ": ["Updated ", ["lastSyncedRelative"]],
     "4E9jPa": ["Create your first project"],
     "4EZrJN": ["Rules"],
+    "4GWjF8": ["Couldn't work out where to send the comments — they're still waiting."],
     "4Gz2wC": ["Failed to upload file"],
     "4KmEoC": ["Hotkeys"],
     "4NC2Ym": ["Move to the next or previous table cell."],
     "4PYsOz": ["Hide Files (", ["sidebarShortcutLabel"], ")"],
     "4Sxexw": ["Source undo or redo"],
     "4TzU0n": ["Initialize"],
-    "4_5_n5": [["failed"], " of ", ["0"], " comments could not be removed from the queue."],
     "4buZWd": ["Inherited from ", ["path"]],
     "4c_a6S": ["Nothing set yet."],
     "4eO-iB": ["Discard this comment"],
@@ -387,7 +390,6 @@
     "5tcmwY": ["Add value"],
     "5vAI6Z": ["It didn't fit into my workflow"],
     "5vYdh9": ["New thread with ", ["0"]],
-    "5vhe0W": ["Add to queue"],
     "5wV2qQ": ["and more"],
     "5y_9lO": ["Waiting for authorization"],
     "6-wLTJ": [["behind"], " behind origin"],
@@ -457,6 +459,7 @@
     ],
     "7Bj3x9": ["Failed"],
     "7EmDc7": ["Import scheme"],
+    "7FA2iI": ["Couldn't read the comments waiting to send — nothing was sent."],
     "7FamGZ": ["Go to line"],
     "7Fkcej": ["+ Add ", ["addChildName"]],
     "7H4UHD": ["Documents tagged <0>#", ["tagName"], "</0>"],
@@ -553,8 +556,8 @@
     "8fDf7j": ["hooks"],
     "8fRyLo": ["Invalid patch payload"],
     "8fc_3j": ["Protected branch — cannot push"],
-    "8jeVmd": ["The terminal isn't available here — the comments stay queued."],
     "8k6INX": ["Paste a personal access token for <0>", ["host"], "</0>."],
+    "8kBLOT": ["That app isn't available — the comments are still waiting to send."],
     "8lwQlE": [["0"], " added, ", ["1"], " removed"],
     "8m8diM": ["No location selected. Use Browse to choose a folder."],
     "8nWu1k": ["Empty diagram"],
@@ -570,7 +573,6 @@
     "8vCZcs": ["Failed to open file."],
     "8vETh9": ["Show"],
     "8wu9lr": ["Queued"],
-    "8ycqHY": ["Add the queued comments to this message"],
     "92rbk2": ["Mirror loading <0>", ["mirrorRef"], "</0>"],
     "93LBnX": ["Hide Agents"],
     "96G6Re": ["New folder"],
@@ -667,7 +669,6 @@
     "ATGYL1": ["Email address"],
     "AVW-K9": ["Failed to load orphan pages"],
     "AWOSPo": ["Zoom in"],
-    "AYfna1": ["Remove from queue"],
     "AYoYhU": ["Update failed: ", ["0"]],
     "AaaESH": [
       "Auto-sync is off for this worktree, inherited from ",
@@ -956,7 +957,6 @@
     "F4IYWe": ["Share doc"],
     "F4vEsL": ["Sync status: ", ["syncStateLabel"]],
     "F6pfE9": ["Active"],
-    "F9e3PM": ["That app isn't available — the comments stay queued."],
     "FBknns": ["HTML"],
     "FCAcjR": [
       "Run a real terminal docked inside OpenKnowledge, starting in this project's folder."
@@ -1084,7 +1084,6 @@
     "HAvHev": ["Auto-update off for \"", ["name"], "\""],
     "HAvRAI": [["skillCount", "plural", { "one": ["skill"], "other": ["skills"] }]],
     "HCn0Ay": ["Toggle strikethrough formatting."],
-    "HFqQui": ["Hide queued comments"],
     "HGNCsl": ["Connection lost — keep this tab open, your edits will sync when reconnected"],
     "HIb0vl": ["Network error — please try again"],
     "HKH-W-": ["Data"],
@@ -1099,7 +1098,6 @@
     ],
     "HdkSiO": ["New file"],
     "HfI1dR": ["I already have it locally →"],
-    "Hhe73G": ["Couldn't queue that comment."],
     "HjNrT0": [["0", "plural", { "one": ["#", " backlink"], "other": ["#", " backlinks"] }]],
     "Hl89Qd": ["Loading templates"],
     "HlmZBk": ["Documents response did not match expected shape."],
@@ -1149,7 +1147,6 @@
     "IX7-sq": ["Something went wrong opening \"", ["docName"], "\"."],
     "IX_uXB": ["my-feature"],
     "IYciRC": ["Thanks for the report!"],
-    "IZXuGP": ["Couldn't open the terminal — the comments stay queued."],
     "IajAbS": ["Add a starter pack"],
     "IbTC7z": ["Paste a base16 scheme"],
     "If0crP": ["Open with AI ", ["targetDisplayName"], ", ", ["hint"]],
@@ -1206,6 +1203,7 @@
     "JsY1p5": ["Denied"],
     "JtD-Br": ["Page link"],
     "Jw6EC4": ["Branch switch failed — try opening the ", ["targetNoun"], " manually."],
+    "JyM0gO": ["Sent, but the comments could not be marked done — they're still waiting to send."],
     "JyW5aS": ["Sifting…"],
     "K-a33w": ["Start writing to create this page"],
     "K-h9cT": ["Couldn't save the resolution for ", ["filePath"], "."],
@@ -1334,7 +1332,6 @@
       ]
     ],
     "LvdLef": ["Thanks for the feedback!"],
-    "LvoXJX": ["Couldn't read the queued comments — nothing was sent."],
     "LwMxXg": ["Failed to open worktree."],
     "M-IF14": ["Report reference"],
     "M0jOcG": ["View in source markdown"],
@@ -1446,6 +1443,7 @@
     "Nn4GgW": ["Will be created as <0>", ["sanitizedName"], "</0>"],
     "NnQapF": ["Open with AI ", ["targetDisplayName"]],
     "NpC29w": ["Create a new list item from the current list item."],
+    "NpuPmi": ["To send"],
     "NrFwux": ["Failed to save content rules — ", ["0"]],
     "Ns0z5o": [
       "When you install a published skill, tell the skill directory (skills.sh) so its install count is accurate. Sends the skill name, its source repository, and which agent tools it went to — never file contents, and never for a skill from a private, local, or hand-typed source. Once per skill per machine."
@@ -1544,6 +1542,7 @@
     "PR9FSv": ["Move to the next visual-editor find result."],
     "PRgIJh": ["Couldn't update ", ["subRoot"], ": ", ["0"]],
     "PRnH8G": ["of ", ["0"]],
+    "PTUuoc": ["Couldn't unmark that comment — it's still waiting to send."],
     "PTb1Nx": ["Sync is paused. Turn it back on to resume."],
     "PVUn_c": ["Open folder"],
     "PVggyD": ["Frontmatter schemas"],
@@ -1567,6 +1566,7 @@
     "PkeYXL": ["Expanded graph mode"],
     "Pkw7J9": ["This folder is empty."],
     "PlGC6r": ["the git exclude file isn't writable"],
+    "Pnvg8e": ["Couldn't open the terminal — the comments are still waiting to send."],
     "Pp0Vgd": ["Click to install in ", ["label"]],
     "PpJy-V": ["The endpoint didn't respond in time."],
     "PqYWiC": [
@@ -1678,6 +1678,7 @@
     "Rj01Fz": ["Links"],
     "RlCInP": ["Slash commands"],
     "RmBY0A": ["No git remote"],
+    "RmmhAh": ["Send later"],
     "RnrnTe": ["Already set up — ok is available in your terminal"],
     "RoafuO": ["Send feedback"],
     "RobAKV": ["Update the destination and optional section anchor."],
@@ -1691,6 +1692,7 @@
       ["targetNoun"],
       " has been moved, renamed, or deleted in your local copy, and that change hasn't synced yet."
     ],
+    "S-7ej_": ["Couldn't mark that comment to send."],
     "S33tz3": ["Not connected"],
     "S3qu11": ["It was a trial or one-off project"],
     "S48xcO": ["pending"],
@@ -1851,6 +1853,7 @@
     "Uoux8m": ["Include this comment in the next send"],
     "Up2_7p": ["Copy full path"],
     "UpCz01": ["This doc"],
+    "UpOct_": ["Add your comments to this message"],
     "UuYo7g": [
       "This ",
       ["targetNoun"],
@@ -1878,7 +1881,6 @@
     "VFQXPl": [
       "External link previews show a card with the site name, page title, and description when you hover a link."
     ],
-    "VIiaFH": ["Couldn't read the queued comments: ", ["0"]],
     "VIwCaD": ["Entry"],
     "VJaBca": ["Choose a skill folder"],
     "VM7H66": ["This file is binary and can't be shown as text."],
@@ -2041,7 +2043,6 @@
     "YDL7N6": [
       "Lint plugins — which rule families run and their per-rule settings — are configured on their own tab under This project → Plugins."
     ],
-    "YDX9lo": ["Remove this comment from the queue"],
     "YEP3X2": ["Delete a table when the active table cell selection covers the full table."],
     "YGIi_c": ["Reinstall"],
     "YGNRB5": ["— except"],
@@ -2082,6 +2083,7 @@
     "Yy90sM": ["Skill \"", ["name"], "\" created"],
     "YyXtnN": ["Underline"],
     "Yzs3QX": ["More skill actions"],
+    "YzyyG2": ["Nothing to send yet. Comment on a passage to add it here."],
     "Z1LF1M": ["Sharing a doc needs a GitHub repository. Create one for this project."],
     "Z2M5XM": ["Reason: ", ["reason"], " (", ["osDetail"], ")"],
     "Z3FXyt": ["Loading..."],
@@ -2257,7 +2259,6 @@
     "az8lvo": ["Off"],
     "b18t0_": ["Close diff"],
     "b1FDss": ["Scroll to start"],
-    "b24kPi": ["Queue"],
     "b2ezG_": ["Kept both — \"", ["0"], "\" is its own skill now"],
     "b3Thhd": ["Upload failed"],
     "b4AQFK": ["Open activity panel for ", ["tooltipName"], ", editing ", ["realCurrentDoc"]],
@@ -2344,6 +2345,7 @@
     ],
     "cUk6TF": ["Sync failed — check the server logs for details."],
     "cV7LOw": ["Team Wiki"],
+    "cVKnqL": ["Couldn't read the comments waiting to send: ", ["0"]],
     "cZGNlb": ["Add another pattern"],
     "cZI5AL": ["OK Desktop"],
     "caw8gO": [
@@ -2755,6 +2757,7 @@
       "Changed outside OK since it last wrote here — the state shown is what's on disk now"
     ],
     "j0ItfO": ["Show resolved (", ["0"], ")"],
+    "j15ZSH": ["Send comments to"],
     "j2229h": ["Removing OpenKnowledge files…"],
     "j2kt1j": [
       "Open a new session with your preferred AI. With text selected, stage it there instead of running it."
@@ -2846,6 +2849,7 @@
       ["targetNoun"],
       " will appear once the branch syncs."
     ],
+    "kMKqP_": ["Hide these comments"],
     "kNqMMd": ["Folder"],
     "kRTXGw": [
       "Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted server or another provider. The API key above is for whichever endpoint you set here."
@@ -2885,7 +2889,6 @@
     "koo58J": ["Upload skill"],
     "kooyLJ": ["Failed to rename the field"],
     "kpqWwG": ["This ", ["targetNoun"], " was removed from branch <0>", ["branch"], "</0>."],
-    "kq-Qj4": ["Couldn't work out where to send the comments — they stay queued."],
     "ktspdq": ["Tint and badge files that have lint or link problems, without opening them."],
     "ku0yLQ": ["Pages are embedded the first time a search needs them."],
     "kwLcuN": [
@@ -3073,6 +3076,7 @@
     "nWv1ja": ["Manage hidden files in Settings → Ignore patterns."],
     "nYKerc": ["(user-level only)"],
     "nYeBmY": [["hours"], "h ago"],
+    "nbLQ_9": ["Choose where to send these comments"],
     "nbfdhU": ["Integrations"],
     "nc-ipN": [
       "Field editing is available for schema files mapped in the Frontmatter schemas plugin"
@@ -3163,7 +3167,6 @@
     "opPbzN": ["Copies the skill to ", ["path"]],
     "optX0N": [["0"], "h ago"],
     "oqB2ez": ["Previous match"],
-    "os6dRM": ["Couldn't remove that comment from the queue."],
     "osRqlv": ["Open delete confirmation for the selected file-tree items."],
     "ot5BRK": ["Duplicate selected file or folder"],
     "otE4aj": ["Show external URL nodes"],
@@ -3264,13 +3267,11 @@
     "qlAIQ1": ["Remote"],
     "qmL1UG": ["Uploading securely"],
     "qo4zCg": ["Path cannot contain backslashes"],
-    "qokN44": ["Show queued comments"],
     "qpQwGC": ["Describe what you're working on and the agent sets it up for you."],
     "qribBG": ["schema ", ["deleteTarget"]],
     "qvWGzP": ["Collapse all"],
     "qyLmWw": ["Source editor search panel"],
     "r-OJYm": ["Enter a valid branch name (no spaces, no leading dot, no \"..\")."],
-    "r0mxIn": ["Remove from the queue"],
     "r2eKE3": ["Sign in to ", ["agentName"], " first"],
     "r4R7AZ": ["Network error during cleanup"],
     "r51jLC": ["File saved & Claude Desktop App opened"],
@@ -3302,7 +3303,6 @@
     ],
     "rVxu1k": ["No pages link here yet."],
     "rXz97P": ["Numbered list of items."],
-    "rY9lqA": ["Send queue to"],
     "rZ9HZq": ["To do"],
     "rZVMkf": ["Visual editor replace input focused"],
     "rageVb": ["Custom HTML with a live preview pane (sandboxed iframe)."],
@@ -3380,7 +3380,6 @@
     "seeS6l": ["Setup OpenKnowledge in this folder?"],
     "sgmRY8": ["Skipped downloading ", ["0"], "."],
     "shNd9t": ["Slash command menu"],
-    "siXSpl": ["Sent, but the comments could not be marked done — they are still queued."],
     "skf5Ix": ["Indent or outdent source editor lines."],
     "sn5BEU": [
       ["sizeText"],
@@ -3428,7 +3427,6 @@
     "tcjTlU": ["Starter packs"],
     "teD0H9": ["Couldn't open a worktree for that branch."],
     "teFjfG": ["No agent is set up yet — pick one from the send menu."],
-    "teS4nP": ["Nothing queued. Comment on a passage to add it here."],
     "ten9en": ["Recent project"],
     "tfDRzk": ["Save"],
     "tfi40B": ["Failed to create page"],
@@ -3495,6 +3493,7 @@
     "u_lS4C": ["Clone complete — opening project"],
     "uaUc6t": ["Restart server"],
     "ubMwcO": ["The terminal session ended (signal ", ["0"], ")."],
+    "ubx-L3": ["Comments to send"],
     "ucXZ0k": ["Loading agents…"],
     "ugQcJX": [
       ["display"],
@@ -3681,7 +3680,6 @@
     "xiv-dW": ["No files yet."],
     "xlQpTE": ["More refusal options"],
     "xloBjn": ["Relative Path"],
-    "xo6PEb": ["Choose where to send the queue"],
     "xrVr_k": ["Couldn't create skill: ", ["0"]],
     "xsZhu-": ["Page number"],
     "xtJgSe": ["This source bundles several skills — choose the one to import."],
@@ -3783,6 +3781,7 @@
     "zL0LPh": ["Global outside text fields"],
     "zLGXna": ["No starter packs available."],
     "zLak8b": ["Activate new tab"],
+    "zO-IiA": ["The terminal isn't available here — the comments are still waiting to send."],
     "zQBg2C": ["Move the current block up or down one position."],
     "zUhPuR": ["Open containing folder, ", ["hint"]],
     "zXj1rA": ["Search by meaning"],
@@ -3801,6 +3800,7 @@
     "zkz0Fg": ["Set up syncing"],
     "zlErBl": ["Page headings error response did not match RFC 9457"],
     "zo3Dl7": ["Toggle thumbnails"],
+    "zovxVp": ["Ready to send"],
     "zpfN9p": ["No comments yet. Select text in the document to add one."],
     "zq2eBA": ["View in source"],
     "zrP8HX": [

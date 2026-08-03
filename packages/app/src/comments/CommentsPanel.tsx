@@ -2,7 +2,7 @@
  * The comments panel: one card per thread on the open document.
  *
  * Thread lifecycle rendered from the store: anchored cards carrying one
- * comment, editable in place, plus queue / resolve and the explicit
+ * comment, editable in place, plus send / resolve and the explicit
  * orphaned-"re-place" state.
  *
  * A thread holds ONE comment rather than a discussion. Comments go to an agent,
@@ -311,38 +311,39 @@ export function ThreadCard({
                 <Pencil className="size-3.5" />
               </Button>
             )}
-            {/* Queue toggle — the round trip out of and back into the batch.
-                Removing a comment from the queue never destroys it, so this is
+            {/* Send toggle — the round trip out of and back into the batch.
+                Dropping a comment from the batch never destroys it, so this is
                 how it gets back in. One model: everything ships via the
                 composer's batch, not a second per-thread dispatch path. */}
             {!isResolved &&
               (thread.queued ? (
-                /* Queued reads as a settled state (✓ Queued) and turns into its
-                   own undo on hover — the ✕ says what the click will do without
-                   spending a second control on it. Same cross-fade the composer's
-                   file chips use, `group-focus-within` included so it is not a
-                   pointer-only affordance. The label does NOT change with the
-                   icon: swapping to "Unqueue" moves the text under the cursor
-                   mid-hover. */
+                /* "Ready to send" reads as a settled state (✓ Ready to send) and
+                   turns into its own undo on hover — the ✕ says what the click will do
+                   without spending a second control on it. Keyboard parity via
+                   `group-focus-visible`, NOT `focus-within`: a mouse click
+                   leaves the button focused, so focus-within pinned the ✕ open
+                   on the one card you last touched while its neighbours sat at
+                   ✓. The label does NOT change with the icon: swapping to
+                   "Don't send" moves the text under the cursor mid-hover. */
                 <Button
                   size="sm"
                   variant="outline"
-                  aria-label={t`Remove from the queue`}
+                  aria-label={t`Don't send this comment`}
                   className="group/queued min-w-0 border-primary/40 text-primary hover:bg-primary/10 hover:text-primary"
                   onClick={() => toggleQueue(thread.id)}
                 >
                   <span className="relative inline-flex size-3.5 shrink-0">
                     <Check
-                      className="absolute inset-0 size-3.5 opacity-100 transition-opacity duration-150 ease-out group-hover/queued:opacity-0 group-focus-within/queued:opacity-0 motion-reduce:transition-none"
+                      className="absolute inset-0 size-3.5 opacity-100 transition-opacity duration-150 ease-out group-hover/queued:opacity-0 group-focus-visible/queued:opacity-0 motion-reduce:transition-none"
                       aria-hidden
                     />
                     <X
-                      className="absolute inset-0 size-3.5 opacity-0 transition-opacity duration-150 ease-out group-hover/queued:opacity-100 group-focus-within/queued:opacity-100 motion-reduce:transition-none"
+                      className="absolute inset-0 size-3.5 opacity-0 transition-opacity duration-150 ease-out group-hover/queued:opacity-100 group-focus-visible/queued:opacity-100 motion-reduce:transition-none"
                       aria-hidden
                     />
                   </span>
                   <span className="truncate">
-                    <Trans>Queued</Trans>
+                    <Trans>Ready to send</Trans>
                   </span>
                 </Button>
               ) : (
@@ -354,7 +355,7 @@ export function ThreadCard({
                 >
                   <Sparkles className="size-3.5 shrink-0" />
                   <span className="truncate">
-                    <Trans>Queue</Trans>
+                    <Trans>Send later</Trans>
                   </span>
                 </Button>
               ))}

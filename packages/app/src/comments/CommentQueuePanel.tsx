@@ -2,7 +2,7 @@
  * The dispatch queue as a doc-panel tab.
  *
  * Project-scoped (comments across every file), shown under the Comments tab's
- * "Queue" scope — the same batch the composer's comments chip carries. Every
+ * "All comments" scope — the same batch the composer's chip carries. Every
  * queued comment is pre-selected; deselect any to exclude it, then Send hands
  * the checked threads to an agent and removes them (deselected ones stay for a
  * later batch).
@@ -119,14 +119,14 @@ export function CommentQueuePanel() {
     <Panel>
       <PanelHeader>
         <PanelTitle>
-          <Trans>Queue</Trans>
+          <Trans>Comments to send</Trans>
         </PanelTitle>
         <PanelCount>{queue.length}</PanelCount>
       </PanelHeader>
       <PanelBody className="flex flex-col gap-4">
         {items.length === 0 ? (
           <PanelEmpty>
-            <Trans>Nothing queued. Comment on a passage to add it here.</Trans>
+            <Trans>Nothing to send yet. Comment on a passage to add it here.</Trans>
           </PanelEmpty>
         ) : (
           groupByDoc(items).map((group) => (
@@ -175,7 +175,7 @@ export function CommentQueuePanel() {
                     size="sm"
                     variant="ghost"
                     className="size-5 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-                    aria-label={t`Remove from queue`}
+                    aria-label={t`Don't send this comment`}
                     onClick={() => removeFromQueue(thread.id)}
                   >
                     <X className="size-3" />
@@ -242,7 +242,7 @@ export function CommentQueuePanel() {
                 )}
               </p>
             }
-            triggerAriaLabel={t`Choose where to send the queue`}
+            triggerAriaLabel={t`Choose where to send these comments`}
             testIds={{
               primary: 'comment-queue-send',
               trigger: 'comment-queue-send-trigger',

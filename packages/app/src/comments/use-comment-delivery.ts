@@ -128,7 +128,7 @@ export function useCommentDispatch(): ComposeDispatch {
         terminalLaunch.launchInTerminal(input, selection.cli);
         return true;
       } catch {
-        toast.error(t`Couldn't open the terminal — the comments stay queued.`);
+        toast.error(t`Couldn't open the terminal — the comments are still waiting to send.`);
         return false;
       }
     }
@@ -144,16 +144,16 @@ export function useCommentDispatch(): ComposeDispatch {
     // A CLI was selected but the terminal host is not mounted (web, or a build
     // without pty). Previously this fell through to a bare `return false`.
     if (selection.kind === 'cli') {
-      toast.error(t`The terminal isn't available here — the comments stay queued.`);
+      toast.error(t`The terminal isn't available here — the comments are still waiting to send.`);
       return false;
     }
     if (selection.kind !== 'desktop') {
-      toast.error(t`Couldn't work out where to send the comments — they stay queued.`);
+      toast.error(t`Couldn't work out where to send the comments — they're still waiting.`);
       return false;
     }
     const target = VISIBLE_TARGETS.find((entry) => entry.id === selection.target) ?? null;
     if (target === null) {
-      toast.error(t`That app isn't available — the comments stay queued.`);
+      toast.error(t`That app isn't available — the comments are still waiting to send.`);
       return false;
     }
     // Enabled but not installed: route to the installer rather than a

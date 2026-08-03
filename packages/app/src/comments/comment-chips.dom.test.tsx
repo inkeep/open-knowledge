@@ -4,7 +4,7 @@
  * It used to call `clearQueue()` — a server round-trip that unqueued every
  * thread in the project, with no confirmation and no undo — while wearing the
  * same affordance as the file chip's ✕ and the selection pill's ✕, both of which
- * only stop carrying context. Destroying the batch belongs to the Queue panel's
+ * only stop carrying context. Destroying the batch belongs to the All-comments panel's
  * labelled Clear. These pin the three controls apart.
  */
 
@@ -121,11 +121,11 @@ describe('the queued-comments chip', () => {
       },
     });
 
-    // Attaching is opt-in, so something has to say a queue exists before you opt
+    // Attaching is opt-in, so something has to say a batch exists before you opt
     // in — the chip's presence is that signal, and it names the source it would
     // pull from rather than the count it would carry.
     const chip = screen.getByTestId('composer-context-chip-comments');
-    expect(chip.textContent).toContain('Queue');
+    expect(chip.textContent).toContain('Comments');
     expect(chip.getAttribute('aria-pressed')).toBe('false');
     // The two states occupy the same slot at different times, so the icon is what
     // distinguishes them — there is never a second chip to compare a fill against.
@@ -143,9 +143,7 @@ describe('the queued-comments chip', () => {
     await renderChip({ attached: false });
     // A name like "Send comments" would promise dispatch; this puts the batch on
     // the message and leaves the send to the send button.
-    expect(
-      screen.getByRole('button', { name: /add the queued comments to this message/i }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: /add your comments to this message/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /send/i })).toBeNull();
   });
 });

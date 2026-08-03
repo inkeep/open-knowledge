@@ -147,7 +147,7 @@ export function PropertyCommentButton({
             <Trans>Cancel</Trans>
           </Button>
           <Button size="sm" onClick={post} disabled={draft.trim().length === 0}>
-            <Trans>Add to queue</Trans>
+            <Trans>Add Comment</Trans>
           </Button>
         </div>
       </PopoverContent>
