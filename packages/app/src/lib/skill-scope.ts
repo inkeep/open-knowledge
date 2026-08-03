@@ -66,6 +66,12 @@ export function tildeHomePath(abs: string): string {
   return abs.replace(/^\/(?:Users|home)\/[^/]+/, '~').replace(/^\/root/, '~');
 }
 
+/** A skill dir is the parent of its `SKILL.md`; the detected preview reads it as a local source. */
+export function skillDir(skillMdPath: string): string {
+  const i = skillMdPath.lastIndexOf('/');
+  return i > 0 ? skillMdPath.slice(0, i) : skillMdPath;
+}
+
 /**
  * Short level titles shared by every skills surface. The `global` scope is
  * user-level (available in every project); `project` skills live in this KB

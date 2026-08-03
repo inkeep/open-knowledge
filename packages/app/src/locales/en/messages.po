@@ -466,7 +466,7 @@ msgstr "{diffHrs}h ago"
 msgid "{diffMin}m ago"
 msgstr "{diffMin}m ago"
 
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "{dir} (symlink)"
 msgstr "{dir} (symlink)"
 
@@ -1829,7 +1829,7 @@ msgstr "Build and keep track of the world behind your story. A home for your cha
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "Built-in (read-only)"
 msgstr "Built-in (read-only)"
 
@@ -3691,7 +3691,7 @@ msgid "Details about the error you just hit are included. Secrets like API keys 
 msgstr "Details about the error you just hit are included. Secrets like API keys and tokens are redacted automatically."
 
 #. placeholder {0}: d.sourceHarnesses.map((h) => skillHostRootDir(h, scope)).join(', ')
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "Detected in {0}"
 msgstr "Detected in {0}"
 
@@ -4026,7 +4026,7 @@ msgstr "Each selected tool gets an OpenKnowledge MCP entry."
 
 #: src/components/AppMenubar.tsx
 #: src/components/settings/LintingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 #: src/components/TemplateForm.tsx
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
@@ -4412,7 +4412,7 @@ msgstr "Explain how your codebase works so teammates and AI agents can find thei
 msgid "Explore"
 msgstr "Explore"
 
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "Explore skills"
 msgstr "Explore skills"
 
@@ -5710,12 +5710,12 @@ msgstr "Insert, delete, move, copy, and indent source editor lines through CodeM
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/skill-actions.tsx
 #: src/components/SkillPreviewTab.tsx
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "Install"
 msgstr "Install"
 
 #. placeholder {0}: skill.name
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "Install {0}"
 msgstr "Install {0}"
 
@@ -5826,7 +5826,7 @@ msgid "Installed at {path} — click to remove"
 msgstr "Installed at {path} — click to remove"
 
 #. placeholder {0}: hosts.map((h) => skillHostRootDir(h, skill.scope)).join(', ')
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "Installed in {0}"
 msgstr "Installed in {0}"
 
@@ -6698,7 +6698,7 @@ msgstr "New changes from your remote appear in your copy automatically."
 #: src/components/FileTree.tsx
 #: src/components/NewItemDialog.tsx
 #: src/components/skill-actions.tsx
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "New file"
 msgstr "New file"
@@ -6769,7 +6769,7 @@ msgstr "New session"
 
 #: src/components/command-palette-commands.ts
 #: src/components/NewSkillDialog.tsx
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "New skill"
 msgstr "New skill"
 
@@ -7853,7 +7853,7 @@ msgid "Parse failed"
 msgstr "Parse failed"
 
 #. placeholder {0}: det.provenance.plugin
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "Part of the {0} plugin — read-only; open it to edit a copy"
 msgstr "Part of the {0} plugin — read-only; open it to edit a copy"
 
@@ -11584,7 +11584,7 @@ msgstr "Upload from computer"
 msgid "Upload may have succeeded but the sidebar is out of date — refresh to resync"
 msgstr "Upload may have succeeded but the sidebar is out of date — refresh to resync"
 
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "Upload skill"
 msgstr "Upload skill"
 

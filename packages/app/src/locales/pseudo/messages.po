@@ -466,7 +466,7 @@ msgstr ""
 msgid "{diffMin}m ago"
 msgstr ""
 
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "{dir} (symlink)"
 msgstr ""
 
@@ -1825,7 +1825,7 @@ msgstr ""
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr ""
 
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "Built-in (read-only)"
 msgstr ""
 
@@ -3687,7 +3687,7 @@ msgid "Details about the error you just hit are included. Secrets like API keys 
 msgstr ""
 
 #. placeholder {0}: d.sourceHarnesses.map((h) => skillHostRootDir(h, scope)).join(', ')
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "Detected in {0}"
 msgstr ""
 
@@ -4022,7 +4022,7 @@ msgstr ""
 
 #: src/components/AppMenubar.tsx
 #: src/components/settings/LintingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 #: src/components/TemplateForm.tsx
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
@@ -4408,7 +4408,7 @@ msgstr ""
 msgid "Explore"
 msgstr ""
 
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "Explore skills"
 msgstr ""
 
@@ -5706,12 +5706,12 @@ msgstr ""
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/skill-actions.tsx
 #: src/components/SkillPreviewTab.tsx
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "Install"
 msgstr ""
 
 #. placeholder {0}: skill.name
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "Install {0}"
 msgstr ""
 
@@ -5822,7 +5822,7 @@ msgid "Installed at {path} — click to remove"
 msgstr ""
 
 #. placeholder {0}: hosts.map((h) => skillHostRootDir(h, skill.scope)).join(', ')
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "Installed in {0}"
 msgstr ""
 
@@ -6694,7 +6694,7 @@ msgstr ""
 #: src/components/FileTree.tsx
 #: src/components/NewItemDialog.tsx
 #: src/components/skill-actions.tsx
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "New file"
 msgstr ""
@@ -6765,7 +6765,7 @@ msgstr ""
 
 #: src/components/command-palette-commands.ts
 #: src/components/NewSkillDialog.tsx
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "New skill"
 msgstr ""
 
@@ -7849,7 +7849,7 @@ msgid "Parse failed"
 msgstr ""
 
 #. placeholder {0}: det.provenance.plugin
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "Part of the {0} plugin — read-only; open it to edit a copy"
 msgstr ""
 
@@ -11580,7 +11580,7 @@ msgstr ""
 msgid "Upload may have succeeded but the sidebar is out of date — refresh to resync"
 msgstr ""
 
-#: src/components/SkillsSidebarSection.tsx
+#: src/components/SkillsTree.tsx
 msgid "Upload skill"
 msgstr ""
 

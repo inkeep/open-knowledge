@@ -20,8 +20,20 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
-const API_EXT_PATH = join(import.meta.dirname, '../../../server/src/api-extension.ts');
-const source = readFileSync(API_EXT_PATH, 'utf8');
+const SERVER_SRC = join(import.meta.dirname, '../../../server/src');
+/**
+ * Route handlers do not all live in one file: the six skills.sh handlers sit in
+ * `skills-sh-handlers.ts`, built by a factory the route table destructures. Every
+ * scan below runs over each source, because a handler that moves out of
+ * `api-extension.ts` would otherwise escape these rules silently rather than
+ * failing anything.
+ */
+const HANDLER_SOURCES = ['api-extension.ts', 'skills-sh-handlers.ts'].map((file) => ({
+  file,
+  text: readFileSync(join(SERVER_SRC, file), 'utf8'),
+}));
+/** The route table and the shared success spine live in `api-extension.ts` only. */
+const source = HANDLER_SOURCES[0]?.text ?? '';
 
 function listAllHandlers(): string[] {
   // Handlers in `api-extension.ts` come in three shapes:
@@ -37,11 +49,10 @@ function listAllHandlers(): string[] {
   // Inner functions co-located with a wrapper are excluded from the public
   // handler list — they are scanned as part of the parent's body slice via
   // `extractHandlerBody`.
-  const fnNames = [...source.matchAll(/async function (handle\w+)\(/g)].map((m) => m[1]);
-  const wrapperNames = [...source.matchAll(/const (handle\w+) = withValidation\(/g)].map(
-    (m) => m[1],
-  );
-  const routerNames = [...source.matchAll(/const (handle\w+) = methodRouter\(/g)].map((m) => m[1]);
+  const all = HANDLER_SOURCES.map((h) => h.text).join('\n');
+  const fnNames = [...all.matchAll(/async function (handle\w+)\(/g)].map((m) => m[1]);
+  const wrapperNames = [...all.matchAll(/const (handle\w+) = withValidation\(/g)].map((m) => m[1]);
+  const routerNames = [...all.matchAll(/const (handle\w+) = methodRouter\(/g)].map((m) => m[1]);
   const innerNames = new Set(
     wrapperNames.map((wrapper) => `${wrapper}Inner`).filter((inner) => fnNames.includes(inner)),
   );
@@ -54,9 +65,14 @@ function extractHandlerBody(name: string): string | null {
   const fnDecl = `async function ${name}(`;
   const constDecl = `const ${name} = withValidation(`;
   const routerDecl = `const ${name} = methodRouter(`;
-  const fnIdx = source.indexOf(fnDecl);
-  const constIdx = source.indexOf(constDecl);
-  const routerIdx = source.indexOf(routerDecl);
+  // Whichever source declares it; a lifted handler is not in `api-extension.ts`.
+  const owner =
+    HANDLER_SOURCES.find(
+      (h) => h.text.includes(fnDecl) || h.text.includes(constDecl) || h.text.includes(routerDecl),
+    )?.text ?? source;
+  const fnIdx = owner.indexOf(fnDecl);
+  const constIdx = owner.indexOf(constDecl);
+  const routerIdx = owner.indexOf(routerDecl);
   let start = -1;
   if (fnIdx !== -1) start = fnIdx;
   else if (constIdx !== -1) start = constIdx;
@@ -70,18 +86,21 @@ function extractHandlerBody(name: string): string | null {
   // the inner body is included in the slice for `handleX`.
   const innerName = `${name}Inner`;
   const innerDecl = `\n  async function ${innerName}(`;
-  const innerIdx = source.indexOf(innerDecl, start + 1);
+  const innerIdx = owner.indexOf(innerDecl, start + 1);
   const searchFrom = innerIdx === -1 ? start + 1 : innerIdx + 1;
-  const nextFn = source.indexOf('\n  async function handle', searchFrom);
-  const nextConst = source.indexOf('\n  const handle', searchFrom);
+  const nextFn = owner.indexOf('\n  async function handle', searchFrom);
+  const nextConst = owner.indexOf('\n  const handle', searchFrom);
   // The last handler in the file has no successor — bound at the route table
   // declaration `\n  const routes:` so we don't accidentally fold the
   // onRequest extension (which itself uses `errorResponse(...)` for the
   // /api/* Origin gate) into the prior handler's slice.
-  const nextRoutes = source.indexOf('\n  const routes:', searchFrom);
-  const candidates = [nextFn, nextConst, nextRoutes].filter((i) => i !== -1);
+  const nextRoutes = owner.indexOf('\n  const routes:', searchFrom);
+  // The factory module ends its handler run at the returned record instead of
+  // a route table, so bound on that too or the last handler swallows it.
+  const nextReturn = owner.indexOf('\n  return {', searchFrom);
+  const candidates = [nextFn, nextConst, nextRoutes, nextReturn].filter((i) => i !== -1);
   const next = candidates.length === 0 ? -1 : Math.min(...candidates);
-  return source.slice(start, next === -1 ? source.length : next);
+  return owner.slice(start, next === -1 ? owner.length : next);
 }
 
 const INLINE_ERROR_RE = /json\(\s*res\s*,\s*\d+\s*,\s*\{\s*ok:\s*false\b/;
@@ -223,7 +242,11 @@ describe('error envelope coverage (FR17, D36 a) — fail-on-any-occurrence', () 
     for (const name of all) {
       const body = extractHandlerBody(name);
       if (!body) {
-        failures.push(`${name}: not found in api-extension.ts`);
+        // Names every source actually searched, so a lifted handler that goes
+        // missing does not send the reader back to `api-extension.ts` alone.
+        failures.push(
+          `${name}: body not found in any handler source (${HANDLER_SOURCES.map((h) => h.file).join(', ')})`,
+        );
         continue;
       }
       if (INLINE_ERROR_RE.test(body)) {
@@ -328,38 +351,48 @@ describe('error envelope coverage (FR17, D36 a) — fail-on-any-occurrence', () 
     expect(INLINE_BARE_SUCCESS_RE.test(spineBody)).toBe(false);
   });
 
-  test('zero inline { ok: false } envelopes anywhere in api-extension.ts', () => {
+  test('zero inline { ok: false } envelopes in any handler source', () => {
     // Whole-file sweep: catches inline literals outside per-handler bodies
     // (helper functions, the onRequest extension, route-table fallthroughs).
     // The per-handler scan above bounds at the `\n  const routes:` declaration
     // and would miss anything below; this assertion is the structural
     // backstop.
-    const matches = [...source.matchAll(/json\(\s*res\s*,\s*\d+\s*,\s*\{\s*ok:\s*false\b/g)];
+    const matches = HANDLER_SOURCES.flatMap((h) =>
+      [...h.text.matchAll(/json\(\s*res\s*,\s*\d+\s*,\s*\{\s*ok:\s*false\b/g)].map((m) => ({
+        m,
+        h,
+      })),
+    );
     if (matches.length > 0) {
-      const locations = matches.map((m) => {
-        const lineNumber = source.slice(0, m.index ?? 0).split('\n').length;
-        return `api-extension.ts:${lineNumber}`;
+      const locations = matches.map(({ m, h }) => {
+        const lineNumber = h.text.slice(0, m.index ?? 0).split('\n').length;
+        return `${h.file}:${lineNumber}`;
       });
       expect(locations).toEqual([]);
     }
     expect(matches.length).toBe(0);
   });
 
-  test('zero inline { ok: true } success wrappers anywhere in api-extension.ts', () => {
+  test('zero inline { ok: true } success wrappers in any handler source', () => {
     // The `ok: true` wrapper is dropped from success bodies. Same whole-file
     // sweep as above: fail-on-any-occurrence.
-    const matches = [...source.matchAll(/json\(\s*res\s*,\s*\d+\s*,\s*\{\s*ok:\s*true\b/g)];
+    const matches = HANDLER_SOURCES.flatMap((h) =>
+      [...h.text.matchAll(/json\(\s*res\s*,\s*\d+\s*,\s*\{\s*ok:\s*true\b/g)].map((m) => ({
+        m,
+        h,
+      })),
+    );
     if (matches.length > 0) {
-      const locations = matches.map((m) => {
-        const lineNumber = source.slice(0, m.index ?? 0).split('\n').length;
-        return `api-extension.ts:${lineNumber}`;
+      const locations = matches.map(({ m, h }) => {
+        const lineNumber = h.text.slice(0, m.index ?? 0).split('\n').length;
+        return `${h.file}:${lineNumber}`;
       });
       expect(locations).toEqual([]);
     }
     expect(matches.length).toBe(0);
   });
 
-  test('zero bare json(res, 2xx, ...) success emits anywhere in api-extension.ts', () => {
+  test('zero bare json(res, 2xx, ...) success emits in any handler source', () => {
     // Every success body MUST flow through `successResponse(...)` so the
     // schema-vs-server drift class is closed structurally at the wire
     // boundary. Whole-file sweep mirrors the `{ ok: false/true }` ratchets
@@ -374,18 +407,20 @@ describe('error envelope coverage (FR17, D36 a) — fail-on-any-occurrence', () 
     // (errors). A future regression that re-adds an inline `json(res, 2xx,
     // ...)` helper would surface here regardless of whether the regression
     // is inside a per-handler body or a shared utility.
-    const matches = [...source.matchAll(/\bjson\(\s*res\s*,\s*2[0-9]{2}\s*,/g)];
+    const matches = HANDLER_SOURCES.flatMap((h) =>
+      [...h.text.matchAll(/\bjson\(\s*res\s*,\s*2[0-9]{2}\s*,/g)].map((m) => ({ m, h })),
+    );
     if (matches.length > 0) {
-      const locations = matches.map((m) => {
-        const lineNumber = source.slice(0, m.index ?? 0).split('\n').length;
-        return `api-extension.ts:${lineNumber}`;
+      const locations = matches.map(({ m, h }) => {
+        const lineNumber = h.text.slice(0, m.index ?? 0).split('\n').length;
+        return `${h.file}:${lineNumber}`;
       });
       expect(locations).toEqual([]);
     }
     expect(matches.length).toBe(0);
   });
 
-  test('zero NDJSON `JSON.stringify({ ok: false, ... })` legacy envelope shapes anywhere in api-extension.ts', () => {
+  test('zero NDJSON `JSON.stringify({ ok: false, ... })` legacy envelope shapes in any handler source', () => {
     // Streaming endpoints (clone, auth-login, auth-repos) emit NDJSON via
     // `res.write(JSON.stringify({...}) + '\n')`. The two whole-file sweeps
     // above only catch the synchronous `json(res, ...)` shape — a future
@@ -396,27 +431,31 @@ describe('error envelope coverage (FR17, D36 a) — fail-on-any-occurrence', () 
     // `streamingProblemEvent` / `createStreamingErrorWriter` — there is no
     // legitimate reason to emit `{ ok: false, ... }` JSON literals from
     // streaming or non-streaming code.
-    const matches = [...source.matchAll(/JSON\.stringify\(\s*\{\s*ok:\s*false\b/g)];
+    const matches = HANDLER_SOURCES.flatMap((h) =>
+      [...h.text.matchAll(/JSON\.stringify\(\s*\{\s*ok:\s*false\b/g)].map((m) => ({ m, h })),
+    );
     if (matches.length > 0) {
-      const locations = matches.map((m) => {
-        const lineNumber = source.slice(0, m.index ?? 0).split('\n').length;
-        return `api-extension.ts:${lineNumber}`;
+      const locations = matches.map(({ m, h }) => {
+        const lineNumber = h.text.slice(0, m.index ?? 0).split('\n').length;
+        return `${h.file}:${lineNumber}`;
       });
       expect(locations).toEqual([]);
     }
     expect(matches.length).toBe(0);
   });
 
-  test('zero NDJSON `JSON.stringify({ ok: true, ... })` legacy envelope shapes anywhere in api-extension.ts', () => {
+  test('zero NDJSON `JSON.stringify({ ok: true, ... })` legacy envelope shapes in any handler source', () => {
     // The `ok: true` wrapper is dropped from success bodies. Streaming
     // success events use `{ type: 'complete', ... }` (or `progress`) — a
     // future regression into the legacy wrapped shape is invisible to the
     // synchronous `json(res, ...)` sweep.
-    const matches = [...source.matchAll(/JSON\.stringify\(\s*\{\s*ok:\s*true\b/g)];
+    const matches = HANDLER_SOURCES.flatMap((h) =>
+      [...h.text.matchAll(/JSON\.stringify\(\s*\{\s*ok:\s*true\b/g)].map((m) => ({ m, h })),
+    );
     if (matches.length > 0) {
-      const locations = matches.map((m) => {
-        const lineNumber = source.slice(0, m.index ?? 0).split('\n').length;
-        return `api-extension.ts:${lineNumber}`;
+      const locations = matches.map(({ m, h }) => {
+        const lineNumber = h.text.slice(0, m.index ?? 0).split('\n').length;
+        return `${h.file}:${lineNumber}`;
       });
       expect(locations).toEqual([]);
     }
