@@ -1,59 +1,46 @@
 /**
- * `mountMcpAndApi` — single canonical wiring for `/mcp` + `/api/*` + WS upgrade.
+ * `mountMcpAndApi` is the canonical HTTP adapter for `/mcp`, `/api/*`, content
+ * assets, and the optional React shell. `bootServer()` and the integration
+ * harnesses use it; Vite owns its Connect middleware and shares only the
+ * collaboration host.
  *
- * Three consumers compose the same four ingredients on top of an `http.Server`:
- *   1. `bootServer()` (CLI `ok start`, Electron utility, Vite dev plugin via the
- *      shared boot path).
- *   2. The integration test harness's `createTestServer()`.
- *   3. The integration test harness's `createRestartableServer()` (no `/mcp` —
- *      passes `mcpHttpHandler: undefined`).
+ * Collaboration WebSocket routing and lifecycle live in
+ * `createCollaborationHost()`. This adapter delegates `/collab`,
+ * `/collab/keepalive`, and `/collab/thread` upgrades to that host, then owns
+ * only the fallback that rejects unknown upgrade paths.
  *
- * Before this extraction every consumer reimplemented the request handler, the
- * `WebSocketServer({ noServer: true })`, the `/collab/keepalive` short-circuit,
- * the keepalive-grace timer map, and the per-`connectionId` cleanup cascade
- * (`closeAllForAgent` + `clearFocus` + `clearPresence`). The duplication had
- * already drifted: `boot.ts` validated `connectionId` via `validateAgentId` to
- * defend against log-injection / `clearPresence` cross-eviction; the harness
- * accepted any `connectionId` query param. Centralizing in one helper closes
- * that drift class permanently — every consumer gets the production-grade
- * validation path.
- *
- * The helper attaches both `'request'` and `'upgrade'` listeners to the
+ * The adapter attaches both `'request'` and `'upgrade'` listeners to the
  * supplied `httpServer`. Callers therefore MUST `createHttpServer()` with no
  * constructor callback — passing a `(req, res) => {…}` arg would install a
  * second `'request'` listener and double-handle every inbound HTTP request.
  *
- * `shutdown()` cancels pending grace timers + awaits in-flight cleanups so
- * caller `destroy()` paths do not race a still-firing grace callback into
- * a torn-down `sessionManager` / broadcaster.
+ * `shutdown()` leaves request routing attached until the caller closes the HTTP
+ * server so requests do not silently hang during later teardown phases. It
+ * detaches upgrades before draining the collaboration host so no new WebSocket
+ * can escape that one-shot drain.
  */
 
 import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { Hocuspocus } from '@hocuspocus/server';
-import { AGENT_ICON_COLORS, colorFromSeed, iconFromClientName } from '@inkeep/open-knowledge-core';
-import { WebSocketServer } from 'ws';
+import type { WebSocketServer } from 'ws';
 import type { AcpThreadManager } from './acp/thread-manager.ts';
-import { attachAcpThreadSocket } from './acp/thread-socket.ts';
 import type { AgentFocusBroadcaster } from './agent-focus.ts';
-import { toBroadcasterKey, validateAgentId } from './agent-id.ts';
 import type { AgentPresenceBroadcaster } from './agent-presence.ts';
 import type { AgentSessionManager } from './agent-sessions.ts';
 import { isAllowedApiOrigin } from './api-origin.ts';
+import { createCollaborationHost } from './collaboration-host.ts';
 import { errorResponse } from './http/error-response.ts';
 import type { PinoLogger } from './logger.ts';
 import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
 import type { MaintenanceCoordinator } from './maintenance-coordinator.ts';
 import type { McpHttpHandler } from './mcp-http.ts';
-import { handleCollabSocketError, incrementCollabMessageTooLarge } from './metrics.ts';
 import {
   hasForwardingHeaders,
   isRemoteAdmitted,
   type ResolvedRemoteAccess,
 } from './remote-access.ts';
 
-const DEFAULT_KEEPALIVE_GRACE_MS = 10_000;
-const MAX_COLLAB_MESSAGE_BYTES = 1024 * 1024;
 const MCP_CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers':
@@ -202,29 +189,18 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     ephemeral,
   } = opts;
   const remoteAccess = opts.remoteAccess ?? undefined;
-  const keepaliveGraceMs = opts.keepaliveGraceMs ?? DEFAULT_KEEPALIVE_GRACE_MS;
 
-  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_COLLAB_MESSAGE_BYTES });
-  wss.on('error', (err) => {
-    log.error({ err }, 'WebSocketServer error');
+  const collaborationHost = createCollaborationHost({
+    hocuspocus,
+    log,
+    sessionManager,
+    agentFocusBroadcaster,
+    agentPresenceBroadcaster,
+    maintenanceCoordinator,
+    keepaliveGraceMs: opts.keepaliveGraceMs,
+    acpThreadManager: opts.acpThreadManager,
+    remoteAccess,
   });
-
-  // connectionId → pending grace timer handle.
-  const keepaliveGraceTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  // In-flight grace-timer callbacks so `shutdown()` can await them rather than
-  // racing against the sessionManager / agentFocusBroadcaster teardown.
-  const keepaliveGraceInflight = new Set<Promise<void>>();
-  // Raw upgrade sockets (the `Duplex` handed to the `'upgrade'` handler) for
-  // every live `/collab` + `/collab/keepalive` connection. `shutdown()` destroys
-  // these so the caller's `wss.close()` / `httpServer.close()` steps resolve —
-  // an upgraded socket is detached from the HTTP server and `httpServer.close()`
-  // will not return while one is open, and `httpServer.closeAllConnections()`
-  // does not reliably reap upgrade-detached sockets across runtimes. Mirrors
-  // the drain in `cli/src/commands/ui.ts` / `ui-proxy.ts`.
-  const liveUpgradeSockets = new Set<Duplex>();
-  // Set when `shutdown()` runs so any callback that fired just before the
-  // timer was cleared can short-circuit instead of touching disposed resources.
-  let shuttingDown = false;
 
   const onRequest = (req: IncomingMessage, res: ServerResponse): void => {
     const url = req.url?.split('?')[0];
@@ -448,311 +424,33 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
   };
 
   const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
-    // Same tripwire as the HTTP leg: a proxied upgrade on a server that never
-    // opted into remote access is refused rather than trusted as local.
+    if (collaborationHost.handleUpgrade(req, socket, head)) return;
     if (remoteAccess === undefined && hasForwardingHeaders(req)) {
       log.warn(
         { url: req.url, host: req.headers.host },
         '[remote] refused proxied WS upgrade; start the server with `ok start --remote <url>`',
       );
-      socket.destroy();
-      return;
     }
-    // Shared admit decision for the `/collab/thread` + `/collab/keepalive`
-    // upgrades. Remote mode widens the Host allowlist to the tunnel's public
-    // host through the `isRemoteAdmitted` choke point (tunnel traffic arrives
-    // loopback-peer + public-Host); local mode keeps the loopback-peer +
-    // workspace-Host gate. The bare `/collab` catch-all below relies on the
-    // loopback bind in local mode, so it only consults `isRemoteAdmitted`.
-    const collabUpgradeAdmitted = (): boolean =>
-      remoteAccess !== undefined
-        ? isRemoteAdmitted(req, remoteAccess)
-        : isLoopbackAddress(req.socket.remoteAddress) &&
-          isAllowedWorkspaceHostHeader(req.headers.host);
-    if (req.url?.startsWith('/collab/thread')) {
-      // Admit via the shared `/collab` upgrade gate (remote-widened Host in
-      // remote mode), plus the browser-Origin allowlist when an Origin is
-      // present (WS upgrades from pages always carry one; a DNS-rebound page
-      // fails the Host check, a foreign page fails the Origin check).
-      const acp = opts.acpThreadManager;
-      if (
-        acp === undefined ||
-        acp === null ||
-        !collabUpgradeAdmitted() ||
-        (req.headers.origin !== undefined &&
-          !isAllowedApiOrigin(req.headers.origin, remoteAccess?.publicHost))
-      ) {
-        log.debug(
-          { url: req.url, host: req.headers.host, origin: req.headers.origin },
-          '[collab] /collab/thread upgrade refused',
-        );
-        socket.destroy();
-        return;
-      }
-      socket.on('error', (err: NodeJS.ErrnoException) => {
-        if (handleCollabSocketError(err)) return;
-        log.error({ err }, 'ACP thread socket error');
-      });
-      liveUpgradeSockets.add(socket);
-      socket.once('close', () => liveUpgradeSockets.delete(socket));
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        attachAcpThreadSocket(ws, acp, log);
-      });
-      return;
-    }
-
-    if (req.url?.startsWith('/collab/keepalive')) {
-      if (!collabUpgradeAdmitted()) {
-        log.debug(
-          { url: req.url, host: req.headers.host },
-          '[collab] /collab/keepalive upgrade refused',
-        );
-        socket.destroy();
-        return;
-      }
-      socket.on('error', (err: NodeJS.ErrnoException) => {
-        if (handleCollabSocketError(err)) return;
-        log.error({ err }, 'MCP keepalive socket error');
-      });
-      liveUpgradeSockets.add(socket);
-      socket.once('close', () => liveUpgradeSockets.delete(socket));
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        // Per-session connectionId from the URL. Validated through the same
-        // regex as the HTTP write path (`extractAgentIdentity` in
-        // `api-extension.ts`) so the keepalive cleanup surface and the write
-        // surface share one contract — without it a caller who can reach the
-        // keepalive WS could force-evict another agent's presence by
-        // crafting `connectionId=<victim>` on close.
-        const connectionId = parseKeepaliveConnectionId(req.url);
-
-        // Reconnect within the grace window cancels the pending eviction.
-        if (connectionId) {
-          const existing = keepaliveGraceTimers.get(connectionId);
-          if (existing !== undefined) {
-            clearTimeout(existing);
-            keepaliveGraceTimers.delete(connectionId);
-            log.info({ connectionId }, '[keepalive] reconnect during grace — timer cancelled');
-          }
-        }
-
-        // Bootstrap a presence entry on connect when the cli's MCP shim
-        // forwarded full identity in the URL. Without this, `bumpPresenceTs`
-        // (the 3 s heartbeat below) is a documented no-op until something
-        // else calls `setPresence` first — which only happens for the four
-        // mutating HTTP write handlers in `api-extension.ts`. Lifting the
-        // bootstrap to the WS-upgrade handler makes presence appear on
-        // every MCP connect, regardless of whether the agent ever issues
-        // a write tool.
-        //
-        // Identity sanitisation lives in `parseKeepaliveIdentity` — log
-        // injection / awareness pollution surface. Mirrors the helper-chain
-        // the four handler-level setPresence sites use (iconFromClientName /
-        // AGENT_ICON_COLORS / colorFromSeed) so the entry shape is
-        // bit-identical to what a write would have produced.
-        if (connectionId && agentPresenceBroadcaster) {
-          const identity = parseKeepaliveIdentity(req.url);
-          if (identity) {
-            try {
-              const icon = iconFromClientName(identity.clientName);
-              const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(identity.colorSeed);
-              agentPresenceBroadcaster.setPresence(toBroadcasterKey(connectionId), {
-                displayName: identity.displayName,
-                icon,
-                color,
-                // Sentinel `currentDoc` so the badge surfaces in the
-                // cross-doc bucket — the client filter at
-                // `packages/app/src/lib/agent-presence.ts` drops entries
-                // with falsy `currentDoc`, so null would mean the
-                // bootstrap entry stays hidden until the agent's first
-                // write. The `(connected)` form is human-readable and
-                // distinct from any real docName; future click-to-navigate
-                // handlers can short-circuit on the leading `(`.
-                currentDoc: '(connected)',
-                mode: 'idle',
-                ts: Date.now(),
-              });
-            } catch (err) {
-              log.error({ err, connectionId }, '[keepalive] presence bootstrap failed');
-            }
-          }
-        }
-
-        const pingTimer = setInterval(() => {
-          try {
-            ws.ping();
-          } catch {
-            // Dead socket fires 'close' + 'error' which clean up below.
-          }
-        }, 30_000);
-        pingTimer.unref?.();
-
-        // Presence-ts heartbeat — beats the client-side 5 s TTL filter when
-        // an agent sits idle between tool calls (LLM "thinking" 10–30 s).
-        // `toBroadcasterKey(connectionId)` translates the raw URL id into
-        // the `agent-<id>` map key used by HTTP write handlers via
-        // `extractAgentIdentity`; without the prefix `bumpPresenceTs` no-ops
-        // because no entry lives under the bare key.
-        const tsRefreshTimer = connectionId
-          ? setInterval(() => {
-              agentPresenceBroadcaster?.bumpPresenceTs(toBroadcasterKey(connectionId));
-            }, 3_000)
-          : null;
-        tsRefreshTimer?.unref?.();
-
-        ws.on('close', () => {
-          clearInterval(pingTimer);
-          if (tsRefreshTimer !== null) clearInterval(tsRefreshTimer);
-          if (!connectionId) return;
-          const timer = setTimeout(() => {
-            keepaliveGraceTimers.delete(connectionId);
-            // If `shutdown()` already ran, the sessionManager + broadcasters
-            // may be mid-teardown — racing them is worse than skipping
-            // cleanup (TOCTOU between our clearTimeout loop and the timer
-            // firing).
-            if (shuttingDown) return;
-            const work = (async () => {
-              log.info({ connectionId }, '[keepalive] grace expired — cleaning up sessions');
-              try {
-                await sessionManager?.closeAllForAgent(connectionId);
-              } catch (err) {
-                log.error({ err, connectionId }, '[keepalive] closeAllForAgent failed');
-              }
-              try {
-                agentFocusBroadcaster?.clearFocus(connectionId);
-              } catch (err) {
-                log.error({ err, connectionId }, '[keepalive] clearFocus failed');
-              }
-              try {
-                agentPresenceBroadcaster?.clearPresence(toBroadcasterKey(connectionId));
-              } catch (err) {
-                log.error({ err, connectionId }, '[keepalive] clearPresence failed');
-              }
-              // The closed session's writer is now dead — evaluate maintenance
-              // (session-close trigger) off the write path. Gated +
-              // fire-and-forget; never blocks session teardown.
-              // Scope: this is the ONLY `session-close`-labelled trigger, so it
-              // fires only for keepalive-WS sessions. HTTP-only MCP callers,
-              // direct Hocuspocus connections, and bulk `closeAll()` on shutdown
-              // don't reach it — their dead chains are still reaped by the
-              // flush-counter and boot triggers, so coverage is complete; only the
-              // `session-close` telemetry label under-counts those paths.
-              try {
-                await maintenanceCoordinator?.onSessionClose();
-              } catch (err) {
-                log.error({ err, connectionId }, '[keepalive] maintenance onSessionClose failed');
-              }
-            })();
-            keepaliveGraceInflight.add(work);
-            work.finally(() => keepaliveGraceInflight.delete(work));
-          }, keepaliveGraceMs);
-          timer.unref?.();
-          keepaliveGraceTimers.set(connectionId, timer);
-          log.info(
-            { connectionId, graceMs: keepaliveGraceMs },
-            '[keepalive] disconnected — grace timer started',
-          );
-        });
-        ws.on('error', (err: NodeJS.ErrnoException) => {
-          if (!handleCollabSocketError(err)) {
-            log.error({ err }, 'MCP keepalive WS error');
-          }
-          ws.terminate();
-        });
-      });
-      return;
-    }
-
-    if (req.url?.startsWith('/collab')) {
-      // Same admit gate as the HTTP legs: a wrong-Host upgrade never reaches
-      // Hocuspocus (the CRDT write surface).
-      if (remoteAccess !== undefined && !isRemoteAdmitted(req, remoteAccess)) {
-        log.debug({ url: req.url, host: req.headers.host }, '[collab] /collab upgrade refused');
-        socket.destroy();
-        return;
-      }
-      socket.on('error', (err: NodeJS.ErrnoException) => {
-        if (handleCollabSocketError(err)) return;
-        log.error({ err }, 'Upgrade socket error');
-      });
-      liveUpgradeSockets.add(socket);
-      socket.once('close', () => liveUpgradeSockets.delete(socket));
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        const clientConnection = hocuspocus.handleConnection(
-          ws as unknown as WebSocket,
-          req as unknown as Request,
-        );
-        let closedByPolicy = false;
-        ws.on('message', (data: ArrayBuffer | Buffer) => {
-          if (closedByPolicy) return;
-          const bytes = data.byteLength;
-          if (bytes > MAX_COLLAB_MESSAGE_BYTES) {
-            closedByPolicy = true;
-            incrementCollabMessageTooLarge();
-            log.warn(
-              { event: 'collab-message-too-large', bytes, limit: MAX_COLLAB_MESSAGE_BYTES },
-              'Collab WebSocket message rejected before Yjs processing',
-            );
-            ws.close(1009, 'Message Too Big');
-            return;
-          }
-          clientConnection.handleMessage(new Uint8Array(data as Buffer));
-        });
-        ws.on('close', (code: number, reason: Buffer) => {
-          clientConnection.handleClose({ code, reason: reason.toString() });
-        });
-        ws.on('error', (err: NodeJS.ErrnoException) => {
-          if (err.code === 'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH') {
-            incrementCollabMessageTooLarge();
-            log.warn(
-              { event: 'collab-message-too-large', limit: MAX_COLLAB_MESSAGE_BYTES },
-              'Collab WebSocket frame rejected by ws maxPayload before Yjs processing',
-            );
-            ws.terminate();
-            return;
-          }
-          if (!handleCollabSocketError(err)) {
-            log.error({ err }, 'WebSocket error');
-          }
-          ws.terminate();
-        });
-      });
-      return;
-    }
-
     socket.destroy();
   };
 
   httpServer.on('request', onRequest);
   httpServer.on('upgrade', onUpgrade);
 
+  let shutdownPromise: Promise<void> | undefined;
+  const shutdown = (): Promise<void> => {
+    shutdownPromise ??= (async () => {
+      // Reject new upgrades before the host's one-shot socket drain; a socket
+      // admitted afterward would have no later mount shutdown to reap it.
+      httpServer.off('upgrade', onUpgrade);
+      await collaborationHost.shutdown();
+    })();
+    return shutdownPromise;
+  };
+
   return {
-    wss,
-    shutdown: async (): Promise<void> => {
-      if (shuttingDown) return;
-      // Set before destroying sockets so any `'close'` handler that fires as a
-      // result sees the flag and skips scheduling fresh grace-cleanup work.
-      shuttingDown = true;
-      // Destroy every live upgrade socket. Without this the caller's
-      // `wss.close()` and `httpServer.close()` steps block on the still-open
-      // sockets until their destroy-step timeout fires (see
-      // `MountMcpAndApiHandle.shutdown`). Destroying the raw socket also fires
-      // each WS's `'close'` handler, so keepalive cleanup still runs.
-      for (const socket of liveUpgradeSockets) {
-        try {
-          socket.destroy();
-        } catch {
-          // Best-effort — an already-destroyed socket is a no-op.
-        }
-      }
-      liveUpgradeSockets.clear();
-      for (const timer of keepaliveGraceTimers.values()) {
-        clearTimeout(timer);
-      }
-      keepaliveGraceTimers.clear();
-      if (keepaliveGraceInflight.size > 0) {
-        await Promise.allSettled(keepaliveGraceInflight);
-      }
-    },
+    wss: collaborationHost.wss,
+    shutdown,
   };
 }
 
@@ -777,62 +475,4 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
  *
  * Exported for unit testing. Never throws.
  */
-export function parseKeepaliveConnectionId(url: string | undefined): string | null {
-  if (!url) return null;
-  try {
-    // The second arg is a dummy base so `new URL` accepts path-only inputs.
-    const parsed = new URL(url, 'http://localhost');
-    const connectionId = parsed.searchParams.get('connectionId');
-    return validateAgentId(connectionId);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Identity bundle parsed from the keepalive URL when the cli's MCP shim
- * passes `displayName` + `clientName` + `colorSeed` alongside `connectionId`.
- * All three must be present for the server's WS-upgrade handler to bootstrap
- * a presence entry — the entry shape requires `displayName` + `icon` (derived
- * from `clientName`) + `color` (derived from `colorSeed`), and a partial
- * identity has no useful fallback.
- *
- * Length cap mirrors `validateAgentId` defense-in-depth: log-injection +
- * bounded-cardinality span attribute hygiene. 256 chars is generous for
- * human display names and conservatively below the URL line-length some
- * proxies start truncating at.
- *
- * Exported for unit testing. Never throws.
- */
-const MAX_KEEPALIVE_IDENTITY_LEN = 256;
-
-function sanitizeIdentityField(raw: string | null): string | null {
-  if (raw === null) return null;
-  if (raw.length === 0 || raw.length > MAX_KEEPALIVE_IDENTITY_LEN) return null;
-  // Strip control chars (defense-in-depth against log-injection / awareness
-  // value pollution). Allow normal printable Unicode (display names may
-  // include spaces, punctuation, non-ASCII letters).
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: intentional sanitisation
-  if (/[ -]/.test(raw)) return null;
-  return raw;
-}
-
-interface KeepaliveIdentity {
-  displayName: string;
-  clientName: string;
-  colorSeed: string;
-}
-
-export function parseKeepaliveIdentity(url: string | undefined): KeepaliveIdentity | null {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url, 'http://localhost');
-    const displayName = sanitizeIdentityField(parsed.searchParams.get('displayName'));
-    const clientName = sanitizeIdentityField(parsed.searchParams.get('clientName'));
-    const colorSeed = sanitizeIdentityField(parsed.searchParams.get('colorSeed'));
-    if (displayName === null || clientName === null || colorSeed === null) return null;
-    return { displayName, clientName, colorSeed };
-  } catch {
-    return null;
-  }
-}
+export { parseKeepaliveConnectionId, parseKeepaliveIdentity } from './collaboration-host.ts';

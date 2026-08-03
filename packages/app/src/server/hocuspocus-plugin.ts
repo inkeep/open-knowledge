@@ -23,21 +23,18 @@ import {
 } from '@inkeep/open-knowledge-core';
 import {
   AcpThreadManager,
-  attachAcpThreadSocket,
   buildOkMcpStdioCommand,
   createAssetServeMiddleware,
+  createCollaborationHost,
   createServer,
   getLogger,
-  handleCollabSocketError,
   makeLazyEmbeddingsKeyStore,
-  parseKeepaliveConnectionId,
   releaseServerLock,
-  toBroadcasterKey,
   updateServerLockPort,
 } from '@inkeep/open-knowledge-server';
 import sirv from 'sirv';
 import type { Plugin } from 'vite';
-import { WebSocketServer } from 'ws';
+import type { WebSocketServer } from 'ws';
 import { parse as parseYaml } from 'yaml';
 import { computeDevApiConfigResponse } from './api-config-handler.ts';
 
@@ -101,9 +98,6 @@ const TEST_PROJECT_DIR = process.env.OK_TEST_PROJECT_DIR
   ? realpathSync(process.env.OK_TEST_PROJECT_DIR)
   : undefined;
 
-const KEEPALIVE_GRACE_MS = 10_000;
-const MAX_COLLAB_MESSAGE_BYTES = 1024 * 1024;
-
 // Gate the process.once('exit', ...) registration to avoid tripping
 // MaxListenersExceededWarning after ~10 Vite restarts. The exit handler
 // reads `latestLockDir` inside its closure so a Vite restart that swaps
@@ -112,17 +106,66 @@ const MAX_COLLAB_MESSAGE_BYTES = 1024 * 1024;
 let exitHandlerRegistered = false;
 let latestLockDir: string | null = null;
 
+const VITE_WSS_CLOSE_TIMEOUT_MS = 5_000;
+
+function closeWebSocketServer(wss: WebSocketServer): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      const terminationErrors: unknown[] = [];
+      for (const client of wss.clients) {
+        try {
+          client.terminate();
+        } catch (err) {
+          terminationErrors.push(err);
+        }
+      }
+      const timeoutError = new Error(
+        `WebSocket server close timed out after ${VITE_WSS_CLOSE_TIMEOUT_MS}ms`,
+      );
+      reject(
+        terminationErrors.length === 0
+          ? timeoutError
+          : new AggregateError(
+              [timeoutError, ...terminationErrors],
+              'WebSocket server close timed out and client termination failed',
+            ),
+      );
+    }, VITE_WSS_CLOSE_TIMEOUT_MS);
+    timer.unref?.();
+
+    const settle = (err?: unknown): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (err) reject(err);
+      else resolve();
+    };
+
+    try {
+      wss.close(settle);
+    } catch (err) {
+      settle(err);
+    }
+  });
+}
+
 export function hocuspocusPlugin(): Plugin {
+  const activeRuntimeTeardowns = new Set<() => Promise<void>>();
   return {
     name: 'hocuspocus',
+    async buildEnd() {
+      const results = await Promise.allSettled(
+        [...activeRuntimeTeardowns].map((teardown) => teardown()),
+      );
+      const errors = results
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map((result) => result.reason);
+      if (errors.length > 0) throw new AggregateError(errors, 'Hocuspocus Vite teardown failed');
+    },
     async configureServer(server) {
-      // Per-invocation closure state. On Vite restart the OLD close handler
-      // sets its own `shuttingDown = true` on its own binding; the NEW
-      // invocation starts fresh. Mirrors boot.ts's closure shape.
-      const keepaliveGraceTimers = new Map<string, ReturnType<typeof setTimeout>>();
-      const keepaliveGraceInflight = new Set<Promise<void>>();
-      let shuttingDown = false;
-
       configureServerInvocations += 1;
       if (configureServerInvocations > 1) {
         console.warn(
@@ -223,229 +266,16 @@ export function hocuspocusPlugin(): Plugin {
       // Rehydrate archived threads before the first `list` can arrive.
       await acpThreadManager?.init();
 
-      const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_COLLAB_MESSAGE_BYTES });
-      wss.on('error', (err) => {
-        console.error('[collab] WebSocketServer error:', err);
+      const collaborationHost = createCollaborationHost({
+        hocuspocus,
+        log: getLogger('hocuspocus'),
+        sessionManager,
+        agentFocusBroadcaster,
+        agentPresenceBroadcaster,
+        maintenanceCoordinator: currentSrv.maintenanceCoordinator,
+        acpThreadManager,
       });
-
-      // `prependListener` intercepts /collab BEFORE Vite's HMR handler.
-      //
-      // Instrumented because `/collab` has reported-but-non-reproducible
-      // failure modes where the HTTP Upgrade never completes (Chrome shows
-      // Status: pending, 0 B). The four log lines below pinpoint where in
-      // the chain a stuck connection halted:
-      //
-      //   [collab] upgrade received …     — event reached our listener
-      //   [collab] handleUpgrade starting — path matched, pre-ws handoff
-      //   [collab] handleUpgrade threw …  — sync throw (e.g. double-upgrade)
-      //   [collab] handshake complete …   — 101 sent; hocuspocus takes over
-      //
-      // If a stuck WS report shows none of these lines for the offending
-      // connection, the upgrade never reached this listener.
-      server.httpServer?.prependListener('upgrade', (req, socket, head) => {
-        if (!req.url?.startsWith('/collab')) return;
-
-        console.info(
-          `[collab] upgrade received url=${req.url} protocol=${req.headers['sec-websocket-protocol'] ?? 'none'} host=${req.headers.host ?? 'none'} origin=${req.headers.origin ?? 'none'}`,
-        );
-
-        // ACP agent-thread frames — bare WS, never Hocuspocus. Mirrors the
-        // `/collab/thread` branch in mcp-mount.ts (drift hazard: keep both).
-        if (req.url.startsWith('/collab/thread')) {
-          if (acpThreadManager === null) {
-            socket.destroy();
-            return;
-          }
-          socket.on('error', (err: NodeJS.ErrnoException) => {
-            if (handleCollabSocketError(err)) return;
-            console.error('[collab] ACP thread socket error:', err);
-          });
-          try {
-            wss.handleUpgrade(req, socket, head, (ws) => {
-              attachAcpThreadSocket(ws, acpThreadManager, getLogger('acp-threads'));
-            });
-          } catch (err) {
-            console.error(`[collab] thread handleUpgrade threw for ${req.url}:`, err);
-            try {
-              socket.destroy();
-            } catch {
-              // Already-destroyed — swallow.
-            }
-          }
-          return;
-        }
-
-        // `ok mcp` holds a persistent WS to /collab/keepalive?connectionId=<id>
-        // to register as an active client. Must route as a bare WS — MCP
-        // never sends sync-step-1 that Hocuspocus waits for, so routing
-        // through hocuspocus.handleConnection would leave the socket
-        // half-initialized in the connection registry.
-        if (req.url.startsWith('/collab/keepalive')) {
-          socket.on('error', (err: NodeJS.ErrnoException) => {
-            if (handleCollabSocketError(err)) return;
-            console.error('[collab] MCP keepalive socket error:', err);
-          });
-          console.info(`[collab] keepalive handleUpgrade starting for ${req.url}`);
-          try {
-            wss.handleUpgrade(req, socket, head, (ws) => {
-              // connectionId drives cleanup of agent sessions + focus +
-              // presence. Legacy clients without it fall through to the
-              // client-side 5s TTL filter.
-              const connectionId = parseKeepaliveConnectionId(req.url);
-
-              if (connectionId) {
-                const existing = keepaliveGraceTimers.get(connectionId);
-                if (existing !== undefined) {
-                  clearTimeout(existing);
-                  keepaliveGraceTimers.delete(connectionId);
-                  console.info(
-                    `[keepalive] reconnect during grace — timer cancelled connectionId=${connectionId}`,
-                  );
-                }
-              }
-
-              console.info(`[collab] keepalive handshake complete for ${req.url}`);
-
-              const pingTimer = setInterval(() => {
-                try {
-                  ws.ping();
-                } catch {
-                  // Dead socket fires 'close' + 'error' which clean up below.
-                }
-              }, 30_000);
-              pingTimer.unref?.();
-
-              // Client-side TTL filter hides presence entries older than 5s.
-              // Write-path calls only fire on MCP edits, so agents between
-              // tool calls (LLM thinking 10-30s) would drop off without this
-              // 3s bump.
-              // `toBroadcasterKey` converts the raw URL id into the
-              // `agent-<id>` map key used by HTTP write handlers; without
-              // it, `bumpPresenceTs` no-ops because the entry lives under
-              // the prefixed key.
-              const tsRefreshTimer = connectionId
-                ? setInterval(() => {
-                    agentPresenceBroadcaster?.bumpPresenceTs(toBroadcasterKey(connectionId));
-                  }, 3_000)
-                : null;
-              tsRefreshTimer?.unref?.();
-
-              ws.on('close', () => {
-                clearInterval(pingTimer);
-                if (tsRefreshTimer !== null) clearInterval(tsRefreshTimer);
-                if (!connectionId) return;
-                const timer = setTimeout(() => {
-                  keepaliveGraceTimers.delete(connectionId);
-                  // If destroy already ran, the sessionManager +
-                  // broadcasters may be mid-teardown. Racing them is worse
-                  // than skipping cleanup.
-                  if (shuttingDown) return;
-                  const work = (async () => {
-                    console.info(
-                      `[keepalive] grace expired — cleaning up sessions connectionId=${connectionId}`,
-                    );
-                    try {
-                      await sessionManager.closeAllForAgent(connectionId);
-                    } catch (err) {
-                      console.error(
-                        `[keepalive] closeAllForAgent failed connectionId=${connectionId}`,
-                        err,
-                      );
-                    }
-                    try {
-                      agentFocusBroadcaster?.clearFocus(connectionId);
-                    } catch (err) {
-                      console.error(
-                        `[keepalive] clearFocus failed connectionId=${connectionId}`,
-                        err,
-                      );
-                    }
-                    try {
-                      agentPresenceBroadcaster?.clearPresence(toBroadcasterKey(connectionId));
-                    } catch (err) {
-                      console.error(
-                        `[keepalive] clearPresence failed connectionId=${connectionId}`,
-                        err,
-                      );
-                    }
-                  })();
-                  keepaliveGraceInflight.add(work);
-                  work.finally(() => keepaliveGraceInflight.delete(work));
-                }, KEEPALIVE_GRACE_MS);
-                timer.unref?.();
-                keepaliveGraceTimers.set(connectionId, timer);
-                console.info(
-                  `[keepalive] disconnected — grace timer started connectionId=${connectionId} graceMs=${KEEPALIVE_GRACE_MS}`,
-                );
-              });
-              ws.on('error', (err: NodeJS.ErrnoException) => {
-                if (!handleCollabSocketError(err)) {
-                  console.error('[collab] keepalive WS error:', err);
-                }
-                ws.terminate();
-              });
-            });
-          } catch (err) {
-            console.error(`[collab] keepalive handleUpgrade threw for ${req.url}:`, err);
-            try {
-              socket.destroy();
-            } catch {
-              // Already-destroyed sockets throw on destroy; swallow.
-            }
-          }
-          return;
-        }
-
-        // /collab — browser HocuspocusProvider connections. The socket error
-        // handler attaches BEFORE handleUpgrade because ECONNRESET during
-        // the upgrade handshake fires asynchronously with no listener, which
-        // crashes the whole Node process (see websockets/ws#1017).
-        socket.on('error', (err: NodeJS.ErrnoException) => {
-          if (handleCollabSocketError(err)) return;
-          console.error('[collab] Upgrade socket error:', err);
-        });
-
-        console.info(`[collab] handleUpgrade starting for ${req.url}`);
-
-        try {
-          wss.handleUpgrade(req, socket, head, (ws) => {
-            const beforeCount = hocuspocus.getConnectionsCount?.() ?? -1;
-            console.info(
-              `[collab] handshake complete for ${req.url} (connections before=${beforeCount})`,
-            );
-            const clientConnection = hocuspocus.handleConnection(ws, req);
-            let closedByPolicy = false;
-            ws.on('message', (data: ArrayBuffer | Buffer) => {
-              if (closedByPolicy) return;
-              if (data.byteLength > MAX_COLLAB_MESSAGE_BYTES) {
-                closedByPolicy = true;
-                console.warn(
-                  `[collab] frame rejected: ${data.byteLength} bytes exceeds ${MAX_COLLAB_MESSAGE_BYTES} byte limit`,
-                );
-                ws.close(1009, 'Message Too Big');
-                return;
-              }
-              clientConnection.handleMessage(new Uint8Array(data as Buffer));
-            });
-            ws.on('close', (code: number, reason: Buffer) => {
-              clientConnection.handleClose({ code, reason: reason.toString() });
-            });
-            ws.on('error', (err: NodeJS.ErrnoException) => {
-              if (!handleCollabSocketError(err)) {
-                console.error('[collab] WebSocket error:', err);
-              }
-              ws.terminate();
-            });
-          });
-        } catch (err) {
-          console.error(`[collab] handleUpgrade threw for ${req.url}:`, err);
-          try {
-            socket.destroy();
-          } catch {
-            // Already-destroyed — swallow.
-          }
-        }
-      });
+      server.httpServer?.prependListener('upgrade', collaborationHost.handleUpgrade);
 
       // Asset-serve middleware — sirv + Content-Disposition dispatch +
       // fail-closed 404 guard. Policy rationale + branch diagram lives
@@ -560,29 +390,37 @@ export function hocuspocusPlugin(): Plugin {
         next();
       });
 
-      // Close handler is pinned to THIS invocation's `currentSrv` so each
-      // configureServer pass destroys the srv it created — Vite restart
-      // semantics (close the old httpServer AFTER the new one has wired
-      // up) made a module-scope `srv` reference race with itself.
-      server.httpServer?.on('close', async () => {
-        shuttingDown = true;
-        for (const timer of keepaliveGraceTimers.values()) {
-          clearTimeout(timer);
-        }
-        keepaliveGraceTimers.clear();
-        if (keepaliveGraceInflight.size > 0) {
-          await Promise.allSettled(keepaliveGraceInflight);
-        }
-        try {
-          await acpThreadManager?.destroy();
-        } catch (err) {
-          console.error('[hocuspocus] acpThreadManager.destroy() failed:', err);
-        }
-        try {
-          await currentSrv.destroy();
-        } catch (err) {
-          console.error('[hocuspocus] srv.destroy() failed:', err);
-        }
+      let teardownPromise: Promise<void> | undefined;
+      const teardown = (): Promise<void> => {
+        teardownPromise ??= (async () => {
+          const errors: unknown[] = [];
+          const run = async (label: string, action: () => Promise<void>): Promise<void> => {
+            try {
+              await action();
+            } catch (err) {
+              errors.push(err);
+              getLogger('hocuspocus').error(
+                { err },
+                `Vite collaboration teardown failed: ${label}`,
+              );
+            }
+          };
+          server.httpServer?.off('upgrade', collaborationHost.handleUpgrade);
+          await run('ACP thread manager', async () => acpThreadManager?.destroy());
+          await run('collaboration host', () => collaborationHost.shutdown());
+          await run('WebSocket server', () => closeWebSocketServer(collaborationHost.wss));
+          await run('server instance', () => currentSrv.destroy());
+          if (errors.length > 0)
+            throw new AggregateError(errors, 'Vite collaboration teardown failed');
+        })();
+        void teardownPromise.finally(() => activeRuntimeTeardowns.delete(teardown)).catch(() => {});
+        return teardownPromise;
+      };
+      activeRuntimeTeardowns.add(teardown);
+      server.httpServer?.on('close', () => {
+        void teardown().catch((err) =>
+          getLogger('hocuspocus').error({ err }, 'HTTP close fallback teardown failed'),
+        );
       });
 
       getLogger('hocuspocus').info({}, 'WebSocket server ready on /collab');

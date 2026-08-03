@@ -97,10 +97,43 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
       innerAssetCalls += 1;
     };
     const createAssetServeMiddlewareSpy = vi.fn(() => innerAssetFn);
+    const handleUpgrade = vi.fn(() => false);
+    const teardownOrder: string[] = [];
+    let resolveHostShutdown: (() => void) | undefined;
+    const hostShutdown = new Promise<void>((resolve) => {
+      resolveHostShutdown = resolve;
+    });
+    const fakeHost = {
+      handleUpgrade,
+      shutdown: vi.fn(async () => {
+        teardownOrder.push('host');
+        await hostShutdown;
+      }),
+      wss: {
+        close: (done: (err?: Error) => void) => {
+          teardownOrder.push('wss');
+          done();
+        },
+      },
+    };
+    const createCollaborationHostSpy = vi.fn(() => fakeHost);
+    const acpInit = vi.fn(async () => {});
+    const acpDestroy = vi.fn(async () => {
+      teardownOrder.push('acp');
+    });
+    class FakeAcpThreadManager {
+      init = acpInit;
+      destroy = acpDestroy;
+    }
+    const destroyServer = vi.fn(async () => {
+      teardownOrder.push('server');
+    });
 
     vi.doMock('@inkeep/open-knowledge-server', () => ({
       ...actualServerPkg,
+      AcpThreadManager: FakeAcpThreadManager,
       createAssetServeMiddleware: createAssetServeMiddlewareSpy,
+      createCollaborationHost: createCollaborationHostSpy,
       createServer: () => ({
         lockDir: testContentDir,
         contentFilter: { isPathIgnored: () => false },
@@ -115,7 +148,8 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
         sessionManager: { closeAllForAgent: async () => {} },
         agentFocusBroadcaster: { clearFocus: () => {} },
         agentPresenceBroadcaster: { clearPresence: () => {}, bumpPresenceTs: () => {} },
-        destroy: async () => {},
+        maintenanceCoordinator: {},
+        destroy: destroyServer,
       }),
       handleCollabSocketError: () => false,
       parseKeepaliveConnectionId: () => null,
@@ -160,6 +194,14 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
 
     // Asset middleware factory was called exactly once.
     expect(createAssetServeMiddlewareSpy).toHaveBeenCalledTimes(1);
+    expect(createCollaborationHostSpy).toHaveBeenCalledTimes(1);
+    expect(createCollaborationHostSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maintenanceCoordinator: expect.anything(),
+        hocuspocus: expect.anything(),
+      }),
+    );
+    expect(httpServer.listeners('upgrade')).toEqual([handleUpgrade]);
 
     // Two middlewares were registered synchronously: the asset wrapper +
     // the api handler.
@@ -204,5 +246,281 @@ describe('hocuspocusPlugin.configureServer middleware ordering', () => {
       assetWrapper({ url: nonBypassUrl }, {}, () => {});
     }
     expect(innerAssetCalls).toBe(4);
+
+    let buildEndSettled = false;
+    const buildEnd = Promise.resolve(plugin.buildEnd?.call(plugin)).then(() => {
+      buildEndSettled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fakeHost.shutdown).toHaveBeenCalledOnce();
+    expect(buildEndSettled).toBe(false);
+    httpServer.emit('close');
+    expect(fakeHost.shutdown).toHaveBeenCalledOnce();
+    expect(teardownOrder).toEqual(['acp', 'host']);
+    resolveHostShutdown?.();
+    await buildEnd;
+    expect(buildEndSettled).toBe(true);
+    expect(fakeHost.shutdown).toHaveBeenCalledOnce();
+    expect(acpDestroy).toHaveBeenCalledOnce();
+    expect(destroyServer).toHaveBeenCalledOnce();
+    expect(teardownOrder).toEqual(['acp', 'host', 'wss', 'server']);
+    expect(httpServer.listeners('upgrade')).toEqual([]);
+  });
+
+  test('buildEnd awaits every overlapping configureServer runtime', async () => {
+    const testContentDir = mkTmp();
+    process.env.OK_TEST_CONTENT_DIR = testContentDir;
+    const shutdowns = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+    const destroyServers = [vi.fn(async () => {}), vi.fn(async () => {})];
+    const hosts = shutdowns.map((shutdown) => ({
+      handleUpgrade: vi.fn(() => false),
+      shutdown: vi.fn(() => shutdown.promise),
+      wss: { close: (done: (err?: Error) => void) => done() },
+    }));
+    let serverIndex = 0;
+    let hostIndex = 0;
+    class FakeAcpThreadManager {
+      async init(): Promise<void> {}
+      async destroy(): Promise<void> {}
+    }
+    vi.doMock('@inkeep/open-knowledge-server', () => ({
+      ...actualServerPkg,
+      AcpThreadManager: FakeAcpThreadManager,
+      createAssetServeMiddleware: () => () => {},
+      createCollaborationHost: () => {
+        const host = hosts[hostIndex++];
+        if (host === undefined) throw new Error('missing fake host');
+        return host;
+      },
+      createServer: () => {
+        const destroy = destroyServers[serverIndex++];
+        if (destroy === undefined) throw new Error('missing fake server');
+        return {
+          lockDir: testContentDir,
+          contentFilter: { isPathIgnored: () => false, isExcluded: () => false },
+          hocuspocus: { hooks: async () => {} },
+          sessionManager: {},
+          agentFocusBroadcaster: {},
+          agentPresenceBroadcaster: {},
+          maintenanceCoordinator: {},
+          destroy,
+        };
+      },
+      getLogger: () => ({ info: () => {}, error: () => {} }),
+      makeLazyEmbeddingsKeyStore: () => ({}),
+      releaseServerLock: () => {},
+      updateServerLockPort: () => {},
+    }));
+    const { hocuspocusPlugin } = await import('./hocuspocus-plugin.ts?overlap-test');
+    const makeViteServer = () => {
+      const httpServer = new EventEmitter() as EventEmitter & {
+        address: () => null;
+      };
+      httpServer.address = () => null;
+      const middlewares = { use: () => middlewares };
+      return { httpServer, middlewares };
+    };
+    const plugin = hocuspocusPlugin();
+    const first = makeViteServer();
+    const second = makeViteServer();
+    // biome-ignore lint/suspicious/noExplicitAny: EventEmitter Vite stub
+    await (plugin.configureServer as any).call(plugin, first);
+    // biome-ignore lint/suspicious/noExplicitAny: EventEmitter Vite stub
+    await (plugin.configureServer as any).call(plugin, second);
+
+    let buildEndSettled = false;
+    const buildEnd = Promise.resolve(plugin.buildEnd?.call(plugin)).then(() => {
+      buildEndSettled = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    for (const host of hosts) expect(host.shutdown).toHaveBeenCalledOnce();
+    expect(buildEndSettled).toBe(false);
+    shutdowns[0]?.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(buildEndSettled).toBe(false);
+    shutdowns[1]?.resolve();
+    await buildEnd;
+    expect(buildEndSettled).toBe(true);
+    for (const destroy of destroyServers) expect(destroy).toHaveBeenCalledOnce();
+  });
+
+  test('bounds WebSocket close and force-terminates clients before continuing teardown', async () => {
+    vi.useFakeTimers();
+    try {
+      const testContentDir = mkTmp();
+      process.env.OK_TEST_CONTENT_DIR = testContentDir;
+      const order: string[] = [];
+      const logger = { info: vi.fn(), error: vi.fn() };
+      const terminateClient = vi.fn(() => {
+        order.push('client');
+      });
+      class FakeAcpThreadManager {
+        async init(): Promise<void> {}
+        async destroy(): Promise<void> {
+          order.push('acp');
+        }
+      }
+      const host = {
+        handleUpgrade: vi.fn(() => false),
+        shutdown: vi.fn(async () => {
+          order.push('host');
+        }),
+        wss: {
+          clients: new Set([{ terminate: terminateClient }]),
+          close: vi.fn((_done: (err?: Error) => void) => {
+            order.push('wss');
+          }),
+        },
+      };
+      const destroy = vi.fn(async () => {
+        order.push('server');
+      });
+      vi.doMock('@inkeep/open-knowledge-server', () => ({
+        ...actualServerPkg,
+        AcpThreadManager: FakeAcpThreadManager,
+        createAssetServeMiddleware: () => () => {},
+        createCollaborationHost: () => host,
+        createServer: () => ({
+          lockDir: testContentDir,
+          contentFilter: { isPathIgnored: () => false, isExcluded: () => false },
+          hocuspocus: { hooks: async () => {} },
+          sessionManager: {},
+          agentFocusBroadcaster: {},
+          agentPresenceBroadcaster: {},
+          maintenanceCoordinator: {},
+          destroy,
+        }),
+        getLogger: () => logger,
+        makeLazyEmbeddingsKeyStore: () => ({}),
+        releaseServerLock: () => {},
+        updateServerLockPort: () => {},
+      }));
+      const { hocuspocusPlugin } = await import('./hocuspocus-plugin.ts?wss-timeout-test');
+      const httpServer = new EventEmitter() as EventEmitter & { address: () => null };
+      httpServer.address = () => null;
+      const middlewares = { use: () => middlewares };
+      const plugin = hocuspocusPlugin();
+      // biome-ignore lint/suspicious/noExplicitAny: EventEmitter Vite stub
+      await (plugin.configureServer as any).call(plugin, { httpServer, middlewares });
+
+      let buildEndSettled = false;
+      const buildEndResult = Promise.resolve(plugin.buildEnd?.call(plugin)).then(
+        () => {
+          buildEndSettled = true;
+          return undefined;
+        },
+        (err: unknown) => {
+          buildEndSettled = true;
+          return err;
+        },
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(order).toEqual(['acp', 'host', 'wss']);
+      expect(buildEndSettled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(terminateClient).not.toHaveBeenCalled();
+      expect(buildEndSettled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      const buildEndError = await buildEndResult;
+      expect(buildEndError).toBeInstanceOf(AggregateError);
+      expect(terminateClient).toHaveBeenCalledOnce();
+      expect(host.wss.close).toHaveBeenCalledOnce();
+      expect(destroy).toHaveBeenCalledOnce();
+      expect(order).toEqual(['acp', 'host', 'wss', 'client', 'server']);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ err: expect.any(Error) }),
+        'Vite collaboration teardown failed: WebSocket server',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('propagates buildEnd AggregateError and contains HTTP-close fallback failures', async () => {
+    const testContentDir = mkTmp();
+    process.env.OK_TEST_CONTENT_DIR = testContentDir;
+    const order: string[] = [];
+    const logger = { info: vi.fn(), error: vi.fn() };
+    class FakeAcpThreadManager {
+      async init(): Promise<void> {}
+      async destroy(): Promise<void> {
+        order.push('acp');
+        throw new Error('acp failed');
+      }
+    }
+    const host = {
+      handleUpgrade: vi.fn(() => false),
+      shutdown: vi.fn(async () => {
+        order.push('host');
+        throw new Error('host failed');
+      }),
+      wss: {
+        close: (done: (err?: Error) => void) => {
+          order.push('wss');
+          done(new Error('wss failed'));
+        },
+      },
+    };
+    const destroy = vi.fn(async () => {
+      order.push('server');
+      throw new Error('server failed');
+    });
+    vi.doMock('@inkeep/open-knowledge-server', () => ({
+      ...actualServerPkg,
+      AcpThreadManager: FakeAcpThreadManager,
+      createAssetServeMiddleware: () => () => {},
+      createCollaborationHost: () => host,
+      createServer: () => ({
+        lockDir: testContentDir,
+        contentFilter: { isPathIgnored: () => false, isExcluded: () => false },
+        hocuspocus: { hooks: async () => {} },
+        sessionManager: {},
+        agentFocusBroadcaster: {},
+        agentPresenceBroadcaster: {},
+        maintenanceCoordinator: {},
+        destroy,
+      }),
+      getLogger: () => logger,
+      makeLazyEmbeddingsKeyStore: () => ({}),
+      releaseServerLock: () => {},
+      updateServerLockPort: () => {},
+    }));
+    const { hocuspocusPlugin } = await import('./hocuspocus-plugin.ts?fallback-test');
+    const httpServer = new EventEmitter() as EventEmitter & { address: () => null };
+    httpServer.address = () => null;
+    const middlewares = { use: () => middlewares };
+    const plugin = hocuspocusPlugin();
+    // biome-ignore lint/suspicious/noExplicitAny: EventEmitter Vite stub
+    await (plugin.configureServer as any).call(plugin, { httpServer, middlewares });
+
+    const buildEndError: unknown = await Promise.resolve(plugin.buildEnd?.call(plugin)).then(
+      () => undefined,
+      (err: unknown) => err,
+    );
+
+    expect(buildEndError).toBeInstanceOf(AggregateError);
+    if (!(buildEndError instanceof AggregateError)) {
+      throw new Error('buildEnd did not propagate an AggregateError');
+    }
+    expect(buildEndError.message).toBe('Hocuspocus Vite teardown failed');
+    expect(buildEndError.errors).toHaveLength(1);
+    const runtimeError = buildEndError.errors[0];
+    expect(runtimeError).toBeInstanceOf(AggregateError);
+    if (!(runtimeError instanceof AggregateError)) {
+      throw new Error('runtime teardown did not aggregate phase failures');
+    }
+    expect(runtimeError.message).toBe('Vite collaboration teardown failed');
+    expect(runtimeError.errors).toHaveLength(4);
+    expect(order).toEqual(['acp', 'host', 'wss', 'server']);
+
+    httpServer.emit('close');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.any(AggregateError) }),
+      'HTTP close fallback teardown failed',
+    );
+    await expect(plugin.buildEnd?.call(plugin)).resolves.toBeUndefined();
   });
 });

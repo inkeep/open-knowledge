@@ -10,7 +10,7 @@ import {
   INLINE_RENDERABLE_EXTENSIONS,
 } from '@inkeep/open-knowledge-core';
 import sirv from 'sirv';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { createAssetServeMiddleware } from './asset-serve-middleware.ts';
 import { getFreeLoopbackPort } from './loopback-rig-test-helpers.ts';
@@ -23,7 +23,7 @@ import {
 
 const log = {
   error: () => {},
-  warn: () => {},
+  warn: vi.fn(),
   info: () => {},
   debug: () => {},
   child: () => log,
@@ -39,18 +39,21 @@ const hocuspocus = {
 
 let servers: Array<{ httpServer: HttpServer; mount: MountMcpAndApiHandle }> = [];
 
-async function startMountedServer(handler: McpHttpHandler): Promise<{ port: number }> {
+async function startMountedServer(
+  handler: McpHttpHandler,
+  serverHocuspocus: Hocuspocus = hocuspocus,
+): Promise<{ port: number; mount: MountMcpAndApiHandle }> {
   const httpServer = createServer();
   const mount = mountMcpAndApi({
     httpServer,
-    hocuspocus,
+    hocuspocus: serverHocuspocus,
     mcpHttpHandler: handler,
     log,
   });
   const port = await getFreeLoopbackPort();
   await new Promise<void>((resolve) => httpServer.listen(port, '127.0.0.1', () => resolve()));
   servers.push({ httpServer, mount });
-  return { port };
+  return { port, mount };
 }
 
 async function postMcpWithHost(
@@ -106,7 +109,11 @@ async function getWithHost(
   });
 }
 
-async function requestUnknownUpgrade(port: number): Promise<string> {
+async function requestUnknownUpgrade(port: number, forwarding = false): Promise<string> {
+  return requestUpgrade(port, '/not-a-websocket-route', forwarding);
+}
+
+async function requestUpgrade(port: number, path: string, forwarding = false): Promise<string> {
   return new Promise((resolve, reject) => {
     const socket = createNetConnection({ host: '127.0.0.1', port });
     const chunks: Buffer[] = [];
@@ -118,12 +125,13 @@ async function requestUnknownUpgrade(port: number): Promise<string> {
     socket.on('connect', () => {
       socket.write(
         [
-          'GET /not-a-websocket-route HTTP/1.1',
+          `GET ${path} HTTP/1.1`,
           'Host: 127.0.0.1',
           'Connection: Upgrade',
           'Upgrade: websocket',
           'Sec-WebSocket-Version: 13',
           'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+          ...(forwarding ? ['X-Forwarded-For: 203.0.113.7'] : []),
           '',
           '',
         ].join('\r\n'),
@@ -138,6 +146,34 @@ async function requestUnknownUpgrade(port: number): Promise<string> {
       clearTimeout(timer);
       resolve(Buffer.concat(chunks).toString('utf-8'));
     });
+  });
+}
+
+async function requestRejectedUpgrade(port: number, path: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({
+      hostname: '127.0.0.1',
+      port,
+      path,
+      headers: {
+        Connection: 'Upgrade',
+        Upgrade: 'websocket',
+        'Sec-WebSocket-Version': '13',
+        'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
+      },
+    });
+    req.on('response', (res) => {
+      const status = res.statusCode ?? 0;
+      res.resume();
+      res.on('end', () => resolve(status));
+    });
+    req.on('upgrade', (_res, socket) => {
+      socket.destroy();
+      reject(new Error('upgrade was admitted after shutdown'));
+    });
+    req.on('error', reject);
+    req.setTimeout(1_000, () => req.destroy(new Error('timed out waiting for upgrade refusal')));
+    req.end();
   });
 }
 
@@ -238,6 +274,47 @@ describe('mountMcpAndApi /mcp guard', () => {
 
     expect(response).toBe('');
     expect(calls).toBe(0);
+  });
+
+  test('warns before closing a proxied unknown upgrade', async () => {
+    vi.mocked(log.warn).mockClear();
+    const { port } = await startMountedServer({ handle: async () => {}, close: async () => {} });
+
+    await expect(requestUnknownUpgrade(port, true)).resolves.toBe('');
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ host: '127.0.0.1' }),
+      expect.stringContaining('refused proxied WS upgrade'),
+    );
+  });
+
+  test('shares shutdown and keeps routing attached until the server closes', async () => {
+    const handleConnection = vi.fn(() => ({
+      handleMessage: () => {},
+      handleClose: () => {},
+    }));
+    const scopedHocuspocus = {
+      hooks: async () => {},
+      handleConnection,
+    } as unknown as Hocuspocus;
+    const { port, mount } = await startMountedServer(
+      {
+        handle: async () => {},
+        close: async () => {},
+      },
+      scopedHocuspocus,
+    );
+    const first = mount.shutdown();
+    expect(mount.shutdown()).toBe(first);
+    await first;
+
+    const response = await fetch(`http://127.0.0.1:${port}/still-routed`, {
+      signal: AbortSignal.timeout(1_000),
+    });
+    expect(response.status).toBe(404);
+
+    await expect(requestRejectedUpgrade(port, '/collab')).resolves.toBe(404);
+    expect(handleConnection).not.toHaveBeenCalled();
+    expect(mount.wss.clients.size).toBe(0);
   });
 });
 

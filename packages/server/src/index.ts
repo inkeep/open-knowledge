@@ -96,6 +96,11 @@ export {
   type HiddenWindowsConsoleOptions,
   withHiddenWindowsConsole,
 } from './child-process-windows-hide.ts';
+export {
+  type CollaborationHost,
+  type CollaborationHostOptions,
+  createCollaborationHost,
+} from './collaboration-host.ts';
 export { getLocalDir, resolveContentDir, resolveLockDir } from './config/paths.ts';
 export { type Config, ConfigSchema } from './config/schema.ts';
 export { MCP_SERVER_NAME } from './constants.ts';
