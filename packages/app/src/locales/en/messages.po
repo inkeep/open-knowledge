@@ -638,6 +638,10 @@ msgstr "{packName} was already set up. Nothing to do."
 msgid "{pageCount, plural, one {The full text of your 1 page will be sent to <0>{host}</0> as it is re-embedded.} other {The full text of all {pageCount} pages will be sent to <1>{host}</1> as they are re-embedded.}}"
 msgstr "{pageCount, plural, one {The full text of your 1 page will be sent to <0>{host}</0> as it is re-embedded.} other {The full text of all {pageCount} pages will be sent to <1>{host}</1> as they are re-embedded.}}"
 
+#: src/components/PageHeader.tsx
+msgid "{percent}% from top"
+msgstr "{percent}% from top"
+
 #: src/components/acp/ThreadView.tsx
 msgid "{percent}% used ({left}% left)"
 msgstr "{percent}% used ({left}% left)"
@@ -3267,6 +3271,10 @@ msgstr "Count skill installs publicly"
 #: src/components/ConsentDialogBody.tsx
 msgid "Counting markdown files"
 msgstr "Counting markdown files"
+
+#: src/components/PageHeader.tsx
+msgid "Cover focal position"
+msgstr "Cover focal position"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Crash dump"

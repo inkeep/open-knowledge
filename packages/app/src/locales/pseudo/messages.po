@@ -638,6 +638,10 @@ msgstr ""
 msgid "{pageCount, plural, one {The full text of your 1 page will be sent to <0>{host}</0> as it is re-embedded.} other {The full text of all {pageCount} pages will be sent to <1>{host}</1> as they are re-embedded.}}"
 msgstr ""
 
+#: src/components/PageHeader.tsx
+msgid "{percent}% from top"
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "{percent}% used ({left}% left)"
 msgstr ""
@@ -3262,6 +3266,10 @@ msgstr ""
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Counting markdown files"
+msgstr ""
+
+#: src/components/PageHeader.tsx
+msgid "Cover focal position"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx

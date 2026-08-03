@@ -733,7 +733,11 @@ function Widget({ keyName, value, widgetType, path, onCommit, onSubmit }: Widget
     const str = typeof value === 'string' ? value : '';
     return <PageIconWidget keyName={keyName} value={str} onCommit={onCommit} />;
   }
-  if (keyName === 'cover') {
+  // `banner` is the Obsidian-plugin convention (Pixel Banner / Obsidian
+  // Banners); `cover` is the Notion vocabulary. Both route through the same
+  // widget so vaults migrated from either surface get the file-picker UX
+  // without a rename.
+  if (keyName === 'cover' || keyName === 'banner') {
     const str = typeof value === 'string' ? value : '';
     return <PageCoverWidget keyName={keyName} value={str} onCommit={onCommit} />;
   }

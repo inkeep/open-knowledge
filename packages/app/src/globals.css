@@ -5747,10 +5747,35 @@ html.electron-mode [data-slot="sidebar-inner"] {
   border-bottom: 1px solid var(--border);
 }
 
+.page-header-cover-slider {
+  /* The slider is the actual interactive layer that fills the fixed-height
+     .page-header-cover container. The img inside is sized 100% × 100% and
+     object-fit: cover clips within THIS box — without the width/height
+     here the wrapper would collapse to the img's natural aspect and
+     `object-position` would move within the natural size instead of the
+     visible chrome, so the drag would read as "phantom" (banner_y writes
+     but the visible framing never changes).
+
+     No `touch-action` override — the JS drag handler declines touch pointers
+     (see PageHeader `onPointerDown`), so vertical scroll on mobile falls
+     through as the browser default. */
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: ns-resize;
+  outline: none;
+}
+
+.page-header-cover-slider:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ring);
+}
+
 .page-header-cover-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* `object-position` is set inline from `banner_y` / `cover_y` — this is
+     the fallback for docs without a focal-position frontmatter key. */
   object-position: center;
   display: block;
   /* Cover images aren't user-actionable today — disable native drag so

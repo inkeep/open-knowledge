@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { resolvePageCover, resolvePageIcon } from './page-header-utils';
+import {
+  focalYToObjectPosition,
+  parseFocalY,
+  pickCoverKey,
+  resolvePageCover,
+  resolvePageIcon,
+} from './page-header-utils';
 
 // ---------------------------------------------------------------------------
 // resolvePageIcon
@@ -189,5 +195,155 @@ describe('resolvePageCover', () => {
 
   test('rejects a double leading slash (network-relative URL)', () => {
     expect(resolvePageCover('//evil.com/banner.png').kind).toBe('unsupported');
+  });
+
+  test('unwraps an Obsidian wikilink to a project asset path', () => {
+    const r = resolvePageCover('[[Attachments/pic.png]]');
+    expect(r.kind).toBe('path');
+    expect(r.value).toContain(encodeURIComponent('Attachments/pic.png'));
+  });
+
+  test('unwraps a wikilink with a display alias (drops the alias)', () => {
+    const r = resolvePageCover('[[banners/hero.jpg|Hero image]]');
+    expect(r.kind).toBe('path');
+    expect(r.value).toContain(encodeURIComponent('banners/hero.jpg'));
+  });
+
+  test('unwraps a wikilink with an anchor (drops the anchor)', () => {
+    const r = resolvePageCover('[[banners/hero.png#top]]');
+    expect(r.kind).toBe('path');
+    expect(r.value).toContain(encodeURIComponent('banners/hero.png'));
+  });
+
+  test('a non-image wikilink still rejects', () => {
+    expect(resolvePageCover('[[notes/plain-text]]').kind).toBe('unsupported');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseFocalY
+// ---------------------------------------------------------------------------
+
+describe('parseFocalY', () => {
+  test('accepts a plain number in range', () => {
+    expect(parseFocalY(0)).toBe(0);
+    expect(parseFocalY(0.35)).toBe(0.35);
+    expect(parseFocalY(0.5)).toBe(0.5);
+    expect(parseFocalY(1)).toBe(1);
+  });
+
+  test('accepts a numeric string', () => {
+    expect(parseFocalY('0.35')).toBe(0.35);
+    expect(parseFocalY('1')).toBe(1);
+  });
+
+  test('clamps below 0 up to 0', () => {
+    expect(parseFocalY(-0.5)).toBe(0);
+    expect(parseFocalY('-1')).toBe(0);
+  });
+
+  test('clamps above 1 down to 1', () => {
+    expect(parseFocalY(1.5)).toBe(1);
+    expect(parseFocalY('42')).toBe(1);
+  });
+
+  test('rejects non-numeric input', () => {
+    expect(parseFocalY(null)).toBeNull();
+    expect(parseFocalY(undefined)).toBeNull();
+    expect(parseFocalY('top')).toBeNull();
+    expect(parseFocalY({})).toBeNull();
+    expect(parseFocalY([])).toBeNull();
+    expect(parseFocalY(Number.NaN)).toBeNull();
+    expect(parseFocalY(Number.POSITIVE_INFINITY)).toBeNull();
+  });
+
+  test('rejects empty / whitespace-only strings (not Number("") = 0)', () => {
+    // Hand-edited `banner_y: ""` in YAML shouldn't snap the cover to the top
+    // of the frame — treat empty like non-numeric so the renderer falls back
+    // to center.
+    expect(parseFocalY('')).toBeNull();
+    expect(parseFocalY('   ')).toBeNull();
+    expect(parseFocalY('\t\n')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// focalYToObjectPosition
+// ---------------------------------------------------------------------------
+
+describe('focalYToObjectPosition', () => {
+  test('null → center (fallback)', () => {
+    expect(focalYToObjectPosition(null)).toBe('center');
+  });
+
+  test('0 → top', () => {
+    expect(focalYToObjectPosition(0)).toBe('center 0%');
+  });
+
+  test('0.5 → middle', () => {
+    expect(focalYToObjectPosition(0.5)).toBe('center 50%');
+  });
+
+  test('1 → bottom', () => {
+    expect(focalYToObjectPosition(1)).toBe('center 100%');
+  });
+
+  test('rounds to nearest whole percent', () => {
+    expect(focalYToObjectPosition(0.333)).toBe('center 33%');
+    expect(focalYToObjectPosition(0.666)).toBe('center 67%');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pickCoverKey
+// ---------------------------------------------------------------------------
+
+describe('pickCoverKey', () => {
+  test('picks banner when only banner is set', () => {
+    expect(pickCoverKey({ banner: 'https://example.com/x.png' })).toBe('banner');
+  });
+
+  test('picks cover when only cover is set', () => {
+    expect(pickCoverKey({ cover: 'https://example.com/x.png' })).toBe('cover');
+  });
+
+  test('prefers banner over cover when both resolve', () => {
+    expect(
+      pickCoverKey({
+        banner: 'https://example.com/a.png',
+        cover: 'https://example.com/b.png',
+      }),
+    ).toBe('banner');
+  });
+
+  test('falls through to cover when banner is present but not image-shaped', () => {
+    expect(pickCoverKey({ banner: 'not-an-image', cover: 'https://example.com/x.png' })).toBe(
+      'cover',
+    );
+  });
+
+  test('falls through to cover when banner is empty string', () => {
+    expect(pickCoverKey({ banner: '', cover: 'https://example.com/x.png' })).toBe('cover');
+  });
+
+  test('falls through to cover when banner is a wikilink to a non-image', () => {
+    expect(pickCoverKey({ banner: '[[notes/plain]]', cover: 'https://example.com/x.png' })).toBe(
+      'cover',
+    );
+  });
+
+  test('returns null when neither key resolves', () => {
+    expect(pickCoverKey({})).toBeNull();
+    expect(pickCoverKey({ banner: 'x', cover: 'y' })).toBeNull();
+    expect(pickCoverKey({ banner: null, cover: null })).toBeNull();
+  });
+
+  test('an Obsidian-shaped wikilink banner is picked over a URL cover', () => {
+    expect(
+      pickCoverKey({
+        banner: '[[Attachments/hero.png]]',
+        cover: 'https://example.com/x.png',
+      }),
+    ).toBe('banner');
   });
 });

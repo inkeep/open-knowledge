@@ -26,7 +26,12 @@
  * one — keeps the storage value unambiguous across moves / renames.
  */
 
-import { IMAGE_EXTENSIONS, isSafeUrl, toDesktopAssetHref } from '@inkeep/open-knowledge-core';
+import {
+  IMAGE_EXTENSIONS,
+  isSafeUrl,
+  parseWikiLink,
+  toDesktopAssetHref,
+} from '@inkeep/open-knowledge-core';
 
 /** Hard cap on raw frontmatter value length we'll classify — anything
  * longer is rejected. Guards against pathological pastes that could
@@ -85,12 +90,68 @@ export interface ResolvedPageCover {
 }
 
 /**
+ * Which frontmatter key is authoritative for the cover render — `banner` if
+ * present and image-shaped, else `cover`. Returns null when neither key
+ * resolves. The paired focal-Y key is derived from the winner
+ * (`banner` → `banner_y`, `cover` → `cover_y`).
+ *
+ * Banner-preferred is the Obsidian-plugin convention (Pixel Banner /
+ * Obsidian Banners); cover-fallthrough covers the Notion vocabulary. When
+ * banner is present but not image-shaped (typo, unsupported extension,
+ * bare text) the classifier rejects it and cover wins.
+ */
+export function pickCoverKey(map: Record<string, unknown>): 'banner' | 'cover' | null {
+  if (resolvePageCover(map.banner).kind !== 'unsupported') return 'banner';
+  if (resolvePageCover(map.cover).kind !== 'unsupported') return 'cover';
+  return null;
+}
+
+/**
+ * Vertical focal position for the cover image, expressed as a 0.0–1.0 float
+ * (0 = align to top, 1 = align to bottom, 0.5 = center). Matches the
+ * `banner_y` convention used by the popular Obsidian banner plugins so
+ * imported vaults light up without a rename. Non-numeric input, NaN, and
+ * Infinity return null (the renderer falls back to `center`); values
+ * outside [0, 1] clamp to the nearest bound.
+ */
+export function parseFocalY(raw: unknown): number | null {
+  // Number('') and Number(' ') both coerce to 0 — treat empty-string and
+  // whitespace-only inputs the same as non-numeric (return null, renderer
+  // falls back to center). Guards against `banner_y: ""` in hand-edited
+  // YAML snapping the cover to the top of the frame instead of leaving it
+  // centered.
+  if (typeof raw === 'string' && raw.trim() === '') return null;
+  const n = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : Number.NaN;
+  if (!Number.isFinite(n)) return null;
+  if (n < 0) return 0;
+  if (n > 1) return 1;
+  return n;
+}
+
+/**
+ * Translate a parsed focal-Y into a CSS `object-position` value. Null
+ * (unset / invalid) collapses to `center` so the img falls back to the
+ * pre-focal render.
+ */
+export function focalYToObjectPosition(y: number | null): string {
+  if (y === null) return 'center';
+  return `center ${Math.round(y * 100)}%`;
+}
+
+/**
  * Classify a frontmatter `cover` value. Covers MUST be image-shaped — no
  * emoji fallback (banner positions need a real image).
  */
 export function resolvePageCover(raw: unknown): ResolvedPageCover {
   if (typeof raw !== 'string') return { kind: 'unsupported', value: '' };
-  const trimmed = raw.trim();
+  // Obsidian Banners-plugin vaults store local banners as wikilinks
+  // (`banner: [[Attachments/pic.png]]`) — reuse the core `parseWikiLink`
+  // parser so both wikilink and plain-path shapes route through the same
+  // image classifier. Alias / anchor components are dropped: neither is
+  // meaningful for asset resolution.
+  const rawTrim = raw.trim();
+  const wiki = parseWikiLink(rawTrim);
+  const trimmed = wiki ? wiki.target : rawTrim;
   if (trimmed === '' || trimmed.length > MAX_VALUE_LENGTH) {
     return { kind: 'unsupported', value: '' };
   }

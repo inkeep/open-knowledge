@@ -495,6 +495,7 @@
       ["sanitized"],
       "</0> already has files here. Pick a different name."
     ],
+    "7b3zu8": ["Cover focal position"],
     "7bIiJ7": [
       "This moves <0>",
       ["name"],
@@ -666,6 +667,7 @@
     "AB4qw9": ["New terminal"],
     "ACKMCN": ["Failed to load skill settings: ", ["0"]],
     "AE7BY3": ["The terminal session ended."],
+    "AHFljV": [["percent"], "% from top"],
     "AIC67-": [
       "Reuse one tab when clicking through the sidebars. Off opens every click in its own tab."
     ],
