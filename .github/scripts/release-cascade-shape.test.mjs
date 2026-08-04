@@ -451,3 +451,44 @@ describe('the stable gate does not touch the beta cadence', () => {
     expect(warn).not.toContain("if: needs.prepare.outputs.channel == 'latest'");
   });
 });
+
+describe('release notes and pipeline ops route to independent webhooks', () => {
+  const announce = desktopRelease.slice(
+    desktopRelease.indexOf('- name: Announce stable release to Slack'),
+    desktopRelease.indexOf('- name: Announce stable release to Discord'),
+  );
+
+  test('the announcement prefers the releases webhook, falling back to the shared one', () => {
+    // A Slack incoming webhook is bound to its channel when it is installed
+    // and the payload carries no `channel` field, so this expansion is the
+    // ONLY thing deciding which channel the release notes land in.
+    expect(announce).toContain(
+      'SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}',
+    );
+    expect(announce).toContain(
+      'WEBHOOK_URL="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"',
+    );
+  });
+
+  test('the announcement posts to the resolved URL, never straight to the shared secret', () => {
+    // Collapsing this back to "$SLACK_WEBHOOK_URL" is the silent regression:
+    // the step still posts and still exits 0, and the notes quietly reappear
+    // in the ops channel with nothing failing.
+    expect(announce).toContain('--data "$payload" "$WEBHOOK_URL"');
+    expect(announce).not.toContain('--data "$payload" "$SLACK_WEBHOOK_URL"');
+  });
+
+  test('neither secret set still no-ops rather than posting to an empty URL', () => {
+    expect(announce).toContain('if [[ -z "$WEBHOOK_URL" ]]; then');
+  });
+
+  test('the smoke alarm keeps the shared webhook, so moving the notes cannot drag it', () => {
+    // The alarm pages pipeline ops, not release notes; it must keep paging
+    // wherever it pages today even after the notes move channel.
+    const alert = desktopRelease.slice(
+      desktopRelease.indexOf('- name: Alert on a blocked release'),
+    );
+    expect(alert).toContain('post "${SLACK_WEBHOOK_URL:-}" Slack');
+    expect(alert).not.toContain('SLACK_RELEASES_WEBHOOK_URL');
+  });
+});

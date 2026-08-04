@@ -1631,21 +1631,29 @@ jobs:
       # workflow_dispatch recovery flow so a manual asset re-upload for an
       # older tag does not re-announce it.
       #
-      # The webhook URL lives in the SLACK_WEBHOOK_URL secret on
-      # inkeep/open-knowledge. When it is absent (a fork, or before the
-      # secret is provisioned) the step no-ops cleanly; a Slack delivery
-      # error is downgraded to a ::warning:: — the release is "done" once
-      # published, so the announcement is strictly best-effort and must
-      # never fail an otherwise-successful release.
+      # A Slack incoming webhook is bound to one channel when it is installed,
+      # and the payload below carries no `channel` field, so the destination is
+      # decided entirely by which webhook URL this step posts to.
+      # SLACK_RELEASES_WEBHOOK_URL puts release notes in their own channel.
+      # SLACK_WEBHOOK_URL is the fallback, and is shared with the smoke alarms
+      # and refusal pages — those are pipeline ops rather than release notes,
+      # so they keep their own destination and must not be moved by rotating
+      # the shared secret. With neither set (a fork, or before either is
+      # provisioned) the step no-ops cleanly; a Slack delivery error is
+      # downgraded to a ::warning:: — the release is "done" once published, so
+      # the announcement is strictly best-effort and must never fail an
+      # otherwise-successful release.
       - name: Announce stable release to Slack
         if: success() && needs.prepare.outputs.channel == 'latest' && github.event_name != 'workflow_dispatch'
         env:
+          SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [[ -z "${SLACK_WEBHOOK_URL:-}" ]]; then
-            echo "::notice::SLACK_WEBHOOK_URL not set — skipping Slack announcement for ${RELEASE_TAG}."
+          WEBHOOK_URL="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"
+          if [[ -z "$WEBHOOK_URL" ]]; then
+            echo "::notice::No Slack webhook secret set — skipping Slack announcement for ${RELEASE_TAG}."
             exit 0
           fi
           RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
@@ -1688,7 +1696,7 @@ jobs:
           # The failing curl sits in an `if` condition, which `set -e` does
           # not treat as fatal — a Slack outage routes to the else/warning
           # and the step still exits 0.
-          if curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK_URL"; then
+          if curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$WEBHOOK_URL"; then
             echo "Posted stable-release announcement for ${RELEASE_TAG} to Slack."
           else
             echo "::warning::Slack announcement failed for ${RELEASE_TAG} (release is published; notification is best-effort)."
