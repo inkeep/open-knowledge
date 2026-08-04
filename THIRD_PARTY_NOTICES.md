@@ -1301,6 +1301,11 @@ Homepage: https://hocuspocus.dev
 
 Copyright (c) 2023, Tiptap GmbH
 
+### `@hono/node-server@2.0.12`
+Homepage: https://github.com/honojs/node-server
+
+Copyright (c) 2022 - present, Yusuke Wada and Hono contributors
+
 ### `@hono/node-server@1.19.14`
 Homepage: https://github.com/honojs/node-server
 

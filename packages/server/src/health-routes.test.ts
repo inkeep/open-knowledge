@@ -204,6 +204,34 @@ describe('/readyz provider states (mounted harness)', () => {
     expect(probe.body).toEqual({ ready: true, status: 'ready', degraded: ['shadow-repo'] });
   });
 
+  test('a throwing provider yields a structured 500, not the router default', async () => {
+    const httpServer = createServer();
+    const mount = mountMcpAndApi({
+      httpServer,
+      hocuspocus: fakeHocuspocus,
+      log: fakeLog as never,
+      health: {
+        readiness: () => {
+          throw new Error('provider exploded');
+        },
+        degraded: () => [],
+      },
+    });
+    const port = await getFreeLoopbackPort();
+    await new Promise<void>((r) => httpServer.listen(port, '127.0.0.1', () => r()));
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/readyz`);
+      expect(res.status).toBe(500);
+      expect(res.headers.get('content-type')).toBe('application/problem+json');
+      const body = (await res.json()) as { type: string };
+      expect(body.type).toBe('urn:ok:error:internal-server-error');
+    } finally {
+      await mount.shutdown();
+      await new Promise<void>((r) => mount.wss.close(() => r()));
+      await new Promise<void>((r) => httpServer.close(() => r()));
+    }
+  });
+
   test('an omitted provider reports ready (synchronous-init harness posture)', async () => {
     const probe = await probeWithReadiness(undefined);
     expect(probe.status).toBe(200);

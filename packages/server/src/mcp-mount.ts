@@ -31,6 +31,7 @@ import type { AgentSessionManager } from './agent-sessions.ts';
 import { isAllowedApiOrigin } from './api-origin.ts';
 import { createCollaborationHost } from './collaboration-host.ts';
 import { errorResponse } from './http/error-response.ts';
+import { createHttpApp, type HealthProvider } from './http/http-app.ts';
 import type { PinoLogger } from './logger.ts';
 import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
 import type { MaintenanceCoordinator } from './maintenance-coordinator.ts';
@@ -41,8 +42,7 @@ import {
   type ResolvedRemoteAccess,
 } from './remote-access.ts';
 
-/** Async-init lifecycle as reported by /readyz. Only `ready` answers 200. */
-export type ReadinessState = 'pending' | 'ready' | 'failed' | 'draining';
+export type { ReadinessState } from './http/http-app.ts';
 
 const MCP_CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
@@ -138,10 +138,7 @@ export interface MountMcpAndApiOptions {
    * When omitted (restartable test harness, whose init is synchronous), the
    * health routes still mount and report ready with no degraded subsystems.
    */
-  health?: {
-    readiness: () => ReadinessState;
-    degraded: () => readonly string[];
-  };
+  health?: HealthProvider;
   /**
    * Resolved `remote:` config (null/undefined ⇒ remote access disabled).
    * When set, EVERY surface (`/mcp`, `/api/*`, `/collab`, content assets,
@@ -218,44 +215,6 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
 
   const onRequest = (req: IncomingMessage, res: ServerResponse): void => {
     const url = req.url?.split('?')[0];
-    // Health surface, deliberately ABOVE every admission gate: orchestrator
-    // probes (Docker healthcheck, k8s, Railway/Fly) arrive with an IP Host
-    // header, no Origin, and often through a proxy that adds forwarding
-    // headers — all three of which the gates below refuse. The exemption is
-    // safe because the surface is liveness/readiness only; the sole
-    // project-adjacent disclosure is degraded subsystem names.
-    if (url === '/healthz' || url === '/readyz') {
-      if (req.method !== 'GET' && req.method !== 'HEAD') {
-        errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-          handler: 'health',
-          extraHeaders: { Allow: 'GET, HEAD' },
-        });
-        return;
-      }
-      const probeHeaders = {
-        'Cache-Control': 'no-store',
-        'X-Content-Type-Options': 'nosniff',
-      };
-      if (url === '/healthz') {
-        res.writeHead(200, { ...probeHeaders, 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end('ok');
-        return;
-      }
-      // Single-shaped body in both branches so consumers can read `status`
-      // and `degraded` unconditionally. `degraded` is only meaningful once
-      // ready — mid-init the list is still being populated.
-      const readiness = opts.health?.readiness() ?? 'ready';
-      const ready = readiness === 'ready';
-      res.writeHead(ready ? 200 : 503, { ...probeHeaders, 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          ready,
-          status: readiness,
-          degraded: ready ? (opts.health?.degraded() ?? []) : [],
-        }),
-      );
-      return;
-    }
     // Tripwire: proxy-forwarding headers on a server that never opted into
     // remote access mean a tunnel is pointed at us. Refuse with the fix
     // instruction — the alternative is silently serving a public tunnel with
@@ -486,7 +445,16 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     socket.destroy();
   };
 
-  httpServer.on('request', onRequest);
+  // The canonical Hono app owns top-level routing (health natively; every
+  // unmigrated surface falls through its catch-all into `onRequest`
+  // unchanged). The WS upgrade path stays a raw listener — it never routes
+  // through HTTP dispatch.
+  const { requestListener } = createHttpApp({
+    health: opts.health,
+    legacyDispatch: onRequest,
+    log,
+  });
+  httpServer.on('request', requestListener);
   httpServer.on('upgrade', onUpgrade);
 
   let shutdownPromise: Promise<void> | undefined;
