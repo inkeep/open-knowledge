@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   HIDDEN_CONFIG_BASENAMES,
   isHiddenDocName,
+  isProjectSkillBundlePath,
   isValidDocName,
   validateDocName,
 } from './doc-name.ts';
@@ -28,8 +29,22 @@ describe('isHiddenDocName', () => {
     // `opencode.json` ancestor segment counts as hidden.
     'opencode.jsonx',
     'opencode.json/notes',
+    // Skill bundle CONTENT is not hidden: the dot-dir is how a harness finds
+    // the skill, so classifying it hidden cost skills their search rank,
+    // embeddings, egress, and `[[` autocomplete entry.
+    '.agents/skills/consolidate-notes/SKILL',
+    '.claude/skills/consolidate-notes/references/deep-dive',
+    '.codex/skills/consolidate-notes/scripts/run',
+    '.ok/skills/stored-skill/SKILL',
   ])
     test(`visible: ${JSON.stringify(name)}`, () => expect(isHiddenDocName(name)).toBe(false));
+
+  test('the skill carve-out admits bundle files without admitting the dot-dir itself', () => {
+    // The bundle DIR row stays hidden (no tree row of its own); only files
+    // INSIDE a bundle are carved out.
+    expect(isHiddenDocName('.cursor/skills/x')).toBe(true);
+    expect(isHiddenDocName('.cursor/skills/x/SKILL')).toBe(false);
+  });
 
   test('HIDDEN_CONFIG_BASENAMES contains the seeded opencode.json agent config', () => {
     expect(HIDDEN_CONFIG_BASENAMES.has('opencode.json')).toBe(true);
@@ -72,4 +87,29 @@ describe('validateDocName', () => {
       expect(isValidDocName(name)).toBe(false);
     });
   }
+});
+
+describe('isProjectSkillBundlePath', () => {
+  for (const name of [
+    '.agents/skills/consolidate-notes/SKILL',
+    '.claude/skills/a/references/b/c',
+    '.codex/skills/a/scripts/run.sh',
+    '.ok/skills/a/SKILL',
+  ])
+    test(`bundle file: ${JSON.stringify(name)}`, () =>
+      expect(isProjectSkillBundlePath(name)).toBe(true));
+
+  for (const name of [
+    // The bundle dir and its ancestors are not bundle FILES.
+    '.agents/skills',
+    '.agents/skills/consolidate-notes',
+    // `skills/` must sit directly under a single dot-segment root.
+    'skills/a/SKILL',
+    'notes/.agents/skills/a/SKILL',
+    // A global skill keeps the synthetic managed-artifact namespace.
+    '__skill__/global/a',
+    'Characters/Spike Spiegel',
+  ])
+    test(`not a bundle file: ${JSON.stringify(name)}`, () =>
+      expect(isProjectSkillBundlePath(name)).toBe(false));
 });

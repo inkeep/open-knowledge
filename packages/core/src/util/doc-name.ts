@@ -74,6 +74,26 @@ export function isValidDocName(name: string): boolean {
  */
 export const HIDDEN_CONFIG_BASENAMES: ReadonlySet<string> = new Set(['opencode.json']);
 
+// Any file inside a project skill bundle, under either skill root shape: the
+// `.ok/skills` store or an in-place editor dir (`.claude/skills`,
+// `.agents/skills`, `.codex/skills`, …). Shape-matched on `.<root>/skills/<name>/`
+// so there is no editor list to keep in lock-step. Broader on purpose than
+// `parseProjectSkillBundleDoc`, which admits only the graph-node docs (`SKILL`
+// + `references/**`): the hidden-file question is about the whole bundle,
+// `scripts/**` included.
+const PROJECT_SKILL_BUNDLE_PATH_RE = /^\.[A-Za-z0-9_-]+\/skills\/[^/]+\/.+$/;
+
+/**
+ * Whether a path addresses a file inside a project skill bundle. Skills are
+ * forced into dot-directories because that is where each harness discovers
+ * them (`.claude/skills`, `.cursor/skills`, …) — the dot is a consequence of
+ * the discovery contract, not a signal that the content is incidental. Callers
+ * that mean "content the user did not author" must exclude these.
+ */
+export function isProjectSkillBundlePath(name: string): boolean {
+  return PROJECT_SKILL_BUNDLE_PATH_RE.test(name);
+}
+
 /**
  * Whether a docName addresses a hidden file — any `/`-segment starts with `.`
  * (`.claude/`, `.cursor/`, `.obsidian/`, a top-level `.foo`), or its basename
@@ -87,8 +107,15 @@ export const HIDDEN_CONFIG_BASENAMES: ReadonlySet<string> = new Set(['opencode.j
  * mirroring the file tree's `showHiddenFiles` default-off. Deliberately NOT
  * applied to listings / backlinks: the read guard stays lenient, so hidden
  * docs remain editable and addressable directly.
+ *
+ * Skill bundles are carved out ({@link isProjectSkillBundlePath}): they sit in
+ * dot-dirs only because harness discovery puts them there, and classifying
+ * them as incidental cost them their search rank, their embeddings, their
+ * egress, and their `[[` autocomplete entry. The file tree hides them on its
+ * own axis — they have a dedicated Skills panel — not through this predicate.
  */
 export function isHiddenDocName(name: string): boolean {
+  if (isProjectSkillBundlePath(name)) return false;
   if (name.split('/').some((segment) => segment.startsWith('.'))) return true;
   return HIDDEN_CONFIG_BASENAMES.has(name.slice(name.lastIndexOf('/') + 1));
 }

@@ -1329,6 +1329,7 @@ export type {
 export {
   HIDDEN_CONFIG_BASENAMES,
   isHiddenDocName,
+  isProjectSkillBundlePath,
   isValidDocName,
   validateDocName,
 } from './util/doc-name.ts';

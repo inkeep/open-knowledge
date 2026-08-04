@@ -145,6 +145,22 @@ describe('filterVisibleEntries', () => {
     expect(filterVisibleEntries(entries, { showHiddenFiles: true })).toEqual(entries);
   });
 
+  test('skill bundle files stay out of the tree even with showHiddenFiles on', () => {
+    // Skills are addressed through the Skills panel. They leave the tree on
+    // their own axis now that the hidden-files axis no longer claims them, so
+    // flipping Hidden files must not drag a bundle into the render set.
+    const entries = [
+      { kind: 'document' as const, docName: 'README' },
+      { kind: 'document' as const, docName: '.agents/skills/consolidate-notes/SKILL' },
+      { kind: 'document' as const, docName: '.claude/skills/consolidate-notes/references/x' },
+      { kind: 'asset' as const, path: '.codex/skills/consolidate-notes/scripts/run.sh' },
+    ];
+    for (const showHiddenFiles of [false, true])
+      expect(filterVisibleEntries(entries, { showHiddenFiles })).toEqual([
+        { kind: 'document', docName: 'README' },
+      ]);
+  });
+
   test('returns empty array when every entry is hidden', () => {
     expect(
       filterVisibleEntries([
@@ -404,6 +420,27 @@ describe('attributeTreeHiddenAxes', () => {
         { showHiddenFiles: true },
       ),
     ).toEqual(none);
+  });
+
+  test('an open project skill attributes nothing in every axis cell', () => {
+    // The regression: a skill opened from the Skills panel showed
+    // "Not in sidebar → Hidden files" above its properties. Flipping that
+    // toggle only silenced the chip and revealed every dotfile in the repo —
+    // it could never give the skill a tree row, because skills do not have
+    // one. Applies to every bundle file, `scripts/**` included.
+    for (const entry of [
+      { kind: 'document' as const, docName: '.agents/skills/consolidate-notes/SKILL' },
+      { kind: 'document' as const, docName: '.claude/skills/ai-sdk/references/gateway' },
+      { kind: 'asset' as const, path: '.codex/skills/ai-sdk/scripts/run.sh' },
+    ]) {
+      for (const showHiddenFiles of [false, true]) {
+        for (const showOnlyMarkdownFiles of [false, true]) {
+          expect(
+            attributeTreeHiddenAxes(entry, { showHiddenFiles, showOnlyMarkdownFiles }),
+          ).toEqual(none);
+        }
+      }
+    }
   });
 
   test('non-markdown file attributes only-markdown when the toggle is on', () => {

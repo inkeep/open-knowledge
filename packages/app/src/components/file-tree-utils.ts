@@ -5,6 +5,7 @@ import {
   type InlineAssetMediaKind,
   isHiddenDocName,
   isManagedArtifactDocName,
+  isProjectSkillBundlePath,
 } from '@inkeep/open-knowledge-core';
 
 export interface DocumentEntry {
@@ -316,6 +317,11 @@ export function filterVisibleEntries<T extends { kind?: unknown; docName?: strin
       const ancestorPath = segments.slice(0, okIndex).join('/');
       return showHiddenFiles || ancestorPath === '' || !isHiddenDocName(ancestorPath);
     }
+    // Skill bundles are addressed through the Skills panel and have no tree
+    // row. They are dropped here rather than by the hidden-files axis, which
+    // deliberately no longer classifies them: living in a dot-dir is how a
+    // harness finds a skill, not a statement that it is incidental content.
+    if (isProjectSkillBundlePath(ref)) return false;
     return !failsHiddenFilesAxis(ref, showHiddenFiles);
   });
 }
@@ -339,7 +345,12 @@ export function attributeTreeHiddenAxes(
 ): { hiddenFiles: boolean; onlyMarkdownFiles: boolean } {
   const { showHiddenFiles = false, showOnlyMarkdownFiles = false } = visibility;
   const ref = entry.docName ?? entry.path ?? '';
-  if (ref === '' || isManagedArtifactDocName(ref) || hasOkPathSegment(ref)) {
+  if (
+    ref === '' ||
+    isManagedArtifactDocName(ref) ||
+    isProjectSkillBundlePath(ref) ||
+    hasOkPathSegment(ref)
+  ) {
     return { hiddenFiles: false, onlyMarkdownFiles: false };
   }
   return {
