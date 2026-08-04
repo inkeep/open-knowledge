@@ -7,13 +7,16 @@
  * call whose ctx-resolution behavior is shared with every project-scoped IPC
  * and covered by the existing main-side siblings.
  *
- * HOME and the `OK_DESKTOP_*` block are snapshot/restored around every test:
- * bun runs all test files in one process, so an unrestored env mutation here
- * becomes a load-order-dependent failure in another suite.
+ * HOME and the `OK_DESKTOP_*` block are snapshot/restored around every test.
+ * Vitest forks a worker per test file, so the blast radius stops at this file
+ * — but every test inside it shares that one process, and these are exactly
+ * the variables the bundle collector reads, so an unrestored mutation makes a
+ * later test here depend on which test ran before it.
  */
 
 import { execFileSync, execSync } from 'node:child_process';
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -48,8 +51,12 @@ import {
   handleBugReportCreate,
   handleBugReportSend,
   MAX_UPLOAD_ZIP_BYTES,
+  type MinidumpIntent,
+  type OkBugReportCreateRequest,
   parseTransportSafeUrl,
   resolveBugReportIntakeUrl,
+  resolveMinidumpAttachment,
+  resolveMinidumpIntent,
 } from './bug-report.ts';
 
 const tmpDirs: string[] = [];
@@ -128,6 +135,48 @@ function makeDeps(overrides: Partial<BugReportCreateDeps> = {}): BugReportCreate
     outputPath: join(makeTmpDir(), 'report.zip'),
     userLogsDir: makeTmpDir(),
     ...overrides,
+  };
+}
+
+/** One report-time minidump lookup result, defaulting to "nothing was skipped". */
+function dumpLookup(path: string | null, foreignSkipped = 0, unknownSkipped = 0) {
+  return { path, foreignSkipped, unknownSkipped };
+}
+
+/**
+ * Records what the handler logged, so the crash-dump decision lines can be
+ * asserted on. The real desktop logger is level-silent under NODE_ENV=test and
+ * writes async, so the injected sink is the only observable.
+ */
+function makeLogRecorder() {
+  const lines: Array<{
+    level: 'info' | 'warn';
+    payload: Record<string, unknown>;
+    message: string;
+  }> = [];
+  const ofPhase = (phase: 'intent' | 'outcome') => {
+    const found = lines.filter(
+      (l) => l.payload.event === 'bug-report.minidump-decision' && l.payload.phase === phase,
+    );
+    if (found.length > 1) throw new Error(`expected at most one ${phase}, got ${found.length}`);
+    return found[0];
+  };
+  return {
+    lines,
+    logger: {
+      info: (payload: Record<string, unknown>, message: string) => {
+        lines.push({ level: 'info', payload, message });
+      },
+      warn: (payload: Record<string, unknown>, message: string) => {
+        lines.push({ level: 'warn', payload, message });
+      },
+    },
+    /** The pre-collection record — the one that can reach the bundle it describes. */
+    intent: () => ofPhase('intent'),
+    /** The post-collection confirmation, emitted only for a dump that was on hand. */
+    outcome: () => ofPhase('outcome'),
+    /** Every decision line, whichever phase, for exhaustive payload sweeps. */
+    decisions: () => lines.filter((l) => l.payload.event === 'bug-report.minidump-decision'),
   };
 }
 
@@ -264,10 +313,10 @@ describe('handleBugReportCreate — no project (system-wide)', () => {
   });
 
   test('defaults the destination to ~/.ok/bug-reports/<timestamp>-bugreport.zip', () => {
-    // Bun resolves `os.homedir()` at process launch, so the default path can
-    // only be steered hermetically by a subprocess launched with a fake HOME
-    // (mutating `process.env.HOME` in this process would not take, and the
-    // real `~/.ok` must never be touched by tests).
+    // The default path resolves through `homedir()`, so steering it means
+    // steering HOME. A subprocess with a fake HOME keeps that mutation out of
+    // this process entirely — every other test in this file shares it — while
+    // still proving the real `~/.ok` is never where a test writes.
     const fakeHome = makeTmpDir('ok-bugreport-home-');
     const userLogsDir = makeTmpDir();
     const driverDir = makeTmpDir('ok-bugreport-driver-');
@@ -1195,7 +1244,7 @@ describe('handleBugReportCreate — crash-dump opt-in', () => {
       Buffer.from([0x00, 0x9c]),
     ]);
     writeFileSync(dumpPath, dumpBytes);
-    const deps = makeDeps({ newestMinidumpPath: () => dumpPath });
+    const deps = makeDeps({ newestMinidumpForReport: () => dumpLookup(dumpPath) });
 
     const result = await handleBugReportCreate(deps, {
       kind: 'create',
@@ -1213,7 +1262,7 @@ describe('handleBugReportCreate — crash-dump opt-in', () => {
   test('without the opt-in no minidump is included even when one exists', async () => {
     const dumpPath = join(makeTmpDir(), 'renderer-crash.dmp');
     writeFileSync(dumpPath, 'dump-bytes');
-    const deps = makeDeps({ newestMinidumpPath: () => dumpPath });
+    const deps = makeDeps({ newestMinidumpForReport: () => dumpLookup(dumpPath) });
 
     const result = await handleBugReportCreate(deps, { kind: 'create', level: 'standard' });
 
@@ -1222,7 +1271,7 @@ describe('handleBugReportCreate — crash-dump opt-in', () => {
   });
 
   test('opting in with no relevant dump on disk still builds the bundle', async () => {
-    const deps = makeDeps({ newestMinidumpPath: () => null });
+    const deps = makeDeps({ newestMinidumpForReport: () => dumpLookup(null) });
 
     const result = await handleBugReportCreate(deps, {
       kind: 'create',
@@ -1236,15 +1285,10 @@ describe('handleBugReportCreate — crash-dump opt-in', () => {
 
   test('an opted-in dump that vanished before staging is warned about, never dropped silently', async () => {
     const vanishedDump = join(makeTmpDir(), 'already-cleaned.dmp');
-    const warnings: Array<{ payload: Record<string, unknown>; message: string }> = [];
+    const recorder = makeLogRecorder();
     const deps = makeDeps({
-      newestMinidumpPath: () => vanishedDump,
-      logger: {
-        info: () => {},
-        warn: (payload, message) => {
-          warnings.push({ payload, message });
-        },
-      },
+      newestMinidumpForReport: () => dumpLookup(vanishedDump),
+      logger: recorder.logger,
     });
 
     const result = await handleBugReportCreate(deps, {
@@ -1255,12 +1299,17 @@ describe('handleBugReportCreate — crash-dump opt-in', () => {
 
     if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
     expect(listZipEntries(result.zipPath).some((e) => e.startsWith('extra/'))).toBe(false);
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]?.payload.sourcePath).toBe(vanishedDump);
+    // Two independent lines, and both must survive: the collector reports the
+    // unreadable source, the handler reports that the decision came out as a
+    // failure. Collapsing them would put the record back at the mercy of the
+    // collector happening to log.
+    const collectorWarn = recorder.lines.find((l) => l.payload.sourcePath !== undefined);
+    expect(collectorWarn?.payload.sourcePath).toBe(vanishedDump);
+    expect(recorder.outcome()?.payload.reason).toBe('stage-failed');
   });
 
   test('a non-boolean includeCrashDump is refused as invalid-request', async () => {
-    const deps = makeDeps({ newestMinidumpPath: () => '/never-read.dmp' });
+    const deps = makeDeps({ newestMinidumpForReport: () => dumpLookup('/never-read.dmp') });
 
     const result = await handleBugReportCreate(deps, {
       kind: 'create',
@@ -1269,6 +1318,588 @@ describe('handleBugReportCreate — crash-dump opt-in', () => {
     } as unknown as Parameters<typeof handleBugReportCreate>[1]);
 
     expect(result).toEqual({ ok: false, error: 'invalid-request' });
+  });
+});
+
+/**
+ * A bundle that arrives with no crash dump has several very different causes,
+ * and before this record they were indistinguishable in triage. Each test here
+ * pins one cause to one enum value.
+ */
+describe('handleBugReportCreate — crash-dump decision record', () => {
+  function seedDump(name = 'renderer-crash.dmp', bytes = Buffer.from([0x4d, 0x44, 0x4d, 0x50])) {
+    const dumpPath = join(makeTmpDir(), name);
+    writeFileSync(dumpPath, bytes);
+    return dumpPath;
+  }
+
+  /**
+   * Writes where the real desktop logger writes — into the user-logs dir the
+   * collector snapshots — and does it synchronously, standing in for the
+   * production destination plus its flush. The only way to prove the record
+   * reaches the bundle rather than merely getting emitted.
+   */
+  function makeFileLogger(userLogsDir: string) {
+    const logPath = join(userLogsDir, 'desktop.2026-01-01.log');
+    const write = (level: 'info' | 'warn') => (payload: object, message: string) => {
+      appendFileSync(logPath, `${JSON.stringify({ level, ...payload, msg: message })}\n`);
+    };
+    return { info: write('info'), warn: write('warn') };
+  }
+
+  /**
+   * The file-logger's asynchronous sibling: lines sit in memory until
+   * `flushLogger` drains them, which is how the production destination
+   * (`pino.destination({ sync: false })`) behaves. Writing the record before
+   * collection is necessary but not sufficient against that destination — only
+   * the drain makes the bytes visible to the collector's read.
+   *
+   * The log file is seeded the way a running app's already is, so a record that
+   * never got drained fails as a missing LINE rather than a missing file.
+   */
+  function makeDeferredFileLogger(userLogsDir: string) {
+    const logPath = join(userLogsDir, 'desktop.2026-01-01.log');
+    writeFileSync(logPath, `${JSON.stringify({ level: 'info', msg: 'app ready' })}\n`);
+    const buffered: string[] = [];
+    const write = (level: 'info' | 'warn') => (payload: object, message: string) => {
+      buffered.push(`${JSON.stringify({ level, ...payload, msg: message })}\n`);
+    };
+    return {
+      logger: { info: write('info'), warn: write('warn') },
+      flush: () => {
+        appendFileSync(logPath, buffered.join(''));
+        buffered.length = 0;
+      },
+    };
+  }
+
+  /** The decision records the bundle itself carries, parsed out of its log entry. */
+  function decisionsInBundle(zipPath: string): Record<string, unknown>[] {
+    return readZipEntry(zipPath, 'logs/desktop.2026-01-01.log')
+      .split('\n')
+      .filter((l) => l.includes('bug-report.minidump-decision'))
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+  }
+
+  test('the intent record is inside the bundle it explains, not some later one', async () => {
+    const userLogsDir = makeTmpDir();
+    const deps = makeDeps({
+      userLogsDir,
+      logger: makeFileLogger(userLogsDir),
+      newestMinidumpForReport: () => dumpLookup(null, 1, 0),
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    // The collector reads the log file's bytes as it runs, so a record written
+    // after it returns can only ever reach triage in the NEXT report. This is
+    // the whole point of the split: the terminal reasons land in the bundle.
+    expect(decisionsInBundle(result.zipPath)).toEqual([
+      expect.objectContaining({ phase: 'intent', reason: 'none-available', requested: true }),
+    ]);
+  });
+
+  test('against a buffering destination only the drain gets the intent into the bundle', async () => {
+    const userLogsDir = makeTmpDir();
+    const deferred = makeDeferredFileLogger(userLogsDir);
+    const deps = makeDeps({
+      userLogsDir,
+      logger: deferred.logger,
+      flushLogger: deferred.flush,
+      newestMinidumpForReport: () => dumpLookup(null, 1, 0),
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    // The sibling test above proves the record is written before collection; a
+    // synchronous writer would land it there whether or not anything drained.
+    // Here ordering alone buys nothing: drop the `flushLogger` call, or move it
+    // after `collectReportBundle`, and the line is still in memory when the
+    // collector snapshots the file — the bundle comes back with the seed line
+    // and no decision record.
+    expect(decisionsInBundle(result.zipPath)).toEqual([
+      expect.objectContaining({ phase: 'intent', reason: 'none-available', requested: true }),
+    ]);
+  });
+
+  test('an on-hand dump leaves an intent record the bundle can be read against', async () => {
+    const userLogsDir = makeTmpDir();
+    const deps = makeDeps({
+      userLogsDir,
+      logger: makeFileLogger(userLogsDir),
+      newestMinidumpForReport: () => dumpLookup(seedDump()),
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    // `staging` plus the bundle's own `extra/` is the pairing: the outcome
+    // record cannot be in here, so the entry has to be readable as the answer.
+    expect(decisionsInBundle(result.zipPath)).toEqual([
+      expect.objectContaining({ phase: 'intent', reason: 'staging' }),
+    ]);
+    expect(listZipEntries(result.zipPath)).toContain('extra/renderer-crash.dmp');
+  });
+
+  test('the full level puts the intent in the bundle and leaves the outcome out', async () => {
+    const userLogsDir = makeTmpDir();
+    const deps = makeDeps({
+      projectDir: makeProjectDir(),
+      userLogsDir,
+      logger: makeFileLogger(userLogsDir),
+      newestMinidumpForReport: () => dumpLookup(seedDump()),
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'full',
+      includeCrashDump: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    // The in-memory recorder cannot tell "written before collection" from
+    // "written after and recorded anyway", and the full level is the one a
+    // crash invite actually sends. Read against the finished zip instead: the
+    // intent is in it, and the outcome — which lands after the bytes are
+    // snapshotted — provably is not.
+    expect(decisionsInBundle(result.zipPath)).toEqual([
+      expect.objectContaining({ phase: 'intent', reason: 'staging' }),
+    ]);
+    // The full level names its entries by walking the staging dir rather than
+    // by the standard level's literal push. The `attached` inference is only
+    // sound while both spell the entry the same way, so pin the name in the
+    // inventory the inference reads AND in the zip a triager opens.
+    expect(result.summary.files).toContain('extra/renderer-crash.dmp');
+    expect(listZipEntries(result.zipPath)).toContain('extra/renderer-crash.dmp');
+  });
+
+  test('a staged dump records attached at outcome, with the size read up front', async () => {
+    const dumpPath = seedDump();
+    const recorder = makeLogRecorder();
+    const deps = makeDeps({
+      newestMinidumpForReport: () => dumpLookup(dumpPath),
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(recorder.intent()?.payload).toMatchObject({
+      event: 'bug-report.minidump-decision',
+      phase: 'intent',
+      requested: true,
+      reason: 'staging',
+      minidumpAvailable: true,
+      sizeBytes: 4,
+    });
+    // Nothing is settled yet, so the intent record must not claim it is.
+    expect(recorder.intent()?.payload).not.toHaveProperty('attached');
+    expect(recorder.outcome()?.level).toBe('info');
+    expect(recorder.outcome()?.payload).toMatchObject({
+      phase: 'outcome',
+      attached: true,
+      reason: 'attached',
+      sizeBytes: 4,
+    });
+  });
+
+  test('the production level — a crash invite sends full — still infers attached', async () => {
+    // The full level builds its inventory through a completely separate
+    // implementation (a staging-dir walk) from the standard level's literal
+    // push, and a crash invite always sends `full`. The inference depends on
+    // the two agreeing on the entry name.
+    const dumpPath = seedDump();
+    const recorder = makeLogRecorder();
+    const deps = makeDeps({
+      projectDir: makeProjectDir(),
+      newestMinidumpForReport: () => dumpLookup(dumpPath),
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'full',
+      includeCrashDump: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(listZipEntries(result.zipPath)).toContain('extra/renderer-crash.dmp');
+    expect(recorder.outcome()?.payload).toMatchObject({ attached: true, reason: 'attached' });
+  });
+
+  test('the full level records stage-failed rather than failing the whole report', async () => {
+    // The full-level collector tests for existence and then copies, so a dump
+    // cleaned up in between used to throw out of collection and lose the report
+    // along with any account of why.
+    const recorder = makeLogRecorder();
+    const deps = makeDeps({
+      projectDir: makeProjectDir(),
+      newestMinidumpForReport: () => dumpLookup(join(makeTmpDir(), 'already-cleaned.dmp')),
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'full',
+      includeCrashDump: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(recorder.outcome()?.level).toBe('warn');
+    expect(recorder.outcome()?.payload).toMatchObject({ reason: 'stage-failed' });
+  });
+
+  test('unchecking the offered box records declined without consulting the lookup', async () => {
+    const recorder = makeLogRecorder();
+    let lookupCalls = 0;
+    const deps = makeDeps({
+      newestMinidumpForReport: () => {
+        lookupCalls += 1;
+        return dumpLookup(seedDump());
+      },
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: false,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(recorder.intent()?.payload).toMatchObject({
+      requested: false,
+      reason: 'declined',
+    });
+    // Settled before collection, so there is nothing left for an outcome to say.
+    expect(recorder.outcome()).toBeUndefined();
+    // The lookup walks the crash-dumps dir and parses dump headers. Hoisting it
+    // out of the opt-in guard would charge every ordinary bug report for that.
+    expect(lookupCalls).toBe(0);
+    expect(recorder.intent()?.payload).not.toHaveProperty('minidumpAvailable');
+  });
+
+  test('a report with no crash checkbox in play records not-offered', async () => {
+    const recorder = makeLogRecorder();
+    let lookupCalls = 0;
+    const deps = makeDeps({
+      newestMinidumpForReport: () => {
+        lookupCalls += 1;
+        return dumpLookup(null);
+      },
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, { kind: 'create', level: 'standard' });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(recorder.intent()?.payload).toMatchObject({
+      requested: false,
+      reason: 'not-offered',
+    });
+    expect(recorder.outcome()).toBeUndefined();
+    expect(lookupCalls).toBe(0);
+  });
+
+  test('opting in with nothing attachable records none-available plus what was skipped', async () => {
+    const recorder = makeLogRecorder();
+    const deps = makeDeps({
+      newestMinidumpForReport: () => dumpLookup(null, 2, 1),
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    // Without the counts this case reads the same as a crash that genuinely
+    // wrote no dump, which is the shape that made a real report undiagnosable.
+    expect(recorder.intent()?.payload).toMatchObject({
+      requested: true,
+      reason: 'none-available',
+      minidumpAvailable: false,
+      foreignDumpsIgnored: 2,
+      unreadableDumpsSkipped: 1,
+    });
+    expect(recorder.intent()?.payload).not.toHaveProperty('sizeBytes');
+    expect(recorder.outcome()).toBeUndefined();
+  });
+
+  test('a dump that never reached the bundle records stage-failed at warn level', async () => {
+    const recorder = makeLogRecorder();
+    const deps = makeDeps({
+      newestMinidumpForReport: () => dumpLookup(join(makeTmpDir(), 'already-cleaned.dmp')),
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(recorder.intent()?.payload).toMatchObject({ reason: 'staging' });
+    expect(recorder.outcome()?.level).toBe('warn');
+    expect(recorder.outcome()?.payload).toMatchObject({
+      requested: true,
+      attached: false,
+      reason: 'stage-failed',
+      minidumpAvailable: true,
+    });
+  });
+
+  test('a screenshot riding along in extra/ does not make an absent dump read as attached', async () => {
+    const recorder = makeLogRecorder();
+    const deps = makeDeps({
+      newestMinidumpForReport: () => dumpLookup(join(makeTmpDir(), 'already-cleaned.dmp')),
+      screenshotPngBytes: () => Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+      includeScreenshot: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    // `extra/` is shared, so a prefix test would call this attached.
+    expect(listZipEntries(result.zipPath)).toContain('extra/screenshot.png');
+    expect(recorder.outcome()?.payload.reason).toBe('stage-failed');
+  });
+
+  test('a dump and a screenshot both staged still records attached', async () => {
+    const dumpPath = seedDump();
+    const recorder = makeLogRecorder();
+    const deps = makeDeps({
+      newestMinidumpForReport: () => dumpLookup(dumpPath),
+      screenshotPngBytes: () => Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+      includeScreenshot: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(listZipEntries(result.zipPath)).toContain('extra/screenshot.png');
+    expect(recorder.outcome()?.payload.reason).toBe('attached');
+  });
+
+  test('a rejected request records nothing — no decision was ever made', async () => {
+    const recorder = makeLogRecorder();
+    const deps = makeDeps({
+      newestMinidumpForReport: () => dumpLookup('/never-read.dmp'),
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: 'yes',
+    } as unknown as Parameters<typeof handleBugReportCreate>[1]);
+
+    expect(result.ok).toBe(false);
+    expect(recorder.decisions()).toEqual([]);
+  });
+
+  test('a bundle that failed to build still records the intent, but no outcome', async () => {
+    const recorder = makeLogRecorder();
+    // The collector creates its destination directory, so block it with a
+    // regular file where that directory would go.
+    const blockedRoot = makeTmpDir();
+    writeFileSync(join(blockedRoot, 'blocker'), 'not-a-directory');
+    const deps = makeDeps({
+      outputPath: join(blockedRoot, 'blocker', 'report.zip'),
+      newestMinidumpForReport: () => dumpLookup(seedDump()),
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+    });
+
+    expect(result.ok).toBe(false);
+    // The intent was real even though the bundle was not; the outcome has no
+    // inventory to read, so it stays silent rather than guessing.
+    expect(recorder.intent()?.payload).toMatchObject({ reason: 'staging' });
+    expect(recorder.outcome()).toBeUndefined();
+  });
+
+  test('a sink that throws on the decision records never fails the report', async () => {
+    // Scoped to the decision records on purpose. The collector's own logging
+    // is not fail-soft against a throwing sink and is governed separately; a
+    // logger that threw on everything would abort inside collection and prove
+    // nothing about these two calls.
+    let thrown = 0;
+    const throwOnDecision = (payload: Record<string, unknown>) => {
+      if (payload.event !== 'bug-report.minidump-decision') return;
+      thrown += 1;
+      throw new Error('log sink is down');
+    };
+    const deps = makeDeps({
+      newestMinidumpForReport: () => dumpLookup(seedDump()),
+      logger: { info: throwOnDecision, warn: throwOnDecision },
+      flushLogger: () => {
+        throw new Error('drain failed');
+      },
+    });
+
+    // Observation is not the product: a broken sink loses the record, not the
+    // bundle the user is trying to send.
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(listZipEntries(result.zipPath)).toContain('extra/renderer-crash.dmp');
+    // Both records, and the drain between them, were attempted and swallowed.
+    expect(thrown).toBe(2);
+  });
+
+  test('no decision record on any branch names the dump', async () => {
+    const dumpName = 'renderer-crash-0BADF00D.dmp';
+    // Every branch that emits: each terminal intent, and both outcomes. A path
+    // added to any one of them has to fail here — the bytes are unredactable
+    // process memory and Crashpad names each dump per crash.
+    const branches: Array<{
+      lookupPath: string | null;
+      request: Partial<OkBugReportCreateRequest>;
+    }> = [
+      { lookupPath: null, request: {} },
+      { lookupPath: seedDump(dumpName), request: { includeCrashDump: false } },
+      { lookupPath: null, request: { includeCrashDump: true } },
+      { lookupPath: seedDump(dumpName), request: { includeCrashDump: true } },
+      { lookupPath: join(makeTmpDir(), dumpName), request: { includeCrashDump: true } },
+    ];
+
+    const seen = new Set<string>();
+    for (const branch of branches) {
+      const recorder = makeLogRecorder();
+      const deps = makeDeps({
+        newestMinidumpForReport: () => dumpLookup(branch.lookupPath),
+        logger: recorder.logger,
+      });
+
+      const result = await handleBugReportCreate(deps, {
+        kind: 'create',
+        level: 'standard',
+        ...branch.request,
+      });
+
+      if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+      const records = recorder.decisions();
+      expect(records.length).toBeGreaterThan(0);
+      for (const record of records) {
+        seen.add(String(record.payload.reason));
+        // The message is a fixed string today, but it rides the same sink,
+        // so sweep both halves of the record together.
+        const serialized = `${JSON.stringify(record.payload)} ${record.message}`;
+        if (branch.lookupPath !== null) {
+          expect(serialized).not.toContain(branch.lookupPath);
+          expect(serialized).not.toContain(dirname(branch.lookupPath));
+        }
+        expect(serialized).not.toContain(dumpName);
+        expect(serialized).not.toContain('renderer-crash');
+        expect(serialized).not.toContain('.dmp');
+        expect(serialized).not.toContain('extra/');
+      }
+    }
+    // Pins the sweep to the full vocabulary: a sixth reason with a fresh
+    // payload shape has to be added above rather than silently skipped.
+    expect([...seen].sort()).toEqual(
+      ['attached', 'declined', 'none-available', 'not-offered', 'staging', 'stage-failed'].sort(),
+    );
+  });
+});
+
+describe('resolveMinidumpIntent', () => {
+  const cases: Array<{
+    name: string;
+    input: Parameters<typeof resolveMinidumpIntent>[0];
+    expected: MinidumpIntent;
+  }> = [
+    {
+      name: 'never offered',
+      input: { requested: undefined, minidumpPath: '/dumps/a.dmp' },
+      expected: { reason: 'not-offered' },
+    },
+    {
+      name: 'offered and unchecked',
+      input: { requested: false, minidumpPath: '/dumps/a.dmp' },
+      expected: { reason: 'declined' },
+    },
+    {
+      name: 'opted in, nothing the app can prove it owns',
+      input: { requested: true, minidumpPath: null },
+      expected: { reason: 'none-available' },
+    },
+    {
+      name: 'opted in with a dump on hand',
+      input: { requested: true, minidumpPath: '/dumps/a.dmp' },
+      expected: { reason: 'staging', zipEntry: 'extra/a.dmp' },
+    },
+  ];
+
+  for (const { name, input, expected } of cases) {
+    test(name, () => {
+      expect(resolveMinidumpIntent(input)).toEqual(expected);
+    });
+  }
+});
+
+describe('resolveMinidumpAttachment', () => {
+  const staging = { reason: 'staging', zipEntry: 'extra/a.dmp' } as const;
+
+  test('the entry the dump was staged under is in the inventory', () => {
+    expect(resolveMinidumpAttachment(staging, ['sysinfo.json', 'extra/a.dmp'])).toEqual({
+      attached: true,
+      reason: 'attached',
+    });
+  });
+
+  test('another extra/ entry is not the dump', () => {
+    expect(resolveMinidumpAttachment(staging, ['sysinfo.json', 'extra/screenshot.png'])).toEqual({
+      attached: false,
+      reason: 'stage-failed',
+    });
+  });
+
+  test('an empty inventory is a staging failure, not an attach', () => {
+    expect(resolveMinidumpAttachment(staging, [])).toEqual({
+      attached: false,
+      reason: 'stage-failed',
+    });
   });
 });
 
@@ -1322,7 +1953,7 @@ describe('handleBugReportCreate — screenshot opt-in', () => {
     const dumpBytes = Buffer.from([0x4d, 0x44, 0x4d, 0x50, 0x00, 0xff]);
     writeFileSync(dumpPath, dumpBytes);
     const deps = makeDeps({
-      newestMinidumpPath: () => dumpPath,
+      newestMinidumpForReport: () => dumpLookup(dumpPath),
       screenshotPngBytes: () => pngBytes,
     });
 

@@ -618,9 +618,17 @@ function countDocNameOccurrences(filePath: string): number {
 
 function stageFileIfPresent(srcPath: string, destPath: string): boolean {
   if (!existsSync(srcPath)) return false;
-  mkdirSync(dirname(destPath), { recursive: true });
-  cpSync(srcPath, destPath);
-  return true;
+  try {
+    mkdirSync(dirname(destPath), { recursive: true });
+    cpSync(srcPath, destPath);
+    return true;
+  } catch {
+    // A source can vanish or turn unreadable between the check and the copy —
+    // crash-dump cleanup and log rotation both run on their own schedule. Report
+    // it as absent, which every caller already handles, rather than letting one
+    // artifact that went away mid-collection fail the whole bundle.
+    return false;
+  }
 }
 
 function walkStagedFiles(stagingDir: string): string[] {

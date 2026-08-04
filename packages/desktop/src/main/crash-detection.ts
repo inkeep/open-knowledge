@@ -212,13 +212,15 @@ export interface CrashDetection {
   /** Persist an acknowledgment so the event never re-prompts, and disarm it. */
   ack(eventId: string): void;
   /**
-   * Absolute path of the newest minidump not yet covered by an acknowledgment
-   * (strictly newer than the ack baseline) AND provably written for one of our
-   * own processes — the dump belonging to whatever crash the user is currently
-   * invited to report. Null when the un-acked crash left no dump (e.g. dirty
+   * The newest minidump not yet covered by an acknowledgment (strictly newer
+   * than the ack baseline) AND provably written for one of our own processes —
+   * the dump belonging to whatever crash the user is currently invited to
+   * report. `path` is null when the un-acked crash left no dump (e.g. dirty
    * shutdown without a native crash), when every dump is already acked, or
    * when the only fresh dumps belong to descendant processes that inherited
-   * our crash handler.
+   * our crash handler. The two skip counts say which of those it was, which is
+   * the difference between a bundle that arrived without a dump for a knowable
+   * reason and one that is a mystery after the fact.
    *
    * Minidumps carry raw process memory that text redaction cannot scrub, so
    * bundle inclusion stays behind the report dialog's crash-dump checkbox
@@ -229,7 +231,22 @@ export interface CrashDetection {
    * fails CLOSED on an unreadable dump, unlike `detectBootCrash`, which only
    * asks a dismissible question and fails open.
    */
-  newestMinidumpPath(): string | null;
+  newestMinidumpForReport(): MinidumpReportLookup;
+}
+
+/**
+ * What one report-time minidump lookup found. The skip counts are what the
+ * ownership walk rejected on its way to the answer, carried alongside the path
+ * so a caller that logs the outcome can say WHY there was no dump without
+ * running a second classification pass.
+ */
+export interface MinidumpReportLookup {
+  /** Absolute path of the attachable dump, or null when there is none. */
+  path: string | null;
+  /** Fresh dumps skipped because they belong to a descendant process. */
+  foreignSkipped: number;
+  /** Fresh dumps skipped because they could not be parsed at all. */
+  unknownSkipped: number;
 }
 
 /**
@@ -826,8 +843,13 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       }
     },
 
-    newestMinidumpPath(): string | null {
-      return newestOwnedMinidump().entry?.path ?? null;
+    newestMinidumpForReport(): MinidumpReportLookup {
+      const owned = newestOwnedMinidump();
+      return {
+        path: owned.entry?.path ?? null,
+        foreignSkipped: owned.foreignSkipped,
+        unknownSkipped: owned.unknownSkipped,
+      };
     },
   };
 }

@@ -623,12 +623,12 @@ describe('newest un-acked minidump lookup', () => {
     seedMinidump(rig, 'pending/older.dmp', older);
     seedMinidump(rig, 'completed/newer.dmp', newer);
 
-    expect(detection.newestMinidumpPath()).toBe(
+    expect(detection.newestMinidumpForReport().path).toBe(
       join(rig.deps.crashDumpsDir, 'completed', 'newer.dmp'),
     );
 
     detection.ack('boot:some-earlier-event');
-    expect(detection.newestMinidumpPath()).toBeNull();
+    expect(detection.newestMinidumpForReport().path).toBeNull();
   });
 
   test('dumps already covered by the fresh-install baseline never surface', () => {
@@ -636,14 +636,14 @@ describe('newest un-acked minidump lookup', () => {
     seedMinidump(rig, 'pending/historic.dmp', new Date(Date.parse('2026-07-09T00:00:00.000Z')));
     const detection = createCrashDetection(rig.deps);
 
-    expect(detection.newestMinidumpPath()).toBeNull();
+    expect(detection.newestMinidumpForReport().path).toBeNull();
   });
 
   test('a crash-dumps dir Crashpad has not created yet reads as no dump', () => {
     const rig = makeRig();
     const detection = createCrashDetection(rig.deps);
 
-    expect(detection.newestMinidumpPath()).toBeNull();
+    expect(detection.newestMinidumpForReport().path).toBeNull();
   });
 });
 
@@ -678,7 +678,7 @@ describe('crash-dump ownership filtering', () => {
       expect(armed.context.newMinidumps).toBe(1);
       expect(armed.minidumpAvailable).toBe(true);
     }
-    expect(session.newestMinidumpPath()).toBe(ownPath);
+    expect(session.newestMinidumpForReport().path).toBe(ownPath);
   });
 
   test('a dump from a foreign process neither arms nor is attachable', () => {
@@ -694,7 +694,7 @@ describe('crash-dump ownership filtering', () => {
     expect(session.detectBootCrash()).toBeNull();
     session.notifyRendererReady();
     expect(rig.emitted).toHaveLength(0);
-    expect(session.newestMinidumpPath()).toBeNull();
+    expect(session.newestMinidumpForReport().path).toBeNull();
   });
 
   test('a bundle-root prefix collision does not read as ownership', () => {
@@ -710,7 +710,7 @@ describe('crash-dump ownership filtering', () => {
     const session = createCrashDetection(rig.deps);
 
     expect(session.detectBootCrash()).toBeNull();
-    expect(session.newestMinidumpPath()).toBeNull();
+    expect(session.newestMinidumpForReport().path).toBeNull();
   });
 
   test('an unparseable dump still arms, but is never attachable', () => {
@@ -730,7 +730,7 @@ describe('crash-dump ownership filtering', () => {
       // the consent dialog cannot honestly describe.
       expect(armed.minidumpAvailable).toBe(false);
     }
-    expect(session.newestMinidumpPath()).toBeNull();
+    expect(session.newestMinidumpForReport().path).toBeNull();
   });
 
   test('a foreign dump does not override machine-level-death suppression', () => {
@@ -770,7 +770,7 @@ describe('crash-dump ownership filtering', () => {
     const ownPath = seedMinidump(rig, 'completed/ours.dmp', rig.tick());
     seedMinidump(rig, 'pending/soffice.dmp', rig.tick(), FOREIGN_DUMP);
 
-    expect(detection.newestMinidumpPath()).toBe(ownPath);
+    expect(detection.newestMinidumpForReport().path).toBe(ownPath);
   });
 
   test('a runtime crash offers no dump when only a foreign dump is on disk', () => {
@@ -781,7 +781,58 @@ describe('crash-dump ownership filtering', () => {
     detection.handleRenderProcessGone({ reason: 'crashed' });
 
     expect(rig.emitted[0]?.minidumpAvailable).toBe(false);
-    expect(detection.newestMinidumpPath()).toBeNull();
+    expect(detection.newestMinidumpForReport().path).toBeNull();
+  });
+
+  test('the report lookup carries the skip counts alongside the dump it found', () => {
+    // The report path needs its own copy of these: the boot-time breadcrumb
+    // only fires at boot, so a report composed later has no other record of
+    // what the ownership walk rejected.
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+    seedMinidump(rig, 'completed/soffice.dmp', rig.tick(), FOREIGN_DUMP);
+    seedMinidump(rig, 'completed/torn.dmp', rig.tick(), UNPARSEABLE_DUMP);
+    const ownPath = seedMinidump(rig, 'completed/ours.dmp', rig.tick());
+
+    // Newest-first, so the owned dump seeded last is reached first and the
+    // older rejects are never classified — nothing to count.
+    expect(detection.newestMinidumpForReport()).toEqual({
+      path: ownPath,
+      foreignSkipped: 0,
+      unknownSkipped: 0,
+    });
+  });
+
+  test('an empty-handed report lookup says what it walked past to get there', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+    seedMinidump(rig, 'completed/soffice.dmp', rig.tick(), FOREIGN_DUMP);
+    seedMinidump(rig, 'completed/torn.dmp', rig.tick(), UNPARSEABLE_DUMP);
+
+    // Without the split, "a descendant crashed" and "we could not read the
+    // dump at all" both reach the report as a bare absent dump.
+    expect(detection.newestMinidumpForReport()).toEqual({
+      path: null,
+      foreignSkipped: 1,
+      unknownSkipped: 1,
+    });
+  });
+
+  test('the report lookup still stops at the first owned dump', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+    seedMinidump(rig, 'completed/soffice.dmp', rig.tick(), FOREIGN_DUMP);
+    const ownPath = seedMinidump(rig, 'completed/ours.dmp', rig.tick());
+    seedMinidump(rig, 'completed/newer-soffice.dmp', rig.tick(), FOREIGN_DUMP);
+
+    // One newer foreign dump gets classified on the way to ours; the older one
+    // is never reached. Counting every fresh dump instead would mean parsing
+    // the whole crash database on each lookup.
+    expect(detection.newestMinidumpForReport()).toEqual({
+      path: ownPath,
+      foreignSkipped: 1,
+      unknownSkipped: 0,
+    });
   });
 
   test('a runtime crash says how many foreign dumps it walked past', () => {

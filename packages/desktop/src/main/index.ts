@@ -4916,7 +4916,12 @@ function registerIpcHandlers() {
           packaged: app.isPackaged,
           channel: channelFromVersion(app.getVersion()),
         },
-        newestMinidumpPath: () => crashDetection?.newestMinidumpPath() ?? null,
+        newestMinidumpForReport: () =>
+          crashDetection?.newestMinidumpForReport() ?? {
+            path: null,
+            foreignSkipped: 0,
+            unknownSkipped: 0,
+          },
         // Main-owned bytes captured for this exact window; `create` stages them
         // only when the renderer opted in via `includeScreenshot`.
         screenshotPngBytes: () => bugReportScreenshots.get(event.sender.id)?.png ?? null,
@@ -4924,6 +4929,7 @@ function registerIpcHandlers() {
         // once the bundle is written, so it survives dialog close + restart.
         onReportGenerated: (meta) => bugReportSidecar.recordGenerated(meta),
         logger: getLogger('bug-report'),
+        flushLogger: flushDesktopLogger,
       },
       request,
     );
@@ -6011,14 +6017,14 @@ trustSystemCertificates();
 // to a named sibling dir gives each instance its own lock + isolated storage.
 //
 // The instance name is `OK_INSTANCE` when set, else auto-derived from the git
-// checkout (branch name, or worktree dir on detached HEAD) so two `bun run dev`
+// checkout (branch name, or worktree dir on detached HEAD) so two `pnpm dev`
 // launches from different worktrees isolate automatically — no env needed. The
 // repo default branch (main/master) is skipped so plain dev on main keeps the
 // classic shared `userData`; `OK_AUTO_INSTANCE=0` disables auto-derivation.
 // Must run before `requestSingleInstanceLock()` and any `userData` read;
 // packaged builds ignore it so releases are never affected.
 if (!app.isPackaged) {
-  // Auto-derivation is for humans running `bun run dev` from a worktree; keep it
+  // Auto-derivation is for humans running `pnpm dev` from a worktree; keep it
   // out of the E2E desktop smoke, which drives an unpackaged build on a feature
   // branch. Deriving there would run git on the launch path and relocate
   // `userData` on every smoke launch. Explicit `OK_INSTANCE` still wins, so a

@@ -37,6 +37,7 @@ import {
   type ReportBundleLevel,
 } from '@inkeep/open-knowledge-core';
 import type { OkBugReportSendInput } from '@inkeep/open-knowledge-core/desktop-bridge';
+import type { MinidumpReportLookup } from '../crash-detection.ts';
 import { logIpcError } from '../ipc-log.ts';
 import { isPathWithinProject } from '../path-containment.ts';
 import type { UpdateChannel } from '../state-store.ts';
@@ -123,11 +124,13 @@ export interface BugReportCreateDeps {
   userLogsDir?: string;
   /**
    * Crash-detection lookup for the newest un-acked minidump (wired from
-   * `CrashDetection.newestMinidumpPath`). Only consulted when the renderer
-   * opted in via `includeCrashDump`; absent or returning null simply omits
-   * the dump.
+   * `CrashDetection.newestMinidumpForReport`). Only consulted when the renderer
+   * opted in via `includeCrashDump` — the lookup walks the crash-dumps dir and
+   * parses dump headers, so calling it on every report would charge an ordinary
+   * bug report for a crash artifact it never wanted. Absent, or returning a null
+   * path, simply omits the dump; the lookup's skip counts explain which.
    */
-  newestMinidumpPath?: () => string | null;
+  newestMinidumpForReport?: () => MinidumpReportLookup;
   /**
    * Main-owned PNG bytes of the screenshot captured when the report dialog
    * opened, consulted only when the renderer opted in via `includeScreenshot`.
@@ -143,6 +146,14 @@ export interface BugReportCreateDeps {
    */
   logger?: BundleLogger;
   /**
+   * Drain `logger`'s buffer to disk. The desktop destination is asynchronous,
+   * so a line emitted moments before the collector reads the log file can
+   * still be in memory when those bytes are snapshotted — which would keep the
+   * crash-dump record out of the very bundle it explains. Absent in tests,
+   * where the logger is a synchronous in-memory recorder.
+   */
+  flushLogger?: () => void;
+  /**
    * Persist the report's `generated` sidecar (and run the retention sweep)
    * after a bundle is written. Injected so the durable-record write is exercised
    * by the create tests against a temp bug-reports dir; a create context that
@@ -152,10 +163,6 @@ export interface BugReportCreateDeps {
   onReportGenerated?: (meta: GeneratedReportMeta) => Promise<void>;
 }
 
-/**
- * `createHandler` casts renderer args without runtime enforcement, so the
- * payload is re-validated here before any filesystem work.
- */
 /**
  * Ceiling on the free-text note the renderer may hand to `create`/`send`. A
  * genuine "what happened?" note is a sentence or two; this refuses an abusive
@@ -169,6 +176,10 @@ function isValidNote(note: unknown): boolean {
   return note === undefined || (typeof note === 'string' && note.length <= MAX_NOTE_LENGTH);
 }
 
+/**
+ * `createHandler` casts renderer args without runtime enforcement, so the
+ * payload is re-validated here before any filesystem work.
+ */
 function isCreateRequest(request: unknown): request is OkBugReportCreateRequest {
   if (typeof request !== 'object' || request === null) return false;
   const r = request as Record<string, unknown>;
@@ -179,6 +190,113 @@ function isCreateRequest(request: unknown): request is OkBugReportCreateRequest 
     (r.includeCrashDump === undefined || typeof r.includeCrashDump === 'boolean') &&
     (r.includeScreenshot === undefined || typeof r.includeScreenshot === 'boolean')
   );
+}
+
+/**
+ * Why a bundle did or did not carry a crash minidump. A bundle that arrives
+ * without one is otherwise unexplainable after the fact: the reporter having
+ * unchecked the box, no attachable dump existing, and a staging failure all
+ * reach triage as the same empty `extra/`.
+ *
+ * Deliberately five values, not more. `foreign-only` and `unreadable-only`
+ * would leave a mixed walk with no home, so what the ownership walk rejected
+ * rides as two counts instead. `read-failed` and `disappeared` collapse into
+ * `stage-failed` because neither collector distinguishes them: the standard
+ * level catches every read error in one branch and the full level only tests
+ * for existence, so both surface identically as an entry that never appeared.
+ */
+type MinidumpAttachReason =
+  /** The dump was opted into and is in the bundle. */
+  | 'attached'
+  /** The checkbox was shown and the reporter unchecked it. */
+  | 'declined'
+  /** No checkbox was shown, so no dump was ever in play. */
+  | 'not-offered'
+  /** Opted in, but the lookup found no dump this app can prove it owns. */
+  | 'none-available'
+  /** Opted in with a dump on hand, but it never reached the bundle. */
+  | 'stage-failed';
+
+/** No lookup ran, so nothing was found and nothing was skipped. */
+const NO_MINIDUMP_LOOKUP: MinidumpReportLookup = {
+  path: null,
+  foreignSkipped: 0,
+  unknownSkipped: 0,
+};
+
+/** The one intent whose outcome only the finished bundle can settle. */
+export interface StagingMinidumpIntent {
+  reason: 'staging';
+  /** Zip entry the dump will occupy if the collector places it. */
+  zipEntry: string;
+}
+
+/**
+ * What is knowable about the crash dump before the bundle is built. Three of
+ * the five outcomes are already final here — they turn on the opt-in and the
+ * lookup alone — and `staging` covers the one that still depends on whether
+ * the collector managed to place the file. `Exclude` rather than a re-listed
+ * union so a sixth reason cannot be added without deciding which side of
+ * collection settles it.
+ */
+export type MinidumpIntent =
+  | { reason: Exclude<MinidumpAttachReason, 'attached' | 'stage-failed'> }
+  | StagingMinidumpIntent;
+
+/**
+ * Decide everything about the crash dump that does not require a finished
+ * bundle. Owns the zip entry name too, so the name the dump is looked for
+ * under is by construction the name it was staged under.
+ */
+export function resolveMinidumpIntent(input: {
+  /** The renderer's opt-in, tri-state: unchecked, checked, or never offered. */
+  requested: boolean | undefined;
+  /** Absolute path the lookup found, or null when it found nothing attachable. */
+  minidumpPath: string | null;
+}): MinidumpIntent {
+  if (input.requested === undefined) return { reason: 'not-offered' };
+  if (input.requested === false) return { reason: 'declined' };
+  if (input.minidumpPath === null) return { reason: 'none-available' };
+  return { reason: 'staging', zipEntry: `extra/${basename(input.minidumpPath)}` };
+}
+
+/**
+ * Settle a staged dump against the bundle's own inventory rather than against
+ * the intent to stage, so a dump the collector silently dropped cannot report
+ * as attached.
+ *
+ * The boolean is fully determined by the reason, so the return type pairs them
+ * rather than leaving `{ attached: true, reason: 'stage-failed' }` expressible
+ * — the same discriminated encoding `MinidumpIntent` uses.
+ */
+export function resolveMinidumpAttachment(
+  intent: StagingMinidumpIntent,
+  /** The bundle's captured entry names. */
+  bundledFiles: readonly string[],
+): { attached: true; reason: 'attached' } | { attached: false; reason: 'stage-failed' } {
+  // Match the exact entry: `extra/` is shared with the opted-in screenshot, so
+  // a prefix test reports a dump whenever a screenshot rode along.
+  if (bundledFiles.includes(intent.zipEntry)) return { attached: true, reason: 'attached' };
+  return { attached: false, reason: 'stage-failed' };
+}
+
+/**
+ * Emit one crash-dump decision record. Observing the report must never be able
+ * to fail a report that otherwise succeeded, so a logger that throws is
+ * swallowed here — the same fail-soft posture as the sidecar write.
+ */
+function recordMinidumpDecision(
+  deps: BugReportCreateDeps,
+  level: 'info' | 'warn',
+  payload: Record<string, unknown>,
+  message: string,
+): void {
+  try {
+    if (level === 'warn') deps.logger?.warn(payload, message);
+    else deps.logger?.info(payload, message);
+  } catch {
+    // The logger is the thing that failed; there is nowhere left to report it.
+  }
 }
 
 /**
@@ -199,8 +317,15 @@ export async function handleBugReportCreate(
     });
     return { ok: false, error: 'invalid-request' };
   }
-  const minidumpPath =
-    request.includeCrashDump === true ? (deps.newestMinidumpPath?.() ?? null) : null;
+  const minidumpLookup =
+    request.includeCrashDump === true
+      ? (deps.newestMinidumpForReport?.() ?? NO_MINIDUMP_LOOKUP)
+      : NO_MINIDUMP_LOOKUP;
+  const minidumpPath = minidumpLookup.path;
+  const intent = resolveMinidumpIntent({
+    requested: request.includeCrashDump,
+    minidumpPath,
+  });
   const screenshotBytes =
     request.includeScreenshot === true ? (deps.screenshotPngBytes?.() ?? null) : null;
 
@@ -210,6 +335,52 @@ export async function handleBugReportCreate(
   // a picture of the user's screen must not linger in tmp once it is zipped.
   const extraFiles: { sourcePath: string; zipName?: string }[] = [];
   if (minidumpPath !== null) extraFiles.push({ sourcePath: minidumpPath });
+
+  // Size is read here, not after collection, so it describes the dump as it
+  // was when the decision was taken.
+  const dumpSizeBytes =
+    minidumpPath === null
+      ? undefined
+      : await stat(minidumpPath)
+          .then((s) => s.size)
+          .catch(() => undefined);
+  // Deliberately says nothing about WHICH dump: a minidump is unredactable
+  // process memory and its filename is a per-crash identifier, so the record
+  // carries a size at most.
+  const decisionFacts = {
+    event: 'bug-report.minidump-decision',
+    requested: request.includeCrashDump === true,
+    ...(request.includeCrashDump === true
+      ? {
+          minidumpAvailable: minidumpPath !== null,
+          // Counts ride the opted-in branch only, so they never appear on a
+          // report where no dump was ever in play — a zero there would read as
+          // "we walked the crash database and found it clean".
+          foreignDumpsIgnored: minidumpLookup.foreignSkipped,
+          unreadableDumpsSkipped: minidumpLookup.unknownSkipped,
+        }
+      : {}),
+    ...(dumpSizeBytes !== undefined ? { sizeBytes: dumpSizeBytes } : {}),
+  };
+
+  // Written BEFORE the bundle is collected, because the collector snapshots
+  // the log file's bytes as it runs: a line emitted afterwards can only reach
+  // triage in some later report, which is the undiagnosable shape this record
+  // exists to remove. Every terminal reason is already settled here, so a
+  // bundle carrying only this line still explains itself; `staging` is the one
+  // reason left open, and then the bundle's own `extra/` is the answer.
+  recordMinidumpDecision(
+    deps,
+    'info',
+    { ...decisionFacts, phase: 'intent', reason: intent.reason },
+    'bug-report: crash-dump decision recorded before collection',
+  );
+  try {
+    deps.flushLogger?.();
+  } catch {
+    // A failed drain costs the line its place in this bundle, nothing more.
+  }
+
   let screenshotTmpPath: string | null = null;
   try {
     if (screenshotBytes !== null) {
@@ -256,6 +427,21 @@ export async function handleBugReportCreate(
             'bug-report: failed to persist report sidecar on generate',
           );
         });
+    }
+    // Only a dump that was actually on hand has anything left to settle; the
+    // other reasons were final before collection and said so. This line lands
+    // in the NEXT report's logs, never this bundle — for this one, the pairing
+    // is the intent line above plus whether `extra/` holds the dump.
+    if (intent.reason === 'staging') {
+      const { attached, reason } = resolveMinidumpAttachment(intent, summary.files);
+      recordMinidumpDecision(
+        deps,
+        attached ? 'info' : 'warn',
+        { ...decisionFacts, phase: 'outcome', attached, reason },
+        attached
+          ? 'bug-report: opted-in crash dump reached the bundle'
+          : 'bug-report: opted-in crash dump did not reach the bundle',
+      );
     }
     return { ok: true, zipPath, zipSizeBytes, summary };
   } catch (err) {
