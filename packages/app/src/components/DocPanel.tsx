@@ -222,7 +222,7 @@ export function DocPanel({
                         <Badge
                           variant="notification"
                           aria-hidden="true"
-                          className="absolute -right-1.5 -top-1.5 h-4 min-w-4 rounded-full px-1 text-[10px] leading-none"
+                          className="pointer-events-none absolute -top-0.5 right-0.5 h-3.5 min-w-3.5 rounded-full px-1 font-sans text-[9px] leading-none tabular-nums"
                         >
                           {diagnostics.length > 99 ? '99+' : diagnostics.length}
                         </Badge>
