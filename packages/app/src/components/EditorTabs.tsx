@@ -5,6 +5,7 @@ import {
   type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
+  useDndContext,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
@@ -381,6 +382,40 @@ function TabPinOrCloseButton({
   );
 }
 
+/**
+ * Full-path hover disclosure for a tab whose visible label is only the base
+ * name — two `SPEC.md` tabs from different folders are otherwise
+ * indistinguishable. Supersedes the native `title` attribute, which carried
+ * the same string but renders OS-styled after the platform's own ~1s delay;
+ * keeping both would stack a second tooltip under the first.
+ *
+ * Shown even where the label already reads as the whole name. Tabs cap at
+ * `max-w-64` and truncate, so a long enough name is clipped whether or not a
+ * folder prefix precedes it, and that clipped case is exactly where the
+ * disclosure earns its keep. Suppressing the apparent echo would drop it.
+ * Same reasoning as the terminal tab strip and the footer project path.
+ *
+ * Anchored to the inner label button, not the outer sortable tab, because
+ * `SortableTab` spreads dnd-kit's `listeners` after `rest` — pointer handlers
+ * a trigger injected there would be silently overwritten.
+ */
+function TabPathTooltip({ children, path }: { children: ReactNode; path: string }) {
+  // A reorder drag keeps firing pointermove over the trigger, which re-opens
+  // the tooltip mid-drag still anchored to the tab's original slot. Radix
+  // closes on pointerdown but has no notion of an in-flight drag, so the
+  // active-drag check has to come from dnd-kit.
+  const { active } = useDndContext();
+  if (active) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="bottom" sideOffset={8} className="max-w-xs break-all">
+        {path}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 // The parent tab button owns the accessible conflict label; this icon is visual.
 function TabConflictBadge({ hasConflict }: { hasConflict: boolean }) {
   if (!hasConflict) return null;
@@ -418,27 +453,28 @@ function DocumentTabButton({
   const buttonAccessibleLabel = hasConflict ? t`${accessibleLabel} (conflict)` : accessibleLabel;
 
   return (
-    <button
-      type="button"
-      aria-label={buttonAccessibleLabel}
-      title={buttonAccessibleLabel}
-      className={TAB_BUTTON_CLASS}
-      onClick={() => {
-        activateTab(tabId);
-      }}
-      onDoubleClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        enterRenameMode(tabId, docName);
-      }}
-      tabIndex={-1}
-    >
-      <TabConflictBadge hasConflict={hasConflict} />
-      <span className="flex min-w-0 flex-1 items-center">
-        <span className="min-w-0 truncate">{baseName}</span>
-        {!hideDocExtension && <span className="shrink-0">{extension}</span>}
-      </span>
-    </button>
+    <TabPathTooltip path={buttonAccessibleLabel}>
+      <button
+        type="button"
+        aria-label={buttonAccessibleLabel}
+        className={TAB_BUTTON_CLASS}
+        onClick={() => {
+          activateTab(tabId);
+        }}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          enterRenameMode(tabId, docName);
+        }}
+        tabIndex={-1}
+      >
+        <TabConflictBadge hasConflict={hasConflict} />
+        <span className="flex min-w-0 flex-1 items-center">
+          <span className="min-w-0 truncate">{baseName}</span>
+          {!hideDocExtension && <span className="shrink-0">{extension}</span>}
+        </span>
+      </button>
+    </TabPathTooltip>
   );
 }
 
@@ -1010,36 +1046,37 @@ export function EditorTabs() {
                         activateTab(tabId);
                       }}
                     >
-                      <button
-                        type="button"
-                        aria-label={accessibleLabel}
-                        title={accessibleLabel}
-                        className={TAB_BUTTON_CLASS}
-                        onClick={() => {
-                          activateTab(tabId);
-                        }}
-                        tabIndex={-1}
-                      >
-                        {prefix && (
+                      <TabPathTooltip path={accessibleLabel}>
+                        <button
+                          type="button"
+                          aria-label={accessibleLabel}
+                          className={TAB_BUTTON_CLASS}
+                          onClick={() => {
+                            activateTab(tabId);
+                          }}
+                          tabIndex={-1}
+                        >
+                          {prefix && (
+                            <span
+                              className={cn(
+                                'min-w-0 flex-1 truncate',
+                                isActive && 'text-muted-foreground',
+                              )}
+                            >
+                              {prefix}
+                            </span>
+                          )}
                           <span
                             className={cn(
-                              'min-w-0 flex-1 truncate',
-                              isActive && 'text-muted-foreground',
+                              'flex min-w-0 items-center',
+                              prefix ? 'max-w-[70%] shrink-0' : 'flex-1',
                             )}
                           >
-                            {prefix}
+                            <span className="min-w-0 truncate">{baseName}</span>
+                            <span className="shrink-0">/</span>
                           </span>
-                        )}
-                        <span
-                          className={cn(
-                            'flex min-w-0 items-center',
-                            prefix ? 'max-w-[70%] shrink-0' : 'flex-1',
-                          )}
-                        >
-                          <span className="min-w-0 truncate">{baseName}</span>
-                          <span className="shrink-0">/</span>
-                        </span>
-                      </button>
+                        </button>
+                      </TabPathTooltip>
                       <TabPinOrCloseButton
                         accessibleLabel={accessibleLabel}
                         closeTab={closeTab}
@@ -1107,34 +1144,36 @@ export function EditorTabs() {
                         activateTab(tabId);
                       }}
                     >
-                      <button
-                        type="button"
-                        aria-label={accessibleLabel}
-                        className={TAB_BUTTON_CLASS}
-                        onClick={() => {
-                          activateTab(tabId);
-                        }}
-                        tabIndex={-1}
-                      >
-                        {prefix ? (
+                      <TabPathTooltip path={accessibleLabel}>
+                        <button
+                          type="button"
+                          aria-label={accessibleLabel}
+                          className={TAB_BUTTON_CLASS}
+                          onClick={() => {
+                            activateTab(tabId);
+                          }}
+                          tabIndex={-1}
+                        >
+                          {prefix ? (
+                            <span
+                              className={cn(
+                                'min-w-0 flex-1 truncate text-muted-foreground/60',
+                                isActive && 'text-muted-foreground',
+                              )}
+                            >
+                              {prefix}
+                            </span>
+                          ) : null}
                           <span
                             className={cn(
-                              'min-w-0 flex-1 truncate text-muted-foreground/60',
-                              isActive && 'text-muted-foreground',
+                              'min-w-0 truncate',
+                              prefix ? 'max-w-[70%] shrink-0' : 'flex-1',
                             )}
                           >
-                            {prefix}
+                            {baseName}
                           </span>
-                        ) : null}
-                        <span
-                          className={cn(
-                            'min-w-0 truncate',
-                            prefix ? 'max-w-[70%] shrink-0' : 'flex-1',
-                          )}
-                        >
-                          {baseName}
-                        </span>
-                      </button>
+                        </button>
+                      </TabPathTooltip>
                       <TabPinOrCloseButton
                         accessibleLabel={accessibleLabel}
                         closeTab={closeTab}

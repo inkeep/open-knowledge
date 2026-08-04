@@ -55,6 +55,8 @@ const dndContextProps: DndContextProps[] = [];
 const sensorCalls: Array<{ sensor: unknown; options: unknown }> = [];
 const sortableContextProps: Array<{ items: string[]; strategy: unknown }> = [];
 const sortableOptions: Array<{ id: string; disabled?: boolean }> = [];
+// Stands in for dnd-kit's in-flight drag; non-null simulates a reorder drag.
+let activeDrag: { id: string } | null = null;
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 
@@ -83,6 +85,7 @@ vi.doMock('@dnd-kit/core', () => ({
   },
   KeyboardSensor: keyboardSensorToken,
   PointerSensor: pointerSensorToken,
+  useDndContext: () => ({ active: activeDrag }),
   useSensor: (sensor: unknown, options: unknown) => {
     sensorCalls.push({ sensor, options });
     return { sensor, options };
@@ -245,6 +248,7 @@ function resetState() {
   ]);
   lifecycleStatuses = new Map();
   toastErrors = [];
+  activeDrag = null;
   dndContextProps.length = 0;
   sensorCalls.length = 0;
   sortableContextProps.length = 0;
@@ -296,6 +300,14 @@ function tabButton(name: string) {
   return button as HTMLButtonElement;
 }
 
+// Radix appends a visually-hidden copy of the content for screen readers, so
+// the element's textContent repeats the label. The first node is what a
+// sighted user actually reads, and comparing it exactly keeps these
+// assertions from passing on a different tab's tooltip.
+function tooltipText(tooltip: HTMLElement): string {
+  return tooltip.firstChild?.textContent ?? tooltip.textContent ?? '';
+}
+
 describe('EditorTabs runtime behavior', () => {
   beforeEach(() => {
     resetState();
@@ -305,24 +317,89 @@ describe('EditorTabs runtime behavior', () => {
     cleanup();
   });
 
-  test('renders markdown doc labels without extensions while preserving full-path accessible names and titles', async () => {
+  test('renders markdown doc labels without extensions while preserving full-path accessible names', async () => {
     await renderEditorTabs();
 
     const markdownTab = tabButton('docs/team/notes.md');
     expect(markdownTab.textContent).toBe('notes');
-    expect(markdownTab.getAttribute('title')).toBe('docs/team/notes.md');
     expect(markdownTab.closest('[data-sortable-id]')?.getAttribute('aria-keyshortcuts')).toBe(
       'Meta+1 Control+1',
     );
 
     const mdxTab = tabButton('docs/team/spec.mdx');
     expect(mdxTab.textContent).toBe('spec');
-    expect(mdxTab.getAttribute('title')).toBe('docs/team/spec.mdx');
     expect(mdxTab.closest('[data-sortable-id]')?.getAttribute('aria-current')).toBe('page');
 
     const txtTab = tabButton('docs/team/readme.txt');
     expect(txtTab.textContent).toBe('readme.txt');
-    expect(txtTab.getAttribute('title')).toBe('docs/team/readme.txt');
+  });
+
+  // The visible label is only the base name, so two same-named files in
+  // different folders are indistinguishable without disclosing the path.
+  test('hovering a doc tab discloses its full path, which the label alone does not show', async () => {
+    await renderEditorTabs();
+
+    const markdownTab = tabButton('docs/team/notes.md');
+    expect(markdownTab.textContent).toBe('notes');
+    // The native tooltip attribute is deliberately gone: it would double up
+    // with the hover tooltip and renders OS-styled after a ~1s delay.
+    expect(markdownTab.getAttribute('title')).toBeNull();
+
+    fireEvent.pointerEnter(markdownTab, { pointerType: 'mouse' });
+    fireEvent.pointerMove(markdownTab, { pointerType: 'mouse' });
+
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltipText(tooltip)).toBe('docs/team/notes.md');
+  });
+
+  test.each([
+    ['folder', 'docs/team/'],
+    ['asset', 'images/cat.png'],
+  ])('hovering a %s tab discloses its full path', async (_kind, expectedPath) => {
+    await renderEditorTabs();
+
+    const tab = tabButton(expectedPath);
+    fireEvent.pointerEnter(tab, { pointerType: 'mouse' });
+    fireEvent.pointerMove(tab, { pointerType: 'mouse' });
+
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltipText(tooltip)).toBe(expectedPath);
+  });
+
+  test('a reorder drag suppresses the path tooltip instead of stranding it over the strip', async () => {
+    activeDrag = { id: 'docs/team/notes' };
+    await renderEditorTabs();
+
+    const markdownTab = tabButton('docs/team/notes.md');
+    fireEvent.pointerEnter(markdownTab, { pointerType: 'mouse' });
+    fireEvent.pointerMove(markdownTab, { pointerType: 'mouse' });
+
+    await Promise.resolve();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    // Load-bearing, not incidental coupling: the tooltip opens on a timer, so
+    // the absence above would also hold in the split second before an
+    // unsuppressed tooltip appeared. Asserting the trigger is gone is what
+    // makes this fail if the suppression is removed.
+    expect(markdownTab.getAttribute('data-slot')).not.toBe('tooltip-trigger');
+  });
+
+  // Tabs cap at max-w-64 and truncate, so a root-level name long enough to be
+  // clipped still needs the disclosure even though no folder prefix precedes
+  // it. Suppressing the apparent echo would leave that tab unreadable.
+  test('a doc at the content root still discloses its name on hover', async () => {
+    openTabs = ['readme'];
+    visibleTabIds = ['readme'];
+    pageMeta = new Map([['readme', { docExt: '.txt' }]]);
+    await renderEditorTabs();
+
+    const rootTab = tabButton('readme.txt');
+    expect(rootTab.textContent).toBe('readme.txt');
+
+    fireEvent.pointerEnter(rootTab, { pointerType: 'mouse' });
+    fireEvent.pointerMove(rootTab, { pointerType: 'mouse' });
+
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltipText(tooltip)).toBe('readme.txt');
   });
 
   test('keeps folder, asset, and new-tab branches closeable and independently activatable', async () => {
@@ -687,7 +764,11 @@ describe('EditorTabs runtime behavior', () => {
       name: 'docs/team/notes.md (conflict)',
     });
     expect(conflictedTabButton).toBeTruthy();
-    expect(conflictedTabButton.getAttribute('title')).toBe('docs/team/notes.md (conflict)');
+    // A conflict is the one case where the tooltip carries state beyond the
+    // path, so pin that it tracks the label rather than just the path.
+    fireEvent.pointerEnter(conflictedTabButton, { pointerType: 'mouse' });
+    fireEvent.pointerMove(conflictedTabButton, { pointerType: 'mouse' });
+    expect(tooltipText(await screen.findByRole('tooltip'))).toBe('docs/team/notes.md (conflict)');
     expect(screen.getByTestId('editor-tab-conflict-badge').getAttribute('aria-hidden')).toBe(
       'true',
     );
