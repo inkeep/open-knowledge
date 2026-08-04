@@ -13,7 +13,15 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
@@ -23,7 +31,7 @@ import type {
 import { afterEach, describe, expect, test } from 'vitest';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { getLogger } from '../logger.ts';
-import { findManagedRuntime, readRuntimeConsent } from './managed-runtime.ts';
+import { ensureManagedRuntime, findManagedRuntime, readRuntimeConsent } from './managed-runtime.ts';
 import { AcpPermissionStore } from './permissions.ts';
 import { AcpRegistry } from './registry.ts';
 import { AcpThreadManager } from './thread-manager.ts';
@@ -150,6 +158,33 @@ function findConsentRequest(
 }
 
 describe('managed-runtime consent + download flow', () => {
+  test('normal launch cleans stale staging after a runtime is installed', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const runtimeRoot = tmp();
+    const consentHome = tmp();
+    const stage = tmp();
+    const { bytes, sha } = fakeNodeTarball(stage);
+    const fetchImpl = fakeNodeFetch(bytes, sha);
+    await ensureManagedRuntime('node', log, { root: runtimeRoot, fetchImpl });
+
+    const staleDir = join(runtimeRoot, 'node', '.install-v24.18.0-orphaned');
+    mkdirSync(staleDir, { recursive: true });
+    const staleTime = new Date(Date.now() - 25 * 60 * 60 * 1_000);
+    utimesSync(staleDir, staleTime, staleTime);
+
+    const manager = makeManager({
+      contentDir,
+      localDir,
+      runtimeRoot,
+      consentHome,
+      fetchImpl,
+    });
+    await manager.createThread({ agent: { source: 'registry', id: 'npxagent' } });
+
+    await waitFor(() => !existsSync(staleDir), 3_000, 'stale runtime staging cleanup');
+  });
+
   test('grant → download → install + persist consent', async () => {
     const contentDir = tmp();
     const localDir = tmp();

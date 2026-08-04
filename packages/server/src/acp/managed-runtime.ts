@@ -26,10 +26,12 @@
  * agent path via `archive.ts`.
  */
 
+import { randomUUID } from 'node:crypto';
 import { access, constants, readdir, stat } from 'node:fs/promises';
-import { arch, homedir, platform, tmpdir } from 'node:os';
+import { arch, homedir, platform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
+import { FileLockTimeoutError, withFileLock } from '@inkeep/open-knowledge-core/server';
 import { tracedMkdir, tracedRename, tracedRm, tracedWriteFile } from '../fs-traced.ts';
 import type { PinoLogger } from '../logger.ts';
 import {
@@ -57,6 +59,9 @@ const UV_RELEASE_BASE = 'https://github.com/astral-sh/uv/releases/download';
 
 /** Approximate compressed download sizes (MB), for the consent prompt only. */
 const APPROX_SIZE_MB: Record<ManagedRuntimeKind, number> = { node: 45, uv: 20 };
+
+const STALE_STAGING_AGE_MS = 24 * 60 * 60 * 1_000;
+const INSTALL_COMMIT_LOCK_TIMEOUT_MS = 60_000;
 
 interface ManagedNode {
   kind: 'node';
@@ -272,6 +277,10 @@ export interface EnsureRuntimeOptions {
   signal?: AbortSignal;
   /** Test seam — defaults to global `fetch`. */
   fetchImpl?: typeof fetch;
+  /** Test seam for synchronizing concurrent installers immediately before commit. */
+  beforeCommit?: () => Promise<void>;
+  /** Test seam — defaults to the production commit-lock timeout. */
+  commitLockTimeoutMs?: number;
 }
 
 export class RuntimeInstallError extends Error {
@@ -281,12 +290,46 @@ export class RuntimeInstallError extends Error {
   }
 }
 
+async function cleanupStaleStagingDirs(kindDir: string, log: PinoLogger): Promise<void> {
+  let entries: import('node:fs').Dirent[];
+  try {
+    entries = await readdir(kindDir, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      log.warn({ err }, '[managed-runtime] could not read staging dir for cleanup');
+    }
+    return;
+  }
+
+  const cutoff = Date.now() - STALE_STAGING_AGE_MS;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith('.install-')) continue;
+    const path = join(kindDir, entry.name);
+    try {
+      if ((await stat(path)).mtimeMs >= cutoff) continue;
+      await tracedRm(path, { recursive: true, force: true });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      log.warn({ err }, '[managed-runtime] stale staging cleanup failed');
+    }
+  }
+}
+
+export async function cleanupManagedRuntimeStaging(
+  kind: ManagedRuntimeKind,
+  log: PinoLogger,
+  root: string = defaultRuntimeRoot(),
+): Promise<void> {
+  await cleanupStaleStagingDirs(join(root, kind), log);
+}
+
 /**
  * Download + verify + install a managed runtime once per pinned version;
  * later launches reuse the extracted tree. Verified against the publisher's
- * SHA-256 before it is trusted. Extraction lands in a temp dir and is renamed
- * into place so a crash mid-install never leaves a half-tree that the
- * fast-path check would accept.
+ * SHA-256 before it is trusted. Extraction lands beside the destination and
+ * is renamed into place so the atomic commit stays on one filesystem and a
+ * crash mid-install never leaves a half-tree that the fast-path check would
+ * accept.
  *
  * The CALLER is responsible for consent — this only runs once told to.
  */
@@ -296,16 +339,25 @@ export async function ensureManagedRuntime(
   opts: EnsureRuntimeOptions = {},
 ): Promise<ManagedRuntime> {
   const root = opts.root ?? defaultRuntimeRoot();
+  const versionDir = join(root, kind, sanitizeSegment(versionOf(kind)));
+  const kindDir = dirname(versionDir);
   const existing = await findManagedRuntime(kind, root);
-  if (existing !== null) return existing;
+  if (existing !== null) {
+    await cleanupStaleStagingDirs(kindDir, log);
+    return existing;
+  }
 
   const spec = artifactFor(kind);
   if (spec === null) {
     throw new RuntimeInstallError(`no ${kind} build for ${platform()}-${arch()}`);
   }
 
-  const versionDir = join(root, kind, sanitizeSegment(versionOf(kind)));
-  const stagingDir = join(tmpdir(), `ok-runtime-${kind}-${process.pid}-${Date.now()}`);
+  await tracedMkdir(kindDir, { recursive: true });
+  await cleanupStaleStagingDirs(kindDir, log);
+  const stagingDir = join(
+    kindDir,
+    `.install-${sanitizeSegment(versionOf(kind))}-${process.pid}-${randomUUID()}`,
+  );
   await tracedMkdir(stagingDir, { recursive: true });
   const archivePath = join(stagingDir, spec.archiveName);
   log.info(
@@ -344,16 +396,47 @@ export async function ensureManagedRuntime(
     // drop our copy rather than racing on the rename.
     const raced = await findManagedRuntime(kind, root);
     if (raced !== null) return raced;
+    await opts.beforeCommit?.();
 
-    await tracedMkdir(join(root, kind), { recursive: true });
-    await tracedRm(versionDir, { recursive: true, force: true });
-    await tracedRename(extractDir, versionDir);
-    log.info({ kind, version: versionOf(kind), versionDir }, '[managed-runtime] runtime installed');
-    const installed = await findManagedRuntime(kind, root);
-    if (installed === null) {
-      throw new RuntimeInstallError(`installed ${kind} runtime not found after extract`);
+    try {
+      return await withFileLock(
+        `${versionDir}.install.lock`,
+        async () => {
+          // Only the commit is serialized: concurrent launches may download in
+          // parallel, but none can remove a complete tree installed by another.
+          const winner = await findManagedRuntime(kind, root);
+          if (winner !== null) return winner;
+
+          await tracedRm(versionDir, { recursive: true, force: true });
+          await tracedRename(extractDir, versionDir);
+          log.info(
+            { kind, version: versionOf(kind), versionDir },
+            '[managed-runtime] runtime installed',
+          );
+          const installed = await findManagedRuntime(kind, root);
+          if (installed === null) {
+            throw new RuntimeInstallError(`installed ${kind} runtime not found after extract`);
+          }
+          return installed;
+        },
+        {
+          timeoutMs: opts.commitLockTimeoutMs ?? INSTALL_COMMIT_LOCK_TIMEOUT_MS,
+          onWarn: (message, context) => {
+            log.warn({ ...context, kind }, `[managed-runtime] ${message}`);
+          },
+        },
+      );
+    } catch (err) {
+      if (err instanceof FileLockTimeoutError) {
+        const winner = await findManagedRuntime(kind, root);
+        if (winner !== null) return winner;
+        log.warn(
+          { kind, lockPath: err.lockPath, timeoutMs: err.timeoutMs },
+          '[managed-runtime] commit lock timed out with no winner installed',
+        );
+      }
+      throw err;
     }
-    return installed;
   } catch (err) {
     if (err instanceof RuntimeInstallError) throw err;
     throw new RuntimeInstallError(

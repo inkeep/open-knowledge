@@ -8,7 +8,16 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -43,6 +52,7 @@ function buildTarball(
   dir: string,
   innerDir: string,
   files: string[],
+  label?: string,
 ): { bytes: Buffer; sha: string } {
   const treeRoot = join(dir, `tree-${innerDir}`);
   const inner = join(treeRoot, innerDir);
@@ -50,7 +60,7 @@ function buildTarball(
   for (const f of files) {
     const path = join(inner, f);
     mkdirSync(join(path, '..'), { recursive: true });
-    writeFileSync(path, `#!/bin/sh\necho ${f}\n`, { mode: 0o755 });
+    writeFileSync(path, `#!/bin/sh\necho ${label ?? f}\n`, { mode: 0o755 });
   }
   const tarPath = join(dir, `${innerDir}.tar.gz`);
   execFileSync('tar', ['-czf', tarPath, '-C', treeRoot, innerDir]);
@@ -149,6 +159,122 @@ describe('ensureManagedRuntime', () => {
     // Now discoverable via the fast path.
     const found = await findManagedRuntime('node', root);
     expect(found?.npxBin).toBe(runtime.npxBin);
+  });
+
+  test('stages the install beside the destination before downloading', async () => {
+    const stage = tmp();
+    const root = tmp();
+    const { bytes, sha } = buildTarball(stage, 'node-vTEST', ['bin/node', 'bin/npx']);
+    const baseFetch = makeFetch(bytes, sha);
+    let observedStagingDir: string | undefined;
+    const inspectingFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      observedStagingDir = readdirSync(join(root, 'node')).find((name) =>
+        name.startsWith('.install-'),
+      );
+      return baseFetch(input, init);
+    }) as typeof fetch;
+
+    await ensureManagedRuntime('node', log, { root, fetchImpl: inspectingFetch });
+
+    expect(observedStagingDir).toBeDefined();
+    expect(readdirSync(join(root, 'node'))).not.toContain(observedStagingDir);
+  });
+
+  test('removes crash-orphaned staging directories on the next install', async () => {
+    const stage = tmp();
+    const root = tmp();
+    const staleDir = join(root, 'node', '.install-v24.18.0-orphaned');
+    mkdirSync(staleDir, { recursive: true });
+    writeFileSync(join(staleDir, 'partial-archive'), 'partial');
+    const staleTime = new Date(Date.now() - 25 * 60 * 60 * 1_000);
+    utimesSync(staleDir, staleTime, staleTime);
+    const { bytes, sha } = buildTarball(stage, 'node-vTEST', ['bin/node', 'bin/npx']);
+
+    await ensureManagedRuntime('node', log, { root, fetchImpl: makeFetch(bytes, sha) });
+
+    expect(existsSync(staleDir)).toBe(false);
+  });
+
+  test('concurrent installers adopt the first completed runtime', async () => {
+    const firstStage = tmp();
+    const secondStage = tmp();
+    const root = tmp();
+    const first = buildTarball(firstStage, 'node-vFIRST', ['bin/node', 'bin/npx'], 'first');
+    const second = buildTarball(secondStage, 'node-vSECOND', ['bin/node', 'bin/npx'], 'second');
+    let arrivals = 0;
+    let releaseCommit!: () => void;
+    const commitGate = new Promise<void>((resolve) => {
+      releaseCommit = resolve;
+    });
+    const beforeCommit = async () => {
+      arrivals += 1;
+      if (arrivals === 2) releaseCommit();
+      await commitGate;
+    };
+    const installAndReadLauncher = async (archive: typeof first) => {
+      const runtime = await ensureManagedRuntime('node', log, {
+        root,
+        fetchImpl: makeFetch(archive.bytes, archive.sha),
+        beforeCommit,
+      });
+      if (runtime.kind !== 'node') throw new Error('unreachable');
+      return readFileSync(runtime.npxBin, 'utf8');
+    };
+
+    const launchers = await Promise.all([
+      installAndReadLauncher(first),
+      installAndReadLauncher(second),
+    ]);
+
+    expect(arrivals).toBe(2);
+    expect(launchers[0]).toBe(launchers[1]);
+    expect(await findManagedRuntime('node', root)).not.toBeNull();
+  });
+
+  test('adopts a completed runtime when the commit lock times out', async () => {
+    const stage = tmp();
+    const root = tmp();
+    const versionDir = join(root, 'node', describeRuntime('node').version);
+    const { bytes, sha } = buildTarball(stage, 'node-vTEST', ['bin/node', 'bin/npx']);
+
+    const runtime = await ensureManagedRuntime('node', log, {
+      root,
+      fetchImpl: makeFetch(bytes, sha),
+      commitLockTimeoutMs: 100,
+      beforeCommit: async () => {
+        const binDir = join(versionDir, 'winner', 'bin');
+        mkdirSync(binDir, { recursive: true });
+        writeFileSync(join(binDir, 'npx'), '#!/bin/sh\n', { mode: 0o755 });
+        writeFileSync(`${versionDir}.install.lock`, 'held');
+        const future = new Date(Date.now() + 60_000);
+        utimesSync(`${versionDir}.install.lock`, future, future);
+      },
+    });
+
+    expect(runtime.kind).toBe('node');
+    if (runtime.kind !== 'node') throw new Error('unreachable');
+    expect(runtime.npxBin).toBe(join(versionDir, 'winner', 'bin', 'npx'));
+  });
+
+  test('throws when the commit lock times out without an installed winner', async () => {
+    const stage = tmp();
+    const root = tmp();
+    const versionDir = join(root, 'node', describeRuntime('node').version);
+    const { bytes, sha } = buildTarball(stage, 'node-vTEST', ['bin/node', 'bin/npx']);
+
+    const error = await ensureManagedRuntime('node', log, {
+      root,
+      fetchImpl: makeFetch(bytes, sha),
+      commitLockTimeoutMs: 100,
+      beforeCommit: async () => {
+        writeFileSync(`${versionDir}.install.lock`, 'held');
+        const future = new Date(Date.now() + 60_000);
+        utimesSync(`${versionDir}.install.lock`, future, future);
+      },
+    }).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(RuntimeInstallError);
+    expect(error).toHaveProperty('message', expect.stringContaining('Could not acquire file lock'));
   });
 
   test('downloads and installs uv via its per-asset .sha256', async () => {

@@ -81,6 +81,7 @@ import {
   terminateAgentTree,
 } from './launch.ts';
 import {
+  cleanupManagedRuntimeStaging,
   describeRuntime,
   ensureManagedRuntime,
   findManagedRuntime,
@@ -814,6 +815,7 @@ export class AcpThreadManager {
     runtimeKind: ManagedRuntimeKind,
   ): Promise<ManagedRuntime | null> {
     const root = this.opts.runtimeInstall?.root;
+    await cleanupManagedRuntimeStaging(runtimeKind, this.opts.log, root);
     const existing = await findManagedRuntime(runtimeKind, root).catch(() => null);
     if (existing !== null) return existing;
 
