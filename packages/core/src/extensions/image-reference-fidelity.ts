@@ -13,6 +13,7 @@
  */
 
 import { Node } from '@tiptap/core';
+import { renderInlineObjectText } from './input-rule-text.ts';
 
 export const ImageReferenceFidelity = Node.create({
   name: 'imageReference',
@@ -21,6 +22,8 @@ export const ImageReferenceFidelity = Node.create({
   inline: true,
   atom: true,
   priority: 60,
+
+  renderText: renderInlineObjectText,
 
   addAttributes() {
     return {

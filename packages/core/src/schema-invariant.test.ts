@@ -10,8 +10,8 @@
  *   - sharedExtensions ordering changed
  *
  * Adding new nodes/attrs with defaults causes a snapshot mismatch — regenerate
- * via `bun run generate-schema-snapshot` (or manually update schema-snapshot.json)
- * and verify the diff is purely additive before committing.
+ * via `pnpm --dir packages/core run regen-schema-snapshot` (or manually update
+ * schema-snapshot.json) and verify the diff is purely additive before committing.
  *
  * Rationale: y-prosemirror@1.3.7 destructively deletes Y.Items whose
  * schema.node() throws. The delete is multi-peer replicated and undo-resistant.

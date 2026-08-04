@@ -612,6 +612,106 @@ export const CHECKPOINT_KIND_REGISTRY = {
 export const CHECKPOINT_KINDS = Object.keys(CHECKPOINT_KIND_REGISTRY) as CheckpointKind[];
 
 /**
+ * One representative checkpoint per kind, in the shape `parseCheckpoint`
+ * returns for it.
+ *
+ * This lives beside the kinds rather than in the round-trip test because a
+ * `satisfies` clause only binds where TypeScript reads it, and every package
+ * tsconfig excludes `**\/*.test.ts` — a guard written there compiles nothing
+ * and fails nothing. Sited here it is load-bearing: a kind added to
+ * `ParsedCheckpoint` with no sample, or a sample whose metadata does not match
+ * the kind it is keyed under, fails `tsc` in the same file as the registry
+ * entry it is missing. The mapped type is what makes the second half true:
+ * `Record<CheckpointKind, ParsedCheckpoint>` would accept any union member
+ * under any key, so a sample keyed under one kind while carrying another
+ * would compile.
+ *
+ * The parser and registry still have to AGREE at runtime, which no type can
+ * show; the round-trip test drives these samples through
+ * `formatCheckpointBodyLine` and `parseCheckpoint` to prove it.
+ */
+export const CHECKPOINT_SAMPLE_BY_KIND = {
+  'bridge-merge-loss': {
+    kind: 'bridge-merge-loss',
+    docName: 'notes',
+    size: 12,
+    metadata: { lostSubstrings: ['dropped'] },
+  },
+  'producer-guard-loss': {
+    kind: 'producer-guard-loss',
+    docName: 'notes',
+    size: 12,
+    metadata: { construct: 'tableCell' },
+  },
+  'observer-a-duplication': {
+    kind: 'observer-a-duplication',
+    docName: 'notes',
+    size: 12,
+    metadata: { duplicatedLineCount: 2 },
+  },
+  'external-change-rescue': {
+    kind: 'external-change-rescue',
+    docName: 'notes',
+    size: 12,
+    metadata: { incomingDiskSha: 'abc123' },
+  },
+  'defer-exhaustion-loss': {
+    kind: 'defer-exhaustion-loss',
+    docName: 'notes',
+    size: 12,
+    metadata: { deferCount: 8 },
+  },
+  'observer-a-apply-loss': {
+    kind: 'observer-a-apply-loss',
+    docName: 'notes',
+    size: 12,
+    metadata: { lostSubstrings: ['dropped'] },
+  },
+  'bridge-derive-loss': {
+    kind: 'bridge-derive-loss',
+    docName: 'notes',
+    size: 12,
+    metadata: { lostSubstrings: ['dropped'] },
+  },
+  'bridge-backstop-trip': {
+    kind: 'bridge-backstop-trip',
+    docName: 'notes',
+    size: 12,
+    metadata: { rounds: 8 },
+  },
+  'persistence-reconcile-loss': {
+    kind: 'persistence-reconcile-loss',
+    docName: 'notes',
+    size: 12,
+    metadata: { atRiskLines: 1, witnessAvailable: true },
+  },
+  'persistence-duplication-reset': {
+    kind: 'persistence-duplication-reset',
+    docName: 'notes',
+    size: 12,
+    metadata: { copies: 2, fragmentChildren: 18 },
+  },
+  'persistence-divergence-realign': {
+    kind: 'persistence-divergence-realign',
+    docName: 'notes',
+    size: 12,
+    metadata: { diskBytes: 37, discardedBytes: 79 },
+  },
+  'managed-artifact-reconcile': {
+    kind: 'managed-artifact-reconcile',
+    docName: '.ok/templates/daily',
+    size: 12,
+    metadata: { diskBytes: 41, discardedBytes: 66 },
+  },
+  'auto-consolidation': {
+    kind: 'auto-consolidation',
+    docName: null,
+    size: null,
+    metadata: { foldedRefs: 3, trigger: 'dead-chain' },
+  },
+} satisfies { [K in CheckpointKind]: Extract<ParsedCheckpoint, { kind: K }> };
+
+/**
  * Whether a checkpoint kind surfaces as an ordinary timeline row. `null` /
  * `undefined` (a non-checkpoint row, or a checkpoint whose body line was
  * missing or malformed) counts as surfaced — those are ordinary Save-Version /

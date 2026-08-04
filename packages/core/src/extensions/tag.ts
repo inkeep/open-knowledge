@@ -18,6 +18,7 @@
  */
 
 import { Node } from '@tiptap/core';
+import { renderInlineObjectText } from './input-rule-text.ts';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -38,6 +39,8 @@ export const Tag = Node.create({
   // Higher priority than StarterKit defaults so the schema registers
   // before anything that might conflict on parseHTML.
   priority: 60,
+
+  renderText: renderInlineObjectText,
 
   addAttributes() {
     return {

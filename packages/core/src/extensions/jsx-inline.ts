@@ -1,4 +1,5 @@
 import { Node } from '@tiptap/core';
+import { renderInlineObjectText } from './input-rule-text.ts';
 
 /**
  * jsxInline — inline PM node for MDX inline JSX (`mdxJsxTextElement`).
@@ -31,6 +32,8 @@ export const JsxInline = Node.create({
   isolating: false,
   selectable: true,
   priority: 60,
+
+  renderText: renderInlineObjectText,
 
   addAttributes() {
     return {

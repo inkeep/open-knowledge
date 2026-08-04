@@ -1,4 +1,5 @@
 import { Node } from '@tiptap/core';
+import { renderInlineObjectText } from './input-rule-text.ts';
 
 export interface WikiLinkAttrs {
   target: string;
@@ -69,6 +70,8 @@ export const WikiLink = Node.create({
   inline: true,
   atom: true,
   priority: 60,
+
+  renderText: renderInlineObjectText,
 
   addAttributes() {
     return {

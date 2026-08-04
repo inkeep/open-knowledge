@@ -685,6 +685,7 @@
     "escapeMark",
     "docFidelity",
     "sourceLiteral",
+    "plainTextClipboard",
     "starterKit",
     "listBoundaryMerge",
     "table",

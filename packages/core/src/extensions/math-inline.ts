@@ -1,4 +1,5 @@
 import { Node } from '@tiptap/core';
+import { renderInlineObjectText } from './input-rule-text.ts';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -51,6 +52,8 @@ export const MathInline = Node.create({
   atom: true,
   selectable: true,
   priority: 60,
+
+  renderText: renderInlineObjectText,
 
   addAttributes() {
     return {

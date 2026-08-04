@@ -18,6 +18,7 @@
  */
 
 import { Node } from '@tiptap/core';
+import { renderInlineObjectText } from './input-rule-text.ts';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -141,6 +142,8 @@ export const FootnoteReference = Node.create({
   // Higher priority than StarterKit defaults so the schema registers
   // before the inline-unknown fallback path.
   priority: 60,
+
+  renderText: renderInlineObjectText,
 
   addAttributes() {
     return {

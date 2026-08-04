@@ -27,6 +27,7 @@ import { LinkRefDefFidelity } from './link-ref-def-fidelity.ts';
 import { List, ListItem } from './list.ts';
 import { ListBoundaryMerge } from './list-boundary-merge.ts';
 import { MathInline } from './math-inline.ts';
+import { PlainTextClipboard } from './plain-text-clipboard.ts';
 import { RawMdxFallback } from './raw-mdx-fallback.ts';
 import { SourceLiteralMark } from './source-literal-mark.ts';
 import { StrikeFidelity } from './strike-fidelity.ts';
@@ -101,6 +102,8 @@ export const sharedExtensions = [
   DocFidelity,
   // Verbatim source text for unsupported inline markdown constructs.
   SourceLiteralMark,
+  // Keeps `renderText`'s position-faithful placeholder out of plain-text copy.
+  PlainTextClipboard,
   StarterKit.configure({
     undoRedo: false,
     bulletList: false,

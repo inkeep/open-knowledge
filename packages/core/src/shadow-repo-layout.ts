@@ -479,6 +479,7 @@ export type {
 export {
   CHECKPOINT_KIND_REGISTRY,
   CHECKPOINT_KINDS,
+  CHECKPOINT_SAMPLE_BY_KIND,
   formatCheckpointBodyLine,
   isChainAnchorCheckpointKind,
   isSurfacedCheckpointKind,

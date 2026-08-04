@@ -5,94 +5,9 @@ import {
   type CheckpointKind,
   formatCheckpointBodyLine,
   isSurfacedCheckpointKind,
-  type ParsedCheckpoint,
   parseCheckpoint,
+  CHECKPOINT_SAMPLE_BY_KIND as SAMPLE_BY_KIND,
 } from './shadow-repo-layout.ts';
-
-// One representative checkpoint per kind. Typed `satisfies Record<CheckpointKind,
-// …>` so a kind added to ParsedCheckpoint without a sample here fails to
-// compile — the round-trip test below then proves the parser and the registry
-// agree on that new kind at runtime, not just at the type level.
-const SAMPLE_BY_KIND = {
-  'bridge-merge-loss': {
-    kind: 'bridge-merge-loss',
-    docName: 'notes',
-    size: 12,
-    metadata: { lostSubstrings: ['dropped'] },
-  },
-  'producer-guard-loss': {
-    kind: 'producer-guard-loss',
-    docName: 'notes',
-    size: 12,
-    metadata: { construct: 'tableCell' },
-  },
-  'observer-a-duplication': {
-    kind: 'observer-a-duplication',
-    docName: 'notes',
-    size: 12,
-    metadata: { duplicatedLineCount: 2 },
-  },
-  'external-change-rescue': {
-    kind: 'external-change-rescue',
-    docName: 'notes',
-    size: 12,
-    metadata: { incomingDiskSha: 'abc123' },
-  },
-  'defer-exhaustion-loss': {
-    kind: 'defer-exhaustion-loss',
-    docName: 'notes',
-    size: 12,
-    metadata: { deferCount: 8 },
-  },
-  'observer-a-apply-loss': {
-    kind: 'observer-a-apply-loss',
-    docName: 'notes',
-    size: 12,
-    metadata: { lostSubstrings: ['dropped'] },
-  },
-  'bridge-derive-loss': {
-    kind: 'bridge-derive-loss',
-    docName: 'notes',
-    size: 12,
-    metadata: { lostSubstrings: ['dropped'] },
-  },
-  'bridge-backstop-trip': {
-    kind: 'bridge-backstop-trip',
-    docName: 'notes',
-    size: 12,
-    metadata: { rounds: 8 },
-  },
-  'persistence-reconcile-loss': {
-    kind: 'persistence-reconcile-loss',
-    docName: 'notes',
-    size: 12,
-    metadata: { atRiskLines: 1, witnessAvailable: true },
-  },
-  'persistence-duplication-reset': {
-    kind: 'persistence-duplication-reset',
-    docName: 'notes',
-    size: 12,
-    metadata: { copies: 2, fragmentChildren: 18 },
-  },
-  'persistence-divergence-realign': {
-    kind: 'persistence-divergence-realign',
-    docName: 'notes',
-    size: 12,
-    metadata: { diskBytes: 37, discardedBytes: 79 },
-  },
-  'managed-artifact-reconcile': {
-    kind: 'managed-artifact-reconcile',
-    docName: '.ok/templates/daily',
-    size: 12,
-    metadata: { diskBytes: 41, discardedBytes: 66 },
-  },
-  'auto-consolidation': {
-    kind: 'auto-consolidation',
-    docName: null,
-    size: null,
-    metadata: { foldedRefs: 3, trigger: 'dead-chain' },
-  },
-} satisfies Record<CheckpointKind, ParsedCheckpoint>;
 
 describe('checkpoint-kind registry', () => {
   it('registers every kind the parser can produce, and no phantom kinds', () => {
