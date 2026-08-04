@@ -642,34 +642,44 @@ function EditorAreaInner({
     if (isDraggingDocHandleRef.current || isDraggingAgentsHandleRef.current) return;
     const group = groupRef.current;
     if (group == null) return;
-    // The imperative handles throw once their group/panel has unregistered,
-    // and this can run from a deferred microtask racing a view-kind remount —
-    // a torn-down group just means there is no layout left to correct.
+    // Only the library reads are guarded. The imperative handles throw once
+    // their group/panel has unregistered, and this can run from a deferred
+    // microtask racing a view-kind remount — a torn-down group just means
+    // there is no layout left to correct. The layout math between the guards
+    // is ours: swallowing its errors would hide a real bug behind the same
+    // silent no-op.
+    let containerPx: number | null;
+    let layout: Record<string, number>;
     try {
-      const containerPx = resolveGroupPxWidth();
-      if (containerPx == null) return;
-      const layout = group.getLayout();
-      const ids = Object.keys(layout);
-      if (ids.length === 0) return;
-      const residualId = ids.find((id) => !RIGHT_PANEL_IDS.has(id));
-      if (residualId == null) return;
-      const pinnedPx: Record<string, number> = {};
-      if ('doc-panel' in layout) {
-        pinnedPx['doc-panel'] = docCollapsed ? 0 : docPanelWidthPxRef.current;
-      }
-      if ('agents-column' in layout) {
-        pinnedPx['agents-column'] = agentsWidthPxRef.current;
-      }
-      if (Object.keys(pinnedPx).length === 0) return;
-      const next = computeStickyRepinLayout({
-        currentLayout: layout,
-        containerPx,
-        pinnedPx,
-        residualId,
-      });
-      if (next !== layout) group.setLayout(next);
+      containerPx = resolveGroupPxWidth();
+      layout = group.getLayout();
     } catch {
-      // Group or panel unregistered mid-flight — nothing to assert against.
+      return;
+    }
+    if (containerPx == null) return;
+    const ids = Object.keys(layout);
+    if (ids.length === 0) return;
+    const residualId = ids.find((id) => !RIGHT_PANEL_IDS.has(id));
+    if (residualId == null) return;
+    const pinnedPx: Record<string, number> = {};
+    if ('doc-panel' in layout) {
+      pinnedPx['doc-panel'] = docCollapsed ? 0 : docPanelWidthPxRef.current;
+    }
+    if ('agents-column' in layout) {
+      pinnedPx['agents-column'] = agentsWidthPxRef.current;
+    }
+    if (Object.keys(pinnedPx).length === 0) return;
+    const next = computeStickyRepinLayout({
+      currentLayout: layout,
+      containerPx,
+      pinnedPx,
+      residualId,
+    });
+    if (next === layout) return;
+    try {
+      group.setLayout(next);
+    } catch {
+      // Unregistered between the read and the write.
     }
   }
 
@@ -682,6 +692,73 @@ function EditorAreaInner({
   useEffect(() => {
     assertRightRailLayoutRef.current = assertRightRailLayout;
   });
+
+  // Drag-end plumbing shared by the doc-panel and agents-column handles.
+  //
+  // A drag ends on `pointerup` OR `pointercancel`. A cancelled pointer fires
+  // NO pointerup — once the browser suppresses a pointer stream (touch
+  // pan/zoom/scroll takeover, or the OS invalidating the pointer) no further
+  // events arrive for that pointerId. Binding only `pointerup` leaves the drag
+  // flag set, and `assertRightRailLayout` bails while either flag is set — so
+  // the doc-panel toggle, ⌥⌘B, the avatar-click expand and the sticky-width
+  // re-pin all silently stop working, and `onResize` starts misreading re-pins
+  // as user drags and overwriting the persisted width.
+  //
+  // Deliberately NOT bound: `lostpointercapture`. react-resizable-panels
+  // re-acquires capture on every pointermove that lacks it, so capture loss is
+  // routine mid-drag; treating it as a drag end would clear the flag under a
+  // live drag — the race the flag exists to prevent. A separator that unmounts
+  // mid-drag is already covered without it: capture releases implicitly and
+  // the eventual pointerup retargets by hit-test and still reaches `window`.
+  //
+  // `onCommit` runs only on a real release: an aborted gesture must not commit
+  // a drag-to-close.
+  //
+  // Both listeners are scoped to the `pointerId` that started the drag. A
+  // second touch elsewhere on the page can be taken over by the browser for
+  // scrolling, which fires `pointercancel` for THAT pointer while this drag is
+  // still live; unscoped, it would end the drag and re-pin the rail mid-gesture
+  // (the panel visibly snapping to its persisted width). Mirrors the existing
+  // scoping in GraphView's pointer-drag handler.
+  const endHandleDragRef = useRef<(() => void) | null>(null);
+  function trackHandleDrag(
+    pointerId: number,
+    setDragging: (dragging: boolean) => void,
+    draggingRef: { current: boolean },
+    onCommit?: () => void,
+  ) {
+    // A prior gesture that never saw a release would otherwise leave its own
+    // flag set forever. Clears whichever handle owned it, not just this one.
+    endHandleDragRef.current?.();
+    setDragging(true);
+    draggingRef.current = true;
+    function end() {
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerCancel);
+      endHandleDragRef.current = null;
+      setDragging(false);
+      draggingRef.current = false;
+    }
+    function onPointerUp(event: PointerEvent) {
+      if (event.pointerId !== pointerId) return;
+      end();
+      onCommit?.();
+    }
+    function onPointerCancel(event: PointerEvent) {
+      if (event.pointerId !== pointerId) return;
+      end();
+      // Restore both rail pins. A column the aborted drag had snapped shut
+      // would otherwise sit at zero width while still counting as visible —
+      // no reveal tab, no handle, no way back.
+      assertRightRailLayoutRef.current(isCollapsedRef.current);
+    }
+    endHandleDragRef.current = end;
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
+  }
+  // Unmounting mid-drag (a view-kind switch under an active drag) would strand
+  // both window listeners on a component React has already torn down.
+  useEffect(() => () => endHandleDragRef.current?.(), []);
 
   // Expand the doc panel from a non-toggle path (tab request, avatar click,
   // width-threshold crossing). Same routing rule as togglePanel: with the
@@ -1322,15 +1399,8 @@ function EditorAreaInner({
           // under embedded AI-editor hosts whose own container chrome sits at
           // the iframe edge.
           disabled={isCollapsed}
-          onPointerDown={() => {
-            setIsDraggingDocHandle(true);
-            isDraggingDocHandleRef.current = true;
-            const handleUp = () => {
-              setIsDraggingDocHandle(false);
-              isDraggingDocHandleRef.current = false;
-              window.removeEventListener('pointerup', handleUp);
-            };
-            window.addEventListener('pointerup', handleUp);
+          onPointerDown={(event) => {
+            trackHandleDrag(event.pointerId, setIsDraggingDocHandle, isDraggingDocHandleRef);
           }}
         />
         <ResizablePanel
@@ -1526,22 +1596,21 @@ function EditorAreaInner({
     <>
       <ResizableHandle
         withHandle
-        onPointerDown={() => {
-          setIsDraggingAgentsHandle(true);
-          isDraggingAgentsHandleRef.current = true;
-          const handleUp = () => {
-            setIsDraggingAgentsHandle(false);
-            isDraggingAgentsHandleRef.current = false;
-            window.removeEventListener('pointerup', handleUp);
-            // Drag-to-close: releasing with the column snapped shut hides the
-            // agents panel (unmounting the column), mirroring the doc panel's
-            // drag-to-close affordance. Deferred to pointerup — hiding
-            // mid-drag would unmount the separator under the active drag.
-            if (agentsColumnPanelRef.current?.isCollapsed()) {
-              onAgentsVisibleChange?.(false);
-            }
-          };
-          window.addEventListener('pointerup', handleUp);
+        onPointerDown={(event) => {
+          trackHandleDrag(
+            event.pointerId,
+            setIsDraggingAgentsHandle,
+            isDraggingAgentsHandleRef,
+            () => {
+              // Drag-to-close: releasing with the column snapped shut hides the
+              // agents panel (unmounting the column), mirroring the doc panel's
+              // drag-to-close affordance. Deferred to the release — hiding
+              // mid-drag would unmount the separator under the active drag.
+              if (agentsColumnPanelRef.current?.isCollapsed()) {
+                onAgentsVisibleChange?.(false);
+              }
+            },
+          );
         }}
       />
       <ResizablePanel

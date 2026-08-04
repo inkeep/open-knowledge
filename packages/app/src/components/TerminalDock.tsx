@@ -105,17 +105,14 @@ export function TerminalDock({
     );
   }
 
-  // The drag-end listener is added to `window` on pointerdown and normally removes
-  // itself on pointerup. If the shell unmounts mid-drag the closure would leak —
-  // track it so unmount can detach it.
-  const dragUpHandlerRef = useRef<(() => void) | null>(null);
+  // The drag-end listeners are added to `window` on pointerdown and normally
+  // detach themselves on `pointerup` or `pointercancel`. If the shell unmounts
+  // mid-drag the closures would leak — track the detach so unmount can run it.
+  const endDragRef = useRef<(() => void) | null>(null);
   useEffect(
     () => () => {
       if (writeTimerRef.current != null) clearTimeout(writeTimerRef.current);
-      if (dragUpHandlerRef.current != null) {
-        window.removeEventListener('pointerup', dragUpHandlerRef.current);
-        dragUpHandlerRef.current = null;
-      }
+      endDragRef.current?.();
     },
     [],
   );
@@ -189,18 +186,40 @@ export function TerminalDock({
       <ResizableHandle
         withHandle={visible}
         disabled={!visible}
-        onPointerDown={() => {
+        onPointerDown={(event) => {
           if (!visible) return;
+          // A prior gesture that never saw a release would otherwise leave the
+          // flag set forever.
+          endDragRef.current?.();
           setIsDragging(true);
           isDraggingRef.current = true;
-          const handleUp = () => {
+          const { pointerId } = event;
+          // A drag ends on `pointerup` OR `pointercancel`: a cancelled pointer
+          // fires NO pointerup — once the browser suppresses a pointer stream
+          // (touch pan/zoom/scroll takeover, or the OS invalidating the
+          // pointer) no further events arrive for that pointerId. Without the
+          // cancel arm the flag stays set, and every later imperative or
+          // observer-driven resize reads as a user drag: `onVisibleChange`
+          // fires spuriously, the persisted height gets overwritten, and the
+          // stranded-dock guard stops firing.
+          //
+          // `window` is the right target because a release outside the dock
+          // still lands there; both listeners are scoped to the originating
+          // `pointerId` so a second touch's cancel cannot end this drag.
+          const end = () => {
             setIsDragging(false);
             isDraggingRef.current = false;
-            window.removeEventListener('pointerup', handleUp);
-            dragUpHandlerRef.current = null;
+            window.removeEventListener('pointerup', onEnd);
+            window.removeEventListener('pointercancel', onEnd);
+            endDragRef.current = null;
           };
-          dragUpHandlerRef.current = handleUp;
-          window.addEventListener('pointerup', handleUp);
+          const onEnd = (ev: PointerEvent) => {
+            if (ev.pointerId !== pointerId) return;
+            end();
+          };
+          endDragRef.current = end;
+          window.addEventListener('pointerup', onEnd);
+          window.addEventListener('pointercancel', onEnd);
         }}
       />
       <ResizablePanel

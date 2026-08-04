@@ -16,7 +16,7 @@
  */
 
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect, useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -1182,6 +1182,69 @@ describe('TerminalDock multi-session', () => {
       expect(panelId).toBeTruthy();
       expect(document.getElementById(panelId ?? '')).not.toBeNull();
     }
+  });
+
+  // A drag ends on `pointerup` OR `pointercancel`, and a cancelled pointer
+  // fires NO pointerup — once the browser suppresses a pointer stream (touch
+  // pan/zoom/scroll takeover, or the OS invalidating the pointer) no further
+  // events arrive for that pointerId. The handle used to bind only
+  // `pointerup`, so an aborted gesture left `isDraggingRef` set: every later
+  // imperative or observer-driven resize then read as a user drag, firing
+  // `onVisibleChange` spuriously, overwriting the persisted height, and
+  // suppressing the stranded-dock guard.
+  test('a pointercancel-terminated drag stops later resizes reading as user drags', () => {
+    const view = renderDock(true);
+    const handle = screen.getByTestId('terminal-resize-handle');
+    act(() => {
+      fireEvent.pointerDown(handle);
+    });
+    act(() => {
+      fireEvent.pointerCancel(window);
+    });
+    view.onVisibleChange.mockClear();
+
+    // An imperative replay (the `visible` effect re-applying the persisted
+    // height) reports a collapsed panel. Read as a user drag this would hide
+    // the dock the user never asked to close.
+    act(() => {
+      terminalPanelProps?.onResize?.({ asPercentage: 0, inPixels: 0 });
+    });
+    expect(view.onVisibleChange).not.toHaveBeenCalled();
+  });
+
+  // The drag-end listeners sit on `window`, so every pointer on the page
+  // reaches them. A second touch taken over by the browser for scrolling fires
+  // `pointercancel` for ITS pointerId while this drag is still live — unscoped,
+  // that would end the dock drag early. The dock's `endDragRef` / `onEnd`
+  // closure is independent of EditorArea's, so it needs its own pin.
+  test('a different pointer cancelling does not end an in-flight dock drag', () => {
+    const view = renderDock(true);
+    const handle = screen.getByTestId('terminal-resize-handle');
+    act(() => {
+      fireEvent.pointerDown(handle, { pointerId: 1 });
+    });
+
+    // An unrelated pointer is cancelled by the browser.
+    act(() => {
+      fireEvent.pointerCancel(window, { pointerId: 2 });
+    });
+    // The drag is still live, so a collapsed resize still reads as the user
+    // dragging the dock shut — which is what proves the flag survived.
+    view.onVisibleChange.mockClear();
+    act(() => {
+      terminalPanelProps?.onResize?.({ asPercentage: 0, inPixels: 0 });
+    });
+    expect(view.onVisibleChange).toHaveBeenCalledWith(false);
+
+    // The originating pointer still ends it.
+    act(() => {
+      fireEvent.pointerCancel(window, { pointerId: 1 });
+    });
+    view.onVisibleChange.mockClear();
+    act(() => {
+      terminalPanelProps?.onResize?.({ asPercentage: 0, inPixels: 0 });
+    });
+    expect(view.onVisibleChange).not.toHaveBeenCalled();
   });
 
   test('persists the bottom panel config (collapsible, sized, inert when hidden)', () => {

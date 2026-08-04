@@ -497,6 +497,132 @@ describe('EditorArea right-rail layout assert on agents-column mount/unmount', (
     });
     expect(visibleChanges).toHaveLength(0);
   });
+
+  // A drag ends on `pointerup` OR `pointercancel`, and a cancelled pointer
+  // fires NO pointerup — once the browser suppresses a pointer stream (touch
+  // pan/zoom/scroll takeover, or the OS invalidating the pointer) no further
+  // events arrive for that pointerId. The handles used to bind only
+  // `pointerup`, so a cancelled gesture left the drag flag set forever, and
+  // `assertRightRailLayout` bails while either flag is set — silently
+  // disabling the doc-panel toggle, ⌥⌘B, the avatar-click expand and the
+  // sticky-width re-pin.
+  test('a pointercancel-terminated drag still clears the flag that gates the layout assert', async () => {
+    setViewportWidth(1400);
+    const view = render(<EditorArea {...baseProps} agentsVisible />);
+    const handle = screen.getByTestId('resizable-handle');
+    act(() => {
+      fireEvent.pointerDown(handle);
+    });
+    act(() => {
+      fireEvent.pointerCancel(window);
+    });
+    // Drop the assert the cancel itself issues (it restores the rail pins) so
+    // what follows can only come from the panel-set change.
+    groupSetLayoutCalls = [];
+
+    groupLayout = { 'editor-main': 45, 'doc-panel': 25, 'agents-column': 30 };
+    view.rerender(<EditorArea {...baseProps} agentsVisible={false} />);
+    await act(async () => {});
+    expect(groupSetLayoutCalls.length).toBeGreaterThan(0);
+  });
+
+  test('a pointercancel restores the rail pins rather than committing a drag-to-close', async () => {
+    setViewportWidth(1400);
+    const visibleChanges: boolean[] = [];
+    render(
+      <EditorArea
+        {...baseProps}
+        agentsVisible
+        onAgentsVisibleChange={(visible: boolean) => {
+          visibleChanges.push(visible);
+        }}
+      />,
+    );
+    // What the group holds mid-drag: the editor plus the column the drag has
+    // been shrinking. The assert needs a live panel-ID set to correct against.
+    groupLayout = { 'editor-main': 70, 'agents-column': 30 };
+    const handle = screen.getByTestId('resizable-handle');
+    act(() => {
+      fireEvent.pointerDown(handle);
+    });
+    // The drag had snapped the column shut, but the gesture was aborted rather
+    // than released — the user never committed to closing it.
+    panelIsCollapsed = true;
+    act(() => {
+      fireEvent.pointerCancel(window);
+    });
+    expect(visibleChanges).toHaveLength(0);
+    // The column would otherwise sit at zero width while still counting as
+    // visible: no reveal tab, no handle, no way back. The abort re-pins it.
+    expect(groupSetLayoutCalls.at(-1)?.['agents-column']).toBeCloseTo(pctOf(480), 3);
+  });
+
+  // Unmounting mid-drag is the third drag-termination path (alongside release
+  // and cancel) and the one with no natural trigger in the other tests: a
+  // view-kind switch tears the subtree down while the pointer is still held.
+  // Without the unmount detach, the still-registered `pointerup` would run
+  // `onCommit` against a torn-down subtree and hide the agents panel the user
+  // never asked to close.
+  test('a drag interrupted by unmount does not commit a drag-to-close afterwards', async () => {
+    setViewportWidth(1400);
+    const visibleChanges: boolean[] = [];
+    const view = render(
+      <EditorArea
+        {...baseProps}
+        agentsVisible
+        onAgentsVisibleChange={(visible: boolean) => {
+          visibleChanges.push(visible);
+        }}
+      />,
+    );
+    const handle = screen.getByTestId('resizable-handle');
+    act(() => {
+      fireEvent.pointerDown(handle, { pointerId: 1 });
+    });
+    // The drag had snapped the column shut — so a surviving listener WOULD
+    // commit the hide, which is what makes this assertion meaningful.
+    panelIsCollapsed = true;
+    act(() => {
+      view.unmount();
+    });
+    act(() => {
+      fireEvent.pointerUp(window, { pointerId: 1 });
+    });
+    expect(visibleChanges).toHaveLength(0);
+  });
+
+  // The drag-end listeners live on `window`, so every pointer on the page
+  // reaches them. A second touch taken over by the browser for scrolling fires
+  // `pointercancel` for ITS pointerId while this drag is still live; unscoped,
+  // that would end the drag and re-pin the rail mid-gesture.
+  test('a different pointer cancelling does not end an in-flight drag', async () => {
+    setViewportWidth(1400);
+    const view = render(<EditorArea {...baseProps} agentsVisible />);
+    const handle = screen.getByTestId('resizable-handle');
+    act(() => {
+      fireEvent.pointerDown(handle, { pointerId: 1 });
+    });
+    groupSetLayoutCalls = [];
+    groupLayout = { 'editor-main': 70, 'agents-column': 30 };
+
+    // A second, unrelated pointer is cancelled by the browser.
+    act(() => {
+      fireEvent.pointerCancel(window, { pointerId: 2 });
+    });
+    expect(groupSetLayoutCalls).toHaveLength(0);
+
+    // The drag is still live, so the panel-set change must still be suppressed
+    // (the assert bails while a drag flag is set) — proving the flag survived.
+    view.rerender(<EditorArea {...baseProps} agentsVisible={false} />);
+    await act(async () => {});
+    expect(groupSetLayoutCalls).toHaveLength(0);
+
+    // The originating pointer still ends it.
+    act(() => {
+      fireEvent.pointerCancel(window, { pointerId: 1 });
+    });
+    expect(groupSetLayoutCalls.length).toBeGreaterThan(0);
+  });
 });
 
 // Exactly ONE panel advertises itself with a persistent edge tab, and EditorArea
