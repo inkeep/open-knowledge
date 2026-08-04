@@ -1834,6 +1834,7 @@
     "U6wmNc": ["Sync paused"],
     "U88xbi": ["Failed to create the schema file"],
     "U8CD-l": ["Copy full path, No workspace"],
+    "U8sPsM": ["Image failed to load: ", ["label"]],
     "U9tm58": ["Hide problem indicators"],
     "UBv8UK": ["Delete Permanently"],
     "UDFrWm": ["Checking GitHub connection..."],
@@ -3128,6 +3129,7 @@
     "nGAFeH": [
       "Reports you've generated on this Mac. Retry a send, reveal a file, or delete one you no longer need."
     ],
+    "nL-HHD": ["Image failed to load"],
     "nMSYz5": [
       "This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects."
     ],

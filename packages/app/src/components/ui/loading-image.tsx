@@ -1,4 +1,5 @@
 import { useLingui } from '@lingui/react/macro';
+import { ImageOff } from 'lucide-react';
 import type { CSSProperties, ImgHTMLAttributes } from 'react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -50,6 +51,7 @@ export function LoadingImage({
   const { t } = useLingui();
   const imgRef = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState(false);
+  const [hasError, setHasError] = useState(false);
   const intrinsic = hasIntrinsicDimensions(width, height);
   const slotStyle = computeSlotStyle(width, height, style);
 
@@ -58,18 +60,53 @@ export function LoadingImage({
   // forever and the <img> stay stuck at opacity-0. Treating `complete` as
   // the terminal-state signal (regardless of naturalWidth) also dismisses
   // the skeleton for cached failures whose onError may not re-fire, mirroring
-  // the new onError handler's semantics. Re-running on src change resets the
-  // skeleton when the same instance is reused with a new src (e.g.
-  // AssetPreview switching assets in the sidebar).
+  // the onError handler's semantics. `naturalWidth === 0` on a `complete`
+  // img means the load actually failed (broken/404 cache) — surface that as
+  // the error placeholder instead of leaving the reader looking at the
+  // browser's tiny default broken-image glyph. Re-running on src change
+  // resets both flags when the same instance is reused with a new src.
   // biome-ignore lint/correctness/useExhaustiveDependencies: src is the reactive trigger; the body reads imgRef.current (refs don't trigger re-runs) so biome treats src as unused.
   useLayoutEffect(() => {
     const img = imgRef.current;
     if (img?.complete) {
       setLoaded(true);
+      setHasError(img.naturalWidth === 0);
     } else {
       setLoaded(false);
+      setHasError(false);
     }
   }, [src]);
+
+  if (hasError) {
+    // A visible placeholder card replaces the browser's default 16x16
+    // broken-image glyph so the reader can tell the asset is missing
+    // instead of assuming the block rendered empty. Stays a `<span>` for
+    // the same phrasing-content reason the slot is — Image.tsx wraps this
+    // in `<Zoom wrapElement="span">` and markdown often lands `<img>`
+    // inside `<p>`, where `<div>` is forbidden.
+    const label = alt && alt.length > 0 ? alt : (src ?? '');
+    return (
+      <span
+        data-testid={slotTestId}
+        data-image-error="true"
+        role="img"
+        aria-label={t`Image failed to load: ${label}`}
+        className={cn(
+          'inline-flex max-w-full items-center gap-2 rounded-md border border-dashed border-border bg-muted/40 px-2 py-1 text-muted-foreground',
+          slotClassName,
+        )}
+        style={intrinsic ? slotStyle : undefined}
+      >
+        <ImageOff aria-hidden="true" className="size-3.5 shrink-0 opacity-70" />
+        <span className="text-xs font-medium">{t`Image failed to load`}</span>
+        {src ? (
+          <span className="max-w-[24ch] truncate font-mono text-[10px] opacity-70" title={src}>
+            {src}
+          </span>
+        ) : null}
+      </span>
+    );
+  }
 
   return (
     <span
@@ -116,14 +153,15 @@ export function LoadingImage({
         )}
         onLoad={(event) => {
           setLoaded(true);
+          setHasError(false);
           onLoad?.(event);
         }}
         onError={(event) => {
-          // Dismiss the skeleton so the browser's native broken-image
-          // indicator becomes visible and screen readers stop announcing
-          // aria-busy="true" forever. Without this, a 404 leaves the
-          // <img> stuck at opacity-0 — a regression from default <img>.
+          // Route into the placeholder branch on next render — the
+          // skeleton also dismisses so screen readers stop announcing
+          // aria-busy="true" forever.
           setLoaded(true);
+          setHasError(true);
           onError?.(event);
         }}
       />

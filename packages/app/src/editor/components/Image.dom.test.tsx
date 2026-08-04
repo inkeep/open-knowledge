@@ -148,15 +148,15 @@ describe('Image — loading-state placeholder (PRD-6638)', () => {
     }
   });
 
-  test('removes the placeholder after the inner <img>.error event fires (broken image)', () => {
-    // Without an onError handler the <img> stays at opacity-0 forever — a
-    // regression from default <img> behavior where the browser shows its
-    // native broken-image indicator. Screen readers also stay parked on
-    // aria-busy="true" with no way to distinguish "still loading" from
-    // "permanently broken". Dismissing the skeleton on error lets the
-    // browser's broken-image indicator become visible.
+  test('renders a visible placeholder card after the inner <img>.error event fires (broken image)', () => {
+    // The browser's default broken-image glyph is a 16x16 icon that reads as
+    // "the block rendered empty" — the reporter's ask was for something
+    // visible so the reader knows the asset is missing. Placeholder is a
+    // <span> for the same phrasing-content reason the slot is (Image.tsx
+    // wraps in <Zoom wrapElement="span">, and markdown lands <img> inside
+    // <p> where <div> is forbidden).
     const { container } = render(
-      <Image src="/missing-asset.png" alt="" width={400} height={300} />,
+      <Image src="/missing-asset.png" alt="broken" width={400} height={300} />,
     );
 
     expect(screen.queryByTestId('image-loading-skeleton')).not.toBeNull();
@@ -165,7 +165,14 @@ describe('Image — loading-state placeholder (PRD-6638)', () => {
     expect(img).not.toBeNull();
     fireEvent.error(img as HTMLImageElement);
 
+    // Skeleton gone, placeholder card mounted, src surfaced for triage.
     expect(screen.queryByTestId('image-loading-skeleton')).toBeNull();
+    const slot = screen.getByTestId('image-slot');
+    expect(slot.getAttribute('data-image-error')).toBe('true');
+    expect(slot.textContent).toContain('Image failed to load');
+    expect(slot.textContent).toContain('/missing-asset.png');
+    // Stays inline for phrasing-content compatibility with <p>.
+    expect(slot.tagName).toBe('SPAN');
   });
 
   test('restores the placeholder when src changes (e.g. AssetPreview switching assets)', () => {

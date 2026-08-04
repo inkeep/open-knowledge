@@ -5586,6 +5586,14 @@ msgstr "Ignore patterns"
 msgid "Ignore patterns (raw text)"
 msgstr "Ignore patterns (raw text)"
 
+#: src/components/ui/loading-image.tsx
+msgid "Image failed to load"
+msgstr "Image failed to load"
+
+#: src/components/ui/loading-image.tsx
+msgid "Image failed to load: {label}"
+msgstr "Image failed to load: {label}"
+
 #: src/components/ImportSkillForm.tsx
 msgid "Import"
 msgstr "Import"
