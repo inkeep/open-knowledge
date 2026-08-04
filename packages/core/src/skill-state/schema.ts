@@ -107,9 +107,12 @@ const TargetEntrySchema = z.looseObject({
 /**
  * Per-bundle opt-in decision. Keyed by a bundle's install NAME (e.g.
  * `open-knowledge-discovery`), NOT the install target. `enabled: false` is an
- * explicit decline recorded via the first-launch consent dialog or `ok init
- * --no-skills`; an absent key means "no recorded decision" (grandfather: the
- * gate falls back to disk presence). Each leaf `.register()` BEFORE wrappers
+ * explicit decline, written only where the user is choosing machine-wide: the
+ * first-launch consent dialog and the per-skill Settings toggle. `ok init
+ * --no-skills` does NOT write one — it is a per-invocation skip, and a decline
+ * from one project would speak for every other project on the machine. An
+ * absent key means "no recorded decision" (grandfather: the gate falls back to
+ * disk presence). Each leaf `.register()` BEFORE wrappers
  * per the Zod v4 metadata-binding rule.
  */
 const BundleDecisionEntrySchema = z.looseObject({

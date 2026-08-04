@@ -145,7 +145,7 @@ Installing `@inkeep/open-knowledge` from npm (or invoking it with `npx`) drops t
 | `<pkg>/dist/native/` | Bundled native TOML-editing addon, shipped inside the package | Outside-project (package dir) |
 
 <Callout type="info" title="Opt out">
-  Installing the package writes nothing outside its own directory, so there is nothing to opt out of here. The user-global skills are installed by `ok init`, and `ok init --no-skills` declines them.
+  Installing the package writes nothing outside its own directory, so there is nothing to opt out of here. The user-global skills are installed by `ok init`, and `ok init --no-skills` skips installing them for that run.
 </Callout>
 
 ### `ok init`
@@ -190,7 +190,7 @@ With `--scope user` or `both` (the default), `ok init` also registers the `open-
 | `~/.ok/skill-state.yml` | Records which skill version is installed, so the step is skipped next time | Outside-project (home dir) |
 | `~/.ok/skill-install-events.jsonl` | Append-only local log of skill-install attempts | Outside-project (home dir) |
 
-The install is **non-fatal** (`ok init` still exits 0 if it fails), **version-gated** (a no-op when the current version is already installed), and needs **no network access**. Decline it with `ok init --no-skills`, or choose individual bundles with `--skills <ids>`; the decision is remembered in `~/.ok/skill-state.yml` and honored by every later install path. `ok repair-skills` re-runs it.
+The install is **non-fatal** (`ok init` still exits 0 if it fails), **version-gated** (a no-op when the current version is already installed), and needs **no network access**. Skip it for one run with `ok init --no-skills`, or choose individual bundles with `--skills <ids>`. Skipping records nothing and removes nothing, so skills already on the machine are left alone. An installed bundle is remembered in `~/.ok/skill-state.yml` and honored by every later install path; to turn the built-in skills off for good, use the first-launch prompt or the Settings toggle, which record a durable machine-wide choice. `ok repair-skills` re-runs it.
 
 Pi is the exception: it has no user-level MCP config (it has no MCP support at all), so its integration is only ever the project-scoped bridge extension above.
 
@@ -201,7 +201,7 @@ On Windows, Claude Desktop and OpenCode configs live under `%APPDATA%\Claude\` a
 <Callout type="info" title="Controlling it">
   - `--no-mcp` — scaffold `.ok/` only; register nothing with any editor.
   - `--scope user | project | both` — where the MCP entry is written. In an interactive terminal, `ok init` prompts for this; scripted/CI runs default to `both`, so pass the flag to constrain them.
-  - `--no-skills` — install no user-global skills; `--skills discovery,write-skill` — install only the named bundles. Default installs both. The choice is recorded and honored by the desktop app too.
+  - `--no-skills` — install no user-global skills on this run; `--skills discovery,write-skill` — install only the named bundles. Default installs both. Installing is recorded and honored by the desktop app too; skipping is not recorded, so it never affects another project.
   - `--local-only` (vs `--shared`) — keep `.ok/` out of git.
 </Callout>
 

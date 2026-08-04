@@ -13,6 +13,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { resolveBundleEnabled } from '@inkeep/open-knowledge-core';
 import { readBundleDecision } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
@@ -1018,7 +1019,10 @@ describe('runInit', () => {
       expect(await readBundleDecision(fakeHome, 'open-knowledge-write-skill')).toBe(true);
     });
 
-    it('--no-skills installs nothing and records both declined', async () => {
+    it('--no-skills installs nothing and records NOTHING', async () => {
+      // The flag is a per-invocation skip. Recording a decline here would speak
+      // for every project on the machine, since these bundles exist once at
+      // `~/.agents/skills/<name>` with no per-project copy.
       const installed: (string | undefined)[] = [];
       await runInitForTest({
         skills: false,
@@ -1028,8 +1032,35 @@ describe('runInit', () => {
         },
       });
       expect(installed).toEqual([]);
-      expect(await readBundleDecision(fakeHome, 'open-knowledge-discovery')).toBe(false);
-      expect(await readBundleDecision(fakeHome, 'open-knowledge-write-skill')).toBe(false);
+      expect(await readBundleDecision(fakeHome, 'open-knowledge-discovery')).toBeNull();
+      expect(await readBundleDecision(fakeHome, 'open-knowledge-write-skill')).toBeNull();
+    });
+
+    it('--no-skills leaves bundles another project already installed on disk', async () => {
+      // The regression: one `--no-skills` in a throwaway directory used to
+      // delete the built-ins for every project, then re-delete them on every
+      // launch via the recorded decline.
+      const central = join(fakeHome, '.agents', 'skills');
+      for (const name of ['open-knowledge-discovery', 'open-knowledge-write-skill']) {
+        mkdirSync(join(central, name), { recursive: true });
+        writeFileSync(join(central, name, 'SKILL.md'), '# Installed earlier\n');
+      }
+
+      await runInitForTest({ skills: false, installUserSkill: async () => 'installed' });
+
+      for (const name of ['open-knowledge-discovery', 'open-knowledge-write-skill']) {
+        expect(existsSync(join(central, name, 'SKILL.md'))).toBe(true);
+        // And no decline recorded, so no sweep re-deletes them later.
+        expect(await readBundleDecision(fakeHome, name)).toBeNull();
+      }
+    });
+
+    it('an unrecorded bundle grandfathers to disk, which is why recording nothing is correct', () => {
+      // The policy the fix rests on: absent a decision, both reclaim sweeps
+      // follow whatever is on disk. Recording nothing therefore yields the
+      // right answer on BOTH sides, without a durable machine-wide write.
+      expect(resolveBundleEnabled(null, { installedOnDisk: false })).toBe(false);
+      expect(resolveBundleEnabled(null, { installedOnDisk: true })).toBe(true);
     });
 
     it('--skills discovery installs only discovery', async () => {
@@ -1043,7 +1074,9 @@ describe('runInit', () => {
       });
       expect(installed).toEqual(['discovery']);
       expect(await readBundleDecision(fakeHome, 'open-knowledge-discovery')).toBe(true);
-      expect(await readBundleDecision(fakeHome, 'open-knowledge-write-skill')).toBe(false);
+      // Not chosen is not the same as declined — the un-selected bundle stays
+      // unrecorded so it grandfathers to disk rather than being turned off.
+      expect(await readBundleDecision(fakeHome, 'open-knowledge-write-skill')).toBeNull();
     });
 
     it('installs every enabled bundle with force so the shared cli-hosts version key cannot skip the second', async () => {
@@ -1066,7 +1099,15 @@ describe('runInit', () => {
       });
       expect(result.skillInstall).toBe('declined');
       const output = formatInitResult(result, testDir);
-      expect(output).toContain('opted out');
+      expect(output).toContain('skipped for this run');
+      // Not 'for this project' — the bundles are machine-wide, so when they are
+      // already installed nothing is skipped for this project at all.
+      expect(output).not.toContain('for this project');
+      // The copy must not claim a machine-wide removal the flag no longer does.
+      // Matched on the old wording specifically — a bare 'removed' also appears
+      // elsewhere in the init summary for unrelated reasons.
+      expect(output).not.toContain('machine-wide choice');
+      expect(output).not.toContain('stay off for every project');
       expect(output).not.toContain('already installed at current version');
     });
 

@@ -411,9 +411,10 @@ export function userGlobalSkillBundleTargets(homeInput: string): SkillBundleTarg
 
 /**
  * Remove ONE user-global bundle's directories (central + every per-host copy)
- * from disk. Used by the opt-out paths (dialog decline, `ok init --no-skills`,
+ * from disk. Used by the opt-out paths (dialog decline, the Settings toggle,
  * the reclaim/sweep gate) so an unchecked bundle actually leaves — the exact
- * reverse of `installUserBundleToHostDirs`. Tolerant of already-absent dirs
+ * reverse of `installUserBundleToHostDirs`. NOT `ok init --no-skills`: that
+ * flag is a per-invocation skip and removes nothing. Tolerant of already-absent dirs
  * (`rmSync` with `force`). Only the specific `open-knowledge-*` dirs, never the
  * shared `~/.agents/skills` root.
  */

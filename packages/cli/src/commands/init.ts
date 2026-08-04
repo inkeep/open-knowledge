@@ -56,7 +56,6 @@ import { CONFIG_FILENAME, OK_DIR } from '../constants.ts';
 import { formatPreviewBlock, type PreviewResult } from '../content/preview.ts';
 import { buildPiExtensionSource, makePiManagedFileEntry } from '../integrations/pi-extension.ts';
 import { resolveProjectRoot } from '../integrations/resolve-project-root.ts';
-import { removeUserGlobalSkillBundle } from '../integrations/skill-teardown.ts';
 import {
   assertProjectPathSafe,
   type ProjectSkillResult,
@@ -701,9 +700,10 @@ interface InitCommandOptions {
   installUserSkill?: (opts?: InstallUserSkillOptions) => Promise<InstallUserSkillResult>;
   /**
    * User-global skill opt-in. `undefined` (default) enables every bundle;
-   * `false` (`--no-skills`) declines all; a comma list (`--skills discovery`)
-   * enables only the named bundles. The decision is recorded so the desktop /
-   * CLI reclaim gates never re-install a declined bundle.
+   * `false` (`--no-skills`) installs none; a comma list (`--skills discovery`)
+   * enables only the named bundles. Only an ENABLED bundle records a decision
+   * (`true`); a bundle left out of this run records nothing, so the reclaim
+   * gates grandfather it to disk rather than treating it as declined.
    */
   skills?: string | boolean;
   /** MCP scope: user-level only, project-level only, or both. */
@@ -1812,9 +1812,22 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
   // @inkeep/open-knowledge-server.
 
   // 4. Install the enabled user-global Agent Skills. Per-bundle opt-in
-  // (`--skills` / `--no-skills`); the decision is recorded so the desktop /
-  // CLI reclaim gates never re-install a declined bundle. Non-fatal — init
-  // exits 0 even on install failure; users see a warning + manual-install hint.
+  // (`--skills` / `--no-skills`). Non-fatal — init exits 0 even on install
+  // failure; users see a warning + manual-install hint.
+  //
+  // `--no-skills` is a PER-INVOCATION skip: it installs nothing and records
+  // nothing. It deliberately does not write a decline, because these bundles
+  // exist once per machine (`~/.agents/skills/<name>` + per-host copies) with
+  // no per-project copy, so a decline from one project speaks for every other
+  // one. `resolveBundleEnabled` grandfathers an unrecorded bundle to disk, so
+  // recording nothing already gives the right answer on both sides: a fresh
+  // machine stays uninstalled (`null ?? false`), and bundles another project
+  // installed stay put (`null ?? true`).
+  //
+  // The durable machine-wide decline still exists and is deliberately NOT
+  // written here — it is a CONSENT record, owned by the first-launch dialog and
+  // the per-skill Settings toggle, where the consequence is stated at a moment
+  // the user is choosing machine-wide.
   const installSkill = options.installUserSkill ?? installUserSkill;
   const skillHome = options.home ?? homedir();
   const enabledBundles = resolveInitSkillEnablement(options.skills);
@@ -1824,24 +1837,18 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
   let anySkipped = false;
   let anyNoHosts = false;
   for (const id of USER_GLOBAL_BUNDLE_IDS) {
-    const enabled = enabledBundles.has(id);
-    await writeBundleDecision(skillHome, BUNDLE_SKILL_NAME[id], enabled).catch(() => {});
-    if (enabled) {
-      anyEnabled = true;
-      // force: the loop shares the `cli-hosts` version key across bundles, so
-      // one bundle's version write must not satisfy another's skip-current gate.
-      const result = await installSkill({ home: options.home, bundleId: id, force: true });
-      if (result === 'installed') anyInstalled = true;
-      else if (result === 'failed') anyFailed = true;
-      else if (result === 'no-hosts') anyNoHosts = true;
-      else anySkipped = true;
-    } else {
-      try {
-        removeUserGlobalSkillBundle(skillHome, id);
-      } catch {
-        // Fail-soft — the decline is already recorded; teardown is best-effort.
-      }
-    }
+    if (!enabledBundles.has(id)) continue; // not selected: install nothing, record nothing
+    // Installing IS the affirmative act, so the opt-in is still recorded — it
+    // materializes the grandfathered state every later sweep gates on.
+    await writeBundleDecision(skillHome, BUNDLE_SKILL_NAME[id], true).catch(() => {});
+    anyEnabled = true;
+    // force: the loop shares the `cli-hosts` version key across bundles, so
+    // one bundle's version write must not satisfy another's skip-current gate.
+    const result = await installSkill({ home: options.home, bundleId: id, force: true });
+    if (result === 'installed') anyInstalled = true;
+    else if (result === 'failed') anyFailed = true;
+    else if (result === 'no-hosts') anyNoHosts = true;
+    else anySkipped = true;
   }
   // Honest summary: a failure (even partial) surfaces the manual-install hint;
   // declining every skill reports declined, not a false "already installed".
@@ -2228,19 +2235,14 @@ export function formatInitResult(result: InitCommandResult, cwd: string): string
         lines.push(`  open-knowledge  ${success('already installed at current version')}`);
         break;
       case 'declined':
-        // NOT "skipped": the decline is recorded against $HOME and the bundles
-        // are REMOVED from every user-global skill dir, so one `--no-skills` in
-        // a throwaway project turns them off for every project on the machine.
-        // Saying so is the whole mitigation — no confirmation prompt, because
-        // the flag is meant to be scriptable.
-        lines.push(`  open-knowledge  ${dim('opted out via --no-skills')}`);
+        // Scoped to this run, and the copy says so. The previous wording
+        // disclosed a machine-wide removal that the flag no longer performs;
+        // leaving it would now describe the opposite of what happened.
+        lines.push(`  open-knowledge  ${dim('skipped for this run (--no-skills)')}`);
         lines.push(
-          `  ${dim('This is a machine-wide choice: the built-in skills are removed from your')}`,
+          `  ${dim('Nothing was installed or removed. Any built-in skills already on this')}`,
         );
-        lines.push(
-          `  ${dim('user-global skill directories and stay off for every project until you')}`,
-        );
-        lines.push(`  ${dim('re-enable them by running init again without the flag:')}`);
+        lines.push(`  ${dim('machine are untouched. Run init without the flag to install them:')}`);
         lines.push(`  ${dim('  ok init')}`);
         break;
       case 'no-hosts':
