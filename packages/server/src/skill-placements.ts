@@ -12,6 +12,7 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { LEGACY_SKILL_STORE_ROOT } from '@inkeep/open-knowledge-core';
 import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
 import { tracedCpSync, tracedRmSync } from './fs-traced.ts';
 import { type InPlaceSkill, scanInPlaceSkills } from './in-place-skills.ts';
@@ -28,6 +29,21 @@ export {
   resolveSkillPlacementPath,
   type SkillPlacement,
 } from './skill-placements-store.ts';
+
+/**
+ * Whether a placement root is OK's own state area and therefore refused.
+ *
+ * `.ok/` holds OK's own state (config, local runtime data, the shadow repo),
+ * so a skill may not be placed inside it — with one exception that is not a
+ * special case so much as history: `.ok/skills` is the retired store, and
+ * projects that predate the retirement still have real skills sitting there.
+ * Refusing it would strand them, so it stays placeable at BOTH scopes; a
+ * placement there is an ordinary custom root like any other.
+ */
+export function isRefusedOkPlacementRoot(rootRel: string): boolean {
+  const underOk = rootRel === '.ok' || rootRel.startsWith('.ok/');
+  return underOk && rootRel !== LEGACY_SKILL_STORE_ROOT;
+}
 
 /** Record the user-chosen SOURCE host for a skill (sticky relocation). */
 export async function recordSkillSourceHost(

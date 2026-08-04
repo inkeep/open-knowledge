@@ -32,6 +32,12 @@ const FILE_WATCHER_PATH = join(SERVER_SRC_ROOT, 'file-watcher.ts');
 // hands the accessor closure to api-extension; it never iterates file entries
 // itself, so it cannot leak a `kind:'file'` entry to a markdown-assuming path.
 const SERVER_FACTORY_PATH = join(SERVER_SRC_ROOT, 'server-factory.ts');
+// The extracted search service: hosts the corpus-build sites
+// (`buildWorkspaceSearchDocumentsFromIndex` / `workspaceSearchFingerprint` /
+// `deriveFolderSearchDocuments`) that previously lived in api-extension.ts.
+// api-extension wires the accessor into `createSearchService({ getAllFilesIndex })`
+// the same way server-factory wires it into createApiExtension.
+const SEARCH_SERVICE_PATH = join(SERVER_SRC_ROOT, 'services/search.ts');
 
 /**
  * Function-name allowlist for `getAllFilesIndex()` (or `includeFiles:true`)
@@ -151,7 +157,10 @@ function listProductionTsFiles(dir: string): string[] {
 
 describe('PRD-7117 US-002 — getAllFilesIndex caller coverage (D12 §13-A)', () => {
   test('every getAllFilesIndex() call site in api-extension.ts is allowlisted or kind-filtered', () => {
-    const sites = collectAllFilesCallSites(API_EXT_PATH);
+    const sites = [
+      ...collectAllFilesCallSites(API_EXT_PATH),
+      ...collectAllFilesCallSites(SEARCH_SERVICE_PATH),
+    ];
     const failures: string[] = [];
     for (const site of sites) {
       const allowed = ALLOWLISTED_SITES.has(site.fn);
@@ -184,7 +193,12 @@ describe('PRD-7117 US-002 — getAllFilesIndex caller coverage (D12 §13-A)', ()
     // doc comment in app's file-tree-utils). A cross-layer leak is therefore
     // structurally impossible without first adding a server export, which this
     // server-scoped scan would catch at that export site.
-    const allowedFiles = new Set([FILE_WATCHER_PATH, API_EXT_PATH, SERVER_FACTORY_PATH]);
+    const allowedFiles = new Set([
+      FILE_WATCHER_PATH,
+      API_EXT_PATH,
+      SERVER_FACTORY_PATH,
+      SEARCH_SERVICE_PATH,
+    ]);
     const offenders: string[] = [];
     for (const file of listProductionTsFiles(SERVER_SRC_ROOT)) {
       if (allowedFiles.has(file)) continue;
@@ -199,7 +213,7 @@ describe('PRD-7117 US-002 — getAllFilesIndex caller coverage (D12 §13-A)', ()
   test('ALLOWLISTED_SITES function names actually exist in api-extension.ts', () => {
     // Guard against allowlist rot: if a site is renamed or removed without
     // updating ALLOWLISTED_SITES, the entry becomes a dead authorization.
-    const source = readFileSync(API_EXT_PATH, 'utf8');
+    const source = readFileSync(API_EXT_PATH, 'utf8') + readFileSync(SEARCH_SERVICE_PATH, 'utf8');
     const missing: string[] = [];
     for (const name of ALLOWLISTED_SITES) {
       const fnRe = new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`);

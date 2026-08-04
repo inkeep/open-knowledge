@@ -65,6 +65,7 @@ import { getLogger, loggerFactory, type PinoLogger } from './logger.ts';
 import { createMcpHttpHandler } from './mcp-http.ts';
 import { mountMcpAndApi, type ReadinessState } from './mcp-mount.ts';
 import { MissingOkConfigError } from './missing-ok-config-error.ts';
+import { createProjectRuntime, type ProjectRuntime } from './project-runtime.ts';
 import { RemoteConfigError, resolveRemoteAccess } from './remote-access.ts';
 import { createServer, type ServerInstance, type ServerOptions } from './server-factory.ts';
 import { installServerMemoryGauge, installServerRuntimeGauges } from './server-memory-telemetry.ts';
@@ -389,6 +390,12 @@ export interface BootedServer {
   didAutoInit: boolean;
   /** Full ServerInstance from createServer — exposed for advanced consumers (e.g., desktop utility's drain sequencing). */
   serverInstance: ServerInstance;
+  /**
+   * The project's stateful resources grouped behind the runtime boundary.
+   * Capability services compose against this, not against `serverInstance`
+   * internals; see `project-runtime.ts` for what belongs in versus out.
+   */
+  runtime: ProjectRuntime;
   /** ACP thread host, or null in ephemeral single-file mode. */
   acpThreadManager: AcpThreadManager | null;
 }
@@ -1251,6 +1258,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     degraded,
     didAutoInit,
     serverInstance,
+    runtime: createProjectRuntime(serverInstance, { contentDir: opts.contentDir, projectDir }),
     acpThreadManager,
   };
 }

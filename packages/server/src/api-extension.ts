@@ -7,9 +7,8 @@
  */
 
 import { type SpawnOptions, spawn } from 'node:child_process';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
-  closeSync,
   createReadStream,
   createWriteStream,
   type Dirent,
@@ -17,10 +16,8 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
-  openSync,
   readdirSync,
   readFileSync,
-  readSync,
   realpathSync,
   statSync,
   unlinkSync,
@@ -49,7 +46,6 @@ import {
   AgentWriteRequestSchema,
   AgentWriteSuccessSchema,
   ApiConfigSuccessSchema,
-  ASSET_EXTENSIONS,
   applyPatchToFm,
   BacklinkCountsSuccessSchema,
   BacklinksSuccessSchema,
@@ -72,10 +68,6 @@ import {
   colorFromSeed,
   composeWithDerivedFrontmatter,
   createCodeFenceTracker,
-  createWorkspaceSearchCorpus,
-  createWorkspaceSearchDocument,
-  DEFAULT_ATTACHMENT_FOLDER_PATH,
-  DEFAULT_DEDUP_MODE,
   DEFAULT_EMBEDDINGS_BASE_URL,
   DEFAULT_EMBEDDINGS_MODEL,
   DEFAULT_LINKS_VALIDATION,
@@ -91,7 +83,6 @@ import {
   DuplicatePathSuccessSchema,
   detectFmRegion,
   EDITOR_PROJECT_SKILL_ROOT,
-  EDITOR_USER_SKILL_ROOT,
   type EditorId,
   EmbedDetectSuccessSchema,
   EmptyRequestSchema,
@@ -110,7 +101,6 @@ import {
   HistorySuccessSchema,
   HistoryVersionSuccessSchema,
   HubsSuccessSchema,
-  INLINE_RENDERABLE_EXTENSIONS,
   type InlineAssetMediaKind,
   InstallSkillRequestSchema,
   InstallSkillSuccessSchema,
@@ -121,7 +111,6 @@ import {
   isManagedArtifactDocName,
   isOpenKnowledgeSkillsSource,
   isSkillInstallTarget,
-  isValidAttachmentFolderPath,
   LEGACY_SKILL_STORE_ROOT,
   LINKABLE_ASSET_EXTENSIONS,
   type LifecycleStatus,
@@ -165,7 +154,6 @@ import {
   type MetricsWatcherRecentSuccess,
   MetricsWatcherRecentSuccessSchema,
   mediaKindForSidebarAssetExtension,
-  normalizeAttachmentFolderPath,
   OK_DIR,
   OPENKNOWLEDGE_SKILLS_REPO,
   OrphansSuccessSchema,
@@ -176,7 +164,6 @@ import {
   PrincipalSuccessSchema,
   type ProblemType,
   parseFrontmatterRecord,
-  parseProjectSkillBundleDoc,
   parseTemplateFile,
   prependFrontmatter,
   projectSkillContentDocName,
@@ -189,14 +176,10 @@ import {
   RollbackRequestSchema,
   RollbackSuccessSchema,
   readFmMap,
-  SANDBOXED_HTML_CSP,
-  SANDBOXED_HTML_EXTENSIONS,
   SaveVersionRequestSchema,
   SaveVersionSuccessSchema,
   SearchRequestSchema,
-  type SearchSemanticStatus,
   type SearchSource,
-  type SearchSuccess,
   SearchSuccessSchema,
   SeedApplyRequestSchema,
   SeedApplySuccessSchema,
@@ -225,7 +208,6 @@ import {
   SkillFileRenameRequestSchema,
   SkillFileRenameSuccessSchema,
   SkillGetSuccessSchema,
-  type SkillHostIdArg,
   type SkillImportBulkResult,
   SkillImportRequestSchema,
   SkillImportSuccessSchema,
@@ -265,7 +247,6 @@ import {
   SyncTriggerRequestSchema,
   SyncTriggerSuccessSchema,
   scanHeadingLine,
-  searchWorkspaceCorpus,
   skillLiveDocName,
   stripFrontmatter,
   TagsForNameSuccessSchema,
@@ -288,17 +269,12 @@ import {
   UploadAssetSuccessSchema,
   UploadRequestSchema,
   unwrapFrontmatterFences,
-  updateWorkspaceSearchCorpus,
   ValidationAuditCountsResponseSchema,
   ValidationAuditResponseSchema,
   type ValidationDiagnostic,
-  type WorkspaceSearchCorpus,
-  type WorkspaceSearchDocument,
   type WorkspaceSearchIntent,
   type WorkspaceSearchRanking,
-  type WorkspaceSearchResult,
   type WorkspaceSearchScope,
-  type WorkspaceSemanticInput,
   WorkspaceSuccessSchema,
 } from '@inkeep/open-knowledge-core';
 import {
@@ -312,8 +288,6 @@ import {
   discoverSkillDirs,
   enumerateInstalledSkills,
   fetchSource,
-  findByContentHash,
-  inspectPluginSource,
   parseSkillDir,
   parseSkillsLock,
   parseSource,
@@ -323,9 +297,6 @@ import {
   resolvePluginUpdateSource,
   resolveSkillsShImportSource,
   retrofitPackLockEntry,
-  SKILL_IMPORT_MAX_BUNDLE_FILES,
-  SKILL_IMPORT_MAX_FILE_BYTES,
-  SKILL_IMPORT_MAX_TOTAL_BYTES,
   SKILLS_LOCK_REL,
   SkillFetchError,
   type SkillsLock,
@@ -334,7 +305,6 @@ import {
   type WellKnownIndex,
 } from '@inkeep/open-knowledge-core/skills-catalog';
 import busboy from 'busboy';
-import { fileTypeFromBuffer } from 'file-type';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { type Entry, fromBuffer as yauzlFromBuffer, type ZipFile } from 'yauzl';
 import { z } from 'zod';
@@ -369,8 +339,7 @@ import {
 } from './agent-sessions.ts';
 import { type NormalizedSummary, normalizeSummary } from './agent-write-summary.ts';
 import { isAllowedApiOrigin } from './api-origin.ts';
-import { collectReferencedAssets, toContentRelativePath } from './asset-references.ts';
-import { assetContentTypeForPath } from './asset-serve-middleware.ts';
+import { collectReferencedAssets } from './asset-references.ts';
 import { collabUrlFromRequestHeaders } from './collab-bootstrap-url.ts';
 import { createCommentApi } from './comments/comment-api.ts';
 import { CommentIndex } from './comments/comment-index.ts';
@@ -412,15 +381,10 @@ import {
 import { recordContributor } from './contributor-tracker.ts';
 import { deriveDetection, embedProbeRing, recordEmbedProbe } from './embed-probe.ts';
 import {
-  recordSemanticQuery,
-  type SemanticQueryOutcome,
-} from './embeddings/embeddings-telemetry.ts';
-import {
   FileEmbeddingsBackend,
   probeEmbeddingEndpoint,
   type ResolvedSemanticConfig,
   resolveEmbeddingsCredential,
-  SEMANTIC_MIN_QUERY_LENGTH,
   type SemanticSearchService,
 } from './embeddings/index.ts';
 import {
@@ -428,6 +392,7 @@ import {
   FrontmatterMalformedError,
   respondFrontmatterMalformed,
 } from './frontmatter-malformed-error.ts';
+import { assertNoSymlinkEscape } from './fs-safety.ts';
 import {
   createInstalledAgentsProbe,
   createOsProbe,
@@ -528,16 +493,12 @@ import {
 } from './skill-bundles.ts';
 import { buildAndOpenSkill, detectUserSkillHosts } from './skill-install.ts';
 import {
-  classifyInPlaceDest,
-  projectInPlaceSkill,
   projectSkill,
   readSkillBundledFiles,
-  relocateInPlaceCanonical,
   removeInPlaceSkillCopies,
   resolvedHosts,
   resolveSkillTargets,
   reverseProjectSkill,
-  skillHostDir,
   skillProjectionRoots,
   validateSkillForInstall,
 } from './skill-projection.ts';
@@ -546,11 +507,7 @@ import { readSkillInstallStateSnapshot } from './skill-state.ts';
 import { handleSpawnCursor } from './spawn-cursor-api.ts';
 import { assertRealpathWithinDir } from './symlink-guard.ts';
 import { readUiLock } from './ui-lock.ts';
-import {
-  HashingPassThrough,
-  linkTempToFinalWithCollisionRetry,
-  mintTempUploadPath,
-} from './upload-streaming.ts';
+import { HashingPassThrough, mintTempUploadPath } from './upload-streaming.ts';
 
 /** Does the bundle at `dir` carry a `metadata.pack` marker in its frontmatter? */
 function bundleSelfIdentifiesAsPack(dir: string): boolean {
@@ -600,8 +557,12 @@ import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
 import { isConfigDoc, isLinkIndexExcludedDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import type { ResolveStrategy } from './conflict-storage.ts';
+import {
+  isReservedProjectStatePath,
+  listManagedDocNamesUnderFolder,
+} from './content/managed-doc-enum.ts';
 import type { ContentFilter } from './content-filter.ts';
-import { isWithinContentDir, safeContentPath } from './content-path.ts';
+import { safeContentPath } from './content-path.ts';
 import {
   type DerivedDocumentIndexApiPort,
   type DerivedDocumentIndexMutation,
@@ -646,9 +607,7 @@ import {
   tracedCpSync,
   tracedMkdirSync,
   tracedRenameSync,
-  tracedRmdirSync,
   tracedRmSync,
-  tracedSymlinkSync,
   tracedUnlinkSync,
   tracedWriteFileSync,
 } from './fs-traced.ts';
@@ -736,7 +695,6 @@ import { hostHeaderMatchesPublicHost } from './remote-access.ts';
 import {
   appendRenameLogEntry,
   createAncestorShaSetCache,
-  gcRenameLog,
   getOrLoadRenameLogIndex,
   type RenameLogEntry,
   resolveDocPathAtCommit,
@@ -751,13 +709,23 @@ import {
   SeedRootDirError,
 } from './seed/index.ts';
 import type { PairedWriteOrigin } from './server-observers.ts';
+import { createAssetService } from './services/assets.ts';
+import { createFileOpsService } from './services/file-ops.ts';
+import { createSearchService } from './services/search.ts';
 import {
-  enumerateWipChains,
+  createSkillImportService,
+  importedBundleLimitError,
+  SKILL_IMPORT_WRITE_LIMITS,
+  type SkillImportOutcome,
+} from './services/skill-import.ts';
+import { createSkillInstallOpsService } from './services/skill-install-ops.ts';
+import { createSkillPlacementOpsService } from './services/skill-placement-ops.ts';
+import { createVersionOpsService } from './services/version-ops.ts';
+import {
   listRescueCheckpoints,
   SERVICE_WRITER,
   type ShadowRef,
   safetyCheckpoint,
-  saveVersion,
   shadowGit,
   type TimelineRescueEntry,
   type WriterIdentity,
@@ -776,10 +744,6 @@ import {
   readSkillPlacements,
   recordFolderExpectation,
   recordKnownSkillRoot,
-  recordSkillPlacement,
-  recordSkillSourceHost,
-  removeSkillPlacement,
-  resolveSkillPlacementPath,
 } from './skill-placements.ts';
 import { restoreSkillVersion } from './skill-restore.ts';
 import { mutateSkillsLock, readSkillsLockFile } from './skills-lock-store.ts';
@@ -796,30 +760,6 @@ import { recordTimelineCoalesced } from './timeline-telemetry.ts';
 // Recreating the histogram every request allocates + registers a fresh
 // instrument on every hit.
 let _httpDurationHist: ReturnType<ReturnType<typeof getMeter>['createHistogram']> | null = null;
-
-const SKILL_IMPORT_WRITE_LIMITS = {
-  maxFileBytes: SKILL_IMPORT_MAX_FILE_BYTES,
-  maxFiles: SKILL_IMPORT_MAX_BUNDLE_FILES,
-} as const;
-
-function importedBundleLimitError(
-  acquired: NonNullable<ReturnType<typeof parseSkillDir>>,
-): string | null {
-  if (acquired.files.length > SKILL_IMPORT_MAX_BUNDLE_FILES) {
-    return `Skill has ${acquired.files.length} dependent files; the import cap is ${SKILL_IMPORT_MAX_BUNDLE_FILES}.`;
-  }
-  let totalBytes = Buffer.byteLength(acquired.skillMd);
-  for (const file of acquired.files) {
-    const bytes = file.bytes?.byteLength ?? Buffer.byteLength(file.content ?? '');
-    if (bytes > SKILL_IMPORT_MAX_FILE_BYTES) {
-      return `${file.relPath} is ${bytes} bytes; the import per-file cap is ${SKILL_IMPORT_MAX_FILE_BYTES}.`;
-    }
-    totalBytes += bytes;
-  }
-  return totalBytes > SKILL_IMPORT_MAX_TOTAL_BYTES
-    ? `Skill is ${totalBytes} bytes; the import bundle cap is ${SKILL_IMPORT_MAX_TOTAL_BYTES}.`
-    : null;
-}
 
 function httpDurationHist(): ReturnType<ReturnType<typeof getMeter>['createHistogram']> {
   _httpDurationHist ||= getMeter().createHistogram('http.server.request.duration', {
@@ -925,36 +865,6 @@ function agentWriteContentDivergenceCounter(): ReturnType<
     },
   );
   return _agentWriteContentDivergenceCounter;
-}
-
-// Counter for the name-only `kind:'file'` corpus tier hitting the
-// `OK_SEARCH_MAX_ENTRIES` cap. Increments once per corpus rebuild that drops
-// deepest-tail paths; the matching warn log carries the (dropped, retained,
-// limit) breakdown. Lets an operator distinguish "cap fired" from "results
-// quietly missing" without scraping logs.
-let _searchCorpusTruncatedCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null =
-  null;
-function searchCorpusTruncatedCounter(): ReturnType<ReturnType<typeof getMeter>['createCounter']> {
-  _searchCorpusTruncatedCounter ||= getMeter().createCounter('ok.search.corpus_truncated_total', {
-    description:
-      'Count of search-corpus rebuilds where the name-only file tier hit OK_SEARCH_MAX_ENTRIES and dropped deepest-tail paths. One increment per truncated build; non-truncated builds do not increment.',
-  });
-  return _searchCorpusTruncatedCounter;
-}
-
-// Counter for search-corpus builds by mode: `cold` (no prior corpus),
-// `incremental` (in-place index patch of only the changed documents), or
-// `rebuild` (incremental path fell back to a from-scratch build; the bounded
-// `reason` attribute says why). A steady stream of `rebuild` where
-// `incremental` is expected is the drift signal worth alerting on.
-let _searchCorpusUpdateCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null =
-  null;
-function searchCorpusUpdateCounter(): ReturnType<ReturnType<typeof getMeter>['createCounter']> {
-  _searchCorpusUpdateCounter ||= getMeter().createCounter('ok.search.corpus_update_total', {
-    description:
-      'Count of workspace search corpus builds, by mode (cold | incremental | rebuild) and, for rebuilds, the bounded fallback reason.',
-  });
-  return _searchCorpusUpdateCounter;
 }
 
 /** Bounded handler label for the content-divergence counters. */
@@ -1126,239 +1036,8 @@ function docTreePathCandidates(docName: string, contentRoot: string): readonly s
   return extless ? [p.path, extless] : [p.path];
 }
 
-const GENERIC_PASTE_NAMES = /^(image\.(png|jpe?g|gif|webp)|Clipboard.*|Untitled.*)$/i;
-
-// unicode-preserving. Permits any Unicode letter, number, or combining
-// mark, plus pictographic emoji and the punctuation whitelist (., -, _, space).
-// Everything else (including `/`, `\`, null bytes, control chars, CRLF) is
-// either stripped or replaced so path-escape guards downstream keep their
-// invariants. CJK, Arabic, Cyrillic, and emoji survive — macOS/Finder
-// ergonomics without sacrificing filesystem safety.
-const SAFE_FILENAME_CHARS = /[^\p{L}\p{N}\p{M}\p{Extended_Pictographic}.\-_ ]/gu;
-// Stripping C0 + DEL is the whole point — the rule fires on intentional use.
-// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional — sanitize must strip control bytes.
-const STRIP_ON_SIGHT = /[/\\\x00-\x1f\x7f]/g;
-
-export function sanitizeFilename(name: string): string {
-  // Strip path separators and null/control bytes BEFORE any other pass so
-  // they cannot reappear inside a replacement and dodge later checks.
-  let stripped = name.replace(STRIP_ON_SIGHT, '');
-  stripped = stripped.replace(SAFE_FILENAME_CHARS, '_');
-
-  // Collapse underscore and dot runs so "../etc/passwd" → "etcpasswd" and
-  // "foo__bar" → "foo_bar".
-  stripped = stripped.replace(/_+/g, '_').replace(/\.{2,}/g, '.');
-
-  // No hidden files — trim leading dots and leading underscores.
-  stripped = stripped.replace(/^[._]+/, '');
-  // Filesystem portability — strip trailing dots (Windows trims them too).
-  stripped = stripped.replace(/\.+$/, '');
-
-  if (stripped === '') return 'upload';
-
-  // Most filesystems cap basenames at 255 bytes (ext4, APFS, exFAT). Without a
-  // ceiling, a multipart `Content-Disposition` filename approaching busboy's
-  // header size can sail through Unicode-letter sanitization and surface as
-  // `ENAMETOOLONG` from `linkSync`, which classifies as a generic
-  // `storage-error` → 500. Truncate the stem (preserving the extension) to
-  // stay within the portable basename ceiling.
-  const MAX_BYTES = 255;
-  const encoder = new TextEncoder();
-  if (encoder.encode(stripped).length > MAX_BYTES) {
-    const dotIdx = stripped.lastIndexOf('.');
-    const ext = dotIdx >= 0 ? stripped.slice(dotIdx) : '';
-    let stem = dotIdx >= 0 ? stripped.slice(0, dotIdx) : stripped;
-    // `slice(0, -1)` removes one UTF-16 code unit. A trailing emoji is a
-    // surrogate pair, so the loop transiently produces a lone-surrogate
-    // string that `TextEncoder` re-encodes as U+FFFD (3 bytes) — harmless
-    // since the emoji is fully consumed before the loop exits and the
-    // returned string is always valid UTF-8.
-    while (encoder.encode(stem + ext).length > MAX_BYTES && stem.length > 0) {
-      stem = stem.slice(0, -1);
-    }
-    stripped = (stem || 'upload') + ext;
-    // The loop drains the stem; it cannot shrink the extension itself.
-    // An adversarial 250+ byte extension (e.g. `'x.' + 'a'.repeat(300)`)
-    // would drain the stem to empty and still leave `'upload' + ext`
-    // above the ceiling. Final-pass guard: fall back to extensionless
-    // `'upload'` when even the floor exceeds MAX_BYTES.
-    if (encoder.encode(stripped).length > MAX_BYTES) stripped = 'upload';
-  }
-
-  return stripped;
-}
-
-/**
- * Resolve the destination directory for an upload from the parent doc's
- * path and the configured `content.attachmentFolderPath`. Matches Obsidian's
- * literal schema (free-form string):
- *
- *   - `"./"` (default)  → same directory as the doc
- *   - `"/"`             → content-directory root
- *   - `"./<sub>"`       → subdirectory beside the doc
- *   - `"<name>"` (bare) → fixed content-relative path
- *
- * Treats any `./` prefix as "relative to doc dir," any other value as
- * "relative to content dir." Empty or whitespace-only strings fall back
- * to the default (doc dir).
- *
- * Returns an absolute path within `resolvedContentDir` — path-escape
- * enforcement happens at the caller via `isWithinContentDir` + `realpath`.
- */
-export function resolveUploadDestDir(
-  parentDocName: string,
-  attachmentFolderPath: string,
-  resolvedContentDir: string,
-): string {
-  const trimmed = attachmentFolderPath.trim();
-  if (trimmed === '' || trimmed === './') {
-    return resolve(resolvedContentDir, dirname(parentDocName));
-  }
-  if (trimmed === '/') {
-    return resolvedContentDir;
-  }
-  if (trimmed.startsWith('./')) {
-    // Subdirectory beside the doc. `"./attachments"` → `<docDir>/attachments`.
-    return resolve(resolvedContentDir, dirname(parentDocName), trimmed.slice(2));
-  }
-  // Bare name or nested path: fixed content-relative location.
-  return resolve(resolvedContentDir, trimmed);
-}
-
-/**
- * Read at most `n` bytes from the start of `path`. Feeds both the magic-byte
- * sniff (`fileTypeFromBuffer` over the head) and the SVG text fallback
- * (`file-type` can't detect text-based SVG), without ever materializing the
- * whole file.
- */
-function readTempFileHead(path: string, n: number): Buffer {
-  const fd = openSync(path, 'r');
-  try {
-    const buf = Buffer.alloc(n);
-    const read = readSync(fd, buf, 0, n, 0);
-    return buf.subarray(0, read);
-  } finally {
-    closeSync(fd);
-  }
-}
-
-/**
- * Scan `destDir` non-recursively for an existing file whose sha256 matches
- * the buffer's. Returns the matching basename (case-preserving) or null if
- * no match. Bounded by directory size — O(n) in sibling count, not vault size.
- * Only files with extensions in ASSET_EXTENSIONS are candidates; everything
- * else (markdown, .git/, etc.) is skipped.
- *
- * `expectedSize` is the buffer's byte length — passed in so we can size-
- * prefilter before hashing siblings. sha256 collision requires equal-sized
- * inputs, so same-extension siblings with a different size are not
- * candidates and we skip their (potentially multi-MB) read. This turns
- * the common "paste a new screenshot" path from O(total asset bytes in
- * dir) back to O(sibling count × stat). Non-ENOENT read failures log at
- * WARN so silent dedup degradation has a signal.
- */
-/**
- * Upper bound on size-matched candidates we'll read+hash in a single
- * dedup call. A capture-device folder with 1000+ screenshots at the same
- * resolution could theoretically produce that many same-size siblings;
- * each candidate costs a sync readFileSync + sha256Hex of the entire
- * buffer, which would block the event loop for seconds per upload under
- * adversarial / pathological load.
- *
- * Past the bound, dedup degrades to best-effort: we log a structured
- * WARN and return null (treat as no-match → write a new file with the
- * collision-suffix loop). This is a bounded-resource defense, not a
- * correctness change — a duplicate that slips through produces the
- * cheap storage cost of one extra on-disk copy, not silent data loss.
- * The O(1) hash-cache alternative is a
- * larger architectural change and a follow-on.
- */
-const MAX_DEDUP_SCAN_CANDIDATES = 1000;
-
-/**
- * Stream a file's bytes through a sha256 Hash transform and return the hex
- * digest. Keeps memory O(1) regardless of file size — a 500 MB candidate
- * read by the buffer-based `readFileSync` path would otherwise materialize
- * the whole file in heap, which defeats the streaming-upload amendment's
- * O(1) memory guarantee.
- *
- * Throws on read errors so the caller can classify ENOENT (concurrent
- * rename — stay silent) vs other errors (log and skip).
- */
-async function streamingHashFile(path: string): Promise<string> {
-  const hash = createHash('sha256');
-  await pipeline(createReadStream(path), hash);
-  return hash.digest('hex');
-}
-
-async function findDuplicateAsset(
-  destDir: string,
-  sha: string,
-  expectedSize: number,
-): Promise<string | null> {
-  let entries: string[];
-  try {
-    // Async `readdir` so the directory walk doesn't block the event
-    // loop during uploads — Node's event loop is shared with WebSocket sync
-    // and CRDT updates, and a 1k-entry walk is observable on bursty
-    // upload traffic. The MAX_DEDUP_SCAN_CANDIDATES cap
-    // bounds the worst case at 1000 same-size siblings, but the
-    // pre-cap entry list can still be much larger.
-    entries = await readdir(destDir);
-  } catch {
-    return null;
-  }
-  const log = getLogger('upload');
-  let scanned = 0;
-  for (const entry of entries) {
-    const ext = extname(entry).slice(1).toLowerCase();
-    if (!ASSET_EXTENSIONS.has(ext)) continue;
-    const fullPath = resolve(destDir, entry);
-    let entryStat: Awaited<ReturnType<typeof stat>>;
-    try {
-      entryStat = await stat(fullPath);
-    } catch {
-      continue;
-    }
-    if (!entryStat.isFile() || entryStat.size !== expectedSize) continue;
-    // Bounded scan: only count candidates that passed the cheap size
-    // prefilter, since same-size siblings are the ones that cost a
-    // full-file hash each (streaming now, not buffered).
-    scanned++;
-    if (scanned > MAX_DEDUP_SCAN_CANDIDATES) {
-      log.warn(
-        {
-          event: 'upload-dedup-skip',
-          reason: 'scan-cap-exceeded',
-          destDir,
-          scanned: MAX_DEDUP_SCAN_CANDIDATES,
-          expectedSize,
-        },
-        `[upload-dedup] candidate scan exceeded ${MAX_DEDUP_SCAN_CANDIDATES} same-size siblings — degrading to no-dedup for this upload`,
-      );
-      return null;
-    }
-    let candidateSha: string;
-    try {
-      // Stream + hash the candidate to preserve the O(1) memory guarantee
-      // the upload pipeline otherwise maintains end-to-end. A 500 MB
-      // candidate otherwise spiked heap to 500 MB per scan.
-      candidateSha = await streamingHashFile(fullPath);
-    } catch (err) {
-      const code = errnoCode(err);
-      // ENOENT is the legitimate concurrent-rename race — stay silent.
-      if (code !== 'ENOENT') {
-        log.warn(
-          { event: 'upload-dedup-skip', reason: 'read-failed', code, entry },
-          '[upload-dedup] skipped candidate — read failed',
-        );
-      }
-      continue;
-    }
-    if (candidateSha === sha) return entry;
-  }
-  return null;
-}
+export { sanitizeFilename } from './filename-sanitize.ts';
+export { resolveUploadDestDir } from './services/assets.ts';
 
 /**
  * Discriminator for write failures so the upload handler can surface a
@@ -2266,12 +1945,6 @@ function isValidRelativeContentPath(path: string): boolean {
  * externally-addressed `.OK/x` IS `.ok/x`. Same segment walk as
  * `pathHasAlwaysSkipSegment` in content-filter.ts.
  */
-function isReservedProjectStatePath(path: string): boolean {
-  return path.split('/').some((segment) => {
-    const normalized = segment.toLowerCase();
-    return normalized === OK_DIR || normalized === '.git';
-  });
-}
 
 function isReservedSyntheticFolderPath(path: string): boolean {
   return (
@@ -2333,58 +2006,6 @@ function requireNonEmptyDocName(
   return null;
 }
 
-/**
- * Ensures `fullPath` does not escape `resolvedContentDir` via symlinks (matches persistence
- * symlink-escape checks). Walks up with dirname when the leaf is missing so destinations like
- * `link/new.md` are rejected if `link` resolves outside the content dir.
- *
- * Uses `realpathSync(resolvedContentDir)` as the boundary anchor so platform normalization
- * (e.g. macOS `/var` → `/private/var`) matches `realpathSync` of paths under it.
- */
-function assertNoSymlinkEscape(fullPath: string, resolvedContentDir: string): void {
-  let contentRoot: string;
-  try {
-    contentRoot = realpathSync(resolvedContentDir);
-  } catch (err) {
-    const code = errnoCode(err);
-    // ENOENT means the content dir hasn't been created yet — no symlink
-    // escape is possible against a non-existent directory, but we have
-    // no safe baseline for the check either. Throw the same
-    // `symlink-escape:` error class so the caller's catch routes through
-    // the existing error path. Other errno classes (EPERM, EIO, ENOMEM)
-    // must NOT be swallowed silently — they'd leave the security gate
-    // disabled with no log line, no telemetry, no error response. Throw
-    // and let the top-level handler emit a typed RFC 9457 problem.
-    if (code === 'ENOENT') {
-      throw new SymlinkEscapeError('content directory does not exist');
-    }
-    throw err;
-  }
-
-  let cur = fullPath;
-  for (;;) {
-    try {
-      const canonical = realpathSync(cur);
-      if (!isWithinContentDir(canonical, contentRoot)) {
-        throw new SymlinkEscapeError('path resolves outside content directory');
-      }
-      return;
-    } catch (err) {
-      const code = errnoCode(err);
-      if (code === 'ELOOP') {
-        throw new SymlinkEscapeError('symlink cycle in path');
-      }
-      if (code !== 'ENOENT') throw err;
-      const parent = dirname(cur);
-      if (parent === cur) throw err;
-      if (parent !== resolvedContentDir && !parent.startsWith(`${resolvedContentDir}${sep}`)) {
-        throw err;
-      }
-      cur = parent;
-    }
-  }
-}
-
 function resolveContentEntryPath(contentDir: string, kind: ContentEntryKind, path: string): string {
   if (!isValidRelativeContentPath(path)) {
     throw new Error('path must be a relative content path');
@@ -2430,21 +2051,6 @@ class DuplicateNameExhaustedError extends Error {
     super(`Could not find an available duplicate name for ${sourcePath}`);
     this.name = 'DuplicateNameExhaustedError';
   }
-}
-
-function isAlreadyExistsError(err: unknown): boolean {
-  const code = errnoCode(err);
-  // Node's cpSync distinguishes the destination-occupied cases by the type
-  // mismatch: a same-type collision surfaces as ERR_FS_CP_EEXIST, but copying a
-  // directory onto an existing file (or a file onto an existing directory)
-  // surfaces as ERR_FS_CP_DIR_TO_NON_DIR / ERR_FS_CP_NON_DIR_TO_DIR. All three
-  // mean the destination path is already taken and must map to 409.
-  return (
-    code === 'EEXIST' ||
-    code === 'ERR_FS_CP_EEXIST' ||
-    code === 'ERR_FS_CP_DIR_TO_NON_DIR' ||
-    code === 'ERR_FS_CP_NON_DIR_TO_DIR'
-  );
 }
 
 type DuplicatePathFilesystemProblem = {
@@ -3164,16 +2770,6 @@ export interface ApiExtensionOptions {
    */
   getLinksValidationSetting?: () => LinksValidationSetting;
 }
-
-interface WorkspaceSearchCacheEntry {
-  fingerprint: string;
-  corpus?: WorkspaceSearchCorpus;
-  /** Whether the name-only file tier hit `OK_SEARCH_MAX_ENTRIES` on this build. */
-  truncated?: boolean;
-  pending?: Promise<{ corpus: WorkspaceSearchCorpus; truncated: boolean }>;
-}
-
-const workspaceSearchCaches = new Map<string, WorkspaceSearchCacheEntry>();
 
 /**
  * Extract all ATX headings (# … ######) from a Markdown document.
@@ -4459,46 +4055,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
    * `ManagedRenameMissingDocumentError`, or a link rewrite would write a `.md`
    * sibling of the moved `.mdx` (split-brain).
    */
-  function listManagedDocNamesUnderFolderFromDisk(sourcePathRoot: string): string[] {
-    const docNames: string[] = [];
-    // A file at the folder path (e.g. `kind: 'folder'` on a doc) must NOT reach
-    // `readdirSync` — that throws ENOTDIR and 500s. Return empty for that and a
-    // TOCTOU vanish (ENOENT) so the caller's type-mismatch / not-found check
-    // emits the correct 4xx. Any other stat error (EACCES, EIO, ELOOP) means
-    // the folder exists but is unreadable: returning empty there would move the
-    // directory and skip link rewriting — the exact bug this fix addresses — so
-    // rethrow and let it surface as a 500.
-    try {
-      if (!statSync(sourcePathRoot).isDirectory()) return docNames;
-    } catch (err) {
-      const code = errnoCode(err);
-      if (code === 'ENOENT' || code === 'ENOTDIR') return docNames;
-      throw err;
-    }
-
-    function walk(dir: string): void {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const fullPath = resolve(dir, entry.name);
-        const relPath = relative(contentDir, fullPath).split(sep).join('/');
-        if (isReservedProjectStatePath(relPath)) continue;
-        if (entry.isDirectory()) {
-          if (contentFilter?.isDirExcluded(relPath)) continue;
-          walk(fullPath);
-          continue;
-        }
-        if (!entry.isFile() || !isSupportedDocFile(relPath) || contentFilter?.isExcluded(relPath)) {
-          continue;
-        }
-        const docName = docNameForFileOperationPath(contentDir, relPath);
-        registerDocExtension(stripDocExtension(relPath), extname(relPath));
-        docNames.push(docName);
-      }
-    }
-
-    walk(sourcePathRoot);
-    docNames.sort((a, b) => a.localeCompare(b));
-    return docNames;
-  }
+  const listManagedDocNamesUnderFolderFromDisk = (sourcePathRoot: string): string[] =>
+    listManagedDocNamesUnderFolder(sourcePathRoot, {
+      contentDir,
+      contentFilter,
+      docNameForPath: (relPath) => docNameForFileOperationPath(contentDir, relPath),
+    });
 
   function listRenamedAssetsForFolderMove(
     sourcePathRoot: string,
@@ -9092,6 +8654,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     { handler: 'test-rescan-files', method: 'POST', skipBodyParse: true },
   );
 
+  const versionOpsService = createVersionOpsService({ getCurrentBranch, contentRoot });
+  const skillPlacementOps = createSkillPlacementOpsService();
+
   const handleSaveVersion = withValidation(
     SaveVersionRequestSchema,
     async (_req, res, body) => {
@@ -9127,13 +8692,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // Parse optional writers from already-validated body.
         const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
         let writers: WriterIdentity[] = [];
-        // True only on the empty-body button path, where `enumerateWipChains`
-        // already surfaces EVERY WIP chain — upstream included. That makes the
-        // enumerated set the complete fold list, so saveVersion must not re-append
-        // the upstream writer (a second rev-parse + a no-op delete on the
-        // already-reset ref). The explicit-writers and explicit-agentId paths do
-        // not enumerate upstream and keep the default (fold it).
-        let foldEnumeratedAll = false;
 
         if (Array.isArray(body.writers)) {
           try {
@@ -9160,61 +8718,24 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           }
         }
 
-        // Active branch: the button consolidates the branch the user
-        // is on, not a hardcoded 'main'.
-        const saveVersionBranch = getCurrentBranch?.() ?? 'main';
-
-        if (writers.length === 0) {
-          if (svRawAgentId !== undefined) {
-            // Explicit agentId path (MCP checkpoint tool) — scoped to that agent.
-            const displayName = svClientName ? `${svAgentName} (${svClientName})` : svAgentName;
-            writers = [
-              { id: svAgentId, name: displayName, email: `${svAgentId}@openknowledge.local` },
-            ];
-          } else {
-            // A true empty-body Save Version (the UI button) consolidates ALL
-            // non-park WIP chains on the active branch — agent + principal +
-            // classified — so the button matches the user's "group everything I've
-            // done into a version" mental model. Park-tipped refs hold
-            // branch-switch state and are excluded. Falls back to the service
-            // writer when there is no WIP activity at all (an empty checkpoint).
-            const chains = await enumerateWipChains(shadow, saveVersionBranch);
-            const foldable = chains.filter((c) => !c.isPark);
-            writers =
-              foldable.length > 0
-                ? foldable.map((c) => ({
-                    id: c.writerId,
-                    name: c.writerId,
-                    email: `${c.writerId}@openknowledge.local`,
-                  }))
-                : [SERVICE_WRITER];
-            foldEnumeratedAll = true;
-          }
-        }
-
-        const resolvedContentRoot = contentRoot ?? '.';
+        // Agent-scoped writer (MCP checkpoint tool path); the service applies
+        // the explicit > agent-scoped > fold-everything precedence.
+        const agentWriter =
+          svRawAgentId !== undefined
+            ? {
+                id: svAgentId,
+                name: svClientName ? `${svAgentName} (${svClientName})` : svAgentName,
+                email: `${svAgentId}@openknowledge.local`,
+              }
+            : undefined;
         const checkpointSummary = normalizeSummary(
           typeof body.summary === 'string' ? body.summary : undefined,
         );
-        const result = await saveVersion(
-          shadow,
-          resolvedContentRoot,
-          writers,
-          saveVersionBranch,
-          checkpointSummary.kind === 'value' ? checkpointSummary.value : undefined,
-          foldEnumeratedAll ? { includeUpstream: false } : undefined,
-        );
-
-        getLogger('history').info({ checkpointRef: result.checkpointRef }, 'checkpoint');
-
-        // Rename-log GC trigger: saveVersion deletes WIP refs, which is the
-        // largest entry-death cliff. Run reachability sweep (no rebuild —
-        // boot already covered that).
-        try {
-          await gcRenameLog(shadow, getOrLoadRenameLogIndex(shadow.gitDir));
-        } catch (err) {
-          log.warn({ err }, '[rename-log] post-saveVersion GC failed');
-        }
+        const result = await versionOpsService.saveCheckpoint(shadow, {
+          explicitWriters: writers,
+          agentWriter,
+          summary: checkpointSummary.kind === 'value' ? checkpointSummary.value : undefined,
+        });
 
         successResponse(
           res,
@@ -10428,108 +9949,48 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     );
   }
 
+  const assetService = createAssetService({
+    contentDir,
+    // `isPathIgnored` rather than `isExcluded` so the sibling-asset heuristic
+    // does not reject legitimate cross-directory references. Exclusion is
+    // reported as not-found: the wire shape stays identical to a missing file.
+    isPathIgnored: (relativePath) => contentFilter?.isPathIgnored(relativePath) ?? false,
+    getAttachmentFolderPath,
+  });
+  const ASSET_SERVE_ERRORS = {
+    'missing-path': [400, 'urn:ok:error:invalid-request', 'Missing asset path.'],
+    'unsupported-type': [415, 'urn:ok:error:unsupported-asset-type', 'Unsupported asset type.'],
+    'not-found': [404, 'urn:ok:error:asset-not-found', 'Asset not found.'],
+    'invalid-path': [400, 'urn:ok:error:invalid-request', 'Invalid asset path.'],
+  } as const;
+
   const handleAsset = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
       try {
         const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
         const assetPath = url.searchParams.get('path');
-        if (!assetPath || assetPath.includes('\0')) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Missing asset path.', {
+        const resolution = assetService.resolveServableAsset(assetPath);
+        if (!resolution.ok) {
+          const [status, type, title] = ASSET_SERVE_ERRORS[resolution.reason];
+          errorResponse(res, status, type, title, {
             handler: 'asset',
+            ...(resolution.cause !== undefined ? { cause: resolution.cause } : {}),
           });
           return;
         }
-        const contentType = assetContentTypeForPath(assetPath);
-        const assetExt = extname(assetPath).slice(1).toLowerCase();
-        if (!contentType || !ASSET_EXTENSIONS.has(assetExt)) {
-          errorResponse(
-            res,
-            415,
-            'urn:ok:error:unsupported-asset-type',
-            'Unsupported asset type.',
-            { handler: 'asset' },
-          );
-          return;
-        }
-        const resolvedContentDir = realpathSync(contentDir);
-        const requestedPath = resolve(resolvedContentDir, assetPath);
-        let canonicalPath: string;
-        try {
-          canonicalPath = realpathSync(requestedPath);
-        } catch {
-          errorResponse(res, 404, 'urn:ok:error:asset-not-found', 'Asset not found.', {
-            handler: 'asset',
-          });
-          return;
-        }
-        if (!isWithinContentDir(canonicalPath, resolvedContentDir)) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid asset path.', {
-            handler: 'asset',
-          });
-          return;
-        }
-        let stat: ReturnType<typeof statSync>;
-        try {
-          stat = statSync(canonicalPath);
-        } catch {
-          errorResponse(res, 404, 'urn:ok:error:asset-not-found', 'Asset not found.', {
-            handler: 'asset',
-          });
-          return;
-        }
-        if (!stat.isFile()) {
-          errorResponse(res, 404, 'urn:ok:error:asset-not-found', 'Asset not found.', {
-            handler: 'asset',
-          });
-          return;
-        }
-        const relativePath = toContentRelativePath(resolvedContentDir, canonicalPath);
-        if (relativePath !== assetPath.split('\\').join('/')) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid asset path.', {
-            handler: 'asset',
-          });
-          return;
-        }
-        // Direct asset fetches honor the same `.gitignore` / `.okignore`
-        // exclusions the `createAssetServeMiddleware` admission path
-        // applies — without this, ignore patterns hide assets from the
-        // sidebar and SPA but still let `/api/asset?path=...` serve them.
-        // 404 (not 403) so the wire shape is identical to "missing file"
-        // — exclusion is opaque.
-        //
-        // Use `isPathIgnored` rather than `isExcluded` so the sibling-asset
-        // heuristic does not reject legitimate cross-directory references
-        // (e.g., `docs/media/diagram.png` referenced from `docs/guide.md`
-        // when `docs/media/` has no sibling `.md` of its own).
-        if (contentFilter?.isPathIgnored(relativePath)) {
-          errorResponse(res, 404, 'urn:ok:error:asset-not-found', 'Asset not found.', {
-            handler: 'asset',
-          });
-          return;
-        }
-        // `html`/`htm` render inline ONLY inside the sandbox CSP below — they
-        // are intentionally absent from INLINE_RENDERABLE_EXTENSIONS so no other
-        // branch serves them as a plain same-origin document.
-        const isSandboxedHtml = SANDBOXED_HTML_EXTENSIONS.has(assetExt);
+        const { asset } = resolution;
         const headers: Record<string, string> = {
-          'Content-Type': contentType,
-          'Content-Length': String(stat.size),
+          'Content-Type': asset.contentType,
+          'Content-Length': String(asset.size),
           'X-Content-Type-Options': 'nosniff',
-          'Content-Disposition':
-            INLINE_RENDERABLE_EXTENSIONS.has(assetExt) || isSandboxedHtml ? 'inline' : 'attachment',
+          'Content-Disposition': asset.disposition,
           'Cache-Control': 'no-store',
         };
-        if (assetExt === 'svg') {
-          headers['Content-Security-Policy'] =
-            "sandbox; default-src 'none'; style-src 'unsafe-inline'";
-        } else if (isSandboxedHtml) {
-          // Opaque sandboxed origin (scripts run, no OK cookies/storage) +
-          // `connect-src 'none'` so the document can't reach OK's loopback API
-          // (which allowlists the sandboxed `Origin: null`) or exfiltrate. See
-          // `SANDBOXED_HTML_CSP`. Mirrors the serve middleware.
-          headers['Content-Security-Policy'] = SANDBOXED_HTML_CSP;
+        if (asset.csp !== null) {
+          headers['Content-Security-Policy'] = asset.csp;
         }
+        const canonicalPath = asset.canonicalPath;
         res.writeHead(200, headers);
         try {
           await pipeline(createReadStream(canonicalPath), res);
@@ -10600,54 +10061,16 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       try {
         const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
         const assetPath = url.searchParams.get('path');
-        if (!assetPath || assetPath.includes('\0')) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Missing asset path.', {
+        const resolution = assetService.resolveTextAsset(assetPath);
+        if (!resolution.ok) {
+          const [status, type, title] = ASSET_SERVE_ERRORS[resolution.reason];
+          errorResponse(res, status, type, title, {
             handler: 'asset-text',
+            ...(resolution.cause !== undefined ? { cause: resolution.cause } : {}),
           });
           return;
         }
-        const resolvedContentDir = realpathSync(contentDir);
-        const requestedPath = resolve(resolvedContentDir, assetPath);
-        let canonicalPath: string;
-        try {
-          canonicalPath = realpathSync(requestedPath);
-        } catch (e) {
-          errorResponse(res, 404, 'urn:ok:error:asset-not-found', 'Asset not found.', {
-            handler: 'asset-text',
-            cause: e,
-          });
-          return;
-        }
-        if (!isWithinContentDir(canonicalPath, resolvedContentDir)) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid asset path.', {
-            handler: 'asset-text',
-          });
-          return;
-        }
-        let fileStat: ReturnType<typeof statSync>;
-        try {
-          fileStat = statSync(canonicalPath);
-        } catch (e) {
-          errorResponse(res, 404, 'urn:ok:error:asset-not-found', 'Asset not found.', {
-            handler: 'asset-text',
-            cause: e,
-          });
-          return;
-        }
-        if (!fileStat.isFile()) {
-          errorResponse(res, 404, 'urn:ok:error:asset-not-found', 'Asset not found.', {
-            handler: 'asset-text',
-          });
-          return;
-        }
-        const relativePath = toContentRelativePath(resolvedContentDir, canonicalPath);
-        if (relativePath !== assetPath.split('\\').join('/')) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid asset path.', {
-            handler: 'asset-text',
-          });
-          return;
-        }
-        if (fileStat.size > TEXT_VIEW_MAX_BYTES) {
+        if (resolution.size > TEXT_VIEW_MAX_BYTES) {
           errorResponse(
             res,
             413,
@@ -10657,7 +10080,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           );
           return;
         }
-        const bytes = await readFile(canonicalPath);
+        const bytes = await readFile(resolution.canonicalPath);
         const text = bytes.toString('utf-8');
         res.writeHead(200, {
           'Content-Type': 'text/plain; charset=utf-8',
@@ -10907,34 +10330,22 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           templateScopeForLog = matched.scope;
         }
 
-        mkdirSync(dirname(fullPath), { recursive: true });
-        try {
-          writeFileSync(fullPath, initialContent, { encoding: 'utf-8', flag: 'wx' });
-        } catch (err) {
-          if (isAlreadyExistsError(err)) {
-            errorResponse(res, 409, 'urn:ok:error:doc-already-exists', 'File already exists.', {
-              handler: 'create-page',
-              cause: err,
-            });
-            return;
-          }
-          throw err;
-        }
         const docName = stripDocExtension(filePath);
-        // Eager invalidation: legitimate recreation at a recently-renamed or
-        // recently-deleted name drops the stale cache entry so the next
-        // connection admits cleanly. No-op when absent.
-        recentlyRemovedDocs?.delete(docName);
-        // Synchronously bump the content filter's sibling-asset dirCount so any
-        // sibling asset drop that follows is admitted by the `LINKABLE_ASSET_EXTENSIONS`
-        // rule. The file watcher's `create` event will also increment later,
-        // which would double-count — so we also `registerWrite` to mark this
-        // as a self-write, and the watcher skips its own `incrementMdDir` on
-        // self-writes. See file-watcher.ts for the paired logic.
-        if (contentFilter) {
-          contentFilter.incrementMdDir(dirname(docName));
+        // Synchronous through recordContributor below: an async yield between
+        // the write and the contributor recording lets a pending shadow-commit
+        // timer drain the accumulator without this file's attribution.
+        const createOutcome = fileOpsService.createPage({
+          fullPath,
+          docName,
+          initialContent,
+        });
+        if (!createOutcome.ok) {
+          errorResponse(res, 409, 'urn:ok:error:doc-already-exists', 'File already exists.', {
+            handler: 'create-page',
+            cause: createOutcome.cause,
+          });
+          return;
         }
-        registerWrite(fullPath, contentHash(initialContent));
         switch (actor.kind) {
           case 'agent':
           case 'principal':
@@ -10957,7 +10368,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             );
           }
         }
-        mutateFileIndex?.({ kind: 'create', path: fullPath, docName, content: initialContent });
         await recordDerivedDocumentBestEffort(docName, initialContent, 'create-page');
         signalChannel?.('files');
         if (templateScopeForLog !== undefined) {
@@ -10983,6 +10393,57 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     },
     { handler: 'create-page', method: 'POST' },
   );
+
+  const fileOpsService = createFileOpsService({
+    contentDir,
+    resolveContentEntryPath,
+    docNameForPath: (relPath) => docNameForFileOperationPath(contentDir, relPath),
+    docNameToRelativePath,
+    listManagedDocNamesUnderFolder: (absFolderPath) =>
+      listManagedDocNamesUnderFolderFromDisk(absFolderPath),
+    listAffectedDocNames: (index, kind, path) =>
+      listAffectedDocNames(index as Map<string, FileIndexEntry>, kind, path),
+    getFileIndex,
+    getConflictedFiles: () =>
+      new Set(
+        getSyncEngine?.()
+          ?.getConflicts()
+          .map((c) => c.file) ?? [],
+      ),
+    isDocNameInLifecycleConflict: (docName) => {
+      const doc = hocuspocus.documents.get(docName);
+      return doc !== undefined && isDocInConflict(doc);
+    },
+    captureAndCloseDocuments,
+    markRecentlyRemoved: recentlyRemovedDocs
+      ? (docName) => recentlyRemovedDocs.setDeleted(docName)
+      : undefined,
+    mutateFileIndexDelete: mutateFileIndex
+      ? ({ path, docName }) => mutateFileIndex({ kind: 'delete', path, docName })
+      : undefined,
+    removeFolderIndexEntries,
+    upsertFolderIndexPathSegments,
+    deleteDerivedDocumentsBestEffort,
+    invalidateReferencedAssetsCache,
+    signalFiles: () => signalChannel?.('files'),
+    nextAvailableDuplicateDocName: (sourceDocName) =>
+      nextAvailableDuplicateDocName(contentDir, sourceDocName),
+    nextAvailableDuplicateFolderPath: (sourceFolderPath) =>
+      nextAvailableDuplicateFolderPath(contentDir, sourceFolderPath),
+    resolveDuplicateDocPath: (docName, extension) =>
+      resolveDuplicateDocPath(contentDir, docName, extension),
+    collectMarkdownCopies: (folderPath) => collectMarkdownCopies(contentDir, folderPath),
+    collectFolderPaths: (folderPath) => collectFolderPaths(contentDir, folderPath),
+    contentFilter: contentFilter ?? undefined,
+    unmarkRecentlyRemoved: recentlyRemovedDocs
+      ? (docName) => recentlyRemovedDocs.delete(docName)
+      : undefined,
+    mutateFileIndexCreate: mutateFileIndex
+      ? ({ path, docName, content }) => mutateFileIndex({ kind: 'create', path, docName, content })
+      : undefined,
+    recordDerivedDocumentBestEffort,
+    recordDerivedMutationsBestEffort,
+  });
 
   const handleCreateFolder = withValidation(
     CreateFolderRequestSchema,
@@ -11028,17 +10489,13 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           return;
         }
 
-        const fullPath = resolveContentEntryPath(contentDir, 'folder', folderPath);
-        if (existsSync(fullPath)) {
+        const outcome = fileOpsService.createFolder(folderPath);
+        if (!outcome.ok) {
           errorResponse(res, 409, 'urn:ok:error:doc-already-exists', 'Folder already exists.', {
             handler: 'create-folder',
           });
           return;
         }
-
-        tracedMkdirSync(fullPath, { recursive: true });
-        upsertFolderIndexPathSegments(folderPath);
-        signalChannel?.('files');
         successResponse(
           res,
           200,
@@ -11100,11 +10557,16 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         if (kind === 'file') {
           probeAndRegisterSourceFileExtension(contentDir, requestedPath);
         }
-        const sourcePath = resolveContentEntryPath(contentDir, kind, requestedPath);
-        if (!existsSync(sourcePath)) {
-          if (kind === 'file') {
-            const folderSourcePath = resolveContentEntryPath(contentDir, 'folder', requestedPath);
-            if (existsSync(folderSourcePath) && statSync(folderSourcePath).isDirectory()) {
+
+        const outcome = await fileOpsService.duplicatePath(kind, requestedPath, requestedDocName);
+        if (!outcome.ok) {
+          switch (outcome.kind) {
+            case 'not-found':
+              errorResponse(res, 404, 'urn:ok:error:doc-not-found', `${kind} does not exist.`, {
+                handler: 'duplicate-path',
+              });
+              return;
+            case 'type-mismatch':
               errorResponse(
                 res,
                 400,
@@ -11113,269 +10575,42 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                 { handler: 'duplicate-path' },
               );
               return;
-            }
-          }
-          errorResponse(res, 404, 'urn:ok:error:doc-not-found', `${kind} does not exist.`, {
-            handler: 'duplicate-path',
-          });
-          return;
-        }
-        const sourceStat = statSync(sourcePath);
-        if (
-          (kind === 'file' && !sourceStat.isFile()) ||
-          (kind === 'folder' && !sourceStat.isDirectory())
-        ) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', `Target path is not a ${kind}.`, {
-            handler: 'duplicate-path',
-          });
-          return;
-        }
-
-        // Conflict-aware refusal. Duplicating a conflicted source would
-        // copy the raw `<<<<<<< HEAD` / `=======` / `>>>>>>>` marker bytes
-        // from disk into a new file at the destination, producing a broken
-        // duplicate. Refuse with 409; the user must resolve the conflict
-        // first. Dual-source check mirrors handleRenamePath /
-        // handleDeletePath — `hocuspocus.documents.get()` returns undefined
-        // for evicted docs; the ConflictStore fallback catches that case.
-        // Enumerate from disk (not the lagging file index) so the conflict
-        // gate sees every on-disk child of the folder — the chokidar watcher
-        // populates the index asynchronously, so right after a fresh
-        // `write` create the index lags and a conflicted child would
-        // be silently skipped, copying its marker bytes intact. Same root
-        // cause and fix as handleRenamePath's pre-check. Also registers
-        // each child's on-disk extension for extension-less legacy docNames.
-        const duplicateSourceDocNames =
-          kind === 'file'
-            ? [docNameForFileOperationPath(contentDir, requestedPath)]
-            : listManagedDocNamesUnderFolderFromDisk(
-                resolveContentEntryPath(contentDir, 'folder', requestedPath),
+            case 'conflict':
+              respondDocInConflict(
+                res,
+                new DocInConflictError({ file: outcome.file }),
+                'duplicate-path',
               );
-        const duplicateEngine = getSyncEngine?.();
-        const duplicateTrackedFiles = new Set(
-          duplicateEngine ? duplicateEngine.getConflicts().map((c) => c.file) : [],
-        );
-        for (const affected of duplicateSourceDocNames) {
-          const affectedDocName = affected;
-          const doc = hocuspocus.documents.get(affectedDocName);
-          const filePath = docNameToRelativePath(affectedDocName);
-          const conflictedByLifecycle = doc !== undefined && isDocInConflict(doc);
-          const conflictedByStore = duplicateTrackedFiles.has(filePath);
-          if (conflictedByLifecycle || conflictedByStore) {
-            respondDocInConflict(res, new DocInConflictError({ file: filePath }), 'duplicate-path');
-            return;
-          }
-        }
-
-        let duplicatedPath: string;
-        let duplicatedDocNames: string[] = [];
-
-        if (kind === 'file') {
-          const sourceExtension = extname(sourcePath);
-          const next = nextAvailableDuplicateDocName(contentDir, requestedDocName);
-          duplicatedPath = next.docName;
-          if (
-            isSystemDoc(duplicatedPath) ||
-            isConfigDoc(duplicatedPath) ||
-            contentFilter?.isExcluded(`${duplicatedPath}${sourceExtension}`)
-          ) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              'Duplicated document destination is excluded by the project content config.',
-              { handler: 'duplicate-path' },
-            );
-            return;
-          }
-          const destinationPath = resolveDuplicateDocPath(
-            contentDir,
-            duplicatedPath,
-            sourceExtension,
-          );
-          const content = readFileSync(sourcePath, 'utf-8');
-          const destinationDir = dirname(destinationPath);
-          const destinationDirExisted = existsSync(destinationDir);
-          try {
-            tracedMkdirSync(destinationDir, { recursive: true });
-            tracedWriteFileSync(destinationPath, content, { encoding: 'utf-8', flag: 'wx' });
-          } catch (err) {
-            if (isAlreadyExistsError(err)) {
+              return;
+            case 'destination-excluded':
+              errorResponse(
+                res,
+                400,
+                'urn:ok:error:invalid-request',
+                kind === 'file'
+                  ? 'Duplicated document destination is excluded by the project content config.'
+                  : 'Duplicated folder destination is excluded by the project content config.',
+                { handler: 'duplicate-path' },
+              );
+              return;
+            case 'already-exists':
               errorResponse(
                 res,
                 409,
                 'urn:ok:error:doc-already-exists',
-                'A file at the duplicate destination already exists.',
-                { handler: 'duplicate-path', cause: err },
+                `A ${kind} at the duplicate destination already exists.`,
+                { handler: 'duplicate-path', cause: outcome.cause },
               );
               return;
-            }
-            if (!destinationDirExisted) {
-              try {
-                tracedRmdirSync(destinationDir);
-              } catch (cleanupErr) {
-                const cleanupCode = errnoCode(cleanupErr);
-                if (cleanupCode !== 'ENOENT' && cleanupCode !== 'ENOTEMPTY') {
-                  log.warn(
-                    { destinationDir, err: cleanupErr },
-                    '[duplicate-path] failed to clean duplicate parent directory',
-                  );
-                }
-              }
-            }
-            throw err;
-          }
-          let didIncrementMdDir = false;
-          try {
-            registerDocExtension(duplicatedPath, sourceExtension);
-            recentlyRemovedDocs?.delete(duplicatedPath);
-            if (contentFilter) {
-              contentFilter.incrementMdDir(dirname(duplicatedPath));
-              didIncrementMdDir = true;
-            }
-            registerWrite(destinationPath, contentHash(content));
-            mutateFileIndex?.({
-              kind: 'create',
-              path: destinationPath,
-              docName: duplicatedPath,
-              content,
-            });
-            duplicatedDocNames = [duplicatedPath];
-          } catch (err) {
-            try {
-              tracedRmSync(destinationPath, { force: true });
-            } catch (cleanupErr) {
-              log.warn(
-                { destinationPath, err: cleanupErr },
-                '[duplicate-path] failed to clean partial file duplicate',
+            default: {
+              const _exhaustive: never = outcome;
+              throw new Error(
+                `Unhandled duplicate outcome: ${String((_exhaustive as { kind?: unknown }).kind)}`,
               );
             }
-            forgetDocExtension(duplicatedPath);
-            if (contentFilter && didIncrementMdDir) {
-              contentFilter.decrementMdDir(dirname(duplicatedPath));
-            }
-            mutateFileIndex?.({
-              kind: 'delete',
-              path: destinationPath,
-              docName: duplicatedPath,
-            });
-            throw err;
           }
-          await recordDerivedDocumentBestEffort(duplicatedPath, content, 'duplicate-path-file');
-        } else {
-          const next = nextAvailableDuplicateFolderPath(contentDir, requestedPath);
-          duplicatedPath = next.folderPath;
-          if (contentFilter?.isDirExcluded(duplicatedPath)) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              'Duplicated folder destination is excluded by the project content config.',
-              { handler: 'duplicate-path' },
-            );
-            return;
-          }
-          const destinationPath = resolveContentEntryPath(contentDir, 'folder', duplicatedPath);
-          const copiedDocRollbackLedger: Array<{
-            docName: string;
-            fullPath: string;
-            extensionRegistered: boolean;
-            dirCountIncremented: boolean;
-            fileIndexRegistered: boolean;
-          }> = [];
-          try {
-            tracedCpSync(sourcePath, destinationPath, {
-              recursive: true,
-              errorOnExist: true,
-              force: false,
-            });
-          } catch (err) {
-            if (isAlreadyExistsError(err)) {
-              errorResponse(
-                res,
-                409,
-                'urn:ok:error:doc-already-exists',
-                'A folder at the duplicate destination already exists.',
-                { handler: 'duplicate-path', cause: err },
-              );
-              return;
-            }
-            throw err;
-          }
-          const derivedMutations: DerivedDocumentIndexMutation[] = [];
-          try {
-            for (const folderPath of collectFolderPaths(contentDir, duplicatedPath)) {
-              upsertFolderIndexPathSegments(folderPath);
-            }
-            const copiedDocs = collectMarkdownCopies(contentDir, duplicatedPath);
-            duplicatedDocNames = copiedDocs.map((doc) => doc.docName);
-            for (const doc of copiedDocs) {
-              const rollbackEntry = {
-                docName: doc.docName,
-                fullPath: doc.fullPath,
-                extensionRegistered: false,
-                dirCountIncremented: false,
-                fileIndexRegistered: false,
-              };
-              copiedDocRollbackLedger.push(rollbackEntry);
-              const sourceExtension = extname(doc.fullPath);
-              registerDocExtension(stripDocExtension(doc.docName), sourceExtension);
-              rollbackEntry.extensionRegistered = true;
-              recentlyRemovedDocs?.delete(doc.docName);
-              if (contentFilter) {
-                contentFilter.incrementMdDir(dirname(doc.docName));
-                rollbackEntry.dirCountIncremented = true;
-              }
-              registerWrite(doc.fullPath, contentHash(doc.content));
-              rollbackEntry.fileIndexRegistered = true;
-              mutateFileIndex?.({
-                kind: 'create',
-                path: doc.fullPath,
-                docName: doc.docName,
-                content: doc.content,
-              });
-              derivedMutations.push({
-                kind: 'upsert',
-                documentName: doc.docName,
-                markdown: doc.content,
-              });
-            }
-          } catch (err) {
-            for (const rollbackEntry of copiedDocRollbackLedger.reverse()) {
-              if (rollbackEntry.fileIndexRegistered) {
-                try {
-                  mutateFileIndex?.({
-                    kind: 'delete',
-                    path: rollbackEntry.fullPath,
-                    docName: rollbackEntry.docName,
-                  });
-                } catch (rollbackErr) {
-                  log.warn(
-                    { docName: rollbackEntry.docName, err: rollbackErr },
-                    '[duplicate-path] failed to roll back copied file-index row',
-                  );
-                }
-              }
-              if (rollbackEntry.dirCountIncremented) {
-                contentFilter?.decrementMdDir(dirname(rollbackEntry.docName));
-              }
-              if (rollbackEntry.extensionRegistered) {
-                forgetDocExtension(stripDocExtension(rollbackEntry.docName));
-              }
-            }
-            removeFolderIndexEntries(duplicatedPath);
-            try {
-              tracedRmSync(destinationPath, { recursive: true, force: true });
-            } catch (cleanupErr) {
-              log.warn(
-                { destinationPath, err: cleanupErr },
-                '[duplicate-path] failed to clean partial folder duplicate',
-              );
-            }
-            throw err;
-          }
-          await recordDerivedMutationsBestEffort(derivedMutations, 'duplicate-path-folder');
         }
+        const { duplicatedPath, duplicatedDocNames } = outcome;
 
         switch (actor.kind) {
           case 'agent':
@@ -11886,137 +11121,38 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           return;
         }
 
-        const targetPath =
-          operationKind === 'asset'
-            ? resolveContentEntryPath(contentDir, 'folder', operationPath)
-            : resolveContentEntryPath(contentDir, operationKind, operationPath);
-        if (!existsSync(targetPath)) {
-          errorResponse(
-            res,
-            404,
-            'urn:ok:error:doc-not-found',
-            `${operationKind} does not exist.`,
-            {
-              handler: 'delete-path',
-            },
-          );
-          return;
-        }
-
-        const targetStat = statSync(targetPath);
-        if (
-          (operationKind === 'file' && !targetStat.isFile()) ||
-          (operationKind === 'asset' && !targetStat.isFile()) ||
-          (operationKind === 'folder' && !targetStat.isDirectory())
-        ) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            `Target path is not a ${operationKind}.`,
-            { handler: 'delete-path' },
-          );
-          return;
-        }
-
-        // Enumerate descendants from disk (not the lagging file index) so the
-        // folder delete sees every on-disk child. The chokidar watcher
-        // populates the index asynchronously, so right after a fresh
-        // `write` create it lags on-disk truth: reading it here would
-        // return an empty `deletedDocNames`, so `captureAndCloseDocuments` and
-        // the `recentlyRemovedDocs` population below would be skipped while
-        // `tracedRmSync` still removes the directory — orphaning the in-memory
-        // Y.Docs (silent data loss). Same root cause and fix as
-        // handleRenamePath's affected-docs scan. The walk runs before the disk
-        // delete, so disk is authoritative here; it also registers each
-        // child's on-disk extension for extension-less legacy docNames.
-        const deletedDocNames =
-          operationKind === 'asset'
-            ? []
-            : operationKind === 'file'
-              ? [docNameForFileOperationPath(contentDir, operationPath)]
-              : listManagedDocNamesUnderFolderFromDisk(
-                  resolveContentEntryPath(contentDir, 'folder', operationPath),
-                );
-
-        // Conflict-aware refusal. Deleting a conflicted doc would
-        // discard the in-flight resolution state; resolution must complete
-        // first via `resolve_conflict` (or be aborted via `git merge --abort`
-        // per the documented recovery procedure). Scan every affected
-        // doc — for folder deletes, ANY conflicted child blocks the operation.
-        //
-        // Dual-source check (same rationale as handleRenamePath above):
-        // hocuspocus.documents.get() returns undefined for docs evicted
-        // from memory; ConflictStore catches that eviction race.
-        const deleteEngine = getSyncEngine?.();
-        const deleteTrackedFiles = new Set(
-          deleteEngine ? deleteEngine.getConflicts().map((c) => c.file) : [],
-        );
-        for (const affected of deletedDocNames) {
-          const affectedDocName = affected;
-          const doc = hocuspocus.documents.get(affectedDocName);
-          const filePath = docNameToRelativePath(affectedDocName);
-          const conflictedByLifecycle = doc !== undefined && isDocInConflict(doc);
-          const conflictedByStore = deleteTrackedFiles.has(filePath);
-          if (conflictedByLifecycle || conflictedByStore) {
-            respondDocInConflict(res, new DocInConflictError({ file: filePath }), 'delete-path');
-            return;
-          }
-        }
-
-        await captureAndCloseDocuments(deletedDocNames, 'deleted-upstream');
-
-        // Populate the per-process LRU cache BEFORE the disk delete so any
-        // connection that observes the file gone via the watcher also sees the
-        // cache entry — closes the race where a fast reconnect could land
-        // between the unlink and the cache write. Filter via the standard
-        // `isSystemDoc()`/`isConfigDoc()` STOP gate; synthetic docs cannot
-        // appear in `deletedDocNames` today (path validation rejects them),
-        // but the filter stays defense-in-depth.
-        if (recentlyRemovedDocs) {
-          for (const docName of deletedDocNames) {
-            if (isSystemDoc(docName) || isConfigDoc(docName)) continue;
-            recentlyRemovedDocs.setDeleted(docName);
-            console.info(
-              JSON.stringify({
-                event: 'recently-removed-docs-populate',
-                docName,
-                kind: 'deleted',
-                source: 'handleDeletePath',
-              }),
+        const outcome = await fileOpsService.deletePath(operationKind, operationPath);
+        if (!outcome.ok) {
+          if (outcome.kind === 'not-found') {
+            errorResponse(
+              res,
+              404,
+              'urn:ok:error:doc-not-found',
+              `${operationKind} does not exist.`,
+              { handler: 'delete-path' },
+            );
+          } else if (outcome.kind === 'type-mismatch') {
+            errorResponse(
+              res,
+              400,
+              'urn:ok:error:invalid-request',
+              `Target path is not a ${operationKind}.`,
+              { handler: 'delete-path' },
+            );
+          } else {
+            respondDocInConflict(
+              res,
+              new DocInConflictError({ file: outcome.file }),
+              'delete-path',
             );
           }
+          return;
         }
-
-        if (operationKind === 'file' || operationKind === 'asset') {
-          tracedUnlinkSync(targetPath);
-        } else {
-          tracedRmSync(targetPath, { recursive: true, force: false });
-          removeFolderIndexEntries(operationPath);
-        }
-        invalidateReferencedAssetsCache();
-
-        // Refresh the file index so subsequent doc-list reads don't include
-        // the just-deleted entries. Watcher events would eventually do this
-        // anyway but the doc-list response needs to be consistent right now.
-        // Routes through the typed `mutateFileIndex` accessor (live map);
-        // the pre-PR pattern of `getFileIndex() + as Map cast` silently
-        // dead-ended once `getFileIndex()` flipped to returning a snapshot.
-        for (const docName of deletedDocNames) {
-          mutateFileIndex?.({
-            kind: 'delete',
-            path: resolve(contentDir, docNameToRelativePath(docName)),
-            docName,
-          });
-        }
-        await deleteDerivedDocumentsBestEffort(deletedDocNames, 'delete-path');
-
-        signalChannel?.('files');
         successResponse(
           res,
           200,
           DeletePathSuccessSchema,
-          { deletedDocNames },
+          { deletedDocNames: outcome.deletedDocNames },
           { handler: 'delete-path' },
         );
       } catch (e) {
@@ -12103,88 +11239,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               );
               return;
             }
-            if (operationKind === 'asset') {
-              invalidateReferencedAssetsCache();
-              signalChannel?.('files');
-              successResponse(
-                res,
-                200,
-                TrashCleanupSuccessSchema,
-                { deletedDocNames: [] },
-                { handler: 'trash-cleanup' },
-              );
-              return;
-            }
-
-            // Source of truth for "what to purge" is the in-memory fileIndex.
-            // The OS-level move-to-Trash happened in Step 1; the watcher MAY
-            // have processed it already (then the index is empty for this
-            // path), or NOT (then the index still holds the entries). For
-            // the idempotent fast-path: when the index lacks the entries,
-            // return 200 + empty array — the desired end state (gone) is
-            // already true; nothing left for us to do.
-            const initialIndex = getFileIndex();
-            const deletedDocNames =
-              operationKind === 'file'
-                ? initialIndex.has(operationDocName)
-                  ? [operationDocName]
-                  : []
-                : listAffectedDocNames(initialIndex, operationKind, path);
-
-            invalidateReferencedAssetsCache();
-
-            if (deletedDocNames.length === 0) {
-              successResponse(
-                res,
-                200,
-                TrashCleanupSuccessSchema,
-                { deletedDocNames: [] },
-                { handler: 'trash-cleanup' },
-              );
-              return;
-            }
-
-            await captureAndCloseDocuments(deletedDocNames, 'deleted-upstream');
-
-            if (recentlyRemovedDocs) {
-              for (const docName of deletedDocNames) {
-                if (isSystemDoc(docName) || isConfigDoc(docName)) continue;
-                recentlyRemovedDocs.setDeleted(docName);
-                console.info(
-                  JSON.stringify({
-                    event: 'recently-removed-docs-populate',
-                    docName,
-                    kind: 'deleted',
-                    source: 'handleTrashCleanup',
-                  }),
-                );
-              }
-            }
-
-            // Synchronously purge the in-memory index so subsequent doc-list
-            // reads return the post-trash state immediately. The file-watcher
-            // will also process the OS-level deletion event eventually; both
-            // pathways converge on the same end state. Routes through the
-            // typed `mutateFileIndex` accessor (live map) — the pre-PR
-            // `getFileIndex() + as Map cast` pattern silently dead-ended
-            // once `getFileIndex()` flipped to returning a snapshot.
-            for (const docName of deletedDocNames) {
-              mutateFileIndex?.({
-                kind: 'delete',
-                path: resolve(contentDir, docNameToRelativePath(docName)),
-                docName,
-              });
-            }
-            if (operationKind === 'folder') {
-              removeFolderIndexEntries(path);
-            }
-            await deleteDerivedDocumentsBestEffort(deletedDocNames, 'trash-cleanup');
-
-            // Synchronous CC1 emit closes the race where the renderer expects
-            // the updated tree right after the response. The watcher's later
-            // emit is idempotent at the consumer (per-channel seq dedup).
-            signalChannel?.('files');
-
+            const { deletedDocNames } = await fileOpsService.trashCleanup(
+              operationKind,
+              path,
+              operationDocName,
+              'handleTrashCleanup',
+            );
             successResponse(
               res,
               200,
@@ -12424,272 +11484,116 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       return;
     }
 
-    const resolvedContentDir = resolve(contentDir);
-    let rawAttachmentFolderPath: string;
-    try {
-      rawAttachmentFolderPath =
-        placement === 'parent-dir'
-          ? DEFAULT_ATTACHMENT_FOLDER_PATH
-          : (getAttachmentFolderPath?.() ?? DEFAULT_ATTACHMENT_FOLDER_PATH);
-    } catch (err) {
-      cleanupTempfile();
-      log.error({ err }, '[upload] project config has invalid content.attachmentFolderPath');
-      errorResponse(
-        res,
-        500,
-        'urn:ok:error:internal-server-error',
-        'Server configuration error: invalid attachment folder path.',
-        {
-          handler: 'upload-asset',
-          cause: err,
-        },
-      );
-      return;
-    }
-    if (!isValidAttachmentFolderPath(rawAttachmentFolderPath)) {
-      cleanupTempfile();
-      errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid attachment folder path.', {
-        handler: 'upload-asset',
-      });
-      return;
-    }
-    const attachmentFolderPath = normalizeAttachmentFolderPath(rawAttachmentFolderPath);
-    const destDir = resolveUploadDestDir(parentDocName, attachmentFolderPath, resolvedContentDir);
-    if (!isWithinContentDir(destDir, resolvedContentDir)) {
-      cleanupTempfile();
-      errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
-        handler: 'upload-asset',
-      });
-      return;
-    }
-    // Pre-mkdir symlink-escape check: walks up from destDir to the
-    // deepest existing ancestor and rejects if its realpath escapes contentDir.
-    // Doing this before `mkdirSync({ recursive: true })` prevents mkdir from
-    // following a parent symlink and materializing a fresh directory outside
-    // contentDir. The post-mkdir realpath check below remains as defense-in-
-    // depth against TOCTOU symlink-replace races between this check and mkdir.
-    try {
-      assertNoSymlinkEscape(destDir, resolvedContentDir);
-    } catch (err) {
-      cleanupTempfile();
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.startsWith('symlink-escape:')) {
-        errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
-          handler: 'upload-asset',
-        });
-        return;
-      }
-      log.error({ err, destDir }, '[upload] failed to validate destination directory');
-      errorResponse(res, 500, 'urn:ok:error:storage-error', 'Storage error.', {
-        handler: 'upload-asset',
-        cause: err,
-      });
-      return;
-    }
-    // mkdir -p the destination — bare-name / nested attachmentFolderPath
-    // values produce directories that may not exist at first upload.
-    try {
-      mkdirSync(destDir, { recursive: true });
-    } catch (err) {
-      if (!isAlreadyExistsError(err)) {
-        cleanupTempfile();
-        // Classify the errno through the same typed table the streaming-
-        // write path uses so ENOSPC/EDQUOT route through 507 storage-full
-        // and EROFS/EACCES/EPERM route through 500 storage-readonly —
-        // SDK consumers branch on the URN, not the errno, so collapsing
-        // every errno into generic storage-error breaks that contract.
-        const reason = classifyUploadErrno(err as NodeJS.ErrnoException);
-        errorResponse(res, uploadStatusFor(reason), reason, uploadTitleFor(reason), {
-          handler: 'upload-asset',
-          cause: err,
-          detail: 'failed to create attachment directory',
-        });
-        return;
-      }
-    }
-
-    // Symlink escape check: realpath the dest dir and compare against realpath'd contentDir
-    try {
-      const realDestDir = realpathSync(destDir);
-      let realContentDir: string;
-      try {
-        realContentDir = realpathSync(resolvedContentDir);
-      } catch {
-        realContentDir = resolvedContentDir;
-      }
-      if (!isWithinContentDir(realDestDir, realContentDir)) {
-        cleanupTempfile();
-        errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
-          handler: 'upload-asset',
-        });
-        return;
-      }
-    } catch (e) {
-      const code = errnoCode(e);
-      if (code === 'ENOENT') {
-        // Directory doesn't exist yet — will be created below; no symlink escape possible
-      } else {
-        cleanupTempfile();
-        errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
-          handler: 'upload-asset',
-          cause: e,
-        });
-        return;
-      }
-    }
-
-    // Accept-all: every file is accepted — there's no user-facing byte cap
-    // post-streaming (disk fullness surfaces as 507 instead). The magic-
-    // byte sniff is only consulted to (a) preserve the SVG `<img>`-only
-    // routing for security and (b) recover an extension when the upload
-    // arrived with a generic clipboard filename. Non-sniffable bytes are
-    // accepted under the client-supplied filename.
-    //
-    const SNIFF_HEAD_BYTES = 4100;
-    const head = readTempFileHead(tempPath, SNIFF_HEAD_BYTES);
-    const fileTypeResult = await fileTypeFromBuffer(head);
-    let detectedMime: string | undefined = fileTypeResult?.mime;
-    let detectedExt: string | undefined = fileTypeResult?.ext;
-    // file-type can't detect SVG (text-based, no magic bytes) — check manually.
-    // STOP: this fallback is LOAD-BEARING — SVG must render via
-    // <img>, never inline DOM. Do not remove without a compensating guard.
-    if (!detectedMime) {
-      // Strip a leading UTF-8 BOM (U+FEFF) before the pattern match.
-      // `trimStart()` removes ECMAScript whitespace but not the BOM, so a
-      // file starting with `\xEF\xBB\xBF<svg ...>` would otherwise evade the
-      // head check the comment above documents as the SVG-disguised-as-PNG
-      const headText = head.subarray(0, 256).toString('utf-8').replace(/^﻿/, '').trimStart();
-      if (
-        headText.startsWith('<svg') ||
-        (headText.startsWith('<?xml') && headText.includes('<svg'))
-      ) {
-        detectedMime = 'image/svg+xml';
-        detectedExt = 'svg';
-      }
-    }
-
-    // Same-dir sha256 dedup. Bounded scan over destDir, skipped entirely
-    // when DEFAULT_DEDUP_MODE === 'off'. The dedup test happens BEFORE
-    // filename synthesis so a duplicate paste preserves the existing
-    // on-disk basename instead of producing a fresh pasted-<ts>.png stub.
-    // Server returns { deduped: true } so the client surfaces a toast.
-    //
-    // The hash + size come from the streaming pipeline (no buffer). On a
-    // dedup hit the tempfile is unlinked and we short-circuit without
-    // touching the destDir inode — `linkTempToFinalWithCollisionRetry`
-    // never runs.
-    if (DEFAULT_DEDUP_MODE === 'same-dir') {
-      const existing = await findDuplicateAsset(destDir, sha, byteLength);
-      if (existing) {
-        cleanupTempfile();
-        const relPath = toPosix(relative(contentDir, resolve(destDir, existing)));
-        log.info(
-          {
-            event: 'upload',
-            endpoint: req.url ?? '/api/upload',
-            agentId,
-            agentName,
-            dedup: true,
-            mime: detectedMime ?? null,
-            size: byteLength,
-            destPath: relPath,
-            httpStatus: 200,
-          },
-          '[upload] dedup hit',
-        );
-        // RFC 9457 §3 success path: drop the `ok: true` wrapper. Wire
-        // shape is `{ src, path, deduped }` with `Content-Type:
-        // application/json`. Clients use HTTP-status discrimination
-        // (`if (!res.ok)`) to choose between this success schema and
-        // `ProblemDetailsSchema`.
-        successResponse(
-          res,
-          200,
-          UploadAssetSuccessSchema,
-          { src: existing, path: relPath, deduped: true },
-          { handler: 'upload-asset' },
-        );
-        return;
-      }
-    }
-
-    // GENERIC_PASTE_NAMES: clipboard paste arrives with synthetic names
-    // ("image.png", "Clipboard 2024-04-21 14:23:45"). Replace with a
-    // timestamp stem so the disk filename is human-meaningful.
-    let finalFilename: string;
-    const isGenericPaste = !filename || filename === 'upload' || GENERIC_PASTE_NAMES.test(filename);
-    if (isGenericPaste) {
-      const now = new Date();
-      const ts = now
-        .toISOString()
-        .replace(/[-:T]/g, '')
-        .slice(0, 14)
-        .replace(/(\d{8})(\d{6})/, '$1-$2');
-      // Prefer the sniffed extension when present; otherwise try the
-      // client-supplied extname, finally fall back to .bin.
-      const fallbackExt = filename ? extname(filename).slice(1) : '';
-      const ext = detectedExt ?? fallbackExt ?? '';
-      finalFilename = ext === '' ? `pasted-${ts}` : `pasted-${ts}.${ext}`;
-    } else {
-      finalFilename = sanitizeFilename(filename);
-    }
-
-    try {
-      const destFilename = linkTempToFinalWithCollisionRetry(tempPath, destDir, finalFilename);
-      const relPath = toPosix(relative(contentDir, resolve(destDir, destFilename)));
+    const outcome = await assetService.storeUpload({
+      tempPath,
+      sha,
+      byteLength,
+      filename,
+      parentDocName,
+      placement,
+    });
+    if (outcome.ok) {
       log.info(
         {
           event: 'upload',
           endpoint: req.url ?? '/api/upload',
           agentId,
           agentName,
-          dedup: false,
-          mime: detectedMime ?? null,
+          dedup: outcome.deduped,
+          mime: outcome.mime,
           size: byteLength,
           // `destPath` is the contentDir-relative asset path. High-
-          // cardinality by nature — a vault with 10K assets produces
-          // 10K distinct values. Fine as a log field consumed by text-
-          // search / by-incident filtering; NEVER promote it to a
-          // metric label (Prometheus / Datadog will blow up memory on
-          // per-asset label explosion). Keep the nested-context shape
-          // below if you later route these through an aggregator so
-          // auto-label-extraction honors the sub-object convention.
-          destPath: relPath,
+          // cardinality by nature — fine as a log field consumed by text-
+          // search / by-incident filtering; NEVER promote it to a metric
+          // label (per-asset label explosion).
+          destPath: outcome.path,
           httpStatus: 200,
         },
-        '[upload] write ok',
+        outcome.deduped ? '[upload] dedup hit' : '[upload] write ok',
       );
+      // RFC 9457 §3 success path: drop the `ok: true` wrapper. Wire shape
+      // is `{ src, path, deduped }`; clients discriminate on HTTP status.
       successResponse(
         res,
         200,
         UploadAssetSuccessSchema,
-        { src: destFilename, path: relPath, deduped: false },
+        { src: outcome.src, path: outcome.path, deduped: outcome.deduped },
         { handler: 'upload-asset' },
       );
-    } catch (e) {
-      // linkTempToFinalWithCollisionRetry best-effort unlinks the tempfile
-      // on throw; no extra cleanupTempfile() call needed here.
-      const reason: UploadWriteReason =
-        e instanceof UploadWriteError ? e.reason : 'urn:ok:error:storage-error';
-      log.error(
-        {
-          event: 'upload',
-          endpoint: req.url ?? '/api/upload',
-          requestId: getRequestId(req),
-          agentId,
-          agentName,
-          filename: finalFilename,
-          size: byteLength,
-          reason,
-          httpStatus: uploadStatusFor(reason),
-          err: e,
-        },
-        '[upload] write failed',
-      );
-      errorResponse(res, uploadStatusFor(reason), reason, uploadTitleFor(reason), {
-        handler: 'upload-asset',
-        cause: e,
-      });
+      return;
+    }
+    switch (outcome.kind) {
+      case 'config-error':
+        log.error(
+          { err: outcome.cause },
+          '[upload] project config has invalid content.attachmentFolderPath',
+        );
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Server configuration error: invalid attachment folder path.',
+          { handler: 'upload-asset', cause: outcome.cause },
+        );
+        return;
+      case 'invalid-attachment-folder':
+        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid attachment folder path.', {
+          handler: 'upload-asset',
+        });
+        return;
+      case 'path-escape':
+        errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
+          handler: 'upload-asset',
+          ...(outcome.cause === undefined ? {} : { cause: outcome.cause }),
+        });
+        return;
+      case 'dest-validation-error':
+        log.error(
+          { err: outcome.cause, destDir: outcome.destDir },
+          '[upload] failed to validate destination directory',
+        );
+        errorResponse(res, 500, 'urn:ok:error:storage-error', 'Storage error.', {
+          handler: 'upload-asset',
+          cause: outcome.cause,
+        });
+        return;
+      case 'mkdir-failed':
+        errorResponse(
+          res,
+          uploadStatusFor(outcome.reason),
+          outcome.reason,
+          uploadTitleFor(outcome.reason),
+          {
+            handler: 'upload-asset',
+            cause: outcome.cause,
+            detail: 'failed to create attachment directory',
+          },
+        );
+        return;
+      case 'write-failed':
+        log.error(
+          {
+            event: 'upload',
+            endpoint: req.url ?? '/api/upload',
+            requestId: getRequestId(req),
+            agentId,
+            agentName,
+            filename: outcome.filename,
+            size: byteLength,
+            reason: outcome.reason,
+            httpStatus: uploadStatusFor(outcome.reason),
+            err: outcome.cause,
+          },
+          '[upload] write failed',
+        );
+        errorResponse(
+          res,
+          uploadStatusFor(outcome.reason),
+          outcome.reason,
+          uploadTitleFor(outcome.reason),
+          { handler: 'upload-asset', cause: outcome.cause },
+        );
+        return;
     }
   }
 
@@ -16162,6 +15066,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
   // live at `<home>/.ok/skills/`; the user-level install marker is
   // `<home>/.ok/local/installed-skills.json` (readInstalledSkills(skillsHome)).
   const skillsHome = homeDirOverride ?? homedir();
+  const skillInstallOps = createSkillInstallOpsService({ contentDir, skillsHome });
 
   /**
    * Resolve a skill scope to its absolute `.ok/skills` store root. Project
@@ -16264,21 +15169,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       },
       principal,
     );
-  }
-
-  /**
-   * Whether a placement root is OK's own state area and therefore refused.
-   *
-   * `.ok/` holds OK's own state (config, local runtime data, the shadow repo),
-   * so a skill may not be placed inside it — with one exception that is not a
-   * special case so much as history: `.ok/skills` is the retired store, and
-   * projects that predate the retirement still have real skills sitting there.
-   * Refusing it would strand them, so it stays placeable at BOTH scopes; a
-   * placement there is an ordinary custom root like any other.
-   */
-  function isRefusedOkPlacementRoot(rootRel: string): boolean {
-    const underOk = rootRel === '.ok' || rootRel.startsWith('.ok/');
-    return underOk && rootRel !== LEGACY_SKILL_STORE_ROOT;
   }
 
   /**
@@ -19142,24 +18032,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     }
   }
 
-  /**
-   * What the shared import spine concluded. The spine returns this rather than
-   * writing the response so the bulk path can run it once per skill against a
-   * SINGLE clone and report per-skill rows; `respondSkillImport` applies the
-   * single-skill HTTP shape.
-   */
-  type SkillImportOutcome =
-    | { ok: true; body: z.infer<typeof SkillImportSuccessSchema> }
-    | {
-        ok: false;
-        status: Parameters<typeof errorResponse>[1];
-        urn: Parameters<typeof errorResponse>[2];
-        title: string;
-        detail?: string;
-        cause?: unknown;
-      };
-
-  /** Apply a spine outcome to a single-skill response (`/api/skill/import`, upload). */
   function respondSkillImport(res: ServerResponse, outcome: SkillImportOutcome): void {
     if (outcome.ok) {
       successResponse(res, 200, SkillImportSuccessSchema, outcome.body, {
@@ -19174,269 +18046,19 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     });
   }
 
-  // Shared import spine (steps 2-6): given an on-disk skill dir + provenance,
-  // dedupe by content hash, land under a free `-imported` name on collision,
-  // write SKILL.md + bundle files via the sanctioned writers, attribute +
-  // shadow-commit (project scope), record the lockfile entry, and best-effort
-  // project into editor dirs. Returns an outcome; the caller writes the
-  // response. Used by `/api/skill/import` (by-reference), `/api/skill-upload`
-  // (by-bytes), and `/api/skills/import-bulk` (many skills, one clone). The
-  // CALLER owns temp-dir cleanup (its `finally`), so this never cleans up.
-  async function runSkillImport(params: {
-    acquiredDir: string;
-    scope: Parameters<typeof resolveSkillsRoot>[0];
-    sourceLabel: string;
-    ref?: string;
-    publisher?: string;
-    upstreamSkill?: string;
-    actor: Parameters<typeof attributeOkArtifactWrite>[0];
-    /** Skip the default-editor auto-projection — for callers that install
-     *  explicitly afterwards (explore preview toggles / custom-path place). */
-    skipProjection?: boolean;
-  }): Promise<SkillImportOutcome> {
-    const { acquiredDir, scope, sourceLabel, ref, publisher, upstreamSkill, actor } = params;
-    if (!projectDir) {
-      return {
-        ok: false,
-        status: 400,
-        urn: 'urn:ok:error:invalid-request',
-        title: 'No project root resolved.',
-        detail: 'NO_PROJECT_ROOT',
-      };
-    }
-    // Pre-flight the caps by stat, BEFORE the parse materializes every byte —
-    // `importedBundleLimitError` below runs on an already-built array, which a
-    // repo of half-gigabyte blobs never reaches.
-    const oversize = acquiredBundleTooLarge(acquiredDir);
-    if (oversize) {
-      return {
-        ok: false,
-        status: 400,
-        urn: 'urn:ok:error:invalid-request',
-        title: 'Skill bundle exceeds import limits.',
-        detail: oversize,
-      };
-    }
-    const acquired = parseSkillDir(acquiredDir);
-    if (!acquired) {
-      return {
-        ok: false,
-        status: 422,
-        urn: 'urn:ok:error:invalid-request',
-        title: 'Source has no readable skill.',
-      };
-    }
-    const limitError = importedBundleLimitError(acquired);
-    if (limitError) {
-      return {
-        ok: false,
-        status: 400,
-        urn: 'urn:ok:error:invalid-request',
-        title: 'Skill bundle exceeds import limits.',
-        detail: limitError,
-      };
-    }
-
-    // 2. Dedupe by contentHash via the lockfile (re-import is a no-op).
-    const lockPath = join(scope === 'project' ? projectDir : skillsHome, ...SKILLS_LOCK_REL);
-    const lock = readSkillsLock(lockPath);
-    // WRITE-PATH INVERSION (store retirement, step 1): NEW imports land
-    // IN-PLACE at the vendor-neutral `.agents/skills` hub — versioned, listed,
-    // and read at their real path from day one. The store gains no new
-    // residents; existing store bundles keep working until their migration.
-    const importBase = scope === 'project' ? contentDir : skillsHome;
-    const importHomeRel = resolveDefaultSkillHomeRel(importBase, scope);
-    const importRoot = resolve(importBase, importHomeRel);
-    const dupName = findByContentHash(lock, acquired.contentHash);
-    if (dupName && resolveSkillDirForRead(scope, dupName) !== null) {
-      return {
-        ok: true,
-        body: {
-          name: dupName,
-          path: `${dupName}/SKILL.md`,
-          created: false,
-          alreadyImported: true,
-          provenance: { source: sourceLabel, ref, contentHash: acquired.contentHash, publisher },
-          warnings: [],
-        },
-      };
-    }
-
-    // 3. Collision with an existing skill → land under a free `-imported` name.
-    // `acquired.name` is attacker-controlled (imported SKILL.md frontmatter).
-    // applySkillWrite's validateName blocks a malformed WRITE, but the existence
-    // probes below resolve the name against skillsRoot — sanitize first so a
-    // `../…` name can't turn firstFreeSkillName into a filesystem existence
-    // oracle. No-op for a normal `[a-z0-9-]` name. (defense-in-depth)
-    const probeName = sanitizeFilename(acquired.name);
-    // Collision probe spans the WHOLE registry (store + every in-place host
-    // dir), not just the import root — a same-name skill at `.claude/skills`
-    // would fork against the new `.agents` bundle.
-    const nameTaken = (n: string) =>
-      resolveSkillDirForRead(scope, n) !== null || existsSync(resolve(importRoot, n, 'SKILL.md'));
-    const collided = nameTaken(probeName);
-    let targetName = probeName;
-    if (collided) {
-      targetName = `${probeName}-imported`;
-      let n = 2;
-      while (nameTaken(targetName)) {
-        targetName = `${probeName}-imported-${n}`;
-        n += 1;
-      }
-    }
-
-    // 4. Write SKILL.md + every bundle file via the sanctioned writers. The
-    // frontmatter is canonicalized to {name,description} (OK's skill model);
-    // upstream version lives in the lockfile, not the SKILL.md.
-    const skillBody = parseFrontmatterDoc(acquired.skillMd).body;
-    const wr = applySkillWrite({
-      skillsRoot: importRoot,
-      name: targetName,
-      body: skillBody,
-      frontmatter: { name: targetName, description: acquired.description },
-    });
-    if (!wr.ok) {
-      return {
-        ok: false,
-        status: 400,
-        urn: 'urn:ok:error:invalid-request',
-        title: 'Failed to write imported skill.',
-        detail: wr.error.code,
-        cause: new Error(wr.error.message),
-      };
-    }
-    const warnings = [...wr.warnings];
-    for (const f of acquired.files) {
-      const br = applySkillBundleFileWrite({
-        skillsRoot: importRoot,
-        name: targetName,
-        relPath: f.relPath,
-        content: f.content,
-        bytes: f.bytes,
-        limits: SKILL_IMPORT_WRITE_LIMITS,
-      });
-      if (!br.ok) {
-        const rollback = applySkillDelete({ skillsRoot: importRoot, name: targetName });
-        return {
-          ok: false,
-          status: rollback.ok ? 400 : 500,
-          urn: rollback.ok ? 'urn:ok:error:invalid-request' : 'urn:ok:error:internal-server-error',
-          title: 'Failed to write the complete imported skill bundle.',
-          detail: `${f.relPath}: ${br.error.code}`,
-          cause: new Error(
-            rollback.ok
-              ? br.error.message
-              : `${br.error.message}; rollback: ${rollback.error.message}`,
-          ),
-        };
-      }
-    }
-
-    // 5. Attribute + shadow-commit (project scope; global is unversioned).
-    if (scope === 'project') {
-      // Attribute under the content-doc key (`<dir>/SKILL`) that `/api/history`
-      // filters on — same fix as the create path; the bare dir key fell through
-      // the OkActor match so an imported skill's first version never showed in
-      // (or was restorable from) its history.
-      attributeOkArtifactWrite(
-        actor,
-        `${importHomeRel}/${targetName}/SKILL`,
-        `skill-import: ${sourceLabel} -> ${importHomeRel}/${targetName}/SKILL.md`,
-      );
-      await commitOkArtifactWrite('skill-import');
-    }
-
-    // 6. Record upstream in the lockfile.
-    const importedLocalHash = localSkillHash(importRoot, targetName);
-    const importedPlugin = inspectPluginSource(sourceLabel);
-    // baselineRef only for project scope — global is unversioned (no commit above).
-    const importedBaselineRef =
-      scope === 'project'
-        ? await shadowHeadSha(artifactWriterId(actor), `${importHomeRel}/${targetName}`)
-        : undefined;
-    // Re-read inside the serialized mutation: `lock` above was snapshotted before
-    // the fetch, and writing that snapshot back would erase any entry a
-    // concurrent import added while this one was cloning.
-    await mutateSkillsLock(lockPath, (current) =>
-      upsertLockEntry(current, targetName, {
-        source: sourceLabel,
-        ...(importedPlugin ? { pluginProvider: importedPlugin.provider } : {}),
-        ref,
-        contentHash: acquired.contentHash,
-        files: acquired.files.map((file) => file.relPath),
-        ...(importedLocalHash !== undefined ? { localHash: importedLocalHash } : {}),
-        ...(importedBaselineRef !== undefined ? { baselineRef: importedBaselineRef } : {}),
-        publisher,
-        importedAt: new Date().toISOString(),
-        ...(upstreamSkill !== undefined ? { skill: upstreamSkill } : {}),
-      }),
-    );
-
-    // Fan the freshly-imported IN-PLACE skill out to the configured editors so
-    // it is live in Claude/Cursor/Codex on import (guarded copy/link
-    // primitives — never clobbers a differing dir). Best-effort: a projection
-    // failure must not fail the import. Skipped when the caller installs
-    // explicitly afterwards (`install: false`). Copies auto-pair into the
-    // placements ledger at the next re-sync, so forward refresh covers them.
-    if (params.skipProjection !== true) {
-      try {
-        const targets = resolveSkillTargets(importBase);
-        if (targets.length > 0) {
-          const canonicalAbs = resolve(importRoot, targetName);
-          // A re-import lands on a skill that may already occupy editor dirs as
-          // copies; only a genuinely fresh one takes the symlink default.
-          const projectionRoots = skillProjectionRoots(scope);
-          // A re-import can land on dests that already exist; those that are
-          // symlinks keep the symlink default, matching what is already there.
-          const occupied = targets.filter((editor) => {
-            const dest = skillHostDir(importBase, editor, targetName, projectionRoots);
-            return dest !== null && dest !== canonicalAbs && existsSync(dest);
-          });
-          const occupiedLinks = occupied.filter((editor) => {
-            const dest = skillHostDir(importBase, editor, targetName, projectionRoots);
-            try {
-              return dest !== null && lstatSync(dest).isSymbolicLink();
-            } catch {
-              return false;
-            }
-          });
-          projectInPlaceSkill({
-            canonicalAbs,
-            canonicalHash: parseSkillDir(canonicalAbs)?.contentHash ?? '',
-            canonicalRootRel: importHomeRel,
-            name: targetName,
-            cwd: importBase,
-            targets,
-            mode: effectiveInstallMode(scope, targetName, {
-              hosts: ['<source>', ...occupied],
-              linkedHosts: occupiedLinks,
-            }),
-            roots: skillProjectionRoots(scope),
-          });
-        }
-      } catch (err) {
-        getLogger('skill-import').warn(
-          { err, skill: targetName },
-          'post-import editor fan-out failed (import kept)',
-        );
-      }
-    }
-
-    signalChannel?.('files');
-    return {
-      ok: true,
-      body: {
-        name: targetName,
-        path: `${importHomeRel}/${targetName}/SKILL.md`,
-        created: wr.created,
-        alreadyImported: false,
-        ...(collided ? { collisionRenamedFrom: acquired.name } : {}),
-        provenance: { source: sourceLabel, ref, contentHash: acquired.contentHash, publisher },
-        warnings,
-      },
-    };
-  }
-
+  const skillImportService = createSkillImportService({
+    contentDir,
+    skillsHome,
+    ...(projectDir !== undefined ? { projectDir } : {}),
+    resolveSkillDirForRead,
+    parseFrontmatterDoc,
+    attributeOkArtifactWrite,
+    commitOkArtifactWrite,
+    shadowHeadSha,
+    artifactWriterId,
+    effectiveInstallMode,
+    signalFiles: () => signalChannel?.('files'),
+  });
   const handleSkillImport = withValidation(
     SkillImportRequestSchema,
     async (_req, res, body) => {
@@ -19567,7 +18189,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         }
         // Steps 2-6 (dedupe → collision → write → attribute → lockfile → project)
         // are the shared import spine, also used by the upload endpoint.
-        const outcome = await runSkillImport({
+        const outcome = await skillImportService.runSkillImport({
           acquiredDir,
           scope,
           sourceLabel,
@@ -19754,7 +18376,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             upstreamSkill = found.name;
           }
           try {
-            const outcome = await runSkillImport({
+            const outcome = await skillImportService.runSkillImport({
               acquiredDir,
               scope: body.scope,
               sourceLabel: rawSource,
@@ -20141,7 +18763,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
       const pick = dirs[0];
       respondSkillImport(
         res,
-        await runSkillImport({
+        await skillImportService.runSkillImport({
           acquiredDir: pick.dir,
           scope,
           sourceLabel: `upload:${zipName ?? pick.name}`,
@@ -20204,7 +18826,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             ? scanInPlaceSkills(contentDir)
             : scanGlobalInPlaceSkills(skillsHome)
         ).find((s) => s.name === body.name);
-        let skillDir = inPlaceEntry ? resolve(inPlaceScanBase, inPlaceEntry.dir) : storeSkillDir;
+        const skillDir = inPlaceEntry ? resolve(inPlaceScanBase, inPlaceEntry.dir) : storeSkillDir;
         if (!existsSync(skillDir)) {
           errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill not found.', {
             handler: 'skill-install',
@@ -20243,9 +18865,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // stashes the bytes it discards to `~/.ok/edit-backups/forks/` first —
         // resolution is never silently lossy.
         if (body.fork !== undefined) {
-          // Warnings raised while resolving a fork — surfaced on the response so a
-          // half-completed rename is not reported as a clean success.
-          const forkWarnings: string[] = [];
           if (!inPlaceEntry) {
             errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Skill is not in-place.', {
               handler: 'skill-install',
@@ -20253,153 +18872,53 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             });
             return;
           }
-          const rootMap =
-            body.scope === 'project' ? EDITOR_PROJECT_SKILL_ROOT : EDITOR_USER_SKILL_ROOT;
-          const forkRootRel =
-            body.fork.editor === 'agents'
-              ? '.agents/skills'
-              : (rootMap[body.fork.editor as EditorId] ?? null);
-          if (forkRootRel === null) {
-            errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Unknown editor.', {
-              handler: 'skill-install',
-              detail: body.fork.editor,
-            });
-            return;
-          }
-          const forkDir = resolve(inPlaceScanBase, forkRootRel, body.name);
-          const canonicalAbs = resolve(inPlaceScanBase, inPlaceEntry.dir);
-          const forkParsed = parseSkillDir(forkDir);
-          if (forkParsed === null || forkDir === canonicalAbs) {
-            errorResponse(res, 400, 'urn:ok:error:invalid-request', 'No fork at that editor.', {
-              handler: 'skill-install',
-              detail: 'FORK_ABSENT',
-            });
-            return;
-          }
-          if (forkParsed.contentHash === inPlaceEntry.contentHash) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              'That copy matches the source — nothing to resolve.',
-              { handler: 'skill-install', detail: 'NOT_A_FORK' },
-            );
-            return;
-          }
-          const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-          const stash = (dirAbs: string, label: string): void => {
-            try {
-              const dest = resolve(
-                skillsHome,
-                '.ok',
-                'edit-backups',
-                'forks',
-                `${body.name}-${label}-${stamp}`,
-              );
-              tracedMkdirSync(resolve(dest, '..'), { recursive: true });
-              tracedCpSync(dirAbs, dest, { recursive: true });
-            } catch (e) {
-              log.warn({ name: body.name, err: e }, '[skill-fork] stash failed');
-            }
-          };
-          if (body.fork.action === 'align') {
-            // The fork loses: stash it, remove it, re-project the canonical.
-            stash(forkDir, body.fork.editor);
-            tracedRmSync(forkDir, { recursive: true, force: true });
-            projectInPlaceSkill({
-              canonicalAbs,
-              canonicalHash: inPlaceEntry.contentHash,
-              canonicalRootRel: dirname(inPlaceEntry.dir),
-              name: body.name,
-              cwd: inPlaceScanBase,
-              targets: [body.fork.editor as SkillHostId].filter(isSkillInstallTarget),
-              roots: skillProjectionRoots(body.scope),
-            });
-          } else if (body.fork.action === 'make-source') {
-            // The fork wins: stash + remove the old canonical and its same-hash
-            // copies; the fork's dir is then the only real dir and the scan
-            // elects it; re-project to the hosts the skill had.
-            const oldHosts = inPlaceEntry.hosts.filter(isSkillInstallTarget);
-            stash(canonicalAbs, 'source');
-            removeInPlaceSkillCopies({
-              canonicalAbs,
-              canonicalHash: inPlaceEntry.contentHash,
-              name: body.name,
-              cwd: inPlaceScanBase,
-              targets: oldHosts,
-              roots: skillProjectionRoots(body.scope),
-            });
-            tracedRmSync(canonicalAbs, { recursive: true, force: true });
-            const rescanned = (
-              body.scope === 'project'
-                ? scanInPlaceSkills(contentDir)
-                : scanGlobalInPlaceSkills(skillsHome)
-            ).find((sk) => sk.name === body.name);
-            if (rescanned) {
-              projectInPlaceSkill({
-                canonicalAbs: resolve(inPlaceScanBase, rescanned.dir),
-                canonicalHash: rescanned.contentHash,
-                canonicalRootRel: dirname(rescanned.dir),
-                name: body.name,
-                cwd: inPlaceScanBase,
-                targets: oldHosts,
-                roots: skillProjectionRoots(body.scope),
-              });
-            }
-          } else {
-            // Keep both: the fork's dir becomes an independent skill under a
-            // NEW name (frontmatter rewritten in lock-step with the dir).
-            const toName = body.fork.toName as string;
-            if (!SKILL_NAME_REGEX.test(toName)) {
-              errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid new name.', {
-                handler: 'skill-install',
-                detail: toName,
-              });
-              return;
-            }
-            const scanAll =
-              body.scope === 'project'
-                ? scanInPlaceSkills(contentDir)
-                : scanGlobalInPlaceSkills(skillsHome);
-            if (scanAll.some((sk) => sk.name === toName)) {
-              errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Name already taken.', {
-                handler: 'skill-install',
-                detail: toName,
-              });
-              return;
-            }
-            const dest = resolve(inPlaceScanBase, forkRootRel, toName);
-            tracedRenameSync(forkDir, dest);
-            // The folder move already happened. If the frontmatter patch below
-            // fails the skill is left half-renamed, which the caller has to
-            // hear about — a 200 with no warnings reads as a clean rename.
-            const skillMdPath = resolve(dest, 'SKILL.md');
-            try {
-              // Patch the YAML region, not the file. A multiline `^name:` regex
-              // matches the first such line ANYWHERE, so a body line reading
-              // `name: …` (a code sample, a config snippet) got rewritten
-              // instead of the frontmatter. Same primitives the duplicate
-              // handler uses.
-              const raw = readFileSync(skillMdPath, 'utf-8');
-              const { fenced, body: skillBody } = detectFmRegion(raw);
-              // presence-exempt: no CRDT write, no agent identity
-              const renamed = applyPatchToFm(fenced, { name: toName });
-              if (renamed.ok) {
-                tracedWriteFileSync(skillMdPath, `${renamed.nextFenced}${skillBody}`);
-              } else {
-                log.warn(
-                  { name: toName, reason: renamed.error.kind },
-                  '[skill-fork] frontmatter rename failed',
+          const forkResolved = skillInstallOps.resolveFork({
+            scope: body.scope,
+            name: body.name,
+            fork: body.fork,
+            inPlaceEntry,
+          });
+          if (!forkResolved.ok) {
+            switch (forkResolved.kind) {
+              case 'unknown-editor':
+                errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Unknown editor.', {
+                  handler: 'skill-install',
+                  detail: forkResolved.editor,
+                });
+                return;
+              case 'fork-absent':
+                errorResponse(res, 400, 'urn:ok:error:invalid-request', 'No fork at that editor.', {
+                  handler: 'skill-install',
+                  detail: 'FORK_ABSENT',
+                });
+                return;
+              case 'not-a-fork':
+                errorResponse(
+                  res,
+                  400,
+                  'urn:ok:error:invalid-request',
+                  'That copy matches the source — nothing to resolve.',
+                  { handler: 'skill-install', detail: 'NOT_A_FORK' },
                 );
-                forkWarnings.push(
-                  `Renamed the folder to "${toName}", but its SKILL.md still declares the old name — edit the frontmatter to match.`,
+                return;
+              case 'invalid-new-name':
+                errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid new name.', {
+                  handler: 'skill-install',
+                  detail: forkResolved.toName,
+                });
+                return;
+              case 'name-taken':
+                errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Name already taken.', {
+                  handler: 'skill-install',
+                  detail: forkResolved.toName,
+                });
+                return;
+              default: {
+                const _exhaustive: never = forkResolved;
+                throw new Error(
+                  `Unhandled fork outcome: ${String((_exhaustive as { kind?: unknown }).kind)}`,
                 );
               }
-            } catch (e) {
-              log.warn({ name: toName, err: e }, '[skill-fork] frontmatter rename failed');
-              forkWarnings.push(
-                `Renamed the folder to "${toName}", but its SKILL.md could not be updated — edit the frontmatter to match.`,
-              );
             }
           }
           signalChannel?.('files');
@@ -20411,8 +18930,8 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               name: body.name,
               hosts: inPlaceEntry.hosts.filter(isSkillInstallTarget),
               scripts: false,
-              warnings: forkWarnings,
-              warningCodes: forkWarnings.length > 0 ? ['skill-fork-name-unpatched'] : [],
+              warnings: forkResolved.warnings,
+              warningCodes: forkResolved.warnings.length > 0 ? ['skill-fork-name-unpatched'] : [],
             },
             { handler: 'skill-install' },
           );
@@ -20443,97 +18962,36 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             );
             return;
           }
-          const stripHome = (id: string) => id.replace(/\\/g, '/').replace(/^~\//, '');
-          const sourceId = inPlaceEntry.hosts[0];
-          if (
-            sourceId !== undefined &&
-            (body.remove ?? []).some((id) => stripHome(id) === sourceId)
-          ) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              `"${sourceId}" is the skill's SOURCE — its folder is the skill itself, so removing it would delete the skill. Move the source first (\`source\`) or use \`delete\`.`,
-              { handler: 'skill-install', detail: 'REMOVE_SOURCE' },
-            );
-            return;
-          }
-          const hostSet = new Set(
-            inPlaceEntry.hosts.filter((h): h is SkillHostIdArg => isSkillInstallTarget(h)),
-          );
-          for (const id of body.add ?? []) {
-            if (isSkillInstallTarget(id)) hostSet.add(id);
-            else rootAdds.push(stripHome(id));
-          }
-          // A removed host that is NOT a physical location but READS the skill
-          // through a folder alias (its skills folder symlinked into a pool
-          // root holding the skill) gets the unfollow remedy automatically:
-          // its folder unlinks from the pool EXCLUDING this skill — one verb
-          // means "this agent stops getting the skill" however it got it.
-          const aliasMap = scanHostRootAliases(inPlaceScanBase, body.scope);
-          const aliasUnfollows: string[] = [];
-          // The ADD-side mirror: an added host whose skills folder is an alias
-          // into a pool that does NOT hold this skill would otherwise be a
-          // silent no-op (projection never writes through an alias). One verb
-          // means "this agent gets the skill" however its folder is wired — so
-          // the alias unlinks into per-skill links first (keeping everything it
-          // followed), and the projection below then writes the real bundle.
-          const aliasMaterializes: string[] = [];
-          for (const id of body.add ?? []) {
-            if (
-              isSkillInstallTarget(id) &&
-              aliasMap[id] !== undefined &&
-              !existsSync(resolve(inPlaceScanBase, aliasMap[id], body.name, 'SKILL.md'))
-            ) {
-              const subRoot =
-                id === 'agents'
-                  ? '.agents/skills'
-                  : ((body.scope === 'project'
-                      ? EDITOR_PROJECT_SKILL_ROOT
-                      : EDITOR_USER_SKILL_ROOT)[id as EditorId] ?? null);
-              if (subRoot !== null) aliasMaterializes.push(subRoot);
-            }
-          }
-          for (const id of body.remove ?? []) {
-            if (isSkillInstallTarget(id)) {
-              if (
-                !hostSet.has(id) &&
-                aliasMap[id] !== undefined &&
-                existsSync(resolve(inPlaceScanBase, aliasMap[id], body.name, 'SKILL.md'))
-              ) {
-                const subRoot =
-                  id === 'agents'
-                    ? '.agents/skills'
-                    : ((body.scope === 'project'
-                        ? EDITOR_PROJECT_SKILL_ROOT
-                        : EDITOR_USER_SKILL_ROOT)[id as EditorId] ?? null);
-                if (subRoot !== null) aliasUnfollows.push(subRoot);
-              }
-              hostSet.delete(id);
-            } else rootRemoves.push(stripHome(id));
-          }
-          for (const { subRoot, exclude } of [
-            ...aliasMaterializes.map((subRoot) => ({ subRoot, exclude: undefined })),
-            ...aliasUnfollows.map((subRoot) => ({ subRoot, exclude: [body.name] })),
-          ]) {
-            const r = unlinkEditorSkillFolder({
-              base: inPlaceScanBase,
-              folderRel: subRoot,
-              ...(exclude !== undefined ? { exclude } : {}),
-            });
-            if (r.ok) await recordFolderExpectation(inPlaceScanBase, subRoot, { expect: 'own' });
-            if (!r.ok) {
+          const addRemove = await skillInstallOps.applyAddRemove({
+            scope: body.scope,
+            name: body.name,
+            inPlaceEntry,
+            ...(body.add !== undefined ? { add: body.add } : {}),
+            ...(body.remove !== undefined ? { remove: body.remove } : {}),
+          });
+          if (!addRemove.ok) {
+            if (addRemove.kind === 'remove-source') {
+              errorResponse(
+                res,
+                400,
+                'urn:ok:error:invalid-request',
+                `"${addRemove.sourceId}" is the skill's SOURCE — its folder is the skill itself, so removing it would delete the skill. Move the source first (\`source\`) or use \`delete\`.`,
+                { handler: 'skill-install', detail: 'REMOVE_SOURCE' },
+              );
+            } else {
               errorResponse(
                 res,
                 409,
                 'urn:ok:error:invalid-request',
-                `Could not stop ${subRoot} following its pool (${r.reason}).`,
-                { handler: 'skill-install', detail: r.reason },
+                `Could not stop ${addRemove.subRoot} following its pool (${addRemove.reason}).`,
+                { handler: 'skill-install', detail: addRemove.reason },
               );
-              return;
             }
+            return;
           }
-          targetsReq = [...hostSet];
+          targetsReq = addRemove.targets.filter(isSkillInstallTarget);
+          rootAdds.push(...addRemove.rootAdds);
+          rootRemoves.push(...addRemove.rootRemoves);
         }
 
         // SOURCE promotion for a STORE-BACKED skill — a single-skill version of
@@ -20543,44 +19001,38 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         // entry drops (the in-place scan is truth from here on), and the
         // choice is sticky. Without this branch the click silently no-opped.
         if (setSourceReq && !inPlaceEntry) {
-          const newSource = setSourceReq as SkillHostId;
-          const moved = relocateInPlaceCanonical({
-            canonicalAbs: skillDir,
-            canonicalHash: parseSkillDir(skillDir)?.contentHash ?? '',
+          const promoted = await skillInstallOps.promoteStoreBackedSource({
+            scope: body.scope,
             name: body.name,
-            cwd: inPlaceScanBase,
-            newTarget: newSource,
-            roots: skillProjectionRoots(body.scope),
+            base,
+            skillDir,
+            newSource: setSourceReq as SkillHostId,
           });
-          if (!moved.ok) {
+          if (!promoted.ok) {
             errorResponse(
               res,
               409,
               'urn:ok:error:doc-already-exists',
               'Cannot move the source there — a different skill occupies the target.',
-              { handler: 'skill-install', detail: moved.reason },
+              {
+                handler: 'skill-install',
+                detail: promoted.kind === 'source-occupied' ? promoted.reason : promoted.target,
+              },
             );
             return;
           }
-          await removeSkillInstall(base, body.name);
-          await recordSkillSourceHost(inPlaceScanBase, body.name, newSource);
           signalChannel?.('files');
-          const postPromote = (
-            body.scope === 'project'
-              ? scanInPlaceSkills(contentDir)
-              : scanGlobalInPlaceSkills(skillsHome)
-          ).find((s) => s.name === body.name);
           successResponse(
             res,
             200,
             SkillInstallSuccessSchema,
             {
               name: body.name,
-              hosts: postPromote ? [...postPromote.hosts] : [],
+              hosts: promoted.hosts,
               scripts: validity.hasScripts,
               warnings: [],
               warningCodes: [],
-              sourceMovedTo: relative(inPlaceScanBase, moved.newAbs).split(sep).join('/'),
+              sourceMovedTo: promoted.sourceMovedTo,
             },
             { handler: 'skill-install' },
           );
@@ -20607,80 +19059,36 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             );
             return;
           }
-          const dirRel = body.place.dir
-            .replace(/\\/g, '/')
-            .replace(/^~\//, '')
-            .replace(/^\/+|\/+$/g, '');
-          const parentAbs = resolve(placeBase, dirRel);
-          const placementRel = `${dirRel}/${body.name}`;
-          const destAbs = resolveSkillPlacementPath(placeBase, placementRel);
-          const baseAbs = resolve(placeBase);
-          // `.ok/` internals are refused; `.ok/skills` is placeable at both
-          // scopes. See `isRefusedOkPlacementRoot` for why that one path is
-          // carved out.
-          const underOkInternals = isRefusedOkPlacementRoot(dirRel);
-          if (
-            dirRel === '' ||
-            destAbs === null ||
-            !destAbs.startsWith(baseAbs + sep) ||
-            underOkInternals
-          ) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              'Placement path must be a project-relative directory outside .ok/.',
-              { handler: 'skill-install', detail: 'PLACE_PATH_INVALID' },
-            );
-            return;
-          }
-          // Asking for the location the skill ALREADY occupies is a satisfied
-          // request, not a bad path. Since imports land in-place at the
-          // `.agents/skills` hub, placing a freshly imported skill there names
-          // its own canonical dir — every caller (the hub toggle on a preview,
-          // `install --place`, MCP) hit an invalid-path error for a skill that
-          // was, in fact, exactly where it was asked to be. Report the location
-          // and change nothing; a real copy/symlink here would be self-referential.
-          if (destAbs === resolve(skillDir)) {
-            successResponse(
-              res,
-              200,
-              SkillInstallSuccessSchema,
-              {
-                name: body.name,
-                hosts: inPlaceEntry ? [...inPlaceEntry.hosts] : [],
-                scripts: validity.hasScripts,
-                warnings: [],
-                warningCodes: [],
-                placedAt: placementRel,
-              },
-              { handler: 'skill-install' },
-            );
-            return;
-          }
-          if (existsSync(destAbs)) {
-            errorResponse(
-              res,
-              409,
-              'urn:ok:error:doc-already-exists',
-              'Something already exists at that path — placement never overwrites.',
-              { handler: 'skill-install', detail: 'PLACE_DEST_EXISTS' },
-            );
-            return;
-          }
-          tracedMkdirSync(parentAbs, { recursive: true });
-          if (body.place.mode === 'link') {
-            tracedSymlinkSync(relative(parentAbs, resolve(skillDir)), destAbs, 'dir');
-          } else {
-            tracedCpSync(skillDir, destAbs, { recursive: true, dereference: true });
-          }
-          const placedAt = placementRel;
-          await recordSkillPlacement(placeBase, body.name, {
-            path: placedAt,
+          const placed = await skillPlacementOps.place({
+            placeBase,
+            name: body.name,
+            rawDir: body.place.dir,
+            skillDir,
             mode: body.place.mode,
-            ...(body.place.mode === 'copy' ? { hash: parseSkillDir(skillDir)?.contentHash } : {}),
           });
-          signalChannel?.('files');
+          if (!placed.ok) {
+            if (placed.kind === 'invalid-path') {
+              errorResponse(
+                res,
+                400,
+                'urn:ok:error:invalid-request',
+                'Placement path must be a project-relative directory outside .ok/.',
+                { handler: 'skill-install', detail: 'PLACE_PATH_INVALID' },
+              );
+            } else {
+              errorResponse(
+                res,
+                409,
+                'urn:ok:error:doc-already-exists',
+                'Something already exists at that path — placement never overwrites.',
+                { handler: 'skill-install', detail: 'PLACE_DEST_EXISTS' },
+              );
+            }
+            return;
+          }
+          if (!('alreadyAtSource' in placed)) {
+            signalChannel?.('files');
+          }
           successResponse(
             res,
             200,
@@ -20691,7 +19099,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               scripts: validity.hasScripts,
               warnings: [],
               warningCodes: [],
-              placedAt,
+              placedAt: placed.placedAt,
             },
             { handler: 'skill-install' },
           );
@@ -20714,58 +19122,58 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             );
             return;
           }
-          const rel = body.unplace.path
-            .replace(/\\/g, '/')
-            .replace(/^~\//, '')
-            .replace(/^\/+|\/+$/g, '');
-          const recorded = readSkillPlacements(placeBase)[body.name]?.find((p) => p.path === rel);
-          if (!recorded) {
-            errorResponse(
-              res,
-              404,
-              'urn:ok:error:not-found',
-              'No recorded placement at that path.',
-              { handler: 'skill-install', detail: rel },
-            );
-            return;
+          const unplaced = await skillPlacementOps.unplace({
+            placeBase,
+            name: body.name,
+            rawPath: body.unplace.path,
+            skillDir,
+          });
+          if (!unplaced.ok) {
+            switch (unplaced.kind) {
+              case 'not-recorded':
+                errorResponse(
+                  res,
+                  404,
+                  'urn:ok:error:not-found',
+                  'No recorded placement at that path.',
+                  { handler: 'skill-install', detail: unplaced.path },
+                );
+                return;
+              case 'unsafe-path':
+                errorResponse(
+                  res,
+                  400,
+                  'urn:ok:error:invalid-request',
+                  'Recorded placement path is no longer safe.',
+                  { handler: 'skill-install', detail: 'PLACE_PATH_INVALID' },
+                );
+                return;
+              case 'forked':
+                errorResponse(
+                  res,
+                  409,
+                  'urn:ok:error:doc-already-exists',
+                  'That copy has been edited and no longer matches the skill — remove it manually if you mean it.',
+                  { handler: 'skill-install', detail: unplaced.path },
+                );
+                return;
+              case 'canonical-dir':
+                errorResponse(
+                  res,
+                  400,
+                  'urn:ok:error:invalid-request',
+                  "That is the skill's own folder (the source) — it can't be removed here.",
+                  { handler: 'skill-install', detail: unplaced.path },
+                );
+                return;
+              default: {
+                const _exhaustive: never = unplaced;
+                throw new Error(
+                  `Unhandled unplace outcome: ${String((_exhaustive as { kind?: unknown }).kind)}`,
+                );
+              }
+            }
           }
-          const absDir = resolveSkillPlacementPath(placeBase, rel);
-          if (absDir === null) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              'Recorded placement path is no longer safe.',
-              { handler: 'skill-install', detail: 'PLACE_PATH_INVALID' },
-            );
-            return;
-          }
-          const canonicalHash = parseSkillDir(skillDir)?.contentHash ?? '';
-          switch (classifyInPlaceDest(absDir, resolve(skillDir), canonicalHash)) {
-            case 'different':
-              errorResponse(
-                res,
-                409,
-                'urn:ok:error:doc-already-exists',
-                'That copy has been edited and no longer matches the skill — remove it manually if you mean it.',
-                { handler: 'skill-install', detail: rel },
-              );
-              return;
-            case 'canonical-dir':
-              errorResponse(
-                res,
-                400,
-                'urn:ok:error:invalid-request',
-                "That is the skill's own folder (the source) — it can't be removed here.",
-                { handler: 'skill-install', detail: rel },
-              );
-              return;
-            case 'absent':
-              break; // already gone — just drop the record
-            default:
-              tracedRmSync(absDir, { recursive: true, force: true });
-          }
-          await removeSkillPlacement(placeBase, body.name, rel);
           signalChannel?.('files');
           successResponse(
             res,
@@ -20803,91 +19211,60 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           }
           const { target, mode } = body.convert;
           const prefBase = body.scope === 'project' ? projectDir : skillsHome;
-          const roots = skillProjectionRoots(body.scope);
-          const isHost = isSkillInstallTarget(target);
-          const rootRel = isHost
-            ? target === 'agents'
-              ? '.agents/skills'
-              : roots[target as EditorId]
-            : target
-                .replace(/\\/g, '/')
-                .replace(/^~\//, '')
-                .replace(/^\/+|\/+$/g, '');
-          const absDir =
-            rootRel === null || rootRel === ''
-              ? null
-              : resolveSkillPlacementPath(prefBase ?? base, `${rootRel}/${body.name}`);
-          if (rootRel === null || rootRel === '' || absDir === null) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              'That location has no skills folder to convert.',
-              { handler: 'skill-install', detail: target },
-            );
-            return;
-          }
-          const canonicalAbs = resolve(skillDir);
-          const canonicalHash = inPlaceEntry.contentHash;
-          const cls = classifyInPlaceDest(absDir, canonicalAbs, canonicalHash);
-          if (cls === 'canonical-dir') {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              "That is the skill's own folder (the source) — move the source instead of converting it.",
-              { handler: 'skill-install', detail: target },
-            );
-            return;
-          }
-          if (cls === 'different') {
-            errorResponse(
-              res,
-              409,
-              'urn:ok:error:doc-already-exists',
-              'That copy has been edited and no longer matches the skill — resolve the fork before converting it.',
-              { handler: 'skill-install', detail: target },
-            );
-            return;
-          }
-          if (cls === 'absent') {
-            errorResponse(res, 404, 'urn:ok:error:not-found', 'The skill is not installed there.', {
-              handler: 'skill-install',
-              detail: target,
-            });
-            return;
-          }
-          // Already in the requested form — nothing to write (a link-to-somewhere-
-          // else still gets re-materialized, same as the fan-out treats it).
-          const alreadyRight =
-            (mode === 'link' && cls === 'link-to-canonical') ||
-            (mode === 'copy' && cls === 'same-copy');
-          if (alreadyRight) {
-            // Disk is right but the ledger may not be, and a record that
-            // disagrees with disk is exactly what renders "changed outside".
-            // Skipping the write here used to skip the record too, so a stale
-            // record could never be reconciled from the UI — converting again
-            // just no-opped. Recording is idempotent when the two agree.
-            await recordSkillPlacement(prefBase ?? base, body.name, {
-              path: `${rootRel}/${body.name}`,
-              mode,
-              ...(mode === 'copy' ? { hash: canonicalHash } : {}),
-            });
-          }
-          if (!alreadyRight) {
-            const hostRoot = dirname(absDir);
-            tracedRmSync(absDir, { recursive: true, force: true });
-            tracedMkdirSync(hostRoot, { recursive: true });
-            if (mode === 'link') {
-              tracedSymlinkSync(relative(hostRoot, canonicalAbs), absDir, 'dir');
-            } else {
-              tracedCpSync(canonicalAbs, absDir, { recursive: true, dereference: true });
+          const converted = await skillPlacementOps.convert({
+            ledgerBase: prefBase ?? base,
+            scope: body.scope,
+            name: body.name,
+            target,
+            mode,
+            skillDir,
+            canonicalHash: inPlaceEntry.contentHash,
+          });
+          if (!converted.ok) {
+            switch (converted.kind) {
+              case 'invalid-location':
+                errorResponse(
+                  res,
+                  400,
+                  'urn:ok:error:invalid-request',
+                  'That location has no skills folder to convert.',
+                  { handler: 'skill-install', detail: target },
+                );
+                return;
+              case 'canonical-dir':
+                errorResponse(
+                  res,
+                  400,
+                  'urn:ok:error:invalid-request',
+                  "That is the skill's own folder (the source) — move the source instead of converting it.",
+                  { handler: 'skill-install', detail: target },
+                );
+                return;
+              case 'forked':
+                errorResponse(
+                  res,
+                  409,
+                  'urn:ok:error:doc-already-exists',
+                  'That copy has been edited and no longer matches the skill — resolve the fork before converting it.',
+                  { handler: 'skill-install', detail: target },
+                );
+                return;
+              case 'not-installed':
+                errorResponse(
+                  res,
+                  404,
+                  'urn:ok:error:not-found',
+                  'The skill is not installed there.',
+                  { handler: 'skill-install', detail: target },
+                );
+                return;
+              default: {
+                const _exhaustive: never = converted;
+                throw new Error(
+                  `Unhandled convert outcome: ${String((_exhaustive as { kind?: unknown }).kind)}`,
+                );
+              }
             }
-            await recordSkillPlacement(prefBase ?? base, body.name, {
-              path: `${rootRel}/${body.name}`,
-              mode,
-              ...(mode === 'copy' ? { hash: canonicalHash } : {}),
-            });
           }
           signalChannel?.('files');
           successResponse(
@@ -20991,359 +19368,82 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           // links everywhere else (the old source stays installed, as a link).
           // Sticky so the next scan doesn't re-elect by precedence.
           if (setSourceReq) {
-            const currentSource = inPlaceEntry.hosts[0] as string | undefined;
-            const newSource = setSourceReq;
-            // Editor ids + the hub map to host dirs; anything else is a CUSTOM
-            // skills-root path (its synthetic host id IS the root path).
-            const isHostTarget = isSkillInstallTarget(newSource);
-            let customDestAbs: string | undefined;
-            if (!isHostTarget) {
-              const rel = newSource
-                .replace(/\\/g, '/')
-                .replace(/^~\//, '')
-                .replace(/^\/+|\/+$/g, '');
-              const invalidOk = isRefusedOkPlacementRoot(rel);
-              const destAbs = resolve(base, rel, body.name);
-              if (rel === '' || invalidOk || !destAbs.startsWith(resolve(base) + sep)) {
+            const promoted = await skillInstallOps.promoteInPlaceSource({
+              scope: body.scope,
+              name: body.name,
+              base,
+              ...(prefBase ? { prefBase } : {}),
+              skillDir,
+              inPlaceEntry,
+              newSource: setSourceReq,
+            });
+            if (!promoted.ok) {
+              if (promoted.kind === 'invalid-target') {
                 errorResponse(
                   res,
                   400,
                   'urn:ok:error:invalid-request',
                   'Source target must be an editor id, "agents", or a project-relative skills root.',
-                  { handler: 'skill-install', detail: newSource },
+                  { handler: 'skill-install', detail: promoted.target },
                 );
-                return;
-              }
-              customDestAbs = destAbs;
-            }
-            let sourceMovedTo: string | undefined;
-            if (currentSource !== undefined && newSource !== currentSource) {
-              const oldSourceRel = relative(inPlaceScanBase, resolve(skillDir))
-                .split(sep)
-                .join('/');
-              const moved = relocateInPlaceCanonical({
-                canonicalAbs: skillDir,
-                canonicalHash: inPlaceEntry.contentHash,
-                name: body.name,
-                cwd: base,
-                newTarget: (isHostTarget ? newSource : 'agents') as SkillHostId,
-                ...(customDestAbs !== undefined ? { destDirAbs: customDestAbs } : {}),
-                // The promote/downgrade SWAP: the old source path becomes a
-                // symlink to the new one (set-source is never a removal).
-                leaveLinkBehind: true,
-                roots: skillProjectionRoots(body.scope),
-              });
-              if (!moved.ok) {
+              } else {
                 errorResponse(
                   res,
                   409,
                   'urn:ok:error:doc-already-exists',
                   'Cannot move the source there — a different skill occupies the target.',
-                  { handler: 'skill-install', detail: moved.reason },
+                  { handler: 'skill-install', detail: promoted.reason },
                 );
-                return;
               }
-              sourceMovedTo = relative(inPlaceScanBase, moved.newAbs).split(sep).join('/');
-              // The swap left a symlink at the old source path (relocate's
-              // `leaveLinkBehind`). RECORD it as the expected form — without
-              // the receipt, an external tool rewriting that link as a copy
-              // would be invisible to drift detection (the .agents blind spot).
-              await recordSkillPlacement(prefBase ?? base, body.name, {
-                path: oldSourceRel,
-                mode: 'link',
-              });
-              // Re-point recorded placement SYMLINKS that referenced the old
-              // source (the relocation loop only covers host dirs).
-              for (const p of readSkillPlacements(prefBase ?? base)[body.name] ?? []) {
-                const abs = resolve(prefBase ?? base, p.path);
-                if (abs === moved.newAbs) continue;
-                try {
-                  if (!lstatSync(abs).isSymbolicLink()) continue;
-                } catch {
-                  continue;
-                }
-                let target: string | null = null;
-                try {
-                  target = realpathSync(abs);
-                } catch {
-                  target = null; // dangling (pointed at the moved-away dir)
-                }
-                if (target === null || target === resolve(skillDir)) {
-                  tracedRmSync(abs, { recursive: true, force: true });
-                  tracedSymlinkSync(relative(dirname(abs), moved.newAbs), abs, 'dir');
-                }
-              }
-              // The promoted path is now the REAL dir — refresh its receipt to
-              // the promoted form (hash-less copy: no drift, resync skips it,
-              // and a custom root stays registered with the scan). A leftover
-              // 'link' expectation would misread the promotion as drift
-              // (OVERWRITTEN on a folder OK itself just wrote), inviting an
-              // accidental hands-off.
-              await recordSkillPlacement(prefBase ?? base, body.name, {
-                path: sourceMovedTo,
-                mode: 'copy',
-              });
-              await recordSkillSourceHost(prefBase ?? base, body.name, newSource);
+              return;
             }
             signalChannel?.('files');
-            const postMove = (
-              body.scope === 'project'
-                ? scanInPlaceSkills(contentDir)
-                : scanGlobalInPlaceSkills(skillsHome)
-            ).find((sk) => sk.name === body.name);
             successResponse(
               res,
               200,
               SkillInstallSuccessSchema,
               {
                 name: body.name,
-                hosts: postMove ? [...postMove.hosts] : [...inPlaceEntry.hosts],
+                hosts: promoted.hosts,
                 scripts: validity.hasScripts,
                 warnings: [],
                 warningCodes: [],
-                ...(sourceMovedTo !== undefined ? { sourceMovedTo } : {}),
+                ...(promoted.sourceMovedTo !== undefined
+                  ? { sourceMovedTo: promoted.sourceMovedTo }
+                  : {}),
               },
               { handler: 'skill-install' },
             );
             return;
           }
 
-          const prior = inPlaceEntry.hosts.filter((h): h is SkillHostId => isSkillInstallTarget(h));
-          // Unchecking THE SOURCE relocates it: the bundle moves to the
-          // highest-precedence remaining target (its copy/link there becomes
-          // the real dir), sibling links re-point, and set-exact proceeds
-          // against the new source. Refused when no other target remains —
-          // removing the only location is delete, not uninstall.
-          // `targets: []` (uninstall everywhere) is NOT a relocation request:
-          // lossless copies strip below and the source survives, matching the
-          // never-delete invariant.
-          // A CUSTOM-ROOT source (path-like host id, e.g. `.ok/skills`) is
-          // inexpressible in the editor-checkbox target vocabulary, so its
-          // absence from a set-exact list is NOT an uncheck — a mode flip
-          // (Copies/Symlinks re-apply) must never relocate it. Only an
-          // editor/hub source can be unchecked, and only that relocates.
-          // Relocation needs an EXPLICIT uncheck. With `targets` omitted the
-          // caller expressed no opinion about membership at all — the list came
-          // from `resolveSkillTargets`, which never includes the `agents` hub, so
-          // a defaults-driven call would read the hub's absence as an uncheck and
-          // move the real folder out from under it. Same reasoning as the two
-          // carve-outs above: `targets: []` and a custom-root source are excluded
-          // because neither is an uncheck either.
-          const sourceHost = inPlaceEntry.hosts[0] as SkillHostId | undefined;
-          let sourceMovedTo: string | undefined;
-          if (
-            targetsReq !== undefined &&
-            sourceHost !== undefined &&
-            !sourceHost.includes('/') &&
-            inPlaceTargets.length > 0 &&
-            !inPlaceTargets.includes(sourceHost)
-          ) {
-            const newTarget = inPlaceTargets[0] as SkillHostId;
-            const moved = relocateInPlaceCanonical({
-              canonicalAbs: skillDir,
-              canonicalHash: inPlaceEntry.contentHash,
-              name: body.name,
-              cwd: base,
-              newTarget,
-              roots: skillProjectionRoots(body.scope),
-            });
-            if (!moved.ok) {
-              errorResponse(
-                res,
-                409,
-                'urn:ok:error:doc-already-exists',
-                'Cannot move the source there — a different skill occupies the target.',
-                { handler: 'skill-install', detail: moved.reason },
-              );
-              return;
-            }
-            skillDir = moved.newAbs;
-            sourceMovedTo = relative(inPlaceScanBase, moved.newAbs).split(sep).join('/');
-            // The path holding the source is now the REAL dir — a stale 'link'
-            // receipt there would misread the relocation as drift.
-            await recordSkillPlacement(prefBase ?? base, body.name, {
-              path: sourceMovedTo,
-              mode: 'copy',
-            });
-            // Sticky: without this the next scan re-elects the source by
-            // static precedence and the user's choice silently reverts.
-            await recordSkillSourceHost(prefBase ?? base, body.name, newTarget);
-          }
-          const effectiveRootRel = sourceMovedTo
-            ? sourceMovedTo.split('/').slice(0, -1).join('/')
-            : canonicalRootRel;
-
-          removeInPlaceSkillCopies({
-            canonicalAbs: skillDir,
-            canonicalHash: inPlaceEntry.contentHash,
+          const fanOut = await skillInstallOps.fanOutInPlace({
+            scope: body.scope,
             name: body.name,
-            cwd: base,
-            // Set-exact removal only when the caller actually named a set. With
-            // `targets` omitted this call is additive ("make sure it is in my
-            // configured editors"), so subtracting the locations that list
-            // happens not to mention would delete work nobody asked to remove.
-            targets:
-              targetsReq === undefined ? [] : prior.filter((h) => !inPlaceTargets.includes(h)),
-            roots: skillProjectionRoots(body.scope),
+            base,
+            ...(prefBase ? { prefBase } : {}),
+            skillDir,
+            inPlaceEntry,
+            canonicalRootRel,
+            inPlaceTargets,
+            setExact: targetsReq !== undefined,
+            installMode,
+            ...(linkModeReq !== undefined ? { linkModeReq } : {}),
+            rootAdds,
+            rootRemoves,
           });
-          const fanned = projectInPlaceSkill({
-            canonicalAbs: skillDir,
-            canonicalHash: inPlaceEntry.contentHash,
-            canonicalRootRel: effectiveRootRel,
-            name: body.name,
-            cwd: base,
-            targets: inPlaceTargets,
-            mode: installMode,
-            // An EXPLICIT copy choice converts existing links back to copies
-            // (lossless — the link's bytes ARE the canonical's); an implicit
-            // copy default never touches links.
-            convertLinks: linkModeReq === false,
-            roots: skillProjectionRoots(body.scope),
-          });
-          for (const editor of fanned.conflicted) {
-            warnings.push(
-              `A different skill named "${body.name}" already exists in the ${editor} skills folder — left untouched.`,
+          if (!fanOut.ok) {
+            errorResponse(
+              res,
+              409,
+              'urn:ok:error:doc-already-exists',
+              'Cannot move the source there — a different skill occupies the target.',
+              { handler: 'skill-install', detail: fanOut.reason },
             );
-            warningCodes.push('name-conflict');
+            return;
           }
-          // Custom placements the call is ADDING adopt the requested form; ones
-          // it does not name are left alone. A blanket flip of every recorded
-          // placement as a side effect of installing is exactly what the app
-          // retired — converting is its own verb, per location, and asks first.
-          if (linkModeReq !== undefined && prefBase && rootAdds.length > 0) {
-            const adding = new Set(rootAdds.map((r) => `${r}/${body.name}`));
-            for (const p of (readSkillPlacements(prefBase)[body.name] ?? []).filter((p) =>
-              adding.has(p.path),
-            )) {
-              const abs = resolve(prefBase, p.path);
-              if (abs === resolve(skillDir)) continue;
-              const cls = classifyInPlaceDest(abs, resolve(skillDir), inPlaceEntry.contentHash);
-              if (linkModeReq === true && cls === 'same-copy') {
-                tracedRmSync(abs, { recursive: true, force: true });
-                tracedSymlinkSync(relative(dirname(abs), resolve(skillDir)), abs, 'dir');
-                await recordSkillPlacement(prefBase, body.name, { path: p.path, mode: 'link' });
-              } else if (linkModeReq === false && cls === 'link-to-canonical') {
-                tracedRmSync(abs, { recursive: true, force: true });
-                tracedCpSync(resolve(skillDir), abs, { recursive: true, dereference: true });
-                await recordSkillPlacement(prefBase, body.name, {
-                  path: p.path,
-                  mode: 'copy',
-                  hash: inPlaceEntry.contentHash,
-                });
-              }
-            }
-          }
-
-          // Record what we just WROTE (machine-local): copies so the forward
-          // re-sync can lossless-refresh them, links as the EXPECTED form so
-          // drift detection can spot another tool rewriting the path.
-          for (const editor of fanned.hosts) {
-            const editorRoot =
-              editor === 'agents' ? '.agents/skills' : EDITOR_PROJECT_SKILL_ROOT[editor];
-            if (editorRoot === null || editorRoot === canonicalRootRel) continue;
-            const copyAbs = resolve(base, editorRoot, body.name);
-            let isLink = false;
-            try {
-              isLink = lstatSync(copyAbs).isSymbolicLink();
-            } catch {
-              continue;
-            }
-            if (isLink) {
-              if (installMode === 'link') {
-                await recordSkillPlacement(prefBase ?? base, body.name, {
-                  path: `${editorRoot}/${body.name}`,
-                  mode: 'link',
-                });
-              }
-              continue;
-            }
-            const copyHash = existsSync(join(copyAbs, 'SKILL.md'))
-              ? parseSkillDir(copyAbs)?.contentHash
-              : undefined;
-            if (copyHash !== undefined && copyHash === inPlaceEntry.contentHash) {
-              await recordSkillPlacement(prefBase ?? base, body.name, {
-                path: `${editorRoot}/${body.name}`,
-                mode: 'copy',
-                hash: copyHash,
-              });
-            }
-          }
-          // ── Additive custom-root placements (path-like `add`/`remove`
-          // members). Idempotent: an already-satisfied add is a no-op; a
-          // hand-edited fork is refused with a warning, never deleted.
-          if ((rootAdds.length > 0 || rootRemoves.length > 0) && prefBase) {
-            const canonAbs = resolve(skillDir);
-            for (const rootRel of rootAdds) {
-              const underOk = isRefusedOkPlacementRoot(rootRel);
-              const parentAbs = resolve(prefBase, rootRel);
-              // Symlink-aware containment, the same resolver `place` / `unplace`
-              // / `convert` use. A lexical `startsWith` prefix test walks
-              // straight through a checked-in symlink (`.team ->
-              // ~/Library/LaunchAgents`), and the mkdir + cp below would then
-              // write the bundle outside the project entirely.
-              const destAbs = resolveSkillPlacementPath(prefBase, `${rootRel}/${body.name}`);
-              if (rootRel === '' || underOk || destAbs === null || destAbs === canonAbs) {
-                warnings.push(`"${rootRel}" is not a placeable custom root — skipped.`);
-                warningCodes.push('place-path-invalid');
-                continue;
-              }
-              const cls = classifyInPlaceDest(destAbs, canonAbs, inPlaceEntry.contentHash);
-              if (cls === 'different') {
-                warnings.push(
-                  `A different "${body.name}" already exists at ${rootRel} — left untouched.`,
-                );
-                warningCodes.push('name-conflict');
-                continue;
-              }
-              if (cls === 'absent') {
-                tracedMkdirSync(parentAbs, { recursive: true });
-                if (installMode === 'link') {
-                  tracedSymlinkSync(relative(parentAbs, canonAbs), destAbs, 'dir');
-                } else {
-                  tracedCpSync(canonAbs, destAbs, { recursive: true, dereference: true });
-                }
-              }
-              await recordSkillPlacement(prefBase, body.name, {
-                path: `${rootRel}/${body.name}`,
-                mode: installMode,
-                ...(installMode === 'copy' ? { hash: inPlaceEntry.contentHash } : {}),
-              });
-            }
-            for (const rootRel of rootRemoves) {
-              const rel = `${rootRel}/${body.name}`;
-              const recorded = readSkillPlacements(prefBase)[body.name]?.find(
-                (pl) => pl.path === rel,
-              );
-              const absDir = resolveSkillPlacementPath(prefBase, rel);
-              if (absDir === null) {
-                warnings.push(`"${rootRel}" is not a placeable custom root — skipped.`);
-                warningCodes.push('place-path-invalid');
-                continue;
-              }
-              const cls = classifyInPlaceDest(absDir, canonAbs, inPlaceEntry.contentHash);
-              if (cls === 'different') {
-                warnings.push(
-                  `The copy at ${rel} has been hand-edited (a fork) — refused, never deleted. Remove it manually if you mean it.`,
-                );
-                warningCodes.push('place-fork-refused');
-                continue;
-              }
-              if (cls !== 'absent' && cls !== 'canonical-dir') {
-                tracedRmSync(absDir, { recursive: true, force: true });
-              }
-              if (recorded) await removeSkillPlacement(prefBase, body.name, rel);
-            }
-          }
-
-          // Report the FULL honest post-op host set by re-scanning — covers
-          // hub adds/removes, canonical-protection skips, and capability-covered
-          // hosts, so the client's before/after diff never invents changes.
-          const postEntry = (
-            body.scope === 'project'
-              ? scanInPlaceSkills(contentDir)
-              : scanGlobalInPlaceSkills(skillsHome)
-          ).find((s) => s.name === body.name);
-          const postHosts = postEntry ? [...postEntry.hosts] : fanned.hosts;
+          warnings.push(...fanOut.warnings);
+          warningCodes.push(...fanOut.warningCodes);
           signalChannel?.('files');
           successResponse(
             res,
@@ -21351,11 +19451,13 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             SkillInstallSuccessSchema,
             {
               name: body.name,
-              hosts: postHosts,
+              hosts: fanOut.hosts,
               scripts: validity.hasScripts,
               warnings,
               warningCodes,
-              ...(sourceMovedTo !== undefined ? { sourceMovedTo } : {}),
+              ...(fanOut.sourceMovedTo !== undefined
+                ? { sourceMovedTo: fanOut.sourceMovedTo }
+                : {}),
             },
             { handler: 'skill-install' },
           );
@@ -22371,47 +20473,6 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     { handler: 'skill-revert', method: 'POST' },
   );
 
-  function deriveFolderSearchDocuments(
-    pages: readonly WorkspaceSearchDocument[],
-  ): WorkspaceSearchDocument[] {
-    const folderModified = new Map<string, number>();
-    for (const page of pages) {
-      const segments = page.path.split('/').filter(Boolean);
-      segments.pop();
-      for (let i = 1; i <= segments.length; i++) {
-        const folderPath = segments.slice(0, i).join('/');
-        folderModified.set(
-          folderPath,
-          Math.max(folderModified.get(folderPath) ?? 0, page.modifiedTs),
-        );
-      }
-    }
-    return [...folderModified.entries()].map(([path, modifiedTs]) =>
-      createWorkspaceSearchDocument({ kind: 'folder', path, modifiedTs }),
-    );
-  }
-
-  function buildSearchSnippet(content: string, query: string): string | undefined {
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery || !content) return undefined;
-    const normalizedContent = content.toLowerCase();
-    const index = normalizedContent.indexOf(normalizedQuery);
-    if (index < 0) return undefined;
-    const start = Math.max(0, index - 80);
-    const end = Math.min(content.length, index + normalizedQuery.length + 120);
-    const prefix = start > 0 ? '…' : '';
-    const suffix = end < content.length ? '…' : '';
-    // slice() cuts on UTF-16 code units, so a boundary landing mid-emoji leaves a
-    // lone surrogate. Replace any unpaired surrogate with U+FFFD so strict JSON-RPC
-    // clients (Rust / pydantic parsers) don't reject the response as invalid UTF-8.
-    // (String.toWellFormed() would do this but needs the es2024 lib in every consumer.)
-    const snippet = `${prefix}${content.slice(start, end).replace(/\s+/g, ' ').trim()}${suffix}`;
-    return snippet.replace(
-      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
-      '\uFFFD',
-    );
-  }
-
   function parseSearchIntent(value: unknown): WorkspaceSearchIntent {
     if (value === 'autocomplete' || value === 'full_text' || value === 'omnibar') return value;
     return 'omnibar';
@@ -22441,631 +20502,19 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
     return value === 'omnibar' || value === 'mcp' || value === 'http' ? value : 'http';
   }
 
-  interface SemanticResolution {
-    /** Vector input for `searchWorkspaceCorpus`, or undefined for pure-lexical. */
-    input?: WorkspaceSemanticInput;
-    /** Non-content coverage status block to attach to the response. */
-    status?: SearchSemanticStatus;
-    /** Per-query embed latency (ms), or null when no query embed ran. */
-    queryEmbedMs: number | null;
-    /** Total embeddable pages (coverage denominator). */
-    pageTotal: number;
-    /** Whether the embedder is loaded + keyed + warm. */
-    capable: boolean;
-  }
-
-  /**
-   * Resolve the per-query vector signal + coverage status for a search.
-   *
-   * Returns a pure-lexical resolution (no `input`, no `status`) — byte-identical
-   * to the pre-embeddings path — unless the feature flag is ON **and** the caller
-   * opted in (`semantic: true`). The omnibar and `semantic: false` never opt in,
-   * so they stay lexical and carry no status block. When opted-in, fires the lazy
-   * background corpus embed (no-op when incapable) and embeds only the query.
-   */
-  async function resolveSemantic(
-    query: string,
-    intent: WorkspaceSearchIntent,
-    semanticParam: boolean | undefined,
-    corpus: WorkspaceSearchCorpus,
-  ): Promise<SemanticResolution> {
-    // Predicate split: hidden / dot-path docs are searchable (admitted to the
-    // corpus) but NEVER embedded — no semantic egress for agent-tooling/dotfiles.
-    // The embeddable set is the corpus minus hidden paths, and it also drives the
-    // coverage denominator so a searchable dot-path page is never counted as
-    // "embeddable" (which would make coverage under-report forever).
-    const embeddableDocs = corpus.documents.filter((d) => !isHiddenDocName(d.path));
-    const pageTotal = embeddableDocs.reduce((n, d) => n + (d.kind === 'page' ? 1 : 0), 0);
-    // Flag OFF, or the caller did not opt in → no status block, lexical path.
-    if (!semanticSearch?.isEnabled() || semanticParam !== true) {
-      return { queryEmbedMs: null, pageTotal, capable: false };
-    }
-
-    // Opted in + enabled: lazily (re-)embed the corpus in the background. Cheap
-    // for unchanged docs; no-op when no key. This is the only embed trigger —
-    // nothing embeds until an agent actually searches (no proactive egress).
-    void semanticSearch.embedCorpus(embeddableDocs);
-
-    // Semantic fuses into the body blend only, and skips trivially short queries.
-    let input: WorkspaceSemanticInput | undefined;
-    let queryEmbedMs: number | null = null;
-    if (intent === 'full_text' && query.trim().length >= SEMANTIC_MIN_QUERY_LENGTH) {
-      const startedAt = performance.now();
-      const scores = await semanticSearch.queryScores(query, embeddableDocs);
-      queryEmbedMs = performance.now() - startedAt;
-      if (scores && scores.size > 0) {
-        // Carry the project-local similarity floor when set so a model whose
-        // cosine scale differs from the default can be retuned without a code
-        // change; undefined leaves core on its model-calibrated default.
-        const similarityFloor = getSemanticSimilarityFloor?.();
-        input = similarityFloor !== undefined ? { scores, similarityFloor } : { scores };
-      }
-    }
-
-    const status = semanticSearch.getStatus();
-    return {
-      input,
-      status: {
-        capable: status.capable,
-        applied: false, // finalized post-ranking (did any result carry a vector)
-        coverage: { embedded: status.embeddedCount, total: pageTotal },
-      },
-      queryEmbedMs,
-      pageTotal,
-      capable: status.capable,
-    };
-  }
-
-  /** Map a search result to the wire entry, carrying `vector` only when present. */
-  function toSearchResultEntry(
-    result: ReturnType<typeof searchWorkspaceCorpus>[number],
-    query: string,
-  ): {
-    kind: WorkspaceSearchScope;
-    path: string;
-    title: string;
-    score: number;
-    signals: WorkspaceSearchResult['signals'];
-    snippet?: string;
-  } {
-    return {
-      kind: result.document.kind,
-      path: result.document.path,
-      title: result.document.title,
-      score: result.score,
-      signals: result.signals,
-      snippet:
-        result.document.kind === 'page'
-          ? buildSearchSnippet(result.document.content, query)
-          : undefined,
-    };
-  }
-
-  /**
-   * Shared core for `GET` + `POST /api/search`: build the corpus, resolve the
-   * (opt-in) vector signal, rank, and assemble the `SearchSuccess` body. One
-   * implementation so GET and POST cannot drift in ranking, snippets, or the
-   * semantic gate.
-   */
-  async function buildSearchResponse(params: {
-    query: string;
-    intent: WorkspaceSearchIntent;
-    ranking: WorkspaceSearchRanking | undefined;
-    scopes: WorkspaceSearchScope[] | undefined;
-    limit: number | undefined;
-    semanticParam: boolean | undefined;
-    source: SearchSource;
-  }): Promise<SearchSuccess> {
-    const startedAt = performance.now();
-    // Cold start: while the boot seed is still walking the content dir, do not
-    // block on it and do not serve a partial/empty index as if it were complete.
-    // Answer fast with `ready: false` so the caller (MCP `search`, palette, any
-    // consumer) retries instead of trusting an empty result. The seed populates
-    // the file index, so a retry after it resolves takes the normal path below.
-    if (isSearchCorpusWarming()) {
-      return {
-        query: params.query,
-        intent: params.intent,
-        results: [],
-        elapsedMs: Math.max(0, performance.now() - startedAt),
-        ready: false,
-      };
-    }
-    const { corpus, truncated } = await getWorkspaceSearchCorpus();
-    const semantic = await resolveSemantic(
-      params.query,
-      params.intent,
-      params.semanticParam,
-      corpus,
-    );
-    const results = searchWorkspaceCorpus(corpus, params.query, {
-      intent: params.intent,
-      ranking: params.ranking,
-      scopes: params.scopes,
-      limit: params.limit,
-      semantic: semantic.input,
-    });
-    const entries = results.map((r) => toSearchResultEntry(r, params.query));
-
-    let semanticStatus: SearchSemanticStatus | undefined;
-    if (semantic.status) {
-      const vectorContributors = entries.reduce(
-        (n, e) => n + (e.signals.vector !== undefined ? 1 : 0),
-        0,
-      );
-      const applied = vectorContributors > 0;
-      semanticStatus = { ...semantic.status, applied };
-      const outcome: SemanticQueryOutcome = !semantic.capable
-        ? 'incapable'
-        : applied
-          ? 'applied'
-          : semantic.status.coverage.embedded === 0
-            ? 'warming'
-            : 'no_match';
-      recordSemanticQuery({
-        outcome,
-        source: params.source,
-        capable: semantic.capable,
-        embedded: semantic.status.coverage.embedded,
-        total: semantic.pageTotal,
-        queryEmbedMs: semantic.queryEmbedMs,
-        vectorContributors,
-      });
-    }
-
-    return {
-      query: params.query,
-      intent: params.intent,
-      results: entries,
-      elapsedMs: Math.max(0, performance.now() - startedAt),
-      ready: true,
-      ...(semanticStatus ? { semantic: semanticStatus } : {}),
-      ...(truncated ? { truncated: true } : {}),
-    };
-  }
-
-  /**
-   * Project skills (`<root>/.ok/skills/<name>/SKILL.md`) as cheap stat records —
-   * readdir + stat only, no content read — so the per-search corpus fingerprint
-   * can detect skill changes without paying a content read on every request.
-   * Skills are tree-excluded from `getFileIndex()`, so search enumerates them
-   * from disk. The corpus doc builder reuses this list and reads each matched
-   * file's content.
-   */
-  function enumerateProjectSkillStats(): Array<{
-    name: string;
-    absolutePath: string;
-    /** The skill's LIVE content-doc path (`<real dir>/SKILL`) — what search
-     *  hits open. In-place skills carry their editor-dir path; only a legacy
-     *  store resident still carries the `.ok/skills` shape. */
-    docPath: string;
-    mtimeMs: number;
-    size: number;
-  }> {
-    const out: Array<{
-      name: string;
-      absolutePath: string;
-      docPath: string;
-      mtimeMs: number;
-      size: number;
-    }> = [];
-    const seen = new Set<string>();
-    // In-place skills FIRST (they win a name collision with a store resident,
-    // mirroring the list/read rules). Enumerating only the store root here was
-    // a store-retirement fossil: in-place skills vanished from search entirely,
-    // and the ones indexed opened phantom `.ok/skills` tabs.
-    for (const skill of scanInPlaceSkills(contentDir)) {
-      const skillMd = resolve(contentDir, skill.dir, 'SKILL.md');
-      try {
-        const st = statSync(skillMd);
-        out.push({
-          name: skill.name,
-          absolutePath: skillMd,
-          docPath: `${skill.dir}/SKILL`,
-          mtimeMs: st.mtimeMs,
-          size: st.size,
-        });
-        seen.add(skill.name);
-      } catch {
-        // Vanished between scan and stat — skip.
-      }
-    }
-    const root = resolveSkillsRoot('project');
-    if (!existsSync(root)) return out;
-    let entries: Dirent[];
-    try {
-      entries = readdirSync(root, { withFileTypes: true });
-    } catch {
-      return out;
-    }
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (!entry.isDirectory() || !SKILL_NAME_REGEX.test(entry.name)) continue;
-      if (seen.has(entry.name)) continue;
-      const skillMd = resolve(root, entry.name, 'SKILL.md');
-      try {
-        const st = statSync(skillMd);
-        out.push({
-          name: entry.name,
-          absolutePath: skillMd,
-          docPath: `${LEGACY_SKILL_STORE_ROOT}/${entry.name}/SKILL`,
-          mtimeMs: st.mtimeMs,
-          size: st.size,
-        });
-      } catch {
-        // Missing/unreadable SKILL.md — skip (a draft dir with no manifest).
-      }
-    }
-    return out;
-  }
-
-  /**
-   * Project skills as search documents (keyword + semantic — `embedCorpus`
-   * embeds every corpus doc). Indexed under their managed-artifact doc path so a
-   * hit opens the skill tab via the shared nav resolution. Title is the skill's
-   * frontmatter name; content is its description + body, so a skill is findable
-   * by what it does, not just its slug.
-   */
-  function buildSkillSearchDocuments(): WorkspaceSearchDocument[] {
-    const docs: WorkspaceSearchDocument[] = [];
-    for (const skill of enumerateProjectSkillStats()) {
-      let title = skill.name;
-      let content = '';
-      try {
-        const { frontmatter, body } = parseFrontmatterDoc(
-          readFileSync(skill.absolutePath, 'utf-8'),
-        );
-        if (typeof frontmatter.name === 'string' && frontmatter.name) title = frontmatter.name;
-        const desc = typeof frontmatter.description === 'string' ? frontmatter.description : '';
-        content = `${desc}\n\n${body}`.trim();
-      } catch {
-        // Malformed/unreadable — index by name only so it is still findable.
-      }
-      docs.push(
-        createWorkspaceSearchDocument({
-          kind: 'page',
-          // Index under the skill's LIVE content-doc path (real dir), never a
-          // minted shape — a minted `__skill__/project/<name>` OR `.ok/skills`
-          // path both made a search hit open a blank phantom tab.
-          path: skill.docPath,
-          title,
-          content,
-          modifiedTs: skill.mtimeMs,
-        }),
-      );
-    }
-    return docs;
-  }
-
-  // Per-entry change-detection key: the fields whose change should re-read a
-  // page (modified / size / canonical path / inode / aliases), NUL-separated so
-  // a path containing spaces can't merge fields and collide. `workspaceSearchFingerprint`'s
-  // fallback prefixes this with the docName; the page-doc cache keys on it
-  // directly (its Map is already docName-keyed). One definition keeps the two in
-  // lockstep — drift would silently break cache invalidation (stale reuse or
-  // needless re-reads).
-  function entrySearchKey(entry: FileIndexEntry): string {
-    // NUL between fields AND between aliases: a path/alias containing a comma
-    // (rare but valid on macOS/Linux) must not collide with a different alias set.
-    return `${entry.modified}\0${entry.size}\0${entry.canonicalPath}\0${entry.inode}\0${entry.aliases.join('\0')}`;
-  }
-
-  // Per-page parsed-document cache. Building the corpus re-reads every markdown
-  // file from disk, but a rebuild is triggered by ANY file-index change (one
-  // edit, a rename, a new sibling), so without this every keystroke-after-an-edit
-  // would re-read and re-parse the whole workspace. Reuse a page's search
-  // document across rebuilds when its own entry is unchanged — re-reading only
-  // the delta. Invariant direction: a change that busts THIS page's `entrySearchKey`
-  // also bumps the generation counter that invalidates the corpus — but NOT the
-  // converse: a rebuild triggered by a sibling change reuses this page's cached
-  // doc when its own entry is unchanged (the whole point). Only successful reads
-  // are cached, so a transient read failure self-heals on the next rebuild rather
-  // than pinning empty content. Pruned to the live index each build, so it stays
-  // bounded by the workspace size. The name-only `file` tier and derived folder
-  // docs are metadata-only (no disk read), so they are rebuilt each time.
-  const pageDocCache = new Map<string, { key: string; doc: WorkspaceSearchDocument }>();
-
-  async function buildWorkspaceSearchDocumentsFromIndex(): Promise<{
-    documents: WorkspaceSearchDocument[];
-    truncated: boolean;
-  }> {
-    const pages: WorkspaceSearchDocument[] = [];
-    const files: WorkspaceSearchDocument[] = [];
-    // Type-annotated, like the two siblings above, so the getAllFilesIndex
-    // caller-coverage meta-test attributes the call below to this (allowlisted)
-    // function rather than latching onto a bare local declaration.
-    const seenPages: Set<string> = new Set();
-    for (const [docName, entry] of getAllFilesIndex()) {
-      // System + config synthetic docs never enter search. Hidden / dot-prefixed
-      // paths (`.changeset/`, `.github/`, `.cursor/`) DO — they are searchable by
-      // name/path (rank-deprioritized in core) so "search what the tree shows"
-      // holds. They stay out of the embedding/egress path, which keeps the
-      // `isHiddenDocName` filter where the corpus is handed to the embedder.
-      if (isSystemDoc(docName) || isConfigDoc(docName)) continue;
-      // Project-skill SKILL docs ARE in the index (skills-as-content), and this
-      // loop iterates the all-files view — but `buildSkillSearchDocuments()`
-      // already indexes each skill with skill-aware title/content under the same
-      // path. Skip ANY project SKILL-doc shape (in-place editor dirs AND the
-      // legacy store) so one isn't added twice (a duplicate corpus id throws and
-      // 500s the whole search). Bundle reference docs stay — they index as
-      // ordinary pages.
-      if (parseProjectSkillBundleDoc(docName)?.kind === 'skill') continue;
-      if (docName.startsWith('.ok/skills/')) continue;
-      if (entry.kind === 'file') {
-        // Name-only tier: a non-markdown file is searchable by name / path /
-        // folder, but its body is NEVER read (content stays markdown-only).
-        // `pathToDocName` keeps the extension for non-markdown, so `data.csv`
-        // is findable by both `data` and `data.csv`; the basename is the title.
-        files.push(
-          createWorkspaceSearchDocument({
-            kind: 'file',
-            path: docName,
-            modifiedTs: Date.parse(entry.modified),
-            // Symlink alias paths fold into searchable pathSegments (inode-dedup
-            // already gives one entry per file via the canonical-keyed index).
-            aliases: entry.aliases,
-          }),
-        );
-        continue;
-      }
-      // Markdown page: reuse the cached parse when its entry is unchanged (same
-      // fingerprint components), else re-read and re-cache.
-      seenPages.add(docName);
-      const entryKey = entrySearchKey(entry);
-      const cached = pageDocCache.get(docName);
-      if (cached && cached.key === entryKey) {
-        pages.push(cached.doc);
-        continue;
-      }
-      let content = '';
-      let title = docName;
-      let readFailed = false;
-      try {
-        content = await readFile(entry.canonicalPath, 'utf-8');
-      } catch (err) {
-        // A transient read (external editor mid-save, EBUSY, NFS blip, a
-        // watcher-vs-disk race) must NOT be cached — the entry fingerprint does
-        // not change just because the read failed, so a cached empty-content doc
-        // would persist and silently hide the page from body search until its
-        // mtime/size/inode shifts. Skip the cache write so the next rebuild
-        // retries, preserving the pre-cache self-healing behavior.
-        readFailed = true;
-        log.warn({ docName, err }, `[search] Failed to read ${docName}`);
-      }
-      if (!readFailed) {
-        try {
-          title = extractPageTitle(content, docName);
-        } catch (err) {
-          // Title extraction is pure string work, so a throw here is a
-          // deterministic parse fault, not transient I/O. Fall back to the
-          // docName as title but still cache (the read succeeded) — caching it
-          // avoids re-parsing the same failing content on every rebuild, the
-          // opposite of the read-failure path's deliberate retry.
-          log.warn({ docName, err }, `[search] Failed to extract title for ${docName}`);
-        }
-      }
-      const doc = createWorkspaceSearchDocument({
-        kind: 'page',
-        path: docName,
-        title,
-        content,
-        modifiedTs: Date.parse(entry.modified),
-        aliases: entry.aliases,
-      });
-      if (!readFailed) pageDocCache.set(docName, { key: entryKey, doc });
-      pages.push(doc);
-    }
-    // Prune cache entries for pages no longer in the index (deleted / renamed)
-    // so the cache tracks the live workspace rather than growing unbounded.
-    // Unconditional: a failed read adds to `seenPages` but not to the cache, so
-    // a `size`-comparison guard could read equal and skip a genuinely-needed
-    // prune. The loop is O(cache) — same order as the build it follows.
-    for (const docName of pageDocCache.keys()) {
-      if (!seenPages.has(docName)) pageDocCache.delete(docName);
-    }
-    // Cap the name-only file tier (markdown pages are never dropped). Over the
-    // ceiling, drop DEEPEST paths first (level-order): the shallowest entries are
-    // the most navigationally useful, and dropping the deep tail mirrors the
-    // show-all truncation BFS. The dogfood repo (~16k) is far under the
-    // 50k default; this is a pathological-repo backstop.
-    const maxFiles = getSearchMaxEntries();
-    let admittedFiles = files;
-    let truncated = false;
-    if (files.length > maxFiles) {
-      truncated = true;
-      admittedFiles = [...files]
-        .sort((a, b) => {
-          const depthA = a.path.split('/').length;
-          const depthB = b.path.split('/').length;
-          return depthA - depthB || a.path.localeCompare(b.path);
-        })
-        .slice(0, maxFiles);
-      // Surface the cap-fire to operators: a structured warn log + a meter
-      // counter. Without these the cap is silent — operators see "search
-      // missing some files" with no signal pointing at `OK_SEARCH_MAX_ENTRIES`.
-      // One emission per corpus rebuild (the cache then absorbs subsequent
-      // queries until the fingerprint changes).
-      getLogger('search').warn(
-        {
-          dropped: files.length - admittedFiles.length,
-          retained: admittedFiles.length,
-          limit: maxFiles,
-        },
-        '[search] corpus name-only file tier truncated at OK_SEARCH_MAX_ENTRIES',
-      );
-      searchCorpusTruncatedCounter().add(1);
-    }
-    // Folders are synthesized from ALL admitted paths (markdown pages + name-only
-    // file entries), so a folder containing only non-markdown files is still a
-    // search result and a partial-path query (e.g. `server/src`) resolves even
-    // when the folder holds no markdown.
-    const documents = [
-      ...pages,
-      ...buildSkillSearchDocuments(),
-      ...admittedFiles,
-      ...deriveFolderSearchDocuments([...pages, ...admittedFiles]),
-    ];
-    return { documents, truncated };
-  }
-
-  // Stat-only skill fingerprint (name + mtime + size per project skill). A
-  // named helper, not a local `const`, so the getAllFilesIndex caller-coverage
-  // meta-test attributes the call in `workspaceSearchFingerprint` to that
-  // allowlisted function rather than to an intermediate binding.
-  function skillStatFingerprint(): string {
-    return enumerateProjectSkillStats()
-      .map((s) => `${s.name} ${s.mtimeMs} ${s.size}`)
-      .join('');
-  }
-
-  function workspaceSearchFingerprint(): string {
-    // Skills are tree-excluded from the file index, so neither the generation
-    // counter nor getAllFilesIndex reflects a skill add/edit/remove. Fold the
-    // stat-only skill fingerprint into BOTH paths so the corpus rebuilds on a
-    // skill change (no content read on the per-search fingerprint path).
-    // Fast path: the watcher's monotonic generation counter bumps on every
-    // file-index mutation (the same counter that memoizes the markdown-only
-    // view), so a generation match proves the corpus is still valid in O(1).
-    if (getFileIndexGeneration) {
-      return `gen:${getFileIndexGeneration()}|skills${skillStatFingerprint()}`;
-    }
-    // Fallback for harnesses that wire only the index accessors. Admission
-    // predicate MUST match `buildWorkspaceSearchDocumentsFromIndex` so a
-    // change to a now-searchable dot-path busts the corpus cache.
-    return `${[...getAllFilesIndex()]
-      .filter(([docName]) => !isSystemDoc(docName) && !isConfigDoc(docName))
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(
-        // Shares `entrySearchKey` with the page-doc cache so the two never drift.
-        ([docName, entry]) => `${docName}\0${entrySearchKey(entry)}`,
-      )
-      .join('')}|skills${skillStatFingerprint()}`;
-  }
-
-  // Cold-start search readiness. While the boot index seed is still walking the
-  // content dir, `/api/search` must not block on it nor return a false-empty
-  // result: an agent (MCP `search`) or any consumer hitting search right after
-  // `ok start` would otherwise get zero hits that read as complete. We answer
-  // fast with `ready: false` instead and let the caller retry. The command
-  // palette gates its own fetch on the page-list cold-load signal, so this
-  // primarily protects non-UI consumers and is defense-in-depth for the UI.
-  //
-  // `bootIndexReady` mirrors the same boot gate `handleDocumentList` awaits: an
-  // absent gate (test harnesses) is ready immediately, and a rejected gate still
-  // flips ready (logged, like the sibling document-list gate) so a degraded boot
-  // serves whatever index exists rather than warming forever.
-  let bootIndexReady = ready === undefined;
-  ready?.then(
-    () => {
-      bootIndexReady = true;
-    },
-    (err: unknown) => {
-      bootIndexReady = true;
-      log.warn(
-        { err, handler: 'search' },
-        '[api] ready gate rejected — search serves the partial index',
-      );
-    },
-  );
-
-  // Warming = the boot seed has not finished. Once it has, search awaits the
-  // corpus build and returns results as before (the lazy first build is fast and
-  // prewarmed; a slow first build on a very large workspace is the documented
-  // residual). Scoping warming to the seed window keeps steady-state behavior —
-  // and every consumer that does not pass a boot gate — unchanged.
-  function isSearchCorpusWarming(): boolean {
-    return !bootIndexReady;
-  }
-
-  async function getWorkspaceSearchCorpus(): Promise<{
-    corpus: WorkspaceSearchCorpus;
-    truncated: boolean;
-  }> {
-    const cacheKey = `${contentDir} ${projectDir ?? ''}`;
-    const fingerprint = workspaceSearchFingerprint();
-    const workspaceSearchCache = workspaceSearchCaches.get(cacheKey);
-    if (workspaceSearchCache?.fingerprint === fingerprint && workspaceSearchCache.corpus) {
-      return {
-        corpus: workspaceSearchCache.corpus,
-        truncated: workspaceSearchCache.truncated ?? false,
-      };
-    }
-    if (workspaceSearchCache?.fingerprint === fingerprint && workspaceSearchCache.pending) {
-      return workspaceSearchCache.pending;
-    }
-
-    // Stale-but-live corpus (or the build about to produce one): the base for
-    // an incremental index patch, so one write re-indexes one document instead
-    // of re-tokenizing the whole workspace on the event loop.
-    const priorCorpus = workspaceSearchCache?.corpus;
-    const priorPending = workspaceSearchCache?.pending;
-    const pending = (async () => {
-      // Serialize behind any in-flight build: an incremental diff is only valid
-      // against the corpus it was computed from, and the in-flight build owns
-      // the shared index right now. Chaining keeps updates linear (each build
-      // bases on its predecessor's output) without coalescing away freshness —
-      // the document snapshot below is read AFTER this fingerprint was seen.
-      const base = priorPending
-        ? await priorPending.then(
-            (result) => result.corpus,
-            () => undefined,
-          )
-        : priorCorpus;
-      const { documents, truncated } = await buildWorkspaceSearchDocumentsFromIndex();
-      if (!base) {
-        searchCorpusUpdateCounter().add(1, { mode: 'cold' });
-        return { corpus: createWorkspaceSearchCorpus(documents), truncated };
-      }
-      const update = updateWorkspaceSearchCorpus(base, documents);
-      if (update.rebuilt) {
-        searchCorpusUpdateCounter().add(1, { mode: 'rebuild', reason: update.rebuildReason });
-        // `mutation-failed` means the patched index diverged from the document
-        // set (or a mutation threw) — recovered by the rebuild, but worth an
-        // operator-visible signal; the elective reasons are routine.
-        const logLevel = update.rebuildReason === 'mutation-failed' ? 'warn' : 'debug';
-        getLogger('search')[logLevel](
-          { reason: update.rebuildReason, documents: documents.length },
-          '[search] corpus update fell back to a full index rebuild',
-        );
-      } else {
-        searchCorpusUpdateCounter().add(1, { mode: 'incremental' });
-        getLogger('search').debug(
-          { inserted: update.inserted, updated: update.updated, removed: update.removed },
-          '[search] corpus updated incrementally',
-        );
-      }
-      return { corpus: update.corpus, truncated };
-    })();
-    workspaceSearchCaches.set(cacheKey, { fingerprint, pending });
-    try {
-      const result = await pending;
-      if (workspaceSearchCaches.get(cacheKey)?.pending === pending) {
-        workspaceSearchCaches.set(cacheKey, {
-          fingerprint,
-          corpus: result.corpus,
-          truncated: result.truncated,
-        });
-      }
-      return result;
-    } catch (err) {
-      if (workspaceSearchCaches.get(cacheKey)?.pending === pending) {
-        workspaceSearchCaches.delete(cacheKey);
-      }
-      throw err;
-    }
-  }
-
-  function prewarmWorkspaceSearchCache(): void {
-    if (process.env.NODE_ENV === 'test') return;
-    for (const delayMs of [0, 1000, 3000]) {
-      setTimeout(() => {
-        void getWorkspaceSearchCorpus().catch((err) => {
-          log.warn({ err }, '[search] Failed to prewarm workspace search cache');
-        });
-      }, delayMs);
-    }
-  }
-
-  prewarmWorkspaceSearchCache();
+  const searchService = createSearchService({
+    contentDir,
+    projectDir,
+    getAllFilesIndex,
+    getFileIndexGeneration,
+    getSearchMaxEntries,
+    semanticSearch,
+    getSemanticSimilarityFloor,
+    ready,
+    getProjectSkillsRoot: () => resolveSkillsRoot('project'),
+    parseFrontmatterDoc,
+  });
+  searchService.prewarm();
 
   const handleSearchGet = withValidation(
     EmptyRequestSchema,
@@ -23091,7 +20540,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           );
           return;
         }
-        const body = await buildSearchResponse({
+        const body = await searchService.buildSearchResponse({
           query,
           intent,
           ranking,
@@ -23129,7 +20578,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           );
           return;
         }
-        const responseBody = await buildSearchResponse({
+        const responseBody = await searchService.buildSearchResponse({
           query,
           intent,
           ranking,

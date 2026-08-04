@@ -56,92 +56,8 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { extname } from 'node:path';
-import { SANDBOXED_HTML_CSP, SANDBOXED_HTML_EXTENSIONS } from '@inkeep/open-knowledge-core';
-import { mimes } from 'mrmime';
-
-/**
- * Close 3 gaps in mrmime's default mime table that break browser inline
- * rendering for common user-drop formats. Without these, sirv serves the
- * bytes with an empty `Content-Type` header — combined with our
- * `Content-Disposition: inline` policy, Chromium renders the binary
- * bytes as garbled text rather than dispatching to its built-in video /
- * audio viewer.
- *
- * The fix is documented idiomatic usage per mrmime's README: "Exposes
- * the `mimes` dictionary for easy additions or overrides." Three
- * extensions need coverage:
- *
- *   - `.m4v` → `video/mp4`. Apple's MP4 variant is structurally MP4;
- *     `video/mp4` is standards-recommended (WordPress Trac #24993,
- *     Mozilla bug 875573). mrmime deliberately filters `x-` types, so
- *     the historical `video/x-m4v` is not in its default table.
- *   - `.mkv` → `video/x-matroska`. De-facto type (no IANA registration
- *     exists); Chromium recognizes it. Only non-`x-` alternative would
- *     be `application/octet-stream` which blocks inline rendering.
- *   - `.flac` → `audio/flac`. IANA-registered (RFC 9639);
- *     `audio/x-flac` is the deprecated legacy alias.
- *
- * Security posture: setting extension-derived Content-Type on
- * video/audio with `X-Content-Type-Options: nosniff` is NOT a stored-
- * XSS vector. Browsers refuse to treat `video/*` / `audio/*` as
- * scriptable regardless of file contents under nosniff (MDN
- * X-Content-Type-Options, Beyond XSS ch5). The SVG polyglot class
- * (`image/svg+xml`) is the real risk and is separately covered by
- * `EXECUTABLE_BLOCKLIST_EXTENSIONS` barring `.svg` from the
- * `openAssetSafely` click path.
- *
- * Module-load mutation runs once per Node process. Multiple dev-server
- * invocations in the same process (Vite restart) re-assign idempotently.
- *
- * If a future inline-renderable extension lands without a mrmime entry,
- * the narrow-integration test for `.m4v` will flag it (currently pinned
- * to `video/mp4`). Extend this map in lockstep.
- */
-Object.assign(mimes, {
-  m4v: 'video/mp4',
-  mkv: 'video/x-matroska',
-  flac: 'audio/flac',
-  // TOML has an IANA-registered media type (`application/toml`) but
-  // `mrmime` doesn't ship it by default — the table is the
-  // narrow `mime-db` subset, not the full registry. Without this
-  // entry, sirv serves `.toml` with an empty `Content-Type` and our
-  // `/api/asset` handler 415s (the `assetContentTypeForPath` lookup
-  // returns null). The `TextViewer`'s own fetch path
-  // (`/api/asset-text`) forces `text/plain` and is therefore
-  // unaffected by this patch — what relies on it is the fallback
-  // pane's "Open file" link + any direct deeplink to a `.toml`
-  // asset URL. JSON is already covered by mrmime's defaults.
-  toml: 'application/toml',
-  // `.lock` has no IANA registration and no mrmime default. Same
-  // mrmime-gap pattern as `.toml` above; without this, the
-  // `INLINE_RENDERABLE_EXTENSIONS` widening for `lock` would 415 on
-  // direct `/api/asset?path=foo.lock` GETs. `text/plain` matches
-  // what the `TextViewer` path (`/api/asset-text`) already forces,
-  // so the sidebar-click and deeplink surfaces agree on the wire
-  // shape. Lockfile contents vary across ecosystems (some JSON-
-  // shaped, some custom DSLs) but `text/plain` is the right floor.
-  lock: 'text/plain',
-  // Attachment-only types newly admitted to ASSET_EXTENSIONS that `mrmime`'s
-  // default table omits. Without an entry, `assetContentTypeForPath` returns
-  // null and `handleAsset` 415s them (and sirv streams them with an empty
-  // Content-Type). All download-only — none are inline-renderable.
-  '7z': 'application/x-7z-compressed',
-  tar: 'application/x-tar',
-  rar: 'application/vnd.rar',
-  xls: 'application/vnd.ms-excel',
-  ppt: 'application/vnd.ms-powerpoint',
-  odt: 'application/vnd.oasis.opendocument.text',
-  ods: 'application/vnd.oasis.opendocument.spreadsheet',
-  odp: 'application/vnd.oasis.opendocument.presentation',
-  pages: 'application/vnd.apple.pages',
-  numbers: 'application/vnd.apple.numbers',
-  key: 'application/vnd.apple.keynote',
-  mobi: 'application/x-mobipocket-ebook',
-});
-
-export function assetContentTypeForPath(path: string): string | null {
-  return mimes[extname(path).slice(1).toLowerCase()] ?? null;
-}
+import { SANDBOXED_HTML_EXTENSIONS } from '@inkeep/open-knowledge-core';
+import { classifyAssetDisposition } from './services/asset-classification.ts';
 
 /**
  * Minimal contract the middleware depends on. The real
@@ -225,30 +141,16 @@ export function createAssetServeMiddleware(
     if (!rel || contentFilter.isPathIgnored(rel) || (!isDocExt && !assetExtensions.has(ext)))
       return next();
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    // `html`/`htm` are admitted to ASSET_EXTENSIONS (so author-created HTML
-    // resolves + serves) but deliberately kept OUT of INLINE_RENDERABLE_EXTENSIONS.
-    // They render inline ONLY inside the sandbox CSP below — never as a plain
-    // same-origin document.
-    const isSandboxedHtml = SANDBOXED_HTML_EXTENSIONS.has(ext);
+    // Shared with `/api/asset`: one extension → disposition/CSP policy for
+    // both serve surfaces (rationale lives with the classifier).
+    const classified = classifyAssetDisposition(ext, inlineExtensions);
     if (!isDocExt) {
-      if (inlineExtensions.has(ext) || isSandboxedHtml) {
-        res.setHeader('Content-Disposition', 'inline');
-      } else {
-        res.setHeader('Content-Disposition', 'attachment');
-      }
+      res.setHeader('Content-Disposition', classified.disposition);
     }
-    // SVG served inline executes embedded `<script>` on a top-level navigation
-    // — `nosniff` doesn't help (`image/svg+xml` is CORB-excluded). Match the CSP
-    // sandbox `handleAsset` (api-extension.ts) applies so `GET /<rel>.svg` can't
-    // run scripts; the editor's `<img src>` render path is unaffected (embeds
-    // don't execute SVG).
-    if (ext === 'svg') {
-      res.setHeader(
-        'Content-Security-Policy',
-        "sandbox; default-src 'none'; style-src 'unsafe-inline'",
-      );
-    } else if (isSandboxedHtml) {
-      res.setHeader('Content-Security-Policy', SANDBOXED_HTML_CSP);
+    if (classified.csp !== null) {
+      res.setHeader('Content-Security-Policy', classified.csp);
+    }
+    if (classified.sandboxedHtml) {
       // Match `/api/asset`'s no-store posture so an edited/removed sandboxed
       // document doesn't linger in the browser cache.
       res.setHeader('Cache-Control', 'no-store');

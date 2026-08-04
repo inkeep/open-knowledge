@@ -49,7 +49,10 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await rm(tmpDir, { recursive: true, force: true });
+  // A just-destroyed server can still flush telemetry/log files into the
+  // tmpdir for a beat, and rm's readdir-then-unlink walk races it into
+  // ENOTEMPTY under parallel-suite load. Retries absorb the tail writes.
+  await rm(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 describe('bootServer — MissingOkConfigError pre-listen check', () => {
