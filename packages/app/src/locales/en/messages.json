@@ -815,6 +815,11 @@
     "CmeH9S": ["Add property to ", ["keyName"]],
     "CnOGgs": ["Sync mode"],
     "CoHvYd": ["Moved ", ["0"], " to position ", ["1"], " of ", ["2"]],
+    "CtoghX": [
+      "You already have your own skill named \"",
+      ["0"],
+      "\" — the pack's version will not be installed, and yours won't be touched. Rename yours to install the pack's version."
+    ],
     "Cu6GXQ": ["The source folder itself does not move."],
     "CvsD6Y": ["via ", ["viaTags"]],
     "CwOXMT": ["Value for ", ["keyName"]],
@@ -1080,6 +1085,11 @@
     "Gfr4fu": ["Server can't open documents"],
     "GhjUB_": ["Reconnected"],
     "GidGkh": ["Update from source"],
+    "GifIjR": [
+      "Skill \"",
+      ["conflictName"],
+      "\" was not installed — you already have your own skill with that name. Rename yours if you want the pack's version."
+    ],
     "GkYV_4": ["Renamed ", ["0"], " → ", ["1"]],
     "Gp_twO": ["Local path"],
     "GrBgX_": [
@@ -1427,6 +1437,13 @@
     "MqsbfN": ["Turn on external link previews?"],
     "MrwYIK": ["Toggle a source comment through CodeMirror."],
     "MuxcRB": [["0"], " lets ", ["1"], " act without asking"],
+    "Mv2lM4": [
+      "Skill \"",
+      ["conflictName"],
+      "\" was not installed for ",
+      ["conflictHosts"],
+      " — you already have your own skill with that name there. Rename yours if you want the pack's version."
+    ],
     "My0wYT": [
       "When you hover an external link, its URL is sent to the destination site to fetch the page's preview metadata — one request per previewed link."
     ],

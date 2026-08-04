@@ -353,9 +353,12 @@ export { PRODUCT_NAME } from './constants/product.ts';
 export { DEFAULT_SERVER_HOST } from './constants/server.ts';
 export {
   extractSkillRefs,
+  isOpenKnowledgeSkillsSource,
   isSkillRefCandidate,
   OPENKNOWLEDGE_SKILLS_REPO,
   PACK_SKILL_PREFIX,
+  projectSkillDecisionKey,
+  RENAMED_PACK_SKILLS,
   rewriteSkillRefs,
   SKILL_REF_RE,
 } from './constants/skills.ts';

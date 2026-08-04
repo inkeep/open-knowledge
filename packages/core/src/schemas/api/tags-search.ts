@@ -1571,6 +1571,10 @@ export const SkillsImportBulkRequestSchema = z
     install: z.boolean().optional().meta({
       description: 'Pass false to import WITHOUT the default-editor auto-projection. Default true.',
     }),
+    marketplace: z.boolean().optional().meta({
+      description:
+        'The source came from a skills.sh listing the user chose (a marketplace plugin bundle), so the import is reported to skills.sh as one batched install event and counts toward that listing. Off by default: a hand-typed repo must not be announced to skills.sh. Honors the `telemetry.skillInstallReports.enabled` setting and DO_NOT_TRACK.',
+    }),
     ...agentIdentityFields,
     summary: summaryField,
   })

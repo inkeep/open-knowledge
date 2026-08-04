@@ -1,11 +1,11 @@
 ---
-name: open-knowledge-pack-codebase-wiki
+name: codebase-wiki
 description: "How to work in a Codebase Wiki project (the `codebase-wiki` starter pack): an agent-authored, source-grounded wiki of the surrounding codebase. Read when the project has a `wiki/` knowledge base with `architecture/`, `modules/`, `flows/`, `concepts/`, and `guides/` sections plus `wiki/OVERVIEW.md`, or when asked to generate or refresh a wiki of this codebase. Carries the per-folder rules and freshness + log discipline, summarizes the audience/depth knobs and source-reference convention, and bundles the full generate/refresh procedure in `references/`. Complements the platform `open-knowledge` skill; does not replace it."
 compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack codebase-wiki`."
 metadata:
   pack: "codebase-wiki"
   author: "Inkeep"
-  repository: "https://github.com/inkeep/open-knowledge"
+  repository: "https://github.com/inkeep/open-knowledge-skills"
 ---
 # Codebase Wiki pack — how to work here
 

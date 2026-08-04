@@ -36,10 +36,14 @@ export function skillNameSetsByScope(
 
 /**
  * Browse-surface display name for a skill: drops the shared
- * `open-knowledge-pack-` prefix so e.g. `open-knowledge-pack-software-lifecycle`
- * (the longest shipped default) reads as `software-lifecycle` and fits a normal
- * sidebar width. DISPLAY-ONLY — the full name stays the identity (rename field,
- * doc path, tooltips); user-authored skills (no prefix) are unchanged.
+ * `open-knowledge-pack-` prefix so a pre-rename install of e.g.
+ * `open-knowledge-pack-software-lifecycle` reads as `software-lifecycle` and
+ * fits a normal sidebar width. Load-bearing precisely BECAUSE existing installs
+ * are never renamed: those long names live indefinitely, and stripping
+ * makes them read the same as the short name a fresh install gets. DISPLAY-ONLY
+ * — the full name stays the identity (rename field, doc path, tooltips);
+ * user-authored skills and post-rename installs have no prefix and are
+ * unchanged.
  */
 export function skillDisplayName(name: string): string {
   return name.startsWith(PACK_SKILL_PREFIX) ? name.slice(PACK_SKILL_PREFIX.length) : name;

@@ -1,5 +1,5 @@
 /**
- * Install a starter pack's project-local skills (`open-knowledge-pack-<packId>`,
+ * Install a starter pack's project-local skills (named by each SKILL.md's frontmatter,
  * plus `…-<packId>-<member>` for a pack decomposed into scenario skills).
  *
  * Two parts, so a pack skill behaves like any other authored project skill
@@ -23,14 +23,17 @@ import { dirname, join } from 'node:path';
 import {
   EDITOR_PROJECT_SKILL_ROOT,
   type EditorId,
+  isOpenKnowledgeSkillsSource,
   OPENKNOWLEDGE_SKILLS_REPO,
   PROJECT_SKILL_EDITOR_IDS,
+  RENAMED_PACK_SKILLS,
 } from '@inkeep/open-knowledge-core';
 import {
   emptySkillsLock,
   parseSkillDir,
   parseSkillsLock,
   SKILLS_LOCK_REL,
+  type SkillsLock,
   upsertLockEntry,
 } from '@inkeep/open-knowledge-core/skills-catalog';
 import { tracedCpSync, tracedMkdirSync, tracedRmSync, tracedWriteFileSync } from '../fs-traced.ts';
@@ -40,7 +43,9 @@ import { BUNDLE_SKILL_NAME } from '../skill-bundles.ts';
 import { resolveSkillInstallReportSettings } from '../skill-install-report-config.ts';
 import { listPackSkillSources, type PackSkillSource } from '../skill-pack-sources.ts';
 import { hostSkillsRootEscapes, projectInPlaceSkill } from '../skill-projection.ts';
+import { readSkillsLockFile } from '../skills-lock-store.ts';
 import { reportSkillInstall } from '../skills-sh-install-report.ts';
+import type { PackSkillConflict } from './types.ts';
 
 /**
  * Display labels for the editors that keep project-local skills (returned in the
@@ -112,9 +117,69 @@ function recordPackSkillProvenance(projectDir: string, name: string, skillDir: s
   }
 }
 
-export async function installPackSkill(projectDir: string, packId: string): Promise<string[]> {
+/** New-name → old-name inverse of the rename map (legacy-install lookup). */
+export const OLD_PACK_SKILL_NAME: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(RENAMED_PACK_SKILLS).map(([oldName, newName]) => [newName, oldName]),
+);
+
+export interface PackSkillInstallResult {
+  /** Editor labels the pack's skills were installed/refreshed for. */
+  editors: string[];
+  /** Skills skipped because a user-owned same-named skill holds the name. */
+  conflicts: PackSkillConflict[];
+}
+
+/**
+ * Classify a skill that is already present under the pack skill's name:
+ * - `ours` — the lock records it as installed from the OK skills repo (a
+ *   user-edited fork of ours still counts: forks are the intended model);
+ * - `ours-retrofit` — no lock entry, but the bundle self-identifies as this
+ *   pack's (`metadata.pack`), i.e. seeded before provenance recording;
+ * - `foreign` — a user-owned skill that happens to share the name (a foreign
+ *   import source, or no entry and no pack marker). Never clobbered; surfaced
+ *   as a name conflict instead of reading as "already seeded".
+ * Fails toward `foreign`: the false outcome is a spurious warning, never a
+ * clobbered user skill.
+ */
+export function classifyPresentPackSkill(
+  packId: string,
+  name: string,
+  presentDir: string | null,
+  lock: SkillsLock,
+): 'ours' | 'ours-retrofit' | 'foreign' {
+  const entry = lock.skills[name];
+  if (entry) return isOpenKnowledgeSkillsSource(entry.source) ? 'ours' : 'foreign';
+  if (presentDir) {
+    try {
+      const md = readFileSync(join(presentDir, 'SKILL.md'), 'utf-8');
+      if (packIdFromSkillMd(md) === packId) return 'ours-retrofit';
+    } catch {
+      // unreadable — undecidable, fall through to foreign
+    }
+  }
+  return 'foreign';
+}
+
+/**
+ * `metadata.pack` from a SKILL.md's FRONTMATTER. Scoped to the frontmatter
+ * block and to an indented (nested) key on purpose: matching the whole file
+ * let any skill that merely documents a pack — a YAML snippet, a fenced
+ * example — pass as OK's own bundle, and the retrofit verdict is what writes
+ * `inkeep/open-knowledge-skills` provenance onto it, which is what a later
+ * "Update from source" reimports over.
+ */
+function packIdFromSkillMd(md: string): string | null {
+  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/.exec(md)?.[1];
+  if (frontmatter === undefined) return null;
+  return /^[ \t]+pack:[ \t]*"?([a-z0-9-]+)"?[ \t]*$/m.exec(frontmatter)?.[1] ?? null;
+}
+
+export async function installPackSkill(
+  projectDir: string,
+  packId: string,
+): Promise<PackSkillInstallResult> {
   const sources = resolvePackSkillSources(packId);
-  if (sources.length === 0) return [];
+  if (sources.length === 0) return { editors: [], conflicts: [] };
 
   // The editors ALREADY set up for this project — the platform `open-knowledge`
   // skill is present. Computed once; every pack skill projects into the same set.
@@ -127,9 +192,34 @@ export async function installPackSkill(projectDir: string, packId: string): Prom
   // Resolved once per seed, not per skill — a pack can ship a dozen.
   const reportSettings = resolveSkillInstallReportSettings();
   const installed = new Set<string>();
+
   // The scan (not any marker) is truth under the in-place model — one scan
   // covers the absent-check for every pack skill.
-  const existingNames = new Set(scanInPlaceSkills(projectDir).map((sk) => sk.name));
+  const scan = scanInPlaceSkills(projectDir);
+  const existingNames = new Set(scan.map((sk) => sk.name));
+  // An install under the skill's OLD name is still this pack's skill. We do not
+  // rename it: these are project-level skills, so the directory is normally
+  // committed, and silently renaming something someone is already using turns up
+  // as an unexplained diff for them and for everyone who pulls. It keeps working
+  // as-is, updates resolve through the rename alias in the reimport selector,
+  // and it counts as present here so seeding never authors a second copy of the
+  // same skill beside it.
+  // Keyed by the shipped (new) name, valued with the OLD name this project
+  // actually holds — everything below addresses such a skill by the old name,
+  // because that is the name on disk, in the lock, and in the editor dirs.
+  const legacyNamed = new Map(
+    sources
+      .map(({ name }) => [name, OLD_PACK_SKILL_NAME[name]] as const)
+      .filter(
+        ([, oldName]) =>
+          oldName !== undefined &&
+          (existingNames.has(oldName) ||
+            existsSync(join(projectDir, '.ok', 'skills', oldName, 'SKILL.md'))),
+      ) as Iterable<readonly [string, string]>,
+  );
+  const scanDirByName = new Map(scan.map((sk) => [sk.name, join(projectDir, sk.dir)]));
+  const lock = readSkillsLockFile(join(projectDir, ...SKILLS_LOCK_REL));
+  const conflicts: PackSkillConflict[] = [];
   const homeRel = resolveDefaultSkillHomeRel(projectDir, 'project');
   // The default home can be an editor dir that SYMLINKS OUT of the project
   // (the escape class the projection guard refuses) — authoring through it
@@ -140,14 +230,22 @@ export async function installPackSkill(projectDir: string, packId: string): Prom
       { packId, homeRel },
       'default skill home escapes the project (symlinked out) — pack skills not installed',
     );
-    return [];
+    return { editors: [], conflicts: [] };
   }
   // The editor whose root HOLDS the source loads it directly — it counts as
   // installed even though fan-out (rightly) skips the canonical's own root.
   const homeHost = (Object.entries(EDITOR_PROJECT_SKILL_ROOT) as [EditorId, string | null][]).find(
     ([, root]) => root === homeRel,
   )?.[0];
-  for (const { name, sourceDir, excludeDirs } of sources) {
+  for (const { name: shippedName, sourceDir, excludePaths } of sources) {
+    // The name this PROJECT uses for the skill. An install predating the rename
+    // keeps its old name forever, and it is the old name that is on disk,
+    // keyed in the lock, and projected into the editor dirs — so address it that
+    // way for presence, provenance, classification, conflicts and fan-out alike.
+    // Addressing it by the shipped name instead would miss its lock entry (and
+    // so misread it as a stranger's skill) and would skip fanning it into an
+    // editor set up after the install.
+    const name = legacyNamed.get(shippedName) ?? shippedName;
     // (1) Author the SOURCE in place at the project's default skill home —
     // the same landing every create/import uses (store retirement; the old
     // `.ok/skills` authoring rode the boot migration forever). Authored ONLY
@@ -160,6 +258,28 @@ export async function installPackSkill(projectDir: string, packId: string): Prom
       existsSync(join(skillDir, 'SKILL.md')) ||
       existsSync(join(legacyStoreDir, 'SKILL.md'));
     const sourceHome = existsSync(join(legacyStoreDir, 'SKILL.md')) ? legacyStoreDir : skillDir;
+    if (alreadyPresent) {
+      const presentDir =
+        scanDirByName.get(name) ??
+        (existsSync(join(skillDir, 'SKILL.md'))
+          ? skillDir
+          : existsSync(join(legacyStoreDir, 'SKILL.md'))
+            ? legacyStoreDir
+            : null);
+      const classification = classifyPresentPackSkill(packId, name, presentDir, lock);
+      if (classification === 'foreign') {
+        // The user's own skill holds this name. Installing would clobber it and
+        // fanning out would project THEIR skill as if it were the pack's —
+        // do neither; report the collision instead of "already seeded".
+        conflicts.push({ name });
+        continue;
+      }
+      if (classification === 'ours-retrofit' && presentDir) {
+        // Ours from a pre-provenance seed: write the lock entry now so the
+        // Update path works (the prefix-gated retrofit is dead for new names).
+        recordPackSkillProvenance(projectDir, name, presentDir);
+      }
+    }
     if (!alreadyPresent) {
       try {
         tracedRmSync(skillDir, { recursive: true, force: true });
@@ -168,7 +288,7 @@ export async function installPackSkill(projectDir: string, packId: string): Prom
         // installs as its own top-level skill, so filter them out of the root copy.
         tracedCpSync(sourceDir, skillDir, {
           recursive: true,
-          filter: (src) => !excludeDirs.some((dir) => src === join(sourceDir, dir)),
+          filter: (src) => !excludePaths.some((p) => src === join(sourceDir, p)),
         });
       } catch (err) {
         // A real disk failure (EACCES / ENOSPC / I/O) — NOT the benign
@@ -187,8 +307,13 @@ export async function installPackSkill(projectDir: string, packId: string): Prom
       // is nothing to fetch from the marketplace and the event is the only way
       // the listing reflects them. Inside the `!alreadyPresent` branch AND
       // deduped per machine by the reporter, so re-running seed reports nothing.
+      // Scoped to the project: a starter pack seeded into a SECOND project is a
+      // second install of that skill — it lands in that project's own editor
+      // dirs — and must count. Machine-wide keying silently dropped every seed
+      // after the first, which is not what "installs" means for a pack.
+      // Re-seeding the same project still contributes nothing.
       void reportSkillInstall(
-        { source: OPENKNOWLEDGE_SKILLS_REPO, skills: [name] },
+        { source: OPENKNOWLEDGE_SKILLS_REPO, skills: [name], scope: projectDir },
         { home: reportSettings.home, enabled: reportSettings.enabled },
       );
     }
@@ -213,10 +338,18 @@ export async function installPackSkill(projectDir: string, packId: string): Prom
     for (const id of fanned.hosts) {
       installed.add(PROJECT_SKILL_EDITOR_LABELS[id as EditorId] ?? id);
     }
+    if (fanned.conflicted.length > 0) {
+      // A host slot holds a DIFFERENT same-name dir — fan-out (rightly) left
+      // it alone; surface it instead of discarding the signal.
+      conflicts.push({
+        name,
+        hosts: fanned.conflicted.map((id) => PROJECT_SKILL_EDITOR_LABELS[id as EditorId] ?? id),
+      });
+    }
     if (homeHost !== undefined && setUpHosts.includes(homeHost)) {
       installed.add(PROJECT_SKILL_EDITOR_LABELS[homeHost] ?? homeHost);
     }
   }
 
-  return [...installed];
+  return { editors: [...installed], conflicts };
 }

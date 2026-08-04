@@ -10,40 +10,34 @@ import { enumeratePackSkills } from './skill-pack-sources.ts';
 const PACKS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'skills', 'packs');
 
 describe('enumeratePackSkills', () => {
-  test('a flat pack ships exactly one skill, named for the pack', () => {
-    const skills = enumeratePackSkills('plain-notes', join(PACKS_DIR, 'plain-notes'));
-    expect(skills.map((s) => s.name)).toEqual(['open-knowledge-pack-plain-notes']);
-    expect(skills[0]?.excludeDirs).toEqual([]);
+  test('a flat pack ships exactly one skill, named by its frontmatter', () => {
+    const skills = enumeratePackSkills(join(PACKS_DIR, 'plain-notes'));
+    expect(skills.map((s) => s.name)).toEqual(['note-taking']);
+    expect(skills[0]?.excludePaths).toEqual(['README.md']);
   });
 
   test('a decomposed pack ships its root skill first, then one skill per member dir', () => {
-    const skills = enumeratePackSkills('software-lifecycle', join(PACKS_DIR, 'software-lifecycle'));
+    const skills = enumeratePackSkills(join(PACKS_DIR, 'software-lifecycle'));
     expect(skills.map((s) => s.name)).toEqual([
-      'open-knowledge-pack-software-lifecycle',
-      'open-knowledge-pack-software-lifecycle-frame-a-proposal',
-      'open-knowledge-pack-software-lifecycle-record-a-decision',
-      'open-knowledge-pack-software-lifecycle-review-a-design',
-      'open-knowledge-pack-software-lifecycle-write-a-postmortem',
-      'open-knowledge-pack-software-lifecycle-write-a-spec',
+      'software-lifecycle',
+      'frame-a-proposal',
+      'record-a-decision',
+      'review-a-design',
+      'write-a-postmortem',
+      'write-a-spec',
     ]);
   });
 
   test('the root skill excludes its member dirs; members exclude nothing', () => {
-    const [root, ...members] = enumeratePackSkills(
-      'knowledge-base',
-      join(PACKS_DIR, 'knowledge-base'),
-    );
-    expect(root?.excludeDirs).toEqual(['consolidate', 'research']);
-    expect(members.map((m) => m.excludeDirs)).toEqual([[], []]);
+    const [root, ...members] = enumeratePackSkills(join(PACKS_DIR, 'knowledge-base'));
+    expect(root?.excludePaths).toEqual(['consolidate', 'research', 'README.md']);
+    expect(members.map((m) => m.excludePaths)).toEqual([[], []]);
     // `references/` holds no SKILL.md, so it stays with the skill that owns it
     // rather than being mistaken for a member.
-    expect(members.map((m) => m.name)).toEqual([
-      'open-knowledge-pack-knowledge-base-consolidate',
-      'open-knowledge-pack-knowledge-base-research',
-    ]);
+    expect(members.map((m) => m.name)).toEqual(['consolidate-notes', 'research-with-sources']);
   });
 
   test('a directory with no SKILL.md anywhere ships no skill', () => {
-    expect(enumeratePackSkills('nope', join(PACKS_DIR, 'does-not-exist'))).toEqual([]);
+    expect(enumeratePackSkills(join(PACKS_DIR, 'does-not-exist'))).toEqual([]);
   });
 });

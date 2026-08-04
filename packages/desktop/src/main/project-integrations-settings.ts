@@ -110,6 +110,18 @@ export interface ProjectIntegrationsCliSurface {
     id: McpWiringEditorId,
     projectDir: string,
   ): { action: 'removed' | 'not-present' | 'skipped-unsupported' | 'failed'; error?: string };
+  /**
+   * Persist the user's choice for this project's skill so the project-open
+   * reclaim honours it. Without this an OFF is undone on the next open, because
+   * `createIfWired` recreates the skill for every wired host that lacks one.
+   */
+  recordProjectSkillDecision?(projectDir: string, enabled: boolean): void;
+  /**
+   * Count a genuine install on skills.sh — switching the skill ON for a project
+   * installs it into that project's editor dirs. Scoped to the project, so a
+   * toggle off-and-on again counts once.
+   */
+  reportProjectSkillInstalled?(projectDir: string): void;
 }
 
 interface ProjectIntegrationsLogger {
@@ -312,6 +324,10 @@ export function registerProjectIntegrationsSettings(
         );
       }
     }
+    // Record the choice either way, so the project-open reclaim stops
+    // resurrecting a skill the user switched off.
+    cli.recordProjectSkillDecision?.(projectDir, enabled);
+    if (enabled && failures.length === 0) cli.reportProjectSkillInstalled?.(projectDir);
     if (failures.length > 0) {
       return {
         ok: false,

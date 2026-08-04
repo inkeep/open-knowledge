@@ -364,6 +364,10 @@ export async function importSkillsBulk(input: {
   scope: SkillScope;
   /** false = import only, no default-editor auto-projection. */
   install?: boolean;
+  /** The source is a skills.sh listing the user chose (a marketplace plugin
+   *  bundle), so the import is reported to skills.sh as one batched install
+   *  event. Never set for a hand-entered source. */
+  marketplace?: boolean;
 }): Promise<WriteResult<SkillsImportBulkSuccess>> {
   try {
     const res = await fetch('/api/skills/import-bulk', {

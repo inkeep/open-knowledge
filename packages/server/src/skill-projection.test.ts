@@ -76,12 +76,17 @@ describe('validateSkillForInstall', () => {
     ).toBe(true);
   });
 
-  test('allows open-knowledge-pack-* (shipped pack skills) to reinstall', () => {
-    const name = 'open-knowledge-pack-knowledge-base';
-    const dir = makeSkill(name, '# x', `name: ${name}\ndescription: d`);
-    // Pack skills sit under the reserved prefix but are OK's own shipped content,
-    // so a user-triggered (re)install must not be blocked by the reserved guard.
-    expect(validateSkillForInstall(dir, name).ok).toBe(true);
+  test('the exact LEGACY pack names stay installable; unknown pack-prefixed names stay rejected', () => {
+    // Existing installs are never renamed, so every pre-rename install
+    // keeps its reserved-prefix name indefinitely — add-to-host/repair for
+    // those must keep working.
+    const legacy = 'open-knowledge-pack-knowledge-base';
+    const legacyDir = makeSkill(legacy, '# x', `name: ${legacy}\ndescription: d`);
+    expect(validateSkillForInstall(legacyDir, legacy).ok).toBe(true);
+    // Anything else under the prefix is still reserved.
+    const unknown = 'open-knowledge-pack-something-else';
+    const unknownDir = makeSkill(unknown, '# x', `name: ${unknown}\ndescription: d`);
+    expect(validateSkillForInstall(unknownDir, unknown).ok).toBe(false);
   });
 
   test('rejects name != frontmatter.name and XML tags + missing frontmatter', () => {

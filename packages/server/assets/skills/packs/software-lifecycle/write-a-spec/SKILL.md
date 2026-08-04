@@ -1,11 +1,11 @@
 ---
-name: open-knowledge-pack-software-lifecycle-write-a-spec
+name: write-a-spec
 description: "Scope a feature end to end and write an implementation spec under specs/ from an accepted proposal — current-system mapping, goals/non-goals, a Decision Log for one-way-door choices, a live Open Questions backlog, and a real migration + test plan. Read when asked to write a spec, scope this feature, turn this proposal into a spec, plan the implementation, or break this into tasks. Do NOT fire on frame a proposal or write the PRD (sibling frame-a-proposal — a PRD frames a change before it is accepted; this skill starts once one is), record a decision or write the ADR (record-a-decision), write a postmortem (write-a-postmortem), or review this design (review-a-design) — those are separate skills. Complements the platform open-knowledge skill; does not replace it."
 compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack software-lifecycle`."
 metadata:
   pack: "software-lifecycle"
   author: "Inkeep"
-  repository: "https://github.com/inkeep/open-knowledge"
+  repository: "https://github.com/inkeep/open-knowledge-skills"
 ---
 # Write a spec — scope a feature and commit an implementation spec
 

@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from 'nod
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { inspect } from 'node:util';
+import { OPENKNOWLEDGE_SKILLS_REPO } from '@inkeep/open-knowledge-core';
 import { atomicWriteFileSync, withFileLockSync } from '@inkeep/open-knowledge-core/server';
 import type {
   BundleId,
@@ -34,6 +35,8 @@ import {
   installUserSkill,
   MCP_SERVER_NAME,
   ProjectGitInitError,
+  reportSkillInstall,
+  resolveSkillInstallReportSettings,
   USER_GLOBAL_BUNDLE_IDS,
   untrackTrackedProjectSkillProjection,
   writeBundleDecision,
@@ -1787,6 +1790,36 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
     if (!skillPath || writtenSkillPaths.has(skillPath)) continue;
     writtenSkillPaths.add(skillPath);
     projectSkillResults.push(writeProjectSkill(target, projectRoot, { home: options.home }));
+  }
+
+  // Count the project skill on skills.sh. Initializing a project installs the
+  // `open-knowledge` skill into that project's editor dirs — a real install of a
+  // skill we publish, and until now the only install path that reported nothing.
+  // The user-global bundles report once per machine, so without this a user's
+  // second, tenth and hundredth project were invisible.
+  //
+  // ONE event per project, not per editor: the same skill in three editor dirs
+  // is one install. Scoped to the project so re-running `ok init` here counts
+  // nothing while a genuinely new project counts once. Fire-and-forget for the
+  // same reason as the user-global report — never make init wait on a third
+  // party.
+  // Only a SUCCESSFUL write is an install. `action` has five variants and three
+  // of them are not one: the two skips, and `failed` — counting a failed write
+  // would report an install of a skill that is not on disk.
+  const installedForEditors = projectSkillResults
+    .filter((r) => r.action === 'written' || r.action === 'overwritten')
+    .map((r) => r.editorId);
+  if (installedForEditors.length > 0) {
+    const reportHome = options.home ?? homedir();
+    void reportSkillInstall(
+      {
+        source: OPENKNOWLEDGE_SKILLS_REPO,
+        skills: [BUNDLE_SKILL_NAME.project],
+        agents: installedForEditors,
+        scope: projectRoot,
+      },
+      { home: reportHome, enabled: resolveSkillInstallReportSettings(reportHome).enabled },
+    );
   }
 
   // Editors skipped for project-scope because they have no project-local artifact.

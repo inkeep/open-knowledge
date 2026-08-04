@@ -104,9 +104,18 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
   // and install it, so this is not a no-op. SeedDialog folds the same two signals.
   if (plan.created.length === 0 && !plan.packSkills?.some((s) => s.pending)) {
     const packName = STARTER_PACKS[packId].name;
+    // A conflicted skill is present-but-not-ours: "already seeded" would
+    // misread the user's own skill as the pack's, so say what's actually true.
+    const conflictNote = (plan.packSkills ?? [])
+      .filter((s) => s.conflict)
+      .map(
+        (s) =>
+          `\n${warning('!')} Skill "${s.name}" is your own — the pack's version is not installed. Rename yours to install the pack's version.`,
+      )
+      .join('');
     return {
       status: 'no-op',
-      message: `${success(`Your ${packName} pack is already seeded.`)}\n${dim('Nothing to do.')}`,
+      message: `${success(`Your ${packName} pack is already seeded.`)}${conflictNote}\n${dim('Nothing to do.')}`,
       plan,
       exitCode: 0,
     };
@@ -168,9 +177,21 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
       ? `\n${dim(`Installed the ${packName} skills for: ${applyResult.packSkillsInstalled.join(', ')}`)}`
       : '';
 
+  // Name collisions are not errors — the seed succeeded and the user's own
+  // skill was left untouched — but silence would read as "pack installed".
+  // `hosts` means the skill DID install — a same-named skill of the user's only
+  // displaced it in those editors, so the flat "was not installed" is false.
+  const conflictLines = (applyResult.packSkillConflicts ?? [])
+    .map((c) =>
+      c.hosts === undefined || c.hosts.length === 0
+        ? `\n${warning('!')} Skill "${c.name}" was not installed — you already have your own skill with that name. Rename yours if you want the pack's version.`
+        : `\n${warning('!')} Skill "${c.name}" was not installed for ${c.hosts.join(', ')} — you already have your own skill with that name there. Rename yours if you want the pack's version.`,
+    )
+    .join('');
+
   return {
     status: 'applied',
-    message: `${success(`✓ Seeded ${packName}`)} ${dim(`(${applyResult.applied} entries, ${applyResult.durationMs}ms)`)}${skillLine}`,
+    message: `${success(`✓ Seeded ${packName}`)} ${dim(`(${applyResult.applied} entries, ${applyResult.durationMs}ms)`)}${skillLine}${conflictLines}`,
     plan,
     exitCode: 0,
   };
@@ -223,6 +244,21 @@ function formatPlanBody(plan: ScaffoldPlan, cwd: string): string {
     lines.push(warning('Warnings:'));
     for (const w of plan.warnings) {
       lines.push(`  ${warning('!')} ${w}`);
+    }
+  }
+
+  // Name collisions belong in the PREVIEW, not only in the applied output: this
+  // body renders both `--dry-run` and the confirm prompt, and a user deciding
+  // whether to seed needs to know a pack skill will be held back before the
+  // write, not after it.
+  const conflicts = (plan.packSkills ?? []).filter((s) => s.conflict);
+  if (conflicts.length > 0) {
+    if (lines.length > 0) lines.push('');
+    lines.push(warning('Name collisions:'));
+    for (const s of conflicts) {
+      lines.push(
+        `  ${warning('!')} Skill "${s.name}" is your own — the pack's version will not be installed. Rename yours to install the pack's version.`,
+      );
     }
   }
 

@@ -4,7 +4,7 @@ description: "Use when the user wants to create, author, write, or design a new 
 compatibility: "OpenKnowledge project recommended (uses the `write` / `edit` / `install` MCP verbs). Authoring + validation are pure file ops; live preview + eval want a running server (`ok start`)."
 metadata:
   author: "Inkeep"
-  repository: "https://github.com/inkeep/open-knowledge"
+  repository: "https://github.com/inkeep/open-knowledge-skills"
 ---
 
 # Writing an OpenKnowledge skill

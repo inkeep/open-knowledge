@@ -122,6 +122,7 @@ function makeDeps(opts: {
   const events: CapturedEvent[] = [];
   const decisionWrites: Array<{ bundleName: string; enabled: boolean }> = [];
   const removals: string[] = [];
+  const reports: Array<{ skills: string[]; scope?: string }> = [];
   const decisionFor = (bundleName: string): boolean | null => {
     const d = opts.bundleDecision;
     if (d === undefined) return true;
@@ -158,10 +159,14 @@ function makeDeps(opts: {
     removeBundleFromDisk: (bundleId) => {
       removals.push(bundleId);
     },
+    reportInstalled: (skillNames: readonly string[], scope?: string) => {
+      reports.push({ skills: [...skillNames], scope });
+    },
     stateWrites,
     events,
     decisionWrites,
     removals,
+    reports,
   };
 }
 
@@ -594,6 +599,39 @@ describe('reclaimUserSkillsOnLaunch — per-bundle opt-in gate', () => {
     expect(deps.removals).toEqual(['write-skill']);
     const installed = deps.events.filter((e) => e.outcome === 'installed').map((e) => e.bundle);
     expect(installed).toEqual(['discovery']);
+    // A DECLINED bundle must never be counted on skills.sh. It is torn off disk
+    // and never installed, so reporting it would claim an install the user
+    // explicitly refused. Only the enabled bundle that actually landed is sent.
+    expect(deps.reports).toEqual([{ skills: ['open-knowledge-discovery'], scope: undefined }]);
+  });
+
+  test('a launch that installs nothing new reports nothing', async () => {
+    // Steady state: the reclaim is seed-if-absent, so every bundle already on
+    // disk reads `skipped-present`. Reporting there would turn an install
+    // counter into a launch counter.
+    const home = makeHome();
+    for (const name of ['open-knowledge-discovery', 'open-knowledge-write-skill']) {
+      const dir = join(home, '.agents', 'skills', name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'SKILL.md'), 'preexisting');
+    }
+    const deps = {
+      ...makeDeps({ bundle: setupBundle(), version: '1.0.0' }),
+      userGlobalBundles: [
+        { id: 'discovery', name: 'open-knowledge-discovery' },
+        { id: 'write-skill', name: 'open-knowledge-write-skill' },
+      ],
+    };
+
+    await reclaimUserSkillsOnLaunch({
+      home,
+      isPackaged: true,
+      platform: 'darwin',
+      executablePath: EXE,
+      deps,
+    });
+
+    expect(deps.reports).toEqual([]);
   });
 });
 
@@ -611,6 +649,89 @@ describe('reclaimProjectSkillsOnProjectOpen', () => {
     });
     expect(r.status).toBe('skipped');
     if (r.status === 'skipped') expect(r.reason).toBe('appimage-ephemeral');
+  });
+
+  test('an explicit OFF in Settings is honoured — no resurrection on the next open', async () => {
+    // The toggle used to be a lie: switch the project skill off, reopen the
+    // project, and `createIfWired` put it back for every wired host.
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
+    cleanupPaths.push(projectDir);
+    mkdirSync(join(projectDir, '.claude'), { recursive: true });
+    writeFileSync(
+      join(projectDir, '.mcp.json'),
+      JSON.stringify({ mcpServers: { 'open-knowledge': { args: ['# ok-mcp-v2'] } } }),
+    );
+
+    const r = await reclaimProjectSkillsOnProjectOpen({
+      projectDir,
+      executablePath: EXE,
+      isPackaged: true,
+      platform: 'darwin',
+      createIfWired: true,
+      deps: {
+        resolveBundledSkillDir: () => setupBundle(),
+        readProjectSkillDecision: async () => false,
+      },
+    });
+
+    expect(r.status).toBe('skipped');
+    if (r.status === 'skipped') expect(r.reason).toBe('declined-by-user');
+    expect(existsSync(join(projectDir, '.claude', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
+      false,
+    );
+  });
+
+  test('creating the project skill counts one install, scoped to the project', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
+    cleanupPaths.push(projectDir);
+    mkdirSync(join(projectDir, '.claude'), { recursive: true });
+    writeFileSync(
+      join(projectDir, '.mcp.json'),
+      JSON.stringify({ mcpServers: { 'open-knowledge': { args: ['# ok-mcp-v2'] } } }),
+    );
+    const reports: Array<{ skills: string[]; scope?: string }> = [];
+
+    await reclaimProjectSkillsOnProjectOpen({
+      projectDir,
+      executablePath: EXE,
+      isPackaged: true,
+      platform: 'darwin',
+      createIfWired: true,
+      deps: {
+        resolveBundledSkillDir: () => setupBundle(),
+        reportInstalled: (skills, scope) => reports.push({ skills: [...skills], scope }),
+      },
+    });
+
+    expect(reports).toEqual([{ skills: ['open-knowledge'], scope: projectDir }]);
+  });
+
+  test('reopening a project that already has the skill counts nothing', async () => {
+    // The steady state. Counting here would make every project open an install.
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
+    cleanupPaths.push(projectDir);
+    const dest = join(projectDir, '.claude', 'skills', 'open-knowledge');
+    mkdirSync(dest, { recursive: true });
+    writeFileSync(join(dest, 'SKILL.md'), 'already here');
+    writeFileSync(
+      join(projectDir, '.mcp.json'),
+      JSON.stringify({ mcpServers: { 'open-knowledge': { args: ['# ok-mcp-v2'] } } }),
+    );
+    const reports: Array<{ skills: string[]; scope?: string }> = [];
+
+    await reclaimProjectSkillsOnProjectOpen({
+      projectDir,
+      executablePath: EXE,
+      isPackaged: true,
+      platform: 'darwin',
+      createIfWired: true,
+      deps: {
+        resolveBundledSkillDir: () => setupBundle(),
+        reportInstalled: (skills, scope) => reports.push({ skills: [...skills], scope }),
+      },
+    });
+
+    expect(reports).toEqual([]);
   });
 
   test('no SKILL.md on disk → no-token, no creation', async () => {

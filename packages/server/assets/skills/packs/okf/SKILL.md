@@ -1,5 +1,5 @@
 ---
-name: open-knowledge-pack-okf
+name: okf-knowledge-base
 description: "How to work in an OKF starter project (the `okf` starter pack): a knowledge base that is conformant with Google's Open Knowledge Format (OKF) from commit one — `concepts/`, `references/`, `notes/`, a reserved `index.md` navigation hub, and a reserved `log.md` change history. Read when the project has these folders plus reserved files, OR when asked whether a document is OKF-conformant, or to add a document to an OKF knowledge base. Carries the OKF conventions (non-empty `type` on every non-reserved doc; reserved files carry no frontmatter) as guidance, not enforcement. Complements the platform `open-knowledge` skill; does not replace it."
 compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack okf`."
 # `type` keeps this skill doc OKF-conformant: it installs as project-local
@@ -10,7 +10,7 @@ type: Document
 metadata:
   pack: "okf"
   author: "Inkeep"
-  repository: "https://github.com/inkeep/open-knowledge"
+  repository: "https://github.com/inkeep/open-knowledge-skills"
 ---
 # OKF starter pack — how to work here
 

@@ -50,6 +50,7 @@ vi.doMock('@/components/PackCardGrid', () => ({
 
 const toastSuccesses: string[] = [];
 const toastErrors: string[] = [];
+const toastWarnings: string[] = [];
 const listPacksCalls: string[] = [];
 const planCalls: Array<{ packId?: OkPackId; rootDir?: string }> = [];
 const applyCalls: Array<{ plan: OkScaffoldPlan; packId?: OkPackId }> = [];
@@ -114,7 +115,12 @@ vi.doMock('@/lib/seed-client', () => ({
       applyCalls.push({ plan, packId: options.packId });
       return {
         ok: true as const,
-        result: { applied: plan.created.length, errors: [], durationMs: 1 },
+        result: {
+          applied: plan.created.length,
+          errors: [],
+          durationMs: 1,
+          packSkillConflicts: [],
+        },
       };
     },
   }),
@@ -124,6 +130,9 @@ vi.doMock('sonner', () => ({
   toast: {
     success: (message: string) => toastSuccesses.push(message),
     error: (message: string) => toastErrors.push(message),
+    // Without this the conflict UX path throws inside the mock, making it
+    // structurally untestable rather than merely uncovered.
+    warning: (message: string) => toastWarnings.push(message),
   },
 }));
 
@@ -150,6 +159,7 @@ describe('SeedDialog runtime behavior', () => {
     applyCalls.length = 0;
     toastSuccesses.length = 0;
     toastErrors.length = 0;
+    toastWarnings.length = 0;
     planImpl = async (options) => ({
       ok: true,
       plan: options.packId === 'plain-notes' ? plainNotesPlan : knowledgeBasePlan,
@@ -246,17 +256,37 @@ describe('SeedDialog runtime behavior', () => {
       ok: true,
       plan: {
         ...plainNotesPlan,
-        packSkills: [{ name: 'open-knowledge-pack-plain-notes', pending: true }],
+        packSkills: [{ name: 'note-taking', pending: true }],
       },
     });
 
     await renderSeedDialog({ initialPackId: 'plain-notes' });
 
-    // The skill card surfaces the pack name (prefix-stripped for legibility)
-    // with the full skill name preserved on hover, so users know what installs.
-    const skillName = await screen.findByText('plain-notes');
-    expect(skillName.getAttribute('title')).toBe('open-knowledge-pack-plain-notes');
+    // The skill card names the skill, with the full name preserved on hover, so
+    // users know what installs.
+    const skillName = await screen.findByText('note-taking');
+    expect(skillName.getAttribute('title')).toBe('note-taking');
     // The old free-standing "will be (re)installed" line is gone.
     expect(screen.queryByText(/will be \(re\)installed/)).toBeNull();
+  });
+
+  // A name collision leaves nothing to apply, so the dialog lands in
+  // "already set up". Rendering the notice only in the plan phase meant the
+  // user was told there was nothing to add while the pack's skill was silently
+  // absent, with no Initialize button to reach the warning through.
+  test('a conflicted pack skill is surfaced in the already-set-up phase', async () => {
+    planImpl = async () => ({
+      ok: true,
+      plan: {
+        ...plainNotesPlan,
+        created: [],
+        packSkills: [{ name: 'note-taking', pending: false, conflict: true }],
+      },
+    });
+
+    await renderSeedDialog({ initialPackId: 'plain-notes' });
+
+    expect(await screen.findByText(/already set up here/)).toBeTruthy();
+    expect(await screen.findByText(/your own skill named "note-taking"/)).toBeTruthy();
   });
 });

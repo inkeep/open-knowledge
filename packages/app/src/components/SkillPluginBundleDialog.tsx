@@ -137,6 +137,10 @@ export function SkillPluginBundleDialog({
       skills: [...selected],
       scope,
       install: false,
+      // The bundle disclosure only exists on the Explore (skills.sh) flavor —
+      // same marketplace-provenance condition the single-skill path uses — so
+      // the whole selection is reported as one batched install event.
+      marketplace: true,
     });
     if (!result.ok) {
       setBusy(false);

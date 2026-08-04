@@ -15,6 +15,7 @@ import {
   SkillLocationIdSchema,
   type SkillScope,
 } from '@inkeep/open-knowledge-core';
+import { parseSkillsShSource } from '@inkeep/open-knowledge-core/skills-catalog';
 import { z } from 'zod';
 import type { AgentIdentity } from '../agent-identity.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
@@ -136,6 +137,10 @@ export function register(server: ServerInstance, deps: ImportDeps): void {
         // location math lives in exactly one place, and so an import can never
         // leave a skill sitting somewhere the caller did not name.
         install: false,
+        // A pasted skills.sh page URL is marketplace provenance — the user
+        // chose the listing — so the install counts toward it. Any other
+        // source shape (owner/repo, git URL, local path) is never announced.
+        ...(parseSkillsShSource(args.source) !== null ? { marketplace: true } : {}),
         ...(args.scope !== undefined ? { scope: args.scope } : {}),
         ...(args.summary !== undefined ? { summary: args.summary } : {}),
         ...agentIdentityFields(deps.identityRef?.current),

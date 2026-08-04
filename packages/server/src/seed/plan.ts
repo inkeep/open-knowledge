@@ -1,9 +1,15 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { OK_PROJECT_MARKER } from '@inkeep/open-knowledge-core';
+import { SKILLS_LOCK_REL } from '@inkeep/open-knowledge-core/skills-catalog';
 import { isProjectRoot } from '../fs/find-project-root.ts';
 import { scanInPlaceSkills } from '../in-place-skills.ts';
-import { resolvePackSkillSources } from './install-pack-skill.ts';
+import { readSkillsLockFile } from '../skills-lock-store.ts';
+import {
+  classifyPresentPackSkill,
+  OLD_PACK_SKILL_NAME,
+  resolvePackSkillSources,
+} from './install-pack-skill.ts';
 import { assertEntryPathInProject } from './path-safety.ts';
 import { DEFAULT_PACK_ID, resolvePack, STARTER_FOLDER_FRONTMATTER_FILENAME } from './starter.ts';
 import type { FileEntry, ScaffoldPlan, SeedOptions, SkipEntry } from './types.ts';
@@ -211,13 +217,43 @@ export async function planSeed(opts: SeedOptions = {}): Promise<ScaffoldPlan> {
   //    `installPackSkill` dedups against), with the legacy `.ok/skills` store
   //    still honored for pre-inversion projects.
   const sources = resolvePackSkillSources(pack.id);
-  const inPlaceNames =
-    sources.length > 0 ? new Set(scanInPlaceSkills(projectDir).map((sk) => sk.name)) : null;
-  const packSkills = sources.map(({ name }) => ({
-    name,
-    pending:
-      !inPlaceNames?.has(name) && !existsSync(join(projectDir, '.ok', 'skills', name, 'SKILL.md')),
-  }));
+  const scan = sources.length > 0 ? scanInPlaceSkills(projectDir) : [];
+  const inPlaceDirByName = new Map(scan.map((sk) => [sk.name, join(projectDir, sk.dir)]));
+  const lock = sources.length > 0 ? readSkillsLockFile(join(projectDir, ...SKILLS_LOCK_REL)) : null;
+  const packSkills = sources.map(({ name }) => {
+    const storeDir = join(projectDir, '.ok', 'skills', name);
+    // An install under the skill's OLD name is the same skill, kept under the
+    // name its owner already knows (never renamed for them). `installPackSkill`
+    // skips it, so the preview has to read it as present or dry-run promises an
+    // install that apply declines.
+    const legacyName = OLD_PACK_SKILL_NAME[name];
+    const legacyDir =
+      legacyName === undefined
+        ? null
+        : (inPlaceDirByName.get(legacyName) ??
+          (existsSync(join(projectDir, '.ok', 'skills', legacyName, 'SKILL.md'))
+            ? join(projectDir, '.ok', 'skills', legacyName)
+            : null));
+    const presentDir =
+      inPlaceDirByName.get(name) ??
+      legacyDir ??
+      (existsSync(join(storeDir, 'SKILL.md')) ? storeDir : null);
+    // Classify under the name the install actually HAS. A legacy install's lock
+    // entry is keyed by its old name, so probing the lock with the shipped name
+    // always misses and the verdict falls through to the frontmatter witness —
+    // which the update path drops, at which point a skill that is provably ours
+    // starts reporting as a stranger's name collision.
+    const presentName =
+      inPlaceDirByName.has(name) || legacyDir === null ? name : (legacyName as string);
+    // A present same-named skill that is NOT ours by provenance is a name
+    // collision, not "already seeded" — apply will skip it without clobbering,
+    // so the preview must say so rather than show the pack as set up.
+    const conflict =
+      presentDir !== null &&
+      lock !== null &&
+      classifyPresentPackSkill(pack.id, presentName, presentDir, lock) === 'foreign';
+    return { name, pending: presentDir === null, ...(conflict ? { conflict: true } : {}) };
+  });
 
   return { created, skipped, warnings, ...(packSkills.length > 0 ? { packSkills } : {}) };
 }

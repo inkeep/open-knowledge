@@ -1,11 +1,11 @@
 ---
-name: open-knowledge-pack-software-lifecycle-frame-a-proposal
+name: frame-a-proposal
 description: "Frame a new design proposal (RFC-shape) under proposals/ — problem before solution, named beneficiary and observable change, real alternatives, honest drawbacks, and a live open-questions backlog. Read when asked to frame a proposal, write an RFC, propose a design, pitch a change, draft a PRD-style design doc, or open a design proposal for review. Do NOT read to record a decision after it is accepted (use record-a-decision), to write an implementation spec (use write-a-spec), to write a postmortem (use write-a-postmortem), or to review or critique an existing design (use review-a-design)."
 compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack software-lifecycle`."
 metadata:
   pack: "software-lifecycle"
   author: "Inkeep"
-  repository: "https://github.com/inkeep/open-knowledge"
+  repository: "https://github.com/inkeep/open-knowledge-skills"
 ---
 
 # Frame a proposal — turn a problem into a reviewable RFC

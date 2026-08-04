@@ -171,4 +171,70 @@ describe('planSeed — codebase-wiki nested paths', () => {
     expect(createdPaths.has('wiki/OVERVIEW.md')).toBe(true);
     expect(createdPaths.has('wiki/log.md')).toBe(true);
   });
+
+  // Existing installs are never renamed, so the planner has to recognize a
+  // pack skill sitting under its OLD name. Two ways this goes wrong: reporting
+  // it pending (dry-run promises an install apply then declines), or classifying
+  // it by the shipped name — whose lock key does not exist — and calling the
+  // user's own skill a name collision.
+  test('a pack skill installed under its old name reads as present, not pending, not conflicted', async () => {
+    const oldName = 'open-knowledge-pack-plain-notes';
+    const skillDir = join(projectDir, '.claude', 'skills', oldName);
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, 'SKILL.md'),
+      `---\nname: ${oldName}\ndescription: "Plain notes."\nmetadata:\n  pack: "plain-notes"\n---\n\nBody.\n`,
+      'utf-8',
+    );
+
+    const plan = await planSeed({ projectDir, packId: 'plain-notes' });
+
+    const orientation = plan.packSkills?.find((s) => s.name === 'note-taking');
+    expect(orientation).toBeDefined();
+    expect(orientation?.pending).toBe(false);
+    expect(orientation?.conflict).toBeUndefined();
+  });
+
+  // The update path rewrites frontmatter as {name, description}, dropping
+  // `metadata.pack`. After one Update the ONLY remaining proof that a legacy
+  // install is ours is its lock entry — which is keyed by the OLD name. Probe
+  // the lock with the shipped name and it always misses, so a skill we authored
+  // starts reporting as the user's own name collision, for a skill that exists
+  // nowhere on disk.
+  test('an updated legacy install (no metadata.pack) is still ours, via its old lock key', async () => {
+    const oldName = 'open-knowledge-pack-plain-notes';
+    const skillDir = join(projectDir, '.claude', 'skills', oldName);
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, 'SKILL.md'),
+      `---\nname: ${oldName}\ndescription: "Plain notes."\n---\n\nBody.\n`,
+      'utf-8',
+    );
+    mkdirSync(join(projectDir, '.ok'), { recursive: true });
+    writeFileSync(
+      join(projectDir, '.ok', 'skills-lock.json'),
+      `${JSON.stringify(
+        {
+          schema: 1,
+          skills: {
+            [oldName]: {
+              source: 'inkeep/open-knowledge-skills',
+              skill: oldName,
+              contentHash: 'h',
+              importedAt: '2026-01-01T00:00:00.000Z',
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      'utf-8',
+    );
+
+    const plan = await planSeed({ projectDir, packId: 'plain-notes' });
+
+    const orientation = plan.packSkills?.find((s) => s.name === 'note-taking');
+    expect(orientation?.pending).toBe(false);
+    expect(orientation?.conflict).toBeUndefined();
+  });
 });

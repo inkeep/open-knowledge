@@ -270,6 +270,14 @@ interface ReclaimUserSkillsOpts {
     /** Remove a declined bundle's dirs from disk (CLI
      *  `removeUserGlobalSkillBundle`). Keyed by bundle id. */
     removeBundleFromDisk(bundleId: string): void;
+    /**
+     * Count a genuine install on skills.sh (server `reportSkillInstall` +
+     * `resolveSkillInstallReportSettings`, wired by the caller so this module
+     * stays free of server imports). Called ONLY for bundles this pass actually
+     * wrote: the reclaim is seed-if-absent, so `skipped-present` is not an
+     * install and must not be reported. Optional — omitted in tests.
+     */
+    reportInstalled?(skillNames: readonly string[], scope?: string): void;
     writeTargetVersion(
       home: string,
       target: 'cli-hosts',
@@ -544,11 +552,26 @@ export async function reclaimUserSkillsOnLaunch(
   // Seed each enabled user-global bundle (discovery + write-skill) into the
   // central store + per-host dirs (if-absent), each under its own name.
   const entries: UserSkillReclaimEntry[] = [];
+  // Bundles this pass actually WROTE. The reclaim is seed-if-absent, so on
+  // every launch after the first each bundle reads `skipped-present` — that is
+  // not an install and reporting it would turn an install counter into a launch
+  // counter. Collected per bundle because the entry rows do not carry a name.
+  const installedBundleNames: string[] = [];
   for (const bundle of gatedBundles) {
-    entries.push(
-      ...installUserBundleToHostDirs(home, bundle.name, bundle.sourceDir, fs, logger, version),
+    const bundleEntries = installUserBundleToHostDirs(
+      home,
+      bundle.name,
+      bundle.sourceDir,
+      fs,
+      logger,
+      version,
     );
+    if (bundleEntries.some((e) => e.status === 'written')) installedBundleNames.push(bundle.name);
+    entries.push(...bundleEntries);
   }
+  // Machine-scoped, matching the CLI's user-global install: these bundles live
+  // once per machine, so a second project must not re-count them.
+  if (installedBundleNames.length > 0) deps.reportInstalled?.(installedBundleNames);
 
   const anyWriteSucceeded = entries.some((e) => e.status === 'written');
   const anyFailed = entries.some((e) => e.status === 'failed');
@@ -637,6 +660,21 @@ interface ReclaimProjectSkillsOpts {
   createIfWired?: boolean;
   deps: {
     resolveBundledSkillDir(): string;
+    /**
+     * Count a genuine install on skills.sh. Called only for hosts this pass
+     * CREATED the project skill for — opening a project that already has it is
+     * not an install. Scoped to the project so a second project counts and
+     * reopening the same one does not. Optional — omitted in tests.
+     */
+    reportInstalled?(skillNames: readonly string[], scope?: string): void;
+    /**
+     * The user's recorded choice for THIS project's skill: `false` when they
+     * switched it off in Settings, `true` when they switched it on, `null` when
+     * they never said. Only an explicit `false` suppresses creation — `null`
+     * still heals the pre-writer cohort, which is what `createIfWired` is for.
+     * Optional — omitted in tests (reads as "no recorded decision").
+     */
+    readProjectSkillDecision?(projectDir: string): Promise<boolean | null>;
   };
   fs?: SkillFsOps;
   logger?: SkillReclaimLogger;
@@ -713,6 +751,17 @@ export async function reclaimProjectSkillsOnProjectOpen(
     return { status: 'skipped', reason: 'bundle-missing' };
   }
 
+  // An explicit OFF in Settings outranks `createIfWired`. Without this the
+  // toggle is a lie: the user switches the project skill off, and the very next
+  // open recreates it for every wired host. `null` (never asked) still heals the
+  // cohort onboarded before the project-skill writer existed.
+  const skillDecision =
+    (await deps.readProjectSkillDecision?.(projectDir).catch(() => null)) ?? null;
+  if (skillDecision === false) {
+    logger.event({ event: 'project-skill-reclaim-declined-by-user', projectDir });
+    return { status: 'skipped', reason: 'declined-by-user' };
+  }
+
   const entries: ProjectSkillReclaimEntry[] = [];
   for (const host of HOSTS_WITH_USER_SKILL_DIR) {
     const dest = join(projectDir, host.hostDir, 'skills', PROJECT_SKILL_DIR_NAME);
@@ -780,6 +829,15 @@ export async function reclaimProjectSkillsOnProjectOpen(
         error,
       });
     }
+  }
+
+  // Opening a wired project that has no project skill CREATES it — a real
+  // install of a skill we publish, and the case that made desktop counts look
+  // flat. Only `created` counts: a project that already had the skill is
+  // reopened constantly and reports nothing. Scoped to the project so a second
+  // project counts and reopening the same one does not.
+  if (entries.some((e) => e.status === 'created')) {
+    deps.reportInstalled?.([PROJECT_SKILL_DIR_NAME], projectDir);
   }
 
   return { status: 'done', entries };

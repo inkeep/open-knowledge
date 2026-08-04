@@ -46,8 +46,12 @@ function makeCli(overrides: CliOverrides = {}): ProjectIntegrationsCliSurface & 
   removals: McpWiringEditorId[];
   skillWrites: McpWiringEditorId[];
   skillRemovals: McpWiringEditorId[];
+  decisions: Array<{ dir: string; enabled: boolean }>;
+  reports: string[];
 } {
   const writes: McpWiringEditorId[] = [];
+  const decisions: Array<{ dir: string; enabled: boolean }> = [];
+  const reports: string[] = [];
   const removals: McpWiringEditorId[] = [];
   const skillWrites: McpWiringEditorId[] = [];
   const skillRemovals: McpWiringEditorId[] = [];
@@ -97,6 +101,14 @@ function makeCli(overrides: CliOverrides = {}): ProjectIntegrationsCliSurface & 
       if (overrides.skillRemoveFails?.includes(id)) return { action: 'failed', error: 'nope' };
       return { action: 'removed' };
     },
+    recordProjectSkillDecision: (dir, enabled) => {
+      decisions.push({ dir, enabled });
+    },
+    reportProjectSkillInstalled: (dir) => {
+      reports.push(dir);
+    },
+    decisions,
+    reports,
   };
 }
 
@@ -228,6 +240,38 @@ describe('registerProjectIntegrationsSettings — set', () => {
     expect(r.ok).toBe(true);
     expect(cli.skillRemovals).toEqual(['claude', 'codex']);
     expect(cli.skillWrites).toEqual([]); // never crosses into the install branch
+  });
+
+  // The writing half of the toggle-persistence fix. The reading half (reclaim
+  // honouring the decision) is pinned in skill-reclaim.test.ts; without these,
+  // dropping the record call silently restores the toggle-is-a-lie bug and only
+  // the reclaim test's injected reader hides it.
+  test('switching the skill ON records the decision and counts the install', async () => {
+    const cli = makeCli();
+    const { set } = register(cli);
+    const r = await set({ component: { kind: 'skill' }, enabled: true });
+    expect(r.ok).toBe(true);
+    expect(cli.decisions).toEqual([{ dir: PROJECT, enabled: true }]);
+    expect(cli.reports).toEqual([PROJECT]);
+  });
+
+  test('switching the skill OFF records the decision and counts nothing', async () => {
+    const cli = makeCli();
+    const { set } = register(cli);
+    const r = await set({ component: { kind: 'skill' }, enabled: false });
+    expect(r.ok).toBe(true);
+    expect(cli.decisions).toEqual([{ dir: PROJECT, enabled: false }]);
+    expect(cli.reports).toEqual([]);
+  });
+
+  test('a partial failure still records the choice but counts no install', async () => {
+    // The decision is the user's INTENT, so it is recorded either way; the
+    // install count must reflect what actually landed.
+    const cli = makeCli({ skillWriteFails: ['codex'] as McpWiringEditorId[] });
+    const { set } = register(cli);
+    await set({ component: { kind: 'skill' }, enabled: true });
+    expect(cli.decisions).toEqual([{ dir: PROJECT, enabled: true }]);
+    expect(cli.reports).toEqual([]);
   });
 
   test('skill uninstall reports the editors that failed', async () => {

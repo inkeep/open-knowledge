@@ -120,6 +120,147 @@ describe('reportSkillInstall', () => {
       ),
     ).resolves.toEqual(['x']);
   });
+
+  // A rejected report (unknown-skill 4xx while a fresh listing indexes, a
+  // collector 5xx) is DELIVERED but not counted. Unlike a dropped send, that
+  // outcome is unambiguous, so the claim is released and a later run reports it
+  // again — otherwise the installs a rename is measured by are discarded during
+  // the exact window the collector is meeting every new name for the first time.
+  test('a non-2xx collector response releases the claim so a later run retries', async () => {
+    const home = freshHome();
+    const rejecting = (async () => ({ ok: false, status: 404 })) as unknown as typeof fetch;
+    // Nothing was counted, so nothing is reported back to the caller.
+    await expect(
+      reportSkillInstall(
+        { source: 'o/r', skills: ['x'] },
+        { home, ...ENABLED, fetchImpl: rejecting },
+      ),
+    ).resolves.toEqual([]);
+    // The claim is gone, so the next run sends it again.
+    const { calls, impl } = recordingFetch();
+    await expect(
+      reportSkillInstall({ source: 'o/r', skills: ['x'] }, { home, ...ENABLED, fetchImpl: impl }),
+    ).resolves.toEqual(['x']);
+    expect(calls).toHaveLength(1);
+  });
+
+  // The counterpart contract: an AMBIGUOUS failure keeps its claim. A dropped
+  // request may have reached the collector and had only its response lost, so
+  // retrying could inflate someone's public install count. Under-count once
+  // rather than double-count.
+  test('a dropped send keeps its claim and is never retried', async () => {
+    const home = freshHome();
+    const dropping = (async () => {
+      throw new Error('network down');
+    }) as unknown as typeof fetch;
+    await reportSkillInstall(
+      { source: 'o/r', skills: ['x'] },
+      { home, ...ENABLED, fetchImpl: dropping },
+    );
+    const { calls, impl } = recordingFetch();
+    await reportSkillInstall(
+      { source: 'o/r', skills: ['x'] },
+      { home, ...ENABLED, fetchImpl: impl },
+    );
+    expect(calls).toEqual([]);
+  });
+
+  // The collector is a serverless function behind an edge: a 5xx or 429 can be
+  // synthesized AFTER the origin recorded the event, so it is ambiguous exactly
+  // like a dropped send. Only an application-level rejection proves nothing was
+  // counted and is therefore safe to retry.
+  test('a 503 keeps its claim; a 404 releases it', async () => {
+    const statusFetch = (status: number) =>
+      (async () => ({ ok: false, status })) as unknown as typeof fetch;
+
+    const ambiguous = freshHome();
+    await reportSkillInstall(
+      { source: 'o/r', skills: ['x'] },
+      { home: ambiguous, ...ENABLED, fetchImpl: statusFetch(503) },
+    );
+    const after503 = recordingFetch();
+    await reportSkillInstall(
+      { source: 'o/r', skills: ['x'] },
+      { home: ambiguous, ...ENABLED, fetchImpl: after503.impl },
+    );
+    expect(after503.calls).toEqual([]);
+
+    const rejected = freshHome();
+    await reportSkillInstall(
+      { source: 'o/r', skills: ['x'] },
+      { home: rejected, ...ENABLED, fetchImpl: statusFetch(404) },
+    );
+    const after404 = recordingFetch();
+    await reportSkillInstall(
+      { source: 'o/r', skills: ['x'] },
+      { home: rejected, ...ENABLED, fetchImpl: after404.impl },
+    );
+    expect(after404.calls).toHaveLength(1);
+  });
+});
+
+describe('reportSkillInstall — scope', () => {
+  // THE privacy assertion. The changeset promises the project path "is used only
+  // as a local key and is never sent". Nothing else stops a future edit to the
+  // params builder from shipping a user's home-directory path to the collector.
+  test('the project path never reaches the request', async () => {
+    const { calls, impl } = recordingFetch();
+    await reportSkillInstall(
+      { source: 'o/r', skills: ['x'], scope: '/Users/someone/private-project' },
+      { home: freshHome(), ...ENABLED, fetchImpl: impl },
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).not.toContain('private-project');
+    expect(calls[0]).not.toContain('/Users/');
+    expect(calls[0]).not.toContain('scope');
+  });
+
+  test('the same scope twice reports once', async () => {
+    const home = freshHome();
+    const first = recordingFetch();
+    await reportSkillInstall(
+      { source: 'o/r', skills: ['x'], scope: '/p/one' },
+      { home, ...ENABLED, fetchImpl: first.impl },
+    );
+    expect(first.calls).toHaveLength(1);
+    const second = recordingFetch();
+    await reportSkillInstall(
+      { source: 'o/r', skills: ['x'], scope: '/p/one' },
+      { home, ...ENABLED, fetchImpl: second.impl },
+    );
+    expect(second.calls).toEqual([]);
+  });
+
+  test('a different scope reports again — a second project is a second install', async () => {
+    const home = freshHome();
+    await reportSkillInstall(
+      { source: 'o/r', skills: ['x'], scope: '/p/one' },
+      { home, ...ENABLED, fetchImpl: recordingFetch().impl },
+    );
+    const other = recordingFetch();
+    await reportSkillInstall(
+      { source: 'o/r', skills: ['x'], scope: '/p/two' },
+      { home, ...ENABLED, fetchImpl: other.impl },
+    );
+    expect(other.calls).toHaveLength(1);
+  });
+
+  // Machine-wide and project-scoped keys must not collide: the built-in bundles
+  // are reported unscoped, and a project install of the same name is a separate
+  // event, not a duplicate of it.
+  test('a scoped key is independent of the unscoped one', async () => {
+    const home = freshHome();
+    await reportSkillInstall(
+      { source: 'o/r', skills: ['x'] },
+      { home, ...ENABLED, fetchImpl: recordingFetch().impl },
+    );
+    const scoped = recordingFetch();
+    await reportSkillInstall(
+      { source: 'o/r', skills: ['x'], scope: '/p/one' },
+      { home, ...ENABLED, fetchImpl: scoped.impl },
+    );
+    expect(scoped.calls).toHaveLength(1);
+  });
 });
 
 describe('reportSkillInstall — stays silent', () => {

@@ -9946,6 +9946,14 @@ msgstr "skill \"{0}\""
 msgid "Skill \"{0}\" deleted"
 msgstr "Skill \"{0}\" deleted"
 
+#: src/components/SeedDialog.tsx
+msgid "Skill \"{conflictName}\" was not installed — you already have your own skill with that name. Rename yours if you want the pack's version."
+msgstr "Skill \"{conflictName}\" was not installed — you already have your own skill with that name. Rename yours if you want the pack's version."
+
+#: src/components/SeedDialog.tsx
+msgid "Skill \"{conflictName}\" was not installed for {conflictHosts} — you already have your own skill with that name there. Rename yours if you want the pack's version."
+msgstr "Skill \"{conflictName}\" was not installed for {conflictHosts} — you already have your own skill with that name there. Rename yours if you want the pack's version."
+
 #: src/hooks/use-create-blank-skill.ts
 msgid "Skill \"{name}\" created"
 msgstr "Skill \"{name}\" created"
@@ -12096,6 +12104,11 @@ msgstr "YAML or JSON, in either base16 layout."
 #: src/components/TimelinePanel.tsx
 msgid "yesterday"
 msgstr "yesterday"
+
+#. placeholder {0}: s.name
+#: src/components/SeedDialog.tsx
+msgid "You already have your own skill named \"{0}\" — the pack's version will not be installed, and yours won't be touched. Rename yours to install the pack's version."
+msgstr "You already have your own skill named \"{0}\" — the pack's version will not be installed, and yours won't be touched. Rename yours to install the pack's version."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "You can also create one from a terminal with <0>ok bug-report</0>."

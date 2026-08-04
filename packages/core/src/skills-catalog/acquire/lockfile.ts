@@ -10,7 +10,11 @@
 
 import { z } from 'zod';
 import { OK_DIR } from '../../constants/ok-dir.ts';
-import { OPENKNOWLEDGE_SKILLS_REPO, PACK_SKILL_PREFIX } from '../../constants/skills.ts';
+import {
+  OPENKNOWLEDGE_SKILLS_REPO,
+  PACK_SKILL_PREFIX,
+  RENAMED_PACK_SKILLS,
+} from '../../constants/skills.ts';
 
 /** Filename of the committed import lockfile under `.ok/`. */
 export const SKILLS_LOCK_FILENAME = 'skills-lock.json';
@@ -92,24 +96,56 @@ export function upsertLockEntry(lock: SkillsLock, name: string, entry: SkillLock
   return { ...lock, skills: { ...lock.skills, [name]: entry } };
 }
 
+/** The published pack-skill names — the post-rename half of the retrofit gate. */
+const RENAMED_PACK_SKILL_NAMES: ReadonlySet<string> = new Set(Object.values(RENAMED_PACK_SKILLS));
+
 /**
- * Retrofit provenance for a seeded starter pack that predates lockfile recording.
- * A `open-knowledge-pack-*` skill installed before provenance existed has no lock
- * entry, but every pack ships from OPENKNOWLEDGE_SKILLS_REPO — a deterministic
- * upstream — so synthesize the entry from the installed `contentHash` and let it
- * update through the normal reimport path. An unchanged upstream is then a correct
- * no-op (installed hash === acquired hash). Returns null for any non-pack name.
+ * Retrofit provenance for a seeded starter pack whose lock entry is missing.
+ * A pack skill with no lock entry cannot update, but every pack ships from
+ * OPENKNOWLEDGE_SKILLS_REPO — a deterministic upstream — so synthesize the entry
+ * from the installed `contentHash` and let it update through the normal reimport
+ * path. An unchanged upstream is then a correct no-op (installed hash ===
+ * acquired hash).
+ *
+ * Accepts BOTH naming eras. Gating on the old prefix alone was right only while
+ * every pack skill carried it; post-rename a fresh install is short-named, and a
+ * short-named install that loses its lock entry — best-effort provenance write
+ * failed, or a teammate cloned `.claude/skills/` without the gitignored lock —
+ * had no way back and answered Update with a flat "no recorded import source".
+ * Returns null for any name that is not a pack skill.
  */
 export function retrofitPackLockEntry(
   name: string,
   installedContentHash: string,
   importedAt: string,
+  opts?: {
+    /**
+     * Does the installed bundle carry this pack's `metadata.pack` marker? Only
+     * consulted for the post-rename short names, which are generic enough that a
+     * user may own one; the old prefixed names need no witness.
+     */
+    selfIdentifiesAsPack?: boolean;
+  },
 ): SkillLockEntry | null {
-  if (!name.startsWith(PACK_SKILL_PREFIX)) return null;
+  if (name.startsWith(PACK_SKILL_PREFIX)) {
+    // Namespaced: nobody else's skill can hold this name, so presence is proof.
+    return packEntry(name, installedContentHash, importedAt);
+  }
+  // A published short name like `write-a-spec` or `knowledge-base` is generic —
+  // a user can easily have authored their own. Presence alone is NOT proof, and
+  // synthesizing our provenance onto their skill would offer to overwrite it
+  // with ours on the next Update. Require the bundle to self-identify as this
+  // pack's, the same witness `classifyPresentPackSkill` uses before treating a
+  // present skill as ours.
+  if (!RENAMED_PACK_SKILL_NAMES.has(name) || opts?.selfIdentifiesAsPack !== true) return null;
+  return packEntry(name, installedContentHash, importedAt);
+}
+
+function packEntry(name: string, contentHash: string, importedAt: string): SkillLockEntry {
   return {
     source: OPENKNOWLEDGE_SKILLS_REPO,
     skill: name,
-    contentHash: installedContentHash,
+    contentHash,
     importedAt,
   };
 }

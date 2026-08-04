@@ -1,17 +1,17 @@
 ---
-name: open-knowledge-pack-knowledge-base-research
-description: "Investigate a topic against preserved sources and write a provisional research article under `research/` in a Knowledge Base project (the `knowledge-base` starter pack). Read when asked to research a topic, compare options, synthesize sources, gather evidence, or extend an existing research doc. Carries the full procedure: scan existing coverage, agree a research rubric, capture every source verbatim before analyzing, write the article incrementally so a crash never loses work, cite every claim, and link it back into the graph. Does not promote findings to canonical knowledge — that is the sibling `consolidate` skill, after a decision lands."
+name: research-with-sources
+description: "Investigate a topic against preserved sources and write a provisional research article under `research/` in a Knowledge Base project (the `knowledge-base` starter pack). Read when asked to research a topic, compare options, synthesize sources, gather evidence, or extend an existing research doc. Carries the full procedure: scan existing coverage, agree a research rubric, capture every source verbatim before analyzing, write the article incrementally so a crash never loses work, cite every claim, and link it back into the graph. Does not promote findings to canonical knowledge — that is the sibling `consolidate-notes` skill, after a decision lands."
 compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack knowledge-base`."
 metadata:
   pack: "knowledge-base"
   author: "Inkeep"
-  repository: "https://github.com/inkeep/open-knowledge"
+  repository: "https://github.com/inkeep/open-knowledge-skills"
 ---
 # Research — gather sources and write provisional findings
 
 > This skill is pack guidance. The platform `open-knowledge` skill (read/write/preview/linking/grounding rules) still governs every markdown operation — this layers the procedure on top.
 
-Conduct **evidence-driven research** on a topic and produce a provisional research article under `research/`. Provisional, not canonical: research articles capture findings, trade-offs, and open questions at a point in time. They are promoted to canonical articles via the `consolidate` skill only when decisions solidify.
+Conduct **evidence-driven research** on a topic and produce a provisional research article under `research/`. Provisional, not canonical: research articles capture findings, trade-offs, and open questions at a point in time. They are promoted to canonical articles via the `consolidate-notes` skill only when decisions solidify.
 
 The content directory is the resolved `content.dir` — read it with `config({ key: 'content.dir' })` if you don't already know it. Paths below are relative to it.
 
@@ -296,7 +296,7 @@ sources:
 ### Voice
 
 - **Provisional, not canonical.** Use "tentative", "initial findings", "based on current understanding."
-- **Do NOT write as if it were canonical** — that's misleading. Canonicality is the `consolidate` skill's job, after decisions land.
+- **Do NOT write as if it were canonical** — that's misleading. Canonicality is the `consolidate-notes` skill's job, after decisions land.
 - **Explicit about uncertainty.** Research is the layer where uncertainty is allowed to live.
 
 ---
@@ -366,7 +366,7 @@ In headless mode, write the recap into the research article's "Further reading" 
 
 ## Non-goals
 
-- **Don't promote to a canonical article.** That's the `consolidate` skill's job after a decision actually lands. Premature canonicalization buries uncertainty and misleads future readers.
+- **Don't promote to a canonical article.** That's the `consolidate-notes` skill's job after a decision actually lands. Premature canonicalization buries uncertainty and misleads future readers.
 - **Don't hide uncertainty.** Research is the layer where "we don't know yet" is acceptable prose. Say it explicitly.
 - **Don't skip ingest.** Always capture raw sources first, then analyze. An article without preserved sources is opinion.
 - **Don't skip the Step 1 scan.** Duplicate research wastes the user's time AND misses chances to extend prior work.

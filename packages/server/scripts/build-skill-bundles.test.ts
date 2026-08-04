@@ -18,7 +18,9 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { SKILL_NAME_REGEX } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
+import { enumeratePackSkills } from '../src/skill-pack-sources.ts';
 import {
   BUNDLE_IDS,
   buildPackSkills,
@@ -221,7 +223,7 @@ describe('buildPackSkills', () => {
     const packDir = join(paths.skillsDir, 'packs', 'demo-pack');
     mkdirSync(packDir, { recursive: true });
     writeFileSync(join(packDir, 'SKILL.md'), '# demo pack\n');
-    expect(buildPackSkills(paths)).toEqual(['open-knowledge-pack-demo-pack']);
+    expect(buildPackSkills(paths)).toEqual(['demo-pack']);
     const out = join(paths.distDir, 'packs', 'demo-pack', 'SKILL.md');
     expect(existsSync(out)).toBe(true);
     expect(readFileSync(out, 'utf-8')).toBe('# demo pack\n');
@@ -236,10 +238,7 @@ describe('buildPackSkills', () => {
     writeFileSync(join(packDir, 'do-a-thing', 'SKILL.md'), '# do a thing\n');
     writeFileSync(join(packDir, 'references', 'notes.md'), '# notes\n');
 
-    expect(buildPackSkills(paths)).toEqual([
-      'open-knowledge-pack-demo-pack',
-      'open-knowledge-pack-demo-pack-do-a-thing',
-    ]);
+    expect(buildPackSkills(paths)).toEqual(['demo-pack', 'do-a-thing']);
     // dist keeps the nested layout verbatim — the installer and the public skills
     // mirror both enumerate it from there.
     const distPack = join(paths.distDir, 'packs', 'demo-pack');
@@ -338,5 +337,74 @@ describe('repo assets — production guard', () => {
       names.add(want);
     }
     expect(names.size).toBe(BUNDLE_IDS.length);
+  });
+});
+
+// The in-subtree half of the mirror contract: every skill OpenKnowledge ships
+// reaches the public mirror as a directory named by its frontmatter `name`.
+// Uniqueness must hold across ALL shipped skills (the nested mirror layout puts
+// packs in separate folders, so the derive-time duplicate-destination throw no
+// longer catches a cross-pack duplicate) and must be visible to subtree
+// `pnpm check`, not only to the monorepo-root mirror test.
+describe('repo assets — shipped skill names (mirror gate)', () => {
+  const FRONTMATTER_NAME = /^name:[ \t]*(\S+)[ \t]*$/m;
+
+  const collectShippedSkills = (): Array<{ name: string; dir: string }> => {
+    const { skillsDir } = defaultPaths();
+    const skills: Array<{ name: string; dir: string }> = [];
+    for (const bundle of BUNDLE_IDS) {
+      const dir = join(skillsDir, bundle);
+      const md = readFileSync(join(dir, 'SKILL.md'), 'utf-8');
+      skills.push({ name: FRONTMATTER_NAME.exec(md)?.[1] ?? '', dir });
+    }
+    const packsDir = join(skillsDir, 'packs');
+    for (const entry of readdirSync(packsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      for (const source of enumeratePackSkills(join(packsDir, entry.name))) {
+        skills.push({ name: source.name, dir: source.sourceDir });
+      }
+    }
+    return skills;
+  };
+
+  test('every shipped skill has a valid name, unique across packs and built-ins', () => {
+    const skills = collectShippedSkills();
+    // 3 built-ins + 8 pack orientation skills + 7 members. Deliberate tripwire:
+    // adding or removing a shipped skill should be a conscious marketplace and
+    // mirror decision, not a silent side effect.
+    expect(skills.length).toBe(18);
+    for (const { name, dir } of skills) {
+      expect(name, `frontmatter name missing or invalid in ${dir}`).toMatch(SKILL_NAME_REGEX);
+      expect(name.length, `name too long in ${dir}`).toBeLessThanOrEqual(64);
+    }
+    const seen = new Set<string>();
+    const duplicates: string[] = [];
+    for (const { name } of skills) {
+      if (seen.has(name)) duplicates.push(name);
+      seen.add(name);
+    }
+    expect(duplicates).toEqual([]);
+  });
+
+  test('every shipped skill declares its name in frontmatter (mirror derive throws without it)', () => {
+    // enumeratePackSkills falls back to the dir basename, but the mirror's
+    // discoverSkills throws on a missing/malformed `name:` — assert the
+    // explicit declaration HERE so the failure lands in the subtree gate,
+    // not later at mirror-generate.
+    for (const { name, dir } of collectShippedSkills()) {
+      const md = readFileSync(join(dir, 'SKILL.md'), 'utf-8');
+      const declared = /^name:[ \t]*(\S+)[ \t]*$/m.exec(md)?.[1];
+      expect(declared, `${dir} must declare frontmatter name:`).toBe(name);
+    }
+  });
+
+  test('every shipped skill declares the public author + repository metadata', () => {
+    for (const { dir } of collectShippedSkills()) {
+      const md = readFileSync(join(dir, 'SKILL.md'), 'utf-8');
+      expect(md, `${dir} missing author`).toContain('author: "Inkeep"');
+      expect(md, `${dir} missing repository`).toContain(
+        'repository: "https://github.com/inkeep/open-knowledge-skills"',
+      );
+    }
   });
 });

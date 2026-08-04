@@ -33,8 +33,8 @@ import {
   EDITOR_PROJECT_SKILL_ROOT,
   EDITOR_USER_SKILL_ROOT,
   type EditorId,
-  PACK_SKILL_PREFIX,
   PROJECT_SKILL_EDITOR_IDS,
+  RENAMED_PACK_SKILLS,
 } from '@inkeep/open-knowledge-core';
 import type { SkillHostId } from '@inkeep/open-knowledge-core/skills-catalog';
 import { parse as parseYaml } from 'yaml';
@@ -102,8 +102,11 @@ export interface SkillValidity {
  * Pre-install validity gate. A source that fails MUST NOT be projected —
  * a conflicted or malformed SKILL.md landing verbatim in an agent's live
  * context is the failure mode this guards. `allowReservedName` is set only for
- * OK's own shipped `open-knowledge` bundle; `open-knowledge-pack-*` skills are
- * exempt by name (they're shipped pack content, installable + reinstallable).
+ * OK's own shipped `open-knowledge` bundle. Pack skills carry unreserved short
+ * names since the marketplace rename; the exact LEGACY old names (keys of
+ * `RENAMED_PACK_SKILLS`) stay installable because existing installs are never
+ * renamed — EVERY pre-rename install keeps its old reserved-prefix name
+ * indefinitely, not just forks, and must remain add-to-host/repairable.
  */
 export function validateSkillForInstall(
   skillDir: string,
@@ -117,7 +120,7 @@ export function validateSkillForInstall(
     existsSync(join(skillDir, 'scripts')) && statSync(join(skillDir, 'scripts')).isDirectory();
 
   const usesReservedName =
-    name.startsWith(RESERVED_SKILL_PREFIX) && !name.startsWith(PACK_SKILL_PREFIX);
+    name.startsWith(RESERVED_SKILL_PREFIX) && RENAMED_PACK_SKILLS[name] === undefined;
   if (!opts?.allowReservedName && usesReservedName) {
     errors.push(
       `"${name}" uses the reserved \`${RESERVED_SKILL_PREFIX}*\` prefix (reserved for OK's shipped skills) — choose another name.`,

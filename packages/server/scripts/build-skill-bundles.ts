@@ -156,7 +156,7 @@ export function buildPackSkills(paths: SkillBundlePaths = defaultPaths()): strin
   for (const entry of readdirSync(packsSrc, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const sourceDir = join(packsSrc, entry.name);
-    const skills = enumeratePackSkills(entry.name, sourceDir);
+    const skills = enumeratePackSkills(sourceDir);
     if (skills.length === 0) continue;
     const outDir = join(paths.distDir, 'packs', entry.name);
     rmSync(outDir, { recursive: true, force: true });

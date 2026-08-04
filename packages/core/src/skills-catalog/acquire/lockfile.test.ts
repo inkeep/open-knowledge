@@ -19,4 +19,60 @@ describe('retrofitPackLockEntry', () => {
       null,
     );
   });
+
+  // Post-rename a fresh pack install is short-named. Gating the retrofit on the
+  // old prefix alone left those installs with no way back if their lock entry
+  // went missing — Update answered "no recorded import source" and nothing in
+  // the product could repair it.
+  test('retrofits a post-rename pack skill name when the bundle proves it is ours', () => {
+    const entry = retrofitPackLockEntry('note-taking', 'a'.repeat(64), '2026-08-04T00:00:00.000Z', {
+      selfIdentifiesAsPack: true,
+    });
+    expect(entry?.source).toBe(OPENKNOWLEDGE_SKILLS_REPO);
+    expect(entry?.skill).toBe('note-taking');
+  });
+
+  // The published short names are generic enough that a user may own one.
+  // Without a witness we would stamp our provenance onto their skill, and the
+  // next Update would offer to overwrite it with ours.
+  test('refuses a post-rename name with no pack witness', () => {
+    for (const name of ['note-taking', 'write-a-spec', 'knowledge-base']) {
+      expect(retrofitPackLockEntry(name, 'a'.repeat(64), '2026-08-04T00:00:00.000Z')).toBeNull();
+      expect(
+        retrofitPackLockEntry(name, 'a'.repeat(64), '2026-08-04T00:00:00.000Z', {
+          selfIdentifiesAsPack: false,
+        }),
+      ).toBeNull();
+    }
+  });
+
+  // The witness alone must not grant retrofit: the name still has to be one we
+  // actually publish. A user's own skill that happens to carry a `metadata.pack`
+  // line — a doc about packs, a copied bundle — is not ours to claim.
+  test('a name we do not publish is refused even with a witness', () => {
+    for (const name of ['my-own-skill', 'code-review', 'open-knowledge']) {
+      expect(
+        retrofitPackLockEntry(name, 'a'.repeat(64), '2026-08-04T00:00:00.000Z', {
+          selfIdentifiesAsPack: true,
+        }),
+      ).toBeNull();
+    }
+  });
+
+  // The old prefixed names are namespaced — nobody else can hold them — so
+  // presence alone stays sufficient there.
+  test('an old prefixed name needs no witness', () => {
+    const entry = retrofitPackLockEntry(
+      `${PACK_SKILL_PREFIX}plain-notes`,
+      'a'.repeat(64),
+      '2026-08-04T00:00:00.000Z',
+    );
+    expect(entry?.source).toBe(OPENKNOWLEDGE_SKILLS_REPO);
+  });
+
+  test('still returns null for a name that is not a pack skill', () => {
+    expect(
+      retrofitPackLockEntry('my-own-skill', 'a'.repeat(64), '2026-08-04T00:00:00.000Z'),
+    ).toBeNull();
+  });
 });

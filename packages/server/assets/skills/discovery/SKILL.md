@@ -4,7 +4,7 @@ description: "Read when the user asks what OpenKnowledge is, wants to install it
 compatibility: "Any agent host — no MCP server required. Pure discovery + install guidance."
 metadata:
   author: "Inkeep"
-  repository: "https://github.com/inkeep/open-knowledge"
+  repository: "https://github.com/inkeep/open-knowledge-skills"
 ---
 # OpenKnowledge — what it is and how to install it
 

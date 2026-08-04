@@ -148,7 +148,7 @@ export async function applySeed(plan: ScaffoldPlan, opts: SeedOptions = {}): Pro
   // to each set-up editor. Single site for every seed entry point (CLI /
   // desktop IPC / HTTP), since they all call applySeed. No-op when no editor
   // is set up or the pack ships no skill.
-  const packSkillsInstalled = await installPackSkill(projectDir, pack.id);
+  const packSkillInstall = await installPackSkill(projectDir, pack.id);
 
   // `installPackSkill` logs and skips a skill whose source it could not author,
   // so a decomposed pack can land some skills and drop others while still
@@ -168,6 +168,7 @@ export async function applySeed(plan: ScaffoldPlan, opts: SeedOptions = {}): Pro
     applied,
     errors,
     durationMs: Date.now() - started,
-    packSkillsInstalled,
+    packSkillsInstalled: packSkillInstall.editors,
+    packSkillConflicts: packSkillInstall.conflicts,
   };
 }

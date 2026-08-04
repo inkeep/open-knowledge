@@ -4,7 +4,7 @@ description: "Authoritative agent-runtime contract for working inside an OpenKno
 compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server + code execution."
 metadata:
   author: "Inkeep"
-  repository: "https://github.com/inkeep/open-knowledge"
+  repository: "https://github.com/inkeep/open-knowledge-skills"
 ---
 # OpenKnowledge — agent guidance
 
@@ -115,8 +115,8 @@ Three recurring practices, not tool calls — each a full procedure that ships a
 | Layer | When | Procedure |
 | --- | --- | --- |
 | **ingest** | Preserve a shared URL/PDF/file verbatim, or you fetched a URL to ground a claim (binary sources preserved, not scraped). | `references/ingest-and-sources.md` — ships here, §Grounding depends on it |
-| **research** | Investigate / compare / synthesize sources → `status: provisional` article + `sources:`. | `open-knowledge-pack-knowledge-base-research` skill |
-| **consolidate** | A decision was made → canonical source-of-truth with a `supersedes:` chain. | `open-knowledge-pack-knowledge-base-consolidate` skill |
+| **research** | Investigate / compare / synthesize sources → `status: provisional` article + `sources:`. | `research-with-sources` skill |
+| **consolidate** | A decision was made → canonical source-of-truth with a `supersedes:` chain. | `consolidate-notes` skill |
 
 Research and consolidate arrive with `ok seed --pack knowledge-base`. **Without that pack you do not have those procedures** — don't improvise one; do the work as an ordinary grounded `write`, or offer to seed it (`ok seed --pack knowledge-base --dry-run` shows what it would add).
 

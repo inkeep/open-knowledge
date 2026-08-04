@@ -119,6 +119,7 @@ import {
   isFrontmatterSchemaAsset,
   isHiddenDocName,
   isManagedArtifactDocName,
+  isOpenKnowledgeSkillsSource,
   isSkillInstallTarget,
   isValidAttachmentFolderPath,
   LEGACY_SKILL_STORE_ROOT,
@@ -179,6 +180,7 @@ import {
   parseTemplateFile,
   prependFrontmatter,
   projectSkillContentDocName,
+  RENAMED_PACK_SKILLS,
   RenamePathRequestSchema,
   RenamePathSuccessSchema,
   type RescueEntryFlat,
@@ -549,6 +551,19 @@ import {
   linkTempToFinalWithCollisionRetry,
   mintTempUploadPath,
 } from './upload-streaming.ts';
+
+/** Does the bundle at `dir` carry a `metadata.pack` marker in its frontmatter? */
+function bundleSelfIdentifiesAsPack(dir: string): boolean {
+  try {
+    const md = readFileSync(join(dir, 'SKILL.md'), 'utf-8');
+    const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/.exec(md)?.[1];
+    return (
+      frontmatter !== undefined && /^[ \t]+pack:[ \t]*"?[a-z0-9-]+"?[ \t]*$/m.test(frontmatter)
+    );
+  } catch {
+    return false;
+  }
+}
 
 export { extractPageTitle } from './page-identity.ts';
 
@@ -19491,7 +19506,13 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
                 // Metadata-only: this probe just matches a name. `parseSkillDir`
                 // would read and hash every byte of every bundle in the clone,
                 // before the size pre-flight below can refuse any of it.
-                dirs.find((d) => readSkillDirMeta(d.dir)?.name === selectedSkill);
+                dirs.find((d) => readSkillDirMeta(d.dir)?.name === selectedSkill) ??
+                // Rename alias: the skills.sh listings for the OLD pack-skill
+                // names outlive the rename (there is no self-serve delist), so
+                // someone can still arrive here asking for a name the mirror no
+                // longer ships. Resolve it to the renamed bundle rather than
+                // 404-ing a listing that looks perfectly healthy.
+                dirs.find((d) => d.name === RENAMED_PACK_SKILLS[selectedSkill]);
               if (!found) {
                 errorResponse(res, 404, 'urn:ok:error:not-found', 'Named skill not in source.', {
                   handler: 'skill-import',
@@ -19544,16 +19565,27 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           actor,
           skipProjection: body.install === false,
         });
-        // Count it on skills.sh, but ONLY when the user came from a skills.sh
-        // listing (`marketplace`, set by the Explore tab). A hand-typed
-        // `owner/repo` is not announced to a third party — the user never went
-        // to the marketplace, and telling it which repos they install would be
-        // a disclosure they did not ask for.
+        // Count it on skills.sh when EITHER the user came from a skills.sh
+        // listing (`marketplace`, set by the Explore tab) OR the source is our
+        // own published skills repo.
+        //
+        // The privacy rule that gates everything else — never announce a repo
+        // the user did not choose from the marketplace, because telling a third
+        // party which repos they install is a disclosure they did not ask for —
+        // does not apply to our own repo: the name being reported is ours, and
+        // `ok init` and `ok seed` already report it unconditionally. Without the
+        // second arm, `ok skills import inkeep/open-knowledge-skills`, the MCP
+        // import tool on a bare repo source, and every non-Explore route that
+        // installs one of our own skills went uncounted while the seed path
+        // counted the same skill.
         //
         // This is the mechanism that actually moves the counter. Fetching the
         // bundle through skills.sh's download API does NOT: verified against a
         // skill sitting at 8 installs, which stayed at 8 after a download.
-        if (body.marketplace === true && outcome.ok) {
+        if (
+          outcome.ok &&
+          (body.marketplace === true || isOpenKnowledgeSkillsSource(resolvedSourceForReport))
+        ) {
           void reportSkillInstall(
             { source: resolvedSourceForReport, skills: [outcome.body.name] },
             resolveSkillInstallReportSettings(),
@@ -19613,6 +19645,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         let dirs: ReturnType<typeof discoverSkillDirs> = [];
         let ref: string | undefined;
         let publisher: string | undefined;
+        // The canonical repo behind a skills.sh page URL — what the install
+        // report must name so the event lands on the right listing.
+        let resolvedSourceForReport = rawSource;
         try {
           // Resolution is per-SKILL by contract: a website source refuses to
           // resolve without a name (there is no repo to point at, only the
@@ -19623,6 +19658,7 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           // against the single clone.
           const skillsSh = await resolveSkillsShImportSource(rawSource, body.skills[0]);
           const resolvedSource = skillsSh?.source ?? rawSource;
+          resolvedSourceForReport = resolvedSource;
           const spec = skillsSh?.spec ?? parseSource(resolvedSource);
           if (!spec) {
             errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Unrecognized import source.', {
@@ -19694,7 +19730,10 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             // SKILL.md frontmatter name (they routinely differ).
             const found =
               dirs.find((d) => d.name === requested) ??
-              dirs.find((d) => parseSkillDir(d.dir)?.name === requested);
+              dirs.find((d) => parseSkillDir(d.dir)?.name === requested) ??
+              // Same rename alias as the single import: a stale old-name listing
+              // resolves to the renamed bundle instead of reading as not-found.
+              dirs.find((d) => d.name === RENAMED_PACK_SKILLS[requested]);
             if (!found) {
               results.push({ requested, status: 'not-found', warnings: [] });
               continue;
@@ -19754,6 +19793,28 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             });
           } finally {
             perSkill();
+          }
+        }
+        // Count the plugin/bundle funnel on skills.sh — ONE batched event for
+        // the whole selection. Same two-arm rule as the single import above: a
+        // skills.sh listing the user chose (`marketplace`, set by the plugin
+        // bundle dialog and the MCP import rider), OR our own published repo,
+        // which needs no marketplace referral to be ours to count. A hand-typed
+        // third-party repo is still never announced. Fire-and-forget; the
+        // reporter dedupes per skill per machine.
+        if (body.marketplace === true || isOpenKnowledgeSkillsSource(resolvedSourceForReport)) {
+          // `requested` — the name the skills.sh listing carries — not `name`,
+          // which is the LOCAL name after collision resolution (`foo-imported`
+          // when the user already held `foo`). The collector indexes listings,
+          // so a locally-suffixed name is an unknown skill it cannot count.
+          const importedNames = results
+            .filter((r) => r.status === 'imported')
+            .map((r) => r.requested);
+          if (importedNames.length > 0) {
+            void reportSkillInstall(
+              { source: resolvedSourceForReport, skills: importedNames },
+              resolveSkillInstallReportSettings(),
+            );
           }
         }
         successResponse(
@@ -21794,6 +21855,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
           ...SKILLS_LOCK_REL,
         );
         const lock = readSkillsLock(lockPath);
+        // An old-name pack install resolves directly: it was never renamed, so
+        // its lock key still matches its dir. The source-dir pick below carries
+        // the old→new mapping so the fetch lands on the renamed mirror dir.
         let entry = lock.skills[body.name];
         if (!entry) {
           // Retrofit: a starter pack seeded before provenance was recorded has no
@@ -21807,6 +21871,12 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
               body.name,
               parseSkillDir(resolve(skillsRoot, body.name))?.contentHash ?? '',
               new Date().toISOString(),
+              // The post-rename names are generic (`write-a-spec`,
+              // `knowledge-base`), so presence is not proof of ownership. Pass
+              // the bundle's own `metadata.pack` marker as the witness, or a
+              // user's same-named skill would be handed our provenance and
+              // offered an overwrite with ours.
+              { selfIdentifiesAsPack: bundleSelfIdentifiesAsPack(resolve(skillsRoot, body.name)) },
             ) ?? synthBuiltinLockEntry(reimportBase, body.name);
           if (synthesized) entry = synthesized;
         }
@@ -21849,9 +21919,20 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
         let acquired: ReturnType<typeof parseSkillDir> = null;
         let hasScripts = false;
         try {
-          const skillsSh = await resolveSkillsShImportSource(
-            entry.source,
-            entry.skill ?? body.name,
+          // A listing-sourced install looks its skill up on skills.sh by name.
+          // A pre-rename install asks for a name the repo no longer ships: that
+          // still resolves today only because the superseded listing is still
+          // up, and retiring those listings is an open ask — which would
+          // otherwise turn "tidy up the old listings" into "break Update for
+          // everyone who installed from one". Fall back to the renamed listing
+          // so the two decisions stay independent.
+          const recordedSkill = entry.skill ?? body.name;
+          const renamedSkill = RENAMED_PACK_SKILLS[recordedSkill];
+          const skillsSh = await resolveSkillsShImportSource(entry.source, recordedSkill).catch(
+            async (err: unknown) => {
+              if (renamedSkill === undefined) throw err;
+              return resolveSkillsShImportSource(entry.source, renamedSkill);
+            },
           );
           // A plugin-cache copy re-points at the NEWEST cached version — the
           // recorded dir is a version pin the plugin manager prunes, so honoring
@@ -21882,6 +21963,9 @@ export function createApiExtension(options: ApiExtensionOptions): Extension {
             (resolvedSkill ? dirs.find((d) => d.name === resolvedSkill) : undefined) ??
             dirs.find((d) => d.name === body.name) ??
             dirs.find((d) => parseSkillDir(d.dir)?.name === body.name) ??
+            // Rename alias: an old-name install updating against the renamed
+            // mirror finds its bundle under the new name.
+            dirs.find((d) => d.name === RENAMED_PACK_SKILLS[resolvedSkill ?? body.name]) ??
             (dirs.length === 1 ? dirs[0] : undefined);
           if (!pick) {
             errorResponse(

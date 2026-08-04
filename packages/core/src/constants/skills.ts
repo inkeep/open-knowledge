@@ -1,14 +1,120 @@
 /**
- * Shared prefix on OK's shipped starter-pack skills (`open-knowledge-pack-<packId>`,
- * and `open-knowledge-pack-<packId>-<member>` for a decomposed pack's members).
- *
- * Structurally load-bearing: it exempts pack skills from the reserved-name install
- * block (`skill-projection.ts`), drives `findPackSkillSource`, and is stripped for
- * display in the browse surfaces. Lives in core so the server and app agree on one
- * value. The Copybara skills-mirror manifest encodes it too — that copy is config,
- * guarded by `check-skills-mirror-complete`.
+ * LEGACY prefix the starter-pack skills carried before the marketplace rename
+ * (`open-knowledge-pack-<packId>[-<member>]`). It no longer names anything the
+ * codebase ships: shipped names come from SKILL.md frontmatter. It survives
+ * solely to recognize OLD installs — `retrofitPackLockEntry`'s gate and the
+ * keys of {@link RENAMED_PACK_SKILLS}. Never compare shipped skills against it,
+ * and never set it to '' (a universal `startsWith('')` match).
  */
 export const PACK_SKILL_PREFIX = 'open-knowledge-pack-';
+
+/**
+ * Did this lock/import source come from OK's OWN published skills repo? The
+ * lock keeps the raw source the user arrived through, so the same bundle records
+ * the bare `owner/repo` when seeded or hand-typed and a skills.sh URL naming that
+ * repo when installed from a listing.
+ *
+ * Used for two different decisions, both of which need the loose match: whether a
+ * present skill is ours (seed collision classification), and whether an install
+ * counts toward our own skills.sh listing. The privacy rule that gates OTHER
+ * sources — never announce a repo the user did not choose from the marketplace —
+ * does not apply here, because the repo being named is ours.
+ */
+export function isOpenKnowledgeSkillsSource(source: string): boolean {
+  const raw = source.trim();
+  if (raw === OPENKNOWLEDGE_SKILLS_REPO) return true;
+
+  // A bare `owner/repo` must match EXACTLY. A substring test reads
+  // `notinkeep/open-knowledge-skills` as ours — a third party's repo, in a
+  // valid owner/repo shape, which the reporter would then happily announce.
+  if (!raw.includes('://') && !raw.includes('@')) return false;
+
+  // Anything else has to name a host we actually publish through, with our repo
+  // at the START of the path. Otherwise `evil.example/inkeep/open-knowledge-skills`
+  // passes on the strength of a path segment anyone can create.
+  if (raw.includes('://')) {
+    try {
+      const url = new URL(raw);
+      return TRUSTED_SKILL_HOSTS.has(url.hostname.toLowerCase()) && pathIsOurRepo(url.pathname);
+    } catch {
+      return false;
+    }
+  }
+  // scp-style git remote: `git@github.com:inkeep/open-knowledge-skills.git`.
+  // Checked AFTER the URL branch — this pattern also matches `https://…`, where
+  // it would read the scheme as the host.
+  const scp = /^(?:[\w.-]+@)?([\w.-]+):(.+)$/.exec(raw);
+  if (scp) return TRUSTED_SKILL_HOSTS.has(scp[1].toLowerCase()) && pathIsOurRepo(scp[2]);
+  return false;
+}
+
+/** Hosts our skills repo is legitimately served from. */
+const TRUSTED_SKILL_HOSTS: ReadonlySet<string> = new Set([
+  'skills.sh',
+  'www.skills.sh',
+  'github.com',
+  'www.github.com',
+  'raw.githubusercontent.com',
+]);
+
+/** Does this URL path name our repo at its root (`.git` suffix tolerated)? */
+function pathIsOurRepo(pathname: string): boolean {
+  const trimmed = pathname.replace(/^\/+/, '').replace(/\.git$/, '');
+  return (
+    trimmed === OPENKNOWLEDGE_SKILLS_REPO || trimmed.startsWith(`${OPENKNOWLEDGE_SKILLS_REPO}/`)
+  );
+}
+
+/**
+ * Decision key for a PROJECT's copy of the platform skill, stored in the
+ * machine-local `bundles` map alongside the user-global bundle decisions.
+ *
+ * Exists because the desktop's project-open reclaim creates the project skill
+ * for any wired host that lacks one. Without a recorded decision that heals the
+ * cohort onboarded before the writer existed — but it also silently reinstates a
+ * skill the user just switched OFF in Settings, on the very next open. Keyed by
+ * project dir and machine-local on purpose: one teammate's choice must not ride
+ * along in the repo.
+ */
+export function projectSkillDecisionKey(projectDir: string): string {
+  return `project-skill:${projectDir}`;
+}
+
+/**
+ * Old→new names from the 2026-07 pack-skill rename (marketplace short names).
+ * Existing installs are NEVER renamed, so this map is only ever read
+ * old-name-first — it never writes a new name onto anyone's disk. Live
+ * consumers: the import and reimport selectors, which resolve an old-name
+ * request against the renamed mirror bundle; the seed path, which counts an
+ * old-name install as present so re-seeding authors no duplicate; and the
+ * reserved-name gate, which keeps these exact old names installable. This is the ONLY
+ * old→new map in the codebase — tests and mirror machinery must not carry a
+ * copy of it.
+ *
+ *
+ * ENTRIES ARE PERMANENT. Existing installs are never renamed, so an old name can
+ * be on someone's disk indefinitely — and every consumer here reads old-name
+ * first. Deleting an entry silently breaks that install's Update, its seed
+ * presence check (a duplicate gets authored beside it), and its reserved-name
+ * exemption (it stops being installable at all). Add entries; do not remove them.
+ */
+export const RENAMED_PACK_SKILLS: Readonly<Record<string, string>> = {
+  'open-knowledge-pack-plain-notes': 'note-taking',
+  'open-knowledge-pack-worldbuilding': 'worldbuilding',
+  'open-knowledge-pack-writing-pipeline': 'writing-workflow',
+  'open-knowledge-pack-codebase-wiki': 'codebase-wiki',
+  'open-knowledge-pack-knowledge-base': 'knowledge-base',
+  'open-knowledge-pack-software-lifecycle': 'software-lifecycle',
+  'open-knowledge-pack-entity-vault': 'personal-crm',
+  'open-knowledge-pack-okf': 'okf-knowledge-base',
+  'open-knowledge-pack-software-lifecycle-frame-a-proposal': 'frame-a-proposal',
+  'open-knowledge-pack-software-lifecycle-record-a-decision': 'record-a-decision',
+  'open-knowledge-pack-software-lifecycle-write-a-spec': 'write-a-spec',
+  'open-knowledge-pack-software-lifecycle-review-a-design': 'review-a-design',
+  'open-knowledge-pack-software-lifecycle-write-a-postmortem': 'write-a-postmortem',
+  'open-knowledge-pack-knowledge-base-research': 'research-with-sources',
+  'open-knowledge-pack-knowledge-base-consolidate': 'consolidate-notes',
+};
 
 /**
  * GitHub `owner/repo` of the public projection skills.sh indexes

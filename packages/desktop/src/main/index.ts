@@ -75,7 +75,9 @@ import {
 import {
   CLIENT_VERSION_HEADER,
   hasUninstallFeedbackContent,
+  OPENKNOWLEDGE_SKILLS_REPO,
   PROTOCOL_VERSION,
+  projectSkillDecisionKey,
   ServerInfoSuccessSchema,
   SPAWN_ERROR_LOG,
   TERMINAL_CLIS,
@@ -105,8 +107,10 @@ import {
   readServerLock,
   readServerPackageVersion,
   recordSkillInstallEvent,
+  reportSkillInstall,
   resolveBundledSkillDir,
   resolveLockDir,
+  resolveSkillInstallReportSettings,
   runAuthStatusSubprocess,
   trustSystemCertificates,
   USER_GLOBAL_BUNDLE_IDS,
@@ -2082,6 +2086,21 @@ async function openProject(
       // checkDesktop:false — the desktop resolves its own bundled assets.
       deps: {
         resolveBundledSkillDir: () => resolveBundledSkillDir('project', { checkDesktop: false }),
+        readProjectSkillDecision: (dir) =>
+          readBundleDecision(osHomedir(), projectSkillDecisionKey(dir)),
+        // Opening a wired project without the project skill CREATES it — the
+        // desktop's most common real install, and previously uncounted.
+        reportInstalled: (skillNames, scope) => {
+          const home = osHomedir();
+          void reportSkillInstall(
+            {
+              source: OPENKNOWLEDGE_SKILLS_REPO,
+              skills: skillNames,
+              ...(scope === undefined ? {} : { scope }),
+            },
+            { home, enabled: resolveSkillInstallReportSettings(home).enabled },
+          );
+        },
       },
     }).catch((err) => {
       console.warn('[main] project-skill reclaim failed', {
@@ -3652,6 +3671,21 @@ function buildReclaimUserSkillsOpts(): Parameters<typeof reclaimUserSkillsOnLaun
         writeTargetVersion(home, target, version, surface),
       readBundleDecision: (home, name) => readBundleDecision(home, name),
       writeBundleDecision: (home, name, enabled) => writeBundleDecision(home, name, enabled),
+      // Count a genuine seed on skills.sh. Fire-and-forget and honouring the
+      // same telemetry setting + DO_NOT_TRACK gate as every other report, so a
+      // launch never waits on a third party.
+      reportInstalled: (skillNames, scope) => {
+        const home = osHomedir();
+        void reportSkillInstall(
+          {
+            source: OPENKNOWLEDGE_SKILLS_REPO,
+            skills: skillNames,
+            global: true,
+            ...(scope === undefined ? {} : { scope }),
+          },
+          { home, enabled: resolveSkillInstallReportSettings(home).enabled },
+        );
+      },
       // `bundleId` originates from `USER_GLOBAL_BUNDLE_IDS`, so the cast to the
       // CLI's `BundleId` is sound.
       removeBundleFromDisk: (bundleId) =>
@@ -5806,6 +5840,26 @@ function registerProjectIntegrationsSettingsIpc(): void {
     isProjectSkillInstalled: (projectDir) => {
       const skillPath = canonicalSkillTarget.projectSkillPath?.(projectDir);
       return skillPath !== undefined && existsSync(skillPath);
+    },
+    recordProjectSkillDecision: (projectDir, enabled) => {
+      void writeBundleDecision(osHomedir(), projectSkillDecisionKey(projectDir), enabled).catch(
+        (err: unknown) => {
+          console.warn('[main] project-skill decision not recorded', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        },
+      );
+    },
+    reportProjectSkillInstalled: (projectDir) => {
+      const home = osHomedir();
+      void reportSkillInstall(
+        {
+          source: OPENKNOWLEDGE_SKILLS_REPO,
+          skills: [BUNDLE_SKILL_NAME.project],
+          scope: projectDir,
+        },
+        { home, enabled: resolveSkillInstallReportSettings(home).enabled },
+      );
     },
     writeProjectSkill: (id, projectDir) => {
       const result = writeProjectSkill(EDITOR_TARGETS[id], projectDir);

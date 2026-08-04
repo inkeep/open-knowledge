@@ -382,6 +382,35 @@ export async function writeInstallReported(
 }
 
 /**
+ * Release previously-claimed report keys so a later run reports them again.
+ *
+ * The inverse of `writeInstallReported`, and deliberately NOT a general undo for
+ * a failed send. Claim-first exists so an AMBIGUOUS outcome (a dropped request
+ * that may or may not have reached the collector) under-counts rather than
+ * double-counts. Only a DELIVERED rejection is unambiguous: the collector saw
+ * the event and declined it, so nothing was counted and re-reporting cannot
+ * double-count. That is the one case a caller may un-claim.
+ *
+ * Same lock as the append path, and it removes only the named keys, so a
+ * concurrent install's claims survive.
+ */
+export async function clearInstallReported(
+  home: string,
+  keys: readonly string[],
+  logger?: SkillStateLogger,
+): Promise<void> {
+  if (keys.length === 0) return;
+  await withSkillStateWriteLock(home, async () => {
+    const existing = await readSkillStateFile(home, logger);
+    if (!existing?.installsReported?.length) return;
+    const drop = new Set(keys);
+    const kept = existing.installsReported.filter((k) => !drop.has(k));
+    if (kept.length === existing.installsReported.length) return;
+    await writeSkillStateFile(home, { ...existing, installsReported: kept });
+  });
+}
+
+/**
  * Canonical skill version: the `version` field of
  * `@inkeep/open-knowledge-server`'s `package.json`. Exposed to the renderer
  * via `GET /api/skill/install-state` so callers don't have to worry about

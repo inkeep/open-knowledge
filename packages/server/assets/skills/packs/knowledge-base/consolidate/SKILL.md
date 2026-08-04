@@ -1,11 +1,11 @@
 ---
-name: open-knowledge-pack-knowledge-base-consolidate
-description: "Promote existing research into a canonical article under `articles/` in a Knowledge Base project (the `knowledge-base` starter pack). Read when a decision has actually been made and the team wants the source-of-truth written down, or when asked to consolidate, canonicalize, promote research, or supersede an older article. Carries the decision-confirmation gate, the `supersedes:` chain that keeps the evidence trail intact, and the canonical voice. Does not conduct new research — that is the sibling `research` skill."
+name: consolidate-notes
+description: "Promote existing research into a canonical article under `articles/` in a Knowledge Base project (the `knowledge-base` starter pack). Read when a decision has actually been made and the team wants the source-of-truth written down, or when asked to consolidate, canonicalize, promote research, or supersede an older article. Carries the decision-confirmation gate, the `supersedes:` chain that keeps the evidence trail intact, and the canonical voice. Does not conduct new research — that is the sibling `research-with-sources` skill."
 compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack knowledge-base`."
 metadata:
   pack: "knowledge-base"
   author: "Inkeep"
-  repository: "https://github.com/inkeep/open-knowledge"
+  repository: "https://github.com/inkeep/open-knowledge-skills"
 ---
 # Consolidate — promote research into a canonical article
 
@@ -58,7 +58,7 @@ Locate research articles on this topic:
 - Follow its `sources:` frontmatter list — read every referenced source file
 - Also read any existing canonical article on the topic — if one already exists, you may be **updating** it rather than creating a new one
 
-If there is no research to consolidate, stop. Consolidation is promotion, not creation. Do the `research` skill first.
+If there is no research to consolidate, stop. Consolidation is promotion, not creation. Do the `research-with-sources` skill first.
 
 ### 2. Re-confirm the decision
 

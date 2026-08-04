@@ -546,6 +546,7 @@ export {
   type SkillInstallEventOutcome,
   type SkillInstallEventSurface,
 } from './skill-install-events.ts';
+export { resolveSkillInstallReportSettings } from './skill-install-report-config.ts';
 export {
   readAllTargets,
   readBundleDecision,
@@ -561,6 +562,7 @@ export {
   writeBundleDecision,
   writeTargetVersion,
 } from './skill-state.ts';
+export { reportSkillInstall, type SkillInstallReport } from './skills-sh-install-report.ts';
 export {
   CURSOR_BUNDLE_PATHS_BY_PLATFORM,
   type HandleSpawnCursorDeps,

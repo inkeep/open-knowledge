@@ -657,8 +657,9 @@ export interface OkScaffoldPlan {
   skipped: OkScaffoldSkipEntry[];
   warnings: string[];
   /** Project-local skills shipped by the pack. `pending` means apply would
-   *  author or refresh the skill source. */
-  packSkills?: { name: string; pending: boolean }[];
+   *  author or refresh the skill source. `conflict` means a user-owned skill
+   *  holds the name; apply will neither install nor clobber it. */
+  packSkills?: { name: string; pending: boolean; conflict?: boolean }[];
 }
 export interface OkScaffoldApplyError {
   path: string;
@@ -670,6 +671,8 @@ export interface OkScaffoldApplyResult {
   durationMs: number;
   /** Editor display-names that received the pack's project skill (e.g. "Claude Code"). */
   packSkillsInstalled: string[];
+  /** Pack skills skipped because a user-owned same-named skill holds the name. */
+  packSkillConflicts: { name: string; hosts?: string[] }[];
 }
 
 export interface OkSeedError {

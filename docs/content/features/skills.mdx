@@ -114,6 +114,21 @@ OpenKnowledge's own skills are published at [inkeep/open-knowledge-skills](https
 
 `open-knowledge` is the platform skill that teaches an agent to read, search, link, and write markdown through the MCP server. The starter packs ship there too, and `ok seed --pack <id>` installs a pack's skills directly.
 
+The repo is grouped by role: `skills/core/` holds the three built-ins, and `skills/starter-packs/<pack>/` holds each pack's skills next to a README explaining the pack. Each pack is also its own plugin, so you can install just the one you want:
+
+```bash
+/plugin install knowledge-base@open-knowledge-skills
+/plugin install personal-crm@open-knowledge-skills
+```
+
+<Callout type="info">
+Pack skills were renamed: the generated `open-knowledge-pack-…` names became product names, so `open-knowledge-pack-plain-notes` is now `note-taking` and `open-knowledge-pack-knowledge-base-research` is now `research-with-sources`.
+
+**Skills you already have are not renamed.** Nothing on your disk changes and your `.ok/skills-lock.json` is not rewritten — these are project-level skills that normally live in your git repo, so a silent rename would show up as an unexplained diff for you and everyone who pulls. An existing skill keeps its name, keeps working, and still updates from source. Re-seeding a pack recognizes it and will not install a second copy under the new name. Only newly installed skills use the new names.
+
+Four plugin handles were renamed alongside their packs (`entity-vault` → `personal-crm`, `okf` → `okf-knowledge-base`, `plain-notes` → `note-taking`, `writing-pipeline` → `writing-workflow`). The old handles still resolve for one release and are marked outdated in the marketplace; switch to the new ones. `ok seed --pack <id>` flags are unchanged.
+</Callout>
+
 ## Up next
 
 - **[Agentic search](../reference/agentic-search.mdx)**: how the agent reads your base.

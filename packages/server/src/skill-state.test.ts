@@ -15,8 +15,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
+  clearInstallReported,
   readAllTargets,
   readBundleDecision,
+  readInstallReported,
   readServerPackageVersion,
   readSkillInstallStateSnapshot,
   readTargetRecordedAt,
@@ -24,6 +26,7 @@ import {
   resolveBundleEnabled,
   skillStateYamlPath,
   writeBundleDecision,
+  writeInstallReported,
   writeTargetVersion,
 } from './skill-state.ts';
 
@@ -299,5 +302,33 @@ describe('readAllTargets / readSkillInstallStateSnapshot', () => {
     expect(snapshot.currentVersion).toMatch(/^\d+\.\d+\.\d+/);
     expect(snapshot.targets['claude-cowork']?.version).toBe('0.1.0');
     expect(snapshot.targets['cli-hosts']).toBeNull();
+  });
+});
+
+describe('clearInstallReported', () => {
+  // The ledger is claimed BEFORE the report is sent, so releasing a claim is the
+  // only way a delivered rejection ever gets retried. These cover the defensive
+  // branches the integration path never reaches.
+  test('removes a claimed key so it reports again', async () => {
+    const home = freshHome();
+    await writeInstallReported(home, ['o/r#a', 'o/r#b']);
+    await clearInstallReported(home, ['o/r#a']);
+    expect([...(await readInstallReported(home))]).toEqual(['o/r#b']);
+  });
+
+  test('removing a key that was never claimed leaves the ledger untouched', async () => {
+    const home = freshHome();
+    await writeInstallReported(home, ['o/r#a']);
+    await clearInstallReported(home, ['o/r#missing']);
+    expect([...(await readInstallReported(home))]).toEqual(['o/r#a']);
+  });
+
+  test('an empty key list and an absent ledger are both no-ops, not throws', async () => {
+    const home = freshHome();
+    // Absent file: a clean machine must not fail an install over bookkeeping.
+    await expect(clearInstallReported(home, ['o/r#a'])).resolves.toBeUndefined();
+    await writeInstallReported(home, ['o/r#a']);
+    await expect(clearInstallReported(home, [])).resolves.toBeUndefined();
+    expect([...(await readInstallReported(home))]).toEqual(['o/r#a']);
   });
 });

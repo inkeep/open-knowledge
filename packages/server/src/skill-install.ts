@@ -769,5 +769,21 @@ export async function buildAndOpenSkill(
   }
 
   await report('installed', installedVersion);
+  // Count the Claude Desktop / Cowork funnel. Reported at `installed` only —
+  // the point where the file-association handoff actually succeeded — not on
+  // `built`, where the file is merely sitting in Downloads. The final step
+  // happens inside Claude Desktop's own installer, so this is the strongest
+  // signal we can observe; the per-machine ledger keeps a repeat click from
+  // counting twice. Machine-scoped: this bundle is installed once per machine.
+  void reportSkillInstall(
+    {
+      source: OPENKNOWLEDGE_SKILLS_REPO,
+      skills: [BUNDLE_SKILL_NAME.project],
+      agents: ['claude-desktop'],
+      global: true,
+      version: installedVersion,
+    },
+    { home, enabled: resolveSkillInstallReportSettings(home).enabled },
+  );
   return { ...baseResult, status: 'installed' };
 }

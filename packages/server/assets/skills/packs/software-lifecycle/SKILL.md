@@ -1,11 +1,11 @@
 ---
-name: open-knowledge-pack-software-lifecycle
+name: software-lifecycle
 description: "How to work in a Software Lifecycle project (the `software-lifecycle` starter pack): proposals → decisions → specs → postmortems, plus guides. Read when the project has these folders, or when asked how this project is organized. Carries the doc lifecycle, status flows, and per-folder agent behaviors so that guidance does not live inside template bodies or folder descriptions. The five workflows — frame a proposal, write a spec, record a decision, write a postmortem, review a design — each ship as their own sibling skill in this pack. Complements the platform `open-knowledge` skill; does not replace it."
 compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack software-lifecycle`."
 metadata:
   pack: "software-lifecycle"
   author: "Inkeep"
-  repository: "https://github.com/inkeep/open-knowledge"
+  repository: "https://github.com/inkeep/open-knowledge-skills"
 ---
 # Software Lifecycle pack — how to work here
 
@@ -44,11 +44,11 @@ Authoring in this project is procedural, not conventional. Each workflow ships a
 
 | Workflow | Sibling skill | When |
 | --- | --- | --- |
-| Frame a proposal | `open-knowledge-pack-software-lifecycle-frame-a-proposal` | A change needs designing and arguing before anyone builds it. |
-| Write a spec | `open-knowledge-pack-software-lifecycle-write-a-spec` | An accepted proposal needs scoping into an implementable spec. |
-| Record a decision | `open-knowledge-pack-software-lifecycle-record-a-decision` | A decision was actually made and needs its context and consequences preserved. |
-| Write a postmortem | `open-knowledge-pack-software-lifecycle-write-a-postmortem` | An incident happened and the team needs a blameless write-up. |
-| Review a design | `open-knowledge-pack-software-lifecycle-review-a-design` | An existing proposal, spec, or decision needs pressure-testing for soundness. |
+| Frame a proposal | `frame-a-proposal` | A change needs designing and arguing before anyone builds it. |
+| Write a spec | `write-a-spec` | An accepted proposal needs scoping into an implementable spec. |
+| Record a decision | `record-a-decision` | A decision was actually made and needs its context and consequences preserved. |
+| Write a postmortem | `write-a-postmortem` | An incident happened and the team needs a blameless write-up. |
+| Review a design | `review-a-design` | An existing proposal, spec, or decision needs pressure-testing for soundness. |
 
 ## Templates
 

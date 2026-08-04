@@ -1,11 +1,11 @@
 ---
-name: open-knowledge-pack-software-lifecycle-write-a-postmortem
+name: write-a-postmortem
 description: "Write a blameless incident postmortem under postmortems/ following the Google SRE shape — evidence-based timeline, trigger vs root cause vs symptom, contributing factors, what went well, and owned+dated+verifiable action items. Read when asked to write a postmortem, do an incident review, run a root cause analysis, write up the outage, retro on the outage, or when the user says we had an incident and wants it documented. Do NOT read to frame a proposal (use frame-a-proposal), write a spec (use write-a-spec), record a decision (use record-a-decision), or review a design (use review-a-design) — a postmortem documents an incident that already happened, it does not propose, specify, decide, or critique future work."
 compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack software-lifecycle`."
 metadata:
   pack: "software-lifecycle"
   author: "Inkeep"
-  repository: "https://github.com/inkeep/open-knowledge"
+  repository: "https://github.com/inkeep/open-knowledge-skills"
 ---
 
 # Write a postmortem

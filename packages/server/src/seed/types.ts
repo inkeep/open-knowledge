@@ -10,6 +10,17 @@
 import type { PackId } from './starter.ts';
 
 /**
+ * A pack skill the seed could not install because a user-owned skill already
+ * holds the name (lock provenance says it is not ours). `hosts` carries
+ * per-editor slot conflicts from fan-out when the whole-name case does not
+ * apply. Conflicts are not errors: the seed still succeeds and never clobbers.
+ */
+export interface PackSkillConflict {
+  name: string;
+  hosts?: string[];
+}
+
+/**
  * A filesystem entry that the scaffolder will create on apply.
  */
 export interface FileEntry {
@@ -54,8 +65,12 @@ export interface ScaffoldPlan {
    * when the skill source is absent from `.ok/skills/` and apply would (re)author
    * it. Folders/templates being present does NOT imply the skill is — so callers
    * must treat a pending skill as outstanding work, not "already set up".
+   * `conflict` is true when a present same-named skill is NOT ours by lock
+   * provenance (the user's own skill happens to share the name): apply will
+   * neither install nor clobber it, and callers must surface it instead of
+   * reading the pack as already set up.
    */
-  packSkills?: { name: string; pending: boolean }[];
+  packSkills?: { name: string; pending: boolean; conflict?: boolean }[];
 }
 
 /**
@@ -77,6 +92,8 @@ export interface ApplyResult {
    * pack ships no skill.
    */
   packSkillsInstalled: string[];
+  /** Pack skills skipped because a user-owned same-named skill holds the name. */
+  packSkillConflicts: PackSkillConflict[];
 }
 
 export interface ApplyError {

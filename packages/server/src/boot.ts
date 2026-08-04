@@ -1178,7 +1178,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     }
   } catch (err) {
     log.warn?.(
-      { event: 'store-skill-migration-failed', error: String(err) },
+      { err, event: 'store-skill-migration-failed' },
       'Store-skill in-place migration failed (non-fatal).',
     );
   }
@@ -1207,7 +1207,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     }
   } catch (err) {
     log.warn?.(
-      { event: 'global-store-skill-migration-failed', error: String(err) },
+      { err, event: 'global-store-skill-migration-failed' },
       'Global store-skill in-place migration failed (non-fatal).',
     );
   }

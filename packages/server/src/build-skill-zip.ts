@@ -135,9 +135,24 @@ export function resolveBundledSkillDir(
   const home = opts.home ?? homedir();
 
   const candidates: string[] = [];
+  // A co-installed OK Desktop is probed FIRST and wins on mere existence. There
+  // is no version comparison, and version could not arbitrate anyway: a working
+  // tree carries unreleased changes at the SAME version as the app built from
+  // the last release, so an app whose assets predate the branch still wins.
+  //
+  // In production that is intended. Under test it makes the result depend on
+  // whatever is installed on the developer's machine — a stale OpenKnowledge.app
+  // silently shadows the tree under test, producing failures CI cannot
+  // reproduce. So the REAL machine roots are probed only outside tests; a test
+  // that supplies its own `home` still gets the home-relative probe, scoped to
+  // the directory it controls, which is how the desktop-wins behavior stays
+  // covered.
+  const underTest = process.env.NODE_ENV === 'test';
   if (checkDesktop && platform === 'darwin') {
-    candidates.push(join('/Applications', DESKTOP_SKILLS_REL, which));
-    candidates.push(join(home, 'Applications', DESKTOP_SKILLS_REL, which));
+    if (!underTest) candidates.push(join('/Applications', DESKTOP_SKILLS_REL, which));
+    if (!underTest || opts.home !== undefined) {
+      candidates.push(join(home, 'Applications', DESKTOP_SKILLS_REL, which));
+    }
   }
   candidates.push(fileURLToPath(new URL(`../dist/assets/skills/${which}`, import.meta.url)));
   candidates.push(fileURLToPath(new URL(`../assets/skills/${which}`, import.meta.url)));

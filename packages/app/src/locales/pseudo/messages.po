@@ -9942,6 +9942,14 @@ msgstr ""
 msgid "Skill \"{0}\" deleted"
 msgstr ""
 
+#: src/components/SeedDialog.tsx
+msgid "Skill \"{conflictName}\" was not installed — you already have your own skill with that name. Rename yours if you want the pack's version."
+msgstr ""
+
+#: src/components/SeedDialog.tsx
+msgid "Skill \"{conflictName}\" was not installed for {conflictHosts} — you already have your own skill with that name there. Rename yours if you want the pack's version."
+msgstr ""
+
 #: src/hooks/use-create-blank-skill.ts
 msgid "Skill \"{name}\" created"
 msgstr ""
@@ -12091,6 +12099,11 @@ msgstr ""
 
 #: src/components/TimelinePanel.tsx
 msgid "yesterday"
+msgstr ""
+
+#. placeholder {0}: s.name
+#: src/components/SeedDialog.tsx
+msgid "You already have your own skill named \"{0}\" — the pack's version will not be installed, and yours won't be touched. Rename yours to install the pack's version."
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx

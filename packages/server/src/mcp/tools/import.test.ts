@@ -129,7 +129,13 @@ describe('import MCP tool', () => {
     expect(calls).toEqual([
       {
         url: 'http://localhost:4321/api/skill/import',
-        body: { source: 'https://www.skills.sh/acme/skills/review-bot', install: false },
+        // A pasted skills.sh page URL is marketplace provenance, so the import
+        // rides the install-report rider; other source shapes never set it.
+        body: {
+          source: 'https://www.skills.sh/acme/skills/review-bot',
+          install: false,
+          marketplace: true,
+        },
       },
       {
         url: 'http://localhost:4321/api/skill/install',

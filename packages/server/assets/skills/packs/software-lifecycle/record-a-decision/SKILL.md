@@ -1,11 +1,11 @@
 ---
-name: open-knowledge-pack-software-lifecycle-record-a-decision
+name: record-a-decision
 description: "Records an architecture decision as a Nygard/MADR-shaped ADR under decisions/ — capturing the context that forced the choice, the options weighed, the decision itself, and its consequences in both directions, plus the supersedes chain that keeps a decision log honest. Read when asked to record an architecture decision, write an ADR, log the decision we made, document why we chose X over Y, capture this decision for the record, or supersede an old decision with a new one. Do NOT read to frame a proposal or explore an idea not yet decided (frame-a-proposal), to write a spec or implementation plan (write-a-spec), to write an incident postmortem (write-a-postmortem), or to judge whether a design is sound (review-a-design). This skill records a decision already made; it does not make one."
 compatibility: "Claude Code, Claude Desktop, Claude Cowork, Claude.ai web. Requires OpenKnowledge MCP server. Installed project-local by `ok seed --pack software-lifecycle`."
 metadata:
   pack: "software-lifecycle"
   author: "Inkeep"
-  repository: "https://github.com/inkeep/open-knowledge"
+  repository: "https://github.com/inkeep/open-knowledge-skills"
 ---
 
 # Record a decision — write an ADR under `decisions/`

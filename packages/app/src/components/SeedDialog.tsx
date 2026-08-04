@@ -1,6 +1,7 @@
 import { plural } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowLeft, Loader2 } from 'lucide-react';
+import type { ReactElement } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { CreatedItemsList } from '@/components/CreatedItemsList';
@@ -248,6 +249,20 @@ export function SeedDialog({ open, onOpenChange, onSeedApplied, initialPackId }:
             ? t`${packName} skill installed.`
             : t`${packName} was already set up. Nothing to do.`;
       toast.success(message);
+      // Name collisions are not errors — the seed succeeded and the user's own
+      // skill was left untouched — but silence would read as "pack installed".
+      // `hosts` means the skill DID install — a same-named skill of the user's
+      // only displaced it in those editors. Saying "was not installed" there is
+      // simply false, and the field that makes it true was being dropped.
+      for (const conflict of result.result.packSkillConflicts ?? []) {
+        const conflictName = conflict.name;
+        const conflictHosts = conflict.hosts?.join(', ');
+        toast.warning(
+          conflictHosts === undefined || conflictHosts === ''
+            ? t`Skill "${conflictName}" was not installed — you already have your own skill with that name. Rename yours if you want the pack's version.`
+            : t`Skill "${conflictName}" was not installed for ${conflictHosts} — you already have your own skill with that name there. Rename yours if you want the pack's version.`,
+        );
+      }
       onSeedApplied?.();
       onOpenChange(false);
     } else {
@@ -471,13 +486,20 @@ function SeedDialogBody({
 
   if (phase.kind === 'already-seeded') {
     return (
-      <div className="py-2 text-sm">
-        <p className="font-medium">
-          <Trans>This pack is already set up here.</Trans>
-        </p>
-        <p className="text-muted-foreground">
-          <Trans>The folders and templates are already here, so there's nothing to add.</Trans>
-        </p>
+      <div className="space-y-3 py-2 text-sm">
+        <div>
+          <p className="font-medium">
+            <Trans>This pack is already set up here.</Trans>
+          </p>
+          <p className="text-muted-foreground">
+            <Trans>The folders and templates are already here, so there's nothing to add.</Trans>
+          </p>
+        </div>
+        {/* A name collision leaves nothing to apply, so this phase is exactly
+            where it lands. Without it the dialog says "nothing to add" while
+            the pack's skill is silently absent, and the Initialize button that
+            would surface the conflict is never rendered. */}
+        <PackSkillConflicts plan={phase.plan} />
       </div>
     );
   }
@@ -494,6 +516,25 @@ function SeedDialogBody({
           ))}
         </div>
       ) : null}
+      <PackSkillConflicts plan={phase.plan} />
+    </div>
+  );
+}
+
+/** Name collisions from the plan: the pack skill the user's own skill displaces. */
+function PackSkillConflicts({ plan }: { plan: OkScaffoldPlan }): ReactElement | null {
+  const conflicts = plan.packSkills?.filter((s) => s.conflict) ?? [];
+  if (conflicts.length === 0) return null;
+  return (
+    <div className="rounded-md bg-warning/10 p-3 text-xs text-warning-foreground">
+      {conflicts.map((s) => (
+        <p key={s.name}>
+          <Trans>
+            You already have your own skill named "{s.name}" — the pack's version will not be
+            installed, and yours won't be touched. Rename yours to install the pack's version.
+          </Trans>
+        </p>
+      ))}
     </div>
   );
 }

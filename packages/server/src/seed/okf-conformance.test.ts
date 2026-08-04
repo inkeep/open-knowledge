@@ -254,7 +254,7 @@ describe('okf pack — OKF §9 conformance by construction', () => {
       expect(result.packSkillsInstalled).toContain('Claude Code');
 
       // Every `.md` the pack installed under its skill dir must carry a non-empty `type`.
-      const packSkillDir = join(projectDir, '.claude', 'skills', 'open-knowledge-pack-okf');
+      const packSkillDir = join(projectDir, '.claude', 'skills', 'okf-knowledge-base');
       const skillDocs = collectMarkdown(packSkillDir).map((p) => join(packSkillDir, p));
       expect(skillDocs.length).toBeGreaterThanOrEqual(1);
       for (const abs of skillDocs) {
