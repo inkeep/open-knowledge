@@ -1108,8 +1108,15 @@ jobs:
       # fails LOUD (the node-liblzma -Werror explosion the Linux overlay's
       # header documents), never silently.
       #
-      # The `publish` block must restate the full provider entry — `extends`
-      # replaces list-valued keys wholesale rather than merging them.
+      # `publish` is deliberately the OBJECT form, not a one-element list.
+      # `extends` merges list-valued keys by CONCATENATION (deepAssign unions
+      # arrays), so a list here would APPEND a second publish entry after the
+      # base config's `channel: latest` one — and app-update.yml is written
+      # from the FIRST entry, silently pinning every Linux install to the
+      # wrong channel (the channel-correct assert below caught exactly this
+      # on the first live cut). An object hits deepAssign's array-vs-object
+      # branch and replaces the base list wholesale; the schema accepts both
+      # shapes.
       - name: Generate the release overlay config (channel + version)
         working-directory: packages/desktop
         env:
@@ -1122,10 +1129,10 @@ jobs:
           extraMetadata:
             version: ${VERSION}
           publish:
-            - provider: github
-              owner: inkeep
-              repo: open-knowledge
-              channel: ${CHANNEL}
+            provider: github
+            owner: inkeep
+            repo: open-knowledge
+            channel: ${CHANNEL}
           EOF
           cat electron-builder.release-linux.yml
 
