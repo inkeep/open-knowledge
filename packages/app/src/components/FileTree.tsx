@@ -2,7 +2,6 @@ import {
   CreateFolderSuccessSchema,
   CreatePageSuccessSchema,
   DeletePathSuccessSchema,
-  DocumentListSuccessSchema,
   DuplicatePathSuccessSchema,
   type HandoffOutcome,
   type HandoffTarget,
@@ -153,12 +152,10 @@ import {
   classifyEmptyTree,
   type DocumentEntry,
   type FileEntry,
-  filterVisibleEntries,
   hasOkPathSegment,
   isAssetEntry,
   isDocumentEntry,
   isFolderEntry,
-  toFileEntries,
 } from '@/components/file-tree-utils';
 import { NewItemDialog } from '@/components/NewItemDialog';
 import {
@@ -206,7 +203,7 @@ import {
   hashFromFolderPath,
   pushHashWithoutNavigation,
 } from '@/lib/doc-hash';
-import { emitDocumentsChanged, subscribeToDocumentsChanged } from '@/lib/documents-events';
+import { emitDocumentsChanged } from '@/lib/documents-events';
 import {
   subscribeToFileTreeMenuActionDelete,
   subscribeToFileTreeMenuActionDuplicate,
@@ -215,8 +212,6 @@ import {
 import { importTemplate } from '@/lib/folder-config-api';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { parseServerResponse, parseSuccessOrWarn } from '@/lib/parse-server-response';
-import { createRefreshScheduler } from '@/lib/refresh-scheduler';
-import { getRelaunchInFlightSnapshot, useRelaunchInFlight } from '@/lib/relaunch-store';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import {
   buildDocShareInput,
@@ -224,17 +219,10 @@ import {
   runShareAction,
   type ShareTargetInput,
 } from '@/lib/share/run-share-action';
-import {
-  consumeShowAllStream,
-  isNdjsonResponse,
-  SHOW_ALL_NDJSON_ACCEPT,
-  ShowAllStreamError,
-} from '@/lib/show-all-stream';
 import { OK_SIDEBAR_DRAG_MIME, serializeSidebarDragPayload } from '@/lib/sidebar-drag';
 import { cn } from '@/lib/utils';
 import { getValidationSnapshot, subscribeToValidationStore } from '@/lib/validation-store';
 import { joinWorkspacePath } from '@/lib/workspace-paths';
-import { mergeRootEntriesAdditive, spliceLazyFolderChildren } from './file-tree-merge';
 import { OpenInAgentContextSubmenu } from './handoff/OpenInAgentContextSubmenu';
 import {
   buildFolderHandoffInput,
@@ -245,6 +233,7 @@ import {
 import { useInstalledAgents } from './handoff/useInstalledAgents';
 import { cancelHoverPrewarm, scheduleHoverPrewarm } from './sidebar-hover-prewarm';
 import { useSidebar } from './ui/sidebar';
+import { useFileTreeListing } from './use-file-tree-listing';
 
 function focusEditorAfterRename(docName: string): void {
   window.requestAnimationFrame(() => {
@@ -344,12 +333,6 @@ const FILE_TREE_EXTERNAL_FILE_DROP_TARGET_ATTR = 'data-ok-external-file-drop-tar
 const FILE_TREE_EXTERNAL_FILE_DROP_ROOT_ATTR = 'data-ok-external-file-drop-root-target';
 const FILE_TREE_EXTERNAL_FILE_DROP_BUSY_PATH = '__external-file-drop__';
 
-// Cadence for re-attempting the listing fetch while a desktop auto-update
-// relaunch is in flight. The server is intentionally torn down (up to 10s)
-// before `quitAndInstall`, so a steady retry lets the panel self-heal the
-// moment the server returns — e.g. when a relaunch aborts and the app keeps
-// running — instead of latching a stale error until the next focus/CC1 refresh.
-const CONNECTIVITY_RECONNECT_RETRY_MS = 2000;
 const FILE_TREE_EXTERNAL_FILE_DROP_CSS = `
   [data-type="item"][${FILE_TREE_EXTERNAL_FILE_DROP_TARGET_ATTR}="true"] {
     background: color-mix(in oklab, var(--color-primary) 10%, transparent);
@@ -1090,67 +1073,6 @@ export interface FileTreeHandle {
   subscribe(listener: () => void): () => void;
 }
 
-type ShowAllDepth1ListingResult =
-  | { kind: 'entries'; entries: FileEntry[]; truncated: boolean }
-  | { kind: 'http-error'; title: string }
-  | { kind: 'network-error'; cause: unknown };
-
-/**
- * The depth-1 disk-walk listing URL. `showOk` is the request-scoped reveal
- * of `.ok` rows (Show .ok folders axis) — the server admits `.ok` entries on
- * this walk only, so the flag rides the listing URL rather than any global
- * mode.
- */
-function showAllDepth1Url(dir: string, showOk: boolean): string {
-  return `/api/documents?showAll=true${showOk ? '&showOk=true' : ''}&dir=${encodeURIComponent(dir)}&depth=1`;
-}
-
-/**
- * One level of the Show All listing for `dir` (`''` = content root), via the
- * same NDJSON-or-buffered branching as the root refresh. Failures come back
- * as values so the component-side caller stays a straight-line function —
- * React Compiler cannot yet lower `try`/`finally` inside component scope.
- * Error titles are parameters because translation lives with the caller.
- */
-async function fetchShowAllDepth1Listing(
-  dir: string,
-  showOk: boolean,
-  signal: AbortSignal,
-  fallbackErrorTitle: string,
-  schemaMismatchTitle: string,
-): Promise<ShowAllDepth1ListingResult> {
-  try {
-    const res = await fetch(showAllDepth1Url(dir, showOk), {
-      signal,
-      headers: SHOW_ALL_NDJSON_ACCEPT,
-    });
-    if (isNdjsonResponse(res)) {
-      const consumed = await consumeShowAllStream(res);
-      return {
-        kind: 'entries',
-        entries: toFileEntries(consumed.entries),
-        truncated: consumed.truncated,
-      };
-    }
-    const parsed = await parseServerResponse(res, fallbackErrorTitle);
-    if (!parsed.ok) return { kind: 'http-error', title: parsed.title };
-    const success = DocumentListSuccessSchema.safeParse(parsed.body);
-    if (!success.success) return { kind: 'http-error', title: schemaMismatchTitle };
-    return {
-      kind: 'entries',
-      entries: toFileEntries(success.data.documents),
-      truncated: success.data.truncated === true,
-    };
-  } catch (cause) {
-    // A server-emitted NDJSON error line means the server WAS reached — its
-    // problem title is the truthful message, not the connectivity copy.
-    if (cause instanceof ShowAllStreamError) {
-      return { kind: 'http-error', title: cause.message };
-    }
-    return { kind: 'network-error', cause };
-  }
-}
-
 /**
  * Must be mounted inside a `SidebarProvider` — `useSidebar()` throws otherwise.
  * Today only `FileSidebar` mounts it, which is always inside the provider.
@@ -1184,6 +1106,33 @@ export function FileTree({
   const { notifySidebarFileSelected } = useSidebar();
   const { resolvedTheme } = useTheme();
   const { addPage, pageMeta, pages } = usePageList();
+  const { okignoreBinding, merged } = useConfigContext();
+  const showHiddenFiles = merged?.appearance?.sidebar?.showHiddenFiles ?? false;
+  const showOnlyMarkdownFiles = merged?.appearance?.sidebar?.showOnlyMarkdownFiles ?? false;
+  const showOkFolders = merged?.appearance?.sidebar?.showOkFolders ?? false;
+  const previewTabs = merged?.editor?.previewTabs ?? true;
+  const {
+    documents,
+    setDocuments,
+    recordOptimisticAdd,
+    loading,
+    error,
+    setError,
+    reconnecting,
+    relaunchInFlight,
+    truncatedShownCount,
+    unfilteredRootEntryCount,
+    observeExpandedFolderPaths,
+  } = useFileTreeListing({
+    showHiddenFiles,
+    showOnlyMarkdownFiles,
+    showOkFolders,
+    messages: {
+      fallbackErrorTitle: t`Failed to load documents`,
+      schemaMismatchTitle: t`Documents response did not match expected shape.`,
+      couldNotReachServerTitle: t`Could not reach server`,
+    },
+  });
   function navigationTargetForDocument(
     docName: string,
     size: number | null | undefined,
@@ -1196,28 +1145,6 @@ export function FileTree({
       }
     );
   }
-  const [documents, setDocuments] = useState<FileEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  // True while the listing is being silently re-attempted after a reachability
-  // failure that coincides with a known desktop auto-update relaunch. Drives a
-  // calm "Relaunching…" notice in place of the red "Could not reach server"
-  // error, and is cleared the moment a fetch succeeds (self-heal) or the
-  // reachability failure outlives the relaunch (then the honest error wins).
-  const [reconnecting, setReconnecting] = useState(false);
-  // Drives the render copy + the start/abort flip effect. The fetch closures
-  // read the live value via `getRelaunchInFlightSnapshot()` at failure time
-  // (always current — no effect-synced ref needed).
-  const relaunchInFlight = useRelaunchInFlight();
-  const connectivityRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Count of entries the server returned when the showAll walk hit its entry
-  // cap (so the list is a partial prefix); null when the list is complete.
-  const [truncatedShownCount, setTruncatedShownCount] = useState<number | null>(null);
-  // Pre-filter size of the most recent depth-1 root listing, captured where
-  // the listing lands. The filtered `documents` state can't distinguish an
-  // empty project from filters hiding everything (raw listings aren't
-  // retained), so the empty slot's classifier reads this signal instead.
-  const [unfilteredRootEntryCount, setUnfilteredRootEntryCount] = useState(0);
   const [busyPath, setBusyPath] = useState<string | null>(null);
   const [deleteRequest, setDeleteRequest] = useState<FileTreeDeleteRequest | null>(null);
   const [templateConvertRequest, setTemplateConvertRequest] = useState<FileTreeTarget | null>(null);
@@ -1386,58 +1313,17 @@ export function FileTree({
   >(() => {});
   const busyPathRef = useRef<string | null>(null);
   const copiedKeyboardTargetRef = useRef<FileTreeTarget | null>(null);
-  // Tracks locally-added tree paths (file/folder creates) with the timestamp
-  // when they were optimistically inserted into `documents` state. Used by
-  // `refreshDocs` to preserve entries the server's file-watcher index has not
-  // yet picked up — without this, the `setDocuments(serverResponse)` call below
-  // overwrites local optimistic state, dropping the new entry and breaking the
-  // adjacent right-click context-menu flow. The underlying race class is
-  // parcel-watcher inotify-event delivery lag on Linux CI. Entries expire
-  // after STALE_REFRESH_PRESERVE_WINDOW_MS or when the server confirms.
-  const recentLocalAddsRef = useRef<Map<string, number>>(new Map());
-  // Lazy Show All expansion (client half): folders fetch their
-  // children on first expand via `?showAll=true&dir=<folder>&depth=1`. All
-  // three refs key by folder TREE path ('team/'). The loaded-dirs cache and
-  // any in-flight child fetches are scoped to one refresh cycle — refreshDocs
-  // aborts the fetches, clears the cache, and bumps the generation stamp so a
-  // child response racing a root re-seed is discarded instead of splicing
-  // stale entries.
-  const lazyLoadedDirTreePathsRef = useRef<Set<string>>(new Set());
-  const lazyChildFetchControllersRef = useRef<Map<string, AbortController>>(new Map());
-  const lazyChildFetchGenerationRef = useRef(0);
-  // Snapshot the expanded-folder diff compares against to detect newly
-  // expanded folders. Pierre has no expand callback, so the model-subscribe
-  // diff is the one mechanism covering row clicks, ArrowRight, drag-hover
-  // auto-open, and programmatic expansion alike.
-  const prevExpandedFolderTreePathsRef = useRef<ReadonlySet<string>>(new Set());
-  const detectLazyFolderExpansionsRef = useRef<() => void>(() => {});
-  const revalidateExpandedLazyDirsRef = useRef<() => void>(() => {});
-  // The async fetch closures in the docs refresh effect are created once at
-  // mount; reading the visibility toggles directly would capture their
-  // mount-time values. The refs let a closure read the latest toggle state
-  // when the response actually lands. Initialized to `false` (matches the
-  // cold-start defaults before config loads); synced in the bulk
-  // useLayoutEffect below.
-  const showHiddenFilesRef = useRef<boolean>(false);
-  const showOnlyMarkdownFilesRef = useRef<boolean>(false);
+  const observeExpandedFolderPathsRef = useRef<(paths: readonly string[]) => void>(() => {});
+  // Pierre reset helpers may run after an awaited mutation, so they read the
+  // latest `showOkFolders` setting rather than the render that started it.
   const showOkFoldersRef = useRef<boolean>(false);
   // Preview-tab behavior: on (the default), a tree click reuses the active tab
   // the way an editor preview tab does; off, every click opens its own tab.
-  // Same ref treatment as the visibility toggles above — the open closures are
+  // Same ref treatment as the view setting above — the open closures are
   // created at mount and must read the latest value at click time.
   const previewTabsRef = useRef<boolean>(true);
   const openTabBehavior = (): 'append' | 'replace-active' =>
     previewTabsRef.current ? 'replace-active' : 'append';
-  const treeVisibilityFromRefs = () => ({
-    showHiddenFiles: showHiddenFilesRef.current,
-    showOnlyMarkdownFiles: showOnlyMarkdownFilesRef.current,
-    showOkFolders: showOkFoldersRef.current,
-  });
-  // Hoists the docs scheduler's `request()` out of its effect closure so
-  // the showHiddenFiles-flip effect can re-fetch without re-mounting the
-  // listener / scheduler. Set to a callable in the docs effect; cleared on
-  // unmount.
-  const refreshDocsScheduleRef = useRef<(() => void) | null>(null);
   const fileTreeHostRef = useRef<HTMLDivElement | null>(null);
   const handleSelectionChangeRef = useRef<(selectedPaths: readonly string[]) => void>(() => {});
   const handleRenameRef = useRef<(event: FileTreeRenameEvent) => void>(() => {});
@@ -1445,70 +1331,6 @@ export function FileTree({
   const handleDropCompleteRef = useRef<(event: FileTreeDropResult) => void>(() => {});
   const activeTargetRef = useRef(activeTarget);
   const [emptyExternalFileDropActive, setEmptyExternalFileDropActive] = useState(false);
-
-  // --- Reachability handling (desktop auto-update relaunch self-heal) ------
-  // The file tree owns the global "Could not reach server" signal the other
-  // sidebar sections defer to. During a desktop relaunch the server is
-  // intentionally torn down (up to 10s) before `quitAndInstall`, so route
-  // reachability failures through these helpers: stay calm and keep retrying
-  // while a relaunch is in flight, but surface the honest error immediately for
-  // a real outage (unchanged behavior).
-  function clearConnectivityRetry() {
-    if (connectivityRetryTimerRef.current !== null) {
-      clearTimeout(connectivityRetryTimerRef.current);
-      connectivityRetryTimerRef.current = null;
-    }
-  }
-  function noteConnectivityRecovered() {
-    clearConnectivityRetry();
-    setReconnecting(false);
-  }
-  // An HTTP response (4xx/5xx, shape mismatch, mid-stream error) proves the
-  // server WAS reachable — drop any calm-reconnect state so the genuine error
-  // is shown, never masked behind the spinner. HTTP errors don't reschedule a
-  // retry, so without this the spinner could latch with the error invisible.
-  function reportServerReachableError(title: string) {
-    noteConnectivityRecovered();
-    setError(title);
-  }
-  function reportConnectivityFailure() {
-    clearConnectivityRetry();
-    // Read the live store snapshot (always current) rather than an effect-synced
-    // ref, so an in-flight fetch failing before a render commits still sees the
-    // relaunch and stays calm.
-    if (getRelaunchInFlightSnapshot()) {
-      setError(null);
-      setReconnecting(true);
-      connectivityRetryTimerRef.current = setTimeout(() => {
-        connectivityRetryTimerRef.current = null;
-        refreshDocsScheduleRef.current?.();
-      }, CONNECTIVITY_RECONNECT_RETRY_MS);
-      return;
-    }
-    setReconnecting(false);
-    setError(t`Could not reach server`);
-  }
-
-  // Re-attempt the listing whenever a relaunch starts or aborts: starting → the
-  // failing fetch flips the banner from red to the calm "Relaunching…" copy;
-  // aborting → a successful fetch self-heals the panel without waiting for the
-  // next focus / CC1 refresh. Skips the initial render.
-  const isFirstRelaunchEffectRunRef = useRef(true);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: relaunchInFlight is a transition trigger, not a read — the body calls the hoisted scheduler ref only. Sibling pattern at the visibility-toggle flip effect below.
-  useEffect(() => {
-    if (isFirstRelaunchEffectRunRef.current) {
-      isFirstRelaunchEffectRunRef.current = false;
-      return;
-    }
-    refreshDocsScheduleRef.current?.();
-  }, [relaunchInFlight]);
-
-  // Drop a pending reconnect retry on unmount so a late timer can't touch state
-  // after teardown. `clearConnectivityRetry` only reads a stable ref; it is
-  // intentionally NOT a dep — listing it would re-run this effect (and fire its
-  // cleanup) every render, cancelling live retries.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount/unmount-only; see comment above.
-  useEffect(() => clearConnectivityRetry, []);
 
   useEffect(() => {
     if (loading || documents.length === 0) return;
@@ -1639,12 +1461,6 @@ export function FileTree({
     isElectronHost: typeof window !== 'undefined' && window.okDesktop != null,
     dispatch: dispatchHandoff,
   };
-  const { okignoreBinding, merged } = useConfigContext();
-  const showHiddenFiles = merged?.appearance?.sidebar?.showHiddenFiles ?? false;
-  const showOnlyMarkdownFiles = merged?.appearance?.sidebar?.showOnlyMarkdownFiles ?? false;
-  const showOkFolders = merged?.appearance?.sidebar?.showOkFolders ?? false;
-  const previewTabs = merged?.editor?.previewTabs ?? true;
-
   const isAvailable = () => busyPathRef.current === null;
 
   const { model } = useFileTree({
@@ -1770,105 +1586,6 @@ export function FileTree({
     model.resetPaths(nextPaths, {
       initialExpandedPaths: expandedPathsForReset(nextDocuments),
     });
-  };
-
-  // Fetch one level of children for a folder the user just expanded and
-  // accumulate them into `documents` — the treePathsSignature
-  // reset effect then rebuilds the model with expansion preserved via
-  // `initialExpandedPaths`. Failures surface through the same header error
-  // affordance as the root refresh.
-  async function fetchLazyFolderChildren(folderTreePath: string) {
-    const generation = lazyChildFetchGenerationRef.current;
-    const controller = new AbortController();
-    lazyChildFetchControllersRef.current.set(folderTreePath, controller);
-    const result = await fetchShowAllDepth1Listing(
-      treeDirectoryPathToFolderPath(folderTreePath),
-      showOkFoldersRef.current,
-      controller.signal,
-      t`Failed to load documents`,
-      t`Documents response did not match expected shape.`,
-    );
-    if (lazyChildFetchControllersRef.current.get(folderTreePath) === controller) {
-      lazyChildFetchControllersRef.current.delete(folderTreePath);
-    }
-    // Stale = deliberately aborted, or a refresh cycle (root re-seed / toggle
-    // flip / unmount) superseded this fetch after its response was already
-    // being consumed — either way the result must not touch state. Not
-    // re-marking the dir as loaded keeps the folder re-expandable.
-    if (controller.signal.aborted || generation !== lazyChildFetchGenerationRef.current) return;
-    if (result.kind === 'network-error') {
-      reportConnectivityFailure();
-      // Same folder-scope traceability as the http-error branch below —
-      // concurrent child fetches are otherwise indistinguishable in the log.
-      console.warn('[FileTree] lazy folder children fetch failed:', folderTreePath, result.cause);
-      return;
-    }
-    if (result.kind === 'http-error') {
-      // The banner shows only the title — log the folder so a per-directory
-      // failure (4xx/5xx or schema mismatch) is traceable to its scope.
-      console.warn('[FileTree] lazy folder children http error:', folderTreePath, result.title);
-      reportServerReachableError(result.title);
-      return;
-    }
-    const children = filterVisibleEntries(result.entries, treeVisibilityFromRefs());
-    lazyLoadedDirTreePathsRef.current.add(folderTreePath);
-    // Functional update: concurrent child fetches resolve in the same
-    // microtask batch, and `documentsRef` only syncs on commit — reading it
-    // here would let the second splice clobber the first.
-    setDocuments((prev) =>
-      spliceLazyFolderChildren(prev, folderTreePath, children, recentLocalAddsRef.current),
-    );
-    setError(null);
-    noteConnectivityRecovered();
-    // A truncated child level reuses the root truncation affordance — the
-    // banner describes the most recent capped listing either way.
-    if (result.truncated) setTruncatedShownCount(result.entries.length);
-  }
-
-  // Diff the expanded-folder set against the previous snapshot on every model
-  // state change and kick off a child fetch for each newly expanded, not-yet-
-  // loaded folder. The sidebar always loads lazily — one level per expand — so
-  // every newly expanded, not-yet-loaded folder fetches its children here.
-  const detectLazyFolderExpansions = () => {
-    const expanded = collectExpandedFolderTreePaths();
-    const previous = prevExpandedFolderTreePathsRef.current;
-    prevExpandedFolderTreePathsRef.current = expanded;
-    for (const folderTreePath of expanded) {
-      if (previous.has(folderTreePath)) continue;
-      // Loaded this refresh cycle — collapse/re-expand serves the cached
-      // children; the next refreshDocs run clears the cache.
-      if (lazyLoadedDirTreePathsRef.current.has(folderTreePath)) continue;
-      // Already fetching — a rapid collapse/re-expand rides the in-flight
-      // request instead of duplicating it.
-      if (lazyChildFetchControllersRef.current.has(folderTreePath)) continue;
-      // The depth-1 listing stamps `hasChildren` on folders; a server-marked
-      // childless folder expands to empty without a round trip. Folders
-      // without the stamp (optimistic local adds) still fetch.
-      const folderPath = treeDirectoryPathToFolderPath(folderTreePath);
-      const entry = documentsRef.current.find(
-        (candidate): candidate is Extract<FileEntry, { kind: 'folder' }> =>
-          isFolderEntry(candidate) && candidate.path === folderPath,
-      );
-      if (entry?.hasChildren === false) continue;
-      void fetchLazyFolderChildren(folderTreePath);
-    }
-  };
-
-  // After a root re-seed applies, refetch one level for every folder
-  // still expanded so external creates/deletes inside the visible working set
-  // land without a full recursive walk and without waiting for a manual
-  // collapse/re-expand. The caller (refreshDocs) has already cleared the
-  // loaded-dirs cache and aborted prior child fetches, so anything found
-  // loaded or in-flight here was started within the current refresh cycle
-  // (a folder the user expanded mid-refresh) and is already fresh. Unlike the
-  // expansion detector there is no `hasChildren === false` skip: an expanded
-  // empty folder must still learn about children created externally.
-  const revalidateExpandedLazyDirs = () => {
-    for (const folderTreePath of collectExpandedFolderTreePaths()) {
-      if (lazyLoadedDirTreePathsRef.current.has(folderTreePath)) continue;
-      if (lazyChildFetchControllersRef.current.has(folderTreePath)) continue;
-      void fetchLazyFolderChildren(folderTreePath);
-    }
   };
 
   // Invariant: Pierre's `#focusedPath` and `#selectedPaths` reference paths
@@ -2197,202 +1914,6 @@ export function FileTree({
     };
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: this is a once-per-`t` mount-lifecycle setup (it wires the refresh scheduler + listeners). The connectivity helpers it calls (reportConnectivityFailure / noteConnectivityRecovered) only touch refs + stable setters and close over the same `t` already in deps, so listing them would re-create the scheduler every render for no behavioral gain.
-  useEffect(() => {
-    let active = true;
-    // Holds the in-flight refresh's AbortController so a superseding refresh (or
-    // teardown) can cancel the stale fetch — and the server walk behind it —
-    // instead of letting it run to completion. Reassigned on each refreshDocs run.
-    let refreshController: AbortController | null = null;
-
-    async function refreshDocs() {
-      // Supersede any still-in-flight refresh before starting a new one.
-      refreshController?.abort();
-      const controller = new AbortController();
-      refreshController = controller;
-      // A refresh cycle also supersedes the lazy child-fetch state: abort
-      // in-flight child fetches, invalidate the per-cycle loaded-dirs cache
-      // (external changes refetch on next expand), and stamp a new generation
-      // so an already-resolved child response can't splice stale entries.
-      lazyChildFetchGenerationRef.current += 1;
-      for (const childController of lazyChildFetchControllersRef.current.values()) {
-        childController.abort();
-      }
-      lazyChildFetchControllersRef.current.clear();
-      lazyLoadedDirTreePathsRef.current.clear();
-      try {
-        // The sidebar always fetches the disk-walk listing lazily — one level
-        // per request (`depth=1`; the empty `dir=` scopes to the content root),
-        // each folder stamped `hasChildren` so it can offer expansion without
-        // the server walking its subtree. The full recursive walk (no `depth`)
-        // remains served for non-sidebar callers.
-        const res = await fetch(showAllDepth1Url('', showOkFoldersRef.current), {
-          signal: controller.signal,
-          // Opt into the NDJSON stream so the server walks disk without
-          // buffering the whole listing; the buffered JSON path stays the
-          // fallback for non-streaming servers.
-          headers: SHOW_ALL_NDJSON_ACCEPT,
-        });
-        if (isNdjsonResponse(res)) {
-          // Streaming listing: consume the NDJSON walk one entry at a time, each
-          // validated as it arrives (the per-line analogue of the buffered
-          // whole-array safeParse). Paint each chunk's entries additively so the
-          // sidebar fills in progressively and the skeleton clears on the first
-          // batch — NOT a root splice, which prunes folders not yet streamed.
-          // The authoritative prune + optimistic-merge reconcile is the single
-          // splice once the stream completes, matching the buffered branch.
-          // One snapshot for the whole stream so batches and the completion
-          // splice filter identically; a mid-stream toggle flip refetches
-          // (flip effect below) rather than half-filtering this run.
-          const visibility = treeVisibilityFromRefs();
-          let paintedFirstBatch = false;
-          const { entries, truncated } = await consumeShowAllStream(res, {
-            onBatch: (batch) => {
-              if (!active || controller.signal.aborted) return;
-              const batchEntries = filterVisibleEntries(toFileEntries(batch), visibility);
-              // Only act on a batch that yields a VISIBLE row. The server walk
-              // emits hidden entries (dot-dirs/files) in arbitrary readdir order;
-              // the client filters them. Clearing `loading` on an all-hidden
-              // first chunk would render `loading===false && documents===[]` —
-              // the "No files yet" empty state — on a non-empty KB. So defer the
-              // skeleton flip until a real row paints; completion owns the rest.
-              if (batchEntries.length === 0) return;
-              setDocuments((prev) => mergeRootEntriesAdditive(prev, batchEntries));
-              if (!paintedFirstBatch) {
-                paintedFirstBatch = true;
-                setError(null);
-                noteConnectivityRecovered();
-                setLoading(false);
-              }
-            },
-          });
-          if (!active) return;
-          const rootEntries = toFileEntries(entries);
-          const serverEntries = filterVisibleEntries(rootEntries, visibility);
-          // The depth-1 root level replaces in place rather than replacing the
-          // whole document set: children already loaded for folders the server
-          // still returns keep rendering (no flash-empty on every CC1 push),
-          // descendants of folders the server dropped are pruned, and the
-          // revalidation pass below refreshes each still-expanded folder's
-          // level. Functional update: a child splice resolving in the same
-          // batch must not be clobbered.
-          setDocuments((prev) =>
-            spliceLazyFolderChildren(prev, '', serverEntries, recentLocalAddsRef.current),
-          );
-          setError(null);
-          noteConnectivityRecovered();
-          setTruncatedShownCount(truncated ? entries.length : null);
-          setUnfilteredRootEntryCount(rootEntries.length);
-          revalidateExpandedLazyDirsRef.current();
-        } else {
-          const parsed = await parseServerResponse(res, t`Failed to load documents`);
-          if (!active) return;
-          if (!parsed.ok) {
-            reportServerReachableError(parsed.title);
-            setTruncatedShownCount(null);
-          } else {
-            const success = DocumentListSuccessSchema.safeParse(parsed.body);
-            if (!success.success) {
-              reportServerReachableError(t`Documents response did not match expected shape.`);
-              setTruncatedShownCount(null);
-            } else {
-              // Non-streaming fallback for the same depth-1 listing. The disk
-              // walk ships everything the server admits; the client-side
-              // visibility filter applies the sidebar toggles.
-              const rootEntries = toFileEntries(success.data.documents);
-              const serverEntries = filterVisibleEntries(rootEntries, treeVisibilityFromRefs());
-              // Same in-place root splice + expanded-dir revalidation as the
-              // NDJSON branch above — the buffered JSON shape is the
-              // non-streaming fallback for the identical depth-1 listing.
-              setDocuments((prev) =>
-                spliceLazyFolderChildren(prev, '', serverEntries, recentLocalAddsRef.current),
-              );
-              setError(null);
-              noteConnectivityRecovered();
-              setTruncatedShownCount(
-                success.data.truncated === true ? success.data.documents.length : null,
-              );
-              setUnfilteredRootEntryCount(rootEntries.length);
-              revalidateExpandedLazyDirsRef.current();
-            }
-          }
-        }
-      } catch (err) {
-        // A superseded or torn-down refresh aborts this run's controller. That
-        // is a deliberate cancel, not a server-reachability failure, so don't
-        // surface it as an error or clear loading — the trailing re-run (or the
-        // next mount) owns the next UI update.
-        if (controller.signal.aborted) return;
-        // Batches already painted via `onBatch` (incremental seed) are NOT rolled
-        // back here: `mergeRootEntriesAdditive` is purely additive, so on a
-        // mid-stream error the tree is left over-inclusive (prior-good entries
-        // plus the partial stream) rather than flashed empty — the safe
-        // direction. The next successful refresh's completion splice reconciles
-        // (prunes the stale rows). The authoritative prune only runs on success.
-        // A mid-stream server error line reached us over a live connection —
-        // the server WAS reachable, so surface its problem title and drop any
-        // reconnect state; everything else is a reachability failure, routed
-        // through the relaunch-aware self-heal path.
-        if (active) {
-          if (err instanceof ShowAllStreamError) {
-            reportServerReachableError(err.message);
-          } else {
-            reportConnectivityFailure();
-          }
-        }
-        console.warn('[FileTree] fetch failed:', err);
-      }
-      if (active) setLoading(false);
-    }
-
-    const scheduler = createRefreshScheduler(refreshDocs, () => refreshController?.abort());
-    refreshDocsScheduleRef.current = () => scheduler.request();
-    scheduler.request();
-    const handleResume = () => {
-      if (document.visibilityState === 'visible') {
-        scheduler.request();
-      }
-    };
-    window.addEventListener('focus', handleResume);
-    window.addEventListener('visibilitychange', handleResume);
-    const unsubscribe = subscribeToDocumentsChanged((channels) => {
-      if (channels.includes('files')) {
-        scheduler.request();
-      }
-    });
-    return () => {
-      active = false;
-      refreshDocsScheduleRef.current = null;
-      scheduler.dispose();
-      // Lazy child fetches outlive the scheduler's cancel hook — abort them
-      // here so a response landing after teardown can't touch state.
-      for (const childController of lazyChildFetchControllersRef.current.values()) {
-        childController.abort();
-      }
-      lazyChildFetchControllersRef.current.clear();
-      window.removeEventListener('focus', handleResume);
-      window.removeEventListener('visibilitychange', handleResume);
-      unsubscribe();
-    };
-  }, [t]);
-
-  // Re-fetch + re-filter when the user flips a sidebar visibility toggle.
-  // Hidden files and only-markdown are pure client-side filters (the server
-  // response doesn't depend on them); Show .ok folders parameterizes the
-  // request itself (the listing URL carries `showOk`). Either way the flip
-  // reuses the scheduler's in-flight coalescing, and the fetch closures read
-  // the flipped values through the refs. Skips on first render to avoid
-  // double-fetching on mount.
-  const isFirstVisibilityFlipEffectRunRef = useRef(true);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the visibility toggles are flip-detection triggers, not reads — the effect body reads refs only. Sibling pattern at the treePathsSignature reset effect above.
-  useEffect(() => {
-    if (isFirstVisibilityFlipEffectRunRef.current) {
-      isFirstVisibilityFlipEffectRunRef.current = false;
-      return;
-    }
-    refreshDocsScheduleRef.current?.();
-  }, [showHiddenFiles, showOnlyMarkdownFiles, showOkFolders]);
-
   useEffect(() => {
     let active = true;
     fetch('/api/workspace')
@@ -2544,11 +2065,11 @@ export function FileTree({
     });
   }, [model]);
 
-  // Lazy Show All expansion detector — see detectLazyFolderExpansions. Reads
-  // through the ref so the subscribe callback always sees the latest render's
-  // closure (same latest-handler pattern as the bulk useLayoutEffect refs).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the subscription reads the latest hook callback through its ref and only the Pierre model controls its lifetime.
   useEffect(() => {
-    return model.subscribe(() => detectLazyFolderExpansionsRef.current());
+    return model.subscribe(() => {
+      observeExpandedFolderPathsRef.current([...collectExpandedFolderTreePaths()]);
+    });
   }, [model]);
 
   useEffect(() => {
@@ -2976,7 +2497,7 @@ export function FileTree({
           const next = [...current];
           for (const entry of uploadedEntries) {
             const treePath = fileEntryToTreePath(entry);
-            recentLocalAddsRef.current.set(treePath, Date.now());
+            recordOptimisticAdd(entry);
             if (existing.has(treePath)) continue;
             existing.add(treePath);
             next.push(entry);
@@ -2991,7 +2512,6 @@ export function FileTree({
 
       if (uploadedCount > 0) {
         emitDocumentsChanged(['files', 'backlinks', 'graph']);
-        refreshDocsScheduleRef.current?.();
         toast.success(
           plural(uploadedCount, {
             one: 'Uploaded one file',
@@ -3100,7 +2620,7 @@ export function FileTree({
           }
           const next = [...current, newFileEntry];
           markNextDocumentsAsApplied(next);
-          recentLocalAddsRef.current.set(fileEntryToTreePath(newFileEntry), Date.now());
+          recordOptimisticAdd(newFileEntry);
           return next;
         });
         emitDocumentsChanged(['files', 'backlinks', 'graph']);
@@ -3140,7 +2660,7 @@ export function FileTree({
           }
           const next = [...current, newFolderEntry];
           markNextDocumentsAsApplied(next);
-          recentLocalAddsRef.current.set(fileEntryToTreePath(newFolderEntry), Date.now());
+          recordOptimisticAdd(newFolderEntry);
           return next;
         });
         emitDocumentsChanged(['files']);
@@ -3238,15 +2758,12 @@ export function FileTree({
     activeTargetRef.current = activeTarget;
     assetTreePathsRef.current = assetTreePaths;
     busyPathRef.current = busyPath;
-    showHiddenFilesRef.current = showHiddenFiles;
-    showOnlyMarkdownFilesRef.current = showOnlyMarkdownFiles;
     showOkFoldersRef.current = showOkFolders;
     previewTabsRef.current = previewTabs;
     treePathsRef.current = treePaths;
     folderTreePathsRef.current = folderTreePaths;
     activeAncestorTreePathsRef.current = activeAncestorTreePaths;
-    detectLazyFolderExpansionsRef.current = detectLazyFolderExpansions;
-    revalidateExpandedLazyDirsRef.current = revalidateExpandedLazyDirs;
+    observeExpandedFolderPathsRef.current = observeExpandedFolderPaths;
     cleanupPendingCreateRef.current = cleanupPendingCreate;
     uploadExternalFilesRef.current = (files, parentDir, uploadBusyPath) => {
       void uploadExternalFilesToTarget(files, parentDir, uploadBusyPath);
