@@ -26,6 +26,7 @@ export interface LintDiagnostic {
   message: string;
   fixes?: LintTextEdit[];
   frontmatterScope?: 'missing' | 'invalid';
+  frontmatterProperty?: string;
 }
 
 const VALIDATION_SOURCES = [...LINT_PLUGIN_IDS, 'links'] as const;

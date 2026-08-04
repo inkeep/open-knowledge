@@ -1,3 +1,4 @@
+import type { LintDiagnostic } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -30,10 +31,57 @@ vi.doMock('@/lib/config-provider', () => ({
   }),
 }));
 
+// The skill cluster's real children fetch the skills list and the install
+// state, none of which this toolbar's contract depends on. The stub keeps the
+// REAL Add-properties button so the badge it renders is the one under test.
+vi.doMock('./SkillToolbarControls', async () => {
+  const { AddPropertiesButton } = await import('./AddPropertiesButton');
+  return {
+    SkillToolbarControls: ({
+      showAddPropertyButton,
+      onAddProperty,
+      problemCount,
+      problemMessages,
+    }: {
+      showAddPropertyButton: boolean;
+      onAddProperty: () => void;
+      problemCount?: number;
+      problemMessages?: readonly string[];
+    }) =>
+      showAddPropertyButton ? (
+        <AddPropertiesButton
+          onAddProperty={onAddProperty}
+          problemCount={problemCount}
+          problemMessages={problemMessages}
+        />
+      ) : null,
+  };
+});
+
+vi.doMock('./SkillOriginInline', () => ({
+  SkillOriginInline: () => null,
+}));
+
+/** A schema-required property the document does not have. */
+function missing(property: string): LintDiagnostic {
+  return {
+    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+    severity: 'warning',
+    source: 'frontmatter',
+    code: 'required',
+    message: `Frontmatter property "${property}" is required`,
+    frontmatterScope: 'missing',
+    frontmatterProperty: property,
+  };
+}
+
 describe('EditorToolbar runtime layout', () => {
   afterEach(() => cleanup());
 
-  async function renderToolbar(activeDocName = 'docs/Page.md') {
+  async function renderToolbar(
+    activeDocName = 'docs/Page.md',
+    frontmatterProblems?: readonly LintDiagnostic[],
+  ) {
     const { EditorToolbar } = await import('./EditorToolbar');
 
     render(
@@ -45,6 +93,7 @@ describe('EditorToolbar runtime layout', () => {
           onModeChange={() => {}}
           showAddPropertyButton={true}
           onAddProperty={() => {}}
+          frontmatterProblems={frontmatterProblems}
           isPanelCollapsed={false}
           onTogglePanel={() => {}}
         />
@@ -128,5 +177,29 @@ describe('EditorToolbar runtime layout', () => {
     await renderToolbar();
 
     expect(screen.queryByTestId('not-in-sidebar-indicator')).toBeNull();
+  });
+
+  // The button's tooltip promises "click to add and fill them in", and clicking
+  // stages a row per missing property EXCEPT the ones reserved for the doc — a
+  // skill's `name` is its folder identity, renamed by moving the folder. Badging
+  // one would advertise an action the click will not take. The schema violation
+  // is not hidden: the Problems panel still reports it.
+  test('a skill badges only the missing properties clicking will stage', async () => {
+    const user = userEvent.setup();
+    await renderToolbar('__skill__/global/foo', [missing('name'), missing('description')]);
+
+    const badge = await screen.findByTestId('add-properties-problem-badge');
+    expect(badge.textContent).toBe('1');
+
+    await user.hover(screen.getByTestId('add-properties-button'));
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toContain('Frontmatter property "description" is required');
+    expect(tooltip.textContent).not.toContain('Frontmatter property "name" is required');
+  });
+
+  test('an ordinary document reserves nothing, so `name` still badges', async () => {
+    await renderToolbar('docs/Page.md', [missing('name'), missing('description')]);
+
+    expect((await screen.findByTestId('add-properties-problem-badge')).textContent).toBe('2');
   });
 });

@@ -2103,6 +2103,10 @@ msgstr ""
 msgid "Click an agent's avatar in the presence bar to view their session."
 msgstr ""
 
+#: src/components/AddPropertiesButton.tsx
+msgid "Click to add and fill them in"
+msgstr ""
+
 #: src/components/SkillInstallMenu.tsx
 msgid "Click to install in {label}"
 msgstr ""
@@ -6747,7 +6751,7 @@ msgstr ""
 msgid "New project…"
 msgstr ""
 
-#: src/components/FrontmatterRow.tsx
+#: src/components/AddPropertyNameField.tsx
 msgid "New property name"
 msgstr ""
 
@@ -8220,7 +8224,7 @@ msgstr ""
 msgid "Property \"{trimmed}\" already exists"
 msgstr ""
 
-#: src/components/FrontmatterRow.tsx
+#: src/components/AddPropertyNameField.tsx
 #: src/components/TemplateForm.tsx
 msgid "Property name"
 msgstr ""
@@ -8797,6 +8801,10 @@ msgstr ""
 msgid "Repository not found. It may have been renamed, deleted, or moved."
 msgstr ""
 
+#: src/components/AddPropertyNameField.tsx
+msgid "required"
+msgstr ""
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Required"
 msgstr ""
@@ -9151,6 +9159,10 @@ msgstr ""
 
 #: src/components/settings/LintingSection.tsx
 msgid "schema {deleteTarget}"
+msgstr ""
+
+#: src/components/AddPropertyNameField.tsx
+msgid "Schema fields"
 msgstr ""
 
 #: src/components/settings/CustomThemeEditor.tsx

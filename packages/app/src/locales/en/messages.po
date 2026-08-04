@@ -2107,6 +2107,10 @@ msgstr "Click <0>+</0> <1/> <2>Create skill</2> <3/> <4>Upload skill</4>."
 msgid "Click an agent's avatar in the presence bar to view their session."
 msgstr "Click an agent's avatar in the presence bar to view their session."
 
+#: src/components/AddPropertiesButton.tsx
+msgid "Click to add and fill them in"
+msgstr "Click to add and fill them in"
+
 #: src/components/SkillInstallMenu.tsx
 msgid "Click to install in {label}"
 msgstr "Click to install in {label}"
@@ -6751,7 +6755,7 @@ msgstr "New project"
 msgid "New project…"
 msgstr "New project…"
 
-#: src/components/FrontmatterRow.tsx
+#: src/components/AddPropertyNameField.tsx
 msgid "New property name"
 msgstr "New property name"
 
@@ -8224,7 +8228,7 @@ msgstr "Properties"
 msgid "Property \"{trimmed}\" already exists"
 msgstr "Property \"{trimmed}\" already exists"
 
-#: src/components/FrontmatterRow.tsx
+#: src/components/AddPropertyNameField.tsx
 #: src/components/TemplateForm.tsx
 msgid "Property name"
 msgstr "Property name"
@@ -8801,6 +8805,10 @@ msgstr "Repository name"
 msgid "Repository not found. It may have been renamed, deleted, or moved."
 msgstr "Repository not found. It may have been renamed, deleted, or moved."
 
+#: src/components/AddPropertyNameField.tsx
+msgid "required"
+msgstr "required"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Required"
 msgstr "Required"
@@ -9156,6 +9164,10 @@ msgstr "Saving"
 #: src/components/settings/LintingSection.tsx
 msgid "schema {deleteTarget}"
 msgstr "schema {deleteTarget}"
+
+#: src/components/AddPropertyNameField.tsx
+msgid "Schema fields"
+msgstr "Schema fields"
 
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Scheme copied as base16 YAML"

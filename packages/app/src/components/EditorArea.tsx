@@ -1227,8 +1227,7 @@ function EditorAreaInner({
               onModeChange={onModeChange}
               showAddPropertyButton={!isSourceMode}
               onAddProperty={openAddPropertyForm}
-              frontmatterProblemCount={missingProperties.length}
-              frontmatterProblemMessages={missingProperties.map((d) => d.message)}
+              frontmatterProblems={missingProperties}
               isPanelCollapsed={isPanelCollapsed}
               onTogglePanel={togglePanel}
               // When the doc panel is collapsed, the action cluster reaches the

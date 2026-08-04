@@ -8,13 +8,15 @@
  * type. Radix's default close-auto-focus returns focus to the trigger;
  * AddPropertyRow's onCloseAutoFocus handler redirects it to the name input.
  *
- * Both consumers duplicate the same add-property reducer (`beginAdd` /
+ * Both consumers reduce add-property state the same way (`beginAdd` /
  * `changeAddType`): PropertyPanel (file frontmatter) and FolderPropertiesCard
  * (folder cascade). Two harnesses exercise each consumer's reducer so a
- * per-consumer fix that diverges between callers is caught.
+ * per-consumer fix that diverges between callers is caught. The panel keeps a
+ * LIST of drafts — it stages one per schema-required property the doc lacks —
+ * so its harness models one entry of that list; the folder card stays single.
  *
  * Exercises `render` + `userEvent` under the jsdom substrate; invocation via
- * `bun run test:dom` from `packages/app/`.
+ * `pnpm run test:dom` from `packages/app/`.
  */
 
 import type { FrontmatterType } from '@inkeep/open-knowledge-core';

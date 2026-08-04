@@ -146,6 +146,7 @@ const LintDiagnosticSchema = z.object({
   message: z.string(),
   fixes: z.array(z.object({ range: LintRangeSchema, newText: z.string() })).optional(),
   frontmatterScope: z.enum(['missing', 'invalid']).optional(),
+  frontmatterProperty: z.string().optional(),
 });
 
 export const LintDocResultSchema = z.object({

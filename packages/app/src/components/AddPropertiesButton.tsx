@@ -88,6 +88,13 @@ export function AddPropertiesButton({
                 {message}
               </span>
             ))}
+            {/* The badge says something is wrong; without this the button reads
+                as a report rather than the thing that acts on it. "Fill them
+                in" is load-bearing — clicking stages the rows, it does not
+                write the properties. */}
+            <span className="pt-0.5 opacity-70">
+              <Trans>Click to add and fill them in</Trans>
+            </span>
           </span>
         ) : (
           <Trans>Add properties</Trans>

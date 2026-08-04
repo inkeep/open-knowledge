@@ -7,16 +7,8 @@ import { PropertyDisplayRow } from '@/components/PropertyDisplayRow';
 import { PropertyPanel } from '@/components/PropertyPanel';
 import { Input } from '@/components/ui/input';
 import { useSkills } from '@/hooks/use-skills';
+import { SKILL_RESERVED_KEYS } from '@/lib/reserved-property-keys';
 import { skillEntryDirs } from '@/lib/skill-scope';
-
-/**
- * `name` is the skill's folder identity (and the id agents invoke it by), so it
- * is a rename affordance, not a frontmatter property — it is rendered as the
- * first row of the panel with a fixed, non-editable key and hidden from the
- * panel's auto-rendered rows, exactly as a document's filename is not one of
- * its properties.
- */
-const SKILL_RESERVED_KEYS = ['name'] as const;
 
 /**
  * Skill identity + properties, rendered as the editor's right-hand panel.

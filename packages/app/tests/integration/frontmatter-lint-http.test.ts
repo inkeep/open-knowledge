@@ -143,6 +143,25 @@ describe('GET /api/lint — frontmatter diagnostics', () => {
     expect(enumViolation?.severity).toBe('warning');
   });
 
+  /**
+   * The absent-property name has to survive `successResponse`'s schema
+   * serialization, or the staged-row affordance an API/MCP consumer builds from
+   * it never fires. Read the RAW wire body rather than `LintDocResultSchema` —
+   * re-parsing with the same schema that serializes the response would mask a
+   * field the server dropped.
+   *
+   */
+  test('a missing-required diagnostic carries frontmatterProperty across the wire', async () => {
+    const res = await fetch(api('/api/lint?doc=docs%2Fguide'));
+    expect(res.status).toBe(200);
+    const raw = (await res.json()) as { diagnostics: Array<Record<string, unknown>> };
+    const required = raw.diagnostics.find((d) => d.code === 'required');
+    expect(required?.frontmatterScope).toBe('missing');
+    // docs/guide.md declares `status` but not `owner`, so `owner` is the absent
+    // required property the diagnostic names.
+    expect(required?.frontmatterProperty).toBe('owner');
+  });
+
   test('a doc excluded by the negated glob gets no frontmatter diagnostics', async () => {
     const res = await fetch(api('/api/lint?doc=docs%2Findex'));
     const body = LintDocResultSchema.parse(await res.json());

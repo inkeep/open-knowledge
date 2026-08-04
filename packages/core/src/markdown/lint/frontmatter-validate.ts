@@ -236,12 +236,14 @@ export function validateFrontmatterSource(
       let line = 0;
       let message: string;
       let frontmatterScope: 'missing' | 'invalid' = 'invalid';
+      let frontmatterProperty: string | undefined;
       if (keyword === 'required' && error.instancePath === '') {
         const missing = String(
           (error.params as { missingProperty?: unknown }).missingProperty ?? '',
         );
         message = `Frontmatter property "${missing}" is required`;
         frontmatterScope = 'missing';
+        if (missing !== '') frontmatterProperty = missing;
       } else if (error.instancePath === '') {
         message = `Frontmatter ${error.message ?? `violates "${keyword}"`}`;
       } else {
@@ -265,6 +267,7 @@ export function validateFrontmatterSource(
         code: keyword,
         message,
         frontmatterScope,
+        ...(frontmatterProperty === undefined ? {} : { frontmatterProperty }),
       });
     }
   }

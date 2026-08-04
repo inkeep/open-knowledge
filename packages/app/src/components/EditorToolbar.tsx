@@ -1,5 +1,6 @@
 import {
   isEditableTextDocFile,
+  type LintDiagnostic,
   parseExternalSkillDocName,
   parseManagedArtifactName,
   type SkillScope,
@@ -14,6 +15,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type { EditorModeValue } from '@/editor/use-editor-mode.ts';
 import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name';
+import {
+  NO_RESERVED_KEYS,
+  SKILL_RESERVED_KEYS,
+  withoutReservedProperties,
+} from '@/lib/reserved-property-keys';
 import { cn } from '@/lib/utils';
 import { EditorBreadcrumb } from './EditorBreadcrumb';
 import { EditorModeToggle } from './EditorModeToggle';
@@ -32,6 +38,8 @@ const SkillOriginInline = lazy(async () => ({
   default: (await import('./SkillOriginInline')).SkillOriginInline,
 }));
 
+const NO_FRONTMATTER_PROBLEMS: readonly LintDiagnostic[] = [];
+
 interface EditorToolbarProps {
   activeDocName: string | null;
   isSourceMode: boolean;
@@ -39,11 +47,12 @@ interface EditorToolbarProps {
   onModeChange: (mode: EditorModeValue) => void;
   showAddPropertyButton: boolean;
   onAddProperty: () => void;
-  /** Frontmatter-schema violations on the active doc — badged on the
-   *  Add-properties button, which is where those errors report (they have no
-   *  body anchor to squiggle). */
-  frontmatterProblemCount?: number;
-  frontmatterProblemMessages?: readonly string[];
+  /** Schema-required properties the active doc is missing — badged on the
+   *  Add-properties button, which is where those report (they have no body
+   *  anchor to squiggle). Handed over as diagnostics rather than a count and
+   *  messages because only this component knows whether the doc reserves any of
+   *  those keys, and a reserved one is not the button's to offer. */
+  frontmatterProblems?: readonly LintDiagnostic[];
   isPanelCollapsed: boolean;
   onTogglePanel: () => void;
   /** Reserve right-side room in the action cluster so it sits left of the
@@ -60,8 +69,7 @@ export function EditorToolbar({
   onModeChange,
   showAddPropertyButton,
   onAddProperty,
-  frontmatterProblemCount = 0,
-  frontmatterProblemMessages,
+  frontmatterProblems = NO_FRONTMATTER_PROBLEMS,
   isPanelCollapsed,
   onTogglePanel,
   reserveRightGutter = false,
@@ -83,6 +91,15 @@ export function EditorToolbar({
       : projectSkillName
         ? { scope: 'project', name: projectSkillName }
         : null;
+  // The button's tooltip promises the click will add and fill these in, so it
+  // may only advertise what the property panel will actually stage. A skill's
+  // reserved `name` is not the panel's to add, so it is dropped here — the
+  // Problems panel still carries the schema violation.
+  const stageableProblems = withoutReservedProperties(
+    frontmatterProblems,
+    activeSkill ? SKILL_RESERVED_KEYS : NO_RESERVED_KEYS,
+  );
+  const problemMessages = stageableProblems.map((diagnostic) => diagnostic.message);
   // A detected-skill edit buffer (`__extskill__/<name>`): reduced mode —
   // no level/install/history/scope-move/provenance chrome; the edit-in-place
   // banner above the editor carries the messaging.
@@ -175,8 +192,8 @@ export function EditorToolbar({
               name={activeSkill.name}
               showAddPropertyButton={showAddPropertyButton}
               onAddProperty={onAddProperty}
-              problemCount={frontmatterProblemCount}
-              problemMessages={frontmatterProblemMessages}
+              problemCount={stageableProblems.length}
+              problemMessages={problemMessages}
             />
           </Suspense>
         ) : externalSkill ? // Detected-skill edit buffer: reduced mode. Messaging lives in the
@@ -187,8 +204,8 @@ export function EditorToolbar({
           showAddPropertyButton && (
             <AddPropertiesButton
               onAddProperty={onAddProperty}
-              problemCount={frontmatterProblemCount}
-              problemMessages={frontmatterProblemMessages}
+              problemCount={stageableProblems.length}
+              problemMessages={problemMessages}
             />
           )
         )}

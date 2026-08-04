@@ -90,4 +90,17 @@ describe('AddPropertiesButton frontmatter badge', () => {
     expect(tooltip.textContent).toContain('Frontmatter property "status" is required');
     expect(tooltip.textContent).toContain('Frontmatter property "owner" is required');
   });
+
+  test('tells the user the button acts on the problems it reports', async () => {
+    // A count and a list alone read as a report. Clicking is what stages the
+    // rows, and nothing else on the surface says so.
+    const user = userEvent.setup();
+    await renderButton({
+      problemCount: 1,
+      problemMessages: ['Frontmatter property "status" is required'],
+    });
+    await user.hover(screen.getByRole('button'));
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toMatch(/click to add/i);
+  });
 });

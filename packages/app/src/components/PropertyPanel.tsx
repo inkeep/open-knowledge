@@ -32,6 +32,7 @@ import { AlertTriangle, Plus } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { CommentedDocProvider } from '@/comments/CommentedDocContext';
 import { PropertyCommentButton } from '@/comments/PropertyCommentButton';
+import type { AddPropertyFieldSuggestion } from '@/components/AddPropertyNameField';
 import { FrontmatterBindingProvider } from '@/components/FrontmatterBindingContext';
 import {
   type AddDraft,
@@ -51,6 +52,23 @@ import {
 } from '@/editor/useFrontmatterDiagnostics';
 import { usePublishFrontmatterSelection } from '@/hooks/use-selection-context';
 import { enumConstraintsForDoc } from '@/lib/frontmatter-enum-constraints';
+import { schemaFieldsForDoc } from '@/lib/frontmatter-schema-fields';
+
+/**
+ * An add-row in flight. The id keys the row across renders so a sibling
+ * committing or being dismissed doesn't renumber the rest — names can't serve,
+ * since staged rows start out editable and a blank row has none.
+ */
+interface StagedDraft extends AddDraft {
+  id: string;
+  /**
+   * Which control this row wants on mount, decided once when the row is staged.
+   * Deriving it from the live draft instead would re-decide as the user types:
+   * a blank row whose name goes from `''` to `'a'` would flip from wanting the
+   * name to wanting the value, and yank the caret out of the field mid-word.
+   */
+  focusField: 'name' | 'value';
+}
 
 interface PropertyPanelProps {
   provider: HocuspocusProvider;
@@ -116,7 +134,17 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
   // force-expands below (add-property intent) also persist "open"; that's intended.
   const [collapsed, setCollapsed] = usePropertiesCollapsed();
   const [overrides, setOverrides] = useState<Record<string, FrontmatterType>>({});
-  const [adding, setAdding] = useState<AddDraft | null>(null);
+  // A list, not one draft: the toolbar's Add-properties button on a doc missing
+  // several schema-required properties stages a pre-named row for each. Ids are
+  // stable per staged row so React keys and the value-focus target survive a
+  // sibling row committing or being dismissed.
+  const [adding, setAdding] = useState<StagedDraft[]>([]);
+  // Which staged row takes focus on mount — the first of a batch. Read only at
+  // mount (an `autoFocus` attribute and a once-per-row effect), so it can stay
+  // set: a re-render never re-steals the caret from whichever field the user
+  // has since moved to.
+  const [focusRowId, setFocusRowId] = useState<string | null>(null);
+  const blankDraftSeq = useRef(0);
   const [renaming, setRenaming] = useState<RenameDraft | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [resetCounters, setResetCounters] = useState<Record<string, number>>({});
@@ -131,9 +159,15 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
   // Properties that exist but violate the schema badge this panel's own count.
   // The missing ones travel to the toolbar's Add-properties button instead —
   // they have no row here to point at, and adding is their fix, not correcting.
-  const { invalid: invalidProperties } = partitionFrontmatterProblems(
+  // This panel still reads them: acting on that button lands here, as a staged
+  // row per absent property.
+  const { invalid: invalidProperties, missing: missingProperties } = partitionFrontmatterProblems(
     useFrontmatterDiagnostics(provider, lintConfigData?.effective ?? null),
   );
+  // What the governing schemas DECLARE, for the name field's type-ahead and for
+  // a staged row's widget type. Same resolved config and same schema selection
+  // as the enum vocabularies above.
+  const schemaFields = schemaFieldsForDoc(lintConfigData?.effective ?? null, docName);
 
   // Publish a highlight inside the property panel into the selection-context
   // store (keyed `(docName, 'frontmatter')`) so a property-value selection feeds
@@ -279,80 +313,186 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
     }
   }
 
-  function beginAdd() {
-    setAdding({ name: '', type: 'text', value: '', error: null });
+  function defaultValueFor(type: FrontmatterType): FrontmatterValue {
+    return type === 'date' ? new Date().toISOString().slice(0, 10) : DEFAULT_VALUE_FOR_TYPE[type];
+  }
+
+  /** An unnamed row — nothing to fill in yet, so it opens in its name field. */
+  function blankDraft(): StagedDraft {
+    // A fresh id each time, so re-requesting an add remounts the row and its
+    // `autoFocus` fires again rather than leaving a stale row focused.
+    blankDraftSeq.current += 1;
+    return {
+      id: `blank-${blankDraftSeq.current}`,
+      name: '',
+      type: 'text',
+      value: '',
+      error: null,
+      focusField: 'name',
+    };
+  }
+
+  /**
+   * One pre-named row per schema-required property the doc lacks — the schema
+   * already names them, so making the user retype them is the whole complaint.
+   * Empty when nothing is missing or no schema governs the doc.
+   *
+   * Nothing is written here. A staged row is a draft like any other and only
+   * reaches the file once the user supplies a value and commits it, so an
+   * empty placeholder can never land in the doc and quietly satisfy the
+   * `required` check that produced the row.
+   */
+  function stageMissingDrafts(): StagedDraft[] {
+    const staged: StagedDraft[] = [];
+    const seen = new Set<string>();
+    for (const diagnostic of missingProperties) {
+      const name = diagnostic.frontmatterProperty;
+      if (name === undefined || name === '') continue;
+      // Two schemas can each require the same property, and the diagnostics
+      // are per schema.
+      if (seen.has(name)) continue;
+      // The doc may have gained the property since the count was rendered.
+      if (Object.hasOwn(map, name)) continue;
+      // A reserved key is not this panel's to add — a skill's `name` is its
+      // folder identity, renamed by moving the folder, not patched.
+      if (reserved.has(name)) continue;
+      seen.add(name);
+      const id = `staged-${name}`;
+      // Re-requesting an add while a row for this property is already open
+      // keeps that row — rebuilding it would throw away a value the user had
+      // started typing, with nothing on screen to explain where it went.
+      const existing = adding.find((draft) => draft.id === id);
+      if (existing) {
+        staged.push(existing);
+        continue;
+      }
+      const type = schemaFields.get(name)?.type ?? 'text';
+      // Pre-named, so the value is the only thing left to supply. Seeded with
+      // the type's BASE default, not `defaultValueFor` — a staged row is
+      // auto-opened, not chosen, so `defaultValueFor`'s convenience seed for a
+      // date (today) would let one Add click write a date the user never
+      // picked and clear the required warning that produced the row. The base
+      // default is empty for text/date/list, so the commit gate stays shut
+      // until they fill it in. `number`/`boolean` have no empty form — 0 and
+      // an unchecked box are conventional and visibly the value on offer.
+      staged.push({
+        id,
+        name,
+        type,
+        value: DEFAULT_VALUE_FOR_TYPE[type],
+        error: null,
+        focusField: 'value',
+      });
+    }
+    return staged;
+  }
+
+  /** Open the add form on `drafts`, expanding the section if it was collapsed. */
+  function openDrafts(drafts: StagedDraft[]) {
+    setAdding(drafts);
+    setFocusRowId(drafts[0]?.id ?? null);
     setCollapsed(false);
+  }
+
+  /**
+   * The panel's own inline Add. Singular however many required properties the
+   * doc lacks — its object is one property (the label says so), and a user
+   * reaching for it wants a row to name, not the schema's backlog. Staging that
+   * backlog is the toolbar button's affordance, below.
+   */
+  function beginAddBlank() {
+    openDrafts([blankDraft()]);
+  }
+
+  /** The toolbar's Add-properties button — the batch affordance. */
+  function beginAddMissing() {
+    const staged = stageMissingDrafts();
+    openDrafts(staged.length > 0 ? staged : [blankDraft()]);
   }
 
   // Cross-tree signal from the toolbar's "Add Properties" button.
   const { addPropertySignal, clearAddProperty } = useProperties();
   const addSignal = addPropertySignal.get(docName) ?? 0;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `beginAddMissing` closes over live render state (the snapshot map, the diagnostics) and is a new function every render — depending on it would re-stage the rows continuously, discarding whatever the user had typed. The counter is the signal; the effect must fire on it alone.
   useEffect(() => {
-    if (addSignal > 0) {
-      setAdding({ name: '', type: 'text', value: '', error: null });
-      setCollapsed(false);
-    }
-  }, [addSignal, setCollapsed]);
+    if (addSignal > 0) beginAddMissing();
+  }, [addSignal]);
   useEffect(() => {
     return () => clearAddProperty(docName);
   }, [docName, clearAddProperty]);
 
-  function changeAddType(nextType: FrontmatterType) {
-    setAdding((prev) => {
-      if (!prev) return prev;
-      const defaultValue =
-        nextType === 'date'
-          ? new Date().toISOString().slice(0, 10)
-          : DEFAULT_VALUE_FOR_TYPE[nextType];
-      return { ...prev, type: nextType, value: defaultValue, error: null };
-    });
+  function updateDraft(id: string, patch: (draft: StagedDraft) => StagedDraft) {
+    setAdding((prev) => prev.map((draft) => (draft.id === id ? patch(draft) : draft)));
   }
 
-  function changeAddValue(value: FrontmatterValue) {
-    setAdding((prev) => (prev ? { ...prev, value } : prev));
+  function changeAddType(id: string, nextType: FrontmatterType) {
+    updateDraft(id, (draft) => ({
+      ...draft,
+      type: nextType,
+      value: defaultValueFor(nextType),
+      error: null,
+    }));
   }
 
-  function changeAddName(name: string) {
-    setAdding((prev) => (prev ? { ...prev, name, error: null } : prev));
+  function changeAddValue(id: string, value: FrontmatterValue) {
+    updateDraft(id, (draft) => ({ ...draft, value }));
   }
 
-  function commitAdd(valueOverride?: FrontmatterValue) {
-    if (!adding) return;
+  function changeAddName(id: string, name: string) {
+    updateDraft(id, (draft) => ({ ...draft, name, error: null }));
+  }
+
+  function pickAddField(id: string, suggestion: AddPropertyFieldSuggestion) {
+    // Name and type in one update — the schema states the type, so picking a
+    // field is the whole answer, not a name the user then types a type for.
+    updateDraft(id, (draft) => ({
+      ...draft,
+      name: suggestion.name,
+      type: suggestion.type,
+      value: defaultValueFor(suggestion.type),
+      error: null,
+    }));
+  }
+
+  function commitAdd(id: string, valueOverride?: FrontmatterValue) {
+    const draft = adding.find((entry) => entry.id === id);
+    if (!draft) return;
     // Enter-in-value-field carries the freshly-typed value (the draft state
     // update from the widget's onCommit lands after this synchronous call).
-    const value = valueOverride ?? adding.value;
-    const trimmed = adding.name.trim();
+    const value = valueOverride ?? draft.value;
+    const fail = (error: string) => updateDraft(id, (prev) => ({ ...prev, value, error }));
+    const trimmed = draft.name.trim();
     if (!trimmed) {
-      setAdding({ ...adding, value, error: t`Name is required` });
+      fail(t`Name is required`);
       return;
     }
     // Empty value would be dropped server-side by mergePatch; gate here so the
     // user gets an explicit error rather than a silent no-op (the Enter-to-add
     // keyboard paths bypass the Add button's disabled state).
     if (isFrontmatterValueEmpty(value)) {
-      setAdding({ ...adding, value, error: t`Value is required` });
+      fail(t`Value is required`);
       return;
     }
     if (trimmed === 'frontmatter') {
-      setAdding({ ...adding, value, error: t`"frontmatter" is a reserved property name` });
+      fail(t`"frontmatter" is a reserved property name`);
       return;
     }
     if (Object.hasOwn(map, trimmed)) {
-      setAdding({ ...adding, value, error: t`Property "${trimmed}" already exists` });
+      fail(t`Property "${trimmed}" already exists`);
       return;
     }
     const result = commitPatch({ [trimmed]: value });
     if (result.ok) {
-      setAdding(null);
+      // Only this row closes — its siblings are still unfilled properties the
+      // doc is missing.
+      setAdding((prev) => prev.filter((entry) => entry.id !== id));
       return;
     }
-    const fieldError = result.fieldErrors?.[trimmed];
-    const generic = result.error ?? t`Failed to add property`;
-    setAdding({ ...adding, value, error: fieldError ?? generic });
+    fail(result.fieldErrors?.[trimmed] ?? result.error ?? t`Failed to add property`);
   }
 
-  function cancelAdd() {
-    setAdding(null);
+  function cancelAdd(id: string) {
+    setAdding((prev) => prev.filter((entry) => entry.id !== id));
   }
 
   function beginRename(key: string) {
@@ -425,12 +565,35 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
   // Keep the disclosure alive for its badge whenever one is outstanding.
   if (
     renderKeys.length === 0 &&
-    !adding &&
+    adding.length === 0 &&
     !parseError &&
     !identitySlot &&
     invalidProperties.length === 0
   ) {
     return null;
+  }
+
+  // Fields the schemas declare that this doc does not already have — the
+  // type-ahead vocabulary for an add-row's name field.
+  const offerableFields: AddPropertyFieldSuggestion[] = [...schemaFields]
+    .filter(([name]) => !Object.hasOwn(map, name) && !reserved.has(name))
+    .map(([name, field]) => ({ name, ...field }));
+
+  /**
+   * The same list minus what a SIBLING row is already staged to add, so a batch
+   * can't point two rows at one property. The row's own name stays offered —
+   * excluding it would empty the list the moment a suggestion was picked.
+   */
+  function suggestionsFor(rowId: string): AddPropertyFieldSuggestion[] {
+    const claimed = new Set(
+      adding
+        .filter((draft) => draft.id !== rowId)
+        .map((draft) => draft.name.trim())
+        .filter((name) => name !== ''),
+    );
+    return claimed.size === 0
+      ? offerableFields
+      : offerableFields.filter((field) => !claimed.has(field.name));
   }
 
   // Flush-left alignment. Sortable rows carry a drag-handle gutter (FrontmatterRow:
@@ -573,18 +736,31 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
               onChangeType={() => {}}
             />
           ) : null}
-          {adding ? (
+          {adding.length > 0 ? (
             // No drag-handle gutter — cancel the content shift so the add form
             // sits flush with the rows (see PROP_CONTENT_SHIFT).
             <div className={PROP_GUTTER_COMPENSATE}>
-              <AddPropertyRow
-                draft={adding}
-                onChangeName={changeAddName}
-                onChangeType={changeAddType}
-                onChangeValue={changeAddValue}
-                onCommit={commitAdd}
-                onCancel={cancelAdd}
-              />
+              {adding.map((draft) => (
+                <AddPropertyRow
+                  key={draft.id}
+                  rowId={draft.id}
+                  draft={draft}
+                  // Only the row the batch was opened on takes focus —
+                  // `autoFocus` is last-one-wins, so every row claiming it
+                  // would land the caret on the bottom one. The target is the
+                  // row's own frozen `focusField`, never re-derived from the
+                  // live draft.
+                  autoFocus={draft.id === focusRowId ? draft.focusField : 'none'}
+                  enumConstraint={enumConstraints.get(draft.name.trim())}
+                  fieldSuggestions={suggestionsFor(draft.id)}
+                  onChangeName={(name) => changeAddName(draft.id, name)}
+                  onChangeType={(type) => changeAddType(draft.id, type)}
+                  onChangeValue={(value) => changeAddValue(draft.id, value)}
+                  onPickField={(suggestion) => pickAddField(draft.id, suggestion)}
+                  onCommit={(valueOverride) => commitAdd(draft.id, valueOverride)}
+                  onCancel={() => cancelAdd(draft.id)}
+                />
+              ))}
             </div>
           ) : (
             // Wrapper mirrors FrontmatterRow's flex layout above: an
@@ -603,7 +779,7 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
                 variant="ghost"
                 size="sm"
                 data-testid="add-property-trigger"
-                onClick={beginAdd}
+                onClick={beginAddBlank}
                 // Visible label is just "Add"; the aria-label restores the
                 // action's object so screen readers don't announce a
                 // context-free "Add, button".

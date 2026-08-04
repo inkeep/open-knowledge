@@ -2311,6 +2311,7 @@
     "bUUVED": ["Asset"],
     "bV6DJA": ["Who you are, so the agent has your context."],
     "bWLmRK": ["Could not fetch branch. Check your connection."],
+    "bYUIzq": ["Schema fields"],
     "ba3vIW": [["templateCount", "plural", { "one": ["template"], "other": ["templates"] }]],
     "bbJ-VR": ["Zoom Out"],
     "bcDHUM": [["descriptorLabel"], " — render error, source editable below"],
@@ -3392,6 +3393,7 @@
     ],
     "sNeKjP": ["Failed to store the token — try again"],
     "sOxZaS": ["Failed to load graph"],
+    "sW5OjU": ["required"],
     "sZ2IOu": [
       "This ",
       ["targetNoun"],
@@ -3772,6 +3774,7 @@
     ],
     "ygCKqB": ["Stop"],
     "yg_6wQ": ["Search failed. Try again."],
+    "yh5-4s": ["Click to add and fill them in"],
     "yhI6P0": ["Moved \"", ["0"], "\" to ", ["1"]],
     "yhdqox": [
       "Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working."

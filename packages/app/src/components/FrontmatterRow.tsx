@@ -27,7 +27,11 @@ import {
 import { Trans, useLingui } from '@lingui/react/macro';
 import { AlertTriangle, GripVertical, Trash2, X } from 'lucide-react';
 import type { CSSProperties, ReactNode } from 'react';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
+import {
+  type AddPropertyFieldSuggestion,
+  AddPropertyNameField,
+} from '@/components/AddPropertyNameField';
 import { ArrayOfObjectsWidget } from '@/components/ArrayOfObjectsWidget';
 import { ObjectWidget } from '@/components/ObjectWidget';
 import { PageCoverWidget, PageIconWidget } from '@/components/PageHeaderWidgets';
@@ -580,6 +584,44 @@ interface AddPropertyRowProps {
    */
   onCommit: (valueOverride?: FrontmatterValue) => void;
   onCancel: () => void;
+  /**
+   * Distinguishes one add-row from its siblings when a host renders several at
+   * once (the panel stages one per schema-required property the doc lacks).
+   * Scopes this row's DOM ids and `data-key`, so two rows can't collide on an
+   * `aria-describedby` target. Single-row hosts can leave it at the default.
+   */
+  rowId?: string;
+  /**
+   * Which control takes focus on mount. `name` is the default and what a blank
+   * row wants. A row that arrives pre-named wants `value` — the name is already
+   * filled, so the value is the only thing left to type. `none` keeps focus
+   * where it is, which is what every row but the first of a staged batch needs:
+   * `autoFocus` is last-one-wins, so several rows each claiming it would land
+   * focus on the bottom row.
+   */
+  autoFocus?: 'name' | 'value' | 'none';
+  /**
+   * Schema-derived vocabulary for the property being added, resolved by the
+   * host from the same schemas the linter uses. Present when the drafted name
+   * names an enum-constrained field: the value editor becomes that field's
+   * select instead of free text, matching how the field will render once it is
+   * a real row.
+   */
+  enumConstraint?: { values: string[]; multi: boolean };
+  /**
+   * Fields the doc's governing schemas declare and the doc does not yet have,
+   * offered as type-ahead suggestions on the name input. Empty (the default)
+   * leaves the name a plain free-text field — which is what an unschema'd doc,
+   * and the folder card, get.
+   */
+  fieldSuggestions?: readonly AddPropertyFieldSuggestion[];
+  /**
+   * Applies a picked suggestion's name AND type as one update. Optional: the
+   * fallback drives the existing name/type callbacks instead, which is correct
+   * but applies the two in separate updates rather than one atomic change (React
+   * batches the render either way).
+   */
+  onPickField?: (suggestion: AddPropertyFieldSuggestion) => void;
 }
 
 /**
@@ -595,10 +637,45 @@ export function AddPropertyRow({
   onChangeValue,
   onCommit,
   onCancel,
+  rowId = '__add__',
+  autoFocus = 'name',
+  enumConstraint,
+  fieldSuggestions = [],
+  onPickField,
 }: AddPropertyRowProps) {
   const { t } = useLingui();
-  const errorId = draft.error ? 'add-property-error-id' : undefined;
+  const errorId = draft.error ? `add-property-error-${rowId}` : undefined;
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const valueCellRef = useRef<HTMLDivElement>(null);
+
+  // Focusing the VALUE means reaching into whichever widget the drafted type
+  // renders — a text input, a select trigger, a chip input, a checkbox. Taking
+  // the first focusable descendant of the value cell covers every one of them
+  // without each widget having to forward a ref it otherwise has no use for.
+  //
+  // Latched to fire at most once per mounted row. `autoFocus` describes where
+  // the row OPENS, so a later flip of it must not move a caret the user has
+  // since placed somewhere else — moving focus mid-word swallows keystrokes
+  // into whatever it lands on.
+  const wantsValueFocus = autoFocus === 'value';
+  const valueFocusClaimed = useRef(false);
+  useEffect(() => {
+    if (!wantsValueFocus || valueFocusClaimed.current) return;
+    valueFocusClaimed.current = true;
+    const focusable = valueCellRef.current?.querySelector<HTMLElement>(
+      'input:not([type="hidden"]), select, textarea, button, [tabindex]:not([tabindex="-1"])',
+    );
+    focusable?.focus();
+  }, [wantsValueFocus]);
+
+  function handlePickField(suggestion: AddPropertyFieldSuggestion): void {
+    if (onPickField) {
+      onPickField(suggestion);
+      return;
+    }
+    onChangeName(suggestion.name);
+    onChangeType(suggestion.type);
+  }
   // Gate the commit affordance: non-empty name AND non-empty value (matches
   // the server's mergePatch drop-on-empty semantic via the shared core
   // predicate; `0` and `false` count as non-empty).
@@ -608,6 +685,7 @@ export function AddPropertyRow({
     <div
       className="mt-1 rounded border border-dashed bg-background/40 p-1 @container/prow"
       data-testid="add-property-row"
+      data-key={rowId}
     >
       <div className="flex items-start gap-1 @max-[26rem]/prow:flex-wrap">
         <TypeIconButton
@@ -624,37 +702,52 @@ export function AddPropertyRow({
             nameInputRef.current?.focus();
           }}
         />
-        <Input
-          ref={nameInputRef}
-          data-testid="add-property-name-input"
-          type="text"
+        <AddPropertyNameField
+          rowId={rowId}
           value={draft.name}
-          autoFocus
-          placeholder={t`Property name`}
-          aria-label={t`New property name`}
-          aria-invalid={draft.error ? true : undefined}
-          aria-describedby={errorId}
-          onChange={(e) => onChangeName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              onCommit();
-            } else if (e.key === 'Escape') {
-              e.preventDefault();
-              onCancel();
-            }
-          }}
-          className="h-7 w-32 border-transparent bg-transparent px-2 text-sm shadow-none placeholder:text-muted-foreground/60 focus-visible:border-transparent focus-visible:bg-muted focus-visible:ring-0 rounded-sm @max-[26rem]/prow:w-auto @max-[26rem]/prow:flex-1"
+          suggestions={fieldSuggestions}
+          inputRef={nameInputRef}
+          autoFocus={autoFocus === 'name'}
+          error={draft.error !== null}
+          errorId={errorId}
+          onChange={onChangeName}
+          onPick={handlePickField}
+          onCommit={onCommit}
+          onCancel={onCancel}
         />
-        <div className="min-w-0 flex-1 @max-[26rem]/prow:order-last @max-[26rem]/prow:mt-0.5 @max-[26rem]/prow:basis-full @max-[26rem]/prow:pl-[2rem]">
-          <Widget
-            keyName="__add__"
-            value={draft.value}
-            widgetType={draft.type}
-            path={ADD_ROW_PATH}
-            onCommit={onChangeValue}
-            onSubmit={onCommit}
-          />
+        <div
+          ref={valueCellRef}
+          className="min-w-0 flex-1 @max-[26rem]/prow:order-last @max-[26rem]/prow:mt-0.5 @max-[26rem]/prow:basis-full @max-[26rem]/prow:pl-[2rem]"
+        >
+          {/* Enum-constrained fields get the same select they will render as a
+              committed row — a fixed vocabulary is not something to retype from
+              memory. Both selects commit through `onChangeValue`, so the draft
+              plumbing below is unchanged; only free-text/complex drafts fall
+              through to the type-dispatched widget. */}
+          {enumConstraint && !enumConstraint.multi ? (
+            <EnumSelectWidget
+              keyName="__add__"
+              value={draft.value}
+              values={enumConstraint.values}
+              onCommit={onChangeValue}
+            />
+          ) : enumConstraint ? (
+            <EnumMultiSelectWidget
+              keyName="__add__"
+              value={draft.value}
+              values={enumConstraint.values}
+              onCommit={onChangeValue}
+            />
+          ) : (
+            <Widget
+              keyName="__add__"
+              value={draft.value}
+              widgetType={draft.type}
+              path={ADD_ROW_PATH}
+              onCommit={onChangeValue}
+              onSubmit={onCommit}
+            />
+          )}
         </div>
 
         <Button
