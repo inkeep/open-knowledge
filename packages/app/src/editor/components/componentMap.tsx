@@ -86,6 +86,13 @@ export const componentMap: Record<string, React.ComponentType<any>> = {
   // Renders via a cross-origin iframe with `referrerPolicy="no-referrer"`.
   Embed,
   Accordion,
+  // `Toggle` is Accordion's Notion-vocabulary alias — same render, different
+  // stored JSX name. Both descriptors dispatch through the Accordion
+  // component; the wrapper injects a `Toggle` title default so an untitled
+  // `<Toggle />` renders as "Toggle" in the summary instead of falling
+  // through to Accordion.tsx's hardcoded "Accordion" fallback.
+  // biome-ignore lint/suspicious/noExplicitAny: mirrors componentMap's heterogeneous prop shape
+  Toggle: (props: any) => <Accordion {...props} title={props.title ?? 'Toggle'} />,
   // `HtmlAlignBlock` — canonical renderer for promoted `<div align>` wrappers
   // (GitHub-README centered headers). Children stay ordinary editable
   // blocks; the wrapper only applies text alignment.

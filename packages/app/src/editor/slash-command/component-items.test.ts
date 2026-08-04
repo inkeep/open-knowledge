@@ -61,6 +61,7 @@ describe('getComponentItems (slash menu)', () => {
         'Mirror Source',
         'PDF',
         'Tabs',
+        'Toggle',
         'Video',
       ].sort(),
     );
@@ -90,6 +91,22 @@ describe('getComponentItems (slash menu)', () => {
       expect(item.category).toBeString();
       expect(item.command).toBeFunction();
     }
+  });
+
+  test('/toggle query resolves to Toggle, not Accordion', () => {
+    // Guards against the alias-collision that shipped in an earlier draft
+    // where Accordion.searchTerms carried 'toggle' — the slash menu's
+    // stable-sort by registry order would then hand Enter to Accordion
+    // and silently ignore the new Toggle descriptor. Toggle's own label
+    // ('Toggle') and searchTerms ('toggle', ...) must be the only
+    // matches for the literal query 'toggle'.
+    const items = getComponentItems();
+    const matches = items.filter((i) => {
+      const label = i.label.toLowerCase().includes('toggle');
+      const alias = (i.aliases ?? []).some((a) => a.toLowerCase().includes('toggle'));
+      return label || alias;
+    });
+    expect(matches.map((m) => m.label)).toEqual(['Toggle']);
   });
 
   test('compat descriptors are absent — fresh inserts are canonical-only', () => {
@@ -268,11 +285,11 @@ describe('agent-surface ↔ slash-menu filter parity', () => {
     expect(divergence).toEqual(new Set(SLASH_HIDDEN_CANONICALS));
   });
 
-  test('intersection covers every canonical NOT in either curation set (11 names today)', () => {
+  test('intersection covers every canonical NOT in either curation set (12 names today)', () => {
     const agent = agentCanonicalSet();
     const slash = slashMenuCanonicalSet();
     const intersection = new Set([...agent].filter((name) => slash.has(name)));
-    expect(intersection.size).toBe(11);
+    expect(intersection.size).toBe(12);
   });
 
   test('agent surface excludes wildcard descriptor', () => {

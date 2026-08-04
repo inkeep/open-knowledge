@@ -73,6 +73,11 @@ const PREVIEW_CONFIG: Record<string, PreviewConfig> = {
     props: { title: 'Click to expand', defaultOpen: true },
     children: 'Hidden content goes here.',
   },
+  Toggle: {
+    description: msg`Collapsible content block (Notion-style toggle).`,
+    props: { title: 'Click to expand', defaultOpen: true },
+    children: 'Hidden content goes here.',
+  },
   img: {
     description: msg`Embed an image with optional alt text.`,
     props: { src: imagePreview, alt: 'Sample image' },

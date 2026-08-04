@@ -4,8 +4,8 @@ import { builtInComponents, createRegistry, wildcardMeta } from './index.ts';
 import type { JsxComponentMeta } from './types.ts';
 
 describe('createRegistry', () => {
-  test('returns the 15 canonical + 9 compat descriptors + wildcard', () => {
-    // 15 canonicals (Callout, Image, Video, Audio, Accordion, Math,
+  test('returns the 16 canonical + 9 compat descriptors + wildcard', () => {
+    // 16 canonicals (Callout, Image, Video, Audio, Accordion, Toggle, Math,
     // MermaidFence, Pdf, File, Tabs, Tab, Embed, Mirror, MirrorSource,
     // HtmlAlignBlock — the `<div align>` HTML form is canonical, per the
     // MermaidFence fence-only precedent)
@@ -24,7 +24,7 @@ describe('createRegistry', () => {
     // through to the wildcard.
     const registry = createRegistry();
     const entries = [...registry.entries()];
-    expect(entries.length).toBe(25);
+    expect(entries.length).toBe(26);
   });
 
   test('get returns registered component by name', () => {
@@ -92,6 +92,7 @@ describe('createRegistry', () => {
     expect(registry.has('video')).toBe(true);
     expect(registry.has('audio')).toBe(true);
     expect(registry.has('Accordion')).toBe(true);
+    expect(registry.has('Toggle')).toBe(true);
     expect(registry.has('Math')).toBe(true);
     expect(registry.has('MermaidFence')).toBe(true);
     // `<Mermaid />` JSX has no descriptor (canonical is named
@@ -118,11 +119,11 @@ describe('createRegistry', () => {
 });
 
 describe('builtInComponents manifest', () => {
-  test('contains 15 canonical + 9 compat entries (5-pack + Math + MermaidFence + Pdf + File + Tabs + Tab + Embed + Mirror + MirrorSource canonicals; source-form preservation + math syntax + wiki-embed compats; Mermaid is fence-only)', () => {
-    expect(builtInComponents.length).toBe(24);
+  test('contains 16 canonical + 9 compat entries (5-pack + Math + MermaidFence + Pdf + File + Tabs + Tab + Embed + Mirror + MirrorSource + HtmlAlignBlock + Toggle canonicals; source-form preservation + math syntax + wiki-embed compats; Mermaid is fence-only)', () => {
+    expect(builtInComponents.length).toBe(25);
     const canonical = builtInComponents.filter((m) => m.surface === 'canonical');
     const compat = builtInComponents.filter((m) => m.surface === 'compat');
-    expect(canonical.length).toBe(15);
+    expect(canonical.length).toBe(16);
     expect(compat.length).toBe(9);
   });
 

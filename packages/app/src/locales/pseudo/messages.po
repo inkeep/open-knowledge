@@ -2306,6 +2306,10 @@ msgid "Collapse panel"
 msgstr ""
 
 #: src/editor/slash-command/component-items.tsx
+msgid "Collapsible content block (Notion-style toggle)."
+msgstr ""
+
+#: src/editor/slash-command/component-items.tsx
 msgid "Collapsible section with a clickable summary."
 msgstr ""
 
