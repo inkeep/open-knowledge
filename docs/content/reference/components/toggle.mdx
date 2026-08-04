@@ -9,8 +9,8 @@ keywords: "toggle, collapsible, expand, details, disclosure, fold"
 <ComponentPreview>
   <AccordionPreview title="Show me the details" description="Click to expand" icon="lucide:BookOpen">
     Native `<details>` under the hood — same substrate as the app render.
-    Pass a shared `name` to sibling accordions and the browser will keep
-    only one open at a time.
+    A standalone expand/collapse block; use `<Accordion>` with a shared
+    `name` when you need mutually-exclusive siblings.
   </AccordionPreview>
 </ComponentPreview>
 
@@ -25,12 +25,12 @@ keywords: "toggle, collapsible, expand, details, disclosure, fold"
 <TypeTable
   type={{
   "title": {
-    description: "Accordion heading shown inside the <summary>",
+    description: "Heading shown inside the <summary>",
     type: "string",
     required: true,
   },
   "defaultOpen": {
-    description: "When true, the accordion renders expanded on initial load",
+    description: "When true, the block renders expanded on initial load",
     type: "boolean",
     required: false,
     default: "false",

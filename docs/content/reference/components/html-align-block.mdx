@@ -1,0 +1,32 @@
+---
+title: "Align block"
+description: "GitHub-style `<div align>` wrapper. Children render as normal blocks with the alignment applied; the `<div align>` syntax is preserved on round-trip"
+keywords: "align, center, centered, div"
+---
+
+## Example
+
+```mdx
+<HtmlAlignBlock>
+  Content goes here.
+</HtmlAlignBlock>
+```
+
+## Props
+
+<TypeTable
+  type={{
+  "align": {
+    description: "Block alignment from the \\`<div align>\\` attribute.",
+    type: "'center' | 'left' | 'right' | 'justify'",
+    required: false,
+    default: "center",
+  },
+}}
+/>
+
+_Also matches:_ `align`, `center`, `centered`, `div`
+
+## Author it
+
+Type `/align` in the editor to insert it from the slash menu, or write the tag directly in source mode. The Properties panel on the right of the editor exposes every prop above as a form field once the block is selected.

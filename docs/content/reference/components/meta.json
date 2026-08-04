@@ -6,6 +6,7 @@
     "callout",
     "accordion",
     "toggle",
+    "html-align-block",
     "tabs",
     "math",
     "mermaid-fence",
@@ -15,7 +16,6 @@
     "pdf",
     "file",
     "embed",
-    "mirror",
-    "html-align-block"
+    "mirror"
   ]
 }

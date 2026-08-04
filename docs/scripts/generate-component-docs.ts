@@ -29,6 +29,7 @@ const PAGE_ORDER = [
   'Callout',
   'Accordion',
   'Toggle',
+  'HtmlAlignBlock',
   'Tabs',
   'Math',
   'MermaidFence',
@@ -277,8 +278,8 @@ const PREVIEWS: Partial<Record<string, string>> = {
   Toggle: `<ComponentPreview>
   <AccordionPreview title="Show me the details" description="Click to expand" icon="lucide:BookOpen">
     Native \`<details>\` under the hood — same substrate as the app render.
-    Pass a shared \`name\` to sibling accordions and the browser will keep
-    only one open at a time.
+    A standalone expand/collapse block; use \`<Accordion>\` with a shared
+    \`name\` when you need mutually-exclusive siblings.
   </AccordionPreview>
 </ComponentPreview>`,
   Tabs: `<ComponentPreview>
@@ -368,7 +369,6 @@ function placeholderBody(name: string): string {
     return '<Tab label="First">First panel</Tab>\n  <Tab label="Second">Second panel</Tab>';
   if (name === 'Tab') return 'Panel body content.';
   if (name === 'Accordion') return 'Body content — hidden until the summary is clicked.';
-  if (name === 'Toggle') return 'Body content — hidden until the summary is clicked.';
   if (name === 'Callout') return 'Content of the callout goes here.';
   if (name === 'MirrorSource') return 'The canonical content this block owns.';
   return 'Content goes here.';

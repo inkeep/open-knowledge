@@ -691,14 +691,14 @@ const accordionProps: PropDef[] = [
     name: 'title',
     type: 'string',
     required: true,
-    description: 'Accordion heading shown inside the <summary>',
+    description: 'Heading shown inside the <summary>',
   },
   {
     name: 'defaultOpen',
     type: 'boolean',
     required: false,
     defaultValue: false,
-    description: 'When true, the accordion renders expanded on initial load',
+    description: 'When true, the block renders expanded on initial load',
   },
   // advanced — custom icon override, subtitle, deep-link anchor, exclusive-
   // group identifier. All taste-and-edge-case territory; default rendering
