@@ -67,6 +67,12 @@ name: Desktop release
 #   GITHUB_TOKEN (auto-provided, contents:write scope) — used as GH_TOKEN
 #     for the fan-in `gh release upload` + the finalize/alert steps.
 #
+# Operator escape valve: the DESKTOP_RELEASE_REQUIRED_PLATFORMS repo variable
+# (unset = mac,windows,linux) lets a TRANSIENTLY broken platform stop blocking
+# publication — see the "Resolve required platforms" step in prepare for the
+# full contract (mac can never be dropped; healthy non-required platforms
+# still ship; degraded cuts warn loudly; remove the variable once fixed).
+#
 # Unsigned mode is explicitly REJECTED on macOS AND Windows. On macOS,
 # auto-update refuses unsigned upgrades (Squirrel.Mac signature-verifies every
 # update against the installed app's cert). On Windows nothing technically
@@ -150,6 +156,7 @@ jobs:
     outputs:
       channel: ${{ steps.channel.outputs.channel }}
       version: ${{ steps.channel.outputs.version }}
+      required: ${{ steps.required.outputs.required }}
     steps:
       - name: Link to triggering run
         # Back-link: promote-stable forwards its run URL in
@@ -229,6 +236,45 @@ jobs:
               echo "version=$VERSION"
             } >> "$GITHUB_OUTPUT"
             echo "::notice::Building LATEST channel from tag $RELEASE_TAG"
+          fi
+
+      # The operator escape valve for a TRANSIENTLY broken platform: the
+      # `DESKTOP_RELEASE_REQUIRED_PLATFORMS` repo variable (comma-separated
+      # subset of mac,windows,linux; unset = all three — fail-closed) names
+      # the platforms whose build failure blocks publication. Non-required
+      # platforms still BUILD every cut, and when their build succeeds their
+      # assets still ship — requiredness only changes what can block. `mac`
+      # can never be dropped: the stable DMG smoke gate (FR5b) and the npm
+      # dispatch hang off build-macos, so a mac-less release would ship
+      # unsmoked. A client on a platform missing from a cut simply 404s that
+      # cut's channel manifest and retries next interval — the same benign
+      # behavior as before that platform shipped at all. REMOVE the variable
+      # once the platform is fixed; every degraded cut warns loudly so a
+      # forgotten override stays visible.
+      - name: Resolve required platforms
+        id: required
+        env:
+          RAW: ${{ vars.DESKTOP_RELEASE_REQUIRED_PLATFORMS }}
+        run: |
+          set -euo pipefail
+          REQUIRED="${RAW:-mac,windows,linux}"
+          # Normalize: strip spaces, lowercase.
+          REQUIRED="$(tr -d ' ' <<<"$REQUIRED" | tr '[:upper:]' '[:lower:]')"
+          IFS=',' read -ra toks <<<"$REQUIRED"
+          for t in "${toks[@]}"; do
+            case "$t" in
+              mac|windows|linux) ;;
+              *) echo "::error::DESKTOP_RELEASE_REQUIRED_PLATFORMS contains unknown platform '$t' (allowed: mac, windows, linux)"; exit 1 ;;
+            esac
+          done
+          if ! grep -q "mac" <<<"$REQUIRED"; then
+            echo "::error::DESKTOP_RELEASE_REQUIRED_PLATFORMS must include 'mac' — the stable smoke gate and npm dispatch hang off the mac build, so a mac-less release would ship unverified."
+            exit 1
+          fi
+          echo "required=$REQUIRED" >> "$GITHUB_OUTPUT"
+          if [[ "$REQUIRED" != *windows* || "$REQUIRED" != *linux* ]]; then
+            echo "::warning::DEGRADED RELEASE MODE: required platforms = ${REQUIRED}. A non-required platform's build failure will NOT block publication. Remove the DESKTOP_RELEASE_REQUIRED_PLATFORMS variable once the platform is fixed."
+            echo "### ⚠️ Degraded release mode: required = ${REQUIRED}" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       # The manual recovery path uploads to an existing Release; the cascade
@@ -1214,6 +1260,19 @@ jobs:
   # 30-minute signed build; `--clobber` makes the retry idempotent.
   publish-assets:
     needs: [prepare, build-macos, build-windows, build-linux]
+    # Runs when every REQUIRED platform built (see prepare's "Resolve
+    # required platforms"). `!cancelled()` is load-bearing: with a
+    # non-required platform's job failed, the default success()-of-all-needs
+    # would skip this job and block the release the override exists to save.
+    # This predicate is only the fast gate — the inventory assert below is
+    # the deterministic backstop (a required platform's missing assets fail
+    # the must-have check even if this expression were wrong).
+    if: >-
+      !cancelled() &&
+      needs.prepare.result == 'success' &&
+      needs.build-macos.result == 'success' &&
+      (needs.build-windows.result == 'success' || !contains(needs.prepare.outputs.required, 'windows')) &&
+      (needs.build-linux.result == 'success' || !contains(needs.prepare.outputs.required, 'linux'))
     runs-on: ubuntu-latest
     # Sized to the upload retry envelope: 3 bounded 300s attempts + backoffs
     # (see the upload step) plus download/verify overhead.
@@ -1232,6 +1291,12 @@ jobs:
       RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
       CHANNEL: ${{ needs.prepare.outputs.channel }}
       VERSION: ${{ needs.prepare.outputs.version }}
+      REQUIRED: ${{ needs.prepare.outputs.required }}
+      # A platform's asset group joins the expected inventory when it is
+      # required OR its build succeeded anyway (a healthy non-required
+      # platform still ships).
+      WINDOWS_BUILT: ${{ needs.build-windows.result == 'success' }}
+      LINUX_BUILT: ${{ needs.build-linux.result == 'success' }}
     steps:
       - name: Download all platform release assets
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v5.0.0
@@ -1256,6 +1321,10 @@ jobs:
       - name: Define the expected asset inventory
         run: |
           set -euo pipefail
+          # Per-platform groups. mac is unconditional (always required); the
+          # windows/linux groups join when the platform is required OR its
+          # build succeeded anyway — so a degraded cut still ships every
+          # healthy platform, and the no-extras check below stays exact.
           {
             echo "EXPECTED_ASSETS<<OK_INVENTORY_EOF"
             echo "OpenKnowledge-arm64.dmg"
@@ -1263,15 +1332,22 @@ jobs:
             echo "OpenKnowledge-${VERSION}-arm64-mac.zip"
             echo "OpenKnowledge-${VERSION}-arm64-mac.zip.blockmap"
             echo "${CHANNEL}-mac.yml"
-            echo "OpenKnowledge-Setup-x64.exe"
-            echo "OpenKnowledge-Setup-arm64.exe"
-            echo "${CHANNEL}.yml"
-            echo "OpenKnowledge-amd64.deb"
-            echo "OpenKnowledge-arm64.deb"
-            echo "OpenKnowledge-x86_64.rpm"
-            echo "OpenKnowledge-aarch64.rpm"
-            echo "${CHANNEL}-linux.yml"
-            echo "${CHANNEL}-linux-arm64.yml"
+            if [[ "$REQUIRED" == *windows* || "$WINDOWS_BUILT" == "true" ]]; then
+              echo "OpenKnowledge-Setup-x64.exe"
+              echo "OpenKnowledge-Setup-arm64.exe"
+              echo "${CHANNEL}.yml"
+            fi
+            if [[ "$REQUIRED" == *linux* || "$LINUX_BUILT" == "true" ]]; then
+              echo "OpenKnowledge-amd64.deb"
+              echo "OpenKnowledge-arm64.deb"
+              echo "OpenKnowledge-x86_64.rpm"
+              echo "OpenKnowledge-aarch64.rpm"
+              echo "${CHANNEL}-linux.yml"
+              echo "${CHANNEL}-linux-arm64.yml"
+            fi
+            # GITHUB_ENV's multiline syntax REQUIRES the closing delimiter
+            # line — without it the runner rejects the whole env file.
+            echo "OK_INVENTORY_EOF"
           } >> "$GITHUB_ENV"
 
       - name: Assert the complete cross-platform inventory
@@ -1371,6 +1447,14 @@ jobs:
   # that).
   finalize:
     needs: [prepare, build-macos, publish-assets]
+    # `!cancelled()` for the same reason as publish-assets: under a degraded
+    # required-set, a non-required platform's failure elsewhere in the run
+    # must not skip finalization. The explicit success checks keep the real
+    # gates: verified inventory (publish-assets) + the smoke-bearing mac job.
+    if: >-
+      !cancelled() &&
+      needs.publish-assets.result == 'success' &&
+      needs.build-macos.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -1639,11 +1723,14 @@ jobs:
   # SKIPS finalize entirely — skipped steps can't alert.
   alert:
     needs: [prepare, build-macos, build-windows, build-linux, publish-assets, finalize]
-    # Job-level failure() is true when any job in `needs` failed. prepare
-    # failing before channel detection leaves the channel output empty; the
-    # steps below treat that as "not stable" (FR5c skips, STUCK-DRAFT still
-    # logs).
-    if: failure()
+    # "The release did not publish" — not "some job failed": under a degraded
+    # required-set a non-required platform can fail while the release still
+    # publishes, and paging on that would train readers to ignore the alert.
+    # finalize != success covers every blocked shape transitively (prepare,
+    # a required build, publish-assets, or finalize itself). prepare failing
+    # before channel detection leaves the channel output empty; the steps
+    # below treat that as "not stable" (FR5c skips, STUCK-DRAFT still logs).
+    if: ${{ !cancelled() && needs.finalize.result != 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

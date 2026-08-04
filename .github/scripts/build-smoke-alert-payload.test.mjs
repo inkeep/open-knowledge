@@ -130,15 +130,17 @@ describe('parseArgs', () => {
 });
 
 describe('workflow wiring', () => {
-  test('the alert job is failure-conditioned, not success-conditioned', () => {
-    // Under the fan-out topology the failure() lives at the ALERT JOB level
-    // (a failed packaging job skips finalize, so a failure()-step inside it
-    // could never fire); the step keeps only the stable-only channel gate.
+  test('the alert job fires on a blocked release, never on success', () => {
+    // The blocked-release predicate lives at the ALERT JOB level (a failed
+    // packaging job skips finalize, so a failure()-step inside finalize
+    // could never fire). It keys on finalize's result rather than bare
+    // failure() so a degraded-mode cut that still publishes does not page;
+    // the step keeps only the stable-only channel gate.
     const alertJob = desktopRelease.slice(
       desktopRelease.indexOf('\n  alert:'),
       desktopRelease.indexOf('- name: Alert on a blocked release'),
     );
-    expect(alertJob).toContain('if: failure()');
+    expect(alertJob).toContain("needs.finalize.result != 'success'");
     expect(alertJob).not.toContain('if: success()');
     expect(alertStep()).not.toContain('if: success()');
   });

@@ -75,18 +75,28 @@ describe('the stable gate is upstream of everything that ships', () => {
     expect(smoke).toBeLessThan(indexOfStep(names, 'Announce stable release to Discord'));
   });
 
-  test('nothing downstream of the gate opts out of the implicit success() guard', () => {
-    // A downstream step carrying `if: always()` would run even after the gate
-    // refused — which is exactly how a gate stops gating.
+  test('no shipping STEP opts out of the implicit success() guard', () => {
+    // A downstream step carrying `if: always()` / `!cancelled()` would run
+    // even after the gate refused — which is exactly how a gate stops
+    // gating. JOB-level `!cancelled()` predicates are a different animal:
+    // the required-platforms valve needs them, and each one re-asserts the
+    // success of everything it actually gates on — they are pinned exactly
+    // in the fan-in DAG describe below. Step-level ifs sit at 8-space
+    // indentation; job-level at 4.
     const afterGate = desktopRelease.slice(
       desktopRelease.indexOf('- name: Smoke the packaged DMG'),
     );
-    const shipping = afterGate.slice(
-      0,
-      afterGate.indexOf('- name: Alert on a blocked release'), // failure-conditioned by design
-    );
-    expect(shipping).not.toContain('if: always()');
-    expect(shipping).not.toContain('!cancelled()');
+    const shipping = afterGate.slice(0, afterGate.indexOf('- name: Alert on a blocked release'));
+    const stepIfs = [...shipping.matchAll(/^ {8}if: (.+)$/gm)].map((m) => m[1].trim());
+    expect(stepIfs.length).toBeGreaterThan(0);
+    for (const condition of stepIfs) {
+      expect(condition, `step-level if opts out of success(): ${condition}`).not.toContain(
+        'always()',
+      );
+      expect(condition, `step-level if opts out of success(): ${condition}`).not.toContain(
+        '!cancelled()',
+      );
+    }
   });
 
   test('every shipping step with an explicit if: spells success() itself', () => {
@@ -101,13 +111,13 @@ describe('the stable gate is upstream of everything that ships', () => {
       desktopRelease.indexOf('- name: Smoke the packaged DMG'),
     );
     const shipping = afterGate.slice(0, afterGate.indexOf('- name: Alert on a blocked release'));
-    const conditions = [...shipping.matchAll(/^\s*if: (.+)$/gm)].map((m) => m[1].trim());
-    // Two conditions in this span are gates, not shipping: the smoke gate's
-    // own channel scope, and the alert JOB's failure() header (the span ends
-    // at the alert step's name, which sits after its job header). Everything
-    // else ships and must be success()-gated.
+    // Step-level ifs only (8-space indent) — job-level predicates are the
+    // required-platforms valve, pinned exactly in the fan-in DAG describe.
+    const conditions = [...shipping.matchAll(/^ {8}if: (.+)$/gm)].map((m) => m[1].trim());
+    // One condition in this span is a gate, not shipping: the smoke gate's
+    // own channel scope. Everything else ships and must be success()-gated.
     const shippingConditions = conditions.filter(
-      (c) => c !== "steps.channel.outputs.channel == 'latest'" && c !== 'failure()',
+      (c) => c !== "steps.channel.outputs.channel == 'latest'",
     );
     expect(shippingConditions.length).toBeGreaterThan(0);
     for (const condition of shippingConditions) {
@@ -179,6 +189,45 @@ describe('the fan-in publication DAG gates every platform', () => {
     expect(assert).toBeGreaterThan(-1);
     expect(assert).toBeLessThan(upload);
     expect(upload).toBeLessThan(verify);
+  });
+
+  test('the required-platforms valve gates exactly what it may skip — and mac has no bypass', () => {
+    // publish-assets may proceed past a FAILED platform only when that
+    // platform is absent from the required set; the mac result is asserted
+    // unconditionally (the stable smoke gate rides on build-macos), and
+    // prepare refuses a required-set that omits mac at the variable level.
+    const pa = desktopRelease.slice(
+      desktopRelease.indexOf('\n  publish-assets:'),
+      desktopRelease.indexOf('\n  finalize:'),
+    );
+    expect(pa).toContain("needs.build-macos.result == 'success'");
+    expect(pa).toContain(
+      "needs.build-windows.result == 'success' || !contains(needs.prepare.outputs.required, 'windows')",
+    );
+    expect(pa).toContain(
+      "needs.build-linux.result == 'success' || !contains(needs.prepare.outputs.required, 'linux')",
+    );
+    expect(pa).not.toContain("contains(needs.prepare.outputs.required, 'mac')");
+    const fin = desktopRelease.slice(
+      desktopRelease.indexOf('\n  finalize:'),
+      desktopRelease.indexOf('\n  alert:'),
+    );
+    expect(fin).toContain("needs.publish-assets.result == 'success'");
+    expect(fin).toContain("needs.build-macos.result == 'success'");
+    expect(desktopRelease).toContain("must include 'mac'");
+  });
+
+  test('the alert pages on a blocked RELEASE, not on any failed job', () => {
+    // Under a degraded required-set a non-required platform can fail while
+    // the release still publishes — paging on that would train readers to
+    // ignore the alert. finalize != success covers every blocked shape
+    // transitively.
+    const alertJob = desktopRelease.slice(
+      desktopRelease.indexOf('\n  alert:'),
+      desktopRelease.indexOf('- name: Alert on a blocked release'),
+    );
+    expect(alertJob).toContain("needs.finalize.result != 'success'");
+    expect(alertJob).not.toContain('if: failure()');
   });
 });
 
