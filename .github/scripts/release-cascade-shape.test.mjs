@@ -44,6 +44,32 @@ function stepNames(source) {
 
 const indexOfStep = (names, needle) => names.findIndex((n) => n.includes(needle));
 
+/**
+ * Step-level `if:` conditions (8-space indent) with YAML block-scalar
+ * folding resolved: an `if: >-` yields its joined continuation lines, not
+ * the literal `>-` — which would sail through every `not.toContain` check.
+ */
+function stepLevelIfConditions(source) {
+  const lines = source.split('\n');
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^ {8}if: (.+)$/.exec(lines[i]);
+    if (!m) continue;
+    let cond = m[1].trim();
+    if (/^[>|][+-]?$/.test(cond)) {
+      const cont = [];
+      for (let j = i + 1; j < lines.length; j++) {
+        const cm = /^ {10,}(\S.*)$/.exec(lines[j]);
+        if (!cm) break;
+        cont.push(cm[1].trim());
+      }
+      cond = cont.join(' ');
+    }
+    out.push(cond);
+  }
+  return out;
+}
+
 describe('the stable gate is upstream of everything that ships', () => {
   const names = stepNames(desktopRelease);
 
@@ -87,7 +113,7 @@ describe('the stable gate is upstream of everything that ships', () => {
       desktopRelease.indexOf('- name: Smoke the packaged DMG'),
     );
     const shipping = afterGate.slice(0, afterGate.indexOf('- name: Alert on a blocked release'));
-    const stepIfs = [...shipping.matchAll(/^ {8}if: (.+)$/gm)].map((m) => m[1].trim());
+    const stepIfs = stepLevelIfConditions(shipping);
     expect(stepIfs.length).toBeGreaterThan(0);
     for (const condition of stepIfs) {
       expect(condition, `step-level if opts out of success(): ${condition}`).not.toContain(
@@ -111,9 +137,10 @@ describe('the stable gate is upstream of everything that ships', () => {
       desktopRelease.indexOf('- name: Smoke the packaged DMG'),
     );
     const shipping = afterGate.slice(0, afterGate.indexOf('- name: Alert on a blocked release'));
-    // Step-level ifs only (8-space indent) — job-level predicates are the
-    // required-platforms valve, pinned exactly in the fan-in DAG describe.
-    const conditions = [...shipping.matchAll(/^ {8}if: (.+)$/gm)].map((m) => m[1].trim());
+    // Step-level ifs only (8-space indent, folding resolved) — job-level
+    // predicates are the required-platforms valve, pinned in the fan-in
+    // DAG describe.
+    const conditions = stepLevelIfConditions(shipping);
     // One condition in this span is a gate, not shipping: the smoke gate's
     // own channel scope. Everything else ships and must be success()-gated.
     const shippingConditions = conditions.filter(
@@ -208,13 +235,23 @@ describe('the fan-in publication DAG gates every platform', () => {
       "needs.build-linux.result == 'success' || !contains(needs.prepare.outputs.required, 'linux')",
     );
     expect(pa).not.toContain("contains(needs.prepare.outputs.required, 'mac')");
+    // The valve is DEAD without !cancelled(): a non-required platform's
+    // failure would skip these jobs via the implicit all-needs-success
+    // default, blocking exactly the release the override exists to save.
+    expect(pa).toContain('!cancelled()');
     const fin = desktopRelease.slice(
       desktopRelease.indexOf('\n  finalize:'),
       desktopRelease.indexOf('\n  alert:'),
     );
+    expect(fin).toContain('!cancelled()');
     expect(fin).toContain("needs.publish-assets.result == 'success'");
     expect(fin).toContain("needs.build-macos.result == 'success'");
-    expect(desktopRelease).toContain("must include 'mac'");
+    // Fail-CLOSED shape, not just message presence: the mac guard must be
+    // the ::error:: + exit 1 pair (a downgrade to ::warning:: or a dropped
+    // exit would leave mac silently droppable).
+    expect(desktopRelease).toMatch(
+      /::error::DESKTOP_RELEASE_REQUIRED_PLATFORMS must include 'mac'[^"]*"\s*\n\s*exit 1/,
+    );
   });
 
   test('the alert pages on a blocked RELEASE, not on any failed job', () => {

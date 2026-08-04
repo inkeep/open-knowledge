@@ -272,6 +272,9 @@ jobs:
             exit 1
           fi
           echo "required=$REQUIRED" >> "$GITHUB_OUTPUT"
+          # De Morgan, deliberately: "NOT (windows present AND linux present)"
+          # — the warning fires when EITHER platform is missing from the set.
+          # An `&&` here would warn only when BOTH are dropped.
           if [[ "$REQUIRED" != *windows* || "$REQUIRED" != *linux* ]]; then
             echo "::warning::DEGRADED RELEASE MODE: required platforms = ${REQUIRED}. A non-required platform's build failure will NOT block publication. Remove the DESKTOP_RELEASE_REQUIRED_PLATFORMS variable once the platform is fixed."
             echo "### ⚠️ Degraded release mode: required = ${REQUIRED}" >> "$GITHUB_STEP_SUMMARY"
@@ -1292,11 +1295,6 @@ jobs:
       CHANNEL: ${{ needs.prepare.outputs.channel }}
       VERSION: ${{ needs.prepare.outputs.version }}
       REQUIRED: ${{ needs.prepare.outputs.required }}
-      # A platform's asset group joins the expected inventory when it is
-      # required OR its build succeeded anyway (a healthy non-required
-      # platform still ships).
-      WINDOWS_BUILT: ${{ needs.build-windows.result == 'success' }}
-      LINUX_BUILT: ${{ needs.build-linux.result == 'success' }}
     steps:
       - name: Download all platform release assets
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v5.0.0
@@ -1321,10 +1319,17 @@ jobs:
       - name: Define the expected asset inventory
         run: |
           set -euo pipefail
-          # Per-platform groups. mac is unconditional (always required); the
-          # windows/linux groups join when the platform is required OR its
-          # build succeeded anyway — so a degraded cut still ships every
-          # healthy platform, and the no-extras check below stays exact.
+          # Two lists with different jobs:
+          #   EXPECTED_ASSETS — the MUST-HAVE set: the full group for every
+          #     REQUIRED platform. Missing any of these blocks publication.
+          #   ALLOWED_ASSETS — the full known-name universe across ALL
+          #     platforms. The no-extras check validates present files against
+          #     THIS list, so a healthy non-required platform's assets (even a
+          #     partial set from one surviving matrix cell — each Linux arch
+          #     uploads independently under fail-fast: false) still ship,
+          #     while a stray builder-debug.yml still fails. Anything a
+          #     non-required job uploaded already passed that job's own
+          #     app-update/package-type asserts.
           {
             echo "EXPECTED_ASSETS<<OK_INVENTORY_EOF"
             echo "OpenKnowledge-arm64.dmg"
@@ -1332,12 +1337,12 @@ jobs:
             echo "OpenKnowledge-${VERSION}-arm64-mac.zip"
             echo "OpenKnowledge-${VERSION}-arm64-mac.zip.blockmap"
             echo "${CHANNEL}-mac.yml"
-            if [[ "$REQUIRED" == *windows* || "$WINDOWS_BUILT" == "true" ]]; then
+            if [[ "$REQUIRED" == *windows* ]]; then
               echo "OpenKnowledge-Setup-x64.exe"
               echo "OpenKnowledge-Setup-arm64.exe"
               echo "${CHANNEL}.yml"
             fi
-            if [[ "$REQUIRED" == *linux* || "$LINUX_BUILT" == "true" ]]; then
+            if [[ "$REQUIRED" == *linux* ]]; then
               echo "OpenKnowledge-amd64.deb"
               echo "OpenKnowledge-arm64.deb"
               echo "OpenKnowledge-x86_64.rpm"
@@ -1348,6 +1353,22 @@ jobs:
             # GITHUB_ENV's multiline syntax REQUIRES the closing delimiter
             # line — without it the runner rejects the whole env file.
             echo "OK_INVENTORY_EOF"
+            echo "ALLOWED_ASSETS<<OK_ALLOWED_EOF"
+            echo "OpenKnowledge-arm64.dmg"
+            echo "OpenKnowledge-arm64.dmg.blockmap"
+            echo "OpenKnowledge-${VERSION}-arm64-mac.zip"
+            echo "OpenKnowledge-${VERSION}-arm64-mac.zip.blockmap"
+            echo "${CHANNEL}-mac.yml"
+            echo "OpenKnowledge-Setup-x64.exe"
+            echo "OpenKnowledge-Setup-arm64.exe"
+            echo "${CHANNEL}.yml"
+            echo "OpenKnowledge-amd64.deb"
+            echo "OpenKnowledge-arm64.deb"
+            echo "OpenKnowledge-x86_64.rpm"
+            echo "OpenKnowledge-aarch64.rpm"
+            echo "${CHANNEL}-linux.yml"
+            echo "${CHANNEL}-linux-arm64.yml"
+            echo "OK_ALLOWED_EOF"
           } >> "$GITHUB_ENV"
 
       - name: Assert the complete cross-platform inventory
@@ -1366,19 +1387,22 @@ jobs:
           fi
           # Unexpected extras are an error too: a stray builder-debug.yml or
           # half-renamed artifact reaching the Release would be served to
-          # real update clients.
+          # real update clients. Present files are validated against the
+          # ALLOWED universe (all platforms), not the required subset, so a
+          # healthy non-required platform's assets pass while junk fails.
+          mapfile -t allowed <<<"$ALLOWED_ASSETS"
           for f in release-assets/*; do
             base="$(basename "$f")"
             found=0
-            for e in "${expected[@]}"; do
+            for e in "${allowed[@]}"; do
               [[ "$base" == "$e" ]] && found=1 && break
             done
             if [[ "$found" -eq 0 ]]; then
-              echo "::error::Unexpected file staged for release upload: ${base}. Add it to the expected inventory or fix the packaging job's upload globs."
+              echo "::error::Unexpected file staged for release upload: ${base}. Add it to the known-asset universe or fix the packaging job's upload globs."
               exit 1
             fi
           done
-          echo "All ${#expected[@]} expected assets staged, no extras."
+          echo "All ${#expected[@]} required assets staged; every staged file is a known asset."
 
       # Idempotent by construction: `--clobber` replaces same-named assets, so
       # a retry after a partial upload converges instead of duplicating or
